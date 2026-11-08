@@ -79,6 +79,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
     internal Func<(ConnectionState State, bool NativeHandleClosed)> CaptureConnectionLifetimeForTests()
     {
         SqliteConnection connection = _connection.Connection;
+        // Internal invariant: this probe borrows the handle of the connection the constructor opened.
         var native = connection.Handle ?? throw new InvalidOperationException("The held SQLite connection has no native handle.");
         return () => (connection.State, native.IsClosed);
     }
@@ -236,7 +237,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
     static long Millis(DateTimeOffset at) => at.ToUnixTimeMilliseconds();
 
     static ContentAuthoringException NoMetadata()
-        => new(
+        => new(ContentAuthoringRefusal.SchemaMetadataMissing,
             FormattableString.Invariant(
                 $"The database carries no catalog_metadata row, so it has not been initialized. Call {nameof(InitializeAsync)} first."),
             default,
@@ -244,24 +245,25 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
             ContentAuthoringException.SchemaMismatchReason);
 
     static ContentAuthoringException UnknownVersion(int versionNumber)
-        => new(
+        => new(ContentAuthoringRefusal.VersionUnknown,
             FormattableString.Invariant($"This store holds no version {versionNumber}."),
             default,
             0,
-            ContentAuthoringException.UnknownVersionReason);
+            ContentAuthoringException.UnknownVersionReason) { VersionNumber = versionNumber };
 
     static ContentAuthoringException NoPackStore(string member)
-        => new(
+        => new(ContentAuthoringRefusal.PackStoreMissing,
             FormattableString.Invariant(
                 $"{nameof(SqliteContentAuthoringStore)}.{member} needs a pack store and this store was built with none. A publish writes files before it writes rows, so the pack target is not optional for it."),
             default,
             0,
-            ContentAuthoringException.NoPackStoreReason);
+            ContentAuthoringException.NoPackStoreReason) { MemberName = member };
 
     ContentTypeRegistration RequireType(ContentTypeId type)
         => _registry.TryGet(type, out ContentTypeRegistration? registration)
             ? registration
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"Content type {type.Value} is not registered, so this store carries no declaration for it."),
                 type,

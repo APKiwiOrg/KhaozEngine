@@ -117,8 +117,10 @@ public class SqliteCatalogSchemaTests
         Assert.Contains("table:catalog_leftover", refused.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task ATypeIdPinnedToOneKeyRefusesAnotherKeyUnderIt()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task StoredTypeIdentityRefusesARenameOrReassignment(bool rename)
     {
         using var database = new TemporaryCatalogDatabase();
         using (var created = new SqliteContentAuthoringStore(database.ConnectionString, Registry()))
@@ -126,18 +128,23 @@ public class SqliteCatalogSchemaTests
             await created.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         }
 
-        // Same id, different key: a rename. It repoints every row already stored under the old pairing, so
-        // it is refused at the door rather than discovered at the first decode.
+        // A rename or a reassignment repoints rows under the stored pairing, so initialization refuses it
+        // before any registration can be synchronized.
         ContentTypeRegistry renamed = PublishFixtures.Registry(
-            PublishFixtures.Thing with { TypeKey = "renamed_thing" });
+            PublishFixtures.Thing with { TypeId = rename ? (ushort)1024 : (ushort)1025, TypeKey = rename ? "renamed_thing" : "thing" });
         using var store = new SqliteContentAuthoringStore(database.ConnectionString, renamed);
 
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("unknown-type", refused.Reason);
-        Assert.Contains(PublishFixtures.ThingTypeKey, refused.Message, StringComparison.Ordinal);
-        Assert.Contains("renamed_thing", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.TypeIdentityMismatch, refused.Refusal);
+        Assert.Equal(new ContentTypeId(rename ? (ushort)1024 : (ushort)1025), refused.Type);
+        Assert.Equal(PublishFixtures.ThingTypeId, refused.StoredTypeId);
+        Assert.Equal("thing", refused.StoredTypeKey);
+        Assert.Equal(rename ? "renamed_thing" : "thing", refused.RegisteredTypeKey);
+        using var repair = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
+        await repair.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>

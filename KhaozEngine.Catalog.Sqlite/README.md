@@ -31,6 +31,13 @@ Guarded operator pins use `IContentVersionSelectionStore.TrySetPinnedVersionAsyn
 checked catalog epoch, active version and pin in the same transaction as the pin and audit write.
 Trusted `SetPinnedVersionAsync` recovery calls keep their existing semantics.
 
+Store admission and commit failures carry `ContentAuthoringException.Refusal` with the same members and
+identifier sets as the in-memory store. See the shared
+[store refusal table](../KhaozEngine.Catalog.Authoring/README.md#store-admission-and-confirmation-refusals).
+Legacy `Reason` tokens, `Type`, `Id` and `Findings` retain their meanings. Missing metadata reads use
+`SchemaMetadataMissing`. Registry id/key conflicts use `TypeIdentityMismatch` and report both stored and
+registered identities. Provider failures retain their typed SQLite error codes without parsing message text.
+
 Operator imports support `IContentPolicyImportStore.ImportWithPolicyAsync` with a required-policy
 `ContentPolicyImportRequest`. The host's admin registration binds the policy and the existing frozen
 publisher enforces it. Trusted `ImportBundleAsync` and `ImportTextBundleAsync` calls keep their existing
@@ -89,7 +96,8 @@ this upgrade needs a restore.
 `InitializeAsync` under `AutoCreate` or `ValidateOnly` also synchronizes the registry into `catalog_type`.
 It inserts new registrations and refreshes changed chunk slots, default visibility and id ceilings.
 Changed settings move the row's update time. A rename and a reassignment are refused because either
-one repoints stored rows.
+one repoints stored rows. `TypeIdentityMismatch` identifies this rule, including when validation runs
+without type synchronization.
 
 For a hosted upgrade preview, open with `ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync`.
 It validates the existing schema and checks stored type id/key compatibility using reads only, with

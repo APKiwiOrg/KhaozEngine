@@ -145,8 +145,9 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>
     /// A version's pack could not be read back: an absent manifest, a chunk the store no longer holds, or
-    /// bytes that do not digest to the address they were filed under. The pack reader's own reason token is
-    /// in the message.
+    /// bytes that do not digest to the address they were filed under. A typed
+    /// <see cref="ContentAuthoringRefusal.PackUnreadable"/> carries the pack reader's token in
+    /// <see cref="PackReaderReason"/>, with <see cref="VersionNumber"/> and <see cref="ObjectHash"/>.
     /// </summary>
     public const string PackUnreadableReason = "pack-unreadable";
 
@@ -576,6 +577,12 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>The starting version of a text revision the store cannot close. Null for other refusals.</summary>
     public int? FromVersion { get; init; }
+
+    /// <summary>The stored type id whose identity disagrees with registration, or null.</summary>
+    public ushort? StoredTypeId { get; init; }
+
+    /// <summary>The stored type key whose identity disagrees with registration, or null.</summary>
+    public string? StoredTypeKey { get; init; }
 
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }

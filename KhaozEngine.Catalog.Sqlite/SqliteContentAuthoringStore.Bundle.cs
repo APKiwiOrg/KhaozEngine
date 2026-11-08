@@ -102,11 +102,12 @@ public sealed partial class SqliteContentAuthoringStore
                 if (already > 0)
                 {
                     throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.CatalogNotEmpty,
                         FormattableString.Invariant(
                             $"This store already stands at version {active}, and a bundle is imported into an EMPTY store only. A deployed catalog's values change through an edit and a publish and through nothing else."),
                         default,
                         0,
-                        ContentAuthoringException.CatalogNotEmptyReason);
+                        ContentAuthoringException.CatalogNotEmptyReason) { ActiveVersion = active };
                 }
 
                 if (PackStore is null)
@@ -272,6 +273,7 @@ public sealed partial class SqliteContentAuthoringStore
             if (!_registry.TryGet(declared.Type, out ContentTypeRegistration? registration))
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.TypeUnknown,
                     FormattableString.Invariant(
                         $"The bundle carries content type {declared.Type.Value} '{declared.TypeKey}', which this process has not registered. A codec is code, so an import needs the type already declared against the codec that decodes it."),
                     declared.Type,
@@ -283,11 +285,13 @@ public sealed partial class SqliteContentAuthoringStore
                 || registration.ChunkSlots != declared.ChunkSlots)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.BundleTypeDeclarationMismatch,
                     FormattableString.Invariant(
                         $"The bundle declares content type {declared.Type.Value} as '{declared.TypeKey}' with {declared.ChunkSlots} chunk slots and this process registers it as '{registration.TypeKey}' with {registration.ChunkSlots}. The two declarations disagree about where an id falls, so the import is refused whole."),
                     declared.Type,
                     0,
-                    ContentAuthoringException.BundleFormatReason);
+                    ContentAuthoringException.BundleFormatReason) { ActualTypeKey = declared.TypeKey, RegisteredTypeKey = registration.TypeKey,
+                    ActualChunkSlots = declared.ChunkSlots, RegisteredChunkSlots = registration.ChunkSlots };
             }
         }
     }
@@ -436,11 +440,12 @@ public sealed partial class SqliteContentAuthoringStore
                 if (!byKey.TryGetValue((row.Type.Value, familyKey), out long held))
                 {
                     throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.BundleFamilyUnknown,
                         FormattableString.Invariant(
                             $"Bundle row '{row.Key}' of content type {row.Type.Value} names family '{familyKey}', which the bundle's own family list does not carry."),
                         row.Type,
                         row.Id ?? 0,
-                        ContentAuthoringException.UnknownFamilyReason);
+                        ContentAuthoringException.UnknownFamilyReason) { RowKey = row.Key.ToString(), FamilyKey = familyKey };
                 }
 
                 familyId = held;

@@ -56,7 +56,7 @@ public sealed partial class SqliteContentAuthoringStore
         // rollback and names the edit rather than the statement.
         for (int i = 0; i < edits.Count; i++)
         {
-            CheckAgainstSchema(edits[i]);
+            CheckAgainstSchema(edits[i], i);
         }
 
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
@@ -99,13 +99,12 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>The open draft inside the transaction that just opened or wrote it.</summary>
+    // Internal invariant: OpenDraftAsync just inserted this singleton in the same leased transaction.
+    // No supported schema trigger or intervening store operation can remove it.
     async Task<ContentDraft> RequireDraftAsync(SqliteTransaction transaction, CancellationToken cancellationToken)
         => await ReadDraftAsync(transaction, cancellationToken).ConfigureAwait(false)
-            ?? throw new ContentAuthoringException(
-                "The draft row went missing inside the transaction that opened it.",
-                default,
-                0,
-                ContentAuthoringException.NoOpenDraftReason);
+            ?? throw new InvalidOperationException(
+                "The draft row went missing inside the transaction that opened it.");
 
     /// <inheritdoc />
     public async Task DiscardDraftAsync(
@@ -211,6 +210,8 @@ public sealed partial class SqliteContentAuthoringStore
             IReadOnlyList<ContentFieldEdit> payload =
                 fields.TryGetValue(ordinal, out List<ContentFieldEdit>? held) ? held : [];
 
+            // Internal invariant: the validated operation CHECK admits only the four factory operations.
+            // All public edit factories and every store write preserve that constraint.
             edits.Add(operation switch
             {
                 // An Add and an import are one factory: an ordinary add is exactly an import that carries no
@@ -236,12 +237,9 @@ public sealed partial class SqliteContentAuthoringStore
                     new ContentKey(reader.GetString(7)),
                     reader.GetString(8),
                     payload),
-                _ => throw new ContentAuthoringException(
+                _ => throw new InvalidOperationException(
                     FormattableString.Invariant(
-                        $"Draft edit {ordinal} carries operation {(int)operation}, which is not one of the four of spec 3.7."),
-                    type,
-                    definitionId,
-                    ContentAuthoringException.UnknownEditOperationReason),
+                        $"Draft edit {ordinal} carries operation {(int)operation}, which is not one of the four of spec 3.7.")),
             });
         }
 
@@ -324,11 +322,12 @@ public sealed partial class SqliteContentAuthoringStore
         if (standing is { } held && held.Operation != edit.Operation)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.EditTargetOperationCollision,
                 FormattableString.Invariant(
                     $"The open draft already holds a {held.Operation} edit for type {edit.Type.Value} row {edit.DefinitionId} ('{edit.Key}'), so a {edit.Operation} of the same row is refused. A draft holds one pending intent per row."),
                 edit.Type,
                 edit.DefinitionId,
-                ContentAuthoringException.EditTargetCollisionReason);
+                ContentAuthoringException.EditTargetCollisionReason) { RowKey = edit.Key.ToString(), StandingOperation = held.Operation, RequestedOperation = edit.Operation };
         }
 
         // One reading per edit, shared by the edit row and its field rows, which are written together.
@@ -466,7 +465,7 @@ public sealed partial class SqliteContentAuthoringStore
     /// An edit may only name fields its type declares, and may never author a value for a DERIVED marker,
     /// whose key is a function of the row it sits on. Both are refused at the boundary rather than at publish.
     /// </summary>
-    void CheckAgainstSchema(ContentEdit edit)
+    void CheckAgainstSchema(ContentEdit edit, int editOrdinal)
     {
         ArgumentNullException.ThrowIfNull(edit);
 
@@ -477,21 +476,23 @@ public sealed partial class SqliteContentAuthoringStore
             if (!registration.Schema.TryGet(field.Name, out ContentFieldEntry? entry))
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.FieldUnknown,
                     FormattableString.Invariant(
                         $"Content type {registration.Type.Value} '{registration.TypeKey}' declares no field named '{field.Name}', so the edit is refused at the boundary rather than at publish."),
                     edit.Type,
                     edit.DefinitionId,
-                    ContentAuthoringException.UnknownFieldReason);
+                    ContentAuthoringException.UnknownFieldReason) { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
             }
 
             if (entry.IsDerivedMarker)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.DerivedMarkerNotAuthorable,
                     FormattableString.Invariant(
                         $"Field '{field.Name}' of content type {registration.Type.Value} '{registration.TypeKey}' is a derived marker, whose key is a function of the row it sits on, so an edit cannot author a value for it."),
                     edit.Type,
                     edit.DefinitionId,
-                    ContentAuthoringException.UnknownFieldReason);
+                    ContentAuthoringException.UnknownFieldReason) { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
             }
         }
     }

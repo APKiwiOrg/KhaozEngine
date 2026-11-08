@@ -66,7 +66,7 @@ public sealed partial class SqliteContentAuthoringStore
     {
         for (int i = 0; i < edits.Count; i++)
         {
-            CheckAgainstSchema(edits[i]);
+            CheckAgainstSchema(edits[i], i);
         }
 
         using SqliteTransaction transaction = _connection.BeginTransaction();

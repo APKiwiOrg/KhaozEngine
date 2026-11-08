@@ -298,7 +298,7 @@ copy the complete list into a read-only snapshot, so later producer mutation can
 
 ### Store admission and confirmation refusals
 
-The in-memory store carries these members alongside its legacy tokens. Row-boundary field checks reuse
+The in-memory and SQLite stores carry these members alongside their legacy tokens. Row-boundary field checks reuse
 `FieldUnknown` with the submitted batch's zero-based `EditOrdinal`. Family-id lookup reuses `FamilyUnknown`,
 unknown registrations reuse `TypeUnknown`, and absent versions reuse `VersionUnknown`, including pinning.
 Candidate rejection retains the complete `Findings` snapshot. Stale base checks reuse `BaseVersionMoved`.
@@ -328,11 +328,19 @@ Text apply reuses `TextBindingRowUnknown` and `TextLanguageUndeclared` with thei
 | `TextPlanBaselineMismatch` | Baseline text or languages differing from the plan's | `ExpectedBaseVersion` |
 | `TextCloseRevisionMissing` | A text close absent from the store | `TextRowType`, `TextRowId`, `FieldName`, `Language`, `FromVersion` |
 | `TextPlanRowUnknown` | A text commit revision without a live plan row | `TextRowType`, `TextRowId`, `FieldName`, `Language` |
+| `SchemaMetadataMissing` | A durable store read missing its `catalog_metadata` singleton | None |
+| `TypeIdentityMismatch` | A durable registry pairing disagreeing with a stored id or key | Requested `Type`, `StoredTypeId`, `StoredTypeKey`, `RegisteredTypeKey` |
 
 `TextRowType` and `TextRowId` identify rows without changing the existing store-wide legacy `Type` and
 `Id` values of default and 0. Pinning an absent version retains its existing `unknown-type` legacy token
 while `Refusal` reports `VersionUnknown`. A pack reader returns a stable token rather than an exception,
 so `PackUnreadable` preserves that token without inventing an inner exception.
+SQLite uses the same member and identifier set for each shared rule. Its missing metadata read and stored
+type identity checks use the durable-store members above. No migration identifier is invented for a missing
+singleton. Its internal draft reader runs immediately after the same transaction creates the singleton,
+and its edit reader relies on the validated four-operation `CHECK`. Neither internal guard has a caller
+refusal member.
+
 The in-memory store commits and resets each version and its complete language record together under its
 gate. Missing internal language records, and an import losing the draft its row step just created, are
 internal invariants, not additional public refusal reasons.

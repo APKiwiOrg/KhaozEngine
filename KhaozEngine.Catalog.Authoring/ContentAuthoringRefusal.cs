@@ -392,4 +392,13 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a text commit revision without a live plan row. Carries TextRowType, TextRowId, FieldName and Language. Legacy Type and Id stay default and 0.</summary>
     TextPlanRowUnknown,
 
+    // Durable store metadata and identity.
+
+    /// <summary>Refuses a store read when the catalog_metadata singleton is absent. Carries no identifiers.</summary>
+    SchemaMetadataMissing,
+
+    /// <summary>Refuses a registry pairing that disagrees with a stored type id or key. Carries Type,
+    /// StoredTypeId, StoredTypeKey and RegisteredTypeKey.</summary>
+    TypeIdentityMismatch,
+
 }

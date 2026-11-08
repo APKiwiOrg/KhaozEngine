@@ -5,21 +5,32 @@ using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Tests.Catalog.Sqlite;
-using KhaozEngine.Tests.Gpu;
+using KhaozEngine.Catalog.Sqlite;
 using Xunit;
 using static KhaozEngine.Tests.Catalog.Authoring.TextAuthoringFixtures;
 
 namespace KhaozEngine.Tests.Catalog.Authoring;
 
-public sealed class InMemoryStoreRefusalTests
+public abstract partial class StoreRefusalTests : IDisposable
 {
-    [Fact]
-    public void InMemoryStoreNeverConstructsAMessageOnlyRefusal()
+    readonly TemporaryCatalogDatabase _database = new();
+    SqliteContentAuthoringStore? _sqlite;
+
+    protected abstract bool UsesSqlite { get; }
+
+    async Task<IContentTextAuthoringStore> OpenAsync(IPackStore? pack = null, Func<DateTimeOffset>? clock = null)
     {
-        var legacy = typeof(ContentAuthoringException).GetConstructors()
-            .Where(constructor => constructor.GetParameters().All(parameter => parameter.ParameterType != typeof(ContentAuthoringRefusal)));
-        Assert.DoesNotContain(RefusalConstructorFence.EngineCallers([typeof(InMemoryContentAuthoringStore).Assembly], legacy),
-            caller => caller.StartsWith("KhaozEngine.Catalog.Authoring.InMemoryContentAuthoringStore", StringComparison.Ordinal));
+        if (!UsesSqlite) return new InMemoryContentAuthoringStore(TextRegistry(), pack, clock);
+        _sqlite?.Dispose();
+        _sqlite = new SqliteContentAuthoringStore(_database.ConnectionString, TextRegistry(), pack, clock);
+        await _sqlite.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        return _sqlite;
+    }
+
+    public void Dispose()
+    {
+        _sqlite?.Dispose();
+        _database.Dispose();
     }
 
     [Theory]
@@ -29,7 +40,7 @@ public sealed class InMemoryStoreRefusalTests
     public async Task FamilyDeclarationNamesItsSizeRuleAndAcceptsTheInclusiveRepair(
         int size, ContentAuthoringRefusal reason, int repair)
     {
-        var store = TextStore();
+        var store = await OpenAsync();
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
             store.CreateFamilyAsync(Item, "weapons", size, Actor, Operator));
         Assert.Equal(reason, refused.Refusal);
@@ -49,7 +60,7 @@ public sealed class InMemoryStoreRefusalTests
     [Fact]
     public async Task AFamilyKeyCollisionKeepsTheFirstDeclaration()
     {
-        var store = TextStore();
+        var store = await OpenAsync();
         ContentFamily first = await store.CreateFamilyAsync(Item, "weapons", 16, Actor, Operator);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
             store.CreateFamilyAsync(Item, "weapons", 16, Actor, Operator));
@@ -64,21 +75,24 @@ public sealed class InMemoryStoreRefusalTests
         Assert.Equal("armour", (await store.CreateFamilyAsync(Item, "armour", 16, Actor, Operator)).FamilyKey);
     }
 
-    [Fact]
-    public async Task DerivedMarkersCannotBeAuthoredAsOrdinaryFields()
+    [Theory]
+    [InlineData("name", ContentAuthoringRefusal.DerivedMarkerNotAuthorable, 0)]
+    [InlineData("valeu", ContentAuthoringRefusal.FieldUnknown, 1)]
+    public async Task FieldsMustBeDeclaredAndAuthorable(string field, ContentAuthoringRefusal refusal, int ordinal)
     {
-        var store = TextStore();
+        var store = await OpenAsync();
+        ContentEdit invalid = ContentEdit.Add(Item, Sword,
+            [new ContentFieldEdit(field, ContentFieldValue.OfNumber(ContentFieldKind.Int, 1))]);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
-            store.ApplyEditsAsync([ContentEdit.Add(Item, Sword,
-                [new ContentFieldEdit("name", ContentFieldValue.OfNumber(ContentFieldKind.Int, 1))])], Actor, Operator, ""));
-        Assert.Equal(ContentAuthoringRefusal.DerivedMarkerNotAuthorable, refused.Refusal);
+            store.ApplyEditsAsync(ordinal == 0 ? [invalid] : [Add("shield"), invalid], Actor, Operator, ""));
+        Assert.Equal(refusal, refused.Refusal);
         Assert.Equal(Item, refused.Type);
         Assert.Equal(0, refused.Id);
         Assert.Equal("item", refused.TypeKey);
-        Assert.Equal("name", refused.FieldName);
-        Assert.Equal(0, refused.EditOrdinal);
+        Assert.Equal(field, refused.FieldName);
+        Assert.Equal(ordinal, refused.EditOrdinal);
         Assert.Null(await store.GetOpenDraftAsync());
-        Assert.Equal(1, (await store.ApplyEditsAsync([Add()], Actor, Operator, "")).EditCount);
+        Assert.Equal(ordinal + 1, (await store.ApplyEditsAsync(ordinal == 0 ? [Add()] : [Add("shield"), Add()], Actor, Operator, "")).EditCount);
     }
 
     [Theory]
@@ -87,7 +101,7 @@ public sealed class InMemoryStoreRefusalTests
     public async Task BundleDeclarationsMustMatchTheRegisteredKeyAndChunkSlots(bool key)
     {
         using var files = new TemporaryCatalogDatabase();
-        var store = TextStore(files.Pack());
+        var store = await OpenAsync(files.Pack());
         ContentBundle Bundle(string typeKey, int slots) => new(1, "source", 0,
             [new ContentBundleType(Item, typeKey, ContentVisibility.Client, slots, null, Schema())], [new ContentBundleRow(Item, 1, Sword, false, null, [Value(1)])], [], []);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
@@ -107,7 +121,7 @@ public sealed class InMemoryStoreRefusalTests
     public async Task ABundleRowMustNameACarriedFamily()
     {
         using var files = new TemporaryCatalogDatabase();
-        var store = TextStore(files.Pack());
+        var store = await OpenAsync(files.Pack());
         ContentBundle Bundle(string? family) => new(1, "source", 0,
             [new ContentBundleType(Item, "item", ContentVisibility.Client, 256, null, Schema())],
             [new ContentBundleRow(Item, 1, Sword, false, family, [Value(1)])], [], []);
@@ -127,12 +141,13 @@ public sealed class InMemoryStoreRefusalTests
     [InlineData("missing", ContentAuthoringRefusal.FrozenDraftLost)]
     [InlineData("freeze", ContentAuthoringRefusal.TextPlanFreezeMismatch)]
     [InlineData("baseline", ContentAuthoringRefusal.TextPlanBaselineMismatch)]
+    [InlineData("draft", ContentAuthoringRefusal.TextPlanDraftMismatch)]
     [InlineData("close", ContentAuthoringRefusal.TextCloseRevisionMissing)]
     [InlineData("row", ContentAuthoringRefusal.TextPlanRowUnknown)]
     public async Task TextCommitNamesTheStateThatChangedAndCommitsAfterRepair(string defect, ContentAuthoringRefusal reason)
     {
         using var files = new TemporaryCatalogDatabase();
-        var store = TextStore(files.Pack(), () => DateTimeOffset.UnixEpoch);
+        var store = await OpenAsync(files.Pack(), () => DateTimeOffset.UnixEpoch);
         await PublishNamedRowAsync(store, "sword", "Sword");
         await ApplyAsync(store, [ContentEdit.Update(Item, 1, Sword, [Value(2)])], ContentTextEdit.Set(Target("name", "en"), "Blade"));
         ContentTextChunkRecord chunk = Chunk("en", ("sword", "Blade"));
@@ -147,6 +162,7 @@ public sealed class InMemoryStoreRefusalTests
             Assert.True(await store.TryDiscardChangesAsync((await store.GetOpenDraftAsync())!, Actor, Operator));
         }
         if (defect == "freeze") await store.ClearDraftFreezeAsync();
+        if (defect == "draft") snapshot.Draft.Changes.Apply(ContentEdit.Update(Item, 1, Sword, [Value(9)]));
         if (defect == "baseline") ((IList<ContentTextRevision>)snapshot.BaselineText.Revisions)[0] =
             new(Item, 1, "name", "en", "Forged", 1, null);
         if (defect == "close") ((IList<ContentTextRevision>)candidate.Closes)[0] =
@@ -178,6 +194,7 @@ public sealed class InMemoryStoreRefusalTests
         Assert.Equal("Sword", Assert.Single((await store.ReadTextSnapshotAsync(1)).Revisions).Value);
         Assert.Equal(1, await store.GetActiveVersionAsync());
         Assert.Single(await store.ListVersionsAsync());
+        if (defect == "draft") snapshot.Draft.Changes.Apply(ContentEdit.Update(Item, 1, Sword, [Value(2)]));
         if (defect == "baseline") ((IList<ContentTextRevision>)snapshot.BaselineText.Revisions)[0] = held;
         if (defect == "close") ((IList<ContentTextRevision>)candidate.Closes)[0] = held;
         if (defect == "row") ((IList<ContentTextRevision>)candidate.Inserts)[0] = inserted;
@@ -193,7 +210,7 @@ public sealed class InMemoryStoreRefusalTests
     {
         using var files = new TemporaryCatalogDatabase();
         FileSystemPackStore pack = files.Pack();
-        var store = TextStore(pack);
+        var store = await OpenAsync(pack);
         await store.ApplyEditsAsync([Add()], Actor, Operator, "");
         await store.PublishAsync(Request(0));
         ContentVersionRecord version = (await store.GetVersionAsync(1))!;
@@ -216,13 +233,13 @@ public sealed class InMemoryStoreRefusalTests
     public async Task ARowOnlyPlanMustKeepTheRecordedTextManifest()
     {
         using var files = new TemporaryCatalogDatabase();
-        var store = TextStore(files.Pack());
+        var store = await OpenAsync(files.Pack());
         await PublishNamedRowAsync(store, "sword", "Sword");
         await store.ApplyEditsAsync([ContentEdit.Update(Item, 1, Sword, [Value(2)])], Actor, Operator, "");
         ContentPublishBaseline held = await store.ReadPublishBaselineAsync();
         var stripped = new ContentPublishBaseline(1, held.Rows, held.Rules, held.Chunks, [],
             held.MinimumServerBuild, held.MinimumClientBuild);
-        var publisher = new ContentPublisher(store, store, TextRegistry());
+        var publisher = new ContentPublisher(store, (IContentIdPersistence)store, TextRegistry());
         ContentPublishPlan plan = await publisher.PrepareAsync(Request(1), stripped);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
             store.CommitPublishAsync(plan, Request(1), null));
@@ -242,11 +259,11 @@ public sealed class InMemoryStoreRefusalTests
     [Fact]
     public async Task AnAlreadyRecordedUpgradeLeavesTheDraftAndVersionUntouched()
     {
-        var store = TextStore();
+        var store = await OpenAsync();
         var stamp = new ContentUpgradeStamp("upgrade", 1);
-        await store.RecordUpgradeAsync(stamp, ContentUpgradeDisposition.Baseline, Actor, Operator);
+        await ((IContentUpgradeLedger)store).RecordUpgradeAsync(stamp, ContentUpgradeDisposition.Baseline, Actor, Operator);
         await ApplyAsync(store, [Add()]);
-        var publisher = new ContentPublisher(store, store, TextRegistry());
+        var publisher = new ContentPublisher(store, (IContentIdPersistence)store, TextRegistry());
         ContentPublishPlan plan = await publisher.PrepareAsync(Request(0), await store.ReadPublishBaselineAsync());
         var request = new ContentPublishRequest(Actor, Operator, "", 0) { Upgrade = stamp };
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
@@ -255,7 +272,8 @@ public sealed class InMemoryStoreRefusalTests
         Assert.Equal("upgrade", refused.UpgradeId);
         Assert.Empty(await store.ListVersionsAsync());
         Assert.Equal("sword", Assert.Single((await store.GetOpenDraftAsync())!.Changes.Edits).Key.ToString());
-        Assert.Equal(ContentUpgradeDisposition.Baseline, Assert.Single(await store.ListUpgradesAsync()).Disposition);
+        Assert.Equal(ContentUpgradeDisposition.Baseline, Assert.Single(await ((IContentUpgradeLedger)store).ListUpgradesAsync()).Disposition);
         Assert.Equal(1, (await store.CommitPublishAsync(plan, Request(0), null)).VersionNumber);
     }
+
 }

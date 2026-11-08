@@ -21,6 +21,15 @@ public sealed class JournalStoreRefusalConstructorFenceTests
                 typeof(SqlServerMutationJournalStore).Assembly], LegacyConstructors));
 
     [Fact]
+    public void State_exception_public_constructors_always_require_a_reason()
+    {
+        ConstructorInfo[] constructors = typeof(JournalStoreStateException).GetConstructors();
+        Assert.NotEmpty(constructors);
+        Assert.All(constructors, constructor => Assert.Contains(constructor.GetParameters(),
+            parameter => parameter.ParameterType == typeof(JournalStoreRefusal)));
+    }
+
+    [Fact]
     public void Fence_finds_the_forbidden_constructor()
     {
         var callers = RefusalConstructorFence.EngineCallers([typeof(JournalStoreRefusalConstructorFenceTests).Assembly], LegacyConstructors);

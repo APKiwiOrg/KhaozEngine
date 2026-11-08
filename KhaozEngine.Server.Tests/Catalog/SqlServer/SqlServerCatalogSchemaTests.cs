@@ -58,6 +58,7 @@ public class SqlServerCatalogSchemaTests
     public async Task ValidateOnlyOnAnEmptyDatabaseRefusesAndNamesTheMigration()
     {
         using var database = new SqlServerCatalogDatabase();
+        string before = SqlServerCatalogSnapshot.Read(database.ConnectionString);
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
 
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
@@ -66,6 +67,7 @@ public class SqlServerCatalogSchemaTests
         Assert.Equal("schema-mismatch", refused.Reason);
         Assert.Equal(ContentAuthoringRefusal.SchemaMissing, refused.Refusal);
         Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(before, SqlServerCatalogSnapshot.Read(database.ConnectionString));
         Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM sys.tables WHERE name LIKE N'catalog[_]%';"));
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);

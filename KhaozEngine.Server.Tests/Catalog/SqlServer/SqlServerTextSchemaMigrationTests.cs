@@ -65,7 +65,7 @@ public sealed partial class SqlServerTextSchemaMigrationTests
     {
         using var database = new SqlServerCatalogDatabase();
         WriteLegacy(database, 3);
-        string before = Describe(database) + Dump(database, Columns(database, 3));
+        string before = Describe(database) + SqlServerCatalogSnapshot.Read(database.ConnectionString);
 
         foreach (ContentAuthoringSchemaMode mode in new[]
             { ContentAuthoringSchemaMode.ValidateOnly, ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync })
@@ -78,9 +78,9 @@ public sealed partial class SqlServerTextSchemaMigrationTests
             Assert.Equal(3L, refused.ActualVersion);
             Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
             Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+            Assert.Equal(before, Describe(database) + SqlServerCatalogSnapshot.Read(database.ConnectionString));
         }
 
-        Assert.Equal(before, Describe(database) + Dump(database, Columns(database, 3)));
         Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM sys.tables WHERE name = N'catalog_text';"));
         await new SqlServerContentAuthoringStore(database.ConnectionString, ThingRegistry())
             .InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
@@ -104,6 +104,7 @@ public sealed partial class SqlServerTextSchemaMigrationTests
         Assert.Equal(4, await ValidateVersionTwoAsync(database));
 
         database.Execute("UPDATE dbo.catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
+        string before = SqlServerCatalogSnapshot.Read(database.ConnectionString);
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => ValidateVersionTwoAsync(database));
         Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
         Assert.Equal(ContentAuthoringRefusal.SchemaObjectUnexpected, refused.Refusal);
@@ -114,6 +115,7 @@ public sealed partial class SqlServerTextSchemaMigrationTests
         });
         Assert.Equal(2, refused.ExpectedVersion);
         Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(before, SqlServerCatalogSnapshot.Read(database.ConnectionString));
         database.Execute("UPDATE dbo.catalog_metadata SET schema_version = 4 WHERE metadata_key = 1;");
         Assert.Equal(4, await ValidateVersionTwoAsync(database));
     }

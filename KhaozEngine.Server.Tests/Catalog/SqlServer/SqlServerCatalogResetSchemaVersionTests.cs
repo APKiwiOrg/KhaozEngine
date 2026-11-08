@@ -242,6 +242,7 @@ public class SqlServerCatalogResetSchemaVersionTests
     /// </summary>
     static async Task AssertIsVersionAsync(SqlServerCatalogDatabase database, int version)
     {
+        string before = SqlServerCatalogSnapshot.Read(database.ConnectionString);
         var store = new SqlServerContentAuthoringStore(
             database.ConnectionString, SqlServerCatalogResetHarness.Registry(), database.Pack());
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
@@ -250,6 +251,7 @@ public class SqlServerCatalogResetSchemaVersionTests
         Assert.Equal((long)version, refused.ActualVersion);
         Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
         Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(before, SqlServerCatalogSnapshot.Read(database.ConnectionString));
     }
 
     /// <summary>Every row and every table of the seeded catalog where it was, down to the epoch.</summary>

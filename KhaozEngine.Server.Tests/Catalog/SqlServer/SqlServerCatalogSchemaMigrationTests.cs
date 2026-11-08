@@ -201,6 +201,7 @@ public class SqlServerCatalogSchemaMigrationTests
     {
         using var database = new SqlServerCatalogDatabase();
         WriteVersionOne(database);
+        string before = SqlServerCatalogSnapshot.Read(database.ConnectionString);
 
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
@@ -212,6 +213,7 @@ public class SqlServerCatalogSchemaMigrationTests
         Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
         Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
 
+        Assert.Equal(before, SqlServerCatalogSnapshot.Read(database.ConnectionString));
         // Refused means REFUSED: the database is still version 1 and still carries no ledger table.
         Assert.Equal(1, database.Scalar(
             "SELECT schema_version FROM dbo.catalog_metadata WHERE metadata_key = 1;"));

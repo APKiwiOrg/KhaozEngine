@@ -4,6 +4,28 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.5.0
+
+2026-11-08
+
+- Catalog and journal refusals now carry a public reason enum and typed identifiers, filled at every engine throw
+  site. `ContentAuthoringException` gains `ContentAuthoringRefusal? Refusal` beside its existing string `Reason`,
+  `ContentRegistrationException` gains `ContentRegistrationRefusal? Reason`, and `JournalStoreException` gains
+  `JournalStoreRefusal? Reason` beside `Kind`, `Certainty`, `Scope` and `StreamKeys`. Each family's README lists its
+  reasons. Every existing constructor and member stays, and a consumer's legacy construction leaves the new member null.
+- New sealed refusal types derive from the exact type thrown before, so existing catches keep working:
+  `ContentFieldLookupException` and `JournalStoreStateException`, both `InvalidOperationException`. A test asserting
+  the exact base type at one of these sites needs to assert the subtype instead.
+- Resets refused for host objects report them in full through `ContentHostForeignKeyFinding` and
+  `JournalHostObjectFinding`.
+- A host trigger writing into a journal or catalog batch can no longer change what the store reports. The SQL Server
+  journal checks each result set's shape and requires the complete protocol before accepting Applied or Replayed, and
+  a violation is `BatchResultMalformed` with the transaction rolled back. Catalog family and draft edit identities now
+  come back through an output parameter, so a trigger's result set cannot stand in for them.
+- Public refusal, finding, receipt and validated catalog collections are real snapshots. Casting one to an array or
+  list, or reading `ICollection.SyncRoot`, no longer reaches the storage behind it, so a caller cannot change a value
+  after it was validated. Code that cast these to `T[]` needs to copy them instead.
+
 ## 23.4.0
 
 2026-11-08

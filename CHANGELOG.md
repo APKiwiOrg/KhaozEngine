@@ -25,6 +25,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Public refusal, finding, receipt and validated catalog collections are real snapshots. Casting one to an array or
   list, or reading `ICollection.SyncRoot`, no longer reaches the storage behind it, so a caller cannot change a value
   after it was validated. Code that cast these to `T[]` needs to copy them instead.
+- Public refusal enums are append-only from this version. New members go at the end and existing numeric values never
+  move, so mods and tools built against one engine version keep working on a later one. Before this version, compare
+  members by name.
 
 ## 23.4.0
 

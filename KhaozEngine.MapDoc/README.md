@@ -1891,8 +1891,8 @@ Resolver, root, prefab, identity registry, runtime layer, surface scalar and cel
 `MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
 message-only constructors remain available to consumers and leave `Reason` null. Every engine construction
 supplies a reason. Validation adapters forward their first typed finding and retain the ordered `Findings` snapshot.
-Compare `MapDocumentRefusal` members by name and rebuild against the engine version you pin, because members
-are grouped by area and their numeric values are not stable across versions.
+`MapDocumentRefusal` numeric values are stable from version 23.5.0. New members go at the end and existing values
+never move, so a mod or tool built against one engine version keeps working on a later one.
 
 Surface scalar and cell checks preserve their original messages. `FieldPath` names the failed unit part,
 frame enumeration, rectangle axis, cell coordinate or required surface identity. Denominator checks carry

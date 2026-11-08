@@ -30,7 +30,9 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   the type thrown before, as `WaterOpticsSurfaceException` derives from `ArgumentException`, so existing
   catches keep working. A refusal for malformed input data whose BCL type would be the sealed
   `InvalidDataException` derives from `MalformedDataException`, and code that handles malformed data catches
-  the base. A new refusal in a family adds a reason member. The message stays developer prose
+  the base. A new refusal in a family adds a reason member at the end of its enum. Public refusal enums are
+  append-only from 23.5.0, so existing numeric values never move, because mods and tools built against one engine
+  version must keep working. The message stays developer prose
   and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
   problem stays a BCL exception. An adapter's status projection remains distinct from the lower refusal
   reason. Classifiers use typed reasons and producer context, never keywords inside user identifiers or
@@ -121,7 +123,8 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   class fixture. It also carries a parity test that ages the shared scene through several
   configurations and compares it with a fresh snapshot scene. `OceanFocusScene` is the reference.
 - The test-health ratchet enforces per-file KETEST001 exception-message assertions and KETEST002
-  non-public reflection counts in `.testhealth-baseline`. Growth requires owner approval. A legitimate
+  non-public reflection counts in `.testhealth-baseline`. The baseline holds exemptions only, so any new hit
+  fails the build. Growth requires owner approval. A legitimate
   wording or structural-reflection contract uses an owner-approved `exempt <rule> <path>` entry with a
   `#` reason above it, never a suppression. Ratchet down with
   `build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update`.

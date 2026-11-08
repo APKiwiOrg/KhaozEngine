@@ -98,7 +98,9 @@ public class PayloadFuzzTests
     public void The_same_seed_produces_the_same_mutants_on_every_run()
     {
         // The fuzzer's own determinism, which is what makes the seed in a failure message worth printing.
-        foreach (string path in Corpus())
+        IReadOnlyList<string> corpus = Corpus();
+        Assert.NotEmpty(corpus);
+        foreach (string path in corpus)
         {
             byte[] source = File.ReadAllBytes(path);
             foreach (MutationClass kind in Enum.GetValues<MutationClass>())

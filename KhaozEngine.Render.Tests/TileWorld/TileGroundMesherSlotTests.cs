@@ -254,6 +254,7 @@ public class TileGroundMesherSlotTests
             for (int rotation = 0; rotation < 4; rotation++)
             {
                 int count = TileTriangulation.Triangulate(shape, rotation, rotation % 2 == 0, triangles);
+                Assert.Equal(shape is TileOverlayShape.CornerQuarter or TileOverlayShape.CornerThreeQuarter ? 4 : 2, count);
                 for (int i = 0; i < count; i++)
                 {
                     AssertIsCornerOrMidEdge(triangles[i].A);
@@ -421,7 +422,8 @@ public class TileGroundMesherSlotTests
     {
         GltfMesh? mesh = TileGroundMesher.Build(doc, TileRenderTestData.Catalogs, TileRenderTestData.Region, 0, options);
         Assert.NotNull(mesh);
-        return mesh!;
+        Assert.NotEmpty(mesh.Vertices);
+        return mesh;
     }
 
     // The slot the mesher's default identity map holds this material in.
@@ -464,6 +466,7 @@ public class TileGroundMesherSlotTests
             found.Add(b);
             found.Add(c);
         }
+        Assert.NotEmpty(found);
         return found;
     }
 

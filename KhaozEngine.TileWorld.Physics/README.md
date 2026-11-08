@@ -93,6 +93,11 @@ Outside the loaded bounding rectangle, captured analytic terrain extends the nea
 including objects outside their anchor region.
 
 `TileMediumSampler` implements `IMovementWaterField` with immutable body identities, finite beds and free surfaces.
+Its optional `IMovementDryTracePointProof` accepts only a trace whose directed lateral capsule-path bounds are
+disjoint from every captured column projection. Such points return Known dry before any rounded drawn-bed
+lookup, even at large coordinates. An overlapping projection declines the proof, including dry regions below
+beds or above water, because the separate bed lookup can refuse. This adds no tolerance and does not relax any
+trace precision or capacity check. The bound uses the same immutable column index as point selection.
 A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
 feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height
 evaluation. The lower boundary follows the selected triangle at the queried axis, including sloped beds and a

@@ -35,18 +35,28 @@ public class ArrivalRangeCrossingTests(ITestOutputHelper output)
         => to.Grounded && !to.Swimming && MovementBody.IsFinite(to.Position);
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void DirectAndRoutedDriversKeepTheOriginalArrivalCommand(bool routed)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void DirectAndRoutedDriversKeepTheOriginalArrivalCommand(bool routed, bool pointRefusal)
     {
-        using var scene = new FlatArrivalScene();
+        // #1729 F1. A completely dry trace alone cannot authorize skipping point-operation refusals.
+        using var scene = new FlatArrivalScene(water: pointRefusal ? new ArrivalPointRefusalWater() : null);
         MoveTuning tuning = scene.Tuning;
         var body = new MoveState { Position = new(0, tuning.CapsuleHalfHeight, 0), Grounded = true };
         var target = ReachTarget.Point(body.Position + new Vector3(0.4f, 0, 0));
         const float dt = 0.1f, range = 0.1f;
         MoveState predicted = scene.Context.Step(body, Vector2.UnitX, false, dt, tuning);
+        Assert.True(predicted.SupportGranted);
+        if (pointRefusal)
+        {
+            MoveState refused = scene.Context.Step(body, Vector2.UnitX * 0.125f, false, dt, tuning);
+            Assert.False(refused.SupportGranted);
+            Assert.Equal(body.Position, refused.Position);
+        }
         Vector2 expected = ArrivalReference.Stop(body, tuning, target, range, false, dt, scene.Context,
-            Vector2.UnitX, predicted, Admit, out _);
+            Vector2.UnitX, predicted, Admit, out int referencePreviews);
         var direct = new DirectMoveToRange(new(15, 0.1f, 45, 0.1f));
         var route = new MoveToRange(new MoveToRangeTests.ScriptPlanner((_, _) =>
                 MoveToRangeTests.Route(NavPathStatus.Complete, new Vector2(0.4f, 0))),
@@ -58,8 +68,16 @@ public class ArrivalRangeCrossingTests(ITestOutputHelper output)
         RangeSteering steering = Tick(body);
         ArrivalRangeEquivalenceTests.Same(expected, steering.WorldDirection);
         Assert.Equal(RangeMoveStatus.Following, steering.Status);
-        Assert.Equal(0, work.FullSteps);
-        Assert.InRange(work.CertifiedTrials, 1, 32);
+        if (pointRefusal)
+        {
+            Assert.Equal(referencePreviews, work.FullSteps);
+            Assert.Equal(0, work.CertifiedTrials);
+        }
+        else
+        {
+            Assert.Equal(0, work.FullSteps);
+            Assert.InRange(work.CertifiedTrials, 1, 32);
+        }
         MoveState accepted = NpcGroundMovement.Step(body, steering, false, dt, tuning, scene.Context);
         ArrivalRangeEquivalenceTests.Same(scene.Context.Step(body, expected, false, dt, tuning), accepted);
         Assert.Equal(RangeMoveStatus.InRange, Tick(accepted).Status);

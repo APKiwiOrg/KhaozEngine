@@ -131,7 +131,8 @@ the unchanged exact predicate and fall back to all pairs when no complete candid
 height, `Vector3.UnitY` normal and unchanged analytic ownership. Known promises the matching delegates return
 those facts at every represented axis in the rectangle. Sampled endpoints or matching triangle heights alone
 are insufficient evidence. Ordinary range approaches use this under a current pin, together with complete
-selected-static absence, strictly dry whole-body coverage and convex boundary/scope containment. The proof
+selected-static absence, strictly dry whole-body coverage, successful dry point-operation closure and convex
+boundary/scope containment. The proof
 lives only for the borrowed read interval. Unsupported, wet, obstructed, nonuniform or refused regions retain
 the exact movement solver. The tile producer checks every captured triangle in every covered cell, including
 cell seams, within the existing dependency-visit bound. It declines missing ground and negative-zero heights.
@@ -231,6 +232,16 @@ convert intervals outward and contact columns to the nearest local value through
 so a wet point's local interval contains its local feet. Traces add only that contact conversion to the
 producer's certified error under the 0.001 m budget. Mutable producers advance `Generation` before changing
 answers.
+
+`IMovementDryTracePointProof` is a separate opt-in guarantee for skipping point operations after a known,
+completely dry trace. `CanClassifyDryTracePoints` must prove that every valid enclosed feet point has a successful
+Known dry classification with speed scale one and no domain or interval, under the same space, origin and
+generation. A dry geometric result alone says nothing about point-operation refusals. Fields without this
+capability, or whose proof declines the particular region, keep the exact per-trial solver and pacing reads.
+Ordinary absence has an intrinsic successful dry point operation. The level field opts in because its valid
+point queries use exact dyadic signs and have no precision refusal path. Its trace's independent precision and
+capacity checks must still succeed first. Wrappers that alter point availability cannot inherit this guarantee
+by forwarding only the inner field's trace or proof.
 
 `EffectiveMovementBinding.SampleWaterForPacing(state, queries, out swimming)` reads frame-local point water and
 shares the controller's tick-start swimmer classification, including supported footing and the free-surface flag.

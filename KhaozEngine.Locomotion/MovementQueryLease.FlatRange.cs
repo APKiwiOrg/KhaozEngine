@@ -82,6 +82,9 @@ public sealed partial class MovementQueryLease
         if (coverage.Availability != MovementAvailability.Known || coverage.ContactsWritten != 0) return false;
         foreach (var span in spans[..coverage.SpansWritten])
             if (!span.HasDryCoverage) return false;
-        return true;
+        // Refusal parity is independent of geometric coverage. This same certificate also authorizes
+        // DirectMoveToRange's skipped pacing point reads, not only the copied movement trials.
+        return _pin is IMovementDryTracePointPin points &&
+            points.CanClassifyDryTracePoints(new(enclosure, Vector3.Zero));
     }
 }

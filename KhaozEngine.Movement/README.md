@@ -1103,7 +1103,9 @@ search of up to 32 candidates plus endpoint and final checks. A certified flat, 
 region evaluates the command-dependent state algebra directly under one authenticated read interval, with
 zero full movement previews inside the search. The certificate requires exact field provenance, complete
 selected-static absence across support and shell paths, strictly dry whole-body coverage and the existing
-scope and convex play-area bounds. Only grounded bodies without swimming, commitments, buffered jumps or
+scope and convex play-area bounds. A supplied water field must also opt into `IMovementDryTracePointProof`
+and certify successful dry point classification throughout this particular enclosure. Without that separate
+operation-level guarantee, both drivers retain full previews and the direct driver's ordinary pacing point read. Only grounded bodies without swimming, commitments, buffered jumps or
 carried climb signals use the algebra. A conservative roundoff enclosure must fit the unchanged coverage skin,
 otherwise the live solver retains each trial's precision refusal. The direct driver's dry pacing reads share that certificate. If a producer revokes the
 read, the proof closes and the remaining candidates use the exact solver from the current float bracket.

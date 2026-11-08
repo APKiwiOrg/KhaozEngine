@@ -4,7 +4,7 @@ using System.Numerics;
 namespace KhaozEngine.Locomotion;
 
 /// <summary>A finite vertical water slab over all represented horizontal coordinates.</summary>
-internal sealed class LevelMovementWaterField : IMovementWaterField
+internal sealed class LevelMovementWaterField : IMovementDryTracePointProof
 {
     readonly string _worldId;
     readonly MovementDomainKey _domain;
@@ -35,6 +35,11 @@ internal sealed class LevelMovementWaterField : IMovementWaterField
             OrdinaryMovementEnvironment.ExactSign(y, originY, half, -_interval.UpperY) < 0;
         return new(MovementAvailability.Known, body.CurrentSpace, wet ? _domain : null, wet, 1, wet ? _interval : null);
     }
+
+    public bool CanClassifyDryTracePoints(in MovementMediumSweepQuery query, Vector3 physicsOrigin) =>
+        // Every valid point operation uses exact dyadic signs and has no numerical refusal path. Trace
+        // precision/capacity refusals are checked before this capability can be consumed.
+        query.IsValid && MovementEnvironmentValidation.Finite(physicsOrigin) && query.Body.CurrentSpace.WorldId == _worldId;
 
     public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, Vector3 physicsOrigin,
         in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)

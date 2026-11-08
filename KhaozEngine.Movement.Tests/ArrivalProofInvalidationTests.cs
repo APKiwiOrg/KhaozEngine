@@ -45,12 +45,14 @@ public class ArrivalProofInvalidationTests
         Assert.True(work.FullSteps > 0);
     }
 
-    sealed class RevokedField : IMovementWaterField
+    sealed class RevokedField : IMovementDryTracePointProof
     {
         readonly IMovementWaterField _inner = MovementWaterField.Level("world", -3, -4);
         public string SemanticIdentity => "arrival-revoked-interval";
         public long Generation { get; private set; }
         public MovementWaterExtent Extent => _inner.Extent;
+        public bool CanClassifyDryTracePoints(in MovementMediumSweepQuery query, Vector3 physicsOrigin) =>
+            ((IMovementDryTracePointProof)_inner).CanClassifyDryTracePoints(query, physicsOrigin);
         internal void Revoke() => Generation++;
         public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body, Vector3 physicsOrigin) =>
             _inner.SampleCentreWater(body, physicsOrigin);

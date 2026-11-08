@@ -11,6 +11,7 @@ public sealed partial class GroundMoveContext
         in MoveTuning tuning, bool run, float dt)
     {
         if (tuning.Controller != MovementControllerKind.Contact || ClampXz is not null ||
+            MovementWaterField is not null and not IMovementDryTracePointProof ||
             MovementRegistration?.AnalyticSupport is not IMovementFlatAnalyticSupportSource ||
             !body.Grounded || body.Swimming || body.WaterExcursion != WaterExcursionState.None ||
             body.Commitment != default || body.JumpBufferRemaining != 0 || body.ClimbRate != 0 ||
@@ -56,5 +57,5 @@ public sealed partial class GroundMoveContext
     }
 
     internal bool HasDryRangePreview(in MoveState body, in MoveTuning tuning) =>
-        _rangePreview?.ProvesDry(body, tuning) == true;
+        (MovementWaterField is null or IMovementDryTracePointProof) && _rangePreview?.ProvesDry(body, tuning) == true;
 }

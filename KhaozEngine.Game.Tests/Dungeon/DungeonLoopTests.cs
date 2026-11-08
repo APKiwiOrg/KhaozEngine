@@ -73,6 +73,7 @@ namespace KhaozEngine.Tests.Dungeon
             DungeonConfig config = LoopConfig(3);
             DungeonLayout layout = DungeonGenerator.Generate(config, 3UL);
 
+            Assert.Contains(layout.CellsMutable, DungeonLayout.IsWalkable);
             for (int f = 0; f < layout.Floors; f++)
             {
                 for (int x = 0; x < layout.Width; x++)

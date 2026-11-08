@@ -63,4 +63,32 @@ public sealed class CoverageGraphicsRefusalTests
         Assert.NotEmpty(f.Device.Resources.ShaderSets);
         Assert.All(f.Device.Resources.ShaderSets, s => Assert.True(s.Disposed));
     }
+
+    [Fact]
+    public void First_temporal_refusal_after_ready_coverage_takes_the_sticky_route_and_survives_output_changes()
+    {
+        using var f = new CoveragePublicationFixture();
+        f.Begin(); f.Queue(); f.Record(); f.Submit();
+        Assert.NotEmpty(f.Evidence);
+        f.Device.RefuseVertex = (vertex, fragment) =>
+            vertex == ShaderSources.CoverageModelMotionVert && fragment == ShaderSources.SkinnedModelDissolveMotionFrag;
+        // This output change reaches the renderer before frame preparation's refusal handler can run.
+        f.Scene.ForceTemporalForTests = true;
+        f.Begin(); f.Queue(); f.Record(); f.Submit();
+        Assert.Empty(f.Evidence);
+        Assert.Equal(CoverageFailureCode.UnsupportedAdapter, f.Scene.CoverageFailureFor(f.Host.Actor).Code);
+        foreach (string change in new[] { "hdr", "msaa", "temporal-off" })
+        {
+            f.Scene.ForceTemporalForTests = change != "temporal-off";
+            f.Scene.Post.Hdr.Enabled = change == "hdr";
+            f.Scene.Post.Quality.AntiAliasing = change == "msaa" ? AntiAliasing.Msaa(4) : AntiAliasing.Fxaa;
+            f.Begin(); f.Queue(); f.Record(); f.Submit();
+            Assert.Empty(f.Evidence);
+            Assert.Contains(f.Commands.PipelineBinds.OfType<FakePipeline>(), p => p.Request is { } r
+                && (r.VertexGlsl == ShaderSources.SkinnedModelVert || r.VertexGlsl == ShaderSources.SkinnedModelMotionVert));
+        }
+        f.Scene.Dispose();
+        Assert.All(f.Device.Layouts, l => Assert.True(l.Disposed));
+        Assert.All(f.Device.Resources.ShaderSets, s => Assert.True(s.Disposed));
+    }
 }

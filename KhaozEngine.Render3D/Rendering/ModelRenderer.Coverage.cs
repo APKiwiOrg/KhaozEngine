@@ -79,7 +79,15 @@ internal sealed partial class ModelRenderer
         _coverageOutputs = outputs;
         // Ordinary output rebuilds must never resurrect a refused or incomplete coverage owner.
         if (!_coverageReady || _coverageRefused) return;
-        CreateCoveragePipelines(factory, outputs);
+        try { CreateCoveragePipelines(factory, outputs); }
+        catch (Exception error) when (error is NotSupportedException or ShaderValidationException)
+        {
+            // A first temporal rebuild can compile programs an earlier ready owner never needed, outside frame
+            // preparation's handler. Earlier frames may still reference these owners, so they stay until renderer
+            // disposal, and the next preparation takes the sticky device route.
+            _coverageReady = false;
+            _coverageRefused = true;
+        }
     }
 
     void CreateCoveragePipelines(IGpuResourceFactory factory, GpuOutputDescription outputs)

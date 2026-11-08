@@ -336,6 +336,15 @@ public class TileGroundMesherSlotTests
     }
 
     [Fact]
+    public void The_largest_amplitude_below_one_is_accepted_and_stays_inside_the_packable_range()
+    {
+        float largest = MathF.BitDecrement(1f);
+
+        Assert.Equal(largest, new TileGroundMesherOptions { JitterAmplitude = largest }.JitterAmplitude);
+        Assert.InRange(TileGroundMesher.CornerJitter(GrassRegion(), 40, 40, 0, largest), MathF.BitIncrement(0f), MathF.BitDecrement(2f));
+    }
+
+    [Fact]
     public void A_dangling_material_id_lands_on_the_reserved_slot()
     {
         // An id no catalog defines has no layer of its own, and every set keeps one slot for that case so the

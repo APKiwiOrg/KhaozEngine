@@ -44,7 +44,7 @@ namespace KhaozEngine.Tests.Terrain
         [Fact]
         public void Vertices_are_chunk_local_however_far_out_the_chunk_sits()
         {
-            // The release-2 headline, as an assertion on the buffer: a chunk 100 km out has vertices no larger than
+            // As an assertion on the buffer: a chunk 100 km out has vertices no larger than
             // its own size, so nothing is quantized to that magnitude's float32 lattice at bake time. The old bake
             // wrote 100 km into every vertex, where one ULP is 7.8 mm, and no camera-relative render or physics
             // rebase could recover what the buffer had already lost.

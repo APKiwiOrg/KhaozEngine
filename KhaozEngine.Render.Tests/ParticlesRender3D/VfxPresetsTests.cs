@@ -46,10 +46,17 @@ namespace KhaozEngine.Tests.ParticlesRender3D
             return (VfxPreset)property.GetValue(null)!;
         }
 
+        // Every validator below reads the discovered list, so a preset the discovery missed would lose all of them.
         [Fact]
-        public void PresetRoster_IsNotEmpty()
+        public void PresetRoster_IsEveryShippedPreset()
         {
-            Assert.NotEmpty(PresetProperties);
+            string[] shipped =
+            {
+                "ArcaneSparkle", "EmberDrift", "EssenceMotes", "FireBurst", "FrostShatter",
+                "HealMotes", "HeatHaze", "Shockwave", "SmokePlume", "SparkShower",
+            };
+
+            Assert.Equal(shipped, PresetProperties.Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal));
         }
 
         [Theory]

@@ -527,7 +527,7 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Empty(world.Statics);
         });
 
-        // --- HLOD merged-mesh bake (L3) -------------------------------------------------------------------------
+        // --- HLOD merged-mesh bake ------------------------------------------------------------------------------
 
         // A small per-kit source-mesh set for the HLOD merge: one sphere per id (enough triangles that a weld reduces).
         static IReadOnlyDictionary<string, GltfMesh> KitSource(params string[] ids)
@@ -541,7 +541,7 @@ namespace KhaozEngine.Tests.Terrain
         public void BuildCpu_WithNoHlodLayer_ProducesNoHlodMeshes()
         {
             // Config-off equivalence: a sink whose layers never opted into HLOD produces no HLOD meshes at all, so the
-            // whole HLOD path is inert and the build is what it was pre-L3.
+            // whole HLOD path is inert and the build carries no merged meshes.
             TerrainField field = Flat(5f);
             ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
             var sink = new Scene3DChunkSink(scene: null!, field, scatter, NoMeshes(), chunkSize: 60f, propDrawRadius: 90f);

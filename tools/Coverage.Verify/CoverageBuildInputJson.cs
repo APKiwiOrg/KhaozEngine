@@ -314,6 +314,7 @@ public static class CoverageBuildInputJson
     }
     internal static string Hash(ReadOnlySpan<byte> bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
     internal static string CodeHash() => Hash(File.ReadAllBytes(typeof(CoverageBuildInput).Assembly.Location));
+    internal static string Render3DCodeHash() => Hash(File.ReadAllBytes(typeof(CoverageRefinement).Assembly.Location));
     internal static string ArithmeticHash() => CoverageTableBinding.ArithmeticSha256;
     internal static string RefinementHash(CoverageRefinement topology) => CoverageTableBinding.RefinementSha256(topology);
     internal static float[] Values(Matrix4x4 m) => [m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24, m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44];

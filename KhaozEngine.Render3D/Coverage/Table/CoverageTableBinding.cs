@@ -10,8 +10,7 @@ internal sealed class CoverageTableBinding
 {
     readonly CoverageRefinement topology;
     internal readonly CoverageRecessionTable Table;
-    internal static string ArithmeticSha256 { get; } = Hash(Encoding.UTF8.GetBytes(
-        "KhaozEngine.CoverageCarry/1;binary32;flush-inclusive-2^-126;" + Hash(File.ReadAllBytes(typeof(CoverageRefinement).Assembly.Location))));
+    internal static string ArithmeticSha256 => CoverageArithmeticContract.Sha256;
 
     internal CoverageTableBinding(CoverageRefinement topology, CoverageRecessionTable table)
     {

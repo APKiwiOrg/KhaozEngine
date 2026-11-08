@@ -35,6 +35,7 @@ public sealed class CoverageEvidenceManifest
         Identity = input.Identity; InputSha256 = input.InputSha256;
         TableSha256 = CoverageBuildInputJson.Hash(CoverageRecessionTableBinary.Write(table));
         ToolCodeSha256 = CoverageBuildInputJson.CodeHash();
+        Render3DCodeSha256 = CoverageBuildInputJson.Render3DCodeHash();
         Domains = Array.AsReadOnly(input.Domains.Select(d => new CoverageDomainEvidence(d.Id, d.Kind, d.AuthoredFrameIds,
             d.BlendPathIds, Array.AsReadOnly(d.DenseRows.Select(DenseEvidence).ToArray()))).ToArray());
         CandidateSampleIds = input.CandidateSampleIds;
@@ -54,6 +55,8 @@ public sealed class CoverageEvidenceManifest
     public string InputSha256 { get; }
     public string TableSha256 { get; }
     public string ToolCodeSha256 { get; }
+    /// <summary>Exact producer assembly bytes for provenance only, independent of arithmetic compatibility.</summary>
+    public string Render3DCodeSha256 { get; }
     public IReadOnlyList<CoverageDomainEvidence> Domains { get; }
     public IReadOnlyList<CoverageSampleInventory> Samples { get; }
     public IReadOnlyList<string> CandidateSampleIds { get; }
@@ -101,7 +104,7 @@ public sealed class CoverageEvidenceManifest
             using var expectedDocument = CoverageBuildInputJson.Document(expectedBytes ?? Write());
             var expected = expectedDocument.RootElement;
             ValidateObjectTypes(root, expected, "$");
-            foreach (string member in new[] { "formatVersion", "tool", "scope", "identity", "inputSha256", "tableSha256", "toolCodeSha256" })
+            foreach (string member in new[] { "formatVersion", "tool", "scope", "identity", "inputSha256", "tableSha256", "toolCodeSha256", "render3DCodeSha256" })
             {
                 if (!JsonElement.DeepEquals(root.GetProperty(member), expected.GetProperty(member)))
                     throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.ProvenanceMismatch, "Resumed evidence provenance differs.");

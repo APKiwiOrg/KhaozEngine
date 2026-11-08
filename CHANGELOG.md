@@ -10,12 +10,15 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 - Offline-verified equipment recession tables and consumer-owned state keys. Strict host and equipment
   sidecars, immutable source evidence and the shared canonical configuration identity bind tables to
-  complete material slices. The outside-solution verifier builds deterministic rows and blocks invalid
-  selected samples, dense replay and whole-skin changed-record depth. Sampled evidence is not continuous proof.
+  complete material slices, including sets with uncommanded skinned garments. Arithmetic compatibility
+  uses an embedded versioned contract, independent of producer assembly bytes. The outside-solution
+  verifier builds deterministic rows and blocks invalid selected samples, dense replay and whole-skin
+  changed-record depth. Sampled evidence is not continuous proof.
 - Runtime table carry records five dispatches per active table group and publishes one final surface per
   actor across colour, depth, motion, shadows and outlines. Submission-owned history retains safe output
-  slots and explicitly presents the uncovered current pose on refusal. Native correctness, Vulkan
-  cross-frame synchronization and aggregate cost remain unproven pending separate acceptance units.
+  slots and explicitly presents the uncovered current pose on refusal. Participant-capacity refusal
+  preserves the last observed history, and graphics refusal keeps ordinary output rebuilds usable.
+  Native correctness, Vulkan cross-frame synchronization and aggregate cost remain unproven pending separate acceptance units.
 - `GpuShaderCompileOptions` adds an opt-in precise compute/vertex math policy without changing default
   compilation or cache identities. Coverage requests that policy. A compiled public consumer example
   and the living equipment coverage guide document complete descriptors, fallback and resource lifetime.

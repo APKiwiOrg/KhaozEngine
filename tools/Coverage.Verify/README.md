@@ -89,8 +89,12 @@ little-endian. Exact attachment and companion identities bind mesh assets and au
 The current manifest authors one item, while the shared function accepts a complete item list.
 Configuration file paths, member order and whitespace do not affect the digest. Refinement identity hashes versioned source
 ordinals, refined records, integer recipes, indices and triangle ownership in little-endian order.
-Arithmetic identity binds the retained binary32 flush contract and the exact Render3D assembly hash.
-It conservatively changes for any Render3D code change. State schema identity is supplied by the consumer.
+Arithmetic identity hashes the embedded versioned carry-contract descriptor used by both the tool and
+runtime, without reading assembly files or locations. Independent frozen vectors guard its output words
+and refusal boundaries. Changes to scalar rounding, skin composition, refinement, representatives,
+transition weighting, recession direction or gathers must advance the contract version and descriptor.
+Unrelated binary changes preserve compatibility. Exact `toolCodeSha256` and `render3DCodeSha256` values
+remain producer provenance in evidence only. State schema identity is supplied by the consumer.
 Current actor models, palettes and equipment instance IDs are outside configuration identity.
 
 `CoverageTableBuilder.Build` constructs full unweighted scalars with the exact constructor, requires one

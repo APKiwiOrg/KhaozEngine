@@ -41,7 +41,12 @@ The configuration manifest's paths and JSON formatting, current poses, actor inc
 transition weights are excluded. Reformatting an attachment or companion file changes its exact digest
 and therefore the identity.
 Compatible actors therefore share one table and immutable GPU topology/representative/scalar uploads.
-Arithmetic identity includes the Render3D assembly hash and can invalidate tables after an engine rebuild.
+Arithmetic identity hashes the embedded versioned carry contract, shared by the tool and runtime.
+Unrelated binary changes preserve compatibility and identity does not read an assembly file or location.
+Independent frozen vectors guard scalar rounding, skin composition, refinement, representatives,
+transition weighting, current recession direction and normal/tangent gathers. An incompatible arithmetic
+change requires advancing the contract version and its descriptor. Exact tool and Render3D assembly
+hashes remain in the evidence manifest as producer provenance only.
 
 The consumer owns phase bins, blend bins, clip semantics and their schema digest. The engine only looks
 up the unsigned key, including key zero. It does not sample animation, infer bins from geometry or pick

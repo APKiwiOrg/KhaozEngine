@@ -31,7 +31,9 @@ public sealed class CoverageMixedConfigurationTests
             new(CoverageBuildInputJson.Hash(attachment), companion.HostMapSha256, companion.Commands)));
         files.Configuration["parts"]!.AsArray().Add(new JsonObject
         {
-            ["id"] = 2, ["asset"] = files.Save("host.glb", hostBytes), ["hostJoint"] = "",
+            ["id"] = 2,
+            ["asset"] = files.Save("host.glb", hostBytes),
+            ["hostJoint"] = "",
             ["socket"] = CoverageBuildFiles.Matrix(Matrix4x4.Identity),
             ["bodyAlignment"] = CoverageBuildFiles.Matrix(Matrix4x4.Identity),
         });

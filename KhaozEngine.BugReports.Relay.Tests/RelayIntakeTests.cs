@@ -274,8 +274,10 @@ public sealed class RelayIntakeTests
     public async Task Intake_StoredBlobs_HaveExplicitContentTypes()
     {
         var harness = new RelayHarness();
-        await harness.IntakeAsync();
-        foreach (string path in harness.Media.Paths(ReportArea.Public))
+        AssertAccepted(await harness.IntakeAsync());
+        IReadOnlyList<string> paths = harness.Media.Paths(ReportArea.Public);
+        Assert.NotEmpty(paths);
+        foreach (string path in paths)
         {
             ReportBlobHeaders expected = Path.GetExtension(path) switch
             {
@@ -308,7 +310,9 @@ public sealed class RelayIntakeTests
     {
         var harness = new RelayHarness();
         await harness.IntakeAsync();
-        foreach (string path in harness.Media.Paths(ReportArea.Public))
+        IReadOnlyList<string> paths = harness.Media.Paths(ReportArea.Public);
+        Assert.NotEmpty(paths);
+        foreach (string path in paths)
         {
             ReadOnlyMemory<byte>? bytes = await harness.Media.GetAsync(ReportArea.Public, path, (int)BugReportLimits.MaxBundleBytes, Ct);
             string content = Encoding.UTF8.GetString(bytes!.Value.Span);
@@ -587,7 +591,9 @@ public sealed class RelayIntakeTests
 
     static async Task AssertQuotaUntouched(RelayHarness harness)
     {
-        foreach (QuotaWindow window in QuotaWindows.For("discord:42", harness.Clock.GetUtcNow(), harness.Options))
+        IReadOnlyList<QuotaWindow> windows = QuotaWindows.For("discord:42", harness.Clock.GetUtcNow(), harness.Options);
+        Assert.NotEmpty(windows);
+        foreach (QuotaWindow window in windows)
             Assert.Null(await harness.Quotas.ReadAsync(window.Key, Ct));
     }
 

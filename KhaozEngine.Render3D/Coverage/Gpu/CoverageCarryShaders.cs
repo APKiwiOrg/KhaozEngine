@@ -9,18 +9,20 @@ internal readonly record struct CoverageCarryKernel(string Name, string Source);
 /// <summary>The retained corrected-arithmetic graph. No constructor, correction, certificate or native-float variant.</summary>
 internal static class CoverageCarryShaders
 {
+    internal const int StageCount = 5;
     internal static readonly GpuShaderCompileOptions Options = new(PreciseMath: true);
     internal static IReadOnlyList<CoverageCarryKernel> Kernels { get; } = Array.AsReadOnly(new[]
     {
         new CoverageCarryKernel("CoverageCarrySkin", Prefix(1, 0) + CoverageCarrySkinShader.Source),
         new CoverageCarryKernel("CoverageCarryTransport", Prefix(3, 1) + CoverageCarryTransportShader.Source),
         new CoverageCarryKernel("CoverageCarryBasis", Prefix(4, 2) + CoverageCarryBasisShader.Source),
-        new CoverageCarryKernel("CoverageCarryPublish", Prefix(3, 3) + CoverageCarryPublicationShader.Source),
+        new CoverageCarryKernel("CoverageCarryGather", Prefix(3, 3) + CoverageCarryGatherShader.Source),
+        new CoverageCarryKernel("CoverageCarryPublish", Prefix(3, 4) + CoverageCarryPublicationShader.Source),
     });
 
     static string Prefix(int stride, int stage) => "#version 450\nlayout(local_size_x = 64) in;\n" + Bindings
         + (stage == 1 ? "layout(std430, set = 0, binding = 4) readonly buffer CarryTableBuf { uint CarryTableWords[]; };\n"
-            : stage == 3 ? "layout(std430, set = 0, binding = 4) buffer CovCurrentBuf { uint CovCurrentWords[]; };\n" : "")
+            : stage == 4 ? "layout(std430, set = 0, binding = 4) buffer CovCurrentBuf { uint CovCurrentWords[]; };\n" : "")
         + CoverageCarryArithmeticShader.Source + CoverageCarryScalarShader.Source
         + "uint carryStride() { return CovFrameWords[" + stride + "u]; }\n"
         + Helpers;

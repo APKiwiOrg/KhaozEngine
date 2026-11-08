@@ -3,7 +3,7 @@ using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D;
 
-/// <summary>Word offsets shared by the four carry stages. Surface bases are uint words, not vertices or bytes.</summary>
+/// <summary>Word offsets shared by the carry stages. Surface bases are uint words, not vertices or bytes.</summary>
 internal static class CoverageCarryLayout
 {
     internal const int ModelWords = 16, HeaderWords = 64, FrameHeaderWords = 16, CommandWords = 8;
@@ -12,14 +12,14 @@ internal static class CoverageCarryLayout
     internal static int FrameWords(int bones) => checked(FrameHeaderWords + bones * 16 + 4 * CommandWords + MaxRegions);
     internal static uint Bytes(long words) => checked((uint)(words * 4));
     internal static int WorkWords(int actors, int source, int vertices, int triangles)
-        => checked(actors * HeaderWords + source * 16 + vertices * 33 + triangles * 46);
+        => checked(actors * HeaderWords + source * 16 + vertices * 49 + triangles * 46);
 
     internal static uint[] WorkHeader(CoverageRefinement topology)
     {
         uint[] header = new uint[HeaderWords];
         uint cursor = HeaderWords;
         Row(0, topology.SourceVertexCount, 16); header[2] = header[0]; header[3] = header[1];
-        Row(4, topology.VertexCount, 16); Row(8, topology.VertexCount, 16);
+        Row(4, topology.VertexCount, 16); Row(8, topology.VertexCount, 16); Row(10, topology.VertexCount, 16);
         Row(42, topology.TriangleCount, 46); Row(44, topology.VertexCount, 1);
         return header;
         void Row(int pair, int count, int stride)
@@ -36,7 +36,7 @@ internal static class CoverageCarryLayout
         return stage switch
         {
             1 => new([.. common, Element("CarryTableBuf", true)]),
-            3 => new([.. common, Element("CovCurrentBuf", false)]),
+            4 => new([.. common, Element("CovCurrentBuf", false)]),
             _ => new(common),
         };
     }

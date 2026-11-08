@@ -47,7 +47,7 @@ internal sealed class CoverageCarryGroup : IDisposable
         words[2] = (uint)CoverageCarryLayout.Round64(Topology.PositionGroupCount);
         words[3] = (uint)CoverageCarryLayout.Round64(Topology.VertexCount);
         words[4] = (uint)CoverageCarryLayout.Round64(Topology.TriangleCount);
-        var sets = new IGpuResourceSet[4];
+        var sets = new IGpuResourceSet[CoverageCarryShaders.StageCount];
         var frames = device.Factory.CreateBuffer(new(CoverageCarryLayout.Bytes(words.Length),
             GpuBufferUsage.StructuredBufferReadOnly, 4));
         try
@@ -56,7 +56,7 @@ internal sealed class CoverageCarryGroup : IDisposable
             {
                 IGpuBindableResource[] common = [Static, frames, storage.Work, storage.Results];
                 IGpuBindableResource[] resources = stage switch
-                { 1 => [.. common, TableBuffer], 3 => [.. common, storage.Surface], _ => common };
+                { 1 => [.. common, TableBuffer], 4 => [.. common, storage.Surface], _ => common };
                 sets[stage] = device.Factory.CreateResourceSet(new(layouts[stage], resources));
             }
         }

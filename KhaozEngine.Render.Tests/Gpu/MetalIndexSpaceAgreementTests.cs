@@ -78,7 +78,7 @@ void main() { v[gl_GlobalInvocationID.x] = float(v.length()); }
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MetalShaderBuild.Compute(kernel, null, "runtime-array"));
 
-            Assert.Equal(ShaderValidationRefusal.CrossCompileFailed, error.Reason);
+            Assert.Equal(ShaderValidationRefusal.MetalHelperBufferUnnumbered, error.Reason);
             Assert.Equal("runtime-array", error.Label);
             Assert.Equal(GpuShaderStages.Compute, error.Stage);
             Assert.Equal("MSL", error.Target);

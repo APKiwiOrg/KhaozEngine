@@ -1919,9 +1919,12 @@ Forward those descriptors with the captured palette and transforms. Altered or s
 [attachment coverage adapter](../KhaozEngine.Attachments.Render3D/README.md#table-coverage-preparation)
 provides complete equipment snapshots and the explicit uncovered-current-pose fallback contract.
 
-The internal `CoverageCarryBatch` records four precise compute stages: current-pose skinning,
-frozen refinement and scalar transport, face basis construction, then ordered attribute gathering
-and final publication with tight bounds. Actors sharing a table share one immutable topology,
+The internal `CoverageCarryBatch` records five precise compute dispatches: current-pose skinning,
+frozen refinement and scalar transport, face basis construction, ordered attribute gathering,
+then final publication with tight bounds. Uncovered records are complete before refinement reports a
+failure. Gathering writes private complete candidates and actor error flags. The final dispatch reads the
+completed actor-wide decision, so any failure selects uncovered current-pose records for every vertex.
+It cannot mix moved and uncovered output or publish stale scratch words. Actors sharing a table share one immutable topology,
 representative vector and entry-major scalar upload. Warm recordings upload current frame uniforms,
 selected row offsets and reset bounds/error words. No runtime recession constructor, exact correction,
 filtered policy, certificate, membership check or synchronous readback participates.

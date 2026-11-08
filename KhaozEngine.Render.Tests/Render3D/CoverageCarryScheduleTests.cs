@@ -18,19 +18,20 @@ public sealed class CoverageCarryScheduleTests
         using var commands = new CoverageCarryTestDevice.Commands();
         commands.Begin(); f.Batch.Record(commands); commands.End();
         var surface = f.Batch.Surface(f.Actor, slot, -1);
-        Assert.Equal(4, commands.Dispatches.Count);
+        Assert.Equal(5, commands.Dispatches.Count);
         var bindings = commands.Dispatches.Select(d => d.Set.Description.Resources).ToArray();
         Assert.Same(bindings[0][2], bindings[1][2]);
         Assert.Same(bindings[1][2], bindings[2][2]);
         Assert.Same(bindings[2][2], bindings[3][2]);
-        Assert.Same(surface.Current, bindings[3][4]);
+        Assert.Same(bindings[3][2], bindings[4][2]);
+        Assert.Same(surface.Current, bindings[4][4]);
         Assert.Same(surface.Current, surface.Previous);
         Assert.NotSame(bindings[1][4], surface.Current);
         Assert.NotSame(bindings[1][4], bindings[0][2]);
         Assert.Equal(f.Actor.Topology.VertexCount, surface.VertexCount);
         Assert.Equal(f.Actor.Topology.Indices.Length, surface.IndexCount);
         int[] extents = [f.Actor.Topology.SourceVertexCount, f.Actor.Topology.VertexCount,
-            f.Actor.Topology.TriangleCount, f.Actor.Topology.VertexCount];
+            f.Actor.Topology.TriangleCount, f.Actor.Topology.VertexCount, f.Actor.Topology.VertexCount];
         Assert.Equal(extents.Select(n => (uint)((n + 63) / 64)), commands.Groups.Select(g => g.X));
         Assert.All(commands.Groups, g => { Assert.Equal(1u, g.Y); Assert.Equal(1u, g.Z); });
         Assert.Equal(-1, f.Batch.CommittedSlot(f.Actor));
@@ -52,7 +53,7 @@ public sealed class CoverageCarryScheduleTests
             other.Request.Model, other.Uniforms.Commands, out _));
         using var commands = new CoverageCarryTestDevice.Commands();
         commands.Begin(); f.Batch.Record(commands); commands.End();
-        Assert.Equal(4, commands.Dispatches.Count);
+        Assert.Equal(5, commands.Dispatches.Count);
         var first = f.Batch.Surface(f.Actor, a, -1);
         var second = f.Batch.Surface(other, b, -1);
         Assert.Same(first.Current, second.Current);

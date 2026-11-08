@@ -1,27 +1,9 @@
 namespace KhaozEngine.Render3D;
 
-/// <summary>Frozen refinement followed by selected shared-table recession along current command directions.</summary>
+/// <summary>Complete uncovered refinement before reporting failure, followed by selected-table transport.</summary>
 internal static class CoverageCarryTransportShader
 {
-    internal const string Source = """
-        const int CovUnitDone = 5;
-        struct CovUnit { int phase; vec3 inputValue; vec3 value; vec3 fallback; float minimum; float divisor; };
-        void covUnitBegin(vec3 value, vec3 fallback, float minimum, out CovUnit q) {
-            q = CovUnit(0,value,vec3(0.0),fallback,minimum,0.0);
-        }
-        bool covUnitStep(inout CovUnit q, CovExactResult result, out CovExactJob job) {
-            job = covScalarJob(0.0,1.0,false);
-            if (q.phase == 0) { q.phase = 1; job = covScalarJob(covDot3(q.inputValue,q.inputValue),0.0,true); return true; }
-            if (q.phase == 1) {
-                q.divisor = result.predicate.value;
-                if (q.minimum >= 0.0 && !covGreater(q.divisor,q.minimum)) { q.value = q.fallback; q.phase = CovUnitDone; return false; }
-                q.phase = 2; job = covScalarJob(q.inputValue.x,q.divisor,false); return true;
-            }
-            if (q.phase == 2) { q.value.x = result.predicate.value; q.phase = 3; job = covScalarJob(q.inputValue.y,q.divisor,false); return true; }
-            if (q.phase == 3) { q.value.y = result.predicate.value; q.phase = 4; job = covScalarJob(q.inputValue.z,q.divisor,false); return true; }
-            if (q.phase == 4) { q.value.z = result.predicate.value; q.phase = CovUnitDone; }
-            return false;
-        }
+    internal static string Source => CoverageCarryUnitShader.Source + "\n" + """
         float covWeighted(float a, float b, float c, vec3 weights) {
             return covAdd(covAdd(covMul(a,weights.x),covMul(b,weights.y)),covMul(c,weights.z));
         }
@@ -48,6 +30,7 @@ internal static class CoverageCarryTransportShader
             uint a = source+CovStaticWords[tri+5u]*16u, b = source+CovStaticWords[tri+6u]*16u, c = source+CovStaticWords[tri+7u]*16u;
             vec3 weights = vec3(covRead(CovStaticWords[weightsAt]),covRead(CovStaticWords[weightsAt+1u]),covRead(CovStaticWords[weightsAt+2u]));
             uint target = covRow(w,4u)+i*16u, positionGroup = CovStaticWords[r+6u];
+            [[dont_unroll]] for (uint initialize = 0u; initialize < 16u; initialize++) CovWorkWords[target+initialize] = 0u;
         uint recipe = covTable(h,22u)+positionGroup*7u, positionWeights = covTable(h,24u)+positionGroup*3u;
         uint pa = CovStaticWords[recipe], pb = CovStaticWords[recipe+1u], pc = CovStaticWords[recipe+2u];
         uint wa = CovStaticWords[recipe+3u], wb = CovStaticWords[recipe+4u], wc = CovStaticWords[recipe+5u];
@@ -66,7 +49,7 @@ internal static class CoverageCarryTransportShader
             bool valid = true, pending = false, initial = true;
             CovUnit q; covUnitBegin(vec3(0.0),vec3(0.0),0.0,q);
             CovExactResult result = covExactResultZero();
-            [[dont_unroll]] while (valid && (positionAxis < 3u || field < 12u)) {
+            [[dont_unroll]] while (positionAxis < 3u || field < 12u) {
                 CovExactJob job = covScalarJob(0.0,1.0,false);
                 bool request = false;
                 if (positionAxis < 3u) {
@@ -95,11 +78,12 @@ internal static class CoverageCarryTransportShader
         } else if (direction < 2) {
                     if (initial) {
                         uint offset = direction == 0 ? 3u : 12u;
-                        valid = covDirectionBegin(covWork3(a+offset),covWork3(b+offset),covWork3(c+offset),weights,q);
+                        bool accepted = covDirectionBegin(covWork3(a+offset),covWork3(b+offset),covWork3(c+offset),weights,q);
+                        if (!accepted) { valid = false; q.value = vec3(0.0); q.phase = CovUnitDone; }
                         initial = false;
                     } else request = covUnitStep(q,result,job);
                     if (q.phase == CovUnitDone) {
-                        if (!covFinite3(q.value)) valid = false;
+                        if (!covFinite3(q.value)) { valid = false; q.value = vec3(0.0); }
                         if (direction == 0) covWrite3(target+3u,q.value);
                         else {
                             vec3 tangent = q.value;

@@ -13,10 +13,10 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class CoverageCarryKernelTests
 {
-    public static IEnumerable<object[]> Stages() => Enumerable.Range(0, 4).Select(i => new object[] { i });
+    public static IEnumerable<object[]> Stages() => Enumerable.Range(0, 5).Select(i => new object[] { i });
     [Fact]
-    public void Runtime_inventory_contains_only_the_four_retained_stages()
-        => Assert.Equal(new[] { "CoverageCarrySkin", "CoverageCarryTransport", "CoverageCarryBasis", "CoverageCarryPublish" },
+    public void Runtime_inventory_contains_only_the_retained_stages_and_atomic_publication()
+        => Assert.Equal(new[] { "CoverageCarrySkin", "CoverageCarryTransport", "CoverageCarryBasis", "CoverageCarryGather", "CoverageCarryPublish" },
             CoverageCarryShaders.Kernels.Select(k => k.Name));
 
     [Theory]
@@ -30,7 +30,7 @@ public sealed class CoverageCarryKernelTests
         string msl = SpirvCrossCompile.ComputeToMsl(module, kernel.Name, CoverageCarryShaders.Options).ComputeSource;
         Assert.InRange(Encoding.UTF8.GetByteCount(hlsl), 1, 100_000);
         Assert.InRange(Encoding.UTF8.GetByteCount(msl), 1, 100_000);
-        ValidateCallTree(module);
+        ValidateCallTree(module, stage != 4);
         CoverageSpirvAccessAudit.Validate(module, kernel.Name, constantPrivateArrays: true);
         Assert.DoesNotContain("CovPreviousWords", kernel.Source);
         Assert.DoesNotContain("covPredicateProduct", kernel.Source);
@@ -40,7 +40,7 @@ public sealed class CoverageCarryKernelTests
     [Fact]
     public void Publication_tail_lanes_reach_every_barrier()
     {
-        var kernel = CoverageCarryShaders.Kernels[3];
+        var kernel = CoverageCarryShaders.Kernels[4];
         byte[] module = SpirvFrontEnd.ToSpirv(kernel.Source, GpuShaderStages.Compute, kernel.Name, CoverageCarryShaders.Options);
         uint[] words = MemoryMarshal.Cast<byte, uint>(module).ToArray();
         uint entry = 0, function = 0;
@@ -58,7 +58,35 @@ public sealed class CoverageCarryKernelTests
         Assert.True(body.IndexOf(253) > body.LastIndexOf(224));
     }
 
-    static void ValidateCallTree(byte[] module)
+    [Theory]
+    [InlineData(3, false)]
+    [InlineData(4, true)]
+    public void Actor_status_is_read_only_after_the_error_producing_dispatch(int stage, bool readsStatus)
+    {
+        var kernel = CoverageCarryShaders.Kernels[stage];
+        byte[] module = SpirvFrontEnd.ToSpirv(kernel.Source, GpuShaderStages.Compute, kernel.Name, CoverageCarryShaders.Options);
+        uint[] words = MemoryMarshal.Cast<byte, uint>(module).ToArray();
+        var pointers = new HashSet<uint>();
+        var instructions = new List<uint[]>();
+        for (int at = 5; at < words.Length; at += (int)(words[at] >> 16))
+        {
+            int length = (int)(words[at] >> 16);
+            uint opcode = words[at] & 65535;
+            if (opcode == 71 && words[at + 2] == 33 && words[at + 3] == 3) pointers.Add(words[at + 1]);
+            instructions.Add(words.AsSpan(at, length).ToArray());
+        }
+        Assert.Single(pointers);
+        bool read = false;
+        foreach (uint[] instruction in instructions)
+        {
+            uint opcode = instruction[0] & 65535;
+            if (opcode is 65 or 66 && pointers.Contains(instruction[3])) pointers.Add(instruction[2]);
+            if (opcode == 61 && pointers.Contains(instruction[3])) read = true;
+        }
+        Assert.Equal(readsStatus, read);
+    }
+
+    static void ValidateCallTree(byte[] module, bool scalarWorker)
     {
         uint[] words = MemoryMarshal.Cast<byte, uint>(module).ToArray();
         var names = new Dictionary<uint, string>();
@@ -88,6 +116,6 @@ public sealed class CoverageCarryKernelTests
             (names.GetValueOrDefault(c, "").StartsWith(helper + "(", StringComparison.Ordinal) ? 1 : 0) + Sites(c, helper));
         Assert.InRange(globals + Bound(entry), 1, 30_000);
         foreach (string helper in new[] { "covExactWorker", "covRoundOperation", "covCorrectPositive", "covRoundedAtOrBelow", "covResidualProduct", "covExactMul32" })
-            Assert.Equal(1, Sites(entry, helper));
+            Assert.Equal(scalarWorker ? 1 : 0, Sites(entry, helper));
     }
 }

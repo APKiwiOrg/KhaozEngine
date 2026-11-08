@@ -9,7 +9,7 @@ namespace KhaozEngine.Gpu.Internal
     {
         // Remove with the toolchain upgrade tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/1495.
         // C4a deliberately preserves the pinned matrix dimensions. Only zero seeds change.
-        internal static string Rewrite(string source)
+        internal static string Rewrite(string source, GpuShaderStages? stage = null)
         {
             var helpers = new List<string>();
             var names = new HashSet<string>(StringComparer.Ordinal);
@@ -49,7 +49,7 @@ namespace KhaozEngine.Gpu.Internal
                 if (pinned is null)
                     throw new ShaderValidationException(ShaderValidationRefusal.PreciseMslHelperUnsupported, $"MSL precise multiplication helper {identifier.Value} has an unrecognised form. "
                         + "Expected the pinned SPIRV-Cross 2.23.0 helper or its signed-zero correction. Review issue 1495 before upgrading the toolchain.")
-                    { Operation = identifier.Value, Target = "MSL" };
+                    { Operation = identifier.Value, Target = "MSL", Stage = stage };
                 helpers.Add(helper);
                 names.Add(identifier.Value);
                 acceptedEnd = end;

@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class CoverageCarryLayoutTests
 {
-    public static IEnumerable<object[]> Stages() => Enumerable.Range(0, 4).Select(i => new object[] { i });
+    public static IEnumerable<object[]> Stages() => Enumerable.Range(0, 5).Select(i => new object[] { i });
     [Theory]
     [MemberData(nameof(Stages))]
     public void Packed_bindings_include_the_immutable_table(int stage)
@@ -31,13 +31,13 @@ public sealed class CoverageCarryLayoutTests
         var hlsl = SpirvCrossCompile.ComputeToHlsl(module, kernel.Name, CoverageCarryShaders.Options);
         var msl = SpirvCrossCompile.ComputeToMsl(module, kernel.Name, CoverageCarryShaders.Options);
         var expected = Assert.Single(hlsl.Reflection.ResourceLayouts).Elements;
-        Assert.Equal(stage is 1 or 3 ? 5 : 4, expected.Length);
+        Assert.Equal(stage is 1 or 4 ? 5 : 4, expected.Length);
         Assert.Equal(Enumerable.Range(0, expected.Length).Select(i => (uint)i), bindings.Order());
         Assert.Equal(expected, Assert.Single(msl.Reflection.ResourceLayouts).Elements);
         var pipeline = f.Device.Pipelines[stage];
         var declared = Assert.IsType<CoverageCarryTestDevice.Layout>(Assert.Single(pipeline.Description.ResourceLayouts));
         Assert.Equal(expected, declared.Description.Elements);
-        Assert.Equal(stage == 1 ? "CarryTableBuf" : stage == 3 ? "CovCurrentBuf" : "CovResultsBuf", expected[^1].Name);
+        Assert.Equal(stage == 1 ? "CarryTableBuf" : stage == 4 ? "CovCurrentBuf" : "CovResultsBuf", expected[^1].Name);
         Assert.Equal(stage == 1 ? GpuResourceKind.StructuredBufferReadOnly : GpuResourceKind.StructuredBufferReadWrite, expected[^1].Kind);
     }
 }

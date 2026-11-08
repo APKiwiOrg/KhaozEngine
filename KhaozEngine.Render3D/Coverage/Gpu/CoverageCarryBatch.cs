@@ -5,7 +5,7 @@ using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D;
 
-/// <summary>Bounded four-stage carry recording and submitted output-slot ownership. Scene-thread only.
+/// <summary>Bounded carry recording and submitted output-slot ownership. Scene-thread only.
 /// The scene's aggregate participant owns registration, fence retention and the submission decision.</summary>
 internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsumer
 {
@@ -13,9 +13,9 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
     readonly GpuRetireQueue retired;
     readonly List<CoverageCarryActor> actors = [];
     readonly List<CoverageCarryGroup> groups = [];
-    readonly IGpuResourceLayout[] layouts = new IGpuResourceLayout[4];
-    readonly IGpuComputeShader[] shaders = new IGpuComputeShader[4];
-    readonly IGpuComputePipeline[] pipelines = new IGpuComputePipeline[4];
+    readonly IGpuResourceLayout[] layouts = new IGpuResourceLayout[CoverageCarryShaders.StageCount];
+    readonly IGpuComputeShader[] shaders = new IGpuComputeShader[CoverageCarryShaders.StageCount];
+    readonly IGpuComputePipeline[] pipelines = new IGpuComputePipeline[CoverageCarryShaders.StageCount];
     CoverageCarrySurface? storage;
     uint[] reset = [];
     int actorCapacity, sourceCapacity, vertexCapacity, triangleCapacity;
@@ -135,7 +135,7 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
         foreach (var group in groups)
         {
             if (group.Active == 0) continue;
-            for (int stage = 0; stage < 4; stage++)
+            for (int stage = 0; stage < CoverageCarryShaders.StageCount; stage++)
             {
                 commands.SetComputePipeline(pipelines[stage]);
                 commands.SetComputeResourceSet(0, group.Sets[stage]);
@@ -292,7 +292,7 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
         if (unsupported) return false;
         try
         {
-            for (int stage = 0; stage < 4; stage++)
+            for (int stage = 0; stage < CoverageCarryShaders.StageCount; stage++)
             {
                 layouts[stage] = device.Factory.CreateResourceLayout(CoverageCarryLayout.Resources(stage));
                 shaders[stage] = device.Factory.CreateComputeShaderFromSpirv(CoverageCarryShaders.Kernels[stage].Source, CoverageCarryShaders.Options);
@@ -302,7 +302,7 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
         }
         catch (Exception error) when (error is NotSupportedException or ShaderValidationException)
         {
-            for (int i = 0; i < 4; i++) { pipelines[i]?.Dispose(); shaders[i]?.Dispose(); layouts[i]?.Dispose(); }
+            for (int i = 0; i < CoverageCarryShaders.StageCount; i++) { pipelines[i]?.Dispose(); shaders[i]?.Dispose(); layouts[i]?.Dispose(); }
             Array.Clear(pipelines); Array.Clear(shaders); Array.Clear(layouts);
             unsupported = true; return false;
         }
@@ -320,7 +320,7 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
                 if (actor.Slots[i].State == CoverageCarrySlotState.Committed) actor.Slots[i].State = CoverageCarrySlotState.Retained;
         }
         foreach (var group in groups) retired.Retire(group);
-        for (int i = 0; i < 4; i++) { retired.Retire(pipelines[i]); retired.Retire(shaders[i]); retired.Retire(layouts[i]); }
+        for (int i = 0; i < CoverageCarryShaders.StageCount; i++) { retired.Retire(pipelines[i]); retired.Retire(shaders[i]); retired.Retire(layouts[i]); }
         retired.Retire(storage);
     }
 }

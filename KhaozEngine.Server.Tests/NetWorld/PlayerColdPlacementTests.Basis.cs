@@ -11,6 +11,30 @@ namespace KhaozEngine.Tests.NetWorld;
 
 public partial class PlayerColdPlacementTests
 {
+    // #1730. A raw correction that rounds to the same physics position is still a different basis.
+    [Fact]
+    public void ARawCorrectionThatRoundsToTheSamePhysicsPoseRevalidates()
+    {
+        using var scene = new OrdinaryPlayerWorld(origin: new Vector3(0, -1, 0), groundY: -1);
+        using var simulator = scene.Simulator();
+        var basis = scene.Initial();
+        var corrected = basis;
+        corrected.Move.Position.Y = MathF.BitIncrement(basis.Move.Position.Y);
+        using var work = new PlacementWork();
+        using var read = simulator.BeginExplicitRead(basis);
+        Assert.True(read!.BasisValid);
+        var queries = read.Queries!;
+        Assert.Equal(OrdinaryPlayerMovement.ToPhysics(basis.Move, queries.Frame).Position,
+            OrdinaryPlayerMovement.ToPhysics(corrected.Move, queries.Frame).Position);
+        var actual = simulator.Step(corrected, MoveCommand.Idle, OrdinaryPlayerWorld.Dt);
+        var outcome = simulator.LastExplicitOutcome;
+        Assert.Equal(2, work.Validations);
+        Assert.Equal(0, work.Reuses);
+        var expected = ReferenceStep(simulator, read, corrected, MoveCommand.Idle, OrdinaryPlayerWorld.Dt);
+        Assert.Equal(expected.Outcome, outcome);
+        AssertExact(expected.State, actual);
+    }
+
     public static IEnumerable<object[]> ChangedBases => Enumerable.Range(0, 22).Select(i => new object[] { i });
 
     // #1730. Every raw carry difference and correction must take the uncertified Step path.

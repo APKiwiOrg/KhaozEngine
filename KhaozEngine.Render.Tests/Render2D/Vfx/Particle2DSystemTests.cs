@@ -175,6 +175,7 @@ public class Particle2DSystemTests
 
         List<Particle2DView> pa = a.ActiveParticles().ToList();
         List<Particle2DView> pb = b.ActiveParticles().ToList();
+        Assert.NotEmpty(pa);
         Assert.Equal(pa.Count, pb.Count);
         for (int i = 0; i < pa.Count; i++)
         {
@@ -197,6 +198,8 @@ public class Particle2DSystemTests
         // At least one particle differs between the two seeds.
         var pa = a.ActiveParticles().ToList();
         var pb = b.ActiveParticles().ToList();
+        Assert.NotEmpty(pa);
+        Assert.Equal(pa.Count, pb.Count);
         bool anyDiff = pa.Where((t, i) => Vector2.Distance(t.Position, pb[i].Position) > Tol).Any();
         Assert.True(anyDiff, "different seeds should diverge");
     }
@@ -216,8 +219,14 @@ public class Particle2DSystemTests
         };
         var sys = new Particle2DSystem(64, 7);
         sys.Emit(cfg, Vector2.Zero, 40);
-        foreach (var p in sys.ActiveParticles())
+        var particles = sys.ActiveParticles().ToList();
+        Assert.Equal(40, particles.Count);
+        foreach (var p in particles)
+        {
             Assert.True(p.Velocity.X > 0f, "directional cone around +X should keep vx positive");
+            float angle = System.MathF.Atan2(p.Velocity.Y, p.Velocity.X);
+            Assert.InRange(angle, -cfg.SpreadRadians, cfg.SpreadRadians);
+        }
     }
 
     [Fact]
@@ -470,7 +479,9 @@ public class Particle2DSystemTests
         sys.Emit(Life(100f), new Vector2(5, 0), 2);
 
         Assert.Equal(2, sys.ActiveCount);
-        Assert.All(sys.ActiveParticles(), p => Assert.Equal(5f, p.Position.X));
+        var particles = sys.ActiveParticles().ToList();
+        Assert.Equal(2, particles.Count);
+        Assert.All(particles, p => Assert.Equal(5f, p.Position.X));
     }
 
     [Fact]
@@ -483,6 +494,8 @@ public class Particle2DSystemTests
         sys.Emit(Life(100f), new Vector2(7, 0), 2);
 
         Assert.Equal(2, sys.ActiveCount);
-        Assert.All(sys.ActiveParticles(), p => Assert.Equal(7f, p.Position.X));
+        var particles = sys.ActiveParticles().ToList();
+        Assert.Equal(2, particles.Count);
+        Assert.All(particles, p => Assert.Equal(7f, p.Position.X));
     }
 }

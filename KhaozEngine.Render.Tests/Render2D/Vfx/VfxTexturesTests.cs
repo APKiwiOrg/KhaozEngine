@@ -38,6 +38,7 @@ public class VfxTexturesTests
     {
         const int size = 16;
         byte[] px = VfxTextures.BakeGlowPixels(size);
+        Assert.Equal(size * size * 4, px.Length);
         for (int i = 0; i < px.Length; i += 4)
         {
             Assert.Equal(255, px[i]);

@@ -77,6 +77,7 @@ public class ParticleAttractorTests
             StrengthCurve = ParticleCurve.One,
         };
 
+        Assert.False(sys.Active.IsEmpty);
         float initialMean = MeanDistance(sys.Active, target);
 
         for (int i = 0; i < 30; i++)
@@ -84,6 +85,7 @@ public class ParticleAttractorTests
             sys.Update(1f / 60f);
         }
 
+        Assert.False(sys.Active.IsEmpty);
         float finalMean = MeanDistance(sys.Active, target);
         Assert.True(finalMean < initialMean, $"expected mean distance to decrease: {initialMean} -> {finalMean}");
     }
@@ -115,6 +117,7 @@ public class ParticleAttractorTests
             b.Update(1f / 60f);
         }
 
+        Assert.True(a.ActiveCount > 0);
         Assert.Equal(a.ActiveCount, b.ActiveCount);
         for (int i = 0; i < a.ActiveCount; i++)
         {
@@ -158,6 +161,7 @@ public class ParticleAttractorTests
             sys.Update(dt);
         }
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (Particle p in sys.Active)
         {
             Vector3 toFinal = finalTarget - p.Position;
@@ -201,6 +205,7 @@ public class ParticleAttractorTests
 
         sys.Attractor = null;
 
+        Assert.True(sys.ActiveCount > 0);
         var before = new Vector3[sys.ActiveCount];
         for (int i = 0; i < sys.ActiveCount; i++)
         {
@@ -209,6 +214,7 @@ public class ParticleAttractorTests
 
         sys.Update(1f / 60f); // zero gravity/drag/turbulence in cfg: nothing should change velocity now
 
+        Assert.Equal(before.Length, sys.ActiveCount);
         for (int i = 0; i < sys.ActiveCount; i++)
         {
             Assert.Equal(before[i], sys.Active[i].Velocity);
@@ -239,6 +245,8 @@ public class ParticleAttractorTests
             easeIn.Update(dt);
         }
 
+        Assert.False(one.Active.IsEmpty);
+        Assert.False(easeIn.Active.IsEmpty);
         float oneSpeed = MeanSpeed(one.Active);
         float easeInSpeed = MeanSpeed(easeIn.Active);
         Assert.True(easeInSpeed < oneSpeed, $"EaseIn should still be drifting slower after 5 early steps: one={oneSpeed} easeIn={easeInSpeed}");
@@ -251,6 +259,7 @@ public class ParticleAttractorTests
             easeIn.Update(dt);
         }
 
+        Assert.False(easeIn.Active.IsEmpty);
         float easeInFinalMean = MeanDistance(easeIn.Active, target);
         float initialDistance = Vector3.Distance(Vector3.Zero, target);
         Assert.True(easeInFinalMean < initialDistance * 0.5f,
@@ -320,6 +329,7 @@ public class ParticleAttractorTests
         var sys = new ParticleSystem(32, seed: 33);
         sys.Emit(cfg, new Vector3(3f, 0f, 0f), 20);
 
+        Assert.False(sys.Active.IsEmpty);
         sys.Attractor = new ParticleAttractor
         {
             Target = Vector3.Zero,
@@ -435,6 +445,7 @@ public class ParticleAttractorTests
         for (int i = 0; i < 60; i++)
         {
             sys.Update(1f / 60f);
+            Assert.False(sys.Active.IsEmpty);
             foreach (Particle p in sys.Active)
             {
                 Assert.True(p.Velocity.Length() <= maxSpeed + 1e-4f, $"speed {p.Velocity.Length()} exceeds the cap");

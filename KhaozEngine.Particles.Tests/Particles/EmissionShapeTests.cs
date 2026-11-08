@@ -32,6 +32,7 @@ public class EmissionShapeTests
         var sys = new ParticleSystem(256, seed: 5);
         sys.Emit(ShapeCfg(EmissionShape.Sphere, radius: 2.5f, shell: 0f, Vector3.Zero), origin, 200);
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             float dist = (p.Position - origin).Length();
@@ -46,6 +47,7 @@ public class EmissionShapeTests
         var sys = new ParticleSystem(256, seed: 11);
         sys.Emit(ShapeCfg(EmissionShape.Sphere, radius: 3f, shell: 1f, Vector3.Zero), origin, 200);
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             float dist = (p.Position - origin).Length();
@@ -81,6 +83,7 @@ public class EmissionShapeTests
         var sys = new ParticleSystem(256, seed: 7);
         sys.Emit(ShapeCfg(EmissionShape.Hemisphere, radius: 2f, shell: 0f, axis), origin, 200);
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             float d = Vector3.Dot(p.Position - origin, axis);
@@ -96,6 +99,7 @@ public class EmissionShapeTests
         var sys = new ParticleSystem(256, seed: 21);
         sys.Emit(ShapeCfg(EmissionShape.Hemisphere, radius: 2f, shell: 0f, axis), origin, 200);
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             float d = Vector3.Dot(p.Position - origin, axis);
@@ -111,6 +115,7 @@ public class EmissionShapeTests
         var sys = new ParticleSystem(256, seed: 13);
         sys.Emit(ShapeCfg(EmissionShape.Disc, radius: 4f, shell: 0f, axis), origin, 200);
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             Vector3 offset = p.Position - origin;
@@ -128,6 +133,7 @@ public class EmissionShapeTests
         var sys = new ParticleSystem(256, seed: 99);
         sys.Emit(ShapeCfg(EmissionShape.Disc, radius: 2f, shell: 1f, axis), origin, 200);
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             Assert.Equal(2f, p.Position.Length(), 3);
@@ -145,6 +151,7 @@ public class EmissionShapeTests
         var sys = new ParticleSystem(256, seed: 17);
         sys.Emit(cfg, origin, 200);
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             Vector3 outward = Vector3.Normalize(p.Position - origin);
@@ -161,6 +168,7 @@ public class EmissionShapeTests
         var sys = new ParticleSystem(32, seed: 1);
         sys.Emit(ShapeCfg(EmissionShape.Point, radius: 5f, shell: 0f, Vector3.UnitX), origin, 8);
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             Assert.Equal(origin, p.Position);

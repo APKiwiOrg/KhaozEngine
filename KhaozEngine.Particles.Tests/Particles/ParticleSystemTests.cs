@@ -55,6 +55,7 @@ public class ParticleSystemTests
 
         sys.Update(0.25f);
 
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             Assert.Equal(0.25f, p.Age, 5);
@@ -193,6 +194,7 @@ public class ParticleSystemTests
             b.Update(0.05f);
         }
 
+        Assert.False(a.Active.IsEmpty);
         Assert.Equal(a.ActiveCount, b.ActiveCount);
         var sa = a.Active;
         var sb = b.Active;
@@ -241,6 +243,7 @@ public class ParticleSystemTests
 
         // With zero spread, every velocity points along Direction (speed fixed at 5).
         var expected = dir * 5f;
+        Assert.False(sys.Active.IsEmpty);
         foreach (var p in sys.Active)
         {
             Assert.True((p.Velocity - expected).Length() < 1e-3f,

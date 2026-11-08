@@ -45,10 +45,10 @@ public sealed class ContentVersionTextSnapshot
         }
 
         ContentDraftTextState.CopyDeclarations(declared, nameof(languages));
-        Revisions = ContentTextCandidate.CopyVisible(revisions, versionNumber, declared, nameof(revisions));
+        Revisions = new CatalogReadOnlyView<ContentTextRevision>(ContentTextCandidate.CopyVisible(revisions, versionNumber, declared, nameof(revisions)));
         StoreEpoch = storeEpoch;
         VersionNumber = versionNumber;
-        Languages = recorded;
+        Languages = new CatalogReadOnlyView<ContentTextLanguage>(recorded);
     }
 
     /// <summary>The identity of the store the version belongs to.</summary>

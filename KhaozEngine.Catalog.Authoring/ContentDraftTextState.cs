@@ -26,8 +26,8 @@ public sealed class ContentDraftTextState
         IReadOnlyList<ContentTextEdit> edits,
         IReadOnlyList<ContentTextLanguageDeclaration> introductions)
     {
-        Edits = CopyEdits(edits, nameof(edits));
-        Introductions = CopyDeclarations(introductions, nameof(introductions));
+        Edits = new CatalogReadOnlyView<ContentTextEdit>(CopyEdits(edits, nameof(edits)));
+        Introductions = new CatalogReadOnlyView<ContentTextLanguageDeclaration>(CopyDeclarations(introductions, nameof(introductions)));
     }
 
     /// <summary>A state holding nothing, which a backend that represents text returns for a row-only draft.</summary>

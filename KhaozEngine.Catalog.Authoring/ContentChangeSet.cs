@@ -44,6 +44,7 @@ public sealed class ContentChangeSet
     /// <summary>An empty change set, which is what an open draft with nothing pending holds.</summary>
     public ContentChangeSet()
     {
+        Edits = new ContentChangeSetView(_edits);
     }
 
     /// <summary>
@@ -55,6 +56,7 @@ public sealed class ContentChangeSet
     /// <exception cref="ArgumentNullException"><paramref name="edits"/> or one of its entries is null.</exception>
     /// <exception cref="ContentAuthoringException">Two stored edits name one target.</exception>
     public ContentChangeSet(IReadOnlyList<ContentEdit> edits)
+        : this()
     {
         ArgumentNullException.ThrowIfNull(edits);
 
@@ -66,7 +68,7 @@ public sealed class ContentChangeSet
     }
 
     /// <summary>The pending edits, one per target, in the order they were applied.</summary>
-    public IReadOnlyList<ContentEdit> Edits => _edits;
+    public IReadOnlyList<ContentEdit> Edits { get; }
 
     /// <summary>How many edits are pending.</summary>
     public int Count => _edits.Count;

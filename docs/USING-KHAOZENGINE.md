@@ -23407,6 +23407,11 @@ absence as `kind: null` in `blockedByRules`, while a matching retire rule render
 Bundle import preserves each family's `IsRetired` flag through family reads and later exports, including
 the in-memory authoring store. Its version line still restarts at 1.
 
+The text bundle and draft states, version text snapshots, text candidates, publish baselines and plans,
+rollback plans and upgrade plans protect their validated collection storage from list casts and
+`ICollection.SyncRoot`. A retained `ContentChangeSet.Edits` view remains live as edits are applied,
+while all writes still go through the change set's target checks.
+
 When a tool must inspect the bundle format before reading or combining the document, use the reader's
 precheck rather than parsing the JSON separately:
 

@@ -44,8 +44,8 @@ public sealed class ContentBundleTextState
         IReadOnlyList<ContentTextLanguageDeclaration> languages,
         IReadOnlyList<ContentBundleTextValue> values)
     {
-        Languages = ContentDraftTextState.CopyDeclarations(languages, nameof(languages));
-        Values = CopyValues(Languages, values, out ContentTextFinding? finding);
+        Languages = new CatalogReadOnlyView<ContentTextLanguageDeclaration>(ContentDraftTextState.CopyDeclarations(languages, nameof(languages)));
+        Values = new CatalogReadOnlyView<ContentBundleTextValue>(CopyValues(Languages, values, out ContentTextFinding? finding));
         if (finding is not null) throw finding.ToException();
     }
 

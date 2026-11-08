@@ -39,9 +39,9 @@ public sealed class ContentRollbackPlan
     {
         TargetVersion = targetVersion;
         FromVersion = fromVersion;
-        Edits = edits;
-        Blockers = blockers;
-        Findings = findings;
+        Edits = new CatalogReadOnlyView<ContentEdit>([.. edits]);
+        Blockers = new CatalogReadOnlyView<ContentRollbackBlocker>([.. blockers]);
+        Findings = new CatalogReadOnlyView<ContentFinding>([.. findings]);
     }
 
     /// <summary>The version whose field values would be restored.</summary>

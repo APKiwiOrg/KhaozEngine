@@ -157,6 +157,11 @@ pending intent per target, and it answers a second edit of an occupied target in
 
 ## Families and id blocks
 
+Text bundle and draft states, version text snapshots, text candidates, publish baselines and plans,
+rollback plans and upgrade plans expose their owned collections through read-only views. Neither a
+list cast nor `ICollection.SyncRoot` exposes their validated storage. `ContentChangeSet.Edits` is a live
+read-only view, so a retained view sees later edits without permitting writes around target validation.
+
 `ContentFamily` is an author-declared grouping within one content type whose members are allocated ids from
 contiguous ALIGNED blocks, so a membership test is two comparisons per block rather than a set lookup. The
 block size is declared at creation, is a power of two between 16 and 65,536, and cannot be changed later,

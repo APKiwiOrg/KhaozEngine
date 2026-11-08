@@ -57,7 +57,7 @@ public sealed class MapDocumentExceptionTests
         Assert.Equal(new[] { first, second }, refusal.Findings);
     }
 
-    // W7-S1 regression in 45e770def. Reassignment must not collapse findings in a HashSet.
+    // Reassignment must not collapse findings in a HashSet.
     [Theory]
     [InlineData(nameof(MapDocumentFinding.ResourceIds))]
     [InlineData(nameof(MapDocumentFinding.ExpectedResourceIds))]

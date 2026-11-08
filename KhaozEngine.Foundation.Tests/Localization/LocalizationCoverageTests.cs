@@ -99,7 +99,7 @@ namespace KhaozEngine.Tests.Localization
             Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)finding.ActualIndices!).SyncRoot);
         }
 
-        // W7-S1 regression in 45e770def. Reassignment must retain the earlier record equality contract.
+        // Reassignment must retain the earlier record equality contract.
         [Theory]
         [InlineData(nameof(LocalizationCoverageFinding.MissingKeys))]
         [InlineData(nameof(LocalizationCoverageFinding.ExpectedIndices))]

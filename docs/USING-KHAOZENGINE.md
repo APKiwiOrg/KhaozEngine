@@ -23412,6 +23412,9 @@ rollback plans and upgrade plans protect their validated collection storage from
 `ICollection.SyncRoot`. A retained `ContentChangeSet.Edits` view remains live as edits are applied,
 while all writes still go through the change set's target checks.
 
+A draft write blocked by `PublishInProgress` carries its `MemberName` and the full stored Int64 marker
+in `ContentAuthoringException.FrozenForBaseVersion`, including a SQLite host-written value outside Int32.
+
 When a tool must inspect the bundle format before reading or combining the document, use the reader's
 precheck rather than parsing the JSON separately:
 

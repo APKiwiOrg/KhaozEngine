@@ -379,7 +379,7 @@ Text apply reuses `TextBindingRowUnknown` and `TextLanguageUndeclared` with thei
 | `NextVersionMismatch` | A plan whose number is not the next after the highest held version | `RequestedVersion`, `HighestVersion`, `NextVersion` |
 | `PackStoreMissing` | An operation requiring an absent pack target | `MemberName` |
 | `PackUnreadable` | A pack read returning a refusal | `VersionNumber`, `ObjectHash`, stable `PackReaderReason` token |
-| `PublishInProgress` | A draft write while publication holds the freeze | `MemberName`, `FrozenForBaseVersion` |
+| `PublishInProgress` | A draft write while publication holds the freeze | `MemberName`, `FrozenForBaseVersion` (full stored Int64 marker) |
 | `UpgradeAlreadyRecorded` | A publish applying an upgrade already in the ledger | `UpgradeId` |
 | `TextForkOnRowOnlyRoute` | A fork whose source text the row-only route cannot copy | `MemberName`, `TextRowType`, `TextRowId` |
 | `TextBaseOnRowOnlyRoute` | A row-only rollback across recorded text | `MemberName`, `VersionNumber`, `RecordedLanguageCount`, `RecordedValueCount` |

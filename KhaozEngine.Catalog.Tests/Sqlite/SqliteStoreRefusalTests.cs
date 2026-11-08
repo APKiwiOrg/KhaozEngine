@@ -13,6 +13,29 @@ public sealed class SqliteStoreRefusalTests : StoreRefusalTests
 {
     protected override bool UsesSqlite => true;
 
+    [Theory]
+    [InlineData(0L)]
+    [InlineData(4294967297L)]
+    public async Task AFrozenDraftReportsTheCompleteStoredMarkerWithoutWriting(long marker)
+    {
+        using var database = new TemporaryCatalogDatabase();
+        using var store = new SqliteContentAuthoringStore(database.ConnectionString, TextRegistry());
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.ApplyEditsAsync([Add(value: 1)], Actor, Operator, "");
+        var audit = await store.ListAuditAsync(default, 0, 0, 500);
+        database.Execute(FormattableString.Invariant($"UPDATE catalog_draft SET frozen_for_base_version = {marker};"));
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
+            store.ApplyEditsAsync([Add(value: 2)], Actor, Operator, ""));
+        Assert.Equal(ContentAuthoringRefusal.PublishInProgress, refused.Refusal);
+        Assert.Equal("publish-in-progress", refused.Reason);
+        Assert.Equal("ApplyEditsAsync", refused.MemberName);
+        Assert.Equal<long?>(marker, refused.FrozenForBaseVersion);
+        Assert.Equal(1, database.Scalar("SELECT int_value FROM catalog_draft_edit_field WHERE field_name = 'value';"));
+        Assert.Equal(audit, await store.ListAuditAsync(default, 0, 0, 500));
+        await store.ClearDraftFreezeAsync();
+        Assert.Equal(new[] { Value(2) }, Assert.Single((await store.ApplyEditsAsync([Add(value: 2)], Actor, Operator, "")).Changes.Edits).Fields);
+    }
+
     [Fact]
     public async Task MissingMetadataRefusesReadsUntilTheCatalogRowIsRestored()
     {

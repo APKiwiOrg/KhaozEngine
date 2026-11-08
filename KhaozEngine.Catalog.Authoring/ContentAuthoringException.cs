@@ -570,8 +570,8 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The pack reader's stable refusal token. Null for other refusals.</summary>
     public string? PackReaderReason { get; init; }
 
-    /// <summary>The freeze marker blocking a draft write. Null for other refusals.</summary>
-    public int? FrozenForBaseVersion { get; init; }
+    /// <summary>The full stored Int64 freeze marker blocking a draft write. Null for other refusals.</summary>
+    public long? FrozenForBaseVersion { get; init; }
 
     /// <summary>The upgrade id already recorded in the ledger. Null for other refusals.</summary>
     public string? UpgradeId { get; init; }

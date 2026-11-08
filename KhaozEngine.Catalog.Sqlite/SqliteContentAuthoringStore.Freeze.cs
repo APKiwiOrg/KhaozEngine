@@ -146,13 +146,14 @@ public sealed partial class SqliteContentAuthoringStore
             return;
         }
 
+        long frozenForBaseVersion = Convert.ToInt64(held, System.Globalization.CultureInfo.InvariantCulture);
         throw new ContentAuthoringException(
             ContentAuthoringRefusal.PublishInProgress,
             FormattableString.Invariant(
-                $"{member} is refused: a publish standing on version {Convert.ToInt64(held, System.Globalization.CultureInfo.InvariantCulture)} holds this draft frozen. The change set that publish read at step 1 is the one it will delete, so an edit arriving now would either be published without review or be deleted unpublished."),
+                $"{member} is refused: a publish standing on version {frozenForBaseVersion} holds this draft frozen. The change set that publish read at step 1 is the one it will delete, so an edit arriving now would either be published without review or be deleted unpublished."),
             default,
             0,
-            ContentAuthoringException.PublishInProgressReason) { MemberName = member, FrozenForBaseVersion = (int)Convert.ToInt64(held, System.Globalization.CultureInfo.InvariantCulture) };
+            ContentAuthoringException.PublishInProgressReason) { MemberName = member, FrozenForBaseVersion = frozenForBaseVersion };
     }
 
     /// <summary>

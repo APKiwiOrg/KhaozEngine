@@ -80,15 +80,50 @@ public sealed partial class CoverageSubmittedHistoryTests
         finally { foreach (var actor in actors.Skip(1)) actor.Binding.Dispose(); }
     }
 
-    [Fact]
-    public void Full_participant_storage_commits_no_history()
+    [Theory]
+    [InlineData("submit")]
+    [InlineData("abandon")]
+    [InlineData("fail")]
+    public void Full_participant_storage_preserves_last_observed_history_and_actual_previous_binding(string outcome)
     {
-        using var f = new CoveragePublicationFixture(participants: 1);
-        f.Begin(); Assert.True(f.Submission.TryRegister(new OccupiedParticipant()));
-        f.Queue(); f.Record(); f.Submit();
-        Assert.Empty(f.Evidence);
-        Assert.Null(f.History.SurfaceToken);
-        Assert.Equal(CoverageFailureCode.CapacityExceeded, f.Scene.CoverageFailureFor(f.Host.Actor).Code);
+        // FR-2 also preserves an actor absent from the capacity-refused frame.
+        using var f = new CoverageMultiActorFixture(participants: 1);
+        f.Scene.ForceTemporalForTests = true;
+        var read = new CoverageRecordedBindings(f);
+        f.Begin(); f.Queue(f.First); f.Queue(f.Second); f.Record();
+        var outputs = read.Outputs();
+        Assert.Equal(2, outputs.Count);
+        f.Submit();
+        var a = f.Scene.CoverageHistoryForTests(f.First.Key);
+        var other = f.Scene.CoverageHistoryForTests(f.Second.Key);
+        var previousModel = f.First.Model;
+        f.First.Model.M42 += .25f;
+        f.Begin(); Assert.True(f.Root.Submission.TryRegister(new OccupiedParticipant()));
+        f.Queue(f.First); f.Record();
+        Assert.Empty(read.Draws());
+        Assert.Equal(CoverageFailureCode.CapacityExceeded, f.Scene.CoverageFailureFor(f.First.Key).Code);
+        Assert.Equal(a, f.Scene.CoverageHistoryForTests(f.First.Key));
+        if (outcome == "submit") f.Submit();
+        else if (outcome == "abandon") f.Root.Submission.Abandon();
+        else
+        {
+            f.Root.Device.FailSubmission = true;
+            Assert.Throws<InvalidOperationException>(f.Submit);
+            f.Root.Device.FailSubmission = false;
+        }
+        Assert.Equal(a, f.Scene.CoverageHistoryForTests(f.First.Key));
+        Assert.Equal(other, f.Scene.CoverageHistoryForTests(f.Second.Key));
+        f.Begin(); f.Queue(f.First); f.Queue(f.Second); f.Record();
+        var current = read.Outputs(); var draws = read.Draws();
+        Assert.Equal(2, current.Count); Assert.NotEmpty(draws);
+        Assert.All(draws, d =>
+        {
+            var actor = d.Model == f.First.Model ? f.First : f.Second;
+            read.AssertActor(d, actor, current[actor.Key], outputs[actor.Key],
+                actor == f.First ? previousModel : f.Second.Model);
+        });
+        f.Submit();
+        Assert.NotEqual(a.SurfaceToken, f.Scene.CoverageHistoryForTests(f.First.Key).SurfaceToken);
     }
 
     [Theory]

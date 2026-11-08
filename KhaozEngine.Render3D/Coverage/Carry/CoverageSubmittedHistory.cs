@@ -46,7 +46,6 @@ internal sealed class CoverageSubmittedHistory
             tokens[p.OutputSlot], p.Model, p.PublicationRevision, false);
         View = view; Serial = serial; HasSurface = true;
     }
-    internal void ForgetCorrespondence() => HasSurface = false;
 
     internal void Discontinue(MotionKey actor, long serial)
     {

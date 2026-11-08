@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Render3D;
 /// <summary>Two independently uploaded, textured actors in distinct immutable table groups.</summary>
 internal sealed class CoverageMultiActorFixture : IDisposable
 {
-    internal readonly CoveragePublicationFixture Root = new();
+    internal readonly CoveragePublicationFixture Root;
     internal readonly RecordingGpuCommandList Commands = new(new NullGpuCommandList())
     { CapturePayloads = true, CaptureBindings = true, CaptureInstancedBindings = true, CaptureComputeBindings = true };
     internal readonly Actor First, Second;
@@ -34,8 +34,9 @@ internal sealed class CoverageMultiActorFixture : IDisposable
             .1f + Identity * .2f + slice * .05f, 12 + Identity * 13 + slice * 3);
     }
 
-    internal CoverageMultiActorFixture()
+    internal CoverageMultiActorFixture(int participants = 8)
     {
+        Root = new(participants: participants);
         Root.Binding.Dispose();
         First = Create(Root.Host.Table, 0, Root.Host.Actor);
         var host = Root.Host;

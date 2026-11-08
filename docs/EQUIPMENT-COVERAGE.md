@@ -128,7 +128,9 @@ existing render callback and the list is submitted once through that same owner.
 frame loop must avoid delegate allocation. Coverage registers one scene-owned aggregate participant
 for all actors, not one per actor. The batch is one completion consumer. No consumer registration loop
 is needed, so the default eight participant slots can support 32 actor histories. If participant
-registration fails, ordinary current skin is drawn and no actor coverage history commits.
+registration fails before recording, ordinary current skin is drawn and no actor coverage history changes,
+even on abandonment or failed submission. Since that frame has no observable submission decision, a
+capacity-refused frame that does submit can leave the next covered motion one frame stale.
 
 Borrowed tokens and palettes must be consumed synchronously. An actor accepts one preparation per
 frame. Repeating it returns `StaleFrame` before changing the accepted snapshot. Begin, successful

@@ -68,7 +68,8 @@ public sealed partial class Scene3D
         {
             foreach (var host in _coverageHosts) host.Request.Failure = new(CoverageFailureCode.CapacityExceeded,
                 host.Topology.HostIdentity, 0, 0, 1, 0);
-            foreach (var host in _coverageHosts) host.Request.History.ForgetCorrespondence();
+            // No callback can observe this frame. Preserve history even if it submits.
+            // The next covered motion may be one frame stale after this rare capacity refusal.
             return;
         }
         _coverageRegistered = true;

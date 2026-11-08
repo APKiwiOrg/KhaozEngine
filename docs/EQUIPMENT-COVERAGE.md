@@ -37,7 +37,9 @@ producer used by runtime and tooling. It hashes a versioned domain, items sorted
 and companion digests, parts sorted by ID with host joint name, socket and body-alignment words, then
 skin-order inverse-bind words. Strings are length-prefixed UTF-8 and numeric words are explicitly
 little-endian. Exact attachment and companion digests bind static parts, assets and command values.
-Paths, JSON formatting, current poses, actor incarnation IDs and transition weights are excluded.
+The configuration manifest's paths and JSON formatting, current poses, actor incarnation IDs and
+transition weights are excluded. Reformatting an attachment or companion file changes its exact digest
+and therefore the identity.
 Compatible actors therefore share one table and immutable GPU topology/representative/scalar uploads.
 Arithmetic identity includes the Render3D assembly hash and can invalidate tables after an engine rebuild.
 
@@ -49,7 +51,8 @@ a nearby row. An unknown key and an explicit entry -1 are both `TableHole`.
 
 [`Coverage.Verify`](../tools/Coverage.Verify/README.md) is outside the engine solution and umbrellas.
 Its strict manifest names exact assets, domains, every authored clip frame and the consumer's real
-blend paths. Only authored-clip domains may omit blend-path inventories. Every declared frame and
+blend paths. Only authored-clip domains may provide an empty `blendPathIds` array, and the strict reader
+still requires the property. Every declared frame and
 path must occur in the sample inventory. The consumer supplies the poses and resolved state keys.
 
 `build` constructs full unweighted scalar candidates, requires one canonical representative vector,
@@ -148,7 +151,9 @@ Publication makes one decision per actor. Any carry failure selects the complete
 record for every vertex, without mixing covered and raw records or exposing stale scratch words.
 
 CPU preparation first bounds the composed skin palette using a cold source envelope, the actual maximum
-absolute weight sum, double arithmetic and rounding headroom. Its conservative `2^20` ceiling protects
+absolute weight sum, double arithmetic and rounding headroom. The bound is on actor-model-space skinning,
+before the actor's model and world transform, so world position never enters it. Its conservative
+`2^20` ceiling protects
 raw coordinates, directions and later intermediates without assuming normalized weights. An unsafe
 palette returns `UnsupportedTransform` before dispatch and uses ordinary current skin. This can refuse
 a finite reference result. It neither clamps the pose nor fabricates a GPU raw record.

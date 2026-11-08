@@ -84,9 +84,19 @@ validates it, under an exclusive application lock inside one transaction, so two
 race. `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating
 anything, which is what a production host sets so a typo in a connection string cannot silently create a second
 empty catalog and serve it. A mismatch throws `ContentAuthoringException` with reason `schema-mismatch`, naming
-the object and the migration `catalog-v4-text-authoring`. Only SQL Server errors 207 and 208 from a
+the object and the migration `catalog-v4-text-authoring`. Structured `Refusal` and identifier members follow
+the shared [durable schema and reset table](../KhaozEngine.Catalog.Authoring/README.md#durable-schema-and-reset-refusals).
+`SchemaMissing` carries `RequiredMigration`. `SchemaVersionUnsupported` carries `ActualVersion`, owned
+`SupportedVersions` (currently `[4]`) and that migration. An absent metadata row or NULL required scalar uses
+`SchemaValidationMetadataMissing`. A noninteger schema version uses `SchemaVersionMalformed` with
+`MetadataType` and the migration, without copying the stored value.
+
+Only SQL Server errors 207 and 208 from a
 schema read become the unreadable mismatch. Lock timeouts, deadlocks, permission failures, cancellations and
-failed creates or migrations surface as their original provider or cancellation exception.
+failed creates or migrations surface as their original provider or cancellation exception. A translated
+`SchemaMetadataUnreadable` keeps `RequiredMigration` and the original `SqlException` as `InnerException`,
+including its typed `Number`. A negative `sys.sp_getapplock` result uses `SchemaApplicationLockNotGranted`
+with `ReturnCode` and `RequiredMigration`. The same rule covers create, migration and reset.
 
 Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`. An
 applied ledger row is written inside the publish commit, so a duplicate upgrade id refuses the whole publish.
@@ -98,7 +108,11 @@ insert time serves as the creation time with no twin: `catalog_version.published
 `catalog_draft_edit.edited_at_utc` is rewritten by every re-edit, so it is that table's update time. The store sets
 each time in the statement that writes the row. The rows a publish writes carry the version's publish time, and a
 type sync, an id mark or a draft write that changes no stored value moves no update time. Validation checks every
-time column's type and nullability as well as the object names.
+time column's type and nullability as well as the object names. `SchemaObjectMissing` and
+`SchemaObjectUnexpected` carry `ExpectedVersion`, `RequiredMigration` and `ObjectName` as `kind:name`,
+for example `index:catalog_row.ix_catalog_row_live`. A row time column retains the raw shape entry,
+such as `row time column:catalog_row.created_at_utc|datetimeoffset|3|NULL`, so a wrong scale remains
+distinguishable without reading exception prose.
 
 Schema version 4 adds catalog text authoring. `catalog_draft_text_edit` holds the open draft's text intents, one
 per canonical target in first-applied order, and `catalog_draft_text_language` its language introductions.
@@ -224,6 +238,17 @@ only the version 3 columns, or a version 3 catalog, which lacks only the version
 or no force, because recreating an older schema over it would move the database backwards. The refusal names the
 remedy, which is a reset from a build that writes that version. The result carries both numbers,
 `PriorSchemaVersion` and `SchemaVersion`, and `reset.Summary` says both.
+
+Reset uses the same structured members as SQLite for the same rules. `ResetTablesPartial` carries
+`StandingTableCount`, `ExpectedTableCount` (19), `ActualVersion` and `ForceRequired`. An unreadable version
+uses `ResetVersionUnreadable` with the same counts and force requirement and no version. `ResetVersionNewer`
+carries `ActualVersion` and inclusive `MaximumVersion` (4). `ResetDraftOpen` carries `DraftCount`.
+
+Required reset scalars missing or NULL use `SchemaValidationMetadataMissing` and `RequiredMigration`.
+A non-null scalar with the wrong CLR type uses `StoredScalarTypeMismatch` with `ExpectedScalarType` and
+`ActualScalarType`. Even after recreation these are input checks. A host database DDL trigger can reshape
+the new metadata table and install a trigger that alters or suppresses its seed. The reset rolls back the
+drops, recreation and host trigger writes together on refusal.
 
 `actor`, `operatorId` and `note` are checked against the caps `dbo.catalog_audit` declares (1 to 128, 128 and
 1024 characters) BEFORE the transaction opens, and an argument outside them is an `ArgumentException` with

@@ -18,8 +18,7 @@ public sealed class SqlServerStoreRefusalTests
     {
         var legacy = typeof(ContentAuthoringException).GetConstructors()
             .Where(constructor => constructor.GetParameters().All(parameter => parameter.ParameterType != typeof(ContentAuthoringRefusal)));
-        Assert.DoesNotContain(RefusalConstructorFence.EngineCallers([typeof(SqlServerContentAuthoringStore).Assembly], legacy),
-            caller => caller.StartsWith("KhaozEngine.Catalog.SqlServer.SqlServerContentAuthoringStore", StringComparison.Ordinal));
+        Assert.Empty(RefusalConstructorFence.EngineCallers([typeof(SqlServerContentAuthoringStore).Assembly], legacy));
     }
 
     [Theory]

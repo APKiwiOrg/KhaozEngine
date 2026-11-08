@@ -422,6 +422,9 @@ public enum ContentAuthoringRefusal
 
     // Durable schema validation and reset.
 
+    /// <summary>Refuses a negative SQL Server application lock result. Carries ReturnCode and RequiredMigration.</summary>
+    SchemaApplicationLockNotGranted,
+
     /// <summary>Refuses validation of an absent catalog. Carries RequiredMigration.</summary>
     SchemaMissing,
 
@@ -440,13 +443,13 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses validation with foreign key enforcement disabled. Carries RequiredMigration.</summary>
     SchemaForeignKeysDisabled,
 
-    /// <summary>Refuses a missing schema object. Carries ObjectName, ExpectedVersion and RequiredMigration.</summary>
+    /// <summary>Refuses a missing schema object or required row time shape. Carries ObjectName, ExpectedVersion and RequiredMigration.</summary>
     SchemaObjectMissing,
 
     /// <summary>Refuses a schema object with the wrong definition. Carries ObjectName, ExpectedVersion and RequiredMigration.</summary>
     SchemaObjectDefinitionMismatch,
 
-    /// <summary>Refuses a schema object its version does not declare. Carries ObjectName, ExpectedVersion and RequiredMigration.</summary>
+    /// <summary>Refuses a schema object or row time shape its version does not declare. Carries ObjectName, ExpectedVersion and RequiredMigration.</summary>
     SchemaObjectUnexpected,
 
     /// <summary>Refuses reset of an incomplete catalog with a readable version. Carries StandingTableCount, ExpectedTableCount, ActualVersion and ForceRequired.</summary>

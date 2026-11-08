@@ -23264,14 +23264,18 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly, ct);
 `AutoCreate` creates the schema when the database carries no catalog table and validates it after.
 `ValidateOnly` refuses an empty or mismatched database instead, which is what a production host sets so a typo
 in a connection string cannot silently create a second empty catalog and serve it. A mismatch is a
-`ContentAuthoringException` naming the object and the required migration. SQLite exposes these through
+`ContentAuthoringException` naming the object and the required migration. Both durable providers expose these through
 [durable schema and reset refusals](../KhaozEngine.Catalog.Authoring/README.md#durable-schema-and-reset-refusals).
-`SchemaMissing` carries `RequiredMigration`. Object refusals carry `ObjectName` (SQLite's `type:name`),
-`ExpectedVersion` and `RequiredMigration`, with column mismatches naming their table. Version refusals
+`SchemaMissing` carries `RequiredMigration`. Object refusals carry `ObjectName` as `kind:name`,
+`ExpectedVersion` and `RequiredMigration`. SQLite column mismatches name their table. SQL Server row time
+columns retain the complete compared shape, such as
+`row time column:catalog_row.created_at_utc|datetimeoffset|3|NULL`. Version refusals
 carry `ActualVersion`, owned `SupportedVersions` (currently `[4]`) and `RequiredMigration`
 (`catalog-v4-text-authoring`). An absent metadata row or NULL required scalar during schema validation uses
 `SchemaValidationMetadataMissing` with that migration, distinct from a store read's identifier-free
-`SchemaMetadataMissing`. Unreadable metadata retains its typed provider inner exception. Both existing modes synchronize
+`SchemaMetadataMissing`. Unreadable metadata retains its typed provider inner exception. SQL Server schema
+locking uses `SchemaApplicationLockNotGranted` with the integer `ReturnCode` and `RequiredMigration`.
+Both existing modes synchronize
 registered type settings after schema validation.
 
 For a hosted upgrade preview, open with `ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync`. It validates
@@ -23555,11 +23559,11 @@ whole catalog and needs no `force`. A catalog at a NEWER schema version is refus
 before anything is dropped, `force` or not, because recreating an older schema over it would move the database
 backwards.
 
-SQLite reset uses `ResetTablesPartial` with standing and expected table counts (19 current tables), the
+Both durable resets use `ResetTablesPartial` with standing and expected table counts (19 current tables), the
 read `ActualVersion` and `ForceRequired`. An unreadable version uses `ResetVersionUnreadable` with the
 same counts and force requirement, and no invented version. `ResetVersionNewer` carries `ActualVersion`
 and inclusive `MaximumVersion` (4). `ResetDraftOpen` carries `DraftCount`, rather than companion import
-edit counts. `HostForeignKeyActionUnsafe` carries the complete owned `HostObjects` snapshot, each finding
+edit counts. SQLite `HostForeignKeyActionUnsafe` carries the complete owned `HostObjects` snapshot, each finding
 naming `HostTable`, `ReferencedTable` and `DeleteAction`. Legacy reason tokens and reset behavior stay the
 same. A refusal rolls back catalog and host content, including a failure after drops and recreation.
 

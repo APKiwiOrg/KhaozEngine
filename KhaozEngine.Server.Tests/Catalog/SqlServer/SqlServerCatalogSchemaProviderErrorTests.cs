@@ -39,7 +39,13 @@ public class SqlServerCatalogSchemaProviderErrorTests
                 connection, ContentAuthoringSchemaMode.ValidateOnly, CancellationToken.None));
 
         Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
-        Assert.Contains("unreadable", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaMetadataUnreadable, refused.Refusal);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(208, Assert.IsType<SqlException>(refused.InnerException).Number);
+        Assert.Equal(1, database.Scalar("SELECT COUNT(*) FROM sys.tables WHERE name = N'catalog_orphan';"));
+        database.Execute("DROP TABLE dbo.catalog_orphan;");
+        await SqlServerCatalogSchemaValidation.InitializeAsync(
+            connection, ContentAuthoringSchemaMode.AutoCreate, CancellationToken.None);
     }
 
     [CatalogSqlServerFact]

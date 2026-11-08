@@ -170,7 +170,7 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>
     /// A provider's database is absent under <see cref="ContentAuthoringSchemaMode.ValidateOnly"/>, carries a
     /// schema version the build does not support, or holds an object that does not match the shape its
-    /// migration declares. SQLite schema validation carries <see cref="ObjectName"/> where applicable and
+    /// migration declares. Durable schema validation carries <see cref="ObjectName"/> where applicable and
     /// <see cref="RequiredMigration"/> beside <see cref="Refusal"/>. A newer-schema reset instead carries
     /// <see cref="ActualVersion"/> and <see cref="MaximumVersion"/>.
     /// </summary>
@@ -601,6 +601,9 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>The typed SQL Server error number of a transaction-contention refusal, or null.</summary>
     public int? SqlErrorNumber { get; init; }
+
+    /// <summary>The SQL Server application lock return code of a schema refusal, or null.</summary>
+    public int? ReturnCode { get; init; }
 
     /// <summary>The migration required by a schema validation or reset refusal, or null.</summary>
     public string? RequiredMigration { get; init; }

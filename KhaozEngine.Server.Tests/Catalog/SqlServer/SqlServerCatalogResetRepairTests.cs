@@ -67,19 +67,27 @@ public class SqlServerCatalogResetRepairTests
         string epochBefore = SqlServerCatalogResetHarness.Text(
             database, "SELECT store_epoch FROM dbo.catalog_metadata;");
         Halve(database);
+        string before = SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
 
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqlServerCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "content release"));
 
         Assert.Equal("catalog-partial", refused.Reason);
-        Assert.Contains("force", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.ResetTablesPartial, refused.Refusal);
+        Assert.Equal(16, refused.StandingTableCount);
+        Assert.Equal(19, refused.ExpectedTableCount);
+        Assert.Equal(4L, refused.ActualVersion);
+        Assert.Equal(true, refused.ForceRequired);
+        Assert.Equal(before, SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
 
         Assert.Equal(epochBefore, SqlServerCatalogResetHarness.Text(
             database, "SELECT store_epoch FROM dbo.catalog_metadata;"));
         Assert.Equal(1, database.Scalar("SELECT active_version FROM dbo.catalog_metadata;"));
         Assert.Equal(2, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_row;"));
         Assert.Equal(Standing, SqlServerCatalogResetHarness.CountTables(database));
+        Assert.Equal(4, (await SqlServerCatalogReset.ResetAsync(
+            database.ConnectionString, Actor, Operator, "repair", force: true)).SchemaVersion);
     }
 
     [CatalogSqlServerFact]
@@ -137,14 +145,19 @@ public class SqlServerCatalogResetRepairTests
         int standing = SqlServerCatalogResetHarness.CountTables(database);
         Assert.Equal(SqlServerCatalogSchemaExpectations.Tables.Count - (versionOneTables ? 1 : 0), standing);
 
+        string before = SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqlServerCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "content release"));
 
         Assert.Equal("catalog-partial", refused.Reason);
-        Assert.Contains("no schema version can be read", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("force", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.ResetVersionUnreadable, refused.Refusal);
+        Assert.Null(refused.ActualVersion);
+        Assert.Equal(versionOneTables ? 18 : 19, refused.StandingTableCount);
+        Assert.Equal(19, refused.ExpectedTableCount);
+        Assert.Equal(true, refused.ForceRequired);
         Assert.DoesNotContain("migration", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(before, SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal(standing, SqlServerCatalogResetHarness.CountTables(database));
         Assert.Equal(1, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_version;"));
         Assert.Equal(2, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_row;"));

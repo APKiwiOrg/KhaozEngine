@@ -298,10 +298,13 @@ copy the complete list into a read-only snapshot, so later producer mutation can
 
 ### Durable schema and reset refusals
 
-SQLite schema validation and reset retain their legacy `schema-mismatch`, `catalog-partial`, `draft-open`
-and `host-foreign-key` tokens beside `ContentAuthoringException.Refusal`. Store-wide `Type` and `Id` remain
+Both durable providers retain their legacy `schema-mismatch`, `catalog-partial` and `draft-open` tokens
+beside `ContentAuthoringException.Refusal`. SQLite also retains `host-foreign-key`. Store-wide `Type` and `Id` remain
 at default and 0. Schema objects use the provider identity in `ObjectName`, such as
-`index:ix_catalog_row_live` on SQLite. A wrong table or column definition names its owning table.
+`index:ix_catalog_row_live` on SQLite and `check constraint:catalog_row.ck_catalog_row_retired` on
+SQL Server. SQL Server row time columns retain the complete compared entry, such as
+`row time column:catalog_row.created_at_utc|datetimeoffset|3|NULL`. This includes type, scale and
+nullability without parsing a diagnostic string. A wrong SQLite table or column definition names its owning table.
 Provider read failures keep their typed `InnerException` and the existing message text.
 
 | Refusal | What it refuses | Identifiers |
@@ -312,9 +315,10 @@ Provider read failures keep their typed `InnerException` and the existing messag
 | `SchemaVersionMalformed` | A noninteger stored schema version | `MetadataType`, `RequiredMigration` |
 | `SchemaVersionUnsupported` | A schema version this mode cannot use | `ActualVersion`, owned `SupportedVersions`, `RequiredMigration` |
 | `SchemaForeignKeysDisabled` | SQLite validation without foreign key enforcement | `RequiredMigration` |
-| `SchemaObjectMissing` | An absent table or index | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `SchemaApplicationLockNotGranted` | SQL Server schema lock request returning a negative result | `ReturnCode`, `RequiredMigration` |
+| `SchemaObjectMissing` | An absent schema object or required row time shape | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
 | `SchemaObjectDefinitionMismatch` | A table or index differing from its declared shape | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
-| `SchemaObjectUnexpected` | A table or index its version does not declare | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `SchemaObjectUnexpected` | An undeclared schema object or row time shape | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
 | `ResetTablesPartial` | Reset of incomplete tables with a readable version, without force | `StandingTableCount`, `ExpectedTableCount`, `ActualVersion`, `ForceRequired` |
 | `ResetVersionUnreadable` | Reset without a readable version, without force | `StandingTableCount`, `ExpectedTableCount`, `ForceRequired` |
 | `ResetVersionNewer` | Reset that would recreate an older schema | `ActualVersion`, inclusive `MaximumVersion` |
@@ -326,14 +330,18 @@ includes the migration the schema check prescribes. Ordinary store
 reads retain `SchemaMetadataMissing` with no identifiers. `ResetDraftOpen` reports draft rows rather than
 the companion import's `DraftOpen` edit counts. A non-null reset scalar of the wrong CLR type reuses
 `StoredScalarTypeMismatch` with `ExpectedScalarType` and `ActualScalarType`, for integer reads and the
-post-recreation TEXT epoch alike. Even the latter is an input check: SQLite's table inventory leaves views
+post-recreation text epoch alike. Even the latter is an input check: SQLite's table inventory leaves views
 and their INSTEAD OF triggers standing, and a metadata-shaped view can intercept the seed. A missing epoch
-uses `SchemaValidationMetadataMissing`. The refusal rolls back trigger writes as well as catalog changes.
+uses `SchemaValidationMetadataMissing`. SQL Server database DDL triggers can likewise alter the recreated
+metadata table and install a seed trigger. Its post-recreation version and epoch reads therefore remain
+input checks with the same refusal members, rather than internal invariants. The refusal rolls back trigger
+writes as well as catalog changes. SQL Server schema locking carries the integer return code from
+`sys.sp_getapplock`, including timeout, cancellation, deadlock and call errors, without parsing provider text.
 
 `ContentHostForeignKeyFinding` names `HostTable`, `ReferencedTable` and the declared `DeleteAction` for every
 unsafe key. Composite key columns with the same table pair and action are folded, as in the existing reset
 diagnostics. No key name or schema is invented where the provider reports none. `SupportedVersions` and
-`HostObjects` copy their inputs into fresh immutable snapshots. SQLite validation currently supports schema
+`HostObjects` copy their inputs into fresh immutable snapshots. Both providers currently support schema
 version 4 and names migration `catalog-v4-text-authoring`. A partial reset measures against 19 current tables.
 
 ### Store admission and confirmation refusals

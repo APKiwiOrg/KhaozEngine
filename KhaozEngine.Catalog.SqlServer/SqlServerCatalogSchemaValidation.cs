@@ -70,7 +70,7 @@ internal static class SqlServerCatalogSchemaValidation
         {
             if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
-                throw Mismatch("missing");
+                throw Mismatch(ContentAuthoringRefusal.SchemaMissing, "missing");
             }
 
             await CreateAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -86,7 +86,7 @@ internal static class SqlServerCatalogSchemaValidation
             await ValidateObjectsAsync(connection, 1, cancellationToken).ConfigureAwait(false);
             if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
-                throw Mismatch("at unsupported version '1'");
+                throw UnsupportedVersion(1);
             }
 
             await MigrateAsync(connection, 1, SqlServerCatalogSchema.VersionOneMigrationSql, cancellationToken)
@@ -107,7 +107,7 @@ internal static class SqlServerCatalogSchemaValidation
             {
                 if (mode != ContentAuthoringSchemaMode.AutoCreate)
                 {
-                    throw Mismatch("at unsupported version '2'");
+                    throw UnsupportedVersion(2);
                 }
 
                 await MigrateAsync(connection, 2, SqlServerCatalogSchema.VersionTwoMigrationSql, cancellationToken)
@@ -127,7 +127,7 @@ internal static class SqlServerCatalogSchemaValidation
             {
                 if (mode != ContentAuthoringSchemaMode.AutoCreate)
                 {
-                    throw Mismatch("at unsupported version '3'");
+                    throw UnsupportedVersion(3);
                 }
 
                 await MigrateAsync(connection, 3, SqlServerCatalogSchema.VersionThreeMigrationSql, cancellationToken)
@@ -139,7 +139,7 @@ internal static class SqlServerCatalogSchemaValidation
 
         if (version != SqlServerCatalogSchema.CurrentVersion)
         {
-            throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
+            throw UnsupportedVersion(version);
         }
 
         await ValidateObjectsAsync(connection, SqlServerCatalogSchema.CurrentVersion, cancellationToken)
@@ -208,7 +208,7 @@ internal static class SqlServerCatalogSchemaValidation
         }
         catch (SqlException exception) when (IsMissingName(exception.Number))
         {
-            throw Mismatch("unreadable, so its metadata could not be checked", exception);
+            throw Mismatch(ContentAuthoringRefusal.SchemaMetadataUnreadable, "unreadable, so its metadata could not be checked", exception);
         }
     }
 
@@ -241,11 +241,12 @@ internal static class SqlServerCatalogSchemaValidation
         command.Transaction = transaction;
         command.CommandText = "SELECT schema_version FROM dbo.catalog_metadata WHERE metadata_key = 1;";
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw is int version
-            ? version
-            : throw Mismatch(raw is null or DBNull
-                ? "missing its metadata row"
-                : "carrying an unreadable schema version");
+        if (raw is int version) return version;
+        if (raw is null or DBNull)
+            throw Mismatch(ContentAuthoringRefusal.SchemaValidationMetadataMissing, "missing its metadata row");
+        throw new ContentAuthoringException(ContentAuthoringRefusal.SchemaVersionMalformed,
+            DescribeMismatch("carrying an unreadable schema version", null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { RequiredMigration = SqlServerCatalogSchema.RequiredMigration, MetadataType = raw.GetType() };
     }
 
     /// <summary>
@@ -317,12 +318,23 @@ internal static class SqlServerCatalogSchemaValidation
             held = raw is int code ? code : -999;
         }
 
+        CheckApplicationLockResult(held);
+    }
+
+    static void CheckApplicationLockResult(int held)
+    {
         if (held < 0)
         {
-            throw Mismatch(FormattableString.Invariant(
-                $"locked by another process creating, migrating or resetting it, which returned application lock code {held}, so this call changed nothing"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.SchemaApplicationLockNotGranted,
+                DescribeMismatch(FormattableString.Invariant(
+                    $"locked by another process creating, migrating or resetting it, which returned application lock code {held}, so this call changed nothing"), null),
+                default, 0, ContentAuthoringException.SchemaMismatchReason)
+            { ReturnCode = held, RequiredMigration = SqlServerCatalogSchema.RequiredMigration };
         }
     }
+
+    /// <summary>Exercises the schema lock's provider-result check without a live timeout or deadlock.</summary>
+    internal static void RefuseApplicationLockForTests(int code) => CheckApplicationLockResult(code);
 
     /// <summary>
     /// One migration, behind the SAME exclusive application lock the create takes and inside one transaction,
@@ -525,7 +537,8 @@ internal static class SqlServerCatalogSchemaValidation
         {
             if (!actual.Contains(name))
             {
-                throw Mismatch(FormattableString.Invariant($"missing {kind} '{name}'"));
+                throw ObjectMismatch(ContentAuthoringRefusal.SchemaObjectMissing, kind, name, expectedVersion,
+                    FormattableString.Invariant($"missing {kind} '{name}'"));
             }
         }
 
@@ -533,24 +546,34 @@ internal static class SqlServerCatalogSchemaValidation
         {
             if (!expected.Contains(name))
             {
-                throw Mismatch(FormattableString.Invariant(
-                    $"carrying unexpected {kind} '{name}', which version {expectedVersion} does not declare"));
+                throw ObjectMismatch(ContentAuthoringRefusal.SchemaObjectUnexpected, kind, name, expectedVersion,
+                    FormattableString.Invariant(
+                        $"carrying unexpected {kind} '{name}', which version {expectedVersion} does not declare"));
             }
         }
     }
 
-    /// <summary>
-    /// The one refusal this file throws, naming the object and the migration. The cause is folded into the
-    /// message rather than carried as an inner exception, because the reason token is what an operator's log
-    /// line keys on and the refusal has to carry it whichever way it was reached.
-    /// </summary>
-    static ContentAuthoringException Mismatch(string actual, Exception? innerException = null)
-        => new(
-            FormattableString.Invariant(
-                $"The SQL Server content catalog schema is {actual}{Because(innerException)}. Apply migration '{SqlServerCatalogSchema.RequiredMigration}'."),
-            default,
-            0,
-            ContentAuthoringException.SchemaMismatchReason);
+    static ContentAuthoringException UnsupportedVersion(int version)
+        => new(ContentAuthoringRefusal.SchemaVersionUnsupported,
+            DescribeMismatch(FormattableString.Invariant($"at unsupported version '{version}'"), null),
+            default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ActualVersion = version, SupportedVersions = [SqlServerCatalogSchema.CurrentVersion], RequiredMigration = SqlServerCatalogSchema.RequiredMigration };
+
+    static ContentAuthoringException ObjectMismatch(ContentAuthoringRefusal reason, string kind, string name, int version, string actual)
+        => new(reason, DescribeMismatch(actual, null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ObjectName = kind + ":" + name, ExpectedVersion = version, RequiredMigration = SqlServerCatalogSchema.RequiredMigration };
+
+    /// <summary>The legacy schema diagnostic, retaining the typed provider cause when a read failed.</summary>
+    static ContentAuthoringException Mismatch(ContentAuthoringRefusal reason, string actual, Exception? innerException = null)
+        => innerException is null
+            ? new(reason, DescribeMismatch(actual, null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+                { RequiredMigration = SqlServerCatalogSchema.RequiredMigration }
+            : new(reason, DescribeMismatch(actual, innerException), default, 0, ContentAuthoringException.SchemaMismatchReason, innerException)
+                { RequiredMigration = SqlServerCatalogSchema.RequiredMigration };
+
+    static string DescribeMismatch(string actual, Exception? innerException)
+        => FormattableString.Invariant(
+            $"The SQL Server content catalog schema is {actual}{Because(innerException)}. Apply migration '{SqlServerCatalogSchema.RequiredMigration}'.");
 
     static string Because(Exception? innerException)
         => innerException is null ? string.Empty : ": " + innerException.Message;

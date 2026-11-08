@@ -100,8 +100,19 @@ public sealed class SqliteJournalRuntimeRefusalTests : IDisposable
         database.Execute(path, "DELETE FROM journal_projection WHERE section_name = $section;", ("$section", $"section{sectionCount - 1:D2}"));
         JournalProjectionRead atLimit = await store.ReadProjectionsAsync(new(StreamKey));
         Assert.Equal(count ? 64 : 4, atLimit.Sections.Count);
-        database.Execute(path, "DELETE FROM journal_projection WHERE section_name = $section;", ("$section", $"section{sectionCount - 2:D2}"));
-        Assert.Equal(count ? 63 : 3, (await store.ReadProjectionsAsync(new(StreamKey))).Sections.Count);
+        if (count)
+        {
+            database.Execute(path, "DELETE FROM journal_projection WHERE section_name = $section;", ("$section", $"section{sectionCount - 2:D2}"));
+        }
+        else
+        {
+            byte[] shorter = data[..^1];
+            database.Execute(path, "UPDATE journal_projection SET data = $data, data_sha256 = $hash WHERE section_name = $section;",
+                ("$data", shorter), ("$hash", JournalCanonicalizer.ComputeSha256(shorter)), ("$section", "bag"));
+        }
+        JournalProjectionRead belowLimit = await store.ReadProjectionsAsync(new(StreamKey));
+        Assert.Equal(count ? 63 : 4, belowLimit.Sections.Count);
+        if (!count) Assert.Equal(8_388_607, belowLimit.Sections.Sum(section => section.Data.Length));
     }
 
     [Theory]

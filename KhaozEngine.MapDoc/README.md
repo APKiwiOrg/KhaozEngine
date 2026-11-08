@@ -2793,7 +2793,9 @@ These findings accompany the released string diagnostics. Whole-document and nat
 forward complete typed snapshots with the same first finding and diagnostic order.
 Boundary findings distinguish uncovered intervals, overlapping authored bands, portal sequence
 mismatches and portal air intervals. Missing footprint bounds and nonpositive separation retain
-the footprint `RecordId`, `SpaceId` and `SlotCell`. Forwarded topology and seam findings retain
+the footprint `RecordId`, `SpaceId` and `SlotCell`. Copied per-footprint and per-cell refinement findings
+also carry the footprint's `OwnerId`. Per-cell copies fill absent `RecordId`, `SpaceId` and `SlotCell`
+from the footprint and cell while retaining any producer-owned identifiers. Forwarded topology and seam findings retain
 their producer's identifiers. Boundary source chains that omit an intermediate edge vertex use
 `GeometryVertexSequenceInvalid` with `RecordId`, `Patch`, `FieldPath` `Vertices` and segment `Index`.
 The internal coverage collector keeps known typed findings in diagnostic order while the remaining

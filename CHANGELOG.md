@@ -70,6 +70,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Metal read footprints carry warmed storage capacity between ring slots, so repeating scene shapes allocate
   no late resource records when their period differs from the ring depth. Vertex coverage also retains warmed
   disconnected-window capacity across changes in buffer binding order.
+- Space coverage refinement refusals identify their footprint through `OwnerId` while retaining underlying
+  bound and opening identifiers.
 
 ## 23.3.0
 

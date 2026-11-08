@@ -230,11 +230,18 @@ public sealed class TextPublishTests
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => drifted.PublishAsync(TextAuthoringFixtures.Request(1)));
         Assert.Equal(ContentAuthoringException.TextTargetIneligibleReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextTargetIneligible, refused.Refusal);
+        Assert.Equal("item", refused.TypeKey);
+        Assert.Equal(TextAuthoringFixtures.Item, refused.Type);
+        Assert.Equal(id, refused.Id);
+        Assert.Equal("name", refused.FieldName);
+        Assert.Equal("en", refused.Language);
         Assert.Equal(1, await store.GetActiveVersionAsync());
         Assert.Equal(objects, await ObjectsAsync(pack));
         Assert.False((await store.GetOpenDraftAsync())!.IsFrozen);
         IContentTextAuthoringStore text = store;
         Assert.Equal("Sword", Assert.Single((await text.ReadTextSnapshotAsync(1)).Revisions).Value);
+        Assert.Equal(2, (await store.PublishAsync(TextAuthoringFixtures.Request(1))).VersionNumber);
     }
 
     [Fact]

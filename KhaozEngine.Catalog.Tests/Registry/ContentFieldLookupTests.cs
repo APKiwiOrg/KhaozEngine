@@ -46,23 +46,35 @@ public class ContentFieldLookupTests
     {
         ContentRuntime runtime = CatalogRuntimeFixtures.Runtime(out _);
 
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+        ContentFieldLookupException error = Assert.Throws<ContentFieldLookupException>(
             () => ContentFieldLookup.IndexIn(runtime, ItemType, "heals"));
 
-        Assert.Contains(EngineContentTypes.ItemTypeKey, error.Message, StringComparison.Ordinal);
-        Assert.Contains("heals", error.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<InvalidOperationException>(error);
+        Assert.Equal(ContentFieldLookupRefusal.FieldUndeclared, error.Reason);
+        Assert.Equal(ItemType, error.Type);
+        Assert.Equal("item", error.TypeKey);
+        Assert.Equal("heals", error.FieldName);
+        Assert.True(ContentFieldLookup.IndexIn(runtime, ItemType, ItemContentType.MaxStackField) >= 0);
     }
 
     [Fact]
     public void AnUnregisteredTypeIsARefusalToo()
     {
-        ContentRuntime runtime = CatalogRuntimeFixtures.Runtime(out _);
+        ContentRuntime runtime = CatalogRuntimeFixtures.Runtime(out ContentTypeRegistry registry);
 
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+        ContentFieldLookupException error = Assert.Throws<ContentFieldLookupException>(
             () => ContentFieldLookup.IndexIn(runtime, new ContentTypeId(4096), "value"));
 
-        Assert.Contains("4096", error.Message, StringComparison.Ordinal);
-        Assert.Contains("value", error.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentFieldLookupRefusal.TypeUnregistered, error.Reason);
+        Assert.Equal(new ContentTypeId(4096), error.Type);
+        Assert.Null(error.TypeKey);
+        Assert.Equal("value", error.FieldName);
+
+        ContentFieldSchema schema = ItemContentType.CreateSchema();
+        registry.RegisterContentType(ContentRegistrationBand.Game, 4096, "tuning",
+            new ItemContentType.Codec(new ContentTypeId(4096), schema), null,
+            schema, ContentVisibility.Client, 256);
+        Assert.True(ContentFieldLookup.IndexIn(runtime, new ContentTypeId(4096), "value") >= 0);
     }
 
     [Fact]

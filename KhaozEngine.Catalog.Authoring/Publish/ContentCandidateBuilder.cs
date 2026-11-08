@@ -162,17 +162,22 @@ static class ContentCandidateBuilder
                 pendingByKey[(registration.Type.Value, edit.Key)] = rows.Count;
                 // Added rather than assigned: the map entry is the row a later Update, Retire or Fork of that
                 // id resolves to, so an assignment would let a carried add take a base row's place silently.
-                // ContentCarriedIdChecks refuses every occupied carried id before this walk runs, so this
-                // refusal is unreachable, and it is here so that it stays a refusal if that ever changes.
+                // The publisher prechecks carried ids, but ContentDraftCandidate reaches this walk directly.
+                // Its preview must refuse the same occupied id rather than replacing a base row.
                 if (added.DefinitionId != 0
                     && !byId.TryAdd((registration.Type.Value, added.DefinitionId), rows.Count))
                 {
                     throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.DefinitionIdDuplicate,
                         FormattableString.Invariant(
                             $"Edit {ordinal} adds '{edit.Key}' to content type {registration.Type.Value} '{registration.TypeKey}' under definition id {added.DefinitionId}, which this candidate already carries a row for. An id is unique within its type and is never reused."),
                         edit.Type,
                         added.DefinitionId,
-                        ContentAuthoringException.EditTargetCollisionReason);
+                        ContentAuthoringException.EditTargetCollisionReason)
+                    {
+                        RowKey = edit.Key.ToString(),
+                        EditOrdinal = ordinal,
+                    };
                 }
 
                 rows.Add(added);
@@ -191,12 +196,13 @@ static class ContentCandidateBuilder
                 break;
 
             default:
-                throw new ContentAuthoringException(
+                // Internal invariant: ContentEdit is sealed, its constructor is private, and its factories
+                // admit only these four operations. No caller can supply another operation.
+                throw new ContentAuthoringException(ContentAuthoringRefusal.CandidateEditOperationUnsupported,
                     FormattableString.Invariant(
                         $"Edit {ordinal} carries operation {(int)edit.Operation}, which is not one of the four of spec 3.7."),
-                    edit.Type,
-                    edit.DefinitionId,
-                    ContentAuthoringException.UnknownEditOperationReason);
+                    edit.Type, edit.DefinitionId, ContentAuthoringException.UnknownEditOperationReason)
+                { TypeKey = registration.TypeKey, ActualOperation = (int)edit.Operation, EditOrdinal = ordinal };
         }
     }
 
@@ -363,6 +369,7 @@ static class ContentCandidateBuilder
         if (!registry.TryGet(row.Type, out ContentTypeRegistration? registration))
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"The base version carries a row of content type {row.Type.Value}, which this registry does not declare. A type is registered once at process start and a published type is never unregistered."),
                 row.Type,
@@ -449,11 +456,17 @@ static class ContentCandidateBuilder
             if (index < 0)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.FieldUnknown,
                     FormattableString.Invariant(
                         $"Edit {ordinal} names field '{change.Name}' of content type {registration.Type.Value} '{registration.TypeKey}', whose schema does not declare it."),
                     edit.Type,
                     edit.DefinitionId,
-                    ContentAuthoringException.UnknownFieldReason);
+                    ContentAuthoringException.UnknownFieldReason)
+                {
+                    TypeKey = registration.TypeKey,
+                    FieldName = change.Name,
+                    EditOrdinal = ordinal,
+                };
             }
 
             fields[index] = change.Value;
@@ -468,12 +481,12 @@ static class ContentCandidateBuilder
             return index;
         }
 
-        throw new ContentAuthoringException(
+        // Public publication runs fork preflight, but the internal builder also admits edits directly.
+        throw new ContentAuthoringException(ContentAuthoringRefusal.CandidateForkFlagInvalid,
             FormattableString.Invariant(
                 $"Edit {ordinal} forks row {edit.DefinitionId} of content type {registration.Type.Value} '{registration.TypeKey}' and names '{edit.ForkFlagField}' as the flag to set on the copy. The engine has no opinion about which boolean means superseded on a type it did not define, so it checks only that the field exists and is Bool."),
-            edit.Type,
-            edit.DefinitionId,
-            ContentAuthoringException.ForkFlagFieldReason);
+            edit.Type, edit.DefinitionId, ContentAuthoringException.ForkFlagFieldReason)
+        { TypeKey = registration.TypeKey, FieldName = edit.ForkFlagField, EditOrdinal = ordinal };
     }
 
     static int FieldIndex(ContentTypeRegistration registration, string name)
@@ -496,6 +509,7 @@ static class ContentCandidateBuilder
         => registry.TryGet(edit.Type, out ContentTypeRegistration? registration)
             ? registration
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"Content type {edit.Type.Value} is not registered, so an edit naming it cannot be published."),
                 edit.Type,
@@ -507,9 +521,14 @@ static class ContentCandidateBuilder
         ContentEdit edit,
         int ordinal)
         => new(
+            ContentAuthoringRefusal.RowUnknown,
             FormattableString.Invariant(
                 $"Edit {ordinal} is a {edit.Operation} of row {edit.DefinitionId} ('{edit.Key}') of content type {registration.Type.Value} '{registration.TypeKey}', which the base version carries no live row for."),
             edit.Type,
             edit.DefinitionId,
-            ContentAuthoringException.UnknownRowReason);
+            ContentAuthoringException.UnknownRowReason)
+        {
+            RowKey = edit.Key.ToString(),
+            EditOrdinal = ordinal,
+        };
 }

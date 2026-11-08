@@ -194,7 +194,10 @@ public sealed class PackRebuildTests
             () => ContentPackRebuild.RunAsync(store, registry, 7, packB));
 
         Assert.Equal(ContentAuthoringException.UnknownVersionReason, unknown.Reason);
+        Assert.Equal(ContentAuthoringRefusal.VersionUnknown, unknown.Refusal);
+        Assert.Equal(7, unknown.VersionNumber);
         Assert.Empty(await EverythingAsync(packB));
+        Assert.True((await ContentPackRebuild.RunAsync(store, registry, 1, packB)).Rebuilt);
     }
 
     [Fact]
@@ -490,7 +493,11 @@ public sealed class PackRebuildTests
             () => ContentPackRebuild.RunAsync(store, registry, 1, pointerless, pointers: null));
 
         Assert.Equal(ContentAuthoringException.NoPackStoreReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.PackPointerStoreRequired, refused.Refusal);
+        Assert.Equal(typeof(PointerlessPackStore), refused.StoreType);
+        Assert.Equal(nameof(ContentPackRebuild.RunAsync), refused.MemberName);
         Assert.Empty(await EverythingAsync(packB));
+        Assert.True((await ContentPackRebuild.RunAsync(store, registry, 1, pointerless, pointers: PackVersionPointers.Resolve(packB))).Rebuilt);
     }
 
     /// <summary>

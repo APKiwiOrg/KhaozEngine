@@ -45,7 +45,7 @@ public sealed class ContentTextPublishPlan
         ArgumentNullException.ThrowIfNull(chunks);
 
         RequireRowPlan(rowPlan, snapshot);
-        Languages = MapLanguages(rowPlan, candidate, chunks, out ContentTextChunkRecord[] owned);
+        Languages = new CatalogReadOnlyView<ContentTextLanguage>(MapLanguages(rowPlan, candidate, chunks, out ContentTextChunkRecord[] owned));
         RequireDeclarations(snapshot, candidate);
         RequireTemporal(rowPlan, snapshot, candidate);
         RequireFrozenIntents(rowPlan, snapshot.TextState, candidate);
@@ -54,7 +54,7 @@ public sealed class ContentTextPublishPlan
         RowPlan = rowPlan.WithFrozenText(snapshot.TextState);
         Snapshot = snapshot;
         Candidate = candidate;
-        Chunks = owned;
+        Chunks = new CatalogReadOnlyView<ContentTextChunkRecord>(owned);
     }
 
     /// <summary>The ordinary row plan, marked as the row half of this plan.</summary>

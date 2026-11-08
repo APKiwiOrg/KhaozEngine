@@ -52,7 +52,13 @@ public class ContentFieldSchemaTests
     {
         var schema = new ContentFieldSchema(new[] { Int("c"), Int("a"), Int("b") });
 
+        Assert.False(schema.Fields is IList<ContentFieldEntry>);
+        Assert.False(schema.Fields is System.Collections.ICollection);
         Assert.Equal(new[] { "c", "a", "b" }, schema.Fields.Select(f => f.Name));
+        Assert.True(schema.TryGet("c", out ContentFieldEntry? original));
+        Assert.Same(schema.Fields[0], original);
+        Assert.Equal(0, schema.IndexOf("c"));
+        Assert.False(schema.TryGet("replacement", out _));
     }
 
     [Fact]

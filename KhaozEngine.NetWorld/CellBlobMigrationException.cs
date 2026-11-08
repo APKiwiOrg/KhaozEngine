@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 
 namespace KhaozEngine.NetWorld;
 
@@ -31,13 +33,13 @@ public sealed class CellBlobMigrationException : InvalidOperationException
     public IReadOnlyList<ushort>? UnregisteredExtensionIds
     {
         get => unregisteredExtensionIds;
-        init => unregisteredExtensionIds = value is null ? null : Array.AsReadOnly<ushort>([.. value]);
+        init => unregisteredExtensionIds = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
     /// <summary>The recovery option names, AssumedWireGeneration then Registry, as an owned read-only snapshot
     /// for a no-candidate refusal.</summary>
     public IReadOnlyList<string>? RecoveryMembers
     {
         get => recoveryMembers;
-        init => recoveryMembers = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => recoveryMembers = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 }

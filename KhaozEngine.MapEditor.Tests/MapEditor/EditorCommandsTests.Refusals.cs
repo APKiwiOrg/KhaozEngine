@@ -114,6 +114,7 @@ public partial class EditorCommandsTests
         sources[0] = "changed";
         Assert.Equal(new[] { "understory", "ScatterOverrides[0]" }, error.SourceIds);
         Assert.Throws<NotSupportedException>(() => ((IList<string>)error.SourceIds!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)error.SourceIds!).SyncRoot);
     }
 
     [Fact]

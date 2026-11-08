@@ -75,6 +75,12 @@ public sealed partial class TextBundleTests
         var refused = Assert.Throws<ContentAuthoringException>(() => ContentBundleJson.Write(future));
 
         Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.BundleVersionUnsupported, refused.Refusal);
+        Assert.Equal(3, refused.ActualFormatVersion);
+        Assert.Equal(new[] { 1, 2 }, refused.SupportedFormatVersions);
+        Assert.NotEmpty(ContentBundleJson.Write(new ContentBundle(
+            ContentBundle.TextFormatVersion, "seed", 0, Types(), [], Array.Empty<ContentFamily>(), Array.Empty<RemapRule>(),
+            new ContentBundleTextState([], []))));
     }
 
     /// <summary>A seed carrying a family whose block holds one named row, beside a plain row and an empty language.</summary>

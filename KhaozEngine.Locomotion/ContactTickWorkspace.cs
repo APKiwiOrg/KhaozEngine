@@ -14,11 +14,13 @@ internal sealed class ContactTickWorkspace
     readonly OwnerEntry[] _owners = new OwnerEntry[MovementQueryLease.MaxSupportCandidates];
     readonly (MovementDomainKey Domain, float Level)[] _water = new (MovementDomainKey, float)[MovementQueryLease.MaxWaterDomainsPerLease];
     int _waterCount;
+    internal MovementWaterCoverageBuffers WaterCoverage { get; } = new();
     internal int WaterCount => _waterCount;
     internal bool Owns(MovementQueryLease lease) => ReferenceEquals(_lease, lease);
     MovementQueryLease? _lease;
     int _analyticCount, _ownerCount;
     bool _tick;
+    internal MovementColdPlacementUse ColdPlacement;
     internal ContactDescentEvidence? DescentEvidence { get; set; }
     internal ContactCapsuleShapes Shapes { get; } = new();
     internal LeasedContactQueryContext Queries { get; } = new();
@@ -55,6 +57,7 @@ internal sealed class ContactTickWorkspace
     internal void EndInterval()
     {
         EndTick();
+        ColdPlacement.Clear();
         Array.Clear(_owners, 0, _ownerCount);
         _ownerCount = 0;
         Array.Clear(_water, 0, _waterCount);

@@ -10,7 +10,7 @@ namespace KhaozEngine.Render3D.Internal;
 /// Mirrors atmosphereFogPhaseRatio in ShaderSources.AtmosphereFog.</summary>
 internal readonly record struct AtmosphereFogScattering(Vector3 RayleighScattering, float MieScattering,
     Vector3 MultipleScattering, float MieAnisotropy, Vector3 SunDirection, Vector3 SunTransmittance,
-    Vector3 MoonDirection, Vector3 MoonTransmittance, float MoonFraction)
+    Vector3 MoonDirection, Vector3 MoonTransmittance, float MoonFraction, KeyLightSource KeySource = KeyLightSource.Sun)
 {
     /// <summary>Evaluates both source transmittances along their directions at the camera altitude, as
     /// <see cref="AtmosphereModel.EvaluateLighting"/> does.</summary>
@@ -37,7 +37,7 @@ internal readonly record struct AtmosphereFogScattering(Vector3 RayleighScatteri
         var multiple = model.MultiScattering(height, sun.Y);
         if (frame.MoonFraction > 0) multiple += model.MultiScattering(height, moon.Y) * frame.MoonFraction;
         return new AtmosphereFogScattering(rayleigh, mie, multiple * (rayleigh + new Vector3(mie)),
-            settings.MieAnisotropy, sun, sunTransmittance, moon, moonTransmittance, frame.MoonFraction);
+            settings.MieAnisotropy, sun, sunTransmittance, moon, moonTransmittance, frame.MoonFraction, frame.KeySource);
     }
 
     /// <summary>Per-channel in-scatter at the view's eased true angle over in-scatter at the sample's angle.
@@ -51,6 +51,26 @@ internal readonly record struct AtmosphereFogScattering(Vector3 RayleighScatteri
         var sample = Source(horizonView);
         return new Vector3(Divide(actual.X, sample.X), Divide(actual.Y, sample.Y), Divide(actual.Z, sample.Z));
     }
+
+    /// <summary>Removes only the occluded key's direct in-scatter at the same eased angle as the phase ratio.
+    /// The other body's light and multiple scattering remain. Mirrors atmosphereFogKeyOcclusion.</summary>
+    internal Vector3 KeyOcclusion(Vector3 view, double radiusKm, float bottomKm, float visibility)
+    {
+        if (visibility >= 1 || KeySource == KeyLightSource.None) return Vector3.One;
+        if (AtmosphereFogSampling.BelowHorizon(view, radiusKm, bottomKm, out _, out var eased)) view = eased;
+        var total = Source(view);
+        var remainder = total - (1 - visibility) * Key(view);
+        return new Vector3(Divide(remainder.X, total.X), Divide(remainder.Y, total.Y), Divide(remainder.Z, total.Z));
+    }
+
+    /// <summary>The selected shadow-casting body's direct source. Mirrors atmosphereFogKeySource.</summary>
+    internal Vector3 Key(Vector3 direction) => KeySource switch
+    {
+        KeyLightSource.Sun => SunTransmittance * Phase(Vector3.Dot(direction, SunDirection)),
+        KeyLightSource.Moon when MoonFraction > 0 => MoonTransmittance
+            * (Phase(Vector3.Dot(direction, MoonDirection)) * MoonFraction),
+        _ => Vector3.Zero,
+    };
 
     // Directions are unit length, as packed. The moon key is skipped while its fraction is zero.
     Vector3 Source(Vector3 direction)

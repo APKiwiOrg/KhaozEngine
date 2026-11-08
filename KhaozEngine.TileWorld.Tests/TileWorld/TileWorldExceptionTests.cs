@@ -52,11 +52,13 @@ public class TileWorldExceptionTests
         Assert.NotNull(ex.SchemaFields);
         Assert.Equal(finding, Assert.Single(ex.SchemaFindings));
         Assert.Equal("/materials/0/steep/chain", Assert.Single(ex.SchemaFields));
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)ex.SchemaFindings!).SyncRoot);
         if (ex.SchemaFindings is IList<JsonSchemaFinding> findingList)
         {
             Assert.Throws<NotSupportedException>(() => findingList[0] = finding with { PropertyName = "other" });
             Assert.Throws<NotSupportedException>(() => findingList.Clear());
         }
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)ex.SchemaFields!).SyncRoot);
         if (ex.SchemaFields is IList<string> fieldList)
         {
             Assert.Throws<NotSupportedException>(() => fieldList[0] = "other");
@@ -75,6 +77,7 @@ public class TileWorldExceptionTests
         magic[1] = (byte)'6';
         Assert.NotNull(ex.ActualMagic);
         Assert.Equal(new byte[] { (byte)'P', (byte)'2' }, ex.ActualMagic);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)ex.ActualMagic!).SyncRoot);
         if (ex.ActualMagic is IList<byte> list)
         {
             Assert.Throws<NotSupportedException>(() => list[0] = (byte)'Q');
@@ -92,6 +95,7 @@ public class TileWorldExceptionTests
         source.Clear();
         Assert.NotNull(ex.RequiredTools);
         Assert.Equal("clearance_set", Assert.Single(ex.RequiredTools));
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)ex.RequiredTools!).SyncRoot);
         if (ex.RequiredTools is IList<string> list)
         {
             Assert.Throws<NotSupportedException>(() => list[0] = "other");
@@ -112,6 +116,7 @@ public class TileWorldExceptionTests
         Assert.NotNull(ex.Issues);
         Assert.Equal(1, ex.IssueCount);
         Assert.Equal(issue, Assert.Single(ex.Issues));
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)ex.Issues!).SyncRoot);
         if (ex.Issues is IList<TileWorldIssue> list)
         {
             Assert.Throws<NotSupportedException>(() => list[0] = issue with { Code = "other" });
@@ -132,12 +137,24 @@ public class TileWorldExceptionTests
         source.Clear();
         Assert.NotNull(ex.Overlaps);
         Assert.Equal(overlap, Assert.Single(ex.Overlaps));
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)ex.Overlaps!).SyncRoot);
         if (ex.Overlaps is IList<TileClearanceOverlap> list)
         {
             Assert.Throws<NotSupportedException>(() => list[0] = overlap with { ObstacleObjectId = 44 });
             Assert.Throws<NotSupportedException>(() => list.Clear());
         }
         Assert.Equal(overlap, Assert.Single(ex.Overlaps));
+    }
+
+    [Fact]
+    public void Archetype_ids_are_an_owned_read_only_snapshot()
+    {
+        string[] source = ["oak", "pine"];
+        var error = new TileWorldException("refused") { ArchetypeIds = source };
+        source[0] = "changed";
+        Assert.Equal(new[] { "oak", "pine" }, error.ArchetypeIds);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)error.ArchetypeIds!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((ICollection)error.ArchetypeIds!).SyncRoot);
     }
 
     [Fact]

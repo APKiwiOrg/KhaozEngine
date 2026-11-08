@@ -50,7 +50,7 @@ internal static partial class SqliteCatalogSchemaValidation
         {
             if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
-                throw Mismatch("missing");
+                throw Mismatch(ContentAuthoringRefusal.SchemaMissing, "missing");
             }
 
             using (SqliteCommand create = connection.CreateCommand())
@@ -71,7 +71,7 @@ internal static partial class SqliteCatalogSchemaValidation
             ValidateSchemaObjects(actual, SqliteCatalogSchema.VersionOneTables, 1);
             if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
-                throw Mismatch("at unsupported version '1'");
+                throw UnsupportedVersion(1);
             }
 
             MigrateVersionOne(connection);
@@ -88,7 +88,7 @@ internal static partial class SqliteCatalogSchemaValidation
             {
                 if (mode != ContentAuthoringSchemaMode.AutoCreate)
                 {
-                    throw Mismatch("at unsupported version '2'");
+                    throw UnsupportedVersion(2);
                 }
 
                 MigrateVersionTwo(connection);
@@ -105,7 +105,7 @@ internal static partial class SqliteCatalogSchemaValidation
             {
                 if (mode != ContentAuthoringSchemaMode.AutoCreate)
                 {
-                    throw Mismatch("at unsupported version '3'");
+                    throw UnsupportedVersion(3);
                 }
 
                 MigrateVersionThree(connection);
@@ -115,7 +115,7 @@ internal static partial class SqliteCatalogSchemaValidation
 
         if (version != SqliteCatalogSchema.CurrentVersion)
         {
-            throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
+            throw UnsupportedVersion(version);
         }
 
         // The objects are read HERE, after the version is settled and immediately before they are
@@ -133,7 +133,7 @@ internal static partial class SqliteCatalogSchemaValidation
         command.CommandText = "PRAGMA foreign_keys;";
         if (Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 1)
         {
-            throw Mismatch("open with foreign key enforcement disabled");
+            throw Mismatch(ContentAuthoringRefusal.SchemaForeignKeysDisabled, "open with foreign key enforcement disabled");
         }
     }
 
@@ -156,7 +156,7 @@ internal static partial class SqliteCatalogSchemaValidation
         catch (SqliteException exception) when (exception.SqliteErrorCode
             is SQLitePCL.raw.SQLITE_ERROR or SQLitePCL.raw.SQLITE_CORRUPT or SQLitePCL.raw.SQLITE_NOTADB)
         {
-            throw Mismatch("unreadable, so its metadata could not be checked", exception);
+            throw Mismatch(ContentAuthoringRefusal.SchemaMetadataUnreadable, "unreadable, so its metadata could not be checked", exception);
         }
     }
 
@@ -170,9 +170,13 @@ internal static partial class SqliteCatalogSchemaValidation
         using SqliteCommand command = connection.CreateCommand();
         command.CommandText = "SELECT schema_version FROM catalog_metadata WHERE metadata_key = 1;";
         object? raw = command.ExecuteScalar();
-        return raw is long version
-            ? version
-            : throw Mismatch(raw is null or DBNull ? "missing its metadata row" : "carrying an unreadable schema version");
+        if (raw is long version) return version;
+        bool missing = raw is null or DBNull;
+        throw new ContentAuthoringException(
+            missing ? ContentAuthoringRefusal.SchemaValidationMetadataMissing : ContentAuthoringRefusal.SchemaVersionMalformed,
+            DescribeMismatch(missing ? "missing its metadata row" : "carrying an unreadable schema version", null),
+            default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { RequiredMigration = SqliteCatalogSchema.RequiredMigration, MetadataType = missing ? null : raw!.GetType() };
     }
 
     /// <summary>
@@ -233,7 +237,7 @@ internal static partial class SqliteCatalogSchemaValidation
     static void ValidateSchemaObjects(
         IReadOnlyDictionary<string, string> actual,
         string expectedTables,
-        long expectedVersion)
+        int expectedVersion)
     {
         using var reference = new SqliteConnection("Data Source=:memory:");
         reference.Open();
@@ -248,12 +252,12 @@ internal static partial class SqliteCatalogSchemaValidation
         {
             if (!actual.TryGetValue(name, out string? actualSql))
             {
-                throw Mismatch(FormattableString.Invariant($"missing object '{name}'"));
+                throw ObjectMismatch(ContentAuthoringRefusal.SchemaObjectMissing, name, expectedVersion, FormattableString.Invariant($"missing object '{name}'"));
             }
 
             if (!StringComparer.Ordinal.Equals(actualSql, expectedSql))
             {
-                throw Mismatch(FormattableString.Invariant(
+                throw ObjectMismatch(ContentAuthoringRefusal.SchemaObjectDefinitionMismatch, name, expectedVersion, FormattableString.Invariant(
                     $"carrying object '{name}', which does not match the shape version {expectedVersion} declares"));
             }
         }
@@ -262,7 +266,7 @@ internal static partial class SqliteCatalogSchemaValidation
         {
             if (!expected.ContainsKey(name))
             {
-                throw Mismatch(FormattableString.Invariant(
+                throw ObjectMismatch(ContentAuthoringRefusal.SchemaObjectUnexpected, name, expectedVersion, FormattableString.Invariant(
                     $"carrying unexpected object '{name}', which version {expectedVersion} does not declare"));
             }
         }
@@ -272,18 +276,26 @@ internal static partial class SqliteCatalogSchemaValidation
     static string NormalizeSql(string sql)
         => string.Concat(sql.Where(static value => !char.IsWhiteSpace(value))).ToUpperInvariant();
 
-    /// <summary>
-    /// The one refusal this file throws, naming the object and the migration. The cause is folded into the
-    /// message rather than carried as an inner exception, because the reason token is what an operator's log
-    /// line keys on and the refusal has to carry it whichever way it was reached.
-    /// </summary>
-    static ContentAuthoringException Mismatch(string actual, Exception? innerException = null)
-        => new(
-            FormattableString.Invariant(
-                $"The SQLite content catalog schema is {actual}{Because(innerException)}. Apply migration '{SqliteCatalogSchema.RequiredMigration}'."),
-            default,
-            0,
-            ContentAuthoringException.SchemaMismatchReason);
+    static ContentAuthoringException UnsupportedVersion(long version)
+        => new(ContentAuthoringRefusal.SchemaVersionUnsupported,
+            DescribeMismatch(FormattableString.Invariant($"at unsupported version '{version}'"), null),
+            default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ActualVersion = version, SupportedVersions = [SqliteCatalogSchema.CurrentVersion], RequiredMigration = SqliteCatalogSchema.RequiredMigration };
+
+    static ContentAuthoringException ObjectMismatch(ContentAuthoringRefusal reason, string name, int version, string actual)
+        => new(reason, DescribeMismatch(actual, null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ObjectName = name, ExpectedVersion = version, RequiredMigration = SqliteCatalogSchema.RequiredMigration };
+
+    static ContentAuthoringException Mismatch(ContentAuthoringRefusal reason, string actual, Exception? innerException = null)
+        => innerException is null
+            ? new(reason, DescribeMismatch(actual, null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+            { RequiredMigration = SqliteCatalogSchema.RequiredMigration }
+            : new(reason, DescribeMismatch(actual, innerException), default, 0, ContentAuthoringException.SchemaMismatchReason, innerException)
+            { RequiredMigration = SqliteCatalogSchema.RequiredMigration };
+
+    static string DescribeMismatch(string actual, Exception? innerException)
+        => FormattableString.Invariant(
+            $"The SQLite content catalog schema is {actual}{Because(innerException)}. Apply migration '{SqliteCatalogSchema.RequiredMigration}'.");
 
     static string Because(Exception? innerException)
         => innerException is null ? string.Empty : ": " + innerException.Message;

@@ -46,10 +46,12 @@ public class RarityFamilyTests
     {
         FamilyType type = Find(typeKey);
 
-        Assert.Throws<ContentRegistrationException>(
+        ContentRegistrationException engine = Assert.Throws<ContentRegistrationException>(
             () => Register(new ContentTypeRegistry(), type, ContentRegistrationBand.Engine));
-        Assert.Throws<ContentRegistrationException>(
+        Assert.Equal(ContentRegistrationRefusal.BandTypeIdOutsideRange, engine.Reason);
+        ContentRegistrationException game = Assert.Throws<ContentRegistrationException>(
             () => Register(new ContentTypeRegistry(), type, ContentRegistrationBand.Game));
+        Assert.Equal(ContentRegistrationRefusal.BandTypeIdOutsideRange, game.Reason);
     }
 
     [Fact]

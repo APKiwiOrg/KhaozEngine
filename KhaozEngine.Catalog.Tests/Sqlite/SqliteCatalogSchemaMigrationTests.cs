@@ -380,8 +380,10 @@ public class SqliteCatalogSchemaMigrationTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("version '1'", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(ContentAuthoringRefusal.SchemaVersionUnsupported, refused.Refusal);
+        Assert.Equal(1L, refused.ActualVersion);
+        Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
 
         // Refused means REFUSED: the file is still version 1 and still carries no ledger table.
         Assert.Equal(
@@ -389,6 +391,8 @@ public class SqliteCatalogSchemaMigrationTests
             database.Scalar("SELECT schema_version FROM catalog_metadata WHERE metadata_key = 1;"));
         Assert.Equal(0L, database.Scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE name = 'catalog_content_upgrade';"));
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>

@@ -89,16 +89,36 @@ public sealed class CatalogConsumerPublishPolicyTests
         string bundle = (await source.OkAsync("catalog-export", null)).GetProperty("bundle").GetRawText();
         using var target = new CatalogActionHarness();
         var admin = CatalogActionHarness.NewSurface();
-        CatalogAdminActions.Register(admin, new LegacyImportStore(target.Store), target.Registry,
-            new CatalogAdminActionOptions { PublishPolicy = new GuardValue(rejectSeed: true) });
+        var store = new LegacyImportStore(target.Store);
+        var policy = new GuardValue(rejectSeed: true);
+        CatalogAdminActions.Register(admin, store, target.Registry,
+            new CatalogAdminActionOptions { PublishPolicy = policy });
+        string before = await target.SnapshotAsync();
+        string epochBefore = await target.Store.GetStoreEpochAsync();
+        ContentBundle input = ContentBundleJson.Read(bundle);
+        var failure = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
+            CatalogOperatorImport.ImportAsync(store, input, CatalogActionHarness.Operator, "seed", policy, default));
+        Assert.Equal(ContentAuthoringRefusal.PolicyImportCapabilityMissing, failure.Refusal);
+        Assert.Equal(typeof(IContentPolicyImportStore), failure.RequiredCapability);
+        Assert.Equal("policy-import-unavailable", failure.Reason);
+        Assert.Equal(default, failure.Type);
+        Assert.Equal(0, failure.Id);
+        Assert.Empty(failure.Findings);
 
         var result = await CatalogActionHarness.DispatchAsync(admin, "catalog-import", $$"""{ "bundle": {{bundle}} }""");
 
         Assert.Equal(KhaozEngine.NetWorld.AdminActionStatus.BadRequest, result.Status);
-        Assert.Equal(IContentPolicyImportStore.UnavailableReason,
+        Assert.Equal("policy-import-unavailable",
             CatalogActionHarness.Wire(result).GetProperty("reason").GetString());
+        Assert.Equal(before, await target.SnapshotAsync());
+        Assert.Equal(epochBefore, await target.Store.GetStoreEpochAsync());
         Assert.Equal(0, await target.Store.GetActiveVersionAsync());
         Assert.Null(await target.Store.GetOpenDraftAsync());
+
+        ContentPublishResult seeded = await CatalogOperatorImport.ImportAsync(
+            store, input, CatalogActionHarness.Operator, "trusted seed", null, default);
+        Assert.Equal(1, seeded.VersionNumber);
+        Assert.Equal("artifact_value", Assert.Single((await target.Store.ExportBundleAsync(1)).Rows).Key.ToString());
     }
 
     sealed class LegacyImportStore(IContentAuthoringStore inner) : ForwardingContentAuthoringStore(inner);

@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -75,6 +77,19 @@ public sealed class CatalogHarnessRefusalTests
             await control.FreezeDraftAsync(1);
         }
         Assert.True((await lease.Store.GetOpenDraftAsync())!.IsFrozen);
+    }
+
+    [Fact]
+    public void ReportLinesAreAnOwnedReadOnlySnapshot()
+    {
+        string[] source = ["first diagnostic", "second diagnostic"];
+        var failure = new CatalogScriptException(CatalogScriptRefusal.RunnerCompletedBeforePhase, "refused")
+        { ReportLines = source };
+        source[0] = "changed";
+
+        Assert.Equal(new[] { "first diagnostic", "second diagnostic" }, failure.ReportLines);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)failure.ReportLines!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((ICollection)failure.ReportLines!).SyncRoot);
     }
 
     [Fact]

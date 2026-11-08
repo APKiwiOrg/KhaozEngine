@@ -176,6 +176,7 @@ namespace KhaozEngine.Gpu.Internal
                 // everything and every element would read as unreferenced by both stages.
                 string vertexSource = Emit(context, vertex, tag);
                 string fragmentSource = Emit(context, fragment, tag);
+                if (backend == Backend.Msl) fragmentSource = MslDiscardTermination.Apply(fragmentSource);
                 RequireNoHelperBuffers(backend, vertex, "vertex", tag);
                 RequireNoHelperBuffers(backend, fragment, "fragment", tag);
 

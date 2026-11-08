@@ -101,15 +101,27 @@ public sealed partial class SqlServerContentAuthoringStore
     /// mean the same thing to a caller, and neither is a defect in the plan.
     /// </summary>
     static bool IsContention(SqlException exception)
-        => exception.Number is DeadlockVictim or SnapshotConflict;
+        => IsContention(exception.Number);
+
+    static bool IsContention(int number) => number is DeadlockVictim or SnapshotConflict;
 
     /// <summary>
-    /// A serialization failure as the caller's 409. It carries the SAME reason as the optimistic base-version
-    /// check, because the remedy is identical: re-read the baseline and prepare the plan again. A separate
-    /// token would make one condition two things for a console to handle, and the console cannot tell them
-    /// apart anyway.
+    /// A serialization failure as the caller's 409. The legacy token remains the optimistic base-version
+    /// token because the remedy is identical. The structured refusal keeps the typed provider number,
+    /// since contention does not establish an expected or actual base version.
     /// </summary>
     static ContentAuthoringException Contended(SqlException exception)
-        => Moved(FormattableString.Invariant(
-            $"The database refused this transaction because another writer held what it needed (SQL error {exception.Number}). Nothing was written. Re-read the baseline and prepare the plan again, exactly as for a base version that moved: {exception.Message}"));
+        => Contended(exception.Number, exception.Message);
+
+    static ContentAuthoringException Contended(int number, string detail)
+        => new(ContentAuthoringRefusal.TransactionContended, FormattableString.Invariant(
+            $"The database refused this transaction because another writer held what it needed (SQL error {number}). Nothing was written. Re-read the baseline and prepare the plan again, exactly as for a base version that moved: {detail}"),
+            default, 0, ContentAuthoringException.BaseVersionMovedReason)
+        { SqlErrorNumber = number };
+
+    /// <summary>Exercises contention classification and translation with a provider number, without a live deadlock.</summary>
+    internal static void RefuseTransactionContentionForTests(int number)
+    {
+        if (IsContention(number)) throw Contended(number, string.Empty);
+    }
 }

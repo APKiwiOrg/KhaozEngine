@@ -25,8 +25,9 @@ public sealed class SqlServerJournalMetadataTests
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, error.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, error.Scope);
         Assert.Empty(error.StreamKeys);
-        Assert.Contains(name, error.Message, StringComparison.Ordinal);
-        Assert.Contains("VIEW DEFINITION", error.Message, StringComparison.Ordinal);
+        Assert.Equal(JournalStoreRefusal.DefinitionUnavailable, error.Reason);
+        Assert.Equal(name, error.ObjectName);
+        Assert.Equal("VIEW DEFINITION", error.RequiredPermission);
     }
 
     [Theory]

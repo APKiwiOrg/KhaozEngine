@@ -26,7 +26,6 @@ namespace KhaozEngine.Tests.WorldStore.Journal;
 [Collection("SQL Server mutation journal")]
 public sealed class SqlServerJournalRowTimestampTests : IDisposable
 {
-    private const string MigrationName = "sqlserver-journal-v3-row-timestamps";
 
     private static readonly DateTimeOffset T0 = new(2026, 9, 6, 0, 0, 0, TimeSpan.Zero);
     private static readonly TimeSpan WaiterBound = TimeSpan.FromSeconds(20);
@@ -222,7 +221,7 @@ public sealed class SqlServerJournalRowTimestampTests : IDisposable
     {
         await RebuildJournalAsync(SqlServerMutationJournalStore.VersionTwoSchemaSqlForTest);
         await SeedLegacyRowsAsync();
-        string before = await SqlServerJournalFingerprint.CaptureAsync(ConnectionString, "legacy/");
+        string before = await SqlServerJournalSnapshot.CaptureAsync(ConnectionString);
 
         JournalStoreException refused = Assert.Throws<JournalStoreException>(
             () => Open(new SqlServerJournalManualTimeProvider(T0), mode));
@@ -230,11 +229,15 @@ public sealed class SqlServerJournalRowTimestampTests : IDisposable
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, refused.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, refused.Scope);
-        Assert.Contains("unsupported version '2'", refused.Message, StringComparison.Ordinal);
-        Assert.Contains(MigrationName, refused.Message, StringComparison.Ordinal);
-        Assert.Equal(before, await SqlServerJournalFingerprint.CaptureAsync(ConnectionString, "legacy/"));
+        Assert.Equal(JournalStoreRefusal.SchemaVersionUnsupported, refused.Reason);
+        Assert.Equal(2L, refused.ActualVersion);
+        Assert.Equal(new long[] { 3 }, refused.SupportedVersions);
+        Assert.Equal("sqlserver-journal-v3-row-timestamps", refused.RequiredMigration);
+        Assert.Equal(before, await SqlServerJournalSnapshot.CaptureAsync(ConnectionString));
         Assert.Equal(2, await SchemaVersionAsync());
         Assert.Equal(0, await CreationColumnCountAsync());
+        _ = Open(new SqlServerJournalManualTimeProvider(T0), SqlServerJournalSchemaMode.AutoCreate);
+        _ = Open(new SqlServerJournalManualTimeProvider(T0), mode);
     }
 
     /// <summary>

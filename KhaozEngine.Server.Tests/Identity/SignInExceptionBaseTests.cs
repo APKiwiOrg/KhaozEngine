@@ -116,11 +116,15 @@ public class SignInExceptionBaseTests
     {
         InvalidOperationException inner = new("cause");
 
-        Exception oidc = new OidcSignInException("outer", inner);
-        Exception discord = new DiscordSignInException("outer", inner);
+        SignInException oidc = new OidcSignInException("outer", inner);
+        SignInException discord = new DiscordSignInException("outer", inner);
 
         Assert.Same(inner, oidc.InnerException);
         Assert.Same(inner, discord.InnerException);
+        Assert.Equal("outer", oidc.Detail);
+        Assert.Equal("outer", discord.Detail);
+        Assert.Null(oidc.Reason);
+        Assert.Null(discord.Reason);
     }
 
     [Fact]

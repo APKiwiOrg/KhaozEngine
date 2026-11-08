@@ -34,7 +34,7 @@ public sealed class ExplicitPlayerMovement
 
 /// <summary>Retain this scope through pure state publication and release before physical mutation.
 /// A correction or restored basis must not be published when BasisValid is false.</summary>
-public sealed class PlayerMoveReadScope : IDisposable
+public sealed partial class PlayerMoveReadScope : IDisposable
 {
     readonly Action<PlayerMoveReadScope> release;
     readonly int thread = System.Environment.CurrentManagedThreadId;
@@ -66,6 +66,7 @@ public sealed class PlayerMoveReadScope : IDisposable
             throw new InvalidOperationException("An explicit player read belongs to its acquiring thread.");
         if (disposed) return;
         disposed = true;
+        coldPlacement = default;
         try { Queries?.Dispose(); }
         finally { release(this); }
     }

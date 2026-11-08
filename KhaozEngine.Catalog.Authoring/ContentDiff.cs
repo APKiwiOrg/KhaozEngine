@@ -295,6 +295,7 @@ public sealed class ContentDiff
         => registry.TryGet(type, out ContentTypeRegistration? registration)
             ? registration
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"A diff carries a row of content type {type.Value}, which this registry does not declare, so its field names and its chunk size are unknown."),
                 type,

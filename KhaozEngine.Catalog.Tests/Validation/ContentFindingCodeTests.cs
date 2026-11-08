@@ -499,10 +499,12 @@ public class ContentFindingCodeTests
         ContentFieldSchema schema = Schema(
             new ContentFieldEntry("n", ContentFieldKind.Int, null, ContentVisibility.Client, false));
 
-        Assert.Throws<ContentRegistrationException>(() =>
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() =>
         {
-            _ = GameRegistry(schema, chunkSlots: 100);
+            _ = GameRegistry(schema, chunkSlots: 128);
         });
+        Assert.Equal(ContentRegistrationRefusal.ChunkSlotsOutsideRange, error.Reason);
+        _ = GameRegistry(schema, chunkSlots: 256);
 
         ContentTypeRegistry registry = EngineRegistry();
         AssertNone(Validate(CleanCandidate(registry), registry), "KEC0028");

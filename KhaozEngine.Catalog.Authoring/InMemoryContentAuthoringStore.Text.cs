@@ -53,7 +53,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
         RequireNotFrozen(nameof(ApplyChangesAsync));
         for (int i = 0; i < changes.RowEdits.Count; i++)
         {
-            CheckAgainstSchema(changes.RowEdits[i]);
+            CheckAgainstSchema(changes.RowEdits[i], i);
         }
 
         ContentDraft? open = _draft;
@@ -128,13 +128,14 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
             ClearStaleFreeze();
             if (expectedBaseVersion != _activeVersion)
             {
-                throw Moved(FormattableString.Invariant(
+                throw Moved(expectedBaseVersion, _activeVersion, FormattableString.Invariant(
                     $"The publish expects base version {expectedBaseVersion} and the store stands at {_activeVersion}. Another publish landed in between, so this draft is against a version that is no longer the base."));
             }
 
             if (_draft is not ContentDraft open || open.TotalWorkCount == 0)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.NoPendingDraft,
                     "There is no open draft with pending row work, text work or language introductions, so there is nothing to publish.",
                     default,
                     0,
@@ -223,8 +224,11 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
             ContentEdit edit = edits[i];
             if (edit.Operation == ContentEditOperation.Fork && HoldsTextAt(edit.Type, edit.DefinitionId, _activeVersion))
             {
-                throw ContentTextCompatibility.Unrepresented(member, FormattableString.Invariant(
-                    $"the fork of type {edit.Type.Value} row {edit.DefinitionId} owes its copy text this route cannot write"));
+                throw new ContentAuthoringException(ContentAuthoringRefusal.TextForkOnRowOnlyRoute,
+                    ContentTextCompatibility.DescribeUnrepresented(member, FormattableString.Invariant(
+                    $"the fork of type {edit.Type.Value} row {edit.DefinitionId} owes its copy text this route cannot write")),
+                    default, 0, ContentAuthoringException.TextUnrepresentedReason)
+                { MemberName = member, TextRowType = edit.Type, TextRowId = edit.DefinitionId };
             }
         }
     }
@@ -244,15 +248,26 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
     {
         if (versionNumber != NoActiveVersion && !_textLanguages.ContainsKey(versionNumber))
         {
-            throw ContentTextCompatibility.Unrepresented(member, FormattableString.Invariant(
-                $"version {versionNumber} has no complete text record, so its text is unknown rather than empty"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextProvenanceUnknown,
+                ContentTextCompatibility.DescribeUnrepresented(member, FormattableString.Invariant(
+                    $"version {versionNumber} has no complete text record, so its text is unknown rather than empty")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            { VersionNumber = versionNumber };
         }
 
         ContentVersionTextSnapshot text = TextSnapshotAt(versionNumber);
         if (text.Languages.Count > 0 || text.Revisions.Count > 0)
         {
-            throw ContentTextCompatibility.Unrepresented(member, FormattableString.Invariant(
-                $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s)"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextBaseOnRowOnlyRoute,
+                ContentTextCompatibility.DescribeUnrepresented(member, FormattableString.Invariant(
+                $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s)")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            {
+                MemberName = member,
+                VersionNumber = versionNumber,
+                RecordedLanguageCount = text.Languages.Count,
+                RecordedValueCount = text.Revisions.Count,
+            };
         }
     }
 
@@ -269,12 +284,11 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
 
         if (!_textLanguages.TryGetValue(versionNumber, out ContentTextLanguage[]? languages))
         {
-            throw new ContentAuthoringException(
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextProvenanceUnknown,
                 FormattableString.Invariant(
                     $"Version {versionNumber} has no complete text record, so its text is unknown rather than empty."),
-                default,
-                0,
-                ContentAuthoringException.TextProvenanceUnknownReason);
+                default, 0, ContentAuthoringException.TextProvenanceUnknownReason)
+            { VersionNumber = versionNumber };
         }
 
         return new ContentVersionTextSnapshot(
@@ -299,11 +313,13 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
         if (id == 0 && !pending.Contains((target.Type.Value, target.Key)))
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextBindingRowUnknown,
                 FormattableString.Invariant(
                     $"Text for type {target.Type.Value} row '{target.Key}' names a row neither the base version nor the open draft holds."),
                 target.Type,
                 0,
-                ContentAuthoringException.UnknownRowReason);
+                ContentAuthoringException.UnknownRowReason)
+            { RowKey = target.Key.ToString() };
         }
 
         bool isDeclared = declared.Contains(target.Language)
@@ -319,11 +335,13 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
         else if (!isDeclared)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextLanguageUndeclared,
                 FormattableString.Invariant(
                     $"Language '{target.Language}' is neither declared by version {_activeVersion} nor introduced by the open draft, so there is nothing to remove in it. A Set is what declares a language."),
                 target.Type,
                 id,
-                ContentAuthoringException.TextLanguageUndeclaredReason);
+                ContentAuthoringException.TextLanguageUndeclaredReason)
+            { FieldName = target.FieldName, Language = target.Language };
         }
         else if (standing < 0 && (id == 0 || !HoldsValue(target.Type, id, field.Name, target.Language)))
         {

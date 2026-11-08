@@ -10,7 +10,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Locomotion;
 
 // These prove consumer buffer/lifetime validation, not native volumetric geometry or support selection.
-public class MovementEnvironmentBufferTests
+public partial class MovementEnvironmentBufferTests
 {
     static readonly MovementSpaceKey Space = new("world", "room");
     static readonly MovementBodyQuery Body = new(new Vector3(0f, 1f, 0f), 0.3f, 0.75f, Space, null);

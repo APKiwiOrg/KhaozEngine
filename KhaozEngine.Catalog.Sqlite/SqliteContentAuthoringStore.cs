@@ -79,6 +79,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
     internal Func<(ConnectionState State, bool NativeHandleClosed)> CaptureConnectionLifetimeForTests()
     {
         SqliteConnection connection = _connection.Connection;
+        // Internal invariant: this probe borrows the handle of the connection the constructor opened.
         var native = connection.Handle ?? throw new InvalidOperationException("The held SQLite connection has no native handle.");
         return () => (connection.State, native.IsClosed);
     }
@@ -104,7 +105,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteCommand command = Command("SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;");
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw as string ?? throw NoMetadata();
+        return RequireMetadataScalar<string>(raw);
     }
 
     /// <inheritdoc />
@@ -214,7 +215,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
     {
         using SqliteCommand command = Command(sql, transaction);
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw is long value ? value : throw NoMetadata();
+        return RequireMetadataScalar<long>(raw);
     }
 
     /// <summary>A command on the held connection, enlisted in a transaction when one is open.</summary>
@@ -235,33 +236,45 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
 
     static long Millis(DateTimeOffset at) => at.ToUnixTimeMilliseconds();
 
+    static T RequireMetadataScalar<T>(object? raw)
+    {
+        if (raw is T value) return value;
+        if (raw is null or DBNull) throw NoMetadata();
+        throw new ContentAuthoringException(ContentAuthoringRefusal.StoredScalarTypeMismatch,
+            DescribeMissingMetadata(), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ExpectedScalarType = typeof(T), ActualScalarType = raw.GetType() };
+    }
+
+    static string DescribeMissingMetadata()
+        => FormattableString.Invariant(
+            $"The database carries no catalog_metadata row, so it has not been initialized. Call {nameof(InitializeAsync)} first.");
+
     static ContentAuthoringException NoMetadata()
-        => new(
-            FormattableString.Invariant(
-                $"The database carries no catalog_metadata row, so it has not been initialized. Call {nameof(InitializeAsync)} first."),
-            default,
-            0,
-            ContentAuthoringException.SchemaMismatchReason);
+        => new(ContentAuthoringRefusal.SchemaMetadataMissing,
+            DescribeMissingMetadata(), default, 0, ContentAuthoringException.SchemaMismatchReason);
 
     static ContentAuthoringException UnknownVersion(int versionNumber)
-        => new(
+        => new(ContentAuthoringRefusal.VersionUnknown,
             FormattableString.Invariant($"This store holds no version {versionNumber}."),
             default,
             0,
-            ContentAuthoringException.UnknownVersionReason);
+            ContentAuthoringException.UnknownVersionReason)
+        { VersionNumber = versionNumber };
 
     static ContentAuthoringException NoPackStore(string member)
-        => new(
+        => new(ContentAuthoringRefusal.PackStoreMissing,
             FormattableString.Invariant(
                 $"{nameof(SqliteContentAuthoringStore)}.{member} needs a pack store and this store was built with none. A publish writes files before it writes rows, so the pack target is not optional for it."),
             default,
             0,
-            ContentAuthoringException.NoPackStoreReason);
+            ContentAuthoringException.NoPackStoreReason)
+        { MemberName = member };
 
     ContentTypeRegistration RequireType(ContentTypeId type)
         => _registry.TryGet(type, out ContentTypeRegistration? registration)
             ? registration
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"Content type {type.Value} is not registered, so this store carries no declaration for it."),
                 type,

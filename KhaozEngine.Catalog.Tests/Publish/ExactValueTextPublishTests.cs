@@ -6,6 +6,7 @@ using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Tests.Catalog.Authoring;
 using Xunit;
 using static KhaozEngine.Tests.Catalog.Authoring.TextAuthoringFixtures;
+using static KhaozEngine.Tests.Catalog.Publish.TextPublishFixtures;
 
 namespace KhaozEngine.Tests.Catalog.Publish;
 
@@ -146,6 +147,11 @@ public sealed class ExactValueTextPublishTests
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => text.CommitTextPublishAsync(stale, Request(1), null));
         Assert.Equal(ContentAuthoringException.TextChunkMismatchReason, refused.Reason);
+        Assert.Equal("en", refused.Language);
+
+        Assert.Equal(ContentAuthoringRefusal.TextChunkHashMismatch, refused.Refusal);
+        Assert.Equal(other.Hash, refused.TextHash);
+        Assert.Equal(Hash("en", (SwordName, "Blade")), refused.ExpectedTextHash);
 
         // The right hash claimed as REUSED, which the base never recorded for these values.
         ContentTextChunkRecord real = Chunk("en", ("sword", "Blade"));
@@ -155,10 +161,15 @@ public sealed class ExactValueTextPublishTests
         refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => text.CommitTextPublishAsync(reused, Request(1), null));
         Assert.Equal(ContentAuthoringException.TextChunkMismatchReason, refused.Reason);
+        Assert.Equal("en", refused.Language);
 
+        Assert.Equal(ContentAuthoringRefusal.TextReusedHashMismatch, refused.Refusal);
+        Assert.Equal(real.Hash, refused.TextHash);
+        Assert.Equal(Hash("en", (SwordName, "Sword")), refused.ExpectedTextHash);
         Assert.Null(await store.GetVersionAsync(2));
         Assert.Equal(audits, await AuditCountAsync(store));
         Assert.Equal("Blade", (await store.GetOpenDraftAsync())!.TextState!.Edits.Single().Value);
+        Assert.Equal("Sword", Assert.Single((await text.ReadTextSnapshotAsync(1)).Revisions).Value);
 
         var plan = new ContentTextPublishPlan(rowPlan, snapshot, candidate, new[] { real });
         await text.CommitTextPublishAsync(plan, Request(1), null);
@@ -187,6 +198,9 @@ public sealed class ExactValueTextPublishTests
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.CommitTextPublishAsync(
             new ContentTextPublishPlan(rowPlan, snapshot, candidate, new[] { forged }), Request(1), null));
         Assert.Equal(ContentAuthoringException.TextChunkMismatchReason, refused.Reason);
+        Assert.Equal("en", refused.Language);
+        Assert.Equal(ContentAuthoringRefusal.TextChunkBytesMismatch, refused.Refusal);
+        Assert.Equal(real.Hash, refused.TextHash);
         Assert.Null(await store.GetVersionAsync(2));
         Assert.Equal(audits, await AuditCountAsync(store));
         Assert.Equal("Sword", Assert.Single((await text.ReadTextSnapshotAsync(1)).Revisions).Value);

@@ -47,13 +47,15 @@ public sealed partial class InMemoryContentAuthoringStore
     {
         if (!string.Equals(plan.StoreEpoch, _storeEpoch, StringComparison.Ordinal))
         {
-            throw Mismatch("it was frozen in another store");
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextPlanEpochMismatch,
+                DescribeMismatch("it was frozen in another store"), default, 0, ContentAuthoringException.TextStateMismatchReason)
+            { ExpectedEpoch = plan.StoreEpoch, ActualEpoch = _storeEpoch };
         }
 
         ConfirmNumber(plan.RowPlan);
         if (plan.BaseVersion != _activeVersion)
         {
-            throw Moved(FormattableString.Invariant(
+            throw Moved(plan.BaseVersion, _activeVersion, FormattableString.Invariant(
                 $"The text plan stands on version {plan.BaseVersion} and the store stands at {_activeVersion}."));
         }
 
@@ -61,12 +63,24 @@ public sealed partial class InMemoryContentAuthoringStore
             || open.FrozenForBaseVersion != _activeVersion
             || !ContentTextCompatibility.SameDraft(plan.Snapshot.Draft, open))
         {
-            throw Mismatch("the open draft is not the complete draft the plan froze");
+            ContentAuthoringRefusal refusal = _draft is null ? ContentAuthoringRefusal.FrozenDraftLost
+                : _draft.FrozenForBaseVersion != _activeVersion ? ContentAuthoringRefusal.TextPlanFreezeMismatch
+                : ContentAuthoringRefusal.TextPlanDraftMismatch;
+            throw new ContentAuthoringException(refusal,
+                DescribeMismatch("the open draft is not the complete draft the plan froze"),
+                default, 0, ContentAuthoringException.TextStateMismatchReason)
+            {
+                ExpectedBaseVersion = plan.BaseVersion,
+                ActualBaseVersion = refusal == ContentAuthoringRefusal.TextPlanFreezeMismatch ? _draft!.FrozenForBaseVersion : null,
+            };
         }
 
         if (!SameText(TextSnapshotAt(_activeVersion), plan.Snapshot.BaselineText))
         {
-            throw Mismatch("the base version's text or languages are not the ones the plan read");
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextPlanBaselineMismatch,
+                DescribeMismatch("the base version's text or languages are not the ones the plan read"),
+                default, 0, ContentAuthoringException.TextStateMismatchReason)
+            { ExpectedBaseVersion = plan.BaseVersion };
         }
 
         // Every chunk is regenerated from the plan's own values, never trusted.
@@ -86,10 +100,7 @@ public sealed partial class InMemoryContentAuthoringStore
         foreach (ContentTextRevision close in plan.TextCloses)
         {
             int index = revisions.IndexOf(close);
-            if (index < 0)
-            {
-                throw Mismatch("a text close names a revision this store does not hold live");
-            }
+            RequireTextClosePresent(close, index >= 0);
 
             revisions[index] = close.ClosedIn(plan.VersionNumber);
         }
@@ -124,8 +135,11 @@ public sealed partial class InMemoryContentAuthoringStore
 
         if (!agrees)
         {
-            throw ContentTextCompatibility.Unrepresented(member, FormattableString.Invariant(
-                $"the plan names {plan.Languages.Count} text chunk(s) that are not the {languages.Length} version {_activeVersion} recorded"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextManifestOnRowOnlyRoute,
+                ContentTextCompatibility.DescribeUnrepresented(member, FormattableString.Invariant(
+                $"the plan names {plan.Languages.Count} text chunk(s) that are not the {languages.Length} version {_activeVersion} recorded")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            { MemberName = member, VersionNumber = _activeVersion, ActualCount = plan.Languages.Count, ExpectedCount = languages.Length };
         }
 
         return new StagedText(null, languages, null, [], []);
@@ -193,8 +207,10 @@ public sealed partial class InMemoryContentAuthoringStore
             }
         }
 
-        throw Mismatch(FormattableString.Invariant(
-            $"text names type {revision.Type.Value} row {revision.DefinitionId}, which the plan holds no live row of"));
+        throw new ContentAuthoringException(ContentAuthoringRefusal.TextPlanRowUnknown, DescribeMismatch(FormattableString.Invariant(
+            $"text names type {revision.Type.Value} row {revision.DefinitionId}, which the plan holds no live row of")),
+            default, 0, ContentAuthoringException.TextStateMismatchReason)
+        { TextRowType = revision.Type, TextRowId = revision.DefinitionId, FieldName = revision.FieldName, Language = revision.Language };
     }
 
     static bool SameText(ContentVersionTextSnapshot actual, ContentVersionTextSnapshot expected)
@@ -226,13 +242,9 @@ public sealed partial class InMemoryContentAuthoringStore
         return true;
     }
 
-    static ContentAuthoringException Mismatch(string detail)
-        => new(
-            FormattableString.Invariant(
-                $"The text commit is refused because {detail}. Nothing was written, and the plan is rebuilt from a fresh freeze."),
-            default,
-            0,
-            ContentAuthoringException.TextStateMismatchReason);
+    static string DescribeMismatch(string detail)
+        => FormattableString.Invariant(
+            $"The text commit is refused because {detail}. Nothing was written, and the plan is rebuilt from a fresh freeze.");
 
     /// <summary>
     /// What one commit stages for text before the shared core runs.

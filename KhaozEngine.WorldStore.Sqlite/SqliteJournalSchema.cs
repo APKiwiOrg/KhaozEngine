@@ -173,7 +173,7 @@ END;
             IReadOnlyDictionary<string, string> actual = ReadSchemaObjects(connection);
             if (actual.Count == 0)
             {
-                if (mode != SqliteJournalSchemaMode.AutoCreate) throw Mismatch("missing");
+                if (mode != SqliteJournalSchemaMode.AutoCreate) throw Mismatch(JournalStoreRefusal.SchemaMissing, "missing");
                 EnableWal(connection);
                 using SqliteCommand create = connection.CreateCommand();
                 create.CommandText = Tables;
@@ -185,7 +185,7 @@ END;
             if (version == 1)
             {
                 ValidateSchemaObjects(actual, VersionOneTables, 1);
-                if (mode != SqliteJournalSchemaMode.AutoCreate) throw Mismatch("unsupported version '1'");
+                if (mode != SqliteJournalSchemaMode.AutoCreate) throw UnsupportedVersion(1);
                 MigrateVersionOne(connection);
                 actual = ReadSchemaObjects(connection);
                 version = ReadSchemaVersion(connection);
@@ -193,26 +193,26 @@ END;
             if (version == 2)
             {
                 ValidateVersionTwoObjects(actual);
-                if (mode != SqliteJournalSchemaMode.AutoCreate) throw Mismatch("unsupported version '2'");
+                if (mode != SqliteJournalSchemaMode.AutoCreate) throw UnsupportedVersion(2);
                 MigrateVersionTwo(connection);
                 actual = ReadSchemaObjects(connection);
                 version = ReadSchemaVersion(connection);
             }
-            if (version != CurrentVersion) throw Mismatch($"unsupported version '{version}'");
+            if (version != CurrentVersion) throw UnsupportedVersion(version);
             ValidateSchemaObjects(actual, Tables, CurrentVersion);
 
             using SqliteCommand command = connection.CreateCommand();
 
             command.CommandText = "PRAGMA foreign_keys;";
             if (Convert.ToInt32(command.ExecuteScalar()) != 1)
-                throw Mismatch("foreign key enforcement is disabled");
+                throw Mismatch(JournalStoreRefusal.SchemaForeignKeysDisabled, "foreign key enforcement is disabled");
 
             if (mode == SqliteJournalSchemaMode.ReadOnly) return;
             if (mode == SqliteJournalSchemaMode.AutoCreate) EnableWal(connection);
             command.CommandText = "PRAGMA journal_mode;";
             string journalMode = Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
             if (!StringComparer.OrdinalIgnoreCase.Equals(journalMode, "wal") && !StringComparer.OrdinalIgnoreCase.Equals(journalMode, "memory"))
-                throw Mismatch($"journal mode is '{journalMode}' instead of WAL");
+                throw Mismatch(JournalStoreRefusal.SchemaJournalModeUnsupported, $"journal mode is '{journalMode}' instead of WAL", actualMode: journalMode, requiredMode: "wal");
         }
         catch (JournalStoreException)
         {
@@ -220,7 +220,7 @@ END;
         }
         catch (SqliteException exception)
         {
-            throw Mismatch("schema metadata is unavailable", exception);
+            throw Mismatch(JournalStoreRefusal.SchemaMetadataUnreadable, "schema metadata is unavailable", exception);
         }
     }
 
@@ -248,7 +248,8 @@ END;
         object? raw = command.ExecuteScalar();
         return raw is long version
             ? version
-            : throw Mismatch(raw is null or DBNull ? "missing" : Convert.ToString(raw) ?? "unknown");
+            : throw Mismatch(raw is null or DBNull ? JournalStoreRefusal.SchemaMetadataMissing : JournalStoreRefusal.SchemaVersionMalformed,
+                raw is null or DBNull ? "missing" : Convert.ToString(raw) ?? "unknown", metadataType: raw is null or DBNull ? null : raw.GetType());
     }
 
     private static void MigrateVersionOne(SqliteConnection connection)
@@ -293,11 +294,13 @@ END;
     {
         IReadOnlyDictionary<string, string> expected = ReadReferenceObjects(expectedTables);
         if (actual.Count != expected.Count)
-            throw Mismatch("partial or contains unexpected journal objects");
+            throw InventoryMismatch(actual, expected, expectedVersion);
         foreach ((string name, string expectedSql) in expected)
         {
-            if (!actual.TryGetValue(name, out string? actualSql) || !StringComparer.Ordinal.Equals(actualSql, expectedSql))
-                throw Mismatch($"version {expectedVersion} object '{name}' does not match the supported shape");
+            bool found = actual.TryGetValue(name, out string? actualSql);
+            if (!found || !StringComparer.Ordinal.Equals(actualSql, expectedSql))
+                throw Mismatch(found ? JournalStoreRefusal.SchemaObjectDefinitionMismatch : JournalStoreRefusal.SchemaObjectMissing,
+                    $"version {expectedVersion} object '{name}' does not match the supported shape", objectName: name, expectedVersion: expectedVersion);
         }
     }
 
@@ -323,12 +326,41 @@ END;
         command.ExecuteScalar();
     }
 
-    private static JournalStoreException Mismatch(string actual, Exception? innerException = null)
+    private static JournalStoreException UnsupportedVersion(long version)
+        => Mismatch(JournalStoreRefusal.SchemaVersionUnsupported, $"unsupported version '{version}'", actualVersion: version,
+            supportedVersions: [CurrentVersion]);
+
+    private static JournalStoreException InventoryMismatch(
+        IReadOnlyDictionary<string, string> actual, IReadOnlyDictionary<string, string> expected, int expectedVersion)
+        => Mismatch(JournalStoreRefusal.SchemaObjectInventoryMismatch, "partial or contains unexpected journal objects",
+            expectedVersion: expectedVersion,
+            missingObjects: expected.Keys.Where(name => !actual.ContainsKey(name)).OrderBy(name => name, StringComparer.Ordinal).ToArray(),
+            unexpectedObjects: actual.Keys.Where(name => !expected.ContainsKey(name)).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+
+    private static JournalStoreException Mismatch(
+        JournalStoreRefusal reason, string actual, Exception? innerException = null,
+        string? objectName = null, long? expectedVersion = null, long? actualVersion = null,
+        IReadOnlyList<long>? supportedVersions = null, Type? metadataType = null,
+        IReadOnlyList<string>? missingObjects = null, IReadOnlyList<string>? unexpectedObjects = null,
+        string? actualMode = null, string? requiredMode = null)
         => new(
+            reason,
             JournalStoreFailureKind.SchemaMismatch,
             JournalStoreFailureCertainty.DefinitelyNotCommitted,
             JournalStoreFailureScope.WholeStore,
             null,
             $"SQLite mutation journal schema is {actual}. Apply migration '{RequiredMigration}'.",
-            innerException);
+            innerException)
+        {
+            RequiredMigration = RequiredMigration,
+            ObjectName = objectName,
+            ExpectedVersion = expectedVersion,
+            ActualVersion = actualVersion,
+            SupportedVersions = supportedVersions,
+            MetadataType = metadataType,
+            MissingObjects = missingObjects,
+            UnexpectedObjects = unexpectedObjects,
+            ActualMode = actualMode,
+            RequiredMode = requiredMode,
+        };
 }

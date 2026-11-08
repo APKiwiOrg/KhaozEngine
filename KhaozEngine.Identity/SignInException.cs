@@ -18,34 +18,34 @@ public class SignInException : Exception
 {
     /// <summary>Creates a failure with no reason, for a backend outside the engine. <paramref name="message"/> is
     /// also kept as <see cref="Detail"/>.</summary>
-    public SignInException(string message) : base(message)
-    {
-        Detail = message;
-    }
+    public SignInException(string message) : this(null, message, null) { }
 
     /// <summary>Creates a failure with no reason and an inner cause, for a backend outside the engine.
     /// <paramref name="message"/> is also kept as <see cref="Detail"/>.</summary>
-    public SignInException(string message, Exception innerException) : base(message, innerException)
-    {
-        Detail = message;
-    }
+    public SignInException(string message, Exception innerException) : this(null, message, innerException) { }
 
     /// <summary>Creates a failure refused by <paramref name="reason"/>.</summary>
     /// <param name="reason">The rule that refused the sign-in.</param>
     /// <param name="message">The developer-facing explanation, not a classification token.</param>
-    public SignInException(SignInRefusal reason, string message) : base(message)
-    {
-        Reason = reason;
-    }
+    public SignInException(SignInRefusal reason, string message) : this((SignInRefusal?)reason, message, null) { }
 
     /// <summary>Creates a failure refused by <paramref name="reason"/>, with the cause that triggered it.</summary>
     /// <param name="reason">The rule that refused the sign-in.</param>
     /// <param name="message">The developer-facing explanation, not a classification token.</param>
     /// <param name="innerException">The exception that triggered the refusal.</param>
     public SignInException(SignInRefusal reason, string message, Exception innerException)
+        : this((SignInRefusal?)reason, message, innerException) { }
+
+    /// <summary>Initializes a provider's legacy or structured failure without calling a public legacy
+    /// constructor. A null reason retains caller text in <see cref="Detail"/>.</summary>
+    /// <param name="reason">The refused rule, or null for a consumer-built legacy failure.</param>
+    /// <param name="message">The developer-facing explanation.</param>
+    /// <param name="innerException">The cause, when available.</param>
+    protected SignInException(SignInRefusal? reason, string message, Exception? innerException)
         : base(message, innerException)
     {
         Reason = reason;
+        Detail = reason is null ? message : null;
     }
 
     /// <summary>The rule that refused the sign-in. Null only for an instance built through a message-only

@@ -106,7 +106,7 @@ internal static class TextAuthoringFixtures
     /// baseline names <paramref name="languages"/> so both manifests carry the text chunk list.
     /// </summary>
     public static async Task<(ContentTextPublishSnapshot Snapshot, ContentPublishPlan RowPlan)> FreezeAndPlanAsync(
-        InMemoryContentAuthoringStore store, IReadOnlyList<ManifestLanguageEntry> languages)
+        IContentTextAuthoringStore store, IReadOnlyList<ManifestLanguageEntry> languages)
     {
         IContentTextAuthoringStore text = store;
         ContentTextPublishSnapshot snapshot = await text.FreezeChangesAsync(
@@ -114,7 +114,7 @@ internal static class TextAuthoringFixtures
 
         var twin = new InMemoryContentAuthoringStore(TextRegistry());
         await twin.ApplyEditsAsync(snapshot.Draft.Changes.Edits, Actor, Operator, "twin");
-        var publisher = new ContentPublisher(twin, store, TextRegistry());
+        var publisher = new ContentPublisher(twin, (IContentIdPersistence)store, TextRegistry());
         ContentPublishBaseline held = snapshot.Baseline;
         var baseline = new ContentPublishBaseline(
             held.VersionNumber, held.Rows, held.Rules, held.Chunks, languages,
@@ -152,7 +152,7 @@ internal static class TextAuthoringFixtures
     /// the companion, and returns the committed version.
     /// </summary>
     public static async Task<ContentVersionRecord> PublishNamedRowAsync(
-        InMemoryContentAuthoringStore store, string key, string name)
+        IContentTextAuthoringStore store, string key, string name)
     {
         IContentTextAuthoringStore text = store;
         var names = new List<(string Key, string Value)> { (key, name) };

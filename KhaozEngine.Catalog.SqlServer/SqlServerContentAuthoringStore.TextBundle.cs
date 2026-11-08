@@ -69,7 +69,7 @@ public sealed partial class SqlServerContentAuthoringStore
     {
         for (int i = 0; i < edits.Count; i++)
         {
-            CheckAgainstSchema(edits[i]);
+            CheckAgainstSchema(edits[i], i);
         }
 
         await ApplyEditsInAsync(scope, edits, actor, operatorId, note, cancellationToken).ConfigureAwait(false);

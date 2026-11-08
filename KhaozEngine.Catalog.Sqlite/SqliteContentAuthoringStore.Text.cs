@@ -41,7 +41,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
 
         for (int i = 0; i < changes.RowEdits.Count; i++)
         {
-            CheckAgainstSchema(changes.RowEdits[i]);
+            CheckAgainstSchema(changes.RowEdits[i], i);
         }
 
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
@@ -110,7 +110,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
         int active = await ReadActiveAsync(transaction, cancellationToken).ConfigureAwait(false);
         if (expectedBaseVersion != active)
         {
-            throw Moved(FormattableString.Invariant(
+            throw Moved(expectedBaseVersion, active, FormattableString.Invariant(
                 $"The publish expects base version {expectedBaseVersion} and the store stands at {active}. Another publish landed in between, so this draft is against a version that is no longer the base."));
         }
 
@@ -118,6 +118,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
             || open.TotalWorkCount == 0)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.NoPendingDraft,
                 "There is no open draft with pending row work, text work or language introductions, so there is nothing to publish.",
                 default,
                 0,
@@ -225,11 +226,13 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
         if (id == 0 && !context.Pending.Contains((target.Type.Value, target.Key)))
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextBindingRowUnknown,
                 FormattableString.Invariant(
                     $"Text for type {target.Type.Value} row '{target.Key}' names a row neither the base version nor the open draft holds."),
                 target.Type,
                 0,
-                ContentAuthoringException.UnknownRowReason);
+                ContentAuthoringException.UnknownRowReason)
+            { RowKey = target.Key.ToString() };
         }
 
         bool isDeclared = context.Declared.Contains(target.Language)
@@ -240,11 +243,13 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
             if (!isDeclared)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.TextLanguageUndeclared,
                     FormattableString.Invariant(
                         $"Language '{target.Language}' is neither declared by version {context.Active} nor introduced by the open draft, so there is nothing to remove in it. A Set is what declares a language."),
                     target.Type,
                     id,
-                    ContentAuthoringException.TextLanguageUndeclaredReason);
+                    ContentAuthoringException.TextLanguageUndeclaredReason)
+                { FieldName = target.FieldName, Language = target.Language };
             }
 
             if (standing is null
@@ -436,8 +441,8 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
     {
         using SqliteCommand command = Command(
             "SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;", transaction);
-        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string
-            ?? throw NoMetadata();
+        object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return RequireMetadataScalar<string>(raw);
     }
 
     Task AppendDiscardAuditAsync(

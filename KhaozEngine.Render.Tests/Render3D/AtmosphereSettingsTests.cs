@@ -33,6 +33,7 @@ public sealed class AtmosphereSettingsTests
         Assert.Equal(1000f, s.WorldUnitsPerKilometre);
         Assert.Equal(20f, s.AerialDistanceScale);
         Assert.Equal(0f, s.AerialOnsetDistance);
+        Assert.Equal(8, s.AerialShadowSamples);
         Assert.Equal(1f, s.AmbientScale);
         Assert.Equal(1f, s.FillScale);
         Assert.Equal(.05f, s.NightAmbientFloor);
@@ -109,6 +110,19 @@ public sealed class AtmosphereSettingsTests
         typeof(AtmosphereSettings).GetProperty(propertyName)!.SetValue(s, value);
         var error = Assert.Throws<ArgumentOutOfRangeException>(s.Validate);
         Assert.Equal(propertyName, error.ParamName);
+    }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(17, 16)]
+    public void InvalidShadowSamples_AreRejectedWithValidBoundaryControl(int invalid, int boundary)
+    {
+        var s = AtmosphereSettings.Earth();
+        s.AerialShadowSamples = invalid;
+        var error = Assert.Throws<ArgumentOutOfRangeException>(s.Validate);
+        Assert.Equal(nameof(AtmosphereSettings.AerialShadowSamples), error.ParamName);
+        s.AerialShadowSamples = boundary;
+        s.Validate();
     }
 
     public static IEnumerable<object[]> NonFiniteScalarSettings()
@@ -220,6 +234,7 @@ public sealed class AtmosphereSettingsTests
         object changed = property.GetValue(s) switch
         {
             bool value => !value,
+            int value => value + 1,
             float value => value + 1f,
             Vector3 value => value + Vector3.One,
             _ => throw new InvalidOperationException("Unknown atmosphere property type."),
@@ -258,6 +273,7 @@ public sealed class AtmosphereSettingsTests
     [InlineData(nameof(AtmosphereSettings.WorldUnitsPerKilometre), true)]
     [InlineData(nameof(AtmosphereSettings.AerialDistanceScale), true)]
     [InlineData(nameof(AtmosphereSettings.AerialOnsetDistance), true)]
+    [InlineData(nameof(AtmosphereSettings.AerialShadowSamples), true)]
     [InlineData(nameof(AtmosphereSettings.AmbientScale), true)]
     [InlineData(nameof(AtmosphereSettings.FillScale), true)]
     [InlineData(nameof(AtmosphereSettings.NightAmbientFloor), true)]
@@ -277,6 +293,7 @@ public sealed class AtmosphereSettingsTests
         object changed = property.GetValue(s) switch
         {
             bool value => !value,
+            int value => value + 1,
             float value => value + .01f,
             Vector3 value => value + new Vector3(.01f),
             _ => throw new InvalidOperationException("Unknown atmosphere property type."),

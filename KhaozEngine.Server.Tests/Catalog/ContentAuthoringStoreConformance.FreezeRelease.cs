@@ -23,9 +23,15 @@ public abstract partial class ContentAuthoringStoreConformance
         ContentAuthoringException edit = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => ApplyAsync(store, ContentEdit.Add(Thing, new ContentKey("late"), CatalogFixtures.Fields(33))));
         Assert.Equal(ContentAuthoringException.PublishInProgressReason, edit.Reason);
+        Assert.Equal(ContentAuthoringRefusal.PublishInProgress, edit.Refusal);
+        Assert.Equal("ApplyEditsAsync", edit.MemberName);
+        Assert.Equal(1, edit.FrozenForBaseVersion);
         ContentAuthoringException discard = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.DiscardDraftAsync(CatalogFixtures.Actor, CatalogFixtures.Operator));
         Assert.Equal(ContentAuthoringException.PublishInProgressReason, discard.Reason);
+        Assert.Equal(ContentAuthoringRefusal.PublishInProgress, discard.Refusal);
+        Assert.Equal("DiscardDraftAsync", discard.MemberName);
+        Assert.Equal(1, discard.FrozenForBaseVersion);
 
         await scoped.ClearDraftFreezeAsync(1);
         Assert.False((await store.GetOpenDraftAsync())!.IsFrozen);

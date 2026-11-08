@@ -51,6 +51,9 @@ public sealed class AtmosphereSettings
     /// distance d becomes d * d / (d + onset), so near geometry stays clear while distant fog is reduced by at
     /// most the onset. Zero keeps the linear distance.</summary>
     public float AerialOnsetDistance { get; set; }
+    /// <summary>Point shadow taps along lit receivers' fog segments, from 0 through 16. Defaults to 8.
+    /// Zero disables key-light occlusion of fog. Air outside shadow coverage remains unoccluded.</summary>
+    public int AerialShadowSamples { get; set; } = 8;
     /// <summary>Non-negative multiplier on ambient lighting only.</summary>
     public float AmbientScale { get; set; } = 1f;
     /// <summary>Non-negative multiplier on fill lighting only.</summary>
@@ -106,6 +109,7 @@ public sealed class AtmosphereSettings
         && WorldUnitsPerKilometre.Equals(other.WorldUnitsPerKilometre)
         && AerialDistanceScale.Equals(other.AerialDistanceScale)
         && AerialOnsetDistance.Equals(other.AerialOnsetDistance)
+        && AerialShadowSamples == other.AerialShadowSamples
         && AmbientScale.Equals(other.AmbientScale)
         && FillScale.Equals(other.FillScale)
         && NightAmbientFloor.Equals(other.NightAmbientFloor)
@@ -163,6 +167,9 @@ public sealed class AtmosphereSettings
         Positive(WorldUnitsPerKilometre, nameof(WorldUnitsPerKilometre));
         NonNegative(AerialDistanceScale, nameof(AerialDistanceScale));
         NonNegative(AerialOnsetDistance, nameof(AerialOnsetDistance));
+        if (AerialShadowSamples < 0 || AerialShadowSamples > 16)
+            throw new ArgumentOutOfRangeException(nameof(AerialShadowSamples), AerialShadowSamples,
+                "Fog shadow samples must be from 0 through 16.");
         NonNegative(AmbientScale, nameof(AmbientScale));
         NonNegative(FillScale, nameof(FillScale));
         NonNegative(NightAmbientFloor, nameof(NightAmbientFloor));

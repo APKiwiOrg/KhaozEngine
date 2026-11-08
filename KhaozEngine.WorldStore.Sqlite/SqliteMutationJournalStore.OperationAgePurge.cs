@@ -89,9 +89,7 @@ public sealed partial class SqliteMutationJournalStore
             transaction,
             "SELECT CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER);");
         object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return value is null or DBNull
-            ? throw Corrupt(Array.Empty<string>(), "SQLite did not return its UTC clock.")
-            : Timestamp(Convert.ToInt64(value));
+        return RequireDatabaseUtcNow(value);
     }
 
     private static DateTimeOffset SubtractOrMinimum(DateTimeOffset value, TimeSpan duration)

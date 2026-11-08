@@ -145,10 +145,19 @@ public class CellBlobRecoveryTests
         ids[0] = 99;
         members[0] = "changed";
 
+        int[] generations = [6, 8];
+        var ambiguous = new AmbiguousCellBlobGenerationException("cell", generations);
+        generations[0] = 99;
+        Assert.Equal(new[] { 6, 8 }, ambiguous.CandidateGenerations);
+        Assert.Throws<NotSupportedException>(() => ((IList<int>)ambiguous.CandidateGenerations)[0] = 99);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)ambiguous.CandidateGenerations).SyncRoot);
+
         Assert.Equal(new ushort[] { 16, 17 }, ex.UnregisteredExtensionIds);
         Assert.Equal(new[] { "AssumedWireGeneration", "Registry" }, ex.RecoveryMembers);
         Assert.Throws<NotSupportedException>(() => ((IList<ushort>)ex.UnregisteredExtensionIds!)[0] = 99);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)ex.UnregisteredExtensionIds!).SyncRoot);
         Assert.Throws<NotSupportedException>(() => ((IList<string>)ex.RecoveryMembers!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)ex.RecoveryMembers!).SyncRoot);
     }
 
     /// <summary>

@@ -2069,8 +2069,8 @@ Resolver, root, prefab, identity registry, runtime layer, surface scalar and cel
 `MapDocumentRefusal Reason` and applicable identifiers instead of classifying its message. The public
 message-only constructors remain available to consumers and leave `Reason` null. Every engine construction
 supplies a reason. Validation adapters forward their first typed finding and retain the ordered `Findings` snapshot.
-Compare `MapDocumentRefusal` members by name and rebuild against the engine version you pin, because members
-are grouped by area and their numeric values are not stable across versions.
+`MapDocumentRefusal` numeric values are stable from version 23.5.0. New members go at the end and existing values
+never move, so a mod or tool built against one engine version keeps working on a later one.
 
 Surface scalar and cell checks preserve their original messages. `FieldPath` names the failed unit part,
 frame enumeration, rectangle axis, cell coordinate or required surface identity. Denominator checks carry
@@ -2614,7 +2614,9 @@ all of their producing rules are typed.
 typed context. Resolver, native-metadata and prefab diagnostic producers retain these findings beside the existing string API's
 prose projection. `MapDocumentException.Findings` can carry the full ordered finding list as an owned
 read-only snapshot. Neither a change to the input list nor a cast of the exposed collection can change
-that snapshot. A source wrapper using the source-copy method preserves the reason, all identifiers and the
+that snapshot. Reassigning a nonempty collection on a finding, even from itself, creates a distinct snapshot
+identity for record equality. A `with` copy without collection reassignment retains equality.
+A source wrapper using the source-copy method preserves the reason, all identifiers and the
 original refusal as the cause. `NativeDocumentService.Verify` uses this copy method, adding the storage
 `SourceName` and `ResourceRoot` while retaining the released wrapper text and the original refusal.
 Light and support JSON wrappers preserve known structured causes and otherwise use `SchemaMalformed`.

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using KhaozEngine.Content;
 
 namespace KhaozEngine.TileWorld;
@@ -123,7 +125,7 @@ public sealed class TileWorldException : Exception
     public IReadOnlyList<string>? ArchetypeIds
     {
         get => _archetypeIds;
-        init => _archetypeIds = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _archetypeIds = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The refused object's or marker's authored tile address, including its known plane.
@@ -185,7 +187,7 @@ public sealed class TileWorldException : Exception
     public IReadOnlyList<TileWorldIssue>? Issues
     {
         get => _issues;
-        init => _issues = value is null ? null : Array.AsReadOnly<TileWorldIssue>([.. value]);
+        init => _issues = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The refused prefab's authored name, when admission has a prefab value.</summary>
@@ -269,7 +271,7 @@ public sealed class TileWorldException : Exception
     public IReadOnlyList<string>? SchemaFields
     {
         get => _schemaFields;
-        init => _schemaFields = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _schemaFields = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The structured findings for a catalog schema mismatch. Setting this property copies the
@@ -277,7 +279,7 @@ public sealed class TileWorldException : Exception
     public IReadOnlyList<JsonSchemaFinding>? SchemaFindings
     {
         get => _schemaFindings;
-        init => _schemaFindings = value is null ? null : Array.AsReadOnly<JsonSchemaFinding>([.. value]);
+        init => _schemaFindings = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The catalog id of a self-referencing, missing or water steep companion.</summary>
@@ -306,7 +308,7 @@ public sealed class TileWorldException : Exception
     public IReadOnlyList<byte>? ActualMagic
     {
         get => _actualMagic;
-        init => _actualMagic = value is null ? null : Array.AsReadOnly<byte>([.. value]);
+        init => _actualMagic = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The PGM header's refused maxval.</summary>
@@ -340,7 +342,7 @@ public sealed class TileWorldException : Exception
     public IReadOnlyList<TileClearanceOverlap>? Overlaps
     {
         get => _overlaps;
-        init => _overlaps = value is null ? null : Array.AsReadOnly<TileClearanceOverlap>([.. value]);
+        init => _overlaps = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The refused clearance or foliage sampling cell edge in world units.</summary>
@@ -375,7 +377,7 @@ public sealed class TileWorldException : Exception
     public IReadOnlyList<string>? RequiredTools
     {
         get => _requiredTools;
-        init => _requiredTools = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _requiredTools = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The refused or required foliage layer id, as supplied.</summary>

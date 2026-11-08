@@ -80,14 +80,27 @@ internal static class RangeApproachCore
         bool run, float dt, GroundMoveContext context, Vector2 command, in MoveState predicted, StepAdmission admits)
     {
         if (!ReachGeometry.Within(Body(predicted, tuning), target, range)) return command;
+        using var flat = context.OpenFlatRangePreview(body, predicted, tuning, run, dt);
         float low = 0f, high = 1f;
-        // Each candidate resolves on a copy through the live shared core. This includes support height,
-        // bounds, medium and collision, without a position snap or a gameplay reach epsilon.
+        // Preserve the float interval decisions exactly. Certified flat poses solve the command interval
+        // without movement previews. Every other case resolves each copy through the live shared core.
         for (int iteration = 0; iteration < 32; iteration++)
         {
             float fraction = low + (high - low) * 0.5f;
             if (fraction == low || fraction == high) break;
-            MoveState candidate = context.Step(body, command * fraction, run, dt, tuning);
+            MoveState candidate;
+            if (flat is not null && flat.TryStep(command * fraction, out candidate))
+            {
+                ArrivalPreviewDiagnostics.CertifiedTrial();
+            }
+            else
+            {
+                // A producer may revoke an interval. Retire its proof before the ordinary read and preserve
+                // the bracket already decided, exactly as separate live previews would continue it.
+                flat?.Dispose();
+                ArrivalPreviewDiagnostics.FullStep();
+                candidate = context.Step(body, command * fraction, run, dt, tuning);
+            }
             if (admits(body, candidate, tuning) && ReachGeometry.Within(Body(candidate, tuning), target, range))
                 high = fraction;
             else

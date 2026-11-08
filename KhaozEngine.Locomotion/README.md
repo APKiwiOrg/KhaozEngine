@@ -114,8 +114,8 @@ Without it, a fresh physics geometry generation requires a fresh registration.
 
 `OrdinaryMovementRegistration.Builder.WithAnalyticSupport` optionally attaches an immutable
 `IMovementAnalyticSupportSource`. It must recognize the exact height and normal delegates through `Matches`,
-including their coordinate convention. Ordinary movement does not query this capability or change its owner,
-selection, coarse flags or result. Existing delegates remain valid without it.
+including their coordinate convention. Ordinary support selection keeps its existing owner, coarse flags
+and result. Existing delegates remain valid without provenance.
 
 `Describe` identifies the same authored face the field selects. `MovementSurfaceFeatureKey` contains a source
 provenance string, an opaque source address and a part number. `GetFeature` resolves that exact address to copied
@@ -126,6 +126,16 @@ never height similarity. An unknown address or a field without provenance return
 `IMovementAnalyticSupportCandidates` optionally accelerates source-topology lookup. A Known visitation must include
 every key that `AreAdjacent` could accept. It supplies candidates, never adjacency permission. Consumers still call
 the unchanged exact predicate and fall back to all pairs when no complete candidate capability is available.
+
+`IMovementFlatAnalyticSupportSource` optionally certifies a closed absolute XZ rectangle with one exact float
+height, `Vector3.UnitY` normal and unchanged analytic ownership. Known promises the matching delegates return
+those facts at every represented axis in the rectangle. Sampled endpoints or matching triangle heights alone
+are insufficient evidence. Ordinary range approaches use this under a current pin, together with complete
+selected-static absence, strictly dry whole-body coverage, successful dry point-operation closure and convex
+boundary/scope containment. The proof
+lives only for the borrowed read interval. Unsupported, wet, obstructed, nonuniform or refused regions retain
+the exact movement solver. The tile producer checks every captured triangle in every covered cell, including
+cell seams, within the existing dependency-visit bound. It declines missing ground and negative-zero heights.
 
 The internal Contact descent witness records selected steep support and first walkable support from Air, Slide
 and water handoffs, including support left again inside one tick and recertification after horizontal rounding.
@@ -222,6 +232,16 @@ convert intervals outward and contact columns to the nearest local value through
 so a wet point's local interval contains its local feet. Traces add only that contact conversion to the
 producer's certified error under the 0.001 m budget. Mutable producers advance `Generation` before changing
 answers.
+
+`IMovementDryTracePointProof` is a separate opt-in guarantee for skipping point operations after a known,
+completely dry trace. `CanClassifyDryTracePoints` must prove that every valid enclosed feet point has a successful
+Known dry classification with speed scale one and no domain or interval, under the same space, origin and
+generation. A dry geometric result alone says nothing about point-operation refusals. Fields without this
+capability, or whose proof declines the particular region, keep the exact per-trial solver and pacing reads.
+Ordinary absence has an intrinsic successful dry point operation. The level field opts in because its valid
+point queries use exact dyadic signs and have no precision refusal path. Its trace's independent precision and
+capacity checks must still succeed first. Wrappers that alter point availability cannot inherit this guarantee
+by forwarding only the inner field's trace or proof.
 
 `EffectiveMovementBinding.SampleWaterForPacing(state, queries, out swimming)` reads frame-local point water and
 shares the controller's tick-start swimmer classification, including supported footing and the free-surface flag.
@@ -751,6 +771,13 @@ readiness cleared and the out selection empty. The same null-hint witness stays 
 success, while subsequent requests carry the returned canonical key. This guard does not cache
 membership or replace producer validation.
 
+Water coverage validation and the boundary resolver borrow separate bounded buffers from the interval workspace.
+They retain storage across serial queries and ticks, with the lease's thread and lifetime checks. Reentrant producer
+queries use isolated pooled fallback storage without retaining additional buffers. Producer-exposed contact slices
+are inspected on return because a refusing or throwing producer can leave partial writes. Only initialized runs are
+cleared, while validated boundary output clears its written prefix. Value-only span storage is reset before producer
+callbacks, so missing writes cannot reuse an earlier certificate.
+
 `MovementQueryLease.EnumerateSupport` and `TraceWater` use cleared private scratch and validate the
 complete producer result before publishing caller buffers. Refusal or a provider exception leaves
 both caller buffers untouched. Initial operational limits are 256 support candidates, 64 spans and
@@ -1076,6 +1103,15 @@ its unchanged wire grids. `EffectiveMovementBinding.StepPlayer` and `StepPlayerT
 input, execute the real controller and publish the canonical result under the same query lease. Use them for
 player simulation and certified Drop execution. NetWorld applies this policy to forward prediction, pending
 replay, both authorities and admitted placements. The local Contact `CharacterController3D` uses it too.
+
+`CertifyPlayerPlacement` performs the same cold classification as `ValidatePlacement` and returns an opaque
+`MovementColdPlacement` on success. `StepPlayerWithPlacement` can consume it for one identical first player
+Step in the same read. Copies share that single use. The certificate binds raw and prepared state bits,
+selection, frame, binding identity (including immutable tuning, water policy and composition), boundary and
+exact lease. The controller authenticates the current generations and reconstructs selection before reuse.
+A default, consumed or mismatched certificate takes the regular validation path. Keep the certificate inside
+the caller's read scope, discard it on correction or replay, and never serialize it. Disposal invalidates
+its use. `StepPlayer` remains the ordinary uncached entry point.
 
 Horizontal velocity rounds independently per axis to 1/256 m/s and clamps to +/-127 m/s. Speed scale uses the
 existing offset-from-one 1/1024 grid and 0 through 8 range. Heading and climb rate keep their existing wire grids.

@@ -147,6 +147,12 @@ public class RollbackTests
             () => store.RollbackToAsync(1, PublishFixtures.Actor, "oid:tests", "undo the retire"));
 
         Assert.Equal(ContentAuthoringException.RetireIrreversibleReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.RetireIrreversible, refused.Refusal);
+        Assert.Equal(Thing, refused.Type);
+        Assert.Equal(1, refused.Id);
+        Assert.Equal(1, refused.TargetVersion);
+        Assert.Equal("sword", refused.RowKey);
+        Assert.Equal(1L, refused.BlockerCount);
         ContentFinding finding = Assert.Single(refused.Findings);
         Assert.Equal(BlockedCode, finding.Code);
         Assert.Equal(Thing, finding.Type);
@@ -160,6 +166,8 @@ public class RollbackTests
         // Nothing was written. A refused rollback opens no draft.
         Assert.Null(await store.GetOpenDraftAsync());
         Assert.Equal(2, await store.GetActiveVersionAsync());
+        ContentDraft control = await store.RollbackToAsync(2, PublishFixtures.Actor, "oid:tests", "current target");
+        Assert.Equal(0, control.EditCount);
     }
 
     [Fact]

@@ -129,6 +129,10 @@ The callback receives exact represented polygon coordinates or the installed cur
 Local static addresses and callback spans stay inside the interval and never become portable source identity.
 Navigation binds them to its installer's canonical provenance before retaining data.
 
+Bepu query views also expose this capability. Their capture filters by the view's actual immutable exclusions,
+including borrowed views whose selection differs from registration metadata. A source capture and a selected
+capture are different proofs. Foreign or disposed intervals and disposed views retain their normal refusals.
+
 `IPhysicsStaticEvidenceRaycast` optionally preserves the installed leaf selected by a static column ray in the
 same authenticated lease. A complete miss returns a null hit and leaf -1. Bepu uses its ordinary nearest-hit
 rule, including compound child selection. The leaf resolves curved raw support to the captured primitive without

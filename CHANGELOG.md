@@ -4,60 +4,30 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 23.4.0
+## 23.5.0
 
-2026-11-08
+2026-11-09
 
-- Underwater caustics for opted-in procedural water. `WaterSettings.UnderwaterCaustics` (off by default) and
-  `WaterSettings.CausticStrength` (1, physical) gain `WaterLook` overrides. Strength scales how far refracted sunlight
-  lands, so strength `s` at depth `d` matches strength 1 at depth `s * d`. Enabling caustics also enables underwater
-  sunlight for that body. FFT bodies ignore the opt-in and are never refused. A `water.caustics` pass before the opaque
-  pass draws a 64 m surface window that follows the view and a four-slice caustic map, and lit receivers read it once at
-  their refracted entry point. Frames without participating water run no pass, upload nothing new and allocate nothing.
-  `Scene3D.WaterCausticDiagnostics` reports opted-in, drawn, FFT and overflow planes and layers.
-- Lit receivers gain set 0 bindings `CausticMap` and `CausticSampler` after `WaterVolumes`: 16 and 17 for rigid, foliage
-  and CPU-skinned, 8 and 9 for GPU-skinned, 7 and 8 for splat and tile ground, 11 and 12 for opaque foliage. The water
-  volume buffer grows to 652816 bytes for the window block. The Direct3D 11 motion vertex stage's
-  `PreviousInstanceTransforms` moves from t11 to t12. Frames without participating water render byte-identically.
-- `TileWaterLooks.River` sets `CausticStrength = 4` and leaves the caustic opt-in inherited, so consumers opt in.
-- `Scene3DPassTimings.ModelMs` now also covers caustic planning and recording and opaque light-cluster construction.
-- Vulkan image staging copies align their buffer offset to the format's texel block. An 8-byte format uploaded after a
-  4-byte one used to start at an offset Vulkan rejects.
-
-- Every engine `MapDocumentException` now carries a `MapDocumentRefusal Reason` and typed identifiers, across surfaces,
-  acquisition, geometry, spaces, water, foliage, prefabs, document storage and persistence, MapDoc.Physics, MapEditor
-  and MapEdit.Tool. A test fences the message-only constructors out of those packages. `Reason` is null only on an
-  instance a consumer built. Read the reason, never the text. Messages do not change.
-- New refusal subtypes in those packages derive from the exact type thrown before, so existing catches keep working.
-  `ArgumentException` families carry `ParamName`. JSON refusals are `JsonException` subtypes sharing `MapDocumentRefusal`.
-  A test asserting an exact base type on one of these sites needs to assert the subtype instead.
-- `MapChainResolution` gains `Finding`, carrying the typed cause of a failed chain. Its constructor, deconstruction,
-  status values and `Detail` text are unchanged, but `Finding` joins its generated equality. Other status records that
-  gained a `Finding` behave the same way.
-- A status no longer depends on an identifier's text. An asset named `overflow` that is missing was reported as
-  `CapacityExceeded` because the classifier found that word in the message, and is now `Invalid`, like any missing asset.
-
-- Refusals outside MapDoc now carry a public reason enum and typed identifiers too, filled at every engine throw site,
-  in Accounts.SqlServer and Accounts.Sqlite, Audio, BugReports and BugReports.Relay, Dungeon, Identity and its Discord
-  and OIDC providers, Identity.Exchange.AspNetCore, ItemInstances generation tables, Localization.TestKit, Locomotion,
-  Movement, NetWorld, Netcode signing secrets and Sharding. Each family's README lists its reasons. Messages do not
-  change, and no admission, threshold or order changed.
+- Catalog and journal refusals now carry a public reason enum and typed identifiers, filled at every engine throw
+  site. `ContentAuthoringException` gains `ContentAuthoringRefusal? Refusal` beside its existing string `Reason`,
+  `ContentRegistrationException` gains `ContentRegistrationRefusal? Reason`, and `JournalStoreException` gains
+  `JournalStoreRefusal? Reason` beside `Kind`, `Certainty`, `Scope` and `StreamKeys`. Each family's README lists its
+  reasons. Every existing constructor and member stays, and a consumer's legacy construction leaves the new member null.
 - New sealed refusal types derive from the exact type thrown before, so existing catches keep working:
-  `AccountSchemaException`, `AccountDataException`, `AudioThreadAffinityException`, `BugReportBundleArgumentException`,
-  `BugReportBundleLimitException`, `DungeonKitException`, `TrustedProxyConfigurationException`,
-  `GenerationTableException`, `MovementConfigurationException`, `MovementCapabilityException`, `MovementReadException`,
-  `NavigationBuildException`, `NavigationProfileException`, `NavigationProfileCapabilityException`,
-  `NavigationReadCapabilityException`, `GroundContactCapabilityException`, `WorldConfigurationException`,
-  `CellBlobMigrationException`, `SigningSecretException` and `ShardFrameException`. A test asserting the exact base type
-  at one of these sites needs to assert the subtype instead.
-- Existing carriers keep every constructor and member and gain a reason. `GitHubApiException` gains `Reason`,
-  `ResponsePart` and a bounded, credential-free `UpstreamDetail`, and a moved update whose destination is unusable is
-  `RedirectDestinationUnusable`. `SignInException` gains `Reason`, `ProviderId`, `Timeout`, `StatusCode`, `EndpointRole`,
-  `MemberName`, `ActualScheme` and `Detail`. Its refusal identifiers carry no token, code, state, secret or response
-  body. `Detail` keeps the text a consumer passed to a message-only constructor, is null on every engine refusal, and
-  is untrusted caller text.
-  `LocalizationCoverageException` gains `Reason` and ordered `Findings`, each finding with its own reason, and
-  `DungeonJsonException` gains `Reason` with a rooted `JsonPath` such as `$.edges[0].roomA`.
+  `ContentFieldLookupException` and `JournalStoreStateException`, both `InvalidOperationException`. A test asserting
+  the exact base type at one of these sites needs to assert the subtype instead.
+- Resets refused for host objects report them in full through `ContentHostForeignKeyFinding` and
+  `JournalHostObjectFinding`.
+- A host trigger writing into a journal or catalog batch can no longer change what the store reports. The SQL Server
+  journal checks each result set's shape and requires the complete protocol before accepting Applied or Replayed, and
+  a violation is `BatchResultMalformed` with the transaction rolled back. Catalog family and draft edit identities now
+  come back through an output parameter, so a trigger's result set cannot stand in for them.
+- Public refusal, finding, receipt and validated catalog collections are real snapshots. Casting one to an array or
+  list, or reading `ICollection.SyncRoot`, no longer reaches the storage behind it, so a caller cannot change a value
+  after it was validated. Code that cast these to `T[]` needs to copy them instead.
+- Public refusal enums are append-only from this version. New members go at the end and existing numeric values never
+  move, so mods and tools built against one engine version keep working on a later one. Before this version, compare
+  members by name.
 - Initialize the shared neutral water colour texture when publishing a native water domain. The first draw
   and later frames upload no resource data.
 - Preserve continuous native terrain material across patch and paint joins when a feathered overlay meets
@@ -111,6 +81,78 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   indexed streams add no window entries.
 - Space coverage refinement refusals identify their footprint through `OwnerId` while retaining underlying
   bound and opening identifiers.
+
+## 23.4.0
+
+2026-11-08
+
+- Contact movement costs far less in a populated world, with every movement result unchanged. Flat water coverage
+  queries use a conservative spatial candidate index and return a certified dry result when a capsule path touches no
+  water, instead of scanning every column and boundary patch (#1728). `RangeApproachCore.StopAtRange` solves a certified
+  flat arrival directly instead of up to 32 full movement previews, and any other case keeps the exact solver (#1729).
+  A player's first identical step reuses its cold-placement certificate under the same lease, and any different,
+  corrected or replayed basis revalidates (#1730).
+- `IMovementDryTracePointProof` is a new opt-in for water fields. It states that a known, completely dry trace certifies
+  a successful dry point classification across the swept region. A field that does not implement it keeps the exact
+  arrival solver, so custom fields are unaffected. Level water and the tile water field declare it where it holds.
+- Lit model, terrain, tile-ground and foliage fog now loses the key sun or moon's glow when the shadow atlas
+  occludes its camera-to-receiver segment. `AtmosphereSettings.AerialShadowSamples` defaults to 8, accepts
+  0 through 16, and disables the correction at 0. The other body's light, multiple scattering and night floor
+  remain. Unoccluded output is byte-identical (#1411). Fog beyond shadow coverage waits on the aerial-perspective
+  volume (#1364), and the water's reflected horizon on scene reflections in water (#1609). Decals and effects
+  keep the unoccluded fog colour.
+- Native Metal shaders now end the fragment at a discard. Discarded pixels could otherwise hold stale memory in
+  every colour attachment once a shader grew (#1411).
+- Underwater caustics for opted-in procedural water. `WaterSettings.UnderwaterCaustics` (off by default) and
+  `WaterSettings.CausticStrength` (1, physical) gain `WaterLook` overrides. Strength scales how far refracted sunlight
+  lands, so strength `s` at depth `d` matches strength 1 at depth `s * d`. Enabling caustics also enables underwater
+  sunlight for that body. FFT bodies ignore the opt-in and are never refused. A `water.caustics` pass before the opaque
+  pass draws a 64 m surface window that follows the view and a four-slice caustic map, and lit receivers read it once at
+  their refracted entry point. Frames without participating water run no pass, upload nothing new and allocate nothing.
+  `Scene3D.WaterCausticDiagnostics` reports opted-in, drawn, FFT and overflow planes and layers.
+- Lit receivers gain set 0 bindings `CausticMap` and `CausticSampler` after `WaterVolumes`: 16 and 17 for rigid, foliage
+  and CPU-skinned, 8 and 9 for GPU-skinned, 7 and 8 for splat and tile ground, 11 and 12 for opaque foliage. The water
+  volume buffer grows to 652816 bytes for the window block. The Direct3D 11 motion vertex stage's
+  `PreviousInstanceTransforms` moves from t11 to t12. Frames without participating water render byte-identically.
+- `TileWaterLooks.River` sets `CausticStrength = 4` and leaves the caustic opt-in inherited, so consumers opt in.
+- `Scene3DPassTimings.ModelMs` now also covers caustic planning and recording and opaque light-cluster construction.
+- Vulkan image staging copies align their buffer offset to the format's texel block. An 8-byte format uploaded after a
+  4-byte one used to start at an offset Vulkan rejects.
+
+- Every engine `MapDocumentException` now carries a `MapDocumentRefusal Reason` and typed identifiers, across surfaces,
+  acquisition, geometry, spaces, water, foliage, prefabs, document storage and persistence, MapDoc.Physics, MapEditor
+  and MapEdit.Tool. A test fences the message-only constructors out of those packages. `Reason` is null only on an
+  instance a consumer built. Read the reason, never the text. Messages do not change.
+- New refusal subtypes in those packages derive from the exact type thrown before, so existing catches keep working.
+  `ArgumentException` families carry `ParamName`. JSON refusals are `JsonException` subtypes sharing `MapDocumentRefusal`.
+  A test asserting an exact base type on one of these sites needs to assert the subtype instead.
+- `MapChainResolution` gains `Finding`, carrying the typed cause of a failed chain. Its constructor, deconstruction,
+  status values and `Detail` text are unchanged, but `Finding` joins its generated equality. Other status records that
+  gained a `Finding` behave the same way.
+- A status no longer depends on an identifier's text. An asset named `overflow` that is missing was reported as
+  `CapacityExceeded` because the classifier found that word in the message, and is now `Invalid`, like any missing asset.
+
+- Refusals outside MapDoc now carry a public reason enum and typed identifiers too, filled at every engine throw site,
+  in Accounts.SqlServer and Accounts.Sqlite, Audio, BugReports and BugReports.Relay, Dungeon, Identity and its Discord
+  and OIDC providers, Identity.Exchange.AspNetCore, ItemInstances generation tables, Localization.TestKit, Locomotion,
+  Movement, NetWorld, Netcode signing secrets and Sharding. Each family's README lists its reasons. Messages do not
+  change, and no admission, threshold or order changed.
+- New sealed refusal types derive from the exact type thrown before, so existing catches keep working:
+  `AccountSchemaException`, `AccountDataException`, `AudioThreadAffinityException`, `BugReportBundleArgumentException`,
+  `BugReportBundleLimitException`, `DungeonKitException`, `TrustedProxyConfigurationException`,
+  `GenerationTableException`, `MovementConfigurationException`, `MovementCapabilityException`, `MovementReadException`,
+  `NavigationBuildException`, `NavigationProfileException`, `NavigationProfileCapabilityException`,
+  `NavigationReadCapabilityException`, `GroundContactCapabilityException`, `WorldConfigurationException`,
+  `CellBlobMigrationException`, `SigningSecretException` and `ShardFrameException`. A test asserting the exact base type
+  at one of these sites needs to assert the subtype instead.
+- Existing carriers keep every constructor and member and gain a reason. `GitHubApiException` gains `Reason`,
+  `ResponsePart` and a bounded, credential-free `UpstreamDetail`, and a moved update whose destination is unusable is
+  `RedirectDestinationUnusable`. `SignInException` gains `Reason`, `ProviderId`, `Timeout`, `StatusCode`, `EndpointRole`,
+  `MemberName`, `ActualScheme` and `Detail`. Its refusal identifiers carry no token, code, state, secret or response
+  body. `Detail` keeps the text a consumer passed to a message-only constructor, is null on every engine refusal, and
+  is untrusted caller text.
+  `LocalizationCoverageException` gains `Reason` and ordered `Findings`, each finding with its own reason, and
+  `DungeonJsonException` gains `Reason` with a rooted `JsonPath` such as `$.edges[0].roomA`.
 
 ## 23.3.0
 

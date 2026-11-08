@@ -65,30 +65,43 @@ internal static class SqliteJournalHostObjects
     /// <param name="connection">The reset's open connection.</param>
     /// <param name="transaction">The reset's transaction.</param>
     /// <param name="cancellationToken">Cancels the reads.</param>
-    /// <exception cref="JournalStoreException">A whole-store <c>SchemaMismatch</c> naming every key and trigger that would fire.</exception>
+    /// <exception cref="JournalStoreException">A whole-store <c>SchemaMismatch</c> whose <c>HostObjects</c>
+    /// snapshot names every key and trigger that would fire. Its reason is the first finding's reason.</exception>
     internal static async Task RefuseFiringObjectsAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
         var firing = new List<string>();
+        var findings = new List<JournalHostObjectFinding>();
         using (SqliteCommand command = Command(connection, transaction, KeysSql))
         using (SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                string host = reader.GetString(0);
+                string referenced = reader.GetString(1);
+                string action = reader.GetString(2);
+                findings.Add(new(JournalStoreRefusal.HostForeignKeyActionUnsafe, host, referenced, action, null));
                 firing.Add(FormattableString.Invariant(
-                    $"host table '{reader.GetString(0)}' has a foreign key into journal table '{reader.GetString(1)}' declared ON DELETE {reader.GetString(2)}"));
+                    $"host table '{host}' has a foreign key into journal table '{referenced}' declared ON DELETE {action}"));
+            }
         }
 
         using (SqliteCommand command = Command(connection, transaction, TriggersSql))
         using (SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                string trigger = reader.GetString(0);
+                string referenced = reader.GetString(1);
+                findings.Add(new(JournalStoreRefusal.HostTriggerUnsafe, null, referenced, null, trigger));
                 firing.Add(FormattableString.Invariant(
-                    $"trigger '{reader.GetString(0)}' on journal table '{reader.GetString(1)}' is not the journal's own"));
+                    $"trigger '{trigger}' on journal table '{referenced}' is not the journal's own"));
+            }
         }
 
-        if (firing.Count > 0) throw Refusal(firing);
+        if (firing.Count > 0) throw Refusal(firing, findings);
     }
 
     private static SqliteCommand Command(SqliteConnection connection, SqliteTransaction transaction, string sql)
@@ -100,12 +113,14 @@ internal static class SqliteJournalHostObjects
     }
 
     /// <summary>The refusal, naming every key and trigger that would fire and what an operator can do about them.</summary>
-    private static JournalStoreException Refusal(IReadOnlyList<string> firing)
+    private static JournalStoreException Refusal(IReadOnlyList<string> firing, IReadOnlyList<JournalHostObjectFinding> findings)
         => new(
+            findings[0].Reason,
             JournalStoreFailureKind.SchemaMismatch,
             JournalStoreFailureCertainty.DefinitelyNotCommitted,
             JournalStoreFailureScope.WholeStore,
             null,
             FormattableString.Invariant(
-                $"The SQLite journal cannot be reset: {string.Join(", and ", firing)}. The reset deletes every row of the journal's data tables, which would fire that action or trigger and delete or rewrite rows outside the journal. Nothing was deleted. Remove each such foreign key, or declare it ON DELETE NO ACTION and clear the host rows that reference the journal, and drop each such trigger, then run the reset again."));
+                $"The SQLite journal cannot be reset: {string.Join(", and ", firing)}. The reset deletes every row of the journal's data tables, which would fire that action or trigger and delete or rewrite rows outside the journal. Nothing was deleted. Remove each such foreign key, or declare it ON DELETE NO ACTION and clear the host rows that reference the journal, and drop each such trigger, then run the reset again."))
+        { HostObjects = findings };
 }

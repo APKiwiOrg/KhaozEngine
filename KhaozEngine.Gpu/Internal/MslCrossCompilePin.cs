@@ -93,6 +93,13 @@ namespace KhaozEngine.Gpu.Internal
         internal const string IndexNumbering = "authored";
 
         /// <summary>
+        /// What the emitted fragment does at a discard, as a token for <see cref="Identity"/>. <c>terminate</c> is
+        /// <see cref="MslDiscardTermination"/>. Like <see cref="IndexNumbering"/> it is in the bytes without being a
+        /// SPIRV-Cross option, so without a token a cached entry from before it would keep the old behaviour.
+        /// </summary>
+        internal const string DiscardHandling = "terminate";
+
+        /// <summary>
         /// A stable one-line rendering of the pinned set, for a cache key. Any change to a value above MUST change
         /// this string, because it is what makes a cached emission belong to the options it was emitted under: a
         /// cache hit keyed without it would hand back MSL from the old set forever.
@@ -109,7 +116,8 @@ namespace KhaozEngine.Gpu.Internal
             + ";invertVertexOutputY=" + Bit(InvertVertexOutputY)
             + ";normalizeResourceNames=" + Bit(NormalizeResourceNames)
             + ";specializations=" + SpecializationConstantCount.ToString(CultureInfo.InvariantCulture)
-            + ";indices=" + IndexNumbering;
+            + ";indices=" + IndexNumbering
+            + ";discard=" + DiscardHandling;
 
         // 1 / 0 rather than true / false, matching the sibling pins: nothing but a hash reads this token.
         static string Bit(bool value) => value ? "1" : "0";

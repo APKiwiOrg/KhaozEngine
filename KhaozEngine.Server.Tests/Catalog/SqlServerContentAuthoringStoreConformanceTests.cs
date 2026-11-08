@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Catalog;
 /// <b>Every fact is overridden to carry <see cref="CatalogSqlServerFactAttribute"/>.</b> xUnit decides a skip
 /// at DISCOVERY from the attribute on the method, and an inherited <c>[Fact]</c> would run here with no
 /// instance to run against, so the one-line overrides below are what turn the inherited suite into a gated
-/// one. They add nothing else.
+/// one. The empty-schema refusal also compares complete database content before its repaired control.
 /// </para>
 /// <para>
 /// The database is the isolation unit rather than a file, which is why <see cref="ResetToEmptyAsync"/> drops
@@ -139,8 +139,19 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
-    public override Task Fact02_ValidateOnlyOnAnEmptyDatabaseRefusesAndNamesTheMigration()
-        => base.Fact02_ValidateOnlyOnAnEmptyDatabaseRefusesAndNamesTheMigration();
+    public override async Task Fact02_ValidateOnlyOnAnEmptyDatabaseRefusesAndNamesTheMigration()
+    {
+        IContentAuthoringStore store = NewStore();
+        string before = SqlServerCatalogSnapshot.Read(Database.ConnectionString);
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
+        Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.SchemaMissing, refused.Refusal);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(before, SqlServerCatalogSnapshot.Read(Database.ConnectionString));
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
+    }
 
     /// <inheritdoc />
     [CatalogSqlServerFact]

@@ -198,7 +198,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
         // grid lands whole or not at all.
         for (int i = 0; i < edits.Count; i++)
         {
-            CheckAgainstSchema(edits[i]);
+            CheckAgainstSchema(edits[i], i);
         }
 
         ContentDraft open = _draft
@@ -413,11 +413,20 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
             if (!ContentFamily.IsLegalBlockSize(blockSize))
             {
                 throw new ContentAuthoringException(
+                    blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize
+                        ? ContentAuthoringRefusal.FamilyDeclarationBlockSizeOutsideRange
+                        : ContentAuthoringRefusal.FamilyDeclarationBlockSizeNotPowerOfTwo,
                     FormattableString.Invariant(
                         $"Family '{familyKey}' declares a block size of {blockSize}, and a block size is a power of two between {ContentFamily.MinBlockSize} and {ContentFamily.MaxBlockSize}. It is fixed at creation, because changing it would move every id in the family."),
                     type,
                     0,
-                    ContentAuthoringException.FamilyDeclarationReason);
+                    ContentAuthoringException.FamilyDeclarationReason)
+                {
+                    FamilyKey = familyKey,
+                    ActualBlockSize = blockSize,
+                    MinimumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MinBlockSize : null,
+                    MaximumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MaxBlockSize : null,
+                };
             }
 
             foreach (FamilyRecord held in _families.Values)
@@ -425,11 +434,13 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 if (held.Type == type && string.Equals(held.FamilyKey, familyKey, StringComparison.Ordinal))
                 {
                     throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.FamilyKeyDuplicate,
                         FormattableString.Invariant(
                             $"Content type {type.Value} already carries a family keyed '{familyKey}', and a family key is unique within its type."),
                         type,
                         0,
-                        ContentAuthoringException.FamilyDeclarationReason);
+                        ContentAuthoringException.FamilyDeclarationReason)
+                    { FamilyKey = familyKey };
                 }
             }
 
@@ -657,22 +668,25 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
         => _families.TryGetValue(familyId, out FamilyRecord? held)
             ? held
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.FamilyUnknown,
                 FormattableString.Invariant($"Family {familyId} is not in the store."),
                 default,
                 0,
-                ContentAuthoringException.UnknownFamilyReason);
+                ContentAuthoringException.UnknownFamilyReason)
+            { FamilyId = familyId };
 
     ContentTypeRegistration RequireType(ContentTypeId type)
         => _registry.TryGet(type, out ContentTypeRegistration? registration)
             ? registration
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"Content type {type.Value} is not registered, so this store carries no declaration for it."),
                 type,
                 0,
                 ContentAuthoringException.UnknownTypeReason);
 
-    void CheckAgainstSchema(ContentEdit edit)
+    void CheckAgainstSchema(ContentEdit edit, int editOrdinal)
     {
         ArgumentNullException.ThrowIfNull(edit);
 
@@ -683,21 +697,25 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
             if (!registration.Schema.TryGet(field.Name, out ContentFieldEntry? entry))
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.FieldUnknown,
                     FormattableString.Invariant(
                         $"Content type {registration.Type.Value} '{registration.TypeKey}' declares no field named '{field.Name}', so the edit is refused at the boundary rather than at publish."),
                     edit.Type,
                     edit.DefinitionId,
-                    ContentAuthoringException.UnknownFieldReason);
+                    ContentAuthoringException.UnknownFieldReason)
+                { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
             }
 
             if (entry.IsDerivedMarker)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.DerivedMarkerNotAuthorable,
                     FormattableString.Invariant(
                         $"Field '{field.Name}' of content type {registration.Type.Value} '{registration.TypeKey}' is a derived marker, whose key is a function of the row it sits on, so an edit cannot author a value for it."),
                     edit.Type,
                     edit.DefinitionId,
-                    ContentAuthoringException.UnknownFieldReason);
+                    ContentAuthoringException.UnknownFieldReason)
+                { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
             }
         }
     }

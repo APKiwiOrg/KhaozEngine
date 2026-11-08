@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 
 namespace KhaozEngine.Localization.TestKit;
 
@@ -24,7 +26,7 @@ public sealed record LocalizationCoverageFinding(LocalizationCoverageRefusal Rea
     public IReadOnlyList<string>? MissingKeys
     {
         get => missingKeys;
-        init => missingKeys = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => missingKeys = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The key whose translation was refused, for
@@ -36,7 +38,7 @@ public sealed record LocalizationCoverageFinding(LocalizationCoverageRefusal Rea
     public IReadOnlyList<int>? ExpectedIndices
     {
         get => expectedIndices;
-        init => expectedIndices = value is null ? null : Array.AsReadOnly<int>([.. value]);
+        init => expectedIndices = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The translation's placeholder indices in ascending order, for
@@ -44,6 +46,6 @@ public sealed record LocalizationCoverageFinding(LocalizationCoverageRefusal Rea
     public IReadOnlyList<int>? ActualIndices
     {
         get => actualIndices;
-        init => actualIndices = value is null ? null : Array.AsReadOnly<int>([.. value]);
+        init => actualIndices = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 }

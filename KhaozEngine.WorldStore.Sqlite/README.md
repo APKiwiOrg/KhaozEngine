@@ -79,7 +79,9 @@ refuses a version-three journal, so rolling back past this upgrade needs a resto
 
 Production hosts can select `SqliteJournalSchemaMode.ValidateOnly` through
 `SqliteMutationJournalStoreOptions.SchemaMode` when the application identity has no DDL permission. Missing or
-unsupported schemas fail startup with `SchemaMismatch` and name the required migration. Version-three validation
+unsupported schemas fail startup with `SchemaMismatch` and `RequiredMigration` equal to
+`sqlite-journal-v3-row-timestamps`. Inspect `JournalStoreException.Reason` for `SchemaMissing` or
+`SchemaVersionUnsupported`, and the latter's `ActualVersion` and supported version set `[3]`. Version-three validation
 checks the complete table and index definitions before normal store mutation. Operation retention is independent
 from event retention, so purging replay receipts leaves committed events in place.
 
@@ -141,6 +143,44 @@ row that still references a stream fails the delete instead and the whole reset 
 `ConstraintViolation`. It opens the store's own operation delete guard for its transaction and closes it however the
 transaction ends. Stop every journal host first, because an idle host holds no lock. The `KhaozEngine.WorldStore`
 README describes what a projection cursor means after a reset.
+
+## Refusals
+
+Schema refusals carry `JournalStoreRefusal` reasons and typed identifiers, with the existing failure dimensions
+unchanged. `SchemaObjectInventoryMismatch` names the complete ordinally sorted `MissingObjects` and
+`UnexpectedObjects` for `ExpectedVersion`. With a matching count, `SchemaObjectMissing` and
+`SchemaObjectDefinitionMismatch` name the compared `ObjectName` (`table:`, `index:` or `trigger:`) and
+`ExpectedVersion`. `SchemaMetadataMissing`, `SchemaVersionMalformed` (`MetadataType`) and
+`SchemaMetadataUnreadable` (original `InnerException`) distinguish metadata failures. `SchemaForeignKeysDisabled`
+and `SchemaJournalModeUnsupported` distinguish connection settings, with the latter carrying `ActualMode` and
+`RequiredMode` (`wal`). All schema reasons carry `RequiredMigration`.
+
+A reset's `HostObjects` is an owned immutable snapshot of every unsafe key followed by every unsafe trigger.
+Keys are ordered by host table, referenced table and delete action, and triggers by name. Each
+`JournalHostObjectFinding` carries `Reason` and `ReferencedTable`, plus `HostTable` and `DeleteAction` for keys or
+`TriggerName` for triggers. The exception's reason is the first finding's reason, `HostForeignKeyActionUnsafe`
+or `HostTriggerUnsafe`. Inspect these members instead of parsing the message.
+
+Runtime refusals use the same `JournalStoreException`, preserving `Kind`, `Certainty`, `Scope`, `StreamKeys` and
+inner causes. The [shared refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists every identifier.
+
+| Reasons | Runtime rule and identifiers |
+|---|---|
+| `SnapshotChecksumMismatch`, `EventChecksumMismatch`, `ProjectionChecksumMismatch`, `ResultChecksumMismatch` | Stored checksum failures name `StreamKey`, event `StreamVersion`, projection `SectionName` or result `OperationId` as applicable. |
+| `ProjectionSectionCountExceeded`, `ProjectionByteCountExceeded` | Both reads and replacements report `StreamKey` with `ActualCount` and `MaximumCount`, or `ActualBytes` and `MaximumBytes`. Reads use the engine caps of 64 sections and 8 MiB, writes use the configured inclusive limits. Count wins when both fail. |
+| `ProviderOperationFailed` | `Stage` and typed `ProviderCode` from `SqliteException.SqliteErrorCode`, with the original inner cause. |
+| `CommitOutcomeUnknown`, `OperationCancelled` | `Stage` distinguishes transaction work, commit and the post-commit response. Existing certainty still determines whether a retry is safe. |
+| `ProviderClockUnavailable` | `ProviderName` is `SQLite`. |
+| `StreamSnapshotMissing`, `ReplacementSnapshotVersionMismatch`, `SnapshotChecksumMismatch` | `StreamKey` identifies the replacement that failed verification before pruning. A wrong version also carries `ExpectedVersion` and `ActualVersion`. |
+| `StoredEpochInvalid`, `MetadataUpdateNotApplied` | Whole-store corruption, including an epoch update a trigger ignored without deleting the row. |
+| `ResetWriteLockTimedOut` | `LockTimeout` is the requested timeout, before the provider's whole-second rounding. The provider cause remains the inner exception. |
+| `OperationDeleteGuardAlreadyOpen` | Whole-store corruption with an empty `StreamKeys` snapshot and no identifiers. |
+
+The private operation-delete overlap guard keeps its `JournalStoreException` carrier with
+`OperationDeleteGuardAlreadyOpen`, `CorruptData`, `CommittedDataUnreadable`, whole-store scope and empty
+`StreamKeys`. The lease still serializes opens, and each admitted purge or reset closes the flag in `finally`.
+
+## World store capabilities
 
 `SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key

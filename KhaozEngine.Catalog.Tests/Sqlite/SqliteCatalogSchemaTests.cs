@@ -51,8 +51,10 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("missing", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(ContentAuthoringRefusal.SchemaMissing, refused.Refusal);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     [Fact]
@@ -92,8 +94,12 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("index:ix_catalog_row_live", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaObjectDefinitionMismatch, refused.Refusal);
+        Assert.Equal("index:ix_catalog_row_live", refused.ObjectName);
+        Assert.Equal(4, refused.ExpectedVersion);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        database.Execute("DROP INDEX ix_catalog_row_live; CREATE INDEX ix_catalog_row_live ON catalog_row(type_id, replaced_in_version, definition_id);");
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     [Fact]
@@ -114,11 +120,19 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("table:catalog_leftover", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaObjectUnexpected, refused.Refusal);
+        Assert.Equal("table:catalog_leftover", refused.ObjectName);
+        Assert.Equal(4, refused.ExpectedVersion);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        database.Execute("DROP TABLE catalog_leftover;");
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
-    [Fact]
-    public async Task ATypeIdPinnedToOneKeyRefusesAnotherKeyUnderIt()
+    [Theory]
+    [InlineData(1024, "renamed_thing", 1024L)]
+    [InlineData(1025, "thing", 1024L)]
+    [InlineData(1024, "thing", 66560L)]
+    public async Task StoredTypeIdentityRefusesARenameOrReassignment(ushort requestedTypeId, string requestedKey, long storedTypeId)
     {
         using var database = new TemporaryCatalogDatabase();
         using (var created = new SqliteContentAuthoringStore(database.ConnectionString, Registry()))
@@ -126,18 +140,34 @@ public class SqliteCatalogSchemaTests
             await created.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         }
 
-        // Same id, different key: a rename. It repoints every row already stored under the old pairing, so
-        // it is refused at the door rather than discovered at the first decode.
+        if (storedTypeId != 1024)
+        {
+            // A host can store an integer wider than the public type id without changing the DDL.
+            database.Execute("PRAGMA ignore_check_constraints = ON; UPDATE catalog_type SET type_id = 66560 WHERE type_id = 1024;");
+        }
+
+        // A rename or a reassignment repoints rows under the stored pairing, so initialization refuses it
+        // before any registration can be synchronized.
         ContentTypeRegistry renamed = PublishFixtures.Registry(
-            PublishFixtures.Thing with { TypeKey = "renamed_thing" });
+            PublishFixtures.Thing with { TypeId = requestedTypeId, TypeKey = requestedKey });
         using var store = new SqliteContentAuthoringStore(database.ConnectionString, renamed);
 
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("unknown-type", refused.Reason);
-        Assert.Contains(PublishFixtures.ThingTypeKey, refused.Message, StringComparison.Ordinal);
-        Assert.Contains("renamed_thing", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.TypeIdentityMismatch, refused.Refusal);
+        Assert.Equal(new ContentTypeId(requestedTypeId), refused.Type);
+        Assert.Equal<long?>(storedTypeId, refused.StoredTypeId);
+        Assert.Equal("thing", refused.StoredTypeKey);
+        Assert.Equal(requestedKey, refused.RegisteredTypeKey);
+        Assert.Equal(storedTypeId, database.Scalar("SELECT type_id FROM catalog_type WHERE type_key = 'thing';"));
+        if (storedTypeId != 1024)
+        {
+            database.Execute("UPDATE catalog_type SET type_id = 1024 WHERE type_key = 'thing';");
+        }
+        using var repair = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
+        await repair.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>
@@ -184,7 +214,11 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("unreadable", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaMetadataUnreadable, refused.Refusal);
+        Assert.Equal(1, Assert.IsType<SqliteException>(refused.InnerException).SqliteErrorCode);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        database.Execute("DROP TABLE catalog_orphan;");
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 }

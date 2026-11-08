@@ -93,9 +93,10 @@ public sealed class SqliteMutationJournalReadOnlyTests : IDisposable
 
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => OpenReadOnly(path));
 
-        AssertSchemaRefusal(exception);
-        Assert.Contains("missing", exception.Message, StringComparison.Ordinal);
+        AssertSchemaRefusal(exception, JournalStoreRefusal.SchemaMissing);
         Assert.Equal(before, SqliteJournalFileState.Capture(path));
+        using (database.Open(path)) { }
+        using (OpenReadOnly(path)) { }
     }
 
     [Fact]
@@ -120,10 +121,13 @@ public sealed class SqliteMutationJournalReadOnlyTests : IDisposable
 
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => OpenReadOnly(path));
 
-        AssertSchemaRefusal(exception);
-        Assert.Contains("unsupported version '1'", exception.Message, StringComparison.Ordinal);
+        AssertSchemaRefusal(exception, JournalStoreRefusal.SchemaVersionUnsupported);
+        Assert.Equal(1, exception.ActualVersion);
+        Assert.Equal(new long[] { 3 }, exception.SupportedVersions);
         Assert.Equal(before, SqliteJournalFileState.Capture(path));
         Assert.Equal(1, database.ScalarLong(path, "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;"));
+        using (database.Open(path)) { }
+        using (OpenReadOnly(path)) { }
     }
 
     [Fact]
@@ -172,12 +176,13 @@ public sealed class SqliteMutationJournalReadOnlyTests : IDisposable
         await Assert.ThrowsAsync<NotSupportedException>(write);
     }
 
-    private static void AssertSchemaRefusal(JournalStoreException exception)
+    private static void AssertSchemaRefusal(JournalStoreException exception, JournalStoreRefusal reason)
     {
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, exception.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, exception.Scope);
-        Assert.Contains(SqliteJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(reason, exception.Reason);
+        Assert.Equal("sqlite-journal-v3-row-timestamps", exception.RequiredMigration);
     }
 
     private static JournalOperationIdentity Identity(int suffix)

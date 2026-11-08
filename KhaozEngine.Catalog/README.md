@@ -88,7 +88,9 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   parallel to BY INDEX rather than keyed by name, so a codec is a positional walk. An entry carries its name,
   its kind, a reference target, its visibility, whether a live row must carry it and a scaled int's scale.
   `TryGet(name)` and `IndexOf(name)` answer ordinally in constant time, and `IndexOf` answers -1 for a name
-  the schema does not declare.
+  the schema does not declare. `Fields` is an owned read-only snapshot without an `ICollection.SyncRoot`
+  escape, so a cast cannot change the
+  declaration independently of those lookups.
 - `ContentFieldLookup` - the LOUD by-name resolution, against the schema a loaded `ContentRuntime` was
   actually built from. A reader indexes a row by position, and the position is not a caller's to write down
   as a literal, so it names the field and resolves once at construction:
@@ -98,8 +100,9 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   int valueIndex = ContentFieldLookup.IndexIn(runtime, tuningType, "value", out int scale);
   ```
 
-  **A field the schema lacks is a REFUSAL, not a miss.** It throws, naming the type key and the field, so a
-  publish that moved a field stops a boot rather than pricing a world at zero and carrying on. The scale is
+  **A field the schema lacks is a REFUSAL, not a miss.** It throws `ContentFieldLookupException`, whose
+  `Reason`, `Type`, `TypeKey` and `FieldName` identify the refusal, so a publish that moved a field stops a
+  boot rather than pricing a world at zero and carrying on. The scale is
   read for the same reason the position is. Run it at reader construction, which on a server is before a
   socket is open. A caller entitled to ask about a field a type may not carry uses
   `ContentFieldSchema.IndexOf` instead.
@@ -122,13 +125,49 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
 - `ContentLoadIndexException` - a registered load index failed, or one was asked for before the step that
   builds them finished. It carries the type and its key, which is what the boot's refusal line names, and it
   keeps the index's own failure as the inner exception rather than flattening it.
-- `ContentRegistrationException` - a registration rule of contracts 4.2 to 4.5 or 4.7 was broken, which is a host
-  bug at process start and never a content defect.
+- `ContentRegistrationException` - a registration rule of contracts 4.2 to 4.5 or 4.7 was broken, or a snapshot
+  builder received an unregistered type. These are host bugs and never content defects. `Reason` carries a
+  `ContentRegistrationRefusal` and the identifiers below name both sides of the rule. Legacy constructors
+  remain available for consumer code and leave `Reason` null.
 - `ContentTextKey` - the ONE derivation of a content string's localization key,
   `<type key>.<content key>.<field>` (contracts 12.1). Derived, never authored, never stored, capped at
   `MaxKeyLength` 192. Callers holding text use the string overload without allocating a temporary UTF-8
   array. An unpaired surrogate in that string becomes the replacement character, matching a UTF-8
   encode and decode. Runtime callers holding row bytes use the byte-span overload.
+
+### Registration and required-field refusals
+
+Messages remain developer prose. Branch on the reason and identifiers. Registration runs at host boot,
+so its identifiers describe declarations and compared limits, never row values. Snapshot admission carries
+only the unregistered type and row id. Field-name collections are owned read-only snapshots.
+
+`ContentRegistrationException` carries these `ContentRegistrationRefusal` reasons:
+
+| Reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `RegistryFrozen` | Registration after freeze | `Type`, `TypeKey` |
+| `TypeKeyEmpty` | Empty type key | `Type`, `TypeKey` (empty) |
+| `TypeIdReserved` | Reserved id 0 | `Type`, `TypeKey` |
+| `BandUnrecognized` | Undefined registration band | `Type`, `TypeKey`, `Band`. No range exists |
+| `BandTypeIdOutsideRange` | Id outside its recognized band | `Type`, `TypeKey`, `Band`, `MinimumTypeId`, `MaximumTypeId` (inclusive) |
+| `TypeIdDuplicate` | An existing registration owns the id | `Type`, `TypeKey`, `ExistingTypeKey` |
+| `TypeKeyDuplicate` | An existing registration owns the key | `Type`, `TypeKey`, `ExistingTypeId` |
+| `ChunkSlotsOutsideRange` | Slot count outside 256 to 65,536 | `Type`, `TypeKey`, `ActualSlots`, `MinimumSlots` (256), `MaximumSlots` (65,536) |
+| `ChunkSlotsNotPowerOfTwo` | In-range slot count is not a power of two | `Type`, `TypeKey`, `ActualSlots`, `MinimumSlots` (256), `MaximumSlots` (65,536) |
+| `RowBytesOutsideRange` | Row cap outside 1 to 4,096 bytes | `Type`, `TypeKey`, `ActualBytes`, `MinimumBytes` (1), `MaximumBytes` (4,096) |
+| `ChunkBytesExceeded` | Worst-case chunk exceeds 16 MiB | `Type`, `TypeKey`, `ChunkSlots`, `RowBytes` (submitted row cap), `ActualBytes`, `MaximumBytes` (16,777,216) |
+| `CodecWrittenFieldsMissing` | Codec returns no written field list | `Type`, `TypeKey` |
+| `CodecWritesDerivedMarkers` | Codec writes byte-free derived markers | `Type`, `TypeKey`, `FieldNames` |
+| `CodecSchemaFieldsMismatch` | Codec and non-marker schema field sets differ | `Type`, `TypeKey`, `MissingFields`, `ExtraFields` (including empty sides) |
+| `SnapshotTypeUnregistered` | Snapshot row type is unregistered | `Type`, `DefinitionId` |
+
+`ContentFieldLookupException` derives from `InvalidOperationException`, so existing catches keep working.
+Its non-nullable `Reason` carries a `ContentFieldLookupRefusal`:
+
+| Reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `TypeUnregistered` | Runtime registry lacks the type | `Type`, `FieldName`. `TypeKey` is null |
+| `FieldUndeclared` | Registered schema lacks the required field | `Type`, `TypeKey`, `FieldName` |
 
 ## The seven engine content types
 
@@ -258,8 +297,9 @@ mismatch refuses the WHOLE record with a reason token. Every decode entry point 
 - `ContentRuleChunkCodec`, `RemapRule`, `RemapRuleKind`, `RemapRuleCodec` and `RemapRuleSet` - the `KECR`
   chunk, ONE per manifest, holding the FULL rule list from sequence 1 rather than a delta, because a durable
   page can be arbitrarily old. Four v1 kinds (`ReplacedBy`, `Retired`, `MovedToLegacy`, `StackCapLowered`),
-  append only, no delete kind and no delete path. `RemapRuleSet.TryResolve` walks a from-id and a page stamp
-  forward to the id a page should carry now.
+  append only, no delete kind and no delete path. `RemapRuleSet.Rules` is an owned read-only snapshot,
+  preserving the validated order and active stamp against list casts and `ICollection.SyncRoot` access. `RemapRuleSet.TryResolve` walks a
+  from-id and a page stamp forward to the id a page should carry now.
 - `ContentTextChunkCodec`, `ContentTextChunk` and `ContentTextChunkEnumerator` - the `KECT` per-language
   chunk, one per language with its own hash so a client downloads only what it wants. The header is VARIABLE
   because the language tag sits inside it and inside the digest, and the decoded chunk keeps its body as

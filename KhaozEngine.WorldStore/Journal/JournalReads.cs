@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.WorldStore.Journal;
 
@@ -132,7 +132,7 @@ public sealed class JournalStoredEvent
 
 public sealed class JournalEventPage
 {
-    private readonly ReadOnlyCollection<JournalStoredEvent> events;
+    private readonly IReadOnlyList<JournalStoredEvent> events;
 
     public JournalEventPage(JournalEventPageStatus status, string streamKey, long throughVersion, IReadOnlyList<JournalStoredEvent> events, bool reachedThroughVersion)
     {
@@ -151,7 +151,7 @@ public sealed class JournalEventPage
         JournalValidation.Maximum(returnedBytes, JournalLimits.EngineMaximumAggregateEventReadBytes, nameof(events));
         Status = status;
         ThroughVersion = throughVersion;
-        this.events = Array.AsReadOnly(copy);
+        this.events = ImmutableArray.Create(copy);
         ReturnedBytes = returnedBytes;
         ReachedThroughVersion = reachedThroughVersion;
     }
@@ -231,7 +231,7 @@ public sealed class JournalProjectionSection
 
 public sealed class JournalProjectionRead
 {
-    private readonly ReadOnlyCollection<JournalProjectionSection> sections;
+    private readonly IReadOnlyList<JournalProjectionSection> sections;
 
     public JournalProjectionRead(JournalProjectionReadStatus status, string streamKey, long headVersion, IReadOnlyList<JournalProjectionSection> sections, string? cursor)
     {
@@ -249,7 +249,7 @@ public sealed class JournalProjectionRead
         JournalValidation.Maximum(bytes, JournalLimits.EngineMaximumAggregateProjectionBytesPerStream, nameof(sections));
         Status = status;
         HeadVersion = headVersion;
-        this.sections = Array.AsReadOnly(copy);
+        this.sections = ImmutableArray.Create(copy);
         Cursor = cursor;
         ReturnedBytes = bytes;
     }

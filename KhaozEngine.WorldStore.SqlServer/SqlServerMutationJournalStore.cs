@@ -316,6 +316,7 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
             ? JournalStoreFailureCertainty.Unknown
             : JournalStoreFailureCertainty.DefinitelyNotCommitted;
         return new JournalStoreException(
+            unknown ? JournalStoreRefusal.CommitOutcomeUnknown : JournalStoreRefusal.ProviderOperationFailed,
             kind,
             certainty,
             Scope(streamKeys),
@@ -323,7 +324,11 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
             transactionStarted
                 ? "SQL Server mutation journal transaction failed."
                 : "SQL Server mutation journal connection or transaction could not be opened.",
-            exception);
+            exception)
+        {
+            Stage = commitStarted ? JournalOperationStage.Commit : transactionStarted ? JournalOperationStage.Transaction : JournalOperationStage.Operation,
+            ProviderCode = unknown ? null : number,
+        };
     }
 
     private static JournalStoreException MapCommandFailure(
@@ -347,30 +352,47 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
     {
         bool unknown = transactionStarted && !rollbackConfirmed;
         return new JournalStoreException(
+            unknown ? JournalStoreRefusal.CommitOutcomeUnknown : JournalStoreRefusal.OperationCancelled,
             unknown ? JournalStoreFailureKind.UnknownOutcome : JournalStoreFailureKind.Cancelled,
             unknown ? JournalStoreFailureCertainty.Unknown : JournalStoreFailureCertainty.DefinitelyNotCommitted,
             Scope(streamKeys),
             streamKeys,
             "SQL Server mutation journal operation was cancelled.",
-            exception);
+            exception)
+        { Stage = commitStarted ? JournalOperationStage.Commit : transactionStarted ? JournalOperationStage.Transaction : JournalOperationStage.Operation };
     }
 
-    private static JournalStoreException UnknownOutcome(IReadOnlyList<string> streamKeys, Exception exception)
+    private static JournalStoreException UnknownOutcome(IReadOnlyList<string> streamKeys, Exception exception,
+        JournalOperationStage stage = JournalOperationStage.AfterCommit)
         => new(
+            JournalStoreRefusal.CommitOutcomeUnknown,
             JournalStoreFailureKind.UnknownOutcome,
             JournalStoreFailureCertainty.Unknown,
             Scope(streamKeys),
             streamKeys,
             "SQL Server mutation journal commit completed or may have completed before the response failed.",
-            exception);
+            exception)
+        { Stage = stage };
 
-    private static JournalStoreException Corrupt(IReadOnlyList<string> streamKeys, string message)
+    private static JournalStoreException Corrupt(
+        JournalStoreRefusal reason, IReadOnlyList<string> streamKeys, string message,
+        string? streamKey = null, long? streamVersion = null, string? sectionName = null,
+        Guid? operationId = null, long? expectedVersion = null, long? actualVersion = null)
         => new(
+            reason,
             JournalStoreFailureKind.CorruptData,
             JournalStoreFailureCertainty.CommittedDataUnreadable,
             Scope(streamKeys),
             streamKeys,
-            message);
+            message)
+        {
+            StreamKey = streamKey,
+            StreamVersion = streamVersion,
+            SectionName = sectionName,
+            OperationId = operationId,
+            ExpectedVersion = expectedVersion,
+            ActualVersion = actualVersion,
+        };
 
     private static JournalStoreFailureScope Scope(IReadOnlyList<string> streamKeys)
         => streamKeys.Count == 0 ? JournalStoreFailureScope.WholeStore : JournalStoreFailureScope.OperationStreams;

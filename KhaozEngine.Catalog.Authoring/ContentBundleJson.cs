@@ -20,8 +20,12 @@ namespace KhaozEngine.Catalog.Authoring;
 /// often as it is generated, and base64 in a field an author is retuning is a wall.
 /// </para>
 /// <para>
-/// Reading is TOTAL for shape: a document this build cannot read is a
-/// <see cref="ContentAuthoringException"/> naming what was wrong, never a half-built bundle.
+/// Explicit shape guards refuse malformed members with <see cref="ContentAuthoringException"/>, never a
+/// half-built bundle. Non-text strings use <c>JsonElement.GetString</c> directly, whose malformed Unicode
+/// faults are not wrapped. A shape rule this
+/// reader checks itself carries its <see cref="ContentAuthoringException.Refusal"/> and the rooted
+/// <see cref="ContentAuthoringException.JsonPath"/> of the member at fault, and so does a value a lower
+/// constructor refuses, mapped from that constructor's typed finding.
 /// </para>
 /// </summary>
 public static class ContentBundleJson
@@ -41,6 +45,9 @@ public static class ContentBundleJson
         AllowTrailingCommas = true,
     };
 
+    /// <summary>The rooted path of the document itself, which every refusal's <c>JsonPath</c> starts from.</summary>
+    internal const string RootPath = "$";
+
     /// <summary>
     /// The bundle as one JSON document. Two exports of one version produce identical bytes.
     /// </summary>
@@ -58,8 +65,16 @@ public static class ContentBundleJson
 
         if (bundle.FormatVersion != ContentBundle.CurrentFormatVersion && bundle.TextState is null)
         {
-            throw Refuse(FormattableString.Invariant(
-                $"The bundle is format {bundle.FormatVersion} and carries no text section, so writing it would claim a text section it lost."));
+            throw new ContentAuthoringException(
+                ContentAuthoringRefusal.BundleTextSectionMissing,
+                FormattableString.Invariant(
+                    $"The bundle is format {bundle.FormatVersion} and carries no text section, so writing it would claim a text section it lost."),
+                default,
+                0,
+                ContentAuthoringException.BundleFormatReason)
+            {
+                ActualFormatVersion = bundle.FormatVersion,
+            };
         }
 
         using var buffer = new MemoryStream();
@@ -129,8 +144,8 @@ public static class ContentBundleJson
                 throw ContentBundleTextCompatibility.UnsupportedFormat(formatVersion);
             }
 
-            string storeEpoch = Text(root, "storeEpoch");
-            int sourceVersion = Int(root, "sourceVersion");
+            string storeEpoch = Text(root, RootPath, "storeEpoch");
+            int sourceVersion = Int(root, RootPath, "sourceVersion");
             IReadOnlyList<ContentBundleType> types = ReadTypes(root);
             IReadOnlyList<ContentBundleRow> rows = ReadRows(root);
             IReadOnlyList<ContentFamily> families = ReadFamilies(root);
@@ -140,8 +155,17 @@ public static class ContentBundleJson
                 // Format 1 is text free by contract, so a text section in one would be silently dropped.
                 if (root.TryGetProperty(ContentBundleTextJson.SectionName, out _))
                 {
-                    throw Refuse(FormattableString.Invariant(
-                        $"A format {ContentBundle.CurrentFormatVersion} bundle is text free by contract, and this one carries a '{ContentBundleTextJson.SectionName}' section. Declare format {ContentBundle.TextFormatVersion} for a text-bearing bundle."));
+                    throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.BundleUnexpectedTextSection,
+                        FormattableString.Invariant(
+                            $"A format {ContentBundle.CurrentFormatVersion} bundle is text free by contract, and this one carries a '{ContentBundleTextJson.SectionName}' section. Declare format {ContentBundle.TextFormatVersion} for a text-bearing bundle."),
+                        default,
+                        0,
+                        ContentAuthoringException.BundleFormatReason)
+                    {
+                        JsonPath = Member(RootPath, ContentBundleTextJson.SectionName),
+                        ActualFormatVersion = formatVersion,
+                    };
                 }
 
                 return new ContentBundle(formatVersion, storeEpoch, sourceVersion, types, rows, families, rules);
@@ -160,7 +184,18 @@ public static class ContentBundleJson
         }
         catch (JsonException malformed)
         {
-            throw Refuse("The bundle is not a JSON document: " + malformed.Message);
+            throw new ContentAuthoringException(
+                ContentAuthoringRefusal.BundleJsonMalformed,
+                "The bundle is not a JSON document: " + malformed.Message,
+                default,
+                0,
+                ContentAuthoringException.BundleFormatReason,
+                malformed)
+            {
+                JsonPath = malformed.Path,
+                LineNumber = malformed.LineNumber,
+                BytePositionInLine = malformed.BytePositionInLine,
+            };
         }
     }
 
@@ -168,10 +203,19 @@ public static class ContentBundleJson
     {
         if (root.ValueKind != JsonValueKind.Object)
         {
-            throw Refuse("A bundle document is a JSON object.");
+            throw new ContentAuthoringException(
+                ContentAuthoringRefusal.BundleRootObjectRequired,
+                "A bundle document is a JSON object.",
+                default,
+                0,
+                ContentAuthoringException.BundleFormatReason)
+            {
+                JsonPath = RootPath,
+                ActualJsonKind = root.ValueKind,
+            };
         }
 
-        return Int(root, "formatVersion");
+        return Int(root, RootPath, "formatVersion");
     }
 
     static void WriteTypes(Utf8JsonWriter writer, IReadOnlyList<ContentBundleType> types)
@@ -339,27 +383,33 @@ public static class ContentBundleJson
     static IReadOnlyList<ContentBundleType> ReadTypes(JsonElement root)
     {
         var types = new List<ContentBundleType>();
-        foreach (JsonElement element in Array(root, "types"))
+        string typesPath = Member(RootPath, "types");
+        int typeIndex = 0;
+        foreach (JsonElement element in Array(root, RootPath, "types"))
         {
+            string typePath = Element(typesPath, typeIndex++);
+            string fieldsPath = Member(typePath, "fields");
+            int fieldIndex = 0;
             var fields = new List<ContentFieldEntry>();
-            foreach (JsonElement field in Array(element, "fields"))
+            foreach (JsonElement field in Array(element, typePath, "fields"))
             {
+                string fieldPath = Element(fieldsPath, fieldIndex++);
                 fields.Add(new ContentFieldEntry(
-                    Text(field, "name"),
-                    FieldKind(field, "kind"),
+                    Text(field, fieldPath, "name"),
+                    FieldKind(field, fieldPath, "kind"),
                     OptionalText(field, "referenceTarget"),
-                    Visibility(field, "visibility"),
-                    Bool(field, "required"),
-                    Int(field, "scale")));
+                    Visibility(field, fieldPath, "visibility"),
+                    Bool(field, fieldPath, "required"),
+                    Int(field, fieldPath, "scale")));
             }
 
             types.Add(new ContentBundleType(
-                TypeId(element, "typeId"),
-                Text(element, "typeKey"),
-                Visibility(element, "defaultVisibility"),
-                Int(element, "chunkSlots"),
-                OptionalInt(element, "maxDefinitionId"),
-                Schema(fields)));
+                TypeId(element, typePath, "typeId"),
+                Text(element, typePath, "typeKey"),
+                Visibility(element, typePath, "defaultVisibility"),
+                Int(element, typePath, "chunkSlots"),
+                OptionalInt(element, typePath, "maxDefinitionId"),
+                Schema(fields, typePath)));
         }
 
         return types;
@@ -368,36 +418,43 @@ public static class ContentBundleJson
     static IReadOnlyList<ContentFamily> ReadFamilies(JsonElement root)
     {
         var families = new List<ContentFamily>();
-        foreach (JsonElement element in Array(root, "families"))
+        string familiesPath = Member(RootPath, "families");
+        int familyIndex = 0;
+        foreach (JsonElement element in Array(root, RootPath, "families"))
         {
-            long familyId = Long(element, "familyId");
-            int blockSize = Int(element, "blockSize");
+            string familyPath = Element(familiesPath, familyIndex++);
+            long familyId = Long(element, familyPath, "familyId");
+            int blockSize = Int(element, familyPath, "blockSize");
+            string blocksPath = Member(familyPath, "blocks");
+            int blockIndex = 0;
             var blocks = new List<ContentFamilyBlock>();
-            foreach (JsonElement block in Array(element, "blocks"))
+            foreach (JsonElement block in Array(element, familyPath, "blocks"))
             {
+                string blockPath = Element(blocksPath, blockIndex++);
                 blocks.Add(new ContentFamilyBlock(
                     familyId,
-                    Int(block, "ordinal"),
-                    Int(block, "baseId"),
+                    Int(block, blockPath, "ordinal"),
+                    Int(block, blockPath, "baseId"),
                     blockSize,
-                    Int(block, "nextFreeId"),
-                    Int(block, "reservedInVersion")));
+                    Int(block, blockPath, "nextFreeId"),
+                    Int(block, blockPath, "reservedInVersion")));
             }
 
+            // Every member is read first, in the order the constructor call always read them, so only the
+            // constructor's own rules reach the catch. ContentFamilyBlock is a record struct with no checks, so
+            // building the blocks above cannot refuse.
+            ContentTypeId type = TypeId(element, familyPath, "typeId");
+            string familyKey = Text(element, familyPath, "familyKey");
+            bool retired = Bool(element, familyPath, "retired");
+            int createdInVersion = Int(element, familyPath, "createdInVersion");
             try
             {
-                families.Add(new ContentFamily(
-                    familyId,
-                    TypeId(element, "typeId"),
-                    Text(element, "familyKey"),
-                    blockSize,
-                    Bool(element, "retired"),
-                    Int(element, "createdInVersion"),
-                    blocks));
+                families.Add(new ContentFamily(familyId, type, familyKey, blockSize, retired, createdInVersion, blocks));
             }
             catch (ArgumentException malformed)
             {
-                throw Refuse("A bundle family is malformed: " + malformed.Message);
+                throw ContentBundleConstructionRefusals.Family(
+                    ContentFamily.FindDefect(familyKey, blockSize, blocks), malformed, familyPath, familyKey, blocks);
             }
         }
 
@@ -407,20 +464,26 @@ public static class ContentBundleJson
     static IReadOnlyList<ContentBundleRow> ReadRows(JsonElement root)
     {
         var rows = new List<ContentBundleRow>();
-        foreach (JsonElement element in Array(root, "rows"))
+        string rowsPath = Member(RootPath, "rows");
+        int rowIndex = 0;
+        foreach (JsonElement element in Array(root, RootPath, "rows"))
         {
+            string rowPath = Element(rowsPath, rowIndex++);
+            string fieldsPath = Member(rowPath, "fields");
+            int fieldIndex = 0;
             var fields = new List<ContentFieldEdit>();
-            foreach (JsonElement field in Array(element, "fields"))
+            foreach (JsonElement field in Array(element, rowPath, "fields"))
             {
-                ContentFieldKind kind = FieldKind(field, "kind");
-                fields.Add(new ContentFieldEdit(Text(field, "name"), Value(field, kind)));
+                string fieldPath = Element(fieldsPath, fieldIndex++);
+                ContentFieldKind kind = FieldKind(field, fieldPath, "kind");
+                fields.Add(new ContentFieldEdit(Text(field, fieldPath, "name"), Value(field, fieldPath, kind)));
             }
 
             rows.Add(new ContentBundleRow(
-                TypeId(element, "typeId"),
-                OptionalInt(element, "id"),
-                new ContentKey(Text(element, "key")),
-                Bool(element, "retired"),
+                TypeId(element, rowPath, "typeId"),
+                OptionalInt(element, rowPath, "id"),
+                new ContentKey(Text(element, rowPath, "key")),
+                Bool(element, rowPath, "retired"),
                 OptionalText(element, "familyKey"),
                 fields));
         }
@@ -431,48 +494,59 @@ public static class ContentBundleJson
     static IReadOnlyList<RemapRule> ReadRules(JsonElement root)
     {
         var rules = new List<RemapRule>();
-        foreach (JsonElement element in Array(root, "rules"))
+        string rulesPath = Member(RootPath, "rules");
+        int ruleIndex = 0;
+        foreach (JsonElement element in Array(root, RootPath, "rules"))
         {
+            string rulePath = Element(rulesPath, ruleIndex++);
+            // Every member is read first, in the order the constructor call always read them, so only the
+            // constructor's own rules reach the catch.
+            int sequence = Int(element, rulePath, "sequence");
+            int introducedIn = Int(element, rulePath, "introducedIn");
+            ContentTypeId type = TypeId(element, rulePath, "typeId");
+            RemapRuleKind kind = RuleKind(element, rulePath, "kind");
+            int fromId = Int(element, rulePath, "fromId");
+            int toId = Int(element, rulePath, "toId");
+            byte[] payload = Bytes(element, rulePath, "payload");
             try
             {
-                rules.Add(new RemapRule(
-                    Int(element, "sequence"),
-                    Int(element, "introducedIn"),
-                    TypeId(element, "typeId"),
-                    RuleKind(element, "kind"),
-                    Int(element, "fromId"),
-                    Int(element, "toId"),
-                    Bytes(element, "payload")));
+                rules.Add(new RemapRule(sequence, introducedIn, type, kind, fromId, toId, payload));
             }
             catch (ArgumentException malformed)
             {
-                throw Refuse("A bundle rule is malformed: " + malformed.Message);
+                throw ContentBundleConstructionRefusals.Rule(malformed, rulePath, kind, payload);
             }
         }
 
         return rules;
     }
 
-    static ContentFieldValue Value(JsonElement field, ContentFieldKind kind)
+    static ContentFieldValue Value(JsonElement field, string fieldPath, ContentFieldKind kind)
     {
         if (field.TryGetProperty("absent", out JsonElement absent) && absent.ValueKind == JsonValueKind.True)
         {
             return ContentFieldValue.Absent(kind);
         }
 
+        if (ContentFieldValue.StoresNumber(kind))
+        {
+            return ContentFieldValue.OfNumber(kind, Long(field, fieldPath, "number"));
+        }
+
+        byte[] bytes = Bytes(field, fieldPath, "bytes");
         try
         {
-            return ContentFieldValue.StoresNumber(kind)
-                ? ContentFieldValue.OfNumber(kind, Long(field, "number"))
-                : ContentFieldValue.OfBytes(kind, Bytes(field, "bytes"));
+            return ContentFieldValue.OfBytes(kind, bytes);
         }
         catch (ArgumentException malformed)
         {
-            throw Refuse("A bundle field value is malformed: " + malformed.Message);
+            // OfBytes has one rule, that the kind stores bytes, and the one defined kind that stores neither a
+            // number nor bytes is the byte-free text marker.
+            throw ContentBundleConstructionRefusals.MarkerValue(malformed, fieldPath);
         }
     }
 
-    static ContentFieldSchema Schema(IReadOnlyList<ContentFieldEntry> fields)
+    static ContentFieldSchema Schema(IReadOnlyList<ContentFieldEntry> fields, string typePath)
     {
         try
         {
@@ -480,76 +554,104 @@ public static class ContentBundleJson
         }
         catch (ArgumentException malformed)
         {
-            throw Refuse("A bundle type's schema is malformed: " + malformed.Message);
+            // No baseline is declared, so the schema treats every field as a baseline field.
+            throw ContentBundleConstructionRefusals.Schema(ContentFieldSchema.FindDefect(fields, fields.Count), malformed, typePath);
         }
     }
 
-    internal static JsonElement.ArrayEnumerator Array(JsonElement parent, string name)
+    internal static IEnumerable<JsonElement> Array(JsonElement parent, string parentPath, string name)
     {
-        if (!parent.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.Array)
+        bool present = parent.TryGetProperty(name, out JsonElement element);
+        if (!present || element.ValueKind != JsonValueKind.Array)
         {
-            throw Refuse(FormattableString.Invariant($"A bundle carries a '{name}' array, and this one does not."));
+            throw Shape(present, element, Member(parentPath, name), FormattableString.Invariant(
+                $"A bundle carries a '{name}' array, and this one does not."));
         }
 
-        return element.EnumerateArray();
+        string arrayPath = Member(parentPath, name);
+        int index = 0;
+        foreach (JsonElement item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                throw Shape(true, item, Element(arrayPath, index), "A bundle array element is an object, and this one is not.");
+            yield return item;
+            index++;
+        }
     }
 
-    static string Text(JsonElement parent, string name)
-        => parent.TryGetProperty(name, out JsonElement element) && element.ValueKind == JsonValueKind.String
+    static string Text(JsonElement parent, string parentPath, string name)
+    {
+        bool present = parent.TryGetProperty(name, out JsonElement element);
+        return present && element.ValueKind == JsonValueKind.String
             ? element.GetString()!
-            : throw Refuse(FormattableString.Invariant($"A bundle member '{name}' is a string, and this one is not."));
+            : throw Shape(present, element, Member(parentPath, name), FormattableString.Invariant(
+                $"A bundle member '{name}' is a string, and this one is not."));
+    }
 
     static string? OptionalText(JsonElement parent, string name)
         => parent.TryGetProperty(name, out JsonElement element) && element.ValueKind == JsonValueKind.String
             ? element.GetString()
             : null;
 
-    static int Int(JsonElement parent, string name)
+    static int Int(JsonElement parent, string parentPath, string name)
     {
-        if (!parent.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.Number)
+        bool present = parent.TryGetProperty(name, out JsonElement element);
+        if (!present || element.ValueKind != JsonValueKind.Number)
         {
-            throw Refuse(FormattableString.Invariant($"A bundle member '{name}' is a number, and this one is not."));
+            throw Shape(present, element, Member(parentPath, name), FormattableString.Invariant(
+                $"A bundle member '{name}' is a number, and this one is not."));
         }
 
         return element.TryGetInt32(out int value)
             ? value
-            : throw Refuse(FormattableString.Invariant(
+            : throw Refuse(ContentAuthoringRefusal.BundleInt32Unrepresentable, Member(parentPath, name), FormattableString.Invariant(
                 $"A bundle member '{name}' is a 32-bit integer, and this one is not."));
     }
 
-    internal static ContentTypeId TypeId(JsonElement parent, string name)
+    internal static ContentTypeId TypeId(JsonElement parent, string parentPath, string name)
     {
-        int value = Int(parent, name);
+        int value = Int(parent, parentPath, name);
         return value is >= 1 and <= ushort.MaxValue
             ? new ContentTypeId((ushort)value)
-            : throw Refuse(FormattableString.Invariant(
-                $"A bundle member '{name}' is a content type id from 1 to {ushort.MaxValue}, and this one is not."));
+            : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.BundleTypeIdOutsideRange,
+                FormattableString.Invariant(
+                    $"A bundle member '{name}' is a content type id from 1 to {ushort.MaxValue}, and this one is not."),
+                default,
+                0,
+                ContentAuthoringException.BundleFormatReason)
+            {
+                JsonPath = Member(parentPath, name),
+                ActualInteger = value,
+                MinimumInteger = 1,
+                MaximumInteger = ushort.MaxValue,
+            };
     }
 
-    static ContentFieldKind FieldKind(JsonElement parent, string name)
+    static ContentFieldKind FieldKind(JsonElement parent, string parentPath, string name)
     {
-        int value = Int(parent, name);
+        int value = Int(parent, parentPath, name);
         return value is >= (int)ContentFieldKind.Int and <= (int)ContentFieldKind.OpaqueBytes
             ? (ContentFieldKind)value
-            : throw Refuse(FormattableString.Invariant(
+            : throw Unknown(ContentAuthoringRefusal.BundleFieldKindUnknown, Member(parentPath, name), value, FormattableString.Invariant(
                 $"A bundle member '{name}' is a known content field kind, and this one is not."));
     }
 
-    static ContentVisibility Visibility(JsonElement parent, string name)
+    static ContentVisibility Visibility(JsonElement parent, string parentPath, string name)
     {
-        int value = Int(parent, name);
+        int value = Int(parent, parentPath, name);
         return value is >= (int)ContentVisibility.Client and <= (int)ContentVisibility.ServerOnly
             ? (ContentVisibility)value
-            : throw Refuse(FormattableString.Invariant(
+            : throw Unknown(ContentAuthoringRefusal.BundleVisibilityUnknown, Member(parentPath, name), value, FormattableString.Invariant(
                 $"A bundle member '{name}' is a known content visibility, and this one is not."));
     }
 
-    static RemapRuleKind RuleKind(JsonElement parent, string name)
+    static RemapRuleKind RuleKind(JsonElement parent, string parentPath, string name)
     {
-        int value = Int(parent, name);
+        int value = Int(parent, parentPath, name);
         return value is >= (int)RemapRuleKind.ReplacedBy and <= (int)RemapRuleKind.StackCapLowered
             ? (RemapRuleKind)value
-            : throw Refuse(FormattableString.Invariant(
+            : throw Unknown(ContentAuthoringRefusal.BundleRemapKindUnknown, Member(parentPath, name), value, FormattableString.Invariant(
                 $"A bundle member '{name}' is a known remap rule kind, and this one is not."));
     }
 
@@ -558,7 +660,7 @@ public static class ContentBundleJson
     // converts. Try rather than Get, because a Get on a miss is a FormatException, which is neither this
     // reader's declared surface nor something a caller can tell apart from a fault. An author's typo is a
     // refusal naming the member, the same as every other shape defect in this file.
-    static int? OptionalInt(JsonElement parent, string name)
+    static int? OptionalInt(JsonElement parent, string parentPath, string name)
     {
         if (!parent.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.Number)
         {
@@ -567,42 +669,81 @@ public static class ContentBundleJson
 
         return element.TryGetInt32(out int value)
             ? value
-            : throw Refuse(FormattableString.Invariant(
+            : throw Refuse(ContentAuthoringRefusal.BundleInt32Unrepresentable, Member(parentPath, name), FormattableString.Invariant(
                 $"A bundle member '{name}' is a 32-bit integer, and this one is not."));
     }
 
-    static long Long(JsonElement parent, string name)
+    static long Long(JsonElement parent, string parentPath, string name)
     {
-        if (!parent.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.Number)
+        bool present = parent.TryGetProperty(name, out JsonElement element);
+        if (!present || element.ValueKind != JsonValueKind.Number)
         {
-            throw Refuse(FormattableString.Invariant($"A bundle member '{name}' is a number, and this one is not."));
+            throw Shape(present, element, Member(parentPath, name), FormattableString.Invariant(
+                $"A bundle member '{name}' is a number, and this one is not."));
         }
 
         return element.TryGetInt64(out long value)
             ? value
-            : throw Refuse(FormattableString.Invariant(
+            : throw Refuse(ContentAuthoringRefusal.BundleInt64Unrepresentable, Member(parentPath, name), FormattableString.Invariant(
                 $"A bundle member '{name}' is a 64-bit integer, and this one is not."));
     }
 
-    static bool Bool(JsonElement parent, string name)
-        => parent.TryGetProperty(name, out JsonElement element)
-            && element.ValueKind is JsonValueKind.True or JsonValueKind.False
-            ? element.GetBoolean()
-            : throw Refuse(FormattableString.Invariant($"A bundle member '{name}' is a boolean, and this one is not."));
-
-    static byte[] Bytes(JsonElement parent, string name)
+    static bool Bool(JsonElement parent, string parentPath, string name)
     {
-        string hex = Text(parent, name);
+        bool present = parent.TryGetProperty(name, out JsonElement element);
+        return present && element.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? element.GetBoolean()
+            : throw Shape(present, element, Member(parentPath, name), FormattableString.Invariant(
+                $"A bundle member '{name}' is a boolean, and this one is not."));
+    }
+
+    static byte[] Bytes(JsonElement parent, string parentPath, string name)
+    {
+        string hex = Text(parent, parentPath, name);
         try
         {
             return Convert.FromHexString(hex);
         }
         catch (FormatException)
         {
-            throw Refuse(FormattableString.Invariant($"A bundle member '{name}' is lower hex, and '{hex}' is not."));
+            throw Refuse(ContentAuthoringRefusal.BundleHexMalformed, Member(parentPath, name), FormattableString.Invariant(
+                $"A bundle member '{name}' is lower hex, and '{hex}' is not."));
         }
     }
 
-    internal static ContentAuthoringException Refuse(string message)
-        => new(message, default, 0, ContentAuthoringException.BundleFormatReason);
+    /// <summary>The path of a document member, under its parent's rooted path.</summary>
+    internal static string Member(string parentPath, string name) => parentPath + "." + name;
+
+    /// <summary>The path of an array element, under the array's rooted path.</summary>
+    internal static string Element(string arrayPath, int index)
+        => FormattableString.Invariant($"{arrayPath}[{index}]");
+
+    // A member-shape guard admits one present JSON kind. Its refusal names the branch that failed, in the
+    // predicate's own order: an absent member first, then a present member of another kind. The caller
+    // passes what its TryGetProperty already read, so the reason and kind describe the value it compared.
+    internal static ContentAuthoringException Shape(bool present, JsonElement element, string path, string message)
+        => present
+            ? new ContentAuthoringException(
+                ContentAuthoringRefusal.BundleMemberKindInvalid,
+                message,
+                default,
+                0,
+                ContentAuthoringException.BundleFormatReason)
+            {
+                JsonPath = path,
+                ActualJsonKind = element.ValueKind,
+            }
+            : Refuse(ContentAuthoringRefusal.BundleMemberRequired, path, message);
+
+    static ContentAuthoringException Unknown(ContentAuthoringRefusal refusal, string path, int value, string message)
+        => new(refusal, message, default, 0, ContentAuthoringException.BundleFormatReason)
+        {
+            JsonPath = path,
+            ActualInteger = value,
+        };
+
+    /// <summary>A document refusal naming the rule and the rooted path of the member it is about.</summary>
+    internal static ContentAuthoringException Refuse(ContentAuthoringRefusal refusal, string jsonPath, string message)
+        => new(refusal, message, default, 0, ContentAuthoringException.BundleFormatReason) { JsonPath = jsonPath };
+
 }

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 
 namespace KhaozEngine.Tests.Catalog.Upgrade;
 
@@ -29,6 +31,6 @@ internal sealed class CatalogScriptException(CatalogScriptRefusal reason, string
     public IReadOnlyList<string>? ReportLines
     {
         get => _reportLines;
-        init => _reportLines = value is null ? null : Array.AsReadOnly<string>([.. value]);
+        init => _reportLines = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 }

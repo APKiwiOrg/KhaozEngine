@@ -365,11 +365,13 @@ public sealed class ContentIdAllocator
     async Task<ContentFamily> RequireFamilyAsync(long familyId, CancellationToken cancellationToken)
         => await _persistence.ReadFamilyAsync(familyId, cancellationToken).ConfigureAwait(false)
             ?? throw new ContentAuthoringException(
+                ContentAuthoringRefusal.FamilyUnknown,
                 FormattableString.Invariant(
                     $"Family {familyId} is not in the store, so no id can be allocated from it."),
                 default,
                 0,
-                ContentAuthoringException.UnknownFamilyReason);
+                ContentAuthoringException.UnknownFamilyReason)
+            { FamilyId = familyId };
 
     async Task<long> ReadCeilingAsync(ContentTypeId type, CancellationToken cancellationToken)
         => await _persistence.ReadMaxDefinitionIdAsync(type, cancellationToken).ConfigureAwait(false)
@@ -381,9 +383,16 @@ public sealed class ContentIdAllocator
         ContentIdHighWater mark,
         int count)
         => new(
+            ContentAuthoringRefusal.AllocationCeilingExceeded,
             FormattableString.Invariant(
                 $"Content type {type.Value} declares an id ceiling of {ceiling} and has issued through {mark.IssuedThrough}, so a range of {count} more cannot be allocated. The ceiling is a format constraint rather than a preference, and ids are never reused, so a retired row keeps its id and the space it occupies."),
             type,
             0,
-            ContentAuthoringException.IdCeilingReason);
+            ContentAuthoringException.IdCeilingReason)
+        {
+            Ceiling = (int)ceiling,
+            IssuedThrough = mark.IssuedThrough,
+            ReservedThrough = mark.ReservedThrough,
+            RequestedCount = count,
+        };
 }

@@ -45,13 +45,17 @@ public sealed class SqliteJournalResetContentionTests : IDisposable
         Execute(writer, "BEGIN IMMEDIATE;");
         Execute(writer, $"UPDATE journal_stream SET updated_at_utc = 42 WHERE stream_key = '{seeded.Second}';");
 
+        SqliteJournalFileState content = SqliteJournalFileState.Capture(path);
         JournalStoreException refused = await Assert.ThrowsAsync<JournalStoreException>(
             () => SqliteJournalReset.ResetAsync(database.ConnectionString(path), ShortLockTimeout));
 
+        Assert.Equal(JournalStoreRefusal.ResetWriteLockTimedOut, refused.Reason);
+        Assert.Equal(TimeSpan.FromMilliseconds(250), refused.LockTimeout);
         Assert.Equal(JournalStoreFailureKind.Timeout, refused.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, refused.Scope);
         Assert.Equal(5, Assert.IsType<SqliteException>(refused.InnerException).SqliteErrorCode);
+        Assert.Equal(content, SqliteJournalFileState.Capture(path));
 
         // The writer was never disturbed: its transaction is still open and still commits.
         Execute(writer, "COMMIT;");
@@ -93,10 +97,14 @@ public sealed class SqliteJournalResetContentionTests : IDisposable
             new byte[] { 9 })));
         Assert.True(inside.Wait(HookBound), "The store never reached its commit.");
 
+        SqliteJournalFileState content = SqliteJournalFileState.Capture(path);
         JournalStoreException refused = await Assert.ThrowsAsync<JournalStoreException>(
             () => SqliteJournalReset.ResetAsync(database.ConnectionString(path), ShortLockTimeout));
+        Assert.Equal(JournalStoreRefusal.ResetWriteLockTimedOut, refused.Reason);
+        Assert.Equal(TimeSpan.FromMilliseconds(250), refused.LockTimeout);
         Assert.Equal(JournalStoreFailureKind.Timeout, refused.Kind);
         Assert.False(commit.IsCompleted);
+        Assert.Equal(content, SqliteJournalFileState.Capture(path));
 
         release.Set();
         Assert.Equal(JournalCommitStatus.Applied, (await commit).Status);

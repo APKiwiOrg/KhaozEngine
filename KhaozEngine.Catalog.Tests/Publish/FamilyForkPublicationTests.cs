@@ -122,6 +122,14 @@ public sealed class FamilyForkPublicationTests
             () => catalog.Store.PublishAsync(PublishFixtures.Request(1)));
 
         Assert.Equal(ContentAuthoringException.IdCeilingReason, failure.Reason);
+        Assert.Equal(ContentAuthoringRefusal.FamilyReservationCeilingExceeded, failure.Refusal);
+        Assert.Equal(Thing, failure.Type);
+        Assert.Equal(full.FamilyKey, failure.FamilyKey);
+        Assert.Equal(31, failure.Ceiling);
+        Assert.Equal(32L, failure.BaseId);
+        Assert.Equal(47L, failure.HighestId);
+        Assert.Equal(31, failure.IssuedThrough);
+        Assert.Equal(31, failure.ReservedThrough);
         Assert.Equal(1, await catalog.Store.GetActiveVersionAsync());
         ContentRowPage rows = await RowsAsync(catalog.Store);
         Assert.Equal(16, rows.Total);

@@ -117,15 +117,22 @@ public class ContentIdAllocatorTests
     public async Task AnAllocationAboveTheCeilingIsRefusedNamingTheTypeTheCeilingAndTheMark()
     {
         InMemoryContentAuthoringStore store = CeilingStore(maxDefinitionId: 8);
-        Assert.Equal(1, await store.AllocateAsync(Game, 8));
+        Assert.Equal(1, await store.AllocateAsync(Game, 6));
 
         ContentAuthoringException error = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.AllocateAsync(Game, 1));
+            () => store.AllocateAsync(Game, 3));
 
         Assert.Equal(Game, error.Type);
         Assert.Equal(ContentAuthoringException.IdCeilingReason, error.Reason);
-        Assert.Contains("ceiling of 8", error.Message, StringComparison.Ordinal);
-        Assert.Contains("issued through 8", error.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.AllocationCeilingExceeded, error.Refusal);
+        Assert.Equal(8, error.Ceiling);
+        Assert.Equal(6, error.IssuedThrough);
+        Assert.Equal(8, error.ReservedThrough);
+        Assert.Equal(3, error.RequestedCount);
+        Assert.Equal(new ContentIdHighWater(8, 6), await store.ReadHighWaterAsync(Game));
+
+        Assert.Equal(7, await store.AllocateAsync(Game, 1));
+        Assert.Equal(8, await store.AllocateAsync(Game, 1));
     }
 
     [Fact]
@@ -278,10 +285,27 @@ public class ContentIdAllocatorTests
             () => store.CreateFamilyAsync(Game, "epic", 64, Actor, Operator));
 
         Assert.Equal(ContentAuthoringException.IdCeilingReason, error.Reason);
-        Assert.Contains("ceiling of 100", error.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.FamilyReservationCeilingExceeded, error.Refusal);
+        Assert.Equal(Game, error.Type);
+        Assert.Equal("epic", error.FamilyKey);
+        Assert.Equal(100, error.Ceiling);
+        Assert.Equal(64L, error.BaseId);
+        Assert.Equal(127L, error.HighestId);
+        Assert.Equal(0, error.ReservedThrough);
+        Assert.Equal(0, error.IssuedThrough);
         ContentIdHighWater mark = await store.ReadHighWaterAsync(Game);
         Assert.Equal(0, mark.ReservedThrough);
         Assert.Equal(0, mark.IssuedThrough);
+        Assert.Empty(await store.ListFamiliesAsync(Game));
+        Assert.Empty(await store.ListAuditAsync(default, 0, 0, 100));
+
+        // Repair only the ceiling. The same block ends exactly at its inclusive limit.
+        InMemoryContentAuthoringStore repaired = CeilingStore(maxDefinitionId: 127);
+        ContentFamily family = await repaired.CreateFamilyAsync(Game, "epic", 64, Actor, Operator);
+        Assert.Equal(127, Assert.Single(family.Blocks).TopExclusive - 1);
+        int last = 0;
+        for (int i = 0; i < 64; i++) last = await repaired.AllocateInFamilyAsync(family.FamilyId);
+        Assert.Equal(127, last);
     }
 
     [Fact]
@@ -293,7 +317,14 @@ public class ContentIdAllocatorTests
             () => store.AllocateInFamilyAsync(404));
 
         Assert.Equal(ContentAuthoringException.UnknownFamilyReason, error.Reason);
-        Assert.Contains("404", error.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.FamilyUnknown, error.Refusal);
+        Assert.Equal(404L, error.FamilyId);
+        Assert.Equal(default, error.Type);
+        Assert.Empty(await store.ListFamiliesAsync(Item));
+        Assert.Equal(new ContentIdHighWater(0, 0), await store.ReadHighWaterAsync(Item));
+
+        ContentFamily family = await store.CreateFamilyAsync(Item, "known", 16, Actor, Operator);
+        Assert.Equal(16, await store.AllocateInFamilyAsync(family.FamilyId));
     }
 
     [Theory]

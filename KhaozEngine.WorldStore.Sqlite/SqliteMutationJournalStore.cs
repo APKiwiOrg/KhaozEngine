@@ -28,6 +28,7 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
     private readonly SqliteStoreConnection db;
     private readonly JournalLimits limits;
     private readonly TimeSpan minimumRetryHorizon;
+    private readonly TimeSpan busyTimeout;
     private readonly TimeProvider timeProvider;
     private readonly SqliteJournalTestHook? testHook;
     private bool operationDeleteGuardOpen;
@@ -54,6 +55,7 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
         limits = options.Limits ?? throw new ArgumentNullException(nameof(options), "Limits cannot be null.");
         timeProvider = options.TimeProvider ?? throw new ArgumentNullException(nameof(options), "Time provider cannot be null.");
         minimumRetryHorizon = options.MinimumRetryHorizon;
+        busyTimeout = options.BusyTimeout;
         this.testHook = testHook;
         openedReadOnly = options.SchemaMode == SqliteJournalSchemaMode.ReadOnly;
 
@@ -85,7 +87,8 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
     private void OpenOperationDeleteGuard()
     {
         if (operationDeleteGuardOpen)
-            throw Corrupt(Array.Empty<string>(), "SQLite operation delete guard was already open.");
+            throw Corrupt(JournalStoreRefusal.OperationDeleteGuardAlreadyOpen,
+                Array.Empty<string>(), "SQLite operation delete guard was already open.");
         operationDeleteGuardOpen = true;
     }
 
@@ -184,6 +187,7 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
             ? JournalStoreFailureScope.WholeStore
             : JournalStoreFailureScope.OperationStreams;
         return new JournalStoreException(
+            unknown ? JournalStoreRefusal.CommitOutcomeUnknown : JournalStoreRefusal.ProviderOperationFailed,
             kind,
             certainty,
             scope,
@@ -191,25 +195,43 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
             transactionStarted
                 ? "SQLite mutation journal transaction failed."
                 : "SQLite mutation journal connection or transaction could not be opened.",
-            exception);
+            exception)
+        {
+            Stage = commitStarted ? JournalOperationStage.Commit : transactionStarted ? JournalOperationStage.Transaction : JournalOperationStage.Operation,
+            ProviderCode = unknown ? null : exception.SqliteErrorCode,
+        };
     }
 
     private static JournalStoreException UnknownOutcome(IReadOnlyList<string> streamKeys, Exception exception)
         => new(
+            JournalStoreRefusal.CommitOutcomeUnknown,
             JournalStoreFailureKind.UnknownOutcome,
             JournalStoreFailureCertainty.Unknown,
             streamKeys.Count == 0 ? JournalStoreFailureScope.WholeStore : JournalStoreFailureScope.OperationStreams,
             streamKeys,
             "SQLite mutation journal commit completed or may have completed before the response failed.",
-            exception);
+            exception)
+        { Stage = JournalOperationStage.AfterCommit };
 
-    private static JournalStoreException Corrupt(IReadOnlyList<string> streamKeys, string message)
+    private static JournalStoreException Corrupt(
+        JournalStoreRefusal reason, IReadOnlyList<string> streamKeys, string message,
+        string? streamKey = null, long? streamVersion = null, string? sectionName = null,
+        Guid? operationId = null, long? expectedVersion = null, long? actualVersion = null)
         => new(
+            reason,
             JournalStoreFailureKind.CorruptData,
             JournalStoreFailureCertainty.CommittedDataUnreadable,
             streamKeys.Count == 0 ? JournalStoreFailureScope.WholeStore : JournalStoreFailureScope.OperationStreams,
             streamKeys,
-            message);
+            message)
+        {
+            StreamKey = streamKey,
+            StreamVersion = streamVersion,
+            SectionName = sectionName,
+            OperationId = operationId,
+            ExpectedVersion = expectedVersion,
+            ActualVersion = actualVersion,
+        };
 
     private static bool FingerprintsMatch(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
         => left.Length == 32 && right.Length == 32 && CryptographicOperations.FixedTimeEquals(left, right);

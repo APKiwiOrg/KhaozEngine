@@ -65,6 +65,7 @@ public sealed partial class SqlServerContentAuthoringStore
         if (!plan.IsValid)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.CandidateRejected,
                 FormattableString.Invariant(
                     $"The candidate for version {plan.VersionNumber} carries {plan.Validation.Findings.Count} finding(s), so no transaction opened. A version the validator refused is a version a boot then fails closed on."),
                 default,
@@ -103,8 +104,10 @@ public sealed partial class SqlServerContentAuthoringStore
             .ConfigureAwait(false);
         if (plan.VersionNumber != highest + 1)
         {
-            throw Moved(FormattableString.Invariant(
-                $"The plan publishes version {plan.VersionNumber} and the highest published version is {highest}, so the next number is {highest + 1}. Another publish landed under this plan and its manifest hashes already carry the wrong number."));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.NextVersionMismatch, FormattableString.Invariant(
+                $"The plan publishes version {plan.VersionNumber} and the highest published version is {highest}, so the next number is {highest + 1}. Another publish landed under this plan and its manifest hashes already carry the wrong number."),
+                default, 0, ContentAuthoringException.BaseVersionMovedReason)
+            { RequestedVersion = plan.VersionNumber, HighestVersion = highest, NextVersion = highest + 1 };
         }
 
         IReadOnlyList<RemapRule> held = await ReadRulesAsync(scope, cancellationToken).ConfigureAwait(false);
@@ -302,7 +305,7 @@ public sealed partial class SqlServerContentAuthoringStore
         // both are confirmed again here, where the rollback edits are applied, rather than trusted.
         for (int i = 0; i < plan.Edits.Count; i++)
         {
-            CheckAgainstSchema(plan.Edits[i]);
+            CheckAgainstSchema(plan.Edits[i], i);
         }
 
         return await WriteAsync(
@@ -311,7 +314,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 int active = await ReadActiveVersionAsync(scope, token).ConfigureAwait(false);
                 if (active != from)
                 {
-                    throw Moved(FormattableString.Invariant(
+                    throw Moved(from, active, FormattableString.Invariant(
                         $"The rollback to version {targetVersion} was planned against version {from} and the store now stands at {active}. Nothing was written, and the rollback is planned again from the current version."));
                 }
 
@@ -574,14 +577,17 @@ public sealed partial class SqlServerContentAuthoringStore
         }
     }
 
-    static ContentAuthoringException Moved(string message)
-        => new(message, default, 0, ContentAuthoringException.BaseVersionMovedReason);
+    static ContentAuthoringException Moved(int expected, int actual, string message)
+        => new(ContentAuthoringRefusal.BaseVersionMoved, message, default, 0, ContentAuthoringException.BaseVersionMovedReason)
+        { ExpectedBaseVersion = expected, ActualBaseVersion = actual };
 
     static ContentAuthoringException Unreadable(int versionNumber, string? hash, string? reason)
         => new(
+            ContentAuthoringRefusal.PackUnreadable,
             FormattableString.Invariant(
                 $"Version {versionNumber}'s pack could not be read at object '{hash}': {reason}."),
             default,
             0,
-            ContentAuthoringException.PackUnreadableReason);
+            ContentAuthoringException.PackUnreadableReason)
+        { VersionNumber = versionNumber, ObjectHash = hash, PackReaderReason = reason };
 }

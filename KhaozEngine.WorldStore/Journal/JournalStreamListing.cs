@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.WorldStore.Journal;
 
@@ -81,7 +81,7 @@ public sealed class JournalStreamEntry
 /// does not.</summary>
 public sealed class JournalStreamPage
 {
-    private readonly ReadOnlyCollection<JournalStreamEntry> streams;
+    private readonly IReadOnlyList<JournalStreamEntry> streams;
 
     public JournalStreamPage(IReadOnlyList<JournalStreamEntry> streams, string? continuationKey)
     {
@@ -93,7 +93,7 @@ public sealed class JournalStreamPage
         }
         if (continuationKey is not null && (copy.Length == 0 || !StringComparer.Ordinal.Equals(continuationKey, copy[^1].StreamKey)))
             throw new ArgumentException("A continuation key must be the last listed stream key.", nameof(continuationKey));
-        this.streams = Array.AsReadOnly(copy);
+        this.streams = ImmutableArray.Create(copy);
         ContinuationKey = continuationKey;
     }
 
@@ -114,22 +114,55 @@ public sealed class JournalStreamPage
     /// they fail as corrupt data for the whole store.</summary>
     internal static JournalStreamPage FromStoredRows(IReadOnlyList<JournalStoredStreamRow> rows, JournalStreamQuery query)
     {
+        var entries = new List<JournalStreamEntry>(rows.Count);
+        int index = 0;
+        JournalStoredStreamRow current = default;
         try
         {
-            var entries = new List<JournalStreamEntry>(rows.Count);
             foreach (JournalStoredStreamRow row in rows)
+            {
+                current = row;
                 entries.Add(new JournalStreamEntry(row.StreamKey, row.HeadVersion, row.CreatedAtUtc, row.UpdatedAtUtc));
+                index++;
+            }
             return FromOrderedRows(entries, query);
         }
         catch (ArgumentException exception)
         {
+            // The entry's BCL guards already identify the field without interpreting their prose.
+            JournalStoreRefusal reason;
+            switch (exception.ParamName)
+            {
+                case "streamKey": reason = JournalStoreRefusal.StoredStreamKeyInvalid; break;
+                case "headVersion": reason = JournalStoreRefusal.StoredHeadVersionNegative; break;
+                case "createdAtUtc":
+                case "updatedAtUtc": reason = JournalStoreRefusal.StoredTimestampNonUtc; break;
+                case "streams":
+                    reason = JournalStoreRefusal.StoredStreamOrderInvalid;
+                    // FromOrderedRows has trimmed the extra rows. The validated query bounds the page,
+                    // and every entry is nonnull, so only its ordinal-order guard can fail here.
+                    index = 1;
+                    while (StringComparer.Ordinal.Compare(entries[index - 1].StreamKey, entries[index].StreamKey) < 0)
+                        index++;
+                    break;
+                default:
+                    // Internal invariant: only the above entry and page guards run inside this try.
+                    throw;
+            }
             throw new JournalStoreException(
+                reason,
                 JournalStoreFailureKind.CorruptData,
                 JournalStoreFailureCertainty.CommittedDataUnreadable,
                 JournalStoreFailureScope.WholeStore,
                 null,
                 "Stored journal stream keys are invalid or out of order.",
-                exception);
+                exception)
+            {
+                Index = index,
+                ParameterName = reason == JournalStoreRefusal.StoredStreamKeyInvalid ? exception.ParamName : null,
+                ActualVersion = reason == JournalStoreRefusal.StoredHeadVersionNegative ? current.HeadVersion : null,
+                FieldName = reason == JournalStoreRefusal.StoredTimestampNonUtc ? exception.ParamName : null,
+            };
         }
     }
 }

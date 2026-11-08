@@ -137,6 +137,7 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
     {
         string missingPath = database.NewPath();
         database.CreateEmpty(missingPath);
+        SqliteJournalFileState missingBefore = SqliteJournalFileState.Capture(missingPath);
         JournalStoreException missing = Assert.Throws<JournalStoreException>(() => database.Open(
             missingPath,
             new SqliteMutationJournalStoreOptions(database.ConnectionString(missingPath))
@@ -147,6 +148,7 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
         string futurePath = database.NewPath();
         using (database.Open(futurePath)) { }
         database.Execute(futurePath, "UPDATE journal_metadata SET schema_version = 99 WHERE metadata_key = 1;");
+        SqliteJournalFileState futureBefore = SqliteJournalFileState.Capture(futurePath);
         JournalStoreException future = Assert.Throws<JournalStoreException>(() => database.Open(
             futurePath,
             new SqliteMutationJournalStoreOptions(database.ConnectionString(futurePath))
@@ -156,8 +158,18 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
 
         Assert.Equal((JournalStoreFailureKind.SchemaMismatch, JournalStoreFailureCertainty.DefinitelyNotCommitted), (missing.Kind, missing.Certainty));
         Assert.Equal((JournalStoreFailureKind.SchemaMismatch, JournalStoreFailureCertainty.DefinitelyNotCommitted), (future.Kind, future.Certainty));
-        Assert.Contains(SqliteJournalSchema.RequiredMigration, missing.Message, StringComparison.Ordinal);
-        Assert.Contains(SqliteJournalSchema.RequiredMigration, future.Message, StringComparison.Ordinal);
+        Assert.Equal(JournalStoreRefusal.SchemaMissing, missing.Reason);
+        Assert.Equal(JournalStoreRefusal.SchemaVersionUnsupported, future.Reason);
+        Assert.Equal(99, future.ActualVersion);
+        Assert.Equal(new long[] { 3 }, future.SupportedVersions);
+        Assert.Equal("sqlite-journal-v3-row-timestamps", missing.RequiredMigration);
+        Assert.Equal("sqlite-journal-v3-row-timestamps", future.RequiredMigration);
+        Assert.Equal(missingBefore, SqliteJournalFileState.Capture(missingPath));
+        Assert.Equal(futureBefore, SqliteJournalFileState.Capture(futurePath));
+        using (database.Open(missingPath)) { }
+        using (database.Open(missingPath, new SqliteMutationJournalStoreOptions(database.ConnectionString(missingPath)) { SchemaMode = SqliteJournalSchemaMode.ValidateOnly })) { }
+        database.Execute(futurePath, "UPDATE journal_metadata SET schema_version = 3;");
+        using (database.Open(futurePath, new SqliteMutationJournalStoreOptions(database.ConnectionString(futurePath)) { SchemaMode = SqliteJournalSchemaMode.ValidateOnly })) { }
     }
 
     [Fact]
@@ -185,11 +197,16 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
         string path = database.NewPath();
         database.Execute(path, "CREATE TABLE journal_stream (stream_key TEXT PRIMARY KEY);");
 
+        SqliteJournalFileState before = SqliteJournalFileState.Capture(path);
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(path));
 
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
-        Assert.Contains(SqliteJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(JournalStoreRefusal.SchemaMetadataUnreadable, exception.Reason);
+        Assert.Equal("sqlite-journal-v3-row-timestamps", exception.RequiredMigration);
         Assert.Equal(1, database.ScalarLong(path, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name LIKE 'journal_%';"));
+        Assert.Equal(before, SqliteJournalFileState.Capture(path));
+        database.Execute(path, "DROP TABLE journal_stream;");
+        using (database.Open(path)) { }
     }
 
     [Fact]
@@ -207,34 +224,54 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
             CREATE TABLE journal_projection (id INTEGER);
             """);
 
+        SqliteJournalFileState before = SqliteJournalFileState.Capture(path);
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(path));
 
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
-        Assert.Contains(SqliteJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(JournalStoreRefusal.SchemaObjectInventoryMismatch, exception.Reason);
+        Assert.Equal(1, exception.ExpectedVersion);
+        Assert.Equal(new[] { "index:ix_journal_event_operation", "index:ix_journal_operation_commit", "index:ix_journal_projection_version" }, exception.MissingObjects);
+        Assert.Empty(exception.UnexpectedObjects!);
+        Assert.Equal("sqlite-journal-v3-row-timestamps", exception.RequiredMigration);
+        Assert.Equal(before, SqliteJournalFileState.Capture(path));
+        database.Execute(path, "DROP TABLE journal_projection; DROP TABLE journal_snapshot; DROP TABLE journal_operation_stream; DROP TABLE journal_operation; DROP TABLE journal_event; DROP TABLE journal_stream; DROP TABLE journal_metadata;");
+        using (database.Open(path)) { }
     }
 
     [Theory]
-    [InlineData("journal_stream", "current_version INTEGER", "current_revision INTEGER")]
-    [InlineData("journal_stream", "current_version INTEGER NOT NULL", "current_version TEXT NOT NULL")]
-    [InlineData("journal_stream", "current_version INTEGER NOT NULL", "current_version INTEGER")]
-    [InlineData("journal_event", "PRIMARY KEY (stream_key, stream_version)", "UNIQUE (stream_key, stream_version)")]
-    [InlineData("journal_event", "FOREIGN KEY (stream_key) REFERENCES journal_stream(stream_key)", "FOREIGN KEY (stream_key) REFERENCES journal_operation(operation_id)")]
-    [InlineData("ix_journal_event_operation", "(operation_id)", "(stream_version)")]
-    [InlineData("journal_metadata", "store_epoch TEXT COLLATE BINARY", "store_epoch TEXT COLLATE NOCASE")]
-    [InlineData("journal_stream", "DEFAULT 0 CHECK (retained_floor >= 0 AND retained_floor <= current_version)", "DEFAULT 1 CHECK (retained_floor >= 0)")]
+    [InlineData("journal_stream", "current_version INTEGER", "current_revision INTEGER", JournalStoreRefusal.SchemaMetadataUnreadable)]
+    [InlineData("journal_stream", "current_version INTEGER NOT NULL", "current_version TEXT NOT NULL", JournalStoreRefusal.SchemaObjectDefinitionMismatch)]
+    [InlineData("journal_stream", "current_version INTEGER NOT NULL", "current_version INTEGER", JournalStoreRefusal.SchemaObjectDefinitionMismatch)]
+    [InlineData("journal_event", "PRIMARY KEY (stream_key, stream_version)", "UNIQUE (stream_key, stream_version)", JournalStoreRefusal.SchemaObjectDefinitionMismatch)]
+    [InlineData("journal_event", "FOREIGN KEY (stream_key) REFERENCES journal_stream(stream_key)", "FOREIGN KEY (stream_key) REFERENCES journal_operation(operation_id)", JournalStoreRefusal.SchemaObjectDefinitionMismatch)]
+    [InlineData("ix_journal_event_operation", "(operation_id)", "(stream_version)", JournalStoreRefusal.SchemaObjectDefinitionMismatch)]
+    [InlineData("journal_metadata", "store_epoch TEXT COLLATE BINARY", "store_epoch TEXT COLLATE NOCASE", JournalStoreRefusal.SchemaObjectDefinitionMismatch)]
+    [InlineData("journal_stream", "DEFAULT 0 CHECK (retained_floor >= 0 AND retained_floor <= current_version)", "DEFAULT 1 CHECK (retained_floor >= 0)", JournalStoreRefusal.SchemaObjectDefinitionMismatch)]
     public void Existing_schema_requires_the_exact_version_one_shape(
         string objectName,
         string originalSql,
-        string replacementSql)
+        string replacementSql,
+        JournalStoreRefusal reason)
     {
         string path = database.NewPath();
         using (database.Open(path)) { }
         database.RewriteSchemaSql(path, objectName, originalSql, replacementSql);
 
+        byte[] before = File.ReadAllBytes(path);
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(path));
 
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
-        Assert.Contains(SqliteJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(reason, exception.Reason);
+        if (reason == JournalStoreRefusal.SchemaObjectDefinitionMismatch)
+        {
+            Assert.Equal((objectName.StartsWith("ix_", StringComparison.Ordinal) ? "index:" : "table:") + objectName, exception.ObjectName);
+            Assert.Equal(3, exception.ExpectedVersion);
+        }
+        Assert.Equal("sqlite-journal-v3-row-timestamps", exception.RequiredMigration);
+        Assert.Equal(before, File.ReadAllBytes(path));
+        database.Execute(path, "PRAGMA writable_schema = ON; UPDATE sqlite_master SET sql = replace(sql, $bad, $good) WHERE name = $name; PRAGMA writable_schema = OFF;",
+            ("$bad", replacementSql), ("$good", originalSql), ("$name", objectName));
+        using (database.Open(path)) { }
     }
 
     [Fact]
@@ -265,10 +302,16 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
         using (database.Open(path)) { }
         database.Execute(path, "UPDATE journal_metadata SET schema_version = 'not-a-version' WHERE metadata_key = 1;");
 
+        SqliteJournalFileState before = SqliteJournalFileState.Capture(path);
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(path));
 
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
-        Assert.Contains(SqliteJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(JournalStoreRefusal.SchemaVersionMalformed, exception.Reason);
+        Assert.Equal(typeof(string), exception.MetadataType);
+        Assert.Equal("sqlite-journal-v3-row-timestamps", exception.RequiredMigration);
+        Assert.Equal(before, SqliteJournalFileState.Capture(path));
+        database.Execute(path, "UPDATE journal_metadata SET schema_version = 3;");
+        using (database.Open(path)) { }
     }
 
     [Fact]
@@ -279,6 +322,7 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
         database.Execute(path, "PRAGMA journal_mode = DELETE;");
         Assert.Equal("delete", database.ScalarText(path, "PRAGMA journal_mode;"));
 
+        SqliteJournalFileState before = SqliteJournalFileState.Capture(path);
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => database.Open(
             path,
             new SqliteMutationJournalStoreOptions(database.ConnectionString(path))
@@ -287,7 +331,14 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
             }));
 
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
+        Assert.Equal(JournalStoreRefusal.SchemaJournalModeUnsupported, exception.Reason);
+        Assert.Equal("delete", exception.ActualMode);
+        Assert.Equal("wal", exception.RequiredMode);
+        Assert.Equal("sqlite-journal-v3-row-timestamps", exception.RequiredMigration);
         Assert.Equal("delete", database.ScalarText(path, "PRAGMA journal_mode;"));
+        Assert.Equal(before, SqliteJournalFileState.Capture(path));
+        database.Execute(path, "PRAGMA journal_mode = WAL;");
+        using (database.Open(path, new SqliteMutationJournalStoreOptions(database.ConnectionString(path)) { SchemaMode = SqliteJournalSchemaMode.ValidateOnly })) { }
     }
 
     [Fact]

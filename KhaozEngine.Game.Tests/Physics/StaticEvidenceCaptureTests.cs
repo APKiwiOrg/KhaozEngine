@@ -10,6 +10,38 @@ namespace KhaozEngine.Tests.Physics;
 
 public class StaticEvidenceCaptureTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BorrowedViewEvidenceUsesItsActualImmutableStaticSelection(bool exclude)
+    {
+        // #1729. Registration exclusions cannot stand in for a caller-supplied query view's selection.
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        var first = world.AddStatic(new BoxShape(new(0.25f)), Pose.At(new(-0.5f, 0, 0)));
+        var second = world.AddStatic(new BoxShape(new(0.25f)), Pose.At(new(0.5f, 0, 0)));
+        StaticHandle[] excluded = exclude ? [first] : [];
+        using var view = world.CreateQueryViewExcludingStatics(excluded);
+        if (exclude) excluded[0] = second;
+        using var lease = world.AcquireQueryReadLease();
+        var capture = Assert.IsAssignableFrom<IPhysicsStaticEvidence>(view);
+        var selected = new HashSet<StaticHandle>();
+        Assert.Equal(PhysicsEvidenceStatus.Complete, capture.CaptureStaticEvidence(lease, new(-2), new(2), 32, Visit));
+        Assert.Contains(second, selected);
+        Assert.Equal(!exclude, selected.Contains(first));
+        using var other = new BepuPhysicsWorld(Vector3.Zero);
+        using var foreign = other.AcquireQueryReadLease();
+        Assert.Throws<ArgumentException>(() => capture.CaptureStaticEvidence(foreign, new(-2), new(2), 32, Visit));
+        lease.Dispose();
+        view.Dispose();
+        using var afterDisposal = world.AcquireQueryReadLease();
+        Assert.Throws<ObjectDisposedException>(() => capture.CaptureStaticEvidence(afterDisposal, new(-2), new(2), 32, Visit));
+        bool Visit(in PhysicsEvidenceFace face, ReadOnlySpan<PhysicsEvidencePoint> vertices)
+        {
+            selected.Add(face.Static);
+            return true;
+        }
+    }
+
     [Fact]
     public void CompleteInstalledCaptureRetainsTheRoofAndNonstandableTriangle()
     {

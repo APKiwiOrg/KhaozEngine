@@ -120,15 +120,9 @@ public sealed partial class SqlServerMutationJournalStore
         }
         catch (JournalStoreException locked)
         {
-            throw new JournalStoreException(
-                locked.Kind,
-                JournalStoreFailureCertainty.DefinitelyNotCommitted,
-                JournalStoreFailureScope.WholeStore,
-                null,
-                string.Create(
+            throw locked.WithResetContext(string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The journal reset could not take the exclusive maintenance lock within {lockTimeout.TotalSeconds:0.###} seconds, because a journal writer or maintenance call held it. Nothing was deleted. Stop every journal host and retry."),
-                locked);
+                    $"The journal reset could not take the exclusive maintenance lock within {lockTimeout.TotalSeconds:0.###} seconds, because a journal writer or maintenance call held it. Nothing was deleted. Stop every journal host and retry."));
         }
     }
 

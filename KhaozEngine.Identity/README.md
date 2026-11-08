@@ -174,6 +174,9 @@ reference in those files ambiguous.
 Every refusal the engine providers throw carries a `SignInRefusal` in `Reason` and `ProviderId` (`oidc` or
 `discord`). `Reason` is null only for an instance another backend built through a message-only constructor.
 `Detail` is untrusted caller text passed to a message-only constructor and is null on every engine refusal.
+The shared base and both provider types are fenced against engine calls to legacy constructors. A protected
+nullable-reason initialization constructor preserves legacy provider forwarding, including `Detail` and the
+inner cause. It adds no unspecified reason to the public enum.
 
 The reasons are `SignInRefusal` members, and `EndpointRole` is a `SignInEndpointRole`.
 

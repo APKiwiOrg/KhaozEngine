@@ -73,10 +73,12 @@ internal sealed class TextUpgradeStore(InMemoryContentAuthoringStore inner)
     public Task<ContentVersionTextSnapshot> ReadTextSnapshotAsync(int versionNumber, CancellationToken cancellationToken = default)
         => ProvenanceUnknown
             ? throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextProvenanceUnknown,
                 FormattableString.Invariant($"Version {versionNumber} has no complete text record."),
                 default,
                 0,
                 ContentAuthoringException.TextProvenanceUnknownReason)
+            { VersionNumber = versionNumber }
             : Text.ReadTextSnapshotAsync(versionNumber, cancellationToken);
 
     /// <inheritdoc />

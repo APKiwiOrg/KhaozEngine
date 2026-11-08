@@ -225,8 +225,11 @@ public sealed partial class SqlServerContentAuthoringStore
             BindInt(command, "@live", active);
             if (await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null)
             {
-                throw ContentTextCompatibility.Unrepresented(member, FormattableString.Invariant(
-                    $"the fork of type {edit.Type.Value} row {edit.DefinitionId} owes its copy text this route cannot write"));
+                throw new ContentAuthoringException(ContentAuthoringRefusal.TextForkOnRowOnlyRoute,
+                    ContentTextCompatibility.DescribeUnrepresented(member, FormattableString.Invariant(
+                        $"the fork of type {edit.Type.Value} row {edit.DefinitionId} owes its copy text this route cannot write")),
+                    default, 0, ContentAuthoringException.TextUnrepresentedReason)
+                { MemberName = member, TextRowType = edit.Type, TextRowId = edit.DefinitionId };
             }
         }
     }
@@ -258,8 +261,16 @@ public sealed partial class SqlServerContentAuthoringStore
             .ConfigureAwait(false);
         if (text.Languages.Count > 0 || text.Revisions.Count > 0)
         {
-            throw ContentTextCompatibility.Unrepresented(nameof(RollbackToAsync), FormattableString.Invariant(
-                $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s)"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextBaseOnRowOnlyRoute,
+                ContentTextCompatibility.DescribeUnrepresented(nameof(RollbackToAsync), FormattableString.Invariant(
+                    $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s)")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            {
+                MemberName = nameof(RollbackToAsync),
+                VersionNumber = versionNumber,
+                RecordedLanguageCount = text.Languages.Count,
+                RecordedValueCount = text.Revisions.Count,
+            };
         }
     }
 }

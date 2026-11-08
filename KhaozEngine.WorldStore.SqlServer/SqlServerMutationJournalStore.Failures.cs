@@ -87,14 +87,8 @@ public sealed partial class SqlServerMutationJournalStore
             throw TransportFailure(exception, transaction is not null, commitStarted, rolledBack, streamKeys);
         if (commitStarted)
         {
-            if (!rolledBack) throw UnknownOutcome(streamKeys, exception);
-            throw new JournalStoreException(
-                JournalStoreFailureKind.Unavailable,
-                JournalStoreFailureCertainty.DefinitelyNotCommitted,
-                Scope(streamKeys),
-                streamKeys,
-                "SQL Server mutation journal commit failed and rollback was confirmed.",
-                exception);
+            if (!rolledBack) throw UnknownOutcome(streamKeys, exception, JournalOperationStage.Commit);
+            throw ConfirmedCommitFailure(exception, streamKeys);
         }
     }
 
@@ -105,12 +99,14 @@ public sealed partial class SqlServerMutationJournalStore
         bool rollbackConfirmed,
         IReadOnlyList<string> streamKeys)
         => transactionStarted && !rollbackConfirmed
-            ? UnknownOutcome(streamKeys, exception)
+            ? UnknownOutcome(streamKeys, exception, commitStarted ? JournalOperationStage.Commit : JournalOperationStage.Transaction)
             : new JournalStoreException(
+                JournalStoreRefusal.TransportFailed,
                 JournalStoreFailureKind.Unavailable,
                 JournalStoreFailureCertainty.DefinitelyNotCommitted,
                 Scope(streamKeys),
                 streamKeys,
                 "SQL Server mutation journal transport failed.",
-                exception);
+                exception)
+            { Stage = commitStarted ? JournalOperationStage.Commit : transactionStarted ? JournalOperationStage.Transaction : JournalOperationStage.Operation };
 }

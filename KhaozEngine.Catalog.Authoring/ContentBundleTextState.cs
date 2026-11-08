@@ -44,11 +44,30 @@ public sealed class ContentBundleTextState
         IReadOnlyList<ContentTextLanguageDeclaration> languages,
         IReadOnlyList<ContentBundleTextValue> values)
     {
-        Languages = ContentDraftTextState.CopyDeclarations(languages, nameof(languages));
+        Languages = new CatalogReadOnlyView<ContentTextLanguageDeclaration>(ContentDraftTextState.CopyDeclarations(languages, nameof(languages)));
+        Values = new CatalogReadOnlyView<ContentBundleTextValue>(CopyValues(Languages, values, out ContentTextFinding? finding));
+        if (finding is not null) throw finding.ToException();
+    }
+
+    /// <summary>The first section rule its constructor refuses, in constructor order.</summary>
+    internal static ContentTextFinding? FindDefect(
+        IReadOnlyList<ContentTextLanguageDeclaration> languages, IReadOnlyList<ContentBundleTextValue> values)
+    {
+        if (ContentDraftTextState.FindDeclarationDefect(languages, nameof(languages)) is { } declaration)
+            return declaration with { CollectionName = "languages" };
+        _ = CopyValues(languages, values, out ContentTextFinding? finding);
+        return finding;
+    }
+
+    static ContentBundleTextValue[] CopyValues(
+        IReadOnlyList<ContentTextLanguageDeclaration> languages, IReadOnlyList<ContentBundleTextValue> values,
+        out ContentTextFinding? finding)
+    {
+        finding = null;
         ArgumentNullException.ThrowIfNull(values);
 
         var declared = new HashSet<string>(StringComparer.Ordinal);
-        foreach (ContentTextLanguageDeclaration language in Languages)
+        foreach (ContentTextLanguageDeclaration language in languages)
         {
             declared.Add(language.Language);
         }
@@ -59,18 +78,26 @@ public sealed class ContentBundleTextState
         {
             ContentBundleTextValue value = values[i] ?? throw new ArgumentNullException(
                 nameof(values), FormattableString.Invariant($"Value {i} is null."));
-            if (!targets.Add(value.Target) || !declared.Contains(value.Target.Language))
+            bool duplicate = !targets.Add(value.Target);
+            if (duplicate || !declared.Contains(value.Target.Language))
             {
-                throw new ArgumentException(
+                finding = new(duplicate ? ContentAuthoringRefusal.BundleTextTargetDuplicate : ContentAuthoringRefusal.BundleTextLanguageUndeclared,
                     FormattableString.Invariant(
-                        $"Bundle text value {i} repeats a target or names undeclared language '{value.Target.Language}'."),
-                    nameof(values));
+                        $"Bundle text value {i} repeats a target or names undeclared language '{value.Target.Language}'."), nameof(values))
+                {
+                    CollectionName = "values",
+                    Index = i,
+                    MemberName = duplicate ? null : "language",
+                    TextTarget = duplicate ? value.Target : null,
+                    Language = duplicate ? null : value.Target.Language,
+                };
+                return copy;
             }
 
             copy[i] = value;
         }
 
-        Values = copy;
+        return copy;
     }
 
     /// <summary>Every declared language.</summary>

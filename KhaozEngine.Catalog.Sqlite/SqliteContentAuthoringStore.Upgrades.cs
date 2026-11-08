@@ -203,10 +203,11 @@ public sealed partial class SqliteContentAuthoringStore : IContentUpgradeLedger
     }
 
     static ContentAuthoringException AlreadyRecorded(string upgradeId)
-        => new(
+        => new(ContentAuthoringRefusal.UpgradeAlreadyRecorded,
             FormattableString.Invariant(
                 $"The content upgrade ledger already holds '{upgradeId}', so this publish was refused whole and nothing was written. Re-read the ledger: another runner applied it."),
             default,
             0,
-            ContentAuthoringException.UpgradeAlreadyRecordedReason);
+            ContentAuthoringException.UpgradeAlreadyRecordedReason)
+        { UpgradeId = upgradeId };
 }

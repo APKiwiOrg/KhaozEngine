@@ -38,6 +38,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: true,
             new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.ProviderOperationFailed, mapped.Reason);
+        Assert.Equal(errorNumber, mapped.ProviderCode);
+        Assert.Equal(JournalOperationStage.Transaction, mapped.Stage);
         Assert.Equal(expectedKind, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, mapped.Certainty);
         Assert.Equal(JournalStoreFailureScope.OperationStreams, mapped.Scope);
@@ -54,6 +57,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: false,
             streamKeys: new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.CommitOutcomeUnknown, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Commit, mapped.Stage);
+        Assert.Null(mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.UnknownOutcome, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.Unknown, mapped.Certainty);
     }
@@ -68,6 +74,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: true,
             new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.ProviderOperationFailed, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Transaction, mapped.Stage);
+        Assert.Equal(10054, mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.Unavailable, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, mapped.Certainty);
     }
@@ -82,6 +91,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: false,
             streamKeys: new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.CommitOutcomeUnknown, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Transaction, mapped.Stage);
+        Assert.Null(mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.UnknownOutcome, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.Unknown, mapped.Certainty);
     }
@@ -95,6 +107,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: true,
             new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.OperationCancelled, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Transaction, mapped.Stage);
+        Assert.Null(mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.Cancelled, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, mapped.Certainty);
     }
@@ -113,6 +128,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: true,
             new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.OperationCancelled, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Transaction, mapped.Stage);
+        Assert.Null(mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.Cancelled, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, mapped.Certainty);
     }
@@ -126,6 +144,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: false,
             streamKeys: new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.CommitOutcomeUnknown, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Commit, mapped.Stage);
+        Assert.Null(mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.UnknownOutcome, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.Unknown, mapped.Certainty);
     }
@@ -140,6 +161,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: false,
             streamKeys: new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.CommitOutcomeUnknown, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Commit, mapped.Stage);
+        Assert.Null(mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.UnknownOutcome, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.Unknown, mapped.Certainty);
     }
@@ -154,6 +178,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: false,
             streamKeys: new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.CommitOutcomeUnknown, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Transaction, mapped.Stage);
+        Assert.Null(mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.UnknownOutcome, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.Unknown, mapped.Certainty);
     }
@@ -168,6 +195,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: false,
             streamKeys: new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.TransportFailed, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Operation, mapped.Stage);
+        Assert.Null(mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.Unavailable, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, mapped.Certainty);
     }
@@ -182,6 +212,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             rollbackConfirmed: true,
             streamKeys: new[] { "player/a" });
 
+        Assert.Equal(JournalStoreRefusal.TransportFailed, mapped.Reason);
+        Assert.Equal(JournalOperationStage.Transaction, mapped.Stage);
+        Assert.Null(mapped.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.Unavailable, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, mapped.Certainty);
     }
@@ -204,6 +237,8 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
     {
         JournalStoreException mapped = SqlServerMutationJournalStore.MapApplicationLockFailureForTest(returnCode);
 
+        Assert.Equal(JournalStoreRefusal.ApplicationLockNotGranted, mapped.Reason);
+        Assert.Equal(returnCode, mapped.ReturnCode);
         Assert.Equal(expectedKind, mapped.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, mapped.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, mapped.Scope);
@@ -234,6 +269,9 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
         armed = false;
         JournalCommitResult replay = await store.CommitAsync(commit);
 
+        Assert.Equal(JournalStoreRefusal.CommitOutcomeUnknown, exception.Reason);
+        Assert.Equal(JournalOperationStage.AfterCommit, exception.Stage);
+        Assert.Null(exception.ProviderCode);
         Assert.Equal(JournalStoreFailureKind.UnknownOutcome, exception.Kind);
         Assert.Equal(JournalStoreFailureCertainty.Unknown, exception.Certainty);
         Assert.Equal(JournalCommitStatus.Replayed, replay.Status);
@@ -327,25 +365,70 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             phases);
     }
 
-    [SqlServerFact]
-    public async Task Malformed_stored_checksums_map_to_committed_data_corruption()
+    [SqlServerTheory]
+    [InlineData(JournalStoreRefusal.SnapshotChecksumMismatch)]
+    [InlineData(JournalStoreRefusal.EventChecksumMismatch)]
+    [InlineData(JournalStoreRefusal.ProjectionChecksumMismatch)]
+    [InlineData(JournalStoreRefusal.ResultChecksumMismatch)]
+    public async Task Malformed_stored_checksums_map_to_committed_data_corruption(JournalStoreRefusal reason)
     {
-        SqlServerJournalPrefixStore snapshotStore = CreateStore();
-        await snapshotStore.InitializeAsync(Initialization(1, new byte[] { 3 }));
-        await SqlServerJournalTestDatabase.CorruptSnapshotChecksumAsync(DedicatedConnectionString, snapshotStore.Prefix + "player/a");
-        await AssertCorrupt(() => snapshotStore.LoadSnapshotAsync("player/a"));
-
-        SqlServerJournalPrefixStore eventStore = CreateStore();
-        await eventStore.InitializeAsync(Initialization(2));
-        await eventStore.CommitAsync(Commit(3));
-        await SqlServerJournalTestDatabase.CorruptEventChecksumAsync(DedicatedConnectionString, eventStore.Prefix + "player/a");
-        await AssertCorrupt(() => eventStore.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024)));
-
-        SqlServerJournalPrefixStore projectionStore = CreateStore();
-        await projectionStore.InitializeAsync(Initialization(4));
-        await projectionStore.CommitAsync(Commit(5));
-        await SqlServerJournalTestDatabase.CorruptProjectionChecksumAsync(DedicatedConnectionString, projectionStore.Prefix + "player/a");
-        await AssertCorrupt(() => projectionStore.ReadProjectionsAsync(new JournalProjectionQuery("player/a")));
+        SqlServerJournalPrefixStore store = CreateStore();
+        await store.InitializeAsync(Initialization(1, new byte[] { 3 }));
+        await store.CommitAsync(Commit(2));
+        string stream = store.Prefix + "player/a";
+        Guid operation = store.PhysicalOperationId(Identity(2).OperationId);
+        string table = reason switch
+        {
+            JournalStoreRefusal.SnapshotChecksumMismatch => "journal_snapshot",
+            JournalStoreRefusal.EventChecksumMismatch => "journal_event",
+            JournalStoreRefusal.ProjectionChecksumMismatch => "journal_projection",
+            _ => "journal_operation",
+        };
+        string data = reason == JournalStoreRefusal.EventChecksumMismatch ? "payload"
+            : reason == JournalStoreRefusal.ResultChecksumMismatch ? "result_data" : "data";
+        string checksum = reason == JournalStoreRefusal.EventChecksumMismatch ? "payload_sha256"
+            : reason == JournalStoreRefusal.ResultChecksumMismatch ? "result_sha256" : "data_sha256";
+        async Task UpdateAsync(bool repair)
+        {
+            await using var connection = new SqlConnection(DedicatedConnectionString);
+            await connection.OpenAsync();
+            await using SqlCommand command = connection.CreateCommand();
+            string value = repair ? $"HASHBYTES('SHA2_256', {data})" : "CONVERT(binary(32), 0x00)";
+            string predicate = reason == JournalStoreRefusal.ResultChecksumMismatch ? "operation_id = @operation" : "stream_key = @stream";
+            command.CommandText = $"UPDATE dbo.{table} SET {checksum} = {value} WHERE {predicate};";
+            SqlServerMutationJournalStore.Add(command, "@operation", operation);
+            SqlServerMutationJournalStore.Add(command, "@stream", stream);
+            await command.ExecuteNonQueryAsync();
+        }
+        Task ReadAsync() => reason switch
+        {
+            JournalStoreRefusal.SnapshotChecksumMismatch => store.LoadSnapshotAsync("player/a"),
+            JournalStoreRefusal.EventChecksumMismatch => store.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024)),
+            JournalStoreRefusal.ProjectionChecksumMismatch => store.ReadProjectionsAsync(new JournalProjectionQuery("player/a")),
+            _ => store.ResolveOperationAsync(Identity(2)),
+        };
+        await UpdateAsync(repair: false);
+        var refused = await Assert.ThrowsAsync<JournalStoreException>(ReadAsync);
+        Assert.Equal(reason, refused.Reason);
+        Assert.Equal(JournalStoreFailureKind.CorruptData, refused.Kind);
+        Assert.Equal(JournalStoreFailureCertainty.CommittedDataUnreadable, refused.Certainty);
+        Assert.Equal(JournalStoreFailureScope.OperationStreams, refused.Scope);
+        Assert.Equal(stream, Assert.Single(refused.StreamKeys));
+        if (reason == JournalStoreRefusal.ResultChecksumMismatch)
+        {
+            Assert.Equal(operation, refused.OperationId);
+            var batchRefused = await Assert.ThrowsAsync<JournalStoreException>(() => store.CommitAsync(Commit(2)));
+            Assert.Equal(reason, batchRefused.Reason);
+            Assert.Equal(operation, batchRefused.OperationId);
+            Assert.Equal(stream, Assert.Single(batchRefused.StreamKeys));
+        }
+        else Assert.Equal(stream, refused.StreamKey);
+        if (reason == JournalStoreRefusal.EventChecksumMismatch) Assert.Equal(1L, refused.StreamVersion);
+        if (reason == JournalStoreRefusal.ProjectionChecksumMismatch) Assert.Equal("bag", refused.SectionName);
+        await UpdateAsync(repair: true);
+        await ReadAsync();
+        if (reason == JournalStoreRefusal.ResultChecksumMismatch)
+            Assert.Equal(JournalCommitStatus.Replayed, (await store.CommitAsync(Commit(2))).Status);
     }
 
     [SqlServerFact]
@@ -366,6 +449,8 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
 
     private async Task RejectsTransactionalMalformedSchemaWithoutPersistingDdl(SqlServerJournalSchemaMode mode)
     {
+        _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
+        string before = await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString);
         var hook = new SqlServerJournalSchemaTestHook(async (connection, transaction, cancellationToken) =>
         {
             await using SqlCommand command = connection.CreateCommand();
@@ -380,10 +465,17 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             schemaTestHook: hook));
 
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
-        Assert.Contains(SqlServerJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(JournalStoreRefusal.SchemaIndexesMismatch, exception.Reason);
+        Assert.Equal(3L, exception.ExpectedVersion);
+        Assert.Equal(new[] { "journal_projection.ix_journal_projection_version|False|False|NONCLUSTERED|1|stream_key|False|False",
+            "journal_projection.ix_journal_projection_version|False|False|NONCLUSTERED|2|source_version|False|False" }, exception.MissingObjects);
+        Assert.Empty(exception.UnexpectedObjects!);
+        Assert.Equal("sqlserver-journal-v3-row-timestamps", exception.RequiredMigration);
         Assert.True(await SqlServerJournalTestDatabase.IndexExistsAsync(
             DedicatedConnectionString,
             "ix_journal_projection_version"));
+        Assert.Equal(before, await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString));
+        _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(DedicatedConnectionString) { SchemaMode = mode });
     }
 
     private async Task InjectedStatementBoundaryFailureRollsBackAllMutationRows(JournalTestHookPhase failurePhase)

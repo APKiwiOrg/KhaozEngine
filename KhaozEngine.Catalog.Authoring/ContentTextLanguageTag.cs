@@ -32,11 +32,22 @@ public static class ContentTextLanguageTag
         ArgumentNullException.ThrowIfNull(tag);
         return TryNormalize(tag, out string? canonical)
             ? canonical
-            : throw new ArgumentException(
-                FormattableString.Invariant(
-                    $"Language tag '{tag}' is not ASCII letters, digits and hyphens of 1 to {MaxBytes} bytes with no empty segment and a first segment starting with a letter."),
-                nameof(tag));
+            : throw InvalidTag(tag).ToException();
     }
+
+    /// <summary>The grammar finding the constructor and bundle reader share.</summary>
+    internal static ContentTextFinding? FindDefect(string tag)
+    {
+        ArgumentNullException.ThrowIfNull(tag);
+        return TryNormalize(tag, out _) ? null : InvalidTag(tag);
+    }
+
+    static ContentTextFinding InvalidTag(string tag)
+        => new(ContentAuthoringRefusal.BundleLanguageTagInvalid,
+            FormattableString.Invariant(
+                $"Language tag '{tag}' is not ASCII letters, digits and hyphens of 1 to {MaxBytes} bytes with no empty segment and a first segment starting with a letter."),
+            nameof(tag))
+        { LanguageTag = tag };
 
     /// <summary>Whether <paramref name="tag"/> is legal, and its canonical identity when it is.</summary>
     /// <param name="tag">The tag to check.</param>

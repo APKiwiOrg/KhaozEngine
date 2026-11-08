@@ -143,14 +143,16 @@ public sealed class ContentTypeRegistry
 
         if (IsFrozen)
         {
-            throw new ContentRegistrationException(FormattableString.Invariant(
-                $"The content type registry is frozen, so type {typeId} '{typeKey}' cannot register. Registration runs once at process start, before the first pack loads."));
+            throw new ContentRegistrationException(ContentRegistrationRefusal.RegistryFrozen, FormattableString.Invariant(
+                $"The content type registry is frozen, so type {typeId} '{typeKey}' cannot register. Registration runs once at process start, before the first pack loads."))
+            { Type = new ContentTypeId(typeId), TypeKey = typeKey };
         }
 
         if (typeKey.Length == 0)
         {
-            throw new ContentRegistrationException(FormattableString.Invariant(
-                $"Content type {typeId} declares an empty type key."));
+            throw new ContentRegistrationException(ContentRegistrationRefusal.TypeKeyEmpty, FormattableString.Invariant(
+                $"Content type {typeId} declares an empty type key."))
+            { Type = new ContentTypeId(typeId), TypeKey = typeKey };
         }
 
         CheckBand(band, typeId, typeKey);
@@ -197,8 +199,9 @@ public sealed class ContentTypeRegistry
     {
         if (typeId == 0)
         {
-            throw new ContentRegistrationException(FormattableString.Invariant(
-                $"Type id 0 is reserved and is never a valid content type id, so '{typeKey}' cannot take it."));
+            throw new ContentRegistrationException(ContentRegistrationRefusal.TypeIdReserved, FormattableString.Invariant(
+                $"Type id 0 is reserved and is never a valid content type id, so '{typeKey}' cannot take it."))
+            { Type = new ContentTypeId(typeId), TypeKey = typeKey };
         }
 
         var id = new ContentTypeId(typeId);
@@ -223,22 +226,34 @@ public sealed class ContentTypeRegistry
             _ => (0, 0),
         };
 
-        throw new ContentRegistrationException(FormattableString.Invariant(
-            $"The {band} band covers type ids {low} to {high}, so it cannot register type {typeId} '{typeKey}'. The band says which ids the caller is entitled to and is not a capability."));
+        bool recognized = band is ContentRegistrationBand.Engine or ContentRegistrationBand.Instances or ContentRegistrationBand.Game;
+        throw new ContentRegistrationException(
+            recognized ? ContentRegistrationRefusal.BandTypeIdOutsideRange : ContentRegistrationRefusal.BandUnrecognized,
+            FormattableString.Invariant(
+            $"The {band} band covers type ids {low} to {high}, so it cannot register type {typeId} '{typeKey}'. The band says which ids the caller is entitled to and is not a capability."))
+        {
+            Type = id,
+            TypeKey = typeKey,
+            Band = band,
+            MinimumTypeId = recognized ? (ushort)low : null,
+            MaximumTypeId = recognized ? (ushort)high : null,
+        };
     }
 
     void CheckNotAlreadyRegistered(ushort typeId, string typeKey)
     {
         if (_byId.TryGetValue(typeId, out ContentTypeRegistration? byId))
         {
-            throw new ContentRegistrationException(FormattableString.Invariant(
-                $"Type id {typeId} is already registered as '{byId.TypeKey}', so '{typeKey}' cannot take it."));
+            throw new ContentRegistrationException(ContentRegistrationRefusal.TypeIdDuplicate, FormattableString.Invariant(
+                $"Type id {typeId} is already registered as '{byId.TypeKey}', so '{typeKey}' cannot take it."))
+            { Type = new ContentTypeId(typeId), TypeKey = typeKey, ExistingTypeKey = byId.TypeKey };
         }
 
         if (_byKey.TryGetValue(typeKey, out ContentTypeRegistration? byKey))
         {
-            throw new ContentRegistrationException(FormattableString.Invariant(
-                $"Type key '{typeKey}' is already registered as type id {byKey.Type.Value}, and a type key is unique across the whole registry."));
+            throw new ContentRegistrationException(ContentRegistrationRefusal.TypeKeyDuplicate, FormattableString.Invariant(
+                $"Type key '{typeKey}' is already registered as type id {byKey.Type.Value}, and a type key is unique across the whole registry."))
+            { Type = new ContentTypeId(typeId), TypeKey = typeKey, ExistingTypeId = byKey.Type };
         }
     }
 
@@ -246,29 +261,56 @@ public sealed class ContentTypeRegistry
     {
         if (chunkSlots < MinChunkSlots || chunkSlots > MaxChunkSlots || (chunkSlots & (chunkSlots - 1)) != 0)
         {
-            throw new ContentRegistrationException(FormattableString.Invariant(
-                $"Type {typeId} '{typeKey}' declares {chunkSlots} chunk slots, which must be a power of two between {MinChunkSlots} and {MaxChunkSlots}."));
+            throw new ContentRegistrationException(
+                chunkSlots < MinChunkSlots || chunkSlots > MaxChunkSlots
+                    ? ContentRegistrationRefusal.ChunkSlotsOutsideRange
+                    : ContentRegistrationRefusal.ChunkSlotsNotPowerOfTwo,
+                FormattableString.Invariant(
+                $"Type {typeId} '{typeKey}' declares {chunkSlots} chunk slots, which must be a power of two between {MinChunkSlots} and {MaxChunkSlots}."))
+            {
+                Type = new ContentTypeId(typeId),
+                TypeKey = typeKey,
+                ActualSlots = chunkSlots,
+                MinimumSlots = MinChunkSlots,
+                MaximumSlots = MaxChunkSlots,
+            };
         }
 
         if (maxRowBytes < 1 || maxRowBytes > ContentPackFormat.MaxContentRowBytes)
         {
-            throw new ContentRegistrationException(FormattableString.Invariant(
-                $"Type {typeId} '{typeKey}' declares a row cap of {maxRowBytes} bytes, which must be between 1 and the absolute ceiling of {ContentPackFormat.MaxContentRowBytes}."));
+            throw new ContentRegistrationException(ContentRegistrationRefusal.RowBytesOutsideRange, FormattableString.Invariant(
+                $"Type {typeId} '{typeKey}' declares a row cap of {maxRowBytes} bytes, which must be between 1 and the absolute ceiling of {ContentPackFormat.MaxContentRowBytes}."))
+            {
+                Type = new ContentTypeId(typeId),
+                TypeKey = typeKey,
+                ActualBytes = maxRowBytes,
+                MinimumBytes = 1,
+                MaximumBytes = ContentPackFormat.MaxContentRowBytes,
+            };
         }
 
         long worstCase = ((long)chunkSlots * (maxRowBytes + RowTableEntryBytes)) + ContentPackFormat.ChunkHeaderBytes;
         if (worstCase > ContentPackFormat.MaxChunkUncompressedBytes)
         {
-            throw new ContentRegistrationException(FormattableString.Invariant(
-                $"Type {typeId} '{typeKey}' would build a chunk no reader loads: {chunkSlots} slots at a row cap of {maxRowBytes} bytes is {worstCase} uncompressed bytes, over the {ContentPackFormat.MaxChunkUncompressedBytes} byte ceiling. Lower the slot count or the row cap."));
+            throw new ContentRegistrationException(ContentRegistrationRefusal.ChunkBytesExceeded, FormattableString.Invariant(
+                $"Type {typeId} '{typeKey}' would build a chunk no reader loads: {chunkSlots} slots at a row cap of {maxRowBytes} bytes is {worstCase} uncompressed bytes, over the {ContentPackFormat.MaxChunkUncompressedBytes} byte ceiling. Lower the slot count or the row cap."))
+            {
+                Type = new ContentTypeId(typeId),
+                TypeKey = typeKey,
+                ChunkSlots = chunkSlots,
+                RowBytes = maxRowBytes,
+                ActualBytes = worstCase,
+                MaximumBytes = ContentPackFormat.MaxChunkUncompressedBytes,
+            };
         }
     }
 
     static void CheckCodecAgainstSchema(ushort typeId, string typeKey, IContentRowCodec codec, ContentFieldSchema schema)
     {
         IReadOnlyList<string> written = codec.WrittenFields
-            ?? throw new ContentRegistrationException(FormattableString.Invariant(
-                $"Type {typeId} '{typeKey}' has a codec that declares no written field list."));
+            ?? throw new ContentRegistrationException(ContentRegistrationRefusal.CodecWrittenFieldsMissing, FormattableString.Invariant(
+                $"Type {typeId} '{typeKey}' has a codec that declares no written field list."))
+            { Type = new ContentTypeId(typeId), TypeKey = typeKey };
 
         var declared = new HashSet<string>(StringComparer.Ordinal);
         var markers = new HashSet<string>(StringComparer.Ordinal);
@@ -281,8 +323,9 @@ public sealed class ContentTypeRegistry
         string[] markersWritten = writtenSet.Where(markers.Contains).OrderBy(n => n, StringComparer.Ordinal).ToArray();
         if (markersWritten.Length > 0)
         {
-            throw new ContentRegistrationException(FormattableString.Invariant(
-                $"Type {typeId} '{typeKey}' has a codec writing {string.Join(", ", markersWritten)}, which its schema declares as a derived marker carrying no bytes."));
+            throw new ContentRegistrationException(ContentRegistrationRefusal.CodecWritesDerivedMarkers, FormattableString.Invariant(
+                $"Type {typeId} '{typeKey}' has a codec writing {string.Join(", ", markersWritten)}, which its schema declares as a derived marker carrying no bytes."))
+            { Type = new ContentTypeId(typeId), TypeKey = typeKey, FieldNames = markersWritten };
         }
 
         string[] missing = declared.Except(writtenSet).OrderBy(n => n, StringComparer.Ordinal).ToArray();
@@ -294,7 +337,8 @@ public sealed class ContentTypeRegistry
 
         string missingText = missing.Length == 0 ? "nothing" : string.Join(", ", missing);
         string extraText = extra.Length == 0 ? "nothing" : string.Join(", ", extra);
-        throw new ContentRegistrationException(FormattableString.Invariant(
-            $"Type {typeId} '{typeKey}' has a codec and a schema that disagree. The schema declares and the codec does not write: {missingText}. The codec writes and the schema does not declare: {extraText}."));
+        throw new ContentRegistrationException(ContentRegistrationRefusal.CodecSchemaFieldsMismatch, FormattableString.Invariant(
+            $"Type {typeId} '{typeKey}' has a codec and a schema that disagree. The schema declares and the codec does not write: {missingText}. The codec writes and the schema does not declare: {extraText}."))
+        { Type = new ContentTypeId(typeId), TypeKey = typeKey, MissingFields = missing, ExtraFields = extra };
     }
 }

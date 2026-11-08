@@ -38,10 +38,12 @@ public sealed partial class SqliteContentAuthoringStore
 
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
-        if (!string.Equals(
-            plan.StoreEpoch, await ReadEpochAsync(transaction, cancellationToken).ConfigureAwait(false), StringComparison.Ordinal))
+        string epoch = await ReadEpochAsync(transaction, cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(plan.StoreEpoch, epoch, StringComparison.Ordinal))
         {
-            throw TextMismatch("it was frozen in another store");
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextPlanEpochMismatch,
+                DescribeMismatch("it was frozen in another store"), default, 0, ContentAuthoringException.TextStateMismatchReason)
+            { ExpectedEpoch = plan.StoreEpoch, ActualEpoch = epoch };
         }
 
         IReadOnlyList<RemapRule> held = await ConfirmNumberAsync(plan.RowPlan, transaction, cancellationToken)
@@ -49,22 +51,35 @@ public sealed partial class SqliteContentAuthoringStore
         int active = await ReadActiveAsync(transaction, cancellationToken).ConfigureAwait(false);
         if (plan.BaseVersion != active)
         {
-            throw Moved(FormattableString.Invariant(
+            throw Moved(plan.BaseVersion, active, FormattableString.Invariant(
                 $"The text plan stands on version {plan.BaseVersion} and the store stands at {active}."));
         }
 
-        if (await ReadDraftAsync(transaction, cancellationToken).ConfigureAwait(false) is not ContentDraft open
+        ContentDraft? draft = await ReadDraftAsync(transaction, cancellationToken).ConfigureAwait(false);
+        if (draft is not ContentDraft open
             || open.FrozenForBaseVersion != active
             || !ContentTextCompatibility.SameDraft(plan.Snapshot.Draft, open))
         {
-            throw TextMismatch("the open draft is not the complete draft the plan froze");
+            ContentAuthoringRefusal refusal = draft is null ? ContentAuthoringRefusal.FrozenDraftLost
+                : draft.FrozenForBaseVersion != active ? ContentAuthoringRefusal.TextPlanFreezeMismatch
+                : ContentAuthoringRefusal.TextPlanDraftMismatch;
+            throw new ContentAuthoringException(refusal,
+                DescribeMismatch("the open draft is not the complete draft the plan froze"),
+                default, 0, ContentAuthoringException.TextStateMismatchReason)
+            {
+                ExpectedBaseVersion = plan.BaseVersion,
+                ActualBaseVersion = refusal == ContentAuthoringRefusal.TextPlanFreezeMismatch ? draft!.FrozenForBaseVersion : null,
+            };
         }
 
         ContentVersionTextSnapshot baseline = await ReadTextSnapshotAtAsync(active, transaction, cancellationToken)
             .ConfigureAwait(false);
         if (!SameText(baseline, plan.Snapshot.BaselineText))
         {
-            throw TextMismatch("the base version's text or languages are not the ones the plan read");
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextPlanBaselineMismatch,
+                DescribeMismatch("the base version's text or languages are not the ones the plan read"),
+                default, 0, ContentAuthoringException.TextStateMismatchReason)
+            { ExpectedBaseVersion = plan.BaseVersion };
         }
 
         // Every chunk is regenerated from the plan's own values, never trusted.
@@ -110,8 +125,11 @@ public sealed partial class SqliteContentAuthoringStore
 
         if (!agrees)
         {
-            throw ContentTextCompatibility.Unrepresented(member, FormattableString.Invariant(
-                $"the plan names {plan.Languages.Count} text chunk(s) that are not the {languages.Count} version {active} recorded"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextManifestOnRowOnlyRoute,
+                ContentTextCompatibility.DescribeUnrepresented(member, FormattableString.Invariant(
+                    $"the plan names {plan.Languages.Count} text chunk(s) that are not the {languages.Count} version {active} recorded")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            { MemberName = member, VersionNumber = active, ActualCount = plan.Languages.Count, ExpectedCount = languages.Count };
         }
 
         return new ContentTextCommit(languages, [], [], null);
@@ -140,10 +158,7 @@ public sealed partial class SqliteContentAuthoringStore
             BindRevision(command, close);
             Bind(command, "$version", (long)versionNumber);
             Bind(command, "$at", at);
-            if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
-            {
-                throw TextMismatch("a text close names a revision this store does not hold live");
-            }
+            RequireTextClosePresent(close, await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1);
         }
 
         foreach (ContentTextRevision insert in text.Inserts)
@@ -290,8 +305,10 @@ public sealed partial class SqliteContentAuthoringStore
             }
         }
 
-        throw TextMismatch(FormattableString.Invariant(
-            $"text names type {revision.Type.Value} row {revision.DefinitionId}, which the plan holds no live row of"));
+        throw new ContentAuthoringException(ContentAuthoringRefusal.TextPlanRowUnknown, DescribeMismatch(FormattableString.Invariant(
+            $"text names type {revision.Type.Value} row {revision.DefinitionId}, which the plan holds no live row of")),
+            default, 0, ContentAuthoringException.TextStateMismatchReason)
+        { TextRowType = revision.Type, TextRowId = revision.DefinitionId, FieldName = revision.FieldName, Language = revision.Language };
     }
 
     /// <summary>Whether two snapshots record the same version, languages in order and revisions as a set.</summary>
@@ -324,13 +341,9 @@ public sealed partial class SqliteContentAuthoringStore
         return true;
     }
 
-    static ContentAuthoringException TextMismatch(string detail)
-        => new(
-            FormattableString.Invariant(
-                $"The text commit is refused because {detail}. Nothing was written, and the plan is rebuilt from a fresh freeze."),
-            default,
-            0,
-            ContentAuthoringException.TextStateMismatchReason);
+    static string DescribeMismatch(string detail)
+        => FormattableString.Invariant(
+            $"The text commit is refused because {detail}. Nothing was written, and the plan is rebuilt from a fresh freeze.");
 
     /// <summary>What one commit writes for text beside its rows.</summary>
     /// <param name="Languages">The new version's complete language record, in manifest order.</param>

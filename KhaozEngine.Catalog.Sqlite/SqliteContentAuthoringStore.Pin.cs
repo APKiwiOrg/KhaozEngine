@@ -52,10 +52,12 @@ public sealed partial class SqliteContentAuthoringStore : IContentVersionSelecti
             // The reason token is the one the in-memory reference store answers with, so a console that keys
             // on it reads the same answer whichever provider is behind the seam.
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.VersionUnknown,
                 FormattableString.Invariant($"Version {held} does not exist, so it cannot be pinned."),
                 default,
                 0,
-                ContentAuthoringException.UnknownTypeReason);
+                ContentAuthoringException.UnknownTypeReason)
+            { VersionNumber = held };
         }
 
         int? before;

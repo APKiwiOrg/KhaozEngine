@@ -53,10 +53,12 @@ public sealed partial class SqlServerContentAuthoringStore : IContentVersionSele
                     // (https://github.com/APKiwiOrg/KhaozEngine/issues/919), so a console that keys on it
                     // reads the same answer whichever provider is behind the seam.
                     throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.VersionUnknown,
                         FormattableString.Invariant($"Version {held} does not exist, so it cannot be pinned."),
                         default,
                         0,
-                        ContentAuthoringException.UnknownTypeReason);
+                        ContentAuthoringException.UnknownTypeReason)
+                    { VersionNumber = held };
                 }
 
                 int? before;

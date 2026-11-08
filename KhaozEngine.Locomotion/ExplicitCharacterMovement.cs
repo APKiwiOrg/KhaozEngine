@@ -10,13 +10,14 @@ public static partial class ExplicitCharacterMovement
 {
     internal static MovementStepResult Step(in FramedMovementState state, in MoveCommand command,
         float deltaSeconds, in MoveTuning tuning, in WaterTraversalPolicy water, MovementQueryLease queries,
-        in ContactComposition composition, MovementBoundary? boundary = null)
+        in ContactComposition composition, MovementBoundary? boundary = null,
+        MovementSelection? validatedPlacement = null)
     {
         if (!float.IsFinite(command.Move.X) || !float.IsFinite(command.Move.Y) || !float.IsFinite(command.CameraYaw))
             return Hold(state, MovementStepOutcome.EnvironmentInvalid);
         var (direction, fraction, run) = CharacterMovement.ResolveCameraCommand(command, tuning);
         return ContactController.StepLeased(state, direction, fraction, run, command.Jump,
-            deltaSeconds, tuning, water, queries, composition, boundary, command.FaceCamera ? command.CameraYaw : null);
+            deltaSeconds, tuning, water, queries, composition, boundary, command.FaceCamera ? command.CameraYaw : null, validatedPlacement);
     }
 
     internal static MovementStepResult StepTowards(in FramedMovementState state, Vector2 direction, bool run,

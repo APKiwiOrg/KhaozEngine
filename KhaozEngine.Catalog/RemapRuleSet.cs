@@ -54,10 +54,11 @@ public sealed class RemapRuleSet
         }
 
         ActiveStamp = stamp;
+        Rules = new CatalogReadOnlyView<RemapRule>(_rules);
     }
 
-    /// <summary>Every rule, in sequence order, which is the order the pass applies them in.</summary>
-    public IReadOnlyList<RemapRule> Rules => _rules;
+    /// <summary>Every rule as a read-only snapshot in the sequence order the pass applies.</summary>
+    public IReadOnlyList<RemapRule> Rules { get; }
 
     /// <summary>
     /// The stamp a page carries once this whole set has been applied to it, which is the newest

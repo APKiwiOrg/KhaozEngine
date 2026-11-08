@@ -215,10 +215,10 @@ public sealed class ContentPublishBaseline
         ArgumentOutOfRangeException.ThrowIfNegative(minimumClientBuild);
 
         VersionNumber = versionNumber;
-        Rows = Copy(rows, nameof(rows));
-        Rules = Copy(rules, nameof(rules));
-        Chunks = Copy(chunks, nameof(chunks));
-        Languages = Copy(languages, nameof(languages));
+        Rows = new CatalogReadOnlyView<ContentRowRevision>(Copy(rows, nameof(rows)));
+        Rules = new CatalogReadOnlyView<RemapRule>(Copy(rules, nameof(rules)));
+        Chunks = new CatalogReadOnlyView<ContentChunkRecord>(Copy(chunks, nameof(chunks)));
+        Languages = new CatalogReadOnlyView<ManifestLanguageEntry>(Copy(languages, nameof(languages)));
         MinimumServerBuild = minimumServerBuild;
         MinimumClientBuild = minimumClientBuild;
     }
@@ -340,19 +340,19 @@ public sealed class ContentPublishPlan
         int minimumClientBuild,
         IReadOnlyList<ContentEdit> frozenEdits)
     {
-        FrozenEdits = frozenEdits;
+        FrozenEdits = new CatalogReadOnlyView<ContentEdit>([.. frozenEdits]);
         VersionNumber = versionNumber;
         BaseVersion = baseVersion;
         Candidate = candidate;
         Validation = validation;
         Allocation = allocation;
-        Closes = closes;
-        Inserts = inserts;
-        LiveRows = liveRows;
-        AppendedRules = appendedRules;
-        Rules = rules;
-        Chunks = chunks;
-        Languages = languages;
+        Closes = new CatalogReadOnlyView<ContentRowClose>([.. closes]);
+        Inserts = new CatalogReadOnlyView<ContentRowInsert>([.. inserts]);
+        LiveRows = new CatalogReadOnlyView<ContentRowRevision>([.. liveRows]);
+        AppendedRules = new CatalogReadOnlyView<RemapRule>([.. appendedRules]);
+        Rules = new CatalogReadOnlyView<RemapRule>([.. rules]);
+        Chunks = new CatalogReadOnlyView<ContentChunkRecord>([.. chunks]);
+        Languages = new CatalogReadOnlyView<ManifestLanguageEntry>([.. languages]);
         RemapRuleChunkHash = remapRuleChunkHash;
         ServerManifest = serverManifest;
         ClientManifest = clientManifest;

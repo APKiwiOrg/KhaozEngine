@@ -28,7 +28,7 @@ public sealed partial class SqlServerMutationJournalStore
             byte[] data = reader.GetFieldValue<byte[]>(3);
             byte[] checksum = reader.GetFieldValue<byte[]>(4);
             if (!JournalCanonicalizer.VerifySha256(data, checksum))
-                throw Corrupt(new[] { streamKey }, "Stored journal snapshot checksum does not match its data.");
+                throw Corrupt(JournalStoreRefusal.SnapshotChecksumMismatch, new[] { streamKey }, "Stored journal snapshot checksum does not match its data.", streamKey: streamKey);
             var snapshot = new JournalSnapshot(
                 streamKey,
                 reader.GetInt64(0),
@@ -106,7 +106,7 @@ public sealed partial class SqlServerMutationJournalStore
                     }
                     byte[] checksum = reader.GetFieldValue<byte[]>(6);
                     if (!JournalCanonicalizer.VerifySha256(payload, checksum))
-                        throw Corrupt(new[] { read.StreamKey }, "Stored journal event checksum does not match its payload.");
+                        throw Corrupt(JournalStoreRefusal.EventChecksumMismatch, new[] { read.StreamKey }, "Stored journal event checksum does not match its payload.", streamKey: read.StreamKey, streamVersion: reader.GetInt64(0));
                     var storedEvent = new JournalStoredEvent(
                         read.StreamKey,
                         reader.GetInt64(0),
@@ -191,7 +191,7 @@ public sealed partial class SqlServerMutationJournalStore
                     bytes = checked(bytes + data.Length);
                     byte[] checksum = reader.GetFieldValue<byte[]>(5);
                     if (!JournalCanonicalizer.VerifySha256(data, checksum))
-                        throw Corrupt(new[] { query.StreamKey }, "Stored journal projection checksum does not match its data.");
+                        throw Corrupt(JournalStoreRefusal.ProjectionChecksumMismatch, new[] { query.StreamKey }, "Stored journal projection checksum does not match its data.", streamKey: query.StreamKey, sectionName: reader.GetString(0));
                     var section = new JournalProjectionSection(
                         query.StreamKey,
                         reader.GetString(0),
@@ -205,7 +205,10 @@ public sealed partial class SqlServerMutationJournalStore
                 }
             }
             if (sections.Count > JournalLimits.EngineMaximumProjectionSectionsPerStream || bytes > JournalLimits.EngineMaximumAggregateProjectionBytesPerStream)
-                throw Corrupt(new[] { query.StreamKey }, "Stored journal projections exceed the engine response limits.");
+                throw ProjectionLimitFailure(query.StreamKey, sections.Count, bytes,
+                    JournalLimits.EngineMaximumProjectionSectionsPerStream, JournalLimits.EngineMaximumAggregateProjectionBytesPerStream,
+                    JournalStoreFailureKind.CorruptData, JournalStoreFailureCertainty.CommittedDataUnreadable,
+                    "Stored journal projections exceed the engine response limits.");
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             return new JournalProjectionRead(
                 reset ? JournalProjectionReadStatus.ResetRequired : JournalProjectionReadStatus.Success,
@@ -288,7 +291,7 @@ public sealed partial class SqlServerMutationJournalStore
         }
         string[] streamKeys = ranges.Select(value => value.StreamKey).ToArray();
         if (!JournalCanonicalizer.VerifySha256(resultData, resultChecksum))
-            throw Corrupt(streamKeys, "Stored journal result checksum does not match its data.");
+            throw Corrupt(JournalStoreRefusal.ResultChecksumMismatch, streamKeys, "Stored journal result checksum does not match its data.", operationId: operationId);
         var receipt = new JournalCommitReceipt(
             operationId,
             committedAt,
@@ -323,7 +326,7 @@ public sealed partial class SqlServerMutationJournalStore
         using SqlCommand command = CreateCommand(transaction, "SELECT store_epoch FROM dbo.journal_metadata WHERE metadata_key = 1;");
         object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         if (value is not Guid epoch)
-            throw Corrupt(Array.Empty<string>(), "Stored journal epoch is invalid.");
+            throw Corrupt(JournalStoreRefusal.StoredEpochInvalid, Array.Empty<string>(), "Stored journal epoch is invalid.");
         return epoch;
     }
 }

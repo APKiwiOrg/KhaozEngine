@@ -68,7 +68,10 @@ is required for an apply or an authoring host.
 
 `ContentAuthoringException` is the one exception this package throws. It carries the offending content type,
 the definition id and a stable `Reason` token beside the message, and an operator's log line keys on the
-reason rather than on the message.
+reason rather than on the message. Where a throw site names its exact rule, `Refusal` carries a
+`ContentAuthoringRefusal` member and the identifiers that member documents, beside the unchanged `Reason`
+token. `Refusal` is null for an instance built through a constructor that takes none, so a caller reads
+`Reason` then. The [bundle document refusals](#bundle-document-refusals) carry one.
 
 ## The four edit operations
 
@@ -148,15 +151,23 @@ pending intent per target, and it answers a second edit of an occupied target in
   which is also the order the audit will show.
 
 `TryApply` reports the standing edit that refused the new one. `Apply` throws the same refusal as a
-`ContentAuthoringException` carrying the `edit-target-collision` reason.
+`ContentAuthoringException` carrying the `edit-target-collision` reason and
+`EditTargetOperationCollision` in `Refusal`. `Type`, `Id`, `RowKey`, `StandingOperation` and
+`RequestedOperation` describe the compared target and its two intents.
 
 ## Families and id blocks
+
+Text bundle and draft states, version text snapshots, text candidates, publish baselines and plans,
+rollback plans and upgrade plans expose their owned collections through read-only views. Neither a
+list cast nor `ICollection.SyncRoot` exposes their validated storage. `ContentChangeSet.Edits` is a live
+read-only view, so a retained view sees later edits without permitting writes around target validation.
 
 `ContentFamily` is an author-declared grouping within one content type whose members are allocated ids from
 contiguous ALIGNED blocks, so a membership test is two comparisons per block rather than a set lookup. The
 block size is declared at creation, is a power of two between 16 and 65,536, and cannot be changed later,
 because changing it would move every id in the family. When a block fills a second one is reserved and the
-family carries an ordered `ContentFamilyBlock` list.
+family carries an ordered `ContentFamilyBlock` list. `Blocks` is an owned read-only snapshot, so a list
+cast or `ICollection.SyncRoot` access cannot replace a validated block or change the family's membership test.
 
 A family is never deleted. It is retired like a definition.
 
@@ -185,9 +196,25 @@ it. The plain path therefore needs no knowledge of families at all.
 
 A type may declare a `maxDefinitionId` at registration, and both paths refuse to cross it: a range that
 would pass it is refused whole, a reservation stops at it, and a new block whose top would exceed it is
-refused. The refusal is a `ContentAuthoringException` carrying the `id-ceiling-exceeded` reason and naming
-the type, the ceiling and the high-water mark. Retired rows count toward a ceiling, because ids are never
-reused and a retired row keeps the number it occupies.
+refused. Both refusals are `ContentAuthoringException` carrying the unchanged `id-ceiling-exceeded`
+`Reason` token. The typed members below describe the type, inclusive ceiling and high-water marks.
+Retired rows count toward a ceiling, because ids are never reused and a retired row keeps the number it occupies.
+
+### Allocation and change-set refusals
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `AllocationCeilingExceeded` | A plain id range whose top exceeds the type's inclusive ceiling | `Type`, `Ceiling`, `IssuedThrough`, `ReservedThrough`, `RequestedCount` |
+| `FamilyReservationCeilingExceeded` | A new aligned family block whose highest id exceeds the type's inclusive ceiling | `Type`, `FamilyKey`, `Ceiling`, `BaseId`, `HighestId`, `IssuedThrough`, `ReservedThrough` |
+| `FamilyUnknown` | Allocation or block reservation by a family id the persistence does not hold | `FamilyId`, with `Type` left at its default because the family is unknown |
+| `EditTargetOperationCollision` | A change-set target already held under a different edit operation | `Type`, `Id`, `RowKey`, `StandingOperation`, `RequestedOperation` |
+| `TypeUnknown` | A diff, candidate, rollback or pack row whose type the registry does not declare | `Type`, with the existing `Id` retained where the row is known |
+
+The plain ceiling is the declared `maxDefinitionId`, or 2,147,483,647 when no ceiling is declared.
+`BaseId` and `HighestId` are 64-bit so a refused block beyond positive `int` space is reported without
+truncation. `FamilyUnknown` keeps `unknown-family`, `EditTargetOperationCollision` keeps
+`edit-target-collision`, and `TypeUnknown` keeps `unknown-type` in `Reason`. Other store and publish
+refusals still expose their legacy tokens when they carry no typed `Refusal`.
 
 `IContentIdPersistence` is the durable half the allocator sits on, and every `Commit` member on it commits
 on its own. A backend implements it with its own transactions.
@@ -242,8 +269,188 @@ commits against cannot differ.
 previous snapshot. `ContentPublishBaseline.After(plan)` is the baseline the next publish sees.
 
 `ContentPublishRequest.ExpectedBaseVersion` is optimistic concurrency and it is required. Two consoles cannot
-both publish the same draft: the second one's expectation is stale and it is refused with both numbers named,
-carrying the `base-version-moved` reason.
+both publish the same draft: the second one's expectation is stale. The row publisher reports
+`BaseVersionMoved`, with `ExpectedBaseVersion` and `ActualBaseVersion` beside the unchanged
+`base-version-moved` token.
+
+### Publication and rollback refusals
+
+The candidate builders, row publisher, pack writer, rebuild and `ContentRollback.Refusal` carry these
+`ContentAuthoringRefusal` members. Existing legacy tokens, content type and definition id remain intact.
+A consumer reads the reason and identifiers, never message wording.
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `BaseVersionMoved` | A row or text publish expecting another baseline version | `ExpectedBaseVersion`, `ActualBaseVersion` |
+| `NoPendingDraft` | A row publish with no open draft carrying pending edits | None |
+| `FrozenDraftLost` | A policy publish whose store no longer holds its draft frozen for this base | `ExpectedBaseVersion` |
+| `CandidateRejected` | A candidate rejected by validation | The complete owned read-only `Findings` snapshot |
+| `CandidateEditOperationUnsupported` | A candidate edit outside the four supported operations | `Type`, `Id`, `TypeKey`, `ActualOperation`, `EditOrdinal` |
+| `CandidateForkFlagInvalid` | A candidate fork flag absent from its schema or not Bool | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |
+| `DefinitionIdDuplicate` | A carried id already occupied in the candidate, including a preview | `Type`, `Id`, `RowKey`, `EditOrdinal` |
+| `FieldUnknown` | A candidate edit naming an undeclared schema field | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |
+| `RowUnknown` | An update or retire naming an absent candidate row | `Type`, `Id`, `RowKey`, `EditOrdinal` |
+| `PackPointerStoreRequired` | A publish or rebuild target without a version-pointer half | `StoreType`, `MemberName` (`ContentPublishCommit` or `RunAsync`) |
+| `VersionUnknown` | A rebuild naming a version the store does not hold | `VersionNumber` |
+| `RetireIrreversible` | A rollback across a retire, code `KEC0039` | First blocker's `Type`, `Id`, `RowKey`, plus `TargetVersion`, `BlockerCount` and complete `Findings` |
+| `RulePrefixShortened` | A plan with fewer rules than the held history | `ActualCount`, `MinimumCount` |
+| `RulePrefixEntryMismatch` | A different rule at an already held sequence | One-based `RuleSequence` |
+| `TextPlanOnRowOnlyRoute` | A row writer handed the row half of a text plan | `MemberName` (`WriteAsync`), `VersionNumber` |
+| `TextChunkMissingOnRowOnlyRoute` | A row writer naming a text chunk absent from its pack store | `MemberName` (`WriteAsync`), `Language`, `TextHash` |
+
+`CandidateRejected` is one rule regardless of how many findings the validator returns. Each
+`ContentFinding.Code` is the stable identity of its finding, including codes a consumer policy supplies.
+There is no singular finding-code identifier. Both legacy and typed finding-taking exception constructors
+copy the complete list into a read-only snapshot, so later producer mutation cannot change the refusal.
+Engine construction is fenced across Authoring, SQLite, SQL Server and Server.Admin. The public legacy
+constructors still leave `Refusal` null for consumer instances, with their existing `Type`, `Id`, `Reason`,
+`Findings` and inner cause intact. Structured constructors use a private initialization path rather than
+calling a legacy constructor. Defensive candidate checks retain `ContentAuthoringException` and their legacy
+`unknown-edit-operation` and `fork-flag-field` tokens, with the candidate members above. Sealed edit factories
+admit only supported operations. Public publication runs fork preflight, while the internal candidate builder
+can admit a fork directly and reports an invalid flag through the same structured carrier.
+
+### Durable schema and reset refusals
+
+Both durable providers retain their legacy `schema-mismatch`, `catalog-partial` and `draft-open` tokens
+beside `ContentAuthoringException.Refusal`. SQLite also retains `host-foreign-key`. Store-wide `Type` and `Id` remain
+at default and 0. Schema objects use the provider identity in `ObjectName`, such as
+`index:ix_catalog_row_live` on SQLite and `check constraint:catalog_row.ck_catalog_row_retired` on
+SQL Server. SQL Server row time columns retain the complete compared entry, such as
+`row time column:catalog_row.created_at_utc|datetimeoffset|3|NULL`. This includes type, scale and
+nullability without parsing a diagnostic string. A wrong SQLite table or column definition names its owning table.
+Provider read failures keep their typed `InnerException` and the existing message text.
+
+| Refusal | What it refuses | Identifiers |
+|---|---|---|
+| `SchemaMissing` | Validation of an absent catalog | `RequiredMigration` |
+| `SchemaValidationMetadataMissing` | Schema validation or reset missing a required metadata value | `RequiredMigration` |
+| `SchemaMetadataUnreadable` | Provider failure reading schema metadata | `RequiredMigration`, provider `InnerException` |
+| `SchemaVersionMalformed` | A noninteger stored schema version | `MetadataType`, `RequiredMigration` |
+| `SchemaVersionUnsupported` | A schema version this mode cannot use | `ActualVersion`, owned `SupportedVersions`, `RequiredMigration` |
+| `SchemaForeignKeysDisabled` | SQLite validation without foreign key enforcement | `RequiredMigration` |
+| `SchemaApplicationLockNotGranted` | SQL Server schema lock request returning a negative result | `ReturnCode`, `RequiredMigration` |
+| `SchemaObjectMissing` | An absent schema object or required row time shape | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `SchemaObjectDefinitionMismatch` | A table or index differing from its declared shape | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `SchemaObjectUnexpected` | An undeclared schema object or row time shape | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `ResetTablesPartial` | Reset of incomplete tables with a readable version, without force | `StandingTableCount`, `ExpectedTableCount`, `ActualVersion`, `ForceRequired` |
+| `ResetVersionUnreadable` | Reset without a readable version, without force | `StandingTableCount`, `ExpectedTableCount`, `ForceRequired` |
+| `ResetVersionNewer` | Reset that would recreate an older schema | `ActualVersion`, inclusive `MaximumVersion` |
+| `ResetDraftOpen` | Reset that would destroy a draft without force | `DraftCount` |
+| `HostForeignKeyActionUnsafe` | Reset whose host key delete action would write host rows | Owned `HostObjects` of `ContentHostForeignKeyFinding` |
+
+`SchemaValidationMetadataMissing` covers an absent metadata row or a NULL required metadata scalar and
+includes the migration the schema check prescribes. Ordinary store
+reads retain `SchemaMetadataMissing` with no identifiers. `ResetDraftOpen` reports draft rows rather than
+the companion import's `DraftOpen` edit counts. A non-null reset scalar of the wrong CLR type reuses
+`StoredScalarTypeMismatch` with `ExpectedScalarType` and `ActualScalarType`, for integer reads and the
+post-recreation text epoch alike. Even the latter is an input check: SQLite's table inventory leaves views
+and their INSTEAD OF triggers standing, and a metadata-shaped view can intercept the seed. A missing epoch
+uses `SchemaValidationMetadataMissing`. SQL Server database DDL triggers can likewise alter the recreated
+metadata table and install a seed trigger. Its post-recreation version and epoch reads therefore remain
+input checks with the same refusal members, rather than internal invariants. The refusal rolls back trigger
+writes as well as catalog changes. SQL Server schema locking carries the integer return code from
+`sys.sp_getapplock`, including timeout, cancellation, deadlock and call errors, without parsing provider text.
+
+`ContentHostForeignKeyFinding` names `HostTable`, `ReferencedTable` and the declared `DeleteAction` for every
+unsafe key. Composite key columns with the same table pair and action are folded, as in the existing reset
+diagnostics. No key name or schema is invented where the provider reports none. `SupportedVersions` and
+`HostObjects` copy their inputs into fresh immutable snapshots. Both providers currently support schema
+version 4 and names migration `catalog-v4-text-authoring`. A partial reset measures against 19 current tables.
+
+### Store admission and confirmation refusals
+
+The in-memory, SQLite and SQL Server stores carry these members alongside their legacy tokens. Row-boundary field checks reuse
+`FieldUnknown` with the submitted batch's zero-based `EditOrdinal`. Family-id lookup reuses `FamilyUnknown`,
+unknown registrations reuse `TypeUnknown`, and absent versions reuse `VersionUnknown`, including pinning.
+Candidate rejection retains the complete `Findings` snapshot. Stale base checks reuse `BaseVersionMoved`.
+A text commit whose frozen draft is absent reuses `FrozenDraftLost` with `ExpectedBaseVersion`.
+Text apply reuses `TextBindingRowUnknown` and `TextLanguageUndeclared` with their existing identifier sets.
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `FamilyDeclarationBlockSizeOutsideRange` | A store declaration outside the inclusive block-size range | `Type`, `FamilyKey`, `ActualBlockSize`, `MinimumBlockSize` (16), `MaximumBlockSize` (65,536) |
+| `FamilyDeclarationBlockSizeNotPowerOfTwo` | An in-range store block size that is not a power of two | `Type`, `FamilyKey`, `ActualBlockSize` |
+| `FamilyKeyDuplicate` | A family key already declared for the type | `Type`, `FamilyKey` |
+| `DerivedMarkerNotAuthorable` | A row edit authoring a derived marker | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |
+| `BundleTypeDeclarationMismatch` | A bundle's key or chunk slots disagreeing with registration | `Type`, `ActualTypeKey`, `RegisteredTypeKey`, `ActualChunkSlots`, `RegisteredChunkSlots` |
+| `BundleFamilyUnknown` | An imported row naming no carried family | `Type`, `Id`, `RowKey`, `FamilyKey` |
+| `CatalogNotEmpty` | Import into a catalog that already published | `ActiveVersion` |
+| `NextVersionMismatch` | A plan whose number is not the next after the highest held version | `RequestedVersion`, `HighestVersion`, `NextVersion` |
+| `PackStoreMissing` | An operation requiring an absent pack target | `MemberName` |
+| `PackUnreadable` | A pack read returning a refusal | `VersionNumber`, `ObjectHash`, stable `PackReaderReason` token |
+| `PublishInProgress` | A draft write while publication holds the freeze | `MemberName`, `FrozenForBaseVersion` (full stored Int64 marker) |
+| `UpgradeAlreadyRecorded` | A publish applying an upgrade already in the ledger | `UpgradeId` |
+| `TextForkOnRowOnlyRoute` | A fork whose source text the row-only route cannot copy | `MemberName`, `TextRowType`, `TextRowId` |
+| `TextBaseOnRowOnlyRoute` | A row-only rollback across recorded text | `MemberName`, `VersionNumber`, `RecordedLanguageCount`, `RecordedValueCount` |
+| `TextManifestOnRowOnlyRoute` | A row-only plan naming text chunks other than the baseline's | `MemberName`, `VersionNumber`, `ActualCount`, `ExpectedCount` |
+| `TextPlanEpochMismatch` | A text plan frozen in another store | Plan's `ExpectedEpoch`, store's `ActualEpoch` |
+| `TextPlanFreezeMismatch` | A draft freeze that no longer names the active base | `ExpectedBaseVersion`, nullable freeze marker `ActualBaseVersion` |
+| `TextPlanDraftMismatch` | A complete frozen draft differing from the plan's | `ExpectedBaseVersion` |
+| `TextPlanBaselineMismatch` | Baseline text or languages differing from the plan's | `ExpectedBaseVersion` |
+| `TextCloseRevisionMissing` | A text close absent from the store | `TextRowType`, `TextRowId`, `FieldName`, `Language`, `FromVersion` |
+| `TextPlanRowUnknown` | A text commit revision without a live plan row | `TextRowType`, `TextRowId`, `FieldName`, `Language` |
+| `SchemaMetadataMissing` | A durable store read missing its `catalog_metadata` singleton | None |
+| `StoredScalarTypeMismatch` | A non-null stored scalar of the wrong CLR type | `ExpectedScalarType`, `ActualScalarType` |
+| `TypeIdentityMismatch` | A durable registry pairing disagreeing with a stored id or key | Requested `Type`, `StoredTypeId` (full persisted Int64), `StoredTypeKey`, `RegisteredTypeKey` |
+| `DraftRowDisappeared` | A draft singleton removed during its transaction | None |
+| `StoredEditOperationUnknown` | A persisted edit operation outside the four supported operations | `Type`, `Id`, `ActualOperation`, persisted `StoredEditOrdinal` (Int64) |
+| `DraftEditIdentityMissing` | A SQL Server draft-edit insert returning no identity | `Type`, `Id` |
+| `FamilyIdentityMissing` | A SQL Server family insert returning no identity | `Type`, `FamilyKey` |
+| `TransactionContended` | A SQL Server transaction refused with error 1205 or 3960 | `SqlErrorNumber` |
+
+`TextRowType` and `TextRowId` identify rows without changing the existing store-wide legacy `Type` and
+`Id` values of default and 0. Pinning an absent version retains its existing `unknown-type` legacy token
+while `Refusal` reports `VersionUnknown`. A pack reader returns a stable token rather than an exception,
+so `PackUnreadable` preserves that token without inventing an inner exception.
+SQLite uses the same member and identifier set for each shared rule. Its missing metadata read and stored
+type identity checks use the durable-store members above. No migration identifier is invented for a missing
+singleton. Non-null malformed scalars use `StoredScalarTypeMismatch`, carrying the expected and actual CLR
+types without copying the stored value. A host trigger can remove the draft inside its transaction, and malformed persisted values
+can violate an otherwise correct operation `CHECK`. SQLite validates catalog DDL, not trigger behavior or
+every stored value. These input failures use `DraftRowDisappeared` and `StoredEditOperationUnknown`.
+`StoredEditOrdinal` is the database ordinal, distinct from a submitted batch's zero-based `EditOrdinal`.
+
+The in-memory store keeps `TextProvenanceUnknown` with `VersionNumber` when a version has no complete
+text record. A row-only check retains the legacy `text-unrepresented` token, while a snapshot read
+retains `text-provenance-unknown`. An import losing the draft its row step just created remains a
+separate invariant.
+
+### Text producer and confirmation refusals
+
+The text candidate and chunk builders check eligibility and strict byte bounds before encoding. Their reasons name the producer and keep one identifier set per member. The bundle reader
+reports its own JSON paths. The defensive value-byte guard uses `TextProducerValueBytesExceeded` with row context.
+A malformed Unicode finding keeps the original `ArgumentException` as its inner,
+including its parameter name. No reason is inferred from prose.
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `TextBindingRowUnknown` | Text binding without a single live row for its key | `Type`, `Id` 0, `RowKey` |
+| `TextFinalRowUnknown` | Text whose final row is absent | `Type`, `Id`, `FieldName`, `Language` |
+| `TextLanguageUndeclared` | Text whose language neither the baseline nor the draft declares | `Type`, `Id`, `FieldName`, `Language` |
+| `TextTargetIneligible` | Text without a registered CLIENT type and a CLIENT localized marker | `Type`, `Id`, `FieldName`, `Language`, `TypeKey` when registered |
+| `TextProducerMalformedUnicode` | An unpaired surrogate in a type key or marker field used to derive text keys | `Type`, `Id`, `FieldName`, `Language`, `MemberName` (`TypeKey` or `FieldName`), zero-based UTF-16 `Index` |
+| `TextProducerWireTagBytesExceeded` | A producer wire tag above 35 ASCII bytes | Legacy `Type` default and `Id` 0, `Language`, `WireTag`, `ActualBytes`, `MaximumBytes` (35) |
+| `TextProducerValueBytesExceeded` | A producer value above 8192 strict UTF-8 bytes | `Type`, `Id`, `FieldName`, `Language`, `ActualBytes`, `MaximumBytes` (8192) |
+| `TextDerivedKeyByteCountMismatch` | A derived key re-encoding to a different byte length than measured | `Type`, `Id`, `FieldName`, `Language` |
+| `TextKeyUtf8Invalid` | Invalid UTF-8 in the content key | `Type`, `Id`, `FieldName`, `Language` |
+| `TextKeyBytesExceeded` | A derived key above 192 strict UTF-8 bytes | `Type`, `Id`, `FieldName`, `Language`, `ActualBytes`, `MaximumBytes` (192) |
+| `TextKeyCollision` | Two values deriving one key in the same language | `DerivedKey`, canonical `Language` |
+| `TextChunkBytesExceeded` | A language body above 16 MiB, including count and length prefixes | `Language`, `ActualBytes`, `MaximumBytes` (16,777,216) |
+| `TextChunkHashMismatch` | A chunk hash different from the plan's regenerated values | `Language`, claimed `TextHash`, regenerated `ExpectedTextHash` |
+| `TextChunkBytesMismatch` | Stored bytes different from the regenerated file | `Language`, `TextHash` |
+| `TextReusedChunkUnrecorded` | Reuse of a language absent from the baseline | `Language`, baseline `VersionNumber`, `TextHash` |
+| `TextReusedHashMismatch` | Reuse of a hash the baseline did not record | `Language`, baseline `VersionNumber`, claimed `TextHash`, recorded `ExpectedTextHash` |
+| `TextReusedWireTagMismatch` | Reuse in another wire spelling than the baseline recorded | `Language`, baseline `VersionNumber`, `TextHash`, claimed `WireTag`, recorded `ExpectedWireTag` |
+| `TextProvenanceUnknown` | A version without complete text provenance, including a missing in-memory language record | `VersionNumber` |
+
+The key and body bounds are inclusive. Repeating the operation at the reported `MaximumBytes` succeeds
+when that bound is the only failed rule. The sealed declaration and revision constructors already enforce
+35-byte ASCII wire tags and 8,192-byte strict UTF-8 values. The wire-tag and measured-length re-encoding
+guards retain `ContentAuthoringException` and the legacy `text-bounds` token, with their producer members above,
+even when earlier admission makes them defensive. A derived key's nonempty lower bound follows from its
+nonempty type and field plus two separators. Commit confirmation still checks reuse spelling because the
+plan's public list facades can be changed after construction.
 
 ### The draft is frozen for the whole publish
 
@@ -520,7 +727,16 @@ HTTP `catalog-import` is an operator publication too. The bundled stores impleme
 `ContentPolicyImportRequest` carrying a non-null policy and the server's actor, operator and note. It uses
 the existing seed staging, text handling and frozen publisher. The admin handler binds its configured
 policy to this request, never a value from JSON. A custom store lacking this capability refuses operator
-imports under `IContentPolicyImportStore.UnavailableReason` when a policy is configured.
+imports under `IContentPolicyImportStore.UnavailableReason` when a policy is configured. The admin
+boundary carries this refusal on `ContentAuthoringException` with the following structured member.
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `PolicyImportCapabilityMissing` | An operator import with a host policy and a store without policy import support | `RequiredCapability` is `typeof(IContentPolicyImportStore)` |
+
+The legacy `Reason` stays `policy-import-unavailable`, with default `Type`, `Id` 0 and empty `Findings`.
+A lower provider refusal passes through the operator adapter as the original exception, retaining its
+`Refusal`, identifiers, findings and inner cause.
 
 Trusted server calls to `ImportBundleAsync` and `ImportTextBundleAsync`, release tooling and upgrade
 publication keep their existing paths without an operator policy. These paths can ship matching artifacts
@@ -1012,24 +1228,103 @@ tooling and outside this engine.
 explicitly in a FIXED ORDER through a writer rather than a reflected serializer, because a bundle lands in a
 repository beside the code it seeds and two exports of one version have to be the same bytes. Numbers are
 written as numbers and bytes as lower hex, because a bundle is read and edited by hand as often as it is
-generated. Reading is total for shape: a document this build cannot read is a refusal naming what was wrong,
-never a half-built bundle. Shape includes MAGNITUDE, because JSON has one number type and a member the reader
+generated. Explicit shape guards refuse malformed members rather than returning a half-built bundle, with
+the non-text string-decoding caveat below. Shape includes MAGNITUDE, because JSON has one number type and a member the reader
 wants as an integer can be handed `1.5`, an id past `int.MaxValue` or `1e308`. Type ids must also fit their
 1 to 65,535 domain, and field kinds, visibility values and remap kinds must be known enum values. Each bad
-value is refused naming the member, the same as a missing one.
+value is refused naming the member, the same as a missing one. The refusal's `JsonPath` is that member's
+rooted path, as the table below lists.
 
 `ContentBundleJson.ReadFormatVersion` is the precheck for a consumer that must inspect the declared format
 before reading or combining a bundle. It uses the same JSONC policy and format member rules as `Read`, so both
 accept comments and trailing commas and both refuse malformed JSON, a nonobject root, a missing version or a
-version that is not a 32-bit integer. The precheck returns an unsupported integer so the caller can compare or
+version not written as a 32-bit integer literal. The precheck returns an unsupported integer so the caller can compare or
 report it. `Read` remains the operation that refuses a format version this build does not support.
 
 This build reads and writes two formats. `ContentBundle.CurrentFormatVersion`, 1, is ROW-ONLY and text free by
 contract, and a format 1 document carrying a `text` member is refused. `ContentBundle.TextFormatVersion`, 2,
 adds the protected `text` section, `ContentBundle.TextState`, of declared languages and complete values, and a
-format 2 document without it is refused. Any other format is refused whole with `bundle-format`.
-`ImportBundleAsync` is the row-only route and imports format 1 only. [Catalog text](#catalog-text) covers the
-text import and the export format rule.
+format 2 document without it is refused. Any other format is refused whole with `bundle-format` and
+`BundleVersionUnsupported`. `ImportBundleAsync` is the row-only route and imports format 1 only.
+[Catalog text](#catalog-text) covers the text import and the export format rule.
+
+### Bundle document refusals
+
+An unmapped lower constructor rule keeps the bundle carrier, its original prefix and diagnostic, and
+the constructor exception as its inner cause. `BundleConstructorRuleUnmapped` has no identifiers.
+
+The explicit shape guards in `ContentBundleJson` and its text-section reader carry the `bundle-format`
+token in `Reason` and a `ContentAuthoringRefusal` in `Refusal`. Messages remain developer prose, so branch on
+these. Non-text strings still use `JsonElement.GetString` directly, so its unpaired-surrogate decoding faults
+can escape as `InvalidOperationException`. The `TextMalformedUnicode` guarantee covers the text section.
+`JsonPath` is rooted at `$` with zero-based indices, such as `$.types[0].fields[1].kind` or
+`$.text.values[0].typeId`. A member-shape guard reports its branches in its own order: an absent member is
+`BundleMemberRequired`, and a present member of another JSON kind is `BundleMemberKindInvalid`. The JSON kind
+a member takes is fixed by its path. An integer that does not fit carries only its path, never a guessed
+value. Every array element must be an object. Elements are checked as they are visited, so an earlier
+member refusal still precedes a malformed later element. A negative source version is wrapped at the bundle
+constructor, with its original argument exception retained as inner.
+
+| Refusal | Refused rule | Identifiers |
+| --- | --- | --- |
+| `BundleJsonMalformed` | Text that is not a JSON document | `JsonPath`, `LineNumber`, `BytePositionInLine` as the reader reports them, each null when it reports none. The reader's `JsonException` is the inner exception |
+| `BundleConstructorRuleUnmapped` | A lower constructor rule without a mapped reader finding | None, original constructor exception retained as inner |
+| `BundleRootObjectRequired` | A root that is not an object | `JsonPath` (`$`), `ActualJsonKind` |
+| `BundleVersionUnsupported` | A format version other than 1 or 2, on read, write or import | `ActualFormatVersion`, `SupportedFormatVersions` (1 and 2, an owned read-only snapshot) |
+| `BundleUnexpectedTextSection` | A format 1 document carrying `text` | `JsonPath` (`$.text`), `ActualFormatVersion` (1) |
+| `BundleTextSectionMissing` | Writing a format 2 bundle that lost its text section | `ActualFormatVersion` (2) |
+| `BundleMemberRequired` | A required member is absent | `JsonPath` |
+| `BundleMemberKindInvalid` | A member has another JSON kind, or an array element is not an object | `JsonPath`, `ActualJsonKind` |
+| `BundleInt32Unrepresentable` | A number not written as a 32-bit integer literal, `formatVersion` included. `1.0` and `1e2` are refused | `JsonPath` |
+| `BundleInt64Unrepresentable` | A number not written as a 64-bit integer literal (`familyId`, a row's `number`). `1.0` and `1e2` are refused | `JsonPath` |
+| `BundleTypeIdOutsideRange` | A type id outside 1 to 65,535 | `JsonPath`, `ActualInteger`, `MinimumInteger` (1), `MaximumInteger` (65,535) |
+| `BundleFieldKindUnknown` | An undefined `ContentFieldKind` | `JsonPath`, `ActualInteger` |
+| `BundleVisibilityUnknown` | An undefined `ContentVisibility` | `JsonPath`, `ActualInteger` |
+| `BundleRemapKindUnknown` | An undefined `RemapRuleKind` | `JsonPath`, `ActualInteger` |
+| `BundleHexMalformed` | A bytes or payload string that is not hex, by odd length or a non-hex character. Either letter case reads | `JsonPath` |
+
+A value a lower constructor refuses (`ContentFieldSchema`, `ContentFamily`, `RemapRule` or
+`ContentFieldValue`) carries `bundle-format` and the `Refusal` of the rule the constructor's own typed finding
+names, never one read from its message. The message keeps the constructor's own words behind the reader's
+prefix, and the constructor's argument exception is the inner exception.
+
+| Refusal | Refused rule | Identifiers |
+| --- | --- | --- |
+| `BundleFieldNameBlank` | A schema field name that is empty or white space | `JsonPath` (`$.types[n].fields[n].name`) |
+| `BundleFieldNameDuplicate` | A schema field name an earlier field of the type declares | `JsonPath` of the later name, `FieldName` |
+| `BundleReferenceTargetMissing` | A key reference with no content type key | `JsonPath` (`$.types[n].fields[n].referenceTarget`), `FieldName` |
+| `BundleTagReferenceTargetInvalid` | A tag list whose reference target is not `tag`, compared ordinally | `JsonPath` (`$.types[n].fields[n].referenceTarget`), `FieldName` |
+| `BundleUnexpectedReferenceTarget` | A reference target on any other kind, an empty string included | `JsonPath` (`$.types[n].fields[n].referenceTarget`), `FieldName`, `ActualKind` |
+| `BundleScaledIntegerScaleInvalid` | A scaled int scale below 1 | `JsonPath` (`$.types[n].fields[n].scale`), `FieldName`, `ActualInteger`, `MinimumInteger` (1) |
+| `BundleUnscaledKindScaleInvalid` | Any other kind with a scale that is not 1 | `JsonPath` (`$.types[n].fields[n].scale`), `FieldName`, `ActualKind`, `ActualInteger`, `MinimumInteger` and `MaximumInteger` (1) |
+| `BundleFamilyKeyBlank` | A family key that is empty or white space | `JsonPath` (`$.families[n].familyKey`) |
+| `FamilyBlockSizeOutsideRange` | A family block size outside 16 to 65,536 | `JsonPath` (`$.families[n].blockSize`), `FamilyKey`, `ActualBlockSize`, `MinimumBlockSize` (16), `MaximumBlockSize` (65,536) |
+| `FamilyBlockSizeNotPowerOfTwo` | A family block size in that range that is not a power of two | `JsonPath` (`$.families[n].blockSize`), `FamilyKey`, `ActualBlockSize` |
+| `BundleFamilyBlockAlignmentInvalid` | A block base id that is not a multiple of the family's block size | `JsonPath` (`$.families[n].blocks[n].baseId`), the base id as `ActualInteger` |
+| `BundleRuleIntegerNegative` | A rule `sequence`, `introducedIn`, `fromId` or `toId` below 0 | `JsonPath` of that member, `ActualInteger`, `MinimumInteger` (0) |
+| `BundleRulePayloadMalformed` | A rule payload that is not its kind's shape, or longer than the payload cap | `JsonPath` (`$.rules[n].payload`), `RuleKind`, the payload length as `ActualBytes` |
+| `BundleMarkerValueAuthored` | A row field of the byte-free `LocalizedTextKey` kind that carries bytes instead of being absent | `JsonPath` (`$.rows[n].fields[n].bytes`) |
+
+The text section uses the same member-shape refusals, including a missing `text` object, and maps its
+constructors' typed findings with the original argument exception as the inner. Direct text constructors
+keep their plain `ArgumentException` contracts. `StrictText` refuses an unpaired surrogate escape before a
+constructor sees it and keeps that reader fault as the inner exception.
+
+| Refusal | Refused rule | Identifiers |
+| --- | --- | --- |
+| `BundleLanguageIdentityDuplicate` | A repeated canonical language identity | `JsonPath` (`$.text.languages[n].language`) of the later declaration, `Language` |
+| `BundleLanguageTagInvalid` | A language or wire tag outside the ASCII grammar of 1 to 35 bytes | `JsonPath` of the tag, `LanguageTag` as submitted |
+| `BundleLanguageWireTagMismatch` | A wire tag normalizing to another identity | `JsonPath` (`$.text.languages[n].wireTag`), canonical `Language`, submitted `WireTag` |
+| `BundleTextLanguageUndeclared` | A value naming an undeclared canonical language | `JsonPath` (`$.text.values[n].language`), `Language` |
+| `BundleTextTargetDuplicate` | A repeated canonical target | `JsonPath` (`$.text.values[n]`) of the later value, `TextTarget` with its type, key, field and language |
+| `BundleTextTargetFieldBlank` | A target with an empty or white space marker field | `JsonPath` (`$.text.values[n].field`) |
+| `BundleTextTargetKeyEmpty` | A target with an empty content key | `JsonPath` (`$.text.values[n].key`) |
+| `TextMalformedUnicode` | An unpaired surrogate escape in a text-section string | `JsonPath` of the string |
+| `TextValueBytesExceeded` | A value above 8,192 strict UTF-8 bytes | `JsonPath` (`$.text.values[n].value`), `ActualBytes`, `MaximumBytes` (8,192) |
+
+A repeated wire spelling always repeats its normalized language identity, so it is refused as
+`BundleLanguageIdentityDuplicate`. A repeated target is checked before an undeclared language, matching the
+section constructor's guard order.
 
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
 their blocks verbatim, including each family's `IsRetired` flag through family reads and later exports in
@@ -1163,7 +1458,8 @@ discard audited. A draft a row-only route built is never a proof and always retu
 
 `ImportTextBundleAsync` imports a complete bundle into an EMPTY store, rows, ids, families, rules, declarations
 and values together, as one complete version 1. Format 1 imports as empty text. A format 2 bundle that lost its
-section and any later format are refused with `bundle-format`, a value naming a row the bundle does not carry
+section and any later format are refused with `bundle-format`, the later format with `Refusal`
+`BundleVersionUnsupported`, a value naming a row the bundle does not carry
 with `unknown-row`, and an ineligible target with `text-target-ineligible`, all before anything is reset or
 staged. An open draft holding any row, text or language work refuses the import with `draft-open` and stays as
 it was. A later refusal restores the empty store. Every declared language keeps its wire spelling, empty ones
@@ -1201,6 +1497,36 @@ holds:
   before anything is staged when the open draft holds text intents or introductions.
 - `ContentPublishCommit.WriteAsync` refuses the row half of a text plan and a plan naming a text chunk the pack
   store does not already hold.
+
+### Text route refusals
+
+`ContentAuthoringException.Refusal` distinguishes route admission failures without parsing the message.
+The legacy `Reason`, `Type` and `Id` values stay unchanged. A text target checked before id binding retains
+`Id` 0. Exact-version export retains its legacy default `Type` and `Id` 0 and names the absent row through
+`TextRowType` and `TextRowId` instead.
+
+| Refusal | What it refuses | Identifiers |
+|---|---|---|
+| `BundleTextSectionMissing` | Reading or writing format 2 after its text section was dropped | `ActualFormatVersion` |
+| `DraftOpen` | Companion import while an open draft holds work | `MemberName`, `RowEditCount`, `TextEditCount`, `LanguageIntroductionCount` |
+| `BundleTextRowUnknown` | A text target naming no row the bundle carries | `Type`, `Id` 0, `RowKey`, `FieldName`, `Language`, zero-based value `Index` |
+| `TextExportRowUnknown` | A text revision whose row is not live in the exported version | `TextRowType`, `TextRowId`, `FieldName`, `Language`, `VersionNumber`, `MemberName` |
+| `TypeUnknown` | An unregistered text target type | `Type`, `Id` 0 |
+| `TextTargetFieldUnknown` | An undeclared text marker field | `Type`, `Id` 0, `TypeKey`, `FieldName`, `Language` |
+| `TextTargetIneligible` | A type or field without the required CLIENT localized marker declaration | `Type`, `Id` 0, `TypeKey`, `FieldName`, `Language` |
+| `TextFieldNameTooLong` | A text marker name above 64 UTF-16 code units | `Type`, `Id` 0, `TypeKey`, `FieldName`, `Language`, `ActualCharacters`, inclusive `MaximumCharacters` (64) |
+| `TextKeyBytesExceeded` | A derived text key above 192 strict UTF-8 bytes | `Type`, `Id` 0, `FieldName`, `Language`, `ActualBytes`, inclusive `MaximumBytes` (192) |
+| `TextPlanOnRowOnlyRoute` | The marked row half of a text plan on a row-only commit | `MemberName`, `VersionNumber` |
+| `TextBundleOnRowOnlyRoute` | A text-bearing bundle on a row-only import | `MemberName` |
+| `TextFormatOnRowOnlyRoute` | A bundle without text declaring any format other than 1 on a row-only import | `MemberName`, `ActualFormatVersion` |
+| `TextDraftOnRowOnlyRoute` | Pending text a row-only operation cannot carry | `MemberName`, `TextEditCount`, `LanguageIntroductionCount` |
+| `TextBaselineHiddenFromPlanner` | An upgrade baseline whose carried text disagrees with the exact version | `VersionNumber`, `CarriedLanguageCount`, `CarriedValueCount`, `RecordedLanguageCount`, `RecordedValueCount` |
+| `FrozenDraftLost` | An upgrade publish whose successfully frozen draft is no longer open | `ExpectedBaseVersion` |
+
+The field-name and key-byte limits are inclusive. A target at the reported limit succeeds when that is
+its only failed rule. Companion provenance reads keep `TextProvenanceUnknown` with `VersionNumber` when
+the version cannot be proved text complete. Upgrade write and freeze routes are reached only after
+planning confirms the companion exists.
 
 ### Reason tokens
 

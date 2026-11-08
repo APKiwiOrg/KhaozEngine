@@ -263,10 +263,14 @@ public class SqliteCatalogResetTests
             epochBefore = await store.GetStoreEpochAsync();
         }
 
+        string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "content release"));
 
+        Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal("draft-open", refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.ResetDraftOpen, refused.Refusal);
+        Assert.Equal(1L, refused.DraftCount);
         Assert.Equal(1L, database.Scalar("SELECT active_version FROM catalog_metadata;"));
         Assert.Equal(1L, database.Scalar("SELECT COUNT(*) FROM catalog_draft;"));
         Assert.Equal(epochBefore, Text(database, "SELECT store_epoch FROM catalog_metadata;"));
@@ -307,11 +311,13 @@ public class SqliteCatalogResetTests
             """);
         database.Execute("INSERT INTO host_release_log(id, version_number) VALUES (1, 1);");
 
+        string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         SqliteException failed = await Assert.ThrowsAsync<SqliteException>(
             () => SqliteCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "content release"));
 
-        // Named, so this test cannot quietly start passing on a failure that happens BEFORE the drop.
+        // The snapshot includes complete host rows, so a changed id or version cannot escape rollback.
+        Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal(19, failed.SqliteErrorCode);
         Assert.Equal(SQLitePCL.raw.SQLITE_CONSTRAINT_FOREIGNKEY, failed.SqliteExtendedErrorCode);
 
@@ -321,14 +327,13 @@ public class SqliteCatalogResetTests
         Assert.Equal(2L, database.Scalar("SELECT COUNT(*) FROM catalog_row;"));
         Assert.Equal(auditsBefore, database.Scalar("SELECT COUNT(*) FROM catalog_audit;"));
 
-        // The host's own table and its row came back with everything else.
-        Assert.Equal(1L, database.Scalar("SELECT version_number FROM host_release_log;"));
-
         // Not merely present: still the schema a production host opens under ValidateOnly.
         using var reopened = new SqliteContentAuthoringStore(
             database.ConnectionString, Registry(), database.Pack());
         await reopened.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
         Assert.Equal(1, await reopened.GetActiveVersionAsync());
+        database.Execute("DELETE FROM host_release_log;");
+        await SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "repair");
     }
 
     /// <summary>Two published rows, which is the smallest store with a version, rows and an audit trail.</summary>

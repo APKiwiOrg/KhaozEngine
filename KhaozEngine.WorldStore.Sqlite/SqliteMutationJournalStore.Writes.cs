@@ -429,11 +429,9 @@ public sealed partial class SqliteMutationJournalStore
             int bytes = 0;
             foreach (int value in sizes.Values) bytes = checked(bytes + value);
             if (sizes.Count > limits.ProjectionSectionsPerStream || bytes > limits.AggregateProjectionBytesPerStream)
-                throw new JournalStoreException(
-                    JournalStoreFailureKind.ConstraintViolation,
-                    JournalStoreFailureCertainty.DefinitelyNotCommitted,
-                    JournalStoreFailureScope.OperationStreams,
-                    new[] { group.Key },
+                throw ProjectionLimitFailure(group.Key, sizes.Count, bytes,
+                    limits.ProjectionSectionsPerStream, limits.AggregateProjectionBytesPerStream,
+                    JournalStoreFailureKind.ConstraintViolation, JournalStoreFailureCertainty.DefinitelyNotCommitted,
                     "Projection replacement would exceed the configured per-stream limits.");
         }
     }
@@ -489,11 +487,13 @@ public sealed partial class SqliteMutationJournalStore
             throw MapProviderFailure(sqlite, streamKeys, transaction is not null, commitStarted, rolledBack);
         if (exception is OperationCanceledException && transaction is not null)
             throw new JournalStoreException(
+                commitStarted && !rolledBack ? JournalStoreRefusal.CommitOutcomeUnknown : JournalStoreRefusal.OperationCancelled,
                 commitStarted && !rolledBack ? JournalStoreFailureKind.UnknownOutcome : JournalStoreFailureKind.Cancelled,
                 commitStarted && !rolledBack ? JournalStoreFailureCertainty.Unknown : JournalStoreFailureCertainty.DefinitelyNotCommitted,
                 streamKeys.Count == 0 ? JournalStoreFailureScope.WholeStore : JournalStoreFailureScope.OperationStreams,
                 streamKeys,
                 "SQLite mutation journal operation was cancelled.",
-                exception);
+                exception)
+            { Stage = commitStarted ? JournalOperationStage.Commit : JournalOperationStage.Transaction };
     }
 }

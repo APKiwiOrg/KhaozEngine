@@ -221,8 +221,15 @@ public sealed partial class ModCandidateTables
         // refuses it and the boot fails closed.
         if (liveWeight > int.MaxValue)
         {
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"The live pool for tag signature {signature}, mod kind {_kinds[kindPosition]} and band {band} sums to {liveWeight} over its {buckets.Length} tag positions, past the int ceiling of {int.MaxValue}. A roll draws over that union with one bounded draw, so a wider one cannot be drawn at all."));
+            throw new GenerationTableException(GenerationTableRefusal.PoolWeightExceeded, FormattableString.Invariant(
+                $"The live pool for tag signature {signature}, mod kind {_kinds[kindPosition]} and band {band} sums to {liveWeight} over its {buckets.Length} tag positions, past the int ceiling of {int.MaxValue}. A roll draws over that union with one bounded draw, so a wider one cannot be drawn at all."))
+            {
+                Signature = signature,
+                ModKind = _kinds[kindPosition],
+                Band = band,
+                ActualWeight = liveWeight,
+                MaximumWeight = int.MaxValue,
+            };
         }
     }
 

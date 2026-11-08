@@ -264,8 +264,10 @@ lifecycle door already uses via P5A-7. Selection is not exchanged, because both 
 or published catalog under the consumer protocol version. Cost if wrong: a mismatched client is corrected every tick,
 and the repair is a tuning fingerprint in the consumer token.
 
-**P5A-12. Resolver-1 MapDoc contexts stay legacy-only.** `MapPhysicsRegistration` refuses a contact tuning with a
-message naming native G1b. Cost if wrong: a later factory supplies their registration, field and boundary.
+**P5A-12. Resolver-1 MapDoc contexts stay legacy-only.** Contexts from `MapPhysicsRegistration` refuse contact
+with `GroundContactCapabilityException`, reason `ContactProducerRestricted`, `ProducerKind = MapDocResolverOne`
+and `RequiredCapability = NativeMapDocContact` (G1b). Cost if wrong: a later factory supplies their registration,
+field and boundary.
 
 **P5A-13. Navigation waits for 5b.** `PhysicsNavBake.BuildProfile` and `GroundNavigationBake.Create` refuse a non-legacy
 profile with `NotSupportedException` naming phase 5b. Legacy capture and every bake byte stay unchanged in 5a.

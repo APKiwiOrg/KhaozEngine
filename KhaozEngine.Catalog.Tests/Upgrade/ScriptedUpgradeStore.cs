@@ -19,55 +19,70 @@ internal class ScriptedUpgradeStore(IContentAuthoringStore inner, int draftBound
         DraftReads++;
         if (DraftReads > draftBound)
         {
-            throw new InvalidOperationException($"Catalog draft observation bound {draftBound} exceeded at read {DraftReads}.");
+            throw new CatalogScriptException(CatalogScriptRefusal.ObservationBoundExceeded,
+                $"Catalog draft observation bound {draftBound} exceeded at read {DraftReads}.")
+            {
+                MaximumReads = draftBound,
+                ActualReads = DraftReads,
+            };
         }
 
-        return CatalogPhaseWatch.ObserveAsync("read open draft", () => base.GetOpenDraftAsync(cancellationToken));
+        return CatalogPhaseWatch.ObserveAsync(CatalogPhase.ReadOpenDraft, () => base.GetOpenDraftAsync(cancellationToken));
     }
 
     public override Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default)
     {
+        int index = _freezes;
         if (_freezes >= freezeBases.Length || freezeBases[_freezes++] != baseVersion)
         {
-            throw new InvalidOperationException("Catalog freeze transition repeated or moved outside its script.");
+            bool exhausted = index >= freezeBases.Length;
+            throw new CatalogScriptException(exhausted ? CatalogScriptRefusal.FreezeCountExceeded
+                : CatalogScriptRefusal.FreezeBaseVersionMismatch,
+                "Catalog freeze transition repeated or moved outside its script.")
+            {
+                ActualIndex = index,
+                MaximumCount = exhausted ? freezeBases.Length : null,
+                ExpectedBaseVersion = exhausted ? null : freezeBases[index],
+                ActualBaseVersion = exhausted ? null : baseVersion,
+            };
         }
 
-        return CatalogPhaseWatch.ObserveAsync("freeze runner draft", () => base.FreezeDraftAsync(baseVersion, cancellationToken));
+        return CatalogPhaseWatch.ObserveAsync(CatalogPhase.FreezeRunnerDraft, () => base.FreezeDraftAsync(baseVersion, cancellationToken));
     }
 
     public override Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("read active version", () => base.GetActiveVersionAsync(cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ReadActiveVersion, () => base.GetActiveVersionAsync(cancellationToken));
 
     public override Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("read upgrade ledger", () => base.ListUpgradesAsync(cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ReadUpgradeLedger, () => base.ListUpgradesAsync(cancellationToken));
 
     public override Task<int?> GetPinnedVersionAsync(CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("read operator pin", () => base.GetPinnedVersionAsync(cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ReadOperatorPin, () => base.GetPinnedVersionAsync(cancellationToken));
 
     public override Task<ContentBundle> ExportBundleAsync(int versionNumber, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("export baseline", () => base.ExportBundleAsync(versionNumber, cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ExportBaseline, () => base.ExportBundleAsync(versionNumber, cancellationToken));
 
     public override Task<ContentVersionRecord?> GetVersionAsync(int versionNumber, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("read baseline version", () => base.GetVersionAsync(versionNumber, cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ReadBaselineVersion, () => base.GetVersionAsync(versionNumber, cancellationToken));
 
     public override Task<IReadOnlyList<ContentVersionRecord>> ListVersionsAsync(CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("list sweep versions", () => base.ListVersionsAsync(cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ListSweepVersions, () => base.ListVersionsAsync(cancellationToken));
 
     public override Task<ContentDraft> ApplyEditsAsync(IReadOnlyList<ContentEdit> edits,
         string actor, string operatorId, string note, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("write runner draft", () => base.ApplyEditsAsync(edits, actor, operatorId, note, cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.WriteRunnerDraft, () => base.ApplyEditsAsync(edits, actor, operatorId, note, cancellationToken));
 
     public override Task<ContentPublishResult> PublishAsync(ContentPublishRequest request, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("publish runner draft", () => base.PublishAsync(request, cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.PublishRunnerDraft, () => base.PublishAsync(request, cancellationToken));
 
     public override Task DiscardDraftAsync(string actor, string operatorId, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("discard runner draft", () => base.DiscardDraftAsync(actor, operatorId, cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.DiscardRunnerDraft, () => base.DiscardDraftAsync(actor, operatorId, cancellationToken));
 
     public override Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("release runner freeze", () => base.ClearDraftFreezeAsync(cancellationToken));
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ReleaseRunnerFreeze, () => base.ClearDraftFreezeAsync(cancellationToken));
 
     public virtual Task ClearDraftFreezeAsync(int expectedBaseVersion, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("release scoped runner freeze", () => Inner is IContentDraftFreezeStore scoped
+        => CatalogPhaseWatch.ObserveAsync(CatalogPhase.ReleaseScopedRunnerFreeze, () => Inner is IContentDraftFreezeStore scoped
             ? scoped.ClearDraftFreezeAsync(expectedBaseVersion, cancellationToken)
             : Inner.ClearDraftFreezeAsync(cancellationToken));
 }

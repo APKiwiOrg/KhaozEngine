@@ -214,19 +214,39 @@ $hash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLower
 Require ($hash -ceq $env:RENDERER_PERF_MANIFEST_SHA256) 'Manifest byte hash differs from the dispatch'
 $manifestText = Get-Content -LiteralPath $manifestPath -Raw
 $manifest = Read-Manifest $manifestText
-Require ($manifest.preset -cin @('pilot', 'full', 'rehearsal', 'rehearsal-full', 'rehearsal-controls', 'water-optics-v2', 'rehearsal-water-optics-v2', 'rehearsal-water-optics-v2-single')) 'Unknown renderer preset'
-$rehearsal = $manifest.preset -cin @('rehearsal', 'rehearsal-full', 'rehearsal-controls', 'rehearsal-water-optics-v2', 'rehearsal-water-optics-v2-single')
+$campaignMaximumUsd = 22d
+$waterOpticsV2CampaignMaximumUsd = 7.382d
+$waterOpticsV3CampaignMaximumUsd = 7.382d
+$waterOpticsCampaigns = [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal)
+$waterOpticsCampaigns.Add('water-optics-v2', $waterOpticsV2CampaignMaximumUsd)
+$waterOpticsCampaigns.Add('water-optics-v3', $waterOpticsV3CampaignMaximumUsd)
+$waterOpticsPresets = [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal)
+foreach ($campaign in $waterOpticsCampaigns.Keys) {
+    $waterOpticsPresets.Add($campaign, @{ maximum = $waterOpticsCampaigns[$campaign]; rehearsal = $false; legs = @('linux-vulkan', 'windows-d3d11') })
+    $waterOpticsPresets.Add("rehearsal-$campaign", @{ maximum = 0; rehearsal = $true; legs = @('linux-vulkan') })
+    $waterOpticsPresets.Add("rehearsal-$campaign-single", @{ maximum = 0; rehearsal = $true; legs = @('windows-d3d11') })
+}
+$waterOptics = $waterOpticsPresets[$manifest.preset]
+Require ($manifest.preset -cin @('pilot', 'full', 'rehearsal', 'rehearsal-full', 'rehearsal-controls') -or $null -ne $waterOptics) 'Unknown renderer preset'
+$rehearsal = $manifest.preset -cin @('rehearsal', 'rehearsal-full', 'rehearsal-controls') -or ($null -ne $waterOptics -and $waterOptics.rehearsal)
 $rehearsalPolicy = if ($rehearsal) {
-    switch -CaseSensitive ("$($manifest.preset)/$($env:LEGS)") {
-        'rehearsal/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
-        'rehearsal/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 5400; minutes = 120 } }
-        'rehearsal-full/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 19800; minutes = 350 } }
-        'rehearsal-full/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 19800; minutes = 350 } }
-        'rehearsal-controls/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
-        'rehearsal-controls/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 5400; minutes = 120 } }
-        'rehearsal-water-optics-v2/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 19800; minutes = 350 } }
-        'rehearsal-water-optics-v2-single/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 19800; minutes = 350 } }
-        default { throw 'No software rehearsal class admits this preset and leg' }
+    if ($null -ne $waterOptics) {
+        Require ($env:LEGS -cin $waterOptics.legs) 'No software rehearsal class admits this preset and leg'
+        if ($env:LEGS -ceq 'linux-vulkan') {
+            @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 19800; minutes = 350 }
+        } else {
+            @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 19800; minutes = 350 }
+        }
+    } else {
+        switch -CaseSensitive ("$($manifest.preset)/$($env:LEGS)") {
+            'rehearsal/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
+            'rehearsal/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 5400; minutes = 120 } }
+            'rehearsal-full/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 19800; minutes = 350 } }
+            'rehearsal-full/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 19800; minutes = 350 } }
+            'rehearsal-controls/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
+            'rehearsal-controls/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 5400; minutes = 120 } }
+            default { throw 'No software rehearsal class admits this preset and leg' }
+        }
     }
 } else { $null }
 $runner = if ($rehearsal) { $rehearsalPolicy.runner } elseif ($env:LEGS -ceq 'linux-vulkan') { 'gpu-t4-linux' } else { 'gpu-t4-windows' }
@@ -242,9 +262,9 @@ if ($rehearsal) {
     Require ($lockedClock -is [long] -and $lockedClock -eq 1095) 'Paid T4 graphics clock must be an explicit 1095 MHz integer'
 }
 Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan has no initial pilot'
-Require ($manifest.preset -cne 'water-optics-v2' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan is not an approved leg for the water-optics-v2 campaign.'
-$campaignMaximumUsd = 22d
-$waterOpticsV2CampaignMaximumUsd = 7.382d
+if ($null -ne $waterOptics -and !$rehearsal) {
+    Require ($env:LEGS -cin $waterOptics.legs) "Windows Vulkan is not an approved leg for the $($manifest.preset) campaign."
+}
 $linuxT4RatePerMinuteUsd = 0.052d
 $windowsT4RatePerMinuteUsd = 0.102d
 # Windows full allows for the slow GRID setup and clock query seen in run 40599810511.
@@ -263,7 +283,7 @@ if ($rehearsal) {
     Require ($unitBudget -is [long] -or $unitBudget -is [decimal]) 'Manifest budget.maximumCostUsd must be an exact USD decimal'
     $rate = if ($env:LEGS -ceq 'linux-vulkan') { $linuxT4RatePerMinuteUsd } else { $windowsT4RatePerMinuteUsd }
     Require ($manifest.budget.maximumBilledMinutes -is [long] -and $manifest.budget.maximumBilledMinutes -eq $billedMinutes -and ($manifest.budget.ratePerMinute -is [long] -or $manifest.budget.ratePerMinute -is [decimal]) -and $manifest.budget.ratePerMinute -eq $rate -and $manifest.budget.currency -is [string] -and $manifest.budget.currency -ceq 'USD' -and $unitBudget -eq ($billedMinutes * $rate)) 'Paid billed minutes, rate, currency or cost cap differs from the preset'
-    $campaignMaximum = if ($manifest.preset -ceq 'water-optics-v2') { $waterOpticsV2CampaignMaximumUsd } else { $campaignMaximumUsd }
+    $campaignMaximum = if ($null -ne $waterOptics) { $waterOptics.maximum } else { $campaignMaximumUsd }
     Require ($campaignCap -ge $unitBudget -and $campaignCap -le $campaignMaximum) 'Paid campaign cap must cover the unit budget and stay within the preset maximum'
     Require ($manifest.approval.reference -is [string] -and ![string]::IsNullOrWhiteSpace($manifest.approval.reference) -and $manifest.approval.purpose -is [string] -and ![string]::IsNullOrWhiteSpace($manifest.approval.purpose) -and $manifest.approval.campaignReference -is [string] -and ![string]::IsNullOrWhiteSpace($manifest.approval.campaignReference)) 'Paid requires exact owner approval references'
 }

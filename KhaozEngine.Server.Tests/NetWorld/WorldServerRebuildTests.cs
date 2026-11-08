@@ -202,9 +202,13 @@ public abstract class RebuildHostCases
     [Fact]
     public void OptInWithoutDeltaReplicationIsRefusedAtConstruction()
     {
-        ArgumentException refused = Assert.Throws<ArgumentException>(() =>
+        WorldConfigurationException refused = Assert.Throws<WorldConfigurationException>(() =>
             RebuildHost.Create(Kind, LimitTransport.Known(), allowUnreliable: true, deltaReplication: false));
+        Assert.Equal(WorldConfigurationRefusal.UnreliableWithoutDelta, refused.Reason);
         Assert.Equal("optIn", refused.ParamName);
+        Assert.Equal("optIn", refused.MemberName);
+        Assert.Equal("deltaReplication", refused.RequiredMember);
+        _ = RebuildHost.Create(Kind, LimitTransport.Known(), allowUnreliable: true, deltaReplication: true);
     }
 
     [Fact]

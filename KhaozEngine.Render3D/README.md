@@ -927,8 +927,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     on the still-water plane grows, which keeps distant whitecap coverage where the old per-vertex fold left it
     rather than whitening the horizon to the near field's density.
 
-  Underwater sunlight opts in per water body through either `UnderwaterSunlight` or `WaterColumnLight`
-  (both scene defaults `false`). `WaterColumnLight` implies sunlight without changing the `UnderwaterSunlight`
+  Underwater sunlight opts in per water body through `UnderwaterSunlight`, `WaterColumnLight` or
+  `UnderwaterCaustics` with positive strength and effective procedural waves (all scene defaults `false`).
+  The latter two imply sunlight without changing the `UnderwaterSunlight`
   setting. A column body's sunlight uses extinction derived from its resolved `WaterColor` and `Clarity`,
   with mean extinction `3 / Clarity`, instead of legacy `AbsorptionPerMetre`.
   `UnderwaterPenumbraPerMetre` defaults to `0.03` metres of extra penumbra radius per metre of in-water path.
@@ -938,6 +939,20 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   not a setting. Refraction uses the body's still-water plane, without wave-displaced normals, and models only
   that body's light path. The surface entry can lie beyond the rectangle, where the bank can shadow it.
   How submerged receivers are lit is described under key shadows.
+
+  Caustic authoring uses `UnderwaterCaustics` (scene default `false`) and `CausticStrength` (default `1`).
+  Their nullable `WaterLook` fields inherit the scene, and an explicit `false` opts a body out.
+  Strength is a dimensionless multiplier of refracted focus offsets from the still-water ray, with `1`
+  representing physical focusing. Frame preparation checks that resolved strength is finite and non-negative
+  only when a procedural body opts in, throwing `ArgumentException` with `ParamName` equal to `CausticStrength`.
+  FFT bodies ignore the opt-in and strength. FFT and disabled bodies leave strength unvalidated.
+  A participating body draws into a 64 m window that follows where the view meets the water, and lit receivers
+  under it read moving bands from the caustic map. `scene.WaterCausticDiagnostics` reports `OptedInPlanes`,
+  `DrawnPlanes`, `FftPlanes`, `OverflowPlanes` and `Layers` for the latest rendered frame. A frame with no participating
+  body runs no pass and creates no atlas. Known limits: FFT bodies have no caustics, four map layers (a body past them
+  renders without caustics and is counted), the window's outer 4 m fades the term to 1 and receivers outside it read
+  1, and bodies sharing a layer can exchange light across a gap narrower than its deflection. The pipeline is in
+  [Water caustics](../docs/RENDER-PIPELINE.md#water-caustics).
 
   Water-column authoring uses `WaterColumnLight` (scene default `false`), `WaterColor` (linear RGB, neutral
   default `(0.10, 0.13, 0.10, 1)`, alpha ignored) and `Clarity` (neutral default `2` metres of vertical depth
@@ -998,7 +1013,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   the swell's shading contrast fades on the same measure. `DetailFadeDistance`/`DistantDetailScale` remain as an
   artistic extra layered on top. Plus the
   depth-driven shore fade (`ShoreFadeDistance`) and, for legacy columns, `Opacity`.
-  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
+  **No bent image lookup, no screen-space reflections, no submerged view** (all out of scope) - a stylized
   surface with analytic sky reflection. Drawn after the sky + ground decals, before the final MRT resolve,
   one draw per plane, with depth test ON
   (`Less`, so geometry above the surface occludes it) but depth WRITE OFF (so the resolved normal/linear-depth the
@@ -1089,23 +1104,32 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   See [consumer use](../docs/USING-KHAOZENGINE.md) for a worked binding and
   [TileWorld](../KhaozEngine.TileWorld.Render3D/README.md) for the triangle producer.
 - Underwater volume uploads (`scene.WaterVolumeClusters`). Queued planes whose resolved
-  `WaterSettings.UnderwaterSunlight` or `WaterColumnLight` is true contribute render-relative records, including
-  their optional `WaterPlane.FloorY`, attenuation and penumbra. Both scene defaults are false and `WaterLook`
-  can override them per plane. The retained absorption fields hold legacy absorption or derived column
+  `WaterSettings.UnderwaterSunlight` or `WaterColumnLight` is true contribute render-relative records.
+  `UnderwaterCaustics` also contributes when strength is positive and the effective waves are procedural.
+  FFT bodies gain no record from caustics alone. Records include their optional `WaterPlane.FloorY`, attenuation
+  and penumbra. All three opt-ins default to false and `WaterLook` can override them per plane.
+  The retained absorption fields hold legacy absorption or derived column
   extinction without a layout change. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount`
   and `OverflowedClusters`.
   Each record is 48 bytes, packed as three `uvec4`: `(minX, minZ, maxX, maxZ)`,
-  `(surfaceY, floorY, absorptionR, absorptionG)` and `(absorptionB, penumbraPerMetre, 0, 0)`.
+  `(surfaceY, floorY, absorptionR, absorptionG)` and `(absorptionB, penumbraPerMetre, causticLayer, causticDepth)`.
+  The last two words hold layer plus one and slice depth as float bits, or exactly zero without a planned layer.
   All positions are render-relative. A null floor encodes `float.MinValue`. A frame retains at most 4096
   records in submission order and drops the
   tail. Each of the `16 x 9 x 24` clusters holds 32 indices. An overflow header makes its fragments scan all
   retained records, preserving containment at increased query cost. Headers and indices precede the records,
-  and only the used prefix is uploaded.
+  and only the used prefix is uploaded. The 652816-byte buffer reserves a final `uvec4` at vector 40800
+  (byte 652800) for `(windowMinX, windowMinZ, 1 / 64, atlasLayers)`, all as float bits.
+  `atlasLayers` is the map atlas's capacity, not the layers this frame used, because the read addresses the atlas by its width.
+  The renderer uploads that block separately only on a participating frame, when `atlasLayers` is positive and a record prefix uploads.
+  A record's caustic words stay zero unless its body holds a layer in the frame's plan.
   Water-only frames prepare the same camera grid as point lights. A failed light assignment keeps that grid
   valid for water, with full-list fallback headers for the lights. Empty and opted-out frames set the count
   in `ClusterCamera.w` to zero and skip water uploads, so retained buffer contents cannot be read next frame.
   Every lit receiver reads that scene-owned buffer in shared key shading. Set 0 appends binding 15 for rigid,
-  foliage and CPU-skinned receivers, 7 for GPU-skinned, and 6 for splat and tile ground. Lit fragments require
+  foliage and CPU-skinned receivers, 7 for GPU-skinned, and 6 for splat and tile ground, with `CausticMap` and
+  `CausticSampler` on the next two bindings. Every lit set binds a 1x1 placeholder holding 1 until a real map
+  replaces it, and only a winning record with a caustic layer reads it. Lit fragments require
   three storage buffers, checked at renderer creation against `GpuCapabilities.MaxFragmentStorageBuffers`.
   Scene and standalone lit renderer construction throw `LitReceiverNotSupportedException` before GPU allocation
   for reports below three, with `LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`,
@@ -1120,7 +1144,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland
   lake and a rough FFT sea share a frame. The overridable fields are `WaveSource`, the swell group, the ripple/
   detail group, body colour including `AbsorptionPerMetre`, `UnderwaterSunlight`, `UnderwaterPenumbraPerMetre`,
-  `WaterColumnLight`, `WaterColor` and `Clarity`, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two
+  `UnderwaterCaustics`, `CausticStrength`, `WaterColumnLight`, `WaterColor` and `Clarity`, foam,
+  the four `Glint*` scalars, `ShoreFadeDistance` and the two
   depth-response strengths `ShoalingStrength`/`SurfStrength`. Scene-wide and NOT on a look at all: `SeaState`
   (one FFT bake - two sea states a frame does not
   make two oceans, it makes the one producer rebake on every call for both and corrupts the persistent foam

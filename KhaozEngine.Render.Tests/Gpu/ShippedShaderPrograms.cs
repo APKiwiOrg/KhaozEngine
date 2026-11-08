@@ -27,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 140 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 143 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 99 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 102 of them.</summary>
         static IEnumerable<ShippedGraphicsProgram> BaseGraphicsPrograms()
         {
             // Render2D.
@@ -180,6 +180,10 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("BoundedWater", ShaderSources.BoundedWaterVert, ShaderSources.BoundedWaterFrag);
             yield return new("WaterTriangle", ShaderSources.WaterVert, ShaderSources.WaterTriangleFrag);
             yield return new("WaterClipmapTriangle", ShaderSources.WaterClipmapVert, ShaderSources.WaterTriangleFrag);
+            // The underwater caustic passes: the surface field, the map subtract and the sun-view sheets.
+            yield return new("WaterSurfaceField", ShaderSources.WaterSurfaceFieldVert, ShaderSources.WaterSurfaceFieldFrag);
+            yield return new("WaterCausticSubtract", ShaderSources.WaterCausticSubtractVert, ShaderSources.WaterCausticSubtractFrag);
+            yield return new("WaterCausticSheet", ShaderSources.WaterCausticSheetVert, ShaderSources.WaterCausticSheetFrag);
 
             // Render3D fullscreen passes, all sharing FullscreenVert.
             yield return new("AtmosphereTransmittance", ShaderSources.FullscreenVert, ShaderSources.AtmosphereTransmittanceFrag);

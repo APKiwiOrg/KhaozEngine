@@ -20,9 +20,12 @@ namespace KhaozEngine.NetWorld;
 /// written somewhere in generations <see cref="OldestUnstampedWireGeneration"/>..current, so it infers the
 /// generation by walking the body at every candidate, discarding the ones that recovered something no build writes
 /// (<see cref="CellBlobWalkPolicy"/>), and rewriting the built-in payloads into this build's layout. A body that
-/// walks at no candidate throws, and so does one that walks at several to different results
-/// (<see cref="AmbiguousCellBlobGenerationException"/>), so the <see cref="CellPersistence"/> driver quarantines it
-/// rather than restoring garbage or guessing.
+/// walks at no candidate throws <see cref="CellBlobMigrationException"/> with
+/// <see cref="CellBlobMigrationRefusal.NoInferredGeneration"/>. A failed stated-generation walk instead carries
+/// <see cref="CellBlobMigrationRefusal.KnownGenerationUnwalkable"/> and the source and target generations. A body
+/// that walks at several candidates to different results still throws
+/// <see cref="AmbiguousCellBlobGenerationException"/>. The <see cref="CellPersistence"/> driver quarantines these
+/// failures rather than restoring garbage or guessing.
 /// </para>
 /// </summary>
 public static class WireGenerationBlobMigration

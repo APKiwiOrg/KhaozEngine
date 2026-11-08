@@ -34,15 +34,25 @@ approvals, limits and correctness verdict. The same reference's
 per-leg job caps, cleanup billing allowance and the campaign envelope. Every execution class requires
 usable timestamps, complete compiler evidence and certified publication. Partial artifacts survive failures.
 
-The trusted free `legs` job admits paid `water-optics-v2` only on `linux-vulkan` or `windows-d3d11`,
+The trusted free `legs` job admits paid `water-optics-v2` and `water-optics-v3` only on `linux-vulkan` or `windows-d3d11`,
 with the full T4 job caps of 35 and 50 minutes. It checks every paid campaign maximum before a paid
 runner is allocated. The cap must cover `budget.maximumCostUsd` and stay at or below USD 7.382 for
-v2, or USD 22 for v1 `pilot` and `full`. The
+each water optics campaign, or USD 22 for v1 `pilot` and `full`. The
 [water optics contract](../../../docs/RENDERER-PERFORMANCE.md#water-optics-campaign) owns the schedules.
 `rehearsal-water-optics-v2` selects only Linux lavapipe on `ubuntu-24.04`, while
 `rehearsal-water-optics-v2-single` selects only Windows D3D11 WARP on `windows-2025-vs2026`. Both retain
 19,800 unit seconds and 350 job minutes, with zero unit cost and zero campaign maximum. Opposite
-legs and Windows Vulkan refuse these v2 rehearsals.
+legs and Windows Vulkan refuse these rehearsals. V3 uses `rehearsal-water-optics-v3` for Linux
+lavapipe and `rehearsal-water-optics-v3-single` for Windows WARP, with the same schedules and caps.
+V3 measures OFF to M5 ON and M5 ON to M3 ON in village and outdoors. M3 enables caustics at the
+approved River strength 4. The outdoors pool uses the village procedural swell because FFT bodies
+never receive caustics. Frozen v1 and v2 recipe identities remain unchanged.
+
+V3 implementation and free platform-digest validation grant no rehearsal or paid-run consent. Each
+rehearsal requires explicit owner approval. Paid approval names the exact workload and both proposal
+hashes and also requires the renderer performance owner's admission review. All runs use hosted
+runners. Profile publication requires both legs to use the same campaign, and mixed v2 and v3 legs
+refuse before writing output.
 
 Every manifest must explicitly include `execution.lockedGraphicsClockMHz`. Paid T4 presets require
 an integer matching the fixed [graphics-clock policy](../../../docs/RENDERER-PERFORMANCE.md#drift-perturbation-and-validity).

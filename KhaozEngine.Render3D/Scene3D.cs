@@ -1376,7 +1376,7 @@ namespace KhaozEngine.Render3D
             using (ProfileCpu("cpu.shadow.point-scheduling")) PreparePointShadows(cl);
 
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-            using (ProfilePass(cl, "opaque.light-clusters")) BuildAndUploadLightingClusters(cl, vp, eye);
+            RecordWaterCausticsAndLightClusters(cl, vp, eye);
             _model.BeginModelPass(cl, _res, Post, _profiling);
             using (ProfilePass(cl, "opaque.frame-uniforms"))
             {

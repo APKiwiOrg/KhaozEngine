@@ -73,8 +73,9 @@ public static class TrustedProxyNetworks
     /// <param name="networks">The networks to register.</param>
     /// <returns>A new list, safe to hand to the forwarded-headers options.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="networks"/> is null.</exception>
-    /// <exception cref="ArgumentException">A network is a catch-all. The message names its position, never its
-    /// value.</exception>
+    /// <exception cref="TrustedProxyConfigurationException">A network is a catch-all, refused as
+    /// <see cref="TrustedProxyConfigurationRefusal.CatchAllNetwork"/> with its position in
+    /// <see cref="TrustedProxyConfigurationException.Index"/>, never its value.</exception>
     public static IReadOnlyList<IPNetwork> WithBothFamilies(IEnumerable<IPNetwork> networks)
     {
         ArgumentNullException.ThrowIfNull(networks);
@@ -84,7 +85,11 @@ public static class TrustedProxyNetworks
         foreach (IPNetwork network in networks)
         {
             if (IsCatchAll(network))
-                throw new ArgumentException(CatchAllRefusal(nameof(networks), index), nameof(networks));
+                throw new TrustedProxyConfigurationException(TrustedProxyConfigurationRefusal.CatchAllNetwork,
+                    CatchAllRefusal(nameof(networks), index), nameof(networks))
+                {
+                    Index = index,
+                };
             if (seen.Add(network)) result.Add(network);
             if (TwinOf(network) is { } twin && seen.Add(twin)) result.Add(twin);
             index++;

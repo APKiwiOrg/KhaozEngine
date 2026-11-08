@@ -52,7 +52,7 @@ public interface IGitHubIssueClient
 /// <summary>A failed GitHub API call. The host redelivers the work item that raised it.</summary>
 public sealed class GitHubApiException : Exception
 {
-    /// <summary>Creates the exception for a response with <paramref name="statusCode"/>.</summary>
+    /// <summary>Creates the exception for a response with <paramref name="statusCode"/>, with no reason.</summary>
     public GitHubApiException(int statusCode, bool isRateLimited, TimeSpan? retryAfter, string message)
         : base(message)
     {
@@ -60,6 +60,26 @@ public sealed class GitHubApiException : Exception
         IsRateLimited = isRateLimited;
         RetryAfter = retryAfter;
     }
+
+    /// <summary>Creates the exception for a response with <paramref name="statusCode"/> refused by
+    /// <paramref name="reason"/>.</summary>
+    /// <param name="reason">The rule that refused the response.</param>
+    /// <param name="statusCode">The HTTP status code GitHub answered with.</param>
+    /// <param name="isRateLimited">True when GitHub refused the call for a rate limit.</param>
+    /// <param name="retryAfter">How long GitHub asked the caller to wait, when it said.</param>
+    /// <param name="message">The developer-facing explanation, not a classification token.</param>
+    public GitHubApiException(GitHubApiRefusal reason, int statusCode, bool isRateLimited, TimeSpan? retryAfter, string message)
+        : base(message)
+    {
+        Reason = reason;
+        StatusCode = statusCode;
+        IsRateLimited = isRateLimited;
+        RetryAfter = retryAfter;
+    }
+
+    /// <summary>The rule that refused the response. Null only for an instance built through the message-only
+    /// constructor by code outside the engine, such as another <see cref="IGitHubIssueClient"/>.</summary>
+    public GitHubApiRefusal? Reason { get; }
 
     /// <summary>The HTTP status code GitHub answered with.</summary>
     public int StatusCode { get; }
@@ -69,4 +89,12 @@ public sealed class GitHubApiException : Exception
 
     /// <summary>How long GitHub asked the caller to wait, when it said.</summary>
     public TimeSpan? RetryAfter { get; }
+
+    /// <summary>GitHub's own <c>message</c> for <see cref="GitHubApiRefusal.HttpFailure"/>, at most 200 characters. It
+    /// is untrusted text, and never the raw body. Null when the body holds no such message, or when the whole message
+    /// was dropped because it held a credential.</summary>
+    public string? UpstreamDetail { get; init; }
+
+    /// <summary>The part that could not be read, for <see cref="GitHubApiRefusal.InvalidSuccessResponse"/>.</summary>
+    public GitHubResponsePart? ResponsePart { get; init; }
 }

@@ -271,7 +271,9 @@ differences in scale (the sea's 1.6 m foam band and 2.5 m ripple wavelength woul
 Its column inputs are linear RGB `WaterColor = (0.28, 0.30, 0.18)` and `Clarity = 1.5` m, chosen by the owner
 from synthetic daylight renders for a sunlit silty river close to the current tone, with an attached column
 shadow and physical depth fade. `WaterColumnLight` remains null, so consumers must explicitly opt in through
-their scene settings or a copied look. Grimhollow chooses its own final tuning at adoption.
+their scene settings or a copied look. River sets `CausticStrength = 4` from the owner's engine contact sheets and
+leaves the caustic opt-in inherited, so consumers still opt in explicitly. Grimhollow chooses its own final tuning
+at adoption.
 **It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
 own through `TileWorldViewOptions.WaterLook`.
 

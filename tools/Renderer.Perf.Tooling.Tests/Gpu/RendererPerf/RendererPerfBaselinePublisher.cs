@@ -74,9 +74,9 @@ internal static class RendererPerfBaselinePublisher
     }
 
     internal static List<(RendererPerfBaselineLeg Input, RendererPerfSummary Summary)> VerifyLegs(
-        ImmutableArray<RendererPerfBaselineLeg> legs, string acceptedPreset)
+        ImmutableArray<RendererPerfBaselineLeg> legs, string? acceptedPreset)
     {
-        Require(!legs.IsDefault && legs.Length == 2, "Pair", acceptedPreset == "full" ? "Exactly two primary full legs are required." : "Exactly two primary water-optics-v2 legs are required.");
+        Require(!legs.IsDefault && legs.Length == 2, "Pair", acceptedPreset == "full" ? "Exactly two primary full legs are required." : "Exactly two primary water optics legs are required.");
         var verified = new List<(RendererPerfBaselineLeg Input, RendererPerfSummary Summary)>();
         foreach (var input in legs.OrderBy(l => l.Leg, StringComparer.Ordinal))
         {
@@ -86,8 +86,9 @@ internal static class RendererPerfBaselinePublisher
             var report = artifact.Report;
             Require(report.Manifest.ExecutionClass == RendererPerfExecutionClass.Performance, "Rehearsal",
                 acceptedPreset == "full" ? "Software rehearsal cannot supply a baseline." : "Software rehearsal cannot supply profile deltas.");
-            Require(report.Manifest.Preset == acceptedPreset, acceptedPreset == "full" ? "NotFull" : "NotProfile",
-                acceptedPreset == "full" ? "Only a complete full schedule supplies a baseline." : "Only water-optics-v2 supplies profile deltas.");
+            acceptedPreset ??= RendererPerfWaterOpticsCampaigns.ForPreset(report.Manifest.Preset)?.Preset;
+            Require(acceptedPreset is not null && report.Manifest.Preset == acceptedPreset, acceptedPreset == "full" ? "NotFull" : "NotProfile",
+                acceptedPreset == "full" ? "Only a complete full schedule supplies a baseline." : "Only matching paid water optics presets supply profile deltas.");
             var identity = report.Identity;
             Require(input.Leg is "linux-vulkan" or "windows-d3d11" && input.Leg == report.Manifest.Execution.Leg
                 && input.ManifestSha256 == identity.ManifestSha256 && input.WorkloadSha == identity.WorkloadSha
@@ -105,7 +106,7 @@ internal static class RendererPerfBaselinePublisher
             Require(summary.PromotionEligible, "Promotion", string.Join(" ", summary.Reasons));
             Require(input.BilledMinutes > 0 && input.BilledMinutes <= report.Manifest.Budget.MaximumBilledMinutes
                 && input.BilledMinutes * report.Manifest.Budget.RatePerMinute <= report.Manifest.Budget.MaximumCostUsd
-                && report.Manifest.Budget.MaximumCostUsd <= RendererPerfPaidPolicy.CampaignMaximumFor(acceptedPreset),
+                && report.Manifest.Budget.MaximumCostUsd <= RendererPerfPaidPolicy.CampaignMaximumFor(acceptedPreset!),
                 "Billing", "Actual billed minutes must be explicit, positive and within the approved cap.");
             verified.Add((input, summary));
         }
@@ -116,7 +117,7 @@ internal static class RendererPerfBaselinePublisher
         Require(a.WorkloadSha == b.WorkloadSha && a.BaselineMainSha == b.BaselineMainSha,
             "Pair", "The pair must share the frozen workload and baseline source.");
         Require(verified.Sum(v => v.Input.BilledMinutes * v.Summary.Raw.Manifest.Budget.RatePerMinute)
-            <= RendererPerfPaidPolicy.CampaignMaximumFor(acceptedPreset), "Billing", "Actual pair cost exceeds the preset campaign maximum.");
+            <= RendererPerfPaidPolicy.CampaignMaximumFor(acceptedPreset!), "Billing", "Actual pair cost exceeds the preset campaign maximum.");
         return verified;
     }
 

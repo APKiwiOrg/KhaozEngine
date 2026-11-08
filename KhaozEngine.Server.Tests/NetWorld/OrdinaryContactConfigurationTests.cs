@@ -12,6 +12,7 @@ namespace KhaozEngine.Tests.NetWorld;
 public partial class OrdinaryContactConfigurationTests
 {
     [Theory]
+    [InlineData("physics")]
     [InlineData("registration")]
     [InlineData("boundary")]
     [InlineData("point-boundary")]
@@ -39,27 +40,43 @@ public partial class OrdinaryContactConfigurationTests
         Func<float, float, float, MovementMedium>? medium = refusal == "medium" ? (_, _, _) => MovementMedium.Dry : null;
         var settings = refusal == "two-selections" ? new ExplicitPlayerMovement(explicitWorld.Context,
             explicitWorld.Scope, new(WaterTraversalMode.SurfaceSwimmer, 7)) : null;
-        Assert.Throws<ArgumentException>(() => new PlayerMoveSimulator(world.Ground, tuning, null, bounds,
-            world.Physics, medium, SamplerSpace.World, settings, null, registration, boundary));
-        Assert.Throws<ArgumentException>(() => new PlayerMovementSystem(world.Ground, tuning, null, bounds,
-            world.Physics, medium, default, SamplerSpace.World, settings, null, registration, boundary));
+        Check(() => new PlayerMoveSimulator(world.Ground, tuning, null, bounds,
+            refusal == "physics" ? null : world.Physics, medium, SamplerSpace.World, settings, null, registration, boundary));
+        Check(() => new PlayerMovementSystem(world.Ground, tuning, null, bounds,
+            refusal == "physics" ? null : world.Physics, medium, default, SamplerSpace.World, settings, null, registration, boundary));
         var (st, ct) = LoopbackTransport.CreatePair();
         using (st) using (ct)
         {
-            Assert.Throws<ArgumentException>(() => new WorldServer(st, new()
+            Check(() => new WorldServer(st, new()
             {
                 FrameAnchoring = false,
                 MovementRegistration = registration,
                 MovementBoundary = boundary,
                 ExplicitMovement = settings
-            }, world.Ground, tuning, bounds: bounds, physics: world.Physics, medium: medium));
-            Assert.Throws<ArgumentException>(() => new WorldClient(ct, world.Ground, tuning, new()
+            }, world.Ground, tuning, bounds: bounds, physics: refusal == "physics" ? null : world.Physics, medium: medium));
+            Check(() => new WorldClient(ct, world.Ground, tuning, new()
             {
                 FrameAnchoring = false,
                 MovementRegistration = registration,
                 MovementBoundary = boundary,
                 ExplicitMovement = settings
-            }, bounds: bounds, physics: world.Physics, medium: medium));
+            }, bounds: bounds, physics: refusal == "physics" ? null : world.Physics, medium: medium));
+        }
+        using var repaired = new PlayerMoveSimulator(world.Ground, OrdinaryPlayerWorld.Tuning, null, null,
+            world.Physics, null, SamplerSpace.World, null, null, world.Registration, world.Boundary);
+        void Check(Action action)
+        {
+            var failure = Assert.Throws<MovementConfigurationException>(action);
+            Assert.Equal(refusal switch
+            {
+                "physics" => MovementConfigurationRefusal.PhysicsRequired,
+                "registration" => MovementConfigurationRefusal.RegistrationRequired,
+                "boundary" or "point-boundary" => MovementConfigurationRefusal.BoundaryRequired,
+                "two-selections" => MovementConfigurationRefusal.ConflictingMovementSelections,
+                "medium" => MovementConfigurationRefusal.WaterFieldRequired,
+                "legacy-hop" => MovementConfigurationRefusal.LegacyWaterNondefault,
+                _ => MovementConfigurationRefusal.KernelPositiveValueRequired
+            }, failure.Reason);
         }
     }
 
@@ -80,11 +97,11 @@ public partial class OrdinaryContactConfigurationTests
         using (st) using (ct)
         {
             int allocations = 0;
-            Assert.Throws<ArgumentException>(() => new ShardedWorldServer(st, new()
+            Assert.Throws<MovementConfigurationException>(() => new ShardedWorldServer(st, new()
             { PhysicsWorldFactory = _ => { allocations++; throw new InvalidOperationException(); } },
                 (_, _) => 0, OrdinaryPlayerWorld.Tuning));
             Assert.Equal(0, allocations);
-            Assert.Throws<ArgumentException>(() => new ShardedWorldServer(st, new()
+            Assert.Throws<MovementConfigurationException>(() => new ShardedWorldServer(st, new()
             {
                 MovementRegistrationFactory = _ => throw new InvalidOperationException(),
                 MovementBoundaryFactory = _ => MovementBoundary.Rectangle(-20, -20, 20, 20),
@@ -93,9 +110,9 @@ public partial class OrdinaryContactConfigurationTests
         }
     }
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void EveryHeadRefusesUnselectablePhysicsOrMissingCertifiedSweep(bool selectable)
+    [InlineData(false, typeof(NotSupportedException))]
+    [InlineData(true, typeof(MovementCapabilityException))]
+    public void EveryHeadRefusesUnselectablePhysicsOrMissingCertifiedSweep(bool selectable, Type expectedType)
     {
         using var world = new ObservedPhysicsWorld { Selectable = selectable, CertifiedSweep = false };
         OrdinaryMovementRegistration registration;
@@ -103,28 +120,34 @@ public partial class OrdinaryContactConfigurationTests
             registration = OrdinaryMovementRegistration.CreateBuilder("world", world,
                 new(new(-20, -8, -20), new(20, 8, 20), 0, 0)).Build(lease);
         var boundary = MovementBoundary.Rectangle(-20, -20, 20, 20);
-        Assert.Throws<NotSupportedException>(() => new PlayerMoveSimulator((_, _) => 0, OrdinaryPlayerWorld.Tuning,
+        Check(() => new PlayerMoveSimulator((_, _) => 0, OrdinaryPlayerWorld.Tuning,
             null, null, world, null, SamplerSpace.World, null, null, registration, boundary));
-        Assert.Throws<NotSupportedException>(() => new PlayerMovementSystem((_, _) => 0, OrdinaryPlayerWorld.Tuning,
+        Check(() => new PlayerMovementSystem((_, _) => 0, OrdinaryPlayerWorld.Tuning,
             null, null, world, null, default, SamplerSpace.World, null, null, registration, boundary));
         var (st, ct) = LoopbackTransport.CreatePair();
         using (st) using (ct)
         {
-            Assert.Throws<NotSupportedException>(() => new WorldServer(st, new()
+            Check(() => new WorldServer(st, new()
             { FrameAnchoring = false, MovementRegistration = registration, MovementBoundary = boundary },
                 (_, _) => 0, OrdinaryPlayerWorld.Tuning, physics: world));
-            Assert.Throws<NotSupportedException>(() => new WorldClient(ct, (_, _) => 0, OrdinaryPlayerWorld.Tuning, new()
+            Check(() => new WorldClient(ct, (_, _) => 0, OrdinaryPlayerWorld.Tuning, new()
             { FrameAnchoring = false, MovementRegistration = registration, MovementBoundary = boundary }, physics: world));
         }
         Assert.Equal(selectable ? 4 : 0, world.ViewDisposals);
         Assert.Equal(0, world.SourceDisposals);
+        void Check(Action action)
+        {
+            var failure = Assert.Throws(expectedType, action);
+            if (failure is MovementCapabilityException capability)
+                Assert.Equal(MovementConfigurationRefusal.CapsuleSweepRequired, capability.Reason);
+        }
     }
 
     [Fact]
     public void PointOnlyWorldBoundsIsRefusedAtConfiguration()
     {
         using var world = new OrdinaryPlayerWorld();
-        Assert.Throws<ArgumentException>(() => new PlayerMoveSimulator(world.Ground, OrdinaryPlayerWorld.Tuning,
+        Assert.Throws<MovementConfigurationException>(() => new PlayerMoveSimulator(world.Ground, OrdinaryPlayerWorld.Tuning,
             null, new PointBounds(), world.Physics, null, SamplerSpace.World, null, null, world.Registration, null));
     }
 
@@ -148,7 +171,8 @@ public partial class OrdinaryContactConfigurationTests
         {
             int notifications = 0;
             server.CellCreated += _ => notifications++;
-            if (row == "view") Assert.Throws<NotSupportedException>(() => server.Host.EnsureCell(new(0, 0)));
+            if (row == "view") Assert.Equal(MovementConfigurationRefusal.CapsuleSweepRequired,
+                Assert.Throws<MovementCapabilityException>(() => server.Host.EnsureCell(new(0, 0))).Reason);
             else Assert.Throws<InvalidOperationException>(() => server.Host.EnsureCell(new(0, 0)));
             Assert.Equal(0, notifications);
             Assert.False(server.Host.TryGetCell(new(0, 0), out _));
@@ -173,7 +197,7 @@ public partial class OrdinaryContactConfigurationTests
         using (st) using (ct)
         {
             int allocations = 0;
-            Assert.Throws<ArgumentException>(() => new ShardedWorldServer(st, new()
+            Assert.Throws<MovementConfigurationException>(() => new ShardedWorldServer(st, new()
             {
                 PhysicsWorldFactory = _ => { allocations++; throw new InvalidOperationException(); },
                 MovementRegistrationFactory = _ => throw new InvalidOperationException(),

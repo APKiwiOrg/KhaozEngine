@@ -94,21 +94,37 @@ public sealed class MutationJournalBenchmarkTests
 
         try
         {
+            // Each step repairs the previous step's one defect and breaks only the next rule (rule 15).
             Environment.SetEnvironmentVariable(variable, null);
-            InvalidOperationException missing = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => JournalBenchmarkRunner.RunAsync(config));
+            JournalBenchmarkConfigurationException missing =
+                await Assert.ThrowsAsync<JournalBenchmarkConfigurationException>(() => JournalBenchmarkRunner.RunAsync(config));
+            Assert.IsAssignableFrom<InvalidOperationException>(missing);
+            Assert.Equal(JournalBenchmarkRefusal.ConnectionVariableMissing, missing.Reason);
+            Assert.Equal(variable, missing.SourceName);
             Assert.DoesNotContain("Password", missing.Message, StringComparison.OrdinalIgnoreCase);
 
             Environment.SetEnvironmentVariable(variable, "   ");
-            await Assert.ThrowsAsync<InvalidOperationException>(() => JournalBenchmarkRunner.RunAsync(config));
+            JournalBenchmarkConfigurationException blank =
+                await Assert.ThrowsAsync<JournalBenchmarkConfigurationException>(() => JournalBenchmarkRunner.RunAsync(config));
+            Assert.Equal(JournalBenchmarkRefusal.ConnectionVariableBlank, blank.Reason);
+            Assert.Equal(variable, blank.SourceName);
 
-            Environment.SetEnvironmentVariable(
-                variable,
-                "Server=203.0.113.1;Initial Catalog=production;User ID=prod;Password=top-secret;Connect Timeout=1");
-            ArgumentException production = await Assert.ThrowsAsync<ArgumentException>(
-                () => JournalBenchmarkRunner.RunAsync(config));
-            Assert.Contains("-journal-benchmark-", production.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("top-secret", production.Message, StringComparison.Ordinal);
+            const string productionConnection =
+                "Server=203.0.113.1;Initial Catalog=production;User ID=prod;Password=top-secret;Connect Timeout=1";
+            Environment.SetEnvironmentVariable(variable, productionConnection);
+            JournalBenchmarkArgumentException production =
+                await Assert.ThrowsAsync<JournalBenchmarkArgumentException>(() => JournalBenchmarkRunner.RunAsync(config));
+            Assert.IsAssignableFrom<ArgumentException>(production);
+            Assert.Equal("config", production.ParamName);
+            Assert.Equal(JournalBenchmarkRefusal.DedicatedDatabaseRequired, production.Reason);
+            Assert.Equal("-journal-benchmark-", production.RequiredMarker);
+            // Neither the message, the inner chain nor any identifier carries the connection string or a part of it.
+            string carried = string.Join('\n', production.ToString(), production.RequiredMarker, production.ParamName);
+            foreach (string secret in new[] { productionConnection, "top-secret", "203.0.113.1", "User ID=prod" })
+                Assert.DoesNotContain(secret, carried, StringComparison.Ordinal);
+
+            JournalStoreScope.RequireDedicatedCatalog(productionConnection.Replace(
+                "Initial Catalog=production", "Initial Catalog=ke-journal-benchmark-01", StringComparison.Ordinal));
         }
         finally
         {

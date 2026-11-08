@@ -10,6 +10,8 @@ public sealed partial class GroundMoveContext
 {
     readonly bool _contactConstruction;
     readonly string? _legacyOnlyContactRefusal;
+    readonly GroundContactProducerKind? _contactProducerKind;
+    readonly GroundContactCapability? _requiredContactCapability;
     readonly Func<float, float, float, MovementMedium>? _providedMedium;
     bool _ownsMovementQueries;
     bool _disposed;
@@ -23,8 +25,8 @@ public sealed partial class GroundMoveContext
     /// by the caller stay borrowed. Otherwise the context creates and owns one selection when a registration and
     /// physics world are supplied. Contact tuning is validated on first use and cached by value.
     /// <paramref name="legacyOnlyContactRefusal"/> is an optional construction-time restriction for producers whose
-    /// geometry supports only legacy movement. Every contact use throws NotSupportedException with this message.
-    /// Resolver-1 MapDoc producers name native G1b here. Null permits contact configuration.</summary>
+    /// geometry supports only legacy movement. Every contact use throws GroundContactCapabilityException with
+    /// ContactProducerRestricted and this text as Restriction. Null permits contact configuration.</summary>
     public GroundMoveContext(Func<float, float, float> groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? physics,
         Func<float, float, Vector2>? clampXz, Func<float, float, float, MovementMedium>? medium,
@@ -33,6 +35,21 @@ public sealed partial class GroundMoveContext
         string? legacyOnlyContactRefusal = null)
         : this(groundHeight, groundNormal, physics, clampXz, medium, movementQueries, movementWaterField,
             movementRegistration, movementBoundary, legacyOnlyContactRefusal, contactConstruction: true)
+    { }
+
+    /// <summary>Constructs an ordinary context with optional producer restriction metadata. The restriction's text
+    /// and admission are the same as the string-only overload. Known engine producers additionally name their kind
+    /// and required capability, which contact refusals carry without interpreting the restriction text.</summary>
+    public GroundMoveContext(Func<float, float, float> groundHeight,
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? physics,
+        Func<float, float, Vector2>? clampXz, Func<float, float, float, MovementMedium>? medium,
+        IPhysicsWorldQueryView? movementQueries, IMovementWaterField? movementWaterField,
+        OrdinaryMovementRegistration? movementRegistration, MovementBoundary? movementBoundary,
+        string? legacyOnlyContactRefusal, GroundContactProducerKind? producerKind,
+        GroundContactCapability? requiredCapability)
+        : this(groundHeight, groundNormal, physics, clampXz, medium, movementQueries, movementWaterField,
+            movementRegistration, movementBoundary, legacyOnlyContactRefusal, contactConstruction: true,
+            producerKind, requiredCapability)
     { }
 
     public IMovementWaterField? MovementWaterField { get; }
@@ -68,7 +85,7 @@ public sealed partial class GroundMoveContext
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_stepping) throw new InvalidOperationException("Ground movement steps cannot overlap or recurse.");
         if (tuning.Controller == MovementControllerKind.Contact && _legacyOnlyContactRefusal is not null)
-            throw new NotSupportedException(_legacyOnlyContactRefusal);
+            throw ContactProducerRefusal();
         if (_hasValidatedTuning && _validatedTuning == tuning) return;
         EffectiveMovementBinding next;
         if (tuning.Controller == MovementControllerKind.Contact)
@@ -102,15 +119,31 @@ public sealed partial class GroundMoveContext
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_stepping) throw new InvalidOperationException("Ground movement steps cannot overlap or recurse.");
-        if (_legacyOnlyContactRefusal is not null) throw new NotSupportedException(_legacyOnlyContactRefusal);
+        if (_legacyOnlyContactRefusal is not null) throw ContactProducerRefusal();
         if (!_contactConstruction)
-            throw new NotSupportedException("Contact movement requires a GroundMoveContext constructed with its ordinary environment.");
+            throw new GroundContactCapabilityException(GroundContactCapabilityRefusal.OrdinaryContextRequired,
+                "Contact movement requires a GroundMoveContext constructed with its ordinary environment.")
+            { RequiredKind = EffectiveMovementBindingKind.OrdinaryContact };
         EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.OrdinaryContact);
         if (Physics is null || MovementRegistration is null || MovementBoundary is null)
-            throw new ArgumentException("Ordinary contact movement requires physics, a registration and a MovementBoundary.");
+            throw new MovementConfigurationException(Physics is null ? MovementConfigurationRefusal.PhysicsRequired
+                : MovementRegistration is null ? MovementConfigurationRefusal.RegistrationRequired : MovementConfigurationRefusal.BoundaryRequired,
+                "Ordinary contact movement requires physics, a registration and a MovementBoundary.")
+            {
+                RequiredCapability = Physics is null ? typeof(IPhysicsWorld)
+                : MovementRegistration is null ? typeof(OrdinaryMovementRegistration) : typeof(MovementBoundary)
+            };
         return EffectiveMovementBinding.Ordinary(tuning, Physics, MovementRegistration, GroundHeight, GroundNormal,
             MovementBoundary, MovementWaterField, _providedMedium, MovementQueries);
     }
+
+    GroundContactCapabilityException ContactProducerRefusal() => new(
+        GroundContactCapabilityRefusal.ContactProducerRestricted, _legacyOnlyContactRefusal!)
+    {
+        Restriction = _legacyOnlyContactRefusal,
+        ProducerKind = _contactProducerKind,
+        RequiredCapability = _requiredContactCapability
+    };
 
     /// <summary>The contact frame the next step would capture at the current physics origin. Reading it changes no
     /// context state, so a navigation build captures it once into its snapshot.</summary>

@@ -134,7 +134,8 @@ public sealed class MapPhysicsRegistration : IDisposable
     /// <paramref name="legacyGlobalWater"/> is true. Feet strictly below <see cref="MapBuiltWorld.LegacyWaterLevel"/>
     /// are in water. Keeps the analytic support height, physics world, playable clamp, no ground normal and no query
     /// selection. Throws <see cref="MapDocumentException"/> for a native world. The context records a legacy-only
-    /// construction restriction and refuses a later contact tuning with a message naming native G1b.</summary>
+    /// construction restriction. Later contact tuning throws GroundContactCapabilityException with
+    /// ContactProducerRestricted, ProducerKind MapDocResolverOne and RequiredCapability NativeMapDocContact (G1b).</summary>
     public GroundMoveContext CreateLegacyMoveContext(bool legacyGlobalWater)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -149,7 +150,9 @@ public sealed class MapPhysicsRegistration : IDisposable
         return new GroundMoveContext(height, null, Physics,
             (x, z) => new Vector2(Math.Clamp(x, playable.MinX, playable.MaxX), Math.Clamp(z, playable.MinZ, playable.MaxZ)),
             medium, null, null, null, null,
-            legacyOnlyContactRefusal: "Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.");
+            legacyOnlyContactRefusal: "Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.",
+            producerKind: GroundContactProducerKind.MapDocResolverOne,
+            requiredCapability: GroundContactCapability.NativeMapDocContact);
     }
 
     /// <summary>Throws <see cref="ObjectDisposedException"/> once every static has been removed.</summary>

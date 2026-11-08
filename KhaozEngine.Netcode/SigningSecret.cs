@@ -15,8 +15,10 @@ namespace KhaozEngine.Netcode;
 /// </para>
 /// <para>
 /// The value is standard base64 (the output of <c>openssl rand -base64 32</c>), trimmed, decoding to at least
-/// <see cref="MinimumBytes"/>. Every error names the SOURCE (the variable or setting the value came from) and the
-/// rule it broke, and never any part of the value. The variable names stay game-owned.
+/// <see cref="MinimumBytes"/>. Every refusal is a <see cref="SigningSecretException"/> whose
+/// <see cref="SigningSecretException.SourceName"/> is the SOURCE (the variable or setting the value came from) and
+/// whose <see cref="SigningSecretException.Reason"/> is the rule it broke, and it never carries any part of the value.
+/// The variable names stay game-owned.
 /// </para>
 /// </summary>
 public static class SigningSecret
@@ -34,9 +36,11 @@ public static class SigningSecret
     /// the decoded key, a fresh array the caller owns.
     /// </summary>
     /// <param name="raw">The configured value, as read.</param>
-    /// <param name="sourceName">Where the value came from, for the error message. Never the value itself.</param>
-    /// <exception cref="InvalidOperationException">The value is set but is not standard base64, or decodes to fewer
-    /// than <see cref="MinimumBytes"/>. The message names <paramref name="sourceName"/> and not the value.</exception>
+    /// <param name="sourceName">Where the value came from, for the refusal. Never the value itself.</param>
+    /// <exception cref="SigningSecretException">The value is set but is not standard base64
+    /// (<see cref="SigningSecretRefusal.NotStandardBase64"/>), or decodes to fewer than <see cref="MinimumBytes"/>
+    /// (<see cref="SigningSecretRefusal.DecodedKeyTooShort"/>). <see cref="SigningSecretException.SourceName"/> is
+    /// <paramref name="sourceName"/>, and nothing carries the value.</exception>
     public static byte[]? Decode(string? raw, string sourceName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceName);
@@ -49,13 +53,21 @@ public static class SigningSecret
         try
         {
             if (!Convert.TryFromBase64String(trimmed, buffer, out int written))
-                throw new InvalidOperationException(
-                    $"{sourceName} is set but is not valid standard base64. {GenerateHint}");
+                throw new SigningSecretException(SigningSecretRefusal.NotStandardBase64,
+                    $"{sourceName} is set but is not valid standard base64. {GenerateHint}")
+                {
+                    SourceName = sourceName,
+                };
 
             if (written < MinimumBytes)
-                throw new InvalidOperationException(
+                throw new SigningSecretException(SigningSecretRefusal.DecodedKeyTooShort,
                     $"{sourceName} decodes to {written} bytes, under the {MinimumBytes}-byte minimum. A shorter HMAC " +
-                    $"key is brute-forceable, so this refuses rather than running with it. {GenerateHint}");
+                    $"key is brute-forceable, so this refuses rather than running with it. {GenerateHint}")
+                {
+                    SourceName = sourceName,
+                    ActualBytes = written,
+                    MinimumBytes = MinimumBytes,
+                };
 
             return buffer.AsSpan(0, written).ToArray();
         }
@@ -74,7 +86,8 @@ public static class SigningSecret
     /// </summary>
     /// <param name="read">Reads one variable, returning null when it is not set.</param>
     /// <param name="variable">The game's own variable name, for example <c>MYGAME_TOKEN_SECRET</c>.</param>
-    /// <exception cref="InvalidOperationException">As <see cref="Decode"/>.</exception>
+    /// <exception cref="SigningSecretException">As <see cref="Decode"/>, with <paramref name="variable"/> as the
+    /// <see cref="SigningSecretException.SourceName"/>.</exception>
     public static byte[]? Load(Func<string, string?> read, string variable)
     {
         ArgumentNullException.ThrowIfNull(read);

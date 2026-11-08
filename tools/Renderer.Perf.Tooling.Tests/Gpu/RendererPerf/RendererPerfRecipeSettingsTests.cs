@@ -23,6 +23,8 @@ public sealed class RendererPerfRecipeSettingsTests
         var legacy = JsonSerializer.SerializeToNode(settings, LegacyOptions)!.AsObject();
         legacy.Remove(nameof(WaterSettings.UnderwaterSunlight));
         legacy.Remove(nameof(WaterSettings.UnderwaterPenumbraPerMetre));
+        legacy.Remove(nameof(WaterSettings.UnderwaterCaustics));
+        legacy.Remove(nameof(WaterSettings.CausticStrength));
         legacy.Remove(nameof(WaterSettings.WaterColumnLight));
         legacy.Remove(nameof(WaterSettings.WaterColor));
         legacy.Remove(nameof(WaterSettings.Clarity));
@@ -37,6 +39,8 @@ public sealed class RendererPerfRecipeSettingsTests
         var legacy = JsonSerializer.SerializeToNode(look, LegacyOptions)!.AsObject();
         legacy.Remove(nameof(WaterLook.UnderwaterSunlight));
         legacy.Remove(nameof(WaterLook.UnderwaterPenumbraPerMetre));
+        legacy.Remove(nameof(WaterLook.UnderwaterCaustics));
+        legacy.Remove(nameof(WaterLook.CausticStrength));
         legacy.Remove(nameof(WaterLook.WaterColumnLight));
         legacy.Remove(nameof(WaterLook.WaterColor));
         legacy.Remove(nameof(WaterLook.Clarity));
@@ -107,26 +111,32 @@ public sealed class RendererPerfRecipeSettingsTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void An_explicit_sunlight_override_is_captured_in_the_identity(bool enabled)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void An_explicit_sunlight_or_caustic_override_is_captured_in_the_identity(bool enabled, bool caustics)
     {
-        var look = new WaterLook { UnderwaterSunlight = enabled };
+        var look = caustics ? new WaterLook { UnderwaterCaustics = enabled } : new WaterLook { UnderwaterSunlight = enabled };
+        string field = caustics ? nameof(WaterLook.UnderwaterCaustics) : nameof(WaterLook.UnderwaterSunlight);
         var encoded = JsonSerializer.SerializeToNode(look, RendererPerfRecipe.Json)!.AsObject();
 
-        Assert.Equal(enabled, encoded[nameof(WaterLook.UnderwaterSunlight)]!.GetValue<bool>());
+        Assert.Equal(enabled, encoded[field]!.GetValue<bool>());
         Assert.NotEqual(RendererPerfRecipe.Digest(new WaterLook()), RendererPerfRecipe.Digest(look));
     }
 
     [Theory]
-    [InlineData(0f)]
-    [InlineData(0.03f)]
-    public void An_explicit_penumbra_override_is_captured_in_the_identity(float penumbra)
+    [InlineData(0f, false)]
+    [InlineData(0.03f, false)]
+    [InlineData(0f, true)]
+    [InlineData(1f, true)]
+    public void An_explicit_penumbra_or_caustic_strength_override_is_captured_in_the_identity(float value, bool caustics)
     {
-        var look = new WaterLook { UnderwaterPenumbraPerMetre = penumbra };
+        var look = caustics ? new WaterLook { CausticStrength = value } : new WaterLook { UnderwaterPenumbraPerMetre = value };
+        string field = caustics ? nameof(WaterLook.CausticStrength) : nameof(WaterLook.UnderwaterPenumbraPerMetre);
         var encoded = JsonSerializer.SerializeToNode(look, RendererPerfRecipe.Json)!.AsObject();
 
-        Assert.Equal(penumbra, encoded[nameof(WaterLook.UnderwaterPenumbraPerMetre)]!.GetValue<float>());
+        Assert.Equal(value, encoded[field]!.GetValue<float>());
         Assert.NotEqual(RendererPerfRecipe.Digest(new WaterLook()), RendererPerfRecipe.Digest(look));
     }
 
@@ -139,25 +149,31 @@ public sealed class RendererPerfRecipeSettingsTests
             JsonSerializer.Serialize(plane, RendererPerfRecipe.Json));
     }
 
-    [Fact]
-    public void Enabled_underwater_sunlight_is_captured_in_the_identity()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Enabled_underwater_sunlight_or_caustics_is_captured_in_the_identity(bool caustics)
     {
-        var settings = new WaterSettings { UnderwaterSunlight = true };
+        var settings = caustics ? new WaterSettings { UnderwaterCaustics = true } : new WaterSettings { UnderwaterSunlight = true };
+        string field = caustics ? nameof(WaterSettings.UnderwaterCaustics) : nameof(WaterSettings.UnderwaterSunlight);
         var encoded = JsonSerializer.SerializeToNode(settings, RendererPerfRecipe.Json)!.AsObject();
 
-        Assert.True(encoded[nameof(WaterSettings.UnderwaterSunlight)]!.GetValue<bool>());
+        Assert.True(encoded[field]!.GetValue<bool>());
         Assert.NotEqual(RendererPerfRecipe.Digest(new WaterSettings()), RendererPerfRecipe.Digest(settings));
     }
 
     [Theory]
-    [InlineData(0f)]
-    [InlineData(0.09f)]
-    public void A_nondefault_penumbra_is_captured_in_the_identity(float penumbra)
+    [InlineData(0f, false)]
+    [InlineData(0.09f, false)]
+    [InlineData(0f, true)]
+    [InlineData(4f, true)]
+    public void A_nondefault_penumbra_or_caustic_strength_is_captured_in_the_identity(float value, bool caustics)
     {
-        var settings = new WaterSettings { UnderwaterPenumbraPerMetre = penumbra };
+        var settings = caustics ? new WaterSettings { CausticStrength = value } : new WaterSettings { UnderwaterPenumbraPerMetre = value };
+        string field = caustics ? nameof(WaterSettings.CausticStrength) : nameof(WaterSettings.UnderwaterPenumbraPerMetre);
         var encoded = JsonSerializer.SerializeToNode(settings, RendererPerfRecipe.Json)!.AsObject();
 
-        Assert.Equal(penumbra, encoded[nameof(WaterSettings.UnderwaterPenumbraPerMetre)]!.GetValue<float>());
+        Assert.Equal(value, encoded[field]!.GetValue<float>());
         Assert.NotEqual(RendererPerfRecipe.Digest(new WaterSettings()), RendererPerfRecipe.Digest(settings));
     }
 

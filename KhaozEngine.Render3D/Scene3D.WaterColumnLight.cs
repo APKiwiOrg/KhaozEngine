@@ -52,6 +52,7 @@ public sealed partial class Scene3D
             WaterSettings effective = plane.Look?.ResolveInto(_waterColumnScratch, Post.Water) ?? Post.Water;
             // Unbound water retains late-bound authoring, including on planes culled before UBO packing.
             WaterColumnValidation.Validate(effective);
+            WaterCausticValidation.Validate(effective);
             if (effective.WaterColumnLight) _waterColumnOptedInPlanes++;
         }
     }

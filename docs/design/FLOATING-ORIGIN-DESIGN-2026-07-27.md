@@ -1980,18 +1980,27 @@ comfortably, while its planar magnitude of 549 m sits in the `[2^9, 2^10)` binad
 `[2^6, 2^7)`) and 167 m planar (binade `[2^7, 2^8)`), so it sits in section 2's `<= 256 m` row at 3.3 mm and
 the full 3.0x margin under either operand.
 
-Release 3 adds the validation, with the derivation in the message:
+The validation keeps the derivation as developer prose. `WorldConfigurationException` carries its rule and
+the cell size, overlap, actual planar magnitude and inclusive 512 m ceiling as typed identifiers:
 
 ```csharp
 // ShardedWorldServer ctor, beside the existing InterestRadius <= OverlapMargin check.
 float worstAxis   = config.CellSize * 0.5f + config.OverlapMargin + WorldFrame.Grid * 0.5f;
 float worstPlanar = worstAxis * MathF.Sqrt(2f);   // section 2: the model's operand is the PLANAR magnitude
 if (worstPlanar > WorldFrame.MaxLocalRadius)
-    throw new ArgumentException(
+    throw new WorldConfigurationException(float.IsFinite(worstPlanar)
+            ? WorldConfigurationRefusal.FramePlanarMagnitudeExceeded
+            : WorldConfigurationRefusal.FramePlanarMagnitudeNonfinite,
         $"CellSize {config.CellSize} with OverlapMargin {config.OverlapMargin} puts a cell's worst frame-local "
       + $"coordinate at {worstAxis} m per axis, a planar magnitude of {worstPlanar} m, past the "
       + $"{WorldFrame.MaxLocalRadius} m float32 divergence ceiling (the ceiling is on the planar magnitude, "
-      + "design doc section 2). Reduce CellSize.", nameof(config));
+      + "design doc section 2). Reduce CellSize.", nameof(config))
+    {
+        CellSize = config.CellSize,
+        OverlapMargin = config.OverlapMargin,
+        ActualPlanarMagnitude = worstPlanar,
+        MaximumPlanarMagnitude = float.IsFinite(worstPlanar) ? WorldFrame.MaxLocalRadius : null,
+    };
 ```
 
 ## 13. Decision 10: the test plan

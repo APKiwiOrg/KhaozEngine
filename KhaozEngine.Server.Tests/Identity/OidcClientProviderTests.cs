@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -26,12 +27,15 @@ public class OidcClientProviderTests
     {
         public Uri? Launched;
 
+        /// <summary>What the launcher reports. False is a browser that could not open the authorize URL.</summary>
+        public bool Opens = true;
+
         public Task<bool> LaunchAsync(Uri url, CancellationToken ct = default)
         {
             Launched = url;
             var q = HttpUtility.ParseQueryString(url.Query);
             holder.State = q["state"];
-            return Task.FromResult(true);
+            return Task.FromResult(Opens);
         }
     }
 
@@ -99,31 +103,71 @@ public class OidcClientProviderTests
         Assert.Equal("authorization_code", handler.SeenGrantType);
     }
 
-    [Fact]
-    public async Task SignIn_throws_when_redirect_state_mismatches()
-    {
-        StateHolder holder = new();
-        FakeBrowser browser = new(holder);
-        FakeTokenHandler handler = new();
-        HttpClient http = new(handler);
-        // The listener returns a state that never matches the provider-generated one.
-        Func<int, ILoopbackListener> listenerFactory = _ => new MismatchListener();
-        OidcClientProvider provider = new(
-            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
-            browser, listenerFactory, http);
-
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
-    }
-
-    private sealed class MismatchListener : ILoopbackListener
+    /// <summary>Echoes the real redirect, then applies one named defect to its query. <c>none</c> is the control.</summary>
+    private sealed class DefectiveRedirectListener(StateHolder holder, string defect) : ILoopbackListener
     {
         public Uri RedirectUri { get; } = new("http://127.0.0.1:12345/");
 
         public Task<LoopbackResult> WaitForRedirectAsync(CancellationToken ct)
-            => Task.FromResult(new LoopbackResult(RedirectUri.ToString(),
-                new Dictionary<string, string> { ["code"] = "auth-code", ["state"] = "not-the-real-state" }));
+        {
+            Dictionary<string, string> query = new() { ["code"] = "auth-code", ["state"] = holder.State ?? "" };
+            switch (defect)
+            {
+                case "state-mismatch": query["state"] = "not-the-real-state"; break;
+                case "state-missing": query.Remove("state"); break;
+                case "code-missing": query.Remove("code"); break;
+                case "code-empty": query["code"] = ""; break;
+            }
+            return Task.FromResult(new LoopbackResult(RedirectUri.ToString(), query));
+        }
 
         public void Dispose() { }
+    }
+
+    private static OidcClientProvider ProviderWithRedirect(StateHolder holder, string defect)
+        => new(new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(holder), _ => new DefectiveRedirectListener(holder, defect),
+            new HttpClient(new FakeTokenHandler()));
+
+    /// <summary>Neither state value nor the code may reach the refusal: the state is the CSRF guard and the code is
+    /// redeemable with the verifier.</summary>
+    [Theory]
+    [InlineData("state-mismatch", SignInRefusal.RedirectStateMismatch)]
+    [InlineData("state-missing", SignInRefusal.RedirectStateMismatch)]
+    [InlineData("code-missing", SignInRefusal.AuthorizationCodeMissing)]
+    [InlineData("code-empty", SignInRefusal.AuthorizationCodeMissing)]
+    public async Task SignIn_refuses_a_redirect_that_breaks_one_rule(string defect, SignInRefusal expected)
+    {
+        StateHolder holder = new();
+
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => ProviderWithRedirect(holder, defect).SignInAsync(CancellationToken.None));
+
+        Assert.Equal(expected, ex.Reason);
+        Assert.Equal("oidc", ex.ProviderId);
+        SignInRefusalSecrets.AssertCarriesNone(ex, holder.State!, "not-the-real-state", "auth-code");
+
+        ProviderCredential control = await ProviderWithRedirect(new StateHolder(), "none").SignInAsync(CancellationToken.None);
+        Assert.Equal("the-id-token", control.CredentialToken);
+    }
+
+    [Fact]
+    public async Task SignIn_refuses_when_the_browser_does_not_launch()
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder) { Opens = false };
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            browser, _ => new FakeListener(holder), new HttpClient(new FakeTokenHandler()));
+
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.BrowserLaunchFailed, ex.Reason);
+        Assert.Equal("oidc", ex.ProviderId);
+
+        browser.Opens = true;
+        Assert.Equal("the-id-token", (await provider.SignInAsync(CancellationToken.None)).CredentialToken);
     }
 
     [Fact]
@@ -169,6 +213,14 @@ public class OidcClientProviderTests
         => new(new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
             new FakeBrowser(new StateHolder()), _ => new FakeListener(new StateHolder()), new HttpClient(handler));
 
+    /// <summary>A provider whose browser and listener share one state, so its interactive sign-in can succeed.</summary>
+    private static OidcClientProvider SignInProviderWith(HttpMessageHandler handler)
+    {
+        StateHolder holder = new();
+        return new(new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(holder), _ => new FakeListener(holder), new HttpClient(handler));
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.BadRequest)]
     [InlineData(HttpStatusCode.Unauthorized)]
@@ -188,8 +240,16 @@ public class OidcClientProviderTests
         OidcClientProvider provider = ProviderWith(new StatusTokenHandler(HttpStatusCode.ServiceUnavailable));
         ProviderCredential expired = new("oidc", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
 
-        await Assert.ThrowsAsync<IdentitySignInException>(
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => provider.RefreshAsync(expired, CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.TokenHttpFailure, ex.Reason);
+        Assert.Equal(503, ex.StatusCode);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
+        Assert.Equal("oidc", ex.ProviderId);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "old-token", "old-refresh");
+
+        Assert.NotNull(await ProviderWith(new FakeTokenHandler()).RefreshAsync(expired, CancellationToken.None));
     }
 
     [Fact]
@@ -202,7 +262,12 @@ public class OidcClientProviderTests
             new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
             browser, _ => new FakeListener(holder), http);
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.TokenHttpFailure, ex.Reason);
+        Assert.Equal(400, ex.StatusCode);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
     }
 
     /// <summary>Serves the well-known discovery document, then a caller-chosen 200 body for the token POST, so a
@@ -240,7 +305,93 @@ public class OidcClientProviderTests
             new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
             browser, _ => new FakeListener(holder), new HttpClient(new BodyTokenHandler(tokenBody)));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.TokenExpiryMalformed, ex.Reason);
+        Assert.Equal("expires_in", ex.MemberName);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "the-id-token");
+
+        ProviderCredential control = await SignInProviderWith(
+            new BodyTokenHandler("{\"id_token\":\"the-id-token\",\"expires_in\":3600}")).SignInAsync(CancellationToken.None);
+        Assert.Equal("the-id-token", control.CredentialToken);
+    }
+
+    [Theory]
+    [InlineData("{\"refresh_token\":\"leaked-refresh\",\"expires_in\":3600}", SignInRefusal.TokenMemberMissing)]
+    [InlineData("{\"id_token\":\"\",\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty)]
+    [InlineData("{\"id_token\":null,\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty)]
+    public async Task SignIn_refuses_a_token_response_without_its_id_token(string tokenBody, SignInRefusal expected)
+    {
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => SignInProviderWith(new BodyTokenHandler(tokenBody)).SignInAsync(CancellationToken.None));
+
+        Assert.Equal(expected, ex.Reason);
+        Assert.Equal("id_token", ex.MemberName);
+        Assert.Equal("oidc", ex.ProviderId);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "leaked-refresh");
+
+        ProviderCredential control = await SignInProviderWith(
+            new BodyTokenHandler("{\"id_token\":\"the-id-token\",\"refresh_token\":\"leaked-refresh\"}"))
+            .SignInAsync(CancellationToken.None);
+        Assert.Equal("the-id-token", control.CredentialToken);
+    }
+
+    /// <summary>Serves a caller-chosen status and body for the discovery document, then a good token response.</summary>
+    private sealed class DiscoveryHandler(HttpStatusCode status, string body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+            => Task.FromResult(req.RequestUri!.AbsolutePath.Contains("well-known")
+                ? new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") }
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"id_token\":\"the-id-token\"}", Encoding.UTF8, "application/json"),
+                });
+    }
+
+    private const string GoodDiscovery =
+        "{\"authorization_endpoint\":\"https://issuer.test/auth\",\"token_endpoint\":\"https://issuer.test/token\"}";
+
+    [Fact]
+    public async Task SignIn_refuses_a_failed_discovery_request()
+    {
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => SignInProviderWith(new DiscoveryHandler(HttpStatusCode.ServiceUnavailable, GoodDiscovery))
+                .SignInAsync(CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.DiscoveryHttpFailure, ex.Reason);
+        Assert.Equal(503, ex.StatusCode);
+        Assert.Equal(SignInEndpointRole.DiscoveryDocument, ex.EndpointRole);
+        Assert.Equal("oidc", ex.ProviderId);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "issuer.test");
+
+        ProviderCredential control = await SignInProviderWith(new DiscoveryHandler(HttpStatusCode.OK, GoodDiscovery))
+            .SignInAsync(CancellationToken.None);
+        Assert.Equal("the-id-token", control.CredentialToken);
+    }
+
+    /// <summary>The refusal names the first member the predicate reaches, so a document lacking both names
+    /// <c>authorization_endpoint</c>.</summary>
+    [Theory]
+    [InlineData("{\"token_endpoint\":\"https://issuer.test/token\"}", SignInRefusal.DiscoveryEndpointMissing, "authorization_endpoint")]
+    [InlineData("{\"authorization_endpoint\":\"https://issuer.test/auth\"}", SignInRefusal.DiscoveryEndpointMissing, "token_endpoint")]
+    [InlineData("{}", SignInRefusal.DiscoveryEndpointMissing, "authorization_endpoint")]
+    [InlineData("{\"authorization_endpoint\":\"\",\"token_endpoint\":\"https://issuer.test/token\"}", SignInRefusal.DiscoveryEndpointEmpty, "authorization_endpoint")]
+    [InlineData("{\"authorization_endpoint\":\"https://issuer.test/auth\",\"token_endpoint\":null}", SignInRefusal.DiscoveryEndpointEmpty, "token_endpoint")]
+    public async Task SignIn_refuses_a_discovery_document_without_a_usable_endpoint(
+        string document, SignInRefusal expected, string member)
+    {
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => SignInProviderWith(new DiscoveryHandler(HttpStatusCode.OK, document)).SignInAsync(CancellationToken.None));
+
+        Assert.Equal(expected, ex.Reason);
+        Assert.Equal(member, ex.MemberName);
+        Assert.Equal("oidc", ex.ProviderId);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "issuer.test");
+
+        ProviderCredential control = await SignInProviderWith(new DiscoveryHandler(HttpStatusCode.OK, GoodDiscovery))
+            .SignInAsync(CancellationToken.None);
+        Assert.Equal("the-id-token", control.CredentialToken);
     }
 
     /// <summary>The abandoned flow: the player opens the browser and never comes back, so the redirect never
@@ -280,7 +431,11 @@ public class OidcClientProviderTests
             },
             new FakeBrowser(holder), _ => listener, new HttpClient(new FakeTokenHandler()));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
+        Assert.Equal(SignInRefusal.TimedOut, ex.Reason);
+        Assert.Equal(TimeSpan.FromMilliseconds(50), ex.Timeout);
+        Assert.Equal("oidc", ex.ProviderId);
         Assert.True(listener.Disposed);
     }
 
@@ -302,12 +457,15 @@ public class OidcClientProviderTests
 
     /// <summary>#170: a plain-http authority put the PKCE verifier and the returned tokens on the wire in
     /// cleartext. Nothing checked the scheme, so the refusal has to come before any request goes out (which is
-    /// also before the browser launches).</summary>
+    /// also before the browser launches). Only the scheme may reach the refusal. Nothing after it does,
+    /// credentials in the authority included.</summary>
     [Theory]
-    [InlineData("http://issuer.test")]
-    [InlineData("http://localhost:8080")]
-    [InlineData("not-a-url")]
-    public async Task SignIn_refuses_a_non_https_authority(string authority)
+    [InlineData("http://issuer.test", SignInRefusal.AuthorityNotHttps, "http")]
+    [InlineData("http://localhost:8080", SignInRefusal.AuthorityNotHttps, "http")]
+    [InlineData("ftp://issuer.test", SignInRefusal.AuthorityNotHttps, "ftp")]
+    [InlineData("http://user:hunter2@issuer.test", SignInRefusal.AuthorityNotHttps, "http")]
+    [InlineData("not-a-url", SignInRefusal.AuthorityNotAbsolute, null)]
+    public async Task SignIn_refuses_a_non_https_authority(string authority, SignInRefusal expected, string? scheme)
     {
         StateHolder holder = new();
         FakeBrowser browser = new(holder);
@@ -316,9 +474,19 @@ public class OidcClientProviderTests
             new OidcProviderOptions { Authority = authority, ClientId = "client-1", LoopbackPort = 12345 },
             browser, _ => new FakeListener(holder), new HttpClient(handler));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
         Assert.Null(browser.Launched);
         Assert.Null(handler.SeenGrantType);
+        Assert.Equal(expected, ex.Reason);
+        Assert.Equal(scheme, ex.ActualScheme);
+        Assert.Equal("oidc", ex.ProviderId);
+        int schemeEnd = authority.IndexOf("://", StringComparison.Ordinal);
+        SignInRefusalSecrets.AssertCarriesNone(
+            ex, authority, schemeEnd < 0 ? authority : authority[(schemeEnd + 3)..], "hunter2");
+
+        ProviderCredential control = await SignInProviderWith(new FakeTokenHandler()).SignInAsync(CancellationToken.None);
+        Assert.Equal("the-id-token", control.CredentialToken);
     }
 
     [Fact]
@@ -330,8 +498,11 @@ public class OidcClientProviderTests
             new HttpClient(new FakeTokenHandler()));
         ProviderCredential expired = new("oidc", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
 
-        await Assert.ThrowsAsync<IdentitySignInException>(
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => provider.RefreshAsync(expired, CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.AuthorityNotHttps, ex.Reason);
+        Assert.Equal("http", ex.ActualScheme);
     }
 
     [Fact]
@@ -370,8 +541,11 @@ public class OidcClientProviderTests
             },
             browser, _ => new FakeListener(holder), new HttpClient(new FakeTokenHandler()));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
         Assert.Null(browser.Launched);
+        Assert.Equal(SignInRefusal.AuthorityNotHttps, ex.Reason);
+        Assert.Equal("http", ex.ActualScheme);
     }
 
     /// <summary>A captive portal (hotel/airport wifi) or a misconfigured reverse proxy answering 200 with an
@@ -396,7 +570,13 @@ public class OidcClientProviderTests
             new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
             new FakeBrowser(holder), _ => new FakeListener(holder), new HttpClient(new HtmlDiscoveryHandler()));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.EndpointJsonMalformed, ex.Reason);
+        Assert.Equal(SignInEndpointRole.DiscoveryDocument, ex.EndpointRole);
+        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "hotel network");
     }
 
     [Fact]
@@ -408,20 +588,32 @@ public class OidcClientProviderTests
             new FakeBrowser(holder), _ => new FakeListener(holder), new HttpClient(new HtmlDiscoveryHandler()));
         ProviderCredential expired = new("oidc", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
 
-        await Assert.ThrowsAsync<IdentitySignInException>(
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => provider.RefreshAsync(expired, CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.EndpointJsonMalformed, ex.Reason);
+        Assert.Equal(SignInEndpointRole.DiscoveryDocument, ex.EndpointRole);
     }
 
-    [Fact]
-    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_non_json()
+    /// <summary>The parser's exception stays the inner exception, so these bodies prove it does not echo a token
+    /// from a form-encoded or truncated response.</summary>
+    [Theory]
+    [InlineData("<html><body>Sign in to the hotel network</body></html>", "hotel network")]
+    [InlineData("id_token=leaked-id-token&refresh_token=leaked-refresh", "leaked-id-token")]
+    [InlineData("{\"id_token\":\"leaked-id-token", "leaked-id-token")]
+    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_non_json(string body, string bodyValue)
     {
-        StateHolder holder = new();
-        OidcClientProvider provider = new(
-            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
-            new FakeBrowser(holder), _ => new FakeListener(holder),
-            new HttpClient(new BodyTokenHandler("<html><body>Sign in to the hotel network</body></html>")));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => SignInProviderWith(new BodyTokenHandler(body)).SignInAsync(CancellationToken.None));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        Assert.Equal(SignInRefusal.EndpointJsonMalformed, ex.Reason);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
+        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        SignInRefusalSecrets.AssertCarriesNone(ex, bodyValue);
+
+        ProviderCredential control = await SignInProviderWith(new BodyTokenHandler("{\"id_token\":\"the-id-token\"}"))
+            .SignInAsync(CancellationToken.None);
+        Assert.Equal("the-id-token", control.CredentialToken);
     }
 
     [Fact]

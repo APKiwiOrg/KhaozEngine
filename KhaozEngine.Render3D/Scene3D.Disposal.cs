@@ -42,7 +42,11 @@ namespace KhaozEngine.Render3D
             Release("water", () =>
             {
                 try { _water.Dispose(); }
-                finally { _waterColumnColor?.Dispose(); }
+                finally
+                {
+                    try { _waterColumnColor?.Dispose(); }
+                    finally { _waterCaustics?.Dispose(); }
+                }
             });
             Release("overlayMeshes", _overlayMeshes.Dispose);
             Release("silhouettes", _silhouettes.Dispose);

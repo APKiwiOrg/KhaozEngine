@@ -80,11 +80,18 @@ public class ReplicationStreamOptionsTests
             MaxTransportPayloadBytes = 10,
         };
 
-        var error = Assert.Throws<ArgumentException>(
+        var error = Assert.Throws<WorldConfigurationException>(
             () => valid.ValidateConfig(deltaReplication: false, optIn: true, Tick));
+        Assert.IsAssignableFrom<ArgumentException>(error);
+        Assert.Equal(WorldConfigurationRefusal.UnreliableWithoutDelta, error.Reason);
         Assert.Equal("optIn", error.ParamName);
-        Assert.Equal("optIn", Assert.Throws<ArgumentException>(
-            () => broken.ValidateConfig(deltaReplication: false, optIn: true, float.NaN)).ParamName);
+        Assert.Equal("optIn", error.MemberName);
+        Assert.Equal("deltaReplication", error.RequiredMember);
+        var beforeBudget = Assert.Throws<WorldConfigurationException>(
+            () => broken.ValidateConfig(deltaReplication: false, optIn: true, float.NaN));
+        Assert.Equal("optIn", beforeBudget.ParamName);
+        Assert.Equal(WorldConfigurationRefusal.UnreliableWithoutDelta, beforeBudget.Reason);
+        Assert.NotNull(valid.ValidateConfig(deltaReplication: true, optIn: true, Tick));
     }
 
     [Fact]

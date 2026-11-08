@@ -96,7 +96,8 @@ public sealed partial class WorldClientConfig
     /// An older server ignores the hello, its frames stay plain and both read <c>-1</c>. Off, nothing on the wire
     /// changes. Format 2 frames carry no tick, so setting this with <see cref="RequestUnreliableDeltaReplication"/> is a
     /// configuration error and the <see cref="WorldClient"/> constructor throws
-    /// <see cref="System.ArgumentException"/>.</summary>
+    /// <see cref="WorldConfigurationException"/> with <see cref="WorldConfigurationRefusal.ServerTickWithUnreliableReplication"/>
+    /// and both option names in <see cref="WorldConfigurationException.IncompatibleMembers"/>.</summary>
     public bool ReceiveServerTick { get; init; }
 
     /// <summary>Format 2 limits and cadence, read only when <see cref="RequestUnreliableDeltaReplication"/> and

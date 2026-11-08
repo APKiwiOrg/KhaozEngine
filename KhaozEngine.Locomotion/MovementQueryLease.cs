@@ -83,11 +83,21 @@ public sealed partial class MovementQueryLease : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         _physics.AssertCurrent();
         _pin.AssertCurrent();
-        if (!ReferenceEquals(_physics.SourceWorld, Id.SourceWorld) ||
-            !ReferenceEquals(_view.SourceWorld, Id.SourceWorld) || !ReferenceEquals(_pin.PhysicsView, _view) ||
-            _physics.GeometryGeneration != Id.GeometryGeneration || _pin.GeometryGeneration != Id.GeometryGeneration ||
-            _pin.EnvironmentGeneration != Id.EnvironmentGeneration || _pin.Frame != Frame || _physics.Origin != Frame.PhysicsOrigin)
-            throw new InvalidOperationException("The movement query binding is stale.");
+        AssertBinding(Id);
+    }
+
+    // Inject a compared identity without changing the lease or bypassing producer and lifetime checks in AssertCurrent.
+    internal void InjectStaleBindingForTests(MovementQueryLeaseId id) => AssertBinding(id);
+
+    void AssertBinding(MovementQueryLeaseId id)
+    {
+        if (!ReferenceEquals(_physics.SourceWorld, id.SourceWorld) ||
+            !ReferenceEquals(_view.SourceWorld, id.SourceWorld) || !ReferenceEquals(_pin.PhysicsView, _view) ||
+            _physics.GeometryGeneration != id.GeometryGeneration || _pin.GeometryGeneration != id.GeometryGeneration ||
+            _pin.EnvironmentGeneration != id.EnvironmentGeneration || _pin.Frame != Frame || _physics.Origin != Frame.PhysicsOrigin)
+            throw new MovementReadException(MovementReadRefusal.QueryBindingStale,
+                "The movement query binding is stale.")
+            { LeaseId = id, Frame = Frame };
     }
 
     public void Dispose()
@@ -105,7 +115,10 @@ public sealed partial class MovementQueryLease : IDisposable
 
     void AssertThread()
     {
-        if (Environment.CurrentManagedThreadId != _thread)
-            throw new InvalidOperationException("A movement query lease belongs to its acquiring thread.");
+        int caller = Environment.CurrentManagedThreadId;
+        if (caller != _thread)
+            throw new MovementReadException(MovementReadRefusal.LeaseThreadMismatch,
+                "A movement query lease belongs to its acquiring thread.")
+            { OwnerThreadId = _thread, CallerThreadId = caller };
     }
 }

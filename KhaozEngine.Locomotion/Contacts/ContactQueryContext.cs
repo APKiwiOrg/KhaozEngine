@@ -110,7 +110,9 @@ internal readonly struct DryContactQueryContext(Func<float, float, float>? heigh
     internal void CheckMedium(Vector3 feet)
     {
         if (medium is not null && medium(feet.X, feet.Z, feet.Y).InWater)
-            throw new NotSupportedException("Point-sampled water cannot certify contact movement. Use an ordinary movement head with IMovementWaterField.");
+            throw new MovementCapabilityException(MovementConfigurationRefusal.PointSampledWaterUnsupported,
+                "Point-sampled water cannot certify contact movement. Use an ordinary movement head with IMovementWaterField.")
+            { RequiredCapability = typeof(IMovementWaterField) };
     }
     internal float HeightAt(Vector3 feet)
     {
@@ -143,7 +145,8 @@ internal readonly struct DryContactQueryContext(Func<float, float, float>? heigh
     internal CapsuleContactResult QueryShellContacts(CapsuleShape shape, Vector3 centre, Span<CapsuleContact> contacts) =>
         world is IPhysicsCapsuleContacts source
             ? source.QueryCapsuleContacts(shape, Pose.At(centre), 0, contacts, QueryFilter.StaticsOnly)
-            : throw new NotSupportedException("Complete shell contacts are unavailable.");
+            : throw new MovementCapabilityException(MovementConfigurationRefusal.CapsuleContactsRequired, "Complete shell contacts are unavailable.")
+            { RequiredCapability = typeof(IPhysicsCapsuleContacts) };
 }
 
 /// <summary>A query refusal, distinct from known absent support or a proved obstruction. The borrowed tick's

@@ -11,7 +11,16 @@ internal static class MovementConfigurationValidation
     {
         ValidateSelector(tuning);
         if (tuning.FootRadiusFraction != 0.5f || tuning.Water != default)
-            throw new ArgumentException("Legacy movement requires default FootRadiusFraction and Water.", nameof(tuning));
+            throw new MovementConfigurationException(tuning.FootRadiusFraction != 0.5f
+                ? MovementConfigurationRefusal.LegacyFootRadiusNondefault : MovementConfigurationRefusal.LegacyWaterNondefault,
+                "Legacy movement requires default FootRadiusFraction and Water.", nameof(tuning))
+            {
+                FieldName = tuning.FootRadiusFraction != 0.5f ? nameof(tuning.FootRadiusFraction) : nameof(tuning.Water),
+                ActualNumber = tuning.FootRadiusFraction != 0.5f ? tuning.FootRadiusFraction : null,
+                ExpectedNumber = tuning.FootRadiusFraction != 0.5f ? 0.5 : null,
+                ActualWater = tuning.FootRadiusFraction != 0.5f ? null : tuning.Water,
+                ExpectedWater = tuning.FootRadiusFraction != 0.5f ? null : default(WaterTraversalPolicy)
+            };
     }
 
     internal static void ValidateContactGeometry(in MoveTuning tuning)
@@ -28,9 +37,11 @@ internal static class MovementConfigurationValidation
         ValidateContactGeometry(tuning);
         if (physics is null) return;
         if (physics is not IPhysicsQueryLeaseSource)
-            throw new NotSupportedException("Contact movement requires IPhysicsQueryLeaseSource.");
+            throw new MovementCapabilityException(MovementConfigurationRefusal.QueryLeaseSourceRequired, "Contact movement requires IPhysicsQueryLeaseSource.")
+            { RequiredCapability = typeof(IPhysicsQueryLeaseSource) };
         if (physics is not IPhysicsSupportFootprint)
-            throw new NotSupportedException("Contact movement requires IPhysicsSupportFootprint.");
+            throw new MovementCapabilityException(MovementConfigurationRefusal.SupportFootprintRequired, "Contact movement requires IPhysicsSupportFootprint.")
+            { RequiredCapability = typeof(IPhysicsSupportFootprint) };
     }
 
     internal static void ValidateOrdinaryContact(in MoveTuning tuning, IPhysicsWorldQueryView physics,
@@ -39,23 +50,39 @@ internal static class MovementConfigurationValidation
         ValidateExplicit(tuning, tuning.Water);
         ArgumentNullException.ThrowIfNull(physics);
         if (!hasRegistration || !hasBoundary)
-            throw new ArgumentException("Ordinary contact movement requires a registration and a MovementBoundary.");
+            throw new MovementConfigurationException(!hasRegistration ? MovementConfigurationRefusal.RegistrationRequired
+                : MovementConfigurationRefusal.BoundaryRequired,
+                "Ordinary contact movement requires a registration and a MovementBoundary.")
+            { RequiredCapability = !hasRegistration ? typeof(OrdinaryMovementRegistration) : typeof(MovementBoundary) };
         if (hasMediumDelegate && !hasWaterField)
-            throw new ArgumentException("An ordinary contact medium delegate requires IMovementWaterField.");
+            throw new MovementConfigurationException(MovementConfigurationRefusal.WaterFieldRequired,
+                "An ordinary contact medium delegate requires IMovementWaterField.")
+            { RequiredCapability = typeof(IMovementWaterField) };
         ValidateDryDirect(tuning, physics);
         if (physics is not IPhysicsCapsuleContacts)
-            throw new NotSupportedException("Ordinary contact movement requires IPhysicsCapsuleContacts.");
+            throw new MovementCapabilityException(MovementConfigurationRefusal.CapsuleContactsRequired, "Ordinary contact movement requires IPhysicsCapsuleContacts.")
+            { RequiredCapability = typeof(IPhysicsCapsuleContacts) };
         if (physics is not IPhysicsCapsuleSweep)
-            throw new NotSupportedException("Ordinary contact movement requires IPhysicsCapsuleSweep.");
+            throw new MovementCapabilityException(MovementConfigurationRefusal.CapsuleSweepRequired, "Ordinary contact movement requires IPhysicsCapsuleSweep.")
+            { RequiredCapability = typeof(IPhysicsCapsuleSweep) };
     }
 
     internal static void ValidateExplicit(in MoveTuning tuning, in WaterTraversalPolicy water)
     {
         ValidateContactGeometry(tuning);
         if (!ExplicitCharacterMovement.Valid(tuning) || !water.IsValid || water.Mode == WaterTraversalMode.Legacy)
-            throw new ArgumentException("Contact movement requires valid explicit kernel tuning and non-Legacy water.", nameof(tuning));
+        {
+            const string message = "Contact movement requires valid explicit kernel tuning and non-Legacy water.";
+            if (MovementKernelValidation.FindInvalid(tuning) is { } finding) throw finding.ToException(message);
+            // Internal invariant: the immutable policy is valid by default and every constructor validates it.
+            if (!water.IsValid) throw new ArgumentException(message, nameof(tuning));
+            throw new MovementConfigurationException(MovementConfigurationRefusal.ExplicitWaterModeRequired, message, nameof(tuning))
+            { ActualMode = water.Mode };
+        }
         if (tuning.Water != default && tuning.Water != water)
-            throw new ArgumentException("MoveTuning.Water conflicts with the supplied explicit water policy.", nameof(tuning));
+            throw new MovementConfigurationException(MovementConfigurationRefusal.WaterPoliciesConflict,
+                "MoveTuning.Water conflicts with the supplied explicit water policy.", nameof(tuning))
+            { ExpectedWater = water, ActualWater = tuning.Water };
     }
 
     static void ValidateSelector(in MoveTuning tuning)

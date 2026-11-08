@@ -51,11 +51,15 @@ public class ContactDropIdentityTests
         using var fixture = new ContactDropFixture();
         MoveTuning tuning = terminal ? ContactDropFixture.Tuning with { MaxFallSpeed = 0 } :
             ContactDropFixture.Tuning with { Gravity = 0 };
-        Assert.Throws<ArgumentException>(() => fixture.Capture.BuildProfile(tuning, default,
+        var build = Assert.Throws<MovementConfigurationException>(() => fixture.Capture.BuildProfile(tuning, default,
             new GroundProfileOptions { MaxDropMetres = 6 }));
         using var stream = new NeverReadStream();
-        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(stream,
+        var load = Assert.Throws<MovementConfigurationException>(() => GroundNavigationBake.Load(stream,
             new(ContactDropFixture.Options, Sources(), [Profile() with { Tuning = tuning }])));
+        Assert.Equal(MovementConfigurationRefusal.KernelPositiveValueRequired, build.Reason);
+        Assert.Equal(build.Reason, load.Reason);
+        Assert.Equal(terminal ? nameof(MoveTuning.MaxFallSpeed) : nameof(MoveTuning.Gravity), build.FieldName);
+        Assert.Equal(build.FieldName, load.FieldName);
     }
 
     [Theory]
@@ -78,8 +82,14 @@ public class ContactDropIdentityTests
         var profile = Profile() with { Aquatic = aquatic };
         if (!aquatic) profile = profile with { Tuning = profile.Tuning with { Controller = MovementControllerKind.Legacy, Water = default } };
         using var source = new NeverReadStream();
-        Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Load(source,
+        var failure = Assert.Throws<NavigationProfileCapabilityException>(() => GroundNavigationBake.Load(source,
             new(ContactDropFixture.Options, Sources(), [profile])));
+        Assert.Equal(NavigationProfileRefusal.DropProfileUnsupported, failure.Reason);
+        Assert.Equal(profile.Name, failure.ProfileName);
+        Assert.Equal(aquatic ? EffectiveMovementBindingKind.OrdinaryContact : EffectiveMovementBindingKind.Legacy, failure.ActualKind);
+        Assert.Equal(aquatic, failure.Aquatic);
+        Assert.Equal(EffectiveMovementBindingKind.OrdinaryContact,
+            (profile with { Aquatic = false, Tuning = ContactDropFixture.Tuning }).ResolveKind());
     }
 
     [Fact]

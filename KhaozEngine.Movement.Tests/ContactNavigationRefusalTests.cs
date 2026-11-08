@@ -27,8 +27,14 @@ public class ContactNavigationRefusalTests
         Assert.Equal(defaultFingerprint, Profile(Contact, water).Fingerprint);
         Assert.Equal(defaultFingerprint, Profile(Contact with { Water = water }, water).Fingerprint);
         Assert.NotEqual(defaultFingerprint, Profile(Contact with { FootRadiusFraction = 0.75f }, water).Fingerprint);
-        Assert.Throws<ArgumentException>(() => Profile(Contact with { Water = new(WaterTraversalMode.DryOnly) }, water));
-        Assert.Throws<ArgumentException>(() => Profile(Contact with { Water = new(WaterTraversalMode.Legacy, 1) }, water));
+        var conflict = Assert.Throws<MovementConfigurationException>(() =>
+            Profile(Contact with { Water = new(WaterTraversalMode.DryOnly) }, water));
+        Assert.Equal(MovementConfigurationRefusal.WaterPoliciesConflict, conflict.Reason);
+        Assert.Equal(water, conflict.ExpectedWater);
+        Assert.Equal(new(WaterTraversalMode.DryOnly), conflict.ActualWater);
+        Assert.Equal("tuning", conflict.ParamName);
+        Assert.Equal(MovementConfigurationRefusal.WaterPoliciesConflict,
+            Assert.Throws<MovementConfigurationException>(() => Profile(Contact with { Water = new(WaterTraversalMode.Legacy, 1) }, water)).Reason);
     }
 
     [Theory]
@@ -63,19 +69,26 @@ public class ContactNavigationRefusalTests
         MoveTuning tuning = ValidContact with { Water = new(WaterTraversalMode.SurfaceSwimmer) };
         NavBakeProfile contact = new("contact", tuning, default) { Aquatic = true };
         NavBakeProfile[] profiles = contactFirst ? [contact, legacy] : [legacy, contact];
-        const string deferredIssue = "https://github.com/APKiwiOrg/KhaozEngine/issues/1389";
-        Assert.Contains(deferredIssue,
-            Assert.Throws<NotSupportedException>(() => capture.BuildProfile(tuning, default,
-                new GroundProfileOptions { Aquatic = true })).Message, StringComparison.Ordinal);
+        var build = Assert.Throws<NavigationProfileCapabilityException>(() => capture.BuildProfile(tuning, default,
+            new GroundProfileOptions { Aquatic = true }));
+        Assert.Equal(NavigationProfileRefusal.ContactAquaticUnsupported, build.Reason);
+        Assert.Equal(new Uri("https://github.com/APKiwiOrg/KhaozEngine/issues/1389"), build.IssueUrl);
+        Assert.Null(build.ProfileName);
         // Empty sources would fail identity encoding if the selector refusal ran too late.
-        Assert.Contains(deferredIssue,
-            Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Create(capture,
-                new NavBakeSources(), profiles)).Message, StringComparison.Ordinal);
+        var create = Assert.Throws<NavigationProfileCapabilityException>(() => GroundNavigationBake.Create(capture,
+            new NavBakeSources(), profiles));
+        Assert.Equal(NavigationProfileRefusal.ContactAquaticUnsupported, create.Reason);
+        Assert.Equal(new Uri("https://github.com/APKiwiOrg/KhaozEngine/issues/1389"), create.IssueUrl);
+        Assert.Equal("contact", create.ProfileName);
         using var stream = new MemoryStream(new byte[64]);
-        Assert.Contains(deferredIssue,
-            Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Load(stream,
-                new(capture.Options, new NavBakeSources(), profiles))).Message, StringComparison.Ordinal);
+        var load = Assert.Throws<NavigationProfileCapabilityException>(() => GroundNavigationBake.Load(stream,
+            new(capture.Options, new NavBakeSources(), profiles)));
+        Assert.Equal(NavigationProfileRefusal.ContactAquaticUnsupported, load.Reason);
+        Assert.Equal(new Uri("https://github.com/APKiwiOrg/KhaozEngine/issues/1389"), load.IssueUrl);
+        Assert.Equal("contact", load.ProfileName);
+        Assert.IsAssignableFrom<NotSupportedException>(load);
         Assert.Equal(0, stream.Position);
+        Assert.Equal(EffectiveMovementBindingKind.OrdinaryContact, (contact with { Aquatic = false }).ResolveKind());
     }
 
     [Theory]
@@ -88,11 +101,14 @@ public class ContactNavigationRefusalTests
         MoveTuning tuning = ValidContact with { Water = default };
         NavBakeProfile profile = new("contact", tuning, default) { Aquatic = aquatic };
         var options = new GroundProfileOptions { Aquatic = aquatic };
-        Assert.Throws<ArgumentException>(() => capture.BuildProfile(tuning, default, options));
-        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Create(capture, Sources(), [profile]));
+        Assert.Equal(MovementConfigurationRefusal.ExplicitWaterModeRequired,
+            Assert.Throws<MovementConfigurationException>(() => capture.BuildProfile(tuning, default, options)).Reason);
+        Assert.Equal(MovementConfigurationRefusal.ExplicitWaterModeRequired,
+            Assert.Throws<MovementConfigurationException>(() => GroundNavigationBake.Create(capture, Sources(), [profile])).Reason);
         using var stream = new MemoryStream(new byte[64]);
-        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(stream,
-            new(capture.Options, Sources(), [profile])));
+        Assert.Equal(MovementConfigurationRefusal.ExplicitWaterModeRequired,
+            Assert.Throws<MovementConfigurationException>(() => GroundNavigationBake.Load(stream,
+                new(capture.Options, Sources(), [profile]))).Reason);
         Assert.Equal(0, stream.Position);
     }
 
@@ -101,7 +117,10 @@ public class ContactNavigationRefusalTests
     {
         using var world = new BepuPhysicsWorld();
         using PhysicsNavBake capture = Capture(world);
-        Assert.Throws<NotSupportedException>(() => capture.BuildProfile(ValidContact, default));
+        var failure = Assert.Throws<GroundContactCapabilityException>(() => capture.BuildProfile(ValidContact, default));
+        Assert.Equal(GroundContactCapabilityRefusal.OrdinaryContextRequired, failure.Reason);
+        Assert.Equal(EffectiveMovementBindingKind.OrdinaryContact, failure.RequiredKind);
+        capture.BuildProfile(MoveTuning.Default, default).Validate(MoveTuning.Default);
     }
 
     [Fact]

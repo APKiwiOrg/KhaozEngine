@@ -217,6 +217,33 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Empty(fixture.CommandApi.Submissions);
         }
 
+        // Regression from hosted sync validation run 42367010085, VUID-vkCmdCopyBufferToImage-dstImage-07975.
+        [Theory]
+        [InlineData(GpuPixelFormat.R16G16B16A16Float, false, 8, 8)]
+        [InlineData(GpuPixelFormat.D32FloatS8UInt, true, 5, 4)]
+        public void MixedFormatUploads_AlignEachImageCopyToItsTexelBlock(
+            GpuPixelFormat format, bool depthStencil, int payloadBytes, ulong alignment)
+        {
+            var fixture = new VulkanResourceFixture();
+            using IGpuTexture first = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
+                1, 1, GpuTextureUsage.Sampled));
+            using IGpuTexture second = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
+                1, 1, depthStencil ? GpuTextureUsage.DepthStencil : GpuTextureUsage.Sampled, format));
+            var firstNative = (VulkanTexture)first;
+            var secondNative = (VulkanTexture)second;
+
+            fixture.Setup.Upload(new VulkanImageUpload(firstNative.Image, false, 0, 0, 0, 0, 1, 1,
+                GpuPixelFormat.R8G8B8A8UNorm, firstNative.Resting), new byte[4]);
+            fixture.Setup.Upload(new VulkanImageUpload(secondNative.Image, depthStencil, 0, 0, 0, 0, 1, 1,
+                format, secondNative.Resting), new byte[payloadBytes]);
+
+            Assert.Equal(2, fixture.SetupSink.ImageCopies.Count);
+            FakeImageCopy copy = fixture.SetupSink.ImageCopies[1];
+            Assert.Equal(secondNative.Image, copy.Image);
+            Assert.Equal(0ul, copy.BufferOffset % alignment);
+            Assert.Empty(fixture.CommandApi.Submissions);
+        }
+
         /// <summary>
         /// THE BARRIERS COVER ONE SUBRESOURCE, NOT THE WHOLE IMAGE. An upload to mip 2 layer 1 of a mipped array
         /// must not transition the levels it is not writing: they are at rest and something else may be reading

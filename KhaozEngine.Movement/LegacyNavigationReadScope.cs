@@ -25,8 +25,16 @@ internal sealed class LegacyNavigationReadScope : IDisposable
         IPhysicsWorldQueryView? view = context.MovementQueries;
         if (world is not IPhysicsQueryLeaseSource owner || captured is not { } basis ||
             (view is not null && view is not IPhysicsQueryLeaseSource))
-            throw new NotSupportedException("A stable legacy navigation read scope needs IPhysicsQueryLeaseSource " +
-                "on the complete physics source and any selected movement query view.");
+            throw new NavigationReadCapabilityException(NavigationReadRefusal.LegacyQueryLeaseRequired,
+                "A stable legacy navigation read scope needs IPhysicsQueryLeaseSource " +
+                "on the complete physics source and any selected movement query view.")
+            {
+                RequiredCapability = typeof(IPhysicsQueryLeaseSource),
+                SourceRole = world is not IPhysicsQueryLeaseSource || captured is null
+                    ? NavigationSourceRole.PhysicsSource : NavigationSourceRole.MovementQueryView
+            };
+        // Internal invariant: the sole caller passes the retained context and Origin from the same capture.
+        // Physics is immutable on that context, and capture stores basis.Origin as its own Origin.
         if (!ReferenceEquals(basis.Source, owner) || basis.Origin != origin)
             throw new InvalidOperationException("The captured physics source or origin changed.");
         AssertView(context, origin);
@@ -49,17 +57,43 @@ internal sealed class LegacyNavigationReadScope : IDisposable
     internal void AssertCurrent()
     {
         _lease.AssertCurrent();
-        if (!ReferenceEquals(_lease.SourceWorld, _context.Physics) ||
-            _lease.GeometryGeneration != _basis.GeometryGeneration || _lease.Origin != _basis.Origin)
-            throw new InvalidOperationException("The physics lease owner, geometry or origin differs from the capture.");
+        IPhysicsWorld source = _lease.SourceWorld;
+        long? generation = null;
+        Vector3? origin = null;
+        if (!ReferenceEquals(source, _context.Physics) ||
+            (generation = _lease.GeometryGeneration) != _basis.GeometryGeneration || (origin = _lease.Origin) != _basis.Origin)
+        {
+            const string message = "The physics lease owner, geometry or origin differs from the capture.";
+            if (!ReferenceEquals(source, _context.Physics))
+                throw new NavigationBuildException(NavigationBuildRefusal.LegacyLeaseSourceChanged, message)
+                { SourceRole = NavigationSourceRole.ReadLease };
+            if (generation != _basis.GeometryGeneration)
+                throw new NavigationBuildException(NavigationBuildRefusal.LegacyLeaseGenerationChanged, message)
+                { ExpectedGeneration = _basis.GeometryGeneration, ActualGeneration = generation };
+            throw new NavigationBuildException(NavigationBuildRefusal.LegacyLeaseOriginChanged, message)
+            { ExpectedOrigin = _basis.Origin, ActualOrigin = origin };
+        }
         AssertView(_context, _basis.Origin);
     }
 
     private static void AssertView(GroundMoveContext context, Vector3 origin)
     {
-        if (context.Physics!.Origin != origin || context.MovementQueries is { } view &&
-            (!ReferenceEquals(view.SourceWorld, context.Physics) || view.Origin != origin))
-            throw new InvalidOperationException("The movement query source or origin differs from the capture.");
+        Vector3 worldOrigin = context.Physics!.Origin;
+        IPhysicsWorld? viewSource = null;
+        Vector3? viewOrigin = null;
+        if (worldOrigin != origin || context.MovementQueries is { } view &&
+            (!ReferenceEquals(viewSource = view.SourceWorld, context.Physics) || (viewOrigin = view.Origin) != origin))
+        {
+            const string message = "The movement query source or origin differs from the capture.";
+            if (worldOrigin != origin)
+                throw new NavigationBuildException(NavigationBuildRefusal.LegacyWorldOriginChanged, message)
+                { ExpectedOrigin = origin, ActualOrigin = worldOrigin };
+            if (!ReferenceEquals(viewSource, context.Physics))
+                throw new NavigationBuildException(NavigationBuildRefusal.LegacyViewSourceChanged, message)
+                { SourceRole = NavigationSourceRole.MovementQueryView };
+            throw new NavigationBuildException(NavigationBuildRefusal.LegacyViewOriginChanged, message)
+            { ExpectedOrigin = origin, ActualOrigin = viewOrigin };
+        }
     }
 
     public void Dispose() => _lease.Dispose();

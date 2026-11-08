@@ -120,114 +120,164 @@ public sealed class DungeonConfig
     /// both axes.</summary>
     public void Validate()
     {
+        if (FirstFinding() is { } finding)
+        {
+            throw finding.ToArgumentException();
+        }
+    }
+
+    // Validate's rules as one typed finding, in check order, so DungeonJson.LoadConfig can carry the reason and
+    // values of the rule Validate would refuse. Each finding's message is the text Validate throws.
+    internal DungeonConfigFinding? FirstFinding()
+    {
         if (CellSizeMeters <= 0f)
         {
-            throw new ArgumentException("CellSizeMeters must be greater than zero.", nameof(CellSizeMeters));
+            return new(DungeonJsonRefusal.PositiveValueRequired, nameof(CellSizeMeters),
+                "CellSizeMeters must be greater than zero.")
+            { ActualNumber = CellSizeMeters };
         }
 
         if (FloorHeightMeters <= 0f)
         {
-            throw new ArgumentException("FloorHeightMeters must be greater than zero.", nameof(FloorHeightMeters));
+            return new(DungeonJsonRefusal.PositiveValueRequired, nameof(FloorHeightMeters),
+                "FloorHeightMeters must be greater than zero.")
+            { ActualNumber = FloorHeightMeters };
         }
 
         if (RoomMinTiles < 1)
         {
-            throw new ArgumentException("RoomMinTiles must be at least 1.", nameof(RoomMinTiles));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(RoomMinTiles), "RoomMinTiles must be at least 1.")
+            { ActualInteger = RoomMinTiles, MinimumInteger = 1 };
         }
 
         if (RoomMinTiles > RoomMaxTiles)
         {
-            throw new ArgumentException("RoomMinTiles must not exceed RoomMaxTiles.", nameof(RoomMinTiles));
+            return new(DungeonJsonRefusal.RangeUnordered, nameof(RoomMinTiles), "RoomMinTiles must not exceed RoomMaxTiles.")
+            { ActualMinimum = RoomMinTiles, ActualMaximum = RoomMaxTiles };
         }
 
         if (RoomCountTarget < 1)
         {
-            throw new ArgumentException("RoomCountTarget must be at least 1.", nameof(RoomCountTarget));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(RoomCountTarget), "RoomCountTarget must be at least 1.")
+            { ActualInteger = RoomCountTarget, MinimumInteger = 1 };
         }
 
         if (MaxFloors < 1)
         {
-            throw new ArgumentException("MaxFloors must be at least 1.", nameof(MaxFloors));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(MaxFloors), "MaxFloors must be at least 1.")
+            { ActualInteger = MaxFloors, MinimumInteger = 1 };
         }
 
         if (CriticalPathTarget < 1)
         {
-            throw new ArgumentException("CriticalPathTarget must be at least 1.", nameof(CriticalPathTarget));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(CriticalPathTarget),
+                "CriticalPathTarget must be at least 1.")
+            { ActualInteger = CriticalPathTarget, MinimumInteger = 1 };
         }
 
         if (LoopEdgeBudget < 0)
         {
-            throw new ArgumentException("LoopEdgeBudget must not be negative.", nameof(LoopEdgeBudget));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(LoopEdgeBudget),
+                "LoopEdgeBudget must not be negative.")
+            { ActualInteger = LoopEdgeBudget, MinimumInteger = 0 };
         }
 
         if (LockCount < 0)
         {
-            throw new ArgumentException("LockCount must not be negative.", nameof(LockCount));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(LockCount), "LockCount must not be negative.")
+            { ActualInteger = LockCount, MinimumInteger = 0 };
         }
 
         if (SpawnMarkersPerRoomMax < 0)
         {
-            throw new ArgumentException("SpawnMarkersPerRoomMax must not be negative.", nameof(SpawnMarkersPerRoomMax));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(SpawnMarkersPerRoomMax),
+                "SpawnMarkersPerRoomMax must not be negative.")
+            { ActualInteger = SpawnMarkersPerRoomMax, MinimumInteger = 0 };
         }
 
         if (LootMarkersPerRoomMax < 0)
         {
-            throw new ArgumentException("LootMarkersPerRoomMax must not be negative.", nameof(LootMarkersPerRoomMax));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(LootMarkersPerRoomMax),
+                "LootMarkersPerRoomMax must not be negative.")
+            { ActualInteger = LootMarkersPerRoomMax, MinimumInteger = 0 };
         }
 
         if (CorridorMinWidth < 1)
         {
-            throw new ArgumentException("CorridorMinWidth must be at least 1.", nameof(CorridorMinWidth));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(CorridorMinWidth), "CorridorMinWidth must be at least 1.")
+            { ActualInteger = CorridorMinWidth, MinimumInteger = 1 };
         }
 
         if (CorridorMinWidth > CorridorMaxWidth)
         {
-            throw new ArgumentException("CorridorMinWidth must not exceed CorridorMaxWidth.", nameof(CorridorMinWidth));
+            return new(DungeonJsonRefusal.RangeUnordered, nameof(CorridorMinWidth),
+                "CorridorMinWidth must not exceed CorridorMaxWidth.")
+            { ActualMinimum = CorridorMinWidth, ActualMaximum = CorridorMaxWidth };
         }
 
         if (HallChancePercent < 0 || HallChancePercent > 100)
         {
-            throw new ArgumentException("HallChancePercent must be between 0 and 100.", nameof(HallChancePercent));
+            return new(DungeonJsonRefusal.PercentageOutsideRange, nameof(HallChancePercent),
+                "HallChancePercent must be between 0 and 100.")
+            { ActualInteger = HallChancePercent, MinimumInteger = 0, MaximumInteger = 100 };
         }
 
         if (HallMinLengthTiles < 1)
         {
-            throw new ArgumentException("HallMinLengthTiles must be at least 1.", nameof(HallMinLengthTiles));
+            return new(DungeonJsonRefusal.IntegerBelowMinimum, nameof(HallMinLengthTiles),
+                "HallMinLengthTiles must be at least 1.")
+            { ActualInteger = HallMinLengthTiles, MinimumInteger = 1 };
         }
 
         if (HallMinLengthTiles > HallMaxLengthTiles)
         {
-            throw new ArgumentException("HallMinLengthTiles must not exceed HallMaxLengthTiles.", nameof(HallMinLengthTiles));
+            return new(DungeonJsonRefusal.RangeUnordered, nameof(HallMinLengthTiles),
+                "HallMinLengthTiles must not exceed HallMaxLengthTiles.")
+            { ActualMinimum = HallMinLengthTiles, ActualMaximum = HallMaxLengthTiles };
         }
 
-        if (CeilingHeightMeters is <= 0f)
+        if (CeilingHeightMeters is float ceiling && ceiling <= 0f)
         {
-            throw new ArgumentException("CeilingHeightMeters must be greater than zero when set.", nameof(CeilingHeightMeters));
+            return new(DungeonJsonRefusal.PositiveValueRequired, nameof(CeilingHeightMeters),
+                "CeilingHeightMeters must be greater than zero when set.")
+            { ActualNumber = ceiling };
         }
 
-        if (PlotWidthTiles < RoomMaxTiles + 2)
+        // The margin is computed once in int arithmetic, as the comparison always was, so the reported minimum is
+        // the value the plot was compared with.
+        int roomFit = RoomMaxTiles + 2;
+        if (PlotWidthTiles < roomFit)
         {
-            throw new ArgumentException("PlotWidthTiles must be at least RoomMaxTiles + 2.", nameof(PlotWidthTiles));
+            return new(DungeonJsonRefusal.RoomMarginInsufficient, nameof(PlotWidthTiles),
+                "PlotWidthTiles must be at least RoomMaxTiles + 2.")
+            { ActualInteger = PlotWidthTiles, MinimumInteger = roomFit };
         }
 
-        if (PlotDepthTiles < RoomMaxTiles + 2)
+        if (PlotDepthTiles < roomFit)
         {
-            throw new ArgumentException("PlotDepthTiles must be at least RoomMaxTiles + 2.", nameof(PlotDepthTiles));
+            return new(DungeonJsonRefusal.RoomMarginInsufficient, nameof(PlotDepthTiles),
+                "PlotDepthTiles must be at least RoomMaxTiles + 2.")
+            { ActualInteger = PlotDepthTiles, MinimumInteger = roomFit };
         }
 
         // Only enforced when halls are enabled: a hall's long axis (up to HallMaxLengthTiles) can run in either
         // orientation, so both plot dimensions must fit it plus a one-tile margin on each side. Gated on
         // HallChancePercent so a halls-off config with a tight plot stays valid.
-        if (HallChancePercent > 0 && PlotWidthTiles < HallMaxLengthTiles + 2)
+        int hallFit = HallMaxLengthTiles + 2;
+        if (HallChancePercent > 0 && PlotWidthTiles < hallFit)
         {
-            throw new ArgumentException(
-                "PlotWidthTiles must be at least HallMaxLengthTiles + 2 when HallChancePercent is positive.", nameof(PlotWidthTiles));
+            return new(DungeonJsonRefusal.HallMarginInsufficient, nameof(PlotWidthTiles),
+                "PlotWidthTiles must be at least HallMaxLengthTiles + 2 when HallChancePercent is positive.")
+            { ActualInteger = PlotWidthTiles, MinimumInteger = hallFit };
         }
 
-        if (HallChancePercent > 0 && PlotDepthTiles < HallMaxLengthTiles + 2)
+        if (HallChancePercent > 0 && PlotDepthTiles < hallFit)
         {
-            throw new ArgumentException(
-                "PlotDepthTiles must be at least HallMaxLengthTiles + 2 when HallChancePercent is positive.", nameof(PlotDepthTiles));
+            return new(DungeonJsonRefusal.HallMarginInsufficient, nameof(PlotDepthTiles),
+                "PlotDepthTiles must be at least HallMaxLengthTiles + 2 when HallChancePercent is positive.")
+            { ActualInteger = PlotDepthTiles, MinimumInteger = hallFit };
         }
+
+        return null;
     }
 }

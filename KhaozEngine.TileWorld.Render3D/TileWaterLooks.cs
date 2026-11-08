@@ -63,6 +63,11 @@ public static class TileWaterLooks
         WaterColor = new Color(0.28f, 0.30f, 0.18f),
         Clarity = 1.5f,
 
+        // The owner chose strength 4 from engine contact sheets. It is the lowest value with clearly readable bands
+        // on the river's 60 to 80 cm beds. Values 6 and above break into moving sparkle. Leave the caustic opt-in
+        // inherited, so consumers still opt in explicitly.
+        CausticStrength = 4f,
+
         // The sea blends over 2.5 m, which a river never reaches, so an inherited value would leave the whole
         // body at its shallow colour and perfectly flat in tone. 0.8 m is the deepest a carved bed usually gets.
         ShallowDepth = 0.8f,

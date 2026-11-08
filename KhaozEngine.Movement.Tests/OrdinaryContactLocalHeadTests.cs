@@ -24,8 +24,11 @@ public partial class OrdinaryContactLocalHeadTests
         using var context = new GroundMoveContext((_, _) => 0, physics: world);
         Assert.False(context.SupportsContactController);
         var body = new MoveState { Position = new(0, 0.75f, 0), Grounded = true };
-        Assert.Throws<NotSupportedException>(() => NpcGroundMovement.Hold(body, 0.1f,
+        var failure = Assert.Throws<GroundContactCapabilityException>(() => NpcGroundMovement.Hold(body, 0.1f,
             OrdinaryContactScene.DefaultTuning, context));
+        Assert.Equal(GroundContactCapabilityRefusal.OrdinaryContextRequired, failure.Reason);
+        Assert.Equal(EffectiveMovementBindingKind.OrdinaryContact, failure.RequiredKind);
+        Assert.True(NpcGroundMovement.Hold(body, 0.1f, MoveTuning.Default, context).Grounded);
     }
 
     [Theory]
@@ -129,7 +132,8 @@ public partial class OrdinaryContactLocalHeadTests
             "fall" => scene.Tuning with { MaxFallSpeed = 0 },
             _ => scene.Tuning with { SwimEnterDepthFraction = 0, SwimExitDepthFraction = 0 }
         };
-        Assert.Throws<ArgumentException>(() => NpcGroundMovement.Hold(default, Dt, tuning, context));
+        Assert.Equal(MovementConfigurationRefusal.KernelPositiveValueRequired,
+            Assert.Throws<MovementConfigurationException>(() => NpcGroundMovement.Hold(default, Dt, tuning, context)).Reason);
     }
 
     [Theory]
@@ -146,9 +150,15 @@ public partial class OrdinaryContactLocalHeadTests
             missing == "registration" ? null : registration, missing == "boundary" ? null : Boundary);
         Assert.False(context.SupportsContactController);
         if (missing == "sweep")
-            Assert.Throws<NotSupportedException>(() => context.ValidateTuning(OrdinaryContactScene.DefaultTuning));
+            Assert.Equal(MovementConfigurationRefusal.CapsuleSweepRequired,
+                Assert.Throws<MovementCapabilityException>(() => context.ValidateTuning(OrdinaryContactScene.DefaultTuning)).Reason);
         else
-            Assert.Throws<ArgumentException>(() => context.ValidateTuning(OrdinaryContactScene.DefaultTuning));
+            Assert.Equal(missing switch
+            {
+                "registration" => MovementConfigurationRefusal.RegistrationRequired,
+                "boundary" => MovementConfigurationRefusal.BoundaryRequired,
+                _ => MovementConfigurationRefusal.WaterFieldRequired
+            }, Assert.Throws<MovementConfigurationException>(() => context.ValidateTuning(OrdinaryContactScene.DefaultTuning)).Reason);
     }
 
     [Fact]

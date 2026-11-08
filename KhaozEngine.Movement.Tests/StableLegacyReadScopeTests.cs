@@ -113,11 +113,18 @@ public sealed class StableLegacyReadScopeTests
         int reads = 0;
         using var context = new GroundMoveContext((_, _) => { reads++; return 0; }, null, world, null, null, view);
         using var capture = PhysicsNavBake.Capture(context, Options, _ => 0);
-        Assert.Throws<NotSupportedException>(() =>
+        var failure = Assert.Throws<NavigationReadCapabilityException>(() =>
             capture.BuildProfile(Tuning, default, GroundProfileOptions.Default, Stable()));
+        Assert.Equal(NavigationReadRefusal.LegacyQueryLeaseRequired, failure.Reason);
+        Assert.IsAssignableFrom<NotSupportedException>(failure);
+        Assert.Equal(typeof(IPhysicsQueryLeaseSource), failure.RequiredCapability);
+        Assert.Equal(viewOnly ? NavigationSourceRole.MovementQueryView : NavigationSourceRole.PhysicsSource, failure.SourceRole);
         Assert.Equal(0, reads);
-        Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Create(capture, ContactBakeFile.Sources(),
+        var create = Assert.Throws<NavigationReadCapabilityException>(() => GroundNavigationBake.Create(capture, ContactBakeFile.Sources(),
             [new("legacy", Tuning, default)], Stable()));
+        Assert.Equal(NavigationReadRefusal.LegacyQueryLeaseRequired, create.Reason);
+        Assert.Equal(failure.RequiredCapability, create.RequiredCapability);
+        Assert.Equal(failure.SourceRole, create.SourceRole);
         Assert.Equal(0, reads);
         Assert.True(capture.BuildProfile(Tuning, default).Graph.IsNodePassable(0, 1, 0));
     }
@@ -127,6 +134,7 @@ public sealed class StableLegacyReadScopeTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
+    [InlineData(4)]
     public void SourceViewAndLeaseIdentityMustMatchTheCapturedOwner(int mismatch)
     {
         using var world = GroundTraversalProbeTests.FlatWorld();
@@ -140,10 +148,33 @@ public sealed class StableLegacyReadScopeTests
         if (mismatch == 1) view.ReportedOrigin = Vector3.UnitX;
         if (mismatch == 2) view.Acquire = () => new LegacyLeaseMetadata(world.AcquireQueryReadLease(), other, Vector3.Zero);
         if (mismatch == 3) view.Acquire = () => new LegacyLeaseMetadata(world.AcquireQueryReadLease(), world, Vector3.UnitX);
-        Assert.Throws<InvalidOperationException>(() =>
+        if (mismatch == 4) view.Acquire = () => new LegacyLeaseMetadata(world.AcquireQueryReadLease(), world,
+            Vector3.Zero, capture.Basis!.Value.GeometryGeneration + 1);
+        var failure = Assert.Throws<NavigationBuildException>(() =>
             capture.BuildProfile(Tuning, default, GroundProfileOptions.Default, Stable()));
+        NavigationBuildRefusal[] reasons = [NavigationBuildRefusal.LegacyViewSourceChanged,
+            NavigationBuildRefusal.LegacyViewOriginChanged, NavigationBuildRefusal.LegacyLeaseSourceChanged,
+            NavigationBuildRefusal.LegacyLeaseOriginChanged, NavigationBuildRefusal.LegacyLeaseGenerationChanged];
+        Assert.Equal(reasons[mismatch], failure.Reason);
+        if (mismatch is 0 or 2)
+            Assert.Equal(mismatch == 0 ? NavigationSourceRole.MovementQueryView : NavigationSourceRole.ReadLease, failure.SourceRole);
+        if (mismatch is 1 or 3)
+        {
+            Assert.Equal(Vector3.Zero, failure.ExpectedOrigin);
+            Assert.Equal(Vector3.UnitX, failure.ActualOrigin);
+        }
+        if (mismatch == 4)
+        {
+            Assert.Equal(capture.Basis!.Value.GeometryGeneration, failure.ExpectedGeneration);
+            Assert.Equal(capture.Basis.Value.GeometryGeneration + 1, failure.ActualGeneration);
+        }
         Assert.Equal(0, reads);
         world.Rebase(Vector3.Zero);
+        view.Owner = world;
+        view.ReportedOrigin = null;
+        view.Acquire = null;
+        using var repaired = PhysicsNavBake.Capture(context, Options, _ => 0);
+        Assert.True(repaired.BuildProfile(Tuning, default, GroundProfileOptions.Default, Stable()).Graph.IsNodePassable(0, 1, 0));
     }
 
     [Fact]
@@ -154,8 +185,9 @@ public sealed class StableLegacyReadScopeTests
         using var context = new GroundMoveContext((_, _) => { reads++; return 0; }, physics: world);
         using var capture = PhysicsNavBake.Capture(context, Options, _ => 0);
         world.AddStatic(new BoxShape(Vector3.One), Pose.At(new(20, 0, 0)));
-        Assert.Throws<InvalidOperationException>(() =>
+        var failure = Assert.Throws<NavigationBuildException>(() =>
             capture.BuildProfile(Tuning, default, GroundProfileOptions.Default, Stable()));
+        Assert.Equal(NavigationBuildRefusal.LegacyLeaseGenerationChanged, failure.Reason);
         Assert.Equal(0, reads);
         world.Rebase(Vector3.Zero);
         // The unselected legacy path retains its historical geometry behavior.
@@ -226,8 +258,9 @@ public sealed class StableLegacyReadScopeTests
             capture.BuildProfile(Tuning, default, null, Stable(0))).ParamName);
         Assert.Equal("options", Assert.Throws<ArgumentNullException>(() =>
             capture.BuildProfile(Tuning, default, null, Stable())).ParamName);
-        Assert.Throws<ArgumentException>(() => capture.BuildProfile(Tuning with { MaxSlopeRadians = 0.1f }, default,
-            GroundProfileOptions.Default, Stable()));
+        Assert.Equal(NavigationProfileRefusal.CaptureSlopeMismatch,
+            Assert.Throws<NavigationProfileException>(() => capture.BuildProfile(Tuning with { MaxSlopeRadians = 0.1f }, default,
+                GroundProfileOptions.Default, Stable())).Reason);
         outer.AssertCurrent();
     }
 

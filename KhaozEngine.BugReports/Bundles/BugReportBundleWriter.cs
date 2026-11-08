@@ -28,9 +28,14 @@ public static class BugReportBundleWriter
     const int CentralRecordBytes = 46;
     const int EndRecordBytes = 22;
 
+    const string DraftParameter = "draft";
+
     /// <summary>Writes the bundle and returns its bytes.</summary>
-    /// <exception cref="ArgumentException">A draft field is null or outside its limit.</exception>
-    /// <exception cref="InvalidOperationException">The bundle would exceed 128 entries or 16 MiB.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="draft"/> is null.</exception>
+    /// <exception cref="BugReportBundleArgumentException">A draft field, section, screenshot or clip is refused. Its reason
+    /// names the rule.</exception>
+    /// <exception cref="BugReportBundleLimitException">The bundle would exceed 128 entries or 16 MiB. Its reason names the
+    /// limit.</exception>
     public static byte[] Write(BugReportDraft draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
@@ -38,11 +43,13 @@ public static class BugReportBundleWriter
         List<(string Name, ReadOnlyMemory<byte> Data)> payloads = CollectPayloads(draft);
 
         if (payloads.Count + 1 > BugReportLimits.MaxEntries)
-            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
-                $"The report needs {payloads.Count + 1} zip entries and a bundle holds at most {BugReportLimits.MaxEntries}."));
+            throw new BugReportBundleLimitException(BugReportBundleRefusal.EntryCountExceeded, string.Create(CultureInfo.InvariantCulture,
+                $"The report needs {payloads.Count + 1} zip entries and a bundle holds at most {BugReportLimits.MaxEntries}."))
+            { ActualCount = payloads.Count + 1, MaximumCount = BugReportLimits.MaxEntries };
         long payloadBytes = 0;
         foreach ((_, ReadOnlyMemory<byte> data) in payloads) payloadBytes += data.Length;
-        if (payloadBytes > BugReportLimits.MaxBundleBytes) throw TooLarge("The report payloads need", payloadBytes);
+        if (payloadBytes > BugReportLimits.MaxBundleBytes)
+            throw BytesExceeded(BugReportBundleRefusal.PayloadBytesExceeded, "The report payloads need", payloadBytes);
 
         var listed = new List<BundleEntry>(payloads.Count);
         foreach ((string name, ReadOnlyMemory<byte> data) in payloads)
@@ -57,7 +64,8 @@ public static class BugReportBundleWriter
             AddEntry(archive, BundleEntryNames.Manifest, manifest, stamp);
             foreach ((string name, ReadOnlyMemory<byte> data) in payloads) AddEntry(archive, name, data, stamp);
         }
-        if (output.Length > BugReportLimits.MaxBundleBytes) throw TooLarge("The written archive is", output.Length);
+        if (output.Length > BugReportLimits.MaxBundleBytes)
+            throw BytesExceeded(BugReportBundleRefusal.ArchiveBytesExceeded, "The written archive is", output.Length);
         return output.Length == output.Capacity ? output.GetBuffer() : output.ToArray();
     }
 
@@ -76,51 +84,98 @@ public static class BugReportBundleWriter
     static string CheckFields(BugReportDraft draft)
     {
         if (!ReportIds.IsValid(draft.ReportId))
-            throw Invalid("The report id must be a canonical version 7 id from ReportIds.NewId.");
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.ReportIdInvalid,
+                "The report id must be a canonical version 7 id from ReportIds.NewId.", DraftParameter)
+            { FieldName = nameof(BugReportDraft.ReportId) };
         if (!BundleEntryNames.IsValidGameId(draft.GameId))
-            throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"The game id must match [a-z0-9][a-z0-9-]{{0,{BugReportLimits.MaxGameIdChars - 1}}}."));
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.GameIdInvalid, string.Create(CultureInfo.InvariantCulture,
+                $"The game id must match [a-z0-9][a-z0-9-]{{0,{BugReportLimits.MaxGameIdChars - 1}}}."), DraftParameter)
+            { FieldName = nameof(BugReportDraft.GameId), MaximumCharacters = BugReportLimits.MaxGameIdChars };
         if (!Enum.IsDefined(draft.Kind))
-            throw Invalid("The report kind is not a defined BugReportKind.");
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.ReportKindUndefined,
+                "The report kind is not a defined BugReportKind.", DraftParameter)
+            { ActualKind = draft.Kind };
         int year = draft.CapturedAt.UtcDateTime.Year;
         if (year is < MinZipYear or > MaxZipYear)
-            throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"The capture time must fall in the zip date range, {MinZipYear} to {MaxZipYear} UTC."));
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.CaptureYearOutsideZipRange, string.Create(CultureInfo.InvariantCulture,
+                $"The capture time must fall in the zip date range, {MinZipYear} to {MaxZipYear} UTC."), DraftParameter)
+            { ActualYear = year, MinimumYear = MinZipYear, MaximumYear = MaxZipYear };
         if (draft.Category is null || draft.Category.Length is < 1 or > BugReportLimits.MaxCategoryChars || !BugReportJson.IsWellFormedText(draft.Category))
-            throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"The category must be 1 to {BugReportLimits.MaxCategoryChars} characters of well-formed text."));
+            throw CategoryRefused(draft.Category);
 
         string description = draft.Description?.TrimEnd() ?? "";
         if (description.Length == 0)
-            throw Invalid("The description must not be blank.");
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.DescriptionBlank,
+                "The description must not be blank.", DraftParameter)
+            { FieldName = nameof(BugReportDraft.Description) };
         if (description.Length > BugReportLimits.MaxDescriptionChars)
-            throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"The description holds {description.Length} characters and the limit is {BugReportLimits.MaxDescriptionChars}."));
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.DescriptionTooLong, string.Create(CultureInfo.InvariantCulture,
+                $"The description holds {description.Length} characters and the limit is {BugReportLimits.MaxDescriptionChars}."), DraftParameter)
+            { ActualCharacters = description.Length, MaximumCharacters = BugReportLimits.MaxDescriptionChars };
         if (!BugReportJson.IsWellFormedText(description))
-            throw Invalid("The description contains an unpaired surrogate.");
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.TextMalformed,
+                "The description contains an unpaired surrogate.", DraftParameter)
+            { FieldName = nameof(BugReportDraft.Description) };
 
         CheckSections(draft.Sections);
         return description;
     }
 
+    // One message for three rules, so each branch of the guard carries its own reason, in the guard's order.
+    static BugReportBundleArgumentException CategoryRefused(string? category)
+    {
+        string message = string.Create(CultureInfo.InvariantCulture,
+            $"The category must be 1 to {BugReportLimits.MaxCategoryChars} characters of well-formed text.");
+        if (category is null)
+            return new BugReportBundleArgumentException(BugReportBundleRefusal.CategoryMissing, message, DraftParameter)
+            { FieldName = nameof(BugReportDraft.Category) };
+        if (category.Length is < 1 or > BugReportLimits.MaxCategoryChars)
+            return new BugReportBundleArgumentException(BugReportBundleRefusal.CategoryLengthOutsideRange, message, DraftParameter)
+            {
+                FieldName = nameof(BugReportDraft.Category),
+                ActualCharacters = category.Length,
+                MinimumCharacters = 1,
+                MaximumCharacters = BugReportLimits.MaxCategoryChars,
+            };
+        return new BugReportBundleArgumentException(BugReportBundleRefusal.TextMalformed, message, DraftParameter)
+        { FieldName = nameof(BugReportDraft.Category) };
+    }
+
     static void CheckSections(IReadOnlyList<CapturedSection> sections)
     {
-        if (sections is null) throw Invalid("The section list must not be null.");
+        if (sections is null)
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionListMissing,
+                "The section list must not be null.", DraftParameter)
+            { FieldName = nameof(BugReportDraft.Sections) };
         var keys = new HashSet<string>(StringComparer.Ordinal);
         long total = 0;
+        int index = -1;
         foreach (CapturedSection? section in sections)
         {
-            if (section is null) throw Invalid("The section list must not hold a null section.");
+            index++;
+            if (section is null)
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionMissing,
+                    "The section list must not hold a null section.", DraftParameter)
+                { Index = index };
             string key = section.Key;
             if (!BundleEntryNames.IsValidSectionKey(key))
-                throw Invalid("Section key \"" + key + "\" must match [a-z0-9][a-z0-9._-]{0,47}.");
-            if (!keys.Add(key)) throw Invalid("Section key \"" + key + "\" appears twice.");
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionKeyInvalid,
+                    "Section key \"" + key + "\" must match [a-z0-9][a-z0-9._-]{0,47}.", DraftParameter)
+                { Index = index, SectionKey = key };
+            if (!keys.Add(key))
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionKeyDuplicate,
+                    "Section key \"" + key + "\" appears twice.", DraftParameter)
+                { Index = index, SectionKey = key };
             total += section.Json.Length;
             if (total > BugReportLimits.MaxSectionBytesTotal)
-                throw Invalid("The sections total more than " + BugReportLimits.MaxSectionBytesTotal + " bytes.");
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionBytesExceeded,
+                    "The sections total more than " + BugReportLimits.MaxSectionBytesTotal + " bytes.", DraftParameter)
+                { ActualBytes = total, MaximumBytes = BugReportLimits.MaxSectionBytesTotal };
             if (!BugReportJson.IsValidSection(section.Json))
-                throw Invalid("Section \"" + key + "\" is not one JSON object within depth " + BugReportLimits.MaxSectionDepth
-                    + " with unique property names and decodable strings.");
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.SectionJsonInvalid,
+                    "Section \"" + key + "\" is not one JSON object within depth " + BugReportLimits.MaxSectionDepth
+                    + " with unique property names and decodable strings.", DraftParameter)
+                { SectionKey = key, MaximumDepth = BugReportLimits.MaxSectionDepth };
         }
     }
 
@@ -137,51 +192,98 @@ public static class BugReportBundleWriter
             {
                 ImageHeaders.PngMediaType => BundleEntryNames.ScreenshotPng,
                 ImageHeaders.JpegMediaType => BundleEntryNames.ScreenshotJpeg,
-                _ => throw Invalid("Screenshot media type \"" + screenshot.MediaType + "\" must be image/png or image/jpeg."),
+                _ => throw new BugReportBundleArgumentException(BugReportBundleRefusal.ScreenshotMediaUnsupported,
+                    "Screenshot media type \"" + screenshot.MediaType + "\" must be image/png or image/jpeg.", DraftParameter)
+                { MediaType = screenshot.MediaType },
             };
             if (!IsValidEdge(screenshot.Width) || !IsValidEdge(screenshot.Height))
-                throw Invalid("Screenshot edges must be 1 to " + BugReportLimits.MaxScreenshotLongEdge + " pixels.");
+                throw EdgesRefused(name, screenshot.Width, screenshot.Height,
+                    "Screenshot edges must be 1 to " + BugReportLimits.MaxScreenshotLongEdge + " pixels.");
             CheckHeader(name, screenshot.MediaType, screenshot.Bytes, screenshot.Width, screenshot.Height);
             payloads.Add((name, screenshot.Bytes));
         }
 
         if (draft.IncludeClip && draft.Clip is { } clip)
         {
-            if (clip.Frames is null) throw Invalid("The clip frame list must not be null.");
-            if (clip.Frames.Count > BundleEntryNames.MaxClipFrames)
-                throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                    $"The clip holds {clip.Frames.Count} frames and the limit is {BundleEntryNames.MaxClipFrames}."));
-            if (clip.Frames.Count > 0) AddClip(payloads, clip.Frames);
+            IReadOnlyList<ReportClipFrame> frames = clip.Frames;
+            if (frames is null)
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.ClipFrameListMissing,
+                    "The clip frame list must not be null.", DraftParameter);
+            // The list is caller code, so its count is read once for the guard, its message and its identifier.
+            int count = frames.Count;
+            if (count > BundleEntryNames.MaxClipFrames)
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.ClipFrameCountExceeded, string.Create(CultureInfo.InvariantCulture,
+                    $"The clip holds {count} frames and the limit is {BundleEntryNames.MaxClipFrames}."), DraftParameter)
+                { ActualCount = count, MaximumCount = BundleEntryNames.MaxClipFrames };
+            if (count > 0) AddClip(payloads, frames, count);
         }
         return payloads;
     }
 
-    static void AddClip(List<(string, ReadOnlyMemory<byte>)> payloads, IReadOnlyList<ReportClipFrame> frames)
+    // count is the frame count the limit guard checked. The list is caller code whose Count can change, so it is
+    // never reread here, and no index past the checked limit reaches ClipFrame.
+    static void AddClip(List<(string, ReadOnlyMemory<byte>)> payloads, IReadOnlyList<ReportClipFrame> frames, int count)
     {
-        var rows = new ClipIndexFrame[frames.Count];
+        var rows = new ClipIndexFrame[count];
+        var jpegs = new ReadOnlyMemory<byte>[count];
         double previousOffset = 0;
-        for (int i = 0; i < frames.Count; i++)
+        for (int i = 0; i < count; i++)
         {
             ReportClipFrame? frame = frames[i];
-            if (frame is null) throw Invalid("The clip must not hold a null frame.");
+            if (frame is null)
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.ClipFrameMissing,
+                    "The clip must not hold a null frame.", DraftParameter)
+                { Index = i };
             double offset = frame.Offset.TotalMilliseconds;
             if (offset < previousOffset)
-                throw Invalid("Clip frame " + i + " starts before the frame ahead of it or before the clip.");
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.ClipOffsetDecreased,
+                    "Clip frame " + i + " starts before the frame ahead of it or before the clip.", DraftParameter)
+                { Index = i, ActualMilliseconds = offset, MinimumMilliseconds = previousOffset };
             if (offset > BugReportLimits.MaxClipOffsetMilliseconds)
-                throw Invalid("Clip frame " + i + " starts more than " + BugReportLimits.MaxClipOffsetMilliseconds + " ms into the clip.");
+                throw new BugReportBundleArgumentException(BugReportBundleRefusal.ClipOffsetExceeded,
+                    "Clip frame " + i + " starts more than " + BugReportLimits.MaxClipOffsetMilliseconds + " ms into the clip.", DraftParameter)
+                { Index = i, ActualMilliseconds = offset, MaximumMilliseconds = BugReportLimits.MaxClipOffsetMilliseconds };
             if (!double.IsFinite(frame.RenderMilliseconds) || frame.RenderMilliseconds is < 0 or > BugReportLimits.MaxRenderMilliseconds)
-                throw Invalid("Clip frame " + i + " needs a render time from 0 to " + BugReportLimits.MaxRenderMilliseconds + " ms.");
-            if (!IsValidEdge(frame.Width) || !IsValidEdge(frame.Height))
-                throw Invalid("Clip frame " + i + " edges must be 1 to " + BugReportLimits.MaxScreenshotLongEdge + " pixels.");
+                throw RenderTimeRefused(i, frame.RenderMilliseconds);
             string entry = BundleEntryNames.ClipFrame(i);
+            if (!IsValidEdge(frame.Width) || !IsValidEdge(frame.Height))
+                throw EdgesRefused(entry, frame.Width, frame.Height,
+                    "Clip frame " + i + " edges must be 1 to " + BugReportLimits.MaxScreenshotLongEdge + " pixels.");
             CheckHeader(entry, ImageHeaders.JpegMediaType, frame.Jpeg, frame.Width, frame.Height);
             previousOffset = offset;
+            jpegs[i] = frame.Jpeg;
             rows[i] = new ClipIndexFrame(offset, frame.RenderMilliseconds, frame.Width, frame.Height, entry);
         }
 
         payloads.Add((BundleEntryNames.ClipIndex, BugReportJson.SerializeClipIndex(new ClipIndex(rows))));
-        for (int i = 0; i < frames.Count; i++) payloads.Add((rows[i].Entry, frames[i].Jpeg));
+        for (int i = 0; i < count; i++) payloads.Add((rows[i].Entry, jpegs[i]));
     }
+
+    // One message for two rules, so the nonfinite branch is chosen first, in the guard's order.
+    static BugReportBundleArgumentException RenderTimeRefused(int index, double renderMilliseconds)
+    {
+        string message = "Clip frame " + index + " needs a render time from 0 to " + BugReportLimits.MaxRenderMilliseconds + " ms.";
+        if (!double.IsFinite(renderMilliseconds))
+            return new BugReportBundleArgumentException(BugReportBundleRefusal.RenderTimeNonfinite, message, DraftParameter)
+            { Index = index, ActualMilliseconds = renderMilliseconds };
+        return new BugReportBundleArgumentException(BugReportBundleRefusal.RenderTimeOutsideRange, message, DraftParameter)
+        {
+            Index = index,
+            ActualMilliseconds = renderMilliseconds,
+            MinimumMilliseconds = 0,
+            MaximumMilliseconds = BugReportLimits.MaxRenderMilliseconds,
+        };
+    }
+
+    static BugReportBundleArgumentException EdgesRefused(string entry, int width, int height, string message) =>
+        new(BugReportBundleRefusal.ImageDimensionsOutsideRange, message, DraftParameter)
+        {
+            EntryName = entry,
+            Width = width,
+            Height = height,
+            MinimumPixels = 1,
+            MaximumPixels = BugReportLimits.MaxScreenshotLongEdge,
+        };
 
     static void AddEntry(ZipArchive archive, string name, ReadOnlyMemory<byte> data, DateTimeOffset stamp)
     {
@@ -195,16 +297,19 @@ public static class BugReportBundleWriter
     static void CheckHeader(string entry, string mediaType, ReadOnlyMemory<byte> bytes, int width, int height)
     {
         if (!ImageHeaders.TryReadSize(mediaType, bytes.Span, out int headerWidth, out int headerHeight))
-            throw Invalid(entry + " does not start with a readable " + mediaType + " header.");
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.ImageHeaderUnreadable,
+                entry + " does not start with a readable " + mediaType + " header.", DraftParameter)
+            { EntryName = entry, MediaType = mediaType };
         if (headerWidth != width || headerHeight != height)
-            throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"{entry} has a {headerWidth}x{headerHeight} header but its record says {width}x{height}."));
+            throw new BugReportBundleArgumentException(BugReportBundleRefusal.ImageHeaderDimensionsMismatch, string.Create(CultureInfo.InvariantCulture,
+                $"{entry} has a {headerWidth}x{headerHeight} header but its record says {width}x{height}."), DraftParameter)
+            { EntryName = entry, Width = width, Height = height, HeaderWidth = headerWidth, HeaderHeight = headerHeight };
     }
 
     static bool IsValidEdge(int edge) => edge is >= 1 and <= BugReportLimits.MaxScreenshotLongEdge;
 
-    static ArgumentException Invalid(string message) => new(message, "draft");
-
-    static InvalidOperationException TooLarge(string what, long bytes) => new(string.Create(CultureInfo.InvariantCulture,
-        $"{what} {bytes} bytes and a bundle holds at most {BugReportLimits.MaxBundleBytes}."));
+    static BugReportBundleLimitException BytesExceeded(BugReportBundleRefusal reason, string what, long bytes) =>
+        new(reason, string.Create(CultureInfo.InvariantCulture,
+            $"{what} {bytes} bytes and a bundle holds at most {BugReportLimits.MaxBundleBytes}."))
+        { ActualBytes = bytes, MaximumBytes = BugReportLimits.MaxBundleBytes };
 }

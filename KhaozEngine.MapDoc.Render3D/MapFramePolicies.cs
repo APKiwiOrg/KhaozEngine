@@ -28,6 +28,8 @@ public sealed record MapFrozenWaterLook
     public Color? AbsorptionPerMetre { get; }
     public bool? UnderwaterSunlight { get; }
     public float? UnderwaterPenumbraPerMetre { get; }
+    public bool? UnderwaterCaustics { get; }
+    public float? CausticStrength { get; }
     public bool? WaterColumnLight { get; }
     public Color? WaterColor { get; }
     public float? Clarity { get; }
@@ -72,6 +74,8 @@ public sealed record MapFrozenWaterLook
         AbsorptionPerMetre = look.AbsorptionPerMetre;
         UnderwaterSunlight = look.UnderwaterSunlight;
         UnderwaterPenumbraPerMetre = look.UnderwaterPenumbraPerMetre;
+        UnderwaterCaustics = look.UnderwaterCaustics;
+        CausticStrength = look.CausticStrength;
         WaterColumnLight = look.WaterColumnLight;
         WaterColor = look.WaterColor;
         Clarity = look.Clarity;
@@ -120,6 +124,8 @@ public sealed record MapFrozenWaterLook
         AbsorptionPerMetre = AbsorptionPerMetre,
         UnderwaterSunlight = UnderwaterSunlight,
         UnderwaterPenumbraPerMetre = UnderwaterPenumbraPerMetre,
+        UnderwaterCaustics = UnderwaterCaustics,
+        CausticStrength = CausticStrength,
         WaterColumnLight = WaterColumnLight,
         WaterColor = WaterColor,
         Clarity = Clarity,

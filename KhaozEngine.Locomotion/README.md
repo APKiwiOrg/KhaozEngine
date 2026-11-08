@@ -16,9 +16,11 @@ run, jump and precise small magnitudes retain their existing meanings. Contact g
 foot fraction in (0, 1], a foot radius of at least 0.01 m and a valid knee-height shell.
 A physics world must offer `IPhysicsQueryLeaseSource` and `IPhysicsSupportFootprint`. Null physics supports
 analytic-only dry movement. Clamp and dry medium delegates are allowed. A wet point sample refuses with
-`NotSupportedException` naming the ordinary `IMovementWaterField` route.
+`MovementCapabilityException` with `PointSampledWaterUnsupported` and
+`RequiredCapability == typeof(IMovementWaterField)`.
 
-The position-only `Step(Vector3, ...)` refuses Contact and names the stateful overload. Legacy requires
+The position-only `Step(Vector3, ...)` refuses Contact with `StatefulOverloadRequired`,
+`RequiredOverload == "CharacterMovement.Step(in MoveState, ...)"` and `RequiredStateType == typeof(MoveState)`. Legacy requires
 the default foot fraction and the complete default water policy, including zero surface jump speed.
 Undefined selectors throw `ArgumentOutOfRangeException`. Released legacy movement arithmetic is unchanged.
 Phase 5a is released in 20.37.0. Network and local heads select the same contact kernel.
@@ -31,6 +33,57 @@ listed above. Legacy rejects contact-only foot and water settings rather than ig
 Public explicit configuration selects contact independently of the selector, uses its supplied water policy,
 and accepts tuning water only when default or equal to that policy. Heads reject Contact plus public explicit
 configuration as two selections.
+
+## Configuration and capability refusals
+
+The shared selector and binding validators throw `MovementConfigurationException : ArgumentException` for
+configuration rules and `MovementCapabilityException : NotSupportedException` for missing capabilities.
+Both require `MovementConfigurationRefusal Reason`. Ordinary local, rendering and network heads use the same
+reasons for missing physics, registration and boundary. Contact cell factory refusals preserve `ParamName = config`. The network explicit-movement constructor
+preserves `ParamName = water` for its Legacy mode refusal, while tuning validation names `tuning`. Configuration refusals preserve `ParamName` when the
+original guard named an argument. Existing base catches still work. Messages remain developer prose.
+The kernel predicate and shell admission run in their existing order. The first failed kernel predicate
+supplies the reason, with nonfinite numbers checked before their domain. Direct dry contact does not acquire
+ordinary kernel requirements. The immutable water policy validates itself at construction, so its validity
+check inside explicit admission is an internal invariant.
+
+| Reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `CapsuleContactsRequired` | Complete shell contacts are unavailable | `RequiredCapability = typeof(IPhysicsCapsuleContacts)` |
+| `CapsuleSweepRequired` | Ordinary contact has no certified capsule sweep | `RequiredCapability = typeof(IPhysicsCapsuleSweep)` |
+| `PointSampledWaterUnsupported` | A point medium reports water on the dry contact path | `RequiredCapability = typeof(IMovementWaterField)` |
+| `QueryLeaseSourceRequired` | Contact physics has no read leases | `RequiredCapability = typeof(IPhysicsQueryLeaseSource)` |
+| `StatefulOverloadRequired` | Contact was selected on the position-only overload | `RequiredOverload`, `RequiredStateType` as above |
+| `SupportFootprintRequired` | Physics has no complete footprint queries | `RequiredCapability = typeof(IPhysicsSupportFootprint)` |
+| `BoundaryRequired` | Ordinary validation has no certified boundary | `RequiredCapability = typeof(MovementBoundary)` |
+| `PhysicsRequired` | An ordinary movement head has no physics world | `RequiredCapability = typeof(IPhysicsWorld)` |
+| `RegistrationRequired` | Ordinary validation has no registration | `RequiredCapability = typeof(OrdinaryMovementRegistration)` |
+| `WaterFieldRequired` | An ordinary medium delegate has no field | `RequiredCapability = typeof(IMovementWaterField)` |
+| `ExplicitWaterModeRequired` | Explicit admission receives Legacy water | `ActualMode` |
+| `KernelNumberNonfinite` | The first failing kernel number is not finite | `FieldName`, `ActualNumber` |
+| `KernelPositiveValueRequired` | A finite kernel field is zero or negative | `FieldName`, `ActualNumber`, `MinimumExclusive = 0` |
+| `KernelNonnegativeValueRequired` | A finite kernel field is negative | `FieldName`, `ActualNumber`, `MinimumNumber = 0` |
+| `KernelFractionExceeded` | A finite kernel fraction exceeds one | `FieldName`, `ActualNumber`, `MaximumNumber = 1` |
+| `KernelHalfHeightBelowRadius` | Capsule half height is below radius | `CapsuleHalfHeight`, `CapsuleRadius` |
+| `KernelWadeFractionsUnordered` | Wade end is at or below start | `StartFraction`, `EndFraction` |
+| `KernelSwimFractionsUnordered` | Swim exit exceeds enter | `ExitFraction`, `EnterFraction` |
+| `KernelSlopeAtOrAboveHalfPi` | Maximum slope reaches or exceeds half pi | `ActualSlope`, `MaximumExclusive` (half pi radians) |
+| `LegacyFootRadiusNondefault` | Legacy receives a nondefault foot fraction | `FieldName`, `ActualNumber`, `ExpectedNumber = 0.5` |
+| `LegacyWaterNondefault` | Legacy receives a nondefault water policy | `FieldName`, `ActualWater`, `ExpectedWater` (complete default policy) |
+| `WaterPoliciesConflict` | Nondefault tuning water differs from the supplied policy | `ActualWater` (tuning), `ExpectedWater` (supplied) |
+| `LegacyControllerRequired` | A Legacy binding receives another controller | `ActualController`, `ExpectedController = Legacy` |
+| `ContactControllerRequired` | An ordinary binding receives another controller | `ActualController`, `ExpectedController = Contact` |
+| `ConflictingMovementSelections` | Public explicit binding receives Contact as a second selection | `ActualController`, `RequestedKind = PublicExplicit` |
+| `PhysicsFactoryRequired` | Contact cells have no physics factory | `MemberName = PhysicsWorldFactory` |
+| `RegistrationFactoryRequired` | Contact cells have no registration factory | `MemberName = MovementRegistrationFactory` |
+| `BoundaryFactoryRequired` | Contact cells have no boundary factory or certified bounds | `MemberName = MovementBoundaryFactory` |
+| `WaterFieldFactoryRequired` | A contact cell medium delegate has no field factory | `MemberName = MovementWaterFieldFactory` |
+
+Kernel number domains apply in predicate order: positive radius and half height, half height at least radius,
+positive gravity and fall speed, nonnegative movement speeds, jump speed, ground epsilon and step height,
+wade fractions in [0, 1] with end greater than start, wade minimum speed scale in [0, 1], swim enter in (0, 1],
+swim exit in [0, enter], surface submersion in [0, 1], nonnegative buoyancy, coyote time and jump buffer,
+air control in [0, 1], nonnegative air brake acceleration, and maximum slope in [0, half pi).
 
 ## Ordinary contact environment
 
@@ -175,6 +228,16 @@ shares the controller's tick-start swimmer classification, including supported f
 Use the returned local interval and the carried local feet for approach settling. This point query authorizes no
 motion or placement. A refused point returns its availability with `swimming` false. Movement still requires the
 certified whole-path water trace.
+
+Live reads throw `MovementReadException`, derived from `InvalidOperationException`, with a non-nullable
+`MovementReadRefusal Reason`. Existing invalid-operation catches keep working. Messages remain developer prose.
+Identifiers are nullable when the selected reason does not use them.
+
+| `MovementReadRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `EnvironmentPinStale` | Ordinary producer state no longer matches the retained pin | `Frame` |
+| `LeaseThreadMismatch` | A lease is used outside its acquiring thread | `OwnerThreadId`, `CallerThreadId` |
+| `QueryBindingStale` | A query binding no longer matches its retained identity and frame | `LeaseId`, `Frame` |
 
 An ordinary binding owns a view created from the source when none is supplied. A supplied view is
 borrowed after source validation and must represent the registration's selected exclusions.

@@ -38,10 +38,15 @@ public sealed partial class AudioSystem
             return;
         }
 
-        throw new InvalidOperationException(
+        throw new AudioThreadAffinityException(AudioThreadAffinityRefusal.ThreadMismatch,
             $"AudioSystem.{member} was called from thread {current}, but this AudioSystem is owned by thread " +
             $"{_ownerThreadId}. AudioSystem is main-thread-only: register, load, play, tick and change volumes " +
             "from the thread that constructed it. To trigger audio from a background job, hand the request to " +
-            "the main thread and call from there.");
+            "the main thread and call from there.")
+        {
+            MemberName = member,
+            OwnerThreadId = _ownerThreadId,
+            CallerThreadId = current,
+        };
     }
 }

@@ -103,9 +103,13 @@ public class GenerateDungeonCommandTests
         var kit = new DungeonKitMap();
         kit.Map(DungeonPiece.Floor, "floor");
 
-        Assert.Throws<InvalidOperationException>(() =>
+        DungeonKitException ex = Assert.Throws<DungeonKitException>(() =>
             editor.Execute(new GenerateDungeonCommand(Config(), 42UL, kit, Plot())));
 
+        // Which unmapped piece the bake meets first is incidental, but it is never the mapped one.
+        Assert.Equal(DungeonKitRefusal.PieceUnmapped, ex.Reason);
+        Assert.NotNull(ex.Piece);
+        Assert.NotEqual(DungeonPiece.Floor, ex.Piece.Value);
         Assert.Equal(before, MapDocumentHash.OfWorld(doc));
         Assert.False(editor.History.CanUndo);
         Assert.False(editor.IsDirty);

@@ -34,8 +34,8 @@ public sealed class DiscordClientProvider(
     /// never), so without a deadline an abandoned flow leaves this task pending for the life of the process and
     /// the bound loopback port with it. On expiry the core method unwinds, its <c>using</c> disposes the
     /// listener and frees the port, and the caller sees the same <see cref="IdentitySignInException"/> as any
-    /// other sign-in failure. The caller's own cancellation still surfaces as
-    /// <see cref="OperationCanceledException"/>.</summary>
+    /// other sign-in failure, with <see cref="SignInRefusal.TimedOut"/> and the expired timeout. The caller's own
+    /// cancellation still surfaces as <see cref="OperationCanceledException"/>.</summary>
     public async Task<ProviderCredential> SignInAsync(CancellationToken ct = default)
     {
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -48,7 +48,12 @@ public sealed class DiscordClientProvider(
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            throw new IdentitySignInException($"sign-in timed out after {options.SignInTimeout}");
+            throw new IdentitySignInException(
+                SignInRefusal.TimedOut, $"sign-in timed out after {options.SignInTimeout}")
+            {
+                ProviderId = ProviderId,
+                Timeout = options.SignInTimeout,
+            };
         }
     }
 
@@ -72,15 +77,26 @@ public sealed class DiscordClientProvider(
 
         bool launched = await browser.LaunchAsync(authorizeUri.Uri, ct).ConfigureAwait(false);
         if (!launched)
-            throw new IdentitySignInException("failed to launch the system browser for sign-in");
+            throw new IdentitySignInException(
+                SignInRefusal.BrowserLaunchFailed, "failed to launch the system browser for sign-in")
+            {
+                ProviderId = ProviderId,
+            };
 
         LoopbackResult redirect = await listener.WaitForRedirectAsync(ct).ConfigureAwait(false);
 
         if (!redirect.Query.TryGetValue("state", out string? returnedState) || returnedState != state)
-            throw new IdentitySignInException("sign-in redirect state mismatch");
+            throw new IdentitySignInException(SignInRefusal.RedirectStateMismatch, "sign-in redirect state mismatch")
+            {
+                ProviderId = ProviderId,
+            };
 
         if (!redirect.Query.TryGetValue("code", out string? code) || string.IsNullOrEmpty(code))
-            throw new IdentitySignInException("sign-in redirect did not include an authorization code");
+            throw new IdentitySignInException(
+                SignInRefusal.AuthorizationCodeMissing, "sign-in redirect did not include an authorization code")
+            {
+                ProviderId = ProviderId,
+            };
 
         Dictionary<string, string> form = new(StringComparer.Ordinal)
         {
@@ -123,17 +139,33 @@ public sealed class DiscordClientProvider(
         {
             if (rejectDeadChain && response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized)
                 return null;
-            throw new IdentitySignInException($"token endpoint returned an error ({(int)response.StatusCode})");
+            throw new IdentitySignInException(
+                SignInRefusal.TokenHttpFailure, $"token endpoint returned an error ({(int)response.StatusCode})")
+            {
+                ProviderId = ProviderId,
+                StatusCode = (int)response.StatusCode,
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
+            };
         }
 
-        using JsonDocument doc = await ParseJsonBodyAsync(response, "the token endpoint", ct).ConfigureAwait(false);
+        using JsonDocument doc = await ParseTokenJsonBodyAsync(response, ct).ConfigureAwait(false);
 
         if (!doc.RootElement.TryGetProperty("access_token", out JsonElement accessTokenElement))
-            throw new IdentitySignInException("token endpoint response is missing access_token");
+            throw new IdentitySignInException(
+                SignInRefusal.TokenMemberMissing, "token endpoint response is missing access_token")
+            {
+                ProviderId = ProviderId,
+                MemberName = "access_token",
+            };
 
         string? accessToken = accessTokenElement.GetString();
         if (string.IsNullOrEmpty(accessToken))
-            throw new IdentitySignInException("token endpoint response has an empty access_token");
+            throw new IdentitySignInException(
+                SignInRefusal.TokenMemberEmpty, "token endpoint response has an empty access_token")
+            {
+                ProviderId = ProviderId,
+                MemberName = "access_token",
+            };
 
         string? refreshToken = doc.RootElement.TryGetProperty("refresh_token", out JsonElement refreshElement)
             ? refreshElement.GetString()
@@ -147,10 +179,11 @@ public sealed class DiscordClientProvider(
     /// <summary>Reads a successful response body as JSON. A 200 whose body is not JSON at all (an HTML
     /// captive-portal interstitial on hotel or airport wifi, a misconfigured reverse proxy sitting in front of
     /// the token endpoint) becomes this class's own <see cref="IdentitySignInException"/>, instead of a raw
-    /// <see cref="JsonException"/> escaping sign-in past every caller catching that type.
-    /// <paramref name="what"/> names the endpoint in the message.</summary>
-    private static async Task<JsonDocument> ParseJsonBodyAsync(
-        HttpResponseMessage response, string what, CancellationToken ct)
+    /// <see cref="JsonException"/> escaping sign-in past every caller catching that type. The token endpoint is
+    /// the only endpoint this provider reads. The parser's exception stays the inner exception: it names the
+    /// offending character, or the few bytes of a malformed literal, and its position, never a string value from
+    /// the body.</summary>
+    private async Task<JsonDocument> ParseTokenJsonBodyAsync(HttpResponseMessage response, CancellationToken ct)
     {
         using System.IO.Stream stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         try
@@ -159,7 +192,12 @@ public sealed class DiscordClientProvider(
         }
         catch (JsonException ex)
         {
-            throw new IdentitySignInException($"{what} did not return a JSON body", ex);
+            throw new IdentitySignInException(
+                SignInRefusal.EndpointJsonMalformed, "the token endpoint did not return a JSON body", ex)
+            {
+                ProviderId = ProviderId,
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
+            };
         }
     }
 
@@ -168,13 +206,18 @@ public sealed class DiscordClientProvider(
     /// declared lifetime, as before). A value that is not a JSON number, or a number outside <see cref="int"/>
     /// range, is a sign-in failure rather than the raw <see cref="InvalidOperationException"/> /
     /// <see cref="FormatException"/> a bare <c>GetInt32()</c> throws straight out of sign-in.</summary>
-    private static int ReadExpiresInSeconds(JsonElement root)
+    private int ReadExpiresInSeconds(JsonElement root)
     {
         if (!root.TryGetProperty("expires_in", out JsonElement expiresElement))
             return 0;
 
         if (expiresElement.ValueKind != JsonValueKind.Number || !expiresElement.TryGetInt32(out int seconds))
-            throw new IdentitySignInException("token endpoint response has a malformed expires_in");
+            throw new IdentitySignInException(
+                SignInRefusal.TokenExpiryMalformed, "token endpoint response has a malformed expires_in")
+            {
+                ProviderId = ProviderId,
+                MemberName = "expires_in",
+            };
 
         return seconds;
     }

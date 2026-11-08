@@ -67,7 +67,11 @@ public class AquaticProfileTests
         using PhysicsNavBake dry = PhysicsNavBake.Capture(ChannelContext(world), Wet with { SampleWater = false }, _ => 0u);
 
         Assert.False(GroundProfileOptions.Default.Aquatic);
-        Assert.Equal("options", Assert.Throws<ArgumentException>(() => dry.BuildProfile(Duck, default, AquaticOptions)).ParamName);
+        var failure = Assert.Throws<NavigationProfileException>(() => dry.BuildProfile(Duck, default, AquaticOptions));
+        Assert.Equal("options", failure.ParamName);
+        Assert.Equal(NavigationProfileRefusal.CaptureWaterNotSampled, failure.Reason);
+        using var wet = PhysicsNavBake.Capture(ChannelContext(world), Wet, _ => 0u);
+        Assert.True(wet.BuildProfile(Duck, default, AquaticOptions).Aquatic);
         Assert.False(dry.BuildProfile(Duck, default, GroundProfileOptions.Default).Aquatic);
     }
 
@@ -80,7 +84,18 @@ public class AquaticProfileTests
         using PhysicsNavBake capture = PhysicsNavBake.Capture(ChannelContext(world), Wet, _ => 0u);
         MoveTuning tuning = Duck with { SwimSurfaceSubmersionFraction = submersion };
 
-        Assert.Equal("tuning", Assert.Throws<ArgumentException>(() => capture.BuildProfile(tuning, default, AquaticOptions)).ParamName);
+        var failure = Assert.Throws<NavigationProfileException>(() => capture.BuildProfile(tuning, default, AquaticOptions));
+        Assert.Equal("tuning", failure.ParamName);
+        Assert.Equal(NavigationProfileRefusal.SwimFractionsUnordered, failure.Reason);
+        Assert.Equal(tuning.SwimExitDepthFraction, failure.ExitFraction);
+        Assert.Equal(submersion, failure.SubmersionFraction);
+        Assert.Equal(tuning.SwimEnterDepthFraction, failure.EnterFraction);
+        MoveTuning atLimit = tuning with
+        {
+            SwimSurfaceSubmersionFraction = submersion < Duck.SwimExitDepthFraction
+            ? Duck.SwimExitDepthFraction : Duck.SwimEnterDepthFraction
+        };
+        Assert.True(capture.BuildProfile(atLimit, default, AquaticOptions).Aquatic);
         Assert.False(capture.BuildProfile(tuning, default).Aquatic);
     }
 
@@ -160,7 +175,15 @@ public class AquaticProfileTests
         aquatic.Validate(Duck);
         foreach (MoveTuning tuning in mismatched)
         {
-            Assert.Throws<ArgumentException>(() => aquatic.Validate(tuning));
+            var failure = Assert.Throws<NavigationProfileException>(() => aquatic.Validate(tuning));
+            Assert.Equal(NavigationProfileRefusal.SwimFractionsMismatch, failure.Reason);
+            string field = tuning.SwimEnterDepthFraction != Duck.SwimEnterDepthFraction ? nameof(MoveTuning.SwimEnterDepthFraction)
+                : tuning.SwimExitDepthFraction != Duck.SwimExitDepthFraction ? nameof(MoveTuning.SwimExitDepthFraction)
+                : nameof(MoveTuning.SwimSurfaceSubmersionFraction);
+            Assert.Equal(field, failure.FieldName);
+            Assert.Equal((double)(float)typeof(MoveTuning).GetProperty(field)!.GetValue(Duck)!, failure.ExpectedNumber);
+            Assert.Equal((double)(float)typeof(MoveTuning).GetProperty(field)!.GetValue(tuning)!, failure.ActualNumber);
+            aquatic.Validate(Duck);
             ground.Validate(tuning);
         }
     }

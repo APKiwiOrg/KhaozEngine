@@ -181,14 +181,19 @@ public sealed class WaterVolumeClusterBuilderTests
         Assert.True(lastWasListed);
     }
 
-    [Fact]
-    public void PackedRecordsPreserveAllFieldsAndUnboundedFloor()
+    [Theory]
+    [InlineData(0f, 0f)]
+    [InlineData(3f, 12f)]
+    public void PackedRecordsPreserveAllFieldsAndUnboundedFloor(float layer, float depth)
     {
         WaterVolumeRecord record = new(-2f, -8f, 3f, -1f, 4f, float.MinValue, new Vector3(0.1f, 0.2f, 0.3f), 0.03f);
+        if (layer > 0f) record = record with { CausticLayer = layer, CausticDepth = depth };
         var builder = new WaterVolumeClusterBuilder();
         builder.Build([record], OrthoGrid(out _));
-        float[] expected = [-2f, -8f, 3f, -1f, 4f, float.MinValue, 0.1f, 0.2f, 0.3f, 0.03f, 0f, 0f];
+        float[] expected = [-2f, -8f, 3f, -1f, 4f, float.MinValue, 0.1f, 0.2f, 0.3f, 0.03f, layer, depth];
         for (int word = 0; word < expected.Length; word++) Assert.Equal(expected[word], ReadFloat(builder, 0, word));
+        Assert.Equal(BitConverter.SingleToUInt32Bits(layer), builder.Image[RecordStart + 10]);
+        Assert.Equal(BitConverter.SingleToUInt32Bits(depth), builder.Image[RecordStart + 11]);
         Assert.Equal(RecordStart + 12, builder.UsedUIntCount);
         Assert.Equal(WaterVolumeClusterBuilder.ImageUIntCount, builder.Image.Length);
     }

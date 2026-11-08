@@ -11,15 +11,17 @@ internal static class RendererPerfPaidPolicy
     // The owner's envelope for every paid pilot and full unit, including attempts already billed.
     internal const decimal CampaignMaximumUsd = 22m;
     internal const decimal WaterOpticsV2CampaignMaximumUsd = 7.382m;
+    internal const decimal WaterOpticsV3CampaignMaximumUsd = 7.382m;
     internal const decimal LinuxT4RatePerMinuteUsd = 0.052m;
     internal const decimal WindowsT4RatePerMinuteUsd = 0.102m;
 
-    internal static decimal CampaignMaximumFor(string preset) => preset switch
+    internal static decimal CampaignMaximumFor(string preset)
     {
-        "pilot" or "full" => CampaignMaximumUsd,
-        "water-optics-v2" => WaterOpticsV2CampaignMaximumUsd,
-        _ => throw new RendererPerfProtocolException("Preset", "Unknown paid renderer preset.")
-    };
+        if (preset is "pilot" or "full") return CampaignMaximumUsd;
+        var campaign = RendererPerfWaterOpticsCampaigns.ForPreset(preset);
+        return campaign?.Preset == preset ? campaign.MaximumUsd
+            : throw new RendererPerfProtocolException("Preset", "Unknown paid renderer preset.");
+    }
 
     internal static void Validate(RendererPerfManifest manifest)
     {

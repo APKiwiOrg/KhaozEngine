@@ -173,6 +173,7 @@ public class MoveToRangeAreaTests
             2 => Tuning with { MaxSlopeRadians = 0.7f },
             _ => Tuning with { StepHeight = 0.3f },
         };
-        Assert.Throws<ArgumentException>(() => { mover.Tick(Body(), wrong, ReachTarget.Point(Vector3.Zero), 0f, false, 0.1f, Flat); });
+        var refusal = Assert.Throws<NavigationProfileException>(() => { mover.Tick(Body(), wrong, ReachTarget.Point(Vector3.Zero), 0f, false, 0.1f, Flat); });
+        Assert.Equal(NavigationProfileRefusal.GeometryMismatch, refusal.Reason);
     }
 }

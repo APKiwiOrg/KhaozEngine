@@ -64,9 +64,21 @@ public class MovementSelectorTests
         MovementConfigurationValidation.ValidateLegacy(baseline);
         // Released legacy tuning remains permissive, including zero vertical-physics constants.
         MovementConfigurationValidation.ValidateLegacy(baseline with { Gravity = 0, MaxFallSpeed = 0, SwimEnterDepthFraction = 0 });
-        Assert.Throws<ArgumentException>(() => Legacy(baseline with { FootRadiusFraction = 0.75f }));
-        Assert.Throws<ArgumentException>(() => Legacy(baseline with { Water = new(WaterTraversalMode.WadeOnly) }));
-        Assert.Throws<ArgumentException>(() => Legacy(baseline with { Water = new(WaterTraversalMode.Legacy, 1f) }));
+        var foot = Assert.Throws<MovementConfigurationException>(() => Legacy(baseline with { FootRadiusFraction = 0.75f }));
+        Assert.Equal(MovementConfigurationRefusal.LegacyFootRadiusNondefault, foot.Reason);
+        Assert.Equal(nameof(MoveTuning.FootRadiusFraction), foot.FieldName);
+        Assert.Equal(0.75, foot.ActualNumber);
+        Assert.Equal(0.5, foot.ExpectedNumber);
+        Assert.Equal("tuning", foot.ParamName);
+        Assert.IsAssignableFrom<ArgumentException>(foot);
+        Assert.Equal(MovementConfigurationRefusal.LegacyWaterNondefault,
+            Assert.Throws<MovementConfigurationException>(() => Legacy(baseline with { Water = new(WaterTraversalMode.WadeOnly) })).Reason);
+        var water = Assert.Throws<MovementConfigurationException>(() => Legacy(baseline with { Water = new(WaterTraversalMode.Legacy, 1f) }));
+        Assert.Equal(MovementConfigurationRefusal.LegacyWaterNondefault, water.Reason);
+        Assert.Equal(nameof(MoveTuning.Water), water.FieldName);
+        Assert.Equal(default(WaterTraversalPolicy), water.ExpectedWater);
+        Assert.Equal(new(WaterTraversalMode.Legacy, 1f), water.ActualWater);
+        Legacy(baseline);
         static void Legacy(MoveTuning tuning) => MovementConfigurationValidation.ValidateLegacy(tuning);
     }
 
@@ -74,18 +86,28 @@ public class MovementSelectorTests
     public void LegacyEntryPointsRefuseContactOnlySettings()
     {
         MoveTuning tuning = MoveTuning.Default with { FootRadiusFraction = 0.75f };
-        Assert.Throws<ArgumentException>(() => CharacterMovement.Step(Vector3.Zero, MoveCommand.Idle, Dt, Flat, tuning));
-        Assert.Throws<ArgumentException>(() => CharacterMovement.Step(Standing, MoveCommand.Idle, Dt, Flat, tuning));
-        Assert.Throws<ArgumentException>(() => CharacterMovement.StepTowards(Standing, Vector2.UnitX, false, Dt, Flat, tuning));
+        Assert.Equal(MovementConfigurationRefusal.LegacyFootRadiusNondefault,
+            Assert.Throws<MovementConfigurationException>(() => CharacterMovement.Step(Vector3.Zero, MoveCommand.Idle, Dt, Flat, tuning)).Reason);
+        Assert.Equal(MovementConfigurationRefusal.LegacyFootRadiusNondefault,
+            Assert.Throws<MovementConfigurationException>(() => CharacterMovement.Step(Standing, MoveCommand.Idle, Dt, Flat, tuning)).Reason);
+        Assert.Equal(MovementConfigurationRefusal.LegacyFootRadiusNondefault,
+            Assert.Throws<MovementConfigurationException>(() => CharacterMovement.StepTowards(Standing, Vector2.UnitX, false, Dt, Flat, tuning)).Reason);
+        tuning = tuning with { FootRadiusFraction = 0.5f };
+        CharacterMovement.Step(Vector3.Zero, MoveCommand.Idle, Dt, Flat, tuning);
+        CharacterMovement.Step(Standing, MoveCommand.Idle, Dt, Flat, tuning);
+        CharacterMovement.StepTowards(Standing, Vector2.UnitX, false, Dt, Flat, tuning);
     }
 
     [Fact]
     public void PositionOnlyContactNamesTheStatefulOverload()
     {
-        var failure = Assert.Throws<NotSupportedException>(() =>
+        var failure = Assert.Throws<MovementCapabilityException>(() =>
             CharacterMovement.Step(Vector3.Zero, MoveCommand.Idle, Dt, Flat, Contact));
-        Assert.Contains("stateful", failure.Message);
-        Assert.Contains("MoveState", failure.Message);
+        Assert.Equal(MovementConfigurationRefusal.StatefulOverloadRequired, failure.Reason);
+        Assert.Equal("CharacterMovement.Step(in MoveState, ...)", failure.RequiredOverload);
+        Assert.Equal(typeof(MoveState), failure.RequiredStateType);
+        Assert.IsAssignableFrom<NotSupportedException>(failure);
+        CharacterMovement.Step(Standing, MoveCommand.Idle, Dt, Flat, Contact);
     }
 
     [Fact]
@@ -111,9 +133,12 @@ public class MovementSelectorTests
         Assert.True(preciseTowardsResult.Position.X > 0);
         Assert.Equal(Standing.Position, CharacterMovement.StepTowards(Standing, new(0.0001f, 0), true, Dt, Flat,
             tuning, world: world, clampXz: Clamp, medium: Dry).Position);
-        Assert.Contains("IMovementWaterField", Assert.Throws<NotSupportedException>(() =>
+        var waterFailure = Assert.Throws<MovementCapabilityException>(() =>
             CharacterMovement.Step(Standing, cmd, Dt, Flat, tuning, world: world,
-                medium: (_, _, _) => new(2, true))).Message);
+                medium: (_, _, _) => new(2, true)));
+        Assert.Equal(MovementConfigurationRefusal.PointSampledWaterUnsupported, waterFailure.Reason);
+        Assert.Equal(typeof(IMovementWaterField), waterFailure.RequiredCapability);
+        CharacterMovement.Step(Standing, cmd, Dt, Flat, tuning, world: world, medium: Dry);
     }
 
     [Fact]
@@ -163,8 +188,18 @@ public class MovementSelectorTests
         };
         using var world = new BepuPhysicsWorld();
         using var view = world.CreateQueryViewExcludingStatics([]);
-        Assert.Throws<ArgumentException>(() => OrdinaryCheck(tuning, view));
-        Assert.Throws<ArgumentException>(() => MovementConfigurationValidation.ValidateExplicit(tuning, tuning.Water));
+        var ordinary = Assert.Throws<MovementConfigurationException>(() => OrdinaryCheck(tuning, view));
+        var explicitFailure = Assert.Throws<MovementConfigurationException>(() => MovementConfigurationValidation.ValidateExplicit(tuning, tuning.Water));
+        var expected = fault switch
+        {
+            "walk-nan" => MovementConfigurationRefusal.KernelNumberNonfinite,
+            "wade-order" => MovementConfigurationRefusal.KernelWadeFractionsUnordered,
+            _ => MovementConfigurationRefusal.KernelPositiveValueRequired
+        };
+        Assert.Equal(expected, ordinary.Reason);
+        Assert.Equal(expected, explicitFailure.Reason);
+        OrdinaryCheck(Ordinary, view);
+        MovementConfigurationValidation.ValidateExplicit(Ordinary, Ordinary.Water);
     }
 
     [Theory]
@@ -183,9 +218,28 @@ public class MovementSelectorTests
             "legacy-hop" => Contact with { Water = new(WaterTraversalMode.Legacy, 1) },
             _ => Ordinary,
         };
-        Assert.Throws<ArgumentException>(() => MovementConfigurationValidation.ValidateOrdinaryContact(tuning, view,
+        var failure = Assert.Throws<MovementConfigurationException>(() => MovementConfigurationValidation.ValidateOrdinaryContact(tuning, view,
             hasRegistration: fault != "registration", hasBoundary: fault != "boundary",
             hasMediumDelegate: fault == "medium-without-field", hasWaterField: fault != "medium-without-field"));
+        Assert.Equal(fault switch
+        {
+            "registration" => MovementConfigurationRefusal.RegistrationRequired,
+            "boundary" => MovementConfigurationRefusal.BoundaryRequired,
+            "medium-without-field" => MovementConfigurationRefusal.WaterFieldRequired,
+            _ => MovementConfigurationRefusal.ExplicitWaterModeRequired
+        }, failure.Reason);
+        if (fault is "legacy-water" or "legacy-hop")
+        {
+            Assert.Equal(WaterTraversalMode.Legacy, failure.ActualMode);
+            Assert.Equal("tuning", failure.ParamName);
+        }
+        else Assert.Equal(fault switch
+        {
+            "registration" => typeof(OrdinaryMovementRegistration),
+            "boundary" => typeof(MovementBoundary),
+            _ => typeof(IMovementWaterField)
+        }, failure.RequiredCapability);
+        OrdinaryCheck(Ordinary, view);
     }
 
     [Fact]
@@ -198,26 +252,33 @@ public class MovementSelectorTests
     }
 
     [Theory]
-    [InlineData("lease", "IPhysicsQueryLeaseSource")]
-    [InlineData("footprint", "IPhysicsSupportFootprint")]
-    [InlineData("contacts", "IPhysicsCapsuleContacts")]
-    [InlineData("sweep", "IPhysicsCapsuleSweep")]
-    public void OrdinaryRefusesEachMissingViewCapability(string missing, string capability)
+    [InlineData("lease", typeof(IPhysicsQueryLeaseSource), MovementConfigurationRefusal.QueryLeaseSourceRequired)]
+    [InlineData("footprint", typeof(IPhysicsSupportFootprint), MovementConfigurationRefusal.SupportFootprintRequired)]
+    [InlineData("contacts", typeof(IPhysicsCapsuleContacts), MovementConfigurationRefusal.CapsuleContactsRequired)]
+    [InlineData("sweep", typeof(IPhysicsCapsuleSweep), MovementConfigurationRefusal.CapsuleSweepRequired)]
+    public void OrdinaryRefusesEachMissingViewCapability(string missing, Type capability, MovementConfigurationRefusal reason)
     {
         using var world = new BepuPhysicsWorld();
         using var view = Missing(world, missing);
-        Assert.Contains(capability, Assert.Throws<NotSupportedException>(() => OrdinaryCheck(Ordinary, view)).Message);
+        var failure = Assert.Throws<MovementCapabilityException>(() => OrdinaryCheck(Ordinary, view));
+        Assert.Equal(reason, failure.Reason);
+        Assert.Equal(capability, failure.RequiredCapability);
+        using var complete = world.CreateQueryViewExcludingStatics([]);
+        OrdinaryCheck(Ordinary, complete);
     }
 
     [Theory]
-    [InlineData("lease", "IPhysicsQueryLeaseSource")]
-    [InlineData("footprint", "IPhysicsSupportFootprint")]
-    public void DirectRefusesEachMissingWorldCapability(string missing, string capability)
+    [InlineData("lease", typeof(IPhysicsQueryLeaseSource), MovementConfigurationRefusal.QueryLeaseSourceRequired)]
+    [InlineData("footprint", typeof(IPhysicsSupportFootprint), MovementConfigurationRefusal.SupportFootprintRequired)]
+    public void DirectRefusesEachMissingWorldCapability(string missing, Type capability, MovementConfigurationRefusal reason)
     {
         using var world = new BepuPhysicsWorld();
         using var view = Missing(world, missing);
-        Assert.Contains(capability, Assert.Throws<NotSupportedException>(() =>
-            CharacterMovement.Step(Standing, MoveCommand.Idle, Dt, Flat, Contact, world: view)).Message);
+        var failure = Assert.Throws<MovementCapabilityException>(() =>
+            CharacterMovement.Step(Standing, MoveCommand.Idle, Dt, Flat, Contact, world: view));
+        Assert.Equal(reason, failure.Reason);
+        Assert.Equal(capability, failure.RequiredCapability);
+        CharacterMovement.Step(Standing, MoveCommand.Idle, Dt, Flat, Contact, world: world);
     }
 
     [Theory]

@@ -8,6 +8,22 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-08
 
+- Underwater caustics for opted-in procedural water. `WaterSettings.UnderwaterCaustics` (off by default) and
+  `WaterSettings.CausticStrength` (1, physical) gain `WaterLook` overrides. Strength scales how far refracted sunlight
+  lands, so strength `s` at depth `d` matches strength 1 at depth `s * d`. Enabling caustics also enables underwater
+  sunlight for that body. FFT bodies ignore the opt-in and are never refused. A `water.caustics` pass before the opaque
+  pass draws a 64 m surface window that follows the view and a four-slice caustic map, and lit receivers read it once at
+  their refracted entry point. Frames without participating water run no pass, upload nothing new and allocate nothing.
+  `Scene3D.WaterCausticDiagnostics` reports opted-in, drawn, FFT and overflow planes and layers.
+- Lit receivers gain set 0 bindings `CausticMap` and `CausticSampler` after `WaterVolumes`: 16 and 17 for rigid, foliage
+  and CPU-skinned, 8 and 9 for GPU-skinned, 7 and 8 for splat and tile ground, 11 and 12 for opaque foliage. The water
+  volume buffer grows to 652816 bytes for the window block. The Direct3D 11 motion vertex stage's
+  `PreviousInstanceTransforms` moves from t11 to t12. Frames without participating water render byte-identically.
+- `TileWaterLooks.River` sets `CausticStrength = 4` and leaves the caustic opt-in inherited, so consumers opt in.
+- `Scene3DPassTimings.ModelMs` now also covers caustic planning and recording and opaque light-cluster construction.
+- Vulkan image staging copies align their buffer offset to the format's texel block. An 8-byte format uploaded after a
+  4-byte one used to start at an offset Vulkan rejects.
+
 - Every engine `MapDocumentException` now carries a `MapDocumentRefusal Reason` and typed identifiers, across surfaces,
   acquisition, geometry, spaces, water, foliage, prefabs, document storage and persistence, MapDoc.Physics, MapEditor
   and MapEdit.Tool. A test fences the message-only constructors out of those packages. `Reason` is null only on an
@@ -21,6 +37,27 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - A status no longer depends on an identifier's text. An asset named `overflow` that is missing was reported as
   `CapacityExceeded` because the classifier found that word in the message, and is now `Invalid`, like any missing asset.
 
+- Refusals outside MapDoc now carry a public reason enum and typed identifiers too, filled at every engine throw site,
+  in Accounts.SqlServer and Accounts.Sqlite, Audio, BugReports and BugReports.Relay, Dungeon, Identity and its Discord
+  and OIDC providers, Identity.Exchange.AspNetCore, ItemInstances generation tables, Localization.TestKit, Locomotion,
+  Movement, NetWorld, Netcode signing secrets and Sharding. Each family's README lists its reasons. Messages do not
+  change, and no admission, threshold or order changed.
+- New sealed refusal types derive from the exact type thrown before, so existing catches keep working:
+  `AccountSchemaException`, `AccountDataException`, `AudioThreadAffinityException`, `BugReportBundleArgumentException`,
+  `BugReportBundleLimitException`, `DungeonKitException`, `TrustedProxyConfigurationException`,
+  `GenerationTableException`, `MovementConfigurationException`, `MovementCapabilityException`, `MovementReadException`,
+  `NavigationBuildException`, `NavigationProfileException`, `NavigationProfileCapabilityException`,
+  `NavigationReadCapabilityException`, `GroundContactCapabilityException`, `WorldConfigurationException`,
+  `CellBlobMigrationException`, `SigningSecretException` and `ShardFrameException`. A test asserting the exact base type
+  at one of these sites needs to assert the subtype instead.
+- Existing carriers keep every constructor and member and gain a reason. `GitHubApiException` gains `Reason`,
+  `ResponsePart` and a bounded, credential-free `UpstreamDetail`, and a moved update whose destination is unusable is
+  `RedirectDestinationUnusable`. `SignInException` gains `Reason`, `ProviderId`, `Timeout`, `StatusCode`, `EndpointRole`,
+  `MemberName`, `ActualScheme` and `Detail`. Its refusal identifiers carry no token, code, state, secret or response
+  body. `Detail` keeps the text a consumer passed to a message-only constructor, is null on every engine refusal, and
+  is untrusted caller text.
+  `LocalizationCoverageException` gains `Reason` and ordered `Findings`, each finding with its own reason, and
+  `DungeonJsonException` gains `Reason` with a rooted `JsonPath` such as `$.edges[0].roomA`.
 - Initialize the shared neutral water colour texture when publishing a native water domain. The first draw
   and later frames upload no resource data.
 - Preserve continuous native terrain material across patch and paint joins when a feathered overlay meets

@@ -49,7 +49,15 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   predicate's own order, and leaves the predicate and message alone. A throw on behalf of a string validator
   takes its reason from the validator's first typed finding, so it converts only once every finding the
   validator can return is typed, and it never stamps a generic reason. A reason names the rule the guard enforces,
-  even when an inventory or plan labels it differently. A reason only test code can throw stays off the public
+  even when an inventory or plan labels it differently, and its name is true on every path that throws it, so a guard
+  that runs before a response is classified never reuses a member that claims success. One member keeps one set of
+  identifiers at every site, so an integer check and a floating check of the same idea are two members, and a path
+  identifier uses one form everywhere, such as a rooted `$.` path. A name identifier is the name the guard reports,
+  so a public member that delegates to a guarded member reports and documents the delegate's name. A carrier gets an
+  inner-exception constructor only when some site has an inner to pass. A reason that maps to one fixed catalog
+  finding code names that code in its docs rather than carrying it as an identifier. An identifier never carries a
+  token, a secret, a connection string, key material or a raw response body, and the test that checks a secret is
+  absent reads the identifiers and the decoded form of the secret as well as the message. A reason only test code can throw stays off the public
   enum, in a test-only family beside that code. A guard over a producer's or interface's property reads each value
   once, and its predicate, reason and identifiers use that value, because a faulty producer is the case the refusal
   has to describe. A limit identifier is the inclusive limit of the field it names, so a retry at that limit succeeds.
@@ -181,7 +189,8 @@ keep the two in step and change the shared wording in both.
 7. **Name the regression.** A test written for a defect names its issue number in a comment.
 8. **Exact values where they are the contract.** Wire and persisted formats, determinism hashes, public
    constants, documented tuning values and golden images are compared exactly. There the exact value is the
-   behaviour, and a looser check lets a format break ship.
+   behaviour, and a looser check lets a format break ship. Compare a documented limit to its literal, never to
+   the production constant that produced it, which moves with the code under test.
 9. **Absence checks and documented diagnostic values stay.** `Assert.DoesNotContain` or `DoesNotMatch` on a
    message pins what it must never say (a token, a secret, a retired claim), which is a disclosure contract. A
    diagnostic value the README, consumer docs or a member's XML docs promise (an entry id, the offending index,
@@ -191,7 +200,8 @@ keep the two in step and change the shared wording in both.
     or `Assert.All`, because an empty result passes silently. Never assert a fake's configured answer, a
     constant the test itself defined, or a golden generated in the same run it is compared against. When an
     assertion goes, keep the call it made if it is the only exercise of a production path, and assert a
-    property of its result.
+    property of its result. A no-write assertion needs a fixture that would leave a write if the rollback were
+    missing, such as a side table a trigger fills before it discards the row.
 11. **Never delete or weaken a test without evidence.** A deletion names, in its commit message, the surviving
     test that fails for the same defect, or shows why the deleted test could not fail. Removing an
     over-specific line keeps or strengthens the behavioural assertion beside it. A failing test is fixed or its
@@ -201,7 +211,8 @@ keep the two in step and change the shared wording in both.
     shared runners and say nothing about correctness.
 13. **No sleeps, retries or bigger budgets for flakes.** A test that fails intermittently gets an issue when it
     is first seen and a deterministic fix: a completion signal, a held clock or a serial collection. A sleep or
-    retry hides the race and slows every run.
+    retry hides the race and slows every run. Hold every clock the code under test reads, because one left on wall
+    time can still decide the outcome, and check a time budget one tick short of its limit as well as at it.
 14. **Tooling tests live with their tooling.** Tests of measurement harnesses, evidence pipelines and research
     tools sit in their own project outside the main test project, with their own CI trigger, so product changes
     do not pay for them.

@@ -42,7 +42,7 @@ public sealed class CatalogRunnerCleanupTests
         Task? cleanup = null;
         try
         {
-            await scenario.Owner.ReadyAsync(scenario.Sequence.FirstCommitted.Task, older, "first commit");
+            await scenario.Owner.ReadyAsync(scenario.Sequence.FirstCommitted.Task, older, CatalogPhase.FirstCommit);
             primary = Assert.Throws<FailException>(() => Assert.Fail("intentional assertion after older started"));
             cleanup = scenario.Owner.FinishAsync(primary);
             await held.Task.WaitAsync(TimeSpan.FromSeconds(20));
@@ -96,7 +96,7 @@ public sealed class CatalogRunnerCleanupTests
         Task? cleanup = null;
         try
         {
-            await scenario.Owner.ReadyAsync(scenario.Sequence.FirstCommitted.Task, older, "first commit");
+            await scenario.Owner.ReadyAsync(scenario.Sequence.FirstCommitted.Task, older, CatalogPhase.FirstCommit);
             Task<ContentUpgradeReport> next = scenario.StartNext(exercise.Token);
             primary = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scenario.Owner.AwaitAsync(next));
             Assert.True(exercise.IsCancellationRequested);

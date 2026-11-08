@@ -27,8 +27,10 @@ internal static class RendererPerfRehearsalPolicy
         new("rehearsal-full", Windows, FullLimits),
         new("rehearsal-controls", Linux, ControlsLimits),
         new("rehearsal-controls", Windows, ControlsLimits),
-        new("rehearsal-water-optics-v2", Linux, FullLimits),
-        new("rehearsal-water-optics-v2-single", Windows, FullLimits)
+        .. RendererPerfWaterOpticsCampaigns.All.SelectMany(c => new RendererPerfRehearsalClass[]
+        {
+            new(c.RehearsalPreset, Linux, FullLimits), new(c.SinglePreset, Windows, FullLimits)
+        })
     ];
 
     internal static RendererPerfRehearsalClass Class(RendererPerfManifest manifest)

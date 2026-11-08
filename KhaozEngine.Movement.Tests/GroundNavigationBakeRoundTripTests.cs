@@ -214,16 +214,28 @@ public class GroundNavigationBakeRoundTripTests
         using PhysicsNavBake capture = PhysicsNavBake.Capture(
             new GroundMoveContext(fixture.Ground!, physics: world, medium: fixture.Medium), dry, fixture.Classify);
 
-        Assert.Equal("options", Assert.Throws<ArgumentException>(() =>
-            GroundNavigationBake.Create(capture, Sources(), fixture.Profiles)).ParamName);
-        Assert.Equal("expected", Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(
-            new MemoryStream(Bake("channel").File), new NavBakeExpectation(dry, Sources(), fixture.Profiles))).ParamName);
+        var create = Assert.Throws<NavigationProfileException>(() =>
+            GroundNavigationBake.Create(capture, Sources(), fixture.Profiles));
+        Assert.Equal("options", create.ParamName);
+        Assert.Equal(NavigationProfileRefusal.CaptureWaterNotSampled, create.Reason);
+        var water = Assert.Throws<NavigationProfileException>(() => GroundNavigationBake.Load(
+            new MemoryStream(Bake("channel").File), new NavBakeExpectation(dry, Sources(), fixture.Profiles)));
+        Assert.Equal("expected", water.ParamName);
+        Assert.Equal(NavigationProfileRefusal.CaptureWaterNotSampled, water.Reason);
+        Assert.Equal(fixture.Profiles.First(profile => profile.Aquatic).Name, water.ProfileName);
         NavBakeProfile[] disordered = [fixture.Profiles[1] with
         {
             Tuning = fixture.Profiles[1].Tuning with { SwimSurfaceSubmersionFraction = 0.5f },
         }];
-        Assert.Equal("expected", Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(
-            new MemoryStream(Bake("channel").File), new NavBakeExpectation(fixture.Options, Sources(), disordered))).ParamName);
+        var order = Assert.Throws<NavigationProfileException>(() => GroundNavigationBake.Load(
+            new MemoryStream(Bake("channel").File), new NavBakeExpectation(fixture.Options, Sources(), disordered)));
+        Assert.Equal("expected", order.ParamName);
+        Assert.Equal(NavigationProfileRefusal.SwimFractionsUnordered, order.Reason);
+        Assert.Equal(disordered[0].Tuning.SwimExitDepthFraction, order.ExitFraction);
+        Assert.Equal(0.5f, order.SubmersionFraction);
+        Assert.Equal(disordered[0].Tuning.SwimEnterDepthFraction, order.EnterFraction);
+        Assert.Equal(NavBakeLoadStatus.Loaded, GroundNavigationBake.Load(new MemoryStream(Bake("channel").File),
+            new NavBakeExpectation(fixture.Options, Sources(), fixture.Profiles)).Status);
     }
 
     [Fact]

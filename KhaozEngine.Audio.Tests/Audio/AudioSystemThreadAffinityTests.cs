@@ -52,10 +52,12 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
         return caught;
     }
 
-    private static void AssertThrowsOffThread(Action action)
+    private static void AssertThrowsOffThread(string member, Action action)
     {
         Exception? caught = RunOffThread(action);
-        Assert.IsType<InvalidOperationException>(caught);
+        AudioThreadAffinityException refused = Assert.IsType<AudioThreadAffinityException>(caught);
+        Assert.Equal(AudioThreadAffinityRefusal.ThreadMismatch, refused.Reason);
+        Assert.Equal(member, refused.MemberName);
     }
 
     [Theory]
@@ -65,94 +67,113 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
     {
         // Even an unknown name must fail the thread guard before reaching the warn-once lookup path.
         using AudioSystem audio = NewLoaded();
-        AssertThrowsOffThread(() => audio.PlaySfx(name));
+        AssertThrowsOffThread(nameof(AudioSystem.PlaySfx), () => audio.PlaySfx(name));
+        AssertThrowsOffThread("PlaySfx", () => audio.PlaySfx(name, SfxPriority.Normal));
     }
 
     [Fact]
     public void PlaySfx3DOffTheOwningThreadThrows()
     {
         using AudioSystem audio = NewLoaded();
-        AssertThrowsOffThread(() => audio.PlaySfx3D("blip", Vector3.Zero));
+        AssertThrowsOffThread(nameof(AudioSystem.PlaySfx3D), () => audio.PlaySfx3D("blip", Vector3.Zero));
+        AssertThrowsOffThread("PlaySfx3D", () => audio.PlaySfx3D("blip", Vector3.Zero, SfxPriority.Normal));
     }
 
     [Fact]
     public void FirstAvailablePlayOffTheOwningThreadThrows()
     {
         using AudioSystem audio = NewLoaded();
-        AssertThrowsOffThread(() => audio.PlaySfx(new[] { "blip" }));
+        AssertThrowsOffThread(nameof(AudioSystem.PlaySfx), () => audio.PlaySfx(new[] { "blip" }));
+        AssertThrowsOffThread("PlaySfx", () => audio.PlaySfx(new[] { "blip" }, SfxPriority.Normal));
+        AssertThrowsOffThread("PlaySfx3D", () => audio.PlaySfx3D(new[] { "blip" }, Vector3.Zero, SfxPriority.Normal));
     }
 
     [Fact]
     public void RegistryMutationOffTheOwningThreadThrows()
     {
         using AudioSystem audio = NewLoaded();
-        AssertThrowsOffThread(() => audio.RegisterSfx("second"));
-        AssertThrowsOffThread(() => audio.UnregisterSfx("blip"));
-        AssertThrowsOffThread(() => audio.RegisterTrack("theme"));
-        AssertThrowsOffThread(() => audio.LoadContent(_dir));
+        AssertThrowsOffThread(nameof(AudioSystem.RegisterSfx), () => audio.RegisterSfx("second"));
+        AssertThrowsOffThread(nameof(AudioSystem.UnregisterSfx), () => audio.UnregisterSfx("blip"));
+        AssertThrowsOffThread(nameof(AudioSystem.RegisterTrack), () => audio.RegisterTrack("theme"));
+        // The bulk members have no guard of their own, so the refusal names the per-item member they call.
+        // The sequences are non-empty because an empty one never reaches that member.
+        AssertThrowsOffThread("RegisterSfx", () => audio.RegisterSfxes(new[] { "second" }));
+        AssertThrowsOffThread("UnregisterSfx", () => audio.UnregisterSfxes(new[] { "blip" }));
+        AssertThrowsOffThread("RegisterTrack", () => audio.RegisterTracks(new[] { "theme" }));
+        AssertThrowsOffThread(nameof(AudioSystem.LoadContent), () => audio.LoadContent(_dir));
     }
 
     [Fact]
     public void PlaybackAndTickOffTheOwningThreadThrow()
     {
         using AudioSystem audio = NewLoaded();
-        AssertThrowsOffThread(() => audio.Update());
-        AssertThrowsOffThread(() => audio.Update(0.016f));
-        AssertThrowsOffThread(audio.PlayRandomTrack);
-        AssertThrowsOffThread(() => audio.PlayTrack(0));
-        AssertThrowsOffThread(() => audio.PlayTrack("theme"));
-        AssertThrowsOffThread(() => audio.CrossfadeTo("theme", 1f));
-        AssertThrowsOffThread(() => audio.CrossfadeTo(0, 1f));
-        AssertThrowsOffThread(audio.StopAllSfx);
-        AssertThrowsOffThread(() => audio.SetListener(Vector3.Zero, -Vector3.UnitZ, Vector3.UnitY));
+        AssertThrowsOffThread(nameof(AudioSystem.Update), () => audio.Update());
+        AssertThrowsOffThread(nameof(AudioSystem.Update), () => audio.Update(0.016f));
+        AssertThrowsOffThread(nameof(AudioSystem.PlayRandomTrack), audio.PlayRandomTrack);
+        AssertThrowsOffThread(nameof(AudioSystem.PlayTrack), () => audio.PlayTrack(0));
+        AssertThrowsOffThread(nameof(AudioSystem.PlayTrack), () => audio.PlayTrack("theme"));
+        AssertThrowsOffThread(nameof(AudioSystem.CrossfadeTo), () => audio.CrossfadeTo("theme", 1f));
+        AssertThrowsOffThread(nameof(AudioSystem.CrossfadeTo), () => audio.CrossfadeTo(0, 1f));
+        AssertThrowsOffThread(nameof(AudioSystem.StopAllSfx), audio.StopAllSfx);
+        AssertThrowsOffThread(nameof(AudioSystem.SetListener), () => audio.SetListener(Vector3.Zero, -Vector3.UnitZ, Vector3.UnitY));
     }
 
     [Fact]
     public void SettingsMutationOffTheOwningThreadThrows()
     {
         using AudioSystem audio = NewLoaded();
-        AssertThrowsOffThread(() => audio.MasterVolume = 0.5f);
-        AssertThrowsOffThread(() => audio.MusicVolume = 0.5f);
-        AssertThrowsOffThread(() => audio.SfxVolume = 0.5f);
-        AssertThrowsOffThread(() => audio.MusicEnabled = false);
-        AssertThrowsOffThread(() => audio.MusicCrossfadeDuration = 1f);
-        AssertThrowsOffThread(() => audio.PlayMode = PlayMode.RepeatOne);
-        AssertThrowsOffThread(() => audio.SetRotationPool(new[] { "theme" }));
-        AssertThrowsOffThread(() => audio.SetRng(new KhaozEngine.Primitives.DeterministicRng(7)));
-        AssertThrowsOffThread(() => audio.DefineBus("ui"));
-        AssertThrowsOffThread(() => audio.SetBusVolume("ui", 0.5f));
+        AssertThrowsOffThread(nameof(AudioSystem.MasterVolume), () => audio.MasterVolume = 0.5f);
+        AssertThrowsOffThread(nameof(AudioSystem.MusicVolume), () => audio.MusicVolume = 0.5f);
+        AssertThrowsOffThread(nameof(AudioSystem.SfxVolume), () => audio.SfxVolume = 0.5f);
+        AssertThrowsOffThread(nameof(AudioSystem.MusicEnabled), () => audio.MusicEnabled = false);
+        AssertThrowsOffThread(nameof(AudioSystem.MusicCrossfadeDuration), () => audio.MusicCrossfadeDuration = 1f);
+        AssertThrowsOffThread(nameof(AudioSystem.PlayMode), () => audio.PlayMode = PlayMode.RepeatOne);
+        AssertThrowsOffThread(nameof(AudioSystem.SetRotationPool), () => audio.SetRotationPool(new[] { "theme" }));
+        AssertThrowsOffThread(nameof(AudioSystem.SetRng), () => audio.SetRng(new KhaozEngine.Primitives.DeterministicRng(7)));
+        AssertThrowsOffThread(nameof(AudioSystem.DefineBus), () => audio.DefineBus("ui"));
+        AssertThrowsOffThread("DefineBus", () => audio.DefineBus("ui", SfxAttenuation.Default));
+        AssertThrowsOffThread(nameof(AudioSystem.SetBusVolume), () => audio.SetBusVolume("ui", 0.5f));
     }
 
     [Fact]
-    public void TheMessageNamesTheCalledMemberAndBothThreads()
+    public void TheRefusalNamesTheCalledMemberAndBothThreads_AndChangesNothing()
     {
         using AudioSystem audio = NewLoaded();
+        audio.SetBusVolume("ui", 0.25f);
         int owner = Environment.CurrentManagedThreadId;
         int caller = 0;
 
         Exception? caught = RunOffThread(() =>
         {
             caller = Environment.CurrentManagedThreadId;
-            audio.DefineBus("ui");
+            audio.SetBusVolume("ui", 0.5f);
         });
 
-        var invalid = Assert.IsType<InvalidOperationException>(caught);
-        Assert.Contains("AudioSystem.DefineBus", invalid.Message);
-        Assert.Matches($@"\b{owner}\b", invalid.Message);
-        Assert.Matches($@"\b{caller}\b", invalid.Message);
+        Assert.IsAssignableFrom<InvalidOperationException>(caught);
+        var refused = Assert.IsType<AudioThreadAffinityException>(caught);
+        Assert.Equal(AudioThreadAffinityRefusal.ThreadMismatch, refused.Reason);
+        Assert.Equal("SetBusVolume", refused.MemberName);
+        Assert.Equal(owner, refused.OwnerThreadId);
+        Assert.Equal(caller, refused.CallerThreadId);
+        Assert.Equal(0.25f, audio.GetBusVolume("ui"));
+
+        // Control: the same call from the thread the refusal names as the owner is admitted.
+        audio.SetBusVolume("ui", 0.5f);
+        Assert.Equal(0.5f, audio.GetBusVolume("ui"));
     }
 
     [Fact]
-    public void PositionalPlayIsNamedAsSuchInTheMessage()
+    public void PositionalPlayIsNamedAsSuch()
     {
         // PlaySfx and PlaySfx3D share one private play path, so the guard has to say which public overload the
         // caller actually used rather than leaking the helper's name.
         using AudioSystem audio = NewLoaded();
 
-        Exception? caught = RunOffThread(() => audio.PlaySfx3D("blip", Vector3.One));
+        AssertThrowsOffThread("PlaySfx3D", () => audio.PlaySfx3D("blip", Vector3.One));
+        AssertThrowsOffThread("PlaySfx3D", () => audio.PlaySfx3D(new[] { "blip" }, Vector3.One));
 
-        var invalid = Assert.IsType<InvalidOperationException>(caught);
-        Assert.Contains("AudioSystem.PlaySfx3D", invalid.Message);
+        // Control: the same positional call from the owning thread is admitted.
+        audio.PlaySfx3D("blip", Vector3.One);
     }
 
     [Fact]
@@ -161,7 +182,7 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
         // The guard must not cost the ordinary main-thread frame loop anything, including after an off-thread
         // call has already been rejected.
         using AudioSystem audio = NewLoaded();
-        AssertThrowsOffThread(() => audio.PlaySfx("blip"));
+        AssertThrowsOffThread(nameof(AudioSystem.PlaySfx), () => audio.PlaySfx("blip"));
 
         audio.DefineBus("ui");
         audio.SetBusVolume("ui", 0.25f);
@@ -179,11 +200,19 @@ public sealed class AudioSystemThreadAffinityTests : IDisposable
         // The owner latches in the constructor, so an instance built on a loader thread stays owned by THAT
         // thread. This pins which of the two possible affinity rules the class implements.
         AudioSystem? built = null;
-        Exception? ctorFailure = RunOffThread(() => built = new AudioSystem(new FakeMusicBackend(), new FakeSfxBackend()));
+        int builder = 0;
+        Exception? ctorFailure = RunOffThread(() =>
+        {
+            builder = Environment.CurrentManagedThreadId;
+            built = new AudioSystem(new FakeMusicBackend(), new FakeSfxBackend());
+        });
         Assert.Null(ctorFailure);
         Assert.NotNull(built);
 
-        Assert.Throws<InvalidOperationException>(() => built!.RegisterTrack("theme"));
+        var refused = Assert.Throws<AudioThreadAffinityException>(() => built!.RegisterTrack("theme"));
+        Assert.Equal(AudioThreadAffinityRefusal.ThreadMismatch, refused.Reason);
+        Assert.Equal(builder, refused.OwnerThreadId);
+        Assert.Equal(Environment.CurrentManagedThreadId, refused.CallerThreadId);
         built!.Dispose();
     }
 

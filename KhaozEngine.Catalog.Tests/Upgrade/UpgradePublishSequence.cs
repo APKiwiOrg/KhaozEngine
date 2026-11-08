@@ -39,7 +39,7 @@ internal sealed class UpgradePublishSequence
     {
         _olderWatch = CatalogPhaseWatch.Current;
         Advance(0, FirstCommitted);
-        CatalogPhaseWatch.Enter("older sweep waiting for next complete freeze");
+        CatalogPhaseWatch.Enter(CatalogPhase.OlderSweepWaitingForNextFreeze);
         OlderWaiting.TrySetResult();
         try
         {
@@ -48,13 +48,13 @@ internal sealed class UpgradePublishSequence
         finally
         {
             _freezeDependency?.Dispose();
-            CatalogPhaseWatch.Enter("older sweep after next complete freeze");
+            CatalogPhaseWatch.Enter(CatalogPhase.OlderSweepAfterNextFreeze);
         }
     }
 
     public async Task WaitForOldCleanupAsync()
     {
-        CatalogPhaseWatch.Enter("next complete freeze waiting for old commit cleanup");
+        CatalogPhaseWatch.Enter(CatalogPhase.NextFreezeWaitingForOldCleanup);
         using IDisposable? dependency = CatalogPhaseWatch.Current?.Follow(_olderWatch);
         Advance(1, SecondFrozen);
         try
@@ -63,7 +63,7 @@ internal sealed class UpgradePublishSequence
         }
         finally
         {
-            CatalogPhaseWatch.Enter("next publish after old commit cleanup");
+            CatalogPhaseWatch.Enter(CatalogPhase.NextPublishAfterOldCleanup);
         }
     }
 
@@ -100,7 +100,7 @@ internal sealed class UpgradePublishSequence
         Exception? snapshotFailure = null;
         try
         {
-            CatalogPhaseWatch.Enter("old commit cleanup snapshot");
+            CatalogPhaseWatch.Enter(CatalogPhase.OldCommitCleanupSnapshot);
             if (BeforeSnapshot is not null)
             {
                 await BeforeSnapshot();
@@ -129,14 +129,14 @@ internal sealed class UpgradePublishSequence
 
         try
         {
-            CatalogPhaseWatch.Enter("older runner waiting for next report");
+            CatalogPhaseWatch.Enter(CatalogPhase.OlderRunnerWaitingForNextReport);
             await SecondFinished.Task.WaitAsync(Lifetime);
         }
         finally
         {
             if (BeforeOlderReturn is not null)
             {
-                CatalogPhaseWatch.Enter("older runner teardown hold");
+                CatalogPhaseWatch.Enter(CatalogPhase.OlderRunnerTeardownHold);
                 await BeforeOlderReturn();
             }
         }

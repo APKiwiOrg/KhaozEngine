@@ -19,7 +19,15 @@ internal readonly record struct PhysicsNavCaptureBasis(
     {
         using IPhysicsQueryLease lease = Source.AcquireQueryReadLease();
         lease.AssertCurrent();
-        if (lease.GeometryGeneration != GeometryGeneration || lease.Origin != Origin)
-            throw new InvalidOperationException("The physics geometry or origin changed after capture began.");
+        long generation = lease.GeometryGeneration;
+        Vector3? origin = null;
+        if (generation != GeometryGeneration || (origin = lease.Origin) != Origin)
+            throw generation != GeometryGeneration
+                ? new NavigationBuildException(NavigationBuildRefusal.CaptureGeometryChanged,
+                    "The physics geometry or origin changed after capture began.")
+                { ExpectedGeneration = GeometryGeneration, ActualGeneration = generation }
+                : new NavigationBuildException(NavigationBuildRefusal.CaptureOriginChanged,
+                    "The physics geometry or origin changed after capture began.")
+                { ExpectedOrigin = Origin, ActualOrigin = origin };
     }
 }

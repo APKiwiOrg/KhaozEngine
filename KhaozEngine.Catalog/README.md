@@ -11,6 +11,9 @@ and must never pull a database into its graph. `System.IO.Compression` and `Syst
 are in box, and the single engine dependency is `KhaozEngine.Primitives`, which is already in every game's
 graph and is where the `IRandomSource` seam this catalog's random consumers take lives.
 
+The [catalog test harness](../KhaozEngine.Catalog.Tests/README.md) documents its internal upgrade
+script and phase refusals. Those types belong only to the non-packable test project.
+
 ## The rules every type here obeys
 
 - **Integers only on any path a client and a server must agree.** Every stat value, roll, threshold and

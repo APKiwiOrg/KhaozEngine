@@ -166,8 +166,10 @@ public class ParallelContactBakeTests
             },
         }))
         {
-            var refused = Assert.Throws<InvalidOperationException>(() => scene.Build(new NavBakeExecution(2)));
-            Assert.Contains("snapshot changed", refused.Message);
+            var refused = Assert.Throws<NavigationBuildException>(() => scene.Build(new NavBakeExecution(2)));
+            Assert.Equal(NavigationBuildRefusal.WaterGenerationChanged, refused.Reason);
+            Assert.Equal(0, refused.ExpectedGeneration);
+            Assert.Equal(1, refused.ActualGeneration);
         }
         // The setup failure came after worker 0 was fully constructed.
         Assert.Equal([0], pinned);
@@ -193,25 +195,45 @@ public class ParallelContactBakeTests
             },
         }))
         {
-            var refused = Assert.Throws<InvalidOperationException>(() => scene.Build(new NavBakeExecution(2)));
-            Assert.True(RefusalTexts.Any(text => refused.Message.Contains(text, StringComparison.Ordinal)), refused.ToString());
+            var refused = Assert.ThrowsAny<InvalidOperationException>(() => scene.Build(new NavBakeExecution(2)));
+            AssertWaterMutationRefusal(refused);
         }
         Assert.True(Volatile.Read(ref completed) >= 1);
         scene.AssertUsable();
     }
 
-    // The snapshot refusal, a worker's lease refusal when its next acquisition sees the change, or the environment pin
-    // of a lease already held across the change, which checks WaterField.Generation through the environment tuple on
-    // every step. A query that meets the stale pin reports it as Stale availability, so the pin refusal also surfaces
-    // as a query that returned Stale. Which form wins depends on which worker meets the change first.
-    static readonly string[] RefusalTexts =
-    [
-        "The contact navigation build snapshot changed.",
-        "Movement lease acquisition returned",
-        "The movement lease differs from the capture or proof basis.",
-        "The ordinary environment pin is stale.",
-        "query returned Stale.",
-    ];
+    // A worker may meet the changed snapshot, a newly acquired lease, or a pin held across the change first.
+    // A tuple changing during pin construction returns Unresolved, while an already stale pin returns Stale.
+    static void AssertWaterMutationRefusal(InvalidOperationException refused)
+    {
+        if (refused is MovementReadException read)
+        {
+            Assert.Equal(MovementReadRefusal.EnvironmentPinStale, read.Reason);
+            Assert.NotNull(read.Frame);
+            return;
+        }
+        var build = Assert.IsType<NavigationBuildException>(refused);
+        switch (build.Reason)
+        {
+            case NavigationBuildRefusal.WaterGenerationChanged:
+                Assert.Equal(0, build.ExpectedGeneration);
+                Assert.Equal(1, build.ActualGeneration);
+                break;
+            case NavigationBuildRefusal.MovementLeaseIdentityChanged:
+                Assert.Equal(1, build.ExpectedLease!.Value.EnvironmentGeneration);
+                Assert.Equal(2, build.ActualLease!.Value.EnvironmentGeneration);
+                break;
+            case NavigationBuildRefusal.MovementLeaseUnavailable:
+                Assert.Contains(build.Availability, new MovementAvailability?[]
+                    { MovementAvailability.Stale, MovementAvailability.Unresolved });
+                break;
+            default:
+                Assert.Equal(NavigationBuildRefusal.RestingAnchorUnavailable, build.Reason);
+                Assert.Contains(build.Availability, new MovementAvailability?[]
+                    { MovementAvailability.Stale, MovementAvailability.Unresolved });
+                break;
+        }
+    }
 
     [Fact]
     public void WaterGenerationChangeAfterTheLastBandIsCaughtBeforePublishing()
@@ -229,8 +251,10 @@ public class ParallelContactBakeTests
             },
         }))
         {
-            var refused = Assert.Throws<InvalidOperationException>(() => scene.Build(new NavBakeExecution(2)));
-            Assert.Contains("snapshot changed", refused.Message);
+            var refused = Assert.Throws<NavigationBuildException>(() => scene.Build(new NavBakeExecution(2)));
+            Assert.Equal(NavigationBuildRefusal.WaterGenerationChanged, refused.Reason);
+            Assert.Equal(0, refused.ExpectedGeneration);
+            Assert.Equal(1, refused.ActualGeneration);
         }
         scene.AssertUsable();
     }

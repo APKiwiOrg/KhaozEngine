@@ -233,10 +233,11 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         // follow the frame. Refuse the combination at construction rather than serve queries from another space:
         // the failure that would produce is a character standing on nothing, not a rounding artifact.
         if (this.config.FrameAnchoring && physics is not null && !physics.CanRebase)
-            throw new ArgumentException(
+            throw new WorldConfigurationException(WorldConfigurationRefusal.PhysicsCannotRebase,
                 "WorldServerConfig.FrameAnchoring needs an IPhysicsWorld that can rebase (CanRebase), or no physics " +
                 "world at all: the island's frame and its physics world's Origin move together or the step queries " +
-                "colliders in a space its state is not in.", nameof(physics));
+                "colliders in a space its state is not in.", nameof(physics))
+            { MemberName = nameof(IPhysicsWorld.CanRebase) };
         this.physics = physics;
         simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium,
             this.config.SamplerSpace, this.config.ExplicitMovement, this.config.MovementWaterField,

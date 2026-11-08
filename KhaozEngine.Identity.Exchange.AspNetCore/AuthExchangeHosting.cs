@@ -28,9 +28,10 @@ public static class AuthExchangeHosting
     /// <returns><paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null, or the proxy list is.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The body cap is not positive.</exception>
-    /// <exception cref="ArgumentException">A trusted network is a catch-all (see
-    /// <see cref="AuthExchangeHostingOptions.TrustedProxies"/>). The message names its position, never its
-    /// value.</exception>
+    /// <exception cref="TrustedProxyConfigurationException">A trusted network is a catch-all (see
+    /// <see cref="AuthExchangeHostingOptions.TrustedProxies"/>), refused as
+    /// <see cref="TrustedProxyConfigurationRefusal.CatchAllNetwork"/> with its position in
+    /// <see cref="TrustedProxyConfigurationException.Index"/>, never its value.</exception>
     public static WebApplicationBuilder AddAuthExchangeHosting(this WebApplicationBuilder builder,
         AuthExchangeHostingOptions? options = null)
     {

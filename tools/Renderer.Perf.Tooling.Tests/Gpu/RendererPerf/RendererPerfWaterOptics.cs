@@ -9,9 +9,9 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
-/// <summary>The opt-in water optics a v2 recipe measures. OFF draws neither, M2 ON draws underwater sunlight and
-/// M5 ON adds the water column light.</summary>
-internal enum RendererPerfWaterOpticsProfile { Off, M2On, M5On }
+/// <summary>The opt-in water optics the campaigns measure. OFF draws neither, M2 ON draws underwater sunlight and
+/// M5 ON adds the water column light. M3 ON adds underwater caustics.</summary>
+internal enum RendererPerfWaterOpticsProfile { Off, M2On, M5On, M3On }
 
 /// <summary>Profile ids, the approved water optics values and the v2 recipe ids in scene order.</summary>
 internal static class RendererPerfWaterOptics
@@ -34,15 +34,16 @@ internal static class RendererPerfWaterOptics
         RecipeId("outdoors", RendererPerfWaterOpticsProfile.M5On),
     ];
 
-    /// <summary>A nested id, so its frozen file lives at <c>recipes/water-optics-v2/scene/profile.json</c>.</summary>
-    internal static string RecipeId(string scene, RendererPerfWaterOpticsProfile profile) =>
-        "water-optics-v2/" + scene + "/" + Id(profile);
+    /// <summary>A nested id, so its frozen file lives at <c>recipes/campaign/scene/profile.json</c>.</summary>
+    internal static string RecipeId(string scene, RendererPerfWaterOpticsProfile profile, string campaign = "water-optics-v2") =>
+        campaign + "/" + scene + "/" + Id(profile);
 
     internal static string Id(RendererPerfWaterOpticsProfile profile) => profile switch
     {
         RendererPerfWaterOpticsProfile.Off => "off",
         RendererPerfWaterOpticsProfile.M2On => "m2-on",
         RendererPerfWaterOpticsProfile.M5On => "m5-on",
+        RendererPerfWaterOpticsProfile.M3On => "m3-on",
         _ => throw new ArgumentOutOfRangeException(nameof(profile)),
     };
 
@@ -67,7 +68,7 @@ internal static class RendererPerfWaterOptics
     }
 }
 
-/// <summary>A v2 water optics recipe: one pool under one profile.</summary>
+/// <summary>A water optics recipe: one pool under one profile.</summary>
 internal interface IRendererPerfWaterOpticsScene
 {
     RendererPerfWaterOpticsProfile Profile { get; }

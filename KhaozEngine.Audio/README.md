@@ -11,8 +11,8 @@ Game-agnostic audio: streaming music, one-shot SFX, protected loops and 3D posit
 - **Main-thread-only, enforced.** An `AudioSystem` belongs to the thread that constructed it (normally the
   thread running the frame loop). Its registries are plain dictionaries and lists with no locking, so every
   mutating entry point (register, load, play, tick, volume and bus setters) checks the calling thread and throws
-  `InvalidOperationException` when it is the wrong one. The check is a thread-local int compare and is present in
-  Release, so a background job firing an SFX fails on its first call instead of quietly corrupting a dictionary.
+  `AudioThreadAffinityException` when it is the wrong one (see [Refusals](#refusals)). The check is a thread-local
+  int compare and is present in Release, so a background job firing an SFX fails on its first call instead of quietly corrupting a dictionary.
   Loop controls, `IsLoopActive` and `LoopCapacity` also enforce this check, before inspecting handles or
   disposed state. To trigger audio from a worker, record the request and issue the call from the main thread's
   next frame. `Dispose` is the one exemption, provided it does not race a live update or play call. It
@@ -69,6 +69,17 @@ Game-agnostic audio: streaming music, one-shot SFX, protected loops and 3D posit
   Resource-preserving reopen also keeps loop identities and sources without rebuilding playback. Logical
   ownership does not prove audible output or uninterrupted sound through disconnects, which depends on the
   output and device extensions. Keep calling `Update` every frame, including in a game with no music.
+
+## Refusals
+
+A call from the wrong thread throws `AudioThreadAffinityException`, which derives from `InvalidOperationException`.
+`Reason` is the rule.
+
+The reasons are `AudioThreadAffinityRefusal` members.
+
+| `Reason` | What it refuses | Identifiers |
+|---|---|---|
+| `ThreadMismatch` | a call to a guarded member from a thread other than the one that constructed the `AudioSystem` | `MemberName`, the guarded public member that refused (`RegisterSfxes`, `UnregisterSfxes` and `RegisterTracks` have no guard of their own and report their per-item member), and `OwnerThreadId` and `CallerThreadId`, the two managed thread ids |
 
 ## Protected loops
 

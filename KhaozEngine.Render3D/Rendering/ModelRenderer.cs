@@ -259,6 +259,7 @@ namespace KhaozEngine.Render3D.Rendering
             CreatePointLightBuffer(factory);
             CreatePointLightClusters(factory);
             CreateWaterVolumes(factory);
+            CreateCausticPlaceholder(factory);
 
             _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AppendWaterVolumeLayout(AppendInteriorCutLayout(AtmosphereBindings.AppendLayout(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
@@ -632,6 +633,7 @@ namespace KhaozEngine.Render3D.Rendering
             _bonePalette.Dispose();   // after _shadowMap, which binds the same set
             _pointLightClusterBuffer.Dispose();
             _waterVolumeBuffer.Dispose();
+            DisposeCausticPlaceholder();
             _pointLightBuffer.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();

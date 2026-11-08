@@ -116,9 +116,10 @@ public sealed partial class WorldClient
     private static void RequireRebasablePhysics(IPhysicsWorld? physics)
     {
         if (physics is not null && !physics.CanRebase)
-            throw new ArgumentException(
+            throw new WorldConfigurationException(WorldConfigurationRefusal.PhysicsCannotRebase,
                 "WorldClient needs an IPhysicsWorld that can rebase (CanRebase), or no physics world at all: the "
               + "client adopts the server's island frame and its physics world's Origin must move with it, or "
-              + "prediction queries colliders in a space its state is not in.", nameof(physics));
+              + "prediction queries colliders in a space its state is not in.", nameof(physics))
+            { MemberName = nameof(IPhysicsWorld.CanRebase) };
     }
 }

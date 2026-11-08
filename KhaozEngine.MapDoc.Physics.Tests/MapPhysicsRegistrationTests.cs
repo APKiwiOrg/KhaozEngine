@@ -4,6 +4,7 @@ using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Physics;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.Movement;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -217,9 +218,15 @@ public class MapPhysicsRegistrationTests
             Water = new(KhaozEngine.Locomotion.WaterTraversalMode.DryOnly)
         };
         Assert.False(context.SupportsContactController);
-        var failure = Assert.Throws<NotSupportedException>(() => KhaozEngine.Movement.NpcGroundMovement.Hold(
+        var failure = Assert.Throws<GroundContactCapabilityException>(() => KhaozEngine.Movement.NpcGroundMovement.Hold(
             default, 0.1f, tuning, context));
-        Assert.Contains("Resolver-1", failure.Message);
-        Assert.Contains("G1b", failure.Message);
+        Assert.Equal(GroundContactCapabilityRefusal.ContactProducerRestricted, failure.Reason);
+        Assert.Equal(GroundContactProducerKind.MapDocResolverOne, failure.ProducerKind);
+        Assert.Equal(GroundContactCapability.NativeMapDocContact, failure.RequiredCapability);
+        Assert.NotNull(failure.Restriction);
+        Assert.IsAssignableFrom<NotSupportedException>(failure);
+        var legacy = KhaozEngine.Movement.NpcGroundMovement.Hold(default, 0.1f,
+            tuning with { Controller = KhaozEngine.Locomotion.MovementControllerKind.Legacy, Water = default }, context);
+        Assert.True(float.IsFinite(legacy.Position.Y));
     }
 }

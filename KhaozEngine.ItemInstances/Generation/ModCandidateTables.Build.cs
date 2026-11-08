@@ -29,10 +29,11 @@ public sealed partial class ModCandidateTables
     /// </summary>
     /// <param name="snapshot">The loaded version, read for rows and for no other index.</param>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
-    /// <exception cref="InvalidOperationException">
+    /// <exception cref="GenerationTableException">
     /// A tier ordinal is past <see cref="MaxTierOrdinal"/>, a base's tag list is past
     /// <see cref="MaxGenerationTagPositions"/>, a bucket would hold more than
-    /// <see cref="MaxBucketEntries"/> entries, or a bucket's weights sum past <see cref="int.MaxValue"/>.
+    /// <see cref="MaxBucketEntries"/> entries, a mod id is past <see cref="MaxModId"/>, or a bucket's
+    /// cumulative weight or a signature's live union sums past <see cref="int.MaxValue"/>.
     /// Each one fails the BOOT closed rather than handing back a table that quietly answers wrong.
     /// </exception>
     public static ModCandidateTables Build(IContentSnapshot snapshot)
@@ -211,8 +212,13 @@ public sealed partial class ModCandidateTables
             long ordinal = InstanceContentChecks.Number(row, ModTierContentType.OrdinalIndex) ?? 0;
             if (ordinal > MaxTierOrdinal)
             {
-                throw new InvalidOperationException(FormattableString.Invariant(
-                    $"{InstanceContentFindings.TierOrdinal}: mod tier {row.Id} carries ordinal {ordinal}, over the packed key's ceiling of {MaxTierOrdinal}. The candidate table packs a tier ordinal into {TierBits} bits beside the mod id, so an ordinal above the ceiling would alias onto another tier of the same mod."));
+                throw new GenerationTableException(GenerationTableRefusal.TierOrdinalExceeded, FormattableString.Invariant(
+                    $"{InstanceContentFindings.TierOrdinal}: mod tier {row.Id} carries ordinal {ordinal}, over the packed key's ceiling of {MaxTierOrdinal}. The candidate table packs a tier ordinal into {TierBits} bits beside the mod id, so an ordinal above the ceiling would alias onto another tier of the same mod."))
+                {
+                    TierId = row.Id,
+                    ActualOrdinal = ordinal,
+                    MaximumOrdinal = MaxTierOrdinal,
+                };
             }
 
             long low = InstanceContentChecks.Number(row, ModTierContentType.ItemLevelMinIndex) ?? 0;
@@ -245,8 +251,12 @@ public sealed partial class ModCandidateTables
 
             if (mods.Ids[modSlot] > MaxModId)
             {
-                throw new InvalidOperationException(FormattableString.Invariant(
-                    $"Mod {mods.Ids[modSlot]} is over the packed key's mod id ceiling of {MaxModId}. The candidate table packs the mod id above {TierBits} bits of tier ordinal, so a larger id cannot be held in one int."));
+                throw new GenerationTableException(GenerationTableRefusal.PackedModIdExceeded, FormattableString.Invariant(
+                    $"Mod {mods.Ids[modSlot]} is over the packed key's mod id ceiling of {MaxModId}. The candidate table packs the mod id above {TierBits} bits of tier ordinal, so a larger id cannot be held in one int."))
+                {
+                    ModId = mods.Ids[modSlot],
+                    MaximumModId = MaxModId,
+                };
             }
 
             int run = LowerBound(weights.TierIds, row.Id);
@@ -355,8 +365,15 @@ public sealed partial class ModCandidateTables
         {
             if (lengths[bucket] > MaxBucketEntries)
             {
-                throw new InvalidOperationException(FormattableString.Invariant(
-                    $"The candidate bucket for tag {tagIds[bucket / (mods.Kinds.Length * bandCount)]}, mod kind {mods.Kinds[(bucket / bandCount) % mods.Kinds.Length]} and band {bucket % bandCount} holds {lengths[bucket]} entries, over the ceiling of {MaxBucketEntries}. The overlap lists are 16 bit indices into a bucket, so a wider one cannot be addressed by one."));
+                throw new GenerationTableException(GenerationTableRefusal.BucketEntryCountExceeded, FormattableString.Invariant(
+                    $"The candidate bucket for tag {tagIds[bucket / (mods.Kinds.Length * bandCount)]}, mod kind {mods.Kinds[(bucket / bandCount) % mods.Kinds.Length]} and band {bucket % bandCount} holds {lengths[bucket]} entries, over the ceiling of {MaxBucketEntries}. The overlap lists are 16 bit indices into a bucket, so a wider one cannot be addressed by one."))
+                {
+                    TagId = tagIds[bucket / (mods.Kinds.Length * bandCount)],
+                    ModKind = mods.Kinds[(bucket / bandCount) % mods.Kinds.Length],
+                    Band = bucket % bandCount,
+                    ActualCount = lengths[bucket],
+                    MaximumCount = MaxBucketEntries,
+                };
             }
 
             starts[bucket] = running;
@@ -383,8 +400,15 @@ public sealed partial class ModCandidateTables
                     long total = (fill[bucket] == 0 ? 0L : cumulative[at - 1]) + weights.Values[index];
                     if (total > int.MaxValue)
                     {
-                        throw new InvalidOperationException(FormattableString.Invariant(
-                            $"{InstanceContentFindings.WeightBucketOverflow}: the candidate bucket for tag {weights.TagIds[index]}, mod kind {mods.Kinds[tiers.KindPosition[tier]]} and band {band} sums to {total}, past the int ceiling of {int.MaxValue}. A cumulative column that saturates changes every probability in the bucket."));
+                        throw new GenerationTableException(GenerationTableRefusal.BucketWeightExceeded, FormattableString.Invariant(
+                            $"{InstanceContentFindings.WeightBucketOverflow}: the candidate bucket for tag {weights.TagIds[index]}, mod kind {mods.Kinds[tiers.KindPosition[tier]]} and band {band} sums to {total}, past the int ceiling of {int.MaxValue}. A cumulative column that saturates changes every probability in the bucket."))
+                        {
+                            TagId = weights.TagIds[index],
+                            ModKind = mods.Kinds[tiers.KindPosition[tier]],
+                            Band = band,
+                            ActualWeight = total,
+                            MaximumWeight = int.MaxValue,
+                        };
                     }
 
                     packed[at] = tiers.Packed[tier];

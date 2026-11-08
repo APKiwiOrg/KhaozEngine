@@ -11,8 +11,8 @@ namespace KhaozEngine.Render3D
     /// (both are scene-wide look-and-feel bags reached off <c>Post</c>, as opposed to <see cref="WaterPlane"/>,
     /// which is the per-frame WHERE-to-draw request via <see cref="Scene3D.DrawWater(in WaterPlane)"/>). Drawing
     /// nothing (no <see cref="Scene3D.DrawWater(in WaterPlane)"/> call this frame) means no water pass runs at all,
-    /// regardless of these settings - existing scenes stay byte-stable. No refraction, no screen-space reflections,
-    /// no caustics and no submerged view: the reflection is the analytic sky only (see
+    /// regardless of these settings - existing scenes stay byte-stable. No refraction, no screen-space reflections
+    /// and no submerged view: the reflection is the analytic sky only (see
     /// <see cref="PixelPostProcessSettings.Sky"/>), and this is a stylized LDR surface, not a physically accurate
     /// one.
     /// <para>
@@ -119,13 +119,26 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Enable refracted, absorbed key sunlight for receivers inside water volumes. Default
         /// <c>false</c>. Each plane may override this through <see cref="WaterLook.UnderwaterSunlight"/>.
-        /// <see cref="WaterColumnLight"/> also enables this lighting without changing this field.</summary>
+        /// <see cref="WaterColumnLight"/> or participating <see cref="UnderwaterCaustics"/> also enables this
+        /// lighting without changing this field.</summary>
         public bool UnderwaterSunlight;
 
         /// <summary>Extra key-shadow penumbra radius in metres per metre of in-water light path. Must be finite
         /// and non-negative. Default <c>0.03</c>. Used when <see cref="UnderwaterSunlight"/> or
-        /// <see cref="WaterColumnLight"/> is enabled.</summary>
+        /// <see cref="WaterColumnLight"/> is enabled, or <see cref="UnderwaterCaustics"/> participates.</summary>
         public float UnderwaterPenumbraPerMetre = 0.03f;
+
+        /// <summary>Opt in to underwater sunlight focusing by procedural surface waves. Default <c>false</c>.
+        /// Each plane may override this through <see cref="WaterLook.UnderwaterCaustics"/>.</summary>
+        public bool UnderwaterCaustics = false;
+
+        /// <summary>Dimensionless scale of refracted focus offsets from the still-water ray. Default <c>1</c>
+        /// is physical focusing. Strength scales focus displacement, not final brightness or contrast.
+        /// Must be finite and non-negative only when <see cref="UnderwaterCaustics"/> is enabled and the
+        /// resolved <see cref="WaveSource"/> is <see cref="WaterWaveSource.Procedural"/>. FFT bodies ignore
+        /// the opt-in and strength, so strength is not validated for them. Each plane may override this through
+        /// <see cref="WaterLook.CausticStrength"/>.</summary>
+        public float CausticStrength = 1f;
 
         /// <summary>Opt in to water-column light and shadow using <see cref="WaterColor"/> and
         /// <see cref="Clarity"/>. Default <c>false</c>. Each plane may override this through

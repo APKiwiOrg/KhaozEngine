@@ -762,8 +762,10 @@ public partial class ContactControllerTests
     {
         using var g = new Ground(null, Flat);
         MoveState s = Standing(Vector3.Zero);
-        Assert.Throws<NotSupportedException>(() =>
+        var failure = Assert.Throws<MovementCapabilityException>(() =>
             g.Step(s, Vector2.UnitX, 1, false, Tuning, medium: (_, _, _) => new MovementMedium(4, inWater: true)));
+        Assert.Equal(MovementConfigurationRefusal.PointSampledWaterUnsupported, failure.Reason);
+        Assert.Equal(typeof(IMovementWaterField), failure.RequiredCapability);
 
         MoveState dry = g.Step(s, Vector2.UnitX, 1, false, Tuning, medium: (_, _, _) => MovementMedium.Dry);
         MoveState none = g.Step(s, Vector2.UnitX, 1, false, Tuning);

@@ -137,7 +137,9 @@ service exchanges. Two hardening details are baked into the client flow:
   authorization-code flow is generated with a PKCE code verifier and challenge (RFC 7636), so a stolen authorization
   code cannot be redeemed without the verifier that only the originating client holds. The `state` parameter is
   checked against the loopback redirect before the code is accepted, closing the cross-site request forgery gap in a
-  bare auth-code exchange.
+  bare auth-code exchange. A refused sign-in carries `SignInException.Reason` and typed identifiers, and none of
+  them holds a token, an authorization code, a `state` value, a client secret, the authority URL or a response
+  body. A state mismatch reports only the provider id.
 - **Token-at-rest posture** (`FileTokenCache`): the on-disk cached session is obfuscated (base64 + a fixed
   in-assembly HMAC tag) and, on unix, written with owner-only file permissions (`0600`). Read this precisely, the same
   as the `SaveEncoder` claim above: it is a **casual-read/tamper deterrent, not a security boundary**. The HMAC key
@@ -152,7 +154,7 @@ re-deriving them:
 
 - **Key strength.** `SigningSecret.Load` and `Decode` accept only standard base64 decoding to at least
   `SigningSecret.MinimumBytes` (32) bytes, the HMAC-SHA256 output size. Unset reads as null, and set but invalid throws
-  an error naming the variable and never the value. `AuthExchange` refuses a shorter key at construction. Local
+  `SigningSecretException` with the variable as `SourceName` and a `SigningSecretRefusal`, never the value. `AuthExchange` refuses a shorter key at construction. Local
   development uses `SigningSecret.CreateEphemeral()`, a random key that cannot leave the process, never a source
   constant. `HmacTokenAuthenticator` checks no key length, so the game server loads its key through `SigningSecret`
   too.
@@ -185,8 +187,8 @@ re-deriving them:
   The framework's default loopback entries are removed, every network is registered in both address families, and
   the forward limit is one, so only the hop the trusted proxy appended is read and a client cannot choose its own
   bucket. A catch-all is refused when the hosting is added: any /0 in either family, which is what
-  `default(IPNetwork)` is, or an IPv6 network holding the whole IPv4-mapped block. The refusal names the list position
-  and never the value.
+  `default(IPNetwork)` is, or an IPv6 network holding the whole IPv4-mapped block. The refusal is
+  `TrustedProxyConfigurationRefusal.CatchAllNetwork` with the list position in `Index`, and never carries the value.
 - **One failure envelope, no account oracle.** A provider outage, the provider deadline, a store fault and a policy
   fault all answer the same 503 `unavailable` body, so a response never says which dependency failed. A refused
   credential and a malformed request answer before any account lookup. Every answer that names an account follows a

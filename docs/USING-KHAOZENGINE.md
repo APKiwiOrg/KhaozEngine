@@ -533,7 +533,9 @@ are drawn at, bracketed at the remote render time exactly as the remote samples 
 including against an older server and from the start of a reconnect attempt. Polling once per tick and then
 presenting one tick of time reads `LatestServerTick - InterpolationDelayTicks + 1` for a remote with continuous history
 after the first `InterpolationDelayTicks` of a session, so read `RemoteRenderTick` rather than computing it. Format 2
-replication carries no tick, so `ReceiveServerTick` with `RequestUnreliableDeltaReplication` throws at construction.
+replication carries no tick, so `ReceiveServerTick` with `RequestUnreliableDeltaReplication` throws
+`WorldConfigurationException` with `ServerTickWithUnreliableReplication` at construction. `IncompatibleMembers`
+carries both names as a copied read-only snapshot.
 
 **Runtime window/taskbar icon.** Set `WindowIconPath` to a PNG (the simple case) or `WindowIcons` to an explicit
 list of decoded `ImageRgba` (16/32/48 px so GLFW picks per DPI; `WindowIcons` wins over `WindowIconPath`). `GameApp`
@@ -5997,7 +5999,7 @@ is retained after a failed preparation and is zero before the first success. Unr
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
   fresnel blend toward the reflected sky, a GGX sun glint with distance/footprint roughness widening,
   procedural whitecap and shoreline foam, and a depth-driven shore fade at the waterline.
-  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** - the reflection is the
+  **No bent image lookup, no screen-space reflections, no submerged view** - the reflection is the
   sky only (the legacy gradient or the enabled atmosphere's sky-view LUT, with a CPU mirror through
   `AtmosphereModel`). Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
   Issue #54 records probes/SSR as not planned at the current bar. This is a stylized LDR surface, not a
@@ -6020,7 +6022,8 @@ is retained after a failed preparation and is zero before the first success. Unr
     `ClusterCamera.w` carries the independent record count. Zero skips the entire water query without a buffer
     read or upload, so a frame with no opted-in water renders exactly as before. Every lit program reads
     `WaterVolumes` at appended set 0 binding 15 for rigid, foliage and CPU-skinned, 7 for GPU-skinned, or 6 for
-    splat and tile ground. A layout gains a binding with its first shader reader because optimization removes
+    splat and tile ground, with `CausticMap` and `CausticSampler` on the next two bindings.
+    A layout gains a binding with its first shader reader because optimization removes
     unread declarations and shifts Direct3D11 registers. Shaderc preserve-bindings stays unchanged.
     Scene and standalone lit renderer construction require `GpuCapabilities.MaxFragmentStorageBuffers >= 3`
     before GPU allocation, including when water is disabled. Lower reports throw
@@ -6046,7 +6049,8 @@ is retained after a failed preparation and is zero before the first success. Unr
     ```
     **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
     (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
-    `WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `UnderwaterCaustics`/`CausticStrength`/`WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`),
+    foam, the four `Glint*` scalars,
     `ShoreFadeDistance`, and the two depth-response strengths `ShoalingStrength`/`SurfStrength`.
     **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
@@ -6066,6 +6070,21 @@ is retained after a failed preparation and is zero before the first success. Unr
     being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
     [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
     is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+  - **Caustic authoring**: `UnderwaterCaustics` defaults to `false` and `CausticStrength` defaults to `1`.
+    Nullable `WaterLook` overrides inherit on `null`, and an explicit `false` opts a body out. Strength scales
+    refracted focus offsets from the still-water ray, with `1` representing physical focusing. Frame
+    preparation requires finite, non-negative strength only for an opted-in procedural body, otherwise throwing
+    `ArgumentException` with `ParamName` equal to `CausticStrength`. FFT bodies ignore the opt-in and strength.
+    FFT and disabled bodies leave strength unvalidated.
+    A positive strength on a procedural body also opts it into underwater sunlight without changing
+    `UnderwaterSunlight`, contributing a water volume record even when `WaterColumnLight` is false.
+    A participating body draws into a 64 m window that follows where the view meets the water, and lit receivers
+    under it read moving bands from the caustic map. `scene.WaterCausticDiagnostics` reports `OptedInPlanes`,
+    `DrawnPlanes`, `FftPlanes`, `OverflowPlanes` and `Layers` for the latest rendered frame. A frame with no
+    participating body runs no pass and creates no atlas. The first participating body costs a lit set replacement and
+    about 10.5 MB per atlas layer, and the atlases never shrink. Known limits: FFT bodies have no caustics, four map
+    layers (a body past them renders without caustics and is counted), the window's outer 4 m fades the term to 1 and
+    receivers outside it read 1, and bodies sharing a layer can exchange light across a gap narrower than its deflection.
   - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
     RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for
     about 5% bed visibility when seen straight down. These are neutral authoring defaults, not tuned river values.
@@ -6176,8 +6195,9 @@ is retained after a failed preparation and is zero before the first success. Unr
       all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`. The resolved absorption
       also drives underwater sunlight for bodies without `WaterColumnLight`, where all-zero absorption means
       no attenuation.
-    - *Underwater sunlight*: either `UnderwaterSunlight` or `WaterColumnLight` opts in (both scene defaults `false`),
-      with `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+    - *Underwater sunlight*: `UnderwaterSunlight`, `WaterColumnLight` or `UnderwaterCaustics` with positive strength
+      and effective procedural waves opts in (all scene defaults `false`), with `UnderwaterPenumbraPerMetre`
+      (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
       renders exactly as before. The receiver's own body supplies the light path, using its still-water plane
@@ -8992,7 +9012,9 @@ glide described under "Animated characters" above (`CharacterController3D.ClimbR
 what the `ke-dungeon` CLI reads and writes. The JSON matches the embedded schema (`DungeonSchema.GetJson()`,
 a `oneOf` over the config and layout shapes), which the package's tests validate against and which is
 available for editor/AI tooling. The load path itself enforces its own semantic checks, throwing
-`DungeonJsonException` naming the offending field. A hand-authored or generated config looks like:
+`DungeonJsonException`. Its `Reason` (a `DungeonJsonRefusal`) names the rule and, where one applies, `JsonPath` the offending member,
+with the other identifiers listed in the package README. The message is prose, never a contract. A hand-authored
+or generated config looks like:
 
 ```jsonc
 {
@@ -9517,8 +9539,16 @@ trace. A dry traversal helper cannot bypass that proof.
 
 Dispose the context at teardown. Caller-supplied views stay borrowed, while a contact construction without a view
 creates and owns one selected view. The physics source remains caller-owned. Producers that support legacy geometry
-only set `legacyOnlyContactRefusal` at construction. Resolver-1 MapDoc contexts refuse every contact use with
-`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.`
+only set `legacyOnlyContactRefusal` at construction. Contact use then throws
+`GroundContactCapabilityException : NotSupportedException` with
+`GroundContactCapabilityRefusal.ContactProducerRestricted` and the producer's text in `Restriction`.
+The original constructor signature remains available. A further overload accepts optional metadata values
+`GroundContactProducerKind? producerKind` and `GroundContactCapability? requiredCapability` after the restriction
+string. These values do not alter admission. Resolver-1 MapDoc contexts carry `ProducerKind = MapDocResolverOne`
+and `RequiredCapability = NativeMapDocContact` (G1b). A producer using the string-only overload leaves both null.
+A context constructed through a legacy overload refuses contact with `OrdinaryContextRequired`. Contact prediction
+with another binding kind refuses with `OrdinaryPredictionRequired`. Both carry `RequiredKind = OrdinaryContact`.
+See the [ground context contact refusal table](../KhaozEngine.Movement/README.md#ground-context-contact-refusals).
 
 ### Static physics columns and profile construction
 
@@ -9563,7 +9593,12 @@ Y and visits columns in Z then X order. It stores each surface's absolute height
 `MaxSurfacesPerColumn + 1` probe detects overflow. Checked cell, sample and layer budgets are validated before
 dense arrays. Missing, padded and exact outer-edge samples remain blocked. Capture does not fall back to
 `GroundMoveContext.GroundHeight`, and it does not retain the classifier in its snapshot.
-Keep statics and the origin unchanged through profile construction. `Dispose` releases builder references only.
+Keep statics and the origin unchanged through profile construction. Capture and stable-read failures use
+`NavigationBuildException` (an `InvalidOperationException`) with `NavigationBuildRefusal` and typed generation,
+origin, column, surface or source identifiers. Parallel contact and stable legacy capability failures use
+`NavigationReadCapabilityException` (a `NotSupportedException`) with `NavigationReadRefusal`,
+`RequiredCapability` and `SourceRole`. See the [capture and read refusal tables](../KhaozEngine.Movement/README.md#navigation-capture-and-read-refusals).
+`Dispose` releases builder references only.
 The returned profile owns pure data and stays usable after the builder, providers and physics world are disposed.
 
 ### GroundNavigation contract
@@ -9604,13 +9639,25 @@ rules.
 
 Both `BuildProfile` overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Load` expectation
 validate Contact selection before other profile work or stream reads. Malformed configurations throw
-`ArgumentException`, and Contact aquatic profiles throw `NotSupportedException` naming #1389. Ground construction
+`ArgumentException`, and Contact aquatic profiles throw `NavigationProfileCapabilityException` with
+`ContactAquaticUnsupported` and `IssueUrl` naming #1389. Profile compatibility failures use
+`NavigationProfileException` with `NavigationProfileRefusal`, the retained `ParamName` and typed field,
+kind, slope or fraction identifiers. Its base is `ArgumentException`. Deferred public explicit navigation
+uses `NavigationProfileCapabilityException` with `PublicExplicitProfileUnsupported` and the same issue URL.
+See the [profile refusal table](../KhaozEngine.Movement/README.md#navigation-profile-refusals). Ground construction
 requires an ordinary-constructed context and a leased capture whose geometry and origin remain unchanged.
 Phase 5b ground navigation is released in 20.39.0. Contact aquatic navigation, footprint-only seeds and
 public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
 Raw surfaces retain layer and area identity. Certified resting anchors supply physical node poses through
 `NavGrid.RestingHeightAt`. Placement and Hold require grounded `Advanced` outcomes within 1 mm, and directed
 edges use the ordinary environment's water policy. Legacy v1 bake bytes remain unchanged.
+Contact proof refusals carry `NavigationBuildRefusal` with zero-based `CellX` and `CellZ` and the refused
+availability, frame or lease identity where applicable. Snapshot refusals identify the first changed producer input,
+including its expected and actual generation, ordinal water identity or bitwise extent. Envelope refusals carry
+physics-frame `Minimum` and `Maximum`, or the support footprint inputs when its bounds are unbounded. See the
+[navigation capture and read refusal table](../KhaozEngine.Movement/README.md#navigation-capture-and-read-refusals).
+A lower live read retains `MovementReadException` and `MovementReadRefusal`, with the retained frame and lease
+identity or the acquiring and calling thread IDs. Existing `InvalidOperationException` catches accept both families.
 Capture checks its leased basis after classification and sampling. With `SampleWater`, a contact water field
 requires a supplied medium delegate, which capture samples without requiring contact tuning validation.
 
@@ -9978,7 +10025,7 @@ The default is false. True is a caller assertion that every provider used by the
 read-only. Keep ground, normals, bounds, medium, water and area data fixed. Callbacks must not mutate physics,
 acquire an incompatible explicit nested lease or wait for another thread to mutate that owner. The complete physics
 source and any selected movement query view must each declare `IPhysicsQueryLeaseSource` themselves. Unsupported
-true throws `NotSupportedException` after argument checks and before proofs, with no capability inferred from an
+true throws `NavigationReadCapabilityException` with `LegacyQueryLeaseRequired` after argument checks and before proofs, with no capability inferred from an
 underlying backend. The live lease authenticates the exact owner, selected view, origin and captured geometry.
 
 The scope is thread-affine and releases on success or exception. An opted-in build inside an existing explicit lease
@@ -16145,14 +16192,23 @@ select the dry contact controller when `Controller` is `Contact`, retaining came
 precise direction resolution. The foot fraction must be finite in (0, 1], the foot radius must be at least
 0.01 m and the knee-height shell must validate. Null physics supports analytic-only movement. Supplied physics
 requires `IPhysicsQueryLeaseSource` and `IPhysicsSupportFootprint`. Clamp and dry medium delegates are accepted.
-Wet point samples refuse and name the ordinary `IMovementWaterField` route. The position-only overload refuses
-Contact and names the stateful overload. Legacy requires default foot and water settings. Undefined selectors
+Wet point samples throw `MovementCapabilityException` with `PointSampledWaterUnsupported` and
+`RequiredCapability == typeof(IMovementWaterField)`. The position-only overload refuses Contact with
+`StatefulOverloadRequired`, `RequiredOverload == "CharacterMovement.Step(in MoveState, ...)"` and
+`RequiredStateType == typeof(MoveState)`. Legacy requires default foot and water settings. Undefined selectors
 throw `ArgumentOutOfRangeException`. Ordinary heads run the leased contact composition at placement offset zero,
 while public explicit APIs retain 0.001 m. Ordinary validation additionally requires positive gravity,
 maximum fall speed and swim-enter depth fraction, a non-Legacy water policy, registration, boundary and a view
 with query leases, capsule contacts, complete support footprints and certified capsule sweeps. A medium
 delegate requires a field. Public explicit configuration governs its own water policy and rejects conflicting
 tuning water. Contact plus public explicit configuration is refused as two selections.
+Shared selector and binding validation uses `MovementConfigurationException : ArgumentException` and
+`MovementCapabilityException : NotSupportedException`, with non-null `MovementConfigurationRefusal Reason`.
+The [Locomotion refusal table](../KhaozEngine.Locomotion/README.md#configuration-and-capability-refusals)
+defines every identifier. Numeric failures retain the first failed kernel predicate and its actual value,
+with nonfinite checks first and limits of zero, one or half pi as appropriate. Original parameter names,
+guard order, shell admission, messages and movement arithmetic are unchanged. Legacy and public explicit
+binding selection refusals carry the actual and expected controller or requested binding kind.
 Phase 5a is released in 20.37.0. Phase 5b ground navigation is released in 20.39.0.
 
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
@@ -17058,6 +17114,9 @@ IPhysicsWorld BuildCellWorld(CellCoord coord)
   `Origin` of `FrameFor(coord).Anchor`, it belongs to that one cell (it is disposed with the cell), and a static
   near a border legitimately exists in both neighbours' worlds - nothing reconciles the copies, because a static
   does not move. Sharing one world between two cells rebuilds the exact failure per-cell worlds exist to prevent.
+  With frame anchoring on, a mismatched origin throws Sharding's `ShardFrameException` (`ArgumentException`)
+  with `PhysicsFactoryOriginMismatch`, `Cell`, `MemberName` (`PhysicsWorldFactory`), `ActualOrigin` and
+  `ExpectedOrigin`. The compared origin is read once before disposal, and no cell is published.
 - **`SamplerSpace.World`** (the default, on both server configs and on `WorldClientConfig`, and it must MATCH
   across them) means your `groundHeight` / `groundNormal` / medium delegates keep taking absolute coordinates and
   the step converts for them. That is zero work and still fixes the accumulating half, because the carried state
@@ -17071,7 +17130,9 @@ IPhysicsWorld BuildCellWorld(CellCoord coord)
   gate) goes flat without an error. Set `SamplerSpace.Frame` whenever the sampler is physics-backed.
 - **A physics world must be able to rebase.** Constructing a `WorldServer` with `FrameAnchoring` and an
   `IPhysicsWorld` whose `CanRebase` is false throws, and so does constructing a `WorldClient` with one, because a
-  framed step querying an unframed world is a wrong answer rather than an imprecise one. `BepuPhysicsWorld` can.
+  framed step querying an unframed world is a wrong answer rather than an imprecise one. The refusal is
+  `WorldConfigurationException` (`ArgumentException`) with `PhysicsCannotRebase`, `MemberName` (`CanRebase`)
+  and `ParamName` (`physics`). `BepuPhysicsWorld` can.
   A hand-written backend or test double reports false through the seam's default and has to opt in.
 - **The frame is reachable from a `World` alone.** Anything the engine hands only a world - the `WorldPickups`
   spawn callback, your `OnBeforeTick` brain, a system reading a cross-border ghost - reads
@@ -17080,7 +17141,16 @@ IPhysicsWorld BuildCellWorld(CellCoord coord)
   is exactly zero, so the same code is correct either way.
 - **`CellSize` is validated against the divergence ceiling** when frame anchoring is on. A cell's frame sits at its
   centre, so its worst frame-local coordinate is bounded by the cell's own size: `CellSize = 600` puts the planar
-  magnitude past `WorldFrame.MaxLocalRadius` and the constructor refuses it with the derivation in the message.
+  magnitude past `WorldFrame.MaxLocalRadius` and the constructor throws `WorldConfigurationException` with
+  `FramePlanarMagnitudeExceeded`, `CellSize`, `OverlapMargin`, `ActualPlanarMagnitude` and the inclusive
+  `MaximumPlanarMagnitude` (512 m). An overflowed nonfinite result that exceeds the ceiling carries
+  `FramePlanarMagnitudeNonfinite`. The admission comparison is unchanged.
+- **Other configuration refusals** use the same type, retaining the original `ParamName`. `CellOriginNonfinite`
+  carries `MemberName` (`CellOrigin`) and `ActualOrigin`. `InterestOutsideOverlap` carries `InterestRadius` and
+  `OverlapMargin`. `ReplicationStreamMissing` carries `MemberName` (`ReplicationStream`). `UnreliableWithoutDelta`
+  carries the guarded stream arguments as `MemberName` (`optIn`) and `RequiredMember` (`deltaReplication`),
+  including when a server or client config delegates to that guard. See the
+  [NetWorld refusal table](../KhaozEngine.NetWorld/README.md#world-configuration-refusals).
 - **Turn it off** (`FrameAnchoring = false`) for byte-identical pre-frame behaviour, at the cost of the precision.
 - **What it does not need:** any change to your terrain bake or your collision meshes. Chunk-local terrain
   vertices (see the Terrain section) are unconditional and work on both heads with this flag off.
@@ -19660,8 +19730,12 @@ constructed it, normally the thread pumping the frame loop. Its registries are p
 with no locking, so every mutating entry point (`RegisterTrack` / `RegisterSfx` / `LoadContent`, every play and
 crossfade call, `Update`, `StopAllSfx`, `SetListener`, `SetRng`, `SetRotationPool`, and the `MasterVolume` /
 `MusicVolume` / `SfxVolume` / `MusicEnabled` / `MusicCrossfadeDuration` / `PlayMode` setters plus `DefineBus` /
-`SetBusVolume`) compares the calling thread first and throws `InvalidOperationException` naming both threads when
-it is the wrong one. The comparison is a thread-local `int` read, so it costs the same in Release as in Debug and
+`SetBusVolume`) compares the calling thread first and throws `AudioThreadAffinityException` when it is the wrong
+one. It derives from `InvalidOperationException`, its `Reason` is `AudioThreadAffinityRefusal.ThreadMismatch`, and it
+carries the guarded public member that refused in `MemberName` and both managed thread ids in `OwnerThreadId` and
+`CallerThreadId`. `RegisterSfxes`, `UnregisterSfxes` and `RegisterTracks` have no guard of their own and report their
+per-item member.
+The comparison is a thread-local `int` read, so it costs the same in Release as in Debug and
 a background job cannot get a pass on a build where `Debug.Assert` has been compiled away. To play a sound in
 response to work on a worker thread (an ECS job under `ThreadPoolJobScheduler`, an async content load), record
 the request in your own structure and issue the call from the main thread on the next frame. Loop starts, controls,
@@ -20326,6 +20400,10 @@ A whole-frame GPU-time number (Tier 2) based on synchronization was considered a
 lower bound, not an honest whole-frame GPU duration, so it was not shipped either. Present/blit (swapping the
 finished frame to the screen) is not covered by these brackets: that happens in `KhaozEngine.Windowing.AppWindow.Run`,
 outside anything `Scene3D` records into.
+
+`ModelMs` includes underwater caustic planning and recording, opaque light-cluster construction, and the
+model/terrain (splat) instanced draws. Enabling caustics can therefore increase this interval before any
+model draw is recorded.
 
 `Scene3D` (`KhaozEngine.Render3D`) has no dependency on `KhaozEngine.Diagnostics`, so it exposes the raw
 per-pass milliseconds itself (`Scene3D.PassTimingsMs`, a `Scene3DPassTimingsMs` with `ShadowDepthMs` /
@@ -24432,6 +24510,15 @@ a process holds exactly one table set and a new content version becomes active a
 through a swap. A host either keeps the instances it constructed, as above, or reads one back off the runtime
 with `TryGetLoadIndex<ModCandidateTablesIndex>(new ContentTypeId(InstanceContentTypeIds.ModTypeId), out ...)`.
 
+Boot-time generation table checks throw `GenerationTableException`, derived from `InvalidOperationException`.
+Read its required `GenerationTableRefusal Reason` and typed identifiers, or the original refusal in
+`ContentLoadIndexException.InnerException` when boot step 7b wraps it. Reasons distinguish tag-position and
+bucket-entry limits, bucket and union weight limits, excluded-run capacity, packed mod ids and tier ordinals,
+and uncovered rarity name positions. The
+[package refusal table](../KhaozEngine.ItemInstances/README.md#the-candidate-tables-what-one-roll-reads)
+names each reason, its identifiers and inclusive limits, with the matching fixed catalog finding codes.
+Actual counts, weights, affix counts and ordinals use `long` identifiers. Messages are developer prose.
+
 **Rolling one item.** `ItemGenerator` turns (base, item level, randomness) into a canonical payload. It does
 NOT decide which base drops: that is a loot table, one package down, and the seam is deliberate.
 
@@ -25147,7 +25234,9 @@ The ASP.NET Core names come from a web project's implicit usings. What a game ch
   `SqlServerAccountStore` for production, where `AccountSchemaMode.ValidateOnly` lets the runtime identity run without
   DDL rights once one `AutoCreate` run under a migration identity has brought the table to the engine layout,
   including the `created_at_utc` and `updated_at_utc` columns behind `AccountRecord.CreatedAtUtc` and
-  `UpdatedAtUtc`. The engine stores keep one flat `accounts` table and mint `{ProviderId}:{ProviderSubject}`, for
+  `UpdatedAtUtc`. A schema, table or column that does not fit refuses the first call with `AccountSchemaException`,
+  whose `Reason` and `Findings` its README tabulates. `SqliteAccountStore` refuses a table it cannot adopt or a stored
+  value it cannot read with `AccountDataException`, whose `Reason` its README tabulates. The engine stores keep one flat `accounts` table and mint `{ProviderId}:{ProviderSubject}`, for
   example `discord:80351110224678912`. A game with its own schema implements `IAccountStore` over it and mints what
   it likes, provided `AccountStoreRules.IsAdmissibleSubject` accepts the result. Each store's README has its table
   and the contract.
@@ -25448,10 +25537,17 @@ try
 }
 catch (SignInException ex)
 {
-    // Recoverable, whichever backend the player picked: show a retryable sign-in error.
-    ShowSignInError(ex.Message);
+    // Recoverable, whichever backend the player picked: show a retryable, localized sign-in error chosen by
+    // ex.Reason. The message is developer prose.
+    ShowSignInError(ex.Reason);
 }
 ```
+
+`Reason` is a `SignInRefusal` naming the rule an engine provider refused, with typed identifiers such as
+`ProviderId`, `StatusCode` and `MemberName`, and none of them carries a token, an authorization code, a `state`
+value, a client secret, an authority URL or a response body. It is null only for an instance another backend
+built through a message-only constructor, whose text is then in `Detail`. The
+[Sign-in refusals](../KhaozEngine.Identity/README.md#sign-in-refusals) table lists every reason.
 
 Catch the provider type instead when the handling differs per backend. The base is named `SignInException`
 rather than `IdentitySignInException` deliberately: sign-in code imports `KhaozEngine.Identity` alongside a
@@ -25926,9 +26022,11 @@ public void EveryKey_IsTranslatedInEveryShippedCulture()
 It reflects the keys (every `public const string` value plus every `public static readonly StringId`'s `.Key`),
 then asserts each key resolves in the neutral resx **and** in each satellite with parent fallback OFF (a missing
 translation fails rather than silently reading the neutral language), plus placeholder-index integrity between each
-neutral template and its translation. A gap throws `LocalizationCoverageException` listing every miss. Pass no
-cultures to check only the neutral resx. `LocalizationCoverage.Keys(typeof(MyGameStrings))` is exposed if you would
-rather drive a `[Theory]` off the same key source.
+neutral template and its translation. A gap throws `LocalizationCoverageException`, whose `Reason` names the first
+rule broken and whose `Findings` list every miss in the order its message does (the package README's Refusals table
+lists each reason and identifier). Pass no cultures to check only the neutral resx.
+`LocalizationCoverage.Keys(typeof(MyGameStrings))` is exposed if you would rather drive a `[Theory]` off the same
+key source.
 
 No keys class? If your keys live directly in the neutral resx (referenced through the MSBuild-generated designer
 properties, e.g. `Resources.KeyName`), pass just the `ResourceManager`: the neutral resx's own string entries
@@ -26457,6 +26555,7 @@ Group intervals contain children and their durations must not be added as extra 
 | `shadow.point.static.face`, `.dynamic.face`, `.transient.face` | One of six faces under its row, occurrence is `row * 6 + face` |
 | `shadow.point.static.setup`, `.rigid`, `.foliage`, `.gpu-skinned`, `.cpu-skinned`, and the matching `dynamic` or `transient` prefixes | Atlas bind/clear and face leaf work, occurrence is atlas row for setup or `row * 6 + face` for draws |
 | `shadow.point.uploads`, `.finish` | Shared face/proxy/caster uploads and final atlas scissor restoration |
+| `water.caustics` | Surface field and caustic map atlases, with uploads before the first target, skipped without a participating body |
 | `opaque.light-clusters`, `.clear`, `.depth-clear`, `.frame-uniforms` | Cluster uploads, MRT bind and color clears, depth clear, frame uniforms and initial pipeline bind |
 | `motion.clear`, `opaque.visibility-clear` | Existing motion sentinel and independent key-shadow visibility clears, in native order |
 | `opaque.rigid`, `.splat`, `.tile-ground`, `.foliage`, `.gpu-skinned`, `.cpu-skinned` | Main geometry routes, with fused motion metadata when the MRT is active |
@@ -27988,6 +28087,13 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
   candidate OLDER than the truth reads a built-in payload short and the bytes it leaves behind re-sync into frames
   the walk copies, which used to let it beat the truth and restore silently wrong movement fields plus phantom
   components.
+- **Failed cell-blob walks carry structured refusals.** `CellBlobMigrationException` remains catchable as
+  `InvalidOperationException`. Its `Reason` is `KnownGenerationUnwalkable` with `FromGeneration` and `ToGeneration`,
+  or `NoInferredGeneration` with `SchemaLabel`, inclusive `OldestGeneration` and `NewestGeneration`, the distinct
+  `UnregisteredExtensionIds` in encounter order, and `RecoveryMembers` (`AssumedWireGeneration`, `Registry`). Both
+  lists are copied read-only snapshots. The id list is empty when no unregistered id was observed, including
+  without a supplied registry. Disagreeing successful candidates retain the separate
+  `AmbiguousCellBlobGenerationException`. Messages and persistence quarantine statuses stay unchanged.
 - **Two knobs, and both are worth setting on a server with pre-v4 saves.**
 
   ```csharp

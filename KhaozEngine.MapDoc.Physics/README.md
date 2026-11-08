@@ -422,6 +422,11 @@ context over its analytic support height and playable bounds. A native world ref
 `PhysicsLegacyMoveContextUnsupported` and `ResolverVersion`, since it moves on the contact controller.
 The parameterless overload supplies no medium. Opt into resolver-1 global water with
 `CreateLegacyMoveContext(legacyGlobalWater: true)`: feet strictly below `MapBuiltWorld.LegacyWaterLevel` are wet.
+The returned context records its legacy-only restriction before tuning is known. Every later contact use throws
+`GroundContactCapabilityException : NotSupportedException`, with `GroundContactCapabilityRefusal.ContactProducerRestricted`,
+`ProducerKind = GroundContactProducerKind.MapDocResolverOne` and
+`RequiredCapability = GroundContactCapability.NativeMapDocContact` (the native G1b adapter). `Restriction` carries
+the producer's restriction text. Legacy movement remains available on that context.
 
 Any failure during `Register` removes what it added, in reverse order. `Dispose` removes every static in reverse
 order, never disposes the physics world, and leaves the statics a failed removal kept in `Handles` so a later call

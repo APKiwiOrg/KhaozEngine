@@ -89,8 +89,10 @@ public static class MapSpaceCoverageValidator
                     var finding = refinement.Finding!;
                     AddFinding(footprint.Id, cell, finding with
                     {
-                        Message = $"{kind}: {label}{detail}", OwnerId = footprint.Id,
-                        RecordId = finding.RecordId ?? footprint.Id, SpaceId = finding.SpaceId ?? footprint.Space.Id,
+                        Message = $"{kind}: {label}{detail}",
+                        OwnerId = footprint.Id,
+                        RecordId = finding.RecordId ?? footprint.Id,
+                        SpaceId = finding.SpaceId ?? footprint.Space.Id,
                         SlotCell = finding.SlotCell ?? cell,
                     });
                     continue;

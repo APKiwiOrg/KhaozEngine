@@ -166,8 +166,9 @@ public static class BuiltinBlobLayout
     /// Rewrites a persisted snapshot <paramref name="body"/> whose built-in payloads are at
     /// <paramref name="fromWireGeneration"/>'s layout into this build's layout, so the live registry decodes it.
     /// Entity ids are untouched (they are 64-bit from cell-blob schema v2 on). Throws on a body that does not walk
-    /// cleanly at that generation, so the <see cref="CellPersistence"/> driver quarantines it rather than restoring
-    /// garbage.
+    /// cleanly at that generation, as <see cref="CellBlobMigrationException"/> with
+    /// <see cref="CellBlobMigrationRefusal.KnownGenerationUnwalkable"/> and both generations, so the
+    /// <see cref="CellPersistence"/> driver quarantines it rather than restoring garbage.
     /// </summary>
     public static byte[] NormalizeToCurrent(byte[] body, int fromWireGeneration)
     {

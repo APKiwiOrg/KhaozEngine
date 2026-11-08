@@ -5,6 +5,11 @@ server that needs body-aware movement geometry, absolute-coordinate ground movem
 ground navigation profile, a baked profile set loaded without physics, or a route-free approach. It stays
 outside every umbrella and carries no backend, input or rendering dependency.
 
+Ordinary contact configuration refusals use the shared
+[Locomotion reason and identifier contract](../KhaozEngine.Locomotion/README.md#configuration-and-capability-refusals).
+`MovementConfigurationException` preserves `ArgumentException` catches and `MovementCapabilityException`
+preserves `NotSupportedException` catches. Head admission and movement arithmetic are unchanged.
+
 ## Ground pursuit for committed travel
 
 `GroundPursuit` plans and steers one active pursuit without stepping physics or writing actor state. Construct it
@@ -207,12 +212,28 @@ depth fraction. The selected foot radius must be at least 0.01 m. No missing cap
 The context implements `IDisposable`. A supplied `MovementQueries` view remains borrowed. Without one, a contact
 construction creates one selected view and releases it on disposal. It never disposes the physics source.
 `legacyOnlyContactRefusal` lets a producer record a restriction when constructing the context, before tuning is
-known. Every later contact use throws `NotSupportedException` with that message. Resolver-1 MapDoc contexts set
-`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.` Here `G1b` names the native
-MapDoc contact adapter. No production friend access is required. Movement depends on Locomotion, Navigation and
-Physics, with no renderer dependency. The input-driven `CharacterController3D` lives in
+known. Every later contact use throws `GroundContactCapabilityException` with `ContactProducerRestricted` and
+that producer-supplied text in `Restriction`. The existing constructor keeps its signature. An additional overload
+accepts `GroundContactProducerKind? producerKind` and `GroundContactCapability? requiredCapability` after the
+restriction string. These identifiers are optional metadata and do not change admission. Resolver-1 MapDoc contexts
+carry `ProducerKind = MapDocResolverOne` and `RequiredCapability = NativeMapDocContact`, the native G1b adapter.
+The string-only overload leaves both identifiers null. No production friend access is required. Movement depends on
+Locomotion, Navigation and Physics, with no renderer dependency. The input-driven `CharacterController3D` lives in
 `KhaozEngine.Game.Render3D` and selects the same binding through its own Update overload. Dispose the context
 or controller to release its engine-created view. Caller-supplied views and physics sources remain borrowed.
+
+### Ground context contact refusals
+
+`GroundContactCapabilityException` derives from `NotSupportedException`, preserving existing catches, and carries
+a non-nullable `GroundContactCapabilityRefusal Reason`. Messages remain developer prose. `Restriction` is open,
+producer-supplied text. Known engine producer and capability values use `GroundContactProducerKind` and
+`GroundContactCapability` enums. Identifiers are null when the reason does not use them or the producer omitted them.
+
+| `GroundContactCapabilityRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ContactProducerRestricted` | The producer restricted this context to legacy movement | `Restriction`, optional `ProducerKind` and `RequiredCapability` |
+| `OrdinaryContextRequired` | Contact movement requires an ordinary-constructed context | `RequiredKind = OrdinaryContact` |
+| `OrdinaryPredictionRequired` | Contact prediction requires an ordinary contact binding | `RequiredKind = OrdinaryContact` |
 
 ## Bounded static physics capture
 
@@ -333,7 +354,7 @@ public sealed class GroundNavigation
 The two-argument `BuildProfile` builds a ground profile and equals the overload with `GroundProfileOptions.Default`.
 Both overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Load` expectation normalize the
 controller and water selection before other profile work or stream reads. Malformed Contact selections throw
-`ArgumentException`. Contact aquatic profiles throw `NotSupportedException` naming #1389. Contact ground profiles
+`ArgumentException`. Contact aquatic profiles throw `NavigationProfileCapabilityException` with `ContactAquaticUnsupported` and `IssueUrl` naming #1389. Contact ground profiles
 require an ordinary-constructed context and an unchanged leased capture basis. Phase 5b ground navigation is
 released in 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles
 are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). Legacy v1 bytes remain unchanged.
@@ -346,7 +367,7 @@ With `SampleWater`, a contact water field requires a supplied medium delegate an
 `AllowsSegment`, call `Validate(binding)` with the runtime `EffectiveMovementBinding`. `MoveToRange` calls it
 against the context's resolved binding before planning and prediction. `Validate(tuning)` is a convenience door
 that resolves Legacy or OrdinaryContact from tuning, but cannot detect a public explicit binding. PublicExplicit
-throws `NotSupportedException` naming #1389. A different binding kind or retained input throws `ArgumentException`.
+throws `NavigationProfileCapabilityException` with `PublicExplicitProfileUnsupported` and `IssueUrl` naming #1389. A different binding kind or retained input throws `NavigationProfileException`.
 Legacy graphs compare radius, half-height, slope and step, plus swim fractions for aquatic graphs. Contact graphs
 compare every retained tuning field, controller, foot fraction, placement offset and effective water policy.
 `WalkSpeed`, `RunSpeed` and `AirMomentum` may differ only for zero-allowance profiles, whose supported proofs normalize them. Positive `MaxDropMetres` validates their actual values. Numeric runtime comparisons
@@ -527,9 +548,9 @@ scope on success and on any failure.
 
 After existing degree and profile argument checks, the complete physics source and any selected movement query view
 must themselves declare `IPhysicsQueryLeaseSource`. A wrapper does not inherit its backend's capability. Otherwise
-the opted-in legacy profile throws `NotSupportedException` before providers or proofs execute. The selected view
+the opted-in legacy profile throws `NavigationReadCapabilityException` with `LegacyQueryLeaseRequired` before providers or proofs execute. The selected view
 must still name that exact owner and origin, and its live lease must match the captured geometry generation and
-origin. An identity or captured-basis change throws `InvalidOperationException`. Disposed and wrong-thread lease
+origin. A live identity or captured-basis change throws `NavigationBuildException`. Disposed and wrong-thread lease
 refusals propagate. No second lease is acquired to validate the basis within the scope.
 
 ```csharp
@@ -537,12 +558,102 @@ var execution = new NavBakeExecution(1) { UseStableLegacyReadScope = true };
 GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
 ```
 
+### Navigation profile refusals
+
+`NavigationProfileException` derives from `ArgumentException`, retaining `ParamName`.
+`NavigationProfileCapabilityException` derives from `NotSupportedException`. Both carry
+`NavigationProfileRefusal` as non-nullable `Reason`. Identifiers are nullable when the selected reason does
+not use them. `ProfileName` is null for an unnamed `BuildProfile` and names a supplied profile where known.
+
+| `NavigationProfileRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ContactAquaticUnsupported` | Contact aquatic navigation is deferred | `IssueUrl` (the #1389 URL), `ProfileName` |
+| `DropProfileUnsupported` | Drop requires non-aquatic OrdinaryContact | `ProfileName`, `ActualKind`, `Aquatic` |
+| `PublicExplicitProfileUnsupported` | Public explicit navigation is deferred | `IssueUrl` (the #1389 URL), `ActualKind` |
+| `BindingKindMismatch` | Runtime binding kind differs from the baked kind | `ExpectedKind`, `ActualKind` |
+| `CaptureSlopeMismatch` | Profile slope differs from the capture | `ProfileName`, `ExpectedSlope`, `ActualSlope` |
+| `CaptureWaterNotSampled` | Aquatic profile lacks captured water | `ProfileName` |
+| `GeometryMismatch` | Legacy capsule or step geometry differs | `FieldName`, `ExpectedNumber`, `ActualNumber` |
+| `SwimFractionsMismatch` | Legacy aquatic fractions differ | `FieldName`, `ExpectedNumber`, `ActualNumber` |
+| `SwimFractionsUnordered` | Aquatic fractions are not ordered exit, submersion, enter | `ExitFraction`, `SubmersionFraction`, `EnterFraction` |
+| `TerrainDropPermissionRequired` | Terrain descents have no positive Drop permission | `AllowTerrainDescents`, `MaxDropMetres` |
+| `TuningFieldMismatch` | A retained Contact field differs | `FieldName`, `ExpectedBits`, `ActualBits` |
+
+Geometry and swim mismatch identifiers select the first differing field in the documented comparison order.
+Contact tuning identifiers come directly from the identity producer. `ExpectedBits` denotes the baked value
+and `ActualBits` the runtime value, represented as float bits or the enum or Boolean integer value.
+The existing identity difference text remains its prose projection, and runtime signed zeros remain compatible.
+
+### Navigation capture and read refusals
+
+`NavigationBuildException` derives from `InvalidOperationException`. `NavigationReadCapabilityException`
+derives from `NotSupportedException`. Each carries a non-nullable `Reason`. Messages remain developer prose.
+The capture and read identifiers are nullable when the selected reason does not use them.
+
+| `NavigationBuildRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `CaptureGeometryChanged` | Geometry changed since capture | `ExpectedGeneration`, `ActualGeneration` |
+| `CaptureLeaseRequired` | Contact capture lacks query leases | `RequiredCapability` |
+| `CaptureOriginChanged` | Origin changed since capture | `ExpectedOrigin`, `ActualOrigin` |
+| `ColumnSurfaceCapExceeded` | Column exceeds its configured inclusive cap | `AbsoluteX`, `AbsoluteZ`, `MaximumCount`, `ActualCount` |
+| `EnvelopeOutsideServedScope` | Required contact envelope exceeds the ordinary scope | `Minimum`, `Maximum` in the physics frame |
+| `MovementLeaseFrameMismatch` | Lease frame differs from the proof | `CellX`, `CellZ`, `ExpectedFrame`, `ActualFrame` |
+| `MovementLeaseGenerationMismatch` | Lease geometry differs from the capture | `CellX`, `CellZ`, `ExpectedGeneration`, `ActualGeneration` |
+| `MovementLeaseIdentityChanged` | Lease identity differs from the first proof lease | `CellX`, `CellZ`, `ExpectedLease`, `ActualLease` |
+| `MovementLeaseOriginMismatch` | Lease origin differs from the capture | `CellX`, `CellZ`, `ExpectedOrigin`, `ActualOrigin` |
+| `MovementLeaseSourceMismatch` | Lease belongs to another capture source | `CellX`, `CellZ` |
+| `MovementLeaseUnavailable` | Acquisition cannot supply known evidence | `CellX`, `CellZ`, `Availability` |
+| `ProofFrameChanged` | Context frame differs from the proof | `CellX`, `CellZ`, `ExpectedFrame`, `ActualFrame` |
+| `RegistrationGenerationChanged` | Registration changed since snapshot | `ExpectedGeneration`, `ActualGeneration` |
+| `RestingAnchorUnavailable` | Anchor query cannot supply known evidence | `CellX`, `CellZ`, `Availability` |
+| `SnapshotBasisOriginChanged` | Snapshot frame origin differs bitwise from the capture | `ExpectedOrigin`, `ActualOrigin` |
+| `SnapshotContextFrameChanged` | Context frame differs bitwise from the snapshot | `ExpectedFrame`, `ActualFrame` |
+| `SnapshotLeaseFrameChanged` | Worker lease frame differs bitwise from the snapshot | `ExpectedFrame`, `ActualFrame` |
+| `SnapshotLeaseGenerationChanged` | Worker lease geometry differs from the snapshot | `ExpectedGeneration`, `ActualGeneration` |
+| `SnapshotLeaseSourceChanged` | Worker lease belongs to another snapshot source | `SourceRole` (`ReadLease`) |
+| `SnapshotViewOriginChanged` | Query view origin differs bitwise from the snapshot | `ExpectedOrigin`, `ActualOrigin` |
+| `SnapshotViewSourceChanged` | Query view belongs to another snapshot source | `SourceRole` (`MovementQueryView`) |
+| `SupportEnvelopeUnbounded` | Support footprint has no finite outward bounds | `FootRadius` and `SupportReach` in metres, `SupportSlope` in radians |
+| `WaterExtentChanged` | Water extent differs bitwise from the snapshot | `ExpectedExtent`, `ActualExtent` |
+| `WaterGenerationChanged` | Water generation changed since snapshot | `ExpectedGeneration`, `ActualGeneration` |
+| `WaterIdentityChanged` | Water semantic identity changed since snapshot | `ExpectedIdentity`, `ActualIdentity` |
+| `LegacyLeaseGenerationChanged` | Stable lease generation changed | `ExpectedGeneration`, `ActualGeneration` |
+| `LegacyLeaseOriginChanged` | Stable lease origin changed | `ExpectedOrigin`, `ActualOrigin` |
+| `LegacyLeaseSourceChanged` | Stable lease belongs to another owner | `SourceRole` (`ReadLease`) |
+| `LegacyViewOriginChanged` | Selected view origin changed | `ExpectedOrigin`, `ActualOrigin` |
+| `LegacyViewSourceChanged` | Selected view belongs to another owner | `SourceRole` (`MovementQueryView`) |
+| `LegacyWorldOriginChanged` | Complete physics origin changed during a stable read | `ExpectedOrigin`, `ActualOrigin` |
+| `PhysicsOriginNonfinite` | Physics origin has a nonfinite coordinate | `ActualOrigin` |
+| `RuntimeStaticsPresent` | Authored navigation has live runtime statics | `SourceRole` (`MovementRegistration`) |
+| `SurfaceHeadroomNaN` | Surface headroom is NaN | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeadroom` |
+| `SurfaceHeadroomNegative` | Surface headroom is below zero | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeadroom` |
+| `SurfaceHeightNonfinite` | Absolute surface height is nonfinite | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeight` |
+| `SurfaceHeightNotAscending` | Absolute surface height does not exceed its predecessor | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeight`, `PreviousHeight` |
+
+| `NavigationReadRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ConcurrentReadsRequired` | Parallel contact build lacks `IPhysicsConcurrentReadSource` | `RequiredCapability`, `SourceRole` |
+| `LegacyQueryLeaseRequired` | Stable legacy build lacks `IPhysicsQueryLeaseSource` | `RequiredCapability`, `SourceRole` |
+
+For read capability refusals, `SourceRole` is a `NavigationSourceRole` and names `PhysicsSource` or `MovementQueryView`, in that order.
+Surface validation selects height nonfiniteness, nonascending height, NaN headroom, then negative headroom,
+in the same order as the capture guard. Positive infinity headroom remains valid. Column indices and surface
+indices are zero-based. A stable read compares each producer value once, so identifiers retain the value
+that actually failed even if a faulty provider would return something different on its next read.
+Proof cell indices are zero-based. Lease checks select source, geometry generation, origin, frame, then first-lease
+identity in that order. Snapshot checks select lease source, geometry generation and bitwise frame during worker
+authentication. Publication checks select view source, view origin, basis origin and context frame, followed by
+registration generation, runtime statics, water generation, ordinal semantic identity and bitwise extent. Only the
+first failing input is reported. A lower live read can refuse before those checks with `MovementReadException`
+and its `MovementReadRefusal`, preserved without a navigation wrapper.
+
+
 ### Parallel contact provider contract
 
 Checks run in a fixed order. A degree below 1 throws `ArgumentOutOfRangeException` first. Every existing argument
 and profile check follows in its usual order. Only then does a contact profile above degree 1 require
 `IPhysicsConcurrentReadSource` on both the capture's physics source and the context's selected query view, and throw
-`NotSupportedException` when either lacks it. `BepuPhysicsWorld` and its restricted views declare it. A borrowed
+`NavigationReadCapabilityException` with `ConcurrentReadsRequired` when either lacks it. `BepuPhysicsWorld` and its restricted views declare it. A borrowed
 wrapper without it refuses above degree 1 and still builds at degree 1. A mixed `Create` above degree 1 checks every
 profile before it builds any.
 

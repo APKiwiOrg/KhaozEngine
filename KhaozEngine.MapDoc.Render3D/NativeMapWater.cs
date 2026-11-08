@@ -140,6 +140,8 @@ public static class NativeMapWater
             AbsorptionPerMetre = effective.AbsorptionPerMetre,
             UnderwaterSunlight = effective.UnderwaterSunlight,
             UnderwaterPenumbraPerMetre = effective.UnderwaterPenumbraPerMetre,
+            UnderwaterCaustics = effective.UnderwaterCaustics,
+            CausticStrength = effective.CausticStrength,
             WaterColumnLight = effective.WaterColumnLight,
             WaterColor = effective.WaterColor,
             Clarity = effective.Clarity,

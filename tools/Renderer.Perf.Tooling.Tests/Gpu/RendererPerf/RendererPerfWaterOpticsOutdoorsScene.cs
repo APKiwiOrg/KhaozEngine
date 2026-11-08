@@ -4,8 +4,8 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
-/// <summary>The v1 outdoors foliage, FFT settings and point lights, with its two planes replaced by one FFT water
-/// optics pool beyond the terrain's +z edge.</summary>
+/// <summary>The v1 outdoors foliage and point lights with one water optics pool. V2 uses FFT, while v3 uses
+/// the village procedural swell so underwater caustics can participate.</summary>
 internal sealed class RendererPerfWaterOpticsOutdoorsScene : RendererPerfOutdoorsScene, IRendererPerfWaterOpticsScene
 {
     // Clearance needs a guaranteed bound on the surface height (RendererPerfWaterOpticsPool.FftDisplacementBound),
@@ -20,11 +20,15 @@ internal sealed class RendererPerfWaterOpticsOutdoorsScene : RendererPerfOutdoor
     // the water is shallow. Half-size props are the largest that fit all 48 in the deep enough water in frame.
     const float PropScale = .5f;
 
-    internal RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile profile) : this(profile, CreatePool()) { }
+    readonly bool _v3;
 
-    RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile profile, RendererPerfWaterOpticsPool pool)
-        : base(RendererPerfWaterOptics.RecipeId("outdoors", profile), [pool.Plane])
+    internal RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile profile, string campaign = "water-optics-v2")
+        : this(profile, campaign, CreatePool(campaign)) { }
+
+    RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile profile, string campaign, RendererPerfWaterOpticsPool pool)
+        : base(RendererPerfWaterOptics.RecipeId("outdoors", profile, campaign), [pool.Plane])
     {
+        _v3 = campaign == "water-optics-v3";
         Profile = profile;
         Pool = pool;
         Pool.Place(Camera().ViewProjection);
@@ -33,7 +37,7 @@ internal sealed class RendererPerfWaterOpticsOutdoorsScene : RendererPerfOutdoor
     public RendererPerfWaterOpticsProfile Profile { get; }
     public RendererPerfWaterOpticsPool Pool { get; }
     public WaterSettings WaterSettings => Settings().Water;
-    protected override string WaterRoute => "fft-ocean-pool-clipmap";
+    protected override string WaterRoute => _v3 ? "procedural-pool-clipmap" : "fft-ocean-pool-clipmap";
     protected override RendererPerfClipmapSchedule ClipmapSchedule => RendererPerfClipmapEvents.Derive(BuildClipmapStates());
     protected override object Geometry => new { Rigid = base.Geometry, Pool = Pool.Geometry };
     protected override object ExpectedCounts => RendererPerfWaterOpticsExpected.Create(
@@ -41,12 +45,19 @@ internal sealed class RendererPerfWaterOpticsOutdoorsScene : RendererPerfOutdoor
         FoliageVisibility(), Buildings, Props, Foliage, Water,
         [.. MeasuredIndices.Select(index => (Frame(index).Target, Frame(index).ViewProjection))]);
 
-    static RendererPerfWaterOpticsPool CreatePool()
+    protected override bool HasFftWater => !_v3;
+
+    static RendererPerfWaterOpticsPool CreatePool(string campaign)
     {
         var water = new WaterSettings();
         ConfigureSea(water.SeaState);
+        float fftBound = RendererPerfWaterOpticsPool.FftDisplacementBound(water);
+        if (campaign == "water-optics-v3")
+            return new RendererPerfWaterOpticsPool(-16f, 16f, 16f, 48f, .08f,
+                new WaterLook { WaveSource = WaterWaveSource.Procedural, SwellAmplitude = .08f },
+                Seed, PropScale, propWaveBound: fftBound);
         // The terrain spans -16 to 16 on x and z. The FFT plane keeps the scene's sea state, so no look.
-        return new RendererPerfWaterOpticsPool(-16f, 16f, 16f, 48f, RendererPerfWaterOpticsPool.FftDisplacementBound(water),
+        return new RendererPerfWaterOpticsPool(-16f, 16f, 16f, 48f, fftBound,
             null, Seed, PropScale);
     }
 
@@ -61,7 +72,14 @@ internal sealed class RendererPerfWaterOpticsOutdoorsScene : RendererPerfOutdoor
     {
         base.ConfigureSettings(post);
         ConfigureSea(post.Water.SeaState);
-        RendererPerfWaterOptics.Apply(post.Water, Profile);
+        RendererPerfWaterOptics.Apply(post.Water,
+            Profile == RendererPerfWaterOpticsProfile.M3On ? RendererPerfWaterOpticsProfile.M5On : Profile);
+        if (_v3)
+        {
+            post.Water.UnderwaterCaustics = Profile == RendererPerfWaterOpticsProfile.M3On;
+            // The owner's River pick. Keep the legacy profiles' default strength frozen.
+            if (post.Water.UnderwaterCaustics) post.Water.CausticStrength = 4f;
+        }
     }
 
     protected override IsoCamera3D Camera()

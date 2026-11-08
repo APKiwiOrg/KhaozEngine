@@ -32,7 +32,8 @@ public sealed class OidcClientProvider(
     /// without a deadline an abandoned flow leaves this task pending for the life of the process and the bound
     /// loopback port with it. On expiry the core method unwinds, its <c>using</c> disposes the listener and
     /// frees the port, and the caller sees the same <see cref="IdentitySignInException"/> as any other sign-in
-    /// failure. The caller's own cancellation still surfaces as <see cref="OperationCanceledException"/>.</summary>
+    /// failure, with <see cref="SignInRefusal.TimedOut"/> and the expired timeout. The caller's own cancellation
+    /// still surfaces as <see cref="OperationCanceledException"/>.</summary>
     public async Task<ProviderCredential> SignInAsync(CancellationToken ct = default)
     {
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -45,7 +46,12 @@ public sealed class OidcClientProvider(
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            throw new IdentitySignInException($"sign-in timed out after {options.SignInTimeout}");
+            throw new IdentitySignInException(
+                SignInRefusal.TimedOut, $"sign-in timed out after {options.SignInTimeout}")
+            {
+                ProviderId = ProviderId,
+                Timeout = options.SignInTimeout,
+            };
         }
     }
 
@@ -71,15 +77,26 @@ public sealed class OidcClientProvider(
 
         bool launched = await browser.LaunchAsync(authorizeUri.Uri, ct).ConfigureAwait(false);
         if (!launched)
-            throw new IdentitySignInException("failed to launch the system browser for sign-in");
+            throw new IdentitySignInException(
+                SignInRefusal.BrowserLaunchFailed, "failed to launch the system browser for sign-in")
+            {
+                ProviderId = ProviderId,
+            };
 
         LoopbackResult redirect = await listener.WaitForRedirectAsync(ct).ConfigureAwait(false);
 
         if (!redirect.Query.TryGetValue("state", out string? returnedState) || returnedState != state)
-            throw new IdentitySignInException("sign-in redirect state mismatch");
+            throw new IdentitySignInException(SignInRefusal.RedirectStateMismatch, "sign-in redirect state mismatch")
+            {
+                ProviderId = ProviderId,
+            };
 
         if (!redirect.Query.TryGetValue("code", out string? code) || string.IsNullOrEmpty(code))
-            throw new IdentitySignInException("sign-in redirect did not include an authorization code");
+            throw new IdentitySignInException(
+                SignInRefusal.AuthorizationCodeMissing, "sign-in redirect did not include an authorization code")
+            {
+                ProviderId = ProviderId,
+            };
 
         Dictionary<string, string> form = new(StringComparer.Ordinal)
         {
@@ -117,18 +134,38 @@ public sealed class OidcClientProvider(
         string metadataUrl = options.Authority.TrimEnd('/') + "/.well-known/openid-configuration";
         using HttpResponseMessage response = await http.GetAsync(new Uri(metadataUrl), ct).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
-            throw new IdentitySignInException($"failed to fetch OIDC discovery document ({(int)response.StatusCode})");
+            throw new IdentitySignInException(
+                SignInRefusal.DiscoveryHttpFailure,
+                $"failed to fetch OIDC discovery document ({(int)response.StatusCode})")
+            {
+                ProviderId = ProviderId,
+                StatusCode = (int)response.StatusCode,
+                EndpointRole = SignInEndpointRole.DiscoveryDocument,
+            };
 
-        using JsonDocument doc = await ParseJsonBodyAsync(response, "the OIDC discovery document", ct).ConfigureAwait(false);
+        using JsonDocument doc =
+            await ParseJsonBodyAsync(response, SignInEndpointRole.DiscoveryDocument, ct).ConfigureAwait(false);
 
+        // The refusal names the first member the predicate finds absent, in its own order. TryGetProperty leaves
+        // an absent member's element Undefined, a kind no present member has.
         if (!doc.RootElement.TryGetProperty("authorization_endpoint", out JsonElement authElement) ||
             !doc.RootElement.TryGetProperty("token_endpoint", out JsonElement tokenElement))
-            throw new IdentitySignInException("OIDC discovery document is missing required endpoints");
+            throw new IdentitySignInException(
+                SignInRefusal.DiscoveryEndpointMissing, "OIDC discovery document is missing required endpoints")
+            {
+                ProviderId = ProviderId,
+                MemberName = authElement.ValueKind == JsonValueKind.Undefined ? "authorization_endpoint" : "token_endpoint",
+            };
 
         string? authorizationEndpoint = authElement.GetString();
         string? tokenEndpoint = tokenElement.GetString();
         if (string.IsNullOrEmpty(authorizationEndpoint) || string.IsNullOrEmpty(tokenEndpoint))
-            throw new IdentitySignInException("OIDC discovery document has empty required endpoints");
+            throw new IdentitySignInException(
+                SignInRefusal.DiscoveryEndpointEmpty, "OIDC discovery document has empty required endpoints")
+            {
+                ProviderId = ProviderId,
+                MemberName = string.IsNullOrEmpty(authorizationEndpoint) ? "authorization_endpoint" : "token_endpoint",
+            };
 
         return (authorizationEndpoint, tokenEndpoint);
     }
@@ -147,17 +184,33 @@ public sealed class OidcClientProvider(
         {
             if (rejectDeadChain && response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized)
                 return null;
-            throw new IdentitySignInException($"token endpoint returned an error ({(int)response.StatusCode})");
+            throw new IdentitySignInException(
+                SignInRefusal.TokenHttpFailure, $"token endpoint returned an error ({(int)response.StatusCode})")
+            {
+                ProviderId = ProviderId,
+                StatusCode = (int)response.StatusCode,
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
+            };
         }
 
-        using JsonDocument doc = await ParseJsonBodyAsync(response, "the token endpoint", ct).ConfigureAwait(false);
+        using JsonDocument doc = await ParseJsonBodyAsync(response, SignInEndpointRole.TokenEndpoint, ct).ConfigureAwait(false);
 
         if (!doc.RootElement.TryGetProperty("id_token", out JsonElement idTokenElement))
-            throw new IdentitySignInException("token endpoint response is missing id_token");
+            throw new IdentitySignInException(
+                SignInRefusal.TokenMemberMissing, "token endpoint response is missing id_token")
+            {
+                ProviderId = ProviderId,
+                MemberName = "id_token",
+            };
 
         string? idToken = idTokenElement.GetString();
         if (string.IsNullOrEmpty(idToken))
-            throw new IdentitySignInException("token endpoint response has an empty id_token");
+            throw new IdentitySignInException(
+                SignInRefusal.TokenMemberEmpty, "token endpoint response has an empty id_token")
+            {
+                ProviderId = ProviderId,
+                MemberName = "id_token",
+            };
 
         string? refreshToken = doc.RootElement.TryGetProperty("refresh_token", out JsonElement refreshElement)
             ? refreshElement.GetString()
@@ -178,7 +231,10 @@ public sealed class OidcClientProvider(
     private void RequireSecureAuthority()
     {
         if (!Uri.TryCreate(options.Authority, UriKind.Absolute, out Uri? authority))
-            throw new IdentitySignInException("OIDC authority is not an absolute URL");
+            throw new IdentitySignInException(SignInRefusal.AuthorityNotAbsolute, "OIDC authority is not an absolute URL")
+            {
+                ProviderId = ProviderId,
+            };
 
         if (authority.Scheme == Uri.UriSchemeHttps)
             return;
@@ -187,17 +243,24 @@ public sealed class OidcClientProvider(
             return;
 
         throw new IdentitySignInException(
+            SignInRefusal.AuthorityNotHttps,
             $"OIDC authority must be https (got {authority.Scheme}). Set AllowInsecureLoopbackAuthority " +
-            "to allow a plain-http authority on a loopback host for local development.");
+            "to allow a plain-http authority on a loopback host for local development.")
+        {
+            ProviderId = ProviderId,
+            ActualScheme = authority.Scheme,
+        };
     }
 
     /// <summary>Reads a successful response body as JSON. A 200 whose body is not JSON at all (an HTML
     /// captive-portal interstitial on hotel or airport wifi, a misconfigured reverse proxy sitting in front of
     /// the authority or the token endpoint) becomes this class's own <see cref="IdentitySignInException"/>,
     /// instead of a raw <see cref="JsonException"/> escaping sign-in past every caller catching that type.
-    /// <paramref name="what"/> names the endpoint in the message.</summary>
-    private static async Task<JsonDocument> ParseJsonBodyAsync(
-        HttpResponseMessage response, string what, CancellationToken ct)
+    /// <paramref name="role"/> names the endpoint in <see cref="SignInException.EndpointRole"/> and the message.
+    /// The parser's exception stays the inner exception: it names the offending character, or the few bytes of a
+    /// malformed literal, and its position, never a string value from the body.</summary>
+    private async Task<JsonDocument> ParseJsonBodyAsync(
+        HttpResponseMessage response, SignInEndpointRole role, CancellationToken ct)
     {
         using System.IO.Stream stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         try
@@ -206,7 +269,12 @@ public sealed class OidcClientProvider(
         }
         catch (JsonException ex)
         {
-            throw new IdentitySignInException($"{what} did not return a JSON body", ex);
+            string what = role == SignInEndpointRole.DiscoveryDocument ? "the OIDC discovery document" : "the token endpoint";
+            throw new IdentitySignInException(SignInRefusal.EndpointJsonMalformed, $"{what} did not return a JSON body", ex)
+            {
+                ProviderId = ProviderId,
+                EndpointRole = role,
+            };
         }
     }
 
@@ -215,13 +283,18 @@ public sealed class OidcClientProvider(
     /// declared lifetime, as before). A value that is not a JSON number, or a number outside <see cref="int"/>
     /// range, is a sign-in failure rather than the raw <see cref="InvalidOperationException"/> /
     /// <see cref="FormatException"/> a bare <c>GetInt32()</c> throws straight out of sign-in.</summary>
-    private static int ReadExpiresInSeconds(JsonElement root)
+    private int ReadExpiresInSeconds(JsonElement root)
     {
         if (!root.TryGetProperty("expires_in", out JsonElement expiresElement))
             return 0;
 
         if (expiresElement.ValueKind != JsonValueKind.Number || !expiresElement.TryGetInt32(out int seconds))
-            throw new IdentitySignInException("token endpoint response has a malformed expires_in");
+            throw new IdentitySignInException(
+                SignInRefusal.TokenExpiryMalformed, "token endpoint response has a malformed expires_in")
+            {
+                ProviderId = ProviderId,
+                MemberName = "expires_in",
+            };
 
         return seconds;
     }

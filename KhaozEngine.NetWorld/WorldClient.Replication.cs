@@ -61,8 +61,9 @@ public sealed partial class WorldClient
     {
         if (config.RequestUnreliableDeltaReplication)
         {
-            ReplicationStreamOptions options = config.ReplicationStream ?? throw new ArgumentException(
-                "ReplicationStream is required with RequestUnreliableDeltaReplication.", nameof(config));
+            ReplicationStreamOptions options = config.ReplicationStream ?? throw new WorldConfigurationException(WorldConfigurationRefusal.ReplicationStreamMissing,
+                "ReplicationStream is required with RequestUnreliableDeltaReplication.", nameof(config))
+            { MemberName = nameof(config.ReplicationStream) };
             options.ValidateConfig(config.RequestDeltaReplication, optIn: true, config.TickSeconds);
             rebuildOptions = options;
         }

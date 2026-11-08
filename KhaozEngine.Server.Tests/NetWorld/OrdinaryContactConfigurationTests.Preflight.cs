@@ -57,13 +57,20 @@ public partial class OrdinaryContactConfigurationTests
             }, (_, _) => 0, tuning);
             Assert.Equal(0, factoryCalls);
             server.CellCreated += _ => notifications++;
-            Assert.Throws<ArgumentException>(() => server.EnsureCell(new(0, 0)));
+            var failure = Assert.Throws<MovementConfigurationException>(() => server.EnsureCell(new(0, 0)));
+            Assert.Equal(conflicting ? MovementConfigurationRefusal.WaterPoliciesConflict
+                : MovementConfigurationRefusal.ExplicitWaterModeRequired, failure.Reason);
+            Assert.Equal(conflicting ? "tuning" : "water", failure.ParamName);
+            if (!conflicting) Assert.Equal(WaterTraversalMode.Legacy, failure.ActualMode);
             Assert.Equal(1, factoryCalls);
             Assert.Equal(0, notifications);
             Assert.Empty(server.LiveCellCoords);
             Assert.Equal(MovementAvailability.Known, environment.Context.TryAcquire(
                 environment.Scope(ExplicitPlayerEnvironment.Initial, default), out var read));
             using (read) read!.AssertCurrent();
+            var repairedPolicy = conflicting ? tuning.Water : new WaterTraversalPolicy(WaterTraversalMode.DryOnly);
+            _ = new ExplicitPlayerMovement(environment.Context, environment.Scope, repairedPolicy);
+            using var repaired = EffectiveMovementBinding.PublicExplicit(tuning, environment.Context, repairedPolicy);
         }
     }
 }

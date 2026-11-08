@@ -89,7 +89,12 @@ public class MovementPayloadRewriteTests
     {
         byte[] body = new CellBlobFixtures.BodyBuilder().Entity(7,
             (2, LegacyPayload(generation, -6)[..^1])).ToBody();
-        Assert.Throws<InvalidOperationException>(() => BuiltinBlobLayout.NormalizeToCurrent(body, generation));
+        byte[] before = [.. body];
+        var refusal = Assert.Throws<CellBlobMigrationException>(() => BuiltinBlobLayout.NormalizeToCurrent(body, generation));
+        Assert.Equal(CellBlobMigrationRefusal.KnownGenerationUnwalkable, refusal.Reason);
+        Assert.Equal(generation, refusal.FromGeneration);
+        Assert.Equal(MoveProtocol.WireProtocolVersion, refusal.ToGeneration);
+        Assert.Equal(before, body);
         var store = new InMemoryWorldStore();
         await store.SaveAsync("cell:0:0", CellBlobFixtures.Wrap(4, generation, body));
         var host = new ShardPersistenceHost(MoveProtocol.CreateRegistry(), exposeRegistry: true);
@@ -99,6 +104,8 @@ public class MovementPayloadRewriteTests
         await persistence.PreloadAsync();
         await persistence.FlushAsync();
         Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.QuarantinedCorrupt);
+        byte[] control = new CellBlobFixtures.BodyBuilder().Entity(7, (2, LegacyPayload(generation, -6))).ToBody();
+        Assert.NotEmpty(BuiltinBlobLayout.NormalizeToCurrent(control, generation));
     }
 
     private static readonly MovementCommitment LegacyCommitment = new()

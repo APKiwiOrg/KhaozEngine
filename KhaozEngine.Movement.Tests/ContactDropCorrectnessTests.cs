@@ -89,6 +89,11 @@ public class ContactDropCorrectnessTests
         var body = new MoveState { Position = new(-0.25f, 4.75f, 0), Grounded = true };
         var state = new FramedMovementState(body, frame, null);
         var basis = new ContactDropPredictionBasis();
+        var legacy = ContactDropFixture.Tuning with { Controller = MovementControllerKind.Legacy, Water = default };
+        var failure = Assert.Throws<GroundContactCapabilityException>(() => fixture.Context.PredictContactStep(
+            state, Vector2.Zero, false, ContactDropFixture.Options.EdgeProbeSeconds, legacy, basis));
+        Assert.Equal(GroundContactCapabilityRefusal.OrdinaryPredictionRequired, failure.Reason);
+        Assert.Equal(EffectiveMovementBindingKind.OrdinaryContact, failure.RequiredKind);
         var result = fixture.Context.PredictContactStep(state, Vector2.Zero, false,
             ContactDropFixture.Options.EdgeProbeSeconds, ContactDropFixture.Tuning, basis);
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);

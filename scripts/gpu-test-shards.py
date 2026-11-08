@@ -91,6 +91,13 @@ PERSPECTIVE_PU = PHASE + "The_perspective_follow_holds_its_bounds_from_every_sta
 LINES = PHASE + "The_follow_lines_hold_their_share_from_every_start_phase"
 STOP = PHASE + "The_follow_stop_holds_its_bounds_from_every_start_phase"
 
+# Retained arithmetic, poison and precise-policy facts remain ordinary correctness units.
+# The body-size cost fact is Diagnostic and is excluded by the default suite's category filter.
+COVERAGE_CORRECTNESS_CLASSES = (
+    "CoverageRecessionComputeGpuTests", "CoverageRecessionPublicationGpuTests",
+    "CoverageCarryFailureGpuTests", "CoverageComputeArithmeticGpuTests", "ComputePreciseMathGpuTests",
+)
+
 
 def gpu(*prefixes):
     """Containment rules on Gpu class-name prefixes, for example gpu("TemporalA", "TemporalC")."""

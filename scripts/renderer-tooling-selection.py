@@ -49,6 +49,23 @@ NAV_WATCHED = (
     '.filesize-baseline', 'Directory.Build.props', 'Directory.Build.targets',
     'Directory.Packages.props', 'nuget.config', 'global.json', '.config/dotnet-tools.json',
 )
+COVERAGE_WATCHED = (
+    'tools/Coverage.Verify/**', 'tools/Coverage.Verify.Tests/**',
+    'KhaozEngine.Render3D/Coverage/**', 'KhaozEngine.Render3D/Scene3D.Coverage*.cs',
+    'KhaozEngine.Render3D/Models/GltfLoader*.cs',
+    'KhaozEngine.Attachments/EquipmentCoverage*.cs',
+    'KhaozEngine.Attachments.Render3D/HostCoverageBinding*.cs',
+    'KhaozEngine.Render.Tests/Render3D/CoverageFixture.cs',
+    'KhaozEngine.Render.Tests/Gpu/CoverageRecession*.cs',
+    'test-shared/SkinnedAttachmentGlbFixture.cs',
+    'scripts/gpu-test-shards.py', 'scripts/tests/gpu-test-shards.test.sh',
+    'scripts/build-release-tests.sh', 'scripts/tests/build-release-tests.test.sh',
+    'scripts/renderer-tooling-selection.py', 'scripts/tests/renderer-tooling-selection.test.py',
+    '.github/workflows/tooling-validation.yml', '.github/workflows/cross-platform-gpu.yml',
+    '.gitattributes', '.testhealth-baseline', '.filesize-baseline',
+    'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props',
+    'nuget.config', 'global.json', '.config/dotnet-tools.json',
+)
 
 
 def watched_paths(suite='renderer'):
@@ -56,6 +73,8 @@ def watched_paths(suite='renderer'):
         return ITEMS_WATCHED
     if suite == 'nav':
         return NAV_WATCHED
+    if suite == 'coverage':
+        return COVERAGE_WATCHED
     links = ET.parse(ROOT / 'test-shared/RendererPerfShared.props').iter('Compile')
     return (*WATCHED, *(node.attrib['Include'].removeprefix('$(RendererPerfRepositoryRoot)/') for node in links))
 
@@ -63,7 +82,7 @@ def watched_paths(suite='renderer'):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--event', required=True, choices=('push', 'pull_request', 'workflow_call', 'workflow_dispatch'))
-    parser.add_argument('--suite', default='renderer', choices=('renderer', 'items', 'nav'))
+    parser.add_argument('--suite', default='renderer', choices=('renderer', 'items', 'nav', 'coverage'))
     parser.add_argument('--ref', required=True, dest='requested')
     parser.add_argument('--trusted-ref', default='')
     parser.add_argument('--changed', action='append', default=[])

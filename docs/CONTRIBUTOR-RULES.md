@@ -299,6 +299,13 @@ workflow selects suite `nav` on hosted Ubuntu and requires all three named Relea
 with zero skips before a separately approved research campaign. The seven SupportQueryCapture methods
 remain in Movement.Tests and default engine CI. Fixture validation authorizes no capture campaign.
 
+The outside-solution `Coverage.Verify` executable and `Coverage.Verify.Tests` project own synthetic
+recession-table construction, replay, depth and CLI process verification. The free tooling workflow selects
+suite `coverage` on hosted Ubuntu, explicitly builds both projects and requires a nonempty inventory,
+executed process tests and zero skips. Coverage formats, carry code and the tooling itself trigger this
+suite. `KE_GPU_TESTS=0` stays explicit. Native correctness and the Diagnostic body-size cost fact remain
+separately approved units, outside this headless validation.
+
 The ratchet report build is a separate maintenance inventory. `check-test-health.sh` sequentially
 builds the engine solution, then every tracked project with an xunit package reference that the solution
 does not list, before lowering any allowance. It finds those projects itself because the analyzer reaches

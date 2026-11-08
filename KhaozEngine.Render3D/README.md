@@ -1894,6 +1894,31 @@ Arithmetic identifies the carry algorithm. Digest producers hash numeric inputs 
 little-endian order, never as native-layout struct bytes. This asset codec stores digests rather
 than deriving or verifying them against source content.
 
+`CoverageConfigurationIdentity.Compute(items, inverseBind)` is the shared cold producer for runtime
+and offline tooling. Each `CoverageConfigurationItem` carries exact attachment and companion digests
+and `CoverageConfigurationPart` values. It sorts items by those ordinal digests and parts by unsigned
+ID. The versioned domain, length-prefixed UTF-8 strings, explicit little-endian counts and IDs, and
+row-major binary32 matrix words preserve authored socket, body alignment and inverse-bind values.
+Paths, configuration JSON formatting, current poses, incarnations and transition weights are excluded.
+
+`Scene3D.CreateHostCoverage` admits a complete uploaded annotated host before returning an actor-owned
+`SkinnedHostCoverage`. It calls the shared complete-material validator against immutable upload evidence
+and checks the table digests, group count, representative upper bounds and group ownership. Equipment
+binding also checks the representative activity vector against the complete configured command regions.
+Host admission uses `HostCoverageDataException`, including missing-slice inventories and
+`HostHandleOwnershipMismatch` with `HandleIndex` and `HandleGeneration`. Table admission uses
+`CoverageTableDataException` with `HostIdentityMismatch`, `GroupCountMismatch`,
+`RepresentativeOutsideTopology` or `RepresentativeGroupMismatch` and the applicable group/value.
+
+Scene-issued `SkinnedMeshHandle` values carry an opaque process-unique scene stamp. Default value
+equality includes it. The two public constructors produce unowned handles. Ordinary draw paths keep
+their existing slot/generation behavior, while coverage admission requires the exact issuing stamp.
+`SkinnedInstanceDraw.Coverage` and `RigidInstanceDraw.Coverage` carry opaque borrowed preparation tokens.
+Forward those descriptors with the captured palette and transforms. Altered or stale tokens throw
+`CoverageFrameStateException` with `StaleFrame` before any queue or palette write. The optional
+[attachment coverage adapter](../KhaozEngine.Attachments.Render3D/README.md#table-coverage-preparation)
+provides complete equipment snapshots and the explicit uncovered-current-pose fallback contract.
+
 `CoverageRecessionTableBinary.Read(bytes, identity)` and `Write(table)` use KERT format 1. The
 212-byte header contains ASCII `KERT`, uint32 version 1, six raw 32-byte digests and uint32 group,
 entry and state counts. The payload contains int32 representatives once, entry-major float32 words,
@@ -1911,7 +1936,7 @@ malformed identity digests. No partially validated table is published.
 `CoverageTableRefusal Reason`. Binary refusals include caller `Identity` and `ByteOffset`, which
 names the offending field, first missing byte or first trailing byte. Applicable records carry
 `GroupIndex`, `EntryIndex`, `Key`, `StateIndex`, `Representative` and exact `ScalarWord`.
-Programmatic refusals have null `Identity` and `ByteOffset`. `MemberName` identifies malformed
+Unbound table creation refusals have null `Identity` and `ByteOffset`. `MemberName` identifies malformed
 digest or count fields, `FormatVersion` preserves an unsupported unsigned version, and capacity
 refusals include `Count` when representable plus the inclusive managed `Limit`. State indices
 from creation refer to canonical sorted order. Messages are developer prose, never the contract.

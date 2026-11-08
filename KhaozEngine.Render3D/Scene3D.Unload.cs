@@ -41,6 +41,7 @@ namespace KhaozEngine.Render3D
         {
             if (h.Generation == 0) return;          // default handle: no-op
             _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
+            _coverageUploads.Remove((h.Index, h.Generation));
             _interiorRelevance.Forget(h);
             _silhouetteRelevance.Forget(h);
             // Retire rather than destroy: queued GPU work may still reference these buffers, and draining the whole

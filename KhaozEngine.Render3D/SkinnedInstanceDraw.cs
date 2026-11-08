@@ -72,4 +72,6 @@ public readonly struct SkinnedInstanceDraw
     /// <summary>The draw's identity across frames, for temporal effects. <see cref="MotionKey.None"/> (the default)
     /// marks a draw that reports camera-only motion. See <see cref="MotionKey"/>.</summary>
     public MotionKey Motion { get; init; }
+    /// <summary>Optional actor-owned coverage preparation. Forward unchanged with its exact captured palette and model.</summary>
+    public SkinnedCoverageFrame Coverage { get; init; }
 }

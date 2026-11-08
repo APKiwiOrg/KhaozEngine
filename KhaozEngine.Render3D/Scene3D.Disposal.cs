@@ -22,6 +22,7 @@ namespace KhaozEngine.Render3D
             if (!disposal.Release("retirement", () => { _water.Optics.Dispose(); _retired.Dispose(); })) disposal.ThrowIfFailed();
             DisposalSafeForDependants = true;
             _disposalComplete = true;
+            DisposeCoverage();
             bool Release(string kind, Action? release) => disposal.Release(kind, release);
             DisposeFoliage(disposal);
             Release("post", _post.Dispose);

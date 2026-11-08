@@ -15,6 +15,30 @@ namespace KhaozEngine.Tests.Tools.Coverage;
 public sealed class CoverageTableBuilderTests
 {
     [Fact]
+    public void Configuration_identity_ignores_serialization_and_asset_locations()
+    {
+        using var files = new CoverageBuildFiles("task8");
+        string before = CoverageBuildInputJson.Read(files.ManifestPath).Identity.ConfigurationSha256;
+        var attachment = files.Configuration["attachment"]!.DeepClone();
+        var companion = files.Configuration["companion"]!.DeepClone();
+        var parts = files.Configuration["parts"]!.DeepClone();
+        files.Configuration.Clear();
+        files.Configuration["parts"] = parts;
+        files.Configuration["companion"] = companion;
+        files.Configuration["attachment"] = attachment;
+        files.Configuration["formatVersion"] = 1;
+        byte[] reformatted = System.Text.Encoding.UTF8.GetBytes(files.Configuration.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        files.Manifest["configuration"] = files.Save("moved-configuration.json", reformatted);
+        files.Write();
+        Assert.Equal(before, CoverageBuildInputJson.Read(files.ManifestPath).Identity.ConfigurationSha256);
+        string assetPath = attachment!["path"]!.GetValue<string>();
+        byte[] asset = System.IO.File.ReadAllBytes(System.IO.Path.Combine(files.Folder, assetPath));
+        files.Configuration["attachment"] = files.Save("moved-attachment.json", asset);
+        files.WriteConfiguration();
+        Assert.Equal(before, CoverageBuildInputJson.Read(files.ManifestPath).Identity.ConfigurationSha256);
+    }
+
+    [Fact]
     public void Every_entry_sample_pair_is_checked_and_only_valid_pairs_are_selected()
     {
         var input = CoverageBuildFixture.Input();

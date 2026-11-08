@@ -31,6 +31,14 @@ public enum CoverageTableRefusal
     UnsortedKeys,
     /// <summary>A state entry index is outside [-1, EntryCount).</summary>
     InvalidEntryIndex,
+    /// <summary>Host, semantic map, refinement or carry arithmetic differs from the uploaded host.</summary>
+    HostIdentityMismatch,
+    /// <summary>Position-group count differs from the bound topology. Count and Limit name table and topology counts.</summary>
+    GroupCountMismatch,
+    /// <summary>A representative exceeds the topology's vertex bound. GroupIndex and Representative identify it.</summary>
+    RepresentativeOutsideTopology,
+    /// <summary>A representative belongs to another position group. GroupIndex and Representative identify it.</summary>
+    RepresentativeGroupMismatch,
 }
 
 /// <summary>Malformed recession table data with structured rule and record context.</summary>
@@ -63,6 +71,6 @@ public sealed class CoverageTableDataException : MalformedDataException
     public uint? ScalarWord { get; init; }
     /// <summary>Refused count or computed byte length, when representable.</summary>
     public long? Count { get; init; }
-    /// <summary>Inclusive managed asset capacity for a length refusal.</summary>
+    /// <summary>Inclusive managed asset capacity for a length refusal, or required topology group count for GroupCountMismatch.</summary>
     public long? Limit { get; init; }
 }

@@ -76,9 +76,13 @@ names must match, and companion attachment and map bindings must match. Current 
 command occurs exactly once in each sample. Static command values come from the checked companion.
 
 Source identities are produced by `CoverageBuildInputJson`. Host identity hashes exact host bytes. Map
-identity uses the existing semantic sidecar hash. Configuration identity hashes a versioned domain,
-exact checked configuration bytes (which bind attachment, companion, part assets and authored transforms)
-and inverse-bind words in explicit little-endian order. Refinement identity hashes versioned source
+identity uses the existing semantic sidecar hash. Configuration identity uses the public engine-owned `CoverageConfigurationIdentity` implementation shared
+with runtime binding. It hashes a versioned domain, items sorted by exact attachment and companion
+SHA-256, parts sorted by ID with host joint name, socket and body-alignment matrix words, then
+skin-order inverse-bind words. Strings are length-prefixed UTF-8 and numeric words are explicitly
+little-endian. Exact attachment and companion identities bind mesh assets and authored command values.
+The current manifest authors one item, while the shared function accepts a complete item list.
+Configuration file paths, member order and whitespace do not affect the digest. Refinement identity hashes versioned source
 ordinals, refined records, integer recipes, indices and triangle ownership in little-endian order.
 Arithmetic identity binds the retained binary32 flush contract and the exact Render3D assembly hash.
 It conservatively changes for any Render3D code change. State schema identity is supplied by the consumer.

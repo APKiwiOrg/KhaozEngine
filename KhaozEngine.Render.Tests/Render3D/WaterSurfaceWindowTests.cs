@@ -13,7 +13,9 @@ public sealed class WaterSurfaceWindowTests
     {
         var camera = new IsoCamera3D
         {
-            Distance = 150f, Elevation = .65f, Target = new Vector3(17f, 2f, -9f),
+            Distance = 150f,
+            Elevation = .65f,
+            Target = new Vector3(17f, 2f, -9f),
         };
         var window = WaterSurfaceWindow.Place(camera.Eye, camera.Forward, camera.ViewProjection,
             true, camera.Target.Y, Vector3.Zero);

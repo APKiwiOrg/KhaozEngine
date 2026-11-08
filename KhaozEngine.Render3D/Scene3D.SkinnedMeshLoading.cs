@@ -77,7 +77,7 @@ public sealed partial class Scene3D
                 _skinnedMeshes.Add(entry);
                 _skinnedCpuVerts.Add(mesh.Vertices);
             }
-            return new SkinnedMeshHandle(index, generation);
+            return new SkinnedMeshHandle(index, generation, _coverageSceneStamp);
         }
         catch
         {

@@ -103,7 +103,8 @@ public static class AttachmentSetJson
         {
             throw new AttachmentSetDataException(
                 error is JsonException ? AttachmentSetRefusal.JsonMalformed : AttachmentSetRefusal.JsonValueShapeInvalid,
-                $"{sourceName}: {error.Message}", error) { SourceName = sourceName };
+                $"{sourceName}: {error.Message}", error)
+            { SourceName = sourceName };
         }
     }
 

@@ -22,21 +22,21 @@ public sealed class AttachmentSetDefinition
             AttachmentPartDefinition part = owned[partIndex];
             if (part is null)
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.PartNull, "An attachment part cannot be null.", nameof(parts))
-                    { PartIndex = partIndex };
+                { PartIndex = partIndex };
             string context = $"Attachment part {part.Id}";
             if (part.Id == 0 || !ids.Add(part.Id))
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.PartIdInvalidOrDuplicate, $"{context}: IDs must be positive and unique.", nameof(parts))
-                    { PartId = part.Id, PartIndex = partIndex };
+                { PartId = part.Id, PartIndex = partIndex };
             if (part is not (RigidAttachmentPartDefinition or SkinnedAttachmentPartDefinition))
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.PartKindUnsupported, $"{context}: unsupported attachment part kind.", nameof(parts))
-                    { PartId = part.Id, ActualType = part.GetType() };
+                { PartId = part.Id, ActualType = part.GetType() };
             string? keyError = AttachmentAssetKey.Error(part.Mesh.Key);
             if (keyError is not null)
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.MeshKeyInvalid, $"{context}: mesh key '{part.Mesh.Key}' {keyError}.", nameof(parts))
-                    { PartId = part.Id, MeshKey = part.Mesh.Key };
+                { PartId = part.Id, MeshKey = part.Mesh.Key };
             if (!ValidHash(part.Mesh.Sha256))
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.MeshHashInvalid, $"{context}: mesh '{part.Mesh.Key}' requires a lowercase SHA-256.", nameof(parts))
-                    { PartId = part.Id, MeshKey = part.Mesh.Key, DeclaredHash = part.Mesh.Sha256 };
+                { PartId = part.Id, MeshKey = part.Mesh.Key, DeclaredHash = part.Mesh.Sha256 };
             if (part is RigidAttachmentPartDefinition rigid)
             {
                 if (string.IsNullOrWhiteSpace(rigid.Joint))
@@ -51,7 +51,7 @@ public sealed class AttachmentSetDefinition
             }
             if (meshes.TryGetValue(part.Mesh.Key, out AttachmentMeshRef existing) && existing.Sha256 != part.Mesh.Sha256)
                 throw new AttachmentSetArgumentException(AttachmentSetRefusal.MeshHashConflict, $"{context}: mesh '{part.Mesh.Key}' has conflicting hashes.", nameof(parts))
-                    { PartId = part.Id, MeshKey = part.Mesh.Key, DeclaredHash = part.Mesh.Sha256, ExistingHash = existing.Sha256 };
+                { PartId = part.Id, MeshKey = part.Mesh.Key, DeclaredHash = part.Mesh.Sha256, ExistingHash = existing.Sha256 };
             meshes[part.Mesh.Key] = part.Mesh;
         }
         Array.Sort(owned, (left, right) => left.Id.CompareTo(right.Id));

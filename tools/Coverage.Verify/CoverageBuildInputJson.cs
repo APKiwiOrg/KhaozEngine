@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using KhaozEngine.Attachments;
 using KhaozEngine.Render3D;
@@ -41,13 +40,13 @@ public static class CoverageBuildInputJson
                 throw Error(CoverageBuildInputRefusal.AssetBinding, "$.inverseBind");
             byte[] configurationBytes = Asset(root, "configuration", folder, "$", sourcePaths);
             string configurationPath = Resolve(Get(root, "configuration", "$"), folder, "$.configuration");
-            var commands = Configuration(configurationBytes, System.IO.Path.GetDirectoryName(configurationPath)!, topology, sourcePaths);
+            var (commands, configurationItem) = Configuration(configurationBytes, System.IO.Path.GetDirectoryName(configurationPath)!, topology, sourcePaths);
             var domains = Array(root, "domains", "$", CoverageBuildInput.MaxSamples).EnumerateArray().Select((d, i) => Domain(d, $"$.domains[{i}]", topology, commands, binds.Length)).ToArray();
             var samples = Array(root, "samples", "$", CoverageBuildInput.MaxSamples).EnumerateArray()
                 .Select((s, i) => Sample(s, $"$.samples[{i}]", topology, commands, binds.Length)).ToArray();
             string stateHash = Digest(Get(root, "stateSchemaSha256", "$"), "$.stateSchemaSha256");
             var identity = new CoverageRecessionIdentity(Hash(hostBytes), map.SemanticSha256,
-                ConfigurationHash(configurationBytes, binds), RefinementHash(topology), ArithmeticHash(), stateHash);
+                CoverageConfigurationIdentity.Compute([configurationItem], binds), RefinementHash(topology), ArithmeticHash(), stateHash);
             return new(topology, binds, domains, samples, Strings(root, "candidateSampleIds", "$", CoverageBuildInput.MaxCandidates), identity, Hash(bytes), sourcePaths);
         }
         catch (CoverageBuildDataException) { throw; }
@@ -59,7 +58,7 @@ public static class CoverageBuildInputJson
         { throw new CoverageBuildDataException(CoverageBuildInputRefusal.InputIo, "Cannot read an input.", e) { Identity = path }; }
     }
 
-    static Command[] Configuration(byte[] bytes, string folder, CoverageRefinement topology, List<string> sourcePaths)
+    static (Command[], CoverageConfigurationItem) Configuration(byte[] bytes, string folder, CoverageRefinement topology, List<string> sourcePaths)
     {
         using var doc = Document(bytes);
         var root = doc.RootElement;
@@ -72,6 +71,7 @@ public static class CoverageBuildInputJson
         if (companion.AttachmentSha256 != Hash(attachmentBytes) || companion.HostMapSha256 != topology.Map.SemanticSha256)
             throw Error(CoverageBuildInputRefusal.AssetBinding, "$.companion");
         var supportSources = new Dictionary<uint, CoverageSourceTopology>();
+        var configurationParts = new List<CoverageConfigurationPart>();
         foreach (var part in Array(root, "parts", "$", CoverageBuildInput.MaxSamples).EnumerateArray())
         {
             Members(part, "$.parts", "id", "asset", "hostJoint", "socket", "bodyAlignment");
@@ -79,15 +79,15 @@ public static class CoverageBuildInputJson
             if (attachment.Parts.SingleOrDefault(p => p.Id == id) is not RigidAttachmentPartDefinition declared
                 || supportSources.ContainsKey(id) || Text(part, "hostJoint", "$.parts") != declared.Joint)
                 throw Error(CoverageBuildInputRefusal.AssetBinding, "$.parts.id");
-            // These authored binding transforms are part of the exact configuration bytes. Current world poses are not.
-            Matrix(Get(part, "socket", "$.parts"), "$.parts.socket");
-            Matrix(Get(part, "bodyAlignment", "$.parts"), "$.parts.bodyAlignment");
+            configurationParts.Add(new(id, declared.Joint,
+                Matrix(Get(part, "socket", "$.parts"), "$.parts.socket"),
+                Matrix(Get(part, "bodyAlignment", "$.parts"), "$.parts.bodyAlignment")));
             byte[] asset = Asset(part, "asset", folder, "$.parts", sourcePaths);
             if (Hash(asset) != declared.Mesh.Sha256) throw Error(CoverageBuildInputRefusal.HashMismatch, "$.parts.asset.sha256");
             supportSources.Add(id, GltfLoader.LoadCoverageSource(asset, $"part-{id}"));
         }
         if (supportSources.Count != attachment.Parts.Count) throw Error(CoverageBuildInputRefusal.AssetBinding, "$.parts");
-        return companion.Commands.Select(command =>
+        var commands = companion.Commands.Select(command =>
         {
             if (!supportSources.TryGetValue(command.PartId, out var source)) throw Error(CoverageBuildInputRefusal.AssetBinding, "$.companion.commands.partId");
             int region = topology.Map.Regions.Select((r, i) => (r, i)).Where(p => p.r.Key == command.HostRegion).Select(p => p.i).DefaultIfEmpty(-1).Single();
@@ -95,6 +95,7 @@ public static class CoverageBuildInputJson
             var support = CoverageSupportSurface.Compile(source, command.InwardSupport.Select(r => new CoverageTriangleRange(r.Mesh, r.Primitive, r.FirstTriangle, r.Count)).ToArray(), command.CoverageLocal);
             return new Command(command, support, region);
         }).ToArray();
+        return (commands, new(Hash(attachmentBytes), Hash(companionBytes), configurationParts.ToArray()));
     }
 
     static CoverageDomain Domain(JsonElement value, string path, CoverageRefinement topology, Command[] commands, int bones)
@@ -298,33 +299,8 @@ public static class CoverageBuildInputJson
     }
     internal static string Hash(ReadOnlySpan<byte> bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
     internal static string CodeHash() => Hash(File.ReadAllBytes(typeof(CoverageBuildInput).Assembly.Location));
-    internal static string ArithmeticHash() => Hash(Encoding.UTF8.GetBytes("KhaozEngine.CoverageCarry/1;binary32;flush-inclusive-2^-126;" + Hash(File.ReadAllBytes(typeof(CoverageRefinement).Assembly.Location))));
-    static string ConfigurationHash(byte[] bytes, Matrix4x4[] inverseBind)
-    {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream, Encoding.UTF8, true);
-        writer.Write("KhaozEngine.CoverageConfiguration/1");
-        writer.Write(bytes.Length); writer.Write(bytes); writer.Write(inverseBind.Length);
-        foreach (var m in inverseBind)
-            foreach (float value in Values(m)) writer.Write(BitConverter.SingleToUInt32Bits(value));
-        return Hash(stream.ToArray());
-    }
-    internal static string RefinementHash(CoverageRefinement topology)
-    {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream, Encoding.UTF8, true);
-        writer.Write("KhaozEngine.CoverageRefinement/1");
-        writer.Write(topology.Source.SourceSha256);
-        writer.Write(topology.VertexCount); writer.Write(topology.TriangleCount); writer.Write(topology.PositionGroupCount);
-        foreach (var v in topology.Source.Vertices) { writer.Write(v.Mesh); writer.Write(v.Primitive); writer.Write(v.Vertex); writer.Write(v.Node); writer.Write(v.MaterialSlice); writer.Write(v.SliceVertex); }
-        foreach (var t in topology.Source.Triangles) { writer.Write(t.Mesh); writer.Write(t.Primitive); writer.Write(t.Triangle); writer.Write(t.Node); writer.Write(t.MaterialSlice); writer.Write(t.A); writer.Write(t.B); writer.Write(t.C); }
-        foreach (var v in topology.Vertices) { writer.Write(v.SourceTriangle); writer.Write(v.SourceVertex); writer.Write(v.A); writer.Write(v.B); writer.Write(v.C); writer.Write(v.Denominator); writer.Write(v.PositionGroup); writer.Write(v.ShadingGroup); writer.Write(v.RegionIndex); writer.Write(BitConverter.SingleToUInt32Bits(v.Strength)); }
-        for (int i = 0; i < topology.PositionGroupCount; i++)
-        { var r = topology.GetPositionRecipe(i); writer.Write(r.A); writer.Write(r.B); writer.Write(r.C); writer.Write(r.WeightA); writer.Write(r.WeightB); writer.Write(r.WeightC); writer.Write(r.Denominator); }
-        foreach (uint i in topology.Indices) writer.Write(i);
-        foreach (var t in topology.Triangles) { writer.Write(t.SourceTriangle); writer.Write(t.RegionIndex); writer.Write((int)t.Role); }
-        return Hash(stream.ToArray());
-    }
+    internal static string ArithmeticHash() => CoverageTableBinding.ArithmeticSha256;
+    internal static string RefinementHash(CoverageRefinement topology) => CoverageTableBinding.RefinementSha256(topology);
     internal static float[] Values(Matrix4x4 m) => [m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24, m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44];
     static CoverageBuildDataException Error(CoverageBuildInputRefusal reason, string path) => new(reason, "Coverage input was refused.") { Path = path };
 }

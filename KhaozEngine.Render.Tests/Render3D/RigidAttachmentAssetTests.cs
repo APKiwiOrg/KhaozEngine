@@ -260,15 +260,29 @@ internal sealed class AttachmentAssetHarness : IDisposable
     public void Dispose() { Scene.Dispose(); _device.Dispose(); }
 }
 
-internal sealed class AttachmentRecordingScene(Scene3D scene) : IAttachmentScene
+internal sealed class AttachmentRecordingScene(Scene3D scene) : IAttachmentCoverageScene
 {
     readonly Scene3DAttachmentScene _adapter = new(scene);
+    readonly List<IAttachmentMeshLease> _leases = [];
+    internal void UnloadRigidMeshes()
+    { foreach (var lease in _leases) ((IAttachmentUpload)lease).UnloadMeshes(); }
+    public object CoverageResourceOwner => _adapter.CoverageResourceOwner;
+    public SkinnedHostCoverage CreateHostCoverage(Skeleton skeleton, IReadOnlyList<SkinnedMeshHandle> meshes, CoverageRecessionTable table) =>
+        _adapter.CreateHostCoverage(skeleton, meshes, table);
+    public bool TryStageCoverageEquipment(MotionKey actorKey, ulong equipmentInstanceId,
+        ReadOnlySpan<CoverageEquipmentCommand> commands, ReadOnlySpan<RigidInstanceDraw> draws,
+        Span<RigidInstanceDraw> frozen, out CoverageFailure failure) =>
+        _adapter.TryStageCoverageEquipment(actorKey, equipmentInstanceId, commands, draws, frozen, out failure);
+    public void DrawMeshOutline(MeshOutlineGroup group, in RigidInstanceDraw draw) => _adapter.DrawMeshOutline(group, draw);
+    public void DrawSkinnedOutline(MeshOutlineGroup group, in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> palette) =>
+        _adapter.DrawSkinnedOutline(group, draw, palette);
     internal List<IReadOnlyList<MeshHandle>> Uploads { get; } = [];
     internal List<IReadOnlyList<SkinnedMeshHandle>> SkinnedUploads { get; } = [];
     internal List<IReadOnlyList<GltfSkinnedMeshPart>> SkinnedParts { get; } = [];
     public IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts)
     {
         IAttachmentMeshLease lease = _adapter.UploadAttachment(parts);
+        _leases.Add(lease);
         Uploads.Add(lease.Handles);
         return lease;
     }

@@ -89,6 +89,15 @@ public enum EquipmentCoverageRefusal
     /// <summary>Maximum world recession must be finite and non-negative.</summary>
     InvalidRecession,
 
+    /// <summary>The exact loaded attachment differs from AttachmentSha256. Identity and Path name the companion.</summary>
+    AttachmentIdentityMismatch,
+    /// <summary>The command requires a rigid part. CommandId and PartId name the refused binding.</summary>
+    RigidPartRequired,
+    /// <summary>The displayed source differs from the declared mesh bytes. CommandId and PartId identify it.</summary>
+    DisplayedSourceMismatch,
+    /// <summary>The support lacks a complete displayed solid or material inventory. CommandId and PartId identify it.</summary>
+    IncompleteDisplayedSolid,
+
 }
 
 /// <summary>Structured malformed-data refusal for equipment coverage. Messages are developer prose.</summary>

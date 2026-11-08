@@ -25,10 +25,12 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void Draw(in RigidInstanceDraw draw)
         {
+            ValidateCoverageEquipment(draw, false);
             if (draw.CutInsideInteriors)
                 _instances.Add(in draw, RelevantInteriorCut(draw.Mesh, draw.World));
             else _instances.Add(in draw);
             RecordRigidMotion(in draw);
+            RecordCoverageEquipment(draw, false);
         }
 
         /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/> (no tint).</summary>
@@ -77,6 +79,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
         {
+            var coverage = ValidateCoverageDraw(draw, boneMatrices, false);
             if (draw.ShadowOnly && !draw.CastsShadows)
                 throw new DrawAdmissionArgumentException(DrawAdmissionRefusal.ShadowOnlyWithoutCasting,
                     "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
@@ -93,6 +96,7 @@ namespace KhaozEngine.Render3D
             ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
             _skinnedInstances.Add(in draw);
             RecordSkinnedMotion(in draw, slot, boneMatrices.Length);
+            RecordCoverageDraw(coverage, draw, false);
         }
 
         /// <summary>Queue one skinned draw. <paramref name="boneMatrices"/> are this frame's joint world

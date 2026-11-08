@@ -201,6 +201,8 @@ public enum HostCoverageRefusal
 
     /// <summary>The coverage importer could not decode the model. The original cause is retained.</summary>
     ImportedModelFailure,
+    /// <summary>Coverage requires a live handle issued by this exact scene. HandleIndex and HandleGeneration identify it.</summary>
+    HostHandleOwnershipMismatch,
 
 
 }
@@ -256,6 +258,10 @@ public sealed class HostCoverageDataException : MalformedDataException
 
     /// <summary>Material slice involved in a binding refusal.</summary>
     public int? MaterialSlice { get; init; }
+    /// <summary>Slot of a refused coverage host handle.</summary>
+    public int? HandleIndex { get; init; }
+    /// <summary>Generation of a refused coverage host handle.</summary>
+    public int? HandleGeneration { get; init; }
 
     IReadOnlyList<int> missingMaterialSlices = Array.Empty<int>();
     /// <summary>Owned snapshot of every required but absent material slice, in ascending order.</summary>
@@ -282,6 +288,8 @@ public sealed class HostCoverageDataException : MalformedDataException
             Vertex = Vertex,
             FirstTriangle = FirstTriangle,
             MaterialSlice = MaterialSlice,
+            HandleIndex = HandleIndex,
+            HandleGeneration = HandleGeneration,
             MissingMaterialSlices = MissingMaterialSlices,
         };
 }

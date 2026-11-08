@@ -51,9 +51,12 @@ public sealed class SkinnedAttachmentSubmissionTests
         {
             if (property.Name is nameof(RigidInstanceDraw.Mesh) or nameof(RigidInstanceDraw.World) or nameof(RigidInstanceDraw.Motion)) continue;
             Assert.Equal(property.GetValue(template), property.GetValue(draws[0].Rigid));
-            if (property.Name is nameof(RigidInstanceDraw.CutInsideInteriors) or nameof(RigidInstanceDraw.ShadowMobility)) continue;
+            if (property.Name is nameof(RigidInstanceDraw.CutInsideInteriors) or nameof(RigidInstanceDraw.ShadowMobility)
+                or nameof(RigidInstanceDraw.Coverage)) continue;
             Assert.Equal(property.GetValue(template), typeof(SkinnedInstanceDraw).GetProperty(property.Name)!.GetValue(draws[1].Skinned));
         }
+        Assert.Equal(default(SkinnedCoverageFrame), draws[1].Skinned.Coverage);
+        Assert.Equal(default(SkinnedCoverageFrame), draws[2].Skinned.Coverage);
 
         bound.Queue(fixture.Skeleton, fixture.Palette, fixture.Model, fixture.Key, template);
 

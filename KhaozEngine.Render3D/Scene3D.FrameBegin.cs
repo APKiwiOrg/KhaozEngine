@@ -32,6 +32,7 @@ public sealed partial class Scene3D
         if (submission is null) _retired.BeginFrame();
         LatchRenderOrigin();
         BeginFrameView();   // one frame index per Begin (Scene3D.FrameView.cs)
+        _coverageArena.Begin();
         BeginRigidInstances();
         BeginFoliageFrame();
         _skinnedInstances.Begin();

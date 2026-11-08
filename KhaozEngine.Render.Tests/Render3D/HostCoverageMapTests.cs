@@ -416,6 +416,8 @@ public class HostCoverageMapTests
             Vertex = 6,
             FirstTriangle = 7,
             MaterialSlice = 8,
+            HandleIndex = 12,
+            HandleGeneration = 13,
             MissingMaterialSlices = missing,
         };
         var refusal = original.WithContext(identity: "outer", prefix: "$.regions[1]");
@@ -423,13 +425,14 @@ public class HostCoverageMapTests
         Assert.Equal(original.Reason, refusal.Reason);
         Assert.Equal("outer", refusal.Identity);
         Assert.Equal("$.regions[1].triangles[2]", refusal.Path);
-        Assert.Equal(new[] { "Count", "FirstTriangle", "FormatVersion", "Identity", "Limit", "MaterialSlice", "MemberName", "MemberNameOmitted", "Mesh", "MissingMaterialSlices", "Path", "Primitive", "Reason", "RegionKey", "SurfaceId", "Vertex" },
+        Assert.Equal(new[] { "Count", "FirstTriangle", "FormatVersion", "HandleGeneration", "HandleIndex", "Identity", "Limit", "MaterialSlice", "MemberName", "MemberNameOmitted", "Mesh", "MissingMaterialSlices", "Path", "Primitive", "Reason", "RegionKey", "SurfaceId", "Vertex" },
             typeof(HostCoverageDataException).GetProperties().Where(property => property.DeclaringType == typeof(HostCoverageDataException))
                 .Select(property => property.Name).Order(StringComparer.Ordinal));
         missing[0] = 99;
         Assert.Equal(new[] { 1, 2 }, refusal.MissingMaterialSlices);
         Assert.Throws<NotSupportedException>(() => ((IList<int>)refusal.MissingMaterialSlices)[0] = 3);
         Assert.Equal(original.MaterialSlice, refusal.MaterialSlice);
+        Assert.Equal((original.HandleIndex, original.HandleGeneration), (refusal.HandleIndex, refusal.HandleGeneration));
         Assert.Equal(original.MissingMaterialSlices, refusal.MissingMaterialSlices);
         Assert.Equal(original.MemberNameOmitted, refusal.MemberNameOmitted);
         Assert.Equal((original.Count, original.Limit, original.MemberName, original.FormatVersion), (refusal.Count, refusal.Limit, refusal.MemberName, refusal.FormatVersion));

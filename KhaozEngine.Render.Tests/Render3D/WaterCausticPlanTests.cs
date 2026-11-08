@@ -189,7 +189,9 @@ public sealed class WaterCausticPlanTests
         var river = new WaterPlane(0f, 0f, 0f, 2f, look: TileWaterLooks.River);
         var look = new WaterLook
         {
-            WaterColumnLight = false, CausticStrength = 7f, AbsorptionPerMetre = new Color(.1f, .2f, .3f, 0f),
+            WaterColumnLight = false,
+            CausticStrength = 7f,
+            AbsorptionPerMetre = new Color(.1f, .2f, .3f, 0f),
         };
         var plan = Build([river, new(10f, 0f, 0f, 2f, look: look), new(-10f, 0f, 0f, 2f)], scene);
 

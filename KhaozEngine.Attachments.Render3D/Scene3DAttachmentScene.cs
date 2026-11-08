@@ -6,9 +6,19 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.Attachments.Render3D;
 
 /// <summary>Attachment uploads and complete mixed draws and outlines through an existing Scene3D.</summary>
-public sealed class Scene3DAttachmentScene : IAttachmentScene
+public sealed class Scene3DAttachmentScene : IAttachmentCoverageScene
 {
     readonly Scene3D _scene;
+    public object CoverageResourceOwner => _scene;
+    public SkinnedHostCoverage CreateHostCoverage(Skeleton skeleton, IReadOnlyList<SkinnedMeshHandle> meshes, CoverageRecessionTable table) =>
+        _scene.CreateHostCoverage(skeleton, meshes, table);
+    public bool TryStageCoverageEquipment(MotionKey actorKey, ulong equipmentInstanceId,
+        ReadOnlySpan<CoverageEquipmentCommand> commands, ReadOnlySpan<RigidInstanceDraw> draws,
+        Span<RigidInstanceDraw> frozenDraws, out CoverageFailure failure) =>
+        _scene.TryStageCoverageEquipment(actorKey, equipmentInstanceId, commands, draws, frozenDraws, out failure);
+    public void DrawMeshOutline(MeshOutlineGroup group, in RigidInstanceDraw draw) => _scene.DrawMeshOutline(group, draw);
+    public void DrawSkinnedOutline(MeshOutlineGroup group, in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> palette) =>
+        _scene.DrawSkinnedOutline(group, draw, palette);
 
     public Scene3DAttachmentScene(Scene3D scene)
     {

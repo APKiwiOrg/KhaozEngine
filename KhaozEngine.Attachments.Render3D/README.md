@@ -200,6 +200,50 @@ Calls on the same bound view must not overlap.
 For the version-21 set-level rename and its rationale, see the
 [skinned attachment design](../docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).
 
+## Table coverage preparation
+
+`IAttachmentCoverageScene` is an optional capability beside `IAttachmentScene`.
+`Scene3DAttachmentScene` supplies it through its actual Scene3D resource owner. Ordinary attachment
+adapters remain usable for ordinary equipment and empty coverage configurations.
+
+Load the exact companion with `cache.GetCoverage(loaded, key, sha256)`. The returned
+`LoadedEquipmentCoverage` borrows its cache, retains the exact `CompanionSha256`, and compiles support
+from the cache's verified displayed mesh bytes without another upload. Companion load errors retain
+the public equipment or geometry refusal family. Coverage requires rigid commanded parts and every
+material slice of their complete displayed solid. Uncommanded skinned parts retain the existing
+host inverse-bind and garment palette checks.
+
+Create one `HostCoverageBinding(scene, skeleton, hosts, actorKey, table)` per actor incarnation.
+The host handles must be issued by that exact scene and include every annotated material slice.
+The host, semantic map, fixed refinement and arithmetic digests must match the table.
+`TrySetEquipment` accepts a complete span of `CoveredAttachmentInstance` values. It verifies exact
+cache ownership, host skin, regions, unique authored command IDs and the canonical complete
+configuration digest. A changed incarnation or transition weight can reuse the table. A changed
+attachment, companion or static binding cannot. Refusal preserves active equipment and borrowed
+descriptors. Empty equipment bypasses the table identity check and selects ordinary presentation.
+
+`TryPrepare(skeleton, palette, model, stateKey, equipmentTemplate, out frame, out failure)` freezes
+the raw host palette, model, current command frames and complete material descriptors. It uses only
+the opaque consumer key to select a row. It never chooses an entry from pose geometry or performs
+runtime certification. Forward `PreparedEquipmentDraws` synchronously and unchanged. The borrowed
+descriptors and tokens expire on the next preparation, successful replacement, Begin, resource
+unload or disposal. Prepared garment palettes are isolated from another actor using the same loaded set.
+Each actor accepts one preparation between Begin calls. A repeated preparation returns `StaleFrame`
+and cannot overwrite the snapshot already referenced by queued draws.
+
+A missing or explicit-hole key returns `TableHole`, an empty token and no equipment descriptors.
+The caller explicitly submits the current uncovered host with `Motion = actorKey` and ordinary
+active equipment. Empty equipment succeeds with the same empty token. The scene registers actor
+and exact host handles even for fallback, so later submission history can associate that raw pose.
+Staging and registration alone never record a presented surface or commit history.
+
+`SkinnedHostCoverage` is the lower-level actor owner. `BindActor` fixes its actor incarnation,
+`MatchesConfiguration` checks the canonical configuration, and `ReserveEquipment` reserves bounded
+material snapshot storage at cold equip. Frame preparation calls the retained carry uniform
+interface with the exact palette, inverse binds, model and commands. Descriptor-aware outline
+overloads preserve the same tokens. A changed or stale descriptor throws `CoverageFrameStateException`
+with public `CoverageFailureCode Reason` before modifying queues or palettes.
+
 ## Binding refusals
 
 `AttachmentBindingRefusal` spans `AttachmentBindingDataException` for malformed binding data and

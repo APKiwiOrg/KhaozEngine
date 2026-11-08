@@ -41,6 +41,7 @@ namespace KhaozEngine.Render3D
                     FoliageMaterial.IsOpaque(material is not null, alphaCutoff, mesh.Vertices));
                 if (index < _meshes.Count) _meshes[index] = slot;
                 else _meshes.Add(slot);
+                _coverageUploads[(index, generation)] = new CoverageUploadEvidence(mesh);
                 return new MeshHandle(index, generation);
             }
             catch

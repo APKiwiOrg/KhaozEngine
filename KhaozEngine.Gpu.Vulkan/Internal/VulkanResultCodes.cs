@@ -58,11 +58,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 $"The native Vulkan backend's {call} failed: {Describe(result)}. This is a creation-time failure "
                 + "on a machine whose support probe answered yes, so it is either a driver that reports more than "
                 + "it can do or a resource the process could not get.")
-                {
-                    Call = call,
-                    ResultCode = (int)result,
-                    ResultToken = Token(result),
-                };
+            {
+                Call = call,
+                ResultCode = (int)result,
+                ResultToken = Token(result),
+            };
         }
 
         /// <summary>The stable token for a result, for a telemetry header field that has to group cleanly across

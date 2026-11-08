@@ -147,11 +147,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     "A native Metal uniform ring runs between " + MetalFramesInFlight.Minimum + " and "
                     + MetalFramesInFlight.Maximum + " frame segments. " + MetalFramesInFlight.EnvVarName
                     + " clamps to that range before it gets here.")
-                    {
-                        MinimumDepth = MetalFramesInFlight.Minimum,
-                        MaximumDepth = MetalFramesInFlight.Maximum,
-                        EnvironmentVariable = MetalFramesInFlight.EnvVarName,
-                    };
+                {
+                    MinimumDepth = MetalFramesInFlight.Minimum,
+                    MaximumDepth = MetalFramesInFlight.Maximum,
+                    EnvironmentVariable = MetalFramesInFlight.EnvVarName,
+                };
             }
 
             _timeline = timeline;
@@ -248,9 +248,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "read it, and the value it waits for is registered under that same lock (M-N2), so waiting "
                     + "while holding it would shut out the only thing that could end the wait. Begin takes it "
                     + "nowhere, so reaching this means a new caller was added inside the lock.")
-                    {
-                        Operation = nameof(BeginRecording),
-                    };
+                {
+                    Operation = nameof(BeginRecording),
+                };
             }
 
             bool blocked = false;

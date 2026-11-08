@@ -525,6 +525,25 @@ What it owns today:
   reaches 48 of them), and nothing evicts. `KE_SPIRV_CACHE` switches it off with the same five disable words the
   three backends' shader DISK caches take (`off`, `0`, `false`, `no`, `none`), for a session that needs to state
   that every module in the run came out of the compiler.
+- **Per-shader precise math** - pass `new GpuShaderCompileOptions(PreciseMath: true)` to
+  `CreateComputeShaderFromSpirv(source, options)` or `CreateShadersFromSpirv(vertex, fragment, vertexOptions)`.
+  Author GLSL `precise` on the arithmetic whose operation order matters. The option preserves that dataflow
+  with shaderc optimization Zero and SPIR-V `NoContraction`, HLSL `precise` and FXC IEEE strictness, and MSL
+  invariant arithmetic helpers with Metal fast math off for the requested compute or vertex stage. Fragment
+  compilation stays at its default policy. Precise Metal emission backports the negative-zero seeds in
+  SPIRV-Cross 2.23.0 multiplication helpers. It recognises only the pinned and already-corrected bodies,
+  and refuses a changed helper. Removal is tracked in [#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495).
+  Precise SPIR-V declares `SignedZeroInfNanPreserve 32` with `SPV_KHR_float_controls` on every entry point.
+  Vulkan float controls are core below the backend's Vulkan 1.3 floor, with no device enable bit.
+  `GpuCapabilities.SupportsShaderFloatControls` reports the Vulkan property
+  `shaderSignedZeroInfNanPreserveFloat32`. Vulkan shader creation refuses a precise request without it.
+  Other APIs leave this Vulkan-specific capability false. Every compiler cache separates default and precise
+  requests, including the revised IEEE-preservation policy identity.
+  Validation accepts the same options through `ShaderValidation.ValidateCompute` and `ValidatePair`.
+  The option adds no source qualifiers and promises no cross-device transcendental or denormal equivalence.
+  Factories without precision support throw `GpuShaderPolicyUnsupportedException`, derived from
+  `NotSupportedException`, with `PreciseMathUnavailable`. Vulkan reports `FloatControlsUnavailable` when its
+  float-control property is absent. `Stage` names the refused compute or vertex stage.
 - **Compute** (since 15.2.0) - `IGpuResourceFactory.CreateComputeShaderFromSpirv(computeGlsl)` compiles a GLSL 450
   compute source into an `IGpuComputeShader`, and `CreateComputePipeline(in GpuComputePipelineDescription)` builds an
   `IGpuComputePipeline` over it plus its resource layouts. Both handle types are separate from the graphics

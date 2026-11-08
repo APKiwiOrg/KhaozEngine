@@ -84,10 +84,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "Metal, which needs VK_EXT_metal_surface and a translation layer this backend deliberately does "
                 + "not carry: phase 4 of the native GPU program "
                 + "(https://github.com/APKiwiOrg/KhaozEngine/issues/420) brings a real Metal backend instead. This "
-                + "package loads harmlessly on macOS and is never selected there.") { WindowKind = window, RequiredTranslationLayer = "MoltenVK", RequiredExtension = "VK_EXT_metal_surface" },
+                + "package loads harmlessly on macOS and is never selected there.")
+            { WindowKind = window, RequiredTranslationLayer = "MoltenVK", RequiredExtension = "VK_EXT_metal_surface" },
             _ => throw new VulkanBackendCreationUnsupportedException(VulkanBackendCreationRefusal.WindowKindUnsupported,
                 $"The native Vulkan backend has no surface extension for GpuWindowKind '{window}'. The windowed "
-                + "path supports Win32, X11 and Wayland.") { WindowKind = window },
+                + "path supports Win32, X11 and Wayland.")
+            { WindowKind = window },
         };
 
         /// <summary>The instance layers: <c>VK_LAYER_KHRONOS_validation</c> under the knob, and nothing

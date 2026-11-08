@@ -189,9 +189,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "1.3 version floor and not this bit is below spec. There is no second Vulkan path to fall back "
                 + "to on this machine: GpuBackendKind.Vulkan named the Veldrid backend and was retired in "
                 + "18.0.0.")
-                {
-                    FeatureName = feature,
-                    DeviceName = deviceName,
-                };
+            {
+                FeatureName = feature,
+                DeviceName = deviceName,
+            };
     }
 }

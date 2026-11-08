@@ -12,7 +12,8 @@ internal static class D3D11BackendCreationChecks
         throw new D3D11BackendCreationArgumentException(D3D11BackendCreationRefusal.WindowHandleMissing,
             "The native Direct3D 11 backend was asked for a windowed device with a null window handle. A "
             + "swapchain needs an HWND to present into, and the windowing layer supplies one through "
-            + "GpuWindowHandle.", nameof(hwnd)) { ActualWindowKind = GpuWindowKind.Win32 };
+            + "GpuWindowHandle.", nameof(hwnd))
+        { ActualWindowKind = GpuWindowKind.Win32 };
     }
 
     [DoesNotReturn]

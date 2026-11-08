@@ -353,7 +353,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "submit lock. The drain signals and flushes under the lock and then RELEASES it to wait, so "
                     + "that the work it is waiting for can still be submitted. Re-entering the lock here releases "
                     + "nothing, so the drain would wait for a submission no other thread can make. Call it "
-                    + "outside the frame's critical section.") { Operation = "WaitForIdle" };
+                    + "outside the frame's critical section.")
+                { Operation = "WaitForIdle" };
             }
 
             ulong target;

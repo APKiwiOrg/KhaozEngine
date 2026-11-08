@@ -335,7 +335,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 throw new D3D11WaitPolicyException(D3D11WaitPolicyRefusal.SubmitLockHeld, "BeginFrame was called on the native Direct3D 11 ring allocator while the caller held the "
                     + "submit lock. Opening a frame waits for the GPU to finish with the segment it opens, which "
                     + "is up to a frame, and the submit lock is held for microseconds, never across a GPU wait. "
-                    + "Call it after the present has released the lock, not inside it.") { Operation = nameof(BeginFrame) };
+                    + "Call it after the present has released the lock, not inside it.")
+                { Operation = nameof(BeginFrame) };
             }
 
             _lastFrame = new D3D11BackpressureStats(_stallCount, _stallTicks * 1000d / Stopwatch.Frequency);

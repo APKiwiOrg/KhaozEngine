@@ -137,4 +137,7 @@ public enum ShaderValidationRefusal
 
     /// <summary>Refuses a SPIR-V module with the wrong magic number.</summary>
     SpirvMagicInvalid,
+
+    /// <summary>Refuses an unfamiliar precise MSL multiplication helper. Operation names the helper.</summary>
+    PreciseMslHelperUnsupported,
 }

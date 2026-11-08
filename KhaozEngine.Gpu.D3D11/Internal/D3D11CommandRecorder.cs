@@ -89,7 +89,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (_recording)
                 throw new GpuRecordingStateException(GpuRecordingStateRefusal.BeginWhileRecording, "Begin was called on a Direct3D 11 command list that is already recording. Begin truncates "
                     + "the recording to zero, so a second call would silently discard everything recorded since "
-                    + "the first. Call End first.") { Backend = GpuBackendKind.Direct3D11Native, Command = nameof(Begin) };
+                    + "the first. Call End first.")
+                { Backend = GpuBackendKind.Direct3D11Native, Command = nameof(Begin) };
 
             BeginTimestampRecording();
             _recording = true;
@@ -121,7 +122,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, member + " was called on a Direct3D 11 command list that is not recording. Every command belongs "
                 + "to a recording that Begin opened and End closed. Recording after End would extend a sealed "
                 + "recording on the deferred driver and emit outside the list on the immediate one, so the same "
-                + "program would render two different frames depending on KE_D3D11_RECORD.") { Backend = GpuBackendKind.Direct3D11Native, Command = member };
+                + "program would render two different frames depending on KE_D3D11_RECORD.")
+            { Backend = GpuBackendKind.Direct3D11Native, Command = member };
         }
 
         public void SetFramebuffer(IGpuFramebuffer fb)

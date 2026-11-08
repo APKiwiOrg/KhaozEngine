@@ -43,7 +43,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     ? "End was called on a native Vulkan command list that is not recording. Call Begin first."
                     : "End was called twice on a native Vulkan command list. The recording is already sealed and "
                         + "ready to submit, and a second vkEndCommandBuffer on a buffer in the executable state "
-                        + "is a call the driver refuses.") { Backend = GpuBackendKind.VulkanNative, Command = nameof(End) };
+                        + "is a call the driver refuses.")
+                { Backend = GpuBackendKind.VulkanNative, Command = nameof(End) };
             }
 
             try

@@ -177,11 +177,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "further on this device will succeed."
                     : "The mapped pointer a failed map hands back is null, so this throws rather than letting a "
                     + "reader walk it and report an empty readback."), hresult)
-                    {
-                        Site = site,
-                        ResultToken = D3D11DeviceLossCodes.Token(hresult),
-                        DeviceLost = lost,
-                    };
+            {
+                Site = site,
+                ResultToken = D3D11DeviceLossCodes.Token(hresult),
+                DeviceLost = lost,
+            };
         }
     }
 }

@@ -48,7 +48,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (arrayLayer < arraySlices) return;
 
-            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange,nameof(arrayLayer), arrayLayer,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(arrayLayer), arrayLayer,
                 "Array layer "
                 + arrayLayer.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Direct3D 11 texture with "
@@ -75,7 +75,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (mipLevel < mipLevels) return;
 
-            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange,nameof(mipLevel), mipLevel,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(mipLevel), mipLevel,
                 "Mip level "
                 + mipLevel.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Direct3D 11 texture with "

@@ -196,7 +196,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 throw new VulkanRingWaitException(VulkanRingWaitRefusal.SubmitLockHeld, "BeginFrame was called on the native Vulkan ring allocator while the caller held the submit "
                     + "lock. Opening a frame waits for the GPU to finish with the segment it opens, which is up to "
                     + "a frame, and the submit lock is held for microseconds, never across a GPU wait. Call it after "
-                    + "the present has released the lock, not inside it.") { Operation = nameof(BeginFrame) };
+                    + "the present has released the lock, not inside it.")
+                { Operation = nameof(BeginFrame) };
             }
 
             _frameIndex++;
@@ -244,7 +245,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     throw new VulkanRingWaitException(VulkanRingWaitRefusal.SubmitLockHeld, "A record-time uniform write on the native Vulkan ring owed a segment rotation while the "
                         + "caller held the submit lock. The rotation waits for the GPU to finish with the segment it "
                         + "opens, and the submit lock is held for microseconds, never across a GPU wait. Record "
-                        + "outside the lock.") { Operation = "BeforeRecordWrite" };
+                        + "outside the lock.")
+                    { Operation = "BeforeRecordWrite" };
                 }
 
                 Rotate();

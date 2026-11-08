@@ -113,37 +113,37 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "reports GpuWindowKind.Cocoa on macOS and Metal exists nowhere else, so a handle of another "
                 + "kind means the window and the backend were chosen by two different answers to what platform "
                 + "this is.", nameof(kind))
-                {
-                    ActualWindowKind = kind,
-                    RequiredWindowKind = GpuWindowKind.Cocoa,
-                };
+            {
+                ActualWindowKind = kind,
+                RequiredWindowKind = GpuWindowKind.Cocoa,
+            };
 
         static MetalBackendCreationArgumentException NoHandle()
             => new(MetalBackendCreationRefusal.WindowHandleMissing, "The Cocoa window handle a native Metal swapchain was asked to present to is null. The "
                 + "windowing package reads the NSWindow off the platform window, so a null here means the window "
                 + "had not been created, or had already been destroyed, when the device was asked for.",
                 "window")
-                {
-                    WindowKind = GpuWindowKind.Cocoa,
-                };
+            {
+                WindowKind = GpuWindowKind.Cocoa,
+            };
 
         static MetalBackendCreationArgumentException NoContentView()
             => new(MetalBackendCreationRefusal.ContentViewMissing, "The NSWindow a native Metal swapchain was asked to present to has no content view, so there "
                 + "is nothing to attach a CAMetalLayer to. A window mid-teardown reports this, and so does a "
                 + "handle that is a live Objective-C object but not an NSWindow.", "window")
-                {
-                    WindowKind = GpuWindowKind.Cocoa,
-                };
+            {
+                WindowKind = GpuWindowKind.Cocoa,
+            };
 
         static MetalBackendCreationStateException NoLayer(string detail)
             => new(MetalBackendCreationRefusal.NativeLayerUnavailable, "This macOS would not create a CAMetalLayer, on a machine whose Metal support probe answered "
                 + "yes. The class is looked up after QuartzCore has been loaded explicitly (which is what a "
                 + "process with no Cocoa window would otherwise be missing), so a failure here is the framework "
                 + "itself rather than a load order: " + detail + ".")
-                {
-                    Detail = detail,
-                    NativeClass = "CAMetalLayer",
-                };
+            {
+                Detail = detail,
+                NativeClass = "CAMetalLayer",
+            };
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]

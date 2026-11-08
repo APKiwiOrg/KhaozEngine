@@ -322,11 +322,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "read the buffer's first slot. Declare the element dynamic in the resource layout, or bind "
                     + "through the overload that passes no offset.",
                     nameof(dynamicOffset))
-                    {
-                        Backend = GpuBackendKind.VulkanNative,
-                        Set = slot,
-                        DynamicOffset = dynamicOffset,
-                    };
+                {
+                    Backend = GpuBackendKind.VulkanNative,
+                    Set = slot,
+                    DynamicOffset = dynamicOffset,
+                };
             }
 
             EnsureSlot(slot);

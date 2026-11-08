@@ -43,6 +43,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="TimestampValidBits">The selected graphics queue family's counter width.</param>
     /// <param name="TimestampPeriodNanoseconds">The physical device's limits.timestampPeriod.</param>
     /// <param name="MaxStorageBufferRangeBytes">The physical device's limits.maxStorageBufferRange.</param>
+    /// <param name="SignedZeroInfNanPreserveFloat32">Requested per-stage arithmetic policy or float-control capability.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
@@ -57,7 +58,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         uint MaxColorAttachments,
         int TimestampValidBits = 0,
         double TimestampPeriodNanoseconds = 0d,
-        uint MaxStorageBufferRangeBytes = 0);
+        uint MaxStorageBufferRangeBytes = 0,
+        bool SignedZeroInfNanPreserveFloat32 = false);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -134,7 +136,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 reportedName,
                 VulkanCapabilityRead.ColorAttachmentLimit(properties.Limits.MaxColorAttachments,
                     properties.Limits.MaxFragmentOutputAttachments),
-                timestampValidBits, properties.Limits.TimestampPeriod, properties.Limits.MaxStorageBufferRange);
+                timestampValidBits, properties.Limits.TimestampPeriod, properties.Limits.MaxStorageBufferRange, clearsVersionFloor && ReadFloatControls(vk, device));
         }
 
         /// <summary>
@@ -169,6 +171,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return string.IsNullOrWhiteSpace(name)
                 ? "unnamed device 0x" + properties->DeviceID.ToString("x8", CultureInfo.InvariantCulture)
                 : name;
+        }
+
+        // VK_KHR_shader_float_controls is core in 1.2, below this backend's 1.3 floor.
+        // There is no enable bit in VkDeviceCreateInfo. The execution mode opts in per entry point.
+        static bool ReadFloatControls(Vk vk, PhysicalDevice device)
+        {
+            var controls = new PhysicalDeviceFloatControlsProperties(
+                sType: StructureType.PhysicalDeviceFloatControlsProperties);
+            var properties = new PhysicalDeviceProperties2(
+                sType: StructureType.PhysicalDeviceProperties2, pNext: &controls);
+            vk.GetPhysicalDeviceProperties2(device, &properties);
+            return controls.ShaderSignedZeroInfNanPreserveFloat32;
         }
 
         // Every feature bit, off ONE chained query. Asked only of a device that already clears the version floor,

@@ -69,10 +69,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Compile a GLSL 450 vertex and fragment pair into a bound shader set.</summary>
         /// <exception cref="ShaderValidationException">A source failed to compile, FXC rejected the emitted HLSL,
         /// or the vertex input signature is holed (decision S5).</exception>
-        internal ID3D11ShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl)
+        internal ID3D11ShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl, GpuShaderCompileOptions options = default)
         {
-            D3D11CompiledPair compiled = _native.Pair(vertexGlsl, fragmentGlsl, _flags, _cache);
-            var vertex = D3D11ShaderEvidence.Capture(vertexGlsl, compiled.VertexDxbc, "vertex", _flags, _diagnostics, _reflection);
+            D3D11CompiledPair compiled = _native.Pair(vertexGlsl, fragmentGlsl, _flags, _cache, options);
+            var vertex = D3D11ShaderEvidence.Capture(vertexGlsl, compiled.VertexDxbc, "vertex", D3D11ShaderCompileFlags.For(D3D11ShaderStage.Vertex, _flags, options), _diagnostics, _reflection);
             var pixel = D3D11ShaderEvidence.Capture(fragmentGlsl, compiled.FragmentDxbc, "pixel", _flags, _diagnostics, _reflection);
             object vertexShader = _native.CreateShader(compiled.VertexDxbc, D3D11ShaderStage.Vertex);
             object? pixelShader = null;
@@ -92,10 +92,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Compile a GLSL 450 compute source into a bound compute module.</summary>
         /// <exception cref="ShaderValidationException">The source failed to compile, declares no resolvable
         /// workgroup size, or FXC rejected the emitted HLSL.</exception>
-        internal IGpuComputeShader CreateComputeShader(string computeGlsl)
+        internal IGpuComputeShader CreateComputeShader(string computeGlsl, GpuShaderCompileOptions options = default)
         {
-            D3D11CompiledCompute compiled = _native.Compute(computeGlsl, _flags, _cache);
-            var evidence = D3D11ShaderEvidence.Capture(computeGlsl, compiled.Dxbc, "compute", _flags, _diagnostics, _reflection);
+            D3D11CompiledCompute compiled = _native.Compute(computeGlsl, _flags, _cache, options);
+            var evidence = D3D11ShaderEvidence.Capture(computeGlsl, compiled.Dxbc, "compute", D3D11ShaderCompileFlags.For(D3D11ShaderStage.Compute, _flags, options), _diagnostics, _reflection);
             return new D3D11ComputeShader(_liveness, _native.CreateShader(compiled.Dxbc, D3D11ShaderStage.Compute),
                 compiled.Dxbc, compiled.ThreadGroupSizeX, compiled.ThreadGroupSizeY, compiled.ThreadGroupSizeZ, evidence);
         }

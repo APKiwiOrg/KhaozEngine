@@ -41,10 +41,11 @@ namespace KhaozEngine.Tests.Gpu
         /// during <c>dotnet test</c>.</param>
         /// <param name="supportedMsaaSampleCounts">Optional sparse count set. Null preserves the legacy
         /// contiguous-through-maximum fixture.</param>
+        /// <param name="shaderFloatControls">Whether precise SPIR-V exceptional values are supported.</param>
         internal VulkanResourceFixture(int framesInFlight = 3, bool samplerAnisotropy = true,
             int maxMsaaSampleCount = 1, object? setupLock = null, uint maxDynamicUniformBuffers = 0,
             VulkanPipelineCacheFile? pipelineCacheFile = null,
-            GpuSampleCounts? supportedMsaaSampleCounts = null)
+            GpuSampleCounts? supportedMsaaSampleCounts = null, bool shaderFloatControls = false)
         {
             FramesInFlight = framesInFlight;
             SubmitLock = new object();
@@ -112,6 +113,7 @@ namespace KhaozEngine.Tests.Gpu
                     supportsCompute: true,
                     supportsCompletionFences: true);
 
+            Capabilities = Capabilities with { SupportsShaderFloatControls = shaderFloatControls };
             DescriptorApi = new FakeVulkanDescriptorApi();
             DescriptorOwner = new VulkanDescriptorOwner(DescriptorApi, Timeline, Retired);
             Descriptors = new VulkanDescriptors(DescriptorOwner, maxDynamicUniformBuffers);

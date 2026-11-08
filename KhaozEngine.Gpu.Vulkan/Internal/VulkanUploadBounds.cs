@@ -39,7 +39,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (arrayLayer < arrayLayers) return;
 
-            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange,nameof(arrayLayer), arrayLayer,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(arrayLayer), arrayLayer,
                 "Array layer "
                 + arrayLayer.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Vulkan texture with "
@@ -66,7 +66,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (mipLevel < mipLevels) return;
 
-            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange,nameof(mipLevel), mipLevel,
+            throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(mipLevel), mipLevel,
                 "Mip level "
                 + mipLevel.ToString(CultureInfo.InvariantCulture)
                 + " is outside a native Vulkan texture with "

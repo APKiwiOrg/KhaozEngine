@@ -185,9 +185,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "and no loaded entry points. The members that need them (command-list creation, and the "
                 + "teardown that destroys the real device) are not reachable on such a device. Drive the device's "
                 + "own wiring instead, or take a real device through VulkanGpuDevice.CreateHeadless.")
-                {
-                    NativeObjectKind = "VkInstance",
-                };
+            {
+                NativeObjectKind = "VkInstance",
+            };
 
         VulkanGpuDevice(VulkanInstanceLease<VulkanInstance>? instance, Device device, Queue graphicsQueue,
             uint graphicsQueueFamily, GpuCapabilities capabilities, bool softwareAdapter,

@@ -163,9 +163,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "schedule, which returns without opening anything and leaves the pending clears owed: a "
                     + "caller that builds its own descriptor owes that same arm before it gets here.",
                     nameof(descriptor))
-                    {
-                        NativeDescriptorKind = "MTLRenderPassDescriptor",
-                    };
+                {
+                    NativeDescriptorKind = "MTLRenderPassDescriptor",
+                };
             }
 
             if (_kind == MetalEncoderKind.Render) return _encoder;
@@ -273,9 +273,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "on a command buffer Metal has already taken is not an error this backend can report, it is "
                     + "a driver assertion that aborts the process. The buffer either was never taken from the "
                     + "queue or has been committed or released since.")
-                    {
-                        Command = command,
-                    };
+                {
+                    Command = command,
+                };
 
         // The epoch bump belongs to the BEGIN as much as to the end: a record stamped against the encoder that
         // was open before this one describes an argument table that no longer exists, and a bump only at the end

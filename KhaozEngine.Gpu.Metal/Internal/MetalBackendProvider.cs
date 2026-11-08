@@ -173,9 +173,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "no Metal. Registration is safe everywhere and reports the backend as unsupported off macOS, "
                 + "so read GpuBackendSelector.IsBackendSupported (or KhaozEngineMetal.IsPlatformSupported) "
                 + "before naming this backend.")
-                {
-                    CreationPath = path,
-                    RequiredOperatingSystem = "macOS",
-                };
+            {
+                CreationPath = path,
+                RequiredOperatingSystem = "macOS",
+            };
     }
 }

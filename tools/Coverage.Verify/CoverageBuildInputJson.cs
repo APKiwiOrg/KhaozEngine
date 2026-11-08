@@ -42,7 +42,7 @@ public static class CoverageBuildInputJson
             byte[] configurationBytes = Asset(root, "configuration", folder, "$", sourcePaths);
             string configurationPath = Resolve(Get(root, "configuration", "$"), folder, "$.configuration");
             var commands = Configuration(configurationBytes, System.IO.Path.GetDirectoryName(configurationPath)!, topology, sourcePaths);
-            var domains = Array(root, "domains", "$", CoverageBuildInput.MaxSamples).EnumerateArray().Select((d, i) => Domain(d, $"$.domains[{i}]")).ToArray();
+            var domains = Array(root, "domains", "$", CoverageBuildInput.MaxSamples).EnumerateArray().Select((d, i) => Domain(d, $"$.domains[{i}]", topology, commands, binds.Length)).ToArray();
             var samples = Array(root, "samples", "$", CoverageBuildInput.MaxSamples).EnumerateArray()
                 .Select((s, i) => Sample(s, $"$.samples[{i}]", topology, commands, binds.Length)).ToArray();
             string stateHash = Digest(Get(root, "stateSchemaSha256", "$"), "$.stateSchemaSha256");
@@ -97,23 +97,56 @@ public static class CoverageBuildInputJson
         }).ToArray();
     }
 
-    static CoverageDomain Domain(JsonElement value, string path)
+    static CoverageDomain Domain(JsonElement value, string path, CoverageRefinement topology, Command[] commands, int bones)
     {
-        Members(value, path, "id", "kind", "authoredFrameIds", "blendPathIds");
+        Members(value, path, "id", "kind", "authoredFrameIds", "blendPathIds", "denseRows");
         var kind = Text(value, "kind", path) switch
         {
             "authored-clip" => CoverageDomainKind.AuthoredClip,
             "blend-path" => CoverageDomainKind.BlendPath,
             _ => throw Error(CoverageBuildInputRefusal.InvalidValue, path + ".kind"),
         };
-        return new(Text(value, "id", path), kind, Strings(value, "authoredFrameIds", path), Strings(value, "blendPathIds", path));
+        var dense = value.TryGetProperty("denseRows", out _) ? Array(value, "denseRows", path, CoverageBuildInput.MaxSamples)
+            .EnumerateArray().Select((row, i) => Dense(row, $"{path}.denseRows[{i}]", topology, commands, bones)).ToArray() : [];
+        return new(Text(value, "id", path), kind, Strings(value, "authoredFrameIds", path), Strings(value, "blendPathIds", path), dense);
     }
 
-    static CoverageSample Sample(JsonElement value, string path, CoverageRefinement topology, Command[] configuration, int bones)
+    static CoverageDenseRow Dense(JsonElement value, string path, CoverageRefinement topology, Command[] commands, int bones)
     {
-        Members(value, path, "id", "domainId", "authoredFrameId", "blendPathId", "stateKey", "actorModel", "palette", "commands");
-        var key = Get(value, "stateKey", path);
-        if (key.ValueKind != JsonValueKind.Number || !key.TryGetUInt64(out ulong stateKey)) throw Error(CoverageBuildInputRefusal.InvalidValue, path + ".stateKey");
+        Members(value, path, "denseIndex", "precedingPhaseTick", "resolvedStateKey", "sample", "looped", "clamped");
+        int Integer(string name)
+        {
+            var item = Get(value, name, path);
+            if (item.ValueKind != JsonValueKind.Number || !item.TryGetInt32(out int number) || number < 0)
+                throw Error(CoverageBuildInputRefusal.InvalidValue, path + "." + name);
+            return number;
+        }
+        bool Flag(string name)
+        {
+            var item = Get(value, name, path);
+            if (item.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw Error(CoverageBuildInputRefusal.InvalidValue, path + "." + name);
+            return item.GetBoolean();
+        }
+        var key = Get(value, "resolvedStateKey", path);
+        if (key.ValueKind != JsonValueKind.Number || !key.TryGetUInt64(out ulong stateKey))
+            throw Error(CoverageBuildInputRefusal.InvalidValue, path + ".resolvedStateKey");
+        return new(Integer("denseIndex"), Integer("precedingPhaseTick"), stateKey,
+            Sample(Get(value, "sample", path), path + ".sample", topology, commands, bones, stateKey), Flag("looped"), Flag("clamped"));
+    }
+
+    static CoverageSample Sample(JsonElement value, string path, CoverageRefinement topology, Command[] configuration, int bones, ulong? resolvedKey = null)
+    {
+        Members(value, path, resolvedKey.HasValue
+            ? ["id", "domainId", "authoredFrameId", "blendPathId", "actorModel", "palette", "commands"]
+            : ["id", "domainId", "authoredFrameId", "blendPathId", "stateKey", "actorModel", "palette", "commands"]);
+        ulong stateKey = resolvedKey.GetValueOrDefault();
+        if (!resolvedKey.HasValue)
+        {
+            var key = Get(value, "stateKey", path);
+            if (key.ValueKind != JsonValueKind.Number || !key.TryGetUInt64(out stateKey))
+                throw Error(CoverageBuildInputRefusal.InvalidValue, path + ".stateKey");
+        }
         var palette = Matrices(Get(value, "palette", path), path + ".palette", 1024);
         if (palette.Length != bones) throw Error(CoverageBuildInputRefusal.AssetBinding, path + ".palette");
         var commands = new List<CoverageCommandPose>();
@@ -292,6 +325,6 @@ public static class CoverageBuildInputJson
         foreach (var t in topology.Triangles) { writer.Write(t.SourceTriangle); writer.Write(t.RegionIndex); writer.Write((int)t.Role); }
         return Hash(stream.ToArray());
     }
-    static float[] Values(Matrix4x4 m) => [m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24, m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44];
+    internal static float[] Values(Matrix4x4 m) => [m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24, m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44];
     static CoverageBuildDataException Error(CoverageBuildInputRefusal reason, string path) => new(reason, "Coverage input was refused.") { Path = path };
 }

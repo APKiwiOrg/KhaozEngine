@@ -11,18 +11,26 @@ public enum CoverageDomainKind { AuthoredClip, BlendPath }
 /// <summary>Inventories are owned by this domain. A blend path domain always declares blend paths.</summary>
 public sealed class CoverageDomain
 {
-    public CoverageDomain(string id, CoverageDomainKind kind, IEnumerable<string> authoredFrameIds, IEnumerable<string> blendPathIds)
+    public CoverageDomain(string id, CoverageDomainKind kind, IEnumerable<string> authoredFrameIds, IEnumerable<string> blendPathIds,
+        IEnumerable<CoverageDenseRow>? denseRows = null)
     {
         Id = id;
         Kind = kind;
+        DenseRows = Array.AsReadOnly(BoundedCollections.Snapshot(denseRows ?? [], CoverageBuildInput.MaxSamples, CoverageBuildInput.Capacity));
         AuthoredFrameIds = Array.AsReadOnly(BoundedCollections.Snapshot(authoredFrameIds, CoverageBuildInput.MaxSamples, CoverageBuildInput.Capacity));
         BlendPathIds = Array.AsReadOnly(BoundedCollections.Snapshot(blendPathIds, CoverageBuildInput.MaxSamples, CoverageBuildInput.Capacity));
     }
+    public IReadOnlyList<CoverageDenseRow> DenseRows { get; }
     public string Id { get; }
     public CoverageDomainKind Kind { get; }
     public IReadOnlyList<string> AuthoredFrameIds { get; }
     public IReadOnlyList<string> BlendPathIds { get; }
 }
+
+/// <summary>One 240 Hz current pose. The consumer resolves its key using the preceding 60 Hz phase and current blend.
+/// Looped or Clamped explicitly permits consumer remapping of the phase tick. Neither flag selects geometry.</summary>
+public sealed record CoverageDenseRow(int DenseIndex, int PrecedingPhaseTick, ulong ResolvedStateKey,
+    CoverageSample Sample, bool Looped, bool Clamped);
 
 /// <summary>One consumer-sampled pose, with no engine animation or key sampler.</summary>
 public sealed class CoverageSample
@@ -61,6 +69,8 @@ public sealed class CoverageBuildInput
         Samples = Array.AsReadOnly(BoundedCollections.Snapshot(samples, MaxSamples, Capacity));
         SourcePaths = Array.AsReadOnly((sourcePaths ?? []).ToArray());
         CandidateSampleIds = Array.AsReadOnly(BoundedCollections.Snapshot(candidates, MaxCandidates, count => new CoverageBuildDataException(CoverageBuildInputRefusal.CapacityExceeded, "Candidate inventory exceeds capacity.") { Count = count, Limit = MaxCandidates }));
+        long denseCount = Domains.Sum(d => (long)d.DenseRows.Count);
+        if (denseCount > MaxSamples) throw Capacity(denseCount);
         ValidateInventories();
     }
     public static CoverageBuildInput Read(string manifestPath) => CoverageBuildInputJson.Read(manifestPath);

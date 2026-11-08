@@ -99,7 +99,7 @@ internal static class CoverageTriangleGeometry
     }
 
     // Ericson 5.1.5 Voronoi-region closest point on a triangle.
-    static CoverageVector ClosestOnTriangle(in CoverageVector p, in CoverageVector a, in CoverageVector b, in CoverageVector c)
+    internal static CoverageVector ClosestOnTriangle(in CoverageVector p, in CoverageVector a, in CoverageVector b, in CoverageVector c)
     {
         CoverageVector ab = b - a, ac = c - a, ap = p - a;
         double d1 = CoverageVector.Dot(ab, ap), d2 = CoverageVector.Dot(ac, ap);

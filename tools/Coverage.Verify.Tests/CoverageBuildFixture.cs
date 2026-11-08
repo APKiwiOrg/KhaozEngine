@@ -59,9 +59,9 @@ internal sealed class CoverageBuildFiles : IDisposable
     internal readonly JsonObject Configuration;
     internal string TablePath => Path.Combine(Folder, "table.bin");
     internal string EvidencePath => Path.Combine(Folder, "evidence.json");
-    internal CoverageBuildFiles()
+    internal CoverageBuildFiles(string task = "task6")
     {
-        Folder = Path.Combine(OperatingSystem.IsWindows() ? Path.GetTempPath() : "/tmp", "khaozengine-equipment-fit-task6", Guid.NewGuid().ToString("N"));
+        Folder = Path.Combine(OperatingSystem.IsWindows() ? Path.GetTempPath() : "/tmp", "khaozengine-equipment-fit-" + task, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Folder);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(Folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         ManifestPath = Path.Combine(Folder, "manifest.json");

@@ -15,9 +15,19 @@ public sealed record CoverageHole(ulong StateKey, IReadOnlyList<string> SampleId
 public sealed record CoverageSampleInventory(string Id, string DomainId, string? AuthoredFrameId, string? BlendPathId, ulong StateKey);
 public sealed record CoverageCandidateEvidence(string SampleId, string ScalarSha256);
 
-/// <summary>Sampled evidence only. This is not a continuous or whole-skin certificate.</summary>
+public sealed record CoverageCommandPoseEvidence(uint Id, ulong EquipmentInstanceId, float[] EquipmentWorld, float[] CoverageWorld, float TransitionWeight);
+public sealed record CoverageDensePoseEvidence(string Id, string DomainId, string? AuthoredFrameId, string? BlendPathId,
+    float[] ActorModel, IReadOnlyList<float[]> Palette, IReadOnlyList<CoverageCommandPoseEvidence> Commands);
+public sealed record CoverageDenseRowEvidence(int DenseIndex, int PrecedingPhaseTick, ulong ResolvedStateKey,
+    CoverageDensePoseEvidence Sample, bool Looped, bool Clamped);
+public sealed record CoverageDomainEvidence(string Id, CoverageDomainKind Kind, IReadOnlyList<string> AuthoredFrameIds,
+    IReadOnlyList<string> BlendPathIds, IReadOnlyList<CoverageDenseRowEvidence> DenseRows);
+
+/// <summary>Sampled evidence only. Exact sample checks and numerical whole-skin replay are independent gates.
+/// Neither is a continuous certificate.</summary>
 public sealed class CoverageEvidenceManifest
 {
+    readonly bool samplesComplete;
     internal CoverageEvidenceManifest(CoverageBuildInput input, CoverageRecessionTable table,
         IEnumerable<CoveragePairResult> pairs, IEnumerable<CoverageSelectedClaim> claims,
         IEnumerable<CoverageHole> holes, IEnumerable<CoverageCandidateEvidence>? candidates = null, IEnumerable<CoverageEntryEvidence>? entries = null)
@@ -25,7 +35,8 @@ public sealed class CoverageEvidenceManifest
         Identity = input.Identity; InputSha256 = input.InputSha256;
         TableSha256 = CoverageBuildInputJson.Hash(CoverageRecessionTableBinary.Write(table));
         ToolCodeSha256 = CoverageBuildInputJson.CodeHash();
-        Domains = input.Domains;
+        Domains = Array.AsReadOnly(input.Domains.Select(d => new CoverageDomainEvidence(d.Id, d.Kind, d.AuthoredFrameIds,
+            d.BlendPathIds, Array.AsReadOnly(d.DenseRows.Select(DenseEvidence).ToArray()))).ToArray());
         CandidateSampleIds = input.CandidateSampleIds;
         Samples = Array.AsReadOnly(input.Samples.Select(s => new CoverageSampleInventory(s.Id, s.DomainId, s.AuthoredFrameId, s.BlendPathId, s.StateKey.Value)).ToArray());
         PairResults = Array.AsReadOnly(pairs.ToArray());
@@ -34,16 +45,16 @@ public sealed class CoverageEvidenceManifest
         Candidates = Array.AsReadOnly((candidates ?? []).ToArray());
         Entries = Array.AsReadOnly((entries ?? Enumerable.Range(0, table.EntryCount).Select(i =>
             new CoverageEntryEvidence(i, CoverageBuildInputJson.Hash(CoverageTableBuilder.ScalarBytes(table.Entry(i).ToArray())), i))).ToArray());
-        Complete = PairResults.Count > 0 && SelectedClaims.Count == input.Samples.Count && Holes.Count == 0 && SelectedClaims.All(c => c.Valid);
+        samplesComplete = PairResults.Count > 0 && SelectedClaims.Count == input.Samples.Count && Holes.Count == 0 && SelectedClaims.All(c => c.Valid);
     }
     public int FormatVersion => 1;
     public string Tool => "KhaozEngine.Coverage.Verify/1";
-    public string Scope => "declared-samples-only";
+    public string Scope => Replay == null ? "declared-samples-only" : "declared-samples-and-dense-whole-skin";
     public CoverageRecessionIdentity Identity { get; }
     public string InputSha256 { get; }
     public string TableSha256 { get; }
     public string ToolCodeSha256 { get; }
-    public IReadOnlyList<CoverageDomain> Domains { get; }
+    public IReadOnlyList<CoverageDomainEvidence> Domains { get; }
     public IReadOnlyList<CoverageSampleInventory> Samples { get; }
     public IReadOnlyList<string> CandidateSampleIds { get; }
     public IReadOnlyList<CoverageCandidateEvidence> Candidates { get; }
@@ -52,7 +63,18 @@ public sealed class CoverageEvidenceManifest
     public IReadOnlyList<CoveragePairResult> PairResults { get; }
     public IReadOnlyList<CoverageSelectedClaim> SelectedClaims { get; }
     public IReadOnlyList<CoverageHole> Holes { get; }
-    public bool Complete { get; }
+    public CoverageReplayResult? Replay { get; private set; }
+    public bool Complete => samplesComplete && (Replay == null || Replay.Accepted);
+    internal void IncludeReplay(CoverageReplayResult replay) => Replay = replay;
+    static CoverageDenseRowEvidence DenseEvidence(CoverageDenseRow row)
+    {
+        var pose = row.Sample;
+        return new(row.DenseIndex, row.PrecedingPhaseTick, row.ResolvedStateKey,
+            new(pose.Id, pose.DomainId, pose.AuthoredFrameId, pose.BlendPathId, CoverageBuildInputJson.Values(pose.ActorModel),
+                Array.AsReadOnly(pose.Palette.ToArray().Select(CoverageBuildInputJson.Values).ToArray()),
+                Array.AsReadOnly(pose.Commands.ToArray().Select(c => new CoverageCommandPoseEvidence(c.Id, c.EquipmentInstanceId,
+                    CoverageBuildInputJson.Values(c.EquipmentWorld), CoverageBuildInputJson.Values(c.CoverageWorld), c.TransitionWeight)).ToArray())), row.Looped, row.Clamped);
+    }
     static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

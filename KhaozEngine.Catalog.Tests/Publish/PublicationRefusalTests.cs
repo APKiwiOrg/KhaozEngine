@@ -176,9 +176,14 @@ public sealed class PublicationRefusalTests
         var legacy = new ContentAuthoringException("refused", Thing, 1, ContentAuthoringException.CandidateInvalidReason, findings);
         var typed = new ContentAuthoringException(ContentAuthoringRefusal.CandidateRejected,
             "refused", Thing, 1, ContentAuthoringException.CandidateInvalidReason, findings);
+        Assert.Null(legacy.Refusal);
+        Assert.Equal(ContentAuthoringRefusal.CandidateRejected, typed.Refusal);
         findings.Clear();
         foreach (ContentAuthoringException error in new[] { legacy, typed })
         {
+            Assert.Equal(Thing, error.Type);
+            Assert.Equal(1, error.Id);
+            Assert.Equal("candidate-invalid", error.Reason);
             Assert.Equal("KEC0002", Assert.Single(error.Findings).Code);
             Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)error.Findings!).SyncRoot);
             if (error.Findings is IList<ContentFinding> mutable)

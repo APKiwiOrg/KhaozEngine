@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using KhaozEngine.Tests.Gpu;
 using KhaozEngine.WorldStore.Journal;
 using KhaozEngine.WorldStore.Sqlite;
 using Xunit;
@@ -12,14 +11,6 @@ namespace KhaozEngine.Tests.WorldStore.Journal;
 public sealed class SqliteJournalRuntimeRefusalTests : IDisposable
 {
     private readonly SqliteJournalTestDatabase database = new();
-
-    [Fact]
-    public void Sqlite_journal_never_constructs_a_message_only_store_refusal()
-    {
-        var legacy = typeof(JournalStoreException).GetConstructors()
-            .Where(constructor => constructor.GetParameters().All(parameter => parameter.ParameterType != typeof(JournalStoreRefusal)));
-        Assert.Empty(RefusalConstructorFence.EngineCallers([typeof(SqliteMutationJournalStore).Assembly], legacy));
-    }
 
     [Fact]
     public async Task Cancellation_inside_a_write_keeps_the_cause_and_rolls_back_every_row()

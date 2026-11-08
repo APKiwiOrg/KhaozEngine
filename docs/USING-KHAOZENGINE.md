@@ -8970,7 +8970,8 @@ glide described under "Animated characters" above (`CharacterController3D.ClimbR
 what the `ke-dungeon` CLI reads and writes. The JSON matches the embedded schema (`DungeonSchema.GetJson()`,
 a `oneOf` over the config and layout shapes), which the package's tests validate against and which is
 available for editor/AI tooling. The load path itself enforces its own semantic checks, throwing
-`DungeonJsonException`. Its `Reason` (a `DungeonJsonRefusal`) names the rule and, where one applies, `JsonPath` the offending member,
+`DungeonJsonException`. Its `Reason` (a `DungeonJsonRefusal`) names the rule and, where one applies, `JsonPath`
+names the offending member as a rooted path, such as `$.roomCountTarget` or `$.rooms[2].id`,
 with the other identifiers listed in the package README. The message is prose, never a contract. A hand-authored
 or generated config looks like:
 
@@ -23427,6 +23428,10 @@ compared `Type`, `Id` and `RowKey` and both `StandingOperation` and `RequestedOp
 `edit-target-collision`. A diff over an unregistered type uses `TypeUnknown` and `Type`, retaining
 `unknown-type`. See the [allocation and change-set refusal table](../KhaozEngine.Catalog.Authoring/README.md#allocation-and-change-set-refusals).
 
+All engine `ContentAuthoringException` construction across Authoring, SQLite, SQL Server and Server.Admin
+supplies `Refusal`. Public legacy constructors remain available to consumers and preserve the existing
+string `Reason`, row identifiers, findings and inner cause while leaving `Refusal` null.
+
 ### Authoring catalog text
 
 `IContentTextAuthoringStore` is the opt-in text companion of `IContentAuthoringStore`, and all three stores
@@ -25593,6 +25598,9 @@ catch (SignInException ex)
 value, a client secret, an authority URL or a response body. It is null only for an instance another backend
 built through a message-only constructor, whose text is then in `Detail`. The
 [Sign-in refusals](../KhaozEngine.Identity/README.md#sign-in-refusals) table lists every reason.
+The shared base and both provider types retain every legacy constructor. Forwarding preserves `Detail`, a
+null reason and the inner cause for consumer-built instances. Engine construction is fenced in all three
+assemblies, including calls from provider constructors.
 
 Catch the provider type instead when the handling differs per backend. The base is named `SignInException`
 rather than `IdentitySignInException` deliberately: sign-in code imports `KhaozEngine.Identity` alongside a

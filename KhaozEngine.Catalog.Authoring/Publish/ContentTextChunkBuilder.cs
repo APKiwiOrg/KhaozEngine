@@ -144,7 +144,7 @@ internal static class ContentTextChunkBuilder
             // No caller can construct a declaration whose wire tag reaches this defensive guard.
             if (Encoding.ASCII.GetByteCount(declarations[i].WireTag) > ContentTextChunkCodec.MaxLanguageTagBytes)
             {
-                throw Bounds(default, 0, FormattableString.Invariant(
+                throw new InvalidOperationException(FormattableString.Invariant(
                     $"Wire tag '{declarations[i].WireTag}' is over {ContentTextChunkCodec.MaxLanguageTagBytes} bytes."));
             }
 
@@ -266,7 +266,7 @@ internal static class ContentTextChunkBuilder
         // Derive joins those same pieces with two ASCII dots, so re-encoding cannot change the length.
         return keyUtf8.Length == keyBytes
             ? new Entry(key, keyUtf8, value.Value, valueBytes)
-            : throw Bounds(value.Type, value.DefinitionId, "The derived key does not re-encode to its measured bytes.");
+            : throw new InvalidOperationException("The derived key does not re-encode to its measured bytes.");
     }
 
     static int MeasureUtf8(string text, string parameterName, ContentTextRevision value, string member)
@@ -278,9 +278,6 @@ internal static class ContentTextChunkBuilder
             ContentAuthoringException.TextBoundsReason, invalid)
         { FieldName = value.FieldName, Language = value.Language, MemberName = member, Index = finding.CharacterIndex };
     }
-
-    static ContentAuthoringException Bounds(ContentTypeId type, int definitionId, string detail)
-        => new(detail, type, definitionId, ContentAuthoringException.TextBoundsReason);
 
     /// <summary>One measured entry.</summary>
     sealed record Entry(string Key, byte[] KeyUtf8, string Value, int ValueBytes);

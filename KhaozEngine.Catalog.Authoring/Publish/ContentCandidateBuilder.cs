@@ -198,12 +198,9 @@ static class ContentCandidateBuilder
             default:
                 // Internal invariant: ContentEdit is sealed, its constructor is private, and its factories
                 // admit only these four operations. No caller can supply another operation.
-                throw new ContentAuthoringException(
+                throw new InvalidOperationException(
                     FormattableString.Invariant(
-                        $"Edit {ordinal} carries operation {(int)edit.Operation}, which is not one of the four of spec 3.7."),
-                    edit.Type,
-                    edit.DefinitionId,
-                    ContentAuthoringException.UnknownEditOperationReason);
+                        $"Edit {ordinal} carries operation {(int)edit.Operation}, which is not one of the four of spec 3.7."));
         }
     }
 
@@ -484,12 +481,9 @@ static class ContentCandidateBuilder
 
         // Internal invariant: both entry points run ContentForkChecks.Check first. It accepts this flag
         // only when the same registered schema declares it as Bool, so no admitted edit reaches this guard.
-        throw new ContentAuthoringException(
+        throw new InvalidOperationException(
             FormattableString.Invariant(
-                $"Edit {ordinal} forks row {edit.DefinitionId} of content type {registration.Type.Value} '{registration.TypeKey}' and names '{edit.ForkFlagField}' as the flag to set on the copy. The engine has no opinion about which boolean means superseded on a type it did not define, so it checks only that the field exists and is Bool."),
-            edit.Type,
-            edit.DefinitionId,
-            ContentAuthoringException.ForkFlagFieldReason);
+                $"Edit {ordinal} forks row {edit.DefinitionId} of content type {registration.Type.Value} '{registration.TypeKey}' and names '{edit.ForkFlagField}' as the flag to set on the copy. The engine has no opinion about which boolean means superseded on a type it did not define, so it checks only that the field exists and is Bool."));
     }
 
     static int FieldIndex(ContentTypeRegistration registration, string name)

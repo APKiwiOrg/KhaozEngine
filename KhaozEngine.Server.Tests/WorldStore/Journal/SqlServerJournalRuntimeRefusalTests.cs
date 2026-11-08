@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using KhaozEngine.Tests.Gpu;
 using KhaozEngine.Tests.WorldStore;
 using KhaozEngine.WorldStore.Journal;
 using KhaozEngine.WorldStore.SqlServer;
@@ -14,14 +13,6 @@ namespace KhaozEngine.Tests.WorldStore.Journal;
 [Collection("SQL Server mutation journal")]
 public sealed class SqlServerJournalRuntimeRefusalTests
 {
-    [Fact]
-    public void Sql_server_journal_never_constructs_a_message_only_store_refusal()
-    {
-        var legacy = typeof(JournalStoreException).GetConstructors()
-            .Where(constructor => constructor.GetParameters().All(parameter => parameter.ParameterType != typeof(JournalStoreRefusal)));
-        Assert.Empty(RefusalConstructorFence.EngineCallers([typeof(SqlServerMutationJournalStore).Assembly], legacy));
-    }
-
     [Fact]
     public void Missing_provider_clock_uses_the_database_result_guard()
     {

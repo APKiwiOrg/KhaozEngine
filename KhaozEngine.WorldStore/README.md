@@ -262,7 +262,11 @@ Expected races use result statuses. Provider, transport, schema, and corruption 
 `StreamKeys`. The legacy constructor remains available for consumer-built exceptions and leaves `Reason` null.
 The reason-taking overload accepts the same failure dimensions, stream keys, message and optional inner cause.
 Stream keys remain sorted owned snapshots backed by a fresh boxed immutable array, even for immutable input.
-Messages are developer prose. Use the rule and its identifiers to distinguish the following refusals.
+Messages are developer prose. Engine construction is fenced across WorldStore, SQLite and SQL Server.
+Reset context wrapping retains the original exception as its cause, every public identifier and all owned
+collections, including stream keys. The completeness test names a new identifier if the copy drops it and
+checks that caller mutation and collection casts cannot change either exception's snapshots.
+Use the rule and its identifiers to distinguish the following refusals.
 
 | Reason | What is refused | Additional identifiers |
 |---|---|---|

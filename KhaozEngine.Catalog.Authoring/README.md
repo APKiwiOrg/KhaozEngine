@@ -295,6 +295,12 @@ A consumer reads the reason and identifiers, never message wording.
 `ContentFinding.Code` is the stable identity of its finding, including codes a consumer policy supplies.
 There is no singular finding-code identifier. Both legacy and typed finding-taking exception constructors
 copy the complete list into a read-only snapshot, so later producer mutation cannot change the refusal.
+Engine construction is fenced across Authoring, SQLite, SQL Server and Server.Admin. The public legacy
+constructors still leave `Refusal` null for consumer instances, with their existing `Type`, `Id`, `Reason`,
+`Findings` and inner cause intact. Structured constructors use a private initialization path rather than
+calling a legacy constructor. The candidate builder's defensive unknown-operation and fork-flag checks
+cannot be reached after sealed edit admission and fork preflight. They remain plain internal-invariant
+exceptions, with no public refusal member.
 
 ### Durable schema and reset refusals
 
@@ -428,7 +434,8 @@ including its parameter name. No reason is inferred from prose.
 The key and body bounds are inclusive. Repeating the operation at the reported `MaximumBytes` succeeds
 when that bound is the only failed rule. The sealed declaration and revision constructors already enforce
 35-byte ASCII wire tags and 8,192-byte strict UTF-8 values. Those defensive producer guards, the derived
-key's nonempty lower bound and measured-length re-encoding are internal invariants. Commit confirmation
+key's nonempty lower bound and measured-length re-encoding are internal invariants. The wire-tag and
+re-encoding checks throw plain `InvalidOperationException` if an engine invariant breaks. Commit confirmation
 still checks reuse spelling because the plan's public list facades can be changed after construction.
 
 ### The draft is frozen for the whole publish
@@ -1268,14 +1275,14 @@ prefix, and the constructor's argument exception is the inner exception.
 | --- | --- | --- |
 | `BundleFieldNameBlank` | A schema field name that is empty or white space | `JsonPath` (`$.types[n].fields[n].name`) |
 | `BundleFieldNameDuplicate` | A schema field name an earlier field of the type declares | `JsonPath` of the later name, `FieldName` |
-| `BundleReferenceTargetMissing` | A key reference with no content type key | `JsonPath` (`referenceTarget`), `FieldName` |
-| `BundleTagReferenceTargetInvalid` | A tag list whose reference target is not `tag`, compared ordinally | `JsonPath` (`referenceTarget`), `FieldName` |
-| `BundleUnexpectedReferenceTarget` | A reference target on any other kind, an empty string included | `JsonPath` (`referenceTarget`), `FieldName`, `ActualKind` |
-| `BundleScaledIntegerScaleInvalid` | A scaled int scale below 1 | `JsonPath` (`scale`), `FieldName`, `ActualInteger`, `MinimumInteger` (1) |
-| `BundleUnscaledKindScaleInvalid` | Any other kind with a scale that is not 1 | `JsonPath` (`scale`), `FieldName`, `ActualKind`, `ActualInteger`, `MinimumInteger` and `MaximumInteger` (1) |
+| `BundleReferenceTargetMissing` | A key reference with no content type key | `JsonPath` (`$.types[n].fields[n].referenceTarget`), `FieldName` |
+| `BundleTagReferenceTargetInvalid` | A tag list whose reference target is not `tag`, compared ordinally | `JsonPath` (`$.types[n].fields[n].referenceTarget`), `FieldName` |
+| `BundleUnexpectedReferenceTarget` | A reference target on any other kind, an empty string included | `JsonPath` (`$.types[n].fields[n].referenceTarget`), `FieldName`, `ActualKind` |
+| `BundleScaledIntegerScaleInvalid` | A scaled int scale below 1 | `JsonPath` (`$.types[n].fields[n].scale`), `FieldName`, `ActualInteger`, `MinimumInteger` (1) |
+| `BundleUnscaledKindScaleInvalid` | Any other kind with a scale that is not 1 | `JsonPath` (`$.types[n].fields[n].scale`), `FieldName`, `ActualKind`, `ActualInteger`, `MinimumInteger` and `MaximumInteger` (1) |
 | `BundleFamilyKeyBlank` | A family key that is empty or white space | `JsonPath` (`$.families[n].familyKey`) |
-| `FamilyBlockSizeOutsideRange` | A family block size outside 16 to 65,536 | `JsonPath` (`blockSize`), `FamilyKey`, `ActualBlockSize`, `MinimumBlockSize` (16), `MaximumBlockSize` (65,536) |
-| `FamilyBlockSizeNotPowerOfTwo` | A family block size in that range that is not a power of two | `JsonPath` (`blockSize`), `FamilyKey`, `ActualBlockSize` |
+| `FamilyBlockSizeOutsideRange` | A family block size outside 16 to 65,536 | `JsonPath` (`$.families[n].blockSize`), `FamilyKey`, `ActualBlockSize`, `MinimumBlockSize` (16), `MaximumBlockSize` (65,536) |
+| `FamilyBlockSizeNotPowerOfTwo` | A family block size in that range that is not a power of two | `JsonPath` (`$.families[n].blockSize`), `FamilyKey`, `ActualBlockSize` |
 | `BundleFamilyBlockAlignmentInvalid` | A block base id that is not a multiple of the family's block size | `JsonPath` (`$.families[n].blocks[n].baseId`), the base id as `ActualInteger` |
 | `BundleRuleIntegerNegative` | A rule `sequence`, `introducedIn`, `fromId` or `toId` below 0 | `JsonPath` of that member, `ActualInteger`, `MinimumInteger` (0) |
 | `BundleRulePayloadMalformed` | A rule payload that is not its kind's shape, or longer than the payload cap | `JsonPath` (`$.rules[n].payload`), `RuleKind`, the payload length as `ActualBytes` |
@@ -1288,15 +1295,15 @@ constructor sees it and keeps that reader fault as the inner exception.
 
 | Refusal | Refused rule | Identifiers |
 | --- | --- | --- |
-| `BundleLanguageIdentityDuplicate` | A repeated canonical language identity | `JsonPath` of the later declaration's `language`, `Language` |
+| `BundleLanguageIdentityDuplicate` | A repeated canonical language identity | `JsonPath` (`$.text.languages[n].language`) of the later declaration, `Language` |
 | `BundleLanguageTagInvalid` | A language or wire tag outside the ASCII grammar of 1 to 35 bytes | `JsonPath` of the tag, `LanguageTag` as submitted |
-| `BundleLanguageWireTagMismatch` | A wire tag normalizing to another identity | `JsonPath` of `wireTag`, canonical `Language`, submitted `WireTag` |
-| `BundleTextLanguageUndeclared` | A value naming an undeclared canonical language | `JsonPath` of the value's `language`, `Language` |
-| `BundleTextTargetDuplicate` | A repeated canonical target | `JsonPath` of the later value, `TextTarget` with its type, key, field and language |
-| `BundleTextTargetFieldBlank` | A target with an empty or white space marker field | `JsonPath` of `field` |
-| `BundleTextTargetKeyEmpty` | A target with an empty content key | `JsonPath` of `key` |
+| `BundleLanguageWireTagMismatch` | A wire tag normalizing to another identity | `JsonPath` (`$.text.languages[n].wireTag`), canonical `Language`, submitted `WireTag` |
+| `BundleTextLanguageUndeclared` | A value naming an undeclared canonical language | `JsonPath` (`$.text.values[n].language`), `Language` |
+| `BundleTextTargetDuplicate` | A repeated canonical target | `JsonPath` (`$.text.values[n]`) of the later value, `TextTarget` with its type, key, field and language |
+| `BundleTextTargetFieldBlank` | A target with an empty or white space marker field | `JsonPath` (`$.text.values[n].field`) |
+| `BundleTextTargetKeyEmpty` | A target with an empty content key | `JsonPath` (`$.text.values[n].key`) |
 | `TextMalformedUnicode` | An unpaired surrogate escape in a text-section string | `JsonPath` of the string |
-| `TextValueBytesExceeded` | A value above 8,192 strict UTF-8 bytes | `JsonPath` of `value`, `ActualBytes`, `MaximumBytes` (8,192) |
+| `TextValueBytesExceeded` | A value above 8,192 strict UTF-8 bytes | `JsonPath` (`$.text.values[n].value`), `ActualBytes`, `MaximumBytes` (8,192) |
 
 A repeated wire spelling always repeats its normalized language identity, so it is refused as
 `BundleLanguageIdentityDuplicate`. A repeated target is checked before an undeclared language, matching the

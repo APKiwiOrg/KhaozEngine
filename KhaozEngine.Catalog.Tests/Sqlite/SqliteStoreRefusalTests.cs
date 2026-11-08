@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
 using KhaozEngine.Tests.Catalog.Authoring;
-using KhaozEngine.Tests.Gpu;
 using Xunit;
 using static KhaozEngine.Tests.Catalog.Authoring.TextAuthoringFixtures;
 
@@ -13,14 +12,6 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 public sealed class SqliteStoreRefusalTests : StoreRefusalTests
 {
     protected override bool UsesSqlite => true;
-
-    [Fact]
-    public void SqliteProviderNeverConstructsAMessageOnlyRefusal()
-    {
-        var legacy = typeof(ContentAuthoringException).GetConstructors()
-            .Where(constructor => constructor.GetParameters().All(parameter => parameter.ParameterType != typeof(ContentAuthoringRefusal)));
-        Assert.Empty(RefusalConstructorFence.EngineCallers([typeof(SqliteContentAuthoringStore).Assembly], legacy));
-    }
 
     [Fact]
     public async Task MissingMetadataRefusesReadsUntilTheCatalogRowIsRestored()

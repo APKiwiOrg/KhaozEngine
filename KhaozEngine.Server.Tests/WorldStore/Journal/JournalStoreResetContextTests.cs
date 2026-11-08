@@ -28,20 +28,43 @@ public sealed class JournalStoreResetContextTests
             .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(property => property.CanWrite).ToArray();
         Assert.NotEmpty(identifiers);
-        for (int i = 0; i < identifiers.Length; i++) identifiers[i].SetValue(refusal, Sample(identifiers[i].PropertyType, i));
+        var expected = new Dictionary<string, object>();
+        var sources = new List<Array> { keys };
+        for (int i = 0; i < identifiers.Length; i++)
+        {
+            object sample = Sample(identifiers[i], i);
+            identifiers[i].SetValue(refusal, sample);
+            expected[identifiers[i].Name] = sample is IEnumerable sequence and not string
+                ? sequence.Cast<object>().ToArray() : sample;
+            if (sample is Array array) sources.Add(array);
+        }
+        string[] expectedKeys = keys.ToArray();
         JournalStoreException wrapped = refusal.WithResetContext("reset refused");
         Assert.Same(refusal, wrapped.InnerException);
         Assert.Equal(refusal.Reason, wrapped.Reason);
         Assert.Equal(refusal.Kind, wrapped.Kind);
         Assert.Equal(refusal.Certainty, wrapped.Certainty);
         Assert.Equal(refusal.Scope, wrapped.Scope);
-        Assert.Equal(refusal.StreamKeys, wrapped.StreamKeys);
-        Assert.Empty(identifiers.Where(property => !Matches(property.GetValue(refusal), property.GetValue(wrapped)))
-            .Select(property => property.Name));
+        foreach (Array source in sources) Array.Clear(source);
+        Assert.Equal(expectedKeys, refusal.StreamKeys);
+        Assert.Equal(expectedKeys, wrapped.StreamKeys);
+        foreach (JournalStoreException error in new[] { refusal, wrapped })
+        {
+            Assert.Empty(identifiers.Where(property => !Matches(expected[property.Name], property.GetValue(error)))
+                .Select(property => property.Name));
+            foreach (PropertyInfo property in identifiers.Where(property => property.GetValue(error) is IEnumerable and not string))
+            {
+                object collection = property.GetValue(error)!;
+                Assert.Throws<NotSupportedException>(() => ((ICollection)collection).SyncRoot);
+                if (collection is IList list) Assert.Throws<NotSupportedException>(() => list.Clear());
+            }
+            Assert.Throws<NotSupportedException>(() => ((ICollection)error.StreamKeys).SyncRoot);
+        }
     }
 
-    private static object Sample(Type type, int index)
+    private static object Sample(PropertyInfo property, int index)
     {
+        Type type = property.PropertyType;
         Type valueType = Nullable.GetUnderlyingType(type) ?? type;
         if (valueType == typeof(string)) return "identifier/" + index;
         if (valueType == typeof(long)) return 100L + index;
@@ -54,7 +77,7 @@ public sealed class JournalStoreResetContextTests
         if (valueType == typeof(IReadOnlyList<string>)) return new[] { "object/a", "object/b" };
         if (valueType == typeof(IReadOnlyList<JournalHostObjectFinding>))
             return new[] { new JournalHostObjectFinding(JournalStoreRefusal.HostTriggerUnsafe, null, "journal_stream", null, "host_trigger") };
-        throw new Xunit.Sdk.XunitException("Add a sample for public identifier type " + type.Name);
+        throw new Xunit.Sdk.XunitException("Add a sample for public identifier " + property.Name + " of type " + type.Name);
     }
 
     private static bool Matches(object? expected, object? actual)

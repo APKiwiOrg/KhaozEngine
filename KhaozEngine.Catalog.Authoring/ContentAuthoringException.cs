@@ -255,11 +255,8 @@ public sealed class ContentAuthoringException : Exception
     /// <param name="id">The definition id, or 0 when the refusal is about the store as a whole.</param>
     /// <param name="reason">The stable reason token an operator's log line is built from.</param>
     public ContentAuthoringException(string message, ContentTypeId type, int id, string? reason)
-        : base(message)
+        : this(null, message, type, id, reason, null)
     {
-        Type = type;
-        Id = id;
-        Reason = reason;
     }
 
     /// <summary>
@@ -278,7 +275,7 @@ public sealed class ContentAuthoringException : Exception
         int id,
         string? reason,
         IReadOnlyList<ContentFinding> findings)
-        : this(message, type, id, reason)
+        : this(null, message, type, id, reason, null)
     {
         ArgumentNullException.ThrowIfNull(findings);
         Findings = ImmutableArray.Create(findings.ToArray());
@@ -296,9 +293,8 @@ public sealed class ContentAuthoringException : Exception
         ContentTypeId type,
         int id,
         string? reason)
-        : this(message, type, id, reason)
+        : this((ContentAuthoringRefusal?)refusal, message, type, id, reason, null)
     {
-        Refusal = refusal;
     }
 
     /// <summary>Creates a structured refusal carrying every validation or rollback finding as an owned snapshot.</summary>
@@ -309,9 +305,10 @@ public sealed class ContentAuthoringException : Exception
         int id,
         string? reason,
         IReadOnlyList<ContentFinding> findings)
-        : this(message, type, id, reason, findings)
+        : this((ContentAuthoringRefusal?)refusal, message, type, id, reason, null)
     {
-        Refusal = refusal;
+        ArgumentNullException.ThrowIfNull(findings);
+        Findings = ImmutableArray.Create(findings.ToArray());
     }
 
     /// <summary>Creates the exception carrying the exact rule it refused and the fault that caused it.</summary>
@@ -328,6 +325,13 @@ public sealed class ContentAuthoringException : Exception
         int id,
         string? reason,
         Exception innerException)
+        : this((ContentAuthoringRefusal?)refusal, message, type, id, reason, innerException)
+    {
+    }
+
+    // Legacy consumer instances keep a null refusal without calling a forbidden public constructor.
+    ContentAuthoringException(ContentAuthoringRefusal? refusal, string message, ContentTypeId type,
+        int id, string? reason, Exception? innerException)
         : base(message, innerException)
     {
         Refusal = refusal;

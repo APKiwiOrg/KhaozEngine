@@ -1919,6 +1919,29 @@ Forward those descriptors with the captured palette and transforms. Altered or s
 [attachment coverage adapter](../KhaozEngine.Attachments.Render3D/README.md#table-coverage-preparation)
 provides complete equipment snapshots and the explicit uncovered-current-pose fallback contract.
 
+The internal `CoverageCarryBatch` records four precise compute stages: current-pose skinning,
+frozen refinement and scalar transport, face basis construction, then ordered attribute gathering
+and final publication with tight bounds. Actors sharing a table share one immutable topology,
+representative vector and entry-major scalar upload. Warm recordings upload current frame uniforms,
+selected row offsets and reset bounds/error words. No runtime recession constructor, exact correction,
+filtered policy, certificate, membership check or synchronous readback participates.
+
+Output storage reserves `D + 2` equal slots per actor, where `D` comes from
+`GpuRetireQueue.FramesInFlightFor(device)` at the first cold reservation. Pending output cannot alias
+committed or retained output. Successful submission commits the pending slot and retains its predecessor
+through the reader's completion. Abandonment releases only pending output. A later queue fence can prove
+earlier submissions whose completion retention was unavailable. Polling never waits and never frees the
+committed slot. Cold growth preserves the old buffer through a history lease and records a migration copy,
+without changing submitted history when that recording is abandoned. The batch is one aggregate
+`IGpuFrameCompletionConsumer`. Scene-owned submission participation and render-pass publication remain
+separate integration responsibilities. `Scene3D` does not yet record this batch.
+
+Missing compute, completion fences or precise pipeline support returns `UnsupportedAdapter`. Exhausted
+reservations or output slots return `CapacityExceeded` with counts and limits. Both select ordinary current
+skin at the scene integration boundary. Headless layout and lifetime checks do not establish native device
+output, synchronization or performance. In particular, reading the previous surface across submissions
+still requires the separate Vulkan synchronization-validation proof.
+
 `CoverageRecessionTableBinary.Read(bytes, identity)` and `Write(table)` use KERT format 1. The
 212-byte header contains ASCII `KERT`, uint32 version 1, six raw 32-byte digests and uint32 group,
 entry and state counts. The payload contains int32 representatives once, entry-major float32 words,

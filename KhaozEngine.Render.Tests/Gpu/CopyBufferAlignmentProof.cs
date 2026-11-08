@@ -9,7 +9,7 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace KhaozEngine.Tests.Gpu;
 
-/// <summary>Narrow source proofs for offsets that are validated at runtime.</summary>
+/// <summary>Narrow proofs for runtime-validated offsets and explicit unsigned word conversions.</summary>
 internal static class CopyBufferAlignmentProof
 {
     static readonly MetadataReference[] References = new[]
@@ -31,6 +31,7 @@ internal static class CopyBufferAlignmentProof
         if (copy is null || copy.ArgumentList.Arguments.Count != 5) return false;
         ExpressionSyntax? argument = copy.ArgumentList.Arguments.Where((_, index) => index is 1 or 3)
             .Select(value => value.Expression).FirstOrDefault(value => value.ToString() == expression);
+        if (argument is not null && IsUnsignedWordConversion(argument)) return true;
         if (argument is not IdentifierNameSyntax identifier) return false;
 
         StatementSyntax? statement = copy.Ancestors().OfType<StatementSyntax>().FirstOrDefault();
@@ -88,6 +89,27 @@ internal static class CopyBufferAlignmentProof
                 return true;
         }
         return false;
+    }
+
+    static bool IsUnsignedWordConversion(ExpressionSyntax expression)
+    {
+        expression = Unwrap(expression);
+        // Both operands are uint, so successful multiplication by a multiple of four has two zero low bits.
+        // Explicit casts keep this proof independent of unresolved types elsewhere in the source file.
+        return expression is BinaryExpressionSyntax binary && binary.IsKind(SyntaxKind.MultiplyExpression)
+            && Unwrap(binary.Left) is CastExpressionSyntax { Type: PredefinedTypeSyntax { Keyword.ValueText: "uint" } }
+            && Unwrap(binary.Right) is LiteralExpressionSyntax literal && literal.Token.Value is uint multiple
+            && multiple % 4u == 0;
+    }
+
+    static ExpressionSyntax Unwrap(ExpressionSyntax expression)
+    {
+        while (true)
+        {
+            if (expression is ParenthesizedExpressionSyntax parenthesized) expression = parenthesized.Expression;
+            else if (expression is CheckedExpressionSyntax checkedExpression) expression = checkedExpression.Expression;
+            else return expression;
+        }
     }
 
     static bool AllowedReference(IOperation reference, IMethodSymbol method)

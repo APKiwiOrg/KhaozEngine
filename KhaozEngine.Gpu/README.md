@@ -487,6 +487,8 @@ What it owns today:
     frames-in-flight variable and returns one more sealed batch per extra frame of depth, never below 8, which is
     what `Scene3D` passes ([#661](https://github.com/APKiwiOrg/KhaozEngine/issues/661)). So a consumer who deepens
     the pipeline pays nothing extra and a consumer who touches nothing gets the same 8 as before, and
+    `FramesInFlightFor(device)` exposes that same resolved depth for cold bounded resource reservations.
+    It uses the backend's own environment variable, inclusive depth limits and default fallback.
     `SealedBatchCapForDepth(n)` is the same rule with the depth handed in. What actually decides whether it fires is how far
     ahead the LOOP gets rather than how fast the GPU is: an offscreen loop that submits without presenting has
     nothing throttling it and runs eight or nine frames ahead on an M2 Max, where the engine's own 400-frame churn

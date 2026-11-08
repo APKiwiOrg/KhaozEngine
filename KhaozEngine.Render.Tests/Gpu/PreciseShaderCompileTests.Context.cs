@@ -36,7 +36,7 @@ public sealed partial class PreciseShaderCompileTests
         foreach (var property in identifiers)
         {
             if (property.Name == nameof(ShaderValidationException.RepairSourcePaths))
-                Assert.True(original.RepairSourcePaths!.SequenceEqual(copied.RepairSourcePaths!),
+                Assert.True(copied.RepairSourcePaths is { } paths && original.RepairSourcePaths!.SequenceEqual(paths),
                     "Identifier " + property.Name + " was not copied.");
             else Assert.True(Equals(property.GetValue(original), property.GetValue(copied)),
                 "Identifier " + property.Name + " was not copied. Expected "

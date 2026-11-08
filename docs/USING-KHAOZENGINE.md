@@ -23317,6 +23317,17 @@ names the candidate, rule-prefix and pack-target rules and their identifiers. A 
 branch on each `ContentFinding.Code`, including consumer-defined codes, rather than its message. The legacy
 `Reason`, `Type` and `Id` remain available. A row-only pack write distinguishes `TextPlanOnRowOnlyRoute`
 (`MemberName`, `VersionNumber`) from `TextChunkMissingOnRowOnlyRoute` (`MemberName`, `Language`, `TextHash`).
+The authoring package's [text route refusal table](../KhaozEngine.Catalog.Authoring/README.md#text-route-refusals)
+also names bundle, draft and target admission. `TextBundleOnRowOnlyRoute`, `TextFormatOnRowOnlyRoute` and
+`TextDraftOnRowOnlyRoute` identify the refusing `MemberName` and carry the format or pending text counts
+where applicable. `DraftOpen` carries all three pending-work counts. Target eligibility uses `TypeUnknown`,
+`TextTargetFieldUnknown`, `TextTargetIneligible`, `TextFieldNameTooLong` and `TextKeyBytesExceeded`.
+The field-name limit is 64 UTF-16 code units and the derived-key limit is 192 strict UTF-8 bytes, both
+inclusive. `BundleTextRowUnknown` carries the absent row key and text value index. `TextExportRowUnknown`
+carries `TextRowType`, `TextRowId`, `FieldName`, `Language`, `VersionNumber` and `MemberName`, while its
+legacy `Type` and `Id` remain default and 0. `TextBaselineHiddenFromPlanner` carries the exact version and
+both carried and recorded language and value counts. An upgrade that loses its frozen draft reports
+`FrozenDraftLost` with `ExpectedBaseVersion`.
 Text candidate and chunk preflight use the same enum. `BundleTextLanguageUndeclared` carries `Language`
 and the text slot's `Type`, `Id` and `FieldName`, and `TextTargetIneligible` identifies the ineligible slot
 with `TypeKey` when registered. `TextMalformedUnicode` keeps the original argument refusal as inner and

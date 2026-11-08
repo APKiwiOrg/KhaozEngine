@@ -1359,6 +1359,36 @@ holds:
 - `ContentPublishCommit.WriteAsync` refuses the row half of a text plan and a plan naming a text chunk the pack
   store does not already hold.
 
+### Text route refusals
+
+`ContentAuthoringException.Refusal` distinguishes route admission failures without parsing the message.
+The legacy `Reason`, `Type` and `Id` values stay unchanged. A text target checked before id binding retains
+`Id` 0. Exact-version export retains its legacy default `Type` and `Id` 0 and names the absent row through
+`TextRowType` and `TextRowId` instead.
+
+| Refusal | What it refuses | Identifiers |
+|---|---|---|
+| `BundleTextSectionMissing` | Reading or writing format 2 after its text section was dropped | `ActualFormatVersion` |
+| `DraftOpen` | Companion import while an open draft holds work | `MemberName`, `RowEditCount`, `TextEditCount`, `LanguageIntroductionCount` |
+| `BundleTextRowUnknown` | A text target naming no row the bundle carries | `Type`, `Id` 0, `RowKey`, `FieldName`, `Language`, zero-based value `Index` |
+| `TextExportRowUnknown` | A text revision whose row is not live in the exported version | `TextRowType`, `TextRowId`, `FieldName`, `Language`, `VersionNumber`, `MemberName` |
+| `TypeUnknown` | An unregistered text target type | `Type`, `Id` 0 |
+| `TextTargetFieldUnknown` | An undeclared text marker field | `Type`, `Id` 0, `TypeKey`, `FieldName`, `Language` |
+| `TextTargetIneligible` | A type or field without the required CLIENT localized marker declaration | `Type`, `Id` 0, `TypeKey`, `FieldName`, `Language` |
+| `TextFieldNameTooLong` | A text marker name above 64 UTF-16 code units | `Type`, `Id` 0, `TypeKey`, `FieldName`, `Language`, `ActualCharacters`, inclusive `MaximumCharacters` (64) |
+| `TextKeyBytesExceeded` | A derived text key above 192 strict UTF-8 bytes | `Type`, `Id` 0, `FieldName`, `Language`, `ActualBytes`, inclusive `MaximumBytes` (192) |
+| `TextPlanOnRowOnlyRoute` | The marked row half of a text plan on a row-only commit | `MemberName`, `VersionNumber` |
+| `TextBundleOnRowOnlyRoute` | A text-bearing bundle on a row-only import | `MemberName` |
+| `TextFormatOnRowOnlyRoute` | A bundle without text declaring any format other than 1 on a row-only import | `MemberName`, `ActualFormatVersion` |
+| `TextDraftOnRowOnlyRoute` | Pending text a row-only operation cannot carry | `MemberName`, `TextEditCount`, `LanguageIntroductionCount` |
+| `TextBaselineHiddenFromPlanner` | An upgrade baseline whose carried text disagrees with the exact version | `VersionNumber`, `CarriedLanguageCount`, `CarriedValueCount`, `RecordedLanguageCount`, `RecordedValueCount` |
+| `FrozenDraftLost` | An upgrade publish whose successfully frozen draft is no longer open | `ExpectedBaseVersion` |
+
+The field-name and key-byte limits are inclusive. A target at the reported limit succeeds when that is
+its only failed rule. Companion provenance reads keep `TextProvenanceUnknown` with `VersionNumber` when
+the version cannot be proved text complete. Upgrade write and freeze routes are reached only after
+planning confirms the companion exists.
+
 ### Reason tokens
 
 | Reason | Meaning |

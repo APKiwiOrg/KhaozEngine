@@ -25,7 +25,7 @@ public enum ContentAuthoringRefusal
     /// <c>JsonPath</c> <c>$.text</c> and <c>ActualFormatVersion</c>.</summary>
     BundleUnexpectedTextSection,
 
-    /// <summary>Refuses writing a format 2 bundle that has lost its text section. Carries
+    /// <summary>Refuses reading or writing a format 2 bundle that has lost its text section. Carries
     /// <c>ActualFormatVersion</c>.</summary>
     BundleTextSectionMissing,
 
@@ -181,7 +181,7 @@ public enum ContentAuthoringRefusal
     /// <c>RowKey</c>, <c>StandingOperation</c> and <c>RequestedOperation</c>.</summary>
     EditTargetOperationCollision,
 
-    /// <summary>Refuses a diff, candidate, rollback or pack row whose type the registry does not declare.
+    /// <summary>Refuses a diff, candidate, rollback, pack row or text target whose type the registry does not declare.
     /// Carries <c>Type</c>, retaining the existing <c>Id</c> where known.</summary>
     TypeUnknown,
     // Publication, rollback and row-only pack writes.
@@ -192,7 +192,7 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses publication without an open draft carrying pending edits.</summary>
     NoPendingDraft,
 
-    /// <summary>Refuses a policy publish that lost its frozen draft. Carries <c>ExpectedBaseVersion</c>.</summary>
+    /// <summary>Refuses publication that lost its frozen draft. Carries <c>ExpectedBaseVersion</c>.</summary>
     FrozenDraftLost,
 
     /// <summary>Refuses a candidate rejected by validation. The complete <c>Findings</c> snapshot identifies it.</summary>
@@ -276,4 +276,43 @@ public enum ContentAuthoringRefusal
 
     /// <summary>Refuses a version whose unknown text cannot be proven empty. Carries <c>VersionNumber</c>.</summary>
     TextProvenanceUnknown,
+
+    // Text route admission and exact-version export.
+
+    /// <summary>Refuses a companion import while a draft holds work. Carries <c>MemberName</c>,
+    /// <c>RowEditCount</c>, <c>TextEditCount</c> and <c>LanguageIntroductionCount</c>.</summary>
+    DraftOpen,
+
+    /// <summary>Refuses a bundle text target without a carried row. Carries <c>Type</c>, <c>Id</c> 0,
+    /// <c>RowKey</c>, <c>FieldName</c>, <c>Language</c> and the value's zero-based <c>Index</c>.</summary>
+    BundleTextRowUnknown,
+
+    /// <summary>Refuses export of a text revision without a live row. Carries <c>TextRowType</c>, <c>TextRowId</c>,
+    /// <c>FieldName</c>, <c>Language</c>, <c>VersionNumber</c> and <c>MemberName</c>.</summary>
+    TextExportRowUnknown,
+
+    /// <summary>Refuses a text target naming an undeclared field. Carries <c>Type</c>, <c>Id</c> 0,
+    /// <c>TypeKey</c>, <c>FieldName</c> and <c>Language</c>.</summary>
+    TextTargetFieldUnknown,
+
+    /// <summary>Refuses a text target's field name above 64 UTF-16 code units. Carries <c>Type</c>,
+    /// <c>Id</c> 0, <c>TypeKey</c>, <c>FieldName</c>, <c>Language</c>, <c>ActualCharacters</c>
+    /// and inclusive <c>MaximumCharacters</c> (64).</summary>
+    TextFieldNameTooLong,
+
+    /// <summary>Refuses a text-bearing bundle on a row-only route. Carries <c>MemberName</c>.</summary>
+    TextBundleOnRowOnlyRoute,
+
+    /// <summary>Refuses a non-format-1 bundle without text on a row-only route. Carries <c>MemberName</c>
+    /// and <c>ActualFormatVersion</c>.</summary>
+    TextFormatOnRowOnlyRoute,
+
+    /// <summary>Refuses a draft holding text on a row-only route. Carries <c>MemberName</c>,
+    /// <c>TextEditCount</c> and <c>LanguageIntroductionCount</c>.</summary>
+    TextDraftOnRowOnlyRoute,
+
+    /// <summary>Refuses a planner baseline whose carried text disagrees with its record. Carries <c>VersionNumber</c>,
+    /// <c>CarriedLanguageCount</c>, <c>CarriedValueCount</c>, <c>RecordedLanguageCount</c>
+    /// and <c>RecordedValueCount</c>.</summary>
+    TextBaselineHiddenFromPlanner,
 }

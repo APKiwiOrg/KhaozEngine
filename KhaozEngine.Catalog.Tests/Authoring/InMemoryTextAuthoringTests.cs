@@ -170,6 +170,14 @@ public sealed class InMemoryTextAuthoringTests
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => ApplyAsync(
             text, new[] { Add() }, ContentTextEdit.Set(Target(over, "en"), "Sword")));
         Assert.Equal(ContentAuthoringException.TextBoundsReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextFieldNameTooLong, refused.Refusal);
+        Assert.Equal(Item, refused.Type);
+        Assert.Equal(0, refused.Id);
+        Assert.Equal("item", refused.TypeKey);
+        Assert.Equal(over, refused.FieldName);
+        Assert.Equal("en", refused.Language);
+        Assert.Equal(65, refused.ActualCharacters);
+        Assert.Equal(64, refused.MaximumCharacters);
         Assert.Null(await store.GetOpenDraftAsync());
         Assert.Equal(0, await AuditCountAsync(store));
 

@@ -483,7 +483,8 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The claimed or missing text chunk's content address, or null.</summary>
     public string? TextHash { get; init; }
 
-    /// <summary>The zero-based UTF-16 offset of an unpaired surrogate in a measured text component, or null.</summary>
+    /// <summary>The zero-based UTF-16 offset of an unpaired surrogate, or the bundle text value index
+    /// for <see cref="ContentAuthoringRefusal.BundleTextRowUnknown"/>, or null.</summary>
     public int? Index { get; init; }
 
     /// <summary>The repeated fully derived text key, or null.</summary>
@@ -494,6 +495,39 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>The wire spelling a reused text language recorded in the baseline, or null.</summary>
     public string? ExpectedWireTag { get; init; }
+
+    /// <summary>The number of pending row edits blocking a companion import, or null.</summary>
+    public int? RowEditCount { get; init; }
+
+    /// <summary>The number of pending text edits a route cannot carry, or null.</summary>
+    public int? TextEditCount { get; init; }
+
+    /// <summary>The number of pending language introductions a route cannot carry, or null.</summary>
+    public int? LanguageIntroductionCount { get; init; }
+
+    /// <summary>The refused field name's length in UTF-16 code units, or null.</summary>
+    public int? ActualCharacters { get; init; }
+
+    /// <summary>The inclusive field-name limit in UTF-16 code units, or null.</summary>
+    public int? MaximumCharacters { get; init; }
+
+    /// <summary>The number of languages carried by a planner's baseline bundle, or null.</summary>
+    public int? CarriedLanguageCount { get; init; }
+
+    /// <summary>The number of values carried by a planner's baseline bundle, or null.</summary>
+    public int? CarriedValueCount { get; init; }
+
+    /// <summary>The number of languages recorded by the planner's exact baseline version, or null.</summary>
+    public int? RecordedLanguageCount { get; init; }
+
+    /// <summary>The number of values recorded by the planner's exact baseline version, or null.</summary>
+    public int? RecordedValueCount { get; init; }
+
+    /// <summary>The text revision's type when export cannot find its live row, or null. Legacy Type stays default.</summary>
+    public ContentTypeId? TextRowType { get; init; }
+
+    /// <summary>The text revision's definition id when export cannot find its live row, or null. Legacy Id stays 0.</summary>
+    public int? TextRowId { get; init; }
 
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }

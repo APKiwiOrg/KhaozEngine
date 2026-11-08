@@ -32,8 +32,13 @@ internal static class ContentTextCompatibility
         ArgumentNullException.ThrowIfNull(plan);
         if (plan.FrozenTextState is not null)
         {
-            throw Unrepresented(member, FormattableString.Invariant(
-                $"the plan for version {plan.VersionNumber} is the row half of a text plan"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextPlanOnRowOnlyRoute,
+                DescribeUnrepresented(member, FormattableString.Invariant(
+                    $"the plan for version {plan.VersionNumber} is the row half of a text plan")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            {
+                MemberName = member, VersionNumber = plan.VersionNumber,
+            };
         }
     }
 
@@ -48,13 +53,20 @@ internal static class ContentTextCompatibility
         ArgumentNullException.ThrowIfNull(bundle);
         if (bundle.TextState is not null)
         {
-            throw Unrepresented(member, "the bundle carries a text section");
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextBundleOnRowOnlyRoute,
+                DescribeUnrepresented(member, "the bundle carries a text section"),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason) { MemberName = member };
         }
 
         if (bundle.FormatVersion != RowOnlyBundleFormat)
         {
-            throw Unrepresented(member, FormattableString.Invariant(
-                $"the bundle is format {bundle.FormatVersion}, which carries a text section this one has lost"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextFormatOnRowOnlyRoute,
+                DescribeUnrepresented(member, FormattableString.Invariant(
+                    $"the bundle is format {bundle.FormatVersion}, which carries a text section this one has lost")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            {
+                MemberName = member, ActualFormatVersion = bundle.FormatVersion,
+            };
         }
     }
 
@@ -65,8 +77,14 @@ internal static class ContentTextCompatibility
     {
         if (HoldsText(draft))
         {
-            throw Unrepresented(member, FormattableString.Invariant(
-                $"the open draft holds {draft!.TextEditCount} text intent(s) and {draft.LanguageIntroductionCount} language introduction(s)"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextDraftOnRowOnlyRoute,
+                DescribeUnrepresented(member, FormattableString.Invariant(
+                    $"the open draft holds {draft!.TextEditCount} text intent(s) and {draft.LanguageIntroductionCount} language introduction(s)")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            {
+                MemberName = member, TextEditCount = draft.TextEditCount,
+                LanguageIntroductionCount = draft.LanguageIntroductionCount,
+            };
         }
     }
 
@@ -109,7 +127,7 @@ internal static class ContentTextCompatibility
         return true;
     }
 
-    /// <summary>The refusal every gate here throws.</summary>
+    /// <summary>The legacy refusal adapter for the remaining provider-owned text gates.</summary>
     /// <param name="member">The member refusing.</param>
     /// <param name="detail">What it could not represent.</param>
     public static ContentAuthoringException Unrepresented(string member, string detail)

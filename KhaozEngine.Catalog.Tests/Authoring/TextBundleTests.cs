@@ -222,6 +222,13 @@ public sealed partial class TextBundleTests
             new[] { Row("sword", 3, retired: false) }, new[] { Declare("en", "en") }, new[] { TextValue("ghost", NameField, "en", "Nobody") });
         var unknown = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.ImportTextBundleAsync(ghost, Actor, Operator, "seed"));
         Assert.Equal(ContentAuthoringException.UnknownRowReason, unknown.Reason);
+        Assert.Equal(ContentAuthoringRefusal.BundleTextRowUnknown, unknown.Refusal);
+        Assert.Equal(Item, unknown.Type);
+        Assert.Equal(0, unknown.Id);
+        Assert.Equal("ghost", unknown.RowKey);
+        Assert.Equal(NameField, unknown.FieldName);
+        Assert.Equal("en", unknown.Language);
+        Assert.Equal(0, unknown.Index);
         ContentBundle hidden = Seed(
             new[] { Row("sword", 3, retired: false) }, new[] { Declare("en", "en") }, new[] { TextValue("sword", SecretField, "en", "Hidden") });
         var ineligible = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.ImportTextBundleAsync(hidden, Actor, Operator, "seed"));
@@ -232,6 +239,11 @@ public sealed partial class TextBundleTests
         Assert.Empty(await empty.ListVersionsAsync());
         Assert.Equal(0, await AuditCountAsync(empty));
         Assert.Equal(0, (await empty.ReadHighWaterAsync(Item)).ReservedThrough);
+        ContentBundle repaired = Seed(
+            new[] { Row("sword", 3, retired: false) }, new[] { Declare("en", "en") },
+            new[] { TextValue("sword", NameField, "en", "Nobody") });
+        Assert.Equal(1, (await text.ImportTextBundleAsync(repaired, Actor, Operator, "repair")).VersionNumber);
+        Assert.Equal("Nobody", Assert.Single((await text.ReadTextSnapshotAsync(1)).Revisions).Value);
 
         var live = TextStore(PackAt(files, "live"));
         await PublishNamedRowAsync(live, "sword", "Sword");

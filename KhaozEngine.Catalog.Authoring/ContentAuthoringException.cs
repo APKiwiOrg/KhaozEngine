@@ -584,6 +584,18 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The stored type key whose identity disagrees with registration, or null.</summary>
     public string? StoredTypeKey { get; init; }
 
+    /// <summary>The unrecognized persisted operation after conversion to ContentEditOperation, or null.</summary>
+    public int? ActualOperation { get; init; }
+
+    /// <summary>The persisted database ordinal of an edit with an unrecognized operation, or null.</summary>
+    public long? StoredEditOrdinal { get; init; }
+
+    /// <summary>The required CLR type of a malformed persisted scalar, or null.</summary>
+    public Type? ExpectedScalarType { get; init; }
+
+    /// <summary>The actual CLR type of a malformed non-null persisted scalar, or null.</summary>
+    public Type? ActualScalarType { get; init; }
+
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }
 

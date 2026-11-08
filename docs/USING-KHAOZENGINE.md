@@ -23339,10 +23339,14 @@ Text commit reasons distinguish store epoch, missing draft, freeze marker, compl
 missing close revision and missing live row. Store-wide legacy `Type` and `Id` stay default and 0 where
 `TextRowType` and `TextRowId` now identify the text row. Each member keeps one identifier set.
 SQLite reuses those same identifier sets. Its missing `catalog_metadata` singleton read uses
-`SchemaMetadataMissing` with no identifiers. Its registry pairing guard uses `TypeIdentityMismatch`,
+`SchemaMetadataMissing` with no identifiers. A non-null stored scalar of the wrong CLR type uses
+`StoredScalarTypeMismatch`, with `ExpectedScalarType` and `ActualScalarType` rather than the stored value.
+Its registry pairing guard uses `TypeIdentityMismatch`,
 carrying requested `Type`, `StoredTypeId`, `StoredTypeKey` and `RegisteredTypeKey`. Metadata absence has no
-in-memory twin. The SQLite draft singleton and stored operation checks are internal invariants enforced by
-its transaction and validated schema.
+in-memory twin. `DraftRowDisappeared` identifies a singleton removed inside its transaction, including by a
+host trigger. `StoredEditOperationUnknown` carries `Type`, `Id`, `ActualOperation` and the Int64
+`StoredEditOrdinal`. SQLite validates catalog DDL, so trigger behavior and malformed persisted values still
+need these refusals. A database ordinal is distinct from the submitted batch's zero-based `EditOrdinal`.
 
 Text binding reports `TextBindingRowUnknown` with `Type`, `Id` 0 and `RowKey`. Final-row checks
 report `TextFinalRowUnknown` with `Type`, `Id`, `FieldName` and `Language`.

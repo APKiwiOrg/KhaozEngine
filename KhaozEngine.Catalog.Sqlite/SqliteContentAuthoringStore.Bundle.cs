@@ -228,8 +228,8 @@ public sealed partial class SqliteContentAuthoringStore
         string epoch;
         using (SqliteCommand command = Command("SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;"))
         {
-            epoch = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string
-                ?? throw NoMetadata();
+            object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            epoch = RequireMetadataScalar<string>(raw);
         }
 
         return ContentBundleTextCompatibility.Export(epoch, versionNumber, types, rows, families, rules, text);

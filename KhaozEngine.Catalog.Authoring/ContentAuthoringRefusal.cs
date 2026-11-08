@@ -401,4 +401,14 @@ public enum ContentAuthoringRefusal
     /// StoredTypeId, StoredTypeKey and RegisteredTypeKey.</summary>
     TypeIdentityMismatch,
 
+    /// <summary>Refuses a draft singleton removed while a transaction is opening or writing it. Carries no identifiers.</summary>
+    DraftRowDisappeared,
+
+    /// <summary>Refuses a persisted edit operation outside the four supported operations. Carries Type,
+    /// Id, ActualOperation and StoredEditOrdinal.</summary>
+    StoredEditOperationUnknown,
+
+    /// <summary>Refuses a non-null stored scalar of the wrong CLR type. Carries ExpectedScalarType and ActualScalarType.</summary>
+    StoredScalarTypeMismatch,
+
 }

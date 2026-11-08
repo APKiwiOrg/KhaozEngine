@@ -35,8 +35,12 @@ Store admission and commit failures carry `ContentAuthoringException.Refusal` wi
 identifier sets as the in-memory store. See the shared
 [store refusal table](../KhaozEngine.Catalog.Authoring/README.md#store-admission-and-confirmation-refusals).
 Legacy `Reason` tokens, `Type`, `Id` and `Findings` retain their meanings. Missing metadata reads use
-`SchemaMetadataMissing`. Registry id/key conflicts use `TypeIdentityMismatch` and report both stored and
-registered identities. Provider failures retain their typed SQLite error codes without parsing message text.
+`SchemaMetadataMissing`. A non-null scalar of the wrong CLR type uses `StoredScalarTypeMismatch` with
+`ExpectedScalarType` and `ActualScalarType`. Registry id/key conflicts use `TypeIdentityMismatch` and report both stored and
+registered identities. `DraftRowDisappeared` reports a draft removed inside its transaction, including by a
+host trigger. `StoredEditOperationUnknown` reports malformed stored operations with their database ordinal.
+DDL validation does not validate trigger behavior or every stored value. Provider failures retain their
+typed SQLite error codes without parsing message text.
 
 Operator imports support `IContentPolicyImportStore.ImportWithPolicyAsync` with a required-policy
 `ContentPolicyImportRequest`. The host's admin registration binds the policy and the existing frozen

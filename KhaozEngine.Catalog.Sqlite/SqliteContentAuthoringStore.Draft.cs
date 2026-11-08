@@ -99,12 +99,12 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>The open draft inside the transaction that just opened or wrote it.</summary>
-    // Internal invariant: OpenDraftAsync just inserted this singleton in the same leased transaction.
-    // No supported schema trigger or intervening store operation can remove it.
+    // DDL validation does not reject host triggers, which can remove the singleton inside this transaction.
     async Task<ContentDraft> RequireDraftAsync(SqliteTransaction transaction, CancellationToken cancellationToken)
         => await ReadDraftAsync(transaction, cancellationToken).ConfigureAwait(false)
-            ?? throw new InvalidOperationException(
-                "The draft row went missing inside the transaction that opened it.");
+            ?? throw new ContentAuthoringException(ContentAuthoringRefusal.DraftRowDisappeared,
+                "The draft row went missing inside the transaction that opened it.",
+                default, 0, ContentAuthoringException.NoOpenDraftReason);
 
     /// <inheritdoc />
     public async Task DiscardDraftAsync(
@@ -210,8 +210,7 @@ public sealed partial class SqliteContentAuthoringStore
             IReadOnlyList<ContentFieldEdit> payload =
                 fields.TryGetValue(ordinal, out List<ContentFieldEdit>? held) ? held : [];
 
-            // Internal invariant: the validated operation CHECK admits only the four factory operations.
-            // All public edit factories and every store write preserve that constraint.
+            // Validated DDL does not prove stored values obey it, so malformed persisted operations are input failures.
             edits.Add(operation switch
             {
                 // An Add and an import are one factory: an ordinary add is exactly an import that carries no
@@ -237,9 +236,11 @@ public sealed partial class SqliteContentAuthoringStore
                     new ContentKey(reader.GetString(7)),
                     reader.GetString(8),
                     payload),
-                _ => throw new InvalidOperationException(
+                _ => throw new ContentAuthoringException(ContentAuthoringRefusal.StoredEditOperationUnknown,
                     FormattableString.Invariant(
-                        $"Draft edit {ordinal} carries operation {(int)operation}, which is not one of the four of spec 3.7.")),
+                        $"Draft edit {ordinal} carries operation {(int)operation}, which is not one of the four of spec 3.7."),
+                    type, definitionId, ContentAuthoringException.UnknownEditOperationReason)
+                { ActualOperation = (int)operation, StoredEditOrdinal = ordinal },
             });
         }
 

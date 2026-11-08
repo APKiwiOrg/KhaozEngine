@@ -439,8 +439,8 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
     {
         using SqliteCommand command = Command(
             "SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;", transaction);
-        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string
-            ?? throw NoMetadata();
+        object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return RequireMetadataScalar<string>(raw);
     }
 
     Task AppendDiscardAuditAsync(

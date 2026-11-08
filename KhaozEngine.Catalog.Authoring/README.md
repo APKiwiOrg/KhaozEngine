@@ -329,7 +329,10 @@ Text apply reuses `TextBindingRowUnknown` and `TextLanguageUndeclared` with thei
 | `TextCloseRevisionMissing` | A text close absent from the store | `TextRowType`, `TextRowId`, `FieldName`, `Language`, `FromVersion` |
 | `TextPlanRowUnknown` | A text commit revision without a live plan row | `TextRowType`, `TextRowId`, `FieldName`, `Language` |
 | `SchemaMetadataMissing` | A durable store read missing its `catalog_metadata` singleton | None |
+| `StoredScalarTypeMismatch` | A non-null stored scalar of the wrong CLR type | `ExpectedScalarType`, `ActualScalarType` |
 | `TypeIdentityMismatch` | A durable registry pairing disagreeing with a stored id or key | Requested `Type`, `StoredTypeId`, `StoredTypeKey`, `RegisteredTypeKey` |
+| `DraftRowDisappeared` | A draft singleton removed during its transaction | None |
+| `StoredEditOperationUnknown` | A persisted edit operation outside the four supported operations | `Type`, `Id`, `ActualOperation`, persisted `StoredEditOrdinal` (Int64) |
 
 `TextRowType` and `TextRowId` identify rows without changing the existing store-wide legacy `Type` and
 `Id` values of default and 0. Pinning an absent version retains its existing `unknown-type` legacy token
@@ -337,9 +340,11 @@ while `Refusal` reports `VersionUnknown`. A pack reader returns a stable token r
 so `PackUnreadable` preserves that token without inventing an inner exception.
 SQLite uses the same member and identifier set for each shared rule. Its missing metadata read and stored
 type identity checks use the durable-store members above. No migration identifier is invented for a missing
-singleton. Its internal draft reader runs immediately after the same transaction creates the singleton,
-and its edit reader relies on the validated four-operation `CHECK`. Neither internal guard has a caller
-refusal member.
+singleton. Non-null malformed scalars use `StoredScalarTypeMismatch`, carrying the expected and actual CLR
+types without copying the stored value. A host trigger can remove the draft inside its transaction, and malformed persisted values
+can violate an otherwise correct operation `CHECK`. SQLite validates catalog DDL, not trigger behavior or
+every stored value. These input failures use `DraftRowDisappeared` and `StoredEditOperationUnknown`.
+`StoredEditOrdinal` is the database ordinal, distinct from a submitted batch's zero-based `EditOrdinal`.
 
 The in-memory store commits and resets each version and its complete language record together under its
 gate. Missing internal language records, and an import losing the draft its row step just created, are

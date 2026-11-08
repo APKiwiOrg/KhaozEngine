@@ -105,7 +105,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteCommand command = Command("SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;");
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw as string ?? throw NoMetadata();
+        return RequireMetadataScalar<string>(raw);
     }
 
     /// <inheritdoc />
@@ -215,7 +215,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
     {
         using SqliteCommand command = Command(sql, transaction);
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw is long value ? value : throw NoMetadata();
+        return RequireMetadataScalar<long>(raw);
     }
 
     /// <summary>A command on the held connection, enlisted in a transaction when one is open.</summary>
@@ -236,13 +236,22 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
 
     static long Millis(DateTimeOffset at) => at.ToUnixTimeMilliseconds();
 
+    static T RequireMetadataScalar<T>(object? raw)
+    {
+        if (raw is T value) return value;
+        if (raw is null or DBNull) throw NoMetadata();
+        throw new ContentAuthoringException(ContentAuthoringRefusal.StoredScalarTypeMismatch,
+            DescribeMissingMetadata(), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ExpectedScalarType = typeof(T), ActualScalarType = raw.GetType() };
+    }
+
+    static string DescribeMissingMetadata()
+        => FormattableString.Invariant(
+            $"The database carries no catalog_metadata row, so it has not been initialized. Call {nameof(InitializeAsync)} first.");
+
     static ContentAuthoringException NoMetadata()
         => new(ContentAuthoringRefusal.SchemaMetadataMissing,
-            FormattableString.Invariant(
-                $"The database carries no catalog_metadata row, so it has not been initialized. Call {nameof(InitializeAsync)} first."),
-            default,
-            0,
-            ContentAuthoringException.SchemaMismatchReason);
+            DescribeMissingMetadata(), default, 0, ContentAuthoringException.SchemaMismatchReason);
 
     static ContentAuthoringException UnknownVersion(int versionNumber)
         => new(ContentAuthoringRefusal.VersionUnknown,

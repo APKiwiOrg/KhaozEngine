@@ -212,6 +212,16 @@ internal static class SqlServerJournalTestDatabase
         return connectionString;
     }
 
+    internal static async Task ExecuteAsync(string connectionString, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using SqlCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        foreach (var (name, value) in parameters) SqlServerMutationJournalStore.Add(command, name, value);
+        await command.ExecuteNonQueryAsync();
+    }
+
     internal static async Task<bool> IndexExistsAsync(string connectionString, string indexName)
     {
         await using var connection = new SqlConnection(connectionString);

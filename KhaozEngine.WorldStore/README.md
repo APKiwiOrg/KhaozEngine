@@ -258,6 +258,13 @@ Expected races use result statuses. Provider, transport, schema, and corruption 
 
 ### Refusals
 
+`JournalStoreStateException` derives from `InvalidOperationException` and requires a `JournalStoreRefusal`
+`Reason`. SQL Server protocol guards retain that catch contract and their existing developer prose.
+`BatchOutcomeMissing` names a missing outcome row, `BatchOutcomeUndefined` names an undefined outcome and carries
+its integer `Outcome`, and `BatchOutcomeUnsupported` names an outcome unsupported by the current operation with
+its integer `Outcome`. `BatchProjectionLimitIncomplete` names an incomplete limit payload. These checks also
+cover result sets emitted by host triggers inside the transaction.
+
 `JournalStoreException.Reason` is a nullable `JournalStoreRefusal` beside `Kind`, `Certainty`, `Scope` and
 `StreamKeys`. The legacy constructor remains available for consumer-built exceptions and leaves `Reason` null.
 The reason-taking overload accepts the same failure dimensions, stream keys, message and optional inner cause.
@@ -273,6 +280,8 @@ Use the rule and its identifiers to distinguish the following refusals.
 | `SnapshotChecksumMismatch` | Stored snapshot data fails verification, including replacement verification before pruning. | `StreamKey` |
 | `EventChecksumMismatch` | Stored event payload fails verification. | `StreamKey`, `StreamVersion` |
 | `ProjectionChecksumMismatch` | Stored projection data fails verification. | `StreamKey`, `SectionName` |
+| `ReplayedOperationMissing` | SQL Server replay omitted its operation row. Retains whole-store corruption kind and committed-data-unreadable certainty. | `OperationId`, empty `StreamKeys` |
+| `ReplayedStreamsMissing` | SQL Server replay omitted its stream result set. Retains whole-store corruption kind and committed-data-unreadable certainty. | `OperationId`, empty `StreamKeys` |
 | `ResultChecksumMismatch` | A stored operation result fails verification. | `OperationId`, existing `StreamKeys` |
 | `EventSequenceGap` | An event does not have the next expected stream version. | `StreamKey`, `ExpectedVersion`, `ActualVersion` |
 | `EventPageIncomplete` | A page exhausted its rows before the captured through version, without hitting its count or byte limit. | `StreamKey`, `ExpectedThroughVersion`, `ActualThroughVersion` |

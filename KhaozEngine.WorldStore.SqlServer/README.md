@@ -239,10 +239,20 @@ and the original cause. Failure kind, certainty, scope and stream keys keep thei
 
 | Runtime reason | What is refused | Identifiers |
 |---|---|---|
+| `ReplayedOperationMissing` | Replay has no operation row. | `OperationId`, existing whole-store corruption dimensions and empty `StreamKeys` |
+| `ReplayedStreamsMissing` | Replay has no stream result set. | `OperationId`, existing whole-store corruption dimensions and empty `StreamKeys` |
 | `ReplacementSnapshotDataMismatch` | SQL Server's readback differs from the requested replacement data before pruning. | `StreamKey` |
 | `TransportFailed` | An I/O or socket failure before a transaction or after confirmed rollback. | `Stage`, original `InnerException` |
 | `WriteFailedAfterRollback` | A non-provider commit failure after confirmed rollback. | `Stage` (`Commit`), original `InnerException` |
 | `ProviderClockUnavailable` | SQL Server did not return its UTC clock. | `ProviderName` (`SQL Server`) |
+
+Host triggers may emit result sets before the batch's own protocol. Missing or undefined outcomes, outcomes
+unsupported by the current operation, and incomplete projection-limit payloads throw `JournalStoreStateException`,
+which retains the `InvalidOperationException` catch contract. Its `Reason` is `BatchOutcomeMissing`,
+`BatchOutcomeUndefined`, `BatchOutcomeUnsupported` or `BatchProjectionLimitIncomplete`. Undefined and unsupported
+outcomes carry integer `Outcome`. Missing replay rows and stream result sets retain `JournalStoreException`,
+`CorruptData`, `CommittedDataUnreadable`, `WholeStore`, and empty `StreamKeys`. Their `OperationId` identifies the
+requested replay. Each refusal rolls back the write, including host trigger writes.
 
 The [core refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists every shared runtime member and its
 identifiers. Replacement verification checks version, requested data, requested checksum and checksum validity in

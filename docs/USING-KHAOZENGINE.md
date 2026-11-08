@@ -28323,7 +28323,11 @@ SQL Server reset lock context preserves `ApplicationLockNotGranted`, its `Return
 original refusal. SQL Server runtime provider codes come directly from `SqlException.Number`. Its batch limit
 results carry the same count or byte reason and identifier set as SQLite. Additional SQL Server reasons distinguish
 replacement data mismatch, transport failure after confirmed rollback or before transaction start, and a
-non-provider commit failure with confirmed rollback. The provider README names their identifiers.
+non-provider commit failure with confirmed rollback. Missing replay results retain whole-store
+`JournalStoreException` corruption dimensions and carry `OperationId`. Batch protocol refusals use
+`JournalStoreStateException`, an `InvalidOperationException` subtype with a `JournalStoreRefusal` reason and,
+for undefined or unsupported outcomes, integer `Outcome`. Host trigger result sets can reach these guards.
+The provider README names their identifiers.
 
 SQLite schema reasons also carry `RequiredMigration` (`sqlite-journal-v3-row-timestamps`), with actual and supported
 versions, malformed metadata type, connection journal modes, or compared object names where applicable.

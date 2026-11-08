@@ -1,0 +1,89 @@
+using System;
+using System.Collections.Generic;
+using System.Data.Common;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using KhaozEngine.WorldStore.Journal;
+
+namespace KhaozEngine.WorldStore.SqlServer;
+
+internal static class SqlServerJournalBatchResultReader
+{
+    internal static async Task<SqlServerJournalWriteResult> ReadAsync(
+        DbDataReader reader, Guid operationId, CancellationToken cancellationToken)
+    {
+        // Host triggers can emit result sets before the batch protocol, even inside its transaction.
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            throw new JournalStoreStateException(JournalStoreRefusal.BatchOutcomeMissing, "SQL Server mutation journal write batch returned no outcome.");
+        var outcome = (SqlServerJournalWriteOutcome)reader.GetInt32(0);
+        int lockResult = reader.GetInt32(1);
+        string? limitStream = await reader.IsDBNullAsync(2, cancellationToken).ConfigureAwait(false)
+            ? null
+            : reader.GetString(2);
+        JournalStoreRefusal? limitReason = reader.IsDBNull(3) ? null : (JournalStoreRefusal)reader.GetInt32(3);
+        long? limitActual = reader.IsDBNull(4) ? null : reader.GetInt64(4);
+        long? limitMaximum = reader.IsDBNull(5) ? null : reader.GetInt64(5);
+        if (!Enum.IsDefined(outcome))
+            throw new JournalStoreStateException(JournalStoreRefusal.BatchOutcomeUndefined, $"SQL Server mutation journal write batch reported outcome '{(int)outcome}'.") { Outcome = (int)outcome };
+        JournalCommitReceipt? receipt = outcome == SqlServerJournalWriteOutcome.Replayed
+            ? await ReadReplayReceiptAsync(reader, operationId, cancellationToken).ConfigureAwait(false)
+            : null;
+        return new SqlServerJournalWriteResult(outcome, lockResult, limitStream, limitReason, limitActual, limitMaximum, receipt);
+    }
+
+    private static async Task<JournalCommitReceipt> ReadReplayReceiptAsync(
+        DbDataReader reader,
+        Guid operationId,
+        CancellationToken cancellationToken)
+    {
+        if (!await reader.NextResultAsync(cancellationToken).ConfigureAwait(false)
+            || !await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            throw Corrupt(JournalStoreRefusal.ReplayedOperationMissing, Array.Empty<string>(), "Replayed journal operation row could not be read inside its transaction.", operationId);
+        string resultSchema = reader.GetString(0);
+        int resultSchemaVersion = reader.GetInt32(1);
+        byte[] resultData = reader.GetFieldValue<byte[]>(2);
+        byte[] resultChecksum = reader.GetFieldValue<byte[]>(3);
+        DateTimeOffset committedAt = reader.GetFieldValue<DateTimeOffset>(4);
+
+        if (!await reader.NextResultAsync(cancellationToken).ConfigureAwait(false))
+            throw Corrupt(JournalStoreRefusal.ReplayedStreamsMissing, Array.Empty<string>(), "Replayed journal operation streams could not be read inside its transaction.", operationId);
+        var ranges = new List<JournalStreamVersionRange>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            ranges.Add(new JournalStreamVersionRange(reader.GetString(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt32(3)));
+
+        string[] streamKeys = ranges.Select(value => value.StreamKey).ToArray();
+        if (!JournalCanonicalizer.VerifySha256(resultData, resultChecksum))
+            throw Corrupt(JournalStoreRefusal.ResultChecksumMismatch, streamKeys, "Stored journal result checksum does not match its data.", operationId);
+        return new JournalCommitReceipt(
+            operationId,
+            committedAt,
+            ranges,
+            resultSchema,
+            resultSchemaVersion,
+            resultData,
+            resultChecksum,
+            isReplay: true);
+    }
+
+    internal static JournalStoreException ProjectionLimitFailure(SqlServerJournalWriteResult batch)
+    {
+        if (batch.LimitStream is not string stream || batch.LimitActual is not long actual || batch.LimitMaximum is not long maximum
+            || batch.LimitReason is not (JournalStoreRefusal.ProjectionSectionCountExceeded or JournalStoreRefusal.ProjectionByteCountExceeded))
+            throw new JournalStoreStateException(JournalStoreRefusal.BatchProjectionLimitIncomplete, "SQL Server mutation journal write batch returned an incomplete projection limit.");
+        bool count = batch.LimitReason == JournalStoreRefusal.ProjectionSectionCountExceeded;
+        return new JournalStoreException(batch.LimitReason.Value, JournalStoreFailureKind.ConstraintViolation,
+            JournalStoreFailureCertainty.DefinitelyNotCommitted, JournalStoreFailureScope.OperationStreams, new[] { stream },
+            "Projection replacement would exceed the configured per-stream limits.")
+        {
+            StreamKey = stream,
+            ActualCount = count ? actual : null, MaximumCount = count ? maximum : null,
+            ActualBytes = count ? null : actual, MaximumBytes = count ? null : maximum,
+        };
+    }
+
+    private static JournalStoreException Corrupt(JournalStoreRefusal reason, string[] streams, string message, Guid operationId)
+        => new(reason, JournalStoreFailureKind.CorruptData, JournalStoreFailureCertainty.CommittedDataUnreadable,
+            streams.Length == 0 ? JournalStoreFailureScope.WholeStore : JournalStoreFailureScope.OperationStreams,
+            streams, message) { OperationId = operationId };
+}

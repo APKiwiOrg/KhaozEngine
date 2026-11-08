@@ -105,4 +105,16 @@ public enum JournalStoreRefusal
     TransportFailed,
     /// <summary>A non-provider commit failure has a confirmed rollback.</summary>
     WriteFailedAfterRollback,
+    /// <summary>The SQL Server batch returned no outcome row.</summary>
+    BatchOutcomeMissing,
+    /// <summary>The SQL Server batch returned an undefined outcome value.</summary>
+    BatchOutcomeUndefined,
+    /// <summary>The SQL Server batch returned an outcome unsupported by the current operation.</summary>
+    BatchOutcomeUnsupported,
+    /// <summary>The SQL Server batch returned a projection limit without its complete payload.</summary>
+    BatchProjectionLimitIncomplete,
+    /// <summary>The SQL Server replay result omitted its operation row.</summary>
+    ReplayedOperationMissing,
+    /// <summary>The SQL Server replay result omitted its stream result set.</summary>
+    ReplayedStreamsMissing,
 }

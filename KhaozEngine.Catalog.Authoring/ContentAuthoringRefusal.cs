@@ -139,7 +139,8 @@ public enum ContentAuthoringRefusal
     /// <c>Language</c> and the submitted <c>WireTag</c>.</summary>
     BundleLanguageWireTagMismatch,
 
-    /// <summary>Refuses a text value in an undeclared language. Carries <c>JsonPath</c> and <c>Language</c>.</summary>
+    /// <summary>Refuses a text value in an undeclared language. Carries <c>Language</c> and, for a bundle,
+    /// <c>JsonPath</c>, or for publication, <c>Type</c>, <c>Id</c> and <c>FieldName</c>.</summary>
     BundleTextLanguageUndeclared,
 
     /// <summary>Refuses a repeated canonical text target. Carries <c>JsonPath</c> and <c>TextTarget</c>.</summary>
@@ -151,7 +152,10 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a text target with an empty content key. Carries <c>JsonPath</c>.</summary>
     BundleTextTargetKeyEmpty,
 
-    /// <summary>Refuses text with an unpaired surrogate. A bundle carries <c>JsonPath</c>.</summary>
+    /// <summary>Refuses text with an unpaired surrogate. A bundle carries <c>JsonPath</c>. A chunk producer
+    /// carries <c>Type</c>, <c>Id</c>, <c>FieldName</c>, <c>Language</c>, <c>MemberName</c> and the UTF-16
+    /// <c>Index</c>, with the
+    /// original argument exception as inner.</summary>
     TextMalformedUnicode,
 
     /// <summary>Refuses a text value above 8,192 strict UTF-8 bytes. A bundle carries <c>JsonPath</c>,
@@ -203,7 +207,8 @@ public enum ContentAuthoringRefusal
     FieldUnknown,
 
     /// <summary>Refuses an edit whose target row is absent. Carries <c>Type</c>, <c>Id</c>, <c>RowKey</c>
-    /// and <c>EditOrdinal</c>.</summary>
+    /// and <c>EditOrdinal</c> for a row edit. Text binding carries <c>Type</c> and <c>RowKey</c> with
+    /// <c>Id</c> 0, or <c>Type</c>, <c>Id</c>, <c>FieldName</c> and <c>Language</c> for an absent final row.</summary>
     RowUnknown,
 
     /// <summary>Refuses a pack target without version pointers. Carries <c>StoreType</c> and <c>MemberName</c>.</summary>
@@ -228,4 +233,47 @@ public enum ContentAuthoringRefusal
     /// <summary>Refuses a row-only write naming an absent text chunk. Carries <c>MemberName</c>,
     /// <c>Language</c> and <c>TextHash</c>.</summary>
     TextChunkMissingOnRowOnlyRoute,
+
+    // Text candidate preflight and commit confirmation.
+
+    /// <summary>Refuses text without a registered CLIENT type and CLIENT localized marker. Carries
+    /// <c>Type</c>, <c>Id</c>, <c>FieldName</c>, <c>Language</c> and <c>TypeKey</c> when registered.</summary>
+    TextTargetIneligible,
+
+    /// <summary>Refuses a derived text key above 192 strict UTF-8 bytes. Carries <c>Type</c>, <c>Id</c>,
+    /// <c>FieldName</c>, <c>Language</c>, <c>ActualBytes</c> and <c>MaximumBytes</c> (192).</summary>
+    TextKeyBytesExceeded,
+
+    /// <summary>Refuses invalid UTF-8 in a content key used by text. Carries <c>Type</c>, <c>Id</c>,
+    /// <c>FieldName</c> and <c>Language</c>.</summary>
+    TextKeyUtf8Invalid,
+
+    /// <summary>Refuses two values deriving one key in a language. Carries <c>DerivedKey</c> and <c>Language</c>.</summary>
+    TextKeyCollision,
+
+    /// <summary>Refuses a language body above 16 MiB, including count and length prefixes. Carries
+    /// <c>Language</c>, <c>ActualBytes</c> and <c>MaximumBytes</c> (16,777,216).</summary>
+    TextChunkBytesExceeded,
+
+    /// <summary>Refuses a chunk hash that differs from its values. Carries <c>Language</c>, the claimed
+    /// <c>TextHash</c> and the regenerated <c>ExpectedTextHash</c>.</summary>
+    TextChunkHashMismatch,
+
+    /// <summary>Refuses stored bytes that differ from the regenerated file. Carries <c>Language</c> and <c>TextHash</c>.</summary>
+    TextChunkBytesMismatch,
+
+    /// <summary>Refuses reuse of a language absent from the baseline. Carries <c>Language</c>, the baseline
+    /// <c>VersionNumber</c> and <c>TextHash</c>.</summary>
+    TextReusedChunkUnrecorded,
+
+    /// <summary>Refuses reuse of a hash the baseline did not record. Carries <c>Language</c>, the baseline
+    /// <c>VersionNumber</c>, the claimed <c>TextHash</c> and the recorded <c>ExpectedTextHash</c>.</summary>
+    TextReusedHashMismatch,
+
+    /// <summary>Refuses reuse with another spelling than the baseline recorded. Carries <c>Language</c>,
+    /// baseline <c>VersionNumber</c>, <c>TextHash</c>, claimed <c>WireTag</c> and recorded <c>ExpectedWireTag</c>.</summary>
+    TextReusedWireTagMismatch,
+
+    /// <summary>Refuses a version whose unknown text cannot be proven empty. Carries <c>VersionNumber</c>.</summary>
+    TextProvenanceUnknown,
 }

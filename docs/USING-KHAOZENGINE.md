@@ -23317,6 +23317,19 @@ names the candidate, rule-prefix and pack-target rules and their identifiers. A 
 branch on each `ContentFinding.Code`, including consumer-defined codes, rather than its message. The legacy
 `Reason`, `Type` and `Id` remain available. A row-only pack write distinguishes `TextPlanOnRowOnlyRoute`
 (`MemberName`, `VersionNumber`) from `TextChunkMissingOnRowOnlyRoute` (`MemberName`, `Language`, `TextHash`).
+Text candidate and chunk preflight use the same enum. `BundleTextLanguageUndeclared` carries `Language`
+and the text slot's `Type`, `Id` and `FieldName`, and `TextTargetIneligible` identifies the ineligible slot
+with `TypeKey` when registered. `TextMalformedUnicode` keeps the original argument refusal as inner and
+names the slot, `MemberName` and zero-based UTF-16 `Index`.
+`TextKeyUtf8Invalid` identifies an invalid content key. `TextKeyBytesExceeded` and `TextChunkBytesExceeded`
+carry `ActualBytes` and inclusive `MaximumBytes` (192 and 16,777,216), plus the slot or `Language`.
+`TextKeyCollision` carries the canonical `Language` and repeated `DerivedKey`.
+Commit confirmation distinguishes `TextChunkHashMismatch`, `TextChunkBytesMismatch`,
+`TextReusedChunkUnrecorded`, `TextReusedWireTagMismatch` and `TextReusedHashMismatch`. Each carries `Language` and claimed `TextHash`.
+Hash mismatches add `ExpectedTextHash`, and reuse failures add the baseline `VersionNumber`.
+A reuse spelling mismatch also carries the claimed `WireTag` and recorded `ExpectedWireTag`.
+`TextProvenanceUnknown` names the `VersionNumber` whose text neither manifest proof can establish as empty.
+See the [text producer refusal table](../KhaozEngine.Catalog.Authoring/README.md#text-producer-and-confirmation-refusals).
 
 A rollback refuses a row live at the target and retired since. `ContentRollback.Refusal` reports
 `RetireIrreversible`, the first blocker's `Type`, `Id` and `RowKey`, plus `TargetVersion`, `BlockerCount` and

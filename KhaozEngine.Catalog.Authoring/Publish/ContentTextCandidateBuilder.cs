@@ -58,22 +58,24 @@ internal static class ContentTextCandidateBuilder
             if (!live.Contains((slot.Type, slot.DefinitionId)))
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.RowUnknown,
                     FormattableString.Invariant(
                         $"Text of type {slot.Type} row {slot.DefinitionId} field '{slot.FieldName}' names a row the final row plan does not hold."),
                     new ContentTypeId(slot.Type),
                     slot.DefinitionId,
-                    ContentAuthoringException.UnknownRowReason);
+                    ContentAuthoringException.UnknownRowReason) { FieldName = slot.FieldName, Language = slot.Language };
             }
 
             RequireEligible(registry, slot);
             if (!declared.Contains(slot.Language))
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.BundleTextLanguageUndeclared,
                     FormattableString.Invariant(
                         $"Text of type {slot.Type} row {slot.DefinitionId} is in language '{slot.Language}', which neither the base version nor the draft declares."),
                     new ContentTypeId(slot.Type),
                     slot.DefinitionId,
-                    ContentAuthoringException.TextLanguageUndeclaredReason);
+                    ContentAuthoringException.TextLanguageUndeclaredReason) { FieldName = slot.FieldName, Language = slot.Language };
             }
         }
 
@@ -131,11 +133,13 @@ internal static class ContentTextCandidateBuilder
             || field.Visibility != ContentVisibility.Client)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextTargetIneligible,
                 FormattableString.Invariant(
                     $"Text of type {slot.Type} row {slot.DefinitionId} field '{slot.FieldName}' language '{slot.Language}' needs a registered CLIENT-visible type and a CLIENT-visible localized text marker, and the registry no longer offers both. It is refused rather than dropped from the version or leaked into a shared manifest."),
                 type,
                 slot.DefinitionId,
-                ContentAuthoringException.TextTargetIneligibleReason);
+                ContentAuthoringException.TextTargetIneligibleReason)
+            { TypeKey = registration?.TypeKey, FieldName = slot.FieldName, Language = slot.Language };
         }
 
         return registration;

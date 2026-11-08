@@ -262,6 +262,8 @@ public sealed class SqliteTextSchemaMigrationTests
             var unknown = await Assert.ThrowsAsync<ContentAuthoringException>(
                 () => ((IContentTextAuthoringStore)drifted).ReadTextSnapshotAsync(2));
             Assert.Equal(ContentAuthoringException.TextProvenanceUnknownReason, unknown.Reason);
+            Assert.Equal(ContentAuthoringRefusal.TextProvenanceUnknown, unknown.Refusal);
+            Assert.Equal(2, unknown.VersionNumber);
         }
 
         using var store = new SqliteContentAuthoringStore(database.ConnectionString, TextRegistry(), database.Pack());

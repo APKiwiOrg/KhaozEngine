@@ -140,6 +140,8 @@ internal static class ContentTextChunkBuilder
         var groups = new List<Entry>[declarations.Count];
         for (int i = 0; i < declarations.Count; i++)
         {
+            // Internal invariant: sealed declarations admit only ASCII tags of 1 to 35 bytes.
+            // No caller can construct a declaration whose wire tag reaches this defensive guard.
             if (Encoding.ASCII.GetByteCount(declarations[i].WireTag) > ContentTextChunkCodec.MaxLanguageTagBytes)
             {
                 throw Bounds(default, 0, FormattableString.Invariant(
@@ -155,11 +157,12 @@ internal static class ContentTextChunkBuilder
             if (!index.TryGetValue(value.Language, out int language))
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.BundleTextLanguageUndeclared,
                     FormattableString.Invariant(
                         $"Text of type {value.Type.Value} row {value.DefinitionId} is in language '{value.Language}', which the version does not declare."),
                     value.Type,
                     value.DefinitionId,
-                    ContentAuthoringException.TextLanguageUndeclaredReason);
+                    ContentAuthoringException.TextLanguageUndeclaredReason) { FieldName = value.FieldName, Language = value.Language };
             }
 
             groups[language].Add(Derive(registry, value, keys));
@@ -178,11 +181,12 @@ internal static class ContentTextChunkBuilder
                 if (e > 0 && group[e - 1].KeyUtf8.AsSpan().SequenceEqual(entry.KeyUtf8))
                 {
                     throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.TextKeyCollision,
                         FormattableString.Invariant(
                             $"Two strings derive the key '{entry.Key}' in language '{declarations[i].WireTag}', so neither has a representable identity."),
                         default,
                         0,
-                        ContentAuthoringException.EditTargetCollisionReason);
+                        ContentAuthoringException.EditTargetCollisionReason) { DerivedKey = entry.Key, Language = declarations[i].Language };
                 }
 
                 body = checked(body + 1 + entry.KeyUtf8.Length + ContentVarint.Size((uint)entry.ValueBytes) + entry.ValueBytes);
@@ -191,8 +195,10 @@ internal static class ContentTextChunkBuilder
 
             if (body > ContentPackFormat.MaxChunkUncompressedBytes)
             {
-                throw Bounds(default, 0, FormattableString.Invariant(
-                    $"Language '{declarations[i].WireTag}' needs an uncompressed body of {body} bytes, over the {ContentPackFormat.MaxChunkUncompressedBytes} byte chunk ceiling. Nothing was encoded or written."));
+                throw new ContentAuthoringException(ContentAuthoringRefusal.TextChunkBytesExceeded, FormattableString.Invariant(
+                    $"Language '{declarations[i].WireTag}' needs an uncompressed body of {body} bytes, over the {ContentPackFormat.MaxChunkUncompressedBytes} byte chunk ceiling. Nothing was encoded or written."),
+                    default, 0, ContentAuthoringException.TextBoundsReason)
+                { Language = declarations[i].Language, ActualBytes = body, MaximumBytes = ContentPackFormat.MaxChunkUncompressedBytes };
             }
 
             entries[i] = pairs;
@@ -212,46 +218,65 @@ internal static class ContentTextChunkBuilder
         if (!keys.TryGetValue((value.Type.Value, value.DefinitionId), out ContentKey contentKey))
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.RowUnknown,
                 FormattableString.Invariant(
                     $"Text of type {value.Type.Value} row {value.DefinitionId} names a row the version does not hold."),
                 value.Type,
                 value.DefinitionId,
-                ContentAuthoringException.UnknownRowReason);
+                ContentAuthoringException.UnknownRowReason) { FieldName = value.FieldName, Language = value.Language };
         }
 
-        int keyBytes;
-        int valueBytes;
-        try
+        int keyBytes = checked(
+            MeasureUtf8(registration.TypeKey, nameof(registration), value, nameof(registration.TypeKey))
+            + 2
+            + contentKey.Utf8.Length
+            + MeasureUtf8(value.FieldName, nameof(value), value, nameof(value.FieldName)));
+        int valueBytes = MeasureUtf8(value.Value, nameof(value), value, nameof(value.Value));
+
+        bool invalidUtf8 = !Utf8.IsValid(contentKey.Utf8);
+        if (invalidUtf8 || keyBytes is < 1 or > ContentTextChunkCodec.MaxKeyBytes)
         {
-            keyBytes = checked(
-                ContentTextEdit.MeasureUtf8(registration.TypeKey, nameof(registration))
-                + 2
-                + contentKey.Utf8.Length
-                + ContentTextEdit.MeasureUtf8(value.FieldName, nameof(value)));
-            valueBytes = ContentTextEdit.MeasureUtf8(value.Value, nameof(value));
-        }
-        catch (ArgumentException invalid)
-        {
-            throw Bounds(value.Type, value.DefinitionId, invalid.Message);
+            // The lower bound cannot fail: a registered nonempty type key, two dots and a nonblank
+            // revision field already contribute at least four bytes. Invalid bytes are checked first.
+            throw new ContentAuthoringException(
+                invalidUtf8 ? ContentAuthoringRefusal.TextKeyUtf8Invalid : ContentAuthoringRefusal.TextKeyBytesExceeded,
+                FormattableString.Invariant(
+                $"The derived key of type {value.Type.Value} row {value.DefinitionId} field '{value.FieldName}' is {keyBytes} bytes or not valid UTF-8, and a key is 1 to {ContentTextChunkCodec.MaxKeyBytes} strict UTF-8 bytes."),
+                value.Type, value.DefinitionId, ContentAuthoringException.TextBoundsReason)
+            {
+                FieldName = value.FieldName, Language = value.Language,
+                ActualBytes = invalidUtf8 ? null : keyBytes,
+                MaximumBytes = invalidUtf8 ? null : ContentTextChunkCodec.MaxKeyBytes,
+            };
         }
 
-        if (!Utf8.IsValid(contentKey.Utf8) || keyBytes is < 1 or > ContentTextChunkCodec.MaxKeyBytes)
-        {
-            throw Bounds(value.Type, value.DefinitionId, FormattableString.Invariant(
-                $"The derived key of type {value.Type.Value} row {value.DefinitionId} field '{value.FieldName}' is {keyBytes} bytes or not valid UTF-8, and a key is 1 to {ContentTextChunkCodec.MaxKeyBytes} strict UTF-8 bytes."));
-        }
-
+        // Internal invariant: ContentTextRevision validates its immutable value against the same
+        // 8192-byte bound. Keep the shared value reason at this defensive producer check.
         if (valueBytes > ContentTextChunkCodec.MaxValueBytes)
         {
-            throw Bounds(value.Type, value.DefinitionId, FormattableString.Invariant(
-                $"The value of type {value.Type.Value} row {value.DefinitionId} field '{value.FieldName}' is {valueBytes} bytes, over {ContentTextChunkCodec.MaxValueBytes}."));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextValueBytesExceeded, FormattableString.Invariant(
+                $"The value of type {value.Type.Value} row {value.DefinitionId} field '{value.FieldName}' is {valueBytes} bytes, over {ContentTextChunkCodec.MaxValueBytes}."),
+                value.Type, value.DefinitionId, ContentAuthoringException.TextBoundsReason)
+            { FieldName = value.FieldName, Language = value.Language, ActualBytes = valueBytes, MaximumBytes = ContentTextChunkCodec.MaxValueBytes };
         }
 
         string key = ContentTextKey.Derive(registration.TypeKey, contentKey.Utf8, value.FieldName);
         byte[] keyUtf8 = Encoding.UTF8.GetBytes(key);
+        // Internal invariant: the pieces were measured strictly and the content key is valid UTF-8.
+        // Derive joins those same pieces with two ASCII dots, so re-encoding cannot change the length.
         return keyUtf8.Length == keyBytes
             ? new Entry(key, keyUtf8, value.Value, valueBytes)
             : throw Bounds(value.Type, value.DefinitionId, "The derived key does not re-encode to its measured bytes.");
+    }
+
+    static int MeasureUtf8(string text, string parameterName, ContentTextRevision value, string member)
+    {
+        int bytes = ContentTextEdit.MeasureUtf8(text, parameterName, out ContentTextFinding? finding);
+        if (finding is null) return bytes;
+        ArgumentException invalid = finding.ToException();
+        throw new ContentAuthoringException(finding.Refusal, invalid.Message, value.Type, value.DefinitionId,
+            ContentAuthoringException.TextBoundsReason, invalid)
+        { FieldName = value.FieldName, Language = value.Language, MemberName = member, Index = finding.CharacterIndex };
     }
 
     static ContentAuthoringException Bounds(ContentTypeId type, int definitionId, string detail)

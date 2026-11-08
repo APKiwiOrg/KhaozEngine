@@ -453,16 +453,16 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The zero-based ordinal of a refused edit, or null.</summary>
     public int? EditOrdinal { get; init; }
 
-    /// <summary>The registered type key of an edit naming an unknown field, or null.</summary>
+    /// <summary>The registered type key of a field edit or an ineligible text slot, or null when unknown.</summary>
     public string? TypeKey { get; init; }
 
     /// <summary>The runtime type of a pack target without version pointers, or null.</summary>
     public Type? StoreType { get; init; }
 
-    /// <summary>The operation that refused an unsupported pack or row-only write, or null.</summary>
+    /// <summary>The operation refusing a pack write, or the malformed text component (TypeKey or FieldName), or null.</summary>
     public string? MemberName { get; init; }
 
-    /// <summary>The version an absent-version or row-only-plan refusal names, or null.</summary>
+    /// <summary>The version an absent-version, provenance or row-only-plan refusal names, or the reuse baseline version, or null.</summary>
     public int? VersionNumber { get; init; }
 
     /// <summary>The rollback target version, or null.</summary>
@@ -480,8 +480,20 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The one-based rule sequence whose prefix entry differs, or null.</summary>
     public int? RuleSequence { get; init; }
 
-    /// <summary>The missing text chunk's content address, or null.</summary>
+    /// <summary>The claimed or missing text chunk's content address, or null.</summary>
     public string? TextHash { get; init; }
+
+    /// <summary>The zero-based UTF-16 offset of an unpaired surrogate in a measured text component, or null.</summary>
+    public int? Index { get; init; }
+
+    /// <summary>The repeated fully derived text key, or null.</summary>
+    public string? DerivedKey { get; init; }
+
+    /// <summary>The text hash the regenerated values or recorded baseline require, or null.</summary>
+    public string? ExpectedTextHash { get; init; }
+
+    /// <summary>The wire spelling a reused text language recorded in the baseline, or null.</summary>
+    public string? ExpectedWireTag { get; init; }
 
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }

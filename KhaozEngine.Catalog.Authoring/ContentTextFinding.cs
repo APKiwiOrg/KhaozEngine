@@ -10,6 +10,7 @@ internal sealed record ContentTextFinding(ContentAuthoringRefusal Refusal, strin
 {
     public string? CollectionName { get; init; }
     public int? Index { get; init; }
+    public int? CharacterIndex { get; init; }
     public string? MemberName { get; init; }
     public string? LanguageTag { get; init; }
     public string? Language { get; init; }
@@ -30,6 +31,7 @@ internal sealed record ContentTextFinding(ContentAuthoringRefusal Refusal, strin
         return new(Refusal, prefix + malformed.Message, default, 0, ContentAuthoringException.BundleFormatReason, malformed)
         {
             JsonPath = path,
+            Index = CharacterIndex,
             LanguageTag = LanguageTag,
             Language = Language,
             WireTag = WireTag,

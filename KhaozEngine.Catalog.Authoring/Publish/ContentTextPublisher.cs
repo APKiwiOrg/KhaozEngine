@@ -43,11 +43,13 @@ internal sealed class ContentTextPublisher
         if (request.ExpectedBaseVersion != snapshot.BaseVersion)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.BaseVersionMoved,
                 FormattableString.Invariant(
                     $"The publish expects base version {request.ExpectedBaseVersion} and the snapshot was frozen for {snapshot.BaseVersion}."),
                 default,
                 0,
-                ContentAuthoringException.BaseVersionMovedReason);
+                ContentAuthoringException.BaseVersionMovedReason)
+            { ExpectedBaseVersion = request.ExpectedBaseVersion, ActualBaseVersion = snapshot.BaseVersion };
         }
 
         // PHASE ONE. Ids, candidate, validation, row and rule chunks, once.

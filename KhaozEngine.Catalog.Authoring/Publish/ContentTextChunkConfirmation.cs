@@ -53,7 +53,7 @@ internal static class ContentTextChunkConfirmation
             ContentRegeneratedText chunk = regenerated[i];
             if (!string.Equals(chunk.Hash, chunk.Recorded.Hash, StringComparison.Ordinal))
             {
-                throw Mismatch(FormattableString.Invariant(
+                throw Mismatch(ContentAuthoringRefusal.TextChunkHashMismatch, chunk, FormattableString.Invariant(
                     $"the '{chunk.Recorded.WireTag}' chunk is named {chunk.Recorded.Hash} and the plan's values regenerate to {chunk.Hash}"));
             }
 
@@ -61,7 +61,7 @@ internal static class ContentTextChunkConfirmation
             // regenerated stored file itself. The encoder is deterministic, one fixed Brotli quality and window.
             if (!plan.Chunks[i].IsReused && !plan.Chunks[i].StoredFile.Span.SequenceEqual(chunk.StoredFile))
             {
-                throw Mismatch(FormattableString.Invariant(
+                throw Mismatch(ContentAuthoringRefusal.TextChunkBytesMismatch, chunk, FormattableString.Invariant(
                     $"the '{chunk.Recorded.WireTag}' chunk is named {chunk.Hash} and its stored bytes are not the file the plan's values encode to"));
             }
 
@@ -70,17 +70,31 @@ internal static class ContentTextChunkConfirmation
                     || !string.Equals(held.WireTag, chunk.Recorded.WireTag, StringComparison.Ordinal)
                     || !string.Equals(held.Hash, chunk.Hash, StringComparison.Ordinal)))
             {
-                throw Mismatch(FormattableString.Invariant(
-                    $"the '{chunk.Recorded.WireTag}' chunk is reused and version {plan.BaseVersion} recorded no such chunk for it"));
+                string detail = FormattableString.Invariant(
+                    $"the '{chunk.Recorded.WireTag}' chunk is reused and version {plan.BaseVersion} recorded no such chunk for it");
+                ContentAuthoringRefusal refusal = held is null ? ContentAuthoringRefusal.TextReusedChunkUnrecorded
+                    : !string.Equals(held.WireTag, chunk.Recorded.WireTag, StringComparison.Ordinal)
+                        ? ContentAuthoringRefusal.TextReusedWireTagMismatch : ContentAuthoringRefusal.TextReusedHashMismatch;
+                throw new ContentAuthoringException(refusal, DescribeMismatch(detail), default, 0, ContentAuthoringException.TextChunkMismatchReason)
+                {
+                    Language = chunk.Recorded.Language, VersionNumber = plan.BaseVersion, TextHash = chunk.Hash,
+                    ExpectedTextHash = refusal == ContentAuthoringRefusal.TextReusedHashMismatch ? held!.Hash : null,
+                    WireTag = refusal == ContentAuthoringRefusal.TextReusedWireTagMismatch ? chunk.Recorded.WireTag : null,
+                    ExpectedWireTag = refusal == ContentAuthoringRefusal.TextReusedWireTagMismatch ? held!.WireTag : null,
+                };
             }
         }
     }
 
-    static ContentAuthoringException Mismatch(string detail)
-        => new(
-            FormattableString.Invariant(
-                $"The text commit is refused because {detail}. Nothing was written, and the plan is rebuilt from a fresh freeze."),
-            default,
-            0,
-            ContentAuthoringException.TextChunkMismatchReason);
+    static ContentAuthoringException Mismatch(ContentAuthoringRefusal refusal, ContentRegeneratedText chunk, string detail)
+        => new(refusal, DescribeMismatch(detail), default, 0, ContentAuthoringException.TextChunkMismatchReason)
+        {
+            Language = chunk.Recorded.Language,
+            TextHash = chunk.Recorded.Hash,
+            ExpectedTextHash = refusal == ContentAuthoringRefusal.TextChunkHashMismatch ? chunk.Hash : null,
+        };
+
+    static string DescribeMismatch(string detail)
+        => FormattableString.Invariant(
+            $"The text commit is refused because {detail}. Nothing was written, and the plan is rebuilt from a fresh freeze.");
 }

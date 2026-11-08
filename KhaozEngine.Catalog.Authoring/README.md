@@ -275,13 +275,13 @@ A consumer reads the reason and identifiers, never message wording.
 
 | `Refusal` | What it refuses | Identifiers |
 |---|---|---|
-| `BaseVersionMoved` | A row publish expecting another baseline version | `ExpectedBaseVersion`, `ActualBaseVersion` |
+| `BaseVersionMoved` | A row or text publish expecting another baseline version | `ExpectedBaseVersion`, `ActualBaseVersion` |
 | `NoPendingDraft` | A row publish with no open draft carrying pending edits | None |
 | `FrozenDraftLost` | A policy publish whose store no longer holds its draft frozen for this base | `ExpectedBaseVersion` |
 | `CandidateRejected` | A candidate rejected by validation | The complete owned read-only `Findings` snapshot |
 | `DefinitionIdDuplicate` | A carried id already occupied in the candidate, including a preview | `Type`, `Id`, `RowKey`, `EditOrdinal` |
 | `FieldUnknown` | A candidate edit naming an undeclared schema field | `Type`, `Id`, `TypeKey`, `FieldName`, `EditOrdinal` |
-| `RowUnknown` | An update or retire naming an absent candidate row | `Type`, `Id`, `RowKey`, `EditOrdinal` |
+| `RowUnknown` | An update or retire naming an absent candidate row, or text with no final row | Row edits carry `Type`, `Id`, `RowKey`, `EditOrdinal`. Text key binding carries `Type`, `RowKey` with `Id` 0. Text final-row checks carry `Type`, `Id`, `FieldName`, `Language` |
 | `PackPointerStoreRequired` | A publish or rebuild target without a version-pointer half | `StoreType`, `MemberName` (`ContentPublishCommit` or `RunAsync`) |
 | `VersionUnknown` | A rebuild naming a version the store does not hold | `VersionNumber` |
 | `RetireIrreversible` | A rollback across a retire, code `KEC0039` | First blocker's `Type`, `Id`, `RowKey`, plus `TargetVersion`, `BlockerCount` and complete `Findings` |
@@ -294,6 +294,35 @@ A consumer reads the reason and identifiers, never message wording.
 `ContentFinding.Code` is the stable identity of its finding, including codes a consumer policy supplies.
 There is no singular finding-code identifier. Both legacy and typed finding-taking exception constructors
 copy the complete list into a read-only snapshot, so later producer mutation cannot change the refusal.
+
+### Text producer and confirmation refusals
+
+The text candidate and chunk builders check eligibility and strict byte bounds before encoding. They reuse
+`BundleTextLanguageUndeclared`, `TextMalformedUnicode` and `TextValueBytesExceeded` from the bundle reader
+for the same rules. A malformed Unicode finding keeps the original `ArgumentException` as its inner,
+including its parameter name. No reason is inferred from prose.
+
+| `Refusal` | What it refuses | Identifiers |
+|---|---|---|
+| `BundleTextLanguageUndeclared` | Text whose language neither the baseline nor the draft declares | `Type`, `Id`, `FieldName`, `Language` |
+| `TextTargetIneligible` | Text without a registered CLIENT type and a CLIENT localized marker | `Type`, `Id`, `FieldName`, `Language`, `TypeKey` when registered |
+| `TextMalformedUnicode` | An unpaired surrogate in a type key or marker field used to derive text keys | `Type`, `Id`, `FieldName`, `Language`, `MemberName` (`TypeKey` or `FieldName`), zero-based UTF-16 `Index` |
+| `TextKeyUtf8Invalid` | Invalid UTF-8 in the content key | `Type`, `Id`, `FieldName`, `Language` |
+| `TextKeyBytesExceeded` | A derived key above 192 strict UTF-8 bytes | `Type`, `Id`, `FieldName`, `Language`, `ActualBytes`, `MaximumBytes` (192) |
+| `TextKeyCollision` | Two values deriving one key in the same language | `DerivedKey`, canonical `Language` |
+| `TextChunkBytesExceeded` | A language body above 16 MiB, including count and length prefixes | `Language`, `ActualBytes`, `MaximumBytes` (16,777,216) |
+| `TextChunkHashMismatch` | A chunk hash different from the plan's regenerated values | `Language`, claimed `TextHash`, regenerated `ExpectedTextHash` |
+| `TextChunkBytesMismatch` | Stored bytes different from the regenerated file | `Language`, `TextHash` |
+| `TextReusedChunkUnrecorded` | Reuse of a language absent from the baseline | `Language`, baseline `VersionNumber`, `TextHash` |
+| `TextReusedHashMismatch` | Reuse of a hash the baseline did not record | `Language`, baseline `VersionNumber`, claimed `TextHash`, recorded `ExpectedTextHash` |
+| `TextReusedWireTagMismatch` | Reuse in another wire spelling than the baseline recorded | `Language`, baseline `VersionNumber`, `TextHash`, claimed `WireTag`, recorded `ExpectedWireTag` |
+| `TextProvenanceUnknown` | A version with unknown text that neither manifest proof shows empty | `VersionNumber` |
+
+The key and body bounds are inclusive. Repeating the operation at the reported `MaximumBytes` succeeds
+when that bound is the only failed rule. The sealed declaration and revision constructors already enforce
+35-byte ASCII wire tags and 8,192-byte strict UTF-8 values. Those defensive producer guards, the derived
+key's nonempty lower bound and measured-length re-encoding are internal invariants. Commit confirmation
+still checks reuse spelling because the plan's public list facades can be changed after construction.
 
 ### The draft is frozen for the whole publish
 

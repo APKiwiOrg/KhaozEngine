@@ -102,7 +102,7 @@ public sealed record ContentTextEdit
         return bytes;
     }
 
-    static int MeasureUtf8(string value, string parameterName, out ContentTextFinding? finding)
+    internal static int MeasureUtf8(string value, string parameterName, out ContentTextFinding? finding)
     {
         finding = null;
         int bytes = 0;
@@ -138,5 +138,5 @@ public sealed record ContentTextEdit
         => new(ContentAuthoringRefusal.TextMalformedUnicode,
             FormattableString.Invariant(
                 $"Text carries an unpaired surrogate at index {index}, which is not valid UTF-8 and is refused rather than replaced."),
-            parameterName) { MemberName = "value" };
+            parameterName) { MemberName = "value", CharacterIndex = index };
 }

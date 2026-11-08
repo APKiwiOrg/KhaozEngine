@@ -1079,6 +1079,7 @@ jobs:
       - name: Shader FXC validation and Vortice struct sizes (no device)
         env:
           KE_DUMP_FOLIAGE_DXBC: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter == 'FullyQualifiedName~DumpFoliageOpaqueDisassembly' && '1' || '' }}
+          KE_DUMP_VISIBILITY_DXBC: ${{ (github.event_name == 'workflow_dispatch' && inputs.dumpDxbc) && '1' || '' }}
         # THE ONE WINDOWS LEG. Nothing here creates a device or selects a backend, so the step is device-free
         # and backend-independent, and it used to be pinned to `direct3d11` because the incumbent and native
         # Windows legs would otherwise run byte-identical work twice at the Windows 2x rate. 18.0.0 deleted the
@@ -1088,8 +1089,6 @@ jobs:
         # not a matrix-key rename. `primary` keeps it to one run per leg when the full suite is sharded
         # (#1438): the `rest` shard runs it, and an unsharded run is always primary.
         if: matrix.backend == 'direct3d11-native' && matrix.primary == '1'
-        env:
-          KE_DUMP_VISIBILITY_DXBC: ${{ (github.event_name == 'workflow_dispatch' && inputs.dumpDxbc) && '1' || '' }}
         run: |
           dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~D3D11VorticeStructLayoutTests" \

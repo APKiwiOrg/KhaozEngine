@@ -37,7 +37,7 @@ public sealed partial class Scene3D
         {
             var p = owner.Request;
             p.Raw = p.Published = p.OrdinaryEncoded = p.TokenFree = false;
-            p.OutputSlot = p.PreviousSlot = -1;
+            p.OutputSlot = p.PreviousSlot = p.BindingStart = -1;
             p.PublicationGeneration = 0; p.Failure = default;
             Array.Clear(p.Draws); Array.Clear(p.Outlines);
         }

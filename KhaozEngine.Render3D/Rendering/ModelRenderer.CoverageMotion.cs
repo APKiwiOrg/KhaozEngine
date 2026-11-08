@@ -33,12 +33,12 @@ internal sealed partial class ModelRenderer
     internal void DrawCoverageMotion(IGpuCommandList commands, in CoveragePulledDraw draw, in Matrix4x4 previousRenderModel,
         IGpuResourceSet? material)
     {
-        _coveragePull.UploadPreviousModel(commands, draw.InstanceSlot, previousRenderModel);
+        _coveragePull.UploadPreviousModel(commands, draw.BindingSlot, previousRenderModel);
         commands.SetPipeline(_coverageDissolving[draw.InstanceSlot] ? _coverageDissolveMotionPipeline! : _coverageMotionPipeline!);
         commands.SetGraphicsResourceSet(0, _skinnedMainSet!, (_coverageMainSlotOffset + draw.InstanceSlot) * SkinnedMainSlotBytes);
         commands.SetGraphicsResourceSet(1, material ?? _skinnedDefaultFragSet);
         commands.SetGraphicsResourceSet(3, _motion!.FrameSet);
-        _coveragePull.Bind(commands, 2, draw.InstanceSlot);
+        _coveragePull.Bind(commands, 2, draw.BindingSlot);
         commands.Draw((uint)draw.CornerCount, 1, 0, 0);
         CoveragePullObserverForTests?.Invoke("motion", new(draw));
     }

@@ -39,10 +39,10 @@ internal sealed partial class ModelRenderer
         PackSkinnedMainSlot(_coverageMainSlotOffset + draw.InstanceSlot, instance.Model, instance.Tint, instance.Emissive, instance.SpecParams,
             instance.Dissolve, instance.IsDynamic, instance.DissolveComplement);
         _coverageDissolving[draw.InstanceSlot] = instance.Dissolve.X > 0 || instance.DissolveComplement > 0;
-        _coveragePull.Pack(draw.InstanceSlot, draw);
+        _coveragePull.Pack(draw.BindingSlot, draw);
     }
 
-    internal void PackCoverageSurface(in CoveragePulledDraw draw) => _coveragePull.Pack(draw.InstanceSlot, draw);
+    internal void PackCoverageSurface(in CoveragePulledDraw draw) => _coveragePull.Pack(draw.BindingSlot, draw);
     internal void UploadCoverageSurfaces(IGpuCommandList commands) => _coveragePull.Upload(commands);
     internal void UploadCoverage(IGpuCommandList commands) => UploadSkinnedMainSlots(commands);
 
@@ -51,7 +51,7 @@ internal sealed partial class ModelRenderer
         commands.SetPipeline(_coverageDissolving[draw.InstanceSlot] ? _coverageDissolvePipeline! : _coveragePipeline!);
         commands.SetGraphicsResourceSet(0, _skinnedMainSet!, (_coverageMainSlotOffset + draw.InstanceSlot) * SkinnedMainSlotBytes);
         commands.SetGraphicsResourceSet(1, material ?? _skinnedDefaultFragSet);
-        _coveragePull.Bind(commands, 2, draw.InstanceSlot);
+        _coveragePull.Bind(commands, 2, draw.BindingSlot);
         commands.Draw((uint)draw.CornerCount, 1, 0, 0);
         CoveragePullObserverForTests?.Invoke("main", new(draw));
     }

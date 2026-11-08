@@ -113,6 +113,7 @@ public sealed partial class Scene3D
                         ShadowDepthVariant variant = ShadowDepthSelection.ForCpuSkinned(dr.ShadowKind);
                         if (variant != bound) { BeginRigidDepthVariant(cl, c, variant); bound = variant; }
                         _model.DrawShadowSkinnedCaster(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d);
+                        MarkOrdinaryCoverage(dr.Motion, dr.Mesh);
                         _shadowPassSkinnedDraws++;
                         CountSkinnedDraw(dr.IndexCount);
                     }
@@ -178,6 +179,7 @@ public sealed partial class Scene3D
                     }
                     _model.DrawGpuSkinnedShadowCaster(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat,
                         (uint)(c * gpuCount + d), dr.Slot);
+                    MarkOrdinaryCoverage(dr.Motion, dr.Mesh);
                     _shadowPassSkinnedDraws++;
                     CountSkinnedDraw(dr.IndexCount);
                 }

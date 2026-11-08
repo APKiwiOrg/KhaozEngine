@@ -237,6 +237,8 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
                 "outline draw has no prepared vertex buffer."));
             cl.SetIndexBuffer(draw.IndexBuffer, draw.IndexFormat);
             cl.DrawIndexed((uint)draw.IndexCount, 1, 0, draw.BaseVertex, 0);
+            if (draw.Geometry is QueuedGeometry.GpuSkinned or QueuedGeometry.CpuSkinned)
+                OrdinarySkinnedDrawn?.Invoke(draw.Actor, draw.SkinnedMesh);
         }
     }
 
@@ -424,7 +426,8 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         int BaseVertex,
         int PoseStart,
         int PoseCount,
-        CoveragePulledDraw Coverage = default);
+        CoveragePulledDraw Coverage = default,
+        MotionKey Actor = default, SkinnedMeshHandle SkinnedMesh = default);
 
     public void Dispose()
     {

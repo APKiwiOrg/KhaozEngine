@@ -73,6 +73,7 @@ public sealed partial class Scene3D
                 var kind = submitted is null || !draw.CastsShadows || !shadow && !point && !main ? ShadowCastKind.None
                     : ShadowDepthSelection.ClassifySkinnedCaster(new SkinnedSceneInstances.Instance(draw));
                 _coverageDraws.Add(new(p.Surface, range.FirstIndex, range.IndexCount, (uint)_coverageDraws.Count,
+                    checked((uint)(p.BindingStart + slice)),
                     host.Actor, sphere, main, kind));
                 _coverageMaterials.Add(entry.SkinnedMaterialSet);
             }
@@ -105,7 +106,7 @@ public sealed partial class Scene3D
         }
     }
 
-    // Immutable pass evidence is emitted only after the real draw command has been recorded.
+    // Logical slot observations support history tests. Actual binding evidence comes from command capture.
     Action<string, CoverageDrawEvidence>? _coverageObservePass;
     internal Action<CoveragePassEvidence>? CoveragePassObserverForTests
     {

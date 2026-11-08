@@ -11,14 +11,14 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
-public sealed class CoverageSurfacePublicationTests
+public sealed partial class CoverageSurfacePublicationTests
 {
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
-    public void Every_pass_uses_the_actor_final_surface(bool gpuSkinning, bool shadowOnly)
+    public void Logical_surface_history_tokens_follow_recorded_actor_passes(bool gpuSkinning, bool shadowOnly)
     {
         using var f = new CoveragePublicationFixture();
         f.Scene.UseGpuSkinning = gpuSkinning;
@@ -65,7 +65,7 @@ public sealed class CoverageSurfacePublicationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Reordered_actors_keep_their_own_previous_surface_and_material_ranges(bool gpu)
+    public void Reordered_logical_history_tokens_stay_with_their_actor(bool gpu)
     {
         using var f = new CoveragePublicationFixture();
         f.Scene.UseGpuSkinning = gpu;

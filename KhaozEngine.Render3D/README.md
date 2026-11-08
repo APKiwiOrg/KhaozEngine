@@ -1959,7 +1959,9 @@ directional cascades, point shadows and full/visible outlines. `UseGpuSkinning` 
 ordinary route, while admitted coverage uses the common surface on either setting. Per-draw model, tint,
 material, dissolve and complement stay with that actor and material slice. Ordinary GPU skinning and
 coverage use disjoint header windows within one recording, so a later actor cannot replace an earlier
-draw's model or material. Point shadows retain their
+draw's model or material. Pulling bindings keep the slot assigned during preparation separately from
+compacted instance data. Removing an earlier actor, material or outline part after preparation cannot
+move a surviving draw onto another table group's index binding. Point shadows retain their
 existing first-request frame without an atlas. `DrawSkinnedOutline(group, draw, palette)` forwards the frozen
 coverage descriptor with its model and dissolve state. Preparation shares the existing once-per-frame latch
 and bound-water target validation. Matching coverage draws after preparation refuse with `StaleFrame`. Expiring a borrowed token does
@@ -1988,7 +1990,10 @@ current. Origin rebasing keeps the absolute model and surface correspondence.
 No compute, completion fences or precise pipeline support is a sticky device refusal. Such a batch never
 publishes coverage, and ordinary drawing and ordinary motion history remain active. A transient or per-actor
 refusal, including unsafe raw palettes or exhausted slots, draws ordinary current skin without waiting.
-Only an actually encoded ordinary draw records a discontinuity on successful submission. Its former slot
+Only an actual ordinary main, cascade, point or outline draw records a discontinuity on successful
+submission. Visibility retention by itself does not count. In particular, a shadow-only candidate for a
+static point row whose rebuild budget schedules no row preserves its submitted history. After a submitted
+discontinuity, the former slot
 stays retained until completion is proven, and the next covered draw seeds previous from current for one
 frame of camera-only motion. Abandonment preserves the former history. `CoverageFailureFor(actor)` exposes
 the current scene-side typed refusal and its identifiers. Earlier binding-level refusal details remain on

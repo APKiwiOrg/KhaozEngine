@@ -6,6 +6,8 @@ namespace KhaozEngine.Render3D;
 
 public sealed partial class Scene3D
 {
+    Action<MotionKey, SkinnedMeshHandle>? _ordinaryCoverageOutlineRecorded;
+
     internal void RegisterCoverageAttempt(SkinnedHostCoverage host)
     {
         var p = host.Request;
@@ -70,6 +72,7 @@ public sealed partial class Scene3D
             return;
         }
         _coverageRegistered = true;
+        _targetOutlines.OrdinarySkinnedDrawn = _ordinaryCoverageOutlineRecorded ??= MarkOrdinaryCoverage;
         // Retention failure never vetoes logical submission. A later fence proves earlier uses complete.
         _coverageSubmission.TryRetain(_coverageBatch, out _coverageCompletion);
         int draws = 0;
@@ -119,6 +122,7 @@ public sealed partial class Scene3D
             {
                 var p = host.Request;
                 if (!p.Published) continue;
+                p.BindingStart = slot;
                 for (int i = 0; i < host.Meshes.Length; i++, slot++)
                 {
                     _model.ReserveCoverageSurface(slot, p.Surface);

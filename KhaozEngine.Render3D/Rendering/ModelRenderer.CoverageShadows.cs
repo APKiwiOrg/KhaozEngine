@@ -73,7 +73,7 @@ internal sealed partial class ModelRenderer
         commands.SetPipeline(_coverageCascadePipelines[dissolve ? complement ? 2 : 1 : 0]);
         _shadowMap.SetCascadeScissor(commands, cascade);
         commands.SetGraphicsResourceSet(0, _coverageCascadeSet!, checked((uint)(cascade * _coverageCascadeStride + draw.InstanceSlot) * 256));
-        _coveragePull.Bind(commands, 1, draw.InstanceSlot);
+        _coveragePull.Bind(commands, 1, draw.BindingSlot);
         commands.Draw((uint)draw.CornerCount, 1, 0, 0);
         CoveragePullObserverForTests?.Invoke("cascade", new(draw));
     }

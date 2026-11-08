@@ -9,7 +9,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
-public sealed class CoverageSubmittedHistoryTests
+public sealed partial class CoverageSubmittedHistoryTests
 {
     [Theory]
     [InlineData(false)]

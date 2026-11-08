@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Tests.Gpu;
@@ -10,6 +11,9 @@ namespace KhaozEngine.Tests.Render3D;
 internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactory
 {
     readonly FakeGpuDevice inner;
+    readonly Dictionary<IGpuBuffer, byte[]> initialBuffers = [];
+    internal ReadOnlySpan<byte> InitialBytes(IGpuBuffer buffer) => initialBuffers[buffer];
+    internal string ComputeSource(IGpuComputePipeline pipeline) => ((ComputePipeline)pipeline).Source;
     readonly List<CoverageCarryTestDevice.Fence> fences = [];
     internal readonly List<(string Vertex, string Fragment, GpuShaderCompileOptions Options)> PrecisePrograms = [];
     internal bool AutoComplete = true, RefusePrecise, FailSubmission;
@@ -32,9 +36,10 @@ internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactor
         if (AutoComplete) foreach (var fence in completions) ((CoverageCarryTestDevice.Fence)fence).Complete = true;
     }
     public void WaitForIdle() { foreach (var fence in fences) fence.Complete = true; }
-    public void UpdateBuffer<T>(IGpuBuffer b, uint o, ReadOnlySpan<T> data) where T : unmanaged { }
-    public void UpdateBuffer<T>(IGpuBuffer b, uint o, T[] data) where T : unmanaged { }
-    public void UpdateBuffer<T>(IGpuBuffer b, uint o, in T data) where T : unmanaged { }
+    public void UpdateBuffer<T>(IGpuBuffer b, uint o, ReadOnlySpan<T> data) where T : unmanaged
+        => MemoryMarshal.AsBytes(data).CopyTo(initialBuffers[b].AsSpan(checked((int)o)));
+    public void UpdateBuffer<T>(IGpuBuffer b, uint o, T[] data) where T : unmanaged => UpdateBuffer<T>(b, o, data.AsSpan());
+    public void UpdateBuffer<T>(IGpuBuffer b, uint o, in T data) where T : unmanaged => UpdateBuffer(b, o, MemoryMarshal.CreateReadOnlySpan(in data, 1));
     public void UpdateTexture(IGpuTexture t, byte[] data, uint x, uint y, uint w, uint h) { }
     public void UpdateTexture(IGpuTexture t, byte[] data, uint x, uint y, uint w, uint h, uint m, uint l) { }
     public MappedData Map(IGpuTexture t, GpuMapMode mode) => throw new NotSupportedException();
@@ -44,7 +49,11 @@ internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactor
     public void ResizeSwapchain(uint w, uint h) { }
     public void Present() { }
     public void Dispose() => inner.Dispose();
-    public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => Resources.CreateBuffer(d);
+    public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
+    {
+        var buffer = Resources.CreateBuffer(d);
+        initialBuffers.Add(buffer, new byte[d.SizeInBytes]); return buffer;
+    }
     public IGpuTexture CreateTexture(in GpuTextureDescription d) => Resources.CreateTexture(d);
     public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] color) => Resources.CreateFramebuffer(depth, color);
     public IGpuSampler CreateSampler(in GpuSamplerDescription d) => Resources.CreateSampler(d);
@@ -56,19 +65,21 @@ internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactor
         if (options.PreciseMath) { RequirePrecise(GpuShaderStages.Vertex); PrecisePrograms.Add((vertex, fragment, options)); }
         return CreateShadersFromSpirv(vertex, fragment);
     }
-    public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => new ComputeShader();
+    public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => new ComputeShader(source);
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source, GpuShaderCompileOptions options)
-    { if (options.PreciseMath) RequirePrecise(GpuShaderStages.Compute); return new ComputeShader(); }
+    { if (options.PreciseMath) RequirePrecise(GpuShaderStages.Compute); return new ComputeShader(source); }
     void RequirePrecise(GpuShaderStages stage)
     { if (RefusePrecise) throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, stage); }
     public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d) => Resources.CreateGraphicsPipeline(d);
-    public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => new ComputePipeline();
+    public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => new ComputePipeline(((ComputeShader)d.Shader).Source);
     public IGpuCommandList CreateCommandList() => new NullGpuCommandList();
     public IGpuFence CreateFence()
     { var fence = new CoverageCarryTestDevice.Fence(); fences.Add(fence); return fence; }
-    sealed class ComputePipeline : IGpuComputePipeline { public void Dispose() { } }
-    sealed class ComputeShader : IGpuComputeShader
+    sealed class ComputePipeline(string source) : IGpuComputePipeline
+    { internal string Source { get; } = source; public void Dispose() { } }
+    sealed class ComputeShader(string source) : IGpuComputeShader
     {
+        internal string Source { get; } = source;
         public uint ThreadGroupSizeX => 64;
         public uint ThreadGroupSizeY => 1;
         public uint ThreadGroupSizeZ => 1;

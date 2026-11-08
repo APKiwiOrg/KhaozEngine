@@ -7,7 +7,7 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering;
 
 internal readonly record struct CoveragePulledDraw(CoverageSurfaceRange Surface, int FirstCorner, int CornerCount,
-    uint InstanceSlot, MotionKey Actor, PointShadowCasterSphere Sphere, bool VisibleMain, ShadowCastKind ShadowKind);
+    uint InstanceSlot, uint BindingSlot, MotionKey Actor, PointShadowCasterSphere Sphere, bool VisibleMain, ShadowCastKind ShadowKind);
 
 /// <summary>Pass observations contain immutable values, never borrowed GPU resource owners.</summary>
 internal readonly record struct CoverageDrawEvidence(MotionKey Actor, int FirstCorner, int CornerCount, bool VisibleMain)

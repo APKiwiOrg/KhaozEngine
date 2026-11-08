@@ -30,7 +30,7 @@ internal sealed partial class TargetOutlineRenderer
         float alphaCutoff, float dissolve, bool complement, Vector3 origin)
     {
         WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, complement, origin, false);
-        _coveragePull.Pack((uint)drawIndex, draw);
+        _coveragePull.Pack(draw.BindingSlot, draw);
         _queue.Add(new(QueuedGeometry.Coverage, null, null!, draw.CornerCount, GpuIndexFormat.UInt32,
             _coverageMaterials[drawIndex] ?? _defaultMaterialSet, drawIndex, -1, 0, 0, 0, draw));
     }
@@ -76,9 +76,9 @@ internal sealed partial class TargetOutlineRenderer
         commands.SetPipeline(full ? _coverageFullPipeline! : _coverageVisiblePipeline!);
         commands.SetGraphicsResourceSet(0, _drawSet!, (uint)draw.DrawIndex * DrawSlotBytes);
         commands.SetGraphicsResourceSet(1, draw.MaterialSet);
-        _coveragePull.Bind(commands, 2, (uint)draw.DrawIndex);
-        CoveragePullObserverForTests?.Invoke(full ? "full" : "visible", new(draw.Coverage));
+        _coveragePull.Bind(commands, 2, draw.Coverage.BindingSlot);
         commands.Draw((uint)draw.IndexCount, 1, 0, 0);
+        CoveragePullObserverForTests?.Invoke(full ? "full" : "visible", new(draw.Coverage));
     }
 
     internal void ReserveCoverageSurface(int slot, in CoverageSurfaceRange surface) => _coveragePull.ReserveSurface(slot, surface);

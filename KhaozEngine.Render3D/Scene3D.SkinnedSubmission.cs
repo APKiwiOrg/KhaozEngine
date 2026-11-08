@@ -47,7 +47,6 @@ public sealed partial class Scene3D
                     if (!it.ShadowOnly) _culledSkinnedInstances++;
                     continue;
                 }
-                MarkOrdinaryCoverage(it.Motion, it.Mesh);
                 if (visibleMain) _drawnSkinnedInstances++;
                 else if (!it.ShadowOnly) _culledSkinnedInstances++;
 
@@ -68,7 +67,7 @@ public sealed partial class Scene3D
                     _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                         entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
                         ToRender(it.World), it.Tint, emissive, specParams, dissolveParams, it.DissolveComplement,
-                        visibleMain, dissolving, shadowKind, pointSphere, it.Motion));   // reduced after visibility classification
+                        visibleMain, dissolving, shadowKind, pointSphere, it.Motion, it.Mesh));   // reduced after visibility classification
                 }
                 else
                 {
@@ -88,7 +87,7 @@ public sealed partial class Scene3D
                         DissolveComplement = it.DissolveComplement,
                     });
                     _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex,
-                        entry.MaterialSet, dissolving, visibleMain, shadowKind, pointSphere, it.Motion, it.Mesh.Index, src.Length));
+                        entry.MaterialSet, dissolving, visibleMain, shadowKind, pointSphere, it.Motion, it.Mesh.Index, src.Length, it.Mesh));
                 }
             }
             // Sizes the frame's three skinned destinations and uploads the ONE shared bone palette both passes

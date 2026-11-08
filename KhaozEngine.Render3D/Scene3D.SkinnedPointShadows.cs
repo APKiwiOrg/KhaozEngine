@@ -134,6 +134,7 @@ public sealed partial class Scene3D
                     packed.PackedIndex * PointShadowMath.FaceCount + face, face, packed.Row, draw.ShadowKind);
                 renderer.DrawGpuSkinnedCaster(cl, draw.RestVb, draw.Ib, draw.IndexCount, draw.IndexFormat,
                     draw.Slot, _model.SkinnedBonePaletteSet, SkinnedBonePalette.OffsetFor(draw.Slot));
+                MarkOrdinaryCoverage(draw.Motion, draw.Mesh);
                 draws++;
             }
         }
@@ -150,6 +151,7 @@ public sealed partial class Scene3D
                     packed.PackedIndex * PointShadowMath.FaceCount + face, face, packed.Row, draw.ShadowKind);
                 renderer.DrawCpuSkinnedCaster(cl, deformed, instances, draw.Ib, draw.IndexCount,
                     draw.IndexFormat, draw.BaseVertex, (uint)i);
+                MarkOrdinaryCoverage(draw.Motion, draw.Mesh);
                 draws++;
             }
         }

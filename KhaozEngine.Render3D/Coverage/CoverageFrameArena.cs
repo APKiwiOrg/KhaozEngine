@@ -26,7 +26,7 @@ internal sealed class CoveragePreparation
     internal object? View;
     internal CoverageFailure Failure;
     internal bool Raw, Published, OrdinaryEncoded, TokenFree;
-    internal int OutputSlot = -1, PreviousSlot = -1;
+    internal int OutputSlot = -1, PreviousSlot = -1, BindingStart = -1;
     internal CoverageSurfaceRange Surface;
     internal readonly CoverageSubmittedHistory History = new();
     internal CoveragePreparation(SkinnedHostCoverage owner, int bones, int materials)

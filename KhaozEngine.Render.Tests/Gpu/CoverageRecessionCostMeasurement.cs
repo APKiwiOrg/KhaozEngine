@@ -17,6 +17,7 @@ internal static class CoverageRecessionCostMeasurement
     internal const int ConditioningFrames = 96;
     internal const int BatchFrames = 3;
     internal static readonly string[] Layouts = ["carry-only", "baseline-scene", "covered-scene"];
+    internal static string[] DispatchSchedule => CoverageCarryShaders.Kernels.Select(kernel => kernel.Name["CoverageCarry".Length..]).ToArray();
 
     internal static IEnumerable<(int Start, int Count, bool Reverse)> Schedule(int count)
     {
@@ -75,7 +76,10 @@ internal static class CoverageRecessionCostMeasurement
         int DispatchCount, int DrawCount, ulong[] Ticks, double PeriodNanoseconds);
     internal sealed record Row(string Layout, int Actors, int SlotsPerActor, long SurfaceBytes, long CandidateBytes,
         int CarryDispatchCount, Statistics GpuMicroseconds, Statistics CpuPreparationMicroseconds,
-        Statistics CpuEncodingMicroseconds, Statistics CpuSubmissionMicroseconds, Statistics WarmManagedBytes, Sample[] Samples);
+        Statistics CpuEncodingMicroseconds, Statistics CpuSubmissionMicroseconds, Statistics WarmManagedBytes, Sample[] Samples)
+    {
+        public string[] DispatchSchedule => CarryDispatchCount == 0 ? [] : CoverageRecessionCostMeasurement.DispatchSchedule;
+    }
 
     sealed class Driver : IDisposable
     {

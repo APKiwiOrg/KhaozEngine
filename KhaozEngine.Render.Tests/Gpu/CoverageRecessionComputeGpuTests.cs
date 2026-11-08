@@ -92,6 +92,8 @@ public sealed class CoverageRecessionComputeGpuTests(ITestOutputHelper output)
         Assert.True(fixture.Topology.VertexCount > 0);
         Assert.Equal(checked((int)currentBase + fixture.Topology.VertexCount * 16), all.Length);
         int changed = 0, protectedCount = 0;
+        int directionWitnesses = 0;
+        var ramp = CoverageRecessionBodySizeFixture.LeftRampDirections(entry, direction, transition);
         for (int vertex = 0; vertex < fixture.Topology.VertexCount; vertex++)
         {
             int first = (int)currentBase + vertex * 16;
@@ -106,6 +108,16 @@ public sealed class CoverageRecessionComputeGpuTests(ITestOutputHelper output)
             Assert.Equal(-1f, F(15));
             Assert.Equal(.75f, F(6)); Assert.Equal(.5f, F(7)); Assert.Equal(.25f, F(8)); Assert.Equal(1f, F(9));
             Vector3 rest = fixture.RestPosition(vertex);
+            // Refinement level two or higher keeps this witness's entire one-ring on the same
+            // affine tent ramp. Every incident face therefore has these analytic directions.
+            if (fixture.Width >= 4 && fixture.Height >= 4 && fixture.Level >= 2 && rest == fixture.LeftRampWitness)
+            {
+                directionWitnesses++;
+                Assert.True(Vector3.Distance(ramp.Normal, normal) < 2e-5f,
+                    $"Left ramp normal at vertex {vertex}, expected {ramp.Normal}, actual {normal}");
+                Assert.True(Vector3.Distance(ramp.Tangent, tangent) < 2e-5f,
+                    $"Left ramp tangent at vertex {vertex}, expected {ramp.Tangent}, actual {tangent}");
+            }
             Assert.InRange(MathF.Abs(rest.X + fixture.Width / 32f - F(10)), 0, 2e-6f);
             Assert.InRange(MathF.Abs(rest.Y + fixture.Height / 32f - F(11)), 0, 2e-6f);
             if (fixture.Topology.Vertices[vertex].Strength == 0)
@@ -121,6 +133,7 @@ public sealed class CoverageRecessionComputeGpuTests(ITestOutputHelper output)
             float F(int word) => BitConverter.UInt32BitsToSingle(all[first + word]);
         }
         Assert.True(protectedCount > 0);
+        if (fixture.Width >= 4 && fixture.Height >= 4 && fixture.Level >= 2) Assert.True(directionWitnesses > 0);
         if (entry >= 0 && transition != 0) Assert.True(changed > 0);
         else Assert.Equal(0, changed);
         // Frozen center of this dyadic 4-by-4 fixture has a 0.03125 / 0.0625 recession.

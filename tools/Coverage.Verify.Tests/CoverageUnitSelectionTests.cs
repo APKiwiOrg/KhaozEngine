@@ -19,8 +19,18 @@ public sealed class CoverageUnitSelectionTests
         var selectedCostMethods = Regex.Matches(cost, @"\[CoverageRecessionHardwareFact\]\s*\[Trait\(""Category"", ""Diagnostic""\)\]\s*public void (\w+)\(")
             .Select(m => m.Groups[1].Value).ToArray();
         Assert.Equal(new[] { CostMethod }, selectedCostMethods);
+        Assert.Contains("dispatchSchedule = CoverageRecessionCostMeasurement.DispatchSchedule", cost);
+        string measurement = Checkout("KhaozEngine.Render.Tests/Gpu/CoverageRecessionCostMeasurement.cs", crlf);
+        Assert.Contains("CoverageCarryShaders.Kernels.Select", measurement);
+        string inventory = Checkout("KhaozEngine.Render3D/Coverage/Gpu/CoverageCarryShaders.cs", crlf);
+        Assert.Equal(new[] { "Skin", "Transport", "Basis", "Gather", "Publish" },
+            Regex.Matches(inventory, @"new CoverageCarryKernel\(""CoverageCarry(\w+)""").Select(m => m.Groups[1].Value));
         string gate = Checkout("KhaozEngine.Render.Tests/Gpu/CoverageRecessionHardwareFactAttribute.cs", crlf);
-        Assert.Contains("GetEnvironmentVariable(\"KE_GPU_TESTS\") == \"1\"", gate);
+        Assert.Contains("GetEnvironmentVariable(\"KE_GPU_TESTS\")", gate);
+        Assert.Contains("GetEnvironmentVariable(\"KE_COVERAGE_COST_UNIT\")", gate);
+        Assert.Contains("gpuTests != \"1\"", gate);
+        Assert.Contains("costUnit != CostUnitName", gate);
+        Assert.Contains("CostUnitName = \"" + CostMethod + "\"", gate);
         Assert.Contains("SoftwareAdapter", gate);
         Assert.Contains("IsVirtualisedAdapter", gate);
         Assert.Contains("SupportsCompute", gate);
@@ -32,6 +42,9 @@ public sealed class CoverageUnitSelectionTests
         string workflow = Checkout(".github/workflows/cross-platform-gpu.yml", crlf);
         Assert.Contains("Category!=Diagnostic", workflow);
         Assert.Contains("FullyQualifiedName~Compute", workflow);
+        string hosted = Checkout(".github/workflows/gpu-hosted-bench.yml", crlf);
+        Assert.Contains("coverage-cost-unit:", hosted);
+        Assert.Contains("KE_COVERAGE_COST_UNIT: ${{ inputs.coverage-cost-unit }}", hosted);
         foreach (string name in new[] { "CoverageRecessionComputeGpuTests", "CoverageRecessionPublicationGpuTests" })
         {
             string facts = Checkout($"KhaozEngine.Render.Tests/Gpu/{name}.cs", crlf);

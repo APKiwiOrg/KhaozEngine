@@ -305,6 +305,10 @@ suite `coverage` on hosted Ubuntu, explicitly builds both projects and requires 
 executed process tests and zero skips. Coverage formats, carry code and the tooling itself trigger this
 suite. `KE_GPU_TESTS=0` stays explicit. Native correctness and the Diagnostic body-size cost fact remain
 separately approved units, outside this headless validation.
+The cost fact also requires `KE_COVERAGE_COST_UNIT` equal to its exact method name. The hosted bench
+forwards the optional `coverage-cost-unit` dispatch input to that variable. A local approved invocation
+sets it inline. Missing or different values skip before a hardware probe, and default shard filters
+exclude this cost method even when Diagnostic filtering is absent.
 
 The ratchet report build is a separate maintenance inventory. `check-test-health.sh` sequentially
 builds the engine solution, then every tracked project with an xunit package reference that the solution

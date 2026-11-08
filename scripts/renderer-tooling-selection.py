@@ -62,6 +62,7 @@ COVERAGE_WATCHED = (
     'scripts/build-release-tests.sh', 'scripts/tests/build-release-tests.test.sh',
     'scripts/renderer-tooling-selection.py', 'scripts/tests/renderer-tooling-selection.test.py',
     '.github/workflows/tooling-validation.yml', '.github/workflows/cross-platform-gpu.yml',
+    '.github/workflows/gpu-hosted-bench.yml',
     '.gitattributes', '.testhealth-baseline', '.filesize-baseline',
     'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props',
     'nuget.config', 'global.json', '.config/dotnet-tools.json',

@@ -99,7 +99,7 @@ check "the removed Windows cascade slice is refused" 1 "$(run filter direct3d11-
 check "the removed Vulkan cascade slice is refused" 1 "$(run filter vulkan-native render-2)"
 check "an unknown slice is refused" 1 "$(run filter metal-native render-3)"
 check "the last slice negates every earlier rule" 0 "$(run filter metal-native render-2)"
-check "the last slice filter" "FullyQualifiedName!~$G.TemporalFollow&FullyQualifiedName!~$G.TemporalLongHoldFollowGpuTests." "$(cat "$OUTFILE")"
+check "the last slice filter" "FullyQualifiedName!~$G.TemporalFollow&FullyQualifiedName!~$G.TemporalLongHoldFollowGpuTests.&FullyQualifiedName!=$G.CoverageRecessionCostGpuTests.Real_body_size_carry_and_scene_overhead_for_1_and_32_actors" "$(cat "$OUTFILE")"
 
 echo "coverage: actual native correctness methods occur once per backend, cost remains explicit"
 _rc=0
@@ -123,15 +123,23 @@ for backend in plan.RENDER_SLICES:
     filters = [plan.parse_filter(plan.slice_filter(backend, shard)) for shard, _ in plan.render_slices(backend)]
     for method in methods:
         assert sum(predicate(method) for predicate in filters) == 1, (backend, method)
+    assert not any(predicate(plan.COVERAGE_COST_METHOD) for predicate in filters), backend
 cost = (root / "KhaozEngine.Render.Tests/Gpu/CoverageRecessionCostGpuTests.cs").read_text()
 names = re.findall(r'\[CoverageRecessionHardwareFact\]\s*\[Trait\("Category", "Diagnostic"\)\]\s*public void (\w+)\(', cost)
 assert names == ["Real_body_size_carry_and_scene_overhead_for_1_and_32_actors"]
 approved = plan.GPU + "CoverageRecessionCostGpuTests." + names[0]
+assert approved == plan.COVERAGE_COST_METHOD
 selected = plan.parse_filter("FullyQualifiedName=" + approved)
 assert [method for method in [*methods, approved] if selected(method)] == [approved]
 print(len(methods), "native correctness methods, exactly once per backend. Cost is one explicit Diagnostic fact.")
 PY
 check "native recession, retained arithmetic, precise and poison fixtures partition exactly once" 0 "$_rc"
+cp "$TMPROOT/list.txt" "$TMPROOT/list-with-cost.txt"
+printf '    %s\n' "$G.CoverageRecessionCostGpuTests.Real_body_size_carry_and_scene_overhead_for_1_and_32_actors" >> "$TMPROOT/list-with-cost.txt"
+for backend in metal-native direct3d11-native vulkan-native; do
+  check "$backend coverage inventory deliberately excludes the cost unit" 0 "$(run check-render "$backend" "$TMPROOT/list-with-cost.txt")"
+  check "$backend reports the explicit cost exclusion" 1 "$(grep -c '^Separately approved coverage cost unit excluded from every default slice$' "$OUTFILE")"
+done
 
 echo "report: totals come from TRX files"
 trx() { # path, storage, then outcome per result

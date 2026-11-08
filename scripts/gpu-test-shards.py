@@ -20,6 +20,7 @@ ORDERED FIRST-MATCH partition: a test belongs to the first slice whose rules mat
 no rules and takes everything the earlier ones did not. Each slice's vstest filter is its own rules ANDed with
 the negation of every earlier slice's rules, so no test can match two slices and no test can match none. A new
 Render.Tests class or method falls into the first slice that names it, or into the last.
+The separately approved coverage cost method is excluded from every slice, even without a Category filter.
 
 THE BUILD. A sharded job restores and builds a derived solution containing only its test projects and
 lets ProjectReference edges build their dependencies. Render shards build Render.Tests alone. Project shards
@@ -32,7 +33,7 @@ and exactly-once guards are independent of this build selection.
 THE GUARD. `check-render` reads every Render.Tests method listed on the shard's own build output, parses the
 filter text each of the backend's slices hands to vstest, and evaluates it with the operators vstest applies
 (case-insensitive equality and containment on FullyQualifiedName). It fails when any method matches no slice
-or more than one. `report` reads the shard's TRX files, one per test assembly the shard ran, which name their
+or more than one, except the coverage cost method, which must match none. `report` reads the shard's TRX files, one per test assembly the shard ran, which name their
 assembly and count every result whatever the console verbosity or parallelism. `summarize` then reads one
 report per shard and fails the backend when a shard is missing, a shard's suite did not succeed, a test
 assembly ran on two shards or twice on one, Render.Tests ran outside its slices, or a test project in the
@@ -97,6 +98,8 @@ COVERAGE_CORRECTNESS_CLASSES = (
     "CoverageRecessionComputeGpuTests", "CoverageRecessionPublicationGpuTests",
     "CoverageCarryFailureGpuTests", "CoverageComputeArithmeticGpuTests", "ComputePreciseMathGpuTests",
 )
+COVERAGE_COST_METHOD = (GPU + "CoverageRecessionCostGpuTests."
+                        "Real_body_size_carry_and_scene_overhead_for_1_and_32_actors")
 
 
 def gpu(*prefixes):
@@ -251,6 +254,8 @@ def slice_filter(backend, name):
     if rules:
         parts.append("(" + "|".join(rule_text(op, value) for op, value in rules) + ")")
     parts.extend(rule_text(NEGATE[op], value) for op, value in earlier)
+    # This separately approved unit never belongs to a default partition, even without Category filtering.
+    parts.append(rule_text("!=", COVERAGE_COST_METHOD))
     return "&".join(parts)
 
 
@@ -377,6 +382,11 @@ def cmd_check_render(args):
     predicates = [parse_filter(slice_filter(backend, slice_name)) for slice_name, _ in slices]
     for name in names:
         hits = [index for index, predicate in enumerate(predicates) if predicate(name)]
+        if name.casefold() == COVERAGE_COST_METHOD.casefold():
+            if hits:
+                fail("the separately approved coverage cost unit must not run in any default slice")
+            print("Separately approved coverage cost unit excluded from every default slice")
+            continue
         if not hits:
             unassigned.append(name)
         elif len(hits) > 1:

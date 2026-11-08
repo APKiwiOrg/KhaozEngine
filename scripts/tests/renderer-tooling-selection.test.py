@@ -211,6 +211,9 @@ class SelectionTests(unittest.TestCase):
                                              '--changed', path), {'include': []})
         self.assertEqual(self.select('--event', 'push', '--suite', 'coverage', '--ref', A,
                                      '--changed', 'KhaozEngine.Audio/AudioBus.cs'), {'include': []})
+        self.assertEqual(self.select('--event', 'push', '--suite', 'coverage', '--ref', A,
+                                     '--changed', '.github/workflows/gpu-hosted-bench.yml')['include'],
+                         [dict(ref=A, os='ubuntu-26.04')])
 
     def test_coverage_trx_gate_requires_nonempty_process_evidence_without_skips(self):
         workflow = (ROOT / '.github/workflows/tooling-validation.yml').read_text()

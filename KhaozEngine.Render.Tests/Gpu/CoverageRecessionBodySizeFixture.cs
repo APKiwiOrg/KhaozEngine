@@ -115,6 +115,18 @@ internal sealed class CoverageRecessionBodySizeFixture
         return entry < 0 || Table.Representatives[group] < 0 ? p : p - direction * (Table.Entry(entry)[group] * transition);
     }
 
+    internal Vector3 LeftRampWitness => new(-Width / 32f + 1 / 16f, (2 * (Height / 2) - Height) / 32f, 0);
+
+    internal static (Vector3 Normal, Vector3 Tangent) LeftRampDirections(int entry, Vector3 direction, float transition)
+    {
+        // On this analytic tent's left ramp, height = x + halfWidth. Recession is height / 4
+        // for row zero and height / 2 for row one. Thus the deformed partial derivatives are
+        // dP/dx = UnitX - direction * slope and dP/dy = UnitY. Translation has no derivative.
+        float slope = entry < 0 ? 0 : transition * (entry == 0 ? .25f : .5f);
+        Vector3 dx = Vector3.UnitX - direction * slope;
+        return (Vector3.Normalize(Vector3.Cross(dx, Vector3.UnitY)), Vector3.Normalize(dx));
+    }
+
     internal object Extents => new
     {
         Width,

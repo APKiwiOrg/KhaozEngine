@@ -8,10 +8,18 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class CoverageRecessionHardwareFactAttribute : FactAttribute
 {
     static readonly Lazy<string?> Unavailable = new(Probe);
+    internal const string CostUnitName = "Real_body_size_carry_and_scene_overhead_for_1_and_32_actors";
     public CoverageRecessionHardwareFactAttribute()
+        : this(Environment.GetEnvironmentVariable("KE_GPU_TESTS"), Environment.GetEnvironmentVariable("KE_COVERAGE_COST_UNIT"),
+            static () => Unavailable.Value)
+    { }
+
+    // The injected probe lets headless tests exercise the exact metadata gate without opening a device.
+    internal CoverageRecessionHardwareFactAttribute(string? gpuTests, string? costUnit, Func<string?> probe)
     {
-        Skip = Environment.GetEnvironmentVariable("KE_GPU_TESTS") == "1"
-            ? Unavailable.Value : "Coverage cost requires an approved KE_GPU_TESTS=1 invocation.";
+        Skip = gpuTests != "1" ? "Coverage cost requires an approved KE_GPU_TESTS=1 invocation."
+            : costUnit != CostUnitName ? "Set KE_COVERAGE_COST_UNIT to the exact separately approved cost method."
+            : probe();
     }
 
     static string? Probe()

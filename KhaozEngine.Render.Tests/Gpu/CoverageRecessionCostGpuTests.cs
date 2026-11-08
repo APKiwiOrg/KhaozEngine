@@ -73,6 +73,7 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
             timingBoundary = "Carry-only outer timestamps include uniforms, five dispatches, candidate publication and bounds. Scene pairs include actual colour/depth/motion/cascade/point-shadow/full-outline/visible-outline drawing with identical pass settings. Final timestamp follows native End finalization.",
             exclusions = "Cold topology and table construction, shader compilation, resource growth, conditioning, evidence readback and batch drains. No construction or certification kernels. Synthetic geometry does not prove consumer frame rate.",
             candidateBytesPerVertex = 64,
+            dispatchSchedule = CoverageRecessionCostMeasurement.DispatchSchedule,
             preciseMath = true,
             rows,
             deltas,

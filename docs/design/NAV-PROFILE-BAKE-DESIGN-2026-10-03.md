@@ -554,7 +554,7 @@ Departures from the reference, recorded so the game can delete its class knowing
 
 - Direction uses the closest horizontal point of a box rather than its centre. For capsules and points they are the
   same. A box approach reaches its near face sooner.
-- The final fraction comes from live bisection against exact reach, not from a 0.05 minimum fraction, so a short
+- The final fraction comes from the shared certified-or-live float interval search against exact reach, not from a 0.05 minimum fraction, so a short
   last step cannot stall or overshoot.
 - A step that would leave the ground or start swimming is refused and counts toward the stall window, so a walk off a
   ledge or into deep water ends `Blocked` instead of falling or swimming.

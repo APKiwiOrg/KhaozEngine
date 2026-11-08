@@ -4,7 +4,7 @@ namespace KhaozEngine.Locomotion;
 
 public sealed partial class OrdinaryMovementRegistration
 {
-    /// <summary>Optional immutable analytic provenance captured by the installer. Ordinary movement does not read it.</summary>
+    /// <summary>Optional immutable analytic provenance captured by the installer. Ordinary support selection does not depend on it.</summary>
     public IMovementAnalyticSupportSource? AnalyticSupport { get; }
 
     public sealed partial class Builder

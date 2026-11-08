@@ -24,7 +24,7 @@ public sealed partial class BepuPhysicsWorld
 
     // Exclusions are immutable. Selection counts and disposal change only under the owner's
     // exclusive writer gate, so the view declares concurrent reads alongside its owner.
-    private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsConcurrentReadSource,
+    private sealed partial class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsConcurrentReadSource,
         IPhysicsCapsuleContacts, IPhysicsCapsuleSweep, IPhysicsCapsuleGeometryQueries, IPhysicsCapsuleFeatures,
         IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsStaticGeometrySource, IPhysicsSupportFootprintReuseSource
     {

@@ -114,8 +114,8 @@ Without it, a fresh physics geometry generation requires a fresh registration.
 
 `OrdinaryMovementRegistration.Builder.WithAnalyticSupport` optionally attaches an immutable
 `IMovementAnalyticSupportSource`. It must recognize the exact height and normal delegates through `Matches`,
-including their coordinate convention. Ordinary movement does not query this capability or change its owner,
-selection, coarse flags or result. Existing delegates remain valid without it.
+including their coordinate convention. Ordinary support selection keeps its existing owner, coarse flags
+and result. Existing delegates remain valid without provenance.
 
 `Describe` identifies the same authored face the field selects. `MovementSurfaceFeatureKey` contains a source
 provenance string, an opaque source address and a part number. `GetFeature` resolves that exact address to copied
@@ -126,6 +126,15 @@ never height similarity. An unknown address or a field without provenance return
 `IMovementAnalyticSupportCandidates` optionally accelerates source-topology lookup. A Known visitation must include
 every key that `AreAdjacent` could accept. It supplies candidates, never adjacency permission. Consumers still call
 the unchanged exact predicate and fall back to all pairs when no complete candidate capability is available.
+
+`IMovementFlatAnalyticSupportSource` optionally certifies a closed absolute XZ rectangle with one exact float
+height, `Vector3.UnitY` normal and unchanged analytic ownership. Known promises the matching delegates return
+those facts at every represented axis in the rectangle. Sampled endpoints or matching triangle heights alone
+are insufficient evidence. Ordinary range approaches use this under a current pin, together with complete
+selected-static absence, strictly dry whole-body coverage and convex boundary/scope containment. The proof
+lives only for the borrowed read interval. Unsupported, wet, obstructed, nonuniform or refused regions retain
+the exact movement solver. The tile producer checks every captured triangle in every covered cell, including
+cell seams, within the existing dependency-visit bound. It declines missing ground and negative-zero heights.
 
 The internal Contact descent witness records selected steep support and first walkable support from Air, Slide
 and water handoffs, including support left again inside one tick and recertification after horizontal rounding.

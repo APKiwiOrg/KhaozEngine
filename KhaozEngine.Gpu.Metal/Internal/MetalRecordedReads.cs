@@ -10,6 +10,11 @@ internal sealed class MetalRecordedReads
         internal readonly MetalContiguousReadIndex Contiguous = new();
         internal readonly MetalReadIntervalIndex Strided = new();
         internal void Clear() { Contiguous.Clear(); Strided.Clear(); }
+        internal void ReserveLike(ResourceReads other)
+        {
+            Contiguous.ReserveLike(other.Contiguous);
+            Strided.ReserveLike(other.Strided);
+        }
     }
 
     // Owned by a binding/attribute, never by a shared resource. Generation checks prevent stale node hints.
@@ -84,6 +89,19 @@ internal sealed class MetalRecordedReads
     internal bool Overlaps(in MetalCpuRead access)
         => _resources.TryGetValue(access.Resource, out var reads)
             && (reads.Contiguous.Overlaps(access) || reads.Strided.Overlaps(access));
+
+    // Share observed capacity, never the byte union or resource identities of an in-flight prefix.
+    internal void ReserveLike(MetalRecordedReads other)
+    {
+        if (ReferenceEquals(this, other)) return;
+        _resources.EnsureCapacity(other._storage.Count);
+        _storage.EnsureCapacity(other._storage.Count);
+        for (int i = 0; i < other._storage.Count; i++)
+        {
+            if (i == _storage.Count) _storage.Add(new());
+            _storage[i].ReserveLike(other._storage[i]);
+        }
+    }
 
     internal void Clear()
     {

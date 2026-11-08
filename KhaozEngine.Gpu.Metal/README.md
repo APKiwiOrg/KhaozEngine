@@ -1215,7 +1215,12 @@ checks remain O(log n). Strided checks visit candidate spans and their search pa
 where k counts overlapping bounding spans. Exact attribute checks preserve writable padding.
 Prefix publication queries each writable lease through the same index. The footprint never scans
 every recorded read per draw or disjoint write, avoiding quadratic frame work in draw-heavy Mac scenes
-(#1692). Warmed node storage is reused without steady-frame allocation.
+(#1692). Warmed node storage is reused without steady-frame allocation. At recording begin, a ring slot
+inherits the previous slot's observed storage capacities without copying its resources or read ranges.
+This keeps repeating scene shapes warm even when their period differs from the ring depth. Protected
+prefix footprints stay slot-owned and immutable until final completion. Retained vertex coverage positions
+also share observed disconnected-window capacity at reset or footprint-generation changes. Binding-order
+changes reuse that capacity without copying coverage or making skipped elements immutable.
 [Frame submission](../docs/METAL-FRAME-SUBMISSION.md) owns the lifetime and write-path details.
 
 ## Three decisions worth knowing before reading the code

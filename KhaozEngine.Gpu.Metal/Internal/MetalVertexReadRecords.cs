@@ -27,6 +27,7 @@ internal sealed class MetalVertexReadRecords
     bool _indexed;
     uint _dirty, _windowSlots;
     long _preparations;
+    int _windowCapacity;
 
     internal long CoverageStepsForTests
     {
@@ -49,6 +50,7 @@ internal sealed class MetalVertexReadRecords
 
     internal void Reset()
     {
+        ReserveWindowCapacity();
         Array.Clear(_bindings);
         _coverage.Clear();
         _shapes.Clear();
@@ -64,6 +66,7 @@ internal sealed class MetalVertexReadRecords
         if (vertexCount == 0 || instanceCount == 0) return;
         if (!ReferenceEquals(_target, reads) || _generation != reads.Generation)
         {
+            if (_target is not null) ReserveWindowCapacity();
             _target = reads;
             _generation = reads.Generation;
             _coverage.Clear();
@@ -99,6 +102,17 @@ internal sealed class MetalVertexReadRecords
             }
             binding.Coverage!.Record(reads, binding.Buffer, binding.Offset, stream, first, last, reachable: false);
         }
+    }
+
+    // Coverage positions can serve different buffer/window combinations next recording. Propagate only
+    // observed backing capacity, never coverage, so a changed bind order cannot make warmed windows cold.
+    void ReserveWindowCapacity()
+    {
+        int capacity = _windowCapacity;
+        foreach (var coverage in _storage) capacity = Math.Max(capacity, coverage.WindowCapacity);
+        if (capacity == _windowCapacity) return;
+        _windowCapacity = capacity;
+        foreach (var coverage in _storage) coverage.ReserveWindows(capacity);
     }
 
     // Resolve structural equality only when the pipeline layout changes, never on every mesh rebind.
@@ -137,6 +151,7 @@ internal sealed class MetalVertexReadRecords
                 int index = _coverage.Count;
                 if (index == _storage.Count) _storage.Add(new());
                 coverage = _storage[index];
+                coverage.ReserveWindows(_windowCapacity);
                 coverage.Clear();
                 _coverage.Add(key, coverage);
             }

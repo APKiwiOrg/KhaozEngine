@@ -55,7 +55,13 @@ once the workload has warmed. Each command list preallocates one read-footprint 
 The normal ring gate proves final completion before that slot's footprint is cleared under the submit lock.
 Retirement removes protection without clearing a footprint reclaimed by a later recording. Completion timing
 never chooses a fresh footprint from a shared pool. Frame records are stored by value in ring-sized storage,
-and mapping lease lists return to a pool after the outermost unmap.
+and mapping lease lists return to a pool after the outermost unmap. Before clearing the reclaimed slot,
+it reserves the resource and interval capacities observed by the preceding recording. Only capacity is
+carried forward. Resource identities, byte ranges and protection remain with their original slot. A
+repeating scene shape therefore stays warm when its period differs from the ring depth. Retained vertex
+coverage positions likewise reserve the observed disconnected-window capacity at reset or generation
+changes, so a different buffer binding order does not allocate for already warmed windows. Their exact
+byte coverage is still cleared and rebuilt for each recording.
 
 Within a footprint, each resource has a reusable sorted append run for contiguous reads and separate AVL
 indexes for earlier contiguous reads and strided reads. Increasing uniform-ring slices append in constant

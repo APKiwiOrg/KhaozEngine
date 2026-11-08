@@ -21,6 +21,11 @@ internal sealed class MetalReadIntervalIndex(bool contiguous = false)
     internal long ExtendsForTests { get; private set; }
     internal long RotationsForTests { get; private set; }
 
+    internal void ReserveLike(MetalReadIntervalIndex other)
+    {
+        if (_nodes.Length < other._nodes.Length) Array.Resize(ref _nodes, other._nodes.Length);
+    }
+
     internal void Clear()
     {
         Array.Clear(_nodes, 0, _used + 1);

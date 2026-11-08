@@ -14,6 +14,9 @@ internal sealed class MetalVertexReadCoverage
     internal bool Reachable { get; private set; }
     internal long StepsForTests { get; private set; }
 
+    internal int WindowCapacity => _windows.EnsureCapacity(0);
+    internal void ReserveWindows(int capacity) => _windows.EnsureCapacity(capacity);
+
     internal void Clear()
     {
         _hasRun = Reachable = false;

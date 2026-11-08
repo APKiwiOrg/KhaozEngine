@@ -85,6 +85,34 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
         Assert.False(reads.Overlaps(new(f.InstanceStreams[2].CpuResource, 628 * 96, 192)));
     }
 
+    // #1696. A warm scene can revisit the same instance windows in a different buffer-binding order.
+    [Fact]
+    public void WarmedVertexCoverageKeepsWindowCapacityAcrossBindingOrderChanges()
+    {
+        using var f = new MetalReadFootprintDrawFixture(4);
+        var reads = new MetalRecordedReads();
+        var vertices = new MetalVertexReadRecords();
+        void Frame(bool reverse)
+        {
+            reads.Clear();
+            vertices.Reset();
+            for (int binding = 0; binding < 2; binding++)
+            {
+                bool manyWindows = (binding == 0) != reverse;
+                vertices.Record(1, manyWindows ? f.Instances : f.Meshes[0], 0);
+                for (uint window = 0; window < (manyWindows ? 10u : 1u); window++)
+                    vertices.RecordReads(reads, f.Pipeline.Plan.ReadLayout, 0, 1, window * 4, 1, indexed: true);
+            }
+        }
+        Frame(false);
+        Frame(false);
+        long bytes = AllocationMeasurement.Measure("warm vertex windows in reversed binding order", () => Frame(true));
+        Assert.Equal(0, bytes);
+        Assert.True(reads.Overlaps(new(f.Instances.CpuResource, 36 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 35 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 36 * 96 + 32, 64)));
+    }
+
     // #1692. Both interval indexes must reuse large, irregular recordings, not only tiny prefixes.
     [Fact]
     public void ASteadyThreeThousandDrawFootprintReusesItsIndexes()
@@ -149,14 +177,18 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
 
     // #1685. Final completion can lag by the whole ring, rather than retiring each prefix immediately.
     [Theory]
-    [InlineData(1)]
-    [InlineData(3)]
-    public void SteadyPrefixesReuseProtectionStorageUntilFinalCompletion(int depth)
+    [InlineData(1, false)]
+    [InlineData(3, false)]
+    [InlineData(3, true)]
+    public void SteadyPrefixesReuseProtectionStorageUntilFinalCompletion(int depth, bool changingShape)
     {
         ulong completed = 0, submitted = 0;
         var protection = new MetalCpuReadProtection(new(), () => completed, () => submitted);
         var recordings = new MetalRecordingReads(protection, depth);
         var resource = new MetalCpuResource();
+        // Four repeating scene shapes visit three ring slots in different phases. Each shape is warmed,
+        // but a slot must inherit observed capacity rather than wait for every shape/slot combination.
+        var extras = new[] { new MetalCpuResource(), new MetalCpuResource(), new MetalCpuResource() };
         void Frames(int count)
         {
             for (int i = 0; i < count; i++)
@@ -167,6 +199,12 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
                 recordings.Begin(segment);
                 var reads = recordings.Current;
                 reads.Add(resource, (ulong)segment * 64, 16);
+                if (changingShape)
+                    for (int extra = 0; extra < i % 4; extra++)
+                    {
+                        reads.Add(extras[extra], (ulong)segment * 64, 16);
+                        reads.AddStrided(extras[extra], (ulong)segment * 256 + 128, 4, 16, 4);
+                    }
                 ulong id = protection.Protect(segment, reads);
                 protection.Committed(id);
                 protection.RequireWritable(resource, (ulong)depth * 64, 16);

@@ -67,6 +67,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Preserve allocation-free input preflight and avoid product workspace on a header refusal.
 - Size prism validation arithmetic to active pieces, admit room domain copies before construction and settle
   uncovered polygon replacement capacity after its last overlap.
+- Metal read footprints carry warmed storage capacity between ring slots, so repeating scene shapes allocate
+  no late resource records when their period differs from the ring depth. Vertex coverage also retains warmed
+  disconnected-window capacity across changes in buffer binding order.
 
 ## 23.3.0
 

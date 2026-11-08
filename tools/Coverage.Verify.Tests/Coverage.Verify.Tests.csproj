@@ -10,7 +10,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Coverage.Verify/Coverage.Verify.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Attachments/KhaozEngine.Attachments.csproj" />
     <ProjectReference Include="../../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <Compile Include="../../KhaozEngine.Render.Tests/Render3D/CoverageFixture.cs" Link="CoverageFixture.cs" />
+    <Compile Include="../../test-shared/SkinnedAttachmentGlbFixture.cs" Link="SkinnedAttachmentGlbFixture.cs" />
   </ItemGroup>
 </Project>

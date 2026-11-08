@@ -25,5 +25,6 @@
     <!-- Coverage readers share cold bounded admission helpers without exposing them as public API. -->
     <InternalsVisibleTo Include="KhaozEngine.Attachments" />
     <InternalsVisibleTo Include="KhaozEngine.Render3D" />
+    <InternalsVisibleTo Include="Coverage.Verify" />
   </ItemGroup>
 </Project>

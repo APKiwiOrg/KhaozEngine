@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <OutputType>Library</OutputType>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Attachments/KhaozEngine.Attachments.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Coverage.Verify.Tests" />

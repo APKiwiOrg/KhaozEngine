@@ -55,7 +55,7 @@ namespace KhaozEngine.Render3D
 
         // Both flattened and material-part imports use this decoder. Only the destination buffers differ.
         static IReadOnlyList<(SkinnedGltfMesh Mesh, GltfMaterial? Material)> DecodeSkinned(
-            ModelRoot root, string path, bool splitByMaterial)
+            ModelRoot root, string path, bool splitByMaterial, CoverageImportCollector? coverage = null)
         {
             var groups = new List<SkinnedGeometry>();
             Skin? skin = null;
@@ -68,6 +68,7 @@ namespace KhaozEngine.Render3D
                     var weights = prim.GetVertexAccessor("WEIGHTS_0")?.AsVector4Array();
                     if (pos == null || joints == null || weights == null) continue;
 
+                    coverage?.VerifySkin(root, mesh, path);
                     SkinnedGeometry? group = splitByMaterial
                         ? groups.Find(g => ReferenceEquals(g.Material, prim.Material))
                         : groups.FirstOrDefault();
@@ -97,6 +98,7 @@ namespace KhaozEngine.Render3D
                     string identity = $"glTF asset '{path}'";
 
                     int baseIndex = verts.Count;
+                    int sourceStart = coverage?.AddSkinned(mesh, prim, groups.IndexOf(group), baseIndex, pos, joints, weights) ?? 0;
                     for (int i = 0; i < pos.Count; i++)
                     {
                         Vector4 w = SkinningMath.NormalizeWeights(weights[i]);
@@ -112,17 +114,20 @@ namespace KhaozEngine.Render3D
                         srcTangent.Add(tangents != null && i < tangents.Count ? tangents[i] : (Vector4?)null);
                     }
                     int partIndex = groups.IndexOf(group);
+                    int sourceTriangle = 0;
                     foreach (var (a, b, c) in prim.GetTriangleIndices())
                     {
                         indices.Add(MeshIndexValidation.Rebase(a, pos.Count, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
                         indices.Add(MeshIndexValidation.Rebase(b, pos.Count, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
                         indices.Add(MeshIndexValidation.Rebase(c, pos.Count, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
+                        coverage?.AddTriangle(mesh, prim, sourceTriangle++, partIndex, sourceStart, a, b, c);
                     }
                 }
 
             if (skin == null || groups.All(group => group.Vertices.Count == 0))
                 throw new GltfImportStateException(GltfImportRefusal.NoSkinnedMesh,
-                    "glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path) { Identity = path };
+                    "glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path)
+                { Identity = path };
 
             foreach (SkinnedGeometry group in groups)
                 ComputeSkinnedTangents(group.Vertices, group.Indices, group.SourceTangents);

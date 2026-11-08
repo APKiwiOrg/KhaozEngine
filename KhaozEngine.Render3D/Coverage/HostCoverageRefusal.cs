@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace KhaozEngine.Render3D;
 
@@ -113,6 +115,94 @@ public enum HostCoverageRefusal
     /// <summary>A region entry must not be null.</summary>
     NullRegion,
 
+    /// <summary>Material slice does not match the mesh.</summary>
+    MaterialSliceMismatch,
+
+    /// <summary>Material slice vertex changed.</summary>
+    MaterialVertexMismatch,
+
+    /// <summary>Material slice winding changed.</summary>
+    MaterialWindingMismatch,
+
+    /// <summary>Material slice has an unsupported skin.</summary>
+    UnsupportedSkin,
+
+    /// <summary>Material slice has a nonfinite skin matrix.</summary>
+    NonfiniteSkinMatrix,
+
+    /// <summary>Host GLB identity mismatch.</summary>
+    SourceIdentityMismatch,
+
+    /// <summary>Host source requires skin vertices.</summary>
+    MissingSkinVertices,
+
+    /// <summary>Source vertex is absent from the host topology.</summary>
+    MissingTopologyVertex,
+
+    /// <summary>Welded vertices disagree in rest position or normalized influences.</summary>
+    WeldMismatch,
+
+    /// <summary>Host topology names an absent source vertex.</summary>
+    AbsentSourceVertex,
+
+    /// <summary>Region triangle ranges overlap.</summary>
+    RegionTriangleOverlap,
+
+    /// <summary>Affected triangle is degenerate.</summary>
+    DegenerateTriangle,
+
+    /// <summary>Affected topology is nonmanifold or has inconsistent winding.</summary>
+    RegionTopology,
+
+    /// <summary>Region boundary strength must equal zero.</summary>
+    BoundaryStrength,
+
+    /// <summary>Strength names a vertex outside its region.</summary>
+    StrengthOutsideRegion,
+
+    /// <summary>Affected host edge is nonmanifold.</summary>
+    HostEdgeTopology,
+
+    /// <summary>Affected host has repeated surface faces.</summary>
+    RepeatedHostFace,
+
+    /// <summary>Affected host vertex is degenerate.</summary>
+    DegenerateHostVertex,
+
+    /// <summary>Affected host vertex is nonmanifold.</summary>
+    HostVertexTopology,
+
+    /// <summary>Affected host vertex has a disconnected one-ring.</summary>
+    DisconnectedHostVertex,
+
+    /// <summary>Invalid skin influence.</summary>
+    InvalidSkinInfluence,
+
+    /// <summary>One compatible source skin is required.</summary>
+    IncompatibleSkin,
+
+    /// <summary>The complete annotated host is required. MissingMaterialSlices names every absent slice.</summary>
+    MissingMaterialSlices,
+
+    /// <summary>An annotated material slice appears more than once. MaterialSlice names it.</summary>
+    DuplicateMaterialSlice,
+
+    /// <summary>Annotated slices must share the exact source and map owners.</summary>
+    SourceOwnershipMismatch,
+
+    /// <summary>Annotated slices must share one skeleton owner and equal bind and rest-pose matrices.</summary>
+    SkeletonMismatch,
+
+    /// <summary>An annotated mesh no longer matches its bound immutable fingerprint.</summary>
+    MeshChanged,
+
+    /// <summary>Every part of an annotated host must carry coverage evidence.</summary>
+    UnannotatedMaterialSlice,
+
+    /// <summary>The coverage importer could not decode the model. The original cause is retained.</summary>
+    ImportedModelFailure,
+
+
 }
 
 /// <summary>Structured malformed-data refusal for host coverage. Messages are developer prose.</summary>
@@ -125,7 +215,7 @@ public sealed class HostCoverageDataException : MalformedDataException
     /// <summary>The stable rule that refused the input.</summary>
     public HostCoverageRefusal Reason { get; }
 
-    /// <summary>Caller-supplied asset identity, set by the JSON reader.</summary>
+    /// <summary>Caller-supplied asset identity, set by the reader or source binding.</summary>
     public string? Identity { get; init; }
 
     /// <summary>Rooted JSON path of the refused value or collection. When MemberNameOmitted is true, names the containing object.</summary>
@@ -164,6 +254,17 @@ public sealed class HostCoverageDataException : MalformedDataException
     /// <summary>Source first triangle ordinal involved in the refusal.</summary>
     public int? FirstTriangle { get; init; }
 
+    /// <summary>Material slice involved in a binding refusal.</summary>
+    public int? MaterialSlice { get; init; }
+
+    IReadOnlyList<int> missingMaterialSlices = Array.Empty<int>();
+    /// <summary>Owned snapshot of every required but absent material slice, in ascending order.</summary>
+    public IReadOnlyList<int> MissingMaterialSlices
+    {
+        get => missingMaterialSlices;
+        init => missingMaterialSlices = Array.AsReadOnly(value.ToArray());
+    }
+
     internal HostCoverageDataException WithContext(string? identity = null, string? prefix = null, string? path = null) =>
         new(Reason, identity is null ? Message : $"{identity}: {Message}", this)
         {
@@ -180,5 +281,7 @@ public sealed class HostCoverageDataException : MalformedDataException
             Primitive = Primitive,
             Vertex = Vertex,
             FirstTriangle = FirstTriangle,
+            MaterialSlice = MaterialSlice,
+            MissingMaterialSlices = MissingMaterialSlices,
         };
 }

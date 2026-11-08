@@ -1796,6 +1796,57 @@ member `Path`, independent of UTF-8 or Unicode-escaped spelling. Longer names ha
 `MemberNameOmitted = true` and the actual containing-object `Path`. Diagnostic decoding uses a fixed
 buffer and never publishes a fabricated name or a partial name.
 
+
+`GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity, hostCoverageMap)` authenticates the exact
+host bytes and binds the map to immutable `CoverageSourceTopology`. Source mesh, primitive, vertex
+and triangle ordinals survive material grouping. Each mesh's optional `Coverage` is a
+`HostCoveragePart` with its source material slice, source triangles and a fingerprint of decoded
+vertices, indices, inverse binds, rest transforms and skeleton data. `Matches(mesh)` detects changed
+source data and a different skeleton owner. Programmatic sources bind through `HostCoveragePart.Create`,
+which requires a bijection from source vertices to decoded material-slice vertices.
+The coverage importer supports linear-blend skinning and requires one compatible skin.
+
+Annotated `Scene3D.LoadSkinnedMesh` uploads retain independent copies of vertex, index, bind,
+rest-pose and skeleton arrays. Later caller mutations cannot change the uploaded CPU skinning
+source, bounds or coverage identity. Individual upload overloads remain available. Complete-host
+binding uses the internal `GltfSkinnedMeshPart.ValidateCoverageParts` admission helper and must
+include all material slices from one source/map owner and one skeleton owner. Its
+`MissingMaterialSlices` refusal carries an owned, ascending slice inventory plus `Count` and
+inclusive required `Limit`. Duplicate and mixed-source slices, changed meshes and incompatible
+skeletons have separate host refusal reasons. Empty submissions require the expected host evidence
+so the same helper can name every missing slice.
+
+`CoverageRefinement.Build(source, map)` compiles a fixed conforming surface. It validates affected
+source topology, full core strengths and zero region-boundary strengths, then unions canonical
+rational edge splits across material seams. Refinement levels are 1 through 4. Both predicted final
+totals must be at most 65536 before final render arrays are allocated. Immutable vertex, triangle,
+material-range and position-recipe views retain source ownership. Skin original vertices first,
+then use `Interpolate` or `TryInterpolate` on that posed source. Original attributes copy exactly,
+including protected vertices. Shared position groups use one canonical recipe. A refused
+`TryInterpolate` leaves its destination untouched and returns `CoverageFailure`. The checked
+`Interpolate` wrapper throws `CoverageInterpolationStateException` with the same `Failure` and
+public `Reason`, preserving its `InvalidOperationException` base.
+
+`GltfLoader.LoadCoverageSource(glb, identity)` records the rigid importer's displayed, welded
+positions for every node occurrence. Rigid triangle-corner records are distinct from final refined
+host vertices and may outnumber them. Their snapshot is bounded by the supplied position count,
+while the 65536 output limits belong to fixed host refinement.
+`CoverageSupportSurface.Compile(source, inwardFaces,
+coverageLocal)` validates a single-valued convex support sheet with at most 1024 inward triangles
+and 256 boundary edges. Its immutable source and bounds trees support cold height and boundary
+queries. A queryable open sheet is distinguished from an inward sheet of a closed displayed solid.
+Approximate compatibility queries do not certify clearance. An uncertifiable finite
+`NearestBoundary` query throws `CoverageGeometryArgumentException` with `Reason`, source `Identity`
+and query `X` and `Y`, preserving its `ArgumentException` base.
+
+`CoverageGeometryDataException` derives from `MalformedDataException`. Its public
+`CoverageGeometryRefusal` distinguishes invalid source provenance, source ownership, triangle
+ranges, final refinement capacities and support validation rules. `Identity` names the caller's
+source. Capacity reasons carry observed `Count` and inclusive `Limit`. Source-vertex and triangle
+checks carry the relevant ordinals. Binding refusals use `HostCoverageDataException`, with region,
+surface, source ordinals or `MaterialSlice` where relevant. Existing typed glTF and index refusals
+keep their original families. Caller parameter checks remain BCL exceptions.
+
 ## Mesh import and prop refusals
 
 Messages remain developer prose. Branch on `Reason` and read the structured identifiers below.

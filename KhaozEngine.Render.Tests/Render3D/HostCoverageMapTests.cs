@@ -399,6 +399,7 @@ public class HostCoverageMapTests
     [Fact]
     public void Context_wrapper_preserves_every_identifier_and_typed_inner_reason()
     {
+        int[] missing = [1, 2];
         var original = new HostCoverageDataException(HostCoverageRefusal.InvalidRange, "data")
         {
             Identity = "source",
@@ -414,15 +415,22 @@ public class HostCoverageMapTests
             Primitive = 5,
             Vertex = 6,
             FirstTriangle = 7,
+            MaterialSlice = 8,
+            MissingMaterialSlices = missing,
         };
         var refusal = original.WithContext(identity: "outer", prefix: "$.regions[1]");
         Assert.Same(original, refusal.InnerException);
         Assert.Equal(original.Reason, refusal.Reason);
         Assert.Equal("outer", refusal.Identity);
         Assert.Equal("$.regions[1].triangles[2]", refusal.Path);
-        Assert.Equal(new[] { "Count", "FirstTriangle", "FormatVersion", "Identity", "Limit", "MemberName", "MemberNameOmitted", "Mesh", "Path", "Primitive", "Reason", "RegionKey", "SurfaceId", "Vertex" },
+        Assert.Equal(new[] { "Count", "FirstTriangle", "FormatVersion", "Identity", "Limit", "MaterialSlice", "MemberName", "MemberNameOmitted", "Mesh", "MissingMaterialSlices", "Path", "Primitive", "Reason", "RegionKey", "SurfaceId", "Vertex" },
             typeof(HostCoverageDataException).GetProperties().Where(property => property.DeclaringType == typeof(HostCoverageDataException))
                 .Select(property => property.Name).Order(StringComparer.Ordinal));
+        missing[0] = 99;
+        Assert.Equal(new[] { 1, 2 }, refusal.MissingMaterialSlices);
+        Assert.Throws<NotSupportedException>(() => ((IList<int>)refusal.MissingMaterialSlices)[0] = 3);
+        Assert.Equal(original.MaterialSlice, refusal.MaterialSlice);
+        Assert.Equal(original.MissingMaterialSlices, refusal.MissingMaterialSlices);
         Assert.Equal(original.MemberNameOmitted, refusal.MemberNameOmitted);
         Assert.Equal((original.Count, original.Limit, original.MemberName, original.FormatVersion), (refusal.Count, refusal.Limit, refusal.MemberName, refusal.FormatVersion));
         Assert.Equal((original.RegionKey, original.SurfaceId, original.Mesh, original.Primitive, original.Vertex, original.FirstTriangle),

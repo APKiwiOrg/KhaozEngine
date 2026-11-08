@@ -117,6 +117,49 @@ vec3 atmosphereFogColour(vec3 fragmentRelative) {
         * atmosphereFogPhaseRatio(view, radius);
     return max(radiance * (Atmo.Sun.w * ATMO_PI) * Atmo.Tint.rgb, Atmo.Floors.w * Atmo.NightTint.rgb);
 }
+// Mirrors AtmosphereFogScattering.Key. Only the shadow-casting body's direct in-scatter is removed.
+vec3 atmosphereFogKeySource(vec3 direction) {
+    float sunMu = dot(direction, Atmo.Sun.xyz);
+    vec3 sun = Atmo.SunT.rgb * (Atmo.FogScatter.rgb * AtmoRayleighPhase(sunMu)
+        + vec3(Atmo.FogScatter.w * AtmoMiePhase(sunMu)));
+    vec3 moon = vec3(0.0);
+    if (Atmo.Moon.w > 0.0) {
+        float moonMu = dot(direction, Atmo.Moon.xyz);
+        moon = Atmo.MoonT.rgb * ((Atmo.FogScatter.rgb * AtmoRayleighPhase(moonMu)
+            + vec3(Atmo.FogScatter.w * AtmoMiePhase(moonMu))) * Atmo.Moon.w);
+    }
+    return Atmo.FogShadow.x * sun + Atmo.FogShadow.y * moon;
+}
+// Mirrors AtmosphereFogScattering.KeyOcclusion and AtmosphereFogSampling.BelowHorizon.
+// Duplicate the eased-direction rule to keep the unoccluded functions textually unchanged for byte identity.
+vec3 atmosphereFogKeyOcclusion(vec3 view, float radius, float visibility) {
+    if (visibility >= 1.0 || Atmo.FogShadow.x + Atmo.FogShadow.y == 0.0) return vec3(1.0);
+    float horizon = AtmoHorizonAngle(radius);
+    float theta = acos(clamp(view.y, -1.0, 1.0));
+    if (theta > horizon) {
+        float cell = horizon / (53.0 * 53.0);
+        float t = (theta - horizon) / cell;
+        float zenith = t < 1.0 ? horizon + cell * t * t * t * (3.0 - 2.0 * t) : theta;
+        vec2 planar = all(equal(view.xz, vec2(0.0))) ? vec2(1.0, 0.0) : normalize(view.xz);
+        view = vec3(planar.x * sin(zenith), cos(zenith), planar.y * sin(zenith));
+    }
+    vec3 total = atmosphereFogSource(view);
+    vec3 remainder = total - (1.0 - visibility) * atmosphereFogKeySource(view);
+    return vec3(total.x > 0.0 ? remainder.x / total.x : 1.0,
+        total.y > 0.0 ? remainder.y / total.y : 1.0, total.z > 0.0 ? remainder.z / total.z : 1.0);
+}
+// Mirrors AtmosphereFog.Shade with keyVisibility. The phase pair is duplicated for unoccluded byte identity.
+vec3 atmosphereFogColour(vec3 fragmentRelative, float keyVisibility) {
+    if (keyVisibility >= 1.0) return atmosphereFogColour(fragmentRelative);
+    float distanceWorld;
+    vec3 view = atmosphereSegmentView(fragmentRelative, distanceWorld);
+    float cameraHeightKm = max((Atmo.Camera.y + Atmo.Origin.y) / Atmo.Planet.z, 0.0);
+    float radius = Atmo.Planet.x + cameraHeightKm;
+    vec3 radiance = textureLod(sampler2D(AtmoSkyView, AtmoSkySampler), atmosphereFogSkyUv(view, radius), 0.0).rgb
+        * atmosphereFogPhaseRatio(view, radius);
+    radiance *= atmosphereFogKeyOcclusion(view, radius, keyVisibility);
+    return max(radiance * (Atmo.Sun.w * ATMO_PI) * Atmo.Tint.rgb, Atmo.Floors.w * Atmo.NightTint.rgb);
+}
 // Mirrors AtmosphereFog.Shade and AtmosphereFog.Compose. SkyValue already applies tint exactly once.
 // Enabled comes from the consumer's current frame upload, never a retained atmosphere ring segment.
 vec3 atmosphereFog(vec3 colour, vec3 fragmentRelative, bool additive, bool enabled) {

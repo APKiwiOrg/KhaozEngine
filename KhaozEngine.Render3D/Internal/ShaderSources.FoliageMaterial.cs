@@ -21,7 +21,7 @@ void main() {
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (indirectDiffuse(N, vWorldPos) + diffuse) + specColor;
     lit += vec3(0.0);
-    lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
+    lit = atmosphereFogKeyShadowed(lit, vWorldPos, RenderOrigin.w > 0.5, ShadowMap, ShadowSamp);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(0.0, 0.0, 1.0));
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);

@@ -124,6 +124,24 @@ flowchart LR
    shader (lit / cel / textured), and writes the framebuffer. `AppWindow` calls `Present()` to put the
    swapchain image on screen.
 
+## Physical atmosphere fog
+
+Lit models (rigid, dissolved and skinned), terrain, tile ground and foliage call
+`atmosphereFogKeyShadowed` after lighting. It retains the analytic height transmission and sky-view lookup,
+then scales only the shadow-casting sun or moon's direct in-scatter. The other body, multiple scattering and
+the night floor remain. `AtmosphereSettings.AerialShadowSamples` defaults to 8, accepts 0 through 16, and
+disables the correction at 0. The atmosphere UBO appends `FogShadow = (keySun, keyMoon, taps, 0)`.
+
+The bounded 16-tap loop places each point at an equal share of the segment's in-scatter under a uniform-density
+grey approximation. It inverts optical depth and the aerial onset, projects outward through the key cascades
+without a surface normal offset, and compares one point depth at explicit LOD zero per covered tap. The
+outermost cascade fades shadowed taps toward lit at its coverage border. Uncovered taps count as lit. Shadow
+strength blends the mean visibility only when it is below one, so a fully lit segment returns exactly one
+and uses the original fog arithmetic. Unoccluded output stays byte-identical.
+
+Decals, effects, water and water columns keep the original unoccluded fog path. The shadow atlas only covers
+the near air. Distant valley haze and the water horizon still need visibility beyond the cascades.
+
 ## Point-shadow caster layers
 
 `RigidInstanceDraw.ShadowMobility` classifies point-shadow participation independently of motion identity.

@@ -13,7 +13,7 @@ namespace KhaozEngine.Render3D.Rendering;
 /// Targets and consumer bindings remain stable across physical settings changes and enable toggles.</summary>
 internal sealed class AtmosphereRenderer : IDisposable
 {
-    internal const uint UboBytes = 368;
+    internal const uint UboBytes = 384;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct AtmosphereUbo
@@ -41,6 +41,7 @@ internal sealed class AtmosphereRenderer : IDisposable
         public Vector4 FogScatter;
         public Vector4 FogSource;
         public Vector4 FogHorizon;
+        public Vector4 FogShadow;
     }
 
     readonly IGpuDevice _gd;
@@ -219,6 +220,8 @@ internal sealed class AtmosphereRenderer : IDisposable
             FogScatter = new(scattering.RayleighScattering, scattering.MieScattering),
             FogSource = new(scattering.MultipleScattering, settings.AerialOnsetDistance),
             FogHorizon = new((float)horizonSin, (float)horizonCos, 0f, 0f),
+            FogShadow = new(frame.KeySource == KeyLightSource.Sun ? 1f : 0f,
+                frame.KeySource == KeyLightSource.Moon ? 1f : 0f, settings.AerialShadowSamples, 0f),
         };
     }
 

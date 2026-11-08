@@ -11,8 +11,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Lit model, terrain, tile-ground and foliage fog now loses the key sun or moon's glow when the shadow atlas
   occludes its camera-to-receiver segment. `AtmosphereSettings.AerialShadowSamples` defaults to 8, accepts
   0 through 16, and disables the correction at 0. The other body's light, multiple scattering and night floor
-  remain. Unoccluded output is byte-identical. Fog beyond shadow coverage, water and effects remain uncorrected
-  (in-range part of #1411).
+  remain. Unoccluded output is byte-identical (#1411). Fog beyond shadow coverage waits on the aerial-perspective
+  volume (#1364), and the water's reflected horizon on scene reflections in water (#1609). Decals and effects
+  keep the unoccluded fog colour.
 - Underwater caustics for opted-in procedural water. `WaterSettings.UnderwaterCaustics` (off by default) and
   `WaterSettings.CausticStrength` (1, physical) gain `WaterLook` overrides. Strength scales how far refracted sunlight
   lands, so strength `s` at depth `d` matches strength 1 at depth `s * d`. Enabling caustics also enables underwater

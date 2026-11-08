@@ -139,8 +139,12 @@ outermost cascade fades shadowed taps toward lit at its coverage border. Uncover
 strength blends the mean visibility only when it is below one, so a fully lit segment returns exactly one
 and uses the original fog arithmetic. Unoccluded output stays byte-identical.
 
-Decals, effects, water and water columns keep the original unoccluded fog path. The shadow atlas only covers
-the near air. Distant valley haze and the water horizon still need visibility beyond the cascades.
+Decals, effects, water and water columns keep the original unoccluded fog path, because they bind no key shadow
+atlas. The decals are unlit telegraph overlays, so a binding for them would buy little. Each fogged lit fragment
+pays up to `AerialShadowSamples` point fetches plus their cascade projections, next to the 16 fetches of its
+surface PCF. The shadow atlas only covers the near air. The owner ruled against a terrain horizon profile for
+the rest (issue #1411): air beyond the cascades waits on the aerial-perspective volume (#1364), and the river's
+reflected sunset horizon under a ridge is reflection occlusion, owned by scene reflections in water (#1609).
 
 ## Point-shadow caster layers
 

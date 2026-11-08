@@ -6,10 +6,10 @@ using System.Numerics;
 namespace KhaozEngine.Render3D;
 
 /// <summary>Immutable bounds hierarchy. Leaf Item is an index into the owning triangle or boundary collection.</summary>
-public readonly record struct CoverageBvhNode(Vector3 Min, Vector3 Max, int Left, int Right, int Item);
+internal readonly record struct CoverageBvhNode(Vector3 Min, Vector3 Max, int Left, int Right, int Item);
 
 /// <summary>Load-time bounds tree shared by support queries and later geometric certification.</summary>
-public sealed class CoverageBvh
+internal sealed class CoverageBvh
 {
     readonly CoverageBvhNode[] nodes;
     internal CoverageBvh((Vector3 Min, Vector3 Max)[] bounds) => nodes = Build(bounds);

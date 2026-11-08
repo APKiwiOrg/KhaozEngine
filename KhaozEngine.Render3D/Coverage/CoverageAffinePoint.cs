@@ -14,7 +14,7 @@ public readonly struct CoverageCoordinate
         c2 = values.Length > 2 ? values[2] : 0;
         c3 = values.Length > 3 ? values[3] : 0;
     }
-    public double this[int index] => index switch
+    internal double this[int index] => index switch
     { 0 => c0, 1 => c1, 2 => c2, 3 => c3, _ => throw new ArgumentOutOfRangeException(nameof(index)) };
     public double Value => ((c0 + c1) + c2) + c3;
     public CoverageScalarBounds Bounds => CoverageIntervals.FromCoordinate(this);

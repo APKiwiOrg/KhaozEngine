@@ -27,9 +27,6 @@ internal sealed partial class ModelRenderer
             [_skinnedMainLayout, _skinnedFragLayout, _coveragePull.Layout, _motion.FrameLayout], []);
     }
 
-    internal void DrawCoverageMotion(IGpuCommandList commands, in CoveragePulledDraw draw, in Matrix4x4 previousRenderModel)
-        => DrawCoverageMotion(commands, draw, previousRenderModel, null);
-
     internal void DrawCoverageMotion(IGpuCommandList commands, in CoveragePulledDraw draw, in Matrix4x4 previousRenderModel,
         IGpuResourceSet? material)
     {

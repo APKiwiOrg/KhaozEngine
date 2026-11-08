@@ -1,14 +1,12 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 
 namespace KhaozEngine.Render3D;
 
 internal sealed class CoverageFrameArena
 {
-    internal readonly List<CoveragePreparation> Preparations = [];
     internal ulong Generation;
-    internal void Begin() { Generation++; Preparations.Clear(); }
+    internal void Begin() => Generation++;
 }
 
 internal sealed class CoveragePreparation
@@ -18,7 +16,7 @@ internal sealed class CoveragePreparation
     internal readonly CoverageCommandPose[] Commands = new CoverageCommandPose[CoverageCarryUniforms.MaxCommands];
     internal readonly CoverageEquipmentStage?[] Equipment = new CoverageEquipmentStage?[CoverageCarryUniforms.MaxCommands];
     internal readonly SkinnedInstanceDraw?[] Draws, Outlines;
-    internal ulong Generation, ListedGeneration, Revision;
+    internal ulong Generation, Revision;
     internal Matrix4x4 Model;
     internal CoverageStateKey StateKey;
     internal int EntryIndex, CommandCount;

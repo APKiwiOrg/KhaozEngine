@@ -66,18 +66,18 @@ public sealed class CoverageSupportSurface
     /// <summary>Approximate compatibility view. Do not use for certification.</summary>
     public ReadOnlySpan<Vector3> Positions => positions;
     /// <summary>Approximate double view. Affine-sum tails remain in ProjectedPositions.</summary>
-    public ReadOnlySpan<CoveragePoint3> PrecisePositions => precisePositions;
-    public ReadOnlySpan<CoverageAffinePoint> ProjectedPositions => projectedPositions;
+    internal ReadOnlySpan<CoveragePoint3> PrecisePositions => precisePositions;
+    internal ReadOnlySpan<CoverageAffinePoint> ProjectedPositions => projectedPositions;
     /// <summary>Actual boundary loop, indexing ProjectedPositions and retaining straight rim vertices.</summary>
-    public ReadOnlySpan<int> BoundarySourceVertices => boundarySourceVertices;
-    public ReadOnlySpan<int> InwardSourceIndices => selected;
+    internal ReadOnlySpan<int> BoundarySourceVertices => boundarySourceVertices;
+    internal ReadOnlySpan<int> InwardSourceIndices => selected;
     public IReadOnlyList<CoverageSourceTriangle> InwardTriangles { get; }
     /// <summary>The exact Edge of inward triangle index's projected corners A, B, C, computed once at construction.</summary>
     internal CoverageScalar InwardArea(int index) => areas[index];
     public IReadOnlyList<CoverageBoundaryEdge> Boundary { get; }
-    public CoverageBvh SolidBvh { get; }
-    public CoverageBvh ProjectedBvh { get; }
-    public CoverageBvh EdgeBvh { get; }
+    internal CoverageBvh SolidBvh { get; }
+    internal CoverageBvh ProjectedBvh { get; }
+    internal CoverageBvh EdgeBvh { get; }
     /// <summary>True when the displayed source is an embedded closed manifold and the support is certified as its
     /// inward side. Public height queries also support open sheets.</summary>
     public bool InwardOfClosedSolid { get; }

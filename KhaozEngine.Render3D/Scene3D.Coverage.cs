@@ -56,7 +56,6 @@ public sealed partial class Scene3D
         var handles = topology.MaterialRanges.Select(range => meshes[Array.FindIndex(uploaded,
             m => m.Coverage!.MaterialSlice == range.MaterialSlice)]).ToArray();
         var owner = new SkinnedHostCoverage(this, handles, topology, uploaded[0].InverseBind.ToArray(), binding);
-        _coverageArena.Preparations.EnsureCapacity(_coverageArena.Preparations.Count + _coverageHosts.Count + 1);
         try { ReserveCoverageStorage(owner); }
         catch { owner.Disposed = true; _coverageBatch?.RetireActor(owner); throw; }
         _coverageHosts.Add(owner);
@@ -123,8 +122,6 @@ public sealed partial class Scene3D
         p.Model = model; p.StateKey = stateKey; p.EntryIndex = entry; p.CommandCount = commands.Length;
         p.Generation = _coverageArena.Generation;
         Array.Clear(p.Draws); Array.Clear(p.Outlines);
-        if (p.ListedGeneration != _coverageArena.Generation)
-        { _coverageArena.Preparations.Add(p); p.ListedGeneration = _coverageArena.Generation; }
         frame = new(p, p.Generation, p.Revision);
         p.Failure = failure = default;
         return true;

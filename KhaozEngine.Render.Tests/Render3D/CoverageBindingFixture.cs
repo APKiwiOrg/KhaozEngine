@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
+using KhaozEngine.Gpu;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Attachments;
@@ -12,7 +13,7 @@ namespace KhaozEngine.Tests.Render3D;
 
 internal sealed class CoverageBindingFixture : IDisposable
 {
-    readonly AttachmentAssetHarness harness = new();
+    readonly AttachmentAssetHarness harness;
     internal Scene3D Scene => harness.Scene;
     internal readonly AttachmentTestSource Source = new();
     internal readonly AttachmentRecordingScene Adapter;
@@ -30,8 +31,9 @@ internal sealed class CoverageBindingFixture : IDisposable
     internal readonly CoverageRecessionTable Table;
     internal static RigidInstanceDraw Template => MixedAttachmentSubmissionFixture.Template;
 
-    internal CoverageBindingFixture(bool mixed = false, bool materialSlices = false)
+    internal CoverageBindingFixture(bool mixed = false, bool materialSlices = false, IGpuDevice? device = null)
     {
+        harness = new(device);
         byte[] host = CoverageImportTests.HostFixture().Build();
         Meshes = GltfLoader.LoadSkinnedPartsWithMaterials(host, "binding-host", CoverageImportTests.Map(host)).Select(p => p.Mesh).ToArray();
         Skeleton = Meshes[0].Skeleton!;

@@ -12,6 +12,7 @@ public sealed class SkinnedHostCoverage : IDisposable
     internal readonly Matrix4x4[] InverseBind;
     internal readonly CoverageTableBinding Binding;
     internal readonly CoverageCarryUniforms Uniforms;
+    internal readonly CoverageActorBounds Bounds;
     internal readonly CoveragePreparation Request;
     internal readonly CoverageEquipmentStage[] Equipment = new CoverageEquipmentStage[CoverageCarryUniforms.MaxCommands];
     internal MotionKey Actor;
@@ -23,6 +24,7 @@ public sealed class SkinnedHostCoverage : IDisposable
     {
         Scene = scene; Meshes = meshes; Topology = topology; InverseBind = inverseBind; Binding = binding;
         Uniforms = new(topology, inverseBind.Length);
+        Bounds = new(topology, binding.Table);
         Request = new(this, inverseBind.Length, meshes.Length);
         for (int i = 0; i < Equipment.Length; i++) Equipment[i] = new(this);
     }
@@ -66,6 +68,7 @@ public sealed class SkinnedHostCoverage : IDisposable
     {
         RequireThread();
         Request.Revision++;
+        Scene.RegisterCoverageAttempt(this);
         // Keep an accepted frame's snapshot reserved until Begin, even after its token expires.
     }
 

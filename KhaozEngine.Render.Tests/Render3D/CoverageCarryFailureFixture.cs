@@ -94,6 +94,24 @@ internal sealed class CoverageCarryFailureFixture
         }
     }
 
+    internal void RawHole()
+    {
+        FailingGather(fail: false);
+        Static[8] = 208; Static[10] = 272;
+        for (int v = 0; v < 3; v++)
+        {
+            Expected.AsSpan(v == 1 ? 16 : 0, 16).CopyTo(Static.AsSpan(208 + v * 20, 16));
+            Static[208 + v * 20 + 16] = Bits(1);
+        }
+        Frames[6 + 16] = Frames[6 + 21] = Frames[6 + 26] = Frames[6 + 31] = Bits(1);
+        Frames[6 + 15] = 1;
+        Frames[6 + 12] = 0;
+        Frames.AsSpan(6 + 64, 32).Fill(uint.MaxValue);
+        Work.AsSpan(Source, 48).Fill(Poison); Work.AsSpan(Before, 32).Fill(Poison);
+        Run("CoverageCarrySkin"); Run("CoverageCarryTransport"); Run("CoverageCarryBasis");
+        Publish();
+    }
+
     internal void Publish()
     {
         if (CoverageCarryShaders.Kernels.Any(k => k.Name == "CoverageCarryGather")) Run("CoverageCarryGather");

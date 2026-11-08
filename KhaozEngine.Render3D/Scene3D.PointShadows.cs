@@ -235,7 +235,7 @@ namespace KhaozEngine.Render3D
             using (ProfilePass(cl, "shadow.point.uploads"))
             {
                 UploadPointShadowFaces(cl);
-                if (UseGpuSkinning && (_selectedPointTransientRequests.Count > 0
+                if ((UseGpuSkinning || _coverageDraws.Count > 0) && (_selectedPointTransientRequests.Count > 0
                     || _pointRigidFallbackRowsThisFrame > 0
                     || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
                     PrepareGpuSkinnedPointCasters(cl);

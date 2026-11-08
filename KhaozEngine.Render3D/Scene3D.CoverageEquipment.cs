@@ -113,9 +113,12 @@ public sealed partial class Scene3D
     /// <summary>Queue a frozen host descriptor and its exact raw palette into an existing outline group.</summary>
     public void DrawSkinnedOutline(MeshOutlineGroup group, in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> palette)
     {
-        RequireMeshOutlineGroup(group);
+        var target = RequireMeshOutlineGroup(group);
         var preparation = ValidateCoverageDraw(draw, palette, true);
+        TryQueueCoverageFallback(draw, palette, true);
+        int before = target.Parts.Count;
         AddSkinnedOutlinePart(group, draw.Mesh, palette, draw.Model, draw.Dissolve, draw.DissolveComplement > .5f);
+        if (target.Parts.Count > before) target.Parts[^1] = target.Parts[^1] with { Motion = draw.Motion };
         RecordCoverageDraw(preparation, draw, true);
     }
 }

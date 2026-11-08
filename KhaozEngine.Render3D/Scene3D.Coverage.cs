@@ -57,6 +57,8 @@ public sealed partial class Scene3D
             m => m.Coverage!.MaterialSlice == range.MaterialSlice)]).ToArray();
         var owner = new SkinnedHostCoverage(this, handles, topology, uploaded[0].InverseBind.ToArray(), binding);
         _coverageArena.Preparations.EnsureCapacity(_coverageArena.Preparations.Count + _coverageHosts.Count + 1);
+        try { ReserveCoverageStorage(owner); }
+        catch { owner.Disposed = true; _coverageBatch?.RetireActor(owner); throw; }
         _coverageHosts.Add(owner);
         return owner;
     }
@@ -67,7 +69,11 @@ public sealed partial class Scene3D
             throw new CoverageFrameStateException(new(CoverageFailureCode.IdentityMismatch, owner.Topology.HostIdentity, 0, 0, 0, 0));
         owner.Actor = actor;
     }
-    internal void RetireCoverage(SkinnedHostCoverage owner) => _coverageHosts.Remove(owner);
+    internal void RetireCoverage(SkinnedHostCoverage owner)
+    {
+        _coverageBatch?.RetireActor(owner);
+        _coverageHosts.Remove(owner);
+    }
     internal bool IsCoveragePreparedThisFrame(SkinnedHostCoverage owner) =>
         _coverageArena.Generation != 0 && owner.Request.Generation == _coverageArena.Generation;
     bool CoverageHostsLive(SkinnedHostCoverage owner)
@@ -78,6 +84,8 @@ public sealed partial class Scene3D
     }
     void DisposeCoverage()
     {
+        AbandonCoverageSubmission();
+        _coverageBatch?.Dispose(); _coverageBatch = null;
         foreach (var owner in _coverageHosts) { owner.Invalidate(); owner.Disposed = true; }
         _coverageHosts.Clear(); _coverageUploads.Clear(); _coverageArena.Begin();
     }
@@ -91,8 +99,11 @@ public sealed partial class Scene3D
         if (_disposalComplete || _coverageArena.Generation == 0 || _framePrepared || actor.IsNone || actor != owner.Actor
             || IsCoveragePreparedThisFrame(owner))
             return Refuse(CoverageFailureCode.StaleFrame, out failure);
+        p.AttemptGeneration = _coverageArena.Generation;
+        p.Raw = false;
+        if (commands.Length <= p.Commands.Length) { commands.CopyTo(p.Commands); p.CommandCount = commands.Length; }
         if (!CoverageHostsLive(owner)) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
-        if (!owner.Uniforms.TryPrepare(palette, owner.InverseBind, model, commands, out failure)) return false;
+        if (!owner.Uniforms.TryPrepare(palette, owner.InverseBind, model, commands, out failure)) { p.Failure = failure; return false; }
         if (!owner.Binding.Table.TrySelect(stateKey, out int entry)) return Refuse(CoverageFailureCode.TableHole, out failure);
         if (commands.IsEmpty) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
         for (int c = 0; c < commands.Length; c++)
@@ -115,11 +126,11 @@ public sealed partial class Scene3D
         if (p.ListedGeneration != _coverageArena.Generation)
         { _coverageArena.Preparations.Add(p); p.ListedGeneration = _coverageArena.Generation; }
         frame = new(p, p.Generation, p.Revision);
-        failure = default;
+        p.Failure = failure = default;
         return true;
 
         bool Refuse(CoverageFailureCode code, out CoverageFailure refused)
-        { refused = new(code, owner.Topology.HostIdentity, 0, 0, 0, 0); return false; }
+        { p.Failure = refused = new(code, owner.Topology.HostIdentity, 0, 0, 0, 0); return false; }
     }
 
     CoveragePreparation RequireCoverage(SkinnedCoverageFrame frame)

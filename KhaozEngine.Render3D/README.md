@@ -1945,8 +1945,54 @@ through the reader's completion. Abandonment releases only pending output. A lat
 earlier submissions whose completion retention was unavailable. Polling never waits and never frees the
 committed slot. Cold growth preserves the old buffer through a history lease and records a migration copy,
 without changing submitted history when that recording is abandoned. The batch is one aggregate
-`IGpuFrameCompletionConsumer`. Scene-owned submission participation and render-pass publication remain
-separate integration responsibilities. `Scene3D` does not yet record this batch.
+`IGpuFrameCompletionConsumer`. `Scene3D.BeginFrame(submission)` joins the host recording.
+Queue all descriptors, then call either existing `PrepareFrame` overload before opening the host list.
+Coverage uses one scene-owned submission participant for every actor, so the default participant capacity
+of eight admits 32 actor histories alongside other participants. Full participant storage selects ordinary
+current skin and commits no actor history. Because that recording cannot report its outcome to the scene,
+subsequent coverage conservatively seeds correspondence again. A full completion ring does not prevent
+registration or logical history commit. Coverage polls completions at scene begin without waiting.
+`Begin()` without a host submission retains the ordinary route.
+
+Every material slice of an admitted actor reads one final indexed surface in colour/depth, temporal motion,
+directional cascades, point shadows and full/visible outlines. `UseGpuSkinning` continues to select the
+ordinary route, while admitted coverage uses the common surface on either setting. Per-draw model, tint,
+material, dissolve and complement stay with that actor and material slice. Ordinary GPU skinning and
+coverage use disjoint header windows within one recording, so a later actor cannot replace an earlier
+draw's model or material. Point shadows retain their
+existing first-request frame without an atlas. `DrawSkinnedOutline(group, draw, palette)` forwards the frozen
+coverage descriptor with its model and dissolve state. Preparation shares the existing once-per-frame latch
+and bound-water target validation. Matching coverage draws after preparation refuse with `StaleFrame`. Expiring a borrowed token does
+not rewrite or discard the snapshot already admitted for that frame. A removed host or equipment mesh is detected before
+ordinary draw classification, so surviving ordinary slices can still render. Cascade culling reduces
+coverage bounds by the render origin, while camera and point-light culling stay in absolute space.
+
+An explicit or missing table key returns `TableHole` from preparation. Submit each ordinary current host
+slice with the same actor motion key and exact scene-issued host handles. Only this frame's registered
+actor/handle pairs enter the fallback publisher. The actual submitted palette and model are frozen and
+preflighted again. With a usable pipeline and safe slot, entry `-1` runs the same five kernels, with no CPU
+skinned upload and no recession. Publication chooses every word of the uncovered current record, even if
+the candidate path succeeds. Merely refusing preparation without subsequently drawing records no surface.
+
+Actor history stores the selected entry or explicit raw entry, final slot, absolute model, view identity
+and configuration correspondence together. Only successful host submission commits it. Abandonment and
+submission failure discard pending history. A submission exception can follow partial device submission,
+so its output slot remains quarantined until completion or a later queue proof. Explicit abandonment
+releases it through the completion consumer's unsubmitted-discard callback. Without a retained fence,
+that candidate is conservatively held for a later proof. Motion reads the previously submitted final surface across
+entry changes and covered/raw transitions, never a surface reconstructed with the current entry. Missing
+submitted frames, actor incarnation changes, configuration changes and view changes seed previous from
+current. Origin rebasing keeps the absolute model and surface correspondence.
+
+No compute, completion fences or precise pipeline support is a sticky device refusal. Such a batch never
+publishes coverage, and ordinary drawing and ordinary motion history remain active. A transient or per-actor
+refusal, including unsafe raw palettes or exhausted slots, draws ordinary current skin without waiting.
+Only an actually encoded ordinary draw records a discontinuity on successful submission. Its former slot
+stays retained until completion is proven, and the next covered draw seeds previous from current for one
+frame of camera-only motion. Abandonment preserves the former history. `CoverageFailureFor(actor)` exposes
+the current scene-side typed refusal and its identifiers. Earlier binding-level refusal details remain on
+the binding's returned failure. Actor disposal releases history through retirement, and completed actor
+reservations can be reused by compatible cold replacements without growing surface storage.
 
 Missing compute, completion fences or precise pipeline support returns `UnsupportedAdapter`. Exhausted
 reservations or output slots return `CapacityExceeded` with counts and limits. Both select ordinary current

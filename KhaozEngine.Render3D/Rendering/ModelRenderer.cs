@@ -380,6 +380,7 @@ namespace KhaozEngine.Render3D.Rendering
             bool temporal = MotionMath.IsTemporal(modelOutputs);
             EnsureMotionResources(temporal);
             SetFoliageOutputs(modelOutputs);
+            BuildCoveragePipelines(factory, modelOutputs);
             // Slot 0: per-vertex geometry (locations 0..4).
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
@@ -626,6 +627,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (_ownsRetired) _retired.Dispose();
             DisposeFoliageResources();
+            DisposeCoveragePulling();
             DisposeMotionResources();
             _shadowMap.Dispose();
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();

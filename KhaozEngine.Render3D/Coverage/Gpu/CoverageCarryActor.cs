@@ -12,6 +12,7 @@ internal struct CoverageCarrySlot
     internal uint Base;
     internal IGpuFence? Completion;
     internal ulong LastUse, Proof;
+    internal bool Quarantined;
 }
 
 /// <summary>Actor-local slot state. Only the batch's submitted callback changes committed selection.</summary>
@@ -24,7 +25,7 @@ internal sealed class CoverageCarryActor
     internal readonly uint[] WorkHeader;
     internal readonly uint WorkBase, SurfaceBase, ResultBase;
     internal int Pending = -1, Committed = -1;
-    internal bool Staged;
+    internal bool Staged, Retired;
     internal CoverageCarryHistoryLease FrameLease;
     CoverageCarryHistoryLease? historyLease;
     CoverageCarrySurface? historyStorage;

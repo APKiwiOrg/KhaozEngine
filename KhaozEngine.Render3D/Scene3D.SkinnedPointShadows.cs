@@ -58,7 +58,7 @@ public sealed partial class Scene3D
                         request.NearRadius, request.ExclusionMin, request.ExclusionMax))
                     return true;
         }
-        return false;
+        return PointRequestTouchesCoverage(request);
     }
 
     void ScheduleCurrentPointShadows(PointShadowSlots cache, PointShadowSettings settings, int frame)
@@ -105,7 +105,9 @@ public sealed partial class Scene3D
 
     void PrepareGpuSkinnedPointCasters(IGpuCommandList cl)
     {
-        if (_pointShadows is not { } renderer || _gpuSkinnedDraws.Count == 0) return;
+        if (_pointShadows is not { } renderer) return;
+        PrepareCoveragePointCasters(cl, renderer);
+        if (_gpuSkinnedDraws.Count == 0) return;
         renderer.EnsureSkinnedCasterCapacity((uint)_gpuSkinnedDraws.Count);
         foreach (GpuSkinnedDraw draw in _gpuSkinnedDraws)
         {
@@ -152,6 +154,7 @@ public sealed partial class Scene3D
             }
         }
 
+        draws += DrawCoveragePointFace(cl, renderer, packed, face, request);
         if (request.Mode == LightShadowMode.Dynamic)
             _pointDynamicSkinnedDrawCallsThisFrame += draws;
         else if (ReferenceEquals(packed.Atlas, _pointShadowTransientAtlas))

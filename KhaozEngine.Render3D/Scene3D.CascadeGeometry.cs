@@ -119,6 +119,7 @@ public sealed partial class Scene3D
                 }
         }
 
+        DrawCoverageCascades(cl, count);
         for (int c = 0; c < count; c++) DrawFoliageShadowCascade(cl, c);
 
         // GPU-skinned casters (the default path): one LIGHT-MATRIX slot per (cascade, caster), folding that

@@ -19,10 +19,9 @@ namespace KhaozEngine.Render3D
             if (!disposal.Release("drain", _gd.WaitForIdle)) disposal.ThrowIfFailed();
             // Optical fields retire into the queue before it flushes. Sharing the stage keeps later ordinals stable.
             // A retirement.<n> failure is therefore either the optical field invalidation or the queue flush.
-            if (!disposal.Release("retirement", () => { _water.Optics.Dispose(); _retired.Dispose(); })) disposal.ThrowIfFailed();
+            if (!disposal.Release("retirement", () => { _water.Optics.Dispose(); DisposeCoverage(); _retired.Dispose(); })) disposal.ThrowIfFailed();
             DisposalSafeForDependants = true;
             _disposalComplete = true;
-            DisposeCoverage();
             bool Release(string kind, Action? release) => disposal.Release(kind, release);
             DisposeFoliage(disposal);
             Release("post", _post.Dispose);

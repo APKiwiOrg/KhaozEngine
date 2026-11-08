@@ -13,6 +13,7 @@ public sealed partial class Scene3D
     void PrepareSkinnedDraws(IGpuCommandList cl, FrustumPlanes camFrustum, bool shadowMapActive,
         int shadowCascadeCount, bool hasPointShadowRequests)
     {
+        ValidateCoverageSurfaces();
         var skinnedItems = _skinnedInstances.Items;
         _cpuSkinnedVerts.Clear();
         _cpuSkinnedInstances.Clear();
@@ -27,6 +28,7 @@ public sealed partial class Scene3D
             for (int i = 0; i < skinnedItems.Count; i++)
             {
                 var it = skinnedItems[i];
+                if (PublishedCoverage(it.Motion, it.Mesh) is not null) continue;
                 if (!_skinnedSlots.IsValid(it.Mesh.Index, it.Mesh.Generation)) continue;
                 var entry = _skinnedMeshes[it.Mesh.Index];
                 if (entry is null) continue;
@@ -45,6 +47,7 @@ public sealed partial class Scene3D
                     if (!it.ShadowOnly) _culledSkinnedInstances++;
                     continue;
                 }
+                MarkOrdinaryCoverage(it.Motion, it.Mesh);
                 if (visibleMain) _drawnSkinnedInstances++;
                 else if (!it.ShadowOnly) _culledSkinnedInstances++;
 
@@ -98,5 +101,6 @@ public sealed partial class Scene3D
             }
         }
         else SkipProfilePass(cl, "geometry.skinned-uploads");
+        RecordCoverageSurfaces(cl, camFrustum, shadowMapActive, shadowCascadeCount, hasPointShadowRequests);
     }
 }

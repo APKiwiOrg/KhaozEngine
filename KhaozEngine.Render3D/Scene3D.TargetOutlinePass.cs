@@ -150,6 +150,7 @@ public sealed partial class Scene3D
         int BoneCount)
     {
         public bool InteriorCutRequested { get; init; }
+        public MotionKey Motion { get; init; }
 
         public static MeshOutlinePart Rigid(
             MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement, bool cutInsideInteriors) =>
@@ -191,6 +192,8 @@ public sealed partial class Scene3D
                 }
                 if (!_skinnedSlots.IsValid(part.SkinnedMesh.Index, part.SkinnedMesh.Generation)) continue;
                 if (_skinnedMeshes[part.SkinnedMesh.Index] is not { } skinned) continue;
+                if (EnqueueCoverageOutline(part, skinned, drawIndex)) { drawIndex++; groupDraws++; continue; }
+                MarkOrdinaryCoverage(part.Motion, part.SkinnedMesh);
                 ReadOnlySpan<Matrix4x4> pose = CollectionsMarshal.AsSpan(_outlineBoneMatrices)
                     .Slice(part.BoneStart, part.BoneCount);
                 if (UseGpuSkinning)

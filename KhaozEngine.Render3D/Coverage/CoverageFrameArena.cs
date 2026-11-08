@@ -22,6 +22,13 @@ internal sealed class CoveragePreparation
     internal Matrix4x4 Model;
     internal CoverageStateKey StateKey;
     internal int EntryIndex, CommandCount;
+    internal ulong AttemptGeneration, PublicationGeneration, PublicationRevision;
+    internal object? View;
+    internal CoverageFailure Failure;
+    internal bool Raw, Published, OrdinaryEncoded, TokenFree;
+    internal int OutputSlot = -1, PreviousSlot = -1;
+    internal CoverageSurfaceRange Surface;
+    internal readonly CoverageSubmittedHistory History = new();
     internal CoveragePreparation(SkinnedHostCoverage owner, int bones, int materials)
     {
         Owner = owner;

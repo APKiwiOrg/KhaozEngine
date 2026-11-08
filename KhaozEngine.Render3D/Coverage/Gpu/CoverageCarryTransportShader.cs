@@ -126,8 +126,8 @@ internal static class CoverageCarryTransportShader
             vec3 position = covWork3(before);
             uint group = CovStaticWords[record+6u];
             int representative = int(CarryTableWords[group]);
-            float full = covRead(CarryTableWords[CovFrameWords[f+14u]+group]);
-            if (CovStaticWords[record+9u] != 0u && representative >= 0 && !covEqual(full,0.0)) {
+            float full = CovFrameWords[f+15u] != 0u ? 0.0 : covRead(CarryTableWords[CovFrameWords[f+14u]+group]);
+            if (CovFrameWords[f+15u] == 0u && CovStaticWords[record+9u] != 0u && representative >= 0 && !covEqual(full,0.0)) {
                 uint rep = covVertex(h,uint(representative));
                 int slot = covRegionSlot(f,int(CovStaticWords[rep+8u]));
                 if (slot >= 0) {

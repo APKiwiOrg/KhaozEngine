@@ -16,7 +16,7 @@ internal static class CoverageCarryPublicationShader
             bool live = vertex < CovFrameWords[f+6u];
             uvec3 ordered = uvec3(0u);
             if (live) {
-                uint selected = covRow(w,covCompletedFailure(w) ? 4u : 10u)+vertex*16u;
+                uint selected = covRow(w,(CovFrameWords[f+15u] != 0u || covCompletedFailure(w)) ? 4u : 10u)+vertex*16u;
                 uint current = CovFrameWords[f+2u]+vertex*16u;
                 [[dont_unroll]] for (uint field = 0u; field < 16u; field++)
                     CovCurrentWords[current+field] = CovWorkWords[selected+field];

@@ -65,6 +65,14 @@ internal sealed class CoverageCarryUniforms
         return true;
     }
 
+    internal bool TryPrepareRaw(ReadOnlySpan<Matrix4x4> palette, ReadOnlySpan<Matrix4x4> inverseBind,
+        in Matrix4x4 model, out CoverageFailure failure)
+    {
+        if (!CoverageCarryAdmission.TryActor(model, out _))
+            return Refuse(topology, CoverageFailureCode.UnsupportedTransform, 0, 0, 0, 0, out failure);
+        return TryPrepare(palette, inverseBind, model, [], out failure);
+    }
+
     internal static bool Refuse(CoverageRefinement topology, CoverageFailureCode code, in CoverageCommandPose command,
         out CoverageFailure failure) => Refuse(topology, code, command.EquipmentInstanceId, command.Id, 0, 0, out failure);
 

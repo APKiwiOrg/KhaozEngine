@@ -30,6 +30,85 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
         unsupported = !device.Capabilities.SupportsCompute || !device.Capabilities.SupportsCompletionFences;
     }
     internal int SlotsPerActor { get; private set; }
+    internal bool DeviceRefused => unsupported;
+    internal void RefuseDevice() { unsupported = true; AbandonRecording(); }
+
+    internal void ReserveOwner(SkinnedHostCoverage owner)
+    {
+        if (SlotsPerActor == 0) Reserve(0, 0, 0, 0);
+        if (unsupported || !EnsurePipelines()) return;
+        PollCompleted();
+        var topology = owner.Topology;
+        if (ReusableActor(owner) < 0)
+            Reserve(actors.Count + 1, checked(sources + topology.SourceVertexCount),
+                checked(vertices + topology.VertexCount), checked(triangles + topology.TriangleCount));
+        if (!TryRegister(owner, out _, out var failure)) throw new CoverageFrameStateException(failure);
+    }
+
+    int ReusableActor(SkinnedHostCoverage owner)
+    {
+        var topology = owner.Topology;
+        for (int i = 0; i < actors.Count; i++)
+        {
+            var old = actors[i];
+            var prior = old.Owner.Topology;
+            if (!old.Retired || old.Pending >= 0 || topology.SourceVertexCount > prior.SourceVertexCount
+                || topology.VertexCount > prior.VertexCount || topology.TriangleCount > prior.TriangleCount) continue;
+            bool free = true;
+            foreach (var slot in old.Slots) free &= slot.State == CoverageCarrySlotState.Free;
+            if (free) return i;
+        }
+        return -1;
+    }
+
+    internal bool TryStageRaw(SkinnedHostCoverage owner, int outputSlot, ReadOnlySpan<Matrix4x4> palette,
+        in Matrix4x4 model, out CoverageFailure failure)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this); owner.RequireThread();
+        var actor = Find(owner);
+        if (unsupported) return Refuse(owner, CoverageFailureCode.UnsupportedAdapter, out failure);
+        if (recorded || owner.Disposed || actor is null || actor.Pending != outputSlot || outputSlot < 0 || actor.Staged)
+            return Refuse(owner, CoverageFailureCode.StaleFrame, out failure);
+        if (!owner.Uniforms.TryPrepareRaw(palette, owner.InverseBind, model, out failure)) return false;
+        CoverageCarryUpload.Frame(actor, -1, owner.Uniforms.ComposedPalette, []);
+        actor.Staged = true; failure = default; return true;
+    }
+
+    internal void CancelOutput(SkinnedHostCoverage owner)
+    {
+        var actor = Find(owner);
+        if (actor is null) return;
+        if (actor.Pending >= 0) actor.Slots[actor.Pending] = default;
+        actor.Pending = -1; actor.Staged = false;
+    }
+
+    internal void RetireActor(SkinnedHostCoverage owner)
+    {
+        var actor = Find(owner);
+        if (actor is null) return;
+        actor.Retired = true; actor.ReleaseHistory();
+        // An encoded pending output still belongs to its recording, even after actor disposal.
+        if (!recorded)
+        {
+            CancelOutput(owner);
+            if (actor.Committed >= 0)
+            {
+                actor.Slots[actor.Committed].State = CoverageCarrySlotState.Retained;
+                actor.Committed = -1;
+            }
+        }
+    }
+
+    internal void Discontinue(SkinnedHostCoverage owner, IGpuFence? completion)
+    {
+        var actor = Find(owner);
+        if (actor is null || actor.Committed < 0) return;
+        ref var slot = ref actor.Slots[actor.Committed];
+        slot.State = CoverageCarrySlotState.Retained;
+        slot.LastUse = submission; slot.Completion = completion; slot.Proof = submission;
+        actor.Committed = -1;
+        // Keep this generation lease reusable until migration or actor retirement.
+    }
 
     /// <summary>Cold aggregate capacity, grown only outside a recording. Existing submitted ranges keep their
     /// buffer references, and migration becomes history only after successful submission.</summary>
@@ -189,7 +268,8 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
                 output.State = CoverageCarrySlotState.Committed;
                 output.LastUse = serial; output.Completion = completion; output.Proof = serial;
                 actor.Committed = actor.Pending; actor.Pending = -1; actor.Staged = false;
-                actor.CommitHistory(storage!);
+                if (actor.Owner.Disposed) Discontinue(actor.Owner, completion);
+                else actor.CommitHistory(storage!);
             }
             if (completion is null) continue;
             for (int i = 0; i < actor.Slots.Length; i++)
@@ -202,12 +282,40 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
         recorded = false;
     }
 
+    /// <summary>A participant cannot distinguish an explicit abandon from a partially failed submission.
+    /// Keep its candidate until the explicit-discard callback or a later queue proof makes reuse safe.</summary>
+    internal void AbandonRecording(IGpuFence? completion)
+    {
+        ulong serial = HasPendingOutput() ? ++submission : submission;
+        foreach (var actor in actors)
+        {
+            if (actor.Pending >= 0)
+            {
+                ref var slot = ref actor.Slots[actor.Pending];
+                slot.State = CoverageCarrySlotState.Retained;
+                slot.LastUse = slot.Proof = serial; slot.Completion = completion; slot.Quarantined = true;
+            }
+            actor.Pending = -1; actor.Staged = false;
+            if (actor.Retired && actor.Committed >= 0)
+            {
+                actor.Slots[actor.Committed].State = CoverageCarrySlotState.Retained;
+                actor.Committed = -1;
+            }
+        }
+        recorded = false;
+    }
+
     internal void AbandonRecording()
     {
         foreach (var actor in actors)
         {
             if (actor.Pending >= 0) actor.Slots[actor.Pending] = default;
             actor.Pending = -1; actor.Staged = false;
+            if (actor.Retired && actor.Committed >= 0)
+            {
+                actor.Slots[actor.Committed].State = CoverageCarrySlotState.Retained;
+                actor.Committed = -1;
+            }
         }
         recorded = false;
     }
@@ -231,7 +339,14 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
         return false;
     }
     public void DiscardUnsubmitted(IGpuFence completion)
-    { ArgumentNullException.ThrowIfNull(completion); AbandonRecording(); }
+    {
+        ArgumentNullException.ThrowIfNull(completion);
+        AbandonRecording();
+        foreach (var actor in actors)
+            for (int i = 0; i < actor.Slots.Length; i++)
+                if (actor.Slots[i].Quarantined && ReferenceEquals(actor.Slots[i].Completion, completion))
+                    actor.Slots[i] = default;
+    }
     public void ReleaseCompleted(IGpuFence completion)
     {
         ArgumentNullException.ThrowIfNull(completion);
@@ -263,10 +378,11 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
     {
         actor = null;
         var t = owner.Topology;
-        if (actors.Count >= actorCapacity) return Refuse(owner, CoverageFailureCode.CapacityExceeded, out failure, actors.Count + 1, actorCapacity);
-        if ((long)sources + t.SourceVertexCount > sourceCapacity) return Refuse(owner, CoverageFailureCode.CapacityExceeded, out failure, t.SourceVertexCount, sourceCapacity - sources);
-        if ((long)vertices + t.VertexCount > vertexCapacity) return Refuse(owner, CoverageFailureCode.CapacityExceeded, out failure, t.VertexCount, vertexCapacity - vertices);
-        if ((long)triangles + t.TriangleCount > triangleCapacity) return Refuse(owner, CoverageFailureCode.CapacityExceeded, out failure, t.TriangleCount, triangleCapacity - triangles);
+        int reusable = ReusableActor(owner);
+        if (reusable < 0 && actors.Count >= actorCapacity) return Refuse(owner, CoverageFailureCode.CapacityExceeded, out failure, actors.Count + 1, actorCapacity);
+        if (reusable < 0 && (long)sources + t.SourceVertexCount > sourceCapacity) return Refuse(owner, CoverageFailureCode.CapacityExceeded, out failure, t.SourceVertexCount, sourceCapacity - sources);
+        if (reusable < 0 && (long)vertices + t.VertexCount > vertexCapacity) return Refuse(owner, CoverageFailureCode.CapacityExceeded, out failure, t.VertexCount, vertexCapacity - vertices);
+        if (reusable < 0 && (long)triangles + t.TriangleCount > triangleCapacity) return Refuse(owner, CoverageFailureCode.CapacityExceeded, out failure, t.TriangleCount, triangleCapacity - triangles);
         if (t.Map.Regions.Count > CoverageCarryLayout.MaxRegions) return Refuse(owner, CoverageFailureCode.CapacityExceeded, out failure, t.Map.Regions.Count, CoverageCarryLayout.MaxRegions);
         CoverageCarryGroup? group = null;
         foreach (var candidate in groups)
@@ -277,6 +393,16 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
             try { group.Reserve(actorCapacity, storage!, layouts, retired); }
             catch { group.Dispose(); throw; }
             groups.Add(group);
+        }
+        if (reusable >= 0)
+        {
+            var old = actors[reusable];
+            actor = new(owner, group, SlotsPerActor, old.WorkBase, old.SurfaceBase, old.ResultBase, storage!, retired);
+            device.UpdateBuffer(storage!.Work, CoverageCarryLayout.Bytes(actor.WorkBase), actor.WorkHeader);
+            actors[reusable] = actor;
+            if (!ReferenceEquals(old.Group, group) && !actors.Exists(a => ReferenceEquals(a.Group, old.Group)))
+            { groups.Remove(old.Group); retired.Retire(old.Group); }
+            failure = default; return true;
         }
         actor = new(owner, group, SlotsPerActor, (uint)workWords, checked((uint)vertices * (uint)SlotsPerActor * 16),
             (uint)actors.Count * 8, storage!, retired);

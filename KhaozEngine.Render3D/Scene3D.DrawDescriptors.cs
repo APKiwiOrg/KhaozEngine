@@ -85,6 +85,7 @@ namespace KhaozEngine.Render3D
                     "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
                     nameof(draw))
                 { ShadowOnly = draw.ShadowOnly, CastsShadows = draw.CastsShadows };
+            TryQueueCoverageFallback(draw, boneMatrices);
             SkinnedMeshHandle h = draw.Mesh;
             if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
             var entry = _skinnedMeshes[h.Index];

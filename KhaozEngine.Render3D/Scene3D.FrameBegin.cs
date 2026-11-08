@@ -26,12 +26,14 @@ public sealed partial class Scene3D
     /// <summary>Start a frame: apply pending scene changes, latch <see cref="RenderOrigin"/>, take the next frame index, and clear the per-frame draw queues.</summary>
     void BeginCore(GpuFrameSubmission? submission = null)
     {
+        if (_coverageRegistered) throw StaleCoverage(null);
         if (submission is not null) _retired.BeginFrame(submission);
         ApplyPendingShadowLayout();
         ApplyPendingPointShadowLayout();
         if (submission is null) _retired.BeginFrame();
         LatchRenderOrigin();
         BeginFrameView();   // one frame index per Begin (Scene3D.FrameView.cs)
+        BeginCoverageFrame(submission);
         _coverageArena.Begin();
         BeginRigidInstances();
         BeginFoliageFrame();

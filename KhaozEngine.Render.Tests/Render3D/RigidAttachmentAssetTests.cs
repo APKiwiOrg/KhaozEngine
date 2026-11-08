@@ -248,11 +248,14 @@ public sealed class RigidAttachmentAssetTests
 
 internal sealed class AttachmentAssetHarness : IDisposable
 {
-    readonly FakeGpuDevice _device = new();
+    readonly IGpuDevice _device;
     internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)_device.Factory;
     internal Scene3D Scene { get; }
-    internal AttachmentAssetHarness() => Scene = new Scene3D(_device,
-        new GpuOutputDescription(null, [GpuPixelFormat.R8G8B8A8UNorm]));
+    internal AttachmentAssetHarness(IGpuDevice? device = null)
+    {
+        _device = device ?? new FakeGpuDevice();
+        Scene = new Scene3D(_device, new GpuOutputDescription(null, [GpuPixelFormat.R8G8B8A8UNorm]));
+    }
     internal void DrainRetired()
     {
         for (int i = 0; i < GpuRetireQueue.DefaultFrameDelay; i++) Scene.Begin();

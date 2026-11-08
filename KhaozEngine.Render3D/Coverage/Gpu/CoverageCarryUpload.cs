@@ -82,6 +82,7 @@ internal static class CoverageCarryUpload
         frame[5] = (uint)topology.SourceVertexCount; frame[6] = (uint)topology.VertexCount; frame[7] = (uint)topology.TriangleCount;
         frame[8] = (uint)topology.PositionGroupCount; frame[11] = (uint)palette.Length; frame[12] = (uint)commands.Length;
         frame[13] = (uint)actor.Owner.Request.Generation; frame[14] = checked((uint)(topology.PositionGroupCount * (entryIndex + 1)));
+        frame[15] = entryIndex < 0 ? 1u : 0u;
         for (int bone = 0; bone < palette.Length; bone++) Matrix(palette[bone], frame[(16 + bone * 16)..]);
         int commandBase = 16 + palette.Length * 16, regionBase = commandBase + 4 * CoverageCarryLayout.CommandWords;
         frame.Slice(regionBase, CoverageCarryLayout.MaxRegions).Fill(uint.MaxValue);

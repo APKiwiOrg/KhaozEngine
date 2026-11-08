@@ -91,6 +91,7 @@ namespace KhaozEngine.Render3D
         void PrepareSubsystems(bool optics)
         {
             using var phase = ProfileCpu("cpu.water.prepare");
+            PrepareCoverageFrame();
             EnsurePointLightCapacity();
             ValidateWaterColumnInputs();
             EnsureWaterCausticCapacity();

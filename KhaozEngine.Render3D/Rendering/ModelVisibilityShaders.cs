@@ -8,10 +8,10 @@ namespace KhaozEngine.Render3D.Rendering;
 /// <summary>Owns layout-selected visibility variants without changing the base or motion programs.</summary>
 internal sealed class ModelVisibilityShaders : IDisposable
 {
-    readonly Dictionary<(string Vertex, string Fragment, bool Motion, bool Preserve), IGpuShaderSet> _sets = new();
+    readonly Dictionary<(string Vertex, string Fragment, bool Motion, bool Preserve, bool Precise), IGpuShaderSet> _sets = new();
 
     internal bool TrySelect(IGpuResourceFactory factory, in GpuOutputDescription outputs,
-        string vertex, string fragment, bool preserve, out IGpuShaderSet shaders)
+        string vertex, string fragment, bool preserve, out IGpuShaderSet shaders, GpuShaderCompileOptions options = default)
     {
         if (!ShadowVisibilityTargets.HasVisibility(outputs))
         {
@@ -19,14 +19,14 @@ internal sealed class ModelVisibilityShaders : IDisposable
             shaders = null!;
             return false;
         }
-        var key = (vertex, fragment, MotionMath.IsTemporal(outputs), preserve);
+        var key = (vertex, fragment, MotionMath.IsTemporal(outputs), preserve, options.PreciseMath);
         if (_sets.TryGetValue(key, out IGpuShaderSet? found))
         {
             shaders = found;
             return true;
         }
         shaders = factory.CreateShadersFromSpirv(vertex,
-            ShadowVisibilityTargets.Fragment(fragment, key.Item3, preserve));
+            ShadowVisibilityTargets.Fragment(fragment, key.Item3, preserve), options);
         _sets.Add(key, shaders);
         return true;
     }

@@ -136,7 +136,7 @@ public class SqliteSchemaRefusalTests
             await SqliteCatalogResetHarness.Seed(store, "one", "two");
         }
         // Reset inventories tables. A view and its INSTEAD OF trigger survive those drops.
-        // The trigger's side write makes the rollback assertion fail if it escapes the transaction.
+        // The full snapshot includes view-backed metadata, host epoch bytes and the trigger's side write.
         database.Execute(FormattableString.Invariant($"""
             DROP TABLE catalog_metadata;
             CREATE TABLE host_epoch(store_epoch);

@@ -316,7 +316,7 @@ public class SqliteCatalogResetTests
             () => SqliteCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "content release"));
 
-        // Named, so this test cannot quietly start passing on a failure that happens BEFORE the drop.
+        // The snapshot includes complete host rows, so a changed id or version cannot escape rollback.
         Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal(19, failed.SqliteErrorCode);
         Assert.Equal(SQLitePCL.raw.SQLITE_CONSTRAINT_FOREIGNKEY, failed.SqliteExtendedErrorCode);
@@ -326,9 +326,6 @@ public class SqliteCatalogResetTests
         Assert.Equal(1L, database.Scalar("SELECT COUNT(*) FROM catalog_version;"));
         Assert.Equal(2L, database.Scalar("SELECT COUNT(*) FROM catalog_row;"));
         Assert.Equal(auditsBefore, database.Scalar("SELECT COUNT(*) FROM catalog_audit;"));
-
-        // The host's own table and its row came back with everything else.
-        Assert.Equal(1L, database.Scalar("SELECT version_number FROM host_release_log;"));
 
         // Not merely present: still the schema a production host opens under ValidateOnly.
         using var reopened = new SqliteContentAuthoringStore(

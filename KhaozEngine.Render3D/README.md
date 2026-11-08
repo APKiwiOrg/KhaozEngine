@@ -1827,6 +1827,30 @@ including protected vertices. Shared position groups use one canonical recipe. A
 `Interpolate` wrapper throws `CoverageInterpolationStateException` with the same `Failure` and
 public `Reason`, preserving its `InvalidOperationException` base.
 
+The internal headless `CoverageCarryReference.TryCarry` applies a selected recession table row to
+the current source-skinned, fixed-refinement surface. `CoverageCarryUniforms` composes inverse
+binds with the current palette and derives each current command's model-space recession direction
+from the coverage frame and inverse actor frame. This preparation evaluates no posed geometry.
+Commands retain their structured host, equipment and command refusal context. No exact
+conformation, face correction, runtime membership check or certificate workspace is involved.
+
+Carry uses the retained scalar binary32 graph. Every operand and result at or below the smallest
+normal magnitude is flushed to signed zero, including the smallest normal itself (inclusive B38).
+Scalar multiplication and subtraction round separately. At full transition weight the stored
+scalar is applied directly. Other nonzero weights multiply the stored scalar once. Active aliases
+use the selected representative's current position. Protected vertices, inactive regions, zero
+recessions and either zero weight sign retain their own current before records. Numeric position
+equality also preserves the entire before record. Moved records regather current normals and
+tangents in frozen corner order, preserving absent authored directions and tangent W.
+
+`CoverageCarryScratch` reserves all source, refined and gather storage cold. Warm palette
+preparation, carry and holes allocate no managed storage. Entry `-1` successfully publishes the
+current uncovered pose. Other application refusals leave caller output untouched. `TableHole` is
+the preparation refusal for a missing state row, allowing explicit submission of the ordinary host.
+`TableIdentityMismatch` distinguishes an incompatible table layout. The internal carry entry point
+checks group counts and representative ownership. Complete digest authentication belongs to host
+binding before application, including the configuration, refinement, arithmetic and state schema.
+
 `GltfLoader.LoadCoverageSource(glb, identity)` records the rigid importer's displayed, welded
 positions for every node occurrence. Rigid triangle-corner records are distinct from final refined
 host vertices and may outnumber them. Their snapshot is bounded by the supplied position count,

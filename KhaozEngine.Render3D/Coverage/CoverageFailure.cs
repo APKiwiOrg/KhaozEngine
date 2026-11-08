@@ -21,6 +21,8 @@ public enum CoverageFailureCode
     CapacityExceeded = 12,
     StaleFrame = 13,
     UnsupportedAdapter = 14,
+    TableHole = 15,
+    TableIdentityMismatch = 16,
 }
 
 /// <summary>Immutable, allocation-free result of a coverage preparation or validation step. A refusal names the host,
@@ -32,7 +34,7 @@ public readonly record struct CoverageFailure
 
     public CoverageFailure(CoverageFailureCode code, string? hostIdentity, ulong equipmentInstanceId, uint commandId, int count, int limit)
     {
-        if (code is <= CoverageFailureCode.None or > CoverageFailureCode.UnsupportedAdapter)
+        if (code is <= CoverageFailureCode.None or > CoverageFailureCode.TableIdentityMismatch)
             throw new ArgumentOutOfRangeException(nameof(code), code, "A refusal requires a defined failure code. Use Success for no failure.");
         ArgumentOutOfRangeException.ThrowIfNegative(count);
         ArgumentOutOfRangeException.ThrowIfNegative(limit);

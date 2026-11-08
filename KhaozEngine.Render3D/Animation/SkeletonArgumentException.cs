@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 
 namespace KhaozEngine.Render3D;
 
@@ -47,6 +49,6 @@ public sealed class SkeletonArgumentException : ArgumentException
     public IReadOnlyList<string>? KnownNames
     {
         get => _knownNames;
-        init => _knownNames = value is null ? null : new List<string>(value).AsReadOnly();
+        init => _knownNames = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 }

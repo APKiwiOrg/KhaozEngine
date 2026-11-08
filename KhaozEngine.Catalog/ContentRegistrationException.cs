@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace KhaozEngine.Catalog;
 
@@ -103,20 +104,20 @@ public sealed class ContentRegistrationException : Exception
     public IReadOnlyList<string>? FieldNames
     {
         get => _fieldNames;
-        init => _fieldNames = value is null ? null : ImmutableArray.CreateRange(value);
+        init => _fieldNames = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The schema fields the codec omits, as an owned read-only snapshot.</summary>
     public IReadOnlyList<string>? MissingFields
     {
         get => _missingFields;
-        init => _missingFields = value is null ? null : ImmutableArray.CreateRange(value);
+        init => _missingFields = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The codec fields the schema omits, as an owned read-only snapshot.</summary>
     public IReadOnlyList<string>? ExtraFields
     {
         get => _extraFields;
-        init => _extraFields = value is null ? null : ImmutableArray.CreateRange(value);
+        init => _extraFields = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 }

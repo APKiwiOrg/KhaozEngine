@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace KhaozEngine.Gpu.Vulkan;
 
@@ -29,13 +30,13 @@ public sealed class VulkanBackendCreationStateException : InvalidOperationExcept
     public IReadOnlyList<string>? CandidateNames
     {
         get => _candidateNames;
-        init => _candidateNames = value is null ? null : ImmutableArray.CreateRange(value);
+        init => _candidateNames = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>An exception-owned read-only snapshot of candidate rejections at the refused creation operation.</summary>
     public IReadOnlyList<string?>? CandidateRejections
     {
         get => _candidateRejections;
-        init => _candidateRejections = value is null ? null : ImmutableArray.CreateRange(value);
+        init => _candidateRejections = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 }

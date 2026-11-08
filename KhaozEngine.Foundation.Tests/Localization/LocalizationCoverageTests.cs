@@ -99,6 +99,28 @@ namespace KhaozEngine.Tests.Localization
             Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)finding.ActualIndices!).SyncRoot);
         }
 
+        // W7-S1 regression in 45e770def. Reassignment must retain the earlier record equality contract.
+        [Theory]
+        [InlineData(nameof(LocalizationCoverageFinding.MissingKeys))]
+        [InlineData(nameof(LocalizationCoverageFinding.ExpectedIndices))]
+        [InlineData(nameof(LocalizationCoverageFinding.ActualIndices))]
+        public void FindingCollectionReassignment_KeepsDistinctRecordIdentity(string property)
+        {
+            var original = new LocalizationCoverageFinding(LocalizationCoverageRefusal.PlaceholderSetMismatch)
+            { MissingKeys = ["menu.quit"], ExpectedIndices = [0], ActualIndices = [1] };
+            LocalizationCoverageFinding reassigned = property switch
+            {
+                nameof(LocalizationCoverageFinding.MissingKeys) => original with { MissingKeys = original.MissingKeys },
+                nameof(LocalizationCoverageFinding.ExpectedIndices) => original with { ExpectedIndices = original.ExpectedIndices },
+                nameof(LocalizationCoverageFinding.ActualIndices) => original with { ActualIndices = original.ActualIndices },
+                _ => throw new ArgumentOutOfRangeException(nameof(property)),
+            };
+
+            Assert.Equal(original, original with { });
+            Assert.NotEqual(original, reassigned);
+            Assert.Equal(2, new HashSet<LocalizationCoverageFinding> { original, reassigned }.Count);
+        }
+
         [Fact]
         public void Keys_ExtractsConstStrings()
             => Assert.Equal(new[] { "menu.play", "menu.quit", "hud.score", "hud.wave" }, LocalizationCoverage.Keys(typeof(ConstKeys)));

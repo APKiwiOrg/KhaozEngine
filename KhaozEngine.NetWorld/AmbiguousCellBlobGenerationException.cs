@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace KhaozEngine.NetWorld;
 
@@ -28,7 +29,7 @@ public sealed class AmbiguousCellBlobGenerationException : InvalidOperationExcep
                "CellBlobMigrationOptions.AssumedWireGeneration) to the generation this save was written at.")
     {
         SchemaLabel = schemaLabel;
-        CandidateGenerations = ImmutableArray.CreateRange(candidateGenerations ?? Array.Empty<int>());
+        CandidateGenerations = ImmutableArray.Create((candidateGenerations ?? Array.Empty<int>()).ToArray());
     }
 
     /// <summary>The schema the body was being read as, in the same words the migration reports elsewhere.</summary>

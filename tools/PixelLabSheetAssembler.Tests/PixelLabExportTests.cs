@@ -1,3 +1,5 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -85,6 +87,19 @@ public class PixelLabExportTests
         Assert.Equal(AssemblyRefusal.AnimationNotFound, ex.Reason);
         Assert.Equal("running", ex.Animation);
         Assert.Equal(new[] { "walking" }, ex.AvailableAnimations);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)ex.AvailableAnimations!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((ICollection)ex.AvailableAnimations!).SyncRoot);
+    }
+
+    [Fact]
+    public void Available_animations_are_an_owned_snapshot()
+    {
+        string[] source = ["walking", "idle"];
+        var failure = new AssemblyException(AssemblyRefusal.AnimationNotFound, "refused")
+        { AvailableAnimations = source };
+        source[0] = "changed";
+
+        Assert.Equal(new[] { "walking", "idle" }, failure.AvailableAnimations);
     }
 
     [Theory]

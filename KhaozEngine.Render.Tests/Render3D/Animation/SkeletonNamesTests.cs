@@ -140,6 +140,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
 
             Assert.NotNull(error.KnownNames);
             Assert.Equal(new[] { "root", "hips" }, error.KnownNames);
+            Assert.Throws<NotSupportedException>(() => ((ICollection)error.KnownNames).SyncRoot);
             if (error.KnownNames is IList<string> list)
                 Assert.Throws<NotSupportedException>(() => list[0] = "changed");
             if (error.KnownNames is ICollection<string> collection)

@@ -97,4 +97,5 @@ first finding's reason. A coverage failure also sets `BaseName` (the `ResourceMa
 | `PlaceholderSetMismatch` | a translation whose placeholder indices differ from its neutral template's, one finding per key | finding `CultureName`, `Key`, `ExpectedIndices`, `ActualIndices` |
 
 `MissingKeys` follows the key universe's order, and both index lists are ascending. Every collection is an owned,
-read-only snapshot.
+read-only snapshot. Reassigning a nonempty collection, even from the same finding, creates a distinct
+snapshot identity for record equality. A `with` copy without collection reassignment retains equality.

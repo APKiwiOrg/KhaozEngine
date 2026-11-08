@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using KhaozEngine.MapDoc;
 
 namespace KhaozEngine.MapEdit;
@@ -35,7 +36,7 @@ public sealed class MapMutationException : InvalidOperationException
     public IReadOnlyList<MapDocumentFinding>? Findings
     {
         get => _findings;
-        init => _findings = value is null ? null : ImmutableArray.CreateRange(value);
+        init => _findings = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     internal static MapMutationException FromFindings(IReadOnlyList<MapDocumentFinding> findings, string message)

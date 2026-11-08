@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 
 namespace PixelLabSheetAssembler;
 
@@ -35,8 +37,15 @@ public sealed class AssemblyException : Exception
     /// <summary>The first missing frame index of a strict gap.</summary>
     public int? FrameIndex { get; init; }
 
-    /// <summary>The animations the export does have, for <see cref="AssemblyRefusal.AnimationNotFound"/>.</summary>
-    public IReadOnlyList<string>? AvailableAnimations { get; init; }
+    IReadOnlyList<string>? _availableAnimations;
+
+    /// <summary>The animations the export does have, for <see cref="AssemblyRefusal.AnimationNotFound"/>,
+    /// copied as an owned read-only snapshot.</summary>
+    public IReadOnlyList<string>? AvailableAnimations
+    {
+        get => _availableAnimations;
+        init => _availableAnimations = value is null ? null : ImmutableArray.Create(value.ToArray());
+    }
 
     /// <summary>The input or frame path the refusal concerns, when it concerns one.</summary>
     public string? Path { get; init; }

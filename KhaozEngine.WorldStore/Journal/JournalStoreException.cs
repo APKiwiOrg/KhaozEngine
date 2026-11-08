@@ -51,7 +51,7 @@ public sealed class JournalStoreException : Exception
         Kind = kind;
         Certainty = certainty;
         Scope = scope;
-        this.streamKeys = ImmutableArray.CreateRange(copy);
+        this.streamKeys = ImmutableArray.Create(copy);
     }
 
     public JournalStoreFailureKind Kind { get; }

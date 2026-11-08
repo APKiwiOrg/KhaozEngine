@@ -57,6 +57,37 @@ public sealed class MapDocumentExceptionTests
         Assert.Equal(new[] { first, second }, refusal.Findings);
     }
 
+    // W7-S1 regression in 45e770def. Reassignment must not collapse findings in a HashSet.
+    [Theory]
+    [InlineData(nameof(MapDocumentFinding.ResourceIds))]
+    [InlineData(nameof(MapDocumentFinding.ExpectedResourceIds))]
+    [InlineData(nameof(MapDocumentFinding.SourceIds))]
+    [InlineData(nameof(MapDocumentFinding.SpaceIds))]
+    [InlineData(nameof(MapDocumentFinding.MarkerIds))]
+    [InlineData(nameof(MapDocumentFinding.SupportedVersions))]
+    public void Finding_collection_reassignment_keeps_distinct_record_identity(string property)
+    {
+        var original = new MapDocumentFinding(MapDocumentRefusal.AssetDependencyCycle, "cycle")
+        {
+            ResourceIds = ["resource"], ExpectedResourceIds = ["root"], SourceIds = ["source"],
+            SpaceIds = ["space"], MarkerIds = ["marker"], SupportedVersions = [1],
+        };
+        MapDocumentFinding reassigned = property switch
+        {
+            nameof(MapDocumentFinding.ResourceIds) => original with { ResourceIds = original.ResourceIds },
+            nameof(MapDocumentFinding.ExpectedResourceIds) => original with { ExpectedResourceIds = original.ExpectedResourceIds },
+            nameof(MapDocumentFinding.SourceIds) => original with { SourceIds = original.SourceIds },
+            nameof(MapDocumentFinding.SpaceIds) => original with { SpaceIds = original.SpaceIds },
+            nameof(MapDocumentFinding.MarkerIds) => original with { MarkerIds = original.MarkerIds },
+            nameof(MapDocumentFinding.SupportedVersions) => original with { SupportedVersions = original.SupportedVersions },
+            _ => throw new ArgumentOutOfRangeException(nameof(property)),
+        };
+
+        Assert.Equal(original, original with { });
+        Assert.NotEqual(original, reassigned);
+        Assert.Equal(2, new HashSet<MapDocumentFinding> { original, reassigned }.Count);
+    }
+
     [Fact]
     public void Resource_marker_and_source_ids_are_owned_read_only_snapshots()
     {

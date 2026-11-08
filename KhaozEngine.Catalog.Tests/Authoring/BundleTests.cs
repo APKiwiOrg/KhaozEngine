@@ -374,6 +374,16 @@ public class BundleTests
         Assert.Equal(path, refused.JsonPath);
     }
 
+    [Fact]
+    public void ANegativeSourceVersionKeepsItsArgumentContract()
+    {
+        ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ContentBundleJson.Read(ValidDocument().Replace("\"sourceVersion\": 0", "\"sourceVersion\": -1", StringComparison.Ordinal)));
+        Assert.Equal("sourceVersion", refused.ParamName);
+        Assert.Equal(-1, refused.ActualValue);
+        Assert.Equal(0, ContentBundleJson.Read(ValidDocument()).SourceVersion);
+    }
+
     /// <summary>
     /// One defect per row against <see cref="ValidDocument"/>, then the same member repaired. A range row's
     /// repair sits at the inclusive limit, and each path is rooted at <c>$</c> with zero-based indices.
@@ -382,7 +392,6 @@ public class BundleTests
     [InlineData("\"storeEpoch\": \"test\"", "\"epoch\": \"test\"", ContentAuthoringRefusal.BundleMemberRequired, "$.storeEpoch", null, null, "\"storeEpoch\": \"test\"")]
     [InlineData("\"storeEpoch\": \"test\"", "\"storeEpoch\": 5", ContentAuthoringRefusal.BundleMemberKindInvalid, "$.storeEpoch", JsonValueKind.Number, null, "\"storeEpoch\": \"test\"")]
     [InlineData("\"sourceVersion\": 0", "\"sourceVersion\": \"0\"", ContentAuthoringRefusal.BundleMemberKindInvalid, "$.sourceVersion", JsonValueKind.String, null, "\"sourceVersion\": 0")]
-    [InlineData("\"sourceVersion\": 0", "\"sourceVersion\": -1", ContentAuthoringRefusal.BundleSourceVersionNegative, "$.sourceVersion", null, -1, "\"sourceVersion\": 0")]
     [InlineData("\"sourceVersion\": 0", "\"sourceVersion\": 2147483648", ContentAuthoringRefusal.BundleInt32Unrepresentable, "$.sourceVersion", null, null, "\"sourceVersion\": 2147483647")]
     [InlineData("\"rules\": [", "\"spare\": [", ContentAuthoringRefusal.BundleMemberRequired, "$.rules", null, null, "\"rules\": [")]
     [InlineData("\"rows\": [", "\"rows\": null, \"spare\": [", ContentAuthoringRefusal.BundleMemberKindInvalid, "$.rows", JsonValueKind.Null, null, "\"rows\": [")]
@@ -422,7 +431,7 @@ public class BundleTests
         Assert.Equal(actualKind, refused.ActualJsonKind);
         Assert.Equal(actualInteger, refused.ActualInteger);
         bool typeIdRange = refusal == ContentAuthoringRefusal.BundleTypeIdOutsideRange;
-        Assert.Equal(typeIdRange ? 1 : refusal == ContentAuthoringRefusal.BundleSourceVersionNegative ? 0 : null, refused.MinimumInteger);
+        Assert.Equal(typeIdRange ? 1 : null, refused.MinimumInteger);
         Assert.Equal(typeIdRange ? 65535 : null, refused.MaximumInteger);
 
         ContentBundle repaired = ContentBundleJson.Read(document.Replace(original, control, StringComparison.Ordinal));

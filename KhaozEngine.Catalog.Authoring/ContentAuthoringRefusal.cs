@@ -49,13 +49,9 @@ public enum ContentAuthoringRefusal
     /// <c>MinimumInteger</c> (1) and <c>MaximumInteger</c> (65,535).</summary>
     BundleTypeIdOutsideRange,
 
-    /// <summary>Refuses a negative source version. Carries <c>JsonPath</c>, <c>ActualInteger</c> and
-    /// <c>MinimumInteger</c> (0).</summary>
-    BundleSourceVersionNegative,
-
     /// <summary>Refuses a field kind that is not a defined <see cref="ContentFieldKind"/> value. Carries
     /// <c>JsonPath</c> and <c>ActualInteger</c>.</summary>
-    BundleFieldKindUnknown,
+    BundleFieldKindUnknown = 11,
 
     /// <summary>Refuses a visibility that is not a defined <see cref="ContentVisibility"/> value. Carries
     /// <c>JsonPath</c> and <c>ActualInteger</c>.</summary>

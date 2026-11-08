@@ -150,40 +150,29 @@ public static class ContentBundleJson
             IReadOnlyList<ContentBundleRow> rows = ReadRows(root);
             IReadOnlyList<ContentFamily> families = ReadFamilies(root);
             IReadOnlyList<RemapRule> rules = ReadRules(root);
-            try
+            if (formatVersion == ContentBundle.CurrentFormatVersion)
             {
-                if (formatVersion == ContentBundle.CurrentFormatVersion)
+                // Format 1 is text free by contract, so a text section in one would be silently dropped.
+                if (root.TryGetProperty(ContentBundleTextJson.SectionName, out _))
                 {
-                    // Format 1 is text free by contract, so a text section in one would be silently dropped.
-                    if (root.TryGetProperty(ContentBundleTextJson.SectionName, out _))
+                    throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.BundleUnexpectedTextSection,
+                        FormattableString.Invariant(
+                            $"A format {ContentBundle.CurrentFormatVersion} bundle is text free by contract, and this one carries a '{ContentBundleTextJson.SectionName}' section. Declare format {ContentBundle.TextFormatVersion} for a text-bearing bundle."),
+                        default,
+                        0,
+                        ContentAuthoringException.BundleFormatReason)
                     {
-                        throw new ContentAuthoringException(
-                            ContentAuthoringRefusal.BundleUnexpectedTextSection,
-                            FormattableString.Invariant(
-                                $"A format {ContentBundle.CurrentFormatVersion} bundle is text free by contract, and this one carries a '{ContentBundleTextJson.SectionName}' section. Declare format {ContentBundle.TextFormatVersion} for a text-bearing bundle."),
-                            default,
-                            0,
-                            ContentAuthoringException.BundleFormatReason)
-                        {
-                            JsonPath = Member(RootPath, ContentBundleTextJson.SectionName),
-                            ActualFormatVersion = formatVersion,
-                        };
-                    }
-
-                    return new ContentBundle(formatVersion, storeEpoch, sourceVersion, types, rows, families, rules);
+                        JsonPath = Member(RootPath, ContentBundleTextJson.SectionName),
+                        ActualFormatVersion = formatVersion,
+                    };
                 }
 
-                return new ContentBundle(
-                    formatVersion, storeEpoch, sourceVersion, types, rows, families, rules, ContentBundleTextJson.Read(root));
+                return new ContentBundle(formatVersion, storeEpoch, sourceVersion, types, rows, families, rules);
             }
-            catch (ArgumentOutOfRangeException malformed) when (malformed.ParamName == nameof(sourceVersion) && malformed.ActualValue is int)
-            {
-                throw new ContentAuthoringException(ContentAuthoringRefusal.BundleSourceVersionNegative, malformed.Message,
-                    default, 0, ContentAuthoringException.BundleFormatReason, malformed)
-                {
-                    JsonPath = Member(RootPath, "sourceVersion"), ActualInteger = (int)malformed.ActualValue, MinimumInteger = 0,
-                };
-            }
+
+            return new ContentBundle(
+                formatVersion, storeEpoch, sourceVersion, types, rows, families, rules, ContentBundleTextJson.Read(root));
         }
     }
 

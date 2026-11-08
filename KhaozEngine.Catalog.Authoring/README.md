@@ -1270,7 +1270,6 @@ constructor, with its original argument exception retained as inner.
 | `BundleMemberKindInvalid` | A member has another JSON kind, or an array element is not an object | `JsonPath`, `ActualJsonKind` |
 | `BundleInt32Unrepresentable` | A number not written as a 32-bit integer literal, `formatVersion` included. `1.0` and `1e2` are refused | `JsonPath` |
 | `BundleInt64Unrepresentable` | A number not written as a 64-bit integer literal (`familyId`, a row's `number`). `1.0` and `1e2` are refused | `JsonPath` |
-| `BundleSourceVersionNegative` | A source version below 0 | `JsonPath` (`$.sourceVersion`), `ActualInteger`, `MinimumInteger` (0) |
 | `BundleTypeIdOutsideRange` | A type id outside 1 to 65,535 | `JsonPath`, `ActualInteger`, `MinimumInteger` (1), `MaximumInteger` (65,535) |
 | `BundleFieldKindUnknown` | An undefined `ContentFieldKind` | `JsonPath`, `ActualInteger` |
 | `BundleVisibilityUnknown` | An undefined `ContentVisibility` | `JsonPath`, `ActualInteger` |

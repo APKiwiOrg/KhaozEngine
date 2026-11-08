@@ -55,7 +55,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Theory]
-        [MemberData(nameof(AllPrimitivesForWinding))]
+        [MemberData(nameof(AllPrimitives))]
         public void Primitive_Vertex_Colors_Are_White(GltfMesh mesh)
         {
             Assert.NotEmpty(mesh.Vertices);
@@ -63,39 +63,7 @@ namespace KhaozEngine.Tests.Render3D
                 Assert.Equal(Vector4.One, v.Color);
         }
 
-        // --- shared invariants for every new primitive ---
-
-        public static System.Collections.Generic.IEnumerable<object[]> AllNewPrimitives()
-        {
-            yield return new object[] { MeshPrimitives.Cylinder() };
-            yield return new object[] { MeshPrimitives.Cylinder(capped: false) };
-            yield return new object[] { MeshPrimitives.Cone() };
-            yield return new object[] { MeshPrimitives.Cone(capped: false) };
-            yield return new object[] { MeshPrimitives.Pyramid() };
-            yield return new object[] { MeshPrimitives.Wedge() };
-            yield return new object[] { MeshPrimitives.Sphere() };
-            yield return new object[] { MeshPrimitives.Plane() };
-            yield return new object[] { MeshPrimitives.Plane(2f, 3f, 4, 5) };
-            yield return new object[] { MeshPrimitives.RoundedBox() };
-            yield return new object[] { MeshPrimitives.Capsule() };
-            yield return new object[] { MeshPrimitives.Torus() };
-        }
-
-        // every primitive carries a UV channel; for the bounded mappings (all of them) UVs stay in [0,1].
-        public static System.Collections.Generic.IEnumerable<object[]> AllPrimitives()
-        {
-            yield return new object[] { MeshPrimitives.Box() };
-            yield return new object[] { MeshPrimitives.Tile() };
-            yield return new object[] { MeshPrimitives.Cylinder() };
-            yield return new object[] { MeshPrimitives.Cone() };
-            yield return new object[] { MeshPrimitives.Pyramid() };
-            yield return new object[] { MeshPrimitives.Wedge() };
-            yield return new object[] { MeshPrimitives.Sphere() };
-            yield return new object[] { MeshPrimitives.Plane(2f, 3f, 4, 5) };
-            yield return new object[] { MeshPrimitives.RoundedBox() };
-            yield return new object[] { MeshPrimitives.Capsule() };
-            yield return new object[] { MeshPrimitives.Torus() };
-        }
+        // --- shared invariants for every primitive ---
 
         [Theory]
         [MemberData(nameof(AllPrimitives))]
@@ -110,7 +78,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Theory]
-        [MemberData(nameof(AllNewPrimitives))]
+        [MemberData(nameof(AllPrimitives))]
         public void Primitive_IndexCount_Divisible_By_3(GltfMesh mesh)
         {
             Assert.NotEmpty(mesh.Indices);
@@ -118,7 +86,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Theory]
-        [MemberData(nameof(AllNewPrimitives))]
+        [MemberData(nameof(AllPrimitives))]
         public void Primitive_Indices_Are_All_In_Range(GltfMesh mesh)
         {
             Assert.NotEmpty(mesh.Indices);
@@ -127,7 +95,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Theory]
-        [MemberData(nameof(AllNewPrimitives))]
+        [MemberData(nameof(AllPrimitives))]
         public void Primitive_Normals_Are_Unit_Length(GltfMesh mesh)
         {
             Assert.NotEmpty(mesh.Vertices);
@@ -499,8 +467,14 @@ namespace KhaozEngine.Tests.Render3D
             (nameof(MeshPrimitives.Plane), () => MeshPrimitives.Plane()),
         ];
 
-        public static System.Collections.Generic.IEnumerable<object[]> AllPrimitivesForWinding() =>
-            PrimitiveFactories.Select(factory => new object[] { factory.Build() });
+        // Every shipped factory, guarded by CanonicalCasesCoverEveryPrimitiveFactory, plus the parameters that
+        // change the generated topology.
+        public static System.Collections.Generic.IEnumerable<object[]> AllPrimitives() =>
+            PrimitiveFactories.Select(factory => factory.Build())
+                .Append(MeshPrimitives.Cylinder(capped: false))
+                .Append(MeshPrimitives.Cone(capped: false))
+                .Append(MeshPrimitives.Plane(2f, 3f, 4, 5))
+                .Select(mesh => new object[] { mesh });
 
         [Fact]
         public void CanonicalCasesCoverEveryPrimitiveFactory()
@@ -513,7 +487,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Theory]
-        [MemberData(nameof(AllPrimitivesForWinding))]
+        [MemberData(nameof(AllPrimitives))]
         public void Primitive_Winding_Matches_Stored_Normals(GltfMesh mesh)
         {
             AssertWindingMatchesNormals(mesh);

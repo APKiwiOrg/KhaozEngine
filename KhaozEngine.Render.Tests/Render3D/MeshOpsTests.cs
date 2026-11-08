@@ -55,9 +55,7 @@ namespace KhaozEngine.Tests.Render3D
             var before = box.Vertices.Select(v => v.Normal).ToArray();
             Assert.NotEmpty(before);
             _ = MeshOps.WithSmoothNormals(box);
-            Assert.Equal(before.Length, box.Vertices.Length);
-            for (int i = 0; i < box.Vertices.Length; i++)
-                Assert.Equal(before[i], box.Vertices[i].Normal);
+            Assert.Equal(before, box.Vertices.Select(v => v.Normal));
         }
 
         [Fact]
@@ -107,13 +105,17 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void RecomputeFlatNormals_Does_Not_Mutate_Input()
         {
+            // Not axis-aligned, so it differs from every flat normal of a box and a write into the input would show.
+            Vector3 stale = Vector3.Normalize(new Vector3(1f, 2f, 3f));
             var box = MeshPrimitives.Box();
-            var before = box.Vertices.Select(v => v.Normal).ToArray();
-            Assert.NotEmpty(before);
-            _ = MeshOps.RecomputeFlatNormals(box);
-            Assert.Equal(before.Length, box.Vertices.Length);
+            Assert.NotEmpty(box.Vertices);
             for (int i = 0; i < box.Vertices.Length; i++)
-                Assert.Equal(before[i], box.Vertices[i].Normal);
+                box.Vertices[i].Normal = stale;
+
+            var flat = MeshOps.RecomputeFlatNormals(box);
+
+            Assert.All(flat.Vertices, v => Assert.NotEqual(stale, v.Normal));
+            Assert.All(box.Vertices, v => Assert.Equal(stale, v.Normal));
         }
 
         [Fact]

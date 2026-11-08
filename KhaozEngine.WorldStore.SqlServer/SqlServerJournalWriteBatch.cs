@@ -419,7 +419,8 @@ internal static class SqlServerJournalWriteBatch
         for (int index = 0; index < streams.Length; index++)
             if (StringComparer.Ordinal.Equals(streams[index].StreamKey, streamKey))
                 return index;
-        // Commit validation requires every projection to name a touched stream before this private builder runs.
+        // JournalCommit validates membership and owns immutable stream, projection and event snapshots.
+        // Neither caller collections nor collection interface casts can invalidate it before this builder runs.
         throw new InvalidOperationException($"Projection stream '{streamKey}' is not touched by the operation.");
     }
 

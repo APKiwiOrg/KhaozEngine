@@ -28308,6 +28308,10 @@ listing seams. Their package READMEs cover schema modes
 and permissions. The complete public type and limit reference is in
 [`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
 
+Journal commits, initializations and stream mutations own immutable list snapshots, including nested events.
+Caller source changes, collection writes and `ICollection.SyncRoot` cannot bypass their validation. Receipt
+ranges and validated read pages use the same owned snapshot shape.
+
 Journal store failures retain `Kind`, `Certainty`, `Scope` and the owned `StreamKeys` snapshot. The additive
 `JournalStoreException.Reason` names a `JournalStoreRefusal` rule, with typed stream, operation, version, limit or
 stored-row coordinates. Inspect those members instead of parsing messages. Consumer code can still use the

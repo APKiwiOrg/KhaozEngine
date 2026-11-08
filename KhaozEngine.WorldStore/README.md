@@ -256,6 +256,13 @@ Expected races use result statuses. Provider, transport, schema, and corruption 
 - `Certainty` is `DefinitelyNotCommitted`, `Unknown`, or `CommittedDataUnreadable`.
 - `Scope` is `OperationStreams` with exact `StreamKeys`, or `WholeStore` with no stream keys.
 
+The validated lists on `JournalCommit` (`StreamMutations`, `ProjectionWrites`), `JournalInitialization`
+(`ProjectionWrites`) and `JournalStreamMutation` (`Events`) own fresh immutable snapshots. Caller source changes,
+`IList<T>` and `IList` writes, and `ICollection.SyncRoot` cannot change the validated data before it reaches a
+store or its SQL batch builder. Publicly constructed receipt ranges, event pages, projection reads and stream
+pages use the same snapshot shape, so a caller cannot rewrite retained replay ranges or invalidate page rules.
+Validation order, sorting, bounds and the public `IReadOnlyList<T>` properties are unchanged.
+
 ### Refusals
 
 `JournalStoreStateException` derives from `InvalidOperationException` and requires a `JournalStoreRefusal`

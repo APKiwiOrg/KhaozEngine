@@ -1,19 +1,19 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.WorldStore.Journal;
 
 public sealed class JournalStreamMutation
 {
-    private readonly ReadOnlyCollection<JournalEvent> events;
+    private readonly IReadOnlyList<JournalEvent> events;
 
     public JournalStreamMutation(string streamKey, long expectedVersion, IReadOnlyList<JournalEvent> events)
     {
         StreamKey = JournalValidation.StreamKey(streamKey);
         JournalValidation.NonNegative(expectedVersion, nameof(expectedVersion));
         ExpectedVersion = expectedVersion;
-        this.events = Array.AsReadOnly(JournalValidation.CopyItems(events, JournalLimits.EngineMaximumEventsPerOperation, nameof(events)));
+        this.events = ImmutableArray.Create(JournalValidation.CopyItems(events, JournalLimits.EngineMaximumEventsPerOperation, nameof(events)));
     }
 
     public string StreamKey { get; }

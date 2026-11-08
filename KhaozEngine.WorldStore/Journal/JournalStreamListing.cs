@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.WorldStore.Journal;
 
@@ -81,7 +81,7 @@ public sealed class JournalStreamEntry
 /// does not.</summary>
 public sealed class JournalStreamPage
 {
-    private readonly ReadOnlyCollection<JournalStreamEntry> streams;
+    private readonly IReadOnlyList<JournalStreamEntry> streams;
 
     public JournalStreamPage(IReadOnlyList<JournalStreamEntry> streams, string? continuationKey)
     {
@@ -93,7 +93,7 @@ public sealed class JournalStreamPage
         }
         if (continuationKey is not null && (copy.Length == 0 || !StringComparer.Ordinal.Equals(continuationKey, copy[^1].StreamKey)))
             throw new ArgumentException("A continuation key must be the last listed stream key.", nameof(continuationKey));
-        this.streams = Array.AsReadOnly(copy);
+        this.streams = ImmutableArray.Create(copy);
         ContinuationKey = continuationKey;
     }
 

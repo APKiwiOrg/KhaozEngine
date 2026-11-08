@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.WorldStore.Journal;
 
@@ -8,7 +8,7 @@ public sealed class JournalInitialization
 {
     private readonly byte[] snapshotData;
     private readonly byte[] snapshotChecksum;
-    private readonly ReadOnlyCollection<JournalProjectionWrite> projectionWrites;
+    private readonly IReadOnlyList<JournalProjectionWrite> projectionWrites;
     private readonly byte[] resultData;
     private readonly byte[] resultChecksum;
 
@@ -40,7 +40,7 @@ public sealed class JournalInitialization
             if (i > 0 && StringComparer.Ordinal.Equals(projections[i - 1].SectionName, projections[i].SectionName))
                 throw new ArgumentException($"Duplicate projection section '{projections[i].SectionName}'.", nameof(projectionWrites));
         }
-        this.projectionWrites = Array.AsReadOnly(projections);
+        this.projectionWrites = ImmutableArray.Create(projections);
 
         ResultSchema = JournalValidation.Identity(resultSchema, nameof(resultSchema), JournalLimits.EngineMaximumIdentityCharacters);
         JournalValidation.Positive(resultSchemaVersion, nameof(resultSchemaVersion));

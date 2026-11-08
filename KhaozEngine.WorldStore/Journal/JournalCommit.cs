@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.WorldStore.Journal;
 
 public sealed class JournalCommit
 {
-    private readonly ReadOnlyCollection<JournalStreamMutation> streamMutations;
-    private readonly ReadOnlyCollection<JournalProjectionWrite> projectionWrites;
+    private readonly IReadOnlyList<JournalStreamMutation> streamMutations;
+    private readonly IReadOnlyList<JournalProjectionWrite> projectionWrites;
     private readonly byte[] resultData;
     private readonly byte[] resultChecksum;
 
@@ -42,8 +42,8 @@ public sealed class JournalCommit
         ResultSchemaVersion = resultSchemaVersion;
         this.resultData = JournalValidation.CopyBytes(resultData, JournalLimits.EngineMaximumResultBytes, nameof(resultData));
         resultChecksum = JournalValidation.Hash(this.resultData);
-        this.streamMutations = Array.AsReadOnly(streams);
-        this.projectionWrites = Array.AsReadOnly(projections);
+        this.streamMutations = ImmutableArray.Create(streams);
+        this.projectionWrites = ImmutableArray.Create(projections);
         Validate();
     }
 

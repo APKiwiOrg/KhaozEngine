@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using KhaozEngine.WorldStore.Journal;
 using Xunit;
 
@@ -112,7 +113,7 @@ public sealed class JournalValueOwnershipTests
     }
 
     [Fact]
-    public void Commit_owns_caller_collections_and_result_bytes()
+    public async Task Commit_owns_caller_collections_and_result_bytes()
     {
         var streams = new List<JournalStreamMutation> { JournalTestData.Mutation("stream/a") };
         var projections = new List<JournalProjectionWrite> { JournalTestData.Projection("stream/a") };
@@ -126,6 +127,47 @@ public sealed class JournalValueOwnershipTests
         Assert.Single(commit.StreamMutations);
         Assert.Single(commit.ProjectionWrites);
         Assert.Equal(new byte[] { 7, 8 }, commit.ResultData.ToArray());
+        // W7-B18b: replacing a validated projection through SyncRoot bypassed membership checks.
+        AssertReadOnly(commit.StreamMutations, JournalTestData.Mutation("untouched"));
+        AssertReadOnly(commit.ProjectionWrites, JournalTestData.Projection("untouched"));
+        var store = new InMemoryMutationJournalStore();
+        await store.InitializeAsync(new JournalInitialization(new(Guid.NewGuid(), "scope", "initialize", []),
+            "stream/a", "snapshot", 1, [], [], "result", 1, []));
+        Assert.Equal(JournalCommitStatus.Applied, (await store.CommitAsync(commit)).Status);
+        JournalProjectionSection saved = Assert.Single((await store.ReadProjectionsAsync(new("stream/a"))).Sections);
+        Assert.Equal("stream/a", saved.StreamKey);
+        Assert.Equal(new byte[] { 2 }, saved.Data.ToArray());
+        Assert.Empty((await store.ReadProjectionsAsync(new("untouched"))).Sections);
+    }
+
+    [Fact]
+    public async Task Initialization_projection_lists_cannot_change_after_validation()
+    {
+        JournalProjectionWrite[] source = [JournalTestData.Projection()];
+        var initialization = JournalTestData.Initialization(projections: source);
+        source[0] = JournalTestData.Projection("untouched");
+        AssertReadOnly(initialization.ProjectionWrites, source[0]);
+        var store = new InMemoryMutationJournalStore();
+        Assert.Equal(JournalInitializeStatus.Initialized, (await store.InitializeAsync(initialization)).Status);
+        JournalProjectionSection saved = Assert.Single((await store.ReadProjectionsAsync(new("player/1"))).Sections);
+        Assert.Equal("player/1", saved.StreamKey);
+        Assert.Equal(new byte[] { 2 }, saved.Data.ToArray());
+        Assert.Empty((await store.ReadProjectionsAsync(new("untouched"))).Sections);
+    }
+
+    [Fact]
+    public async Task Mutation_event_lists_cannot_change_the_payload_written_to_storage()
+    {
+        JournalEvent[] source = [JournalTestData.Event(payload: [3])];
+        var mutation = JournalTestData.Mutation(events: source);
+        source[0] = JournalTestData.Event(payload: [9]);
+        AssertReadOnly(mutation.Events, source[0]);
+        var store = new InMemoryMutationJournalStore();
+        await store.InitializeAsync(JournalTestData.Initialization());
+        var commit = new JournalCommit(new(Guid.NewGuid(), "scope", "commit", []), [mutation], [], "result", 1, []);
+        Assert.Equal(JournalCommitStatus.Applied, (await store.CommitAsync(commit)).Status);
+        JournalStoredEvent saved = Assert.Single((await store.ReadEventsAsync(new("player/1", 0, null, 128, 1024))).Events);
+        Assert.Equal(new byte[] { 3 }, saved.Payload.ToArray());
     }
 
     [Fact]
@@ -158,6 +200,30 @@ public sealed class JournalValueOwnershipTests
         Assert.Single(receipt.Streams);
         Assert.Equal(new byte[] { 3, 4 }, page.Events.Single().Payload.ToArray());
         Assert.Equal(new byte[] { 5, 6 }, read.Sections.Single().Data.ToArray());
+        AssertReadOnly(receipt.Streams, new JournalStreamVersionRange("untouched", 0, 1, 1));
+        AssertReadOnly(page.Events, new JournalStoredEvent("untouched", 1, Guid.NewGuid(), 0, "event", 1, [9], DateTimeOffset.UnixEpoch));
+        AssertReadOnly(read.Sections, new JournalProjectionSection("untouched", "bag", 1, "bag", 1, [9], DateTimeOffset.UnixEpoch));
+    }
+
+    [Fact]
+    public void Stream_page_order_cannot_change_after_validation()
+    {
+        JournalStreamEntry[] source = [new("stream", 1)];
+        var page = new JournalStreamPage(source, "stream");
+        source[0] = new("untouched", 2);
+        AssertReadOnly(page.Streams, source[0]);
+        Assert.Equal("stream", Assert.Single(page.Streams).StreamKey);
+        Assert.Equal("stream", page.ContinuationKey);
+    }
+
+    private static void AssertReadOnly<T>(IReadOnlyList<T> values, T replacement)
+    {
+        Assert.NotEmpty(values);
+        T[] before = values.ToArray();
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)values).SyncRoot);
+        Assert.Throws<NotSupportedException>(() => ((IList<T>)values)[0] = replacement);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.IList)values)[0] = replacement);
+        Assert.Equal(before, values);
     }
 
     [Fact]

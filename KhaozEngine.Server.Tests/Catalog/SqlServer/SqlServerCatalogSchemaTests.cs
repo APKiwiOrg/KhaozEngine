@@ -58,14 +58,19 @@ public class SqlServerCatalogSchemaTests
     public async Task ValidateOnlyOnAnEmptyDatabaseRefusesAndNamesTheMigration()
     {
         using var database = new SqlServerCatalogDatabase();
+        string before = SqlServerCatalogSnapshot.Read(database.ConnectionString);
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
 
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("missing", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaMissing, refused.Refusal);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(before, SqlServerCatalogSnapshot.Read(database.ConnectionString));
+        Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM sys.tables WHERE name LIKE N'catalog[_]%';"));
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     [CatalogSqlServerFact]
@@ -97,13 +102,19 @@ public class SqlServerCatalogSchemaTests
             ALTER TABLE dbo.catalog_row ADD CONSTRAINT ck_catalog_row_retired_v2 CHECK (retired IN (0, 1));
             """);
 
+        string before = SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog_row.ck_catalog_row_retired", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaObjectMissing, refused.Refusal);
+        Assert.Equal("check constraint:catalog_row.ck_catalog_row_retired", refused.ObjectName);
+        Assert.Equal(4, refused.ExpectedVersion);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(before, SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
+        database.Execute("ALTER TABLE dbo.catalog_row DROP CONSTRAINT ck_catalog_row_retired_v2; ALTER TABLE dbo.catalog_row ADD CONSTRAINT ck_catalog_row_retired CHECK (retired IN (0, 1));");
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     [CatalogSqlServerFact]
@@ -123,7 +134,11 @@ public class SqlServerCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("unknown-type", refused.Reason);
-        Assert.Contains(CatalogFixtures.ThingTypeKey, refused.Message, StringComparison.Ordinal);
-        Assert.Contains("renamed_thing", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.TypeIdentityMismatch, refused.Refusal);
+        Assert.Equal(new ContentTypeId(1024), refused.Type);
+        Assert.Equal(1024L, refused.StoredTypeId);
+        Assert.Equal("thing", refused.StoredTypeKey);
+        Assert.Equal("renamed_thing", refused.RegisteredTypeKey);
+        await created.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 }

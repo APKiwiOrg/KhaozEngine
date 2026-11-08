@@ -274,7 +274,7 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
         lock (gate)
         {
             if (!state.Streams.TryGetValue(streamKey, out StreamState? stream)) return Task.FromResult<JournalSnapshot?>(null);
-            if (!stream.Snapshot.HasValidChecksum) throw Corrupt(streamKey, "Stored snapshot checksum does not match its data.");
+            if (!stream.Snapshot.HasValidChecksum) throw Corrupt(JournalStoreRefusal.SnapshotChecksumMismatch, streamKey, "Stored snapshot checksum does not match its data.");
             return Task.FromResult<JournalSnapshot?>(stream.Snapshot);
         }
     }
@@ -307,7 +307,7 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
                     stoppedByByteLimit = true;
                     break;
                 }
-                if (!storedEvent.HasValidChecksum) throw Corrupt(read.StreamKey, "Stored event checksum does not match its payload.");
+                if (!storedEvent.HasValidChecksum) throw Corrupt(JournalStoreRefusal.EventChecksumMismatch, read.StreamKey, "Stored event checksum does not match its payload.", streamVersion: storedEvent.StreamVersion);
                 page.Add(storedEvent);
                 bytes = nextBytes;
             }
@@ -341,7 +341,7 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
                 .OrderBy(value => value.SectionName, StringComparer.Ordinal)
                 .ToArray();
             foreach (JournalProjectionSection section in sections)
-                if (!section.HasValidChecksum) throw Corrupt(query.StreamKey, "Stored projection checksum does not match its data.");
+                if (!section.HasValidChecksum) throw Corrupt(JournalStoreRefusal.ProjectionChecksumMismatch, query.StreamKey, "Stored projection checksum does not match its data.", sectionName: section.SectionName);
             return Task.FromResult(new JournalProjectionRead(reset ? JournalProjectionReadStatus.ResetRequired : JournalProjectionReadStatus.Success, query.StreamKey, stream.HeadVersion, sections, cursor));
         }
     }
@@ -371,7 +371,8 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
                 compaction.SnapshotChecksum.ToArray(),
                 now);
             Invoke(JournalTestHookPhase.SnapshotWrittenBeforeVerification);
-            if (!snapshot.HasValidChecksum) throw Corrupt(compaction.StreamKey, "Replacement snapshot checksum does not match its data.");
+            if (!snapshot.HasValidChecksum) throw Corrupt(JournalStoreRefusal.SnapshotChecksumMismatch,
+                compaction.StreamKey, "Replacement snapshot checksum does not match its data.");
             Invoke(JournalTestHookPhase.SnapshotVerifiedBeforePrune);
 
             long retainedFloor = current.RetainedFloor;
@@ -515,12 +516,21 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
         int bytes = 0;
         foreach (JournalProjectionSection projection in projections.Values) bytes = checked(bytes + projection.Data.Length);
         if (projections.Count <= limits.ProjectionSectionsPerStream && bytes <= limits.AggregateProjectionBytesPerStream) return;
+        bool countExceeded = projections.Count > limits.ProjectionSectionsPerStream;
         throw new JournalStoreException(
+            countExceeded ? JournalStoreRefusal.ProjectionSectionCountExceeded : JournalStoreRefusal.ProjectionByteCountExceeded,
             JournalStoreFailureKind.ConstraintViolation,
             JournalStoreFailureCertainty.DefinitelyNotCommitted,
             JournalStoreFailureScope.OperationStreams,
             new[] { streamKey },
-            "Projection replacement would exceed the configured per-stream limits.");
+            "Projection replacement would exceed the configured per-stream limits.")
+        {
+            StreamKey = streamKey,
+            ActualCount = countExceeded ? projections.Count : null,
+            MaximumCount = countExceeded ? limits.ProjectionSectionsPerStream : null,
+            ActualBytes = countExceeded ? null : bytes,
+            MaximumBytes = countExceeded ? null : limits.AggregateProjectionBytesPerStream,
+        };
     }
 
     private static JournalInitializeResult ReplayInitialization(OperationState operation)
@@ -533,20 +543,31 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
     {
         if (receipt.HasValidResultChecksum) return;
         throw new JournalStoreException(
+            JournalStoreRefusal.ResultChecksumMismatch,
             JournalStoreFailureKind.CorruptData,
             JournalStoreFailureCertainty.CommittedDataUnreadable,
             JournalStoreFailureScope.OperationStreams,
             receipt.Streams.Select(value => value.StreamKey).ToArray(),
-            "Stored journal result checksum does not match its data.");
+            "Stored journal result checksum does not match its data.")
+        {
+            OperationId = receipt.OperationId,
+        };
     }
 
-    private static JournalStoreException Corrupt(string streamKey, string message)
+    private static JournalStoreException Corrupt(
+        JournalStoreRefusal reason, string streamKey, string message, long? streamVersion = null, string? sectionName = null)
         => new(
+            reason,
             JournalStoreFailureKind.CorruptData,
             JournalStoreFailureCertainty.CommittedDataUnreadable,
             JournalStoreFailureScope.OperationStreams,
             new[] { streamKey },
-            message);
+            message)
+        {
+            StreamKey = streamKey,
+            StreamVersion = streamVersion,
+            SectionName = sectionName,
+        };
 
     private static bool FingerprintsMatch(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
         => left.Length == 32 && right.Length == 32 && CryptographicOperations.FixedTimeEquals(left, right);

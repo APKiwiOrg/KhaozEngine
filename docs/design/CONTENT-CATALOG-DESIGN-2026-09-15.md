@@ -208,7 +208,7 @@ COMPILES against it, which is why milestone 1.1 gates every `ItemInstances` pack
 | `ContentPublisher` | The publish pipeline of section 6. |
 | `ContentDiff`, `ContentDiffEntry` | The field-level diff between two versions, contracts 4.7. |
 | `ContentBundle` | The bulk import and export envelope of section 10.9. |
-| `ContentAuthoringException` | The one exception type, carrying the offending type, id and reason. |
+| `ContentAuthoringException` | The one exception type, carrying the offending type, id, legacy reason token and structured refusal identifiers. Candidate rejection carries the complete owned read-only findings list, identified by stable finding codes. |
 
 ### 2.4 `KhaozEngine.Catalog.Netcode` public types
 
@@ -741,7 +741,9 @@ validator, change a type's id or key after the first publish, or register the sa
 split and this spec restated it, but registration threw only for a codec and schema mismatch or a duplicate
 id, so a game registering type 300 would have succeeded and collided with Scope B at the next engine release,
 silently until the collision. `ContentRegistrationBand` is `Engine`, `Instances` or `Game`, the caller names
-its own band, and registration throws `ContentRegistrationException` when the type id falls outside it:
+its own band, and registration throws `ContentRegistrationException` with
+`Reason == ContentRegistrationRefusal.BandTypeIdOutsideRange`, `Type`, `TypeKey`, `Band`,
+`MinimumTypeId` and `MaximumTypeId` when the type id falls outside it:
 
 | Band | Type ids | Who passes it |
 |---|---|---|
@@ -762,8 +764,9 @@ specify and is the identical failure one layer down.
 
 **The codec is checked against the schema at registration** (contracts 4.7). `IContentRowCodec` exposes
 `IReadOnlyList<string> WrittenFields { get; }`, registration compares that set against the schema's field
-names, and a mismatch in either direction throws `ContentRegistrationException` naming both sides before the
-registry freezes. The check costs one set comparison per type at process start and it is what stops an editor
+names, and a mismatch in either direction throws `ContentRegistrationException` with
+`Reason == ContentRegistrationRefusal.CodecSchemaFieldsMismatch`, `MissingFields` and `ExtraFields` before
+the registry freezes. The check costs one set comparison per type at process start and it is what stops an editor
 writing a field nothing reads.
 
 Grimhollow's game types, from #882's phase 1 acceptance list and `b-grimhollow.md` sections 2 to 4:
@@ -1433,8 +1436,11 @@ spends this case.
 registration (3.6). When it does, both allocation branches refuse to issue an id above it: step 1 fails rather
 than handing out a range that crosses the ceiling, step 2 reserves no further, and
 `AllocateInFamilyAsync` refuses a new block whose top would exceed it. The failure is a
-`ContentAuthoringException` naming the type, the ceiling and the current high-water mark, and it aborts the
-publish with nothing written, which is the same shape as every other allocation failure.
+`ContentAuthoringException` carrying `AllocationCeilingExceeded` for a plain range or
+`FamilyReservationCeilingExceeded` for a block in `Refusal`, beside the unchanged `id-ceiling-exceeded`
+`Reason`. `Type`, `Ceiling`, `IssuedThrough` and `ReservedThrough` describe the refused allocation, with
+`RequestedCount` for a range or `FamilyKey`, `BaseId` and `HighestId` for a block. It aborts the publish
+with nothing written, which is the same shape as every other allocation failure.
 
 **Why a ceiling exists at all: some ids are a FORMAT constraint rather than a preference.** Scope B's payload
 kind 130 is `[RarityId: byte]`, pinned by the contracts' own worked example, so `rarity_rule` ids are capped
@@ -2175,8 +2181,9 @@ construction:
 chunkSlots * (maxRowBytes + 8) + 36  <=  MaxChunkUncompressedBytes
 ```
 
-Registration refuses a type that fails it, throwing `ContentRegistrationException` naming both numbers, before
-the registry freezes. The `+ 8` is the row table entry (a varint id, a flags byte and a varint length, section
+Registration refuses a type that fails it, throwing `ContentRegistrationException` with
+`Reason == ContentRegistrationRefusal.ChunkBytesExceeded`, `ChunkSlots`, `RowBytes`, `ActualBytes`
+and `MaximumBytes`, before the registry freezes. The `+ 8` is the row table entry (a varint id, a flags byte and a varint length, section
 7.3) and the `+ 36` is the header.
 
 **The old claim that the caps were "consistent by construction" was arithmetic backwards.** At 4,096 slots and

@@ -69,7 +69,7 @@ public sealed partial class SqliteContentAuthoringStore
 
         for (int i = 0; i < plan.Edits.Count; i++)
         {
-            CheckAgainstSchema(plan.Edits[i]);
+            CheckAgainstSchema(plan.Edits[i], i);
         }
 
         var changes = new ContentAuthoringChanges(

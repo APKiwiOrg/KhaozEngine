@@ -495,7 +495,7 @@ The D identifiers here are scoped to movement drivers, distinct from delta-strea
 | D0.2 | After validation and reach evaluation, an active commitment or unsupported airborne automation is Suspended before InRange. The explicit route swimming option is separately admitted. Pure reach callers can use ReachGeometry. |
 | D0.3 | LocalPredictedState is an absolute read-only simulation copy. LocalRenderState includes presentation interpolation/correction and cannot govern exact stop-ring steering. |
 | D1.1 | Copy AcceptRadius as min(supplied, 1e-5 m), preserving supplied zero. Broad point tolerance must not consume a mandatory physical turn. |
-| D1.3 | Up to 32 live copy-state bisection candidates, with endpoint/final preflights, resolve near-ring travel. Support, medium and collision remain in the shared core, with no world step, position snap or entity publication. |
+| D1.3 | Up to 32 identical float interval decisions, with endpoint/final preflights, resolve near-ring travel. Certified flat unchanged analytic support uses exact state algebra under one read interval. Every other case uses live copy-state movement. Support, medium and collision proofs stay mandatory, with no world step, position snap or entity publication. |
 | D3.1 | Nonfinite/unknown command requests become finite idle, and invalid yaw stores zero. Malformed automation must not send invalid wire floats. |
 | D3.2 | A double norm clamps oversized finite direction before camera projection, bounding pace without maximum-float overflow. |
 | D3.3 | CameraRelativeDir reports unit heading. Precise movement consumes the fraction once, so heading-only assertions cannot establish final travel. |

@@ -58,11 +58,17 @@ sealed class ContentUpgradeTextRoute(IContentAuthoringStore store)
         if (!Agrees(recorded, carried))
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextBaselineHiddenFromPlanner,
                 FormattableString.Invariant(
                     $"The baseline bundle of version {active} carries {carried.Languages.Count} language(s) and {carried.Values.Count} value(s) and the version records {recorded.Languages.Count} and {recorded.Revisions.Count}, so a planner would plan over text it cannot see. Nothing was planned or written."),
                 default,
                 0,
-                ContentAuthoringException.TextUnrepresentedReason);
+                ContentAuthoringException.TextUnrepresentedReason)
+            {
+                VersionNumber = active,
+                CarriedLanguageCount = carried.Languages.Count, CarriedValueCount = carried.Values.Count,
+                RecordedLanguageCount = recorded.Languages.Count, RecordedValueCount = recorded.Revisions.Count,
+            };
         }
 
         return baseline;
@@ -128,6 +134,8 @@ sealed class ContentUpgradeTextRoute(IContentAuthoringStore store)
         return await _text.TryDiscardChangesAsync(expected, actor, operatorId, cancellationToken).ConfigureAwait(false);
     }
 
+    // Internal invariant: the runner refuses a text plan at planning when CanAuthorText is false.
+    // Its private bound plan is the only caller of these write and freeze routes.
     IContentTextAuthoringStore Companion()
         => _text ?? throw new InvalidOperationException(
             "A plan carrying text is refused at planning for a store without the companion.");

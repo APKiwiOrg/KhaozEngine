@@ -34,21 +34,32 @@ public static class ContentRulePrefix
         ArgumentNullException.ThrowIfNull(held);
         ArgumentNullException.ThrowIfNull(plan);
 
-        if (plan.Rules.Count < held.Count)
+        int plannedCount = plan.Rules.Count;
+        int heldCount = held.Count;
+        if (plannedCount < heldCount)
         {
-            throw Moved(FormattableString.Invariant(
-                $"The plan carries {plan.Rules.Count} remap rule(s) and this store already holds {held.Count}. A rule list is append only, so a plan can never carry fewer than the version it is published onto."));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.RulePrefixShortened, FormattableString.Invariant(
+                $"The plan carries {plannedCount} remap rule(s) and this store already holds {heldCount}. A rule list is append only, so a plan can never carry fewer than the version it is published onto."),
+                default, 0, ContentAuthoringException.BaseVersionMovedReason)
+            {
+                ActualCount = plannedCount,
+                MinimumCount = heldCount,
+            };
         }
 
-        for (int i = 0; i < held.Count; i++)
+        for (int i = 0; i < heldCount; i++)
         {
             if (Same(held[i], plan.Rules[i]))
             {
                 continue;
             }
 
-            throw Moved(FormattableString.Invariant(
-                $"Remap rule {i + 1} of the plan is not the one this store already holds at that sequence, so the plan was built over a different rule history."));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.RulePrefixEntryMismatch, FormattableString.Invariant(
+                $"Remap rule {i + 1} of the plan is not the one this store already holds at that sequence, so the plan was built over a different rule history."),
+                default, 0, ContentAuthoringException.BaseVersionMovedReason)
+            {
+                RuleSequence = i + 1,
+            };
         }
     }
 
@@ -74,6 +85,4 @@ public static class ContentRulePrefix
             && held.Payload.SequenceEqual(planned.Payload);
     }
 
-    static ContentAuthoringException Moved(string message)
-        => new(message, default, 0, ContentAuthoringException.BaseVersionMovedReason);
 }

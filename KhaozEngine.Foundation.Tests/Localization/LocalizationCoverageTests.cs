@@ -72,6 +72,56 @@ namespace KhaozEngine.Tests.Localization
         private static class EmptyKeys { }
 
         [Fact]
+        public void RefusalCollections_AreOwnedReadOnlySnapshots()
+        {
+            string[] keys = ["menu.quit", "hud.wave"];
+            int[] indices = [0, 1];
+            var finding = new LocalizationCoverageFinding(LocalizationCoverageRefusal.PlaceholderSetMismatch)
+            { MissingKeys = keys, ExpectedIndices = indices, ActualIndices = indices };
+            var source = new List<LocalizationCoverageFinding> { finding };
+            var error = new LocalizationCoverageException(LocalizationCoverageRefusal.PlaceholderSetMismatch, "refused")
+            { Findings = source };
+            keys[0] = "changed";
+            indices[0] = 9;
+            source.Clear();
+
+            Assert.Same(finding, Assert.Single(error.Findings!));
+            Assert.Equal(new[] { "menu.quit", "hud.wave" }, finding.MissingKeys);
+            Assert.Equal(new[] { 0, 1 }, finding.ExpectedIndices);
+            Assert.Equal(new[] { 0, 1 }, finding.ActualIndices);
+            Assert.Throws<NotSupportedException>(() => ((IList<LocalizationCoverageFinding>)error.Findings!).Clear());
+            Assert.Throws<NotSupportedException>(() => ((IList<string>)finding.MissingKeys!)[0] = "changed");
+            Assert.Throws<NotSupportedException>(() => ((IList<int>)finding.ExpectedIndices!)[0] = 9);
+            Assert.Throws<NotSupportedException>(() => ((IList<int>)finding.ActualIndices!)[0] = 9);
+            Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)error.Findings!).SyncRoot);
+            Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)finding.MissingKeys!).SyncRoot);
+            Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)finding.ExpectedIndices!).SyncRoot);
+            Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)finding.ActualIndices!).SyncRoot);
+        }
+
+        // Reassignment must retain the earlier record equality contract.
+        [Theory]
+        [InlineData(nameof(LocalizationCoverageFinding.MissingKeys))]
+        [InlineData(nameof(LocalizationCoverageFinding.ExpectedIndices))]
+        [InlineData(nameof(LocalizationCoverageFinding.ActualIndices))]
+        public void FindingCollectionReassignment_KeepsDistinctRecordIdentity(string property)
+        {
+            var original = new LocalizationCoverageFinding(LocalizationCoverageRefusal.PlaceholderSetMismatch)
+            { MissingKeys = ["menu.quit"], ExpectedIndices = [0], ActualIndices = [1] };
+            LocalizationCoverageFinding reassigned = property switch
+            {
+                nameof(LocalizationCoverageFinding.MissingKeys) => original with { MissingKeys = original.MissingKeys },
+                nameof(LocalizationCoverageFinding.ExpectedIndices) => original with { ExpectedIndices = original.ExpectedIndices },
+                nameof(LocalizationCoverageFinding.ActualIndices) => original with { ActualIndices = original.ActualIndices },
+                _ => throw new ArgumentOutOfRangeException(nameof(property)),
+            };
+
+            Assert.Equal(original, original with { });
+            Assert.NotEqual(original, reassigned);
+            Assert.Equal(2, new HashSet<LocalizationCoverageFinding> { original, reassigned }.Count);
+        }
+
+        [Fact]
         public void Keys_ExtractsConstStrings()
             => Assert.Equal(new[] { "menu.play", "menu.quit", "hud.score", "hud.wave" }, LocalizationCoverage.Keys(typeof(ConstKeys)));
 

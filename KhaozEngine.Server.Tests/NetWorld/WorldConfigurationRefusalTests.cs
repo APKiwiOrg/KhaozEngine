@@ -78,5 +78,6 @@ public sealed class WorldConfigurationRefusalTests
 
         Assert.Equal(new[] { "ReceiveServerTick", "RequestUnreliableDeltaReplication" }, refusal.IncompatibleMembers);
         Assert.Throws<NotSupportedException>(() => ((IList<string>)refusal.IncompatibleMembers!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)refusal.IncompatibleMembers!).SyncRoot);
     }
 }

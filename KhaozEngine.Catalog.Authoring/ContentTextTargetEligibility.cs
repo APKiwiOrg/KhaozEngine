@@ -30,6 +30,7 @@ internal static class ContentTextTargetEligibility
         if (!registry.TryGet(target.Type, out ContentTypeRegistration? registration))
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"Content type {target.Type.Value} is not registered, so this store carries no declaration for it."),
                 target.Type,
@@ -40,11 +41,15 @@ internal static class ContentTextTargetEligibility
         if (!registration.Schema.TryGet(target.FieldName, out ContentFieldEntry? field))
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextTargetFieldUnknown,
                 FormattableString.Invariant(
                     $"Content type {target.Type.Value} '{registration.TypeKey}' declares no field named '{target.FieldName}'."),
                 target.Type,
                 0,
-                ContentAuthoringException.UnknownFieldReason);
+                ContentAuthoringException.UnknownFieldReason)
+            {
+                TypeKey = registration.TypeKey, FieldName = target.FieldName, Language = target.Language,
+            };
         }
 
         if (registration.DefaultVisibility != ContentVisibility.Client
@@ -52,21 +57,30 @@ internal static class ContentTextTargetEligibility
             || field.Visibility != ContentVisibility.Client)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextTargetIneligible,
                 FormattableString.Invariant(
                     $"Text needs a CLIENT-visible type and a CLIENT-visible localized text marker, and type {target.Type.Value} '{registration.TypeKey}' field '{target.FieldName}' is not both."),
                 target.Type,
                 0,
-                ContentAuthoringException.TextTargetIneligibleReason);
+                ContentAuthoringException.TextTargetIneligibleReason)
+            {
+                TypeKey = registration.TypeKey, FieldName = target.FieldName, Language = target.Language,
+            };
         }
 
         if (target.FieldName.Length > MaxFieldNameLength)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextFieldNameTooLong,
                 FormattableString.Invariant(
                     $"Text of type {target.Type.Value} '{registration.TypeKey}' names field '{target.FieldName}', which is {target.FieldName.Length} characters, over the {MaxFieldNameLength} character field name bound."),
                 target.Type,
                 0,
-                ContentAuthoringException.TextBoundsReason);
+                ContentAuthoringException.TextBoundsReason)
+            {
+                TypeKey = registration.TypeKey, FieldName = target.FieldName, Language = target.Language,
+                ActualCharacters = target.FieldName.Length, MaximumCharacters = MaxFieldNameLength,
+            };
         }
 
         int keyBytes = checked(
@@ -77,11 +91,16 @@ internal static class ContentTextTargetEligibility
         if (keyBytes > ContentTextKey.MaxKeyLength)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TextKeyBytesExceeded,
                 FormattableString.Invariant(
                     $"The derived text key of type {target.Type.Value} row '{target.Key}' field '{target.FieldName}' is {keyBytes} UTF-8 bytes, over the {ContentTextKey.MaxKeyLength} byte bound."),
                 target.Type,
                 0,
-                ContentAuthoringException.TextBoundsReason);
+                ContentAuthoringException.TextBoundsReason)
+            {
+                FieldName = target.FieldName, Language = target.Language,
+                ActualBytes = keyBytes, MaximumBytes = ContentTextKey.MaxKeyLength,
+            };
         }
 
         return field;

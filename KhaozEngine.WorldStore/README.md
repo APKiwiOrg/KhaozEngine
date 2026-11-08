@@ -256,6 +256,135 @@ Expected races use result statuses. Provider, transport, schema, and corruption 
 - `Certainty` is `DefinitelyNotCommitted`, `Unknown`, or `CommittedDataUnreadable`.
 - `Scope` is `OperationStreams` with exact `StreamKeys`, or `WholeStore` with no stream keys.
 
+The validated lists on `JournalCommit` (`StreamMutations`, `ProjectionWrites`), `JournalInitialization`
+(`ProjectionWrites`) and `JournalStreamMutation` (`Events`) own fresh immutable snapshots. Caller source changes,
+`IList<T>` and `IList` writes, and `ICollection.SyncRoot` cannot change the validated data before it reaches a
+store or its SQL batch builder. Publicly constructed receipt ranges, event pages, projection reads and stream
+pages use the same snapshot shape, so a caller cannot rewrite retained replay ranges or invalidate page rules.
+Validation order, sorting, bounds and the public `IReadOnlyList<T>` properties are unchanged.
+
+### Refusals
+
+`JournalStoreStateException` derives from `InvalidOperationException` and requires a `JournalStoreRefusal`
+`Reason`. SQL Server protocol guards retain that catch contract and their existing developer prose.
+`BatchResultMalformed` names a malformed result shape or value type, replay rows the receipt rules refuse, or a trailing result set after Applied or
+Replayed. Success is accepted only after the reader proves the complete expected protocol, including the replay
+receipt sets. Nullable outcome payloads accept SQL literal NULL values regardless of their metadata type.
+`BatchOutcomeMissing` names a missing outcome row, `BatchOutcomeUndefined` names an undefined outcome and carries
+its integer `Outcome`, and `BatchOutcomeUnsupported` names an outcome unsupported by the current operation with
+its integer `Outcome`. These checks also cover result sets emitted by host triggers inside the transaction.
+`BatchStreamVanished` names a validated head that the SQL Server batch could not update. A same-transaction host trigger can remove it despite the head lock.
+This refusal carries no additional identifier and rolls back the trigger's changes with the rest of the write.
+
+`JournalStoreException.Reason` is a nullable `JournalStoreRefusal` beside `Kind`, `Certainty`, `Scope` and
+`StreamKeys`. The legacy constructor remains available for consumer-built exceptions and leaves `Reason` null.
+The reason-taking overload accepts the same failure dimensions, stream keys, message and optional inner cause.
+Stream keys remain sorted owned snapshots backed by a fresh boxed immutable array, even for immutable input.
+Messages are developer prose. Engine construction is fenced across WorldStore, SQLite and SQL Server.
+`BatchProjectionLimitIncomplete` uses `JournalStoreException` with `ConstraintViolation`,
+`DefinitelyNotCommitted` and `OperationStreams`. `StreamKeys` contains the payload's named stream, or all requested
+stream keys when no stream was returned. `StreamKey` is set only when the payload named a stream.
+Reset context wrapping retains the original exception as its cause, every public identifier and all owned
+collections, including stream keys. The completeness test names a new identifier if the copy drops it and
+checks that caller mutation and collection casts cannot change either exception's snapshots.
+Use the rule and its identifiers to distinguish the following refusals.
+
+| Reason | What is refused | Additional identifiers |
+|---|---|---|
+| `SnapshotChecksumMismatch` | Stored snapshot data fails verification, including replacement verification before pruning. | `StreamKey` |
+| `EventChecksumMismatch` | Stored event payload fails verification. | `StreamKey`, `StreamVersion` |
+| `ProjectionChecksumMismatch` | Stored projection data fails verification. | `StreamKey`, `SectionName` |
+| `BatchProjectionLimitIncomplete` | SQL Server returned an incomplete projection-limit payload. Retains constraint-violation kind and definitely-not-committed certainty. | `StreamKeys`, `StreamKey` only when named by the payload |
+| `ReplayedOperationMissing` | SQL Server replay omitted its operation row. Retains whole-store corruption kind and committed-data-unreadable certainty. | `OperationId`, empty `StreamKeys` |
+| `ReplayedStreamsMissing` | SQL Server replay omitted its stream result set. Retains whole-store corruption kind and committed-data-unreadable certainty. | `OperationId`, empty `StreamKeys` |
+| `ResultChecksumMismatch` | A stored operation result fails verification. | `OperationId`, existing `StreamKeys` |
+| `EventSequenceGap` | An event does not have the next expected stream version. | `StreamKey`, `ExpectedVersion`, `ActualVersion` |
+| `EventPageIncomplete` | A page exhausted its rows before the captured through version, without hitting its count or byte limit. | `StreamKey`, `ExpectedThroughVersion`, `ActualThroughVersion` |
+| `ProjectionSectionCountExceeded` | Stored projections exceed the engine section cap, or replacement would exceed the configured stream cap. | `StreamKey`, `ActualCount`, `MaximumCount` |
+| `ProjectionByteCountExceeded` | Stored projections exceed the engine byte cap, or replacement would exceed the configured stream cap. | `StreamKey`, `ActualBytes`, `MaximumBytes` |
+| `ProviderOperationFailed` | SQLite or SQL Server failed a runtime provider operation. | `Stage`, typed `ProviderCode`, original `InnerException` |
+| `CommitOutcomeUnknown` | A runtime commit completed or may have completed before its response failed. | `Stage`, original `InnerException` |
+| `OperationCancelled` | A runtime operation was cancelled. | `Stage`, original `InnerException` |
+| `ProviderClockUnavailable` | The provider did not return its UTC clock. | `ProviderName` |
+| `ReplacementSnapshotVersionMismatch` | A replacement snapshot has the wrong through version before pruning. | `StreamKey`, `ExpectedVersion`, `ActualVersion` |
+| `ResetWriteLockTimedOut` | SQLite reset could not take its write lock within the timeout. | `LockTimeout`, original `InnerException` |
+| `StoredEpochInvalid` | The stored epoch cannot be read as a GUID. | Existing whole-store scope |
+| `MetadataUpdateNotApplied` | Epoch rotation did not update exactly one metadata row, including a trigger that ignores the update. | Existing whole-store scope |
+| `ReplacementSnapshotDataMismatch` | SQL Server replacement data differs from the requested bytes before pruning. | `StreamKey` |
+| `OperationDeleteGuardAlreadyOpen` | The SQLite operation-delete guard is already open. | None, whole-store scope and an empty `StreamKeys` snapshot |
+| `TransportFailed` | A runtime I/O or socket failure before a transaction or after confirmed rollback. | `Stage`, original `InnerException` |
+| `WriteFailedAfterRollback` | A non-provider commit failure after confirmed rollback. | `Stage`, original `InnerException` |
+| `StreamSnapshotMissing` | A stream being compacted has no snapshot, including replacement verification before pruning. | `StreamKey` |
+| `StoredStreamKeyInvalid` | A provider row has an invalid stream key. | `Index`, `ParameterName` (`streamKey`) |
+| `StoredHeadVersionNegative` | A provider row has a negative head version. | `Index`, `ActualVersion` |
+| `StoredTimestampNonUtc` | A provider row timestamp has a nonzero UTC offset. | `Index`, `FieldName` (`createdAtUtc` or `updatedAtUtc`) |
+| `StoredStreamOrderInvalid` | The kept rows are duplicate or out of ordinal key order. | `Index` of the latter row |
+| `SchemaMissing` | No schema exists in a mode that cannot create one. | `RequiredMigration` |
+| `SchemaVersionUnsupported` | The refusing mode cannot use the declared schema version. | `ActualVersion`, `SupportedVersions`, `RequiredMigration` |
+| `SchemaMetadataMissing` | The schema metadata row or version value is missing. | `RequiredMigration` |
+| `SchemaVersionMalformed` | The schema version is not an integer. | `MetadataType`, `RequiredMigration` |
+| `SchemaMetadataUnreadable` | SQLite could not read or validate schema metadata. | `RequiredMigration`, original `InnerException` |
+| `SchemaForeignKeysDisabled` | The connection has foreign key enforcement disabled. | `RequiredMigration` |
+| `SchemaJournalModeUnsupported` | A writer connection uses neither WAL nor memory mode. | `ActualMode`, `RequiredMode` (`wal`), `RequiredMigration` |
+| `SchemaObjectInventoryMismatch` | The schema object count differs from the expected inventory. | `ExpectedVersion`, complete `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaObjectMissing` | The inventory count matches but a required object is missing. | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `SchemaObjectDefinitionMismatch` | An object's definition differs from its supported shape. | `ObjectName`, `ExpectedVersion`, `RequiredMigration` |
+| `HostForeignKeyActionUnsafe` | A reset would fire a host key's delete action. | Complete ordered `HostObjects` |
+| `HostTriggerUnsafe` | A reset would fire a host trigger. | Complete ordered `HostObjects` |
+| `DefinitionUnavailable` | SQL Server cannot expose an unencrypted definition. | `ObjectName`, `RequiredPermission` (`VIEW DEFINITION`) |
+| `ApplicationLockNotGranted` | SQL Server did not grant an application lock. | `ReturnCode`, existing `Kind` distinguishes timeout, cancellation, deadlock and unavailable |
+| `SchemaMetadataShapeInvalid` | SQL Server has no readable version column. | `RequiredMigration` |
+| `SchemaColumnsMismatch` | SQL Server columns differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaIndexesMismatch` | SQL Server indexes differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaForeignKeysMismatch` | SQL Server foreign keys differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaChecksMismatch` | SQL Server check constraints differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaDefaultsMismatch` | SQL Server defaults differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaTriggersMismatch` | SQL Server triggers differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaEpochEmpty` | SQL Server metadata has an empty store epoch. | `RequiredMigration` |
+| `SchemaCancelled` | The caller cancelled SQL Server schema admission or validation. | `Stage` |
+| `SchemaProviderFailure` | SQL Server failed during schema admission or validation. | `Stage`, typed `ProviderCode`, original `InnerException` |
+| `SchemaRollbackUnconfirmed` | A failed SQL Server schema initialization could not confirm rollback. | Existing unknown kind and certainty, original `InnerException` |
+
+SQLite schema refusals name migration `sqlite-journal-v3-row-timestamps`. Unsupported versions report the supported
+version set `[3]`. Object names include their kind, such as `table:journal_stream` or
+`index:ix_journal_event_operation`. Inventory differences are ordinally sorted. A count mismatch is reported before
+individual definitions, and schema metadata is read before object validation. Version two accepts each object's
+version-two or already-migrated version-three shape.
+
+`SupportedVersions`, `MissingObjects`, `UnexpectedObjects` and `HostObjects` copy their inputs into fresh boxed
+immutable arrays. A SQLite reset lists all unsafe foreign keys in provider order by host table, referenced table
+and delete action, followed by all unsafe triggers ordered by name. Its reason is the first finding's reason.
+Each `JournalHostObjectFinding` carries its own `Reason` and `ReferencedTable`. A foreign key also carries
+`HostTable` and `DeleteAction`, with `TriggerName` null. A trigger carries `TriggerName`, with `HostTable` and
+`DeleteAction` null. The complete list survives when both kinds are present. SQL Server key findings also carry
+`HostSchema` and `ForeignKeyName`, and are ordered by schema, host table and key name.
+
+SQL Server shares the schema missing, metadata missing, malformed version and unsupported version members and their
+identifier sets with SQLite. Its migration is `sqlserver-journal-v3-row-timestamps`. Shape-set members are distinct
+from SQLite's inventory count and per-definition checks. Each difference retains the entire compared identity,
+including types, lengths, nullability, collation, index columns, key actions, trust flags or normalized definitions.
+Version-two column differences exclude optional columns already present in their exact version-three shape.
+`SchemaVersionUnsupported.SupportedVersions` is `[3]` on version admission, or the compared version on the final
+metadata recheck. `Stage` names writer connection open, transaction begin, initialization, read-only open or
+read-only validation through `JournalOperationStage`. A cancelled provider call exposes cancellation, with no
+`ProviderCode`. A provider failure retains its original `SqlException.Number` without parsing its message.
+
+Runtime `Stage` distinguishes an operation without a captured transaction, transaction work, commit and the
+post-commit response. SQLite `ProviderCode` is the original `SqliteException.SqliteErrorCode`, never parsed prose.
+SQL Server runtime provider codes come directly from `SqlException.Number`. Unknown commits carry only the stage
+rather than varying their identifier set by the inner exception type. SQL Server reset context retains the reason,
+failure dimensions, every identifier and owned collection snapshot, with the original refusal as its inner cause.
+Projection limits are inclusive. The engine read caps are 64 sections and 8 MiB per stream, while write limits
+may be configured lower. Both paths use the same limit reasons and identifiers, with their existing failure kind
+and certainty distinguishing stored corruption from a refused replacement. If count and bytes both exceed their
+limits, section count is reported first. Stored-row indices are zero-based. Each row's key, head and timestamps are checked before page ordering,
+including the extra row used to establish a continuation. Ordering applies only to the kept rows. These stored-row
+refusals retain their original argument exception as the inner cause and have whole-store scope, without inventing
+an affected stream key. The in-memory replacement snapshot checksum guard keeps `SnapshotChecksumMismatch`
+with `StreamKey` and its existing operation-stream corruption dimensions. SQLite operation-delete overlap
+keeps `OperationDeleteGuardAlreadyOpen` as whole-store corruption with no stream identifiers, even though
+the connection lease serializes opens and each admitted purge or reset closes the flag in `finally`.
+
 A write call on a store opened read only throws `NotSupportedException` instead. That is a caller error rather than
 a store failure, so it sits outside this contract and nothing was attempted.
 
@@ -481,7 +610,8 @@ committed before the reset resolves `NotFound` and is not recognized as a replay
 The reset refuses to reach outside the journal. A game table's foreign key into a journal data table declared
 `CASCADE`, `SET NULL`, or `SET DEFAULT` would fire on the deletes and delete or rewrite the game's own rows, and so
 would a game trigger on a journal data table. The reset refuses either with a whole-store `SchemaMismatch` that names
-it and deleted nothing. A `NO ACTION` key fires nothing: a game row that still references a stream fails the delete
+it and deleted nothing. SQLite reports these as `HostForeignKeyActionUnsafe` or `HostTriggerUnsafe`, with every
+finding in `HostObjects`. A `NO ACTION` key fires nothing: a game row that still references a stream fails the delete
 instead, and the whole reset rolls back with `ConstraintViolation`. Clear those rows, or drop the key, first.
 
 A projection cursor binds the store epoch, the stream key, and its captured head. The reset keeps the epoch, so

@@ -158,8 +158,9 @@ public class ContentLoadIndexTests
         ContentTypeRegistry registry = CatalogSnapshotFixtures.Registry();
         Register(registry, ContentRegistrationBand.Game, 1024, "store", new RecordingIndex(new ContentTypeId(1024)));
 
-        Assert.Throws<ContentRegistrationException>(
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => Register(registry, ContentRegistrationBand.Game, 1024, "store_again", new RecordingIndex(new ContentTypeId(1024))));
+        Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
         Assert.True(registry.TryGet(new ContentTypeId(1024), out ContentTypeRegistration? registration));
         Assert.NotNull(registration.LoadIndex);
     }

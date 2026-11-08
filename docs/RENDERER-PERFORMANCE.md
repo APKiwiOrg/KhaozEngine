@@ -379,8 +379,17 @@ Implementation and frozen recipes grant no dispatch approval. Free tooling valid
 checks platform-family digests without authorizing a rehearsal. Each free rehearsal needs explicit
 owner approval first. Paid runs need separate owner approval naming the exact workload and both
 proposal hashes, plus the renderer performance owner's admission review. Use GitHub-hosted runners
-only. There is no automatic retry or extra design budget. The owner rules on the measured deltas
-before M3 ships.
+only. There is no automatic retry or extra design budget. A proposal is the complete paid manifest
+whose `approval.reference` is a fixed not-yet-approved sentence, hashed over its exact bytes. The final
+manifest differs only in that reference, which cites the approval and the proposal hash.
+
+The first v3 campaign ran at workload `536c704ea`. Both rehearsals completed, in 92 minutes on WARP and
+176 on lavapipe. The paid Linux unit was promotable and billed about 12 minutes. The paid Windows unit
+finished all 36 scene blocks, then hit its 1,500-second deadline when the final batch of each control
+stalled with the GPU idle ([#1734](https://github.com/APKiwiOrg/KhaozEngine/issues/1734)), so no profile
+pair was published and the unit billed about 44 minutes. Median GPU frame time from the report frames puts
+M5 ON to M3 ON at +0.67 ms in the village on both legs, and outdoors at +0.37 ms on Linux and +0.38 ms on
+Windows, on the T4 at 1080p. The owner accepted that cost on 2026-11-08.
 
 ## Software correctness rehearsal
 
@@ -689,7 +698,7 @@ and no `ClockOrWorkDrift`, and refused only `GpuClockNotLocked`. One of its 90 s
 software power cap (`0x4`) at a held 1,200 MHz while averaging 54.4 W. The lock moved to 1,095 MHz
 for more power headroom below the 70 W cap. It is a T4 graphics clock already observed in this
 program's telemetry and a multiple of 15 MHz. The throttle policy below is unchanged and still
-refuses `0x4` at the locked clock. No measured unit has held 1,095 MHz yet.
+refuses `0x4` at the locked clock.
 
 `GpuClockNotLocked` is independent of the unchanged drift rule. Every retained conditioning, scene
 and control batch must carry the identified host observation from the fixed sampler. Any observed

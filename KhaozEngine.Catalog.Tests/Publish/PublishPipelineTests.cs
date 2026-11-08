@@ -178,7 +178,11 @@ public sealed class PublishPipelineTests
             () => publisher.PrepareAsync(PublishFixtures.Request(7), ContentPublishBaseline.Empty));
 
         Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, refused.Reason);
-        Assert.Contains("7", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.BaseVersionMoved, refused.Refusal);
+        Assert.Equal(7, refused.ExpectedBaseVersion);
+        Assert.Equal(0, refused.ActualBaseVersion);
+        Assert.False((await store.GetOpenDraftAsync())!.IsFrozen);
+        PublishFixtures.AssertValid(await publisher.PrepareAsync(PublishFixtures.Request(0), ContentPublishBaseline.Empty));
     }
 
     [Fact]
@@ -192,6 +196,10 @@ public sealed class PublishPipelineTests
             () => publisher.PrepareAsync(PublishFixtures.Request(0), ContentPublishBaseline.Empty));
 
         Assert.Equal(ContentAuthoringException.NoOpenDraftReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.NoPendingDraft, refused.Refusal);
+        await PublishFixtures.ApplyAsync(store, ContentEdit.Add(
+            new ContentTypeId(PublishFixtures.ThingTypeId), new ContentKey("one"), PublishFixtures.Fields(1)));
+        PublishFixtures.AssertValid(await publisher.PrepareAsync(PublishFixtures.Request(0), ContentPublishBaseline.Empty));
     }
 
     [Fact]

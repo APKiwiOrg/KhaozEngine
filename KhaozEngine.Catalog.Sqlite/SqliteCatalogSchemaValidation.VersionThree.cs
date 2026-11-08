@@ -48,12 +48,12 @@ internal static partial class SqliteCatalogSchemaValidation
         {
             if (!actual.TryGetValue(name, out string? actualSql))
             {
-                throw Mismatch(FormattableString.Invariant($"missing object '{name}'"));
+                throw ObjectMismatch(ContentAuthoringRefusal.SchemaObjectMissing, name, 2, FormattableString.Invariant($"missing object '{name}'"));
             }
 
             if (!accepted.Contains(actualSql))
             {
-                throw Mismatch(FormattableString.Invariant(
+                throw ObjectMismatch(ContentAuthoringRefusal.SchemaObjectDefinitionMismatch, name, 2, FormattableString.Invariant(
                     $"carrying object '{name}', which does not match the shape version 2 declares"));
             }
         }
@@ -62,7 +62,7 @@ internal static partial class SqliteCatalogSchemaValidation
         {
             if (!shapes.ContainsKey(name))
             {
-                throw Mismatch(FormattableString.Invariant(
+                throw ObjectMismatch(ContentAuthoringRefusal.SchemaObjectUnexpected, name, 2, FormattableString.Invariant(
                     $"carrying unexpected object '{name}', which version 2 does not declare"));
             }
         }

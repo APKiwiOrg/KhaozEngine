@@ -242,10 +242,14 @@ public sealed class SqliteJournalRowTimestampTests : IDisposable
 
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, refused.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
-        Assert.Contains("unsupported version '2'", refused.Message, StringComparison.Ordinal);
-        Assert.Contains(MigrationName, refused.Message, StringComparison.Ordinal);
+        Assert.Equal(JournalStoreRefusal.SchemaVersionUnsupported, refused.Reason);
+        Assert.Equal(2, refused.ActualVersion);
+        Assert.Equal(new long[] { 3 }, refused.SupportedVersions);
+        Assert.Equal(MigrationName, refused.RequiredMigration);
         Assert.Equal(MigrationName, SqliteJournalSchema.RequiredMigration);
         Assert.Equal(before, SqliteJournalFileState.Capture(path));
+        using (database.Open(path)) { }
+        using (database.Open(path, new SqliteMutationJournalStoreOptions(database.ConnectionString(path)) { SchemaMode = mode })) { }
     }
 
     /// <summary>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -143,6 +144,29 @@ public sealed class CatalogBundleActionTests : IDisposable
 
         Assert.False(string.IsNullOrWhiteSpace(refusal.GetProperty("error").GetString()));
         Assert.Equal(0, await _harness.Store.GetActiveVersionAsync());
+    }
+
+    [Fact]
+    public async Task Import_OfANegativeSourceVersion_KeepsTheMalformedRequestResponse()
+    {
+        await _harness.PublishThingsAsync("stone_sword");
+        string bundle = (await _harness.OkAsync("catalog-export", null)).GetProperty("bundle").GetRawText();
+        using var fresh = new CatalogActionHarness();
+        JsonObject document = JsonNode.Parse(bundle)!.AsObject();
+        document["sourceVersion"] = -1;
+        string negative = document.ToJsonString();
+        JsonElement refusal = await fresh.RefusedAsync("catalog-import", $$"""{ "bundle": {{negative}} }""");
+        Assert.Equal("malformed-request", refusal.GetProperty("reason").GetString());
+        // The response detail retains the BCL parameter diagnostic the import backstop forwarded.
+        ArgumentOutOfRangeException argument = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ContentBundle(1, "epoch", -1, [], [], [], []));
+        string expectedDetail = "The bundle could not be read: " + argument.Message;
+        Assert.Equal(expectedDetail, refusal.GetProperty("error").GetString());
+        Assert.Equal(0, await fresh.Store.GetActiveVersionAsync());
+        Assert.Null(await fresh.Store.GetOpenDraftAsync());
+        document["sourceVersion"] = 0;
+        string control = document.ToJsonString();
+        Assert.Equal(1, (await fresh.OkAsync("catalog-import", $$"""{ "bundle": {{control}} }""")).GetProperty("version").GetInt32());
     }
 
     /// <summary>An export from a store that has published nothing is a 400 rather than an empty document.</summary>

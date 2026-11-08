@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text.Json;
 
 namespace KhaozEngine.Catalog.Authoring;
 
@@ -16,9 +19,15 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <see cref="Reason"/> is what an operator's log line and a counter key on, never the message, the same
 /// rule the pack decoders' reason tokens follow.
 /// </para>
+/// <para>
+/// <see cref="Refusal"/> names the exact rule where a throw site carries one, with the identifiers that member
+/// documents. It sits beside <see cref="Reason"/> and never replaces it.
+/// </para>
 /// </summary>
 public sealed class ContentAuthoringException : Exception
 {
+    readonly IReadOnlyList<int>? _supportedFormatVersions;
+
     /// <summary>
     /// A second edit named a target the open draft already holds under a DIFFERENT operation (spec 4.4). A
     /// draft holds one pending intent per row, so the second edit is refused rather than silently flipping
@@ -46,8 +55,8 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>
     /// A publish expected a base version the store no longer stands at (spec 6.2). Two consoles cannot both
-    /// publish the same draft: the second one's expectation is stale and it is refused with both numbers
-    /// named, which turns a race into an error message.
+    /// publish the same draft: the second one's expectation is stale. The row publisher carries both numbers
+    /// as ExpectedBaseVersion and ActualBaseVersion beside Refusal BaseVersionMoved.
     /// </summary>
     public const string BaseVersionMovedReason = "base-version-moved";
 
@@ -138,8 +147,9 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>
     /// A version's pack could not be read back: an absent manifest, a chunk the store no longer holds, or
-    /// bytes that do not digest to the address they were filed under. The pack reader's own reason token is
-    /// in the message.
+    /// bytes that do not digest to the address they were filed under. A typed
+    /// <see cref="ContentAuthoringRefusal.PackUnreadable"/> carries the pack reader's token in
+    /// <see cref="PackReaderReason"/>, with <see cref="VersionNumber"/> and <see cref="ObjectHash"/>.
     /// </summary>
     public const string PackUnreadableReason = "pack-unreadable";
 
@@ -150,14 +160,19 @@ public sealed class ContentAuthoringException : Exception
     /// </summary>
     public const string NoPackStoreReason = "no-pack-store";
 
-    /// <summary>A bundle document could not be read: a format version this build does not know, or a malformed member.</summary>
+    /// <summary>
+    /// A bundle document could not be read: a format version this build does not know, or a malformed member.
+    /// A shape rule <c>ContentBundleJson</c> checks itself, and a value a lower constructor refuses, also names its
+    /// <see cref="Refusal"/> and JSON path.
+    /// </summary>
     public const string BundleFormatReason = "bundle-format";
 
     /// <summary>
     /// A provider's database is absent under <see cref="ContentAuthoringSchemaMode.ValidateOnly"/>, carries a
     /// schema version the build does not support, or holds an object that does not match the shape its
-    /// migration declares. The message names the object and the migration, because those are the two facts an
-    /// operator can act on.
+    /// migration declares. Durable schema validation carries <see cref="ObjectName"/> where applicable and
+    /// <see cref="RequiredMigration"/> beside <see cref="Refusal"/>. A newer-schema reset instead carries
+    /// <see cref="ActualVersion"/> and <see cref="MaximumVersion"/>.
     /// </summary>
     public const string SchemaMismatchReason = "schema-mismatch";
 
@@ -240,11 +255,8 @@ public sealed class ContentAuthoringException : Exception
     /// <param name="id">The definition id, or 0 when the refusal is about the store as a whole.</param>
     /// <param name="reason">The stable reason token an operator's log line is built from.</param>
     public ContentAuthoringException(string message, ContentTypeId type, int id, string? reason)
-        : base(message)
+        : this(null, message, type, id, reason, null)
     {
-        Type = type;
-        Id = id;
-        Reason = reason;
     }
 
     /// <summary>
@@ -263,10 +275,387 @@ public sealed class ContentAuthoringException : Exception
         int id,
         string? reason,
         IReadOnlyList<ContentFinding> findings)
-        : this(message, type, id, reason)
+        : this(null, message, type, id, reason, null)
     {
         ArgumentNullException.ThrowIfNull(findings);
-        Findings = findings;
+        Findings = ImmutableArray.Create(findings.ToArray());
+    }
+
+    /// <summary>Creates the exception carrying the exact rule it refused beside the legacy reason token.</summary>
+    /// <param name="refusal">The rule that was refused.</param>
+    /// <param name="message">The human-readable refusal.</param>
+    /// <param name="type">The content type the refusal is about, or the default when it is about none.</param>
+    /// <param name="id">The definition id, or 0 when the refusal is about the store as a whole.</param>
+    /// <param name="reason">The stable legacy reason token.</param>
+    public ContentAuthoringException(
+        ContentAuthoringRefusal refusal,
+        string message,
+        ContentTypeId type,
+        int id,
+        string? reason)
+        : this((ContentAuthoringRefusal?)refusal, message, type, id, reason, null)
+    {
+    }
+
+    /// <summary>Creates a structured refusal carrying every validation or rollback finding as an owned snapshot.</summary>
+    public ContentAuthoringException(
+        ContentAuthoringRefusal refusal,
+        string message,
+        ContentTypeId type,
+        int id,
+        string? reason,
+        IReadOnlyList<ContentFinding> findings)
+        : this((ContentAuthoringRefusal?)refusal, message, type, id, reason, null)
+    {
+        ArgumentNullException.ThrowIfNull(findings);
+        Findings = ImmutableArray.Create(findings.ToArray());
+    }
+
+    /// <summary>Creates the exception carrying the exact rule it refused and the fault that caused it.</summary>
+    /// <param name="refusal">The rule that was refused.</param>
+    /// <param name="message">The human-readable refusal.</param>
+    /// <param name="type">The content type the refusal is about, or the default when it is about none.</param>
+    /// <param name="id">The definition id, or 0 when the refusal is about the store as a whole.</param>
+    /// <param name="reason">The stable legacy reason token.</param>
+    /// <param name="innerException">The fault the refusal reports.</param>
+    public ContentAuthoringException(
+        ContentAuthoringRefusal refusal,
+        string message,
+        ContentTypeId type,
+        int id,
+        string? reason,
+        Exception innerException)
+        : this((ContentAuthoringRefusal?)refusal, message, type, id, reason, innerException)
+    {
+    }
+
+    // Legacy consumer instances keep a null refusal without calling a forbidden public constructor.
+    ContentAuthoringException(ContentAuthoringRefusal? refusal, string message, ContentTypeId type,
+        int id, string? reason, Exception? innerException)
+        : base(message, innerException)
+    {
+        Refusal = refusal;
+        Type = type;
+        Id = id;
+        Reason = reason;
+    }
+
+    /// <summary>
+    /// The exact rule refused, or null when the instance was built through a constructor that takes no
+    /// refusal. Read <see cref="Reason"/> then.
+    /// </summary>
+    public ContentAuthoringRefusal? Refusal { get; }
+
+    /// <summary>
+    /// The rooted JSON path (<c>$</c>, <c>$.types[0].typeId</c>) of the bundle member a document refusal is
+    /// about, or null. For <see cref="ContentAuthoringRefusal.BundleJsonMalformed"/> it is the reader's own
+    /// path, null when the reader reports none.
+    /// </summary>
+    public string? JsonPath { get; init; }
+
+    /// <summary>The zero-based line the JSON reader stopped at, for
+    /// <see cref="ContentAuthoringRefusal.BundleJsonMalformed"/>, null when the reader reports none.</summary>
+    public long? LineNumber { get; init; }
+
+    /// <summary>The zero-based byte offset in that line, for
+    /// <see cref="ContentAuthoringRefusal.BundleJsonMalformed"/>, null when the reader reports none.</summary>
+    public long? BytePositionInLine { get; init; }
+
+    /// <summary>The JSON kind the refused member actually has, or null.</summary>
+    public JsonValueKind? ActualJsonKind { get; init; }
+
+    /// <summary>The integer a refused member actually holds, once it was read as a 32-bit integer, or null.</summary>
+    public int? ActualInteger { get; init; }
+
+    /// <summary>The smallest integer the refused member admits, inclusive, or null.</summary>
+    public int? MinimumInteger { get; init; }
+
+    /// <summary>The largest integer the refused member admits, inclusive, or null.</summary>
+    public int? MaximumInteger { get; init; }
+
+    /// <summary>The bundle format version the refused bundle declares, or null.</summary>
+    public int? ActualFormatVersion { get; init; }
+
+    /// <summary>The bundle format versions this build reads and writes, as an owned read-only snapshot, or null.</summary>
+    public IReadOnlyList<int>? SupportedFormatVersions
+    {
+        get => _supportedFormatVersions;
+        init => _supportedFormatVersions = value is null ? null : ImmutableArray.Create(value.ToArray());
+    }
+
+    /// <summary>The schema field name the refused entry declares, or null.</summary>
+    public string? FieldName { get; init; }
+
+    /// <summary>The content field kind the refused entry declares, or null.</summary>
+    public ContentFieldKind? ActualKind { get; init; }
+
+    /// <summary>The key of the family a block size or reservation refusal is about, or null.</summary>
+    public string? FamilyKey { get; init; }
+
+    /// <summary>The refused family block size, or null.</summary>
+    public int? ActualBlockSize { get; init; }
+
+    /// <summary>The smallest family block size, 16, inclusive, or null.</summary>
+    public int? MinimumBlockSize { get; init; }
+
+    /// <summary>The largest family block size, 65,536, inclusive, or null.</summary>
+    public int? MaximumBlockSize { get; init; }
+
+    /// <summary>The kind of the remap rule a payload refusal is about, or null.</summary>
+    public RemapRuleKind? RuleKind { get; init; }
+
+    /// <summary>The byte length of the refused value, or null.</summary>
+    public long? ActualBytes { get; init; }
+
+    /// <summary>The inclusive byte limit of a refused value, or null.</summary>
+    public long? MaximumBytes { get; init; }
+
+    /// <summary>The refused language tag as submitted, before normalization, or null.</summary>
+    public string? LanguageTag { get; init; }
+
+    /// <summary>The canonical language identity a refusal is about, or null.</summary>
+    public string? Language { get; init; }
+
+    /// <summary>The wire spelling a language declaration submitted, or null.</summary>
+    public string? WireTag { get; init; }
+
+    /// <summary>The repeated canonical text target, or null.</summary>
+    public ContentTextTarget? TextTarget { get; init; }
+
+    /// <summary>The type's inclusive definition-id ceiling, or null.</summary>
+    public int? Ceiling { get; init; }
+
+    /// <summary>The highest id already issued when an allocation was refused, or null.</summary>
+    public int? IssuedThrough { get; init; }
+
+    /// <summary>The highest id already reserved when an allocation was refused, or null.</summary>
+    public int? ReservedThrough { get; init; }
+
+    /// <summary>The number of plain ids the refused range requested, or null.</summary>
+    public int? RequestedCount { get; init; }
+
+    /// <summary>The aligned base id of a refused family block, without 32-bit truncation, or null.</summary>
+    public long? BaseId { get; init; }
+
+    /// <summary>The highest id of a refused family block, without 32-bit truncation, or null.</summary>
+    public long? HighestId { get; init; }
+
+    /// <summary>The absent family id an allocation or reservation named, or null.</summary>
+    public long? FamilyId { get; init; }
+
+    /// <summary>The content key of the target a change-set collision compared, or null.</summary>
+    public string? RowKey { get; init; }
+
+    /// <summary>The operation already held for a colliding change-set target, or null.</summary>
+    public ContentEditOperation? StandingOperation { get; init; }
+
+    /// <summary>The competing operation a change-set collision refused, or null.</summary>
+    public ContentEditOperation? RequestedOperation { get; init; }
+
+    /// <summary>The base version the refused publish expected, or null.</summary>
+    public int? ExpectedBaseVersion { get; init; }
+
+    /// <summary>The actual baseline version a stale publish compared against, or null.</summary>
+    public int? ActualBaseVersion { get; init; }
+
+    /// <summary>The zero-based ordinal of a refused edit, or null.</summary>
+    public int? EditOrdinal { get; init; }
+
+    /// <summary>The registered type key of a field edit or an ineligible text slot, or null when unknown.</summary>
+    public string? TypeKey { get; init; }
+
+    /// <summary>The runtime type of a pack target without version pointers, or null.</summary>
+    public Type? StoreType { get; init; }
+
+    /// <summary>The interface an operator import requires the store to implement, or null.</summary>
+    public Type? RequiredCapability { get; init; }
+
+    /// <summary>The operation refusing a pack write, or the malformed text component (TypeKey or FieldName), or null.</summary>
+    public string? MemberName { get; init; }
+
+    /// <summary>The version an absent-version, provenance or row-only-plan refusal names, or the reuse baseline version, or null.</summary>
+    public int? VersionNumber { get; init; }
+
+    /// <summary>The rollback target version, or null.</summary>
+    public int? TargetVersion { get; init; }
+
+    /// <summary>The number of rows blocking a rollback, or null.</summary>
+    public long? BlockerCount { get; init; }
+
+    /// <summary>The submitted rule count when it is shorter than the held history, or null.</summary>
+    public long? ActualCount { get; init; }
+
+    /// <summary>The inclusive minimum rule count needed to retain the held history, or null.</summary>
+    public long? MinimumCount { get; init; }
+
+    /// <summary>The one-based rule sequence whose prefix entry differs, or null.</summary>
+    public int? RuleSequence { get; init; }
+
+    /// <summary>The claimed or missing text chunk's content address, or null.</summary>
+    public string? TextHash { get; init; }
+
+    /// <summary>The zero-based UTF-16 offset of an unpaired surrogate, or the bundle text value index
+    /// for <see cref="ContentAuthoringRefusal.BundleTextRowUnknown"/>, or null.</summary>
+    public int? Index { get; init; }
+
+    /// <summary>The repeated fully derived text key, or null.</summary>
+    public string? DerivedKey { get; init; }
+
+    /// <summary>The text hash the regenerated values or recorded baseline require, or null.</summary>
+    public string? ExpectedTextHash { get; init; }
+
+    /// <summary>The wire spelling a reused text language recorded in the baseline, or null.</summary>
+    public string? ExpectedWireTag { get; init; }
+
+    /// <summary>The number of pending row edits blocking a companion import, or null.</summary>
+    public int? RowEditCount { get; init; }
+
+    /// <summary>The number of pending text edits a route cannot carry, or null.</summary>
+    public int? TextEditCount { get; init; }
+
+    /// <summary>The number of pending language introductions a route cannot carry, or null.</summary>
+    public int? LanguageIntroductionCount { get; init; }
+
+    /// <summary>The refused field name's length in UTF-16 code units, or null.</summary>
+    public int? ActualCharacters { get; init; }
+
+    /// <summary>The inclusive field-name limit in UTF-16 code units, or null.</summary>
+    public int? MaximumCharacters { get; init; }
+
+    /// <summary>The number of languages carried by a planner's baseline bundle, or null.</summary>
+    public int? CarriedLanguageCount { get; init; }
+
+    /// <summary>The number of values carried by a planner's baseline bundle, or null.</summary>
+    public int? CarriedValueCount { get; init; }
+
+    /// <summary>The number of languages recorded by the planner's exact baseline version, or null.</summary>
+    public int? RecordedLanguageCount { get; init; }
+
+    /// <summary>The number of values recorded by the planner's exact baseline version, or null.</summary>
+    public int? RecordedValueCount { get; init; }
+
+    /// <summary>The text row named by an export or store refusal, or null. Legacy Type stays default.</summary>
+    public ContentTypeId? TextRowType { get; init; }
+
+    /// <summary>The text row id named by an export or store refusal, or null. Legacy Id stays 0.</summary>
+    public int? TextRowId { get; init; }
+
+    /// <summary>The version number the refused plan would publish. Null for other refusals.</summary>
+    public int? RequestedVersion { get; init; }
+
+    /// <summary>The highest version the store already holds. Null for other refusals.</summary>
+    public int? HighestVersion { get; init; }
+
+    /// <summary>The next publishable version after HighestVersion. Null for other refusals.</summary>
+    public int? NextVersion { get; init; }
+
+    /// <summary>The type key the refused bundle declares. Null for other refusals.</summary>
+    public string? ActualTypeKey { get; init; }
+
+    /// <summary>The registered type key the bundle must match. Null for other refusals.</summary>
+    public string? RegisteredTypeKey { get; init; }
+
+    /// <summary>The chunk slot count the refused bundle declares. Null for other refusals.</summary>
+    public int? ActualChunkSlots { get; init; }
+
+    /// <summary>The registered chunk slot count the bundle must match. Null for other refusals.</summary>
+    public int? RegisteredChunkSlots { get; init; }
+
+    /// <summary>The active version blocking import into a nonempty catalog. Null for other refusals.</summary>
+    public int? ActiveVersion { get; init; }
+
+    /// <summary>The object content address where a pack read failed. Null for other refusals.</summary>
+    public string? ObjectHash { get; init; }
+
+    /// <summary>The pack reader's stable refusal token. Null for other refusals.</summary>
+    public string? PackReaderReason { get; init; }
+
+    /// <summary>The full stored Int64 freeze marker blocking a draft write. Null for other refusals.</summary>
+    public long? FrozenForBaseVersion { get; init; }
+
+    /// <summary>The upgrade id already recorded in the ledger. Null for other refusals.</summary>
+    public string? UpgradeId { get; init; }
+
+    /// <summary>The recorded text chunk count a row-only plan must match. Null for other refusals.</summary>
+    public long? ExpectedCount { get; init; }
+
+    /// <summary>The store epoch the text plan read. Null for other refusals.</summary>
+    public string? ExpectedEpoch { get; init; }
+
+    /// <summary>The epoch of the store refusing the text plan. Null for other refusals.</summary>
+    public string? ActualEpoch { get; init; }
+
+    /// <summary>The starting version of a text revision the store cannot close. Null for other refusals.</summary>
+    public int? FromVersion { get; init; }
+
+    /// <summary>The full persisted Int64 type id whose identity disagrees with registration, or null.</summary>
+    public long? StoredTypeId { get; init; }
+
+    /// <summary>The stored type key whose identity disagrees with registration, or null.</summary>
+    public string? StoredTypeKey { get; init; }
+
+    /// <summary>The unrecognized candidate or persisted edit operation as an integer, or null.</summary>
+    public int? ActualOperation { get; init; }
+
+    /// <summary>The persisted database ordinal of an edit with an unrecognized operation, or null.</summary>
+    public long? StoredEditOrdinal { get; init; }
+
+    /// <summary>The required CLR type of a malformed persisted scalar, or null.</summary>
+    public Type? ExpectedScalarType { get; init; }
+
+    /// <summary>The actual CLR type of a malformed non-null persisted scalar, or null.</summary>
+    public Type? ActualScalarType { get; init; }
+
+    /// <summary>The typed SQL Server error number of a transaction-contention refusal, or null.</summary>
+    public int? SqlErrorNumber { get; init; }
+
+    /// <summary>The SQL Server application lock return code of a schema refusal, or null.</summary>
+    public int? ReturnCode { get; init; }
+
+    /// <summary>The migration required by a schema validation or reset refusal, or null.</summary>
+    public string? RequiredMigration { get; init; }
+
+    /// <summary>The compared provider object identity, such as index:ix_catalog_row_live on SQLite, or null.</summary>
+    public string? ObjectName { get; init; }
+
+    /// <summary>The schema version whose object definition was expected, or null.</summary>
+    public int? ExpectedVersion { get; init; }
+
+    /// <summary>The schema version read from the refused database, or null when unreadable.</summary>
+    public long? ActualVersion { get; init; }
+
+    /// <summary>The newest schema version a reset can recreate, or null.</summary>
+    public long? MaximumVersion { get; init; }
+
+    /// <summary>The CLR type of a noninteger schema version, or null.</summary>
+    public Type? MetadataType { get; init; }
+
+    /// <summary>The number of catalog tables standing before a refused reset, or null.</summary>
+    public int? StandingTableCount { get; init; }
+
+    /// <summary>The number of tables the current schema declares, or null.</summary>
+    public int? ExpectedTableCount { get; init; }
+
+    /// <summary>Whether a reset requires explicit force to repair the catalog, or null.</summary>
+    public bool? ForceRequired { get; init; }
+
+    /// <summary>The number of draft rows blocking reset, or null.</summary>
+    public long? DraftCount { get; init; }
+
+    readonly IReadOnlyList<long>? _supportedVersions;
+    /// <summary>The schema versions supported by the refusing mode, as an owned snapshot, or null.</summary>
+    public IReadOnlyList<long>? SupportedVersions
+    {
+        get => _supportedVersions;
+        init => _supportedVersions = value is null ? null : ImmutableArray.Create(value.ToArray());
+    }
+
+    readonly IReadOnlyList<ContentHostForeignKeyFinding>? _hostObjects;
+    /// <summary>Every host key whose delete action would fire, as an owned snapshot, or null.</summary>
+    public IReadOnlyList<ContentHostForeignKeyFinding>? HostObjects
+    {
+        get => _hostObjects;
+        init => _hostObjects = value is null ? null : ImmutableArray.Create(value.ToArray());
     }
 
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
@@ -279,9 +668,9 @@ public sealed class ContentAuthoringException : Exception
     public string? Reason { get; }
 
     /// <summary>
-    /// Every finding behind the refusal, EMPTY when the refusal is a plain one. A publish refused by the
+    /// An owned read-only snapshot of every finding behind the refusal, EMPTY for a plain refusal. A publish refused by the
     /// validator and a rollback blocked by a retire both carry theirs here, so the API boundary renders one
     /// body shape whichever refused.
     /// </summary>
-    public IReadOnlyList<ContentFinding> Findings { get; } = [];
+    public IReadOnlyList<ContentFinding> Findings { get; } = ImmutableArray<ContentFinding>.Empty;
 }

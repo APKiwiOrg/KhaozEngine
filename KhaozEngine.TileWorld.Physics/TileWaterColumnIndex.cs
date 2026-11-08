@@ -48,6 +48,18 @@ internal sealed class TileWaterColumnIndex
         return index;
     }
 
+    internal bool MeetsAny(in TileWaterPathBounds bounds) => _nodes.Length != 0 && MeetsAny(0, bounds);
+
+    bool MeetsAny(int index, in TileWaterPathBounds bounds)
+    {
+        if (TileWaterQueryWork.Enabled) TileWaterQueryWork.IndexNodes++;
+        Node node = _nodes[index];
+        if (!bounds.Meets(node.Minimum, node.Maximum)) return false;
+        if (node.Column < 0) return MeetsAny(node.Left, bounds) || MeetsAny(node.Right, bounds);
+        if (TileWaterQueryWork.Enabled) TileWaterQueryWork.NonuniformVisits++;
+        return true;
+    }
+
     internal int FindContaining(in MovementBodyQuery body, Vector3 origin) =>
         _nodes.Length == 0 ? -1 : FindContaining(0, body, origin);
 

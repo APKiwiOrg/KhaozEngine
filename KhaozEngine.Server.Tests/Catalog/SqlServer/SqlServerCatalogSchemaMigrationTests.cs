@@ -201,15 +201,19 @@ public class SqlServerCatalogSchemaMigrationTests
     {
         using var database = new SqlServerCatalogDatabase();
         WriteVersionOne(database);
+        string before = SqlServerCatalogSnapshot.Read(database.ConnectionString);
 
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("version '1'", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaVersionUnsupported, refused.Refusal);
+        Assert.Equal(1L, refused.ActualVersion);
+        Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
 
+        Assert.Equal(before, SqlServerCatalogSnapshot.Read(database.ConnectionString));
         // Refused means REFUSED: the database is still version 1 and still carries no ledger table.
         Assert.Equal(1, database.Scalar(
             "SELECT schema_version FROM dbo.catalog_metadata WHERE metadata_key = 1;"));
@@ -218,6 +222,8 @@ public class SqlServerCatalogSchemaMigrationTests
             SELECT COUNT(*) FROM sys.tables
             WHERE schema_id = SCHEMA_ID(N'dbo') AND name = N'catalog_content_upgrade';
             """));
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>

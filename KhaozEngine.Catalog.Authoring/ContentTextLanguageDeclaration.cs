@@ -24,14 +24,27 @@ public sealed record ContentTextLanguageDeclaration
         ArgumentNullException.ThrowIfNull(wireTag);
         if (!string.Equals(ContentTextLanguageTag.Normalize(wireTag), Language, StringComparison.Ordinal))
         {
-            throw new ArgumentException(
-                FormattableString.Invariant(
-                    $"Wire tag '{wireTag}' does not spell language '{Language}'."),
-                nameof(wireTag));
+            throw Mismatch(Language, wireTag).ToException();
         }
 
         WireTag = wireTag;
     }
+
+    /// <summary>The first constructor rule the supplied declaration breaks, in constructor order.</summary>
+    internal static ContentTextFinding? FindDefect(string language, string wireTag)
+    {
+        if (ContentTextLanguageTag.FindDefect(language) is { } identity) return identity with { MemberName = "language" };
+        string canonical = ContentTextLanguageTag.Normalize(language);
+        ArgumentNullException.ThrowIfNull(wireTag);
+        if (ContentTextLanguageTag.FindDefect(wireTag) is { } spelling) return spelling with { MemberName = "wireTag" };
+        return string.Equals(ContentTextLanguageTag.Normalize(wireTag), canonical, StringComparison.Ordinal)
+            ? null : Mismatch(canonical, wireTag);
+    }
+
+    static ContentTextFinding Mismatch(string language, string wireTag)
+        => new(ContentAuthoringRefusal.BundleLanguageWireTagMismatch,
+            FormattableString.Invariant($"Wire tag '{wireTag}' does not spell language '{language}'."), nameof(wireTag))
+        { MemberName = "wireTag", Language = language, WireTag = wireTag };
 
     /// <summary>The canonical, lowered identity.</summary>
     public string Language { get; }

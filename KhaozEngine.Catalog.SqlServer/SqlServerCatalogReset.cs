@@ -319,11 +319,11 @@ public static class SqlServerCatalogReset
 
         if (drafts > 0 && !force)
         {
-            throw new ContentAuthoringException(
+            throw new ContentAuthoringException(ContentAuthoringRefusal.ResetDraftOpen,
                 "This catalog carries an OPEN DRAFT, and a reset drops it with everything else. Publish or discard the draft, or pass the reset's force flag to destroy it deliberately.",
                 default,
                 0,
-                ContentAuthoringException.DraftOpenReason);
+                ContentAuthoringException.DraftOpenReason) { DraftCount = drafts };
         }
 
         string? server = null;
@@ -440,7 +440,11 @@ public static class SqlServerCatalogReset
     {
         await using SqlCommand command = Command(connection, transaction, sql);
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw is int value ? value : throw Mismatch("missing its metadata row");
+        if (raw is int value) return value;
+        if (raw is null or DBNull) throw Mismatch("missing its metadata row");
+        throw new ContentAuthoringException(ContentAuthoringRefusal.StoredScalarTypeMismatch,
+            DescribeMismatch("missing its metadata row", null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ExpectedScalarType = typeof(int), ActualScalarType = raw.GetType() };
     }
 
     static async Task<string> ReadTextAsync(
@@ -450,8 +454,14 @@ public static class SqlServerCatalogReset
         CancellationToken cancellationToken)
     {
         await using SqlCommand command = Command(connection, transaction, sql);
-        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string
-            ?? throw Mismatch("missing its metadata row after the recreate");
+        // A host database DDL trigger can reshape the recreated metadata and install a seed trigger,
+        // so the recreate does not prove that this value came from the engine's seed unchanged.
+        object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (raw is string value) return value;
+        if (raw is null or DBNull) throw Mismatch("missing its metadata row after the recreate");
+        throw new ContentAuthoringException(ContentAuthoringRefusal.StoredScalarTypeMismatch,
+            DescribeMismatch("missing its metadata row after the recreate", null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ExpectedScalarType = typeof(string), ActualScalarType = raw.GetType() };
     }
 
     static SqlCommand Command(SqlConnection connection, SqlTransaction transaction, string sql)
@@ -549,12 +559,13 @@ public static class SqlServerCatalogReset
     /// migration. The reset itself is the remedy, and the sentence says so.
     /// </summary>
     static ContentAuthoringException Partial(int standing, int? version)
-        => new(
+        => new(version.HasValue ? ContentAuthoringRefusal.ResetTablesPartial : ContentAuthoringRefusal.ResetVersionUnreadable,
             FormattableString.Invariant(
                 $"The SQL Server content catalog is PARTIAL: {standing} of the {SqlServerCatalogSchemaExpectations.Tables.Count} tables schema version {SqlServerCatalogSchema.CurrentVersion} declares stand, {Measured(version)}, so what it holds cannot be read. Pass the reset's force flag to drop what is left and recreate the schema at version {SqlServerCatalogSchema.CurrentVersion}, which repairs it."),
             default,
             0,
-            ContentAuthoringException.CatalogPartialReason);
+            ContentAuthoringException.CatalogPartialReason)
+        { StandingTableCount = standing, ExpectedTableCount = SqlServerCatalogSchemaExpectations.Tables.Count, ActualVersion = version, ForceRequired = true };
 
     /// <summary>What the partial refusal measured the standing tables against, or that it had nothing to measure with.</summary>
     static string Measured(int? version)
@@ -568,12 +579,12 @@ public static class SqlServerCatalogReset
     /// rather than a migration.
     /// </summary>
     static ContentAuthoringException Newer(int version)
-        => new(
+        => new(ContentAuthoringRefusal.ResetVersionNewer,
             FormattableString.Invariant(
                 $"The SQL Server content catalog schema is at version '{version}', newer than version {SqlServerCatalogSchema.CurrentVersion} this build writes, so a reset by this build would move it backwards. Nothing was dropped. Reset it from a build that writes schema version {version} or later."),
             default,
             0,
-            ContentAuthoringException.SchemaMismatchReason);
+            ContentAuthoringException.SchemaMismatchReason) { ActualVersion = version, MaximumVersion = SqlServerCatalogSchema.CurrentVersion };
 
     /// <summary>
     /// The schema refusal, in the words and under the reason token the provider's own validation uses, so a
@@ -581,12 +592,15 @@ public static class SqlServerCatalogReset
     /// wrong at reset.
     /// </summary>
     static ContentAuthoringException Mismatch(string actual, Exception? innerException = null)
-        => new(
-            FormattableString.Invariant(
-                $"The SQL Server content catalog schema is {actual}{Because(innerException)}. Apply migration '{SqlServerCatalogSchema.RequiredMigration}'."),
-            default,
-            0,
-            ContentAuthoringException.SchemaMismatchReason);
+        => innerException is null
+            ? new(ContentAuthoringRefusal.SchemaValidationMetadataMissing, DescribeMismatch(actual, null), default, 0, ContentAuthoringException.SchemaMismatchReason)
+                { RequiredMigration = SqlServerCatalogSchema.RequiredMigration }
+            : new(ContentAuthoringRefusal.SchemaMetadataUnreadable, DescribeMismatch(actual, innerException), default, 0, ContentAuthoringException.SchemaMismatchReason, innerException)
+                { RequiredMigration = SqlServerCatalogSchema.RequiredMigration };
+
+    static string DescribeMismatch(string actual, Exception? innerException)
+        => FormattableString.Invariant(
+            $"The SQL Server content catalog schema is {actual}{Because(innerException)}. Apply migration '{SqlServerCatalogSchema.RequiredMigration}'.");
 
     static string Because(Exception? innerException)
         => innerException is null ? string.Empty : ": " + innerException.Message;

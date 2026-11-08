@@ -55,8 +55,13 @@ public sealed class SqliteJournalResetRefusalTests : IDisposable
         JournalStoreException refused = await Assert.ThrowsAsync<JournalStoreException>(
             () => SqliteJournalReset.ResetAsync(database.ConnectionString(path)));
 
+        Assert.Equal(JournalStoreRefusal.ProviderOperationFailed, refused.Reason);
+        Assert.Equal(14, refused.ProviderCode);
+        Assert.Equal(JournalOperationStage.Operation, refused.Stage);
         Assert.Equal(JournalStoreFailureKind.Unavailable, refused.Kind);
         Assert.False(File.Exists(path));
+        await SqliteJournalResetHarness.SeedAsync(database, path);
+        Assert.True((await SqliteJournalReset.ResetAsync(database.ConnectionString(path))).RowsDeleted > 0);
     }
 
     [Fact]

@@ -33,6 +33,28 @@ public sealed class RendererPerfRecipeSettingsTests
     }
 
     [Fact]
+    public void Default_aerial_shadow_samples_keep_the_legacy_atmosphere_encoding()
+    {
+        var settings = new AtmosphereSettings();
+        var legacy = JsonSerializer.SerializeToNode(settings, LegacyOptions)!.AsObject();
+        legacy.Remove(nameof(AtmosphereSettings.AerialShadowSamples));
+
+        Assert.Equal(legacy.ToJsonString(), JsonSerializer.Serialize(settings, RendererPerfRecipe.Json));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(16)]
+    public void An_explicit_aerial_shadow_sample_count_is_captured_in_the_identity(int samples)
+    {
+        var settings = new AtmosphereSettings { AerialShadowSamples = samples };
+        var encoded = JsonSerializer.SerializeToNode(settings, RendererPerfRecipe.Json)!.AsObject();
+
+        Assert.Equal(samples, encoded[nameof(AtmosphereSettings.AerialShadowSamples)]!.GetValue<int>());
+        Assert.NotEqual(RendererPerfRecipe.Digest(new AtmosphereSettings()), RendererPerfRecipe.Digest(settings));
+    }
+
+    [Fact]
     public void Inherited_underwater_overrides_keep_the_legacy_look_encoding()
     {
         var look = new WaterLook { WaveSource = WaterWaveSource.Procedural, SwellAmplitude = 0f };

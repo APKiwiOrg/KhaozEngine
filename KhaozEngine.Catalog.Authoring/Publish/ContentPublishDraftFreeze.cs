@@ -23,7 +23,8 @@ internal static class ContentPublishDraftFreeze
     /// <para>
     /// <see cref="ContentPublishRequest.ExpectedBaseVersion"/> is optimistic concurrency and it is checked
     /// against the BASELINE, which the commit read. Two consoles cannot both publish the same draft: the
-    /// second one's expectation is stale and it is refused with both numbers named. That check runs BEFORE
+    /// second one's expectation is stale and BaseVersionMoved carries ExpectedBaseVersion and ActualBaseVersion.
+    /// That check runs BEFORE
     /// the marker is written, so a publish refused for a stale expectation freezes nothing.
     /// </para>
     /// </summary>
@@ -36,17 +37,23 @@ internal static class ContentPublishDraftFreeze
         if (request.ExpectedBaseVersion != baseline.VersionNumber)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.BaseVersionMoved,
                 FormattableString.Invariant(
                     $"The publish expects base version {request.ExpectedBaseVersion} and the store stands at {baseline.VersionNumber}. Another publish landed in between, so this draft is against a version that is no longer the base."),
                 default,
                 0,
-                ContentAuthoringException.BaseVersionMovedReason);
+                ContentAuthoringException.BaseVersionMovedReason)
+            {
+                ExpectedBaseVersion = request.ExpectedBaseVersion,
+                ActualBaseVersion = baseline.VersionNumber,
+            };
         }
 
         ContentDraft? draft = await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
         if (draft is null || draft.EditCount == 0)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.NoPendingDraft,
                 "There is no open draft with pending edits, so there is nothing to publish. A version is a set of changes and an empty one would be a number with no content behind it.",
                 default,
                 0,
@@ -64,8 +71,12 @@ internal static class ContentPublishDraftFreeze
         ContentDraft? frozen = await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
         if (frozen is null || frozen.FrozenForBaseVersion != baseline.VersionNumber)
         {
-            throw new ContentAuthoringException("The policy publish no longer holds its frozen draft.",
-                default, 0, ContentAuthoringException.BaseVersionMovedReason);
+            throw new ContentAuthoringException(ContentAuthoringRefusal.FrozenDraftLost,
+                "The policy publish no longer holds its frozen draft.",
+                default, 0, ContentAuthoringException.BaseVersionMovedReason)
+            {
+                ExpectedBaseVersion = baseline.VersionNumber,
+            };
         }
 
         return frozen;

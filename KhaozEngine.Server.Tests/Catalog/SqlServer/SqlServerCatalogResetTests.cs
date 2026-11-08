@@ -240,12 +240,16 @@ public class SqlServerCatalogResetTests
             Operator,
             "unpublished work");
         string epochBefore = await store.GetStoreEpochAsync();
+        string before = SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
 
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqlServerCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "content release"));
 
         Assert.Equal("draft-open", refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.ResetDraftOpen, refused.Refusal);
+        Assert.Equal(1L, refused.DraftCount);
+        Assert.Equal(before, SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal(1, database.Scalar("SELECT active_version FROM dbo.catalog_metadata;"));
         Assert.Equal(1, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_draft;"));
         Assert.Equal(epochBefore, Text(database, "SELECT store_epoch FROM dbo.catalog_metadata;"));

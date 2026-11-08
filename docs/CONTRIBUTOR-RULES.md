@@ -30,14 +30,20 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   the type thrown before, as `WaterOpticsSurfaceException` derives from `ArgumentException`, so existing
   catches keep working. A refusal for malformed input data whose BCL type would be the sealed
   `InvalidDataException` derives from `MalformedDataException`, and code that handles malformed data catches
-  the base. A new refusal in a family adds a reason member. The message stays developer prose
+  the base. A new refusal in a family adds a reason member at the end of its enum. Public refusal enums are
+  append-only from 23.5.0, so existing numeric values never move, because mods and tools built against one engine
+  version must keep working. The message stays developer prose
   and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
   problem stays a BCL exception. An adapter's status projection remains distinct from the lower refusal
   reason. Classifiers use typed reasons and producer context, never keywords inside user identifiers or
   exception prose. A rule that every implementation of a shared contract enforces, such as an
   `IGpu*` command or resource rule, is one family in the contract's package, and every backend throws the
   same reason for the same input. A collection identifier is a read-only snapshot the exception copies when
-  it is set, so neither the caller's source nor a cast of the exposed list can change it. A change to a throw
+  it is set, so neither the caller's source nor a cast of the exposed list can change it. Use `ImmutableArray<T>`
+  behind the existing `IReadOnlyList<T>` property. Materialize a fresh array before creating each snapshot,
+  because `ImmutableArray.CreateRange` can reuse an immutable input's storage and change record equality
+  after collection reassignment. A `ReadOnlyCollection<T>` over an array or list is not a snapshot,
+  because its `ICollection.SyncRoot` exposes that storage. A change to a throw
   site's type converts every test that asserts the old exact type in the same change, GPU facts included,
   because they skip in a local run and fail only on the GPU legs. So do test projects outside the solution, such
   as those under `tools/`, because only their own workflow runs them. A wrapper that adds context, such as a
@@ -63,7 +69,18 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   has to describe. A limit identifier is the inclusive limit of the field it names, so a retry at that limit succeeds.
   A catch or status that reads a message is replaced by a reason check only once every thrower behind it is typed,
   keeping every status value and detail text. Code using `MapDocumentFinding.FromException` handles null, because
-  consumer code can still throw a refusal with no reason.
+  consumer code can still throw a refusal with no reason. A custom carrier keeps every public legacy
+  constructor for consumers, while a whole-assembly `RefusalConstructorFence` rejects engine calls to those
+  constructors, including constructor chaining and provider base forwarding. Each fence has a deliberate
+  forbidden-constructor positive control. Legacy chaining uses a nonpublic initialization constructor that
+  accepts a nullable reason, never a public unspecified member. Copy completeness tests cover every public
+  identifier and owned collection and name any property lost by the copy. An invariant claim must hold for every
+  admitted input, including host triggers in the same transaction, host DDL after open and collection interface
+  casts. An existing structured refusal keeps its carrier and failure dimensions even at a defensive guard
+  believed unreachable. Do not downgrade it to a plain BCL exception. A reader of result streams that host triggers
+  can write into checks each result set's shape before reading its columns and proves the stream complete before
+  accepting a success outcome. Refusal outcomes keep their historical path. A generated identity comes back through
+  an output parameter, never a result set read after DML, because a trigger's result set arrives first.
 - A test that reaches a numerical guard, such as a singular matrix, a collapsed cosine or a zero length, never
   depends on floating-point cancellation landing on a threshold or on subnormal inputs. CI runs on x64 and
   arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one
@@ -106,7 +123,8 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   class fixture. It also carries a parity test that ages the shared scene through several
   configurations and compares it with a fresh snapshot scene. `OceanFocusScene` is the reference.
 - The test-health ratchet enforces per-file KETEST001 exception-message assertions and KETEST002
-  non-public reflection counts in `.testhealth-baseline`. Growth requires owner approval. A legitimate
+  non-public reflection counts in `.testhealth-baseline`. The baseline holds exemptions only, so any new hit
+  fails the build. Growth requires owner approval. A legitimate
   wording or structural-reflection contract uses an owner-approved `exempt <rule> <path>` entry with a
   `#` reason above it, never a suppression. Ratchet down with
   `build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update`.

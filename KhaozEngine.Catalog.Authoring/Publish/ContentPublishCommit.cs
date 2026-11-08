@@ -65,11 +65,16 @@ public sealed class ContentPublishCommit
         PackStore = packStore;
         Pointers = PackVersionPointers.Resolve(packStore)
             ?? throw new ContentAuthoringException(
+                ContentAuthoringRefusal.PackPointerStoreRequired,
                 FormattableString.Invariant(
                     $"The pack store {packStore.GetType().Name} writes no version pointer, so a published version could never be enumerated out of it and the sweep could never find it again. A publish target carries both halves."),
                 default,
                 0,
-                ContentAuthoringException.NoPackStoreReason);
+                ContentAuthoringException.NoPackStoreReason)
+            {
+                StoreType = packStore.GetType(),
+                MemberName = nameof(ContentPublishCommit),
+            };
     }
 
     /// <summary>The pack store every file is written to.</summary>
@@ -264,8 +269,14 @@ public sealed class ContentPublishCommit
 
         if (plan.FrozenTextState is not null)
         {
-            throw ContentTextCompatibility.Unrepresented(nameof(WriteAsync), FormattableString.Invariant(
-                $"the plan for version {plan.VersionNumber} is the row half of a text plan, whose text chunks this writer does not put"));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextPlanOnRowOnlyRoute,
+                ContentTextCompatibility.DescribeUnrepresented(nameof(WriteAsync), FormattableString.Invariant(
+                    $"the plan for version {plan.VersionNumber} is the row half of a text plan, whose text chunks this writer does not put")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            {
+                MemberName = nameof(WriteAsync),
+                VersionNumber = plan.VersionNumber,
+            };
         }
 
         for (int i = 0; i < plan.Languages.Count; i++)
@@ -273,8 +284,15 @@ public sealed class ContentPublishCommit
             ManifestLanguageEntry language = plan.Languages[i];
             if (!await PackStore.ExistsAsync(language.TextHash, cancellationToken).ConfigureAwait(false))
             {
-                throw ContentTextCompatibility.Unrepresented(nameof(WriteAsync), FormattableString.Invariant(
-                    $"the manifests name text chunk {language.TextHash} for language '{language.Tag}', which the pack store does not hold and this writer does not put"));
+                throw new ContentAuthoringException(ContentAuthoringRefusal.TextChunkMissingOnRowOnlyRoute,
+                    ContentTextCompatibility.DescribeUnrepresented(nameof(WriteAsync), FormattableString.Invariant(
+                        $"the manifests name text chunk {language.TextHash} for language '{language.Tag}', which the pack store does not hold and this writer does not put")),
+                    default, 0, ContentAuthoringException.TextUnrepresentedReason)
+                {
+                    MemberName = nameof(WriteAsync),
+                    Language = language.Tag,
+                    TextHash = language.TextHash,
+                };
             }
         }
 
@@ -391,6 +409,7 @@ public sealed class ContentPublishCommit
     /// <param name="plan">The refused plan, whose findings the exception carries.</param>
     internal static ContentAuthoringException Invalid(ContentPublishPlan plan)
         => new(
+            ContentAuthoringRefusal.CandidateRejected,
             FormattableString.Invariant(
                 $"The candidate for version {plan.VersionNumber} carries {plan.Validation.Findings.Count} finding(s), so nothing was written. A publish that wrote a version the validator refused would be a version a boot then fails closed on."),
             default,

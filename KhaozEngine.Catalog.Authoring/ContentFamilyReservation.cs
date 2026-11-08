@@ -16,11 +16,20 @@ static class ContentFamilyReservation
         if (topId > ceiling)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.FamilyReservationCeilingExceeded,
                 FormattableString.Invariant(
                     $"Content type {family.Type.Value} declares an id ceiling of {ceiling}, so family '{family.FamilyKey}' cannot reserve the block [{baseId}, {topId + 1}) whose highest id is {topId}. The type has reserved through {mark.ReservedThrough} and issued through {mark.IssuedThrough}."),
                 family.Type,
                 0,
-                ContentAuthoringException.IdCeilingReason);
+                ContentAuthoringException.IdCeilingReason)
+            {
+                FamilyKey = family.FamilyKey,
+                Ceiling = (int)ceiling,
+                BaseId = baseId,
+                HighestId = topId,
+                IssuedThrough = mark.IssuedThrough,
+                ReservedThrough = mark.ReservedThrough,
+            };
         }
 
         return new ContentFamilyBlock(

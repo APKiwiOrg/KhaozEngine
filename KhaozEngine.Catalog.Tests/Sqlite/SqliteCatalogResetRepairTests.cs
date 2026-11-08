@@ -85,19 +85,26 @@ public class SqliteCatalogResetRepairTests
             database, "SELECT store_epoch FROM catalog_metadata;");
         Halve(database);
 
+        string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqliteCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "content release"));
 
+        Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal("catalog-partial", refused.Reason);
-        Assert.Contains("force", refused.Message, StringComparison.Ordinal);
+        Assert.True(refused.ForceRequired);
 
         // What was left of the catalog is exactly as it was, rows included, and the audit is untouched.
         Assert.Equal(epochBefore, SqliteCatalogResetHarness.Text(
             database, "SELECT store_epoch FROM catalog_metadata;"));
         Assert.Equal(1L, database.Scalar("SELECT active_version FROM catalog_metadata;"));
         Assert.Equal(2L, database.Scalar("SELECT COUNT(*) FROM catalog_row;"));
+        Assert.Equal(ContentAuthoringRefusal.ResetTablesPartial, refused.Refusal);
+        Assert.Equal(Standing, refused.StandingTableCount);
+        Assert.Equal(19, refused.ExpectedTableCount);
+        Assert.Equal(4L, refused.ActualVersion);
         Assert.Equal(Standing, SqliteCatalogResetHarness.Tables(database).Count);
+        await SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "repair", force: true);
     }
 
     [Fact]
@@ -157,13 +164,18 @@ public class SqliteCatalogResetRepairTests
         int standing = SqliteCatalogResetHarness.Tables(database).Count;
         Assert.Equal(SqliteCatalogSchemaInventory.Tables.Count - (versionOneTables ? 1 : 0), standing);
 
+        string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqliteCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "content release"));
 
+        Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal("catalog-partial", refused.Reason);
-        Assert.Contains("no schema version can be read", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("force", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.ResetVersionUnreadable, refused.Refusal);
+        Assert.Null(refused.ActualVersion);
+        Assert.Equal(standing, refused.StandingTableCount);
+        Assert.Equal(19, refused.ExpectedTableCount);
+        Assert.True(refused.ForceRequired);
         Assert.DoesNotContain("migration", refused.Message, StringComparison.Ordinal);
         Assert.Equal(standing, SqliteCatalogResetHarness.Tables(database).Count);
         Assert.Equal(1L, database.Scalar("SELECT COUNT(*) FROM catalog_version;"));

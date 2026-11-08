@@ -178,7 +178,7 @@ public sealed partial class SqliteMutationJournalStore
             Add(update, "$epoch", next.ToString("D"));
             Add(update, "$now", Timestamp(UtcNow()));
             if (await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
-                throw Corrupt(Array.Empty<string>(), "Journal metadata row is missing.");
+                throw Corrupt(JournalStoreRefusal.MetadataUpdateNotApplied, Array.Empty<string>(), "Journal metadata row is missing.");
             Invoke(JournalTestHookPhase.BeforeCommit);
             commitStarted = true;
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -202,7 +202,7 @@ public sealed partial class SqliteMutationJournalStore
         using SqliteCommand command = CreateCommand(transaction, "SELECT through_version FROM journal_snapshot WHERE stream_key = $stream;");
         Add(command, "$stream", streamKey);
         object? result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        if (result is null or DBNull) throw Corrupt(new[] { streamKey }, "Journal stream has no snapshot.");
+        if (result is null or DBNull) throw Corrupt(JournalStoreRefusal.StreamSnapshotMissing, new[] { streamKey }, "Journal stream has no snapshot.", streamKey: streamKey);
         return Convert.ToInt64(result);
     }
 
@@ -238,9 +238,19 @@ public sealed partial class SqliteMutationJournalStore
         using SqliteCommand command = CreateCommand(transaction, "SELECT through_version, data, data_sha256 FROM journal_snapshot WHERE stream_key = $stream;");
         Add(command, "$stream", compaction.StreamKey);
         await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
-            || reader.GetInt64(0) != compaction.ThroughVersion
+        bool found = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        long? actualVersion = found ? reader.GetInt64(0) : null;
+        if (!found
+            || actualVersion != compaction.ThroughVersion
             || !JournalCanonicalizer.VerifySha256(reader.GetFieldValue<byte[]>(1), reader.GetFieldValue<byte[]>(2)))
-            throw Corrupt(new[] { compaction.StreamKey }, "Replacement journal snapshot did not verify before pruning.");
+        {
+            JournalStoreRefusal reason = !found ? JournalStoreRefusal.StreamSnapshotMissing
+                : actualVersion != compaction.ThroughVersion ? JournalStoreRefusal.ReplacementSnapshotVersionMismatch
+                : JournalStoreRefusal.SnapshotChecksumMismatch;
+            throw Corrupt(reason, new[] { compaction.StreamKey }, "Replacement journal snapshot did not verify before pruning.",
+                streamKey: compaction.StreamKey,
+                expectedVersion: reason == JournalStoreRefusal.ReplacementSnapshotVersionMismatch ? compaction.ThroughVersion : null,
+                actualVersion: reason == JournalStoreRefusal.ReplacementSnapshotVersionMismatch ? actualVersion : null);
+        }
     }
 }

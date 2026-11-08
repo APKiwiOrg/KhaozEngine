@@ -114,6 +114,7 @@ public sealed partial class DirectMoveToRange
     private bool AllowsStep(in MoveState body, in MoveState predicted, in MoveTuning tuning)
     {
         if (!predicted.Grounded || predicted.Swimming || !MovementBody.IsFinite(predicted.Position)) return false;
-        return !_stepContext!.SampleWaterForPacing(predicted, tuning).Swimming;
+        return _stepContext!.HasDryRangePreview(predicted, tuning) ||
+            !_stepContext.SampleWaterForPacing(predicted, tuning).Swimming;
     }
 }

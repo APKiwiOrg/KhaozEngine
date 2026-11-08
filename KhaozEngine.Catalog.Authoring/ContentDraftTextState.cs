@@ -26,8 +26,8 @@ public sealed class ContentDraftTextState
         IReadOnlyList<ContentTextEdit> edits,
         IReadOnlyList<ContentTextLanguageDeclaration> introductions)
     {
-        Edits = CopyEdits(edits, nameof(edits));
-        Introductions = CopyDeclarations(introductions, nameof(introductions));
+        Edits = new CatalogReadOnlyView<ContentTextEdit>(CopyEdits(edits, nameof(edits)));
+        Introductions = new CatalogReadOnlyView<ContentTextLanguageDeclaration>(CopyDeclarations(introductions, nameof(introductions)));
     }
 
     /// <summary>A state holding nothing, which a backend that represents text returns for a row-only draft.</summary>
@@ -102,6 +102,23 @@ public sealed class ContentDraftTextState
         IReadOnlyList<ContentTextLanguageDeclaration> declarations,
         string parameterName)
     {
+        ContentTextLanguageDeclaration[] copy = CopyDeclarations(declarations, parameterName, out ContentTextFinding? finding);
+        if (finding is not null) throw finding.ToException();
+        return copy;
+    }
+
+    /// <summary>The same declaration check used by the constructor, stopping at its first refusal.</summary>
+    internal static ContentTextFinding? FindDeclarationDefect(
+        IReadOnlyList<ContentTextLanguageDeclaration> declarations, string parameterName)
+    {
+        _ = CopyDeclarations(declarations, parameterName, out ContentTextFinding? finding);
+        return finding;
+    }
+
+    static ContentTextLanguageDeclaration[] CopyDeclarations(
+        IReadOnlyList<ContentTextLanguageDeclaration> declarations, string parameterName, out ContentTextFinding? finding)
+    {
+        finding = null;
         ArgumentNullException.ThrowIfNull(declarations, parameterName);
         var copy = new ContentTextLanguageDeclaration[declarations.Count];
         var languages = new HashSet<string>(StringComparer.Ordinal);
@@ -112,10 +129,13 @@ public sealed class ContentDraftTextState
                 parameterName, FormattableString.Invariant($"Declaration {i} is null."));
             if (!languages.Add(declaration.Language) || !tags.Add(declaration.WireTag))
             {
-                throw new ArgumentException(
+                // A repeated wire spelling necessarily repeats its normalized identity. The identity branch
+                // always refuses it first, so a distinct wire-tag-duplicate refusal is unreachable.
+                finding = new(ContentAuthoringRefusal.BundleLanguageIdentityDuplicate,
                     FormattableString.Invariant(
-                        $"Language '{declaration.Language}' is declared twice. One identity has one spelling."),
-                    parameterName);
+                        $"Language '{declaration.Language}' is declared twice. One identity has one spelling."), parameterName)
+                { Index = i, MemberName = "language", Language = declaration.Language };
+                return copy;
             }
 
             copy[i] = declaration;

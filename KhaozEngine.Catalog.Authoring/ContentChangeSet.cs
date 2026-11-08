@@ -44,6 +44,7 @@ public sealed class ContentChangeSet
     /// <summary>An empty change set, which is what an open draft with nothing pending holds.</summary>
     public ContentChangeSet()
     {
+        Edits = new ContentChangeSetView(_edits);
     }
 
     /// <summary>
@@ -55,6 +56,7 @@ public sealed class ContentChangeSet
     /// <exception cref="ArgumentNullException"><paramref name="edits"/> or one of its entries is null.</exception>
     /// <exception cref="ContentAuthoringException">Two stored edits name one target.</exception>
     public ContentChangeSet(IReadOnlyList<ContentEdit> edits)
+        : this()
     {
         ArgumentNullException.ThrowIfNull(edits);
 
@@ -66,7 +68,7 @@ public sealed class ContentChangeSet
     }
 
     /// <summary>The pending edits, one per target, in the order they were applied.</summary>
-    public IReadOnlyList<ContentEdit> Edits => _edits;
+    public IReadOnlyList<ContentEdit> Edits { get; }
 
     /// <summary>How many edits are pending.</summary>
     public int Count => _edits.Count;
@@ -89,8 +91,10 @@ public sealed class ContentChangeSet
     /// <returns>True when the edit was added or replaced an equivalent one.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="edit"/> is null.</exception>
     public bool TryApply(ContentEdit edit, [MaybeNullWhen(true)] out ContentEdit standing)
+        => TryApplyTarget(edit, TargetOf(edit), out standing);
+
+    bool TryApplyTarget(ContentEdit edit, ContentEditTarget target, [MaybeNullWhen(true)] out ContentEdit standing)
     {
-        ContentEditTarget target = TargetOf(edit);
         if (!_byTarget.TryGetValue(target, out int index))
         {
             _byTarget.Add(target, _edits.Count);
@@ -122,17 +126,24 @@ public sealed class ContentChangeSet
     /// <exception cref="ContentAuthoringException">The target is held under a different operation.</exception>
     public void Apply(ContentEdit edit)
     {
-        if (TryApply(edit, out ContentEdit? standing))
+        ContentEditTarget target = TargetOf(edit);
+        if (TryApplyTarget(edit, target, out ContentEdit? standing))
         {
             return;
         }
 
         throw new ContentAuthoringException(
+            ContentAuthoringRefusal.EditTargetOperationCollision,
             FormattableString.Invariant(
-                $"The open draft already holds a {standing.Operation} edit for type {edit.Type.Value} row {edit.DefinitionId} ('{edit.Key}'), so a {edit.Operation} of the same row is refused. A draft holds one pending intent per row."),
-            edit.Type,
-            edit.DefinitionId,
-            ContentAuthoringException.EditTargetCollisionReason);
+                $"The open draft already holds a {standing.Operation} edit for type {target.Type.Value} row {target.DefinitionId} ('{target.Key}'), so a {edit.Operation} of the same row is refused. A draft holds one pending intent per row."),
+            target.Type,
+            target.DefinitionId,
+            ContentAuthoringException.EditTargetCollisionReason)
+        {
+            RowKey = target.Key.ToString(),
+            StandingOperation = standing.Operation,
+            RequestedOperation = edit.Operation,
+        };
     }
 
     /// <summary>The standing edit for one target, when the draft holds one.</summary>

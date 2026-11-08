@@ -33,4 +33,7 @@
     <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
   </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
+  <ItemGroup>
+    <Compile Include="../test-shared/ContentRegistryRefusalFixtures.cs" Link="Shared/ContentRegistryRefusalFixtures.cs" />
+  </ItemGroup>
 </Project>

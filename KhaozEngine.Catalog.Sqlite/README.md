@@ -31,6 +31,18 @@ Guarded operator pins use `IContentVersionSelectionStore.TrySetPinnedVersionAsyn
 checked catalog epoch, active version and pin in the same transaction as the pin and audit write.
 Trusted `SetPinnedVersionAsync` recovery calls keep their existing semantics.
 
+Store admission and commit failures carry `ContentAuthoringException.Refusal` with the same members and
+identifier sets as the in-memory store. See the shared
+[store refusal table](../KhaozEngine.Catalog.Authoring/README.md#store-admission-and-confirmation-refusals).
+Legacy `Reason` tokens, `Type`, `Id` and `Findings` retain their meanings. Missing metadata reads use
+`SchemaMetadataMissing`. A non-null scalar of the wrong CLR type uses `StoredScalarTypeMismatch` with
+`ExpectedScalarType` and `ActualScalarType`. Registry id/key conflicts use `TypeIdentityMismatch` and report both stored and
+registered identities. `StoredTypeId` retains the full persisted Int64 even outside the public type-id range.
+`DraftRowDisappeared` reports a draft removed inside its transaction, including by a
+host trigger. `StoredEditOperationUnknown` reports malformed stored operations with their database ordinal.
+DDL validation does not validate trigger behavior or every stored value. Provider failures retain their
+typed SQLite error codes without parsing message text.
+
 Operator imports support `IContentPolicyImportStore.ImportWithPolicyAsync` with a required-policy
 `ContentPolicyImportRequest`. The host's admin registration binds the policy and the existing frozen
 publisher enforces it. Trusted `ImportBundleAsync` and `ImportTextBundleAsync` calls keep their existing
@@ -50,7 +62,15 @@ never point at a version that does not exist.
 `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating
 anything, which is what a production host sets so a typo in a connection string cannot silently create a
 second empty catalog and serve it. A mismatch throws `ContentAuthoringException` with reason
-`schema-mismatch`, naming the object and the migration `catalog-v4-text-authoring`.
+`schema-mismatch`, naming the object and the migration `catalog-v4-text-authoring`. Its typed `Refusal`
+and identifiers follow the [durable schema and reset table](../KhaozEngine.Catalog.Authoring/README.md#durable-schema-and-reset-refusals).
+`SchemaObjectMissing`, `SchemaObjectDefinitionMismatch` and `SchemaObjectUnexpected` carry `ObjectName`
+(such as `index:ix_catalog_row_live`), `ExpectedVersion` and `RequiredMigration`. Column and constraint
+mismatches identify their table. `SchemaVersionUnsupported` carries the read `ActualVersion`, the supported
+snapshot `[4]` and `RequiredMigration`. Absent catalogs, missing metadata, malformed versions, unreadable
+metadata and disabled foreign key enforcement have distinct members in that table. A schema's missing
+metadata row or required scalar uses `SchemaValidationMetadataMissing`, with the required migration, while ordinary store reads
+keep `SchemaMetadataMissing` with no identifiers. Typed provider failures remain the inner exception.
 
 Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`. An
 applied ledger row is written inside the publish commit, so a duplicate upgrade id refuses the whole publish.
@@ -89,7 +109,8 @@ this upgrade needs a restore.
 `InitializeAsync` under `AutoCreate` or `ValidateOnly` also synchronizes the registry into `catalog_type`.
 It inserts new registrations and refreshes changed chunk slots, default visibility and id ceilings.
 Changed settings move the row's update time. A rename and a reassignment are refused because either
-one repoints stored rows.
+one repoints stored rows. `TypeIdentityMismatch` identifies this rule, including when validation runs
+without type synchronization.
 
 For a hosted upgrade preview, open with `ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync`.
 It validates the existing schema and checks stored type id/key compatibility using reads only, with
@@ -147,11 +168,17 @@ as an object the schema does not declare, so keep host tables outside that prefi
 of every key pointing at the table. Deferring the foreign key check does not stop an action from firing, and
 an action is not a violation the commit would refuse. So a host key declared `ON DELETE CASCADE`, `SET NULL`
 or `SET DEFAULT` would delete or rewrite the host's own rows, and the reset refuses it with reason
-`host-foreign-key` and a sentence naming the host table and the catalog table it references, before it drops
+`host-foreign-key` and `Refusal` `HostForeignKeyActionUnsafe`. Its owned `HostObjects` snapshot names each
+`HostTable`, `ReferencedTable` and `DeleteAction`, before it drops
 anything and whatever `force` says. A `NO ACTION` or `RESTRICT` key fires nothing. A host row still
 referencing the catalog fails the reset at its commit instead, and the whole reset rolls back. Keep host
 references to the catalog out of foreign keys, or declare them `NO ACTION` and clear the referencing rows
 before a reset.
+
+A metadata-shaped view and its INSTEAD OF insert trigger can also stand outside the table inventory and
+intercept the metadata seed. Recreating does not prove the epoch is a TEXT value. A missing epoch uses
+`SchemaValidationMetadataMissing`, while a nontext epoch uses `StoredScalarTypeMismatch` with expected
+CLR type `string` and the actual scalar type. A refusal rolls back that trigger's writes too.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `sqlite_sequence` marks behind the
 `AUTOINCREMENT` columns on `catalog_family`, `catalog_draft_edit`, `catalog_audit`, `catalog_draft_text_edit` and
@@ -168,7 +195,8 @@ empty one, create a schema into it and throw both away. Under `Cache=Shared` an 
 by NAME for as long as one connection to it stays open, and a reset does reach the store its holder is using.
 
 An open draft is refused with reason `draft-open`, because the reset would destroy unpublished authoring with
-nothing left afterwards that says what it held. Pass `force: true` to take it anyway.
+nothing left afterwards that says what it held. `ResetDraftOpen` carries `DraftCount`, distinct from
+companion import edit counts. Pass `force: true` to take it anyway.
 
 **A database carrying NONE of the schema's tables is not an error.** The reset creates the schema through the
 same script, in the same transaction, with the same audit row, and returns a result saying nothing stood. The
@@ -181,7 +209,9 @@ describe. Without `force` it is refused with reason `catalog-partial` and a sent
 `Unreadable`, because there is nothing truthful it can put in the version and the hashes. What stood is
 still dropped, and the summary says so. A catalog whose schema version cannot be read, because its metadata
 row is gone, is the same case whatever stands, every table included: refused under `catalog-partial` without
-`force` and repaired with it.
+`force` and repaired with it. `ResetTablesPartial` carries `StandingTableCount`, `ExpectedTableCount` (19),
+`ActualVersion` and `ForceRequired`. `ResetVersionUnreadable` carries the same counts and force requirement,
+with no invented version.
 
 **The schema version decides the rest, whenever it can be read.** A catalog at an OLDER schema version than
 this build writes is reset like any other and comes back at this build's version, because the recreate runs
@@ -189,7 +219,8 @@ this build's script. A whole version 1 catalog, without the `catalog_content_upg
 whole catalog rather than a partial one and needs no `force`, and neither does a version 2 catalog, which lacks
 only the version 3 columns, or a version 3 catalog, which lacks only the version 4 tables and columns. A catalog at a NEWER schema version is refused with `schema-mismatch` before anything is dropped, force
 or no force, because recreating an older schema over it would move the database backwards. The refusal names the
-remedy, which is a reset from a build that writes that version. The result carries both numbers,
+remedy, which is a reset from a build that writes that version. `ResetVersionNewer` carries `ActualVersion`
+and the inclusive `MaximumVersion` (4). The result carries both numbers,
 `PriorSchemaVersion` and `SchemaVersion`, and `reset.Summary` says both.
 
 `actor`, `operatorId` and `note` are checked against the caps `catalog_audit` declares (1 to 128, 128 and

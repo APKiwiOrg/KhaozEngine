@@ -86,42 +86,8 @@ public sealed class ContentFamily
         ArgumentNullException.ThrowIfNull(familyKey);
         ArgumentNullException.ThrowIfNull(blocks);
 
-        if (string.IsNullOrWhiteSpace(familyKey))
-        {
-            throw new ArgumentException("A family names a key.", nameof(familyKey));
-        }
-
-        if (!IsLegalBlockSize(blockSize))
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(blockSize),
-                blockSize,
-                FormattableString.Invariant(
-                    $"A family's block size is a power of two between {MinBlockSize} and {MaxBlockSize}."));
-        }
-
-        var copy = new ContentFamilyBlock[blocks.Count];
-        for (int i = 0; i < blocks.Count; i++)
-        {
-            ContentFamilyBlock block = blocks[i];
-            if (block.BlockSize != blockSize)
-            {
-                throw new ArgumentException(
-                    FormattableString.Invariant(
-                        $"Block {block.BlockOrdinal} is sized {block.BlockSize}, and a family's block size is fixed at {blockSize}."),
-                    nameof(blocks));
-            }
-
-            if (block.BaseId % blockSize != 0)
-            {
-                throw new ArgumentException(
-                    FormattableString.Invariant(
-                        $"Block {block.BlockOrdinal} is based at {block.BaseId}, which is not aligned to {blockSize}, so the membership test would be wrong."),
-                    nameof(blocks));
-            }
-
-            copy[i] = block;
-        }
+        ContentFamilyBlock[] copy = CopyBlocks(familyKey, blockSize, blocks, out ContentFamilyFinding? defect);
+        if (defect is not null) throw defect.ToException();
 
         FamilyId = familyId;
         Type = type;
@@ -130,6 +96,7 @@ public sealed class ContentFamily
         IsRetired = isRetired;
         CreatedInVersion = createdInVersion;
         _blocks = copy;
+        Blocks = new CatalogReadOnlyView<ContentFamilyBlock>(copy);
     }
 
     /// <summary>The store's own family id.</summary>
@@ -150,8 +117,8 @@ public sealed class ContentFamily
     /// <summary>The version the family was created in.</summary>
     public int CreatedInVersion { get; }
 
-    /// <summary>The reserved blocks in ORDINAL order, which is the order the allocator walks them in.</summary>
-    public IReadOnlyList<ContentFamilyBlock> Blocks => _blocks;
+    /// <summary>The reserved blocks as a read-only snapshot in the ORDINAL order the allocator walks.</summary>
+    public IReadOnlyList<ContentFamilyBlock> Blocks { get; }
 
     /// <summary>
     /// The membership test of contracts 5.2: a short loop over the block list, two comparisons per block,
@@ -169,6 +136,78 @@ public sealed class ContentFamily
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The first rule a family breaks, in the order the constructor checks them, or null. The constructor throws
+    /// exactly this finding, and the bundle reader maps it without reading the message.
+    /// </summary>
+    /// <param name="familyKey">The family's key.</param>
+    /// <param name="blockSize">The declared block size.</param>
+    /// <param name="blocks">The reserved blocks, in ordinal order.</param>
+    internal static ContentFamilyFinding? FindDefect(string familyKey, int blockSize, IReadOnlyList<ContentFamilyBlock> blocks)
+    {
+        _ = CopyBlocks(familyKey, blockSize, blocks, out ContentFamilyFinding? finding);
+        return finding;
+    }
+
+    static ContentFamilyBlock[] CopyBlocks(
+        string familyKey, int blockSize, IReadOnlyList<ContentFamilyBlock> blocks, out ContentFamilyFinding? finding)
+    {
+        finding = null;
+        if (string.IsNullOrWhiteSpace(familyKey))
+        {
+            finding = new(ContentFamilyRule.KeyBlank, -1, nameof(familyKey), "A family names a key.");
+            return [];
+        }
+
+        if (!IsLegalBlockSize(blockSize))
+        {
+            // IsLegalBlockSize checks the range before the power of two, so the reason follows that order.
+            finding = new(
+                blockSize < MinBlockSize || blockSize > MaxBlockSize
+                    ? ContentFamilyRule.BlockSizeOutsideRange
+                    : ContentFamilyRule.BlockSizeNotPowerOfTwo,
+                -1,
+                nameof(blockSize),
+                FormattableString.Invariant(
+                    $"A family's block size is a power of two between {MinBlockSize} and {MaxBlockSize}."))
+            {
+                BlockSize = blockSize,
+            };
+            return [];
+        }
+
+        // Header rules precede every list read. Each captured block is refused before reading the next one.
+        var copy = new ContentFamilyBlock[blocks.Count];
+        for (int i = 0; i < copy.Length; i++)
+        {
+            ContentFamilyBlock block = blocks[i];
+            if (block.BlockSize != blockSize)
+            {
+                finding = new(
+                    ContentFamilyRule.BlockSizeMismatch,
+                    i,
+                    nameof(blocks),
+                    FormattableString.Invariant(
+                        $"Block {block.BlockOrdinal} is sized {block.BlockSize}, and a family's block size is fixed at {blockSize}."));
+                return copy;
+            }
+
+            if (block.BaseId % blockSize != 0)
+            {
+                finding = new(
+                    ContentFamilyRule.BlockUnaligned,
+                    i,
+                    nameof(blocks),
+                    FormattableString.Invariant(
+                        $"Block {block.BlockOrdinal} is based at {block.BaseId}, which is not aligned to {blockSize}, so the membership test would be wrong."));
+                return copy;
+            }
+            copy[i] = block;
+        }
+
+        return copy;
     }
 
     /// <summary>A power of two between <see cref="MinBlockSize"/> and <see cref="MaxBlockSize"/>.</summary>

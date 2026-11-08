@@ -189,6 +189,7 @@ namespace KhaozEngine.Gpu.Internal
                 vertexSource = emittedMslForTests ?? vertexSource;
                 if (backend == Backend.Msl && options.PreciseMath) vertexSource = MslPreciseMath.Rewrite(vertexSource, GpuShaderStages.Vertex);
                 string fragmentSource = Emit(context, fragment, tag);
+                if (backend == Backend.Msl) fragmentSource = MslDiscardTermination.Apply(fragmentSource);
                 RequireNoHelperBuffers(backend, vertex, "vertex", tag);
                 RequireNoHelperBuffers(backend, fragment, "fragment", tag);
 

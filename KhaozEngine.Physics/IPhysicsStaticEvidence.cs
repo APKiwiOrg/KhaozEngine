@@ -15,7 +15,8 @@ public readonly record struct PhysicsEvidenceFace(StaticHandle Static, int Leaf,
 public delegate bool PhysicsEvidenceVisitor(in PhysicsEvidenceFace face, ReadOnlySpan<PhysicsEvidencePoint> vertices);
 
 /// <summary>Optional complete static geometry capture under an authenticated read interval. Implementations retain
-/// every relevant obstruction, independent of slope or navigation eligibility. A refusal never certifies a prefix.</summary>
+/// every relevant obstruction, independent of slope or navigation eligibility. A query view captures its actual
+/// selected statics, not a caller's registration exclusions. A refusal never certifies a prefix.</summary>
 public interface IPhysicsStaticEvidence
 {
     PhysicsEvidenceStatus CaptureStaticEvidence(IPhysicsQueryLease lease, Vector3 minimum, Vector3 maximum,

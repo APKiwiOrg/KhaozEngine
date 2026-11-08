@@ -62,6 +62,10 @@ complete physics world. Use `CreateMovementRegistrationBuilder(worldId, combined
 and exclusions while adding other installed statics. Build that combined registration under a fresh source lease.
 
 A complete ground installation also attaches optional `OrdinaryMovementRegistration.AnalyticSupport`.
+The captured source offers `IMovementFlatAnalyticSupportSource` for exact constant-height regions, including
+flat cell seams. Nonuniform or missing captured triangles decline this optional arrival proof and keep live
+movement previews. [Analytic support provenance](../KhaozEngine.Locomotion/README.md#analytic-support-provenance)
+defines the certificate contract.
 It recognizes the exact captured `MovementGroundHeight` and `MovementGroundNormal` delegates in world coordinates.
 Wrapping those delegates requires a separately authenticated source, even when their sampled values agree.
 The canonical key qualifies packed signed tile X/Z and the triangle ordinal with the world and immutable captured
@@ -89,6 +93,11 @@ Outside the loaded bounding rectangle, captured analytic terrain extends the nea
 including objects outside their anchor region.
 
 `TileMediumSampler` implements `IMovementWaterField` with immutable body identities, finite beds and free surfaces.
+Its optional `IMovementDryTracePointProof` accepts only a trace whose directed lateral capsule-path bounds are
+disjoint from every captured column projection. Such points return Known dry before any rounded drawn-bed
+lookup, even at large coordinates. An overlapping projection declines the proof, including dry regions below
+beds or above water, because the separate bed lookup can refuse. This adds no tolerance and does not relax any
+trace precision or capacity check. The bound uses the same immutable column index as point selection.
 A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
 feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height
 evaluation. The lower boundary follows the selected triangle at the queried axis, including sloped beds and a
@@ -293,7 +302,10 @@ in-water answer is always built through the `MovementMedium` constructor and lea
 The legacy samplers have no shared scratch. The ground sampler needs its document to remain unedited while read.
 The water field and certified ground delegates retain immutable captured data. Water tracing uses bounded
 per-thread scratch and precomputed exterior topology. A proved constant captured bed can use an exact rectangular
-union specialization. Trace certificates include represented height-evaluation and geometric arithmetic error.
+union specialization. Immutable bounds trees select flat columns and their boundary and exterior patches in original
+source order. A whole capsule path with no potential column certifies a single dry interval immediately, without
+geometric intersections. Nonuniform-bed selection uses its own captured column tree. Fixed candidate storage is
+only an optimization: overflow retains the original full scan and all original refusal limits. Trace certificates include represented height-evaluation and geometric arithmetic error.
 Point membership retains exact half-open comparisons, and an error beyond the existing coverage limit refuses
 the whole trace. A finite over-budget certificate reports `MovementAvailability.PrecisionExceeded` without
 publishing spans or contacts. Unresolved geometry and unavailable evidence keep their existing refusal kinds.

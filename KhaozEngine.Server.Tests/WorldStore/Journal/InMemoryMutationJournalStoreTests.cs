@@ -22,6 +22,14 @@ public sealed class InMemoryMutationJournalStoreTests : MutationJournalStreamLis
         });
     }
 
+    protected override void AssertResultRefusal(JournalStoreException exception, Guid operationId, string streamKey)
+    {
+        base.AssertResultRefusal(exception, operationId, streamKey);
+        Assert.Equal(JournalStoreRefusal.ResultChecksumMismatch, exception.Reason);
+        Assert.Equal(operationId, exception.OperationId);
+        Assert.Equal(streamKey, Assert.Single(exception.StreamKeys));
+    }
+
     [Fact]
     public async Task Commit_invokes_all_transaction_boundary_hooks()
     {

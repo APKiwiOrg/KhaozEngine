@@ -104,7 +104,18 @@ public static class AtmosphereFog
     /// Below the horizon the sample is rescaled to the view's true scattering angle.</summary>
     public static Vector3 Shade(AtmosphereSettings settings, AtmosphereModel model, in AtmosphereFrame frame,
         Vector3 colour, Vector3 cameraRelative, Vector3 fragmentRelative, Vector3 renderOrigin, bool additive = false)
+        => Shade(settings, model, frame, colour, cameraRelative, fragmentRelative, renderOrigin, 1f, additive);
+
+    /// <summary>Shades a segment with key visibility from 0 through 1, reducing only the selected body's
+    /// direct in-scatter. The other body's light, multiple scattering and night floor remain.
+    /// Full visibility preserves the original fog exactly. Mirrors atmosphereFogKeyShadowed.</summary>
+    public static Vector3 Shade(AtmosphereSettings settings, AtmosphereModel model, in AtmosphereFrame frame,
+        Vector3 colour, Vector3 cameraRelative, Vector3 fragmentRelative, Vector3 renderOrigin, float keyVisibility,
+        bool additive = false)
     {
+        if (!float.IsFinite(keyVisibility) || keyVisibility < 0 || keyVisibility > 1)
+            throw new ArgumentOutOfRangeException(nameof(keyVisibility), keyVisibility,
+                "Fog key visibility must be finite and from 0 through 1.");
         ArgumentNullException.ThrowIfNull(settings);
         if (!settings.Enabled) return colour;
         ArgumentNullException.ThrowIfNull(model);
@@ -124,6 +135,9 @@ public static class AtmosphereFog
         // The geometric horizon never rises above zero elevation, so upward views skip the source integrals.
         var ratio = view.Y >= 0 ? Vector3.One : AtmosphereFogScattering.Evaluate(settings, model, frame, cameraHeightKm)
             .Ratio(view, radius, settings.PlanetRadiusKm);
+        if (keyVisibility < 1 && frame.KeySource != KeyLightSource.None)
+            ratio *= AtmosphereFogScattering.Evaluate(settings, model, frame, cameraHeightKm)
+                .KeyOcclusion(view, radius, settings.PlanetRadiusKm, keyVisibility);
         var haze = model.SkyViewValue(cameraHeightKm, skyUv, frame, ratio);
         return Compose(colour, transmittance, haze);
     }
@@ -137,7 +151,7 @@ public static class AtmosphereFog
     static double CoefficientOpticalDepth(float coefficient, double depth)
         => coefficient == 0 ? 0 : coefficient * depth;
 
-    static Vector3 SegmentView(Vector3 cameraRelative, Vector3 fragmentRelative, out float distanceWorld)
+    internal static Vector3 SegmentView(Vector3 cameraRelative, Vector3 fragmentRelative, out float distanceWorld)
     {
         double x = (double)fragmentRelative.X - cameraRelative.X;
         double y = (double)fragmentRelative.Y - cameraRelative.Y;

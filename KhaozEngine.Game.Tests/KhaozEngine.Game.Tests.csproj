@@ -90,5 +90,8 @@
   <ItemGroup>
     <Compile Include="../test-shared/PhysicsRebaseResidentWorld.cs" Link="Physics/PhysicsRebaseResidentWorld.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../test-shared/RefusalConstructorFence.cs" Link="Shared/RefusalConstructorFence.cs" />
+  </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

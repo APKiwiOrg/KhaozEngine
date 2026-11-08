@@ -84,12 +84,13 @@ public sealed partial class SqliteMutationJournalStore
         catch (SqliteException busy) when (busy.SqliteErrorCode is 5 or 6)
         {
             throw new JournalStoreException(
+                JournalStoreRefusal.ResetWriteLockTimedOut,
                 JournalStoreFailureKind.Timeout,
                 JournalStoreFailureCertainty.DefinitelyNotCommitted,
                 JournalStoreFailureScope.WholeStore,
                 null,
                 "The journal reset could not take the SQLite write lock before its lock timeout, because another journal writer held it. Nothing was deleted. Stop every journal host and retry.",
-                busy);
+                busy) { LockTimeout = busyTimeout };
         }
     }
 

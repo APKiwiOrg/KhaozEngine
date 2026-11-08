@@ -50,6 +50,7 @@ internal static class SqliteCatalogHostKeys
         CancellationToken cancellationToken)
     {
         var firing = new List<string>();
+        var findings = new List<ContentHostForeignKeyFinding>();
         using (SqliteCommand command = connection.CreateCommand())
         {
             command.Transaction = transaction;
@@ -65,6 +66,7 @@ internal static class SqliteCatalogHostKeys
                     && SqliteCatalogSchemaInventory.Tables.Contains(referenced)
                     && Fires(action))
                 {
+                    findings.Add(new(host, referenced, action));
                     firing.Add(FormattableString.Invariant(
                         $"host table '{host}' has a foreign key into catalog table '{referenced}' declared ON DELETE {action}"));
                 }
@@ -73,7 +75,7 @@ internal static class SqliteCatalogHostKeys
 
         if (firing.Count > 0)
         {
-            throw Refusal(firing);
+            throw Refusal(firing, findings);
         }
     }
 
@@ -84,11 +86,11 @@ internal static class SqliteCatalogHostKeys
             || string.Equals(action, "SET DEFAULT", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The refusal, naming every host key that would fire and the remedy an operator can take.</summary>
-    static ContentAuthoringException Refusal(IReadOnlyList<string> firing)
-        => new(
+    static ContentAuthoringException Refusal(IReadOnlyList<string> firing, IReadOnlyList<ContentHostForeignKeyFinding> findings)
+        => new(ContentAuthoringRefusal.HostForeignKeyActionUnsafe,
             FormattableString.Invariant(
                 $"The SQLite content catalog cannot be reset: {string.Join(", and ", firing)}. SQLite's DROP TABLE deletes every row of the table first, which would fire that action and delete or rewrite the host's own rows. Nothing was dropped. Remove that foreign key, or declare it ON DELETE NO ACTION and clear the host rows that reference the catalog, then run the reset again."),
             default,
             0,
-            ContentAuthoringException.HostForeignKeyReason);
+            ContentAuthoringException.HostForeignKeyReason) { HostObjects = findings };
 }

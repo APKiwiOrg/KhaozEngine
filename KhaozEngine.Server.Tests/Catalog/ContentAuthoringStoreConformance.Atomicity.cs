@@ -83,10 +83,19 @@ public abstract partial class ContentAuthoringStoreConformance
             () => store.CreateFamilyAsync(Capped, "too_large", 16, CatalogFixtures.Actor, CatalogFixtures.Operator));
 
         Assert.Equal(ContentAuthoringException.IdCeilingReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.FamilyReservationCeilingExceeded, refused.Refusal);
+        Assert.Equal(Capped, refused.Type);
+        Assert.Equal("too_large", refused.FamilyKey);
+        Assert.Equal(8, refused.Ceiling);
+        Assert.Equal(16L, refused.BaseId);
+        Assert.Equal(31L, refused.HighestId);
+        Assert.Equal(0, refused.ReservedThrough);
+        Assert.Equal(0, refused.IssuedThrough);
         Assert.Empty(await store.ListFamiliesAsync(Capped));
         Assert.Equal(new ContentIdHighWater(0, 0), await ids.ReadHighWaterAsync(Capped));
         Assert.Equal(auditBefore, await store.ListAuditAsync(default, 0, 0, 500));
-        Assert.Equal(1, await store.AllocateAsync(Capped, 1));
+        Assert.Equal(1, await store.AllocateAsync(Capped, 7));
+        Assert.Equal(8, await store.AllocateAsync(Capped, 1));
     }
 
     /// <summary>A cancelled create exposes no reservation and leaves its key available for retry.</summary>

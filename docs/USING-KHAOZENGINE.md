@@ -5776,6 +5776,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     Additive effects lose transmitted energy only. Models, dissolved and skinned models, splat and tile terrain,
     foliage, water, decals, billboards, particles, trails and beams participate. Debug lines and distortion draws
     retain their own paths.
+    `AerialShadowSamples = 8` takes point samples of the key shadow atlas along lit model, terrain, tile-ground
+    and foliage fog segments. Valid values are 0 through 16, and 0 disables the correction. Equal in-scatter
+    shares under a uniform-density grey approximation place the taps, including the aerial onset. Only the
+    shadow-casting body's direct in-scatter is scaled. The other body, multiple scattering and night floor
+    remain, and fully lit segments stay byte-identical. Uncovered taps count as lit. Water, decals and effects
+    keep unoccluded fog, so the correction does not cover distant valley haze beyond shadow range.
   - **GPU-free model and fog oracle.** `AtmosphereModel` needs no device. It snapshots validated settings and
     exposes `Transmittance`, `SingleScattering`, `MultiScattering`, `SkyRadiance`, `CreateFrame`, `EvaluateLighting`,
     `EvaluateIrradiance` and `SkyValue`. `CreateFrame(SunCycle.Evaluate(timeOfDay, cycle))` produces an
@@ -5789,7 +5795,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     Transport positions are
     planet-centred kilometres. `AtmosphereFog.Transmittance` accepts world distance and absolute endpoint heights
     and applies the onset itself.
-    `Shade` accepts camera-relative positions plus the render origin, and `Compose`/`ComposePremultiplied` expose
+    `Shade` accepts camera-relative positions plus the render origin. Its `keyVisibility` overload takes a
+    finite value from 0 through 1 for the key-only correction, defaulting to full visibility on existing calls.
+    `Compose`/`ComposePremultiplied` expose
     the blend oracle. Call `model.UpdateSettings(settings)` after changing the caller's settings.
   - **GPU work and precedence.** Half-float transmittance (256 by 64) and multi-scattering (32 by 32) LUTs rebuild
     on physical-settings changes. Sky-view (192 by 108) rebuilds every enabled frame before scene draws. Physical
@@ -8970,7 +8978,8 @@ glide described under "Animated characters" above (`CharacterController3D.ClimbR
 what the `ke-dungeon` CLI reads and writes. The JSON matches the embedded schema (`DungeonSchema.GetJson()`,
 a `oneOf` over the config and layout shapes), which the package's tests validate against and which is
 available for editor/AI tooling. The load path itself enforces its own semantic checks, throwing
-`DungeonJsonException`. Its `Reason` (a `DungeonJsonRefusal`) names the rule and, where one applies, `JsonPath` the offending member,
+`DungeonJsonException`. Its `Reason` (a `DungeonJsonRefusal`) names the rule and, where one applies, `JsonPath`
+names the offending member as a rooted path, such as `$.roomCountTarget` or `$.rooms[2].id`,
 with the other identifiers listed in the package README. The message is prose, never a contract. A hand-authored
 or generated config looks like:
 
@@ -9402,7 +9411,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.4.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.5.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9998,7 +10007,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.4.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.5.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10124,8 +10133,13 @@ var duckFollower = new MoveToRange(duckProfile, null, new RouteApproachOptions
 ```
 
 `MoveToRange` copies its follower controls and caps `AcceptRadius` to `0.00001f`, including a supplied zero.
-The near-ring check resolves copies through the live context, with up to 32 bisection candidates plus endpoint
-and final checks. It does not step the world or publish an entity. The travel cap includes the requested pace,
+The near-ring check retains up to 32 float interval candidates plus endpoint and final checks. Certified flat,
+unchanged analytic support evaluates exact command-dependent states under one read interval without full
+movement previews. Water fields additionally opt into `IMovementDryTracePointProof` and certify successful dry
+point operations over the enclosure. A known dry sweep alone does not authorize skipping point refusals.
+Wet, obstructed, nonuniform, unsupported and refused regions keep the exact live solver and pacing reads.
+The certificate and both drivers preserve command bits and admission decisions. See the
+[range approach contract](../KhaozEngine.Movement/README.md). The check does not step the world or publish an entity. The travel cap includes the requested pace,
 the body's `SpeedScale` and medium boosts above one. A slowing medium only shortens core travel. A blocked
 near-field shortcut keeps the detour. Area or graph guards apply to direct approaches and all route edges, so an
 exhausted partial route waiting on cooldown, an unreachable or refused route, or an unsupported Hop route holds
@@ -10845,7 +10859,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.4.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.5.0" />
 ```
 
 ```csharp
@@ -20723,7 +20737,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.4.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.5.0" />
 ```
 
 ```csharp
@@ -20759,7 +20773,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.4.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.5.0" />
 ```
 
 ```csharp
@@ -21004,7 +21018,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.4.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.5.0" />
 ```
 
 ```csharp
@@ -23156,6 +23170,14 @@ touches at most the chunk whose slots cover the id. A long-lived client opens th
 content-addressed store remains the durable byte cache. Either way verify comes before decode and a decode
 never throws: a bad byte comes back as a stable reason token on the result.
 
+Registration and snapshot admission throw `ContentRegistrationException` with a nullable
+`ContentRegistrationRefusal` in `Reason`, filled by every engine throw site. Its existing constructors stay
+available to consumers and leave `Reason` null. The identifiers name the type id and key, the claimed band
+and inclusive limits, the existing duplicate identity, or owned read-only codec field-name sets. Snapshot
+admission reports `Type` and `DefinitionId`. These describe host declarations rather than row values.
+See the [registration refusal table](../KhaozEngine.Catalog/README.md#registration-and-required-field-refusals)
+for the identifiers each reason carries.
+
 Five packages carry it. `KhaozEngine.Catalog` is the read side above, plus the runtime, the loot roller, the
 server boot, the client fetch loop and the string catalog, and it is in the `Foundation` umbrella.
 `KhaozEngine.Catalog.Authoring` (the authoring seam, the publish pipeline, diff and bundle) and
@@ -23256,7 +23278,18 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly, ct);
 `AutoCreate` creates the schema when the database carries no catalog table and validates it after.
 `ValidateOnly` refuses an empty or mismatched database instead, which is what a production host sets so a typo
 in a connection string cannot silently create a second empty catalog and serve it. A mismatch is a
-`ContentAuthoringException` naming the object and the required migration. Both existing modes synchronize
+`ContentAuthoringException` naming the object and the required migration. Both durable providers expose these through
+[durable schema and reset refusals](../KhaozEngine.Catalog.Authoring/README.md#durable-schema-and-reset-refusals).
+`SchemaMissing` carries `RequiredMigration`. Object refusals carry `ObjectName` as `kind:name`,
+`ExpectedVersion` and `RequiredMigration`. SQLite column mismatches name their table. SQL Server row time
+columns retain the complete compared shape, such as
+`row time column:catalog_row.created_at_utc|datetimeoffset|3|NULL`. Version refusals
+carry `ActualVersion`, owned `SupportedVersions` (currently `[4]`) and `RequiredMigration`
+(`catalog-v4-text-authoring`). An absent metadata row or NULL required scalar during schema validation uses
+`SchemaValidationMetadataMissing` with that migration, distinct from a store read's identifier-free
+`SchemaMetadataMissing`. Unreadable metadata retains its typed provider inner exception. SQL Server schema
+locking uses `SchemaApplicationLockNotGranted` with the integer `ReturnCode` and `RequiredMigration`.
+Both existing modes synchronize
 registered type settings after schema validation.
 
 For a hosted upgrade preview, open with `ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync`. It validates
@@ -23295,19 +23328,97 @@ ContentPublishResult published = await store.PublishAsync(
 ```
 
 `ExpectedBaseVersion` is required, not optional: two consoles cannot both publish the same draft, and the
-second one is refused with `base-version-moved` rather than producing a second version. The result carries the
+second one is refused with `base-version-moved` rather than producing a second version. The row publisher
+also reports `ContentAuthoringRefusal.BaseVersionMoved`, with `ExpectedBaseVersion` and `ActualBaseVersion`.
+The result carries the
 new number, both manifest hashes, and the chunk accounting, so an operator sees that an edit to one row
 rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable draft that restores an earlier
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
 
-A rollback refuses a row live at the target and retired since. `ContentRollbackBlocker.RuleKind` reports
+The authoring package's [publication refusal table](../KhaozEngine.Catalog.Authoring/README.md#publication-and-rollback-refusals)
+names the candidate, rule-prefix and pack-target rules and their identifiers. A validation refusal carries
+`ContentAuthoringRefusal.CandidateRejected` and the complete owned read-only `Findings` snapshot. Assert or
+branch on each `ContentFinding.Code`, including consumer-defined codes, rather than its message. The legacy
+`Reason`, `Type` and `Id` remain available. A row-only pack write distinguishes `TextPlanOnRowOnlyRoute`
+(`MemberName`, `VersionNumber`) from `TextChunkMissingOnRowOnlyRoute` (`MemberName`, `Language`, `TextHash`).
+The authoring package's [text route refusal table](../KhaozEngine.Catalog.Authoring/README.md#text-route-refusals)
+also names bundle, draft and target admission. `TextBundleOnRowOnlyRoute`, `TextFormatOnRowOnlyRoute` and
+`TextDraftOnRowOnlyRoute` identify the refusing `MemberName` and carry the format or pending text counts
+where applicable. `DraftOpen` carries all three pending-work counts. Target eligibility uses `TypeUnknown`,
+`TextTargetFieldUnknown`, `TextTargetIneligible`, `TextFieldNameTooLong` and `TextKeyBytesExceeded`.
+The field-name limit is 64 UTF-16 code units and the derived-key limit is 192 strict UTF-8 bytes, both
+inclusive. `BundleTextRowUnknown` carries the absent row key and text value index. `TextExportRowUnknown`
+carries `TextRowType`, `TextRowId`, `FieldName`, `Language`, `VersionNumber` and `MemberName`, while its
+legacy `Type` and `Id` remain default and 0. `TextBaselineHiddenFromPlanner` carries the exact version and
+both carried and recorded language and value counts. An upgrade that loses its frozen draft reports
+`FrozenDraftLost` with `ExpectedBaseVersion`.
+The in-memory and SQLite stores also identify admission and commit failures through the
+[store refusal table](../KhaozEngine.Catalog.Authoring/README.md#store-admission-and-confirmation-refusals).
+Family declarations distinguish an out-of-range size, a non-power-of-two size and a duplicate key.
+`FieldUnknown` and `DerivedMarkerNotAuthorable` identify the submitted batch's `EditOrdinal` and field.
+`BundleTypeDeclarationMismatch` carries both declared and registered keys and chunk-slot counts.
+`NextVersionMismatch` carries the requested, highest and next version numbers, while stale bases retain
+`BaseVersionMoved`. `PackUnreadable` carries the failed object and the pack reader's stable token.
+Text commit reasons distinguish store epoch, missing draft, freeze marker, complete draft, baseline,
+missing close revision and missing live row. Store-wide legacy `Type` and `Id` stay default and 0 where
+`TextRowType` and `TextRowId` now identify the text row. Each member keeps one identifier set.
+SQLite and SQL Server reuse those same identifier sets. A missing `catalog_metadata` singleton read uses
+`SchemaMetadataMissing` with no identifiers. A non-null stored scalar of the wrong CLR type uses
+`StoredScalarTypeMismatch`, with `ExpectedScalarType` and `ActualScalarType` rather than the stored value.
+Their registry pairing guards use `TypeIdentityMismatch`,
+carrying requested `Type`, the full persisted Int64 `StoredTypeId`, `StoredTypeKey` and `RegisteredTypeKey`. Metadata absence has no
+in-memory twin. `DraftRowDisappeared` identifies a singleton removed inside its transaction, including by a
+host trigger. `StoredEditOperationUnknown` carries `Type`, `Id`, `ActualOperation` and the Int64
+`StoredEditOrdinal`. Durable stores validate catalog DDL, so trigger behavior and malformed persisted values still
+need these refusals. A database ordinal is distinct from the submitted batch's zero-based `EditOrdinal`.
+SQL Server additionally reports `DraftEditIdentityMissing` with `Type` and `Id`, and `FamilyIdentityMissing`
+with `Type` and `FamilyKey`, when an insert returns no identity. Its contention adapter reports
+`TransactionContended` with `SqlErrorNumber` 1205 or 3960, while retaining the legacy `base-version-moved`
+token and the same 409 handling. These provider numbers are typed values, never parsed message text.
+
+Text binding reports `TextBindingRowUnknown` with `Type`, `Id` 0 and `RowKey`. Final-row checks
+report `TextFinalRowUnknown` with `Type`, `Id`, `FieldName` and `Language`.
+Text candidate and chunk preflight use the same enum. `TextLanguageUndeclared` carries `Language`
+and the text slot's `Type`, `Id` and `FieldName`, and `TextTargetIneligible` identifies the ineligible slot
+with `TypeKey` when registered. `TextProducerMalformedUnicode` keeps the original argument refusal as inner and
+names the slot, `MemberName` and zero-based UTF-16 `Index`.
+`TextKeyUtf8Invalid` identifies an invalid content key. `TextKeyBytesExceeded` and `TextChunkBytesExceeded`
+carry `ActualBytes` and inclusive `MaximumBytes` (192 and 16,777,216), plus the slot or `Language`.
+`TextKeyCollision` carries the canonical `Language` and repeated `DerivedKey`.
+Defensive producer checks retain `ContentAuthoringException` and `text-bounds`.
+`TextProducerWireTagBytesExceeded` carries `Language`, `WireTag`, `ActualBytes` and `MaximumBytes` (35), with
+legacy `Type` default and `Id` 0. `TextDerivedKeyByteCountMismatch` carries the slot's `Type`, `Id`, `FieldName`
+and `Language`.
+Commit confirmation distinguishes `TextChunkHashMismatch`, `TextChunkBytesMismatch`,
+`TextReusedChunkUnrecorded`, `TextReusedWireTagMismatch` and `TextReusedHashMismatch`. Each carries `Language` and claimed `TextHash`.
+Hash mismatches add `ExpectedTextHash`, and reuse failures add the baseline `VersionNumber`.
+A reuse spelling mismatch also carries the claimed `WireTag` and recorded `ExpectedWireTag`.
+`TextProvenanceUnknown` names the `VersionNumber` without complete text provenance, including a missing
+in-memory language record. The in-memory row-only check retains legacy `text-unrepresented`, while its
+snapshot read retains `text-provenance-unknown`.
+See the [text producer refusal table](../KhaozEngine.Catalog.Authoring/README.md#text-producer-and-confirmation-refusals).
+The defensive producer value bound uses `TextProducerValueBytesExceeded` with `Type`, `Id`, `FieldName`,
+`Language`, `ActualBytes` and `MaximumBytes` (8192). The bundle reader's `TextValueBytesExceeded` carries
+its JSON path instead.
+
+A rollback refuses a row live at the target and retired since. `ContentRollback.Refusal` reports
+`RetireIrreversible`, the first blocker's `Type`, `Id` and `RowKey`, plus `TargetVersion`, `BlockerCount` and
+all `KEC0039` findings. `ContentRollbackBlocker.RuleKind` reports
 the matching rule's actual kind, or null if the provider baseline has no matching rule. That missing-rule
 case retains the blocker with `RuleSequence` and `IntroducedIn` at 0. The admin action renders the same
 absence as `kind: null` in `blockedByRules`, while a matching retire rule renders `kind: "Retired"`.
 
 Bundle import preserves each family's `IsRetired` flag through family reads and later exports, including
 the in-memory authoring store. Its version line still restarts at 1.
+
+The text bundle and draft states, version text snapshots, text candidates, publish baselines and plans,
+rollback plans and upgrade plans protect their validated collection storage from list casts and
+`ICollection.SyncRoot`. A retained `ContentChangeSet.Edits` view remains live as edits are applied,
+while all writes still go through the change set's target checks.
+
+A draft write blocked by `PublishInProgress` carries its `MemberName` and the full stored Int64 marker
+in `ContentAuthoringException.FrozenForBaseVersion`, including a SQLite host-written value outside Int32.
 
 When a tool must inspect the bundle format before reading or combining the document, use the reader's
 precheck rather than parsing the JSON separately:
@@ -23323,10 +23434,39 @@ ContentBundle bundle = ContentBundleJson.Read(json);
 ```
 
 `ReadFormatVersion` and `Read` share the same JSONC parsing and format member rules. Both accept comments and
-trailing commas. Both refuse malformed JSON, a nonobject root, a missing version or a version that is not a
-32-bit integer with `ContentAuthoringException`. The precheck returns an unsupported integer for the caller to
-inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`, the row-only format 1,
-and `ContentBundle.TextFormatVersion`, format 2 with its `text` section.
+trailing commas. Both refuse malformed JSON (`BundleJsonMalformed`), a nonobject root
+(`BundleRootObjectRequired`), a missing version (`BundleMemberRequired`) or a version not written as a 32-bit
+integer literal (`BundleMemberKindInvalid` or `BundleInt32Unrepresentable`) with `ContentAuthoringException`. Each
+carries the `bundle-format` token in `Reason`, the `ContentAuthoringRefusal` in `Refusal` and the rooted
+`JsonPath` `$.formatVersion` where a member is at fault. The precheck returns an unsupported integer for the
+caller to inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`, the
+row-only format 1, and `ContentBundle.TextFormatVersion`, format 2 with its `text` section, as
+`BundleVersionUnsupported` with `ActualFormatVersion` and `SupportedFormatVersions`. The
+[bundle document refusal table](../KhaozEngine.Catalog.Authoring/README.md#bundle-document-refusals) lists every
+shape rule and its identifiers. Array elements must be objects. A negative source version keeps the
+`ArgumentOutOfRangeException` parameter check with `ParamName` `sourceVersion` and its `ActualValue`.
+`Read` also names the rule a lower constructor refuses in a family, schema,
+remap rule, row field value or text constructor, such as `FamilyBlockSizeOutsideRange`, `BundleFieldNameDuplicate`
+or `BundleTextTargetDuplicate`. The same section lists those. An unmapped lower constructor rule retains
+`ContentAuthoringException` with `BundleConstructorRuleUnmapped`, the `bundle-format` token, the original
+prefixed diagnostic and the original exception as its inner cause. It carries no identifiers.
+
+`ContentIdAllocator` refuses a plain range above its ceiling as `AllocationCeilingExceeded`, carrying
+`Type`, the inclusive `Ceiling`, `IssuedThrough`, `ReservedThrough` and `RequestedCount`. A family block
+whose highest id exceeds the ceiling uses `FamilyReservationCeilingExceeded`, with `FamilyKey`, `BaseId`
+and `HighestId` beside the type, ceiling and marks. Both keep `id-ceiling-exceeded` in the legacy `Reason`.
+An unknown allocation family uses `FamilyUnknown` and `FamilyId`, with the legacy `unknown-family` token.
+`ContentChangeSet.Apply` refuses competing operations as `EditTargetOperationCollision`, carrying the
+compared `Type`, `Id` and `RowKey` and both `StandingOperation` and `RequestedOperation`, while retaining
+`edit-target-collision`. A diff over an unregistered type uses `TypeUnknown` and `Type`, retaining
+`unknown-type`. See the [allocation and change-set refusal table](../KhaozEngine.Catalog.Authoring/README.md#allocation-and-change-set-refusals).
+
+All engine `ContentAuthoringException` construction across Authoring, SQLite, SQL Server and Server.Admin
+supplies `Refusal`, including defensive candidate guards. `CandidateEditOperationUnsupported` retains
+`unknown-edit-operation` and carries `Type`, `Id`, `TypeKey`, `ActualOperation` and `EditOrdinal`.
+`CandidateForkFlagInvalid` retains `fork-flag-field` and carries `Type`, `Id`, `TypeKey`, `FieldName` and
+`EditOrdinal`, including direct internal builder admission. Public legacy constructors remain available to consumers and preserve the existing
+string `Reason`, row identifiers, findings and inner cause while leaving `Refusal` null.
 
 ### Authoring catalog text
 
@@ -23459,6 +23599,14 @@ build's script. A whole version 1 catalog, without the `catalog_content_upgrade`
 whole catalog and needs no `force`. A catalog at a NEWER schema version is refused with `schema-mismatch`
 before anything is dropped, `force` or not, because recreating an older schema over it would move the database
 backwards.
+
+Both durable resets use `ResetTablesPartial` with standing and expected table counts (19 current tables), the
+read `ActualVersion` and `ForceRequired`. An unreadable version uses `ResetVersionUnreadable` with the
+same counts and force requirement, and no invented version. `ResetVersionNewer` carries `ActualVersion`
+and inclusive `MaximumVersion` (4). `ResetDraftOpen` carries `DraftCount`, rather than companion import
+edit counts. SQLite `HostForeignKeyActionUnsafe` carries the complete owned `HostObjects` snapshot, each finding
+naming `HostTable`, `ReferencedTable` and `DeleteAction`. Legacy reason tokens and reset behavior stay the
+same. A refusal rolls back catalog and host content, including a failure after drops and recreation.
 
 `ContentCatalogResetResult` carries what stood (the active version number, its server and client manifest
 hashes, the counts of versions and row revisions dropped, and `PriorSchemaVersion`) plus the recreated
@@ -23788,7 +23936,21 @@ in-process `ContentPublishRequest.PublishPolicy`, which is excluded from JSON. H
 binds it, through `IContentPolicyImportStore.ImportWithPolicyAsync` and a required-policy
 `ContentPolicyImportRequest`. The bundled in-memory, SQLite and SQL Server stores carry that policy through
 their existing seed pipeline to the frozen publication. A custom store without this capability refuses
-operator imports when a policy is configured, rather than dropping the policy. Trusted server calls to
+operator imports when a policy is configured, rather than dropping the policy. It throws
+`ContentAuthoringException` with `Refusal` equal to `ContentAuthoringRefusal.PolicyImportCapabilityMissing`
+and `RequiredCapability` equal to `typeof(IContentPolicyImportStore)`. The legacy `Reason` remains
+`policy-import-unavailable`, with default `Type`, `Id` 0 and empty `Findings`. HTTP still returns 400.
+The operator adapter forwards a lower provider refusal as the original exception with its typed reason,
+identifiers, findings and inner cause intact.
+
+The shared admin refusal adapter keeps its legacy token mappings and payload shapes. `publish-in-progress`,
+`edit-target-collision`, `text-state-mismatch` and `draft-open` map to 409. Other tokens map to 400 there,
+with a null token rendered as `malformed-request`. Details, remedies and action-specific conflicts retain
+their existing rendering. A consumer-built exception with a null `Refusal` remains supported.
+The admin text reads use the legacy `text-provenance-unknown` and `text-operation-unavailable` tokens to
+report unknown text, never a fabricated empty snapshot, and propagate every other refusal unchanged.
+
+Trusted server calls to
 `ImportBundleAsync` or `ImportTextBundleAsync`, release tooling and `ContentUpgradeRunner` keep their
 existing publication paths and do not acquire an operator policy. A custom operator surface must bind its own host policy both at preview and on its
 publish request. There is no HTTP bypass mode. With no policy configured, the existing validation sequence,
@@ -24035,9 +24197,13 @@ documented path. The validator is a parameter the caller passes, and a type that
 
 **Reach a field BY NAME, never by a literal position.** A row's values are parallel by index to its type's
 schema, and a duration field is named for the game's own unit, so a reader resolves the position once at
-construction through `KhaozEngine.Catalog`'s `ContentFieldLookup.IndexIn(runtime, type, field)` and a field the schema lacks is a
-REFUSAL naming both rather than a -1 a caller reads as zero. On a server that runs at boot, before a socket is
-open, so a publish that moved a field stops the boot rather than pricing a world at nothing and carrying on.
+construction through `KhaozEngine.Catalog`'s `ContentFieldLookup.IndexIn(runtime, type, field)`. A field the
+schema lacks throws `ContentFieldLookupException` with
+`Reason == ContentFieldLookupRefusal.FieldUndeclared`, `Type`, `TypeKey` and `FieldName`, rather than
+returning a -1 a caller reads as zero. An unregistered type uses `TypeUnregistered`,
+`Type` and `FieldName`, with `TypeKey` null. Existing `InvalidOperationException` catches still match. On a
+server that runs at boot, before a socket is open, so a publish that moved a field stops the boot rather
+than pricing a world at nothing and carrying on.
 
 `GameContentFindings` is the `KGT` finding-code table, banded by content type a hundred to a band with 1300
 held for a cross-type sweep. A code is a stable token a counter, a test and a runbook key on, and it is never
@@ -25468,6 +25634,9 @@ catch (SignInException ex)
 value, a client secret, an authority URL or a response body. It is null only for an instance another backend
 built through a message-only constructor, whose text is then in `Detail`. The
 [Sign-in refusals](../KhaozEngine.Identity/README.md#sign-in-refusals) table lists every reason.
+The shared base and both provider types retain every legacy constructor. Forwarding preserves `Detail`, a
+null reason and the inner cause for consumer-built instances. Engine construction is fenced in all three
+assemblies, including calls from provider constructors.
 
 Catch the provider type instead when the handling differs per backend. The base is named `SignInException`
 rather than `IdentitySignInException` deliberately: sign-in code imports `KhaozEngine.Identity` alongside a
@@ -25738,7 +25907,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.4.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.5.0" />
 </ItemGroup>
 ```
 
@@ -28210,6 +28379,57 @@ listing seams. Their package READMEs cover schema modes
 and permissions. The complete public type and limit reference is in
 [`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
 
+Journal commits, initializations and stream mutations own immutable list snapshots, including nested events.
+Caller source changes, collection writes and `ICollection.SyncRoot` cannot bypass their validation. Receipt
+ranges and validated read pages use the same owned snapshot shape.
+
+Journal store failures retain `Kind`, `Certainty`, `Scope` and the owned `StreamKeys` snapshot. The additive
+`JournalStoreException.Reason` names a `JournalStoreRefusal` rule, with typed stream, operation, version, limit or
+stored-row coordinates. Inspect those members instead of parsing messages. Consumer code can still use the
+legacy constructor, which leaves `Reason` null. The package README's
+[refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists the identifiers for each rule.
+SQLite and SQL Server runtime failures add typed provider codes and operation stages. Stored checksum failures retain event,
+section or operation coordinates. Projection reads and replacements share `ProjectionSectionCountExceeded` and
+`ProjectionByteCountExceeded`, reporting actual and inclusive maximum counts or bytes for their stream. A read
+uses the engine caps of 64 sections and 8 MiB, a replacement uses the configured limits. Replacement snapshot
+verification distinguishes missing rows, wrong versions and bad checksums before pruning. Reset lock contention
+uses `ResetWriteLockTimedOut` and carries the requested `LockTimeout` beside the original provider cause.
+SQL Server reset lock context preserves `ApplicationLockNotGranted`, its `ReturnCode`, every identifier and the
+original refusal. SQL Server runtime provider codes come directly from `SqlException.Number`. Its batch limit
+results carry the same count or byte reason and identifier set as SQLite. An incomplete limit payload retains
+`JournalStoreException` with `BatchProjectionLimitIncomplete`, `ConstraintViolation`, `DefinitelyNotCommitted` and
+`OperationStreams`. Its `StreamKeys` names the returned stream or, when absent, all requested streams. `StreamKey`
+is set only when the payload names a stream. Additional SQL Server reasons distinguish
+replacement data mismatch, transport failure after confirmed rollback or before transaction start, and a
+non-provider commit failure with confirmed rollback. Missing replay results retain whole-store
+`JournalStoreException` corruption dimensions and carry `OperationId`. Malformed batch results and missing,
+undefined or unsupported outcomes use `JournalStoreStateException`, an `InvalidOperationException` subtype with a `JournalStoreRefusal` reason and,
+for undefined or unsupported outcomes, integer `Outcome`. `BatchResultMalformed` refuses malformed result shapes,
+value types, replay rows the receipt rules refuse and trailing result sets after Applied or Replayed, so success requires the complete expected
+protocol, including replay receipt sets. Nullable outcome payloads accept SQL literal NULL values regardless of
+metadata type. Host trigger result sets can reach these guards.
+`BatchStreamVanished` uses the same state carrier when a same-transaction trigger removes a validated head.
+The provider README names their identifiers.
+
+SQLite schema reasons also carry `RequiredMigration` (`sqlite-journal-v3-row-timestamps`), with actual and supported
+versions, malformed metadata type, connection journal modes, or compared object names where applicable.
+`SchemaObjectInventoryMismatch` carries the complete sorted `MissingObjects` and `UnexpectedObjects` for its
+`ExpectedVersion`. Reset refusals use `HostForeignKeyActionUnsafe` or `HostTriggerUnsafe` and retain every unsafe
+key and trigger in `HostObjects`. Each finding names its rule and referenced table, with the host table and delete
+action for a key or the trigger name for a trigger. SQL Server key findings also carry `HostSchema` and
+`ForeignKeyName`. All collection identifiers are owned immutable snapshots.
+
+SQL Server schema admission reuses the missing schema, missing metadata, malformed version and unsupported version
+members with the same identifier sets. Its `RequiredMigration` is `sqlserver-journal-v3-row-timestamps`.
+`SchemaColumnsMismatch`, `SchemaIndexesMismatch`, `SchemaForeignKeysMismatch`, `SchemaChecksMismatch`,
+`SchemaDefaultsMismatch` and `SchemaTriggersMismatch` report `ExpectedVersion` and complete sorted `MissingObjects`
+and `UnexpectedObjects` retaining each compared shape. `DefinitionUnavailable` identifies the hidden or encrypted
+`ObjectName` and `RequiredPermission` (`VIEW DEFINITION`). `SchemaCancelled` reports its `Stage`.
+`SchemaProviderFailure` also carries typed `ProviderCode`, taken from the original `SqlException.Number`.
+`SchemaRollbackUnconfirmed` retains unknown outcome and certainty. `ApplicationLockNotGranted` carries `ReturnCode`,
+with the existing failure kind preserving timeout, cancellation and deadlock classification. See the
+[SQL Server refusal table](../KhaozEngine.WorldStore.SqlServer/README.md#refusals) for each rule's payload.
+
 Journal request values copy byte arrays at construction. Their existing `ReadOnlyMemory<byte>` properties also
 return defensive copies. Use the matching `ReadOnlySpan<byte>` property in a hot synchronous read, such as
 `frozen.ResultDataSpan` or `frozen.Identity.NormalizedIntentSpan`. It views the object's owned bytes without an
@@ -28422,6 +28642,10 @@ Load each listed stream through the ordinary snapshot, event, and projection rea
 store with `SchemaMode = ReadOnly` when the source must not be written to. That mode issues no DDL, reports a
 missing or older schema as `SchemaMismatch` instead of repairing it, and makes every write path throw
 `NotSupportedException`. Do not hand a read only store to `MutationJournalExecutor`.
+
+SQLite operation-delete overlap retains `JournalStoreException` with `OperationDeleteGuardAlreadyOpen`,
+`CorruptData`, `CommittedDataUnreadable`, whole-store scope and empty `StreamKeys`. In-memory replacement
+snapshot verification retains `SnapshotChecksumMismatch`, `StreamKey` and operation-stream corruption scope.
 
 A release that wipes all game data empties the journal with `SqliteJournalReset.ResetAsync` or
 `SqlServerJournalReset.ResetAsync`. Each deletes every stream, event, snapshot, projection section, replay receipt,

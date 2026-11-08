@@ -58,9 +58,11 @@ internal static class SqlServerJournalHostKeys
         int commandTimeoutSeconds,
         CancellationToken cancellationToken)
     {
+        // Only the reset calls this with its owned, active transaction before disposal or rollback.
         SqlConnection connection = transaction.Connection
             ?? throw new InvalidOperationException("SQL transaction has no connection.");
         var firing = new List<string>();
+        var findings = new List<JournalHostObjectFinding>();
         await using (SqlCommand command = connection.CreateCommand())
         {
             command.Transaction = transaction;
@@ -69,22 +71,30 @@ internal static class SqlServerJournalHostKeys
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
+                string schema = reader.GetString(0);
+                string host = reader.GetString(1);
+                string key = reader.GetString(2);
+                string referenced = reader.GetString(3);
                 string action = reader.GetString(4).Replace('_', ' ');
+                findings.Add(new(JournalStoreRefusal.HostForeignKeyActionUnsafe, host, referenced, action, null)
+                    { HostSchema = schema, ForeignKeyName = key });
                 firing.Add(FormattableString.Invariant(
-                    $"host table '{reader.GetString(0)}.{reader.GetString(1)}' has foreign key '{reader.GetString(2)}' into journal table '{reader.GetString(3)}' declared ON DELETE {action}"));
+                    $"host table '{schema}.{host}' has foreign key '{key}' into journal table '{referenced}' declared ON DELETE {action}"));
             }
         }
 
-        if (firing.Count > 0) throw Refusal(firing);
+        if (firing.Count > 0) throw Refusal(firing, findings);
     }
 
     /// <summary>The refusal, naming every host key that would fire and what an operator can do about it.</summary>
-    private static JournalStoreException Refusal(IReadOnlyList<string> firing)
+    private static JournalStoreException Refusal(IReadOnlyList<string> firing, IReadOnlyList<JournalHostObjectFinding> findings)
         => new(
+            JournalStoreRefusal.HostForeignKeyActionUnsafe,
             JournalStoreFailureKind.SchemaMismatch,
             JournalStoreFailureCertainty.DefinitelyNotCommitted,
             JournalStoreFailureScope.WholeStore,
             null,
             FormattableString.Invariant(
-                $"The SQL Server journal cannot be reset: {string.Join(", and ", firing)}. The reset deletes every row of the journal's data tables, which would fire that action and delete or rewrite the host's own rows. Nothing was deleted. Remove each such foreign key, or declare it ON DELETE NO ACTION and clear the host rows that reference the journal, then run the reset again."));
+                $"The SQL Server journal cannot be reset: {string.Join(", and ", firing)}. The reset deletes every row of the journal's data tables, which would fire that action and delete or rewrite the host's own rows. Nothing was deleted. Remove each such foreign key, or declare it ON DELETE NO ACTION and clear the host rows that reference the journal, then run the reset again."))
+        { HostObjects = findings };
 }

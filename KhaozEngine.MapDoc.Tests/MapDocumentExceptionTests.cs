@@ -48,12 +48,44 @@ public sealed class MapDocumentExceptionTests
         source.Clear();
         Assert.NotNull(refusal.Findings);
         Assert.Equal(new[] { first, second }, refusal.Findings);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)refusal.Findings!).SyncRoot);
         if (refusal.Findings is IList<MapDocumentFinding> list)
         {
             Assert.Throws<NotSupportedException>(() => list[0] = second);
             Assert.Throws<NotSupportedException>(() => list.Clear());
         }
         Assert.Equal(new[] { first, second }, refusal.Findings);
+    }
+
+    // Reassignment must not collapse findings in a HashSet.
+    [Theory]
+    [InlineData(nameof(MapDocumentFinding.ResourceIds))]
+    [InlineData(nameof(MapDocumentFinding.ExpectedResourceIds))]
+    [InlineData(nameof(MapDocumentFinding.SourceIds))]
+    [InlineData(nameof(MapDocumentFinding.SpaceIds))]
+    [InlineData(nameof(MapDocumentFinding.MarkerIds))]
+    [InlineData(nameof(MapDocumentFinding.SupportedVersions))]
+    public void Finding_collection_reassignment_keeps_distinct_record_identity(string property)
+    {
+        var original = new MapDocumentFinding(MapDocumentRefusal.AssetDependencyCycle, "cycle")
+        {
+            ResourceIds = ["resource"], ExpectedResourceIds = ["root"], SourceIds = ["source"],
+            SpaceIds = ["space"], MarkerIds = ["marker"], SupportedVersions = [1],
+        };
+        MapDocumentFinding reassigned = property switch
+        {
+            nameof(MapDocumentFinding.ResourceIds) => original with { ResourceIds = original.ResourceIds },
+            nameof(MapDocumentFinding.ExpectedResourceIds) => original with { ExpectedResourceIds = original.ExpectedResourceIds },
+            nameof(MapDocumentFinding.SourceIds) => original with { SourceIds = original.SourceIds },
+            nameof(MapDocumentFinding.SpaceIds) => original with { SpaceIds = original.SpaceIds },
+            nameof(MapDocumentFinding.MarkerIds) => original with { MarkerIds = original.MarkerIds },
+            nameof(MapDocumentFinding.SupportedVersions) => original with { SupportedVersions = original.SupportedVersions },
+            _ => throw new ArgumentOutOfRangeException(nameof(property)),
+        };
+
+        Assert.Equal(original, original with { });
+        Assert.NotEqual(original, reassigned);
+        Assert.Equal(2, new HashSet<MapDocumentFinding> { original, reassigned }.Count);
     }
 
     [Fact]
@@ -73,31 +105,41 @@ public sealed class MapDocumentExceptionTests
         source[0] = "changed";
         Assert.Equal(new[] { "a", "b" }, spaces.SpaceIds);
         Assert.Equal(new[] { "a", "b" }, spaceFinding.SpaceIds);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)spaces.SpaceIds!).SyncRoot);
         if (spaces.SpaceIds is IList<string> spaceList) Assert.Throws<NotSupportedException>(() => spaceList[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)spaceFinding.SpaceIds!).SyncRoot);
         if (spaceFinding.SpaceIds is IList<string> findingSpaces) Assert.Throws<NotSupportedException>(() => findingSpaces[0] = "changed");
         Assert.Equal(new[] { "a", "b" }, roots.ExpectedResourceIds);
         Assert.Equal(new[] { "a", "b" }, rootFinding.ExpectedResourceIds);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)roots.ExpectedResourceIds!).SyncRoot);
         if (roots.ExpectedResourceIds is IList<string> rootList) Assert.Throws<NotSupportedException>(() => rootList[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)rootFinding.ExpectedResourceIds!).SyncRoot);
         if (rootFinding.ExpectedResourceIds is IList<string> rootFindingList) Assert.Throws<NotSupportedException>(() => rootFindingList[0] = "changed");
         Assert.Equal(new[] { "a", "b" }, roots.ExpectedResourceIds);
         Assert.Equal(new[] { "a", "b" }, rootFinding.ExpectedResourceIds);
         Assert.Equal(new[] { "a", "b" }, refusal.ResourceIds);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)refusal.ResourceIds!).SyncRoot);
         if (refusal.ResourceIds is IList<string> list)
             Assert.Throws<NotSupportedException>(() => list[0] = "changed");
         Assert.Equal(new[] { "a", "b" }, refusal.ResourceIds);
         Assert.Equal(new[] { "a", "b" }, finding.ResourceIds);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)finding.ResourceIds!).SyncRoot);
         if (finding.ResourceIds is IList<string> findingList)
             Assert.Throws<NotSupportedException>(() => findingList[0] = "changed");
         Assert.Equal(new[] { "a", "b" }, finding.ResourceIds);
         Assert.Equal(new[] { "a", "b" }, choices.SourceIds);
         Assert.Equal(new[] { "a", "b" }, choiceFinding.SourceIds);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)choices.SourceIds!).SyncRoot);
         if (choices.SourceIds is IList<string> choiceList) Assert.Throws<NotSupportedException>(() => choiceList[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)choiceFinding.SourceIds!).SyncRoot);
         if (choiceFinding.SourceIds is IList<string> choiceFindingList) Assert.Throws<NotSupportedException>(() => choiceFindingList[0] = "changed");
         Assert.Equal(new[] { "a", "b" }, choices.SourceIds);
         Assert.Equal(new[] { "a", "b" }, choiceFinding.SourceIds);
         Assert.Equal(new[] { "a", "b" }, collision.MarkerIds);
         Assert.Equal(new[] { "a", "b" }, collisionFinding.MarkerIds);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)collision.MarkerIds!).SyncRoot);
         if (collision.MarkerIds is IList<string> markerList) Assert.Throws<NotSupportedException>(() => markerList[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)collisionFinding.MarkerIds!).SyncRoot);
         if (collisionFinding.MarkerIds is IList<string> markerFindingList) Assert.Throws<NotSupportedException>(() => markerFindingList[0] = "changed");
         Assert.Equal(new[] { "a", "b" }, collision.MarkerIds);
         Assert.Equal(new[] { "a", "b" }, collisionFinding.MarkerIds);

@@ -111,6 +111,12 @@ public sealed class ContentMixedIdPublicationTests
             () => store.PublishAsync(PublishFixtures.Request(0)));
 
         Assert.Equal(ContentAuthoringException.IdCeilingReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.AllocationCeilingExceeded, refused.Refusal);
+        Assert.Equal(type, refused.Type);
+        Assert.Equal(8, refused.Ceiling);
+        Assert.Equal(8, refused.IssuedThrough);
+        Assert.Equal(8, refused.ReservedThrough);
+        Assert.Equal(1, refused.RequestedCount);
         Assert.Empty(await store.ListVersionsAsync());
         Assert.Equal(0, (await store.ListRowsAsync(type, 0, null, true, 0, 10)).Total);
         Assert.Equal(2, (await store.GetOpenDraftAsync())!.EditCount);

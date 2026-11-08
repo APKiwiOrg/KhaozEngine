@@ -136,8 +136,16 @@ public class InMemoryContentAuthoringStoreTests
                 string.Empty));
 
         Assert.Equal(ContentAuthoringException.UnknownFieldReason, error.Reason);
-        Assert.Contains("valeu", error.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.FieldUnknown, error.Refusal);
+        Assert.Equal(Game, error.Type);
+        Assert.Equal(0, error.Id);
+        Assert.Equal("game_thing", error.TypeKey);
+        Assert.Equal("valeu", error.FieldName);
+        Assert.Equal(0, error.EditOrdinal);
         Assert.Null(await store.GetOpenDraftAsync());
+        ContentDraft repaired = await store.ApplyEditsAsync(
+            [ContentEdit.Add(Game, new ContentKey("iron_sword"), [Int("value", 120)])], Actor, Operator, string.Empty);
+        Assert.Equal(120, Assert.Single(Assert.Single(repaired.Changes.Edits).Fields).Value.Number);
     }
 
     [Fact]
@@ -240,8 +248,11 @@ public class InMemoryContentAuthoringStoreTests
     {
         InMemoryContentAuthoringStore store = NewStore();
 
-        await Assert.ThrowsAsync<ContentAuthoringException>(
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.SetPinnedVersionAsync(7, Actor, Operator));
+        Assert.Equal(ContentAuthoringRefusal.VersionUnknown, refused.Refusal);
+        Assert.Equal(7, refused.VersionNumber);
+        Assert.Equal(ContentAuthoringException.UnknownTypeReason, refused.Reason);
 
         Assert.Null(await store.GetPinnedVersionAsync());
     }

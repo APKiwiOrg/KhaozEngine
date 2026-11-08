@@ -216,15 +216,31 @@ public sealed class TextUpgradeTests : IDisposable
         var unknown = new TextUpgradeStore(inner) { ProvenanceUnknown = true };
         ContentUpgradeReport refused = await ContentUpgradeRunner.RunAsync(unknown, TextRegistry(), set, UpgradeFixtures.Apply());
         Assert.Equal(ContentUpgradeOutcome.Failed, refused.Outcome);
-        Assert.Contains(refused.Diagnostics, diagnostic => diagnostic.Message.Contains("no complete text record", StringComparison.Ordinal));
+        Assert.Contains(refused.Diagnostics, diagnostic => diagnostic.Code == "KECU0009");
+        var provenance = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
+            new ContentUpgradeTextRoute(unknown).ExportBaselineAsync(1, default));
+        Assert.Equal(ContentAuthoringRefusal.TextProvenanceUnknown, provenance.Refusal);
+        Assert.Equal(1, provenance.VersionNumber);
         Assert.Equal(before, await UpgradeFixtures.FootprintAsync(inner));
 
         var hidden = new TextUpgradeStore(inner) { RebuildExportAsFormatOne = true };
         ContentUpgradeReport stripped = await ContentUpgradeRunner.RunAsync(hidden, TextRegistry(), set, UpgradeFixtures.Apply());
         Assert.Equal(ContentUpgradeOutcome.Failed, stripped.Outcome);
-        Assert.Contains(stripped.Diagnostics, diagnostic => diagnostic.Message.Contains("cannot see", StringComparison.Ordinal));
+        Assert.Contains(stripped.Diagnostics, diagnostic => diagnostic.Code == "KECU0009");
+        var mismatch = await Assert.ThrowsAsync<ContentAuthoringException>(() =>
+            new ContentUpgradeTextRoute(hidden).ExportBaselineAsync(1, default));
+        Assert.Equal(ContentAuthoringRefusal.TextBaselineHiddenFromPlanner, mismatch.Refusal);
+        Assert.Equal(1, mismatch.VersionNumber);
+        Assert.Equal(0, mismatch.CarriedLanguageCount);
+        Assert.Equal(0, mismatch.CarriedValueCount);
+        Assert.Equal(1, mismatch.RecordedLanguageCount);
+        Assert.Equal(1, mismatch.RecordedValueCount);
         Assert.Equal(before, await UpgradeFixtures.FootprintAsync(inner));
         Assert.Null(await inner.GetOpenDraftAsync());
+        ContentUpgradeReport repaired = await ContentUpgradeRunner.RunAsync(inner, TextRegistry(), set, UpgradeFixtures.Apply());
+        Assert.Equal(ContentUpgradeOutcome.Applied, repaired.Outcome);
+        Assert.Equal("Epee", (await ((IContentTextAuthoringStore)inner).ReadTextSnapshotAsync(2))
+            .Revisions.Single(revision => revision.Language == "fr").Value);
     }
 
     [Fact]

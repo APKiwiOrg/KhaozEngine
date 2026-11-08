@@ -10,9 +10,9 @@ namespace KhaozEngine.Identity.Discord;
 /// base's identifiers name the rule and its subject.</summary>
 public sealed class IdentitySignInException : SignInException
 {
-    public IdentitySignInException(string message) : base(message) { }
+    public IdentitySignInException(string message) : base(null, message, null) { }
 
-    public IdentitySignInException(string message, Exception innerException) : base(message, innerException) { }
+    public IdentitySignInException(string message, Exception innerException) : base(null, message, innerException) { }
 
     /// <summary>Creates a failure refused by <paramref name="reason"/>.</summary>
     public IdentitySignInException(SignInRefusal reason, string message) : base(reason, message) { }

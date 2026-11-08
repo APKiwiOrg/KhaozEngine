@@ -6,40 +6,6 @@
 # Ratchet down locally:
 # build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update
 
-1 KETEST001 KhaozEngine.Catalog.Tests/Authoring/BundleJsonFormatVersionTests.cs
-2 KETEST001 KhaozEngine.Catalog.Tests/Authoring/BundleTests.cs
-4 KETEST001 KhaozEngine.Catalog.Tests/Authoring/ContentIdAllocatorTests.cs
-1 KETEST001 KhaozEngine.Catalog.Tests/Authoring/InMemoryContentAuthoringStoreTests.cs
-1 KETEST001 KhaozEngine.Catalog.Tests/Publish/PublishPipelineTests.cs
-4 KETEST001 KhaozEngine.Catalog.Tests/Registry/ContentFieldLookupTests.cs
-19 KETEST001 KhaozEngine.Catalog.Tests/Registry/ContentTypeRegistryTests.cs
-3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogNonmutatingOpenTests.cs
-3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogResetHostForeignKeyTests.cs
-3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogResetRepairTests.cs
-3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogResetSchemaVersionTests.cs
-2 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogRowTimestampTests.Migration.cs
-2 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogSchemaMigrationTests.cs
-9 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteCatalogSchemaTests.cs
-3 KETEST001 KhaozEngine.Catalog.Tests/Sqlite/SqliteTextSchemaMigrationTests.cs
-1 KETEST001 KhaozEngine.Server.Tests/Catalog/ContentAuthoringStoreConformance.Schema.cs
-3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogNonmutatingOpenTests.cs
-3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogResetRepairTests.cs
-3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogResetSchemaVersionTests.cs
-5 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogRowTimestampTests.Migration.cs
-2 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogSchemaMigrationTests.cs
-1 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogSchemaProviderErrorTests.cs
-6 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerCatalogSchemaTests.cs
-3 KETEST001 KhaozEngine.Server.Tests/Catalog/SqlServer/SqlServerTextSchemaMigrationTests.cs
-2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalMetadataTests.cs
-1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalResetAtomicityTests.cs
-4 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalResetHostObjectTests.cs
-2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerJournalRowTimestampTests.cs
-1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerMutationJournalFailureTests.cs
-3 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqlServerMutationJournalReadOnlyTests.cs
-1 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteJournalResetHostObjectTests.cs
-2 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteJournalRowTimestampTests.cs
-3 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteMutationJournalReadOnlyTests.cs
-6 KETEST001 KhaozEngine.Server.Tests/WorldStore/Journal/SqliteMutationJournalStoreTests.cs
 
 # Bitwise state comparer for locomotion determinism parity (rule 8), merged from five per-file copies (owner decision D17)
 exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs

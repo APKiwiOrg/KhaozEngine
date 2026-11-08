@@ -39,7 +39,7 @@ public sealed class PublicationRefusalTests
     [InlineData("value")]
     public void CandidateBuilderRefusesAnAbsentOrNonBooleanForkFlag(string field)
     {
-        // W7-B18b: the friend-assembly builder entry point does not run fork preflight.
+        // The friend-assembly builder entry point does not run fork preflight.
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
         ContentPublishBaseline baseline = Baseline();
         var changes = new ContentChangeSet([ContentEdit.Fork(Thing, 1, Key, new("legacy_one"), field, [])]);

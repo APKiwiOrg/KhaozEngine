@@ -63,25 +63,33 @@ internal static class SqlServerJournalBatchResultReader
             throw Corrupt(JournalStoreRefusal.ReplayedStreamsMissing, Array.Empty<string>(), "Replayed journal operation streams could not be read inside its transaction.", operationId);
         if (!HasShape(reader, typeof(string), typeof(long), typeof(long), typeof(int)))
             throw Malformed();
-        var ranges = new List<JournalStreamVersionRange>();
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        // A trigger can emit well-typed replay rows, with a valid checksum, that the receipt's own rules refuse.
+        try
         {
-            if (HasNull(reader)) throw Malformed();
-            ranges.Add(new JournalStreamVersionRange(reader.GetString(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt32(3)));
-        }
+            var ranges = new List<JournalStreamVersionRange>();
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (HasNull(reader)) throw Malformed();
+                ranges.Add(new JournalStreamVersionRange(reader.GetString(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt32(3)));
+            }
 
-        string[] streamKeys = ranges.Select(value => value.StreamKey).ToArray();
-        if (!JournalCanonicalizer.VerifySha256(resultData, resultChecksum))
-            throw Corrupt(JournalStoreRefusal.ResultChecksumMismatch, streamKeys, "Stored journal result checksum does not match its data.", operationId);
-        return new JournalCommitReceipt(
-            operationId,
-            committedAt,
-            ranges,
-            resultSchema,
-            resultSchemaVersion,
-            resultData,
-            resultChecksum,
-            isReplay: true);
+            string[] streamKeys = ranges.Select(value => value.StreamKey).ToArray();
+            if (!JournalCanonicalizer.VerifySha256(resultData, resultChecksum))
+                throw Corrupt(JournalStoreRefusal.ResultChecksumMismatch, streamKeys, "Stored journal result checksum does not match its data.", operationId);
+            return new JournalCommitReceipt(
+                operationId,
+                committedAt,
+                ranges,
+                resultSchema,
+                resultSchemaVersion,
+                resultData,
+                resultChecksum,
+                isReplay: true);
+        }
+        catch (ArgumentException invalid)
+        {
+            throw Malformed(invalid);
+        }
     }
 
     private static bool HasNullableType(DbDataReader reader, int ordinal, Type type)
@@ -102,8 +110,8 @@ internal static class SqlServerJournalBatchResultReader
         return false;
     }
 
-    private static JournalStoreStateException Malformed()
-        => new(JournalStoreRefusal.BatchResultMalformed, "SQL Server mutation journal write batch returned a malformed result.");
+    private static JournalStoreStateException Malformed(Exception? innerException = null)
+        => new(JournalStoreRefusal.BatchResultMalformed, "SQL Server mutation journal write batch returned a malformed result.", innerException);
 
     internal static JournalStoreException ProjectionLimitFailure(SqlServerJournalWriteResult batch, IReadOnlyList<string> streamKeys)
     {

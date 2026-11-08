@@ -267,7 +267,7 @@ Validation order, sorting, bounds and the public `IReadOnlyList<T>` properties a
 
 `JournalStoreStateException` derives from `InvalidOperationException` and requires a `JournalStoreRefusal`
 `Reason`. SQL Server protocol guards retain that catch contract and their existing developer prose.
-`BatchResultMalformed` names a malformed result shape or value type, or a trailing result set after Applied or
+`BatchResultMalformed` names a malformed result shape or value type, replay rows the receipt rules refuse, or a trailing result set after Applied or
 Replayed. Success is accepted only after the reader proves the complete expected protocol, including the replay
 receipt sets. Nullable outcome payloads accept SQL literal NULL values regardless of their metadata type.
 `BatchOutcomeMissing` names a missing outcome row, `BatchOutcomeUndefined` names an undefined outcome and carries

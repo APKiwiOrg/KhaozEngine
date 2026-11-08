@@ -20,7 +20,7 @@ public sealed class SqlServerJournalBatchProtocolTests
     [InlineData("SELECT 3, 0, NULL, NULL, NULL, NULL; SELECT 0 WHERE 1 = 0;", JournalStoreRefusal.ReplayedOperationMissing)]
     public async Task Trigger_results_refuse_the_batch_and_roll_back_all_content(string results, JournalStoreRefusal reason)
     {
-        // W7-B18b: an AFTER trigger's result sets precede the batch's own protocol.
+        // An AFTER trigger's result sets precede the batch's own protocol.
         using var scope = new Task6SqlServerScope();
         var store = scope.Open();
         await store.InitializeAsync(Initialization(1, 7, Projection("bag", 1)));
@@ -79,7 +79,7 @@ public sealed class SqlServerJournalBatchProtocolTests
     [InlineData(true, JournalStoreRefusal.BatchResultMalformed)]
     public async Task Trigger_deleted_stream_refuses_the_batch_and_restores_all_content(bool spoofSuccess, JournalStoreRefusal reason)
     {
-        // W7-B18b: serializable locks do not stop a trigger in this same transaction.
+        // Serializable locks do not stop a trigger in this same transaction.
         using var scope = new Task6SqlServerScope();
         var store = scope.Open();
         await store.InitializeAsync(Initialization(1, 7, Projection("bag", 1)));

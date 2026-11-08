@@ -127,7 +127,7 @@ public sealed class JournalValueOwnershipTests
         Assert.Single(commit.StreamMutations);
         Assert.Single(commit.ProjectionWrites);
         Assert.Equal(new byte[] { 7, 8 }, commit.ResultData.ToArray());
-        // W7-B18b: replacing a validated projection through SyncRoot bypassed membership checks.
+        // Replacing a validated projection through SyncRoot bypassed membership checks.
         AssertReadOnly(commit.StreamMutations, JournalTestData.Mutation("untouched"));
         AssertReadOnly(commit.ProjectionWrites, JournalTestData.Projection("untouched"));
         var store = new InMemoryMutationJournalStore();

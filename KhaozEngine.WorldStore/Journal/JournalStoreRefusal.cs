@@ -107,7 +107,7 @@ public enum JournalStoreRefusal
     WriteFailedAfterRollback,
     /// <summary>The SQL Server batch returned no outcome row.</summary>
     BatchOutcomeMissing,
-    /// <summary>The SQL Server batch result has an invalid shape, value type or trailing result set.</summary>
+    /// <summary>The SQL Server batch result has an invalid shape, value type, replay row or trailing result set.</summary>
     BatchResultMalformed,
     /// <summary>The SQL Server batch returned an undefined outcome value.</summary>
     BatchOutcomeUndefined,

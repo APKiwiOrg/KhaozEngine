@@ -16,7 +16,7 @@ public sealed class SqlServerJournalBatchResultTests
     [InlineData(true, 3, JournalStoreRefusal.BatchOutcomeUndefined)]
     public async Task Invalid_outcome_keeps_the_state_exception_catch_contract(bool undefined, int columns, JournalStoreRefusal reason)
     {
-        // W7-B18b: host triggers can emit these result sets before the batch outcome.
+        // Host triggers can emit these result sets before the batch outcome.
         using DataTable outcome = Outcome(undefined ? 99 : null);
         while (outcome.Columns.Count > columns) outcome.Columns.RemoveAt(outcome.Columns.Count - 1);
         using var reader = new DataTableReader(outcome);
@@ -70,7 +70,7 @@ public sealed class SqlServerJournalBatchResultTests
     [InlineData(6, 5, typeof(int), false)]
     public async Task Malformed_outcome_is_a_state_refusal(int columns, int changedColumn, Type type, bool isNull)
     {
-        // W7-B18c: validate the outcome before typed getters can throw or accept a spoof.
+        // Validate the outcome before typed getters can throw or accept a spoof.
         using DataTable valid = Outcome(1);
         using DataTable malformed = valid.Clone();
         while (malformed.Columns.Count > columns) malformed.Columns.RemoveAt(malformed.Columns.Count - 1);
@@ -105,7 +105,7 @@ public sealed class SqlServerJournalBatchResultTests
     [InlineData(false, false, true)]
     public async Task Malformed_replay_set_is_a_state_refusal(bool operationSet, bool wrongShape, bool isNull)
     {
-        // W7-B18c: a trigger can put the real outcome where a replay row was expected.
+        // A trigger can put the real outcome where a replay row was expected.
         using DataTable outcome = Outcome(3);
         using DataTable operation = Operation();
         using DataTable streams = Streams();
@@ -134,13 +134,38 @@ public sealed class SqlServerJournalBatchResultTests
             (await SqlServerJournalBatchResultReader.ReadAsync(control, Guid.NewGuid(), CancellationToken.None)).Outcome);
     }
 
+    // Each row is well typed and the operation row has a valid checksum, so only the receipt's own rules can refuse it.
+    [Theory]
+    [InlineData(0L, 1L, 1, true)]
+    [InlineData(2L, 1L, 1, false)]
+    [InlineData(0L, 1L, 2, false)]
+    public async Task Replay_rows_the_receipt_refuses_are_a_state_refusal(long before, long after, int events, bool duplicate)
+    {
+        using DataTable outcome = Outcome(3);
+        using DataTable operation = Operation();
+        using DataTable streams = Streams();
+        using DataTable invalid = streams.Clone();
+        invalid.Rows.Add("stream", before, after, events);
+        if (duplicate) invalid.Rows.Add("stream", before, after, events);
+        using var reader = new DataTableReader([outcome, operation, invalid]);
+
+        var refused = await Assert.ThrowsAsync<JournalStoreStateException>(() =>
+            SqlServerJournalBatchResultReader.ReadAsync(reader, Guid.NewGuid(), CancellationToken.None));
+
+        Assert.Equal(JournalStoreRefusal.BatchResultMalformed, refused.Reason);
+        Assert.IsAssignableFrom<ArgumentException>(refused.InnerException);
+        using var control = new DataTableReader([outcome, operation, streams]);
+        Assert.Equal(SqlServerJournalWriteOutcome.Replayed,
+            (await SqlServerJournalBatchResultReader.ReadAsync(control, Guid.NewGuid(), CancellationToken.None)).Outcome);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(true, true)]
     public async Task Success_requires_the_complete_protocol_without_trailing_sets(bool replay, bool emptyStreams)
     {
-        // W7-B18c: even a complete spoofed success is followed by the real batch outcome.
+        // Even a complete spoofed success is followed by the real batch outcome.
         Guid operationId = Guid.NewGuid();
         using DataTable outcome = Outcome(replay ? 3 : 1);
         using DataTable operation = Operation();
@@ -177,7 +202,7 @@ public sealed class SqlServerJournalBatchResultTests
     [InlineData("limit-stream")]
     public void Incomplete_projection_limit_preserves_constraint_dimensions(string? limitStream)
     {
-        // W7-B18c: incomplete limit payloads retain the original JournalStoreException contract.
+        // Incomplete limit payloads retain the original JournalStoreException contract.
         string[] requestedKeys = ["requested-b", "requested-a"];
         var batch = new SqlServerJournalWriteResult(SqlServerJournalWriteOutcome.ProjectionLimit, 0, limitStream, null, null, null, null);
         var refused = Assert.IsType<JournalStoreException>(SqlServerJournalBatchResultReader.ProjectionLimitFailure(batch, requestedKeys));

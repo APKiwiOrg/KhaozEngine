@@ -457,6 +457,7 @@ public class NavBakeIdentityTests
     {
         byte[] expected = Encode(CorruptBase());
 
+        Assert.NotEmpty(expected);
         for (int length = 0; length < expected.Length; length++)
         {
             (NavBakeLoadStatus status, _) = NavBakeIdentity.Compare(expected.AsSpan(0, length), expected);

@@ -67,6 +67,7 @@ namespace KhaozEngine.Tests.Gpu
         /// lock holds that corner, so it keeps the box's luma, not its red, for a few frames
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1185).
         /// </summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void TheRevealTableCoversEveryPreset()
         {

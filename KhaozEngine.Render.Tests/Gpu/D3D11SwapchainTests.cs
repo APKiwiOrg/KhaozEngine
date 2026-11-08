@@ -356,7 +356,9 @@ namespace KhaozEngine.Tests.Gpu
             swapchain.QueueResize(1600, 900);
             swapchain.Present();
 
-            Assert.All(surface.Calls.Skip(1), call => Assert.True(call.HeldTheSubmitLock,
+            var calls = surface.Calls.Skip(1).ToArray();
+            Assert.NotEmpty(calls);
+            Assert.All(calls, call => Assert.True(call.HeldTheSubmitLock,
                 $"{call} arrived without the submit lock held."));
         }
 

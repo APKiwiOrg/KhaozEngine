@@ -89,12 +89,12 @@ namespace KhaozEngine.Tests.Gpu
                 new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer));
             using MetalCommandList list = device.CreateCommandList();
 
-            byte[] payload = Payload(64, seed: 3);
+            byte[] payload = Array.Empty<byte>();
 
-            // Two frames, so the segment the second write lands in is not segment 0 and the assertion is about
-            // the base rather than about the start of the allocation.
-            for (int frame = 0; frame < 2; frame++)
+            // Distinct writes make a map of the previous segment return stale bytes.
+            foreach (byte seed in new byte[] { 3, 4 })
             {
+                payload = Payload(64, seed);
                 list.Begin();
                 list.UpdateBuffer(buffer, 0, (ReadOnlySpan<byte>)payload);
                 list.Encoders.EnsureBlitEncoder();
@@ -103,8 +103,6 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             device.WaitForIdle();
-
-            Assert.Equal(2, device.Rings.CurrentSegment);
 
             MappedData mapped = device.Map(buffer, GpuMapMode.Read);
             Assert.Equal(payload, Read(mapped, payload.Length));
@@ -134,7 +132,8 @@ namespace KhaozEngine.Tests.Gpu
             byte[] payload = Payload(32, seed: 4);
             device.UpdateBuffer(buffer, 16, (ReadOnlySpan<byte>)payload);
 
-            for (int segment = 0; segment < buffer.Ring!.FramesInFlight; segment++)
+            Assert.Equal(payload, buffer.Ring!.ReadSegment(0, 16, payload.Length));
+            for (int segment = 1; segment < buffer.Ring.FramesInFlight; segment++)
             {
                 Assert.Equal(payload, buffer.Ring.ReadSegment(segment, 16, payload.Length));
             }

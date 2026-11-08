@@ -45,7 +45,9 @@ effects, which DDL validation does not exclude.
 
 SQL Server's insert-identity guards use `DraftEditIdentityMissing` (`Type`, `Id`) and
 `FamilyIdentityMissing` (`Type`, `FamilyKey`). An `INSTEAD OF INSERT` trigger can suppress a row and leave
-`SCOPE_IDENTITY()` null, so these are input refusals. A contention refusal uses `TransactionContended`
+`SCOPE_IDENTITY()` null, so these are input refusals. The identity is read through a bigint output
+parameter, so result sets from an `AFTER INSERT` trigger cannot redirect family blocks or edit fields.
+A contention refusal uses `TransactionContended`
 with the typed `SqlErrorNumber` (1205 or 3960). Its legacy token remains `base-version-moved`, so existing
 409 handling keeps working. No provider message is parsed.
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
@@ -107,7 +108,7 @@ public sealed partial class SqlServerContentAuthoringStore
                     INSERT INTO dbo.catalog_family(
                         type_id, family_key, block_size, retired, created_in_version, created_at_utc)
                     VALUES (@type, @key, @size, 0, @created, @at);
-                    SELECT CAST(SCOPE_IDENTITY() AS bigint);
+                    SET @identity = CAST(SCOPE_IDENTITY() AS bigint);
                     """);
                 BindTime(insert, "@at", _clock());
                 BindInt(insert, "@type", (int)type.Value);
@@ -118,8 +119,11 @@ public sealed partial class SqlServerContentAuthoringStore
                 // the active version: creating a family is an immediate action while the active version is
                 // still 0 on a database that has published nothing.
                 BindInt(insert, "@created", active + 1);
-                object? raw = await insert.ExecuteScalarAsync(token).ConfigureAwait(false);
-                long familyId = raw is long identity
+                // An AFTER trigger may return rows before this batch, so identity travels out of band.
+                SqlParameter output = insert.Parameters.Add("@identity", SqlDbType.BigInt);
+                output.Direction = ParameterDirection.Output;
+                await insert.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                long familyId = output.Value is long identity
                     ? identity
                     : throw new ContentAuthoringException(
                         ContentAuthoringRefusal.FamilyIdentityMissing,

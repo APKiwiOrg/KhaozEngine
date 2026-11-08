@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
@@ -378,15 +379,18 @@ public sealed partial class SqlServerContentAuthoringStore
                     fork_flag_field, family_id, imported_retired, edited_by, edited_at_utc, created_at_utc)
                 VALUES (@type, @id, @key, @operation, @policy, @replacement, @forkKey, @forkFlag, @family,
                         @importedRetired, @actor, @at, @at);
-                SELECT CAST(SCOPE_IDENTITY() AS bigint);
+                SET @identity = CAST(SCOPE_IDENTITY() AS bigint);
                 """);
             BindEdit(insert, edit, actor, at);
             BindInt(insert, "@type", (int)edit.Type.Value);
             BindInt(insert, "@id", edit.DefinitionId);
             BindText(insert, "@key", edit.Key.ToString());
             BindInt(insert, "@operation", (int)edit.Operation);
-            object? raw = await insert.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            ordinal = raw is long identity
+            // Trigger result sets must not supply the ordinal used by the field inserts.
+            SqlParameter output = insert.Parameters.Add("@identity", SqlDbType.BigInt);
+            output.Direction = ParameterDirection.Output;
+            await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            ordinal = output.Value is long identity
                 ? identity
                 : throw new ContentAuthoringException(
                     ContentAuthoringRefusal.DraftEditIdentityMissing,

@@ -72,21 +72,35 @@ public static class CoverageBuildInputJson
             throw Error(CoverageBuildInputRefusal.AssetBinding, "$.companion");
         var supportSources = new Dictionary<uint, CoverageSourceTopology>();
         var configurationParts = new List<CoverageConfigurationPart>();
+        var seen = new HashSet<uint>();
+        var commanded = companion.Commands.Select(c => c.PartId).ToHashSet();
         foreach (var part in Array(root, "parts", "$", CoverageBuildInput.MaxSamples).EnumerateArray())
         {
             Members(part, "$.parts", "id", "asset", "hostJoint", "socket", "bodyAlignment");
             uint id = UInt(part, "id", "$.parts");
-            if (attachment.Parts.SingleOrDefault(p => p.Id == id) is not RigidAttachmentPartDefinition declared
-                || supportSources.ContainsKey(id) || Text(part, "hostJoint", "$.parts") != declared.Joint)
+            var declared = attachment.Parts.SingleOrDefault(p => p.Id == id);
+            if (declared is null || !seen.Add(id))
                 throw Error(CoverageBuildInputRefusal.AssetBinding, "$.parts.id");
-            configurationParts.Add(new(id, declared.Joint,
-                Matrix(Get(part, "socket", "$.parts"), "$.parts.socket"),
-                Matrix(Get(part, "bodyAlignment", "$.parts"), "$.parts.bodyAlignment")));
+            string joint = String(Get(part, "hostJoint", "$.parts"), "$.parts.hostJoint", allowEmpty: declared is SkinnedAttachmentPartDefinition);
+            var socket = Matrix(Get(part, "socket", "$.parts"), "$.parts.socket");
+            var alignment = Matrix(Get(part, "bodyAlignment", "$.parts"), "$.parts.bodyAlignment");
+            if (declared is RigidAttachmentPartDefinition rigid)
+            {
+                if (joint != rigid.Joint) throw Error(CoverageBuildInputRefusal.AssetBinding, "$.parts.hostJoint");
+                configurationParts.Add(new(id, joint, socket, alignment));
+            }
+            else
+            {
+                if (commanded.Contains(id) || joint != string.Empty || socket != Matrix4x4.Identity || alignment != Matrix4x4.Identity)
+                    throw Error(CoverageBuildInputRefusal.AssetBinding, "$.parts.id");
+                // Match AttachmentSetBinding's canonical representation for an uncommanded garment.
+                configurationParts.Add(new(id, string.Empty, Matrix4x4.Identity, Matrix4x4.Identity));
+            }
             byte[] asset = Asset(part, "asset", folder, "$.parts", sourcePaths);
             if (Hash(asset) != declared.Mesh.Sha256) throw Error(CoverageBuildInputRefusal.HashMismatch, "$.parts.asset.sha256");
-            supportSources.Add(id, GltfLoader.LoadCoverageSource(asset, $"part-{id}"));
+            if (commanded.Contains(id)) supportSources.Add(id, GltfLoader.LoadCoverageSource(asset, $"part-{id}"));
         }
-        if (supportSources.Count != attachment.Parts.Count) throw Error(CoverageBuildInputRefusal.AssetBinding, "$.parts");
+        if (seen.Count != attachment.Parts.Count) throw Error(CoverageBuildInputRefusal.AssetBinding, "$.parts");
         var commands = companion.Commands.Select(command =>
         {
             if (!supportSources.TryGetValue(command.PartId, out var source)) throw Error(CoverageBuildInputRefusal.AssetBinding, "$.companion.commands.partId");
@@ -239,7 +253,8 @@ public static class CoverageBuildInputJson
     static string[] Strings(JsonElement root, string name, string path, int limit = CoverageBuildInput.MaxSamples) =>
         Array(root, name, path, limit).EnumerateArray().Select((x, i) => String(x, $"{path}.{name}[{i}]")).ToArray();
     static string Text(JsonElement root, string name, string path) => String(Get(root, name, path), path + "." + name);
-    static string String(JsonElement value, string path) => value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
+    static string String(JsonElement value, string path, bool allowEmpty = false) => value.ValueKind == JsonValueKind.String
+        && (allowEmpty && value.GetString() == string.Empty || !string.IsNullOrWhiteSpace(value.GetString()))
         ? value.GetString()! : throw Error(CoverageBuildInputRefusal.InvalidValue, path);
     static uint UInt(JsonElement value, string name, string path)
     {

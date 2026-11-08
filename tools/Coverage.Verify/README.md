@@ -73,8 +73,10 @@ candidate/sample pairs, 1024 palette matrices, four commands and 64 MiB per inpu
 The configuration file requires `formatVersion`, exact `attachment` and `companion` references, and
 `parts`. Every part has `id`, an exact GLB `asset` reference, `hostJoint`, `socket` and `bodyAlignment`.
 The checked attachment supplies part local transforms and mesh identities. The companion supplies
-static command values, coverage frames and inward support ranges. All parts must resolve, host joint
-names must match, and companion attachment and map bindings must match. Current sample commands contain
+static command values, coverage frames and inward support ranges. All parts enter the canonical
+configuration, including uncommanded skinned garments. Only commanded parts must be rigid supports.
+Garments use an empty `hostJoint` and identity `socket` and `bodyAlignment`, matching runtime binding.
+All assets must resolve, rigid host joint names must match, and companion attachment and map bindings must match. Current sample commands contain
 `id`, `equipmentInstanceId`, `equipmentWorld`, `coverageWorld` and `transitionWeight`. Every configured
 command occurs exactly once in each sample. Static command values come from the checked companion.
 

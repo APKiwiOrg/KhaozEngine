@@ -29,6 +29,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="Coverage.Verify.Tests" />
     <InternalsVisibleTo Include="Coverage.Verify" />
     <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />

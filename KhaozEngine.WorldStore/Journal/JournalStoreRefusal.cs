@@ -121,4 +121,6 @@ public enum JournalStoreRefusal
     ReplayedStreamsMissing,
     /// <summary>The SQL Server batch could not update a previously validated stream head.</summary>
     BatchStreamVanished,
+    /// <summary>The SQLite operation-delete guard was already open.</summary>
+    OperationDeleteGuardAlreadyOpen,
 }

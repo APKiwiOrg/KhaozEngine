@@ -248,10 +248,10 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
     {
         if (versionNumber != NoActiveVersion && !_textLanguages.ContainsKey(versionNumber))
         {
-            // Internal invariant: every in-memory commit records its text languages in the same locked
-            // non-throwing tail as its version. No public operation removes that record independently.
-            throw new InvalidOperationException(ContentTextCompatibility.DescribeUnrepresented(member, FormattableString.Invariant(
-                $"version {versionNumber} has no complete text record, so its text is unknown rather than empty")));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextProvenanceUnknown,
+                ContentTextCompatibility.DescribeUnrepresented(member, FormattableString.Invariant(
+                    $"version {versionNumber} has no complete text record, so its text is unknown rather than empty")),
+                default, 0, ContentAuthoringException.TextUnrepresentedReason) { VersionNumber = versionNumber };
         }
 
         ContentVersionTextSnapshot text = TextSnapshotAt(versionNumber);
@@ -281,10 +281,10 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
 
         if (!_textLanguages.TryGetValue(versionNumber, out ContentTextLanguage[]? languages))
         {
-            // Internal invariant: known versions and their complete language records are committed
-            // together under the gate, and all callers admit only a known version or the empty baseline.
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"Version {versionNumber} has no complete text record, so its text is unknown rather than empty."));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.TextProvenanceUnknown,
+                FormattableString.Invariant(
+                    $"Version {versionNumber} has no complete text record, so its text is unknown rather than empty."),
+                default, 0, ContentAuthoringException.TextProvenanceUnknownReason) { VersionNumber = versionNumber };
         }
 
         return new ContentVersionTextSnapshot(

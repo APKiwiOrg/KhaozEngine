@@ -143,7 +143,8 @@ internal static class ContentBundleTextJson
             // All strings and entries were read above, so null arguments cannot reach these constructors.
             // StrictText already refuses unpaired surrogate escapes before a value constructor can see them.
             ContentTextFinding finding = findDefect()
-                ?? throw new InvalidOperationException("A bundle text constructor failed a rule its reader cannot produce.", malformed);
+                ?? throw new ContentAuthoringException(ContentAuthoringRefusal.BundleConstructorRuleUnmapped,
+                    prefix + malformed.Message, default, 0, ContentAuthoringException.BundleFormatReason, malformed);
             throw finding.ToBundleException(path, prefix, malformed);
         }
     }

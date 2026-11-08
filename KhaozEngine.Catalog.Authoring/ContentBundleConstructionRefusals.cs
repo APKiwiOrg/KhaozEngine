@@ -6,8 +6,8 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <summary>
 /// Maps a lower constructor's typed finding to the bundle document's own refusal. Each keeps the bundle-format
 /// token and the message the reader always wrote, its prefix and the constructor's words, and keeps the
-/// constructor's exception as the inner exception. The reason comes from the finding, never from the message, and
-/// a rule no bundle can reach is an internal invariant rather than a generic refusal.
+/// constructor's exception as the inner exception. The reason comes from the finding, never from the message.
+/// An unmapped rule retains the bundle carrier and the original constructor diagnostic.
 /// </summary>
 internal static class ContentBundleConstructionRefusals
 {
@@ -54,9 +54,7 @@ internal static class ContentBundleConstructionRefusals
                 ActualInteger = blocks[finding.BlockIndex].BaseId,
             },
 
-            // An internal invariant no input reaches: the reader builds every block with the family's own block
-            // size, and the key and block list are never null.
-            _ => throw new InvalidOperationException("A bundle family failed a rule its reader cannot produce.", malformed),
+            _ => new(ContentAuthoringRefusal.BundleConstructorRuleUnmapped, message, default, 0, Token, malformed),
         };
     }
 
@@ -113,9 +111,7 @@ internal static class ContentBundleConstructionRefusals
                 MaximumInteger = 1,
             },
 
-            // An internal invariant no input reaches: the reader never builds a null entry, and it declares no
-            // baseline, so every field is a baseline field and none counts as appended.
-            _ => throw new InvalidOperationException("A bundle schema failed a rule its reader cannot produce.", malformed),
+            _ => new(ContentAuthoringRefusal.BundleConstructorRuleUnmapped, message, default, 0, Token, malformed),
         };
     }
 
@@ -146,9 +142,7 @@ internal static class ContentBundleConstructionRefusals
 
         if (!RemapRule.IsKnownKind((byte)kind))
         {
-            // An internal invariant no input reaches: the reader admits only the four defined kinds, which are
-            // the kinds IsKnownKind accepts.
-            throw new InvalidOperationException("A bundle rule kind passed the reader and failed the rule.", malformed);
+            return new(ContentAuthoringRefusal.BundleConstructorRuleUnmapped, message, default, 0, Token, malformed);
         }
 
         if (!RemapRule.IsPayloadWellFormed(kind, payload))
@@ -161,8 +155,7 @@ internal static class ContentBundleConstructionRefusals
             };
         }
 
-        // An internal invariant no input reaches: the constructor has no other check.
-        throw new InvalidOperationException("A bundle rule failed a rule its reader cannot produce.", malformed);
+        return new(ContentAuthoringRefusal.BundleConstructorRuleUnmapped, message, default, 0, Token, malformed);
     }
 
     /// <summary>The refusal for a row field value <see cref="ContentFieldValue.OfBytes"/> refused.</summary>

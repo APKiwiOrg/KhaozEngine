@@ -491,4 +491,8 @@ public enum ContentAuthoringRefusal
     /// FieldName, Language, ActualBytes and MaximumBytes (8192).</summary>
     TextProducerValueBytesExceeded,
 
+    /// <summary>Refuses a lower bundle constructor rule with no mapped reader finding.
+    /// Carries no identifiers. The constructor's exception is the inner cause.</summary>
+    BundleConstructorRuleUnmapped,
+
 }

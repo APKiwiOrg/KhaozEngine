@@ -371,9 +371,8 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
                 compaction.SnapshotChecksum.ToArray(),
                 now);
             Invoke(JournalTestHookPhase.SnapshotWrittenBeforeVerification);
-            // Internal invariant: sealed compaction owns its copied data and the hash computed from it.
-            // No caller or hook can change those bytes or the local replacement snapshot.
-            if (!snapshot.HasValidChecksum) throw new InvalidOperationException("Replacement snapshot checksum does not match its data.");
+            if (!snapshot.HasValidChecksum) throw Corrupt(JournalStoreRefusal.SnapshotChecksumMismatch,
+                compaction.StreamKey, "Replacement snapshot checksum does not match its data.");
             Invoke(JournalTestHookPhase.SnapshotVerifiedBeforePrune);
 
             long retainedFloor = current.RetainedFloor;

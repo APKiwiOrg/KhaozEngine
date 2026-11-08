@@ -87,9 +87,8 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
     private void OpenOperationDeleteGuard()
     {
         if (operationDeleteGuardOpen)
-            // The private flag opens only under the connection lease and always closes in finally.
-            // No callback runs between taking that lease and opening the flag, so input cannot overlap opens.
-            throw new InvalidOperationException("SQLite operation delete guard was already open.");
+            throw Corrupt(JournalStoreRefusal.OperationDeleteGuardAlreadyOpen,
+                Array.Empty<string>(), "SQLite operation delete guard was already open.");
         operationDeleteGuardOpen = true;
     }
 

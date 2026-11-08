@@ -174,9 +174,11 @@ inner causes. The [shared refusal table](../KhaozEngine.WorldStore/README.md#ref
 | `StreamSnapshotMissing`, `ReplacementSnapshotVersionMismatch`, `SnapshotChecksumMismatch` | `StreamKey` identifies the replacement that failed verification before pruning. A wrong version also carries `ExpectedVersion` and `ActualVersion`. |
 | `StoredEpochInvalid`, `MetadataUpdateNotApplied` | Whole-store corruption, including an epoch update a trigger ignored without deleting the row. |
 | `ResetWriteLockTimedOut` | `LockTimeout` is the requested timeout, before the provider's whole-second rounding. The provider cause remains the inner exception. |
+| `OperationDeleteGuardAlreadyOpen` | Whole-store corruption with an empty `StreamKeys` snapshot and no identifiers. |
 
-The private operation-delete flag's overlap guard is an internal invariant. Lease serialization and unconditional
-closure in `finally` prevent caller input from opening it twice.
+The private operation-delete overlap guard keeps its `JournalStoreException` carrier with
+`OperationDeleteGuardAlreadyOpen`, `CorruptData`, `CommittedDataUnreadable`, whole-store scope and empty
+`StreamKeys`. The lease still serializes opens, and each admitted purge or reset closes the flag in `finally`.
 
 ## World store capabilities
 

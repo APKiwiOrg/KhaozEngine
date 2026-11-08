@@ -311,6 +311,7 @@ Use the rule and its identifiers to distinguish the following refusals.
 | `StoredEpochInvalid` | The stored epoch cannot be read as a GUID. | Existing whole-store scope |
 | `MetadataUpdateNotApplied` | Epoch rotation did not update exactly one metadata row, including a trigger that ignores the update. | Existing whole-store scope |
 | `ReplacementSnapshotDataMismatch` | SQL Server replacement data differs from the requested bytes before pruning. | `StreamKey` |
+| `OperationDeleteGuardAlreadyOpen` | The SQLite operation-delete guard is already open. | None, whole-store scope and an empty `StreamKeys` snapshot |
 | `TransportFailed` | A runtime I/O or socket failure before a transaction or after confirmed rollback. | `Stage`, original `InnerException` |
 | `WriteFailedAfterRollback` | A non-provider commit failure after confirmed rollback. | `Stage`, original `InnerException` |
 | `StreamSnapshotMissing` | A stream being compacted has no snapshot, including replacement verification before pruning. | `StreamKey` |
@@ -379,10 +380,10 @@ and certainty distinguishing stored corruption from a refused replacement. If co
 limits, section count is reported first. Stored-row indices are zero-based. Each row's key, head and timestamps are checked before page ordering,
 including the extra row used to establish a continuation. Ordering applies only to the kept rows. These stored-row
 refusals retain their original argument exception as the inner cause and have whole-store scope, without inventing
-an affected stream key. The in-memory compaction's replacement snapshot checksum check is an internal invariant:
-its sealed immutable compaction owns both the copied data and the checksum computed from that data.
-SQLite's private operation-delete flag also has an internal overlap invariant. The connection lease serializes
-its opens, no callback runs before opening it, and every admitted purge or reset closes it in `finally`.
+an affected stream key. The in-memory replacement snapshot checksum guard keeps `SnapshotChecksumMismatch`
+with `StreamKey` and its existing operation-stream corruption dimensions. SQLite operation-delete overlap
+keeps `OperationDeleteGuardAlreadyOpen` as whole-store corruption with no stream identifiers, even though
+the connection lease serializes opens and each admitted purge or reset closes the flag in `finally`.
 
 A write call on a store opened read only throws `NotSupportedException` instead. That is a caller error rather than
 a store failure, so it sits outside this contract and nothing was attempted.

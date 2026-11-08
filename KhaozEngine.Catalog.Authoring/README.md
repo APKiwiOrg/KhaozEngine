@@ -411,9 +411,10 @@ can violate an otherwise correct operation `CHECK`. SQLite validates catalog DDL
 every stored value. These input failures use `DraftRowDisappeared` and `StoredEditOperationUnknown`.
 `StoredEditOrdinal` is the database ordinal, distinct from a submitted batch's zero-based `EditOrdinal`.
 
-The in-memory store commits and resets each version and its complete language record together under its
-gate. Missing internal language records, and an import losing the draft its row step just created, are
-internal invariants, not additional public refusal reasons.
+The in-memory store keeps `TextProvenanceUnknown` with `VersionNumber` when a version has no complete
+text record. A row-only check retains the legacy `text-unrepresented` token, while a snapshot read
+retains `text-provenance-unknown`. An import losing the draft its row step just created remains a
+separate invariant.
 
 ### Text producer and confirmation refusals
 
@@ -441,7 +442,7 @@ including its parameter name. No reason is inferred from prose.
 | `TextReusedChunkUnrecorded` | Reuse of a language absent from the baseline | `Language`, baseline `VersionNumber`, `TextHash` |
 | `TextReusedHashMismatch` | Reuse of a hash the baseline did not record | `Language`, baseline `VersionNumber`, claimed `TextHash`, recorded `ExpectedTextHash` |
 | `TextReusedWireTagMismatch` | Reuse in another wire spelling than the baseline recorded | `Language`, baseline `VersionNumber`, `TextHash`, claimed `WireTag`, recorded `ExpectedWireTag` |
-| `TextProvenanceUnknown` | A version with unknown text that neither manifest proof shows empty | `VersionNumber` |
+| `TextProvenanceUnknown` | A version without complete text provenance, including a missing in-memory language record | `VersionNumber` |
 
 The key and body bounds are inclusive. Repeating the operation at the reported `MaximumBytes` succeeds
 when that bound is the only failed rule. The sealed declaration and revision constructors already enforce
@@ -1249,6 +1250,9 @@ format 2 document without it is refused. Any other format is refused whole with 
 
 ### Bundle document refusals
 
+An unmapped lower constructor rule keeps the bundle carrier, its original prefix and diagnostic, and
+the constructor exception as its inner cause. `BundleConstructorRuleUnmapped` has no identifiers.
+
 The explicit shape guards in `ContentBundleJson` and its text-section reader carry the `bundle-format`
 token in `Reason` and a `ContentAuthoringRefusal` in `Refusal`. Messages remain developer prose, so branch on
 these. Non-text strings still use `JsonElement.GetString` directly, so its unpaired-surrogate decoding faults
@@ -1264,6 +1268,7 @@ constructor, with its original argument exception retained as inner.
 | Refusal | Refused rule | Identifiers |
 | --- | --- | --- |
 | `BundleJsonMalformed` | Text that is not a JSON document | `JsonPath`, `LineNumber`, `BytePositionInLine` as the reader reports them, each null when it reports none. The reader's `JsonException` is the inner exception |
+| `BundleConstructorRuleUnmapped` | A lower constructor rule without a mapped reader finding | None, original constructor exception retained as inner |
 | `BundleRootObjectRequired` | A root that is not an object | `JsonPath` (`$`), `ActualJsonKind` |
 | `BundleVersionUnsupported` | A format version other than 1 or 2, on read, write or import | `ActualFormatVersion`, `SupportedFormatVersions` (1 and 2, an owned read-only snapshot) |
 | `BundleUnexpectedTextSection` | A format 1 document carrying `text` | `JsonPath` (`$.text`), `ActualFormatVersion` (1) |

@@ -23394,7 +23394,9 @@ Commit confirmation distinguishes `TextChunkHashMismatch`, `TextChunkBytesMismat
 `TextReusedChunkUnrecorded`, `TextReusedWireTagMismatch` and `TextReusedHashMismatch`. Each carries `Language` and claimed `TextHash`.
 Hash mismatches add `ExpectedTextHash`, and reuse failures add the baseline `VersionNumber`.
 A reuse spelling mismatch also carries the claimed `WireTag` and recorded `ExpectedWireTag`.
-`TextProvenanceUnknown` names the `VersionNumber` whose text neither manifest proof can establish as empty.
+`TextProvenanceUnknown` names the `VersionNumber` without complete text provenance, including a missing
+in-memory language record. The in-memory row-only check retains legacy `text-unrepresented`, while its
+snapshot read retains `text-provenance-unknown`.
 See the [text producer refusal table](../KhaozEngine.Catalog.Authoring/README.md#text-producer-and-confirmation-refusals).
 The defensive producer value bound uses `TextProducerValueBytesExceeded` with `Type`, `Id`, `FieldName`,
 `Language`, `ActualBytes` and `MaximumBytes` (8192). The bundle reader's `TextValueBytesExceeded` carries
@@ -23445,7 +23447,9 @@ shape rule and its identifiers. Array elements must be objects. A negative sourc
 `ArgumentOutOfRangeException` parameter check with `ParamName` `sourceVersion` and its `ActualValue`.
 `Read` also names the rule a lower constructor refuses in a family, schema,
 remap rule, row field value or text constructor, such as `FamilyBlockSizeOutsideRange`, `BundleFieldNameDuplicate`
-or `BundleTextTargetDuplicate`. The same section lists those.
+or `BundleTextTargetDuplicate`. The same section lists those. An unmapped lower constructor rule retains
+`ContentAuthoringException` with `BundleConstructorRuleUnmapped`, the `bundle-format` token, the original
+prefixed diagnostic and the original exception as its inner cause. It carries no identifiers.
 
 `ContentIdAllocator` refuses a plain range above its ceiling as `AllocationCeilingExceeded`, carrying
 `Type`, the inclusive `Ceiling`, `IssuedThrough`, `ReservedThrough` and `RequestedCount`. A family block
@@ -28603,6 +28607,10 @@ Load each listed stream through the ordinary snapshot, event, and projection rea
 store with `SchemaMode = ReadOnly` when the source must not be written to. That mode issues no DDL, reports a
 missing or older schema as `SchemaMismatch` instead of repairing it, and makes every write path throw
 `NotSupportedException`. Do not hand a read only store to `MutationJournalExecutor`.
+
+SQLite operation-delete overlap retains `JournalStoreException` with `OperationDeleteGuardAlreadyOpen`,
+`CorruptData`, `CommittedDataUnreadable`, whole-store scope and empty `StreamKeys`. In-memory replacement
+snapshot verification retains `SnapshotChecksumMismatch`, `StreamKey` and operation-stream corruption scope.
 
 A release that wipes all game data empties the journal with `SqliteJournalReset.ResetAsync` or
 `SqlServerJournalReset.ResetAsync`. Each deletes every stream, event, snapshot, projection section, replay receipt,

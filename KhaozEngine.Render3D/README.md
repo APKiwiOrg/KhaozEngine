@@ -1847,6 +1847,51 @@ checks carry the relevant ordinals. Binding refusals use `HostCoverageDataExcept
 surface, source ordinals or `MaterialSlice` where relevant. Existing typed glTF and index refusals
 keep their original families. Caller parameter checks remain BCL exceptions.
 
+## Recession table assets
+
+`CoverageRecessionTable.Create(identity, representatives, entryMajorRecessions, states)` owns deep
+copies of its spans, sorts the state index by unsigned `CoverageStateKey.Value` and refuses duplicate
+keys. `Entry(index)` borrows one immutable binary32 row. Every row shares the same representative
+array. A 958-group row occupies 3,832 scalar bytes. Representatives may be -1, and host binding
+validates their upper bounds and group ownership against actual topology. At least one group is
+required. Zero entries and an empty state index are valid.
+
+`TrySelect(key, out entryIndex)` performs an allocation-free binary search. Key zero is valid.
+Both a missing key and an explicit entry -1 return false with output -1. The consumer owns the
+state schema. The engine does not evaluate geometry or infer animation bins during lookup.
+
+`CoverageRecessionIdentity` carries six lowercase SHA-256 digests in this order: exact host bytes,
+semantic host map, complete authored equipment configuration, fixed refinement, carry arithmetic
+and consumer state schema. Configuration covers sorted authored part and command IDs, exact
+attachment and companion identities, command values, static local/socket/body-alignment transforms
+and host contract bindings. Actor incarnation IDs, frame IDs, current palettes and world/model poses
+are excluded, allowing actors to share a table. Refinement covers source ordinals and recipes.
+Arithmetic identifies the carry algorithm. Digest producers hash numeric inputs explicitly in
+little-endian order, never as native-layout struct bytes. This asset codec stores digests rather
+than deriving or verifying them against source content.
+
+`CoverageRecessionTableBinary.Read(bytes, identity)` and `Write(table)` use KERT format 1. The
+212-byte header contains ASCII `KERT`, uint32 version 1, six raw 32-byte digests and uint32 group,
+entry and state counts. The payload contains int32 representatives once, entry-major float32 words,
+then sorted `(uint64 key, int32 entry)` records without padding. All numeric words are little-endian.
+Either zero sign and positive subnormals roundtrip bit-for-bit. Nonfinite or negative nonzero
+recessions refuse, including negative subnormals regardless of the CPU's denormal mode.
+
+The reader checks managed count capacity and the complete checked byte length before allocating
+table arrays, then validates all records before taking ownership. It rejects zero groups,
+truncation, trailing data, invalid representatives, duplicate or unsorted keys and entry indices
+outside `[-1, EntryCount)`. Programmatic creation additionally refuses incomplete scalar rows and
+malformed identity digests. No partially validated table is published.
+
+`CoverageTableDataException` derives from `MalformedDataException` and carries a public
+`CoverageTableRefusal Reason`. Binary refusals include caller `Identity` and `ByteOffset`, which
+names the offending field, first missing byte or first trailing byte. Applicable records carry
+`GroupIndex`, `EntryIndex`, `Key`, `StateIndex`, `Representative` and exact `ScalarWord`.
+Programmatic refusals have null `Identity` and `ByteOffset`. `MemberName` identifies malformed
+digest or count fields, `FormatVersion` preserves an unsupported unsigned version, and capacity
+refusals include `Count` when representable plus the inclusive managed `Limit`. State indices
+from creation refer to canonical sorted order. Messages are developer prose, never the contract.
+
 ## Mesh import and prop refusals
 
 Messages remain developer prose. Branch on `Reason` and read the structured identifiers below.

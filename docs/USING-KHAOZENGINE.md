@@ -23342,7 +23342,7 @@ SQLite reuses those same identifier sets. Its missing `catalog_metadata` singlet
 `SchemaMetadataMissing` with no identifiers. A non-null stored scalar of the wrong CLR type uses
 `StoredScalarTypeMismatch`, with `ExpectedScalarType` and `ActualScalarType` rather than the stored value.
 Its registry pairing guard uses `TypeIdentityMismatch`,
-carrying requested `Type`, `StoredTypeId`, `StoredTypeKey` and `RegisteredTypeKey`. Metadata absence has no
+carrying requested `Type`, the full persisted Int64 `StoredTypeId`, `StoredTypeKey` and `RegisteredTypeKey`. Metadata absence has no
 in-memory twin. `DraftRowDisappeared` identifies a singleton removed inside its transaction, including by a
 host trigger. `StoredEditOperationUnknown` carries `Type`, `Id`, `ActualOperation` and the Int64
 `StoredEditOrdinal`. SQLite validates catalog DDL, so trigger behavior and malformed persisted values still

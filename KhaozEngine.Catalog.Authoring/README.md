@@ -330,7 +330,7 @@ Text apply reuses `TextBindingRowUnknown` and `TextLanguageUndeclared` with thei
 | `TextPlanRowUnknown` | A text commit revision without a live plan row | `TextRowType`, `TextRowId`, `FieldName`, `Language` |
 | `SchemaMetadataMissing` | A durable store read missing its `catalog_metadata` singleton | None |
 | `StoredScalarTypeMismatch` | A non-null stored scalar of the wrong CLR type | `ExpectedScalarType`, `ActualScalarType` |
-| `TypeIdentityMismatch` | A durable registry pairing disagreeing with a stored id or key | Requested `Type`, `StoredTypeId`, `StoredTypeKey`, `RegisteredTypeKey` |
+| `TypeIdentityMismatch` | A durable registry pairing disagreeing with a stored id or key | Requested `Type`, `StoredTypeId` (full persisted Int64), `StoredTypeKey`, `RegisteredTypeKey` |
 | `DraftRowDisappeared` | A draft singleton removed during its transaction | None |
 | `StoredEditOperationUnknown` | A persisted edit operation outside the four supported operations | `Type`, `Id`, `ActualOperation`, persisted `StoredEditOrdinal` (Int64) |
 

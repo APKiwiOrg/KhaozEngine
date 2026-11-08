@@ -118,9 +118,10 @@ public class SqliteCatalogSchemaTests
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task StoredTypeIdentityRefusesARenameOrReassignment(bool rename)
+    [InlineData(1024, "renamed_thing", 1024L)]
+    [InlineData(1025, "thing", 1024L)]
+    [InlineData(1024, "thing", 66560L)]
+    public async Task StoredTypeIdentityRefusesARenameOrReassignment(ushort requestedTypeId, string requestedKey, long storedTypeId)
     {
         using var database = new TemporaryCatalogDatabase();
         using (var created = new SqliteContentAuthoringStore(database.ConnectionString, Registry()))
@@ -128,10 +129,16 @@ public class SqliteCatalogSchemaTests
             await created.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         }
 
+        if (storedTypeId != 1024)
+        {
+            // A host can store an integer wider than the public type id without changing the DDL.
+            database.Execute("PRAGMA ignore_check_constraints = ON; UPDATE catalog_type SET type_id = 66560 WHERE type_id = 1024;");
+        }
+
         // A rename or a reassignment repoints rows under the stored pairing, so initialization refuses it
         // before any registration can be synchronized.
         ContentTypeRegistry renamed = PublishFixtures.Registry(
-            PublishFixtures.Thing with { TypeId = rename ? (ushort)1024 : (ushort)1025, TypeKey = rename ? "renamed_thing" : "thing" });
+            PublishFixtures.Thing with { TypeId = requestedTypeId, TypeKey = requestedKey });
         using var store = new SqliteContentAuthoringStore(database.ConnectionString, renamed);
 
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
@@ -139,10 +146,15 @@ public class SqliteCatalogSchemaTests
 
         Assert.Equal("unknown-type", refused.Reason);
         Assert.Equal(ContentAuthoringRefusal.TypeIdentityMismatch, refused.Refusal);
-        Assert.Equal(new ContentTypeId(rename ? (ushort)1024 : (ushort)1025), refused.Type);
-        Assert.Equal(PublishFixtures.ThingTypeId, refused.StoredTypeId);
+        Assert.Equal(new ContentTypeId(requestedTypeId), refused.Type);
+        Assert.Equal<long?>(storedTypeId, refused.StoredTypeId);
         Assert.Equal("thing", refused.StoredTypeKey);
-        Assert.Equal(rename ? "renamed_thing" : "thing", refused.RegisteredTypeKey);
+        Assert.Equal(requestedKey, refused.RegisteredTypeKey);
+        Assert.Equal(storedTypeId, database.Scalar("SELECT type_id FROM catalog_type WHERE type_key = 'thing';"));
+        if (storedTypeId != 1024)
+        {
+            database.Execute("UPDATE catalog_type SET type_id = 1024 WHERE type_key = 'thing';");
+        }
         using var repair = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
         await repair.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }

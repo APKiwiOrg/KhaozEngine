@@ -398,7 +398,7 @@ public enum ContentAuthoringRefusal
     SchemaMetadataMissing,
 
     /// <summary>Refuses a registry pairing that disagrees with a stored type id or key. Carries Type,
-    /// StoredTypeId, StoredTypeKey and RegisteredTypeKey.</summary>
+    /// StoredTypeId (full persisted Int64), StoredTypeKey and RegisteredTypeKey.</summary>
     TypeIdentityMismatch,
 
     /// <summary>Refuses a draft singleton removed while a transaction is opening or writing it. Carries no identifiers.</summary>

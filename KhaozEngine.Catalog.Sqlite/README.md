@@ -37,7 +37,8 @@ identifier sets as the in-memory store. See the shared
 Legacy `Reason` tokens, `Type`, `Id` and `Findings` retain their meanings. Missing metadata reads use
 `SchemaMetadataMissing`. A non-null scalar of the wrong CLR type uses `StoredScalarTypeMismatch` with
 `ExpectedScalarType` and `ActualScalarType`. Registry id/key conflicts use `TypeIdentityMismatch` and report both stored and
-registered identities. `DraftRowDisappeared` reports a draft removed inside its transaction, including by a
+registered identities. `StoredTypeId` retains the full persisted Int64 even outside the public type-id range.
+`DraftRowDisappeared` reports a draft removed inside its transaction, including by a
 host trigger. `StoredEditOperationUnknown` reports malformed stored operations with their database ordinal.
 DDL validation does not validate trigger behavior or every stored value. Provider failures retain their
 typed SQLite error codes without parsing message text.

@@ -112,7 +112,7 @@ public sealed partial class SqliteContentAuthoringStore
         using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            int storedId = (int)reader.GetInt64(0);
+            long storedId = reader.GetInt64(0);
             string storedKey = reader.GetString(1);
             if (storedId == registration.Type.Value
                 && string.Equals(storedKey, registration.TypeKey, StringComparison.Ordinal))
@@ -126,7 +126,7 @@ public sealed partial class SqliteContentAuthoringStore
                     $"This database already pins content type {storedId} to key '{storedKey}', and the registry declares type {registration.Type.Value} as '{registration.TypeKey}'. Neither a rename nor a reassignment is possible: both repoint every row already stored under the old pairing."),
                 registration.Type,
                 0,
-                ContentAuthoringException.UnknownTypeReason) { StoredTypeId = (ushort)storedId, StoredTypeKey = storedKey, RegisteredTypeKey = registration.TypeKey };
+                ContentAuthoringException.UnknownTypeReason) { StoredTypeId = storedId, StoredTypeKey = storedKey, RegisteredTypeKey = registration.TypeKey };
         }
     }
 

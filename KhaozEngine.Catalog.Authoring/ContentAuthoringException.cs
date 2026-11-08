@@ -579,8 +579,8 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>The starting version of a text revision the store cannot close. Null for other refusals.</summary>
     public int? FromVersion { get; init; }
 
-    /// <summary>The stored type id whose identity disagrees with registration, or null.</summary>
-    public ushort? StoredTypeId { get; init; }
+    /// <summary>The full persisted Int64 type id whose identity disagrees with registration, or null.</summary>
+    public long? StoredTypeId { get; init; }
 
     /// <summary>The stored type key whose identity disagrees with registration, or null.</summary>
     public string? StoredTypeKey { get; init; }

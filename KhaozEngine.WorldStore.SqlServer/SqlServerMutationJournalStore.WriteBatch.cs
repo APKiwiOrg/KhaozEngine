@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.WorldStore.Journal;
@@ -35,11 +36,11 @@ public sealed partial class SqlServerMutationJournalStore
         return await SqlServerJournalBatchResultReader.ReadAsync(reader, operationId, cancellationToken).ConfigureAwait(false);
     }
 
-    private static Exception WriteBatchFailure(SqlServerJournalWriteResult batch)
+    private static Exception WriteBatchFailure(SqlServerJournalWriteResult batch, IReadOnlyList<string> streamKeys)
         => batch.Outcome switch
         {
             SqlServerJournalWriteOutcome.ApplicationLock => SqlServerJournalSchema.ApplicationLockFailure(batch.LockResult),
-            SqlServerJournalWriteOutcome.ProjectionLimit => SqlServerJournalBatchResultReader.ProjectionLimitFailure(batch),
+            SqlServerJournalWriteOutcome.ProjectionLimit => SqlServerJournalBatchResultReader.ProjectionLimitFailure(batch, streamKeys),
             SqlServerJournalWriteOutcome.StreamVanished =>
                 new JournalStoreStateException(JournalStoreRefusal.BatchStreamVanished, "Validated journal stream disappeared inside its transaction."),
             _ => new JournalStoreStateException(JournalStoreRefusal.BatchOutcomeUnsupported,

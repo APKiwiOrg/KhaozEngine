@@ -250,12 +250,13 @@ Host triggers may emit result sets before the batch's own protocol. `BatchResult
 `JournalStoreStateException` refuses wrong result shapes or value types and trailing result sets after Applied or
 Replayed. The reader checks the complete expected protocol before accepting success, including replay receipt
 sets. Nullable outcome payloads accept SQL literal NULL values regardless of their metadata type.
-Missing or undefined outcomes, outcomes unsupported by the current operation, and incomplete projection-limit
-payloads throw `JournalStoreStateException`,
+Missing or undefined outcomes and outcomes unsupported by the current operation throw `JournalStoreStateException`,
 which retains the `InvalidOperationException` catch contract. Its `Reason` is `BatchOutcomeMissing`,
-`BatchOutcomeUndefined`, `BatchOutcomeUnsupported` or `BatchProjectionLimitIncomplete`. Undefined and unsupported
-outcomes carry integer `Outcome`. Missing replay rows and stream result sets retain `JournalStoreException`,
-`CorruptData`, `CommittedDataUnreadable`, `WholeStore`, and empty `StreamKeys`. Their `OperationId` identifies the
+`BatchOutcomeUndefined` or `BatchOutcomeUnsupported`. Undefined and unsupported outcomes carry integer `Outcome`.
+`BatchProjectionLimitIncomplete` retains `JournalStoreException`, `ConstraintViolation`, `DefinitelyNotCommitted`
+and `OperationStreams`. Its `StreamKeys` names the payload's stream, or all requested stream keys if none was
+returned. `StreamKey` is set only for a named stream. Missing replay rows and stream result sets retain
+`JournalStoreException`, `CorruptData`, `CommittedDataUnreadable`, `WholeStore`, and empty `StreamKeys`. Their `OperationId` identifies the
 requested replay. `BatchStreamVanished` uses the same `JournalStoreStateException` carrier without additional
 identifiers when a previously validated stream head cannot be updated. Serializable locks do not stop a trigger
 in that transaction from deleting the stream and its dependants. Each refusal rolls back the write, including

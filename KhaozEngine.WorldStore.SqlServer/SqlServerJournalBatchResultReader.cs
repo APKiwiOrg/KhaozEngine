@@ -105,11 +105,14 @@ internal static class SqlServerJournalBatchResultReader
     private static JournalStoreStateException Malformed()
         => new(JournalStoreRefusal.BatchResultMalformed, "SQL Server mutation journal write batch returned a malformed result.");
 
-    internal static JournalStoreException ProjectionLimitFailure(SqlServerJournalWriteResult batch)
+    internal static JournalStoreException ProjectionLimitFailure(SqlServerJournalWriteResult batch, IReadOnlyList<string> streamKeys)
     {
         if (batch.LimitStream is not string stream || batch.LimitActual is not long actual || batch.LimitMaximum is not long maximum
             || batch.LimitReason is not (JournalStoreRefusal.ProjectionSectionCountExceeded or JournalStoreRefusal.ProjectionByteCountExceeded))
-            throw new JournalStoreStateException(JournalStoreRefusal.BatchProjectionLimitIncomplete, "SQL Server mutation journal write batch returned an incomplete projection limit.");
+            return new JournalStoreException(JournalStoreRefusal.BatchProjectionLimitIncomplete, JournalStoreFailureKind.ConstraintViolation,
+                JournalStoreFailureCertainty.DefinitelyNotCommitted, JournalStoreFailureScope.OperationStreams,
+                batch.LimitStream is string namedStream ? new[] { namedStream } : streamKeys,
+                "Projection replacement would exceed the configured per-stream limits.") { StreamKey = batch.LimitStream };
         bool count = batch.LimitReason == JournalStoreRefusal.ProjectionSectionCountExceeded;
         return new JournalStoreException(batch.LimitReason.Value, JournalStoreFailureKind.ConstraintViolation,
             JournalStoreFailureCertainty.DefinitelyNotCommitted, JournalStoreFailureScope.OperationStreams, new[] { stream },

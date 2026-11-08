@@ -28332,11 +28332,14 @@ verification distinguishes missing rows, wrong versions and bad checksums before
 uses `ResetWriteLockTimedOut` and carries the requested `LockTimeout` beside the original provider cause.
 SQL Server reset lock context preserves `ApplicationLockNotGranted`, its `ReturnCode`, every identifier and the
 original refusal. SQL Server runtime provider codes come directly from `SqlException.Number`. Its batch limit
-results carry the same count or byte reason and identifier set as SQLite. Additional SQL Server reasons distinguish
+results carry the same count or byte reason and identifier set as SQLite. An incomplete limit payload retains
+`JournalStoreException` with `BatchProjectionLimitIncomplete`, `ConstraintViolation`, `DefinitelyNotCommitted` and
+`OperationStreams`. Its `StreamKeys` names the returned stream or, when absent, all requested streams. `StreamKey`
+is set only when the payload names a stream. Additional SQL Server reasons distinguish
 replacement data mismatch, transport failure after confirmed rollback or before transaction start, and a
 non-provider commit failure with confirmed rollback. Missing replay results retain whole-store
-`JournalStoreException` corruption dimensions and carry `OperationId`. Batch protocol refusals use
-`JournalStoreStateException`, an `InvalidOperationException` subtype with a `JournalStoreRefusal` reason and,
+`JournalStoreException` corruption dimensions and carry `OperationId`. Malformed batch results and missing,
+undefined or unsupported outcomes use `JournalStoreStateException`, an `InvalidOperationException` subtype with a `JournalStoreRefusal` reason and,
 for undefined or unsupported outcomes, integer `Outcome`. `BatchResultMalformed` refuses malformed result shapes,
 value types and trailing result sets after Applied or Replayed, so success requires the complete expected
 protocol, including replay receipt sets. Nullable outcome payloads accept SQL literal NULL values regardless of

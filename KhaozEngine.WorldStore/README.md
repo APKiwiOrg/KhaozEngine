@@ -272,9 +272,8 @@ Replayed. Success is accepted only after the reader proves the complete expected
 receipt sets. Nullable outcome payloads accept SQL literal NULL values regardless of their metadata type.
 `BatchOutcomeMissing` names a missing outcome row, `BatchOutcomeUndefined` names an undefined outcome and carries
 its integer `Outcome`, and `BatchOutcomeUnsupported` names an outcome unsupported by the current operation with
-its integer `Outcome`. `BatchProjectionLimitIncomplete` names an incomplete limit payload. These checks also
-cover result sets emitted by host triggers inside the transaction. `BatchStreamVanished` names a validated head
-that the SQL Server batch could not update. A same-transaction host trigger can remove it despite the head lock.
+its integer `Outcome`. These checks also cover result sets emitted by host triggers inside the transaction.
+`BatchStreamVanished` names a validated head that the SQL Server batch could not update. A same-transaction host trigger can remove it despite the head lock.
 This refusal carries no additional identifier and rolls back the trigger's changes with the rest of the write.
 
 `JournalStoreException.Reason` is a nullable `JournalStoreRefusal` beside `Kind`, `Certainty`, `Scope` and
@@ -282,6 +281,9 @@ This refusal carries no additional identifier and rolls back the trigger's chang
 The reason-taking overload accepts the same failure dimensions, stream keys, message and optional inner cause.
 Stream keys remain sorted owned snapshots backed by a fresh boxed immutable array, even for immutable input.
 Messages are developer prose. Engine construction is fenced across WorldStore, SQLite and SQL Server.
+`BatchProjectionLimitIncomplete` uses `JournalStoreException` with `ConstraintViolation`,
+`DefinitelyNotCommitted` and `OperationStreams`. `StreamKeys` contains the payload's named stream, or all requested
+stream keys when no stream was returned. `StreamKey` is set only when the payload named a stream.
 Reset context wrapping retains the original exception as its cause, every public identifier and all owned
 collections, including stream keys. The completeness test names a new identifier if the copy drops it and
 checks that caller mutation and collection casts cannot change either exception's snapshots.
@@ -292,6 +294,7 @@ Use the rule and its identifiers to distinguish the following refusals.
 | `SnapshotChecksumMismatch` | Stored snapshot data fails verification, including replacement verification before pruning. | `StreamKey` |
 | `EventChecksumMismatch` | Stored event payload fails verification. | `StreamKey`, `StreamVersion` |
 | `ProjectionChecksumMismatch` | Stored projection data fails verification. | `StreamKey`, `SectionName` |
+| `BatchProjectionLimitIncomplete` | SQL Server returned an incomplete projection-limit payload. Retains constraint-violation kind and definitely-not-committed certainty. | `StreamKeys`, `StreamKey` only when named by the payload |
 | `ReplayedOperationMissing` | SQL Server replay omitted its operation row. Retains whole-store corruption kind and committed-data-unreadable certainty. | `OperationId`, empty `StreamKeys` |
 | `ReplayedStreamsMissing` | SQL Server replay omitted its stream result set. Retains whole-store corruption kind and committed-data-unreadable certainty. | `OperationId`, empty `StreamKeys` |
 | `ResultChecksumMismatch` | A stored operation result fails verification. | `OperationId`, existing `StreamKeys` |

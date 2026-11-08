@@ -172,16 +172,32 @@ public sealed class SqlServerJournalBatchResultTests
         else Assert.Null(result.Receipt);
     }
 
-    [Fact]
-    public void Incomplete_projection_limit_keeps_the_state_exception_catch_contract()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("limit-stream")]
+    public void Incomplete_projection_limit_preserves_constraint_dimensions(string? limitStream)
     {
-        var batch = new SqlServerJournalWriteResult(SqlServerJournalWriteOutcome.ProjectionLimit, 0, null, null, null, null, null);
-        var refused = Assert.Throws<JournalStoreStateException>(() => SqlServerJournalBatchResultReader.ProjectionLimitFailure(batch));
-        Assert.IsAssignableFrom<InvalidOperationException>(refused);
+        // W7-B18c: incomplete limit payloads retain the original JournalStoreException contract.
+        string[] requestedKeys = ["requested-b", "requested-a"];
+        var batch = new SqlServerJournalWriteResult(SqlServerJournalWriteOutcome.ProjectionLimit, 0, limitStream, null, null, null, null);
+        var refused = Assert.IsType<JournalStoreException>(SqlServerJournalBatchResultReader.ProjectionLimitFailure(batch, requestedKeys));
         Assert.Equal(JournalStoreRefusal.BatchProjectionLimitIncomplete, refused.Reason);
-        Assert.Null(refused.Outcome);
-        var control = batch with { LimitStream = "stream", LimitReason = JournalStoreRefusal.ProjectionSectionCountExceeded, LimitActual = 3, LimitMaximum = 2 };
-        Assert.Equal(JournalStoreRefusal.ProjectionSectionCountExceeded, SqlServerJournalBatchResultReader.ProjectionLimitFailure(control).Reason);
+        Assert.Equal(JournalStoreFailureKind.ConstraintViolation, refused.Kind);
+        Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
+        Assert.Equal(JournalStoreFailureScope.OperationStreams, refused.Scope);
+        Assert.Equal(limitStream is null ? new[] { "requested-a", "requested-b" } : new[] { "limit-stream" }, refused.StreamKeys);
+        Assert.Equal(limitStream, refused.StreamKey);
+        Assert.Null(refused.ActualCount);
+        Assert.Null(refused.MaximumCount);
+        Assert.Null(refused.ActualBytes);
+        Assert.Null(refused.MaximumBytes);
+        var control = batch with { LimitStream = "limit-stream", LimitReason = JournalStoreRefusal.ProjectionSectionCountExceeded, LimitActual = 3, LimitMaximum = 2 };
+        var complete = SqlServerJournalBatchResultReader.ProjectionLimitFailure(control, requestedKeys);
+        Assert.Equal(JournalStoreRefusal.ProjectionSectionCountExceeded, complete.Reason);
+        Assert.Equal("limit-stream", complete.StreamKey);
+        Assert.Equal(new[] { "limit-stream" }, complete.StreamKeys);
+        Assert.Equal(3, complete.ActualCount);
+        Assert.Equal(2, complete.MaximumCount);
     }
 
     private static DataTable Outcome(int? outcome)

@@ -48,6 +48,16 @@ public sealed class SqlServerJournalBatchProtocolTests
                 Assert.Equal(JournalStoreFailureScope.WholeStore, refused.Scope);
                 Assert.Empty(refused.StreamKeys);
             }
+            else if (reason == JournalStoreRefusal.BatchProjectionLimitIncomplete)
+            {
+                var refused = await Assert.ThrowsAsync<JournalStoreException>(() => store.CommitAsync(commit));
+                Assert.Equal(reason, refused.Reason);
+                Assert.Equal(JournalStoreFailureKind.ConstraintViolation, refused.Kind);
+                Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
+                Assert.Equal(JournalStoreFailureScope.OperationStreams, refused.Scope);
+                Assert.Equal(new[] { store.Prefix + StreamKey }, refused.StreamKeys);
+                Assert.Null(refused.StreamKey);
+            }
             else
             {
                 var refused = await Assert.ThrowsAsync<JournalStoreStateException>(() => store.CommitAsync(commit));

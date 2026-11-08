@@ -86,9 +86,11 @@ public class GameTypeRegisterTests
     public void EachRegistrationCarriesItsOwnSchemaAndACodecBuiltOverIt(ContentDurationUnit unit)
     {
         ContentTypeRegistry registry = RegisterAll(unit);
+        ContentTypeRegistration[] registrations = registry.ByTypeId
+            .Where(r => r.Band == ContentRegistrationBand.Game).ToArray();
 
-        foreach (ContentTypeRegistration registration in
-            registry.ByTypeId.Where(r => r.Band == ContentRegistrationBand.Game))
+        Assert.NotEmpty(registrations);
+        foreach (ContentTypeRegistration registration in registrations)
         {
             // RegisterContentType checks the codec's written fields against the schema, so reaching here
             // is already half the proof. This is the other half: the registration carries a real schema and

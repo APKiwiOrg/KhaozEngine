@@ -15,9 +15,9 @@ public enum JournalStoreRefusal
     EventSequenceGap,
     /// <summary>An unbounded-by-count-or-bytes page ended before its captured through version.</summary>
     EventPageIncomplete,
-    /// <summary>Projection replacement would exceed the configured per-stream section count.</summary>
+    /// <summary>A stream exceeds its applicable projection section count limit.</summary>
     ProjectionSectionCountExceeded,
-    /// <summary>Projection replacement would exceed the configured per-stream aggregate bytes.</summary>
+    /// <summary>A stream exceeds its applicable aggregate projection byte limit.</summary>
     ProjectionByteCountExceeded,
     /// <summary>A stored stream row has an invalid key.</summary>
     StoredStreamKeyInvalid,
@@ -79,4 +79,24 @@ public enum JournalStoreRefusal
     SchemaProviderFailure,
     /// <summary>A failed schema initialization could not confirm its rollback.</summary>
     SchemaRollbackUnconfirmed,
+
+    // Runtime storage, transactions and maintenance.
+    /// <summary>The provider failed a journal operation.</summary>
+    ProviderOperationFailed,
+    /// <summary>A commit completed or may have completed before its response failed.</summary>
+    CommitOutcomeUnknown,
+    /// <summary>A journal operation was cancelled inside its transaction.</summary>
+    OperationCancelled,
+    /// <summary>The provider did not return its UTC clock value.</summary>
+    ProviderClockUnavailable,
+    /// <summary>A replacement snapshot has a different through version before pruning.</summary>
+    ReplacementSnapshotVersionMismatch,
+    /// <summary>A reset could not acquire the SQLite write lock within its timeout.</summary>
+    ResetWriteLockTimedOut,
+    /// <summary>The stored epoch cannot be read as a GUID.</summary>
+    StoredEpochInvalid,
+    /// <summary>An epoch rotation did not update exactly one metadata row.</summary>
+    MetadataUpdateNotApplied,
+    /// <summary>A stream being compacted has no stored snapshot.</summary>
+    StreamSnapshotMissing,
 }

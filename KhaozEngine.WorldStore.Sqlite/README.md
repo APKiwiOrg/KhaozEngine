@@ -144,6 +144,8 @@ row that still references a stream fails the delete instead and the whole reset 
 transaction ends. Stop every journal host first, because an idle host holds no lock. The `KhaozEngine.WorldStore`
 README describes what a projection cursor means after a reset.
 
+## Refusals
+
 Schema refusals carry `JournalStoreRefusal` reasons and typed identifiers, with the existing failure dimensions
 unchanged. `SchemaObjectInventoryMismatch` names the complete ordinally sorted `MissingObjects` and
 `UnexpectedObjects` for `ExpectedVersion`. With a matching count, `SchemaObjectMissing` and
@@ -158,6 +160,25 @@ Keys are ordered by host table, referenced table and delete action, and triggers
 `JournalHostObjectFinding` carries `Reason` and `ReferencedTable`, plus `HostTable` and `DeleteAction` for keys or
 `TriggerName` for triggers. The exception's reason is the first finding's reason, `HostForeignKeyActionUnsafe`
 or `HostTriggerUnsafe`. Inspect these members instead of parsing the message.
+
+Runtime refusals use the same `JournalStoreException`, preserving `Kind`, `Certainty`, `Scope`, `StreamKeys` and
+inner causes. The [shared refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists every identifier.
+
+| Reasons | Runtime rule and identifiers |
+|---|---|
+| `SnapshotChecksumMismatch`, `EventChecksumMismatch`, `ProjectionChecksumMismatch`, `ResultChecksumMismatch` | Stored checksum failures name `StreamKey`, event `StreamVersion`, projection `SectionName` or result `OperationId` as applicable. |
+| `ProjectionSectionCountExceeded`, `ProjectionByteCountExceeded` | Both reads and replacements report `StreamKey` with `ActualCount` and `MaximumCount`, or `ActualBytes` and `MaximumBytes`. Reads use the engine caps of 64 sections and 8 MiB, writes use the configured inclusive limits. Count wins when both fail. |
+| `ProviderOperationFailed` | `Stage` and typed `ProviderCode` from `SqliteException.SqliteErrorCode`, with the original inner cause. |
+| `CommitOutcomeUnknown`, `OperationCancelled` | `Stage` distinguishes transaction work, commit and the post-commit response. Existing certainty still determines whether a retry is safe. |
+| `ProviderClockUnavailable` | `ProviderName` is `SQLite`. |
+| `StreamSnapshotMissing`, `ReplacementSnapshotVersionMismatch`, `SnapshotChecksumMismatch` | `StreamKey` identifies the replacement that failed verification before pruning. A wrong version also carries `ExpectedVersion` and `ActualVersion`. |
+| `StoredEpochInvalid`, `MetadataUpdateNotApplied` | Whole-store corruption, including an epoch update a trigger ignored without deleting the row. |
+| `ResetWriteLockTimedOut` | `LockTimeout` is the requested timeout, before the provider's whole-second rounding. The provider cause remains the inner exception. |
+
+The private operation-delete flag's overlap guard is an internal invariant. Lease serialization and unconditional
+closure in `finally` prevent caller input from opening it twice.
+
+## World store capabilities
 
 `SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key

@@ -44,6 +44,9 @@ public sealed class SqliteJournalResetAtomicityTests : IDisposable
         JournalStoreException failed = await Assert.ThrowsAsync<JournalStoreException>(
             () => SqliteJournalReset.ResetAsync(database.ConnectionString(path)));
 
+        Assert.Equal(JournalStoreRefusal.ProviderOperationFailed, failed.Reason);
+        Assert.Equal(19, failed.ProviderCode);
+        Assert.Equal(JournalOperationStage.Transaction, failed.Stage);
         Assert.Equal(JournalStoreFailureKind.ConstraintViolation, failed.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, failed.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, failed.Scope);

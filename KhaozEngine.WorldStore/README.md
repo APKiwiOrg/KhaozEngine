@@ -266,14 +266,23 @@ Messages are developer prose. Use the rule and its identifiers to distinguish th
 
 | Reason | What is refused | Additional identifiers |
 |---|---|---|
-| `SnapshotChecksumMismatch` | Stored snapshot data fails verification. | `StreamKey` |
+| `SnapshotChecksumMismatch` | Stored snapshot data fails verification, including replacement verification before pruning. | `StreamKey` |
 | `EventChecksumMismatch` | Stored event payload fails verification. | `StreamKey`, `StreamVersion` |
 | `ProjectionChecksumMismatch` | Stored projection data fails verification. | `StreamKey`, `SectionName` |
 | `ResultChecksumMismatch` | A stored operation result fails verification. | `OperationId`, existing `StreamKeys` |
 | `EventSequenceGap` | An event does not have the next expected stream version. | `StreamKey`, `ExpectedVersion`, `ActualVersion` |
 | `EventPageIncomplete` | A page exhausted its rows before the captured through version, without hitting its count or byte limit. | `StreamKey`, `ExpectedThroughVersion`, `ActualThroughVersion` |
-| `ProjectionSectionCountExceeded` | Replacement would exceed the configured section count of a stream. | `StreamKey`, `ActualCount`, `MaximumCount` |
-| `ProjectionByteCountExceeded` | Replacement would exceed the configured aggregate projection bytes of a stream. | `StreamKey`, `ActualBytes`, `MaximumBytes` |
+| `ProjectionSectionCountExceeded` | Stored projections exceed the engine section cap, or replacement would exceed the configured stream cap. | `StreamKey`, `ActualCount`, `MaximumCount` |
+| `ProjectionByteCountExceeded` | Stored projections exceed the engine byte cap, or replacement would exceed the configured stream cap. | `StreamKey`, `ActualBytes`, `MaximumBytes` |
+| `ProviderOperationFailed` | SQLite failed a runtime provider operation. | `Stage`, typed `ProviderCode`, original `InnerException` |
+| `CommitOutcomeUnknown` | A runtime commit completed or may have completed before its response failed. | `Stage`, original `InnerException` |
+| `OperationCancelled` | A runtime write was cancelled inside its transaction. | `Stage`, original `InnerException` |
+| `ProviderClockUnavailable` | The provider did not return its UTC clock. | `ProviderName` |
+| `ReplacementSnapshotVersionMismatch` | A replacement snapshot has the wrong through version before pruning. | `StreamKey`, `ExpectedVersion`, `ActualVersion` |
+| `ResetWriteLockTimedOut` | SQLite reset could not take its write lock within the timeout. | `LockTimeout`, original `InnerException` |
+| `StoredEpochInvalid` | The stored epoch cannot be read as a GUID. | Existing whole-store scope |
+| `MetadataUpdateNotApplied` | Epoch rotation did not update exactly one metadata row, including a trigger that ignores the update. | Existing whole-store scope |
+| `StreamSnapshotMissing` | A stream being compacted has no snapshot, including replacement verification before pruning. | `StreamKey` |
 | `StoredStreamKeyInvalid` | A provider row has an invalid stream key. | `Index`, `ParameterName` (`streamKey`) |
 | `StoredHeadVersionNegative` | A provider row has a negative head version. | `Index`, `ActualVersion` |
 | `StoredTimestampNonUtc` | A provider row timestamp has a nonzero UTC offset. | `Index`, `FieldName` (`createdAtUtc` or `updatedAtUtc`) |
@@ -328,12 +337,19 @@ metadata recheck. `Stage` names writer connection open, transaction begin, initi
 read-only validation through `JournalOperationStage`. A cancelled provider call exposes cancellation, with no
 `ProviderCode`. A provider failure retains its original `SqlException.Number` without parsing its message.
 
-Projection limits are inclusive. If section count and bytes both exceed their limits, section count is reported
-first. Stored-row indices are zero-based. Each row's key, head and timestamps are checked before page ordering,
+Runtime `Stage` distinguishes an operation without a captured transaction, transaction work, commit and the
+post-commit response. SQLite `ProviderCode` is the original `SqliteException.SqliteErrorCode`, never parsed prose.
+Unknown commits carry only the stage rather than varying their identifier set by the inner exception type.
+Projection limits are inclusive. The engine read caps are 64 sections and 8 MiB per stream, while write limits
+may be configured lower. Both paths use the same limit reasons and identifiers, with their existing failure kind
+and certainty distinguishing stored corruption from a refused replacement. If count and bytes both exceed their
+limits, section count is reported first. Stored-row indices are zero-based. Each row's key, head and timestamps are checked before page ordering,
 including the extra row used to establish a continuation. Ordering applies only to the kept rows. These stored-row
 refusals retain their original argument exception as the inner cause and have whole-store scope, without inventing
 an affected stream key. The in-memory compaction's replacement snapshot checksum check is an internal invariant:
 its sealed immutable compaction owns both the copied data and the checksum computed from that data.
+SQLite's private operation-delete flag also has an internal overlap invariant. The connection lease serializes
+its opens, no callback runs before opening it, and every admitted purge or reset closes it in `finally`.
 
 A write call on a store opened read only throws `NotSupportedException` instead. That is a caller error rather than
 a store failure, so it sits outside this contract and nothing was attempted.

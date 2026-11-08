@@ -84,7 +84,7 @@ public sealed class JournalStoreException : Exception
     /// <summary>The exact rule refused, or null for an instance consumer code built through the legacy constructor.</summary>
     public JournalStoreRefusal? Reason { get; }
 
-    /// <summary>The affected stream for a single-stream checksum, sequence or projection-limit refusal.</summary>
+    /// <summary>The affected stream for a checksum, sequence, projection-limit or snapshot maintenance refusal.</summary>
     public string? StreamKey { get; init; }
     /// <summary>The stored event version whose checksum failed.</summary>
     public long? StreamVersion { get; init; }
@@ -92,21 +92,21 @@ public sealed class JournalStoreException : Exception
     public string? SectionName { get; init; }
     /// <summary>The operation whose stored result checksum failed.</summary>
     public Guid? OperationId { get; init; }
-    /// <summary>The next expected event version at a gap, or the compared schema version.</summary>
+    /// <summary>The next expected event version at a gap, compared schema version or expected replacement snapshot version.</summary>
     public long? ExpectedVersion { get; init; }
-    /// <summary>The event version found at a gap, negative stored stream head or unsupported schema version.</summary>
+    /// <summary>The event version at a gap, negative stored head, unsupported schema version or actual replacement snapshot version.</summary>
     public long? ActualVersion { get; init; }
     /// <summary>The captured through version an incomplete event page should have reached.</summary>
     public long? ExpectedThroughVersion { get; init; }
     /// <summary>The last version an incomplete event page actually reached, or its after version when empty.</summary>
     public long? ActualThroughVersion { get; init; }
-    /// <summary>The resulting per-stream projection bytes refused by a replacement.</summary>
+    /// <summary>The stored or resulting per-stream projection bytes exceeding their limit.</summary>
     public long? ActualBytes { get; init; }
-    /// <summary>The inclusive configured per-stream projection byte limit.</summary>
+    /// <summary>The inclusive applicable per-stream projection byte limit.</summary>
     public long? MaximumBytes { get; init; }
-    /// <summary>The resulting per-stream projection section count refused by a replacement.</summary>
+    /// <summary>The stored or resulting per-stream projection section count exceeding its limit.</summary>
     public long? ActualCount { get; init; }
-    /// <summary>The inclusive configured per-stream projection section limit.</summary>
+    /// <summary>The inclusive applicable per-stream projection section limit.</summary>
     public long? MaximumCount { get; init; }
     /// <summary>The zero-based stored row index, or the latter row of an invalid ordered pair.</summary>
     public int? Index { get; init; }
@@ -130,10 +130,15 @@ public sealed class JournalStoreException : Exception
     public string? RequiredPermission { get; init; }
     /// <summary>The SQL Server application lock's negative return code.</summary>
     public int? ReturnCode { get; init; }
-    /// <summary>The provider error number for a schema provider failure.</summary>
+    /// <summary>The typed provider error number for a schema or runtime provider failure.</summary>
     public int? ProviderCode { get; init; }
-    /// <summary>The schema stage refused by cancellation or a provider failure.</summary>
+    /// <summary>The stage refused by cancellation, a provider failure or an uncertain commit.</summary>
     public JournalOperationStage? Stage { get; init; }
+
+    /// <summary>The provider whose UTC clock was unavailable.</summary>
+    public string? ProviderName { get; init; }
+    /// <summary>The configured reset write lock timeout.</summary>
+    public TimeSpan? LockTimeout { get; init; }
 
     private readonly IReadOnlyList<long>? supportedVersions;
     /// <summary>The schema versions supported by the refusing mode, as an owned snapshot.</summary>

@@ -28305,6 +28305,12 @@ Journal store failures retain `Kind`, `Certainty`, `Scope` and the owned `Stream
 stored-row coordinates. Inspect those members instead of parsing messages. Consumer code can still use the
 legacy constructor, which leaves `Reason` null. The package README's
 [refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists the identifiers for each rule.
+SQLite runtime failures add typed provider codes and operation stages. Stored checksum failures retain event,
+section or operation coordinates. Projection reads and replacements share `ProjectionSectionCountExceeded` and
+`ProjectionByteCountExceeded`, reporting actual and inclusive maximum counts or bytes for their stream. A read
+uses the engine caps of 64 sections and 8 MiB, a replacement uses the configured limits. Replacement snapshot
+verification distinguishes missing rows, wrong versions and bad checksums before pruning. Reset lock contention
+uses `ResetWriteLockTimedOut` and carries the requested `LockTimeout` beside the original provider cause.
 
 SQLite schema reasons also carry `RequiredMigration` (`sqlite-journal-v3-row-timestamps`), with actual and supported
 versions, malformed metadata type, connection journal modes, or compared object names where applicable.

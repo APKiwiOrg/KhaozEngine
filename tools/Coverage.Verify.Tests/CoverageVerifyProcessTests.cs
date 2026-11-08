@@ -149,7 +149,7 @@ public sealed class CoverageVerifyProcessTests
     }
 
     [Fact]
-    public async Task Verify_blocks_cross_command_intrusion_by_a_changed_triangle_without_overwriting_accepted_bytes()
+    public async Task Verify_blocks_cross_command_intrusion_by_a_changed_triangle_at_partial_transition_weight_without_overwriting_accepted_bytes()
     {
         using var files = new CoverageBuildFiles("task7");
         var fixture = new CoverageCrossCommandFixture();
@@ -187,8 +187,12 @@ public sealed class CoverageVerifyProcessTests
             sample.AsObject().Remove("stateKey");
             rows.Add(new JsonObject
             {
-                ["denseIndex"] = i, ["precedingPhaseTick"] = i / 4, ["resolvedStateKey"] = i == 4 ? 2 : 1,
-                ["sample"] = sample, ["looped"] = false, ["clamped"] = false,
+                ["denseIndex"] = i,
+                ["precedingPhaseTick"] = i / 4,
+                ["resolvedStateKey"] = i == 4 ? 2 : 1,
+                ["sample"] = sample,
+                ["looped"] = false,
+                ["clamped"] = false,
             });
         }
         files.Manifest["domains"]![0]!["denseRows"] = rows;

@@ -44,8 +44,14 @@ internal sealed class CoverageCrossCommandFixture
                 {
                     var point = new Vector3(corner * (ring + 1), ring == 0 ? innerZ : outerZ);
                     positions.Add(point);
-                    skin.Add(new() { Position = point, Normal = Vector3.UnitZ, Color = Vector4.One,
-                        BoneIndices = new(bone, 0, 0, 0), BoneWeights = new(1, 0, 0, 0) });
+                    skin.Add(new()
+                    {
+                        Position = point,
+                        Normal = Vector3.UnitZ,
+                        Color = Vector4.One,
+                        BoneIndices = new(bone, 0, 0, 0),
+                        BoneWeights = new(1, 0, 0, 0)
+                    });
                 }
             Face(0, 1, 2);
             for (int i = 0; i < 3; i++)
@@ -114,8 +120,13 @@ internal sealed class CoverageCrossCommandFixture
         files.Configuration["attachment"] = files.Save("cross-attachment.json", attachment);
         files.Configuration["companion"] = files.Save("cross-companion.json", companion);
         files.Configuration["parts"] = new JsonArray(solids.Select((s, i) => (JsonNode)new JsonObject
-        { ["id"] = i + 1, ["asset"] = files.Save($"cross-solid-{i}.glb", s), ["hostJoint"] = $"joint-{i}",
-            ["socket"] = CoverageBuildFiles.Matrix(Matrix4x4.Identity), ["bodyAlignment"] = CoverageBuildFiles.Matrix(Matrix4x4.Identity) }).ToArray());
+        {
+            ["id"] = i + 1,
+            ["asset"] = files.Save($"cross-solid-{i}.glb", s),
+            ["hostJoint"] = $"joint-{i}",
+            ["socket"] = CoverageBuildFiles.Matrix(Matrix4x4.Identity),
+            ["bodyAlignment"] = CoverageBuildFiles.Matrix(Matrix4x4.Identity)
+        }).ToArray());
         files.Manifest["host"] = files.Save("cross-host.glb", host);
         files.Manifest["map"] = files.Save("cross-map.json", HostCoverageMapJson.Write(map));
         files.Manifest["configuration"] = files.Save("cross-config.json", Encoding.UTF8.GetBytes(files.Configuration.ToJsonString()));
@@ -123,10 +134,19 @@ internal sealed class CoverageCrossCommandFixture
         files.Manifest["samples"] = new JsonArray(JsonPose(Pose(false, "control"), true));
         files.Manifest["domains"] = new JsonArray(new JsonObject
         {
-            ["id"] = Domain, ["kind"] = "authored-clip", ["authoredFrameIds"] = new JsonArray("frame"), ["blendPathIds"] = new JsonArray(),
+            ["id"] = Domain,
+            ["kind"] = "authored-clip",
+            ["authoredFrameIds"] = new JsonArray("frame"),
+            ["blendPathIds"] = new JsonArray(),
             ["denseRows"] = new JsonArray(new JsonObject
-            { ["denseIndex"] = 0, ["precedingPhaseTick"] = 0, ["resolvedStateKey"] = 1, ["looped"] = false, ["clamped"] = false,
-                ["sample"] = JsonPose(Pose(crossing, "current"), false) }),
+            {
+                ["denseIndex"] = 0,
+                ["precedingPhaseTick"] = 0,
+                ["resolvedStateKey"] = 1,
+                ["looped"] = false,
+                ["clamped"] = false,
+                ["sample"] = JsonPose(Pose(crossing, "current"), false)
+            }),
         });
         files.Write();
     }
@@ -135,11 +155,19 @@ internal sealed class CoverageCrossCommandFixture
     {
         var result = new JsonObject
         {
-            ["id"] = pose.Id, ["domainId"] = Domain, ["authoredFrameId"] = "frame", ["actorModel"] = CoverageBuildFiles.Matrix(pose.ActorModel),
+            ["id"] = pose.Id,
+            ["domainId"] = Domain,
+            ["authoredFrameId"] = "frame",
+            ["actorModel"] = CoverageBuildFiles.Matrix(pose.ActorModel),
             ["palette"] = new JsonArray(pose.Palette.ToArray().Select(m => (JsonNode)CoverageBuildFiles.Matrix(m)).ToArray()),
             ["commands"] = new JsonArray(pose.Commands.ToArray().Select(c => (JsonNode)new JsonObject
-            { ["id"] = c.Id, ["equipmentInstanceId"] = c.EquipmentInstanceId, ["equipmentWorld"] = CoverageBuildFiles.Matrix(c.EquipmentWorld),
-                ["coverageWorld"] = CoverageBuildFiles.Matrix(c.CoverageWorld), ["transitionWeight"] = c.TransitionWeight }).ToArray()),
+            {
+                ["id"] = c.Id,
+                ["equipmentInstanceId"] = c.EquipmentInstanceId,
+                ["equipmentWorld"] = CoverageBuildFiles.Matrix(c.EquipmentWorld),
+                ["coverageWorld"] = CoverageBuildFiles.Matrix(c.CoverageWorld),
+                ["transitionWeight"] = c.TransitionWeight
+            }).ToArray()),
         };
         if (withKey) result["stateKey"] = pose.StateKey.Value;
         return result;

@@ -33,7 +33,7 @@ public sealed class CoverageWholeSkinDepthTests
     }
 
     [Fact]
-    public void Whole_skin_replay_blocks_cross_command_intrusion_by_a_changed_triangle()
+    public void Whole_skin_replay_blocks_cross_command_intrusion_by_a_changed_triangle_at_partial_transition_weight()
     {
         var fixture = new CoverageCrossCommandFixture();
         var crossing = fixture.Input(crossing: true);
@@ -42,6 +42,8 @@ public sealed class CoverageWholeSkinDepthTests
         Assert.Equal(2, sample.Commands.Length);
         Assert.All(sample.Commands.ToArray(), c => Assert.Contains(crossing.Topology.Triangles, t => t.RegionIndex == c.RegionIndex));
         var surfaces = CoverageCrossCommandFixture.KnownPositions(crossing, table);
+        // Exact certification checks equipment for full-weight commands only, and the box command is at partial weight.
+        // It separates other commanded regions from full-weight equipment, so this is not a full-weight validator gap.
         Assert.True(CoverageCertification.ValidateGeometry(crossing.Topology, surfaces.Raw, surfaces.Final,
             sample.ActorModel, sample.Commands, new(crossing.Topology), out var failure), failure.ToString());
         var box = sample.Commands.ToArray().Single(c => c.Id == CoverageCrossCommandFixture.BoxCommand);

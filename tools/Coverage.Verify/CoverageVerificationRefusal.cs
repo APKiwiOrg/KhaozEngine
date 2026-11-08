@@ -28,8 +28,13 @@ public sealed class CoverageVerificationException : InvalidOperationException
     internal CoverageVerificationException At(string domain, CoverageDenseRow row, int? entry = null,
         uint? command = null, ulong? equipment = null) => new(Reason, Message)
         {
-            DomainId = domain, DenseIndex = row.DenseIndex, SampleId = row.Sample.Id, StateKey = row.ResolvedStateKey,
-            EntryIndex = entry ?? EntryIndex, CommandId = command ?? CommandId, EquipmentInstanceId = equipment ?? EquipmentInstanceId,
+            DomainId = domain,
+            DenseIndex = row.DenseIndex,
+            SampleId = row.Sample.Id,
+            StateKey = row.ResolvedStateKey,
+            EntryIndex = entry ?? EntryIndex,
+            CommandId = command ?? CommandId,
+            EquipmentInstanceId = equipment ?? EquipmentInstanceId,
             Failure = Failure,
         };
 }

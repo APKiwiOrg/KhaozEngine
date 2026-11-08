@@ -101,8 +101,11 @@ public sealed class CoverageReplayTests
         var sample = rows[2].Sample;
         var commands = sample.Commands.ToArray();
         commands[0] = commands[0] with { TransitionWeight = .25f };
-        rows[2] = rows[2] with { Sample = new(sample.Id, sample.DomainId, sample.AuthoredFrameId, sample.BlendPathId,
-            sample.StateKey, sample.ActorModel, sample.Palette, commands) };
+        rows[2] = rows[2] with
+        {
+            Sample = new(sample.Id, sample.DomainId, sample.AuthoredFrameId, sample.BlendPathId,
+            sample.StateKey, sample.ActorModel, sample.Palette, commands)
+        };
         var partial = WithRows(input, rows);
         var replay = CoverageReplay.Verify(partial, CoverageTableBuilder.Build(input).Table);
         Assert.Equal(5, replay.PoseCount);

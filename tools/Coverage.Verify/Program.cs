@@ -50,8 +50,13 @@ public static class Program
                 var failedSample = evidence.SelectedClaims.FirstOrDefault(c => !c.Valid);
                 if (failedSample != null)
                     throw new CoverageVerificationException(CoverageVerificationRefusal.SelectedSampleFailure, "Selected sample failed exact certification.")
-                    { DomainId = input.Samples.Single(s => s.Id == failedSample.SampleId).DomainId,
-                        SampleId = failedSample.SampleId, StateKey = failedSample.StateKey, EntryIndex = failedSample.EntryIndex, Failure = failedSample.Failure };
+                    {
+                        DomainId = input.Samples.Single(s => s.Id == failedSample.SampleId).DomainId,
+                        SampleId = failedSample.SampleId,
+                        StateKey = failedSample.StateKey,
+                        EntryIndex = failedSample.EntryIndex,
+                        Failure = failedSample.Failure
+                    };
                 if (evidence.Holes.FirstOrDefault() is { } hole)
                 {
                     var sample = input.Samples.Single(s => s.Id == hole.SampleIds[0]);
@@ -70,8 +75,15 @@ public static class Program
         {
             Console.Error.WriteLine(JsonSerializer.Serialize(new
             {
-                Reason = error.Reason.ToString(), error.DomainId, error.DenseIndex, error.SampleId, error.StateKey,
-                error.EntryIndex, error.CommandId, error.EquipmentInstanceId, error.Failure,
+                Reason = error.Reason.ToString(),
+                error.DomainId,
+                error.DenseIndex,
+                error.SampleId,
+                error.StateKey,
+                error.EntryIndex,
+                error.CommandId,
+                error.EquipmentInstanceId,
+                error.Failure,
             }));
             return 1;
         }

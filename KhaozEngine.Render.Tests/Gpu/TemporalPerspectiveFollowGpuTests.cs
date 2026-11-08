@@ -314,6 +314,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every walk's trail, with the walk in internal pixels a frame. With
         /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it prints both pitches, every heading, speed and preset.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_perspective_follow_table_prints_every_walk()
         {

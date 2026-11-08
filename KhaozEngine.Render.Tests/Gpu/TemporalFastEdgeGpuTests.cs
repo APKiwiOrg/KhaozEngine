@@ -181,6 +181,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(f.FastFlips <= FastFlipBound(f), $"the box's edges shimmer. {message}");
         }
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_fast_edge_table_prints_every_run()
         {
@@ -205,6 +206,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The tilted keyed box's own edges under the dilation's reach, at 0.25, 0.5 and 1 internal pixel a
         /// frame: crossing the flat wall under a still camera, and followed by the camera across the textured wall, so
         /// the wall pans past its edges (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). Report only.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_box_edge_table_prints_the_walks_under_the_reach()
         {
@@ -224,6 +226,7 @@ namespace KhaozEngine.Tests.Gpu
                     }
         }
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_keyed_line_table_prints_the_resolve_against_msaa_4x_and_no_anti_aliasing()
         {

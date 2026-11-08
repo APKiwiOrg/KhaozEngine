@@ -215,6 +215,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(held.Flips <= MaxHeldFlipRate, $"a held dissolve must not crawl. {ctx}");
         }
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresFourSampleMsaa = true)]
         public void TheMotionClarityTablePrintsEveryRun()
         {

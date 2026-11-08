@@ -1,4 +1,3 @@
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
@@ -20,13 +19,13 @@ internal static class ShippedSceneLightShadows
             "None" => ["kind"],
             "NearSphere" => ["kind", "radius"],
             "FixtureBox" => ["kind", "min", "max", "margin"],
-            _ => throw new InvalidDataException("Unsupported source light shadow exclusion.")
+            _ => throw new PrivateOracleDataException(PrivateOracleDataRefusal.KindUnsupported, "Unsupported source light shadow exclusion.")
         };
         Shape(value, fields);
         if (value.TryGetProperty("min", out var min)) Shape(min, "x", "y", "z");
         if (value.TryGetProperty("max", out var max)) Shape(max, "x", "y", "z");
         var result = value.Deserialize<MapLightShadowExclusion>(ShippedScenePolicy.Json)
-            ?? throw new InvalidDataException("Missing source light shadow exclusion.");
+            ?? throw new PrivateOracleDataException(PrivateOracleDataRefusal.SchemaShapeInvalid, "Missing source light shadow exclusion.");
         result.Validate(true);
         return result;
     }

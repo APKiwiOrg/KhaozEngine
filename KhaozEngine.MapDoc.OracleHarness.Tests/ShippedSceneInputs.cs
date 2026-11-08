@@ -82,7 +82,7 @@ internal sealed class ShippedSceneInputs
         var meshes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         foreach (var row in manifest.Placements)
         {
-            var archetype = catalogs.Archetype(objects[row.SourceObjectId].ArchetypeId) ?? throw new InvalidDataException("missing scene source archetype");
+            var archetype = catalogs.Archetype(objects[row.SourceObjectId].ArchetypeId) ?? throw new PrivateOracleDataException(PrivateOracleDataRefusal.ReferenceMissing, "missing scene source archetype");
             string[] paths = new[] { archetype.MeshRef }.Concat(archetype.LodMeshRef is { Length: > 0 } lod ? [lod] : []).ToArray();
             Require(paths.Length == row.Lods.Count, PrivateOracleDataRefusal.CorrespondenceMismatch, "scene source LOD correspondence differs");
             var placement = effective.Placements.Single(p => p.PlacementId == row.NativePlacementId);
@@ -182,7 +182,7 @@ internal sealed class ShippedSceneInputs
         foreach (var row in manifest.Placements) modelPaths.TryAdd(objects[row.SourceObjectId].ArchetypeId, row.Lods[0].SourcePath);
         foreach (string id in ShippedSceneSelections.DeclaredSourceIds(sourcePolicy))
         {
-            var archetype = catalogs.Archetype(id) ?? throw new InvalidDataException("unknown scene source selection");
+            var archetype = catalogs.Archetype(id) ?? throw new PrivateOracleDataException(PrivateOracleDataRefusal.ReferenceMissing, "unknown scene source selection");
             string path = SafePath(archetype.MeshRef);
             modelPaths.TryAdd(id, path);
             foreach (string meshPath in new[] { path }.Concat(archetype.LodMeshRef is { Length: > 0 } lod ? [SafePath(lod)] : []))
@@ -197,7 +197,7 @@ internal sealed class ShippedSceneInputs
     }
     internal MapDocument Reload(bool tiled) => tiled ? ReloadTiled(_snapshot, _tiledDirectory, _scratch)
         : _document is { } bytes ? MapDocumentFile.LoadText(Encoding.UTF8.GetString(bytes))
-        : throw new InvalidDataException("scene monolithic form was not declared");
+        : throw new PrivateOracleDataException(PrivateOracleDataRefusal.DependencyUnattested, "scene monolithic form was not declared");
 
     static MapDocument ReloadTiled(ShippedFoliageInputs.Snapshot snapshot, string directory, string scratch)
     {
@@ -229,7 +229,7 @@ internal sealed class ShippedSceneInputs
     }
     internal KhaozEngine.Render2D.ImageRgba SourceTexture(string path) =>
         _textures.TryGetValue(System.IO.Path.GetFullPath(path), out var bytes) ? KhaozEngine.Render2D.ImageRgba.Decode(bytes)
-            : throw new InvalidDataException("unattested scene source texture");
+            : throw new PrivateOracleDataException(PrivateOracleDataRefusal.DependencyUnattested, "unattested scene source texture");
     internal MapAssetClosure Assets(MapDocument document) => MapAssetClosure.Load(document.NativeAssets, _snapshot);
     internal static MapSceneScope Scope(SceneWindow window) => Scope(window, null);
     internal static MapSceneScope Scope(SceneWindow window, MapQueryLimits? limits)

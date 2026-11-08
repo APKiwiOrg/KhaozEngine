@@ -72,7 +72,7 @@ internal sealed record ShippedScenePolicy(MapPlacementPolicy Placements, IReadOn
             Shape(row, "assetId", "boundsInSourceUnits", "sourceUnitsToMetres", "motionPaddingMetres");
             var bounds = row.GetProperty("boundsInSourceUnits"); Shape(bounds, "min", "max");
             Shape(bounds.GetProperty("min"), "x", "y", "z"); Shape(bounds.GetProperty("max"), "x", "y", "z");
-            return row.Deserialize<MapFoliageModelExtent>(Json) ?? throw new System.IO.InvalidDataException("invalid scene model extent");
+            return row.Deserialize<MapFoliageModelExtent>(Json) ?? throw new PrivateOracleDataException(PrivateOracleDataRefusal.SchemaShapeInvalid, "invalid scene model extent");
         }).ToDictionary(e => e.AssetId, StringComparer.Ordinal);
         _ = new NativeFoliagePolicy(MapFrozenFoliageOptions.Capture(foliage), extents);
         return new(new(layers, placement.GetProperty("defaultDrawRadius").GetSingle()),
@@ -83,7 +83,7 @@ internal sealed record ShippedScenePolicy(MapPlacementPolicy Placements, IReadOn
     {
         var template = JsonSerializer.SerializeToElement(new T(), Json);
         ClosedObject(value, template);
-        return value.Deserialize<T>(Json) ?? throw new System.IO.InvalidDataException("invalid scene policy");
+        return value.Deserialize<T>(Json) ?? throw new PrivateOracleDataException(PrivateOracleDataRefusal.SchemaShapeInvalid, "invalid scene policy");
     }
     static void ClosedObject(JsonElement value, JsonElement template)
     {

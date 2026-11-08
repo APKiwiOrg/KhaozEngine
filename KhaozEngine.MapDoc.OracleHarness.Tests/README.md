@@ -111,6 +111,9 @@ It requires a non-nullable `PrivateOracleDataRefusal` reason. Its reason-taking 
 private original exception. The readers carry no identifier fields because source paths, coordinates,
 identities, tags, content digests and inventory counts belong only in the secure report. The existing
 messages remain developer prose. The entry boundary still sanitizes all failures.
+Scene capture, selection and policy readers use this family too. Undeclared monolithic reloads and
+texture reads use `DependencyUnattested`. Duplicate provenance fields use `IdentityNotUniqueOrCanonical`,
+unsupported light exclusion kinds use `KindUnsupported`, and ambiguous observer floors use `OwnershipMismatch`.
 
 | Reason | Refused data | Identifiers |
 |---|---|---|

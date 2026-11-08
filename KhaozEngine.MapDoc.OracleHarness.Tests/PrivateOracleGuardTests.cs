@@ -38,6 +38,8 @@ public sealed class PrivateOracleGuardTests
         string value = json.RootElement.GetProperty(field).GetRawText();
         text = text.Insert(text.IndexOf('{') + 1, "\"" + duplicate + "\":" + value + ",");
         File.WriteAllText(provenance, text); env[Names[2]] = AssertFixtures.Sha256(provenance);
+        var data = Refuse<PrivateOracleDataException>(() => ShippedSourceProvenance.Parse(System.Text.Encoding.UTF8.GetBytes(text)));
+        Assert.Equal(PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical, data.Reason);
         Assert.Equal(PrivateOracleInputRefusal.ProvenanceUnreadable, Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Reason);
     });
 

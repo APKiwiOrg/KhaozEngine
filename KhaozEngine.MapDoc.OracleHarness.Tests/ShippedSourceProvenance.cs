@@ -43,7 +43,7 @@ internal sealed record ShippedSourceProvenance
         {
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var property in json.RootElement.EnumerateObject())
-                if (!names.Add(property.Name)) throw new InvalidDataException("duplicate provenance member");
+                if (!names.Add(property.Name)) throw new PrivateOracleDataException(PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical, "duplicate provenance member");
         }
         var value = JsonSerializer.Deserialize<ShippedSourceProvenance>(bytes, JsonOptions)
             ?? throw new PrivateOracleDataException(PrivateOracleDataRefusal.SchemaShapeInvalid, "invalid provenance");

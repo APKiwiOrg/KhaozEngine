@@ -29,6 +29,8 @@ public sealed partial class ShippedSceneInputGuardTests
         using var fixture = ShippedSceneGuardFixtures.Create("valid");
         var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
         Assert.NotNull(inputs.Manifest);
+        Refuses(PrivateOracleDataRefusal.DependencyUnattested,
+            () => inputs.SourceTexture(Path.Combine(fixture.SourceRoot, "unattested.png")));
         PrivateOracleEntry.Run(fixture.Environment, (_, report) => ShippedSceneComparison.Compare(inputs, report));
         int validSyntheticFailures = fixture.FailureCategories().Count;
         Assert.Equal(0, validSyntheticFailures);
@@ -72,6 +74,16 @@ public sealed partial class ShippedSceneInputGuardTests
             (_, report) => ShippedSceneComparison.CompareDrawSets(expected, changed, report)));
         Assert.Contains(category, fixture.FailureCategories());
         Assert.DoesNotContain(fixture.PublicSecretMarker, failure.ToString());
+    }
+
+    [Fact]
+    public void SceneLight_RefusesUnsupportedShadowExclusionAndAcceptsNone()
+    {
+        using var invalid = JsonDocument.Parse("""{"shadowExclusion":{"kind":"unsupported"}}""");
+        Refuses(PrivateOracleDataRefusal.KindUnsupported, () => ShippedSceneLightShadows.Read(invalid.RootElement));
+        using var repaired = JsonDocument.Parse("""{"shadowExclusion":{"kind":"None"}}""");
+        Assert.Equal(KhaozEngine.MapDoc.Prefabs.MapLightShadowExclusionKind.None,
+            ShippedSceneLightShadows.Read(repaired.RootElement)!.Kind);
     }
 
     [Fact]

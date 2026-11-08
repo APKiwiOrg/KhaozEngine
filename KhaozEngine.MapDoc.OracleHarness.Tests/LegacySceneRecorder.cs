@@ -144,7 +144,7 @@ internal static class LegacySceneRecorder
                     }
                     var flat = policy.AssetIds.ToDictionary(id => id, id =>
                     {
-                        var archetype = catalogs.Archetype(id) ?? throw new System.IO.InvalidDataException("missing declared source archetype");
+                        var archetype = catalogs.Archetype(id) ?? throw new PrivateOracleDataException(PrivateOracleDataRefusal.ReferenceMissing, "missing declared source archetype");
                         string path = ShippedFoliageManifest.SafePath(archetype.LodMeshRef is { Length: > 0 } lod ? lod : archetype.MeshRef);
                         return GltfLoader.LoadFlattenedAlbedo(inputs.OriginalMeshes[path], "attested source HLOD");
                     });
@@ -186,7 +186,7 @@ internal static class LegacySceneRecorder
         var floors = Enumerable.Range(0, world.PlaneCount).Where(p => world.GetUnderlay(x, z, p) != 0)
             .Select(p => (Plane: p, Height: world.HeightAt((float)probe.ObserverX, (float)probe.ObserverZ, p)))
             .Where(p => p.Height <= probe.ObserverY).OrderByDescending(p => p.Height).ToArray();
-        if (floors.Length > 1 && floors[0].Height == floors[1].Height) throw new System.IO.InvalidDataException("ambiguous source observer floor");
+        if (floors.Length > 1 && floors[0].Height == floors[1].Height) throw new PrivateOracleDataException(PrivateOracleDataRefusal.OwnershipMismatch, "ambiguous source observer floor");
         return new TileWorldView(new LegacyRecordingScene(), world, TileWorldCatalogs.Empty(), new GreyboxMeshResolver())
         {
             Observer = new(x, z, floors.Length == 0 ? 0 : floors[0].Plane),

@@ -20,6 +20,8 @@ public sealed partial class ShippedSceneInputGuardTests
         var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
         Assert.Equal(variant == "tiled-only", inputs.Manifest.NativeDocumentPath is null);
         Assert.NotNull(inputs.Reload(true).Tiles);
+        if (variant == "tiled-only")
+            Refuses(PrivateOracleDataRefusal.DependencyUnattested, () => inputs.Reload(false));
         PrivateOracleEntry.Run(fixture.Environment, (_, report) => ShippedSceneComparison.Compare(inputs, report));
         var summary = File.ReadLines(fixture.ReportPath).Select(l => JsonDocument.Parse(l).RootElement.Clone())
             .Single(r => r.GetProperty("category").GetString() == "scene-summary");

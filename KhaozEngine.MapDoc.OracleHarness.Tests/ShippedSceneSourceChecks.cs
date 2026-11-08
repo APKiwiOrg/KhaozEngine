@@ -35,7 +35,7 @@ internal static class ShippedSceneSourceChecks
     {
         var a = inputs.SourcePolicy; var b = inputs.NativePolicy;
         string[] Mapped(IEnumerable<string> ids) => ids.SelectMany(id => inputs.AssetMappings.TryGetValue(id, out var values) ? values
-            : throw new System.IO.InvalidDataException("missing scene asset correspondence")).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            : throw new PrivateOracleDataException(PrivateOracleDataRefusal.CorrespondenceMismatch, "missing scene asset correspondence")).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         Check(report, "scene-policy", Bits(a.Placements.DefaultDrawRadius, b.Placements.DefaultDrawRadius) && Bits(a.Water, b.Water) && Bits(a.Lights, b.Lights), new { policy = "placement and water" });
         Check(report, "scene-policy", Mapped(a.AnimatedAssets).SequenceEqual(b.AnimatedAssets.Order(StringComparer.Ordinal)), new { policy = "animated selection" });
         Check(report, "scene-policy", a.Placements.Layers.Count == b.Placements.Layers.Count, new { policy = "layer count" });

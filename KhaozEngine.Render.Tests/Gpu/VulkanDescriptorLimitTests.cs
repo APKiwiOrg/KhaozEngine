@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -96,12 +97,15 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ModelRenderer.cs:225, :270 and :273
                 ["Model"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
                     T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
-                    T("PointShadowMap"), T("PointShadowTransientMap")), T("InteriorCut"), Ro("WaterVolumes", F)]),
+                    T("PointShadowMap"), T("PointShadowTransientMap")), T("InteriorCut"), Ro("WaterVolumes", F), T("CausticMap"), S("CausticSampler")]),
+                ["Model.foliageOpaque"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F),
+                    Ro("PointLightClusters", F), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"),
+                    T("PointShadowTransientMap")), Ro("WaterVolumes", F), T("CausticMap"), S("CausticSampler")]),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.
                 ["Model.skinnedMain"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F),
-                    U("VBlock", V, dynamic: true)), Ro("WaterVolumes", F)]),
+                    U("VBlock", V, dynamic: true)), Ro("WaterVolumes", F), T("CausticMap"), S("CausticSampler")]),
                 ["Model.skinnedFrag"] = L(T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/SkinnedBonePalette.cs:54. The one shipped layout used by TWO pipelines at
@@ -115,13 +119,13 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ModelRenderer.Splat.cs:41 and :48. TWO sets since #604: the shared frame
                 // block, then everything the material owns. One of the two ground pipelines that put a uniform
                 // buffer in BOTH of their sets, and one of the three that spend two uniform buffers in total.
-                ["Model.splatFrame"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)), Ro("WaterVolumes", F)]),
+                ["Model.splatFrame"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)), Ro("WaterVolumes", F), T("CausticMap"), S("CausticSampler")]),
                 ["Model.splatMaterial"] = L(U("SplatParams", F), T("AlbedoArray"), T("NormalArray"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/ModelRenderer.TileGround.cs:47 and :55. The same two-set split since #727,
                 // which unfolded the last combined frame+params buffer in the tree. Albedo only, so one array
                 // where the splat material layout has two, and the shadow map stays last.
-                ["Model.tileGroundFrame"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)), Ro("WaterVolumes", F)]),
+                ["Model.tileGroundFrame"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)), Ro("WaterVolumes", F), T("CausticMap"), S("CausticSampler")]),
                 ["Model.tileGroundMaterial"] = L(U("TileGroundParams", F), T("AlbedoArray"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/ModelMotionResources.cs, the rigid temporal variant's set 1: the motion block and
@@ -235,6 +239,12 @@ namespace KhaozEngine.Tests.Gpu
                     U("Atmosphere", F), T("AtmoSkyView"), S("AtmoSkySampler"), T("OpticsTex"), S("OpticsSamp"),
                     T("ColumnShadowAtlas"), S("ColumnShadowSampler"), U("WaterLitFrame", F),
                     T("ColumnSceneColor"), S("ColumnColorSampler")),
+
+                // The three caustic passes, each with its own uniform slot and only the stages that read it.
+                ["WaterCaustics.field"] = L(U("CausticBody", VF, dynamic: true)),
+                ["WaterCaustics.subtract"] = L(U("CausticBody", V, dynamic: true)),
+                ["WaterCaustics.sheet"] = L(U("CausticBody", V, dynamic: true), T("SurfaceField", V),
+                    S("SurfaceFieldSampler", V)),
             };
 
         /// <summary>
@@ -279,6 +289,8 @@ namespace KhaozEngine.Tests.Gpu
             ("GroundDecalRenderer", ["GroundDecal"]),
             ("ModelRenderer", ["Model"]),
             ("ModelRenderer foliage", ["Model", "Foliage"]),
+            ("ModelRenderer foliage opaque", ["Model.foliageOpaque", "Foliage"]),
+            ("ModelRenderer foliage opaque motion", ["Model.foliageOpaque", "Foliage", "Motion.frame"]),
             ("ModelRenderer foliage motion", ["Model", "Foliage", "Motion.frame"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
@@ -344,6 +356,9 @@ namespace KhaozEngine.Tests.Gpu
             ("TransitionRenderer cross", ["Transition.cross"]),
             ("MotionVectorsView", ["MotionVectorsView"]),
             ("WaterRenderer", ["Water"]),
+            ("WaterCausticRenderer field", ["WaterCaustics.field"]),
+            ("WaterCausticRenderer subtract", ["WaterCaustics.subtract"]),
+            ("WaterCausticRenderer sheet", ["WaterCaustics.sheet"]),
         ];
 
         /// <summary>
@@ -357,8 +372,8 @@ namespace KhaozEngine.Tests.Gpu
             // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
             // Certified resolve and accumulation add two compact layouts and four pipeline shapes.
-            Assert.Equal(68, ShippedLayouts.Count);
-            Assert.Equal(75, ShippedPipelines.Count);
+            Assert.Equal(72, ShippedLayouts.Count);
+            Assert.Equal(80, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {
@@ -454,16 +469,20 @@ namespace KhaozEngine.Tests.Gpu
             var api = new FakeVulkanDescriptorApi();
             var cache = new VulkanPipelineLayoutCache(api, maxDynamicUniformBuffers: 2);
 
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
+            VulkanDescriptorLimitException ex = Assert.Throws<VulkanDescriptorLimitException>(
                 () => cache.GetOrCreate([1, 2, 3], dynamicUniformCount: 3));
 
-            Assert.Contains("maxDescriptorSetUniformBuffersDynamic", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("V-D4", ex.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<NotSupportedException>(ex);
+            Assert.Equal(VulkanDescriptorLimitRefusal.DynamicUniformLimitExceeded, ex.Reason);
+            Assert.Equal("maxDescriptorSetUniformBuffersDynamic", ex.LimitName);
+            Assert.Equal(3, ex.RequestedCount);
+            Assert.Equal(2u, ex.Limit);
+            Assert.Equal(3, ex.SetLayoutCount);
             Assert.Equal(0, api.PipelineLayoutCreateCount);
 
             // AND ON EVERY REQUEST, not only the first: the check runs before the dedup lookup, so a layout over
             // the limit cannot be created once and then handed back forever.
-            Assert.Throws<NotSupportedException>(() => cache.GetOrCreate([1, 2, 3], 3));
+            Assert.Throws<VulkanDescriptorLimitException>(() => cache.GetOrCreate([1, 2, 3], 3));
 
             Assert.Equal(2u, cache.MaxDynamicUniformBuffers);
             Assert.NotEqual(0UL, cache.GetOrCreate([1, 2], dynamicUniformCount: 2));
@@ -481,7 +500,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(64u, VulkanDescriptorLimits.EffectiveLimit(64));
 
             VulkanDescriptorLimits.RequirePipelineWithinLimit(8, reportedLimit: 0, setLayoutCount: 1);
-            Assert.Throws<NotSupportedException>(
+            Assert.Throws<VulkanDescriptorLimitException>(
                 () => VulkanDescriptorLimits.RequirePipelineWithinLimit(9, 0, 1));
         }
 
@@ -547,7 +566,7 @@ namespace KhaozEngine.Tests.Gpu
                 api.PipelineLayouts[skinned]);
 
             // A fourth set carrying sky and atmosphere uniform buffers takes it over the same limit.
-            Assert.Throws<NotSupportedException>(
+            Assert.Throws<VulkanDescriptorLimitException>(
                 () => cache.GetOrCreate(new[] { main, fragment, palette, extra }));
         }
     }

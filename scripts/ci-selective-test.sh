@@ -5,7 +5,7 @@
 # Called by .github/workflows/ci.yml for the push (main) and pull_request events. Tag pushes and
 # workflow_dispatch keep the full restore/build/test/pack sequence inline in the workflow (a tag that
 # reuses the hosted gate skips its test steps, and only tags publish) and do NOT call this script.
-# Spec: docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md (Decisions 4, 5 and 7).
+# Spec: docs/design/CI-SELECTIVE-TESTS.md (Decisions 4, 5 and 7).
 #
 # Usage: scripts/ci-selective-test.sh <BASE_SHA> <HEAD_SHA>
 #   BASE_SHA  commit to diff from (github.event.before on pushes, the PR base sha on PRs)
@@ -27,7 +27,7 @@ HEAD=${2-}
 
 SLNX="KhaozEngine.slnx"
 ZERO_SHA="0000000000000000000000000000000000000000"
-LIVE_SOCKET_FILTER="Category!=LiveSocket"
+DEFAULT_TEST_FILTER="Category!=LiveSocket&Category!=Diagnostic"
 FOUNDATION_TESTS="KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj"
 # dotnet-affected's exit code for "no affected projects were found". It is not an error, it is the
 # docs-only fast path, so the script maps it to a clean skip rather than a failure.
@@ -43,7 +43,7 @@ run_full() {
   echo "ci-selective-test: FULL ($1)"
   dotnet restore || fail "restore failed"
   sh scripts/build-release-tests.sh KhaozEngine.slnx --no-restore || fail "build failed"
-  dotnet test -c Release --no-build --filter "$LIVE_SOCKET_FILTER" || fail "test failed"
+  dotnet test -c Release --no-build --filter "$DEFAULT_TEST_FILTER" || fail "test failed"
   # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes. The
   # DeterministicFp tests live in KhaozEngine.Foundation.Tests, so the pass is scoped to that project
   # (the workflow's tag path scopes it the same way).
@@ -57,7 +57,7 @@ run_full() {
 # Force-FULL file classes. A change to any of these can invalidate the selective diff, so the whole
 # solution is validated instead. $1 is a file holding the changed paths, one per line.
 touches_full_class() {
-  grep -qE '^\.github/workflows/|^scripts/|^Directory\.Build\.props$|^nuget\.config$|\.slnx$|^\.config/dotnet-tools\.json$' "$1"
+  grep -qE '^\.github/workflows/|^scripts/|^Directory\.Build\.props$|^nuget\.config$|\.slnx$|^\.config/dotnet-tools\.json$|^\.testhealth-baseline$' "$1"
 }
 
 # FULL fallback guards on the base sha, checked before any diff is attempted.
@@ -96,8 +96,15 @@ affected_rc=$?
 set -e
 
 if [ "$affected_rc" -eq "$AFFECTED_NONE_RC" ]; then
-  echo "selective: no affected test projects, skipping build/test"
-  exit 0
+  # Outside-solution project edits may have no affected graph roots. Their XML still belongs to
+  # the architecture guard, so preserve that route even when the graph walker reports nothing.
+  if grep -qE '\.csproj$' "$TMP/changed.txt"; then
+    : > "$TMP/affected.txt"
+    affected_rc=0
+  else
+    echo "selective: no affected test projects, skipping build/test"
+    exit 0
+  fi
 fi
 if [ "$affected_rc" -ne 0 ]; then
   fail "dotnet affected exited ${affected_rc}"
@@ -159,7 +166,7 @@ done < "$TMP/affected_tests.txt"
 
 while IFS= read -r proj; do
   echo "selective test: $proj"
-  dotnet test "$proj" -c Release --no-build --filter "$LIVE_SOCKET_FILTER" || fail "test failed for $proj"
+  dotnet test "$proj" -c Release --no-build --filter "$DEFAULT_TEST_FILTER" || fail "test failed for $proj"
 done < "$TMP/affected_tests.txt"
 
 # Determinism double-pass, only when the DeterministicFp owner is itself in the affected set.

@@ -77,14 +77,15 @@ public class ShardedClimbSignalExportTests
         ecs.Set(e, new PendingMove { Command = cmd });
 
         // The single-World head reference: carry the full MoveState (as WorldServer keeps a PlayerMoveState per slot)
-        // and export MovementState.From(state).ClimbRateQ each tick.
+        // and execute the same player publication as the real single-world authority.
+        using var reference = new PlayerMoveSimulator(Ground, t, Normal, physics: world);
         var refState = new MoveState { Position = seed, Grounded = true };
 
         int ticks = (int)(1.6f * (Tread * Risers + 3f) / (0.5f * (run ? t.RunSpeed : t.WalkSpeed) * Dt));
         int maxAbsSharded = 0, climbTicks = 0, maxGapUnits = 0;
         for (int i = 0; i < ticks; i++)
         {
-            refState = CharacterMovement.Step(refState, cmd, Dt, Ground, t, Normal, world);
+            refState = reference.Step(new PlayerMoveState { Move = refState }, cmd, Dt).Move;
             sbyte refQ = MovementState.QuantizeClimbRate(refState.ClimbRate);
 
             sys.Update(ecs, Dt);
@@ -132,6 +133,7 @@ public class ShardedClimbSignalExportTests
         ecs.Set(e, ReplicatedPosition.FromWorld(seed, WorldFrame.Origin));
         ecs.Set(e, new MovementState());
         ecs.Set(e, new PendingMove { Command = cmd });
+        using var reference = new PlayerMoveSimulator(Ground, t, Normal, physics: world);
         var single = new MoveState { Position = seed, Grounded = true };
 
         const float half = MoveState.ClimbRateQuantum / 2;
@@ -139,7 +141,7 @@ public class ShardedClimbSignalExportTests
         int climbTicks = 0;
         for (int i = 0; i < ticks; i++)
         {
-            single = CharacterMovement.Step(single, cmd, Dt, Ground, t, Normal, world);
+            single = reference.Step(new PlayerMoveState { Move = single }, cmd, Dt).Move;
             sys.Update(ecs, Dt);
 
             MovementState ms = ecs.Get<MovementState>(e);

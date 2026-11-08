@@ -109,8 +109,9 @@ internal static class FootSupport
         if (world is not null)
         {
             ArgumentNullException.ThrowIfNull(lease);
-            IPhysicsSupportFootprint features = world as IPhysicsSupportFootprint ?? throw new NotSupportedException(
-                "Foot support needs a physics world that offers complete footprint queries.");
+            IPhysicsSupportFootprint features = world as IPhysicsSupportFootprint ?? throw new MovementCapabilityException(MovementConfigurationRefusal.SupportFootprintRequired,
+                "Foot support needs a physics world that offers complete footprint queries.")
+            { RequiredCapability = typeof(IPhysicsSupportFootprint) };
             // The interval's arena holds evidence whether or not the memo serves repeats, so a bypassed or reference
             // read keeps the same accounting.
             SupportContinuityArena? arena = memo is not null && ReferenceEquals(memo.Lease, lease) ? memo.Arena : null;

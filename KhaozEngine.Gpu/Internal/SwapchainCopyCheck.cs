@@ -15,7 +15,7 @@ namespace KhaozEngine.Gpu.Internal
         /// Refuse <paramref name="destination"/> unless it has <paramref name="swapchain"/>'s width, height and
         /// colour format, one mip and one sample.
         /// </summary>
-        /// <exception cref="ArgumentException">The shapes differ. The message names both.</exception>
+        /// <exception cref="GpuSwapchainCopyArgumentException">The colour count or shapes differ. The reason and shape properties identify the refusal.</exception>
         internal static void RequireDestination(IGpuFramebuffer swapchain, IGpuTexture destination)
         {
             ArgumentNullException.ThrowIfNull(swapchain);
@@ -24,9 +24,12 @@ namespace KhaozEngine.Gpu.Internal
             GpuPixelFormat[] colour = swapchain.Outputs.Colour;
             if (colour.Length != 1)
             {
-                throw new ArgumentException(
+                throw new GpuSwapchainCopyArgumentException(GpuSwapchainCopyRefusal.ColourAttachmentCount,
                     "A swapchain copy needs a swapchain framebuffer with exactly one colour attachment, and this one "
-                    + "has " + colour.Length.ToString(CultureInfo.InvariantCulture) + ".", nameof(swapchain));
+                    + "has " + colour.Length.ToString(CultureInfo.InvariantCulture) + ".", nameof(swapchain))
+                {
+                    ColourAttachmentCount = colour.Length,
+                };
             }
 
             GpuPixelFormat format = colour[0];
@@ -36,12 +39,22 @@ namespace KhaozEngine.Gpu.Internal
                 return;
             }
 
-            throw new ArgumentException(
+            throw new GpuSwapchainCopyArgumentException(GpuSwapchainCopyRefusal.DestinationShapeMismatch,
                 "A swapchain copy is a whole copy, so the destination must match the swapchain image exactly. The "
                 + "destination is " + Shape(destination.Width, destination.Height, destination.Format,
                     destination.MipLevels, destination.SampleCount)
                 + " and the swapchain image is " + Shape(swapchain.Width, swapchain.Height, format, 1, 1) + ".",
-                nameof(destination));
+                nameof(destination))
+            {
+                SourceWidth = swapchain.Width,
+                SourceHeight = swapchain.Height,
+                SourceFormat = format,
+                DestinationWidth = destination.Width,
+                DestinationHeight = destination.Height,
+                DestinationFormat = destination.Format,
+                DestinationMipLevels = destination.MipLevels,
+                DestinationSampleCount = destination.SampleCount,
+            };
         }
 
         /// <summary>The refusal every backend gives a swapchain copy recorded in a list that never bound the
@@ -58,7 +71,10 @@ namespace KhaozEngine.Gpu.Internal
         /// <exception cref="InvalidOperationException"><paramref name="boundThisRecording"/> is false.</exception>
         internal static void RequireSwapchainBound(bool boundThisRecording)
         {
-            if (!boundThisRecording) throw new InvalidOperationException(NotBoundMessage);
+            if (!boundThisRecording) throw new GpuSwapchainCopyStateException(GpuSwapchainCopyRefusal.SwapchainNotBound, NotBoundMessage)
+            {
+                Command = "CopySwapchainColor",
+            };
         }
 
         static string Shape(uint width, uint height, GpuPixelFormat format, uint mipLevels, uint sampleCount)

@@ -6,7 +6,7 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Locomotion;
 
 /// <summary>Non-owning evidence for one physical read and runtime registration publication.</summary>
-internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, IMovementContactSupportPin
+internal sealed partial class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, IMovementContactSupportPin
 {
     readonly OrdinaryMovementEnvironment _owner;
     readonly IPhysicsQueryLease _physics;
@@ -98,7 +98,7 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
                     contact.Fraction, contact.BoundaryId, contact.CoverageRegionHandle, contact.Overlap, contact.SpanOverlap);
             }
             float error = OrdinaryServedDomain.Upper(result.CertifiedErrorMetres + conversionError);
-            if (error > MovementQueryLease.CoverageSkinMetres) return NoTrace(MovementAvailability.Unresolved);
+            if (error > MovementQueryLease.CoverageSkinMetres) return NoTrace(MovementAvailability.PrecisionExceeded);
             sourceSpans[..result.SpansWritten].CopyTo(spans);
             sourceContacts[..result.ContactsWritten].CopyTo(contacts);
             return new(result.Availability, result.SpansWritten, result.RequiredSpanCapacity, result.ContactsWritten,
@@ -129,12 +129,12 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
         Vector2 axis = new(request.Body.Centre.X, request.Body.Centre.Z);
         Vector3 origin = Frame.PhysicsOrigin;
         bool localGround = _owner.GroundSpace == OrdinaryGroundSpace.Frame;
-        // World delegates keep the dry adapter's rounded translation. Frame delegates keep the original operands.
+        // World horizontal delegates keep the dry adapter's rounded translation. Frame delegates keep the original operands.
         float x = localGround ? axis.X : axis.X + origin.X;
         float z = localGround ? axis.Y : axis.Y + origin.Z;
         float height = _owner.GroundHeight(x, z);
         if (!float.IsFinite(height)) return MovementAvailability.Unresolved;
-        float local = localGround ? height : height - origin.Y;
+        float local = localGround ? height : Contacts.SupportedCapsulePose.LocalSupport(height, origin.Y);
         if (local > Witness.Scope.EnvelopeMax.Y) return MovementAvailability.Unresolved;
         if (local < Witness.Scope.EnvelopeMin.Y) return MovementAvailability.Known;
         OrdinaryMovementExtent extent = _owner.Registration.Extent;
@@ -143,7 +143,14 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
             return MovementAvailability.Unresolved;
         Vector3 normal = _owner.GroundNormal?.Invoke(x, z) ?? Vector3.UnitY;
         if (!MovementEnvironmentValidation.Unit(normal)) return MovementAvailability.Unresolved;
-        ground = new(axis, local, normal, _owner.AnalyticOwner, _owner.Space, null, _owner.Identity);
+        var translation = localGround ? default : new Contacts.SupportHeightTranslation(local, origin.Y, height);
+        try
+        {
+            _ = Contacts.SupportedCapsulePose.Centre(local, _owner.CapsuleHalfHeight, translation: translation);
+        }
+        catch (Contacts.ContactQueryFailure) { return MovementAvailability.Unresolved; }
+        ground = new(axis, local, normal, _owner.AnalyticOwner, _owner.Space, null, _owner.Identity)
+        { HeightTranslation = translation };
         return MovementAvailability.Known;
     }
 
@@ -178,7 +185,8 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
         _physics.AssertCurrent();
         if (_physics.Origin != Frame.PhysicsOrigin || _tuple != _owner.CaptureTuple(_physics) ||
             !_owner.WaterConfigurationCurrent() || _owner.Registration.Authenticate(_physics) != MovementAvailability.Known)
-            throw new InvalidOperationException("The ordinary environment pin is stale.");
+            throw new MovementReadException(MovementReadRefusal.EnvironmentPinStale,
+                "The ordinary environment pin is stale.") { Frame = Frame };
     }
 
     public void Dispose() { if (_disposed) return; _physics.AssertCurrent(); _disposed = true; }

@@ -159,7 +159,9 @@ offset break it. Cost: 8 bytes per frame for an opted-in client.
 `WorldClientConfig.ReceiveServerTick`, default false, sends the hello. `WorldClient.LatestServerTick` (`long`) is the
 newest ticked frame's tick this session, `-1` before one arrives and after a new attempt starts.
 `WorldClient.RemoteRenderTick` (`double`) is the fractional server tick remote bodies are drawn at, `-1` while unknown.
-`ReceiveServerTick` with `RequestUnreliableDeltaReplication` throws `ArgumentException` from the constructor (Q2).
+`ReceiveServerTick` with `RequestUnreliableDeltaReplication` throws `WorldConfigurationException`, an
+`ArgumentException`, with `ServerTickWithUnreliableReplication` and both names in `IncompatibleMembers` from
+the constructor (Q2).
 
 ### D4. How the render tick is computed
 
@@ -253,7 +255,7 @@ positive metres). `RouteApproachOptions.Stall` is `RouteStallOptions?`, default 
   waiting on cooldown.
 - `Suspended` and `InRange` count toward nothing. `Unreachable` and `UnsupportedTransition` count toward nothing and
   are returned as today.
-- A window of `N` ticks spans `N` intervals between `N + 1` counted samples. Net horizontal feet displacement under
+- A window of `N` ticks spans `N` intervals between `N + 1` counted samples. Accumulated horizontal feet travel under
   `TravelMetres` across the last window latches `Blocked` on that tick (the 16th counted tick for 15).
   This sample/interval distinction is ruling P6E-6, not an extra delay after the window is full.
 - Latched `Blocked` holds zero input until `InRange`, `Reset` or a change of target shape, range or capsule. The check

@@ -57,7 +57,7 @@ count. It is not a benchmark, a throughput claim or a randomized AOI sweep.
   changed in Grimhollow `a4557c8c`: MonsterKind 1 byte, ActorAction 30, ActorWorn 12, ActorFanfare 2,
   ActorVitalEffect 4, DurableLootSource 16 and CarcassState 50. Type ids start at `TileProtocol.FirstGameTypeId` in
   the consumer's order. Only widths are copied, payloads are opaque bytes. NetWorld built-ins are the real codecs:
-  position 16 bytes, MovementState 56, PlayerIdentity a 2-byte length then UTF-8, MovementOwnerState 8 on the owner's
+  position 16 bytes, MovementState 64 at wire generation 15, PlayerIdentity a 2-byte length then UTF-8, MovementOwnerState 8 on the owner's
   wire only.
 - **Entities.** The first visible entity is the viewer's own player. The rest cycle player, monster, carcass. Every
   player and monster carries the full actor mix (ActorAction, ActorWorn, ActorFanfare and ActorVitalEffect), a
@@ -81,22 +81,20 @@ count. It is not a benchmark, a throughput claim or a randomized AOI sweep.
 
 ### Result
 
-Command, run once to GREEN after implementation, from the worktree root:
+To reproduce the current wire-generation-15 rows from the worktree root:
 
 ```sh
 dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~DeltaConsumerSizeCharacterizationTests' --logger 'console;verbosity=detailed'
 ```
 
-Recorded on `feature/grimhollow-delta-networld` at commit `4f4a87853` (the test as run, on engine 20.20.0 staging),
-Release configuration, .NET 10.0.12, xUnit 2.9.2, Apple silicon macOS. Exit 0, 1 of 1 passed in 373 ms. Independent
-and actual sizes are equal in every row.
+Regenerated for wire generation 15 in Release on .NET 10. Independent and actual sizes are equal in every row.
 
 | Row | Visible | Frames | Payload B | Keyframe object B | Chunks | Chunk ticks | Changing datagram B | Retained projections | Retained B | Independent | Actual |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| owner-only | 1 | 8 | 162 | 235 | 1 | 1 | 131 | 32 | 5184 | FitsDelta | FitsDelta |
-| party-32 | 32 | 185 | 3886 | 4892 | 11 | 3 | 2042 | 32 | 124352 | OversizeDeltaKeyframe | OversizeDeltaKeyframe |
-| crowd-128 | 128 | 729 | 15310 | 19196 | 40 | 10 | 7866 | 32 | 489920 | OversizeDeltaKeyframe | OversizeDeltaKeyframe |
-| town-256 | 256 | 1453 | 30507 | 38230 | 79 | 20 | 15601 | 32 | 976224 | OversizeDeltaKeyframe | OversizeDeltaKeyframe |
+| owner-only | 1 | 8 | 170 | 243 | 1 | 1 | 139 | 32 | 5440 | FitsDelta | FitsDelta |
+| party-32 | 32 | 185 | 4062 | 5068 | 11 | 3 | 2218 | 32 | 129984 | OversizeDeltaKeyframe | OversizeDeltaKeyframe |
+| crowd-128 | 128 | 729 | 15998 | 19884 | 41 | 11 | 8554 | 32 | 511936 | OversizeDeltaKeyframe | OversizeDeltaKeyframe |
+| town-256 | 256 | 1453 | 31875 | 39598 | 81 | 21 | 16969 | 32 | 1020000 | OversizeDeltaKeyframe | OversizeDeltaKeyframe |
 
 A metadata-only boundary uses 1,024 entities of sixteen synthetic zero-byte extension tags each, outside the
 consumer's id range, and the same with one more tag on the first entity:
@@ -109,13 +107,13 @@ consumer's id range, and the same with one more tag on the first entity:
 ### Reading
 
 - Every complete projection in the table fits the approved keyframe, entity, frame and byte caps. The largest
-  keyframe, 256 visible, is 58 percent of 64 KiB and takes 20 replication ticks at four chunks per tick.
-- Only the owner-only row fits a routine datagram. A moving entity costs 91 bytes on the wire for position and
-  movement state alone, on top of the 40-byte empty datagram, so five moving entities fit 512 bytes and a sixth
-  overflows it. At 32 visible and above, a tick in which every actor moves produces a delta of 2 to 16 KB, which the
+  keyframe, 256 visible, is 60 percent of 64 KiB and takes 21 replication ticks at four chunks per tick.
+- Only the owner-only row fits a routine datagram. A moving entity costs 99 bytes on the wire for position and
+  movement state alone, on top of the 40-byte empty datagram, so four moving entities fit 512 bytes and a fifth
+  overflows it. At 32 visible and above, a tick in which every actor moves produces a delta of 2 to 17 KB, which the
   stream never fragments, so each such tick becomes a reliable keyframe repair. That is correct and bounded, but it
   removes the bandwidth benefit of the unreliable stream, and remote state stops updating for the length of each
-  keyframe barrier (up to 20 replication ticks at 256 visible). Dense views are tracked in [#1261](https://github.com/APKiwiOrg/KhaozEngine/issues/1261).
+  keyframe barrier (up to 21 replication ticks at 256 visible). Dense views are tracked in [#1261](https://github.com/APKiwiOrg/KhaozEngine/issues/1261).
 - Writer retention at the window stays under 1 MiB for 256 visible, within the 2 MiB budget, so no committed send is
   pruned for bytes before the window fires.
 - The frame cap is exact: 16,384 frames are served and one more is refused by both the writer and the stream.

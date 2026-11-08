@@ -41,12 +41,23 @@ namespace KhaozEngine.Gpu.Internal
         {
             if (spirv is null) throw new ArgumentNullException(nameof(spirv));
             if (spirv.Length < HeaderWords * 4 || spirv.Length % 4 != 0)
-                throw new ShaderValidationException($"{label}: not a SPIR-V module (length {spirv.Length}).");
+                throw new ShaderValidationException(ShaderValidationRefusal.SpirvLengthInvalid, $"{label}: not a SPIR-V module (length {spirv.Length}).")
+                {
+                    Label = label,
+                    ByteLength = spirv.Length,
+                    MinimumHeaderBytes = HeaderWords * 4,
+                    WordBytes = 4,
+                };
 
             uint[] words = ToWords(spirv);
             if (words[0] != Magic)
-                throw new ShaderValidationException(
-                    $"{label}: not a SPIR-V module (magic 0x{words[0]:X8}, expected 0x{Magic:X8}).");
+                throw new ShaderValidationException(ShaderValidationRefusal.SpirvMagicInvalid,
+                    $"{label}: not a SPIR-V module (magic 0x{words[0]:X8}, expected 0x{Magic:X8}).")
+                {
+                    Label = label,
+                    ActualMagic = words[0],
+                    ExpectedMagic = Magic,
+                };
 
             bool sawLocalSizeId = false;
             int i = HeaderWords;
@@ -56,7 +67,13 @@ namespace KhaozEngine.Gpu.Internal
                 int wordCount = (int)(words[i] >> 16);
                 // A zero word count would not advance, so a malformed module cannot spin here.
                 if (wordCount <= 0 || i + wordCount > words.Length)
-                    throw new ShaderValidationException($"{label}: truncated or malformed SPIR-V instruction stream.");
+                    throw new ShaderValidationException(ShaderValidationRefusal.SpirvInstructionMalformed, $"{label}: truncated or malformed SPIR-V instruction stream.")
+                    {
+                        Label = label,
+                        WordOffset = i,
+                        WordCount = wordCount,
+                        ModuleWordCount = words.Length,
+                    };
 
                 // OpExecutionMode: <entryPoint id> <mode> <literals...>. LocalSize carries x/y/z literals.
                 if (opcode == OpExecutionMode && wordCount >= 6 && words[i + 2] == ExecutionModeLocalSize)
@@ -75,11 +92,15 @@ namespace KhaozEngine.Gpu.Internal
                 i += wordCount;
             }
 
-            throw new ShaderValidationException(sawLocalSizeId
+            throw new ShaderValidationException(sawLocalSizeId ? ShaderValidationRefusal.ComputeLocalSizeSpecialized : ShaderValidationRefusal.ComputeLocalSizeMissing, sawLocalSizeId
                 ? $"{label}: workgroup size comes from specialization constants (LocalSizeId), which the engine " +
                   "cannot resolve. Declare a literal layout(local_size_x = ...) instead."
                 : $"{label}: no layout(local_size_x = ...) workgroup-size declaration found. A compute shader must " +
-                  "declare one.");
+                  "declare one.")
+            {
+                Label = label,
+                ExecutionMode = sawLocalSizeId ? "LocalSizeId" : null,
+            };
         }
 
         static uint[] ToWords(byte[] spirv)

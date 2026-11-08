@@ -210,7 +210,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// A test that stalls against neither would spin forever, so the fake counts its polls and throws instead,
     /// turning a hung suite into a named failure. Same treatment, and the same reason, as
-    /// <see cref="FakeD3D11FenceTimeline"/>.
+    /// <c>FakeD3D11FenceTimeline</c>.
     /// </para>
     /// </summary>
     internal sealed class FakeD3D11Completion : ID3D11CompletionRead

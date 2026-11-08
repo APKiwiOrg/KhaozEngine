@@ -12,6 +12,9 @@ internal static class TileWaterColumnCoverage
 
     sealed class Scratch
     {
+        internal int[] ColumnCandidates { get; } = new int[ContactLimit];
+        internal int[] BoundaryCandidates { get; } = new int[ContactLimit * 8];
+        internal int[] ExteriorCandidates { get; } = new int[ContactLimit * 8];
         internal float[] Cuts { get; } = new float[SpanLimit + 2];
         internal MovementCoverageSpan[] Spans { get; } = new MovementCoverageSpan[SpanLimit];
         internal MovementDomainContact[] Contacts { get; } = new MovementDomainContact[ContactLimit];
@@ -28,31 +31,51 @@ internal static class TileWaterColumnCoverage
     internal static MovementCoverageResult Trace(ReadOnlySpan<TileWaterColumn> columns,
         ReadOnlySpan<TileWaterBoundary> boundaries, ReadOnlySpan<TileWaterBoundary> exterior,
         in MovementMediumSweepQuery query, Vector3 origin, in MovementQueryIdentity identity,
-        Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
+        Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts, TileWaterFlatIndex? index = null)
     {
         if (!query.IsValid || !identity.IsValid)
             return Refuse(MovementAvailability.Invalid, identity);
-        foreach (TileWaterColumn column in columns)
-            if (column.Domain.WorldId != query.Body.CurrentSpace.WorldId)
-                return Refuse(MovementAvailability.Invalid, identity);
+        index ??= new(columns, boundaries, exterior);
+        if (!index.MatchesWorld(query.Body.CurrentSpace.WorldId)) return Refuse(MovementAvailability.Invalid, identity);
         Scratch scratch = t_scratch ??= new();
+        var selectedColumns = index.Columns.Select(query, origin, scratch.ColumnCandidates);
+        if (selectedColumns.Count == 0)
+        {
+            // Every patch is a subset of an owned column. With no potential column,
+            // the entire capsule path is certified dry with exactly zero geometric error.
+            if (spans.IsEmpty) return Refuse(MovementAvailability.CapacityExceeded, identity, 1);
+            spans[0] = new(0, 1, 0, 0, true);
+            return new(MovementAvailability.Known, 1, 1, 0, 0, 0, identity);
+        }
+        var selectedBoundaries = index.Boundaries.Select(query, origin, scratch.BoundaryCandidates);
+        var selectedExterior = index.Exterior.Select(query, origin, scratch.ExteriorCandidates);
         Span<float> cuts = scratch.Cuts;
         int cutCount = 2;
         cuts[0] = 0;
         cuts[1] = 1;
         double error = 0;
-        foreach (TileWaterColumn column in columns)
+        for (int c = 0; c < selectedColumns.Count; c++)
+        {
+            TileWaterColumn column = columns[selectedColumns[c]];
             if (!AddRange(column.Minimum, column.Maximum, query, origin, cuts, ref cutCount, ref error))
                 return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1);
-        foreach (TileWaterBoundary face in boundaries)
+        }
+        for (int f = 0; f < selectedBoundaries.Count; f++)
+        {
+            TileWaterBoundary face = boundaries[selectedBoundaries[f]];
             if (!AddRange(face.Minimum, face.Maximum, query, origin, cuts, ref cutCount, ref error))
                 return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1);
-        foreach (TileWaterBoundary face in exterior)
+        }
+        for (int f = 0; f < selectedExterior.Count; f++)
+        {
+            TileWaterBoundary face = exterior[selectedExterior[f]];
             if (!AddRange(face.Minimum, face.Maximum, query, origin, cuts, ref cutCount, ref error))
                 return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1);
+        }
         float certified = Upper(error);
-        if (!float.IsFinite(certified) || certified > MovementQueryLease.CoverageSkinMetres)
-            return Refuse(MovementAvailability.Unresolved, identity);
+        if (!float.IsFinite(certified)) return Refuse(MovementAvailability.Unresolved, identity);
+        if (certified > MovementQueryLease.CoverageSkinMetres)
+            return Refuse(MovementAvailability.PrecisionExceeded, identity);
         int spanCount = cutCount - 1;
         if (spanCount > SpanLimit) return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount);
         int contactCount = 0;
@@ -63,13 +86,15 @@ internal static class TileWaterColumnCoverage
             {
                 float enter = cuts[i], exit = cuts[i + 1];
                 int first = contactCount;
-                foreach (TileWaterColumn column in columns)
+                for (int c = 0; c < selectedColumns.Count; c++)
                 {
+                    TileWaterColumn column = columns[selectedColumns[c]];
                     TileCapsuleBoxPath.Range range = TileCapsuleBoxPath.Intersect(column.Minimum, column.Maximum, query, origin, enter, exit);
                     if (!range.Hit) continue;
                     bool hasFace = false;
-                    foreach (TileWaterBoundary face in boundaries)
+                    for (int f = 0; f < selectedBoundaries.Count; f++)
                     {
+                        TileWaterBoundary face = boundaries[selectedBoundaries[f]];
                         if (columns[face.Column] != column) continue;
                         var contactRange = TileCapsuleBoxPath.Intersect(face.Minimum, face.Maximum, query, origin, enter, exit);
                         if (!contactRange.Hit) continue;
@@ -83,12 +108,13 @@ internal static class TileWaterColumnCoverage
                             return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount, ContactLimit + 1, certified);
                     }
                 }
-                bool dry = DryCoverage(columns, exterior, query, origin, enter, exit);
+                bool dry = DryCoverage(columns, exterior, selectedColumns, selectedExterior, query, origin, enter, exit);
                 scratch.Spans[i] = new(enter, exit, first, contactCount - first, dry);
             }
             certified = Upper(error + locationError);
-            if (!float.IsFinite(certified) || certified > MovementQueryLease.CoverageSkinMetres)
-                return Refuse(MovementAvailability.Unresolved, identity);
+            if (!float.IsFinite(certified)) return Refuse(MovementAvailability.Unresolved, identity);
+            if (certified > MovementQueryLease.CoverageSkinMetres)
+                return Refuse(MovementAvailability.PrecisionExceeded, identity);
             if (spanCount > spans.Length || contactCount > contacts.Length)
                 return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount, contactCount, certified);
             scratch.Spans.AsSpan(0, spanCount).CopyTo(spans);
@@ -161,22 +187,28 @@ internal static class TileWaterColumnCoverage
     }
 
     static bool DryCoverage(ReadOnlySpan<TileWaterColumn> columns, ReadOnlySpan<TileWaterBoundary> exterior,
-        in MovementMediumSweepQuery query, Vector3 origin, float enter, float exit)
+        TileWaterCandidates selectedColumns, TileWaterCandidates selectedExterior, in MovementMediumSweepQuery query, Vector3 origin, float enter, float exit)
     {
         double middle = ((double)enter + exit) * 0.5;
         double x = (double)query.Body.Centre.X + origin.X + middle * query.Delta.X,
             y = (double)query.Body.Centre.Y + origin.Y + middle * query.Delta.Y,
             z = (double)query.Body.Centre.Z + origin.Z + middle * query.Delta.Z;
         bool centreInside = false;
-        foreach (TileWaterColumn column in columns)
+        for (int c = 0; c < selectedColumns.Count; c++)
+        {
+            TileWaterColumn column = columns[selectedColumns[c]];
             if (x >= column.Minimum.X && x <= column.Maximum.X && y >= column.Minimum.Y &&
                 y <= column.Maximum.Y && z >= column.Minimum.Z && z <= column.Maximum.Z)
             { centreInside = true; break; }
+        }
         if (!centreInside) return true;
         double squaredRadius = (double)query.Body.Radius * query.Body.Radius;
-        foreach (TileWaterBoundary face in exterior)
+        for (int f = 0; f < selectedExterior.Count; f++)
+        {
+            TileWaterBoundary face = exterior[selectedExterior[f]];
             if (TileCapsuleBoxPath.Intersect(face.Minimum, face.Maximum, query, origin, enter, exit).MinimumSquared < squaredRadius)
                 return true;
+        }
         return false;
     }
 

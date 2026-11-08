@@ -4,6 +4,6 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" />
+    <ProjectReference Include="../Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj" />
   </ItemGroup>
 </Project>

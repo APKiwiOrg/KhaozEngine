@@ -1,3 +1,5 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -82,7 +84,50 @@ public class PixelLabExportTests
     {
         string root = WriteExport();
         var ex = Assert.Throws<AssemblyException>(() => PixelLabExport.Load(root, "running"));
-        Assert.Contains("walking", ex.Message);
+        Assert.Equal(AssemblyRefusal.AnimationNotFound, ex.Reason);
+        Assert.Equal("running", ex.Animation);
+        Assert.Equal(new[] { "walking" }, ex.AvailableAnimations);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)ex.AvailableAnimations!)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((ICollection)ex.AvailableAnimations!).SyncRoot);
+    }
+
+    [Fact]
+    public void Available_animations_are_an_owned_snapshot()
+    {
+        string[] source = ["walking", "idle"];
+        var failure = new AssemblyException(AssemblyRefusal.AnimationNotFound, "refused")
+        { AvailableAnimations = source };
+        source[0] = "changed";
+
+        Assert.Equal(new[] { "walking", "idle" }, failure.AvailableAnimations);
+    }
+
+    [Theory]
+    [InlineData("missing-input", AssemblyRefusal.InputNotFound)]
+    [InlineData("no-metadata", AssemblyRefusal.MetadataNotFound)]
+    [InlineData("unnumbered-frame", AssemblyRefusal.FrameIndexUnparsable)]
+    public void Unusable_export_is_refused_with_its_reason(string fault, AssemblyRefusal reason)
+    {
+        // The passing control is Loads_directory_export_and_reports_character_name, which loads WriteExport whole.
+        string root = WriteExport();
+        string input = root;
+        string expectedPath = root;
+        switch (fault)
+        {
+            case "missing-input": input = expectedPath = Path.Combine(root, "absent"); break;
+            case "no-metadata": File.Delete(Path.Combine(root, "metadata.json")); break;
+            case "unnumbered-frame":
+                string numbered = "Hero/animations/walking/south/frame_000.png";
+                expectedPath = "Hero/animations/walking/south/frame_last.png";
+                File.Copy(Path.Combine(root, numbered), Path.Combine(root, expectedPath));
+                string meta = Path.Combine(root, "metadata.json");
+                File.WriteAllText(meta, File.ReadAllText(meta).Replace($"\"{numbered}\"", $"\"{expectedPath}\"", System.StringComparison.Ordinal));
+                break;
+        }
+
+        var ex = Assert.Throws<AssemblyException>(() => PixelLabExport.Load(input, "walking"));
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(expectedPath, ex.Path);
     }
 
     // Zips a synthetic export and returns the .zip path (inside its own temp dir, so the caller can delete both).
@@ -121,7 +166,8 @@ public class PixelLabExportTests
 
             var ex = Assert.Throws<AssemblyException>(
                 () => PixelLabExport.Load(zip, "running", extractionPath));
-            Assert.Contains("walking", ex.Message);    // the message that invites another attempt
+            Assert.Equal(AssemblyRefusal.AnimationNotFound, ex.Reason);
+            Assert.Equal(new[] { "walking" }, ex.AvailableAnimations);    // the list that invites another attempt
 
             Assert.False(Directory.Exists(extractionPath));
             Assert.True(Directory.Exists(unrelatedPath));

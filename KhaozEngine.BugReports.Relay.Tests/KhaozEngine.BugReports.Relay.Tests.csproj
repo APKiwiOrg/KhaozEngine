@@ -4,6 +4,8 @@
     <OutputType>Library</OutputType>
     <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.BugReports.Relay, per AGENTS.md. -->
     <RootNamespace>KhaozEngine.Tests</RootNamespace>
+    <!-- Canonical paths preserve the shared architecture helper's test-health exemption. -->
+    <ArchitectureTestSourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../test-shared'))</ArchitectureTestSourceRoot>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
@@ -22,5 +24,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="Golden/*.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="$(ArchitectureTestSourceRoot)/RefusalConstructorFence.cs" Link="Shared/RefusalConstructorFence.cs" />
   </ItemGroup>
 </Project>

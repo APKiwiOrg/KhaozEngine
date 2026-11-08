@@ -34,17 +34,26 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (fence is not VulkanGpuFence own || !ReferenceEquals(own.Timeline, _timeline))
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(fence is VulkanGpuFence ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ForeignBackend,
                     "MapForRead was handed a fence this native Vulkan device did not create. A fence is a value on "
                     + "its own device's timeline, so another device's fence would read signaled for work this "
-                    + "device never ran.", nameof(fence));
+                    + "device never ran.", nameof(fence))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = fence?.GetType(),
+                    Context = nameof(MapForRead),
+                    ResourceKind = "fence",
+                };
             }
 
             if (!own.Signaled)
             {
-                throw new InvalidOperationException(
+                throw new GpuStagingMapStateException(GpuStagingMapRefusal.CompletionNotSignaled,
                     "MapForRead was called with a fence that has not signaled, so the copy into the staging texture "
-                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.");
+                    + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.")
+                {
+                    Command = nameof(MapForRead),
+                };
             }
 
             return OpenTextureMap(target, GpuMapMode.Read);

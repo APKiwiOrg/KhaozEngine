@@ -12,6 +12,8 @@ using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.TileWorld;
 using static KhaozEngine.Tests.MapDocOracle.ShippedFoliageManifest;
 
+using Refusal = KhaozEngine.Tests.MapDocOracle.PrivateOracleDataRefusal;
+
 namespace KhaozEngine.Tests.MapDocOracle;
 
 /// <summary>One source object as the captured region bytes record it.</summary>
@@ -59,40 +61,45 @@ internal sealed class ShippedFoliageInputs
         FoliageComparisonPaths paths = Comparison(inputs.Provenance.Comparison);
         var source = new Snapshot(inputs);
         string[] worlds = inputs.Provenance.Paths.Select(p => p.Path).Where(p => System.IO.Path.GetFileName(p) == TileWorldFile.ManifestFileName).ToArray();
-        Require(worlds.Length == 1, "foliage extraction needs exactly one source world");
+        Require(worlds.Length == 1, Refusal.CorrespondenceMismatch, "foliage extraction needs exactly one source world");
         IReadOnlyList<FoliageSourceObject> captured = ReadSourceObjects(source, worlds[0]);
         FoliageManifest manifest = ShippedFoliageManifest.Read(source.Json(paths.FoliageManifestPath));
         source.Bytes(manifest.GeneratorPath);
         foreach (string helper in manifest.Helpers) source.Bytes(helper);
         var (world, catalogs) = ShippedSourceInventory.ReadWorld(inputs);
-        Require(world.TileSize == 1, "foliage source terrain conversion requires metre tiles");
+        Require(world.TileSize == 1, Refusal.SourceCoordinateContractMismatch, "foliage source terrain conversion requires metre tiles");
         Require(SameObjects(captured, world.AllObjects().Select(o => new FoliageSourceObject(o.Id, o.ArchetypeId, o.X, o.Z, o.Plane, o.Rotation,
-            (o.Tags ?? []).AsReadOnly())).ToArray()), "loaded object inventory differs from captured regions");
+            (o.Tags ?? []).AsReadOnly())).ToArray()), Refusal.CorrespondenceMismatch, "loaded object inventory differs from captured regions");
 
         byte[] nativeBytes = source.Bytes(paths.NativeDocumentPath).ToArray();
-        Require(FormatVersion(source.Json(paths.NativeDocumentPath)) == MapDocumentFile.CurrentFormatVersion, "foliage scaffold must declare the current format");
+        Require(FormatVersion(source.Json(paths.NativeDocumentPath)) == MapDocumentFile.CurrentFormatVersion, Refusal.VersionUnsupported, "foliage scaffold must declare the current format");
         MapDocument native = MapDocumentFile.LoadText(Encoding.UTF8.GetString(nativeBytes));
         Require(native.ResolverIdentity?.ResolverVersion == 2 && native.Tiles is null && native.Foliage is { PayloadVersion: 1 } &&
-            native.NativeAssets.Count != 0, "foliage scaffold requires a monolithic resolver two document with foliage");
+            native.NativeAssets.Count != 0,
+            native.ResolverIdentity is null ? Refusal.ValueRequired : native.ResolverIdentity.ResolverVersion != 2 ? Refusal.VersionUnsupported : native.Tiles is not null ? Refusal.KindUnsupported :
+            native.Foliage is null ? Refusal.ValueRequired : native.Foliage.PayloadVersion != 1 ? Refusal.VersionUnsupported : Refusal.ValueRequired,
+            "foliage scaffold requires a monolithic resolver two document with foliage");
         MapAssetClosure assets = MapAssetClosure.Load(native.NativeAssets, source);
-        Require(System.IO.Path.GetFileName(paths.NativeTiledManifestPath) == "map.json", "unattested tiled foliage store");
+        Require(System.IO.Path.GetFileName(paths.NativeTiledManifestPath) == "map.json", Refusal.DependencyUnattested, "unattested tiled foliage store");
         string tiledDirectory = System.IO.Path.GetDirectoryName(paths.NativeTiledManifestPath)!.Replace('\\', '/');
-        Require(tiledDirectory.Length != 0, "unattested tiled foliage store");
-        Require(FormatVersion(source.Json(paths.NativeTiledManifestPath)) == MapDocumentFile.CurrentFormatVersion, "foliage scaffold must declare the current format");
+        Require(tiledDirectory.Length != 0, Refusal.DependencyUnattested, "unattested tiled foliage store");
+        Require(FormatVersion(source.Json(paths.NativeTiledManifestPath)) == MapDocumentFile.CurrentFormatVersion, Refusal.VersionUnsupported, "foliage scaffold must declare the current format");
         string scratch = System.IO.Path.GetDirectoryName(inputs.ReportPath)!;
         MapDocument tiled = LoadTiled(source, tiledDirectory, scratch);
         Require(tiled.Foliage is { PayloadVersion: 1 } && tiled.Foliage.Layers.Select(l => l.Id).SequenceEqual(native.Foliage!.Layers.Select(l => l.Id)),
+            tiled.Foliage is null ? Refusal.ValueRequired : tiled.Foliage.PayloadVersion != 1 ? Refusal.VersionUnsupported : Refusal.CorrespondenceMismatch,
             "tiled foliage store differs from the monolithic scaffold");
 
         var check = new ShippedFoliageCorrespondence(world, catalogs, manifest, native, assets);
         IReadOnlyList<FoliageLayerBinding> layers = check.Layers();
         // Owner seats and poses are effective facts, so owners check against the scaffold's own captured context.
         MapFoliageContextResult capture = MapFoliageGenerationContext.Capture(native, assets);
-        Require(capture.Status == MapFoliageStatus.Complete && capture.Context is not null, "foliage scaffold capture refused");
+        Require(capture.Status == MapFoliageStatus.Complete && capture.Context is not null,
+            capture.Status != MapFoliageStatus.Complete ? Refusal.CorrespondenceMismatch : Refusal.ValueRequired, "foliage scaffold capture refused");
         (IReadOnlyList<FoliageOwnerEffect> effects, int owners) = check.Owners(capture.Context!);
         afterLoaders?.Invoke();
         // The released world, catalog and closure readers use files. Refuse loader-time changes before keeping any result.
-        Require(inputs.Provenance.Verify(inputs.SourceRoot) == 0, "foliage extraction changed during load");
+        Require(inputs.Provenance.Verify(inputs.SourceRoot) == 0, Refusal.ExtractionChanged, "foliage extraction changed during load");
         return new(world, catalogs, paths, manifest, layers, effects, owners, source, nativeBytes, tiledDirectory, scratch);
     }
 
@@ -120,7 +127,7 @@ internal sealed class ShippedFoliageInputs
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
                 File.WriteAllBytes(target, source.Bytes(path));
             }
-            Require(MapDocumentFile.VerifyTiled(store).Count == 0, "native tiled store does not verify");
+            Require(MapDocumentFile.VerifyTiled(store).Count == 0, Refusal.CorrespondenceMismatch, "native tiled store does not verify");
             return MapDocumentFile.LoadTiled(store);
         }
         finally { Directory.Delete(root, true); }
@@ -129,7 +136,7 @@ internal sealed class ShippedFoliageInputs
     static int FormatVersion(JsonElement document)
     {
         Require(document.ValueKind == JsonValueKind.Object && document.TryGetProperty("formatVersion", out JsonElement version) &&
-            version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out _), "foliage scaffold must declare the current format");
+            version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out _), Refusal.SchemaShapeInvalid, "foliage scaffold must declare the current format");
         return document.GetProperty("formatVersion").GetInt32();
     }
 
@@ -140,35 +147,35 @@ internal sealed class ShippedFoliageInputs
         string directory = System.IO.Path.GetDirectoryName(worldPath)!.Replace('\\', '/');
         Require(world.ValueKind == JsonValueKind.Object && world.TryGetProperty("catalogPaths", out JsonElement catalogs) &&
             catalogs.ValueKind == JsonValueKind.Array && world.TryGetProperty("regions", out JsonElement found) &&
-            found.ValueKind == JsonValueKind.Array, "incomplete source world");
+            found.ValueKind == JsonValueKind.Array, Refusal.SchemaShapeInvalid, "incomplete source world");
         JsonElement regions = world.GetProperty("regions");
         catalogs = world.GetProperty("catalogPaths");
         foreach (JsonElement catalog in catalogs.EnumerateArray())
-            source.Json(source.RelativeTo(directory, catalog.GetString() ?? throw new InvalidDataException("incomplete source world")));
+            source.Json(source.RelativeTo(directory, catalog.GetString() ?? throw new PrivateOracleDataException(Refusal.ValueRequired, "incomplete source world")));
         var seen = new HashSet<RegionCoord>();
         var objects = new List<FoliageSourceObject>();
         foreach (JsonElement region in regions.EnumerateArray())
         {
             Shape(region, "rx", "rz", "hash");
             var coord = new RegionCoord(region.GetProperty("rx").GetInt32(), region.GetProperty("rz").GetInt32());
-            Require(seen.Add(coord), "duplicate source region");
+            Require(seen.Add(coord), Refusal.IdentityNotUniqueOrCanonical, "duplicate source region");
             string path = source.RelativeTo(directory, "regions/" + TileWorldFile.RegionFileName(coord));
-            Require(Hash(source.Bytes(path)) == Text(region, "hash"), "source region hash differs from manifest");
+            Require(Hash(source.Bytes(path)) == Text(region, "hash"), Refusal.AttestedDigestMismatch, "source region hash differs from manifest");
             JsonElement body = source.Json(path);
-            Require(body.GetProperty("rx").GetInt32() == coord.Rx && body.GetProperty("rz").GetInt32() == coord.Rz, "source region identity mismatch");
+            Require(body.GetProperty("rx").GetInt32() == coord.Rx && body.GetProperty("rz").GetInt32() == coord.Rz, Refusal.SourceCoordinateContractMismatch, "source region identity mismatch");
             if (!body.TryGetProperty("objects", out JsonElement rows) || rows.ValueKind == JsonValueKind.Null) continue;
             foreach (JsonElement row in rows.EnumerateArray())
             {
                 string[] tags = row.TryGetProperty("tags", out JsonElement t) && t.ValueKind == JsonValueKind.Array
-                    ? t.EnumerateArray().Select(v => v.GetString() ?? throw new InvalidDataException("null source tag")).ToArray() : [];
+                    ? t.EnumerateArray().Select(v => v.GetString() ?? throw new PrivateOracleDataException(Refusal.ValueRequired, "null source tag")).ToArray() : [];
                 var item = new FoliageSourceObject(row.GetProperty("id").GetInt64(), row.GetProperty("archetypeId").GetString() ?? "",
                     row.GetProperty("x").GetInt32(), row.GetProperty("z").GetInt32(), row.GetProperty("plane").GetInt32(),
                     row.TryGetProperty("rotation", out JsonElement r) ? r.GetInt32() : 0, tags.AsReadOnly());
-                Require(RegionCoord.Of(item.X, item.Z) == coord, "source object has the wrong region");
+                Require(RegionCoord.Of(item.X, item.Z) == coord, Refusal.SourceCoordinateContractMismatch, "source object has the wrong region");
                 objects.Add(item);
             }
         }
-        Require(objects.Select(o => o.Id).Distinct().Count() == objects.Count, "duplicate source object");
+        Require(objects.Select(o => o.Id).Distinct().Count() == objects.Count, Refusal.IdentityNotUniqueOrCanonical, "duplicate source object");
         return objects.AsReadOnly();
     }
 
@@ -194,11 +201,11 @@ internal sealed class ShippedFoliageInputs
         internal Snapshot(PrivateOracleInputs inputs)
         {
             _root = inputs.SourceRoot;
-            Require(inputs.Provenance.Verify(_root) == 0, "foliage extraction changed before capture");
+            Require(inputs.Provenance.Verify(_root) == 0, Refusal.ExtractionChanged, "foliage extraction changed before capture");
             foreach (ShippedSourcePath path in inputs.Provenance.Paths)
             {
                 byte[] bytes = File.ReadAllBytes(FullPath(path.Path));
-                Require(Hash(bytes) == path.Sha256, "stale attested foliage dependency");
+                Require(Hash(bytes) == path.Sha256, Refusal.AttestedDigestMismatch, "stale attested foliage dependency");
                 _bytes.Add(path.Path, bytes);
             }
         }
@@ -210,27 +217,32 @@ internal sealed class ShippedFoliageInputs
             foreach (string part in path.Split('/'))
             {
                 current = System.IO.Path.Combine(current, part);
-                Require(new FileInfo(current).LinkTarget is null && new DirectoryInfo(current).LinkTarget is null, "linked foliage dependency");
+                RequireUnlinkedDependencyForTests(current);
             }
             return current;
         }
 
+        // Value-taking seam reaches the post-verification link race without racing the filesystem.
+        internal static void RequireUnlinkedDependencyForTests(string path) =>
+            Require(new FileInfo(path).LinkTarget is null && new DirectoryInfo(path).LinkTarget is null,
+                Refusal.SymlinkUnsupported, "linked foliage dependency");
+
         internal string RelativeTo(string directory, string path)
         {
             Require(!string.IsNullOrWhiteSpace(path) && !System.IO.Path.IsPathRooted(path) && !path.Contains('\\') && !path.Contains(':') &&
-                !path.Any(char.IsControl), "unsafe dependency path");
+                !path.Any(char.IsControl), string.IsNullOrWhiteSpace(path) ? Refusal.ValueRequired : Refusal.PathUnsafe, "unsafe dependency path");
             string full = System.IO.Path.GetFullPath(System.IO.Path.Combine(_root, directory, path));
-            Require(full.StartsWith(_root + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal), "dependency escapes extraction");
+            Require(full.StartsWith(_root + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal), Refusal.PathUnsafe, "dependency escapes extraction");
             return System.IO.Path.GetRelativePath(_root, full).Replace('\\', '/');
         }
 
         internal byte[] Bytes(string path) =>
-            _bytes.TryGetValue(SafePath(path), out byte[]? bytes) ? bytes : throw new InvalidDataException("unattested foliage dependency");
+            _bytes.TryGetValue(SafePath(path), out byte[]? bytes) ? bytes : throw new PrivateOracleDataException(Refusal.DependencyUnattested, "unattested foliage dependency");
 
         internal IEnumerable<string> Under(string directory)
         {
             string[] paths = _bytes.Keys.Where(p => p.StartsWith(directory + "/", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray();
-            Require(paths.Length != 0, "unattested tiled foliage store");
+            Require(paths.Length != 0, Refusal.DependencyUnattested, "unattested tiled foliage store");
             return paths;
         }
 

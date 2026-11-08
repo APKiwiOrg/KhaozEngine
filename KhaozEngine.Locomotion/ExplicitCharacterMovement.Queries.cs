@@ -8,6 +8,7 @@ public static partial class ExplicitCharacterMovement
     internal static MovementStepOutcome WaterPlacement(in MovementBodyQuery body, in MoveTuning tuning,
         in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary)
     {
+        MovementPlacementDiagnostics.Validate();
         if (boundary is not null)
         {
             MovementAvailability availability = boundary.Classify(body.Centre, out bool inside);
@@ -34,8 +35,12 @@ public static partial class ExplicitCharacterMovement
         return new(new(held, state.Frame, null), outcome);
     }
 
-    internal static MovementStepOutcome Outcome(MovementAvailability status) => status == MovementAvailability.Invalid
-        ? MovementStepOutcome.EnvironmentInvalid : MovementStepOutcome.EnvironmentUnresolved;
+    internal static MovementStepOutcome Outcome(MovementAvailability status) => status switch
+    {
+        MovementAvailability.Invalid => MovementStepOutcome.EnvironmentInvalid,
+        MovementAvailability.PrecisionExceeded => MovementStepOutcome.PrecisionRefused,
+        _ => MovementStepOutcome.EnvironmentUnresolved
+    };
 
     internal static bool ValidCarriedState(in MoveState state) =>
         Nonnegative(state.TimeSinceGrounded) && Nonnegative(state.JumpBufferRemaining) &&

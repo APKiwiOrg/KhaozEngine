@@ -10,7 +10,9 @@ public enum MovementAvailability
     Known,
     Stale,
     Invalid,
-    CapacityExceeded
+    CapacityExceeded,
+    /// <summary>Finite geometric uncertainty exceeds the existing coverage precision budget.</summary>
+    PrecisionExceeded
 }
 
 /// <summary>An upright body in the leased physics frame, with canonical selection context.</summary>

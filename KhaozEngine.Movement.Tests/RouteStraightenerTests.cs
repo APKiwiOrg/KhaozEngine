@@ -58,9 +58,10 @@ public class RouteStraightenerTests
             Vector2 before = index == 0 ? new Vector2(start.X, start.Z) : raw.Waypoints[index - 1].Position;
             Vector2 at = raw.Waypoints[index].Position, after = raw.Waypoints[index + 1].Position;
             Assert.True(Direction(before, at) != Direction(at, after), $"kept waypoint {index} is not a raw bend");
-            (int x, int z) = CellIndex(-4f, at);
-            int distance = Math.Max(Math.Max(10 - x, x - 13), Math.Max(5 - z, z - 11));
-            Assert.InRange(distance, 1, 2);
+            // #1712 F2 changes equal-price raw chains. Keep a geometric corner obligation,
+            // not the former float queue's one/two-cell bend position.
+            Vector3 previousKept = i == 0 ? start : Flat3(path.Waypoints[i - 1].Position);
+            Assert.False(ShortcutAllowed(previousKept, Flat3(path.Waypoints[i + 1].Position)));
         }
         Vector3 from = start;
         foreach (NavWaypoint kept in path.Waypoints)
@@ -68,6 +69,15 @@ public class RouteStraightenerTests
             Vector3 to = Flat3(kept.Position);
             Assert.True(guard.Allows(from, to), $"kept segment {from} -> {to} leaves standable cells");
             from = to;
+        }
+
+        bool ShortcutAllowed(Vector3 sourceFeet, Vector3 targetFeet)
+        {
+            Vector2 a = new(sourceFeet.X, sourceFeet.Z), b = new(targetFeet.X, targetFeet.Z);
+            (Vector2 leftA, Vector2 leftB) = MinusSide(a, b);
+            (Vector2 rightB, Vector2 rightA) = MinusSide(b, a);
+            return guard.Allows(sourceFeet, targetFeet) && guard.Allows(Flat3(leftA), Flat3(leftB)) &&
+                guard.Allows(Flat3(rightA), Flat3(rightB));
         }
     }
 
@@ -101,8 +111,11 @@ public class RouteStraightenerTests
     public void SideLineRefusalBesideAWall()
     {
         NavSpace space = Surfaces(-4f, -4f);
-        var planner = new GridPathPlanner(space);
         Vector3 start = Centre(-4f, 2, 2), goal = Centre(-4f, 10, 6);
+        // #1712 F1 changes A* order. Keep every candidate centre line on the same clear ray,
+        // so only a side-line refusal can prevent the shortcut, independent of planner ties.
+        NavPath raw = CellRoute(NavPathStatus.Complete, (4, 3), (6, 4), (8, 5), (10, 6));
+        var planner = new ScriptPlanner((_, _) => raw);
         Vector2 a = new(start.X, start.Z), b = new(goal.X, goal.Z);
         var centre = PointsAlong(a, b).Select(p => CellIndex(-4f, p)).ToHashSet();
         (Vector2 sideA, Vector2 sideB) = MinusSide(a, b);
@@ -111,7 +124,6 @@ public class RouteStraightenerTests
         var guard = new Sampled(standable, -4f, -4f);
         var straightener = new RouteStraightener(planner, space, guard.Allows);
         var openStraightener = new RouteStraightener(planner, space, new Sampled(Everywhere, -4f, -4f).Allows);
-        NavPath raw = planner.FindPath(start, GoalAt(goal), Tuning.CapsuleRadius, PathQueryBudget.Default);
 
         NavPath path = straightener.FindPath(start, GoalAt(goal), Tuning.CapsuleRadius, PathQueryBudget.Default);
 
@@ -130,10 +142,9 @@ public class RouteStraightenerTests
         Assert.Equal(1, above);
         Assert.Equal(1, below);
 
-        NavSpace open = Surfaces(-4f, -4f);
         Vector3 start = Centre(-4f, 2, 2), goal = Centre(-4f, 12, 7);
-        NavPath raw = new GridPathPlanner(open).FindPath(start, GoalAt(goal), Tuning.CapsuleRadius, PathQueryBudget.Default);
-        var cells = raw.Waypoints.Select(w => CellIndex(-4f, w.Position)).ToArray();
+        // #1712 F2: mirror the same authored centre-clear input instead of an A* tie choice.
+        var cells = new[] { (X: 4, Z: 3), (X: 6, Z: 4), (X: 8, Z: 5), (X: 10, Z: 6), (X: 12, Z: 7) };
         Vector2 a = new(start.X, start.Z), b = new(goal.X, goal.Z);
         var centre = PointsAlong(a, b).Select(p => CellIndex(-4f, p)).ToHashSet();
         (Vector2 sideA, Vector2 sideB) = MinusSide(a, b);

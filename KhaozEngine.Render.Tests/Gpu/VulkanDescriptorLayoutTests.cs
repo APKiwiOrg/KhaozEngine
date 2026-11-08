@@ -165,11 +165,14 @@ namespace KhaozEngine.Tests.Gpu
         {
             (VulkanDescriptorSetLayoutCache cache, FakeVulkanDescriptorApi api) = NewCache();
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => new VulkanResourceLayout(
+            GpuResourceLayoutException ex = Assert.Throws<GpuResourceLayoutException>(() => new VulkanResourceLayout(
                 cache, new GpuResourceLayoutDescription(E("Windowed", kind, dynamic: true))));
 
-            Assert.Contains("Windowed", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("V-D4", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind, ex.Reason);
+            Assert.Equal("Windowed", ex.ElementName);
+            Assert.Equal(kind, ex.ResourceKind);
+            Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
+            Assert.Equal("element", ex.ParamName);
             Assert.Empty(api.Events);
         }
 
@@ -348,11 +351,13 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ALayoutFromAnotherBackend_IsRefusedByName()
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => VulkanResourceLayout.Require(new ForeignLayout(), "a resource set"));
 
-            Assert.Contains("native Vulkan backend", ex.Message, StringComparison.Ordinal);
-            Assert.Throws<ArgumentException>(() => VulkanResourceLayout.Require(null, "a resource set"));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, ex.ExpectedBackend);
+            Assert.Equal(typeof(ForeignLayout), ex.ActualType);
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => VulkanResourceLayout.Require(null, "a resource set"));
         }
 
         sealed class ForeignLayout : IGpuResourceLayout

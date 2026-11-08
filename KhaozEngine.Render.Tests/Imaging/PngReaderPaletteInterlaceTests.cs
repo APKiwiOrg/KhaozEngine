@@ -48,20 +48,65 @@ public class PngReaderPaletteInterlaceTests
         Assert.Equal(ExpandPalette(indices, alpha), image.Bytes);
     }
 
-    [Fact]
-    public void Malformed_palette_images_are_rejected()
+    [Theory]
+    [InlineData(PngDecodeRefusal.PaletteMissing)]
+    [InlineData(PngDecodeRefusal.PaletteIndexOutsideRange)]
+    [InlineData(PngDecodeRefusal.PaletteTransparencyTooLong)]
+    [InlineData(PngDecodeRefusal.PaletteTransparencyBeforePalette)]
+    [InlineData(PngDecodeRefusal.PaletteLengthInvalid)]
+    [InlineData(PngDecodeRefusal.PaletteExceedsIndexDepth)]
+    public void Malformed_palette_images_are_rejected(PngDecodeRefusal reason)
     {
-        byte[] one = Filtered(1, 1, 8, new byte[] { 0 }, interlaced: false);
-        byte[] outOfRange = Filtered(1, 1, 8, new byte[] { 4 }, interlaced: false);
+        byte[] one = { 0, 0 };
         byte[] plte = Chunk("PLTE", Palette);
+        byte[] png = reason switch
+        {
+            PngDecodeRefusal.PaletteMissing => Png(1, 1, 8, 3, 0, one),
+            PngDecodeRefusal.PaletteIndexOutsideRange => Png(2, 1, 8, 3, 0, new byte[] { 0, 0, 4 }, plte),
+            PngDecodeRefusal.PaletteTransparencyTooLong => Png(1, 1, 8, 3, 0, one, plte, Chunk("tRNS", new byte[5])),
+            PngDecodeRefusal.PaletteTransparencyBeforePalette => Png(1, 1, 8, 3, 0, one, Chunk("tRNS", new byte[1]), plte),
+            PngDecodeRefusal.PaletteLengthInvalid => Png(1, 1, 8, 3, 0, one, Chunk("PLTE", new byte[4])),
+            _ => Png(1, 1, 1, 3, 0, one, plte),
+        };
+        Assert.Equal(new byte[] { 10, 20, 30 }, PngReader.Decode(Png(1, 1, 8, 3, 0, one, plte)).Bytes);
 
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(Png(1, 1, 8, 3, 0, one)));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(Png(1, 1, 8, 3, 0, outOfRange, plte)));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(Png(1, 1, 8, 3, 0, one, plte, Chunk("tRNS", new byte[5]))));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(Png(1, 1, 8, 3, 0, one, Chunk("tRNS", new byte[1]), plte)));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(Png(1, 1, 8, 3, 0, one, Chunk("PLTE", new byte[4]))));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(Png(1, 1, 1, 3, 0, new byte[] { 0, 0 }, plte)));
-        Assert.Throws<NotSupportedException>(() => PngReader.Decode(Png(1, 1, 16, 3, 0, one, plte)));
+        PngDecodeDataException error = Assert.Throws<PngDecodeDataException>(() => PngReader.Decode(png));
+
+        Assert.Equal(reason, error.Reason);
+        switch (reason)
+        {
+            case PngDecodeRefusal.PaletteMissing: Assert.Equal(3, error.ColorType); break;
+            case PngDecodeRefusal.PaletteIndexOutsideRange:
+                Assert.Equal(1, error.PixelIndex);
+                Assert.Equal(4, error.Index);
+                Assert.Equal(4, error.PaletteCount);
+                break;
+            case PngDecodeRefusal.PaletteTransparencyTooLong:
+                Assert.Equal(5, error.AlphaCount);
+                Assert.Equal(4, error.PaletteCount);
+                break;
+            case PngDecodeRefusal.PaletteTransparencyBeforePalette: Assert.Equal(33, error.Offset); break;
+            case PngDecodeRefusal.PaletteLengthInvalid: Assert.Equal(4, error.ByteLength); break;
+            case PngDecodeRefusal.PaletteExceedsIndexDepth:
+                Assert.Equal(4, error.EntryCount);
+                Assert.Equal(1, error.BitDepth);
+                break;
+        }
+    }
+
+    [Fact]
+    public void Palette_bit_depths_outside_the_format_are_rejected()
+    {
+        byte[] plte = Chunk("PLTE", Palette);
+        Assert.Equal(8, PngReader.Decode(Png(1, 1, 8, 3, 0, new byte[] { 0, 0 }, plte)).BitDepth);
+
+        PngDecodeNotSupportedException error = Assert.Throws<PngDecodeNotSupportedException>(() =>
+            PngReader.Decode(Png(1, 1, 16, 3, 0, new byte[] { 0, 0 }, plte)));
+
+        Assert.IsAssignableFrom<NotSupportedException>(error);
+        Assert.Equal(PngDecodeRefusal.BitDepthUnsupported, error.Reason);
+        Assert.Equal(16, error.BitDepth);
+        Assert.Equal(3, error.ColorType);
     }
 
     [Fact]
@@ -104,9 +149,19 @@ public class PngReaderPaletteInterlaceTests
     [Fact]
     public void Unknown_interlace_methods_and_oversized_palettes_are_rejected()
     {
-        Assert.Throws<NotSupportedException>(() => PngReader.Decode(BuildPng(1, 1, 8, 0, 2, new byte[] { 0, 0 })));
+        Assert.Equal(new byte[] { 0 }, PngReader.Decode(BuildPng(1, 1, 8, 0, 1, new byte[] { 0, 0 })).Bytes);
+        PngDecodeNotSupportedException interlace = Assert.Throws<PngDecodeNotSupportedException>(() =>
+            PngReader.Decode(BuildPng(1, 1, 8, 0, 2, new byte[] { 0, 0 })));
+        Assert.Equal(PngDecodeRefusal.InterlaceUnsupported, interlace.Reason);
+        Assert.Equal(2, interlace.InterlaceMethod);
+
         byte[] huge = Join(Signature, Chunk("IHDR", Header(20_000, 20_000, 1, 3, 0)), Chunk("IEND", Array.Empty<byte>()));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(huge));
+        PngDecodeDataException allocation = Assert.Throws<PngDecodeDataException>(() => PngReader.Decode(huge));
+        Assert.Equal(PngDecodeRefusal.DecodedAllocationCapExceeded, allocation.Reason);
+        Assert.Equal(400_000_000L, allocation.RasterBytes);
+        Assert.Equal(1_600_000_000L, allocation.ExpandedBytes);
+        Assert.Equal(50_020_000L, allocation.FilteredBytes);
+        Assert.Equal(PngReader.MaxDecodedBytes, allocation.MaximumBytes);
     }
 
     internal static byte[] Png(int width, int height, int depth, int color, int interlace, byte[] filtered,

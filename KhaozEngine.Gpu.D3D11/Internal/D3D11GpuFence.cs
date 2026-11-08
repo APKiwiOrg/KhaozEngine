@@ -95,10 +95,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (ReferenceEquals(_owner, owner)) return;
 
-            throw new ArgumentException(
+            throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.DifferentDevice,
                 "That fence was created by a DIFFERENT native Direct3D 11 device, so it names a value on another "
                 + "device's timeline and would read signalled for work this device never ran. Use a fence from the "
-                + "device that submitted the copy.", parameterName);
+                + "device that submitted the copy.", parameterName)
+            {
+                ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                ResourceKind = "fence",
+                Context = parameterName,
+            };
         }
 
         /// <summary>

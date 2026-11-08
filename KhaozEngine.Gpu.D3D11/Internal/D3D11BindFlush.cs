@@ -391,10 +391,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
                 if (record.Set is not D3D11ResourceSet set)
                 {
-                    throw new ArgumentException(
+                    throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                         $"A {record.Set.GetType().Name} was bound at slot {slot} of the native Direct3D 11 "
                         + "backend. A resource set this backend created carries the register numbering the bind "
-                        + "flush needs, and a set from another backend carries another backend's.");
+                        + "flush needs, and a set from another backend carries another backend's.", null)
+                    {
+                        ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                        ActualType = record.Set.GetType(),
+                        ExpectedType = typeof(D3D11ResourceSet),
+                        ResourceKind = "resource set",
+                        Context = "resource-set bind",
+                        ResourceIndex = (int)slot,
+                        PipelineKind = arm == D3D11PipelineArm.Compute ? "compute" : "graphics",
+                    };
                 }
 
                 D3D11RegisterCounts baseCounts = D3D11RegisterScheme.BaseFor(layouts, slot);

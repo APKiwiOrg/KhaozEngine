@@ -136,7 +136,12 @@ namespace KhaozEngine.Tests.Render3D
             scene.AddRigidMesh(mesh, Matrix4x4.Identity);
             string path = Path.Combine(Path.GetTempPath(), $"ke_plain_{Guid.NewGuid():N}.glb");
             scene.ToGltf2().SaveGLB(path);
-            try { Assert.Throws<InvalidOperationException>(() => GltfLoader.LoadSkinned(path)); }
+            try
+            {
+                var error = Assert.Throws<GltfImportStateException>(() => GltfLoader.LoadSkinned(path));
+                Assert.Equal(GltfImportRefusal.NoSkinnedMesh, error.Reason);
+                Assert.Equal(path, error.Identity);
+            }
             finally { File.Delete(path); }
         }
     }

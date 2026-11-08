@@ -12,7 +12,12 @@ public sealed class CompilerBudgetTests
     {
         var (s, p) = CompilerFixtures.OneCell(0, 0, 0, 0, CompilerFixtures.Full);
         p.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.South, 64));                          // 66 children plus 1
-        Assert.Contains("66", Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(s, p, maxFaces: 66)).Message);
+        var error = Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(s, p, maxFaces: 66));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("MaxFacesPerPatch", error.Budget);
+        Assert.Equal(67, error.ActualCount);
+        Assert.Equal(66, error.Limit);
+        Assert.Equal(p.Key, error.Patch);
         Assert.Equal(67, MapSurfaceCompiler.Compile(s, p, maxFaces: 67).Faces.Count);
     }
 

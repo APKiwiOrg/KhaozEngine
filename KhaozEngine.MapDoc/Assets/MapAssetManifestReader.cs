@@ -36,13 +36,13 @@ internal static class MapAssetManifestReader
                     !Enum.IsDefined(parsed) || kind.GetString() != parsed.ToString())
                     throw new JsonException("Resource kind must be a supported exact enum name.");
             }
-            foreach (MapAssetDoc asset in manifest.Assets) ValidateAsset(asset);
-            foreach (MapResourceDoc resource in manifest.Resources) ValidateResource(resource);
+            for (int i = 0; i < manifest.Assets.Count; i++) ValidateAsset(manifest.Assets[i], $"$.assets[{i}]");
+            for (int i = 0; i < manifest.Resources.Count; i++) ValidateResource(manifest.Resources[i], $"$.resources[{i}]");
             return manifest;
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException($"Invalid native manifest '{id}': {ex.Message}", ex);
+            throw MapDocumentJsonErrors.Wrap(ex, null, $"Invalid native manifest '{id}': {ex.Message}", resourceId: id);
         }
     }
 
@@ -61,73 +61,92 @@ internal static class MapAssetManifestReader
             foreach (JsonElement item in element.EnumerateArray()) RejectDuplicateMembers(item);
     }
 
-    internal static void ValidateReference(MapAssetRef reference)
+    internal static void ValidateReference(MapAssetRef reference, string fieldPath = "$")
     {
-        if (reference is null) throw new MapDocumentException("Native resource reference must not be null.");
-        RequireText(reference.Id, "reference.id");
-        RequireText(reference.Path, "reference.path");
+        if (reference is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Native resource reference must not be null.")
+        { FieldPath = fieldPath };
+        RequireText(reference.Id, "reference.id", Field(fieldPath, "id"), resourceId: reference.Id);
+        RequireText(reference.Path, "reference.path", Field(fieldPath, "path"), resourceId: reference.Id);
         if (reference.PayloadVersion != 1)
-            throw new MapDocumentException($"Unsupported payload version for resource '{reference.Id}'.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaPayloadVersionUnsupported, $"Unsupported payload version for resource '{reference.Id}'.")
+            { ResourceId = reference.Id, FieldPath = Field(fieldPath, "payloadVersion"), ActualVersion = reference.PayloadVersion, SupportedVersions = [1] };
         if (reference.Sha256 is null || reference.Sha256.Length != 64)
-            throw new MapDocumentException($"Resource '{reference.Id}' needs a lowercase SHA-256 digest.");
+            throw new MapDocumentException(MapDocumentRefusal.DigestMalformed, $"Resource '{reference.Id}' needs a lowercase SHA-256 digest.")
+            { ResourceId = reference.Id, FieldPath = Field(fieldPath, "sha256") };
         foreach (char c in reference.Sha256)
             if (!(c is >= '0' and <= '9' or >= 'a' and <= 'f'))
-                throw new MapDocumentException($"Resource '{reference.Id}' needs a lowercase SHA-256 digest.");
+                throw new MapDocumentException(MapDocumentRefusal.DigestMalformed, $"Resource '{reference.Id}' needs a lowercase SHA-256 digest.")
+                { ResourceId = reference.Id, FieldPath = Field(fieldPath, "sha256") };
     }
 
-    internal static void ValidateResource(MapResourceDoc resource)
+    internal static void ValidateResource(MapResourceDoc resource, string fieldPath = "$")
     {
-        if (resource is null) throw new MapDocumentException("Resource must not be null.");
-        ValidateReference(resource.Reference);
+        if (resource is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Resource must not be null.")
+        { FieldPath = fieldPath };
+        ValidateReference(resource.Reference, Field(fieldPath, "reference"));
         if (!Enum.IsDefined(resource.Kind))
-            throw new MapDocumentException($"Unsupported resource kind '{resource.Kind}' for '{resource.Reference.Id}'.");
-        RequireIds(resource.Dependencies, "resource.dependencies");
+            throw new MapDocumentException(MapDocumentRefusal.AssetKindUnsupported, $"Unsupported resource kind '{resource.Kind}' for '{resource.Reference.Id}'.")
+            { ResourceId = resource.Reference.Id, ActualResourceKind = resource.Kind, FieldPath = Field(fieldPath, "kind") };
+        RequireIds(resource.Dependencies, "resource.dependencies", Field(fieldPath, "dependencies"), resourceId: resource.Reference.Id);
     }
 
-    static void ValidateAsset(MapAssetDoc asset)
+    static void ValidateAsset(MapAssetDoc asset, string fieldPath)
     {
-        if (asset is null) throw new MapDocumentException("Asset must not be null.");
-        RequireText(asset.Id, "asset.id");
-        RequireText(asset.MeshResourceId, "asset.meshResourceId");
-        if (asset.CollisionResourceId is not null) RequireText(asset.CollisionResourceId, "asset.collisionResourceId");
-        if (asset.SelectionResourceId is not null) RequireText(asset.SelectionResourceId, "asset.selectionResourceId");
-        RequireIds(asset.SupportResourceIds, "asset.supportResourceIds");
-        RequireIds(asset.MaterialResourceIds, "asset.materialResourceIds");
-        RequireIds(asset.LodResourceIds, "asset.lodResourceIds");
-        RequireIds(asset.LightResourceIds, "asset.lightResourceIds");
-        RequireText(asset.Source, "asset.source");
-        RequireText(asset.License, "asset.license");
+        if (asset is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Asset must not be null.")
+        { FieldPath = fieldPath };
+        RequireText(asset.Id, "asset.id", Field(fieldPath, "id"), asset.Id);
+        RequireText(asset.MeshResourceId, "asset.meshResourceId", Field(fieldPath, "meshResourceId"), asset.Id);
+        if (asset.CollisionResourceId is not null) RequireText(asset.CollisionResourceId, "asset.collisionResourceId", Field(fieldPath, "collisionResourceId"), asset.Id);
+        if (asset.SelectionResourceId is not null) RequireText(asset.SelectionResourceId, "asset.selectionResourceId", Field(fieldPath, "selectionResourceId"), asset.Id);
+        RequireIds(asset.SupportResourceIds, "asset.supportResourceIds", Field(fieldPath, "supportResourceIds"), asset.Id);
+        RequireIds(asset.MaterialResourceIds, "asset.materialResourceIds", Field(fieldPath, "materialResourceIds"), asset.Id);
+        RequireIds(asset.LodResourceIds, "asset.lodResourceIds", Field(fieldPath, "lodResourceIds"), asset.Id);
+        RequireIds(asset.LightResourceIds, "asset.lightResourceIds", Field(fieldPath, "lightResourceIds"), asset.Id);
+        RequireText(asset.Source, "asset.source", Field(fieldPath, "source"), asset.Id);
+        RequireText(asset.License, "asset.license", Field(fieldPath, "license"), asset.Id);
         if (!float.IsFinite(asset.SourceUnitsToMetres) || asset.SourceUnitsToMetres <= 0)
-            throw new MapDocumentException($"Asset '{asset.Id}' sourceUnitsToMetres must be finite and positive.");
-        ValidateBounds(asset.RenderBounds);
-        if (asset.LodBounds is { } lod) ValidateBounds(lod);
-        if (asset.LightBounds is { } light) ValidateBounds(light);
+            throw new MapDocumentException(float.IsFinite(asset.SourceUnitsToMetres) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
+                $"Asset '{asset.Id}' sourceUnitsToMetres must be finite and positive.")
+            {
+                AssetId = asset.Id, FieldPath = Field(fieldPath, "sourceUnitsToMetres"),
+                ActualNumber = float.IsFinite(asset.SourceUnitsToMetres) ? asset.SourceUnitsToMetres : null,
+                MinimumNumber = float.IsFinite(asset.SourceUnitsToMetres) ? 0 : null,
+            };
+        ValidateBounds(asset.RenderBounds, asset.Id, Field(fieldPath, "renderBounds"));
+        if (asset.LodBounds is { } lod) ValidateBounds(lod, asset.Id, Field(fieldPath, "lodBounds"));
+        if (asset.LightBounds is { } light) ValidateBounds(light, asset.Id, Field(fieldPath, "lightBounds"));
     }
 
-    static void ValidateBounds(MapLocalBounds bounds)
+    static void ValidateBounds(MapLocalBounds bounds, string assetId, string fieldPath)
     {
         static bool Finite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
         if (!Finite(bounds.Min) || !Finite(bounds.Max) || bounds.Min.X > bounds.Max.X ||
             bounds.Min.Y > bounds.Max.Y || bounds.Min.Z > bounds.Max.Z)
-            throw new MapDocumentException("Native local bounds must be finite and ordered on every axis.");
+            throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "Native local bounds must be finite and ordered on every axis.")
+            { AssetId = assetId, FieldPath = fieldPath };
     }
 
-    static void RequireIds(IReadOnlyList<string> ids, string field)
+    static void RequireIds(IReadOnlyList<string> ids, string field, string fieldPath, string? assetId = null, string? resourceId = null)
     {
-        if (ids is null) throw new MapDocumentException($"{field} must not be null.");
-        foreach (string id in ids) RequireText(id, field);
+        if (ids is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"{field} must not be null.")
+        { AssetId = assetId, ResourceId = resourceId, FieldPath = fieldPath };
+        for (int i = 0; i < ids.Count; i++) RequireText(ids[i], field, $"{fieldPath}[{i}]", assetId, resourceId);
     }
 
-    static void RequireText(string text, string field)
+    static void RequireText(string text, string field, string fieldPath, string? assetId = null, string? resourceId = null)
     {
-        if (string.IsNullOrWhiteSpace(text)) throw new MapDocumentException($"{field} must not be empty.");
+        if (string.IsNullOrWhiteSpace(text)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"{field} must not be empty.")
+        { AssetId = assetId, ResourceId = resourceId, FieldPath = fieldPath };
     }
+
+    static string Field(string path, string name) => MapDocumentJsonPath.AppendProperty(path, name);
 
     internal static void ValidateAssetResources(MapAssetDoc asset, IReadOnlyDictionary<string, MapResourceDoc> resources)
     {
         foreach (var (id, kind) in ResourceReferences(asset))
             if (!resources.TryGetValue(id, out MapResourceDoc? resource) || resource.Kind != kind)
-                throw new MapDocumentException($"Asset '{asset.Id}' requires {kind} resource '{id}'.");
+                throw new MapDocumentException(resource is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch, $"Asset '{asset.Id}' requires {kind} resource '{id}'.")
+                { AssetId = asset.Id, ResourceId = id, ExpectedResourceKind = kind, ActualResourceKind = resource?.Kind };
     }
 
     internal static IEnumerable<(string Id, MapResourceKind Kind)> ResourceReferences(MapAssetDoc asset) =>

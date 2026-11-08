@@ -32,13 +32,11 @@ internal static partial class SqlServerJournalSchema
         }
         catch (OperationCanceledException exception)
         {
-            throw Failure(JournalStoreFailureKind.Cancelled, "Read only schema validation was cancelled before it began.", exception);
+            throw Failure(JournalStoreFailureKind.Cancelled, "Read only schema validation was cancelled before it began.", exception, JournalOperationStage.SchemaReadOnlyOpen);
         }
         catch (SqlException exception)
         {
-            throw cancellationToken.IsCancellationRequested
-                ? Failure(JournalStoreFailureKind.Cancelled, "Read only schema validation was cancelled before it began.", exception)
-                : Failure(JournalStoreFailureKind.Unavailable, "SQL Server journal schema could not be opened for read only validation.", exception);
+            throw ProviderFailure(exception.Number, JournalOperationStage.SchemaReadOnlyOpen, exception, cancellationToken.IsCancellationRequested);
         }
 
         await using (transaction)
@@ -48,29 +46,22 @@ internal static partial class SqlServerJournalSchema
                 if (testHook is not null)
                     await testHook.InvokeAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
                 if (await CountJournalObjectsAsync(connection, transaction, commandTimeoutSeconds, cancellationToken).ConfigureAwait(false) == 0)
-                    throw Mismatch("missing");
+                    throw Mismatch(JournalStoreRefusal.SchemaMissing, "missing");
                 int declaredVersion = await ReadDeclaredVersionAsync(
                     connection,
                     transaction,
                     commandTimeoutSeconds,
                     cancellationToken).ConfigureAwait(false);
-                if (declaredVersion != CurrentVersion) throw Mismatch($"unsupported version '{declaredVersion}'");
+                if (declaredVersion != CurrentVersion) throw UnsupportedVersion(declaredVersion);
                 await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, CurrentVersion, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException exception)
             {
-                throw Failure(JournalStoreFailureKind.Cancelled, "Read only schema validation was cancelled.", exception);
+                throw Failure(JournalStoreFailureKind.Cancelled, "Read only schema validation was cancelled.", exception, JournalOperationStage.SchemaReadOnlyValidation);
             }
             catch (SqlException exception)
             {
-                if (cancellationToken.IsCancellationRequested)
-                    throw Failure(JournalStoreFailureKind.Cancelled, "Read only schema validation was cancelled.", exception);
-                throw exception.Number switch
-                {
-                    1205 => Failure(JournalStoreFailureKind.Deadlock, "Read only schema validation was a deadlock victim.", exception),
-                    1222 or -2 => Failure(JournalStoreFailureKind.Timeout, "Read only schema validation timed out.", exception),
-                    _ => Failure(JournalStoreFailureKind.Unavailable, "SQL Server journal read only schema validation failed.", exception),
-                };
+                throw ProviderFailure(exception.Number, JournalOperationStage.SchemaReadOnlyValidation, exception, cancellationToken.IsCancellationRequested);
             }
             finally
             {

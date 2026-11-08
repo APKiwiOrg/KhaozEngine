@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -61,32 +59,20 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         throw new InvalidOperationException("Unexpected sprite fragment shader.");
     }
 
-    internal MaskedSpriteBatchResources? MaskedOwner => MaskedOwnerFor(Batch);
+    internal object? MaskedOwner => MaskedOwnerFor(Batch);
 
-    internal static MaskedSpriteBatchResources? MaskedOwnerFor(SpriteBatch batch) =>
-        (MaskedSpriteBatchResources?)typeof(SpriteBatch).GetField("_maskedResources", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(batch);
+    internal static object? MaskedOwnerFor(SpriteBatch batch) => batch.MaskedResourceIdentityForTests;
 
-    object Runs => typeof(SpriteBatch).GetField("_runs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Batch)!;
+    internal bool HasGroup(object key) => Batch.HasGroupForTests(key);
 
-    internal bool HasGroup(object key) => (bool)Runs.GetType()
-        .GetMethod("HasGroup", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(Runs, new[] { key })!;
+    internal IReadOnlyList<object> GroupOrder => Batch.GroupOrderForTests;
 
-    internal IReadOnlyList<object> GroupOrder => (IReadOnlyList<object>)Runs.GetType()
-        .GetField("_groupOrder", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Runs)!;
+    internal void EnsureMaskedResources() => Batch.EnsureMaskedResourcesForTests();
 
-    internal MaskedSpriteBatchResources EnsureMaskedResources()
-    {
-        try
-        {
-            return (MaskedSpriteBatchResources)typeof(SpriteBatch)
-                .GetMethod("EnsureMaskedResources", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(Batch, null)!;
-        }
-        catch (TargetInvocationException error) when (error.InnerException is { } original)
-        {
-            ExceptionDispatchInfo.Capture(original).Throw();
-            throw;
-        }
-    }
+    // Unit tests own this independent instance. It is never the batch's live owner.
+    internal MaskedSpriteBatchResources CreateMaskedResources() => new(Device, Output,
+        Factory.GraphicsPipelines[0].Description.ResourceLayouts[1],
+        Factory.GraphicsPipelines[0].Description.VertexLayouts[0]);
 
     internal void Frame(Action<SpriteBatch>? draw = null, SamplerMode sourceSampler = SamplerMode.Linear, bool group = false)
     {

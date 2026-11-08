@@ -180,11 +180,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="InvalidOperationException">This device was built by <c>CreateOverSeams</c> and has no
         /// instance.</exception>
         VulkanInstance Instance
-            => _instance?.Value ?? throw new InvalidOperationException(
+            => _instance?.Value ?? throw new VulkanDeviceWiringException(VulkanDeviceWiringRefusal.InstanceMissing,
                 "This native Vulkan device was built over fake seams by the test hook, so it holds no VkInstance "
                 + "and no loaded entry points. The members that need them (command-list creation, and the "
                 + "teardown that destroys the real device) are not reachable on such a device. Drive the device's "
-                + "own wiring instead, or take a real device through VulkanGpuDevice.CreateHeadless.");
+                + "own wiring instead, or take a real device through VulkanGpuDevice.CreateHeadless.")
+                {
+                    NativeObjectKind = "VkInstance",
+                };
 
         VulkanGpuDevice(VulkanInstanceLease<VulkanInstance>? instance, Device device, Queue graphicsQueue,
             uint graphicsQueueFamily, GpuCapabilities capabilities, bool softwareAdapter,

@@ -124,8 +124,33 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(
                 () => list.UpdateBuffer<byte>(buffer, 0, new byte[] { 1 }));
 
-            Assert.Contains("VkBuffer", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("buffer", ex.ParamName);
             Assert.DoesNotContain("519", ex.Message, StringComparison.Ordinal);
+            using VulkanCommandList valid = Listed(fixture, new CountingUploads());
+            valid.Begin();
+            valid.UpdateBuffer<byte>(buffer, 0, new byte[] { 1 });
+            valid.End();
+        }
+
+        [Fact]
+        public void AForeignBufferIsRefusedEvenWithAnUploader()
+        {
+            using var fixture = new VulkanCommandListTests.Fixture();
+            using VulkanCommandList list = Listed(fixture, new CountingUploads());
+            list.Begin();
+            using var foreign = new FakeBuffer(256);
+            var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => list.UpdateBuffer<byte>(foreign, 0, new byte[] { 1 }));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, refusal.Reason);
+            Assert.Equal("buffer", refusal.ParamName);
+            Assert.Equal(typeof(FakeBuffer), refusal.ActualType);
+            Assert.Equal(GpuBackendKind.VulkanNative, refusal.ExpectedBackend);
+            Assert.Equal(typeof(IVulkanUploadDestination), refusal.ExpectedType);
+            Assert.Equal("buffer", refusal.ResourceKind);
+            Assert.Equal("UpdateBuffer", refusal.Context);
+            var own = new FakeVulkanUploadBuffer(0xBEEF, 256, GpuBufferUsage.VertexBuffer);
+            list.UpdateBuffer<byte>(own, 0, new byte[] { 1 });
+            list.End();
         }
 
         /// <summary>A null buffer is an argument error rather than a "not built yet", now that the member is

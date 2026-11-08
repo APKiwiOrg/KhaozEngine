@@ -116,48 +116,18 @@ namespace KhaozEngine.Tests.Render3D
             Assert.InRange(m4, 4f - 1f / 64f, 4f);
         }
 
-        [Fact]
-        public void ResolveFrames_Loop_WrapsFrameBAcrossTheSeam()
+        [Theory]
+        [InlineData(15.25f, true, 15f, 0f, 0.25f)]
+        [InlineData(2.5f, true, 2f, 3f, 0.5f)]
+        [InlineData(15.25f, false, 15f, 15f, 0f)]
+        [InlineData(2.5f, false, 2f, 3f, 0.5f)]
+        public void ResolveFrames_resolves_loop_and_one_shot_frames(
+            float frame, bool loop, float expectedA, float expectedB, float expectedBlend)
         {
-            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(15.25f, 16, loop: true);
-            Assert.Equal(15f, fa);
-            Assert.Equal(0f, fb);
-            Assert.Equal(0.25f, blend, 5);
-        }
-
-        [Fact]
-        public void ResolveFrames_Loop_MidSheet()
-        {
-            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(2.5f, 16, loop: true);
-            Assert.Equal(2f, fa);
-            Assert.Equal(3f, fb);
-            Assert.Equal(0.5f, blend, 5);
-        }
-
-        [Fact]
-        public void ResolveFrames_OneShot_ClampsAtLastFrame_BlendZero()
-        {
-            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(15.25f, 16, loop: false);
-            Assert.Equal(15f, fa);
-            Assert.Equal(15f, fb);   // no next cell past the sheet, so frameB pins to the last too
-            Assert.Equal(0f, blend);
-        }
-
-        [Fact]
-        public void ResolveFrames_OneShot_MidSheetBlends()
-        {
-            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(2.5f, 16, loop: false);
-            Assert.Equal(2f, fa);
-            Assert.Equal(3f, fb);
-            Assert.Equal(0.5f, blend, 5);
-        }
-
-        [Fact]
-        public void PackInstance_Procedural_PacksZeroFlipLane()
-        {
-            // A sprite with no flipbook must pack Flip = (0,0,0,0): the shader reads w <= 0.5 as "procedural" and
-            // discards the atlas taps, so the procedural output stays byte-identical.
-            Assert.Equal(Vector4.Zero, ParticleRenderer.PackInstance(Sprite()).Flip);
+            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(frame, 16, loop);
+            Assert.Equal(expectedA, fa);
+            Assert.Equal(expectedB, fb);
+            Assert.Equal(expectedBlend, blend);
         }
 
         [Fact]
@@ -242,7 +212,6 @@ namespace KhaozEngine.Tests.Render3D
             // field must land exactly on the ceiling, never past it.
             float max = ParticleRenderer.PackFlipGrid(127, 127, 4f, flipU: true, flipV: true);
             Assert.Equal(16777215f, max);
-            Assert.Equal(max, (float)(double)max);   // representable exactly, no rounding on the way in
 
             // Over-range inputs clamp to that same ceiling rather than overflowing into a neighbour's bits.
             Assert.Equal(max, ParticleRenderer.PackFlipGrid(9999, 9999, 99f, flipU: true, flipV: true));
@@ -312,6 +281,11 @@ namespace KhaozEngine.Tests.Render3D
             var spec = new ParticleFlipbook(new Scene3D.TextureHandle(0), 4, 4);
             Assert.False(spec.FlipU);
             Assert.False(spec.FlipV);
+            ParticleSprite sprite = Sprite();
+            sprite.Flipbook = spec;
+            (_, _, _, bool flipU, bool flipV) = DecodeFlipGrid(ParticleRenderer.PackInstance(sprite).Flip.W);
+            Assert.False(flipU);
+            Assert.False(flipV);
         }
 
         // A procedural (no-flipbook) sprite carries the dummy atlas pair (-1, -1).

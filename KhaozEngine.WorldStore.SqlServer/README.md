@@ -85,8 +85,8 @@ have no creation time. Restarted hosts must support version three, because an ol
 journal, so rolling back past this upgrade needs a restore.
 
 `ValidateOnly` performs no DDL and is the production mode when the application principal does not have schema
-permissions. A partial, malformed, older, or newer journal schema fails with `SchemaMismatch` and names the required
-migration.
+permissions. A partial, malformed, older, or newer journal schema fails with `SchemaMismatch` and carries the required
+migration on `JournalStoreException.RequiredMigration`.
 
 `ReadOnly` is for operator tools that read a database which must not change, such as a copy of production loaded
 by a release rehearsal. It validates the version-three schema with catalog and metadata `SELECT`s only, inside one read
@@ -127,8 +127,8 @@ GRANT VIEW DEFINITION ON OBJECT::dbo.journal_projection TO [journal_runtime];
 ```
 
 Schema-wide metadata permissions are unnecessary. A hidden or encrypted constraint or trigger definition fails
-validation with a whole-store `JournalStoreException` of kind `SchemaMismatch`, naming the unreadable object and
-the required permission. Validation never accepts a schema whose definition it cannot inspect. See SQL Server's
+validation with a whole-store `JournalStoreException` of kind `SchemaMismatch`, reason `DefinitionUnavailable`,
+`ObjectName` and `RequiredPermission` (`VIEW DEFINITION`). Validation never accepts a schema whose definition it cannot inspect. See SQL Server's
 [metadata visibility rules](https://learn.microsoft.com/sql/relational-databases/security/metadata-visibility-configuration).
 
 One initialization or commit sends **one** parameterized T-SQL batch inside the caller's serializable transaction,
@@ -137,7 +137,9 @@ the dozen or so statements the logical transaction contains. That batch takes th
 the operation for idempotent replay, locks every touched stream head with `UPDLOCK, HOLDLOCK` in ordinal stream-key
 order, checks the per-stream projection limits, writes events, heads, projections, and the operation receipt, and
 reports `Applied`, `Replayed`, `VersionConflict`, `OperationConflict`, `ExistingStream`, a projection-limit refusal,
-or an application-lock failure through a result set rather than through an error message. Provider errors still
+or an application-lock failure through a result set rather than through an error message. A projection-limit result
+also carries the guard's reason, actual total and inclusive configured limit for the refusing stream, with count
+checked before bytes. Provider errors still
 surface as themselves: the batch rethrows inside its own `TRY`/`CATCH`, so a duplicate key or a deadlock keeps its
 number and its place in the failure contract. The caller owns `BEGIN` and `COMMIT`, so nothing is visible before
 the commit and every failure boundary still rolls the whole operation back. Variable-length work is unrolled into
@@ -184,9 +186,10 @@ observes the caller's cancellation token, so a host stuck in schema initializati
 Its transaction then takes the exclusive side of the maintenance application lock, the gate every commit holds shared
 and compaction, purge, and epoch rotation hold exclusive. It waits up to the lock timeout
 (`SqlServerJournalReset.DefaultLockTimeout`, thirty seconds, when none is given) and is then refused with a
-whole-store `Timeout` that deleted nothing. Under the lock and before the first delete it refuses a game table's
+whole-store `Timeout` that deleted nothing. That reset wrapper retains `ApplicationLockNotGranted`, its `ReturnCode`,
+every identifier and the original refusal as `InnerException`. Under the lock and before the first delete it refuses a game table's
 foreign key into a journal data table declared `CASCADE`, `SET NULL`, or `SET DEFAULT` with a whole-store
-`SchemaMismatch` that names the key and deleted nothing. A `NO ACTION` key fires nothing, so a game row that still
+`SchemaMismatch` with reason `HostForeignKeyActionUnsafe` and every key in `HostObjects`, having deleted nothing. A `NO ACTION` key fires nothing, so a game row that still
 references a stream fails the delete instead and the whole reset rolls back with `ConstraintViolation`. It opens the
 store's own transaction-local operation delete guard and drops it before the commit, so the trigger still refuses
 every other delete. Each table is counted under an exclusive table lock and then deleted, children before parents,
@@ -194,6 +197,76 @@ and every statement of the reset's own transaction is given the lock timeout plu
 what a `ValidateOnly` runtime identity already holds: `VIEW DEFINITION`, `SELECT`, and `DELETE` on the journal tables
 and the `public` role. Stop every journal host first, because an idle host holds no lock. The
 `KhaozEngine.WorldStore` README describes what a projection cursor means after a reset.
+
+## Refusals
+
+`JournalStoreException` retains its existing type, constructors, `Kind`, `Certainty`, `Scope` and `StreamKeys`.
+Use `Reason` and the identifiers instead of message text. Schema missing, metadata missing, malformed version,
+unsupported version and unsafe host-key reasons share SQLite's members and identifier sets. The
+[core refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists those shared members.
+Schema mismatches carry `RequiredMigration` (`sqlserver-journal-v3-row-timestamps`). Unsupported admission versions
+carry `ActualVersion` and `SupportedVersions` (`[3]`). The final metadata recheck reports the version being compared.
+
+| Reason | What is refused | Identifiers |
+|---|---|---|
+| `DefinitionUnavailable` | SQL Server cannot expose an unencrypted definition. | `ObjectName`, `RequiredPermission` (`VIEW DEFINITION`) |
+| `ApplicationLockNotGranted` | SQL Server did not grant an application lock. | `ReturnCode`, existing `Kind` distinguishes timeout, cancellation, deadlock and unavailable |
+| `SchemaMetadataShapeInvalid` | SQL Server has no readable version column. | `RequiredMigration` |
+| `SchemaColumnsMismatch` | SQL Server columns differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaIndexesMismatch` | SQL Server indexes differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaForeignKeysMismatch` | SQL Server foreign keys differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaChecksMismatch` | SQL Server check constraints differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaDefaultsMismatch` | SQL Server defaults differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaTriggersMismatch` | SQL Server triggers differ from the supported shape. | `ExpectedVersion`, complete sorted `MissingObjects` and `UnexpectedObjects`, `RequiredMigration` |
+| `SchemaEpochEmpty` | SQL Server metadata has an empty store epoch. | `RequiredMigration` |
+| `SchemaCancelled` | The caller cancelled SQL Server schema admission or validation. | `Stage` |
+| `SchemaProviderFailure` | SQL Server failed during schema admission or validation. | `Stage`, typed `ProviderCode`, original `InnerException` |
+| `SchemaRollbackUnconfirmed` | A failed SQL Server schema initialization could not confirm rollback. | Existing unknown kind and certainty, original `InnerException` |
+
+Shape differences retain the complete compared row, including index columns and constraint definitions, in ordinal
+order. For example, a column is `table.column|type|byteLength|nullable|collation`, and an index row is
+`table.index|unique|primaryKey|type|ordinal|column|descending|included`. Check and default definitions are normalized
+by removing whitespace and uppercasing. Each unsafe host key in `HostObjects` carries `HostSchema`, `HostTable`,
+`ForeignKeyName`, `ReferencedTable` and `DeleteAction`. Keys are ordered by schema, table and key name.
+Collections are owned immutable snapshots. Provider failure numbers come directly from `SqlException.Number`.
+Application lock refusals carry the actual negative `ReturnCode`, without an invented timeout or migration.
+
+Runtime adapters share SQLite's reason and identifier sets for provider failures, cancellation, uncertain commits,
+checksums, projection limits, missing snapshots, replacement versions, invalid epochs and metadata update counts.
+`ProviderOperationFailed` carries the original typed `ProviderCode` and `Stage`. `CommitOutcomeUnknown` carries
+`Stage` without a provider code, including unconfirmed rollback before commit. `OperationCancelled` carries `Stage`
+and the original cause. Failure kind, certainty, scope and stream keys keep their existing meaning.
+
+| Runtime reason | What is refused | Identifiers |
+|---|---|---|
+| `ReplayedOperationMissing` | Replay has no operation row. | `OperationId`, existing whole-store corruption dimensions and empty `StreamKeys` |
+| `ReplayedStreamsMissing` | Replay has no stream result set. | `OperationId`, existing whole-store corruption dimensions and empty `StreamKeys` |
+| `ReplacementSnapshotDataMismatch` | SQL Server's readback differs from the requested replacement data before pruning. | `StreamKey` |
+| `TransportFailed` | An I/O or socket failure before a transaction or after confirmed rollback. | `Stage`, original `InnerException` |
+| `WriteFailedAfterRollback` | A non-provider commit failure after confirmed rollback. | `Stage` (`Commit`), original `InnerException` |
+| `ProviderClockUnavailable` | SQL Server did not return its UTC clock. | `ProviderName` (`SQL Server`) |
+
+Host triggers may emit result sets before the batch's own protocol. `BatchResultMalformed` on
+`JournalStoreStateException` refuses wrong result shapes or value types and trailing result sets after Applied or
+Replayed. The reader checks the complete expected protocol before accepting success, including replay receipt
+sets. Nullable outcome payloads accept SQL literal NULL values regardless of their metadata type.
+Missing or undefined outcomes and outcomes unsupported by the current operation throw `JournalStoreStateException`,
+which retains the `InvalidOperationException` catch contract. Its `Reason` is `BatchOutcomeMissing`,
+`BatchOutcomeUndefined` or `BatchOutcomeUnsupported`. Undefined and unsupported outcomes carry integer `Outcome`.
+`BatchProjectionLimitIncomplete` retains `JournalStoreException`, `ConstraintViolation`, `DefinitelyNotCommitted`
+and `OperationStreams`. Its `StreamKeys` names the payload's stream, or all requested stream keys if none was
+returned. `StreamKey` is set only for a named stream. Missing replay rows and stream result sets retain
+`JournalStoreException`, `CorruptData`, `CommittedDataUnreadable`, `WholeStore`, and empty `StreamKeys`. Their `OperationId` identifies the
+requested replay. `BatchStreamVanished` uses the same `JournalStoreStateException` carrier without additional
+identifiers when a previously validated stream head cannot be updated. Serializable locks do not stop a trigger
+in that transaction from deleting the stream and its dependants. Each refusal rolls back the write, including
+host trigger writes.
+
+The [core refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists every shared runtime member and its
+identifiers. Replacement verification checks version, requested data, requested checksum and checksum validity in
+that order. Bad checksums share `SnapshotChecksumMismatch` with stored reads. A reset obstruction through a
+`NO ACTION` host row carries `ProviderOperationFailed`, `ProviderCode` 547 and `Stage` (`Transaction`), with the
+original provider cause. Reset context copies preserve every identifier, including owned collection snapshots.
 
 Live provider tests require `KE_SQLSERVER_TEST_CONNSTRING`. Each test owns a unique stream prefix and cleanup
 removes only rows under that prefix. The reset facts are the exception: they wipe the whole test journal, inside the

@@ -30,16 +30,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para>
     /// IT NAMES A PROGRAM AND IT KEYS THE CACHE, and it was written for the second before the first was its only
     /// job. The seam's <c>CreateShadersFromSpirv</c> takes two GLSL strings and no label, so
-    /// <see cref="ShortTag"/> is the only stable identity a failure message can print, and every one of the
-    /// shader path's seven refusal classes prints it (five in the binding table's join, two in the argument parse
-    /// in front of it). The <c>.metallib</c> cache this key was originally designed for (M-S7) is REFUSED for v1
+    /// <see cref="ShortTag"/> supplies the stable identity carried in ShaderValidationException.Label by the
+    /// device-free shader build path. Reason identifies the refused rule, and Stage identifies the stage when
+    /// known. The <c>.metallib</c> cache this key was originally designed for (M-S7) is REFUSED for v1
     /// with a measurement behind it: section 12.5's in-place addendum records that no public API can serialize a
     /// source-compiled <c>MTLLibrary</c> at all, and that macOS already caches the MSL-to-library compile across
     /// processes at 0.02 ms against 68 to 98 ms cold, both taken with the compiler service warmed first so
     /// neither number is startup cost. What replaced it caches the EMISSION
     /// (<see cref="MetalMslCache"/>, <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/592">#592</see>),
     /// and this key is what it is keyed on. Keeping the key WHOLE at row 9 rather than trimming it to what a
-    /// message needs is what let that follow-up be written without re-deriving which inputs matter.
+    /// Label needs is what let that follow-up be written without re-deriving which inputs matter.
     /// </para>
     /// <para>
     /// THE TWO PRODUCING ASSEMBLIES ARE IN THE KEY BY THEIR MVID, because the payload has FIELDS this key would
@@ -182,8 +182,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             return Convert.ToHexStringLower(SHA256.HashData(stream.GetBuffer().AsSpan(0, checked((int)stream.Length))));
         }
 
-        /// <summary>A short human-readable tag for <paramref name="key"/>, for a message that has to name a
-        /// program the caller never labelled.</summary>
+        /// <summary>A short human-readable tag for <paramref name="key"/>, used in
+        /// ShaderValidationException.Label when the caller never labelled the program.</summary>
         internal static string ShortTag(string key)
         {
             ArgumentNullException.ThrowIfNull(key);

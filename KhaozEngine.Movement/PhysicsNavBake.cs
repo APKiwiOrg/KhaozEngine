@@ -69,7 +69,8 @@ public sealed partial class PhysicsNavBake : IDisposable
         RequireAuthoredStatics(context);
         Vector3 origin = basis?.Origin ?? world.Origin;
         if (!float.IsFinite(origin.X) || !float.IsFinite(origin.Y) || !float.IsFinite(origin.Z))
-            throw new InvalidOperationException("The physics origin must be finite.");
+            throw new NavigationBuildException(NavigationBuildRefusal.PhysicsOriginNonfinite,
+                "The physics origin must be finite.") { ActualOrigin = origin };
         (int width, int height, int cells, int maxSamples) = options.Validate(origin);
         Func<float, float, float, MovementMedium>? medium = !options.SampleWater ? null
             : context.CaptureMedium ?? throw new ArgumentException("Water sampling requires a medium.", nameof(context));
@@ -87,6 +88,7 @@ public sealed partial class PhysicsNavBake : IDisposable
             GroundMobility = QueryMobility.Statics,
         };
         int stored = 0;
+        var captureHooks = ContactTerrainCaptureHooks.Current;
         for (int z = 0; z < height; z++)
         {
             for (int x = 0; x < width; x++)
@@ -102,15 +104,15 @@ public sealed partial class PhysicsNavBake : IDisposable
                 int count = probe.Sample(absoluteX - origin.X, absoluteZ - origin.Z, buffer);
                 EnsureOrigin(world, origin);
                 if (count > options.MaxSurfacesPerColumn)
-                    throw new InvalidOperationException($"Physics column at ({absoluteX}, {absoluteZ}) exceeds the surface cap.");
+                    throw new NavigationBuildException(NavigationBuildRefusal.ColumnSurfaceCapExceeded,
+                        $"Physics column at ({absoluteX}, {absoluteZ}) exceeds the surface cap.")
+                        { AbsoluteX = absoluteX, AbsoluteZ = absoluteZ, MaximumCount = options.MaxSurfacesPerColumn, ActualCount = count };
                 float previous = float.NegativeInfinity;
                 for (int i = 0; i < count; i++)
                 {
                     ColumnSurface surface = buffer[i];
                     float absoluteY = surface.Height + origin.Y;
-                    if (!float.IsFinite(absoluteY) || absoluteY <= previous ||
-                        float.IsNaN(surface.Headroom) || surface.Headroom < 0f)
-                        throw new InvalidOperationException("Physics surfaces must have finite ascending heights and nonnegative headroom.");
+                    ValidateCapturedSurface(x, z, i, absoluteY, previous, surface.Headroom);
                     uint areas = classify(new Vector3(absoluteX, absoluteY, absoluteZ));
                     basis?.AssertCurrent();
                     EnsureOrigin(world, origin);
@@ -127,12 +129,19 @@ public sealed partial class PhysicsNavBake : IDisposable
                 EnsureOrigin(world, origin);
                 water[wet++] = new PhysicsNavWater(cell, sample.WaterSurfaceY, waterAreas);
             }
+            captureHooks?.Progress?.Invoke(ContactTerrainCaptureStage.RawColumns, z + 1, height);
         }
         starts[cells] = stored;
         basis?.AssertCurrent();
         EnsureOrigin(world, origin);
         var columns = new PhysicsNavColumns(options, width, height, starts, surfaces.AsSpan(0, stored), water.AsSpan(0, wet));
-        return new PhysicsNavBake(context, options, origin, columns, basis, classify);
+        var capture = new PhysicsNavBake(context, options, origin, columns, basis, classify);
+        try
+        {
+            if (options.CaptureTerrainDescentEvidence) capture.DescentEvidence = PhysicsNavDescentCapture.Capture(capture);
+            return capture;
+        }
+        catch { capture.Dispose(); throw; }
     }
 
     /// <summary>Releases retained builder providers without disposing or changing caller-owned physics.</summary>
@@ -145,14 +154,18 @@ public sealed partial class PhysicsNavBake : IDisposable
 
     private static void EnsureOrigin(IPhysicsWorld world, Vector3 origin)
     {
-        if (world.Origin != origin)
-            throw new InvalidOperationException("The physics origin changed after capture began.");
+        Vector3 actual = world.Origin;
+        if (actual != origin)
+            throw new NavigationBuildException(NavigationBuildRefusal.CaptureOriginChanged,
+                "The physics origin changed after capture began.") { ExpectedOrigin = origin, ActualOrigin = actual };
     }
 
     private static void RequireAuthoredStatics(GroundMoveContext context)
     {
         if (context.MovementRegistration?.HasRuntimeStatics == true)
-            throw new InvalidOperationException("Authored navigation cannot capture or build profiles with live runtime statics. " +
-                "Use an authored-only installation or bake before admitting runtime changes.");
+            throw new NavigationBuildException(NavigationBuildRefusal.RuntimeStaticsPresent,
+                "Authored navigation cannot capture or build profiles with live runtime statics. " +
+                "Use an authored-only installation or bake before admitting runtime changes.")
+                { SourceRole = NavigationSourceRole.MovementRegistration };
     }
 }

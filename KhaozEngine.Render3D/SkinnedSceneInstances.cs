@@ -53,9 +53,10 @@ namespace KhaozEngine.Render3D
                 bool invertShadowDissolve, float dissolveComplement, MotionKey motion)
             {
                 if (shadowOnly && !castsShadows)
-                    throw new ArgumentException(
+                    throw new DrawAdmissionArgumentException(DrawAdmissionRefusal.ShadowOnlyWithoutCasting,
                         "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
-                        nameof(shadowOnly));
+                        nameof(shadowOnly))
+                    { ShadowOnly = shadowOnly, CastsShadows = castsShadows };
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
                 CastsShadows = castsShadows; Motion = motion;

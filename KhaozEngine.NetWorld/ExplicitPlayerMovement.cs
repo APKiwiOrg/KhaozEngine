@@ -18,7 +18,13 @@ public sealed class ExplicitPlayerMovement
     {
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(scope);
-        if (!water.IsValid || water.Mode == WaterTraversalMode.Legacy) throw new ArgumentException("An explicit water policy is required.", nameof(water));
+        if (!water.IsValid || water.Mode == WaterTraversalMode.Legacy)
+        {
+            // Internal invariant: the immutable policy is valid by default and every constructor validates it.
+            if (!water.IsValid) throw new ArgumentException("An explicit water policy is required.", nameof(water));
+            throw new MovementConfigurationException(MovementConfigurationRefusal.ExplicitWaterModeRequired,
+                "An explicit water policy is required.", nameof(water)) { ActualMode = water.Mode };
+        }
         Environment = environment;
         Scope = scope;
         Water = water;
@@ -27,7 +33,7 @@ public sealed class ExplicitPlayerMovement
 
 /// <summary>Retain this scope through pure state publication and release before physical mutation.
 /// A correction or restored basis must not be published when BasisValid is false.</summary>
-public sealed class PlayerMoveReadScope : IDisposable
+public sealed partial class PlayerMoveReadScope : IDisposable
 {
     readonly Action<PlayerMoveReadScope> release;
     readonly int thread = System.Environment.CurrentManagedThreadId;
@@ -59,6 +65,7 @@ public sealed class PlayerMoveReadScope : IDisposable
             throw new InvalidOperationException("An explicit player read belongs to its acquiring thread.");
         if (disposed) return;
         disposed = true;
+        coldPlacement = default;
         try { Queries?.Dispose(); }
         finally { release(this); }
     }

@@ -86,7 +86,7 @@ public sealed class PointLightBufferTests
 
         FakeBuffer oldBuffer = Assert.IsType<FakeBuffer>(renderer.PointLightBuffer);
         FakeBuffer clusterBuffer = Assert.IsType<FakeBuffer>(renderer.PointLightClusterBuffer);
-        FakeBuffer waterBuffer = Assert.Single(factory.Buffers, b => b.SizeInBytes == 652800);
+        FakeBuffer waterBuffer = Assert.Single(factory.Buffers, b => b.SizeInBytes == 652816);
         Assert.Equal(940032u, clusterBuffer.SizeInBytes);
         FakeResourceSet[] captured = factory.ResourceSets
             .Where(set => !set.Disposed && set.Resources.Contains(oldBuffer))

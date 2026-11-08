@@ -1,9 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using KhaozEngine.Physics;
 using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
@@ -46,42 +43,6 @@ public partial class SupportFootprintTests
         }
         Assert.Equal(CapsuleFeatureStatus.Complete, warm.Status);
         Assert.Equal(0, bytes);
-        var (tilted, _, _) = TiltedScratch(scene.World);
-        _output.WriteLine($"{shape} cold-query-bytes={coldBytes} tilted-array-payload={ArrayPayload(tilted)} " +
-            $"whole-curved-array-payload={ArrayPayload(CurvedScratch(scene.World))} warm-bytes={bytes} {TiltedStatistics(scene.World)}");
-    }
-
-    static long ArrayPayload(object root)
-    {
-        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
-        var pending = new Stack<object>();
-        var sizes = new Dictionary<Type, int>();
-        pending.Push(root);
-        long bytes = 0;
-        MethodInfo sizeOf = typeof(Unsafe).GetMethod(nameof(Unsafe.SizeOf))!;
-        while (pending.TryPop(out object? item))
-        {
-            Type type = item.GetType();
-            if (!type.IsValueType && !seen.Add(item)) continue;
-            if (item is Array array)
-            {
-                Type element = type.GetElementType()!;
-                if (!sizes.TryGetValue(element, out int size))
-                    sizes[element] = size = element.IsValueType ? (int)sizeOf.MakeGenericMethod(element).Invoke(null, null)! : IntPtr.Size;
-                bytes += array.LongLength * size;
-                foreach (object? entry in array)
-                    if (entry is not null && (entry.GetType().Namespace ?? "").StartsWith("KhaozEngine.Physics.Bepu", StringComparison.Ordinal))
-                        pending.Push(entry);
-                continue;
-            }
-            if (!(type.Namespace ?? "").StartsWith("KhaozEngine.Physics.Bepu", StringComparison.Ordinal)) continue;
-            foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-            {
-                object? value = field.GetValue(item);
-                if (value is not null && (value is Array ||
-                    (value.GetType().Namespace ?? "").StartsWith("KhaozEngine.Physics.Bepu", StringComparison.Ordinal))) pending.Push(value);
-            }
-        }
-        return bytes;
+        _output.WriteLine($"{shape} cold-query-bytes={coldBytes} warm-bytes={bytes} {TiltedStatistics(scene.World)}");
     }
 }

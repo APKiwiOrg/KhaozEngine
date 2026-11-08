@@ -27,10 +27,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (completion is not VulkanGpuFence fence)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {completion.GetType().Name} was handed to the native Vulkan backend as the completion fence "
                     + "of a staging copy. Only a fence this backend created names a value on its timeline.",
-                    nameof(completion));
+                    nameof(completion))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = completion?.GetType(),
+                    ResourceKind = "fence",
+                };
             }
 
             fence.RequireOwner(_timeline, nameof(completion));
@@ -40,9 +45,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (!ReferenceEquals(buffer.Owner, _resources))
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.DifferentDevice,
                     "That staging buffer was created by a DIFFERENT native Vulkan device, so its memory is not this "
-                    + "device's to read. Read it through the device that created it.", nameof(staging));
+                    + "device's to read. Read it through the device that created it.", nameof(staging))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ResourceKind = "buffer",
+                    Context = nameof(TryReadBuffer),
+                };
             }
 
             GpuReadWindow.Require(buffer.SizeInBytes, offsetBytes, destination.Length);

@@ -30,17 +30,39 @@ namespace KhaozEngine.Tests.Render3D.Animation
         {
             Skeleton skeleton = Build();
 
-            var missing = Assert.Throws<ArgumentException>(
+            var missing = Assert.Throws<BoneMaskArgumentException>(
                 () => BoneMask.ForJoints(skeleton, new[] { "spine", "tail" }));
             Assert.Equal("jointNames", missing.ParamName);
-            Assert.Contains("'tail'", missing.Message, StringComparison.Ordinal);
+            Assert.Equal(BoneMaskRefusal.JointNameMissing, missing.Reason);
+            Assert.Equal("tail", missing.JointName);
+            Assert.IsAssignableFrom<ArgumentException>(missing);
+            Assert.Equal(1f, BoneMask.ForJoints(skeleton, new[] { "spine" }).Weight(2));
 
             // An unnamed node has no name to be asked for.
-            var unnamed = Assert.Throws<ArgumentException>(() => BoneMask.ForJoints(skeleton, new[] { "" }));
+            var unnamed = Assert.Throws<BoneMaskArgumentException>(() => BoneMask.ForJoints(skeleton, new[] { "" }));
             Assert.Equal("jointNames", unnamed.ParamName);
+            Assert.Equal(BoneMaskRefusal.JointNameMissing, unnamed.Reason);
+            Assert.Equal("", unnamed.JointName);
+            var nullName = Assert.Throws<BoneMaskArgumentException>(() => BoneMask.ForJoints(skeleton, new string[] { null! }));
+            Assert.Equal(BoneMaskRefusal.JointNameMissing, nullName.Reason);
+            Assert.Null(nullName.JointName);
+            Assert.Equal("jointNames", nullName.ParamName);
 
             Assert.Throws<ArgumentNullException>(() => BoneMask.ForJoints(null!, new[] { "spine" }));
             Assert.Throws<ArgumentNullException>(() => BoneMask.ForJoints(skeleton, null!));
+        }
+
+        [Fact]
+        public void SubtreeRefusesAnExplicitNameTableWithTheWrongCount()
+        {
+            Skeleton skeleton = Build();
+            var error = Assert.Throws<BoneMaskArgumentException>(
+                () => BoneMask.Subtree(skeleton, "spine", new[] { "root", "hips", "spine" }, 1f));
+            Assert.Equal(BoneMaskRefusal.NameCountMismatch, error.Reason);
+            Assert.Equal(3, error.NameCount);
+            Assert.Equal(6, error.NodeCount);
+            Assert.Equal("boneNames", error.ParamName);
+            Assert.Equal(1f, BoneMask.Subtree(skeleton, "spine", Names, 1f).Weight(2));
         }
 
         static float[] Weights(BoneMask mask)

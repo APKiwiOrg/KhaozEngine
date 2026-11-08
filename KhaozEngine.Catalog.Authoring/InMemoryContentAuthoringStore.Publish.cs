@@ -117,6 +117,7 @@ public sealed partial class InMemoryContentAuthoringStore
         if (!plan.IsValid)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.CandidateRejected,
                 FormattableString.Invariant(
                     $"The candidate for version {plan.VersionNumber} carries {plan.Validation.Findings.Count} finding(s), so no transaction opened. A version the validator refused is a version a boot then fails closed on."),
                 default,
@@ -137,8 +138,10 @@ public sealed partial class InMemoryContentAuthoringStore
         int highest = HighestVersionNumber();
         if (plan.VersionNumber != highest + 1)
         {
-            throw Moved(FormattableString.Invariant(
-                $"The plan publishes version {plan.VersionNumber} and the highest published version is {highest}, so the next number is {highest + 1}. Another publish landed under this plan and its manifest hashes already carry the wrong number."));
+            throw new ContentAuthoringException(ContentAuthoringRefusal.NextVersionMismatch, FormattableString.Invariant(
+                $"The plan publishes version {plan.VersionNumber} and the highest published version is {highest}, so the next number is {highest + 1}. Another publish landed under this plan and its manifest hashes already carry the wrong number."),
+                default, 0, ContentAuthoringException.BaseVersionMovedReason)
+            { RequestedVersion = plan.VersionNumber, HighestVersion = highest, NextVersion = highest + 1 };
         }
 
         // The same statement about the rule list: a plan appends on top of the rules it was built over,
@@ -330,7 +333,7 @@ public sealed partial class InMemoryContentAuthoringStore
         {
             if (_activeVersion != from)
             {
-                throw Moved(FormattableString.Invariant(
+                throw Moved(from, _activeVersion, FormattableString.Invariant(
                     $"The rollback to version {targetVersion} was planned against version {from} and the store now stands at {_activeVersion}. Nothing was written, and the rollback is planned again from the current version."));
             }
 
@@ -539,31 +542,33 @@ public sealed partial class InMemoryContentAuthoringStore
         }
     }
 
-    static ContentAuthoringException Moved(string message)
-        => new(message, default, 0, ContentAuthoringException.BaseVersionMovedReason);
+    static ContentAuthoringException Moved(int expected, int actual, string message)
+        => new(ContentAuthoringRefusal.BaseVersionMoved, message, default, 0, ContentAuthoringException.BaseVersionMovedReason)
+        { ExpectedBaseVersion = expected, ActualBaseVersion = actual };
 
     static ContentAuthoringException UnknownVersion(int versionNumber)
-        => new(
+        => new(ContentAuthoringRefusal.VersionUnknown,
             FormattableString.Invariant($"This store holds no version {versionNumber}."),
             default,
             0,
-            ContentAuthoringException.UnknownVersionReason);
+            ContentAuthoringException.UnknownVersionReason) { VersionNumber = versionNumber };
 
     static ContentAuthoringException NoPackStore(string member)
-        => new(
+        => new(ContentAuthoringRefusal.PackStoreMissing,
             FormattableString.Invariant(
                 $"{nameof(InMemoryContentAuthoringStore)}.{member} needs a pack store and this store was built with none. A publish writes files before it writes rows, so the pack target is not optional for it."),
             default,
             0,
-            ContentAuthoringException.NoPackStoreReason);
+            ContentAuthoringException.NoPackStoreReason) { MemberName = member };
 
     static ContentAuthoringException Unreadable(int versionNumber, string? hash, string? reason)
-        => new(
+        => new(ContentAuthoringRefusal.PackUnreadable,
             FormattableString.Invariant(
                 $"Version {versionNumber}'s pack could not be read at object '{hash}': {reason}."),
             default,
             0,
-            ContentAuthoringException.PackUnreadableReason);
+            ContentAuthoringException.PackUnreadableReason)
+        { VersionNumber = versionNumber, ObjectHash = hash, PackReaderReason = reason };
 
     /// <summary>
     /// One published version's pack-side facts, which no other table holds: the chunk rows it carries at

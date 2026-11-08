@@ -181,8 +181,11 @@ namespace KhaozEngine.Tests.Gpu
             halfRecorded.Begin();
             halfRecorded.Draw(1);
 
-            Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<GpuRecordingStateException>(
                 () => D3D11CommandDrivers.Submit(new object(), halfRecorded, ref emitter, signal));
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, ex.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
+            Assert.Equal("Submit", ex.Command);
             Assert.Equal(0, signal.SignalCount);
         }
 
@@ -275,7 +278,7 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(
                 () => D3D11CommandDrivers.Submit(new object(), list, ref emitter, null, fences.CreateFence()));
 
-            Assert.Contains("fence subsystem", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("fence", ex.ParamName);
             Assert.Equal(0, timeline.SignalCount);
             Assert.Equal(0, log.TotalCalls);
         }

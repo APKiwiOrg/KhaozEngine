@@ -69,9 +69,14 @@ public sealed class NativePrefabCommandTests
     {
         var f = PrefabEditorFixtures.Create("empty-map");
         string before = MapDocumentFile.SaveText(f.Document);
-        Assert.Equal("Prefab editing requires a verified asset closure.", Assert.Throws<MapDocumentException>(() =>
-            NativeDocumentTransaction.Stage(f.Document, Place(f), false, null, localOnly: true)).Message);
+        var error = Assert.Throws<MapDocumentException>(() => NativeDocumentTransaction.Stage(f.Document, Place(f), false, null, localOnly: true));
+        Assert.Equal(MapDocumentRefusal.AssetClosureRequired, error.Reason);
+        Assert.Equal(f.Document.Id, error.DocumentId);
+        Assert.Equal(typeof(PrefabEditCommand), error.CommandType);
+        Assert.Equal("Stage", error.Operation);
+        Assert.Equal("prefab", error.SubjectKind);
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        Assert.NotNull(NativeDocumentTransaction.Stage(f.Document, Place(f), false, f.Assets, localOnly: true));
     }
     [Fact]
     public void LegacyLocalOnlyWaterAndPlacement_StillApplyRevert()

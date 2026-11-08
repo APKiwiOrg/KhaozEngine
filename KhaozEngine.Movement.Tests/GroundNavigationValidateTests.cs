@@ -44,9 +44,17 @@ public class GroundNavigationValidateTests
         MoveTuning legacy = Tuning with { Controller = MovementControllerKind.Legacy, Water = default };
         GroundNavigation graph = Graph(contactGraph, loaded);
         using var binding = contactGraph ? EffectiveMovementBinding.Legacy(legacy) : context.CreateNavigationBinding(Tuning);
-        Assert.Contains("Kind", Assert.Throws<ArgumentException>(() => Validate(graph, binding)).Message, StringComparison.Ordinal);
+        var bound = Assert.Throws<NavigationProfileException>(() => Validate(graph, binding));
+        Assert.Equal("binding", bound.ParamName);
+        Assert.Equal(NavigationProfileRefusal.BindingKindMismatch, bound.Reason);
         MoveTuning wrong = contactGraph ? legacy : Tuning;
-        Assert.Contains("Kind", Assert.Throws<ArgumentException>(() => Validate(graph, wrong)).Message, StringComparison.Ordinal);
+        var failure = Assert.Throws<NavigationProfileException>(() => Validate(graph, wrong));
+        Assert.Equal("tuning", failure.ParamName);
+        Assert.Equal(NavigationProfileRefusal.BindingKindMismatch, failure.Reason);
+        Assert.Equal(contactGraph ? EffectiveMovementBindingKind.OrdinaryContact : EffectiveMovementBindingKind.Legacy, failure.ExpectedKind);
+        Assert.Equal(binding.Kind, failure.ActualKind);
+        Assert.IsAssignableFrom<ArgumentException>(failure);
+        Validate(graph, contactGraph ? Tuning : legacy);
     }
 
     public static IEnumerable<object[]> ContactFields => NavBakeIdentity.TuningFieldNames
@@ -55,15 +63,25 @@ public class GroundNavigationValidateTests
 
     [Theory]
     [MemberData(nameof(ContactFields))]
-    public void EachContactIdentityFieldMismatchNamesTheField(string field, bool loaded)
+    public void EachContactIdentityFieldMismatchIsRefused(string field, bool loaded)
     {
         using var world = GroundTraversalProbeTests.FlatWorld();
         using var context = Context(world);
         GroundNavigation graph = Graph(true, loaded);
+        Validate(graph, Tuning);
         MoveTuning wrong = Changed(Tuning, field);
         using var binding = context.CreateNavigationBinding(wrong);
-        Assert.Contains(field, Assert.Throws<ArgumentException>(() => Validate(graph, binding)).Message, StringComparison.Ordinal);
-        Assert.Contains(field, Assert.Throws<ArgumentException>(() => Validate(graph, wrong)).Message, StringComparison.Ordinal);
+        var bound = Assert.Throws<NavigationProfileException>(() => Validate(graph, binding));
+        Assert.Equal("binding", bound.ParamName);
+        Assert.Equal(NavigationProfileRefusal.TuningFieldMismatch, bound.Reason);
+        Assert.Equal(field, bound.FieldName);
+        var failure = Assert.Throws<NavigationProfileException>(() => Validate(graph, wrong));
+        Assert.Equal("tuning", failure.ParamName);
+        Assert.Equal(NavigationProfileRefusal.TuningFieldMismatch, failure.Reason);
+        Assert.Equal(field, failure.FieldName);
+        Assert.Equal(FieldBits(Tuning, field), failure.ExpectedBits);
+        Assert.Equal(FieldBits(wrong, field), failure.ActualBits);
+        Validate(graph, Tuning);
     }
 
     [Theory]
@@ -81,9 +99,14 @@ public class GroundNavigationValidateTests
             MovementBoundary.Rectangle(-20, -20, 20, 20));
         var environment = new MovementEnvironmentContext(view, provider, provider.Identity);
         using var binding = EffectiveMovementBinding.PublicExplicit(legacy, environment, new(WaterTraversalMode.DryOnly));
-        const string message = "Explicit navigation profiles are not supported yet. See https://github.com/APKiwiOrg/KhaozEngine/issues/1389.";
         foreach (GroundNavigation graph in new[] { bake.GetProfile("player"), Load(Write(bake), new(FlatOptions, Sources(), [profile])).GetProfile("player") })
-            Assert.Equal(message, Assert.Throws<NotSupportedException>(() => Validate(graph, binding)).Message);
+        {
+            var failure = Assert.Throws<NavigationProfileCapabilityException>(() => Validate(graph, binding));
+            Assert.Equal(NavigationProfileRefusal.PublicExplicitProfileUnsupported, failure.Reason);
+            Assert.Equal(new Uri("https://github.com/APKiwiOrg/KhaozEngine/issues/1389"), failure.IssueUrl);
+            Assert.Equal(EffectiveMovementBindingKind.PublicExplicit, failure.ActualKind);
+            graph.Validate(profile.Tuning);
+        }
     }
 
     [Theory]
@@ -118,6 +141,14 @@ public class GroundNavigationValidateTests
         using var binding = context.CreateNavigationBinding(runtime);
         graph.Validate(binding);
         graph.Validate(runtime);
+    }
+
+    static uint FieldBits(MoveTuning tuning, string field)
+    {
+        if (field == "Water.Mode") return (uint)tuning.Water.Mode;
+        if (field == "Water.SurfaceJumpSpeed") return BitConverter.SingleToUInt32Bits(tuning.Water.SurfaceJumpSpeed);
+        object value = typeof(MoveTuning).GetProperty(field)!.GetValue(tuning)!;
+        return value is bool flag ? flag ? 1u : 0u : BitConverter.SingleToUInt32Bits((float)value);
     }
 
     static MoveTuning Changed(MoveTuning tuning, string field)

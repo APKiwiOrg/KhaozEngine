@@ -74,7 +74,7 @@ public partial class OrdinaryContactHeadTests
             var local = initial.Move;
             local.Position -= new Vector3(world.Physics.Origin.X - world.Frame.Anchor.X, physicsY,
                 world.Physics.Origin.Z - world.Frame.Anchor.Z);
-            var result = reference.Step(new(local, descriptor, null), command, OrdinaryPlayerWorld.Dt, queries!);
+            var result = reference.StepPlayer(new(local, descriptor, null), command, OrdinaryPlayerWorld.Dt, queries!);
             Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
             expected = result.State.State;
             expected.Position += new Vector3(world.Physics.Origin.X - world.Frame.Anchor.X, physicsY,
@@ -94,8 +94,8 @@ public partial class OrdinaryContactHeadTests
         {
             var local = initial.Move;
             local.Position.Y -= physicsY;
-            var dryReference = CharacterMovement.Step(local, command, OrdinaryPlayerWorld.Dt,
-                (_, _) => h - physicsY, OrdinaryPlayerWorld.Tuning, null, world.Physics);
+            var dryReference = PlayerMovementPublication.Canonicalize(CharacterMovement.Step(PlayerMovementPublication.PrepareStep(local), command, OrdinaryPlayerWorld.Dt,
+                (_, _) => h - physicsY, OrdinaryPlayerWorld.Tuning, null, world.Physics));
             dryReference.Position.Y += physicsY;
             Assert.Equal(dryReference, expected);
         }
@@ -165,7 +165,7 @@ public partial class OrdinaryContactHeadTests
     }
 
     [Fact]
-    public void WireGenerationRemainsFourteen() => Assert.Equal(14, MoveProtocol.WireProtocolVersion);
+    public void WireGenerationIncludesFineSpeedAndGroundState() => Assert.Equal(15, MoveProtocol.WireProtocolVersion);
 
     [Fact]
     public void ConfiguredOrdinaryBoundaryWinsOverWorldBounds()

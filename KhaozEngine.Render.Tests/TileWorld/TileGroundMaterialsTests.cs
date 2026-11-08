@@ -129,9 +129,19 @@ public class TileGroundMaterialsTests
         TileWorldException ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(
             catalogs, path => path == first ? Solid(4, 4, 1, 2, 3) : Solid(2, 8, 4, 5, 6)));
 
-        Assert.Contains("road", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("2x8", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("4x4", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.GroundMaterialTextureSizeMismatch, ex.Reason);
+        Assert.Equal((ushort)2, ex.MaterialId);
+        Assert.Equal("road", ex.MaterialName);
+        Assert.Equal(2, ex.Width);
+        Assert.Equal(8, ex.Height);
+        Assert.Equal((ushort)1, ex.ReferenceMaterialId);
+        Assert.Equal("grass", ex.ReferenceMaterialName);
+        Assert.Equal(4, ex.ExpectedWidth);
+        Assert.Equal(4, ex.ExpectedHeight);
+
+        TileGroundMaterialSet control = TileGroundMaterials.Build(catalogs, _ => Solid(4, 4, 1, 2, 3));
+        Assert.Equal(4, control.Width);
+        Assert.Equal(4, control.Height);
     }
 
     [Fact]
@@ -161,8 +171,10 @@ public class TileGroundMaterialsTests
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
 
-        Assert.Contains("grass", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("textures/grass.png", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.GroundMaterialTextureSourceMissing, ex.Reason);
+        Assert.Equal((ushort)1, ex.MaterialId);
+        Assert.Equal("grass", ex.MaterialName);
+        Assert.Equal("textures/grass.png", ex.TexturePath);
     }
 
     [Fact]
@@ -193,9 +205,10 @@ public class TileGroundMaterialsTests
     {
         TileWorldCatalogs catalogs = Materials(TileGroundMaterialConfig.MaxMaterials);
 
-        TileWorldException ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
-
-        Assert.Contains($"{TileGroundMaterialConfig.MaxMaterials}", ex.Message, StringComparison.Ordinal);
+        var ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
+        Assert.Equal(TileWorldRefusal.GroundMaterialLayerLimitExceeded, ex.Reason);
+        Assert.Equal(TileGroundMaterialConfig.MaxMaterials, ex.MaterialCount);
+        Assert.Equal(TileGroundMaterialConfig.MaxMaterials - 1, ex.MaximumMaterialCount);
     }
 
     [Fact]
@@ -207,10 +220,17 @@ public class TileGroundMaterialsTests
             new TileGroundLayerImage { AlbedoRgba = new byte[4] },
         };
 
-        ArgumentException ex = Assert.Throws<ArgumentException>(
+        var ex = Assert.Throws<TileGroundMaterialSetArgumentException>(
             () => new TileGroundMaterialSet(2, 2, new ushort[] { 7 }, layers));
+        Assert.IsAssignableFrom<ArgumentException>(ex);
+        Assert.Equal(TileGroundMaterialSetRefusal.LayerByteLengthMismatch, ex.Reason);
+        Assert.Equal(1, ex.LayerIndex);
+        Assert.Equal(4, ex.ActualByteLength);
+        Assert.Equal(16, ex.ExpectedByteLength);
+        Assert.Equal(2, ex.Width);
+        Assert.Equal(2, ex.Height);
 
-        Assert.Contains("2x2", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("layers", ex.ParamName);
     }
 
     [Fact]
@@ -229,6 +249,57 @@ public class TileGroundMaterialsTests
         Assert.Equal(1, set.SlotOf(7));
         Assert.Equal(2, set.MissingSlot);
         Assert.Equal(2, set.SlotOf(41));
+    }
+
+    [Theory]
+    [InlineData(0, 0, TileGroundMaterialSetRefusal.LayerCountMismatch)]
+    [InlineData(TileGroundMaterialConfig.MaxMaterials, TileGroundMaterialConfig.MaxMaterials + 1,
+        TileGroundMaterialSetRefusal.LayerLimitExceeded)]
+    public void A_hand_built_set_refuses_an_invalid_layer_count(
+        int materialCount, int layerCount, TileGroundMaterialSetRefusal reason)
+    {
+        var ids = new ushort[materialCount];
+        for (int i = 0; i < ids.Length; i++) ids[i] = (ushort)i;
+        var layers = new TileGroundLayerImage[layerCount];
+        for (int i = 0; i < layers.Length; i++) layers[i] = new() { AlbedoRgba = new byte[4] };
+
+        var error = Assert.Throws<TileGroundMaterialSetArgumentException>(() =>
+            new TileGroundMaterialSet(1, 1, ids, layers));
+
+        Assert.Equal("layers", error.ParamName);
+        Assert.Equal(reason, error.Reason);
+        if (reason == TileGroundMaterialSetRefusal.LayerCountMismatch)
+        {
+            Assert.Equal(materialCount, error.MaterialCount);
+            Assert.Equal(layerCount, error.ActualLayerCount);
+            Assert.Equal(materialCount + 1, error.RequiredLayerCount);
+        }
+        else
+        {
+            Assert.Equal(layerCount, error.LayerCount);
+            Assert.Equal(TileGroundMaterialConfig.MaxMaterials, error.MaximumLayerCount);
+        }
+    }
+
+    [Fact]
+    public void A_hand_built_set_refuses_duplicate_material_ids()
+    {
+        var layers = new[]
+        {
+            new TileGroundLayerImage { AlbedoRgba = new byte[4] },
+            new TileGroundLayerImage { AlbedoRgba = new byte[4] },
+            new TileGroundLayerImage { AlbedoRgba = new byte[4] },
+        };
+
+        var error = Assert.Throws<TileGroundMaterialSetArgumentException>(() =>
+            new TileGroundMaterialSet(1, 1, new ushort[] { 7, 7 }, layers));
+
+        Assert.Equal("materialIds", error.ParamName);
+        Assert.Equal(TileGroundMaterialSetRefusal.DuplicateMaterialId, error.Reason);
+        Assert.Equal((ushort)7, error.MaterialId);
+        Assert.Equal(0, error.FirstSlot);
+        Assert.Equal(1, error.DuplicateSlot);
+        Assert.Equal(1, new TileGroundMaterialSet(1, 1, new ushort[] { 7, 8 }, layers).SlotOf(8));
     }
 
     // A catalog of `count` flat materials, ids 1 upward, which is the only way to reach the slot ceiling.

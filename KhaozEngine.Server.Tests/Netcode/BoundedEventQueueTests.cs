@@ -14,28 +14,17 @@ public class BoundedEventQueueTests
         return list;
     }
 
-    [Fact]
-    public void WithinCapacity_KeepsEverything_InOrder_NoDrops()
+    [Theory]
+    [InlineData(5, 3, 0, new[] { 0, 1, 2 })]
+    [InlineData(3, 10, 7, new[] { 7, 8, 9 })]
+    public void EnqueueKeepsTheNewestItemsWithinCapacity(int capacity, int enqueued, int dropped, int[] expected)
     {
-        var q = new BoundedEventQueue<int>(capacity: 5);
-        for (int i = 0; i < 3; i++) q.Enqueue(i);
+        var q = new BoundedEventQueue<int>(capacity);
+        for (int i = 0; i < enqueued; i++) q.Enqueue(i);
 
-        Assert.Equal(3, q.Count);
-        Assert.Equal(0, q.DroppedCount);
-        Assert.Equal(new[] { 0, 1, 2 }, DrainAll(q));
-    }
-
-    [Fact]
-    public void BeyondCapacity_StaysAtCap_DropsOldest_KeepsNewest()
-    {
-        var q = new BoundedEventQueue<int>(capacity: 3);
-        for (int i = 0; i < 10; i++) q.Enqueue(i); // enqueue 0..9 without draining
-
-        // Never grows past the cap, regardless of how many are pushed.
-        Assert.Equal(3, q.Count);
-        // The 7 oldest (0..6) were evicted; only the newest 3 survive.
-        Assert.Equal(7, q.DroppedCount);
-        Assert.Equal(new[] { 7, 8, 9 }, DrainAll(q));
+        Assert.Equal(expected.Length, q.Count);
+        Assert.Equal(dropped, q.DroppedCount);
+        Assert.Equal(expected, DrainAll(q));
     }
 
     [Fact]

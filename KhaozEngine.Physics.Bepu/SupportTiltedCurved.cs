@@ -16,6 +16,11 @@ internal sealed class SupportTiltedCurved
 
     readonly SupportTiltedCurvedGeometry _geometry;
     readonly SupportCurvedSurfaceAdmission _admission;
+    /// <summary>Copies root and admission diagnostics so later queries cannot change an earlier observation.</summary>
+    internal SupportTiltedCurvedObservation ObservationForTests => new(_geometry.RootCellCount,
+        _geometry.RootLiveHighWater, _geometry.RootTerminalHighWater, _geometry.RootCapacityRefusedForTests,
+        _admission.TotalCells, _admission.FrontierHighWater, _admission.CapacityRefused);
+
     internal void ResetStatistics() { _geometry.ResetStatistics(); _admission.ResetStatistics(); }
 
     internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part,

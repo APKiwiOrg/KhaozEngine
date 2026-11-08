@@ -113,7 +113,8 @@ public sealed partial class MutationService
         MutationResult result = Apply((doc, _) =>
         {
             MapPlacement source = doc.Placements.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No placement with id '{id}' in the document.");
+                ?? throw new MapMutationException(MapDocumentRefusal.ReferenceMissing, $"No placement with id '{id}' in the document.")
+                { DocumentId = doc.Id, EntityId = id, PlacementId = id, SubjectKind = "placement", FieldPath = "placements" };
             newId = UniqueDuplicateName("placement",
                 n => doc.Placements.Any(p => string.Equals(p.Id, n, StringComparison.Ordinal)));
             return new AddPlacementCommand(new MapPlacement

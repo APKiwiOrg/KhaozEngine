@@ -58,8 +58,8 @@ public sealed class StoredContentIdentityTests
         Assert.DoesNotContain("t_", message, StringComparison.Ordinal);
     }
 
-    static string Refusal(string directory) =>
-        Assert.Throws<MapDocumentException>(() => Token(directory)).Message;
+    static MapDocumentException Refusal(string directory) =>
+        Assert.Throws<MapDocumentException>(() => Token(directory));
 
     /// <summary>The pinned tile entry whose file holds <paramref name="text"/>.</summary>
     internal static MapTileEntry PinnedTileHolding(string directory, string text)
@@ -138,16 +138,22 @@ public sealed class StoredContentIdentityTests
     {
         MapDocumentFile.SaveTiled(Content(), directory);
         MapStoredSurfaceSource source = MapStoredSurfaceSource.Open(directory);
-        MapTileCoord coord = PinnedTileHolding(directory, "\"tree-2\"").Coord;
+        MapTileEntry pinned = PinnedTileHolding(directory, "\"tree-2\"");
+        MapTileCoord coord = pinned.Coord;
         string path = TileFileHolding(directory, "\"tree-2\"");
+        byte[] original = File.ReadAllBytes(path);
         File.WriteAllText(path, File.ReadAllText(path).Replace("\"tree-2\"", "\"tree-3\"", StringComparison.Ordinal));
 
-        string message = Assert.Throws<MapDocumentException>(() =>
-            MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), V2)).Message;
-        Assert.Contains("Corrupt", message);
-        AssertNamesNoOuterPath(message, directory);
-        Assert.Equal($"Corrupt pinned tile ({coord.X}, {coord.Z}).", message);
-        AssertNamesNoPathOrFile(message, directory);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), V2));
+        Assert.Equal(MapDocumentRefusal.DigestMismatch, error.Reason);
+        Assert.Equal(MapPatchStatus.Corrupt, error.PatchStatus);
+        Assert.Equal(coord, error.Tile);
+        Assert.Equal(pinned.Hash, error.ExpectedHash);
+        AssertNamesNoOuterPath(error.Message, directory);
+        AssertNamesNoPathOrFile(error.Message, directory);
+        File.WriteAllBytes(path, original);
+        Assert.NotEmpty(MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), V2));
     });
 
     [Fact]
@@ -155,15 +161,22 @@ public sealed class StoredContentIdentityTests
     {
         MapDocumentFile.SaveTiled(Content(), directory);
         MapStoredSurfaceSource source = MapStoredSurfaceSource.Open(directory);
-        MapTileCoord coord = PinnedTileHolding(directory, "\"tree-2\"").Coord;
-        File.Delete(TileFileHolding(directory, "\"tree-2\""));
+        MapTileEntry pinned = PinnedTileHolding(directory, "\"tree-2\"");
+        MapTileCoord coord = pinned.Coord;
+        string path = TileFileHolding(directory, "\"tree-2\"");
+        byte[] original = File.ReadAllBytes(path);
+        File.Delete(path);
 
-        string message = Assert.Throws<MapDocumentException>(() =>
-            MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), V2)).Message;
-        Assert.Contains("Missing", message);
-        AssertNamesNoOuterPath(message, directory);
-        Assert.Equal($"Missing pinned tile ({coord.X}, {coord.Z}).", message);
-        AssertNamesNoPathOrFile(message, directory);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), V2));
+        Assert.Equal(MapDocumentRefusal.PinnedContentUnavailable, error.Reason);
+        Assert.Equal(MapPatchStatus.Missing, error.PatchStatus);
+        Assert.Equal(coord, error.Tile);
+        Assert.Equal(pinned.Hash, error.ExpectedHash);
+        AssertNamesNoOuterPath(error.Message, directory);
+        AssertNamesNoPathOrFile(error.Message, directory);
+        File.WriteAllBytes(path, original);
+        Assert.NotEmpty(MapAuthoredIdentityV2.Compute(source, SurfaceStorageFixtures.Assets(), V2));
     });
 
     [Fact]
@@ -173,13 +186,24 @@ public sealed class StoredContentIdentityTests
         MapTileCoord first = PinnedTileHolding(directory, "\"tree-1\"").Coord;
         MapTileCoord second = PinnedTileHolding(directory, "\"tree-2\"").Coord;
         Assert.NotEqual(first, second);
+        string originalPath = TileFileHolding(directory, "\"tree-2\"");
+        byte[] originalTile = File.ReadAllBytes(originalPath);
+        string manifestPath = Path.Combine(directory, MapTiledFile.ManifestName);
+        byte[] originalManifest = File.ReadAllBytes(manifestPath);
         RewritePlacement(directory, "tree-2", p => p["id"] = "tree-1");
 
         MapTiledFile.ReadManifest(directory, new MapDocumentLoadOptions(), out MapTileIndex index);
         MapTileCoord later = index.Entries.Last(e => e.Coord == first || e.Coord == second).Coord;
-        string message = Refusal(directory);
-        Assert.Equal($"Corrupt pinned tile ({later.X}, {later.Z}).", message);
-        AssertNamesNoPathOrFile(message, directory);
+        var error = Refusal(directory);
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
+        Assert.Equal("placement", error.SubjectKind);
+        Assert.Equal("tree-1", error.EntityId);
+        Assert.Equal(MapPatchStatus.Corrupt, error.PatchStatus);
+        Assert.Equal(later, error.Tile);
+        AssertNamesNoPathOrFile(error.Message, directory);
+        File.WriteAllBytes(originalPath, originalTile);
+        File.WriteAllBytes(manifestPath, originalManifest);
+        Assert.NotEmpty(Token(directory));
     });
 
     [Theory]
@@ -207,21 +231,29 @@ public sealed class StoredContentIdentityTests
         }
         SetPinnedHash(directory, entry.Coord, hash);
 
-        string message = Refusal(directory);
-        Assert.Equal($"Corrupt pinned tile ({entry.Coord.X}, {entry.Coord.Z}).", message);
-        AssertNamesNoPathOrFile(message, directory);
+        var error = Refusal(directory);
+        Assert.Equal(MapDocumentRefusal.PinnedContentUnavailable, error.Reason);
+        Assert.Equal(MapPatchStatus.Corrupt, error.PatchStatus);
+        Assert.Equal(entry.Coord, error.Tile);
+        Assert.Equal(hash, error.ExpectedHash);
+        AssertNamesNoPathOrFile(error.Message, directory);
+        SetPinnedHash(directory, entry.Coord, entry.Hash);
+        Assert.NotEmpty(Token(directory));
     });
 
     [Fact]
-    public void StoredContent_PinnedTileHashSchemeMismatchRefusesWithItsMessage() => TiledDocFixture.InDirectory(directory =>
+    public void StoredContent_PinnedTileHashSchemeMismatchIdentifiesBothVersions() => TiledDocFixture.InDirectory(directory =>
     {
         MapDocumentFile.SaveTiled(Content(), directory);
         int other = MapDocumentHash.SchemeVersion + 1;
         EditManifest(directory, root => root["schemeVersion"] = other);
 
-        string message = Refusal(directory);
-        Assert.Equal($"Whole authored identity requires tile hash scheme {MapDocumentHash.SchemeVersion}, " +
-            $"the pinned manifest uses {other}.", message);
-        AssertNamesNoPathOrFile(message, directory);
+        var error = Refusal(directory);
+        Assert.Equal(MapDocumentRefusal.DocumentHashSchemeUnsupported, error.Reason);
+        Assert.Equal(other, error.ActualVersion);
+        Assert.Equal(new[] { MapDocumentHash.SchemeVersion }, error.SupportedVersions);
+        AssertNamesNoPathOrFile(error.Message, directory);
+        EditManifest(directory, root => root["schemeVersion"] = MapDocumentHash.SchemeVersion);
+        Assert.NotEmpty(Token(directory));
     });
 }

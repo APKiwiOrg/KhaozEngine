@@ -42,11 +42,56 @@ any input or intermediate string above 4,194,304 UTF-16 code units. Matching has
 `BugReportDraft` holds what the trigger captured (id, game id, kind, capture time, finished sections, screenshot
 and clip) and what the player edits (`Description`, `Category`, `IncludeScreenshot`, `IncludeClip`). Its setters
 do not validate. `BugReportBundleWriter.Write(draft)` checks every field, writes a stored zip with the manifest and
-its SHA-256 hashes, and throws when a field or a limit is broken. Every bundle it writes passes
-`BundleValidator.Validate`.
+its SHA-256 hashes, and throws when a field or a limit is broken (see [Refusals](#refusals)). Every bundle it writes
+passes `BundleValidator.Validate`.
 
 The viewer and relay share `BugReportLogTail.FromLogSection(json)` with a default limit of 50 lines. It reads the newest string
 lines in their original order. Missing or malformed log data gives an empty tail.
+
+## Refusals
+
+A refused draft field, section, screenshot or clip throws `BugReportBundleArgumentException`, which derives from
+`ArgumentException` and keeps `ParamName` as `draft`. A bundle that would break its entry or byte limit throws
+`BugReportBundleLimitException`, which derives from `InvalidOperationException`. Both carry `Reason`, the rule, from the
+one `BugReportBundleRefusal` enum. A null draft throws `ArgumentNullException`.
+
+| `Reason` | What it refuses | Identifiers |
+| --- | --- | --- |
+| `ReportIdInvalid` | a report id that is not a canonical version 7 id, null included | `FieldName` |
+| `GameIdInvalid` | a game id outside `[a-z0-9][a-z0-9-]{0,31}`, null included | `FieldName`, `MaximumCharacters` (32) |
+| `ReportKindUndefined` | a kind `BugReportKind` does not define | `ActualKind` |
+| `CaptureYearOutsideZipRange` | a capture time whose UTC year is outside the zip range | `ActualYear`, `MinimumYear` (1980), `MaximumYear` (2107) |
+| `CategoryMissing` | a null category | `FieldName` |
+| `CategoryLengthOutsideRange` | an empty or overlong category | `FieldName`, `ActualCharacters`, `MinimumCharacters` (1), `MaximumCharacters` (64) |
+| `DescriptionBlank` | a null, empty or whitespace-only description | `FieldName` |
+| `DescriptionTooLong` | a description over the limit once trailing whitespace is dropped | `ActualCharacters`, `MaximumCharacters` (4000) |
+| `TextMalformed` | a category or description holding an unpaired surrogate | `FieldName` |
+| `SectionListMissing` | a null section list | `FieldName` |
+| `SectionMissing` | a null entry in the section list | `Index` |
+| `SectionKeyInvalid` | a section key outside `[a-z0-9][a-z0-9._-]{0,47}`, null included | `Index`, `SectionKey` |
+| `SectionKeyDuplicate` | a section key an earlier section uses, `Index` being the later one | `Index`, `SectionKey` |
+| `SectionBytesExceeded` | sections whose running total passes the limit, `ActualBytes` being the total through the section that crossed it | `ActualBytes`, `MaximumBytes` (1048576) |
+| `SectionJsonInvalid` | a section that is not one JSON object within the depth limit, with unique property names and decodable strings. `MaximumDepth` is the rule's limit, set on every such refusal whatever the cause, because the guard cannot tell which part of the section failed | `SectionKey`, `MaximumDepth` (64) |
+| `ScreenshotMediaUnsupported` | a screenshot media type other than `image/png` or `image/jpeg`, null included | `MediaType` |
+| `ImageDimensionsOutsideRange` | a screenshot or clip frame whose recorded width or height is outside the edge range | `EntryName`, `Width`, `Height`, `MinimumPixels` (1), `MaximumPixels` (2560) |
+| `ImageHeaderUnreadable` | a screenshot or clip frame whose bytes do not start with a readable header of its media type | `EntryName`, `MediaType` |
+| `ImageHeaderDimensionsMismatch` | a screenshot or clip frame whose header size differs from its record | `EntryName`, `Width`, `Height`, `HeaderWidth`, `HeaderHeight` |
+| `ClipFrameListMissing` | a clip whose frame list is null | none |
+| `ClipFrameCountExceeded` | a clip over the frame limit | `ActualCount`, `MaximumCount` (120) |
+| `ClipFrameMissing` | a null entry in the clip frame list | `Index` |
+| `ClipOffsetDecreased` | a clip frame that starts before the frame ahead of it, or the first before the clip | `Index`, `ActualMilliseconds`, `MinimumMilliseconds` |
+| `ClipOffsetExceeded` | a clip frame that starts past the offset limit | `Index`, `ActualMilliseconds`, `MaximumMilliseconds` (600000) |
+| `RenderTimeNonfinite` | a clip frame whose render time is NaN or infinite | `Index`, `ActualMilliseconds` |
+| `RenderTimeOutsideRange` | a clip frame whose finite render time is negative or over the limit | `Index`, `ActualMilliseconds`, `MinimumMilliseconds` (0), `MaximumMilliseconds` (60000) |
+| `EntryCountExceeded` | a bundle needing more zip entries than the limit, the manifest included (`BugReportBundleLimitException`) | `ActualCount`, `MaximumCount` (128) |
+| `PayloadBytesExceeded` | a bundle whose entries after the manifest total more than the limit (`BugReportBundleLimitException`) | `ActualBytes`, `MaximumBytes` (16777216) |
+| `ArchiveBytesExceeded` | a bundle whose written archive, zip framing included, is longer than the limit (`BugReportBundleLimitException`) | `ActualBytes`, `MaximumBytes` (16777216) |
+
+`FieldName` is the `BugReportDraft` property: `ReportId`, `GameId`, `Category`, `Description` or `Sections`.
+`EntryName` is the bundle entry the image would be written as, such as `screenshot.png` or `clip/002.jpg`. `Width` and
+`Height` are the recorded size in pixels, and `HeaderWidth` and `HeaderHeight` the size the encoded header holds.
+`Index` is the position in the section list for a section reason and in the clip frame list for a clip frame reason.
+`MinimumMilliseconds` for `ClipOffsetDecreased` is the offset of the frame ahead, or zero for the first frame.
 
 ## Sinks
 

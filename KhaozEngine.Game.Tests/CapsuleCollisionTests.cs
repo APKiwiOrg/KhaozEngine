@@ -8,55 +8,26 @@ public class CapsuleCollisionTests
 {
     // --- Contains (point in capsule), capsule [(0,0),(10,0)] radius 2 ---
 
-    [Fact]
-    public void ContainsTrueWhenPointInsideBody()
+    [Theory]
+    [InlineData(5f, 1f, true)] // Inside the body.
+    [InlineData(5f, 3f, false)] // Outside the body.
+    [InlineData(-1.5f, 0f, true)] // Inside the rounded end cap.
+    [InlineData(5f, 2f, true)] // Exactly on the surface.
+    public void ContainsRespectsBodyCapsAndSurface(float x, float y, bool expected)
     {
-        // 1 unit above the midpoint, well within radius 2.
-        Assert.True(CapsuleCollision.Contains(Vector2.Zero, new Vector2(10f, 0f), 2f, new Vector2(5f, 1f)));
-    }
-
-    [Fact]
-    public void ContainsFalseWhenPointOutsideBody()
-    {
-        // 3 units above the segment, outside radius 2.
-        Assert.False(CapsuleCollision.Contains(Vector2.Zero, new Vector2(10f, 0f), 2f, new Vector2(5f, 3f)));
-    }
-
-    [Fact]
-    public void ContainsTrueWhenPointInRoundedEndCap()
-    {
-        // Past the 'a' endpoint but within the rounded cap: distance to 'a' is 1.5 <= 2.
-        Assert.True(CapsuleCollision.Contains(Vector2.Zero, new Vector2(10f, 0f), 2f, new Vector2(-1.5f, 0f)));
-    }
-
-    [Fact]
-    public void ContainsTrueWhenPointExactlyOnSurface()
-    {
-        // distance == radius -> touching counts as inside (<=).
-        Assert.True(CapsuleCollision.Contains(Vector2.Zero, new Vector2(10f, 0f), 2f, new Vector2(5f, 2f)));
+        Assert.Equal(expected, CapsuleCollision.Contains(Vector2.Zero, new Vector2(10f, 0f), 2f, new Vector2(x, y)));
     }
 
     // --- Circle vs capsule, capsule [(0,0),(10,0)] radius 1 ---
 
-    [Fact]
-    public void IntersectsTrueWhenCircleOverlapsCapsule()
+    [Theory]
+    [InlineData(1.5f, true)] // Overlap.
+    [InlineData(2f, true)] // Exact contact at the combined radius.
+    [InlineData(2.5f, false)] // Disjoint.
+    public void CircleIntersectionRespectsCombinedRadius(float centreY, bool expected)
     {
-        // Centre 1.5 above the segment; 1.5 <= 1 + 1.
-        Assert.True(CapsuleCollision.Intersects(Vector2.Zero, new Vector2(10f, 0f), 1f, new Vector2(5f, 1.5f), 1f));
-    }
-
-    [Fact]
-    public void IntersectsTrueWhenCircleGrazesCapsule()
-    {
-        // Exactly touching: distance 2 == capsuleRadius + circleRadius (1 + 1).
-        Assert.True(CapsuleCollision.Intersects(Vector2.Zero, new Vector2(10f, 0f), 1f, new Vector2(5f, 2f), 1f));
-    }
-
-    [Fact]
-    public void IntersectsFalseWhenCircleDisjointFromCapsule()
-    {
-        // distance 2.5 > 1 + 1.
-        Assert.False(CapsuleCollision.Intersects(Vector2.Zero, new Vector2(10f, 0f), 1f, new Vector2(5f, 2.5f), 1f));
+        Assert.Equal(expected, CapsuleCollision.Intersects(
+            Vector2.Zero, new Vector2(10f, 0f), 1f, new Vector2(5f, centreY), 1f));
     }
 
     // --- Capsule vs capsule ---
@@ -70,13 +41,15 @@ public class CapsuleCollisionTests
             new Vector2(0f, 1.5f), new Vector2(10f, 1.5f), 1f));
     }
 
-    [Fact]
-    public void IntersectsFalseWhenParallelCapsulesDisjoint()
+    [Theory]
+    [InlineData(10f, 1f, 0f, 3f, 10f, 3f)] // Parallel, perpendicular gap.
+    [InlineData(1f, 0.5f, 10f, 10f, 11f, 10f)] // Distant endpoints.
+    public void DisjointCapsulesDoNotIntersect(float endX, float radius, float otherStartX,
+        float otherStartY, float otherEndX, float otherEndY)
     {
-        // Parallel segments 3 apart; 3 > 1 + 1.
         Assert.False(CapsuleCollision.Intersects(
-            Vector2.Zero, new Vector2(10f, 0f), 1f,
-            new Vector2(0f, 3f), new Vector2(10f, 3f), 1f));
+            Vector2.Zero, new Vector2(endX, 0f), radius,
+            new Vector2(otherStartX, otherStartY), new Vector2(otherEndX, otherEndY), radius));
     }
 
     [Fact]
@@ -86,15 +59,6 @@ public class CapsuleCollisionTests
         Assert.True(CapsuleCollision.Intersects(
             Vector2.Zero, new Vector2(10f, 0f), 0.5f,
             new Vector2(5f, -5f), new Vector2(5f, 5f), 0.5f));
-    }
-
-    [Fact]
-    public void IntersectsFalseWhenCapsulesDisjoint()
-    {
-        // Two short capsules far apart.
-        Assert.False(CapsuleCollision.Intersects(
-            Vector2.Zero, new Vector2(1f, 0f), 0.5f,
-            new Vector2(10f, 10f), new Vector2(11f, 10f), 0.5f));
     }
 
     // --- Degenerate a == b must reduce to a circle ---

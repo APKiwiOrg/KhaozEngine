@@ -58,7 +58,7 @@ public class ShellGeometryTests
 
         ArgumentException error = Assert.Throws<ArgumentException>(() => ShellGeometry.Validate(tuning));
 
-        Assert.Contains("TractionHysteresisRadians", error.Message);
+        Assert.Equal("tuning", error.ParamName);
     }
 
     // The consumer bodies clear their banded plane with room to spare. The engine default lies 0.8 * cos(48) = 0.535

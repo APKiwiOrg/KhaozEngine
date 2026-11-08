@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Spaces;
@@ -113,10 +114,7 @@ public sealed class MapSpaceRelations
         { return Failure(MapRelationStatus.NotRepresentable, "overflow"); }
         catch (MapDocumentException error)
         {
-            return Failure(MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.Ordinal)
-                ? MapRelationStatus.NotRepresentable :
-                error.Message.Contains("invalid", StringComparison.Ordinal) ? MapRelationStatus.Invalid : MapRelationStatus.MissingGeometry,
-                error.Message);
+            return Failure(RefusalStatus(error), error.Message);
         }
 
         MapRelationResult Failure(MapRelationStatus status, string? detail) => new(status, a, b, query, first, second,
@@ -124,6 +122,16 @@ public sealed class MapSpaceRelations
         MapRelationResult Resolved(MapGeometricRelation relation, IEnumerable<MapPortalFact> path) =>
             new(MapRelationStatus.Resolved, a, b, query, first, second, relation, path, null, _view.ReadWitness);
     }
+
+    internal static MapRelationStatus RefusalStatus(MapDocumentException error) =>
+        MapCommonRefinement.NotRepresentable(error) || error is
+            { Reason: MapDocumentRefusal.ValueNonfinite or MapDocumentRefusal.ValueOutsideRange, Operation: nameof(MapResourceTransform.Freeze) }
+            ? MapRelationStatus.NotRepresentable
+            : error.ResolutionStatus == MapResolveStatus.Invalid || error.Reason is
+                MapDocumentRefusal.GeometryVertexSequenceInvalid or MapDocumentRefusal.SpacePortalOpenTopInvalid or
+                MapDocumentRefusal.SpacePortalHeightInvalid or MapDocumentRefusal.SpaceAliasCycle or MapDocumentRefusal.SpaceParentCycle ||
+                error is { Reason: MapDocumentRefusal.ReferenceKindMismatch, SubjectKind: "aperture" }
+                ? MapRelationStatus.Invalid : MapRelationStatus.MissingGeometry;
 
     static MapRelationStatus Status(MapMembershipStatus status) => status switch
     {

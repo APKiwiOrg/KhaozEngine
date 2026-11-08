@@ -31,13 +31,16 @@ public readonly record struct PgmImage(int Width, int Height, int MaxValue, usho
 /// decimals followed by raw big-endian samples, so reading it is the parser below rather than a deflate
 /// decoder the engine does not have.
 ///
-/// Every malformed file is refused with a <see cref="TileWorldException"/> naming the file and the problem,
+/// Every malformed file is refused with a <see cref="TileWorldException"/> carrying a PGM
+/// <see cref="TileWorldException.Reason"/>, <see cref="TileWorldException.SourceName"/> and the applicable identifiers,
 /// never decoded on a guess: a heightmap that silently reads a byte out of step is a terrain nobody can tell
 /// is wrong until it is authored on top of. Trailing bytes after the raster are the one thing tolerated,
 /// because a file with a stray newline at the end is still a whole image.</summary>
 public static class PgmReader
 {
-    /// <summary>Reads the binary PGM at <paramref name="path"/>, naming that path in any error.</summary>
+    /// <summary>Reads the binary PGM at <paramref name="path"/>. Every refusal carries that path in
+    /// <see cref="TileWorldException.SourceName"/>, or &lt;empty path&gt; for an empty path.
+    /// <see cref="TileWorldRefusal.PgmReadFailed"/> retains the file-read cause as its inner exception.</summary>
     public static PgmImage Read(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -53,13 +56,14 @@ public static class PgmReader
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
             or ArgumentException or SecurityException)
         {
-            throw new TileWorldException($"{file}: cannot read the heightmap file. {ex.Message}", ex);
+            throw new TileWorldException(TileWorldRefusal.PgmReadFailed,
+                $"{file}: cannot read the heightmap file. {ex.Message}", ex) { SourceName = file };
         }
         return Read(bytes, file);
     }
 
-    /// <summary>Reads a binary PGM already in memory, naming <paramref name="name"/> (or "&lt;bytes&gt;" when
-    /// there is none) in any error.
+    /// <summary>Reads a binary PGM already in memory. Every refusal carries <paramref name="name"/> in
+    /// <see cref="TileWorldException.SourceName"/>, or &lt;bytes&gt; when it is null or empty.
     ///
     /// The header is the magic P5 then width, height and maxval as ASCII decimals, with whitespace or a hash
     /// comment (to the end of its line) allowed between any two of them. Maxval is then closed by EXACTLY ONE
@@ -74,8 +78,9 @@ public static class PgmReader
     {
         string file = string.IsNullOrEmpty(name) ? "<bytes>" : name;
         if (bytes.Length < 2 || bytes[0] != (byte)'P' || bytes[1] != (byte)'5')
-            throw new TileWorldException(
-                $"{file}: not a binary PGM. The first two bytes must be the magic P5, so a P2 ascii greymap or a P6 colour pixmap is refused rather than read as one.");
+            throw new TileWorldException(TileWorldRefusal.PgmMagicUnsupported,
+                $"{file}: not a binary PGM. The first two bytes must be the magic P5, so a P2 ascii greymap or a P6 colour pixmap is refused rather than read as one.")
+            { SourceName = file, ExpectedMagic = "P5", ActualMagic = bytes[..Math.Min(2, bytes.Length)].ToArray() };
 
         int at = 2;
         int width = ReadHeaderInt(bytes, ref at, file, "width");
@@ -83,17 +88,20 @@ public static class PgmReader
         int maxValue = ReadHeaderInt(bytes, ref at, file, "maxval");
 
         if (width <= 0 || height <= 0)
-            throw new TileWorldException(
-                $"{file}: the header claims a {width} by {height} image, and both dimensions must be positive.");
+            throw new TileWorldException(TileWorldRefusal.PgmDimensionsNonPositive,
+                $"{file}: the header claims a {width} by {height} image, and both dimensions must be positive.")
+            { SourceName = file, Width = width, Height = height };
         if (maxValue < 1 || maxValue > 65535)
-            throw new TileWorldException(
-                $"{file}: maxval is {maxValue}, outside the 1 to 65535 a PGM sample can carry.");
+            throw new TileWorldException(TileWorldRefusal.PgmMaxValueOutsideRange,
+                $"{file}: maxval is {maxValue}, outside the 1 to 65535 a PGM sample can carry.")
+            { SourceName = file, Field = "maxval", MaxValue = maxValue, Minimum = 1, Maximum = 65535 };
 
         // Exactly ONE whitespace byte closes the header. Skipping every whitespace byte here would eat the
         // first sample of any raster that happens to begin with a byte worth 9 to 13 or 32.
         if (at >= bytes.Length || !IsWhitespace(bytes[at]))
-            throw new TileWorldException(
-                $"{file}: maxval must be followed by exactly one whitespace byte and then the raster.");
+            throw new TileWorldException(TileWorldRefusal.PgmRasterDelimiterMissing,
+                $"{file}: maxval must be followed by exactly one whitespace byte and then the raster.")
+            { SourceName = file, Field = "maxval", ByteOffset = at };
         at++;
 
         int bytesPerSample = maxValue < 256 ? 1 : 2;
@@ -103,8 +111,12 @@ public static class PgmReader
         // bytes it does not have rather than after asking for 20 GB of samples. A hostile or corrupt header must
         // cost a string, not the process.
         if (available < needed)
-            throw new TileWorldException(
-                $"{file}: the header claims a {width} by {height} {bytesPerSample * 8} bit raster, which needs {needed} bytes, and only {available} follow the header.");
+            throw new TileWorldException(TileWorldRefusal.PgmRasterTruncated,
+                $"{file}: the header claims a {width} by {height} {bytesPerSample * 8} bit raster, which needs {needed} bytes, and only {available} follow the header.")
+            {
+                SourceName = file, Width = width, Height = height, BitsPerSample = bytesPerSample * 8,
+                RequiredByteCount = needed, AvailableByteCount = available,
+            };
 
         // Safe as an int now: the check above puts width times height times the sample size inside the byte
         // count, which is itself an int.
@@ -122,16 +134,21 @@ public static class PgmReader
     static int ReadHeaderInt(ReadOnlySpan<byte> bytes, ref int at, string file, string field)
     {
         if (!SkipSeparators(bytes, ref at))
-            throw new TileWorldException($"{file}: the header needs whitespace or a comment before {field}.");
+            throw new TileWorldException(TileWorldRefusal.PgmHeaderSeparatorMissing,
+                $"{file}: the header needs whitespace or a comment before {field}.")
+            { SourceName = file, Field = field, ByteOffset = at };
         if (at >= bytes.Length || !IsDigit(bytes[at]))
-            throw new TileWorldException(
-                $"{file}: the header ends or turns non-numeric where {field} should be. A binary PGM header is P5, then width, height and maxval as decimals.");
+            throw new TileWorldException(TileWorldRefusal.PgmHeaderIntegerMalformed,
+                $"{file}: the header ends or turns non-numeric where {field} should be. A binary PGM header is P5, then width, height and maxval as decimals.")
+            { SourceName = file, Field = field, ByteOffset = at };
         long value = 0;
         while (at < bytes.Length && IsDigit(bytes[at]))
         {
             value = value * 10 + (bytes[at] - '0');
             if (value > int.MaxValue)
-                throw new TileWorldException($"{file}: {field} is too large to be a real image.");
+                throw new TileWorldException(TileWorldRefusal.PgmHeaderIntegerOverflow,
+                    $"{file}: {field} is too large to be a real image.")
+                { SourceName = file, Field = field, ByteOffset = at, ParsedValue = value };
             at++;
         }
         return (int)value;

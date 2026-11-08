@@ -26,10 +26,13 @@ namespace KhaozEngine.Render3D
         /// mutation. Uses the same decoder and skin joint order as the path overload. The caller's
         /// <paramref name="identity"/> names the asset in validation diagnostics.</summary>
         /// <remarks>Attachment consumers must apply their embedded skinned asset policy before import.</remarks>
-        /// <exception cref="InvalidDataException">The glTF is malformed. The message names
-        /// <paramref name="identity"/> and the importer's diagnostic is the inner exception.</exception>
-        /// <exception cref="InvalidOperationException">The glTF has no skin, exceeds the bone cap or fails index
-        /// validation.</exception>
+        /// <exception cref="GltfImportDataException">The glTF is malformed. Reason is
+        /// <see cref="GltfImportRefusal.MalformedModel"/>, Identity is <paramref name="identity"/> and the
+        /// importer's diagnostic is the inner exception. This type derives from Exception because
+        /// InvalidDataException is sealed.</exception>
+        /// <exception cref="GltfImportStateException">The glTF fails strict validation, has no skin, exceeds
+        /// the joint cap or has an influence outside the skin joint count. Reason identifies the rule.</exception>
+        /// <exception cref="MeshIndexStateException">A source index or rebased index is outside its range.</exception>
         public static SkinnedGltfMesh LoadSkinned(ReadOnlyMemory<byte> glb, string identity) =>
             TranslateModelErrors(identity, () => BuildSkinned(LoadModel(glb, identity), identity));
 
@@ -108,16 +111,18 @@ namespace KhaozEngine.Render3D
                         });
                         srcTangent.Add(tangents != null && i < tangents.Count ? tangents[i] : (Vector4?)null);
                     }
+                    int partIndex = groups.IndexOf(group);
                     foreach (var (a, b, c) in prim.GetTriangleIndices())
                     {
-                        indices.Add(MeshIndexValidation.Rebase(a, pos.Count, baseIndex, identity));
-                        indices.Add(MeshIndexValidation.Rebase(b, pos.Count, baseIndex, identity));
-                        indices.Add(MeshIndexValidation.Rebase(c, pos.Count, baseIndex, identity));
+                        indices.Add(MeshIndexValidation.Rebase(a, pos.Count, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
+                        indices.Add(MeshIndexValidation.Rebase(b, pos.Count, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
+                        indices.Add(MeshIndexValidation.Rebase(c, pos.Count, baseIndex, path, partIndex: partIndex, diagnosticIdentity: identity));
                     }
                 }
 
             if (skin == null || groups.All(group => group.Vertices.Count == 0))
-                throw new InvalidOperationException("glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path);
+                throw new GltfImportStateException(GltfImportRefusal.NoSkinnedMesh,
+                    "glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path) { Identity = path };
 
             foreach (SkinnedGeometry group in groups)
                 ComputeSkinnedTangents(group.Vertices, group.Indices, group.SourceTangents);
@@ -128,13 +133,15 @@ namespace KhaozEngine.Render3D
             // exactly MaxBonesPerDraw and reads it unconditionally per vertex (SkinningMath.BlendSkinMatrix),
             // so an oversized joint count or an out-of-range JOINTS_0 index would otherwise throw mid-frame.
             if (boneCount > SkinningMath.MaxBonesPerDraw)
-                throw new InvalidOperationException(
-                    $"glTF skin has {boneCount} joints, over the {SkinningMath.MaxBonesPerDraw}-bone per-draw cap: {path}");
-            foreach (SkinnedGeometry group in groups)
-                foreach (SkinnedVertex v in group.Vertices)
-                    if (!SkinningMath.AreBoneIndicesValid(v.BoneIndices, boneCount))
-                        throw new InvalidOperationException(
-                            $"glTF JOINTS_0 references a bone index outside [0,{boneCount}): {path}");
+                throw new GltfImportStateException(GltfImportRefusal.SkinJointLimitExceeded,
+                    $"glTF skin has {boneCount} joints, over the {SkinningMath.MaxBonesPerDraw}-bone per-draw cap: {path}")
+                { Identity = path, JointCount = boneCount, MaximumJointCount = SkinningMath.MaxBonesPerDraw };
+            for (int partIndex = 0; partIndex < groups.Count; partIndex++)
+                for (int vertexIndex = 0; vertexIndex < groups[partIndex].Vertices.Count; vertexIndex++)
+                {
+                    SkinnedVertex v = groups[partIndex].Vertices[vertexIndex];
+                    ValidateSkinJointIndices(v.BoneIndices, boneCount, path, vertexIndex, partIndex);
+                }
 
             var inverseBind = new Matrix4x4[boneCount];
             var restPose = new Matrix4x4[boneCount];

@@ -39,9 +39,9 @@ sealed class ContentRebuildSnapshot
         IReadOnlyList<RemapRule> rules,
         IReadOnlyList<ManifestLanguageEntry> languages)
     {
-        Rows = rows;
-        Rules = rules;
-        Languages = languages;
+        Rows = new CatalogReadOnlyView<ContentCandidateRow>([.. rows]);
+        Rules = new CatalogReadOnlyView<RemapRule>([.. rules]);
+        Languages = new CatalogReadOnlyView<ManifestLanguageEntry>([.. languages]);
     }
 
     /// <summary>Every row live at the version, retired ones included, as the chunk builder takes them.</summary>

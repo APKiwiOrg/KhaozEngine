@@ -186,11 +186,15 @@ public sealed partial class SqlServerCatalogRowTimestampTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
-        Assert.Contains("at unsupported version '2'", refused.Message, StringComparison.Ordinal);
-        Assert.Contains(MigrationName, refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaVersionUnsupported, refused.Refusal);
+        Assert.Equal(2L, refused.ActualVersion);
+        Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
         Assert.Equal(before, Fingerprint(database));
         Assert.Equal(2, Count(database, "SELECT schema_version FROM dbo.catalog_metadata;"));
         Assert.Equal(0, NewColumnCount(database));
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>
@@ -204,14 +208,20 @@ public sealed partial class SqlServerCatalogRowTimestampTests
         var created = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         await created.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         database.Execute("ALTER TABLE dbo.catalog_row DROP COLUMN updated_at_utc;");
+        string before = SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
 
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
-        Assert.Contains("missing row time column 'catalog_row.updated_at_utc", refused.Message, StringComparison.Ordinal);
-        Assert.Contains(MigrationName, refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaObjectMissing, refused.Refusal);
+        Assert.Equal("row time column:catalog_row.updated_at_utc|datetimeoffset|7|NULL", refused.ObjectName);
+        Assert.Equal(4, refused.ExpectedVersion);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(before, SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
+        database.Execute("ALTER TABLE dbo.catalog_row ADD updated_at_utc datetimeoffset(7) NULL;");
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>
@@ -224,15 +234,23 @@ public sealed partial class SqlServerCatalogRowTimestampTests
         using var database = new SqlServerCatalogDatabase();
         WriteVersionTwo(database);
         database.Execute("ALTER TABLE dbo.catalog_row ADD created_at_utc datetimeoffset(3) NULL;");
+        string before = SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
 
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate));
 
         Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
-        Assert.Contains("catalog_row.created_at_utc|datetimeoffset|3|NULL", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaObjectUnexpected, refused.Refusal);
+        Assert.Equal("row time column:catalog_row.created_at_utc|datetimeoffset|3|NULL", refused.ObjectName);
+        Assert.Equal(2, refused.ExpectedVersion);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
         Assert.Equal(2, Count(database, "SELECT schema_version FROM dbo.catalog_metadata;"));
         Assert.Equal(1, NewColumnCount(database));
+        Assert.Equal(before, SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
+        database.Execute("ALTER TABLE dbo.catalog_row ALTER COLUMN created_at_utc datetimeoffset(7) NULL;");
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>

@@ -152,6 +152,7 @@ public class NavHopLinksTests
         IReadOnlyList<NavLink> first = NavHopLinks.Generate(grid, StepHeight, JumpHeight);
         IReadOnlyList<NavLink> second = NavHopLinks.Generate(grid, StepHeight, JumpHeight);
 
+        Assert.NotEmpty(first);
         Assert.Equal(first.Count, second.Count);
         Assert.Equal(first, second);
     }
@@ -215,27 +216,13 @@ public class NavHopLinksTests
         Assert.Empty(links);
     }
 
-    [Fact]
-    public void RimLanding_RiseExactlyStepHeight_NoHop()
+    [Theory]
+    [InlineData(0.5f)] // Exact excluded lower edge of the hop band.
+    [InlineData(0f)] // Flat fence.
+    public void RimLanding_AtOrBelowStepHeight_NoHop(float rise)
     {
-        // A reachable landing across a blocked rim whose rise is exactly stepHeight sits on the
-        // excluded lower band edge, the band is strictly above stepHeight. A rise >= stepHeight
-        // weakening would emit here.
-        NavGrid grid = RowGrid(0f, null, 0.5f);
-
+        NavGrid grid = RowGrid(0f, null, rise);
         IReadOnlyList<NavLink> links = NavHopLinks.Generate(grid, StepHeight, JumpHeight);
-
-        Assert.Empty(links);
-    }
-
-    [Fact]
-    public void RimLanding_FlatFence_NoHop()
-    {
-        // Same height on both sides of a blocked rim (rise 0). You do not hop a flat fence.
-        NavGrid grid = RowGrid(0f, null, 0f);
-
-        IReadOnlyList<NavLink> links = NavHopLinks.Generate(grid, StepHeight, JumpHeight);
-
         Assert.Empty(links);
     }
 

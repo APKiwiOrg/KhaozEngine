@@ -208,6 +208,22 @@ internal static class MapFoliageDependents
 /// message starts with the status name, so every caller and wire reply carries it.</summary>
 internal static class MapFoliageEditRefusal
 {
-    internal static MapDocumentException Create(MapFoliageStatus status, string detail) =>
-        new(string.Create(CultureInfo.InvariantCulture, $"Foliage {status}: {detail}."));
+    internal static MapDocumentException Create(MapFoliageContextMeasure measure, string detail) =>
+        Create(measure.Status, measure.Finding, measure.Cause?.Findings, measure.Cause, detail);
+
+    internal static MapDocumentException Create(MapFoliageContextResult result, string detail) =>
+        Create(result.Status, result.Finding, result.Findings, result.Cause, detail);
+
+    static MapDocumentException Create(MapFoliageStatus status, MapDocumentFinding? finding,
+        IReadOnlyList<MapDocumentFinding>? findings, Exception? cause, string detail)
+    {
+        string message = string.Create(CultureInfo.InvariantCulture, $"Foliage {status}: {detail}.");
+        if (finding is null)
+        {
+            if (cause is MapDocumentException consumer) return consumer.WithSourceName(null, message);
+            // Every refused engine result carries a finding or the original consumer-built document refusal.
+            throw new InvalidOperationException("A refused foliage context must retain its finding or original refusal.");
+        }
+        return MapDocumentRefusalFactory.FromFinding(finding with { FoliageStatus = status }, message, cause, findings);
+    }
 }

@@ -170,7 +170,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (BindWindowFits(rangeOffset, callerDynamicOffset, range, stride)) return;
 
-            throw new ArgumentOutOfRangeException(nameof(range), range,
+            throw new GpuDynamicBindingRangeException(GpuDynamicBindingRefusal.WindowOutsideSegment, nameof(range), range,
                 "A native Vulkan uniform bind of "
                 + range.ToString(CultureInfo.InvariantCulture)
                 + " bytes at range offset "
@@ -181,7 +181,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + stride.ToString(CultureInfo.InvariantCulture)
                 + "-byte ring segment. On the LAST frame slot that is also past the end of the buffer, which is "
                 + "VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979, so it would be a validation error on one "
-                + "frame in three rather than on every frame. Widen the buffer or narrow the window.");
+                + "frame in three rather than on every frame. Widen the buffer or narrow the window.")
+            {
+                RangeOffset = rangeOffset,
+                DynamicOffset = callerDynamicOffset,
+                RangeBytes = range,
+                SegmentStride = stride,
+            };
         }
     }
 }

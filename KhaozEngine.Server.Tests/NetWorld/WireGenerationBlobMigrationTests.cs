@@ -78,7 +78,9 @@ public class WireGenerationBlobMigrationTests
 
         byte[] normalized = WireGenerationBlobMigration.NormalizeV3ToV4(atTwelve);
 
-        byte[] expected = BodyAt(MoveProtocol.WireProtocolVersion, CommittedMovement(), Owner(),
+        MovementState expectedMovement = CommittedMovement();
+        expectedMovement.SpeedScaleQ *= 64;
+        byte[] expected = BodyAt(MoveProtocol.WireProtocolVersion, expectedMovement, Owner(),
             (16, CellBlobFixtures.Extension(new byte[] { 0x04, 0x0C, 0x80, 0xFF })));
         Assert.Equal(expected, normalized);
         Assert.Equal(expected, BuiltinBlobLayout.NormalizeToCurrent(atTwelve, 12));
@@ -103,6 +105,7 @@ public class WireGenerationBlobMigrationTests
         persistence.SaveDirtyPass();
         await persistence.FlushAsync();
 
+        m.SpeedScaleQ *= 64;
         byte[] expected = BodyAt(MoveProtocol.WireProtocolVersion, m, Owner(),
             (16, CellBlobFixtures.Extension(new byte[] { 0x04, 0x0C, 0x80, 0xFF })));
         Assert.Equal(CellBlobFixtures.Wrap(4, MoveProtocol.WireProtocolVersion, expected),
@@ -149,6 +152,7 @@ public class WireGenerationBlobMigrationTests
         // Generation 9 predates FacingYawQ, so the field it never wrote comes back at its default. The timers it
         // stored inside the movement payload come back as an owner frame.
         MovementState expected = m;
+        expected.SpeedScaleQ *= 64;
         expected.FacingYawQ = 0;
         Assert.Equal(BodyAt(MoveProtocol.WireProtocolVersion, expected, Owner()), normalized);
     }
@@ -169,7 +173,16 @@ public class WireGenerationBlobMigrationTests
                 (MoveProtocol.MovementTypeId, new byte[21]))
             .ToBody();
 
-        Assert.Throws<InvalidOperationException>(() => WireGenerationBlobMigration.NormalizeV3ToV4(corrupt));
+        var ex = Assert.Throws<CellBlobMigrationException>(() => WireGenerationBlobMigration.NormalizeV3ToV4(corrupt));
+        Assert.Equal(CellBlobMigrationRefusal.NoInferredGeneration, ex.Reason);
+        Assert.Equal("v3 (framed position, wire generation unrecorded)", ex.SchemaLabel);
+        Assert.Equal(9, ex.OldestGeneration);
+        Assert.Equal(MoveProtocol.WireProtocolVersion, ex.NewestGeneration);
+        Assert.Empty(ex.UnregisteredExtensionIds!);
+        byte[] control = new CellBlobFixtures.BodyBuilder().Entity(11,
+            (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(9, Pos)),
+            (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(9, default))).ToBody();
+        Assert.NotEmpty(WireGenerationBlobMigration.NormalizeV3ToV4(control));
     }
 
     /// <summary>
@@ -227,8 +240,12 @@ public class WireGenerationBlobMigrationTests
         // The stamped path does not guess: a header claiming generation 10 over a generation-9 body is a lie the walk
         // catches, and the driver quarantines rather than restoring a frame short.
         byte[] atNine = BodyAt(BuiltinBlobLayout.FramedPositionWireGeneration, Movement());
-        Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<CellBlobMigrationException>(() =>
             BuiltinBlobLayout.NormalizeToCurrent(atNine, MoveProtocol.WireProtocolVersion));
+        Assert.Equal(CellBlobMigrationRefusal.KnownGenerationUnwalkable, ex.Reason);
+        Assert.Equal(MoveProtocol.WireProtocolVersion, ex.FromGeneration);
+        Assert.Equal(MoveProtocol.WireProtocolVersion, ex.ToGeneration);
+        Assert.NotEmpty(BuiltinBlobLayout.NormalizeToCurrent(atNine, 9));
     }
 
     [Fact]

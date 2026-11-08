@@ -66,10 +66,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (description.ShaderSet is not ID3D11ShaderSet shaders)
             {
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(description.ShaderSet is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     "A graphics pipeline for the native Direct3D 11 backend needs a shader set this backend "
                     + "compiled. A set from another backend holds another backend's compiled modules.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = description.ShaderSet?.GetType(),
+                    ExpectedType = typeof(ID3D11ShaderSet),
+                    Context = "graphics pipeline",
+                    ResourceKind = "shader set",
+                    PipelineKind = "graphics",
+                };
             }
 
             _shaderSet = shaders;

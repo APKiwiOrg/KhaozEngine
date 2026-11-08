@@ -4,16 +4,412 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.20.1
+## 23.5.0
 
-2026-10-29
+2026-11-09
 
+- Catalog and journal refusals now carry a public reason enum and typed identifiers, filled at every engine throw
+  site. `ContentAuthoringException` gains `ContentAuthoringRefusal? Refusal` beside its existing string `Reason`,
+  `ContentRegistrationException` gains `ContentRegistrationRefusal? Reason`, and `JournalStoreException` gains
+  `JournalStoreRefusal? Reason` beside `Kind`, `Certainty`, `Scope` and `StreamKeys`. Each family's README lists its
+  reasons. Every existing constructor and member stays, and a consumer's legacy construction leaves the new member null.
+- New sealed refusal types derive from the exact type thrown before, so existing catches keep working:
+  `ContentFieldLookupException` and `JournalStoreStateException`, both `InvalidOperationException`. A test asserting
+  the exact base type at one of these sites needs to assert the subtype instead.
+- Resets refused for host objects report them in full through `ContentHostForeignKeyFinding` and
+  `JournalHostObjectFinding`.
+- A host trigger writing into a journal or catalog batch can no longer change what the store reports. The SQL Server
+  journal checks each result set's shape and requires the complete protocol before accepting Applied or Replayed, and
+  a violation is `BatchResultMalformed` with the transaction rolled back. Catalog family and draft edit identities now
+  come back through an output parameter, so a trigger's result set cannot stand in for them.
+- Public refusal, finding, receipt and validated catalog collections are real snapshots. Casting one to an array or
+  list, or reading `ICollection.SyncRoot`, no longer reaches the storage behind it, so a caller cannot change a value
+  after it was validated. Code that cast these to `T[]` needs to copy them instead.
+- Public refusal enums are append-only from this version. New members go at the end and existing numeric values never
+  move, so mods and tools built against one engine version keep working on a later one. Before this version, compare
+  members by name.
 - Stabilize still sub-pixel detail under TAA with a per-pixel shimmer record and score, longer still history
   and a wider luma clip. A still-pixel chroma precision floor stops binary16 rounding from turning narrow
   eave colour intervals into visible brightness flicker. Moving pixels keep their existing clip.
 - Add `SceneDebugView.Shimmer` to show where the resolve retains still detail.
 - Store shimmer drift and swing in the history state, adding 8 bytes per display pixel across its
   double-buffered pair, or 28.125 MiB at 2560x1440, with no additional attachment.
+
+## 23.4.0
+
+2026-11-08
+
+- Contact movement costs far less in a populated world, with every movement result unchanged. Flat water coverage
+  queries use a conservative spatial candidate index and return a certified dry result when a capsule path touches no
+  water, instead of scanning every column and boundary patch (#1728). `RangeApproachCore.StopAtRange` solves a certified
+  flat arrival directly instead of up to 32 full movement previews, and any other case keeps the exact solver (#1729).
+  A player's first identical step reuses its cold-placement certificate under the same lease, and any different,
+  corrected or replayed basis revalidates (#1730).
+- `IMovementDryTracePointProof` is a new opt-in for water fields. It states that a known, completely dry trace certifies
+  a successful dry point classification across the swept region. A field that does not implement it keeps the exact
+  arrival solver, so custom fields are unaffected. Level water and the tile water field declare it where it holds.
+- Lit model, terrain, tile-ground and foliage fog now loses the key sun or moon's glow when the shadow atlas
+  occludes its camera-to-receiver segment. `AtmosphereSettings.AerialShadowSamples` defaults to 8, accepts
+  0 through 16, and disables the correction at 0. The other body's light, multiple scattering and night floor
+  remain. Unoccluded output is byte-identical (#1411). Fog beyond shadow coverage waits on the aerial-perspective
+  volume (#1364), and the water's reflected horizon on scene reflections in water (#1609). Decals and effects
+  keep the unoccluded fog colour.
+- Native Metal shaders now end the fragment at a discard. Discarded pixels could otherwise hold stale memory in
+  every colour attachment once a shader grew (#1411).
+- Underwater caustics for opted-in procedural water. `WaterSettings.UnderwaterCaustics` (off by default) and
+  `WaterSettings.CausticStrength` (1, physical) gain `WaterLook` overrides. Strength scales how far refracted sunlight
+  lands, so strength `s` at depth `d` matches strength 1 at depth `s * d`. Enabling caustics also enables underwater
+  sunlight for that body. FFT bodies ignore the opt-in and are never refused. A `water.caustics` pass before the opaque
+  pass draws a 64 m surface window that follows the view and a four-slice caustic map, and lit receivers read it once at
+  their refracted entry point. Frames without participating water run no pass, upload nothing new and allocate nothing.
+  `Scene3D.WaterCausticDiagnostics` reports opted-in, drawn, FFT and overflow planes and layers.
+- Lit receivers gain set 0 bindings `CausticMap` and `CausticSampler` after `WaterVolumes`: 16 and 17 for rigid, foliage
+  and CPU-skinned, 8 and 9 for GPU-skinned, 7 and 8 for splat and tile ground, 11 and 12 for opaque foliage. The water
+  volume buffer grows to 652816 bytes for the window block. The Direct3D 11 motion vertex stage's
+  `PreviousInstanceTransforms` moves from t11 to t12. Frames without participating water render byte-identically.
+- `TileWaterLooks.River` sets `CausticStrength = 4` and leaves the caustic opt-in inherited, so consumers opt in.
+- `Scene3DPassTimings.ModelMs` now also covers caustic planning and recording and opaque light-cluster construction.
+- Vulkan image staging copies align their buffer offset to the format's texel block. An 8-byte format uploaded after a
+  4-byte one used to start at an offset Vulkan rejects.
+
+- Every engine `MapDocumentException` now carries a `MapDocumentRefusal Reason` and typed identifiers, across surfaces,
+  acquisition, geometry, spaces, water, foliage, prefabs, document storage and persistence, MapDoc.Physics, MapEditor
+  and MapEdit.Tool. A test fences the message-only constructors out of those packages. `Reason` is null only on an
+  instance a consumer built. Read the reason, never the text. Messages do not change.
+- New refusal subtypes in those packages derive from the exact type thrown before, so existing catches keep working.
+  `ArgumentException` families carry `ParamName`. JSON refusals are `JsonException` subtypes sharing `MapDocumentRefusal`.
+  A test asserting an exact base type on one of these sites needs to assert the subtype instead.
+- `MapChainResolution` gains `Finding`, carrying the typed cause of a failed chain. Its constructor, deconstruction,
+  status values and `Detail` text are unchanged, but `Finding` joins its generated equality. Other status records that
+  gained a `Finding` behave the same way.
+- A status no longer depends on an identifier's text. An asset named `overflow` that is missing was reported as
+  `CapacityExceeded` because the classifier found that word in the message, and is now `Invalid`, like any missing asset.
+
+- Refusals outside MapDoc now carry a public reason enum and typed identifiers too, filled at every engine throw site,
+  in Accounts.SqlServer and Accounts.Sqlite, Audio, BugReports and BugReports.Relay, Dungeon, Identity and its Discord
+  and OIDC providers, Identity.Exchange.AspNetCore, ItemInstances generation tables, Localization.TestKit, Locomotion,
+  Movement, NetWorld, Netcode signing secrets and Sharding. Each family's README lists its reasons. Messages do not
+  change, and no admission, threshold or order changed.
+- New sealed refusal types derive from the exact type thrown before, so existing catches keep working:
+  `AccountSchemaException`, `AccountDataException`, `AudioThreadAffinityException`, `BugReportBundleArgumentException`,
+  `BugReportBundleLimitException`, `DungeonKitException`, `TrustedProxyConfigurationException`,
+  `GenerationTableException`, `MovementConfigurationException`, `MovementCapabilityException`, `MovementReadException`,
+  `NavigationBuildException`, `NavigationProfileException`, `NavigationProfileCapabilityException`,
+  `NavigationReadCapabilityException`, `GroundContactCapabilityException`, `WorldConfigurationException`,
+  `CellBlobMigrationException`, `SigningSecretException` and `ShardFrameException`. A test asserting the exact base type
+  at one of these sites needs to assert the subtype instead.
+- Existing carriers keep every constructor and member and gain a reason. `GitHubApiException` gains `Reason`,
+  `ResponsePart` and a bounded, credential-free `UpstreamDetail`, and a moved update whose destination is unusable is
+  `RedirectDestinationUnusable`. `SignInException` gains `Reason`, `ProviderId`, `Timeout`, `StatusCode`, `EndpointRole`,
+  `MemberName`, `ActualScheme` and `Detail`. Its refusal identifiers carry no token, code, state, secret or response
+  body. `Detail` keeps the text a consumer passed to a message-only constructor, is null on every engine refusal, and
+  is untrusted caller text.
+  `LocalizationCoverageException` gains `Reason` and ordered `Findings`, each finding with its own reason, and
+  `DungeonJsonException` gains `Reason` with a rooted `JsonPath` such as `$.edges[0].roomA`.
+
+## 23.3.0
+
+2026-11-07
+
+- Navigation caches one scaled geometric cost bound across every layer, without rescanning links per query.
+  Shared frames use an admitted-member cell box, and differing frames use the containing world-axis square,
+  including its corners. Search prices, double accumulation and the scale-dependent numeric cost contract are
+  described in the [Navigation cost section](KhaozEngine.Navigation/README.md#numeric-cost-contract) (#1712).
+- Point queries choose Partial progress by physical 3D feet distance, so a roof directly above the target is
+  not mistaken for the closest physical approach. Stair links cost at least their spatial span and one source
+  cell. Hop and Drop formulas are unchanged (#1712).
+- Finite-budget navigation results are best effort. Route choices, goal members and waypoint chains may differ,
+  even with the same budget. Complete cost comparisons use the documented floating-point bound and scale range (#1712).
+- Routed and direct approach stall windows measure accumulated horizontal feet travel. A valid reversal no
+  longer cancels its own motion, while a body held against a wall still latches Blocked (#1713).
+- **Consumer action required.** Rebake committed navigation bakes when adopting 23.3.0. The engine version is
+  part of bake identity. This batch introduces no additional topology, codec or bake-format change.
+
+## 23.2.0
+
+2026-11-06
+
+- `MapDocumentException` carries a `MapDocumentRefusal Reason` and typed identifiers for document persistence, tile
+  files, foliage JSON, assets and typed resources, identity, the resolver contract, prefabs, markers and support
+  resolution. Read the reason, never the text. Messages do not change. `Reason` is null on a construction not yet
+  converted, such as the aggregate document adapters.
+- String validators gain an additive immutable `MapDocumentFinding`, and `MapDocumentException.Findings` carries the
+  ordered findings. An aggregate refusal takes its `Reason` and identifiers from its first finding.
+- Foliage JSON refusals throw `MapFoliageJsonException`, which derives from `JsonException`, so existing catches work.
+- `MapAssetClosure` reports an `IMapAssetSource` callback that throws `MalformedDataException` as
+  `AssetPayloadUnreadable`, as it reports an I/O failure, and keeps the callback's exception as the inner exception.
+- A buoyant Contact body leaving water up a rising bank now resolves bank support and bed clearance before
+  handing off to air, so it is never published unsupported inside the drawn bed. A refused support query holds
+  the tick, as on land. Surface jumps, water hysteresis and the existing bank rules are unchanged (#1708).
+- Terrain descent capture accepts a ray that lands on a vertex shared by a fan of valid ground triangles. It
+  certifies one connected component at the actual hit point and takes the analytic source's canonical face.
+  Duplicate, overlapping, disconnected and unresolved faces still refuse (#1709).
+
+## 23.1.0
+
+2026-11-06
+
+- Player movement now carries the same canonical published state through Contact Drop proofs, previews,
+  prediction, replay, both authorities and handoff. Exact Drop continuation survives owner reconciliation,
+  including snapshots with zero position error. Wire encoding and geometric protections stay unchanged.
+  Every consumer must rebake Contact navigation, including profiles with Drops disabled.
+
+- `GroundNavigation.ExcludingAreas(uint)` creates an immutable query view over the same baked graph and
+  captured surface areas. Pursuits can refuse water or other game-defined areas while finding a permitted
+  walking detour, without a second baked profile. Exclusions accumulate and only narrow the baked policy.
+- Ground pursuit checks the exclusion on admission, every replan, search nodes and edges, route straightening,
+  actual-to-route entry and supported-walk shortcuts. `NoPath` carries `GroundPursuitDetail.ExcludedArea` when
+  the original profile admits a complete walking route under the same query budget. Default queries are unchanged.
+
+## 23.0.0
+
+2026-11-05
+
+- **Breaking API change.** Loader refusals for malformed data no longer throw `InvalidDataException`. glTF import,
+  the attachment GLB, geometry, rig-identity, set and binding readers, and PNG decoding throw per-family
+  `<Family>DataException` types with a `Reason` and identifiers, all deriving from the new abstract
+  `MalformedDataException` in `KhaozEngine.Primitives`. Catch `MalformedDataException` where code caught
+  `InvalidDataException` from `GltfLoader`, `Scene3D.GetOrLoad*` factories that import, `AttachmentGlb`,
+  `AttachmentSetJson`, `AttachmentSetDefinition.ValidateReferences`, `AttachmentSetCache.Get`,
+  `AttachmentSetBinding`, `LoadedAttachmentSet.Bind`, `PngReader.Decode`, `TileEditOps.ImportHeights` or
+  `MutationService.HeightsImport`.
+  `KhaozEngine.Attachments` and `KhaozEngine.Imaging` now reference `KhaozEngine.Primitives`.
+- Attachment source wrappers keep the inner family's reason and identifiers and add `SourceName`, rather than
+  rewrapping as a generic error. A corrupt PNG compressed stream is `PngDecodeRefusal.CompressedStreamCorrupt`
+  with the zlib error as the inner exception.
+- Content upgrade planners that throw `MalformedDataException` are reported as refusals, like
+  `InvalidDataException`, `ContentAuthoringException` and `ArgumentException`.
+- Render3D, Attachments.Render3D, Terrain.Render3D and TileWorld.Render3D refusals carry a public reason enum and
+  identifiers through subtypes of the exception thrown before, so existing catches still match. This covers
+  skeletons, skeleton contracts, bone masks, clip admission, contract joint maps, moment schedules, mesh indices,
+  prop loading, attachment binding and submission, the shared shadow-only `DrawAdmissionRefusal`, the post chain,
+  water frames, lit receivers, chunk sink configuration and the tile-ground and prop-layer validators. Messages
+  are unchanged.
+
+- **Breaking API change.** `TileProtocol` component readers no longer throw `InvalidDataException` for a
+  malformed route, name or plane. They throw `TileComponentCodecDataException`, a `MalformedDataException`
+  with a `TileComponentCodecRefusal` reason and identifiers. Catch `MalformedDataException` where code caught
+  `InvalidDataException` from `ClientReplicationView.Apply` or `ApplyDelta` over a `TileProtocol` registry.
+  The two encoder size refusals throw `TileComponentCodecArgumentException`, an `ArgumentException`.
+  `ProjectionStaging` keeps the codec fault as the inner exception of the `DeltaRebuildException` it raises.
+- `TileWorldException` carries a `TileWorldRefusal` reason and identifiers at every engine throw site: world
+  documents, objects and markers, region, manifest, layer and prefab files, catalogs and their schema, ground
+  material steep bands, foliage layers, clearance settings and saves, PGM height import, the editing commands,
+  collider spans, ground material sets, tile colours and the TileEdit session, catalog edit and query
+  services. Clearance, foliage and catalog-edit argument checks throw `TileClearanceArgumentException`,
+  `TileFoliageArgumentException` and `CatalogEditRangeException`, subtypes of the exception thrown before that
+  share `TileWorldRefusal`. The message-only constructors stay for callers outside the engine, and a
+  constructor fence keeps engine code on the reason-taking ones. Messages are unchanged.
+- Tile netcode refusals carry reason enums through subtypes of the exception thrown before:
+  `TileServerStateArgumentException` for the player, actor, ground-item, object-state and static-entity state
+  doors, `TileRouteArgumentException` and `TileRouteStateException` for route adjacency and access, and
+  `TileInterestArgumentException` and `TileInterestRangeException` for the interest radius against the overlap
+  margin. `TileColliderOptionsRangeException` names which collider option is not finite and positive.
+- `TileWorldIssue` gains `Overlap`, the typed `TileClearanceOverlap` for a `clearance.overlap` finding. It takes
+  part in the record's equality and printed form, and is null on every other issue. A refused clearance save
+  carries every issue and overlap as read-only snapshots.
+- `ValidationReport.Findings` lists each JSON schema failure as a `JsonSchemaFinding` with its instance
+  location, keyword and property name, so a caller need not parse the error text.
+- `CatalogWriter.Prepare` keeps every identifier of the refusal it wraps when it adds the catalog path.
+
+- Add opt-in terrain Drops for non-aquatic OrdinaryContact profiles, with shared bake, preview and execution
+  policy. Consumers must set `PhysicsNavBakeOptions.CaptureTerrainDescentEvidence` and
+  `NavBakeProfile.AllowTerrainDescents`, retain a positive `MaxDropMetres`, rebake navigation, and call
+  `GroundNavigation.PrepareTerrainDescents()` during loading before frame or simulation-tick work (#1697).
+- KENB 4 stores authenticated ordered candidates, accepted proving routes and sparse terrain evidence. Loading
+  reconstructs certificates without regenerating enabled workloads or replaying physics. Formats 1, 2 and 3
+  retain their exact bytes and candidate meanings.
+- Terrain admission is additive and sharp-first. Existing sharp candidates attempt the sharp proof first,
+  and only a sharp refusal with applicable terrain can try terrain proof. Preview and following select the
+  stored route. Terrain completion waits for the actual terminal Hold command to be acknowledged.
+- Add `MovementAvailability.PrecisionExceeded` and `MovementStepOutcome.PrecisionRefused` for finite coverage
+  uncertainty above the existing 1 mm budget. Sharp and terrain followers report `Blocked` for that refusal.
+  Unresolved, invalid and mismatched evidence keep their existing paths. No precision budget is widened.
+- Add host-owned `IContentPublishPolicy` through `CatalogAdminActionOptions.PublishPolicy` for consumer rules
+  over detached baseline and candidate rows. Preview, frozen publication and operator imports enforce it,
+  preserve structured field keys and consumer reason codes, and refuse policy exceptions with `KEC0044`.
+  HTTP callers cannot select a bypass. Trusted server publication, seeds and upgrades retain their own paths (#1700).
+- Apply the same consumer policy to operator pin and unpin changes, comparing the currently selected published
+  snapshot with the requested selection. Conditional writes prevent concurrent active-version or pin changes
+  from bypassing validation. Unreadable or mismatched snapshots, unsupported conditional pinning and selection
+  races refuse with `KEC0045`. Trusted in-process pin recovery remains available.
+
+## 22.0.1
+
+2026-11-04
+
+- Skip default material-map sampling and dormant cutout work for opaque, untangented foliage with no maps.
+- Reuse exact duplicate tile-ground GPU vertices without changing triangle inputs, order or authored geometry.
+- Reuse Metal vertex-read coverage across shadow, geometry and forward passes, including mesh and pipeline
+  rebinds and differently ordered instance windows. Revisited windows avoid interval-tree work, indexed
+  streams leave the per-draw window loop, and adjacent window attributes coalesce without filling padding.
+  Exact CPU access refusals and warmed zero allocation remain unchanged (#1696).
+
+## 22.0.0
+
+2026-11-04
+
+- Add server-authoritative ground commitments with sequence-checked begin, steering and end on both float heads.
+  Ground travel uses its own speed, ignores player movement, jump, facing and speed effects, and retains ordinary
+  collision, gravity, slopes and steps. Horizontal distance caps the final stride and holds at zero until the
+  server steers or ends. Carried progress detects sustained blockage and survives prediction replay and handoff (#1658).
+- Add opt-in `GroundPursuit` in Movement for complete guarded walk-only routes, moving targets, independent trigger
+  and horizontal path limits, and exact current 3D body reach. `PathQueryBudget.WalkOnly` keeps a cheaper Hop or
+  Drop from hiding an available walking detour. Games wire pursuit from `OnBeforeTick` and own ability policy.
+- Publish ground arrival before optional recovery advances, so games apply a validated strike immediately.
+  Ended releases control exactly once and preserves an accepted Arrived outcome through every recovery release.
+  Recovery uses its own timer after arrival. Target loss and invalid routes cancel without an arrival.
+- **Breaking API change.** `MovementState.SpeedScaleQ` is now a `short`, `QuantizeSpeedScale` returns `short`,
+  and `DecodeSpeedScale` accepts `short`. The offset-from-one quantum is 1/1024 instead of 1/16. The 8x cap,
+  exact default and root values, clamping and nonfinite handling are unchanged. A requested 10 percent haste now
+  becomes 1.099609375 instead of 1.125 (#1652).
+- **Breaking wire change.** Wire generation 15 needs matched client and server and a major engine repin. The
+  movement payload is 64 bytes, with Int16 speed in its original slot and an appended ground commitment suffix.
+  Persisted movement payloads migrate automatically through normal blob normalization. Historical speed q becomes
+  Int16(q * 64), preserving its old decoded value while composing with owner-timer splitting and framed positions.
+  New ground fields default to Ballistic and zero. Malformed payloads still refuse and quarantine.
+- Append increasing Metal uniform-ring read slices without tree rebalancing. Binding and vertex cursors
+  remove steady-draw resource, shader-use and continuation hashing, preserving exact CPU access refusals and warmed
+  zero allocation for frames with fresh uniform slices on every draw (#1696).
+- Record Metal split-frame reads when bindings or draw windows change. Reuse indexed mesh coverage, extend
+  consecutive instance windows and leave duplicate interval inserts free of tree writes. CPU access refusals
+  and steady-frame zero allocation are unchanged (#1696).
+- GPU refusals carry a public reason enum and the identifiers callers need, so code and tests tell refusals
+  apart by `Reason` instead of message text. Shared `IGpu*` contract rules live in `KhaozEngine.Gpu` and
+  every backend throws the same reason for the same input, for example `GpuRecordingStateRefusal`,
+  `GpuResourceOwnershipRefusal`, `GpuBoundFramebufferRefusal`, `GpuDynamicBindingRefusal` and
+  `GpuBackendCreationRefusal`. Rules one backend owns are families in `KhaozEngine.Gpu.D3D11`,
+  `KhaozEngine.Gpu.Metal` and `KhaozEngine.Gpu.Vulkan`. Each package README lists its reasons and identifiers.
+- Each new refusal exception derives from the type thrown before, keeps `ParamName` and `ActualValue`, and has
+  a non-nullable `Reason`. Existing `catch` clauses still match, and messages are unchanged.
+- `ShaderValidationException`, `GpuBackendProviderMissingException`, `GpuNoUsableBackendException`,
+  `GpuNestedRecordingException` and `GpuBackendRetiredException` keep their constructors and gain reason
+  constructors, a `Reason` that is null only for an instance built through a message-only constructor outside
+  the engine, and identifier properties. Collection identifiers are read-only snapshots.
+
+## 21.24.1
+
+2026-11-04
+
+- Reduce Mac CPU frame time in scenes with thousands of draws by indexing split-frame read footprints.
+  Overlapping CPU writes and writable maps keep the same refusals, with no steady-frame allocation (#1692).
+- `scripts/check-test-health.sh` reports the solution and every tracked xunit project outside it, found with
+  `git ls-files`, instead of a fixed list. `KhaozEngine.MapDoc.OracleHarness.Tests` had been left out and
+  failed its own build. Its existing message assertions have catch-up entries in `.testhealth-baseline`. The
+  `KhaozEngine.CodeHealth.Analyzers` README describes the report roots. No analyzer or package code changes.
+
+## 21.24.0
+
+2026-11-03
+
+- Add baked one-way Contact `Drop` links with certified fall routes and supported landing completion. Each
+  navigation profile opts in through `MaxDropMetres`, which defaults to zero. A bake with any drop-enabled
+  profile uses KENB format 3 for the whole file. Unavailable proof evidence refuses the bake through
+  `ContactDropProofException`. Player hosts supply `PlayerPathInput` for authenticated Drop execution (#1645).
+- Keep the follower replan cooldown for fresh no-progress results and refresh stale reached terminals once.
+  Point routes validate the current goal before reporting `Arrived`, and deferred path queries report
+  `WaitingForPath` with zero steering (#1646).
+- Refresh a due route before committing a one-way Drop, and reconsider changed goals during grounded
+  preparation before physical launch. Active unsupported flight retains its committed Drop route.
+- Share captured drawn ground triangles between Contact support and water beds, preserving exact bed
+  membership on level and sloped terrain. Supported pose publication checks combined frame and capsule
+  conversion precision and refuses unrepresentable poses within the existing precision contract (#1647).
+- Engine types that tests used to reach by private reflection gain internal `...ForTests` seams in
+  `KhaozEngine.Attachments.Render3D`, `KhaozEngine.Automation`, `KhaozEngine.Catalog.Sqlite`, `KhaozEngine.Gpu`,
+  `KhaozEngine.Locomotion`, `KhaozEngine.MapDoc`, `KhaozEngine.MapEditor`, `KhaozEngine.Movement`,
+  `KhaozEngine.NetWorld`, `KhaozEngine.Physics`, `KhaozEngine.Physics.Bepu`, `KhaozEngine.Render2D`,
+  `KhaozEngine.Render3D`, `KhaozEngine.StatusEffects`, `KhaozEngine.TileWorld.Netcode`, `KhaozEngine.Windowing`,
+  `KhaozEngine.WorldStore` and `KhaozEngine.WorldStore.SqlServer`. Each returns a value, an identity token or
+  a read-only view, and fault tests inject through narrow value-taking methods. No behaviour or public API
+  changes.
+- `KhaozEngine.Physics.Bepu` grants `InternalsVisibleTo` to `KhaozEngine.MapDoc.Physics.Tests`,
+  `KhaozEngine.Movement.Tests` and `KhaozEngine.Physics.Tests`. `KhaozEngine.Attachments.Render3D` grants it to
+  `KhaozEngine.Render.Tests`, `KhaozEngine.Render2D` to `KhaozEngine.WorldMap.Gui.Tests`,
+  `KhaozEngine.StatusEffects` to `KhaozEngine.Foundation.Tests` and `KhaozEngine.CodeHealth.Analyzers` to its
+  own tests. Consumers need no code change.
+- `KhaozEngine.CodeHealth.Analyzers` collapses `.` and `..` segments in the part of a source path below the
+  baseline root, so a source-linked file is named by its real repository path in `.testhealth-baseline` and
+  the file-size baseline. A path that climbs above its root is not checked against that baseline. Root
+  matching is unchanged.
+
+## 21.23.1
+
+2026-11-03
+
+- Reuse tile-ground material samples for repeated active slot IDs, including steep companions, while keeping
+  every weight threshold and weighted addition unchanged. Output pixels stay identical.
+- Preserve cascade working depth and stencil under pass observers, whose timestamp markers can end native
+  render encoders between caster families. Unobserved rendering still discards the dead working planes.
+- Submit native Metal offscreen work before drawable acquisition, then continue the same frame in a
+  second command buffer. The final buffer alone owns completion and frame-slot reuse. CPU-visible ranges
+  accessed by a committed prefix stay immutable through final completion. Overlapping CPU writes and writable
+  mappings now throw a structured MetalFrameAccessException. SpriteBatch writes only its new matrix slot.
+- Keep steady native Metal recording and split-frame submission free of managed allocations. Reuse
+  slot-owned read footprints, range storage and mapping leases without changing CPU access refusals.
+- Preserve deferred device uniform updates across split Metal frames. Explicit drains and read maps cover
+  unsignalled prefixes, and writable ring mappings keep their pointer and access lease on the same segment.
+- Declare per-attachment store intent in the GPU seam. Metal and Vulkan discard only the directional
+  cascade pass's dead working depth and stencil, retaining the sampled colour atlas. Other backends may
+  retain discarded data. The default remains Store for every attachment.
+- Skip clustered point-shadow filters when banded NdotL is exactly zero. Diffuse and specular are already
+  zero there. Ignore non-finite light intensities so attenuation remains finite. Shader source and backend
+  emission pins are rebaked without relaxing equality checks.
+- Move the renderer performance evidence tooling tests, the Items benchmark quick acceptance test and the
+  navigation capture research fixtures out of the engine solution into `tools/Renderer.Perf.Tooling.Tests`,
+  `tools/Items.Benchmark.Tests` and `tools/NavCapture.Research.Tests`. The free `tooling-validation.yml`
+  workflow runs each one when its own inputs change, and engine CI no longer runs them. No test was deleted,
+  and their test-health baseline entries moved with them.
+- `KhaozEngine.Gpu`, `KhaozEngine.Gpu.D3D11`, `KhaozEngine.Gpu.Metal`, `KhaozEngine.Gpu.Vulkan`,
+  `KhaozEngine.Render2D`, `KhaozEngine.Render3D` and `KhaozEngine.Windowing` grant `InternalsVisibleTo` to
+  `Renderer.Perf.Tooling.Tests`, and `KhaozEngine.Movement` grants it to `NavCapture.Research.Tests`. Public
+  APIs are unchanged and consumers need no code change.
+- Bound the default renderer timing probes. Probes that only measure and report carry
+  `[Trait("Category", "Diagnostic")]` and run on demand.
+- `ke-sfxbake` defaults to `eleven_text_to_sound_v3`, because ElevenLabs deprecated
+  `eleven_text_to_sound_v2` and stops serving it on 1 February 2027. The `.sfxmeta` hash no longer covers
+  the model, so this switch and any later model change re-bake nothing already approved. New sidecars
+  carry `HashVersion` 2. Earlier sidecars still skip while their other inputs are unchanged, checked
+  against their recorded model or the old v2 default. A dry run names the older model beside each output
+  it made, and `--force` re-bakes on purpose.
+
+## 21.23.0
+
+2026-11-01
+
+- Add `RigidInstanceDraw.ShadowMobility` and `ShadowCasterMobility.Dynamic` so moving rigid casters share
+  current point-shadow layers with skinned casters while static scenery stays cached. Preserve shadows
+  through mobility changes and transient allocation failure with separately counted fallback work.
+  Existing draws retain their cached behavior (#1144).
+- Add the opt-in test-health ratchet to `KhaozEngine.CodeHealth.Analyzers`. KETEST001 counts exception-message
+  wording assertions, excluding `DoesNotContain` and `DoesNotMatch` disclosure checks. KETEST002 counts
+  `BindingFlags.NonPublic` references and `UnsafeAccessor` applications. Both enforce per-file allowances
+  in `.testhealth-baseline` as errors in xunit compilations and stay silent without that adoption file.
+  KETEST003 reports possibly empty assertion loops only with `KhaozTestHealthMode=report`, never enters
+  the baseline and does not gate normal builds. Only 6 of 20 sampled findings were real because local
+  tables and test-owned case helpers look possibly empty to a syntactic check. Baseline growth and
+  exemptions need owner approval, and `scripts/check-test-health.sh --update` only ratchets down.
+- Exclude tests marked `[Trait("Category", "Diagnostic")]` from default CI with
+  `Category!=LiveSocket&Category!=Diagnostic`. Run these reporting tests on demand through the
+  `cross-platform-gpu` dispatch input `renderTestFilter=Category=Diagnostic`. Baseline changes force a
+  FULL selective CI run.
+- Share `AnalyzerPathPolicy` between KESIZE and KETEST and move analyzer tests to
+  `KhaozEngine.Tests.CodeHealth`.
+- Correct `FixedTickHost.SecondsUntilNextTick` documentation to describe the full-tick wait with an empty accumulator and the shorter wait when time remains.
+
+## 21.22.0
+
+2026-10-31
+
+- Add `WeightedSelector.TrySelectIndex` in `KhaozEngine.Primitives` for caller-prepared integer-weighted choices. Zero weights exclude entries while preserving their indexes. The helper validates and captures weights before using the caller's random source, with explicit empty-pool and logical-draw behavior (#1664).
+
+## 21.21.0
+
+2026-10-30
+
+- Add `AttachmentGlb.ComputeRigIdentity` in `KhaozEngine.Attachments`. Its versioned `rig-v1:` SHA-256
+  covers ordered skin joints, hierarchy, rest frames, inverse binds and skinned vertex/index data.
+  Animation and appearance edits leave fit evidence unchanged. Raw accessor elements and canonical
+  decimal rest values produce the same identity across platforms, independent of buffer layout (#1661).
 
 ## 21.20.0
 

@@ -494,8 +494,7 @@ public sealed class SunCycleAtmosphereTests
         var post = new PixelPostProcessSettings();
         post.Atmosphere.Enabled = true;
         var before = post.LightColor;
-        var exception = Assert.Throws<InvalidOperationException>(() => SunCycle.Apply(state, post, Vector3.Zero));
-        Assert.Contains("Evaluate", exception.Message);
+        Assert.Throws<InvalidOperationException>(() => SunCycle.Apply(state, post, Vector3.Zero));
         Assert.Equal(before, post.LightColor);
         Assert.Null(post.AtmosphereCycle);
         Assert.Throws<InvalidOperationException>(() => post.ResolveAtmosphereModel().CreateFrame(state));

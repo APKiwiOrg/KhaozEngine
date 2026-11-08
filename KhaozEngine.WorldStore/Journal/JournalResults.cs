@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.WorldStore.Journal;
 
@@ -50,7 +50,7 @@ public sealed record JournalStreamVersionRange
 
 public sealed class JournalCommitReceipt
 {
-    private readonly ReadOnlyCollection<JournalStreamVersionRange> streams;
+    private readonly IReadOnlyList<JournalStreamVersionRange> streams;
     private readonly byte[] resultData;
     private readonly byte[] resultChecksum;
 
@@ -84,7 +84,7 @@ public sealed class JournalCommitReceipt
         for (int i = 1; i < streamCopy.Length; i++)
             if (StringComparer.Ordinal.Equals(streamCopy[i - 1].StreamKey, streamCopy[i].StreamKey))
                 throw new ArgumentException($"Duplicate stream key '{streamCopy[i].StreamKey}'.", nameof(streams));
-        this.streams = Array.AsReadOnly(streamCopy);
+        this.streams = ImmutableArray.Create(streamCopy);
         ResultSchema = JournalValidation.Identity(resultSchema, nameof(resultSchema), JournalLimits.EngineMaximumIdentityCharacters);
         JournalValidation.Positive(resultSchemaVersion, nameof(resultSchemaVersion));
         ResultSchemaVersion = resultSchemaVersion;

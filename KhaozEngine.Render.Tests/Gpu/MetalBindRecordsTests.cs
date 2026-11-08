@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -31,12 +33,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var harness = new MetalRingHarness();
             var records = MetalBindRecords.ForGraphics(MetalBindProgram.DeviceOffsetAlignment);
-            var calls = new FakeMetalEncoderCalls();
-
             records.SetIndexTable(MetalBindProgram.Table());
             records.Record(0, MetalBindProgram.Set(harness), 0);
 
-            Assert.Equal(0, calls.ArgumentTableWrites);
             Assert.True(records.IsDirty(0));
             Assert.Equal(1, records.RecordedSlotCount);
         }
@@ -55,7 +54,9 @@ namespace KhaozEngine.Tests.Gpu
             MetalBoundSet set = MetalBindProgram.Set(harness);
             records.SetIndexTable(MetalBindProgram.Table());
 
-            for (int i = 0; i < 50; i++) records.Record(0, set, 0);
+            records.Record(0, set, 0);
+            int capacityAfterFirstRecord = records.SlotCapacity;
+            for (int i = 1; i < 50; i++) records.Record(0, set, 0);
 
             var calls = new FakeMetalEncoderCalls();
             var sink = new FakeMetalEncoderSink(calls);
@@ -74,7 +75,7 @@ namespace KhaozEngine.Tests.Gpu
 
             // Rule 7 in one number: the record follows the highest SLOT and never the count of rebinds.
             Assert.Equal(1, records.RecordedSlotCount);
-            Assert.Equal(4, records.SlotCapacity);
+            Assert.Equal(capacityAfterFirstRecord, records.SlotCapacity);
         }
 
         /// <summary>
@@ -202,10 +203,15 @@ namespace KhaozEngine.Tests.Gpu
             MetalBoundSet nothingDynamic = MetalBindProgram.Set(
                 new MetalBoundResource(MetalIndexSpace.Buffer, buffer, 0, 64, AppliesCallerOffset: false));
 
-            ArgumentException thrown = Assert.Throws<ArgumentException>(
+            var thrown = Assert.Throws<GpuDynamicBindingException>(
                 () => records.Record(0, nothingDynamic, 256));
 
-            Assert.Contains("declares no dynamic element", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("dynamicOffset", thrown.ParamName);
+            Assert.Equal(GpuDynamicBindingRefusal.DynamicElementMissing, thrown.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.Backend);
+            Assert.Equal(0u, thrown.Set);
+            Assert.Equal(256u, thrown.DynamicOffset);
+            Assert.IsAssignableFrom<ArgumentException>(thrown);
 
             // A ZERO OFFSET IS ACCEPTED AGAINST ANY SET, because dropping zero changes nothing and the seam's
             // no-offset overload is exactly that call.
@@ -227,14 +233,17 @@ namespace KhaozEngine.Tests.Gpu
             records.Flush(ref sink, Encoder, Epoch, segment: 0);
 
             records.Record(0, MetalBindProgram.Set(harness), 0);
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
+            var refusal = Assert.Throws<MetalBindRecordsStateException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
+            Assert.Equal(MetalBindRecordsRefusal.PipelineTableMissing, refusal.Reason);
+            Assert.IsAssignableFrom<InvalidOperationException>(refusal);
 
-            Assert.Contains("no pipeline bound", thrown.Message, StringComparison.Ordinal);
-
-            // AND THE MARK SURVIVES THE THROW, so the draw after the one that failed still owes its bind rather
-            // than rendering against whatever the argument tables hold.
+            // The failed draw still owes its bind, which succeeds once its pipeline is supplied.
             Assert.True(records.IsDirty(0));
+            records.SetIndexTable(MetalBindProgram.Table());
+            records.Flush(ref sink, Encoder, Epoch, segment: 0);
+            Assert.False(records.IsDirty(0));
+            Assert.True(records.IsEmittedIn(0, Epoch));
         }
 
         /// <summary>A nil encoder is refused rather than written into. A message to nil is a silent no-op in
@@ -250,11 +259,14 @@ namespace KhaozEngine.Tests.Gpu
             records.SetIndexTable(MetalBindProgram.Table());
             records.Record(0, MetalBindProgram.Set(harness), 0);
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
+            var refusal = Assert.Throws<MetalBindRecordsStateException>(
                 () => records.Flush(ref sink, IntPtr.Zero, Epoch, segment: 0));
+            Assert.Equal(MetalBindRecordsRefusal.EncoderMissing, refusal.Reason);
 
-            Assert.Contains("orphan target", thrown.Message, StringComparison.Ordinal);
             Assert.True(records.IsDirty(0));
+            records.Flush(ref sink, Encoder, Epoch, segment: 0);
+            Assert.False(records.IsDirty(0));
+            Assert.True(records.IsEmittedIn(0, Epoch));
         }
 
         /// <summary>A slot past the cap is refused by name rather than sizing an array by itself, and a

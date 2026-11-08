@@ -56,8 +56,34 @@ paths it was opened with, a dirty flag, and a cached `TerrainField` invalidated 
 mutation (terrain features, terrain globals, exclusions, bake). `map_open` (or `map_create`) replaces
 whatever was open, with no dirty guard, since the git diff is the safety net and `map_summary` reports
 the dirty flag. Every mutation validates the document before it lands (`MapDocumentValidator`, then a
-JSON schema check on save) and reverts with the validation errors folded into the thrown message on
+JSON schema check on save) and reverts with the first typed validation reason and all ordered findings on
 failure, so the in-session document is never left invalid.
+
+Session window admission uses `MapSessionException`, catchable as `InvalidOperationException`, with a non-null
+`MapDocumentRefusal` reason. `ToolTiledSessionRequired` carries `DocumentId`, source `Path`, `Operation`,
+`FieldPath` `Tiles.SourceDirectory`, current `DocumentForm` and required `ExpectedDocumentForm` `Tiled`.
+`ToolUnsavedChanges` carries the same known session context and `FieldPath` `IsDirty`. A refused transition
+preserves document content, closure, dirty state and history before any successful discard or replacement.
+
+Native publication uses `MapDocumentException` with these reasons. Existing diagnostic text is unchanged.
+
+| Reason | Refused rule | Identifiers when known |
+| --- | --- | --- |
+| `ToolNativeDocumentRequired` | Native work through an analytic document | `DocumentId`, `Operation`, `FieldPath`, known `CommandType` |
+| `AssetClosureRequired` | Native work without its verified closure | `DocumentId`, `Operation`, `FieldPath` |
+| `SchemaValueRequired` | A native binding without its storage path | `DocumentId`, `Operation`, `FieldPath` `DocumentPath` |
+| `ToolStagedMutationRequired` | A native command outside a mutation or after another command was staged | `DocumentId`, `Operation`, `CommandType` |
+| `ToolNestedMutationUnsupported` | A nested native session mutation | `DocumentId`, `Operation` |
+| `ToolPublishedClosureMismatch` | A staged closure different from the supplied publication closure | supplied `ExpectedHash`, staged `ActualHash`, `DocumentId`, `Operation` |
+| `ToolPublicationPathInvalid` | A rooted publication path or one escaping the resource root | submitted `Path`, `StoragePath`, `DocumentForm`, known `ResourceRoot` |
+| `AssetStoragePathReserved` | A publication path entering writer-owned map storage | submitted `Path`, `StoragePath`, `DocumentForm`, `ResourceRoot` |
+| `DocumentStorageFormConflict` | Creating a monolithic map over an existing tiled map | `Path`, existing `DocumentForm`, required `ExpectedDocumentForm`, `Operation` |
+| `ToolImmutableResourceConflict` | Different content at an immutable resource address | absolute `Path`, `ResourceId`, `ExpectedHash`, `ActualHash` |
+| `ToolResourceWriteFailed` | Resource publication failed through I/O or access admission | absolute `Path`, `ResourceId`, `ResourceRoot`, `Operation`, original `InnerException` |
+| `ToolManifestSerializationFailed` | Manifest serialization failed without a known lower refusal | `ResourceId`, `Operation`, original `InnerException` |
+
+A known typed JSON refusal keeps its original reason and identifiers through the shared document wrapper,
+including the submitted vector component for `ValueNonfinite`.
 
 Native opted-in documents (non-null `ResolverIdentity`) are validated completely at every lifecycle boundary by
 `NativeDocumentService.ValidateComplete(document, source, options)`. It checks the document locally, reloads and
@@ -125,7 +151,9 @@ the nominal level, whether the upper boundary is free and any refusal detail.
 `MutationService.WaterApply(MapWaterEdit)` runs `WaterEditCommand` under the session's native mutation lock.
 It returns `MapWaterMutationResult` with the mutation and accepted effects, and produces the same document bytes
 and effects as the editor command. Publication checks the complete water set's containment and bound material
-closure before changing the session. Analytic and resolver-1 documents refuse water edits.
+closure before changing the session. Analytic and resolver-1 documents refuse water edits with
+`MapDocumentRefusal.ResolverContractMismatch`, the known `PayloadVersion`, `ResolverVersion` and `SupportRecipe`,
+and `ExpectedResolverVersion` 2 with `ExpectedSupportRecipe` `AuthoredBindingsV2`.
 These are service APIs. Water MCP registrations remain with R10, so the registered verb count is unchanged.
 
 ## Prefab assets and native history
@@ -189,8 +217,9 @@ one closed local marker in world terms, read by `MapPrefabJson.ReadMarker`. Payl
 `Position.Y`. Payload 2 requires `heightMode`. Explicit keeps `Position.Y` as the height, and Support carries a
 `supportBinding` with `Position.Y` exactly 0. The marker ID is the upsert key. A set with a new name renames the
 marker and keeps its ID. A framed standalone marker stores the frame-local equivalent of the world values. A live
-prefab marker refuses with `prefab_override` guidance, and an ID held by a retained prefab reservation refuses. Both
-edit verbs return `MapPrefabMutationResult`, whose `Mutation.Verb` is the verb name, `Mutation.Id` the marker ID and
+prefab marker refuses with `MarkerPrefabOwnershipProtected`, `MarkerId` and `InstanceId`, retaining the
+`prefab_override` guidance. An ID held by a retained prefab reservation refuses with `IdentityReserved` and
+`MarkerId`. Both edit verbs return `MapPrefabMutationResult`, whose `Mutation.Verb` is the verb name, `Mutation.Id` the marker ID and
 `Mutation.WorldChanged` false. `Effects` is the shared marker diff: metadata edits carry the marker ID and rename row
 with no invalidation, and spatial edits add both point boxes with Residency only. Undo and redo use `prefab_undo` and
 `prefab_redo`.
@@ -199,8 +228,9 @@ with no invalidation, and spatial edits add both point boxes with Residency only
 ordinal ID order with resolved heights. Every given filter must match. The name is an exact optional filter, never a
 key. The rectangle is half-open, minima included and maxima excluded, and its four bounds are given together or not
 at all. A document with neither building intent nor prefabs returns an empty list without expansion. A resolver
-(1, 1) native document refuses `marker_set` and `marker_remove` and names resolver adoption through
-`MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite.
+(1, 1) native document refuses `marker_set` and `marker_remove` with
+`MapDocumentRefusal.ResolverContractMismatch`, its `PayloadVersion`, `ResolverVersion` and
+`ExpectedResolverVersion`. Adopt authored support through `MapResolverAdoption.ConvertToAuthoredSupport` first.
 
 `spawns_adopt(choicesJson)` calls `MutationService.SpawnsAdopt` through the shared `AdoptSpawnsCommand`. It returns
 `MapPrefabMutationResult` with `Mutation.Verb` `spawns_adopt`, `WorldChanged` false and the shared marker effects.
@@ -245,8 +275,10 @@ it. `spawnCount`, `playerSpawnCount` and `playerSpawnIds` stay legacy list count
 `placements_in_rect` keeps its signature and inclusive rectangle, unlike the half-open `marker_list` rectangle. On a
 resolver-2 native document, placements come from the actual native resolution, prefab placements included, and a
 support-bound placement reports its seated height. Unadopted legacy spawns sample `legacySpawnSurfaceId` at their XZ and
-carry the Supported `support` answer, with `groundY` its height. Any other status refuses the query, naming each spawn,
-its status and the Surface owner. Without that owner, a rectangle holding a legacy spawn refuses. Both refusals give
+carry the Supported `support` answer, with `groundY` its height. Any other status uses
+`ToolLegacySpawnSupportUnresolved`, carrying `SurfaceId`, ordered `SourceIds` and `Findings` with each `SourceId`,
+source `SubjectKind` and `SupportStatus`. Without that owner, a rectangle holding a legacy spawn uses
+`ToolLegacySpawnSurfaceRequired` with the `LegacySpawnSurfaceId` field path. Both refusals give
 `spawns_adopt` and `marker_set` guidance. The `support` normal crosses the wire as `x`, `y` and `z` through MapDoc's
 vector converter on the query tool options. Analytic and resolver (1, 1) documents keep their released field readouts
 and omit `support`.
@@ -296,6 +328,53 @@ compatibility/refusal semantics and the padded CPU handoff. The inventory is 101
 Windowed generation/residency and interior cut remain R8, interactive painting R9, complete verb parity and native
 placement ID rename R10, actual import/source acceptance R11/G2 and appearance R8/G3.
 
+## Mutation and JSON refusals
+
+The shared `Apply` overloads, `TerrainEdit`, scatter override edits, bake, freeze and sculpt operations validate through
+`MapDocumentValidator.ValidateFindings`.
+Their `MapMutationException` derives from the original `InvalidOperationException` and takes `Reason` from the
+first finding. `Findings` is an owned read-only snapshot of every finding in producer order, retaining each
+finding's complete typed context. `EntityId`, `SubjectKind`, `FieldPath`, `LayerId`, `PlacementId` and `Index`
+also expose the first finding's corresponding values. Rejected commands revert before the exception escapes.
+Direct missing region, scatter-layer, companion-layer and duplicate-source lookups use the same carrier with
+`ReferenceMissing`. An absent edited region, exclusion or scatter override shape instead uses
+`SchemaValueRequired`. These direct guards carry the known `DocumentId`, identity or index and `FieldPath`.
+
+| Carrier and reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `MapMutationArgumentException.ToolMutationEmpty` | `terrain_edit` or `scatter_rule_edit` without any supplied field | `Operation`, known `LayerId` and `Index`, original null `ParamName` |
+| `MapMutationArgumentException.SchemaEnumUnsupported` | An unknown duplicate kind or biome name | `SubmittedText`, owned read-only `AcceptedValues`, `EnumType` for biomes, original `ParamName` |
+| `MapMutationArgumentException.SchemaValueRequired` or `SchemaMalformed` | An empty scatter kind ID or unparseable weight | input `Index`, `FieldPath`, `SubmittedText` |
+| `MapMutationException.ToolFeatureTranslationUnsupported` | A feature without a supported duplicate translation | `DocumentId`, `Index`, `FeatureType`, `Operation` |
+| `MapMutationArgumentException.ToolRectangleIncomplete` | A partial sculpt clear rectangle | `Operation`, `FieldPath` |
+| `MapDocumentException.ToolRectangleIncomplete` | A partial foliage or marker query rectangle | `Operation`, `FieldPath`, known `LayerId` |
+| `MapDocumentException.FoliageQueryLayerRequired` | A density or preview query without a layer | `FieldPath` `layerId` |
+| `MapDocumentException.FoliageChunkUnavailable` | Advertised density without resident bytes | `LayerId`, `FoliageChunk` |
+| `MapDocumentException.AuthoredValueRequired` | Opening a parent-dependent prefab without an authored parent | `ResourceId`, `AssetId`, `FieldPath` `parentSpace`, `Operation` |
+| `MapDocumentException.ToolPrefabSessionRequired` | Editing, exporting or saving without a local prefab session | `Operation` |
+| `MapDocumentException.ToolExtractionParentAmbiguous` | Extraction with multiple authored parents | owned read-only `SpaceIds`, `DocumentId` |
+| `MapDocumentException.ReferenceMissing` or `IdentityDuplicate` | Setting an absent interior or adding an existing interior ID | `RecordId`, `SpaceId`, `DocumentId`, `SubjectKind` |
+| `MapDocumentException.SpaceRoomOccupancyInvalid` | Adding another standalone prism for an occupied interior space | requested `RecordId`, `SpaceId`, `DocumentId` |
+| `MapDocumentException.ReferenceMissing` | Reading an absent water body | requested `EntityId`, `SubjectKind` `water body`, `DocumentId` |
+| `MapDocumentException.ToolEffectiveResourcesMissing` | Native query resolution without effective resources | `Operation` |
+| `MapRenderArgumentException.RenderLookDirectionZero` | A zero view direction | submitted `Eye`, `Target` |
+| `MapRenderException.RenderFailed` or a known document reason | Capture failure | `Backend`, `Operation`, original `InnerException`, known lower `Finding` |
+| `MapToolJsonException.SchemaValueRequired` | A null deserialized shape or terrain feature | root `FieldPath`, `SubjectKind` |
+| `MapDocumentException.SchemaValueRequired` or `SchemaObjectRequired` | Absent foliage JSON parameter or a non-object root | `FieldPath` `layerJson` or `previewChunkJson` |
+| `MapDocumentException.FoliagePreviewEditUnsupported` | A dry run for an edit other than setting a layer | runtime `EditType` |
+| `MapDocumentException.FoliagePreviewLayerNew` | A differential preview for a newly created layer | `LayerId` |
+
+`marker_list` rectangle refusals carry `Operation` `marker_list` and `FieldPath` `minX,minZ,maxX,maxZ`.
+The interior add guard reuses the Room occupancy rule before publication. A missing water body uses the same
+reference reason and requested `EntityId` as water body removal, even when the water section is absent.
+
+`MapMutationArgumentException` remains catchable as `ArgumentException`, preserving `ParamName`. Unknown sculpt
+brushes use `SchemaEnumUnsupported`, `SubmittedText`, `EnumType` and the complete owned `AcceptedValues` list.
+`MapToolJsonException` remains catchable as `JsonException`. The foliage binding converter reuses
+`MapFoliageJsonException` and keeps its producer reason and original `MapDocumentException`. Tool adapters retain
+these original exceptions and identifiers through `McpException.InnerException`, with transport text unchanged.
+Refused mutations and previews preserve live content, saved map bytes, dirty state and existing history.
+
 ## Native colliders
 
 `NativeCollisionService(session)` measures and edits the colliders of the open native document. It is a service
@@ -318,7 +397,7 @@ digest.
 `SetHeights(assetId, bottom, top, dryRun = true)` resizes a box collider or a compound of upright boxes to span
 `bottom` to `top` in asset-local metres. Every box keeps its X and Z, and its centre and half height map linearly
 from the collider's current vertical extent onto the requested one. A lone box becomes a one-child compound. Any
-other collider refuses with "compound boxes". The `NativeCollisionEditResult` carries the collider digests before
+other collider uses `ToolColliderShapeUnsupported`, carrying `AssetId`, `ResourceId` and `ShapeType`. The `NativeCollisionEditResult` carries the collider digests before
 and after, every placement of the asset in ordinal order and `MapNativeEditEffects` with the placements' old and new
 world collider and interaction envelope bounds and `Physics`, `Nav` and `Residency` invalidation.
 `OldBounds` and `NewBounds` retain the tight envelope report. `OldSpatialBounds` and `NewSpatialBounds` carry the
@@ -341,6 +420,40 @@ reloads and verifies the closure from disk, then swaps the root reference in one
 captured old or new verified closure. The mesh resource and every placement transform stay unchanged. The asset and its
 collider must be declared in one root manifest, and no other asset may share the collider resource. An edit that
 leaves the collider bytes unchanged reports `Applied` false with no invalidation.
+
+Collider refusals use `MapDocumentException.Reason` and preserve live document content, dirty state and history.
+
+| Reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ReferenceMissing` | An unknown placement, or an asset or collider not declared directly in its root manifest | `PlacementId` and `DocumentId`, or `AssetId`, `ResourceId` and the known root `SourceName` |
+| `ToolColliderMissing` | Measurement or a height edit without a collider | `AssetId` |
+| `ToolColliderResourceShared` | A height edit would change another asset's collider | `AssetId`, `OtherAssetId`, `ResourceId` |
+| `ToolColliderShapeUnsupported` | A collider other than boxes or compound boxes | `AssetId`, `ResourceId`, `ShapeType` |
+| `ToolColliderBoxTilted` | A compound box whose local Y axis is tilted | `AssetId`, `ResourceId`, child `Index` |
+| `ValueNonfinite`, `BoundsInvalid` | Nonfinite requested heights or finite unordered endpoints | `AssetId`, first failed `FieldPath`, `ActualNumber`, submitted `MinimumNumber` and `MaximumNumber` |
+| `ValueNonfinite`, `ValueOutsideRange` | A resized box with nonfinite position or nonpositive or nonfinite height | `AssetId`, child `Index`, `FieldPath`, `ActualNumber`, exclusive zero `MinimumNumber` for height |
+| `ToolColliderPublicationMismatch` | Published resources differ from the verified plan | `AssetId`, first mismatching `ResourceId`, `ExpectedHash`, `ActualHash` |
+
+Session work without an open document throws `MapSessionException` with `ToolDocumentRequired` and `Operation`,
+still catchable as `InvalidOperationException`. Conversion onto an occupied tiled target uses
+`DocumentStorageFormConflict`, `Path`, actual `DocumentForm` and required `ExpectedDocumentForm`. Retiling a
+partial document uses `CompleteDocumentRequired`, `DocumentId`, `Path` and `Operation` `Retile`.
+
+Native verification of a partial document also reuses `CompleteDocumentRequired`, with `DocumentId`, `Path`,
+`SourceName`, `ResourceRoot` and `Operation` `Verify`. It refuses before replacing the session. Native storage
+publication uses the following reasons, keeping the original text and live history unchanged.
+
+| Reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ToolStorageFormChanged` | The opened storage disappeared or changed form | `Path`, actual `DocumentForm`, `ExpectedDocumentForm`, `Operation` |
+| `ToolParentDirectoryMissing` | The staged-save target has no parent directory | `Path`, `Operation` |
+| `ToolAssetRootRequired` | Prefab publication has no manifest root | `AssetId`, `Operation` |
+| `ToolImmutableResourceConflict` | An immutable prefab address holds other bytes or publication left it absent | `Path`, `ResourceId`, `ExpectedHash`, `ActualHash` when present |
+| `ToolResourceWriteFailed` | Immutable prefab I/O or access failed | `Path`, `ResourceId`, `Operation`, original cause |
+
+Prefab publication adds known resource context through the shared same-type exception copy. An existing lower
+reason and every identifier survive, with the original refusal retained as `InnerException`. Files published
+before a later refusal remain unreferenced. The live document and its undo and redo history stay unchanged.
 
 `MapAssetFileWriter(assetRoot)` writes resources under an explicit absolute asset root, the root the document's
 resource references resolve against. `WriteResource(bytes, extension)` writes `assets/<sha256>.<extension>` and
@@ -404,8 +517,11 @@ serializer options, instead of exploding into typed parameters. A lake feature:
 `render_topdown` and `render_view` are the only two verbs that touch a GPU, via
 `Render3DSnapshot.Capture` (the engine's public headless scene-capture helper). Every other verb (document,
 query, mutation) runs on a machine with no display or graphics device. A render on a machine with no
-headless GPU device fails with a precise `McpException` naming the selected backend, instead of hanging
-or crashing the process.
+headless GPU device fails with `MapRenderException`, catchable as `InvalidOperationException`, carrying the
+selected `Backend`, `Operation` and original `InnerException`. `Reason` is a known document or render rule when available,
+with its typed context in `Finding`, or `RenderFailed` for another capture failure. `ToolGuard` retains this
+exception through `McpException.InnerException` and preserves its precise transport text. A zero view direction
+uses `MapRenderArgumentException`, `RenderLookDirectionZero` and the submitted `Eye` and `Target`, before GPU work.
 
 Both renders take a `textured` bool (default `true`), mirroring the editor's `MapEditorOptions.TexturedProps`
 toggle: `true` renders a manifest entry's textured multi-material parts when it declares `"textured": true`,
@@ -554,9 +670,15 @@ just wrote and append ", host kinds match no kind in the host layer" to the resu
 (mirroring the GUI editor's read-only warning row wording), so an MCP client sees the same warning a human
 operator would see in the inspector without a separate `procedural_info` round trip.
 
+Complete native validation wrappers preserve the original `MapDocumentException.Reason` and every
+identifier through the shared context-copy method. `SourceName` identifies the storage being verified,
+and `ResourceRoot` identifies the resources used. The original refusal remains `InnerException`.
+
 Every mutation returns what changed. An exception from a lower layer (`MapDocumentException`,
 `InvalidOperationException`, `ArgumentException`) reaches the client with its original, precise message
 rather than a generic one.
+`ToolGuard` retains that original exception in `McpException.InnerException`, keeping its family reason and
+identifiers reachable. An existing `McpException` passes through unchanged.
 
 Full document format, the runtime builders, and the GUI editor sharing this same model:
 [`KhaozEngine.MapDoc`](../KhaozEngine.MapDoc/README.md),

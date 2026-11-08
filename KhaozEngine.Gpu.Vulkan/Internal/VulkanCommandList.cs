@@ -234,12 +234,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 if (!IsSealed)
                 {
-                    throw new InvalidOperationException(
-                        "A native Vulkan command list was submitted without a sealed recording. Call Begin, "
+                    throw new GpuRecordingStateException(GpuRecordingStateRefusal.SubmissionWithoutSeal, "A native Vulkan command list was submitted without a sealed recording. Call Begin, "
                         + "record, then End before submitting: the seam documents that a list submitted without "
                         + "End is a half-recorded frame and that a backend is free to refuse it, and this backend "
                         + "does, because a VkCommandBuffer that vkEndCommandBuffer never saw cannot legally be "
-                        + "named in a vkQueueSubmit at all.");
+                        + "named in a vkQueueSubmit at all.") { Backend = GpuBackendKind.VulkanNative, Command = "Submit" };
                 }
 
                 return _sealedSlot;
@@ -282,11 +281,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (_recording)
             {
-                throw new InvalidOperationException(
-                    "Begin was called on a native Vulkan command list that is already recording. Call End first. "
+                throw new GpuRecordingStateException(GpuRecordingStateRefusal.BeginWhileRecording, "Begin was called on a native Vulkan command list that is already recording. Call End first. "
                     + "A second Begin cannot restart the recording: the VkCommandBuffer is already in the "
                     + "recording state, so the driver would refuse it, and the pool cannot be reset underneath a "
-                    + "record that has not been sealed.");
+                    + "record that has not been sealed.") { Backend = GpuBackendKind.VulkanNative, Command = nameof(Begin) };
             }
 
             BeginTimestampRecording();
@@ -355,6 +353,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// </remarks>
         public void SetFramebuffer(IGpuFramebuffer fb)
+            => SetFramebufferWithStoreActions(fb, default);
+
+        public void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores)
         {
             VulkanRenderingSchedule rendering = RequireRendering("Binding a framebuffer");
 
@@ -369,7 +370,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // a later bind of some other target cannot either.
             _boundSwapchain |= framebuffer.IsSwapchain;
 
-            rendering.SetFramebuffer(CurrentBuffer, framebuffer.AsBound);
+            rendering.SetFramebuffer(CurrentBuffer, framebuffer.AsBound, stores);
         }
 
         /// <inheritdoc/>
@@ -660,11 +661,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (!_recording)
             {
-                throw new InvalidOperationException(
-                    what + " on a native Vulkan command list needs an open recording, and this list is not "
+                throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, what + " on a native Vulkan command list needs an open recording, and this list is not "
                     + "recording. Call Begin first. Unlike a resource-set bind, which records into this list's "
                     + "own array and is discarded, a rendering member can emit a vkCmd* immediately, and a "
-                    + "command recorded into a VkCommandBuffer that was never begun is undefined behaviour.");
+                    + "command recorded into a VkCommandBuffer that was never begun is undefined behaviour.") { Backend = GpuBackendKind.VulkanNative, Command = what };
             }
 
             return Rendering;
@@ -679,10 +679,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (!_recording)
             {
-                throw new InvalidOperationException(
-                    what + " on a native Vulkan command list needs an open recording, and this list is not "
+                throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, what + " on a native Vulkan command list needs an open recording, and this list is not "
                     + "recording. Call Begin first. Unlike a resource-set bind, which records into this list's "
-                    + "own array and is discarded, a pipeline bind emits a vkCmdBindPipeline immediately.");
+                    + "own array and is discarded, a pipeline bind emits a vkCmdBindPipeline immediately.") { Backend = GpuBackendKind.VulkanNative, Command = what };
             }
 
             return _pipelineBinder ?? throw new NotSupportedException(
@@ -698,10 +697,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (handle != 0) return;
 
-            throw new ObjectDisposedException("VkPipeline",
+            throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased, "VkPipeline",
                 "The " + what + " pipeline handed to a native Vulkan bind carries the null VkPipeline, which is "
                 + "what Dispose leaves behind. Binding it would record nothing at all, and the identity guard "
-                + "cannot catch that, because a recording that has just begun has nothing bound either.");
+                + "cannot catch that, because a recording that has just begun has nothing bound either.")
+            {
+                NativeHandleKind = "VkPipeline",
+                ResourceKind = what + " pipeline",
+                Context = "binding " + what + " pipeline",
+            };
         }
 
         // The buffer the current slot is recording into, which every emitted vkCmd* names. Only meaningful while
@@ -723,15 +727,25 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (_uploads is null || buffer is not IVulkanUploadDestination destination)
             {
-                throw new ArgumentException(
-                    "That buffer cannot be written by a native Vulkan command list: it holds no VkBuffer to copy "
+                const string message = "That buffer cannot be written by a native Vulkan command list: it holds no VkBuffer to copy "
                     + "into, which means it was created by another GPU backend. Create buffers through the device "
                     + "you record against. (A list built with no staging arena reaches this too, which is only a "
-                    + "list constructed by a test rather than by the device.)", nameof(buffer));
+                    + "list constructed by a test rather than by the device.)";
+                // A seam-built list without an uploader is a wiring refusal even for an owned buffer.
+                if (buffer is IVulkanUploadDestination) throw new ArgumentException(message, nameof(buffer));
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
+                    message, nameof(buffer))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = buffer.GetType(),
+                    ExpectedType = typeof(IVulkanUploadDestination),
+                    ResourceKind = "buffer",
+                    Context = nameof(UpdateBuffer),
+                };
             }
 
             if (!_recording)
-                throw new InvalidOperationException("A staged buffer upload requires an open recording. Call Begin first.");
+                throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, "A staged buffer upload requires an open recording. Call Begin first.") { Backend = GpuBackendKind.VulkanNative, Command = nameof(UpdateBuffer) };
 
             _uploads.Upload(destination, offsetBytes, data);
         }

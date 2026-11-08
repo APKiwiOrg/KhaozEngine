@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -68,38 +67,67 @@ public class TileGroundSteepCompanionsTests
     public void A_companion_edited_wrong_after_load_is_refused_before_it_can_land_in_the_missing_slot()
     {
         TileWorldCatalogs catalogs = Catalog("""
-            { "id": 1, "name": "grass", "color": "#4d8a3a", "steep": { "material": 3 } },
-            { "id": 3, "name": "stone", "color": "#7a7a7a" }
+            { "id": 3, "name": "stone", "color": "#7a7a7a", "steep": { "material": 1 } },
+            { "id": 1, "name": "grass", "color": "#4d8a3a", "steep": { "material": 3 } }
             """);
+        TileGroundMaterials.Build(catalogs);
+        // Both become invalid, with the higher id inserted first. Refusal must still name the lowest id.
+        catalogs.Material(3)!.Steep!.Material = 8;
         catalogs.Material(1)!.Steep!.Material = 9;
 
         var ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
-        Assert.Contains("ground material set", ex.Message);
-        Assert.Contains("not in the same catalog", ex.Message);
+        Assert.Equal(TileWorldRefusal.SteepCompanionMissing, ex.Reason);
+        Assert.Equal("ground material set", ex.SourceName);
+        Assert.Equal((ushort)1, ex.MaterialId);
+        Assert.Equal("grass", ex.MaterialName);
+        Assert.Equal((ushort)9, ex.CompanionMaterialId);
     }
 
     [Fact]
     public void A_hand_built_set_refuses_a_companion_on_the_missing_slot()
     {
         var layers = new[] { Flat(), Flat(new TileGroundSteepLayer { CompanionSlot = 0, FromDegrees = 40f, ToDegrees = 55f }) };
-        var ex = Assert.Throws<ArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1 }, layers));
-        Assert.Contains("reserved missing-material layer", ex.Message);
+        var ex = Assert.Throws<TileGroundMaterialSetArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1 }, layers));
+        Assert.Equal(TileGroundMaterialSetRefusal.MissingLayerHasCompanion, ex.Reason);
+        Assert.Equal(1, ex.LayerIndex);
+        Assert.Equal("layers", ex.ParamName);
     }
 
-    [Fact]
-    public void A_hand_built_set_refuses_a_companion_naming_the_missing_slot()
+    [Theory]
+    [InlineData(2, 40f, 55f)] // companion names the reserved missing slot
+    [InlineData(1, 60f, 40f)] // band runs backwards
+    public void A_hand_built_set_refuses_an_invalid_companion_or_band(
+        int companionSlot, float fromDegrees, float toDegrees)
     {
-        var layers = new[] { Flat(new TileGroundSteepLayer { CompanionSlot = 2, FromDegrees = 40f, ToDegrees = 55f }), Flat(), Flat() };
-        var ex = Assert.Throws<ArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1, 2 }, layers));
-        Assert.Contains("not one of the set's material slots 0 to 1", ex.Message);
-    }
-
-    [Fact]
-    public void A_hand_built_set_refuses_a_band_the_packer_would_refuse()
-    {
-        var layers = new[] { Flat(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = 60f, ToDegrees = 40f }), Flat(), Flat() };
-        var ex = Assert.Throws<ArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1, 2 }, layers));
-        Assert.Contains("must rise strictly inside (0, 90)", ex.Message);
+        var layers = new[]
+        {
+            Flat(new TileGroundSteepLayer
+            {
+                CompanionSlot = companionSlot, FromDegrees = fromDegrees, ToDegrees = toDegrees,
+            }),
+            Flat(),
+            Flat(),
+        };
+        if (companionSlot == 2)
+        {
+            var ex = Assert.Throws<TileGroundMaterialSetArgumentException>(() =>
+                new TileGroundMaterialSet(1, 1, new ushort[] { 1, 2 }, layers));
+            Assert.Equal(TileGroundMaterialSetRefusal.CompanionIsMissingLayer, ex.Reason);
+            Assert.Equal("layers", ex.ParamName);
+            Assert.Equal(0, ex.LayerIndex);
+            Assert.Equal(companionSlot, ex.CompanionSlot);
+            Assert.Equal(2, ex.MaterialSlotCount);
+        }
+        else
+        {
+            var ex = Assert.Throws<TileGroundSteepArgumentException>(() =>
+                new TileGroundMaterialSet(1, 1, new ushort[] { 1, 2 }, layers));
+            Assert.Equal(TileGroundSteepRefusal.BandOutsideRightAngle, ex.Reason);
+            Assert.Equal("layers", ex.ParamName);
+            Assert.Equal(0, ex.LayerIndex);
+            Assert.Equal(fromDegrees, ex.FromDegrees);
+            Assert.Equal(toDegrees, ex.ToDegrees);
+        }
     }
 
     [Fact]

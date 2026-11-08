@@ -101,7 +101,9 @@ flushes are safe. Calling it before `Begin` or after `End` throws `InvalidOperat
 - `Render2DSurface(AppWindow)` - draw into a `KhaozEngine.Windowing` window; texture/font/`ImageRgba` loaders;
   `CaptureToTexture` / `CaptureToRgba` offscreen capture, and `Render2DSnapshot` captures headless. Both captures
   open, submit and drain a command list of their own, so they are NOT mid-frame calls: taken while the frame's
-  list is recording they throw `GpuNestedRecordingException` naming the fix rather than corrupting the frame
+  list is recording they throw `GpuNestedRecordingException` with
+  `Reason = GpuNestedRecordingRefusal.RecordingAlreadyOpen`, `Owner` and `Attempted`. Move the capture outside
+  the frame recording to avoid corrupting the frame
   (the seam's one-open-recording-per-device rule, see `KhaozEngine.Gpu`). Capture from the frame's pre-record
   phase or outside the loop. `Render2DSnapshot.Capture`'s callback creates and forgets: every texture and font
   it makes through its `Render2DContext` is owned by the capture, which frees them once the submit has drained.
@@ -388,3 +390,7 @@ bake the full band once, draw it in the track colour, then draw the SAME texture
 device state, not a new quad, so the whole gauge is two draws and zero uploads per frame however fast the value
 moves. A radial wipe past a quarter turn wants the arc split into per-quadrant scissor passes, since a scissor
 rect is axis-aligned.
+
+SpriteBatch writes only the new Begin's 64-byte view-projection matrix at its disjoint dynamic slot. Earlier
+slots are never rewritten, including when an offscreen batch precedes native Metal's drawable resolution.
+This preserves [the committed-prefix CPU contract](../docs/METAL-FRAME-SUBMISSION.md#cpu-write-after-record-rule).

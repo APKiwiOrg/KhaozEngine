@@ -7,9 +7,6 @@ using KhaozEngine.Serialization;
 
 namespace KhaozEngine.Content;
 
-/// <summary>Result of validating a JSON instance against a schema.</summary>
-public sealed record ValidationReport(bool IsValid, IReadOnlyList<string> Errors);
-
 /// <summary>Validates JSON instances against JSON Schema (via Json.Schema / JsonSchema.Net).
 /// Instances and schemas are parsed with the engine JSONC policy (<see cref="Jsonc"/>), so data files may carry
 /// comments and trailing commas.</summary>
@@ -53,7 +50,35 @@ public static class JsonSchemaValidator
             }
         }
         if (errors.Count == 0) errors.Add("schema validation failed");
-        return new ValidationReport(false, errors);
+        var findings = new List<JsonSchemaFinding>();
+        CollectFindings(result, doc.RootElement, findings);
+        return new ValidationReport(false, errors) { Findings = findings };
+    }
+
+    static void CollectFindings(EvaluationResults result, JsonElement instance, List<JsonSchemaFinding> findings)
+    {
+        if (result.IsValid) return;
+        if (result.Errors is not null)
+        {
+            string? propertyName = null;
+            if (result.InstanceLocation.SegmentCount > 0 && result.InstanceLocation.GetParent() is { } parent &&
+                parent.Evaluate(instance) is { ValueKind: JsonValueKind.Object })
+                propertyName = result.InstanceLocation.GetSegment(result.InstanceLocation.SegmentCount - 1).ToString()
+                    .Replace("~1", "/", StringComparison.Ordinal).Replace("~0", "~", StringComparison.Ordinal);
+            foreach (string errorKeyword in result.Errors.Keys)
+            {
+                string? keyword = errorKeyword;
+                // A false subschema has no keyword of its own. The owning additionalProperties applicator
+                // is known from the evaluation path, never from the error's prose.
+                if (keyword is "false" or "")
+                    keyword = result.EvaluationPath.SegmentCount > 0 &&
+                        result.EvaluationPath.GetSegment(result.EvaluationPath.SegmentCount - 1).Equals("additionalProperties")
+                        ? "additionalProperties" : null;
+                findings.Add(new JsonSchemaFinding(result.InstanceLocation.ToString(), keyword, propertyName));
+            }
+        }
+        if (result.Details is not null)
+            foreach (EvaluationResults detail in result.Details) CollectFindings(detail, instance, findings);
     }
 
     /// <summary>Validates every <c>*.json</c> in <paramref name="dataDir"/> against the schema named by its

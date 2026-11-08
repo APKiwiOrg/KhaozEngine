@@ -22,7 +22,7 @@ public class ContentTypeRegistryTests
 {
     sealed class StubRowCodec : IContentRowCodec
     {
-        public StubRowCodec(params string[] writtenFields) => WrittenFields = writtenFields;
+        public StubRowCodec(params string[]? writtenFields) => WrittenFields = writtenFields!;
 
         public IReadOnlyList<string> WrittenFields { get; }
 
@@ -63,34 +63,52 @@ public class ContentTypeRegistryTests
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => Register(registry, ContentRegistrationBand.Engine, 0, "nothing"));
 
-        Assert.Contains("0", error.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentRegistrationRefusal.TypeIdReserved, error.Reason);
+        Assert.Equal(new ContentTypeId(0), error.Type);
+        Assert.Equal("nothing", error.TypeKey);
         Assert.Empty(registry.ByTypeId);
+        Register(registry, ContentRegistrationBand.Engine, 1, "nothing");
     }
 
-    [Fact]
-    public void AGameCallerCannotRegisterIntoTheInstancesRange()
+    [Theory]
+    [InlineData(ContentRegistrationBand.Game, 1023, 1024, 65535, 1024)]
+    [InlineData(ContentRegistrationBand.Engine, 256, 1, 255, 255)]
+    [InlineData(ContentRegistrationBand.Instances, 255, 256, 1023, 256)]
+    [InlineData(ContentRegistrationBand.Instances, 1024, 256, 1023, 1023)]
+    public void ACallerCannotRegisterOutsideItsBand(
+        ContentRegistrationBand band, int typeId, int minimum, int maximum, int controlId)
     {
         var registry = new ContentTypeRegistry();
 
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
-            () => Register(registry, ContentRegistrationBand.Game, 300, "store"));
+            () => Register(registry, band, (ushort)typeId, "store"));
 
-        Assert.Contains("Game", error.Message, StringComparison.Ordinal);
-        Assert.Contains("1024", error.Message, StringComparison.Ordinal);
-        Assert.Contains("65535", error.Message, StringComparison.Ordinal);
-        Assert.Contains("300", error.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentRegistrationRefusal.BandTypeIdOutsideRange, error.Reason);
+        Assert.Equal(new ContentTypeId((ushort)typeId), error.Type);
+        Assert.Equal("store", error.TypeKey);
+        Assert.Equal(band, error.Band);
+        Assert.Equal((ushort)minimum, error.MinimumTypeId);
+        Assert.Equal((ushort)maximum, error.MaximumTypeId);
+        Assert.Empty(registry.ByTypeId);
+        Register(registry, band, (ushort)controlId, "store");
     }
 
     [Fact]
-    public void AnEngineCallerCannotRegisterIntoTheGameRange()
+    public void AnUndefinedBandHasNoPermittedTypeIdRange()
     {
         var registry = new ContentTypeRegistry();
 
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
-            () => Register(registry, ContentRegistrationBand.Engine, 1024, "item"));
+            () => Register(registry, (ContentRegistrationBand)99, 2, "item"));
 
-        Assert.Contains("Engine", error.Message, StringComparison.Ordinal);
-        Assert.Contains("255", error.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentRegistrationRefusal.BandUnrecognized, error.Reason);
+        Assert.Equal(new ContentTypeId(2), error.Type);
+        Assert.Equal("item", error.TypeKey);
+        Assert.Equal((ContentRegistrationBand)99, error.Band);
+        Assert.Null(error.MinimumTypeId);
+        Assert.Null(error.MaximumTypeId);
+        Assert.Empty(registry.ByTypeId);
+        Register(registry, ContentRegistrationBand.Engine, 2, "item");
     }
 
     [Theory]
@@ -120,8 +138,12 @@ public class ContentTypeRegistryTests
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => Register(registry, ContentRegistrationBand.Engine, 2, "stat"));
 
-        Assert.Contains("2", error.Message, StringComparison.Ordinal);
-        Assert.Single(registry.ByTypeId);
+        Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
+        Assert.Equal(new ContentTypeId(2), error.Type);
+        Assert.Equal("stat", error.TypeKey);
+        Assert.Equal("item", error.ExistingTypeKey);
+        Assert.Equal(new[] { (new ContentTypeId(2), "item") }, registry.ByTypeId.Select(r => (r.Type, r.TypeKey)));
+        Register(registry, ContentRegistrationBand.Engine, 3, "stat");
     }
 
     [Fact]
@@ -133,62 +155,84 @@ public class ContentTypeRegistryTests
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => Register(registry, ContentRegistrationBand.Game, 1024, "item"));
 
-        Assert.Contains("item", error.Message, StringComparison.Ordinal);
-        Assert.Single(registry.ByTypeId);
+        Assert.Equal(ContentRegistrationRefusal.TypeKeyDuplicate, error.Reason);
+        Assert.Equal(new ContentTypeId(1024), error.Type);
+        Assert.Equal("item", error.TypeKey);
+        Assert.Equal(new ContentTypeId(2), error.ExistingTypeId);
+        Assert.Equal(new[] { (new ContentTypeId(2), "item") }, registry.ByTypeId.Select(r => (r.Type, r.TypeKey)));
+        Register(registry, ContentRegistrationBand.Game, 1024, "store");
     }
 
     [Theory]
-    [InlineData(128)]
-    [InlineData(255)]
-    [InlineData(1000)]
-    [InlineData(131072)]
-    public void AChunkSlotCountOutsideThePowerOfTwoBandIsRefused(int chunkSlots)
+    [InlineData(128, ContentRegistrationRefusal.ChunkSlotsOutsideRange, 256)]
+    [InlineData(255, ContentRegistrationRefusal.ChunkSlotsOutsideRange, 256)]
+    [InlineData(1000, ContentRegistrationRefusal.ChunkSlotsNotPowerOfTwo, 1024)]
+    [InlineData(131072, ContentRegistrationRefusal.ChunkSlotsOutsideRange, 65536)]
+    [InlineData(65537, ContentRegistrationRefusal.ChunkSlotsOutsideRange, 65536)]
+    public void AChunkSlotCountOutsideThePowerOfTwoBandIsRefused(
+        int chunkSlots, ContentRegistrationRefusal reason, int controlSlots)
     {
         var registry = new ContentTypeRegistry();
 
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => Register(registry, ContentRegistrationBand.Engine, 2, "item", chunkSlots, maxRowBytes: 64));
 
-        Assert.Contains(chunkSlots.ToString(CultureInfo.InvariantCulture), error.Message, StringComparison.Ordinal);
-        Assert.Contains("256", error.Message, StringComparison.Ordinal);
-        Assert.Contains("65536", error.Message, StringComparison.Ordinal);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(new ContentTypeId(2), error.Type);
+        Assert.Equal("item", error.TypeKey);
+        Assert.Equal(chunkSlots, error.ActualSlots);
+        Assert.Equal(256, error.MinimumSlots);
+        Assert.Equal(65536, error.MaximumSlots);
+        Assert.Empty(registry.ByTypeId);
+        Register(registry, ContentRegistrationBand.Engine, 2, "item", controlSlots, maxRowBytes: 64);
     }
 
-    [Fact]
-    public void AMaxRowBytesAboveTheAbsoluteCeilingIsRefused()
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(4097, 4096)]
+    public void ARowCapOutsideTheAbsoluteRangeIsRefused(int maxRowBytes, int controlBytes)
     {
         var registry = new ContentTypeRegistry();
 
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => Register(registry, ContentRegistrationBand.Engine, 2, "item", chunkSlots: 256,
-                maxRowBytes: ContentPackFormat.MaxContentRowBytes + 1));
+                maxRowBytes: maxRowBytes));
 
-        Assert.Contains(
-            ContentPackFormat.MaxContentRowBytes.ToString(CultureInfo.InvariantCulture),
-            error.Message,
-            StringComparison.Ordinal);
+        Assert.Equal(ContentRegistrationRefusal.RowBytesOutsideRange, error.Reason);
+        Assert.Equal(new ContentTypeId(2), error.Type);
+        Assert.Equal("item", error.TypeKey);
+        Assert.Equal((long)maxRowBytes, error.ActualBytes);
+        Assert.Equal(1L, error.MinimumBytes);
+        Assert.Equal(4096L, error.MaximumBytes);
+        Assert.Empty(registry.ByTypeId);
+        Register(registry, ContentRegistrationBand.Engine, 2, "item", chunkSlots: 256, maxRowBytes: controlBytes);
     }
 
     [Fact]
     public void ARegistrationThatWouldBuildAnUnloadableChunkIsRefused()
     {
         // Spec 7.1: chunkSlots * (maxRowBytes + 8) + 36 <= MaxChunkUncompressedBytes. loot_entry at 16,384
-        // slots and the 1,024 default is 16.9 MB, which is over, and is exactly the case the bound exists
-        // for. It registers once it declares maxRowBytes: 512, which is what section 3.1 has it do.
+        // slots is the case the bound exists for. A row cap of 1,016 is the first it refuses there.
         var registry = new ContentTypeRegistry();
 
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
-            () => Register(registry, ContentRegistrationBand.Engine, 5, "loot_entry", chunkSlots: 16384));
+            () => Register(registry, ContentRegistrationBand.Engine, 5, "loot_entry", chunkSlots: 16384, maxRowBytes: 1016));
 
-        Assert.Contains("16384", error.Message, StringComparison.Ordinal);
-        Assert.Contains("1024", error.Message, StringComparison.Ordinal);
-        Assert.Contains(
-            ContentPackFormat.MaxChunkUncompressedBytes.ToString(CultureInfo.InvariantCulture),
-            error.Message,
-            StringComparison.Ordinal);
+        Assert.Equal(ContentRegistrationRefusal.ChunkBytesExceeded, error.Reason);
+        Assert.Equal(new ContentTypeId(5), error.Type);
+        Assert.Equal("loot_entry", error.TypeKey);
+        Assert.Equal(16384, error.ChunkSlots);
+        Assert.Equal(1016, error.RowBytes);
+        Assert.Equal(16777252L, error.ActualBytes);
+        Assert.Equal(16777216L, error.MaximumBytes);
+        Assert.Empty(registry.ByTypeId);
 
-        Register(registry, ContentRegistrationBand.Engine, 5, "loot_entry", chunkSlots: 16384, maxRowBytes: 512);
+        // At 16,384 slots the largest admitted row cap is 1,015: (1,015 + 8) * 16,384 + 36
+        // is 16,760,868 bytes. The next cap is 16,777,252, already over 16 MiB.
+        Register(registry, ContentRegistrationBand.Engine, 5, "loot_entry", chunkSlots: 16384, maxRowBytes: 1015);
         Assert.True(registry.TryGet(new ContentTypeId(5), out _));
+        Register(new ContentTypeRegistry(), ContentRegistrationBand.Engine, 5, "loot_entry",
+            chunkSlots: 16384, maxRowBytes: 1014);
     }
 
     [Fact]
@@ -200,13 +244,26 @@ public class ContentTypeRegistryTests
             () => Register(registry, ContentRegistrationBand.Engine, 2, "item",
                 codec: new StubRowCodec("sort"), schema: Schema("sort", "max_stack")));
 
-        Assert.Contains("max_stack", missing.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentRegistrationRefusal.CodecSchemaFieldsMismatch, missing.Reason);
+        Assert.Equal(new ContentTypeId(2), missing.Type);
+        Assert.Equal("item", missing.TypeKey);
+        Assert.Equal(new[] { "max_stack" }, missing.MissingFields);
+        Assert.NotNull(missing.ExtraFields);
+        Assert.Empty(missing.ExtraFields);
+        Assert.Empty(registry.ByTypeId);
 
         ContentRegistrationException extra = Assert.Throws<ContentRegistrationException>(
             () => Register(registry, ContentRegistrationBand.Engine, 2, "item",
                 codec: new StubRowCodec("sort", "tradable"), schema: Schema("sort")));
 
-        Assert.Contains("tradable", extra.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentRegistrationRefusal.CodecSchemaFieldsMismatch, extra.Reason);
+        Assert.Equal(new ContentTypeId(2), extra.Type);
+        Assert.Equal("item", extra.TypeKey);
+        Assert.NotNull(extra.MissingFields);
+        Assert.Empty(extra.MissingFields);
+        Assert.Equal(new[] { "tradable" }, extra.ExtraFields);
+        Assert.Empty(registry.ByTypeId);
+        Register(registry, ContentRegistrationBand.Engine, 2, "item");
     }
 
     [Fact]
@@ -221,8 +278,16 @@ public class ContentTypeRegistryTests
             new ContentFieldEntry("sort", ContentFieldKind.Int, null, ContentVisibility.Client, false),
         });
 
-        Register(registry, ContentRegistrationBand.Engine, 1, "tag", codec: new StubRowCodec("sort"), schema: schema);
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
+            () => Register(registry, ContentRegistrationBand.Engine, 1, "tag",
+                codec: new StubRowCodec("sort", "name"), schema: schema));
 
+        Assert.Equal(ContentRegistrationRefusal.CodecWritesDerivedMarkers, error.Reason);
+        Assert.Equal(new ContentTypeId(1), error.Type);
+        Assert.Equal("tag", error.TypeKey);
+        Assert.Equal(new[] { "name" }, error.FieldNames);
+        Assert.Empty(registry.ByTypeId);
+        Register(registry, ContentRegistrationBand.Engine, 1, "tag", codec: new StubRowCodec("sort"), schema: schema);
         Assert.True(registry.TryGetByKey("tag", out _));
     }
 
@@ -236,8 +301,70 @@ public class ContentTypeRegistryTests
         ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => Register(registry, ContentRegistrationBand.Engine, 3, "stat"));
 
-        Assert.Contains("frozen", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Single(registry.ByTypeId);
+        Assert.Equal(ContentRegistrationRefusal.RegistryFrozen, error.Reason);
+        Assert.Equal(new ContentTypeId(3), error.Type);
+        Assert.Equal("stat", error.TypeKey);
+        Assert.Equal(new[] { (new ContentTypeId(2), "item") }, registry.ByTypeId.Select(r => (r.Type, r.TypeKey)));
+        var unfrozen = new ContentTypeRegistry();
+        Register(unfrozen, ContentRegistrationBand.Engine, 2, "item");
+        Register(unfrozen, ContentRegistrationBand.Engine, 3, "stat");
+    }
+
+    [Fact]
+    public void AnEmptyTypeKeyIsRefused()
+    {
+        var registry = new ContentTypeRegistry();
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
+            () => Register(registry, ContentRegistrationBand.Engine, 2, string.Empty));
+
+        Assert.Equal(ContentRegistrationRefusal.TypeKeyEmpty, error.Reason);
+        Assert.Equal(new ContentTypeId(2), error.Type);
+        Assert.Equal(string.Empty, error.TypeKey);
+        Assert.Empty(registry.ByTypeId);
+        Register(registry, ContentRegistrationBand.Engine, 2, "item");
+    }
+
+    [Fact]
+    public void ACodecMustDeclareItsWrittenFieldList()
+    {
+        var registry = new ContentTypeRegistry();
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
+            () => Register(registry, ContentRegistrationBand.Engine, 2, "item", codec: new StubRowCodec(null)));
+
+        Assert.Equal(ContentRegistrationRefusal.CodecWrittenFieldsMissing, error.Reason);
+        Assert.Equal(new ContentTypeId(2), error.Type);
+        Assert.Equal("item", error.TypeKey);
+        Assert.Empty(registry.ByTypeId);
+        Register(registry, ContentRegistrationBand.Engine, 2, "item");
+    }
+
+    [Fact]
+    public void RefusalFieldListsOwnReadOnlySnapshots()
+    {
+        string[] source = ["sort"];
+        var error = new ContentRegistrationException(ContentRegistrationRefusal.CodecSchemaFieldsMismatch, "detail")
+        {
+            MissingFields = source,
+            ExtraFields = source,
+            FieldNames = source,
+        };
+        source[0] = "changed";
+
+        AssertOwned(error.MissingFields);
+        AssertOwned(error.ExtraFields);
+        AssertOwned(error.FieldNames);
+    }
+
+    static void AssertOwned(IReadOnlyList<string>? fields)
+    {
+        Assert.NotNull(fields);
+        Assert.Equal(new[] { "sort" }, fields);
+        Assert.Throws<NotSupportedException>(() => ((System.Collections.ICollection)fields!).SyncRoot);
+        if (fields is IList<string> mutable)
+        {
+            Assert.Throws<NotSupportedException>(() => mutable[0] = "changed");
+            Assert.Equal(new[] { "sort" }, fields);
+        }
     }
 
     [Fact]

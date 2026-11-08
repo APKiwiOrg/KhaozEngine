@@ -39,9 +39,9 @@ public sealed class ContentRollbackPlan
     {
         TargetVersion = targetVersion;
         FromVersion = fromVersion;
-        Edits = edits;
-        Blockers = blockers;
-        Findings = findings;
+        Edits = new CatalogReadOnlyView<ContentEdit>([.. edits]);
+        Blockers = new CatalogReadOnlyView<ContentRollbackBlocker>([.. blockers]);
+        Findings = new CatalogReadOnlyView<ContentFinding>([.. findings]);
     }
 
     /// <summary>The version whose field values would be restored.</summary>
@@ -192,12 +192,18 @@ public static class ContentRollback
 
         ContentRollbackBlocker first = plan.Blockers[0];
         return new ContentAuthoringException(
+            ContentAuthoringRefusal.RetireIrreversible,
             FormattableString.Invariant(
                 $"A rollback to version {plan.TargetVersion} would restore {plan.Blockers.Count} row(s) that have been retired since, starting with row {first.DefinitionId} ('{first.Key}') of content type {first.Type.Value}. A retire is irreversible for pages already migrated past it, so the way out is to {Remedy}."),
             first.Type,
             first.DefinitionId,
             ContentAuthoringException.RetireIrreversibleReason,
-            plan.Findings);
+            plan.Findings)
+        {
+            TargetVersion = plan.TargetVersion,
+            RowKey = first.Key.ToString(),
+            BlockerCount = plan.Blockers.Count,
+        };
     }
 
     /// <summary>
@@ -213,6 +219,7 @@ public static class ContentRollback
         if (!registry.TryGet(was.Type, out ContentTypeRegistration? registration))
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"The rollback target carries a row of content type {was.Type.Value}, which this registry does not declare."),
                 was.Type,

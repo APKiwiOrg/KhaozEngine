@@ -10,7 +10,7 @@ building, and the answer was no (see "jobs-3 gate" below). The program is comple
 Without the benchmark we'd optimize blind, so it landed first.
 
 Not a shipped package (`IsPackable=false`) and not on the engine version line. The timing loop only runs via
-`dotnet run`; CI's `dotnet test` never invokes it, so it stays out of CI's timed path. The harness's deterministic
+`dotnet run`. Default engine CI keeps this server-tick timing loop out of its test path. The harness's deterministic
 and structural behaviour *is* covered by `KhaozEngine.Server.Tests/Benchmarks/ServerTickBenchmarkTests.cs`, which run in CI.
 
 ## What it measures
@@ -216,6 +216,16 @@ SQL Server credentials are accepted only through the named environment variable 
 The connection string never appears in command arguments or result JSON. Its `Initial Catalog` must contain the
 dedicated `-journal-benchmark-` marker. The tool rejects other catalogs before opening a provider connection.
 
+### Refusals
+
+An unset or blank named connection variable throws `JournalBenchmarkConfigurationException` with `Reason` set to
+`JournalBenchmarkRefusal.ConnectionVariableMissing` or `JournalBenchmarkRefusal.ConnectionVariableBlank`. Its
+`SourceName` is the variable name, never its value. A connection whose `Initial Catalog` lacks
+`-journal-benchmark-` throws `JournalBenchmarkArgumentException` with `Reason`
+`JournalBenchmarkRefusal.DedicatedDatabaseRequired`. Its `RequiredMarker` is `-journal-benchmark-`, and the
+refusal never carries the connection string. Both exception `Reason` properties have type
+`JournalBenchmarkRefusal`. These are benchmark tooling types outside the packaged engine.
+
 ```bash
 dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal --operations 10000 --players 1000 --seed 835
 
@@ -315,6 +325,20 @@ dotnet run --project KhaozEngine.Benchmarks -c Release -- --items --database /tm
 `--players` drives budgets 12 and 13, `--generations` budget 5, and `--crafts` budget 4.
 `--resident-players` sets budget 12's players apart from budget 13's. `--seed` picks the content set and
 every draw in it. Always `-c Release`.
+
+Five Items option, limit, declared-field, JSON and atomic-output methods and four resident-memory
+calibration and regression methods remain in `KhaozEngine.Server.Tests` and gate default engine CI.
+The process-memory-sensitive end-to-end quick fact runs separately in
+[`tools/Items.Benchmark.Tests`](../tools/Items.Benchmark.Tests/README.md), outside `KhaozEngine.slnx`.
+Its free `tooling-validation.yml` suite `items` runs on GitHub-hosted Ubuntu for benchmark tooling,
+baseline and shared-input changes, or by explicit dispatch. It requires the named fact to pass in
+Release with zero skips in its own test process.
+
+Before publishing or refreshing Items benchmark evidence, require a passing Items acceptance run at
+the exact benchmark code commit and record its run URL and code SHA beside that evidence. A baseline
+JSON change triggers it automatically. The quick fact validates instrument and workload structure.
+The separately authorized benchmark produces actual performance evidence. Validation launches no
+full benchmark or load campaign.
 
 **Baseline note: what the spike's deletion moved.** Replacing the spike's own generator with the shipped
 one re-baselined seed 915, and the fields it moved are wider than budgets 5 and 9. Every one below is

@@ -33,6 +33,7 @@ public sealed class CompilerContractTests
     public void PaintOverride_MixedPaintCrossingALaterFaceRefusesAtomically()
     {
         var (target, surface, patch) = CrossingOverride();
+        Assert.NotEmpty(MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch).Paint);
         patch.Cells[3] = patch.Cells[3] with { Underlay = 10 };
         patch.Cells[7] = patch.Cells[7] with { Underlay = 10 };
         Assert.Empty(patch.ValidateLocal());
@@ -42,21 +43,26 @@ public sealed class CompilerContractTests
         MapSurfaceCell[] originalCells = patch.Cells.ToArray();
         ulong[] originalPresence = patch.Presence.ToArray();
 
-        MapDocumentException error = Assert.Throws<MapDocumentException>(() =>
-            MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch));
-
-        Assert.Contains("paint override boundary crosses physical face", error.Message);
+        var error = Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch));
+        Assert.Equal(MapDocumentRefusal.SurfacePaintCrossesPhysicalFace, error.Reason);
+        Assert.Equal(surface.Id, error.SurfaceId);
+        Assert.Equal(target.Key.SurfaceId, error.OtherSurfaceId);
+        Assert.Equal("Material", error.FieldPath);
         Assert.Equal(originalPaint, target.Paint);
         Assert.Equal(originalFaces, target.Faces);
         Assert.Equal(originalVertices, target.ExactVertices);
         Assert.Equal(originalCells, patch.Cells);
         Assert.Equal(originalPresence, patch.Presence);
+        patch.Cells[3] = patch.Cells[3] with { Underlay = 9 };
+        patch.Cells[7] = patch.Cells[7] with { Underlay = 9 };
+        Assert.NotEmpty(MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch).Paint);
     }
 
     [Fact]
     public void PaintOverride_PartialPresenceCrossingALaterFaceRefusesAtomically()
     {
         var (target, surface, patch) = CrossingOverride();
+        Assert.NotEmpty(MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch).Paint);
         patch.SetPresent(3, 0, false);
         patch.SetPresent(3, 1, false);
         Assert.Empty(patch.ValidateLocal());
@@ -66,15 +72,19 @@ public sealed class CompilerContractTests
         MapSurfaceCell[] originalCells = patch.Cells.ToArray();
         ulong[] originalPresence = patch.Presence.ToArray();
 
-        MapDocumentException error = Assert.Throws<MapDocumentException>(() =>
-            MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch));
-
-        Assert.Contains("paint override presence boundary crosses physical face", error.Message);
+        var error = Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch));
+        Assert.Equal(MapDocumentRefusal.SurfacePaintCrossesPhysicalFace, error.Reason);
+        Assert.Equal(surface.Id, error.SurfaceId);
+        Assert.Equal(target.Key.SurfaceId, error.OtherSurfaceId);
+        Assert.Equal("Presence", error.FieldPath);
         Assert.Equal(originalPaint, target.Paint);
         Assert.Equal(originalFaces, target.Faces);
         Assert.Equal(originalVertices, target.ExactVertices);
         Assert.Equal(originalCells, patch.Cells);
         Assert.Equal(originalPresence, patch.Presence);
+        patch.SetPresent(3, 0, true);
+        patch.SetPresent(3, 1, true);
+        Assert.NotEmpty(MapSurfaceCompiler.ApplyPaintOverride(target, surface, patch).Paint);
     }
 
     [Theory]
@@ -90,7 +100,10 @@ public sealed class CompilerContractTests
 
         MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(surface, patch));
 
-        Assert.Contains("not representable", error.Message);
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
+        Assert.Equal(patch.Key, error.Patch);
+        patch.Key = new(surface.Id, long.MaxValue / 64 - 1, 0);
+        Assert.NotEmpty(MapSurfaceCompiler.Compile(surface, patch).Faces);
         Assert.DoesNotContain("CapacityExceeded", error.Message);
         Assert.DoesNotContain("budget", error.Message);
     }

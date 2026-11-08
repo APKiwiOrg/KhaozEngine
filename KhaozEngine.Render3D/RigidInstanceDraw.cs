@@ -34,6 +34,7 @@ public readonly struct RigidInstanceDraw
         InvertShadowDissolve = false;
         DissolveComplement = 0f;
         Motion = MotionKey.None;
+        ShadowMobility = ShadowCasterMobility.Static;
     }
 
     /// <summary>The already-uploaded mesh.</summary>
@@ -61,6 +62,10 @@ public readonly struct RigidInstanceDraw
     /// False draws and receives shadows but casts none.</summary>
     public bool CastsShadows { get; init; }
 
+    /// <summary>Point-shadow cache participation. Static by default. Independent of motion identity, casting
+    /// and shadow-only policy. Key-light shadows and color rendering are unchanged.</summary>
+    public ShadowCasterMobility ShadowMobility { get; init; }
+
     /// <summary>Draw into the shadow depth pass alone and never in the colour pass (issue #974). Needs
     /// <see cref="CastsShadows"/>: shadow-only without casting draws nowhere and is refused when queued. A shadow-only
     /// draw is never seen, so its <see cref="Motion"/> is ignored.</summary>
@@ -75,7 +80,7 @@ public readonly struct RigidInstanceDraw
     public float DissolveComplement { get; init; }
 
     /// <summary>The draw's identity across frames, for temporal effects. <see cref="MotionKey.None"/> (the default)
-    /// marks a static draw. See <see cref="MotionKey"/>.</summary>
+    /// marks an unkeyed draw. It does not select shadow mobility. See <see cref="MotionKey"/>.</summary>
     public MotionKey Motion { get; init; }
 
     /// <summary>Request a cut inside the scene's interior spans. The scene keeps the flag only where the drawn

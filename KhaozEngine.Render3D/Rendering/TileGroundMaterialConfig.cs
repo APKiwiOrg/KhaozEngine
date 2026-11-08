@@ -73,8 +73,9 @@ namespace KhaozEngine.Render3D
         public static Vector4[] BuildParams(IReadOnlyList<TileGroundLayerImage> layers, float baseSpecStrength)
         {
             if (layers.Count < 1 || layers.Count > MaxMaterials)
-                throw new ArgumentException(
-                    $"a tile-ground material needs 1 to {MaxMaterials} layers, got {layers.Count}.", nameof(layers));
+                throw new TileGroundUploadArgumentException(TileGroundUploadRefusal.LayerCountOutsideRange,
+                    $"a tile-ground material needs 1 to {MaxMaterials} layers, got {layers.Count}.", nameof(layers))
+                { LayerCount = layers.Count, MinimumLayerCount = 1, MaximumLayerCount = MaxMaterials };
 
             var tail = new Vector4[ParamsBytes / 16];
             for (int i = 0; i < layers.Count; i++)

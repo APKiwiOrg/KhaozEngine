@@ -229,9 +229,14 @@ orchestrator for owner approval. This research introduces no bake semantic chang
 
 ## Reusable evidence
 
-The test-only helper and its smoke live in
-`KhaozEngine.Movement.Tests/Research/`. Their README documents the counters,
-profiling provider and diagnostic snapshot layout. Release verification passed
+The test-only helper, snapshot utility and their three synthetic fixtures live in
+[`tools/NavCapture.Research.Tests/Research/`](../../tools/NavCapture.Research.Tests/Research/README.md),
+outside the engine solution. Their README documents the counters, profiling provider,
+diagnostic snapshot layout and explicit Release test command. Caller probes reference
+`NavCapture.Research.Tests`, with no production restore API. The free tooling workflow's
+explicit `nav` route must pass before a separately approved capture or restoration campaign.
+The seven SupportQueryCapture methods remain in Movement.Tests and default engine CI.
+The original Release verification passed
 one focused smoke, with zero failed or skipped tests. The helper's initial red
 run failed with `NotImplementedException`, before any fixture capture occurred.
 

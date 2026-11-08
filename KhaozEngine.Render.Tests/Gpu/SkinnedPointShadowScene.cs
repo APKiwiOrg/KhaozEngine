@@ -398,23 +398,7 @@ public sealed class SkinnedPointShadowScene : IDisposable
     }
 
     internal static Matrix4x4[] BentPose(SkinnedGltfMesh tube, float angle = 0.5f)
-    {
-        Matrix4x4[] pose = (Matrix4x4[])tube.RestPose.Clone();
-        Matrix4x4 accumulated = Matrix4x4.Identity;
-        Vector3 previousRest = tube.RestPose[0].Translation;
-        Vector3 jointPosition = previousRest;
-        for (int bone = 0; bone < tube.BoneCount; bone++)
-        {
-            Vector3 restPosition = tube.RestPose[bone].Translation;
-            jointPosition += Vector3.Transform(restPosition - previousRest, accumulated);
-            if (bone >= tube.BoneCount - 2)
-                accumulated = Matrix4x4.CreateRotationZ(angle) * accumulated;
-            pose[bone] = Matrix4x4.CreateTranslation(-restPosition)
-                * accumulated * Matrix4x4.CreateTranslation(jointPosition);
-            previousRest = restPosition;
-        }
-        return pose;
-    }
+        => RendererPerfSceneInputs.BentPose(tube, angle);
 
     static void Setup(Scene3D scene)
     {

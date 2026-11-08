@@ -248,10 +248,12 @@ public class ModFamilyTests
     {
         FamilyType type = Find(typeKey);
 
-        Assert.Throws<ContentRegistrationException>(
+        ContentRegistrationException engine = Assert.Throws<ContentRegistrationException>(
             () => Register(new ContentTypeRegistry(), type, ContentRegistrationBand.Engine));
-        Assert.Throws<ContentRegistrationException>(
+        Assert.Equal(ContentRegistrationRefusal.BandTypeIdOutsideRange, engine.Reason);
+        ContentRegistrationException game = Assert.Throws<ContentRegistrationException>(
             () => Register(new ContentTypeRegistry(), type, ContentRegistrationBand.Game));
+        Assert.Equal(ContentRegistrationRefusal.BandTypeIdOutsideRange, game.Reason);
     }
 
     [Theory]
@@ -458,7 +460,7 @@ public class ModFamilyTests
         IContentRowCodec codec = type.CreateCodec(new ContentTypeId(type.Id), new ContentFieldSchema(widened));
 
         var registry = new ContentTypeRegistry();
-        Assert.Throws<ContentRegistrationException>(() => registry.RegisterContentType(
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(() => registry.RegisterContentType(
             ContentRegistrationBand.Instances,
             type.Id,
             type.Key,
@@ -468,6 +470,7 @@ public class ModFamilyTests
             type.Visibility,
             type.ChunkSlots,
             type.MaxRowBytes));
+        Assert.Equal(ContentRegistrationRefusal.CodecSchemaFieldsMismatch, error.Reason);
     }
 
     [Fact]

@@ -33,7 +33,7 @@ public static partial class ExplicitCharacterMovement
                         tuning.StepHeight, tuning.GroundedEpsilon, out binding);
                     if (final.Status != SupportStatus.Walkable || binding is null)
                         return Hold(state, MovementStepOutcome.EnvironmentUnresolved);
-                    candidate = contact.BodyCentre(seated);
+                    candidate = contact.SupportedBodyCentre(seated, final);
                 }
             }
             MovementWaterPoint point = contact.SampleMedium(contact.KernelFeet(candidate, tuning))!.Value;
@@ -64,8 +64,14 @@ public static partial class ExplicitCharacterMovement
 
     internal static MovementStepResult ValidatePlacement(in FramedMovementState state, in MoveTuning tuning,
         in WaterTraversalPolicy water, MovementQueryLease queries, in ContactComposition composition,
-        MovementBoundary? boundary = null)
+        MovementBoundary? boundary = null) =>
+        ValidatePlacement(state, tuning, water, queries, composition, out _, boundary);
+
+    internal static MovementStepResult ValidatePlacement(in FramedMovementState state, in MoveTuning tuning,
+        in WaterTraversalPolicy water, MovementQueryLease queries, in ContactComposition composition,
+        out MovementSelection placementSelection, MovementBoundary? boundary = null)
     {
+        placementSelection = default;
         ArgumentNullException.ThrowIfNull(queries);
         if (!state.IsValid || !ValidCarriedState(state.State) || !Valid(tuning) || !water.IsValid || water.Mode == WaterTraversalMode.Legacy)
             return Hold(state, MovementStepOutcome.EnvironmentInvalid);
@@ -78,6 +84,7 @@ public static partial class ExplicitCharacterMovement
             var unselected = new FramedMovementState(state.State, state.Frame, null);
             MovementAvailability status = queries.RebuildSelection(unselected, out MovementSelection selection);
             if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
+            placementSelection = selection;
             MovementBodyQuery body = Body(state.State.Position, tuning, selection);
             MovementStepOutcome placement = WaterPlacement(body, tuning, water, queries, boundary);
             if (placement != MovementStepOutcome.Advanced) return Hold(state, placement);
@@ -95,7 +102,11 @@ public static partial class ExplicitCharacterMovement
                     tuning.GroundedEpsilon, out var found);
                 bool wasSwimming = state.State.Swimming || state.State.WaterExcursion == WaterExcursionState.Surface;
                 if (support.Status == SupportStatus.Walkable &&
-                    FootingAllowed(point, wasSwimming, state.State.Position.Y, tuning, water)) binding = found;
+                    FootingAllowed(point, wasSwimming, state.State.Position.Y, tuning, water))
+                {
+                    _ = contact.SupportedBodyCentre(feet, support);
+                    binding = found;
+                }
                 if (binding is { } owner && owner.Space != point.Space)
                     return Hold(state, MovementStepOutcome.EnvironmentInvalid);
             }

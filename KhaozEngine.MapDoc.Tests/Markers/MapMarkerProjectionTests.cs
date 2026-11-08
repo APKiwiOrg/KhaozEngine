@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
@@ -69,8 +68,8 @@ public sealed class MapMarkerProjectionTests
         Assert.Contains("odd-role", findings[0].Detail, StringComparison.Ordinal);
         Assert.Equal(findings, new MapMarkerRoleCatalog(new[] { "label-role", "actor-role", "start-role" }).Validate(registry));
         Assert.Empty(new MapMarkerRoleCatalog(registry.All.Select(m => m.Role).ToArray()).Validate(registry));
-        foreach (Type type in new[] { typeof(MapMarkerProjection), typeof(MapMarkerRoleCatalog), typeof(MapMarkerRegistry) })
-            Assert.DoesNotContain(type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic), f => f.FieldType == typeof(string));
+        Assert.Equal(new[] { "stray" }, MapMarkerProjection.PlayerStarts(registry, "stray-role", enabledOnly: false).Select(s => s.Marker.Id));
+        Assert.Equal(new[] { "stray" }, MapMarkerProjection.Spawns(registry, "stray-role", enabledOnly: false).Select(s => s.Marker.Id));
         Assert.ThrowsAny<ArgumentException>(() => MapMarkerProjection.PlayerStarts(registry, "", enabledOnly: false));
     }
 

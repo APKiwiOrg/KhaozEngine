@@ -35,7 +35,7 @@ public partial class OrdinaryContactHeadTests
             ? new MoveState { Position = new(0, 1.75f, 0), VerticalVelocity = -20 }
             : new MoveState { Position = new(0, Height(0, 0) + 0.75f, 0), Grounded = true };
         var command = new MoveCommand(Vector2.UnitX, false, 0);
-        var direct = CharacterMovement.Step(state, command, 0.1f, Height, tuning, Normal, physics);
+        var direct = PlayerMovementPublication.Canonicalize(CharacterMovement.Step(PlayerMovementPublication.PrepareStep(state), command, 0.1f, Height, tuning, Normal, physics));
         var basis = new PlayerMoveState { Move = state, FrameAnchor = new(frame.Anchor.X, frame.Anchor.Z) };
         basis.Move.Position.Y += originY;
         using var read = simulator.BeginExplicitRead(basis);

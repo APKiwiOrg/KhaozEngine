@@ -26,12 +26,12 @@ internal sealed class LegacyWorldWithoutLease(IPhysicsWorld inner) : PhysicsForw
     public override void Dispose() { }
 }
 
-internal sealed class LegacyLeaseMetadata(IPhysicsQueryLease inner, IPhysicsWorld owner, Vector3 origin)
+internal sealed class LegacyLeaseMetadata(IPhysicsQueryLease inner, IPhysicsWorld owner, Vector3 origin, long? generation = null)
     : IPhysicsQueryLease
 {
     public IPhysicsWorld SourceWorld => owner;
     public Vector3 Origin => origin;
-    public long GeometryGeneration => inner.GeometryGeneration;
+    public long GeometryGeneration => generation ?? inner.GeometryGeneration;
     public void AssertCurrent() => inner.AssertCurrent();
     public void Dispose() => inner.Dispose();
 }

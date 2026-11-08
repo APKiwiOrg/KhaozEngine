@@ -14,6 +14,10 @@ namespace KhaozEngine.Render3D
     {
         // Per-entity silhouette draws (inverted hulls): queued in submission order, flushed into the model FB
         // right after the overlay meshes. Cleared each Begin().
+        /// <summary>InteriorCutPlacementSlotTests and InteriorCutRelevanceTests observe the submitted silhouette cut decisions.</summary>
+        internal IReadOnlyList<bool> SilhouetteCutsForTests =>
+            _silhouetteDraws.ConvertAll(draw => draw.CutInsideInteriors).AsReadOnly();
+
         readonly List<SilhouetteDraw> _silhouetteDraws = new();
 
         readonly record struct SilhouetteDraw(MeshHandle Mesh, Matrix4x4 World, Color Color, float Width, bool CutInsideInteriors)

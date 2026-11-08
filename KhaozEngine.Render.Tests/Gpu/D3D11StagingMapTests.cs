@@ -57,10 +57,13 @@ namespace KhaozEngine.Tests.Gpu
 
             maps.Open(resource, GpuMapMode.Read);
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            GpuStagingMapStateException ex = Assert.Throws<GpuStagingMapStateException>(
                 () => maps.Open(resource, GpuMapMode.Write));
-            Assert.Contains("already mapped", ex.Message, StringComparison.Ordinal);
-            Assert.Contains(nameof(GpuMapMode.Read), ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuStagingMapRefusal.AlreadyMapped, ex.Reason);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
+            Assert.Equal(GpuMapMode.Read, ex.ExistingMode);
+            Assert.Equal(GpuMapMode.Write, ex.RequestedMode);
             Assert.True(maps.IsMapped(resource));
             Assert.Equal(1, maps.OpenCount);
         }
@@ -75,8 +78,14 @@ namespace KhaozEngine.Tests.Gpu
         {
             var maps = new D3D11StagingMaps();
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => maps.Close(new object()));
-            Assert.Contains("not mapped", ex.Message, StringComparison.Ordinal);
+            var resource = new object();
+            Assert.Equal(GpuStagingMapRefusal.NotMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => maps.Close(resource)).Reason);
+            Assert.Equal(0, maps.OpenCount);
+
+            maps.Open(resource, GpuMapMode.Read);
+            maps.Close(resource);
+            Assert.Equal(0, maps.OpenCount);
         }
 
         /// <summary>The balanced pair is the ordinary case, and a resource may be mapped again once it has been
@@ -215,8 +224,14 @@ namespace KhaozEngine.Tests.Gpu
             var reason = new FakeRemovedReason();
             var latch = new D3D11DeviceLossLatch(new DeviceLiveness(), reason);
 
-            Assert.Throws<InvalidOperationException>(
+            var refusal = Assert.Throws<D3D11MapResultException>(
                 () => D3D11StagingMaps.RequireMapped(D3D11DeviceLossCodes.InvalidCall, latch));
+            Assert.Equal(D3D11MapResultRefusal.MapFailed, refusal.Reason);
+            Assert.Equal(D3D11DeviceLossCodes.InvalidCall, refusal.HResult);
+            Assert.Equal(D3D11StagingMaps.MapSite, refusal.Site);
+            Assert.Equal(D3D11DeviceLossCodes.Token(D3D11DeviceLossCodes.InvalidCall), refusal.ResultToken);
+            Assert.False(refusal.DeviceLost);
+            Assert.IsAssignableFrom<InvalidOperationException>(refusal);
 
             Assert.False(latch.IsLost);
             Assert.Equal(0, reason.Reads);
@@ -235,15 +250,19 @@ namespace KhaozEngine.Tests.Gpu
             var liveness = new DeviceLiveness();
             var latch = new D3D11DeviceLossLatch(liveness, reason);
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            var refusal = Assert.Throws<D3D11MapResultException>(
                 () => D3D11StagingMaps.RequireMapped(D3D11DeviceLossCodes.DeviceRemoved, latch));
+            Assert.Equal(D3D11MapResultRefusal.MapFailed, refusal.Reason);
+            Assert.True(refusal.DeviceLost);
+            Assert.Equal(D3D11DeviceLossCodes.DeviceRemoved, refusal.HResult);
+            Assert.Equal(D3D11StagingMaps.MapSite, refusal.Site);
+            Assert.Equal("DXGI_ERROR_DEVICE_REMOVED", refusal.ResultToken);
 
             Assert.True(latch.IsLost);
             Assert.True(liveness.IsDead);
             Assert.Equal(D3D11StagingMaps.MapSite, latch.Site);
             Assert.Equal(D3D11DeviceLossCodes.DeviceHung, latch.RemovedReason);
             Assert.Equal(1, reason.Reads);
-            Assert.Contains("LOST", ex.Message, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -253,7 +272,7 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         [Fact]
         public void WithNoLatchWired_AFailedMapStillThrows()
-            => Assert.Throws<InvalidOperationException>(
+            => Assert.Throws<D3D11MapResultException>(
                 () => D3D11StagingMaps.RequireMapped(D3D11DeviceLossCodes.DeviceRemoved, loss: null));
 
         // ---- Decision W4's staging lock clause, through the seam ------------------------------------------------
@@ -332,18 +351,20 @@ namespace KhaozEngine.Tests.Gpu
 
             access.Map(buffer, GpuMapMode.Read);
 
-            InvalidOperationException second = Assert.Throws<InvalidOperationException>(
-                () => access.Map(buffer, GpuMapMode.Write));
-            Assert.Contains("already mapped", second.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuStagingMapRefusal.AlreadyMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => access.Map(buffer, GpuMapMode.Write)).Reason);
 
-            InvalidOperationException unbalanced = Assert.Throws<InvalidOperationException>(
-                () => access.Unmap(never));
-            Assert.Contains("not mapped", unbalanced.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuStagingMapRefusal.NotMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => access.Unmap(never)).Reason);
 
             // One map, and nothing else reached the driver. The first mapping is still open and still balanced.
             Assert.Equal(new[] { "MapBuffer" }, memory.Calls);
             Assert.Equal(1, access.Maps.OpenCount);
             access.Unmap(buffer);
+            Assert.Equal(0, access.Maps.OpenCount);
+
+            access.Map(never, GpuMapMode.Read);
+            access.Unmap(never);
             Assert.Equal(0, access.Maps.OpenCount);
         }
 
@@ -369,10 +390,9 @@ namespace KhaozEngine.Tests.Gpu
             var access = new D3D11StagingAccess(memory, submitLock, latch);
             using var texture = new FakeStagingTexture();
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            Assert.Throws<D3D11MapResultException>(
                 () => access.Map(texture, GpuMapMode.Read));
 
-            Assert.Contains("LOST", ex.Message, StringComparison.Ordinal);
             Assert.True(latch.IsLost);
             Assert.True(liveness.IsDead);
             Assert.Equal(D3D11StagingMaps.MapSite, latch.Site);
@@ -418,16 +438,30 @@ namespace KhaozEngine.Tests.Gpu
             using var defaultUsage = new FakeStagingBuffer(mappable: false);
             using var foreign = new FakeBuffer(256);
 
-            ArgumentException notStaging = Assert.Throws<ArgumentException>(
+            GpuStagingMapArgumentException notStaging = Assert.Throws<GpuStagingMapArgumentException>(
                 () => access.Map(defaultUsage, GpuMapMode.Read));
-            Assert.Contains("GpuBufferUsage.Staging", notStaging.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuStagingMapRefusal.StagingUsageRequired, notStaging.Reason);
+            Assert.IsAssignableFrom<ArgumentException>(notStaging);
+            Assert.Null(notStaging.ParamName);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, notStaging.Backend);
+            Assert.Equal("buffer", notStaging.ResourceKind);
+            Assert.Equal(GpuBufferUsage.Staging, notStaging.RequiredBufferUsage);
 
-            ArgumentException otherBackend = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException otherBackend = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => access.Map(foreign, GpuMapMode.Read));
-            Assert.Contains("another backend", otherBackend.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, otherBackend.Reason);
+            Assert.Equal("staging", otherBackend.ParamName);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, otherBackend.ExpectedBackend);
+            Assert.Equal(typeof(FakeBuffer), otherBackend.ActualType);
+            Assert.Equal(typeof(ID3D11MappableResource), otherBackend.ExpectedType);
+            Assert.Equal("staging map", otherBackend.Context);
+            Assert.Equal("buffer", otherBackend.ResourceKind);
 
             Assert.Empty(memory.Calls);
             Assert.Equal(0, access.Maps.OpenCount);
+            using var own = new FakeStagingBuffer();
+            access.Map(own, GpuMapMode.Read);
+            access.Unmap(own);
         }
 
         // ---- The load-path claim ------------------------------------------------------------------------------

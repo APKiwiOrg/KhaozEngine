@@ -353,10 +353,9 @@ namespace KhaozEngine.Tests.Gpu
             var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
             records.Record(0, set, 0);
 
-            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
-                () => records.Flush(ref sink));
+            // The only InvalidOperationException a flush without the validation guard raises.
+            Assert.Throws<InvalidOperationException>(() => records.Flush(ref sink));
 
-            Assert.Contains("no pipeline bound", refused.Message, StringComparison.Ordinal);
             Assert.Equal(0, counts.BindDescriptorSetCalls);
         }
 
@@ -379,10 +378,9 @@ namespace KhaozEngine.Tests.Gpu
             // The offset that leaves its own segment, on a recording that never bound a pipeline.
             records.Record(0, set, 4 * 256);
 
-            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
-                () => records.Flush(ref sink));
+            // The offset refusals are ArgumentOutOfRangeException, so the exact type is the no-pipeline refusal.
+            Assert.Throws<InvalidOperationException>(() => records.Flush(ref sink));
 
-            Assert.Contains("no pipeline bound", refused.Message, StringComparison.Ordinal);
             Assert.Equal(0, counts.BindDescriptorSetCalls);
             Assert.True(records.IsDirty(0));
         }
@@ -417,8 +415,12 @@ namespace KhaozEngine.Tests.Gpu
             VulkanResourceSet set = harness.Set("Beam");
             var records = new VulkanBindRecords(PipelineBindPoint.Graphics);
 
-            ArgumentException refused = Assert.Throws<ArgumentException>(() => records.Record(0, set, 256));
-            Assert.Contains("V-D4", refused.Message, StringComparison.Ordinal);
+            var refused = Assert.Throws<GpuDynamicBindingException>(() => records.Record(0, set, 256));
+            Assert.Equal(GpuDynamicBindingRefusal.DynamicElementMissing, refused.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, refused.Backend);
+            Assert.Equal(0u, refused.Set);
+            Assert.Equal(256u, refused.DynamicOffset);
+            Assert.Equal("dynamicOffset", refused.ParamName);
 
             records.Record(0, set, 0);
             Assert.True(records.IsDirty(0));
@@ -486,7 +488,7 @@ namespace KhaozEngine.Tests.Gpu
             using VulkanCommandList list = harness.Fixture.CreateList();
             list.Begin();
 
-            Assert.Throws<ArgumentException>(() => list.SetGraphicsResourceSet(0, new ForeignResourceSet()));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => list.SetGraphicsResourceSet(0, new ForeignResourceSet()));
         }
 
         /// <summary>

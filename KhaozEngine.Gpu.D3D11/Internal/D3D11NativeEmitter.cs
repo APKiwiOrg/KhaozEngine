@@ -166,11 +166,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
             if (pipeline is not D3D11GraphicsPipeline graphics)
-                throw new ArgumentException(
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {pipeline.GetType().Name} reached the native Direct3D 11 emitter as a graphics pipeline. "
                     + "A pipeline this backend created carries the compiled shaders and the four state objects a "
                     + "bind issues, and a pipeline from another backend carries another backend's.",
-                    nameof(pipeline));
+                    nameof(pipeline))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = pipeline.GetType(),
+                    ExpectedType = typeof(D3D11GraphicsPipeline),
+                    ResourceKind = "pipeline",
+                    Context = "graphics pipeline",
+                    PipelineKind = "graphics",
+                };
 
             D3D11NativeEmitter sink = this;
             _state.Binds.SetGraphicsPipeline(ref sink, pipeline);

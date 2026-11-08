@@ -70,6 +70,7 @@ namespace KhaozEngine.Tests.Telegraphs
             var rf = TelegraphResolve.Resolve(0.5f, full);
             var rh = TelegraphResolve.Resolve(0.5f, half);
             Assert.Equal(rf.FillColor.A * 0.5f, rh.FillColor.A, 3);
+            Assert.Equal(rf.OutlineColor.A * 0.5f, rh.OutlineColor.A, 3);
         }
 
         [Fact]
@@ -434,40 +435,23 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(0f, r.SweepGlow);         // SweepGlow needs FillSweep too
         }
 
-        [Fact]
-        public void DotLane_reveal_zero_hides_every_dot()
+        [Theory]
+        [InlineData(0f, 0f, 0f)]
+        [InlineData(1f, 0f, 1f)]
+        [InlineData(1f, 1f, 0f)]
+        public void DotLane_endpoints_hide_or_show_every_dot(float reveal, float fade, float expectedAlpha)
         {
-            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0f, 0f, 0f, 0.1f), 5);
-            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, 0f, 0f, 0.1f), 5);
-            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(1f, 0f, 0f, 0.1f), 5);
+            Assert.Equal(expectedAlpha, TelegraphResolve.DotLaneDotAlpha(0f, reveal, fade, 0.1f), 5);
+            Assert.Equal(expectedAlpha, TelegraphResolve.DotLaneDotAlpha(0.5f, reveal, fade, 0.1f), 5);
+            Assert.Equal(expectedAlpha, TelegraphResolve.DotLaneDotAlpha(1f, reveal, fade, 0.1f), 5);
         }
 
-        [Fact]
-        public void DotLane_full_reveal_no_fade_shows_every_dot()
+        [Theory]
+        [InlineData(0.8f, 0f)]
+        [InlineData(0.2f, 1f)]
+        public void DotLane_reveal_front_controls_dot_visibility(float position, float expectedAlpha)
         {
-            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0f, 1f, 0f, 0.1f), 5);
-            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, 0f, 0.1f), 5);
-            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(1f, 1f, 0f, 0.1f), 5);
-        }
-
-        [Fact]
-        public void DotLane_full_fade_hides_every_dot()
-        {
-            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0f, 1f, 1f, 0.1f), 5);
-            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, 1f, 0.1f), 5);
-            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(1f, 1f, 1f, 0.1f), 5);
-        }
-
-        [Fact]
-        public void DotLane_dot_ahead_of_reveal_front_is_hidden()
-        {
-            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.8f, 0.5f, 0f, 0.1f), 5);
-        }
-
-        [Fact]
-        public void DotLane_dot_behind_reveal_front_is_visible()
-        {
-            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.2f, 0.5f, 0f, 0.1f), 5);
+            Assert.Equal(expectedAlpha, TelegraphResolve.DotLaneDotAlpha(position, 0.5f, 0f, 0.1f), 5);
         }
 
         [Fact]

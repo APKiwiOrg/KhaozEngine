@@ -280,21 +280,21 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.Throws<ArgumentNullException>(() => new MomentSchedule(null!, Turns));
             Assert.Throws<ArgumentNullException>(() => new MomentSchedule(TurnOptions, null!));
 
-            Refused(TurnOptions, Array.Empty<MomentFamily>(), "families", "no moment families");
-            foreach (double weight in new[] { 0.0, -0.25, double.NaN, double.PositiveInfinity })
-                Refused(TurnOptions, new[] { glance with { Weight = weight } }, "families", "'glance'", "weighs");
-            Refused(TurnOptions, new[] { glance with { Weight = double.MaxValue }, Turns[Turn] with
-                { Weight = double.MaxValue } }, "families", "weights total");
-            foreach (double length in new[] { 0.0, -1.0, double.NaN, double.PositiveInfinity, 6.001 })
-                Refused(TurnOptions, new[] { glance with { LengthSeconds = length } }, "families", "'glance'", "lasts");
+            var empty = Assert.Throws<MomentScheduleArgumentException>(
+                () => new MomentSchedule(TurnOptions, Array.Empty<MomentFamily>()));
+            Assert.Equal(MomentScheduleRefusal.FamiliesEmpty, empty.Reason);
+            Assert.Equal(0, empty.FamilyCount);
+            Assert.Equal("families", empty.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(empty);
+            _ = new MomentSchedule(TurnOptions, Turns);
 
-            foreach (double slot in new[] { 0.0, -10.0, double.NaN, double.PositiveInfinity })
-                Refused(TurnOptions with { SlotSeconds = slot }, Turns, "options", "SlotSeconds");
-            foreach (double quiet in new[] { -0.5, double.NaN, double.PositiveInfinity })
-                Refused(TurnOptions with { QuietSeconds = quiet }, Turns, "options", "QuietSeconds");
-            foreach (double share in new[] { -0.1, 1.0, 1.5, double.NaN, double.NegativeInfinity })
-                Refused(TurnOptions with { EmptyShare = share }, Turns, "options", "EmptyShare");
-            Refused(TurnOptions with { MaxEmptySlots = -1 }, Turns, "options", "MaxEmptySlots");
+            var total = Assert.Throws<MomentScheduleArgumentException>(() => new MomentSchedule(TurnOptions,
+                [glance with { Weight = double.MaxValue }, Turns[Turn] with { Weight = double.MaxValue }]));
+            Assert.Equal(MomentScheduleRefusal.WeightTotalNotFinite, total.Reason);
+            Assert.Equal(double.PositiveInfinity, total.TotalWeight);
+            Assert.Equal("families", total.ParamName);
+            _ = new MomentSchedule(TurnOptions,
+                [glance with { Weight = double.MaxValue }, Turns[Turn] with { Weight = 1d }]);
 
             // The edges are taken: a moment filling the room between the quiet ends, no quiet, no empty share and
             // no empty slot allowed. With neither empty draws nor a run of them allowed, every slot holds a moment.
@@ -307,6 +307,73 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 Assert.True(Scan(full, 5, slot, TurnOptions.SlotSeconds).Family >= 0, $"Slot {slot} is empty.");
                 Assert.True(Scan(none, 5, slot, TurnOptions.SlotSeconds).Family >= 0, $"Slot {slot} is empty.");
             }
+        }
+
+        [Theory]
+        [InlineData("SlotSeconds", 0.0, MomentScheduleRefusal.SlotSecondsInvalid)]
+        [InlineData("SlotSeconds", -10.0, MomentScheduleRefusal.SlotSecondsInvalid)]
+        [InlineData("SlotSeconds", double.NaN, MomentScheduleRefusal.SlotSecondsInvalid)]
+        [InlineData("SlotSeconds", double.PositiveInfinity, MomentScheduleRefusal.SlotSecondsInvalid)]
+        [InlineData("QuietSeconds", -0.5, MomentScheduleRefusal.QuietSecondsInvalid)]
+        [InlineData("QuietSeconds", double.NaN, MomentScheduleRefusal.QuietSecondsInvalid)]
+        [InlineData("QuietSeconds", double.PositiveInfinity, MomentScheduleRefusal.QuietSecondsInvalid)]
+        [InlineData("EmptyShare", -0.1, MomentScheduleRefusal.EmptyShareInvalid)]
+        [InlineData("EmptyShare", 1.0, MomentScheduleRefusal.EmptyShareInvalid)]
+        [InlineData("EmptyShare", 1.5, MomentScheduleRefusal.EmptyShareInvalid)]
+        [InlineData("EmptyShare", double.NaN, MomentScheduleRefusal.EmptyShareInvalid)]
+        [InlineData("EmptyShare", double.NegativeInfinity, MomentScheduleRefusal.EmptyShareInvalid)]
+        [InlineData("MaxEmptySlots", -1.0, MomentScheduleRefusal.MaxEmptySlotsInvalid)]
+        public void RefusesAnInvalidOption(string optionName, double value, MomentScheduleRefusal reason)
+        {
+            MomentScheduleOptions options = optionName switch
+            {
+                "SlotSeconds" => TurnOptions with { SlotSeconds = value },
+                "QuietSeconds" => TurnOptions with { QuietSeconds = value },
+                "EmptyShare" => TurnOptions with { EmptyShare = value },
+                "MaxEmptySlots" => TurnOptions with { MaxEmptySlots = (int)value },
+                _ => throw new ArgumentOutOfRangeException(nameof(optionName)),
+            };
+            var error = Assert.Throws<MomentScheduleArgumentException>(() => new MomentSchedule(options, Turns));
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal(optionName, error.OptionName);
+            Assert.Equal(value, error.OptionValue);
+            Assert.Equal("options", error.ParamName);
+            _ = new MomentSchedule(TurnOptions, Turns);
+        }
+
+        [Theory]
+        [InlineData(MomentScheduleRefusal.FamilyWeightInvalid, 0.0)]
+        [InlineData(MomentScheduleRefusal.FamilyWeightInvalid, -0.25)]
+        [InlineData(MomentScheduleRefusal.FamilyWeightInvalid, double.NaN)]
+        [InlineData(MomentScheduleRefusal.FamilyWeightInvalid, double.PositiveInfinity)]
+        [InlineData(MomentScheduleRefusal.FamilyLengthInvalid, 0.0)]
+        [InlineData(MomentScheduleRefusal.FamilyLengthInvalid, -1.0)]
+        [InlineData(MomentScheduleRefusal.FamilyLengthInvalid, double.NaN)]
+        [InlineData(MomentScheduleRefusal.FamilyLengthInvalid, double.PositiveInfinity)]
+        [InlineData(MomentScheduleRefusal.FamilyDoesNotFitSlot, 6.001)]
+        public void RefusesAnInvalidFamily(MomentScheduleRefusal reason, double value)
+        {
+            MomentFamily glance = Turns[Glance];
+            MomentFamily invalid = reason == MomentScheduleRefusal.FamilyWeightInvalid
+                ? glance with { Weight = value }
+                : glance with { LengthSeconds = value };
+            var error = Assert.Throws<MomentScheduleArgumentException>(
+                () => new MomentSchedule(TurnOptions, [Turns[Turn], invalid]));
+            Assert.Equal(reason, error.Reason);
+            Assert.Equal("glance", error.FamilyName);
+            Assert.Equal(1, error.FamilyIndex);
+            Assert.Equal("families", error.ParamName);
+            if (reason == MomentScheduleRefusal.FamilyWeightInvalid)
+                Assert.Equal(value, error.Weight);
+            else
+                Assert.Equal(value, error.LengthSeconds);
+            if (reason == MomentScheduleRefusal.FamilyDoesNotFitSlot)
+            {
+                Assert.Equal(6.0, error.AvailableSeconds);
+                Assert.Equal(10.0, error.SlotSeconds);
+                Assert.Equal(2.0, error.QuietSeconds);
+            }
+            _ = new MomentSchedule(TurnOptions, [Turns[Turn], glance]);
         }
 
         [Fact]
@@ -337,15 +404,6 @@ namespace KhaozEngine.Tests.Render3D.Animation
                 }
             });
             Assert.True(float.IsFinite(sink));
-        }
-
-        static void Refused(MomentScheduleOptions options, MomentFamily[] families, string paramName,
-            params string[] fragments)
-        {
-            var refusal = Assert.Throws<ArgumentException>(() => new MomentSchedule(options, families));
-            Assert.Equal(paramName, refusal.ParamName);
-            foreach (string fragment in fragments)
-                Assert.Contains(fragment, refusal.Message, StringComparison.Ordinal);
         }
 
         // The moment a slot holds, read back from the schedule at every step across the slot, or none. Every step

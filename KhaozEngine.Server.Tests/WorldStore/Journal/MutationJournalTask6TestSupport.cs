@@ -69,7 +69,7 @@ internal static class MutationJournalTask6TestSupport
     internal static async Task<JournalEventPage> ReadAllAsync(IMutationJournalStore store, long afterVersion = 0)
         => await store.ReadEventsAsync(new JournalEventRead(StreamKey, afterVersion, null, 128, 1024 * 1024));
 
-    internal static async Task AssertCorruptAsync(
+    internal static async Task<JournalStoreException> AssertCorruptAsync(
         Func<Task> action,
         string expectedStreamKey = StreamKey)
     {
@@ -78,6 +78,7 @@ internal static class MutationJournalTask6TestSupport
         Assert.Equal(JournalStoreFailureCertainty.CommittedDataUnreadable, exception.Certainty);
         Assert.Equal(JournalStoreFailureScope.OperationStreams, exception.Scope);
         Assert.Equal(expectedStreamKey, Assert.Single(exception.StreamKeys));
+        return exception;
     }
 
     internal static async Task<JournalCompletion> WaitForCompletionAsync(MutationJournalExecutor executor)
@@ -147,7 +148,8 @@ internal sealed class Task6SqlServerScope : IDisposable
     internal SqlServerJournalPrefixStore Open(
         SqlServerJournalTestHook? hook = null,
         TimeSpan? retryHorizon = null,
-        Task6ManualTimeProvider? clock = null)
+        Task6ManualTimeProvider? clock = null,
+        JournalLimits? limits = null)
     {
         Task6ManualTimeProvider selectedClock = clock ?? Clock;
         var inner = new SqlServerMutationJournalStore(
@@ -155,6 +157,7 @@ internal sealed class Task6SqlServerScope : IDisposable
             {
                 MinimumRetryHorizon = retryHorizon ?? TimeSpan.FromHours(24),
                 TimeProvider = selectedClock,
+                Limits = limits ?? JournalLimits.Maximum,
             },
             hook);
         var store = new SqlServerJournalPrefixStore(inner, Prefix, selectedClock);

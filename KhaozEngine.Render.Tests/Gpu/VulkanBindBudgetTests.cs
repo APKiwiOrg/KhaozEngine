@@ -163,8 +163,9 @@ namespace KhaozEngine.Tests.Gpu
 
             VulkanResourceSet material = harness.Set("Model");
 
-            // Albedo, NormalMap, RoughnessMap, ShadowMap, both point-shadow atlases, atmosphere sky-view and interior cut.
-            Assert.Equal(8, material.Images.Length);
+            // Albedo, NormalMap, RoughnessMap, ShadowMap, both point-shadow atlases, atmosphere sky-view, interior cut
+            // and the caustic map.
+            Assert.Equal(9, material.Images.Length);
             foreach (VulkanBoundImage image in material.Images)
             {
                 Assert.False(image.Storage);

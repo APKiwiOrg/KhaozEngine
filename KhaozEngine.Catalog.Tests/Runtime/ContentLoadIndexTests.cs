@@ -127,14 +127,11 @@ public class ContentLoadIndexTests
 
         var failure = Assert.Throws<ContentLoadIndexException>(runtime.BuildLoadIndexes);
 
-        // The message is what spec 9.6's exit line is built from, so it names the key and the id, and the
+        // Spec 9.6's exit line names the key and the id, which the exception carries as members, and the
         // index's own exception is kept rather than flattened.
-        Assert.Contains("store", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("1024", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("the store rows disagree", failure.Message, StringComparison.Ordinal);
         Assert.Equal(1024, failure.Type.Value);
         Assert.Equal("store", failure.TypeKey);
-        Assert.IsType<InvalidOperationException>(failure.InnerException);
+        Assert.Same(failing.Failure, failure.InnerException);
 
         // Fail CLOSED: no partial set is published and the accessor still refuses, so nothing downstream can
         // read a half-built index and get plausible wrong numbers.
@@ -161,8 +158,9 @@ public class ContentLoadIndexTests
         ContentTypeRegistry registry = CatalogSnapshotFixtures.Registry();
         Register(registry, ContentRegistrationBand.Game, 1024, "store", new RecordingIndex(new ContentTypeId(1024)));
 
-        Assert.Throws<ContentRegistrationException>(
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => Register(registry, ContentRegistrationBand.Game, 1024, "store_again", new RecordingIndex(new ContentTypeId(1024))));
+        Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
         Assert.True(registry.TryGet(new ContentTypeId(1024), out ContentTypeRegistration? registration));
         Assert.NotNull(registration.LoadIndex);
     }
@@ -286,10 +284,12 @@ public class ContentLoadIndexTests
     {
         public ContentTypeId Type { get; } = type;
 
+        public Exception Failure { get; } = new InvalidOperationException("the store rows disagree with the item rows");
+
         public void Build(IContentSnapshot snapshot)
         {
             _ = snapshot;
-            throw new InvalidOperationException("the store rows disagree with the item rows");
+            throw Failure;
         }
     }
 }

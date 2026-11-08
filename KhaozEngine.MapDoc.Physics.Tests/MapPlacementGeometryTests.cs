@@ -61,8 +61,17 @@ public class MapPlacementGeometryTests
 
     [Fact]
     public void NonSolidWithoutSelection_Refuses()
-        => Assert.Contains("interaction source", Assert.Throws<MapDocumentException>(() =>
-            MapPlacementShapes.Resolve(NativeWorldFixtures.ShapelessProp().Resolved)).Message);
+    {
+        var document = NativeWorldFixtures.ShapelessProp().Resolved;
+        var placement = document.Placements.Single();
+        var error = Assert.Throws<MapDocumentException>(() => MapPlacementShapes.Resolve(document));
+        Assert.Equal(MapDocumentRefusal.PhysicsInteractionSourceMissing, error.Reason);
+        Assert.Equal(placement.PlacementId, error.PlacementId);
+        Assert.Equal(placement.AssetId, error.AssetId);
+        var repaired = NativeWorldFixtures.RepairedShapeAsset(placement.AssetId);
+        Assert.Single(MapPlacementShapes.Resolve(new MapResolvedDocument(document.Placements, repaired,
+            document.PlayableBounds, document.StorageBounds, document.AuthoredHash)));
+    }
 
     [Fact]
     public void SlopeSeatedAndCornerWalls_KeepTheirShapes()
@@ -191,8 +200,12 @@ public class MapPlacementGeometryTests
 
     [Fact]
     public void UnsupportedShape_BoundsRefuseNamingTheType()
-        => Assert.Contains(nameof(UnknownShape), Assert.Throws<MapDocumentException>(() =>
-            MapShapeBounds.Of(new UnknownShape(), Pose.Identity)).Message);
+    {
+        var error = Assert.Throws<MapDocumentException>(() => MapShapeBounds.Of(new UnknownShape(), Pose.Identity));
+        Assert.Equal(MapDocumentRefusal.PhysicsShapeUnsupported, error.Reason);
+        Assert.Equal(typeof(UnknownShape), error.ShapeType);
+        Assert.Equal(new MapBox3(-1, -1, -1, 1, 1, 1), MapShapeBounds.Of(new BoxShape(Vector3.One), Pose.Identity));
+    }
 
     static MapPlacementGeometry Single(string assetId) =>
         MapPlacementShapes.Resolve(NativeWorldFixtures.Placed(assetId).Resolved).Single();

@@ -38,7 +38,8 @@ public sealed partial class PrefabService(MapEditSession session)
                 if (needsParent && parentSpace is null)
                     parentSpace = (c.Document.Prefabs?.Instances ?? []).Where(i => i.ResourceId == resourceId && i.ParentSpace is not null)
                         .OrderBy(i => i.Id, StringComparer.Ordinal).Select(i => i.ParentSpace).FirstOrDefault();
-                if (needsParent && parentSpace is null) throw new MapDocumentException("This prefab requires an explicit authored parent space.");
+                if (needsParent && parentSpace is null) throw new MapDocumentException(MapDocumentRefusal.AuthoredValueRequired, "This prefab requires an explicit authored parent space.")
+                { DocumentId = c.Document.Id, AssetId = asset.Id, ResourceId = resourceId, FieldPath = "parentSpace", Operation = nameof(Open) };
                 var local = new MapPrefabLocalSession(asset, assets, c.Document, parentSpace);
                 _local?.Cancel();
                 _local = local;
@@ -48,16 +49,16 @@ public sealed partial class PrefabService(MapEditSession session)
     }
     public MapPrefabAsset Edit(MapPrefabChild child, bool remove = false)
     {
-        lock (_lock) { RequireLocal().Edit(child, remove); return RequireLocal().Export(); }
+        lock (_lock) { RequireLocal(nameof(Edit)).Edit(child, remove); return RequireLocal(nameof(Edit)).Export(); }
     }
-    internal MapPrefabAsset Export() { lock (_lock) return RequireLocal().Export(); }
+    internal MapPrefabAsset Export() { lock (_lock) return RequireLocal(nameof(Export)).Export(); }
     public void Cancel() { lock (_lock) { _local?.Cancel(); _local = null; } }
     public MapPrefabPublishResult Save(string resourceId, string relativeDirectory, bool updateOpenMap = true)
     {
         lock (_lock)
         {
             var publisher = new PrefabAssetPublisher(session);
-            var result = publisher.Publish(RequireLocal().Export(), resourceId, relativeDirectory, updateOpenMap);
+            var result = publisher.Publish(RequireLocal(nameof(Save)).Export(), resourceId, relativeDirectory, updateOpenMap);
             _published = publisher.PublishedAssets;
             return result;
         }
@@ -76,5 +77,6 @@ public sealed partial class PrefabService(MapEditSession session)
             });
         }
     }
-    MapPrefabLocalSession RequireLocal() => _local ?? throw new MapDocumentException("Open or extract a prefab asset before editing or saving.");
+    MapPrefabLocalSession RequireLocal(string operation) => _local ?? throw new MapDocumentException(MapDocumentRefusal.ToolPrefabSessionRequired, "Open or extract a prefab asset before editing or saving.")
+    { Operation = operation };
 }

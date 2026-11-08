@@ -17,26 +17,18 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class VulkanMappedRangeTests
     {
-        /// <summary>An atom size of 1 makes the whole thing an identity, which is the answer on any device that
-        /// reports one and the reason nothing else has to special-case it.</summary>
-        [Fact]
-        public void AnAtomSizeOfOne_ChangesNothing()
+        /// <summary>Identity cases include atom size one, aligned ranges, the whole object and zero length.</summary>
+        [Theory]
+        [InlineData(37ul, 91ul, 4096ul, 1ul)]
+        [InlineData(128ul, 256ul, 4096ul, 64ul)]
+        [InlineData(0ul, 4096ul, 4096ul, 256ul)]
+        [InlineData(128ul, 0ul, 4096ul, 64ul)]
+        public void AnIdentityRange_IsUnchanged(ulong requestedOffset, ulong requestedSize, ulong memorySize, ulong atom)
         {
-            VulkanMappedRange.Align(37, 91, 4096, 1, out ulong offset, out ulong size);
+            VulkanMappedRange.Align(requestedOffset, requestedSize, memorySize, atom, out ulong offset, out ulong size);
 
-            Assert.Equal(37ul, offset);
-            Assert.Equal(91ul, size);
-        }
-
-        /// <summary>A range already on both boundaries is unchanged, which is the state the allocator's own
-        /// alignment rule puts every suballocation in on a non-coherent chunk.</summary>
-        [Fact]
-        public void AnAlreadyAlignedRange_IsUnchanged()
-        {
-            VulkanMappedRange.Align(128, 256, 4096, 64, out ulong offset, out ulong size);
-
-            Assert.Equal(128ul, offset);
-            Assert.Equal(256ul, size);
+            Assert.Equal(requestedOffset, offset);
+            Assert.Equal(requestedSize, size);
         }
 
         /// <summary>The offset rounds DOWN and the size grows to compensate, so the requested bytes stay covered.
@@ -71,28 +63,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(128ul, offset);
             Assert.Equal(72ul, size);
             Assert.Equal(200ul, offset + size);
-        }
-
-        /// <summary>The whole object is the common case for a small allocation, and it comes back as the whole
-        /// object.</summary>
-        [Fact]
-        public void TheWholeObject_StaysTheWholeObject()
-        {
-            VulkanMappedRange.Align(0, 4096, 4096, 256, out ulong offset, out ulong size);
-
-            Assert.Equal(0ul, offset);
-            Assert.Equal(4096ul, size);
-        }
-
-        /// <summary>A zero-length range widens to nothing, and the caller skips it rather than handing the driver
-        /// an empty range.</summary>
-        [Fact]
-        public void AZeroLengthRange_StaysZeroLength()
-        {
-            VulkanMappedRange.Align(128, 0, 4096, 64, out ulong offset, out ulong size);
-
-            Assert.Equal(128ul, offset);
-            Assert.Equal(0ul, size);
         }
 
         /// <summary>

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -65,7 +64,7 @@ public sealed class CertifiedHullSweepTests
         Assert.Equal(Quaternion.Identity, wrapper.Children[0].LocalPose.Orientation);
         Assert.Equal(default(ConvexHull).TypeId, wrapper.Children[0].ShapeIndex.Type);
         int[] expectedInstalledVertexBits = InstalledVertexBits(world, first);
-        var captures = (Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
+        var captures = world.InstalledSweepStaticsForTests;
         Assert.NotNull(captures[first.Value]);
         InstalledSweepGeometry previous = captures[first.Value]!;
         HitContains(Read(world, translation + new Vector3(-2, 0.75f, 0.25f), new(4, 0, 0)), 1.75, 1.75);
@@ -85,9 +84,9 @@ public sealed class CertifiedHullSweepTests
         HitContains(Read(world, start, delta), expected.Lower, expected.Upper);
         HitContains(Read(world, start, delta), 2.25, 2.25);
         InstalledSweepGeometry current = captures[replacement.Value]!;
-        captures[replacement.Value] = previous;
+        world.ReplaceStaticSweepCaptureForTests(replacement, previous);
         Refused(Read(world, start, delta));
-        captures[replacement.Value] = current;
+        world.ReplaceStaticSweepCaptureForTests(replacement, current);
     }
 
     [Fact]
@@ -131,24 +130,19 @@ public sealed class CertifiedHullSweepTests
         Assert.Equal(default(CapsuleSweepResult), malformed);
         hull.FaceVertexIndices[0] = saved;
         HitContains(Query(), 0, 0);
-        var captures = (Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
+        var captures = world.InstalledSweepStaticsForTests;
         InstalledSweepGeometry geometry = captures[handle.Value]!;
-        FieldInfo mapField = typeof(InstalledSweepGeometry).GetField("_operator", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object savedMap = mapField.GetValue(geometry)!;
-        object uncertain = mapField.GetValue(geometry)!;
-        typeof(InstalledPoseOperator).GetField("<X>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(uncertain, new FeaturePoint(FeatureNumber.Enclosed(GeometryInterval.Enclose(-1, 1)), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
-        mapField.SetValue(geometry, uncertain);
+        Assert.True(geometry.TryPose(geometry.ParentPose, out var savedMap));
+        var uncertain = savedMap.WithXForTests(new FeaturePoint(FeatureNumber.Enclosed(GeometryInterval.Enclose(-1, 1)), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
+        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, uncertain);
         Assert.Equal(default(CapsuleSweepResult), Query());
-        object overflowing = mapField.GetValue(geometry)!;
-        typeof(InstalledPoseOperator).GetField("<X>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(overflowing, new FeaturePoint(FeatureNumber.Exact(double.Epsilon), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
-        mapField.SetValue(geometry, overflowing);
+        var overflowing = uncertain.WithXForTests(new FeaturePoint(FeatureNumber.Exact(double.Epsilon), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
+        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, overflowing);
         Assert.Equal(default(CapsuleSweepResult), Query());
         SweepExactWorkspace failed = ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed()[0].GeneralSweeps.Idle!.Exact;
         Assert.False(failed.IsResolved);
         Assert.InRange(failed.Checkpoint, 1, SweepExactWorkspace.MaximumNumbers - 1);
-        mapField.SetValue(geometry, savedMap);
+        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, savedMap);
         HitContains(Query(), 0, 0);
         lease.AssertCurrent();
     }
@@ -183,7 +177,7 @@ public sealed class CertifiedHullSweepTests
         var pose = new Pose(new(3, 2, -4), new(0.5f, 0.5f, 0.5f, 0.5f));
         StaticHandle handle = world.AddStatic(asymmetric, pose);
         var native = Static(world, handle);
-        var geometry = ((Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        var geometry = world.InstalledSweepStaticsForTests[handle.Value]!;
         Sim(world).Statics.GetDescription(native.Handle, out var installed);
         Assert.True(InstalledSweepBounds.TryCreate(geometry, installed.Pose, out Vector3 requiredMin, out Vector3 requiredMax));
         Mutate(world, simulation =>
@@ -232,7 +226,7 @@ public sealed class CertifiedHullSweepTests
             points[i] = new((i & 1) == 0 ? -0.5f : 0.5f, (i & 2) == 0 ? -0.25f : 0.25f, (i & 4) == 0 ? -0.125f : 0.125f);
         using var identity = new BepuPhysicsWorld(Vector3.Zero);
         StaticHandle handle = identity.AddStatic(new ConvexHullShape(points), Pose.Identity);
-        var geometry = ((Dictionary<int, InstalledSweepGeometry?>)Field(identity, "_installedSweepStatics"))[handle.Value]!;
+        var geometry = identity.InstalledSweepStaticsForTests[handle.Value]!;
         Assert.Equal(6, geometry.FaceCount);
         Assert.Equal(8, geometry.VertexCount);
         Assert.Equal(12, geometry.EdgeCount);
@@ -251,7 +245,7 @@ public sealed class CertifiedHullSweepTests
             {
                 var installed = Static(tilted, rotated);
                 Sim(tilted).Statics.GetDescription(installed.Handle, out var description);
-                var captured = ((Dictionary<int, InstalledSweepGeometry?>)Field(tilted, "_installedSweepStatics"))[rotated.Value]!;
+                var captured = tilted.InstalledSweepStaticsForTests[rotated.Value]!;
                 Assert.True(CapsuleSweepGeometry.TryReadLeaf(Sim(tilted).Shapes, installed.Shape, description.Pose, captured, 0, out var leaf));
                 var work = new CapsuleSweepWork();
                 var scratch = new CapsuleSweepScratch();
@@ -312,7 +306,7 @@ public sealed class CertifiedHullSweepTests
         TypedIndex leaf = shapes.GetShape<Compound>(root.Index).Children[0].ShapeIndex;
         ref ConvexHull hull = ref shapes.GetShape<ConvexHull>(leaf.Index);
         ConvexHull saved = hull;
-        var pool = (BepuUtilities.Memory.BufferPool)Field(world, "_pool");
+        var pool = world.PoolForTests;
         BepuUtilities.Memory.Buffer<int> starts = default;
         BepuUtilities.Memory.Buffer<HullVertexIndex> indices = default;
         BepuUtilities.Memory.Buffer<BepuUtilities.Vector3Wide> vertices = default;

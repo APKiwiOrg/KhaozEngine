@@ -90,25 +90,31 @@ public sealed partial class GpuFrameSubmissionTests
         using var ring = new GpuBufferReadbackRing(gpu, 1, 16);
         using var source = new SubmissionTestBuffer(16);
         var first = new GpuFrameSubmissionTests.Participant { ThrowSubmitted = true, ThrowAbandoned = true };
+        var faulty = new FailureCapturingParticipant(first);
         var second = new GpuFrameSubmissionTests.Participant();
         submission.Begin();
-        Assert.True(submission.TryRegister(first)); Assert.True(submission.TryRegister(second));
+        Assert.True(submission.TryRegister(faulty)); Assert.True(submission.TryRegister(second));
         Assert.True(submission.TryRetain(ring, out var completion));
         Assert.True(ring.TryRecord(gpu, source, 0, 16, 1, completion!));
         gpu.FailSubmit = !successfulSubmit;
+        InvalidOperationException fault = gpu.SubmitFault;
         if (successfulSubmit)
         {
             var notification = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(() => submission.Submit(gpu)).Failures);
             Assert.Equal("renderer.frame.submission.participant.0", notification.Stage);
-            Assert.Equal("submitted callback", notification.Error.Message);
+            Assert.Same(faulty.SubmittedError, notification.Error);
         }
         else
         {
             var failure = Assert.Throws<GpuDiagnosticFailureException>(() => submission.Submit(gpu));
             Assert.Equal(2, failure.Failures.Length);
-            Assert.Equal("planned submit failure", failure.Failures[0].Error.Message);
-            Assert.Equal("abandoned callback", failure.Failures[1].Error.Message);
+            Assert.Equal("renderer.frame", failure.Failures[0].Stage);
+            Assert.Same(fault, failure.Failures[0].Error);
+            Assert.Equal("renderer.frame.submission.participant.0", failure.Failures[1].Stage);
+            Assert.Same(faulty.AbandonedError, failure.Failures[1].Error);
         }
+        Assert.Equal(successfulSubmit ? 1 : 0, first.Submissions);
+        Assert.Equal(successfulSubmit ? 0 : 1, first.Abandons);
         submission.Abandon();
         Assert.Equal(1, ring.PendingCount);
         Assert.Equal(successfulSubmit ? 1 : 0, second.Submissions);
@@ -129,13 +135,14 @@ public sealed partial class GpuFrameSubmissionTests
         using var ring = new GpuBufferReadbackRing(gpu, 1, 16);
         using var source = new SubmissionTestBuffer(16);
         var participant = new GpuFrameSubmissionTests.Participant { ThrowAbandoned = true };
+        var faulty = new FailureCapturingParticipant(participant);
         submission.Begin();
-        Assert.True(submission.TryRegister(participant));
+        Assert.True(submission.TryRegister(faulty));
         Assert.True(submission.TryRetain(ring, out var fence));
         Assert.True(ring.TryRecord(gpu, source, 0, 16, 1, fence!));
         var abandoned = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(() => submission.Abandon()).Failures);
         Assert.Equal("renderer.frame.submission.participant.0", abandoned.Stage);
-        Assert.Equal("abandoned callback", abandoned.Error.Message);
+        Assert.Same(faulty.AbandonedError, abandoned.Error);
         Assert.Equal(0, ring.PendingCount);
         Assert.Equal(0, gpu.SubmitCalls);
         Assert.Equal(1, participant.Abandons);
@@ -184,5 +191,31 @@ public sealed partial class GpuFrameSubmissionTests
         submission.Begin(); submission.Abandon();
         Assert.Equal(1, ((SubmissionTestFence)fence).ResetCalls);
         Assert.Equal(1, gpu.Buffers[0].DisposeCalls);
+    }
+
+    sealed class FailureCapturingParticipant(Participant inner) : IGpuFrameSubmissionParticipant
+    {
+        internal Exception? SubmittedError { get; private set; }
+        internal Exception? AbandonedError { get; private set; }
+
+        public void Submitted()
+        {
+            try { inner.Submitted(); }
+            catch (Exception error)
+            {
+                SubmittedError = error;
+                throw;
+            }
+        }
+
+        public void Abandoned()
+        {
+            try { inner.Abandoned(); }
+            catch (Exception error)
+            {
+                AbandonedError = error;
+                throw;
+            }
+        }
     }
 }

@@ -85,7 +85,8 @@ public static class MapRuntime
     {
         ArgumentNullException.ThrowIfNull(doc);
         MapScatterLayer? layer = doc.ScatterLayers.Find(l => l.Name == layerName)
-            ?? throw new MapDocumentException($"unknown scatter layer '{layerName}' in map '{doc.Id}'.");
+            ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"unknown scatter layer '{layerName}' in map '{doc.Id}'.")
+            { DocumentId = doc.Id, EntityId = layerName, LayerId = layerName, SubjectKind = "scatter layer" };
 
         var rules = new BiomeScatterRule[layer.Rules.Count];
         for (int i = 0; i < layer.Rules.Count; i++)
@@ -141,7 +142,8 @@ public static class MapRuntime
     {
         ArgumentNullException.ThrowIfNull(doc);
         MapCompanionLayer? layer = doc.CompanionLayers.Find(l => l.Name == companionLayerName)
-            ?? throw new MapDocumentException($"unknown companion layer '{companionLayerName}' in map '{doc.Id}'.");
+            ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"unknown companion layer '{companionLayerName}' in map '{doc.Id}'.")
+            { DocumentId = doc.Id, EntityId = companionLayerName, LayerId = companionLayerName, SubjectKind = "companion layer" };
         return new CompanionConfig
         {
             Seed = layer.Seed,

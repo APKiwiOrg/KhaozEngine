@@ -29,10 +29,10 @@ public sealed class ContentTextCandidate
         IReadOnlyList<ContentTextRevision> closes,
         IReadOnlyList<ContentTextRevision> inserts)
     {
-        Declarations = ContentDraftTextState.CopyDeclarations(declarations, nameof(declarations));
-        Values = CopyVisible(values, null, Declarations, nameof(values));
-        Closes = CopyVisible(closes, null, null, nameof(closes));
-        Inserts = CopyVisible(inserts, null, Declarations, nameof(inserts));
+        Declarations = new CatalogReadOnlyView<ContentTextLanguageDeclaration>(ContentDraftTextState.CopyDeclarations(declarations, nameof(declarations)));
+        Values = new CatalogReadOnlyView<ContentTextRevision>(CopyVisible(values, null, Declarations, nameof(values)));
+        Closes = new CatalogReadOnlyView<ContentTextRevision>(CopyVisible(closes, null, null, nameof(closes)));
+        Inserts = new CatalogReadOnlyView<ContentTextRevision>(CopyVisible(inserts, null, Declarations, nameof(inserts)));
     }
 
     /// <summary>Every revision visible at the new version.</summary>

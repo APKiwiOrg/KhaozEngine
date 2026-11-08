@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -300,7 +301,7 @@ namespace KhaozEngine.Tests.Gpu
             var recorded = new CapturingEmitter(log);
             D3D11CommandDrivers.Replay(list, ref recorded);
 
-            Assert.Equal(16, recorded.Bytes.Single().Length);
+            Assert.Equal(MemoryMarshal.AsBytes(new[] { Sixteen }.AsSpan()).ToArray(), recorded.Bytes.Single());
         }
 
         static readonly Vector4Like Sixteen = new(1f, 2f, 3f, 4f);
@@ -323,17 +324,31 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = CreateDeferred();
             list.Begin();
 
-            Assert.Throws<InvalidOperationException>(list.Begin);
+            Assert.Equal(GpuRecordingStateRefusal.BeginWhileRecording, Assert.Throws<GpuRecordingStateException>(list.Begin).Reason);
         }
 
-        /// <summary><c>End</c> with no recording open is a caller sequencing error and never anything the
-        /// backend can make sense of.</summary>
-        [Fact]
-        public void EndWithoutBegin_Throws()
+        /// <summary><c>End</c> distinguishes a fresh list from an already sealed recording on both drivers.</summary>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void EndOutsideRecording_DistinguishesFreshAndSealedLists(bool immediate)
         {
-            using IGpuCommandList list = CreateDeferred();
+            using IGpuCommandList list = CreateRecording(
+                immediate ? D3D11RecordMode.Immediate : D3D11RecordMode.Deferred,
+                new D3D11CountingEmitter(new D3D11EmitterCallLog()));
 
-            Assert.Throws<InvalidOperationException>(list.End);
+            GpuRecordingStateException fresh = Assert.Throws<GpuRecordingStateException>(list.End);
+            Assert.Equal(GpuRecordingStateRefusal.EndWithoutRecording, fresh.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, fresh.Backend);
+            Assert.Equal(nameof(IGpuCommandList.End), fresh.Command);
+
+            list.Begin();
+            list.End();
+
+            GpuRecordingStateException sealedList = Assert.Throws<GpuRecordingStateException>(list.End);
+            Assert.Equal(GpuRecordingStateRefusal.RecordingAlreadySealed, sealedList.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, sealedList.Backend);
+            Assert.Equal(nameof(IGpuCommandList.End), sealedList.Command);
         }
 
         /// <summary>
@@ -351,21 +366,21 @@ namespace KhaozEngine.Tests.Gpu
             {
                 deferred.Begin();
                 deferred.Draw(3);
-                Assert.Throws<InvalidOperationException>(() =>
+                Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() =>
                 {
                     var replay = new D3D11CountingEmitter(log);
                     D3D11CommandDrivers.Replay(deferred, ref replay);
-                });
+                }).Reason);
             }
 
             using IGpuCommandList immediate = CreateRecording(D3D11RecordMode.Immediate, emitter);
             immediate.Begin();
             immediate.Draw(3);
-            Assert.Throws<InvalidOperationException>(() =>
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() =>
             {
                 var replay = new D3D11CountingEmitter(log);
                 D3D11CommandDrivers.Replay(immediate, ref replay);
-            });
+            }).Reason);
         }
 
         /// <summary>A list this backend did not create cannot be replayed, and the message says why rather than
@@ -377,10 +392,10 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11CountingEmitter(log);
             using var foreign = new NullGpuCommandList();
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            GpuResourceOwnershipArgumentException ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => D3D11CommandDrivers.Replay(foreign, ref emitter));
 
-            Assert.Contains("Direct3D 11", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("list", ex.ParamName);
         }
 
         /// <summary>

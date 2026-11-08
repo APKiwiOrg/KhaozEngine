@@ -90,7 +90,11 @@ public static class LocalizationCoverage
         if (neutral is null)
         {
             throw new LocalizationCoverageException(
-                $"neutral resx for {resources.BaseName} could not be loaded (no invariant resource set).");
+                LocalizationCoverageRefusal.NeutralResourcesUnavailable,
+                $"neutral resx for {resources.BaseName} could not be loaded (no invariant resource set).")
+            {
+                BaseName = resources.BaseName,
+            };
         }
 
         var keys = new List<string>();
@@ -122,11 +126,15 @@ public static class LocalizationCoverage
         if (keys.Count == 0)
         {
             throw new LocalizationCoverageException(
+                LocalizationCoverageRefusal.KeyUniverseEmpty,
                 $"No localization keys found on {keysType.FullName}: expected public const string fields "
-                + "or public static readonly StringId fields.");
+                + "or public static readonly StringId fields.")
+            {
+                KeysType = keysType,
+            };
         }
 
-        AssertCore(keys, keysType.Name, resources, satelliteCultures);
+        AssertCore(keys, keysType.Name, keysType, resources, satelliteCultures);
     }
 
     /// <summary>
@@ -148,10 +156,14 @@ public static class LocalizationCoverage
         if (keys.Count == 0)
         {
             throw new LocalizationCoverageException(
-                $"neutral resx for {resources.BaseName} contains no string entries.");
+                LocalizationCoverageRefusal.KeyUniverseEmpty,
+                $"neutral resx for {resources.BaseName} contains no string entries.")
+            {
+                BaseName = resources.BaseName,
+            };
         }
 
-        AssertCore(keys, resources.BaseName, resources, satelliteCultures);
+        AssertCore(keys, resources.BaseName, keysType: null, resources, satelliteCultures);
     }
 
     /// <summary>
@@ -182,16 +194,21 @@ public static class LocalizationCoverage
 
         if (distinct.Count == 0)
         {
-            throw new LocalizationCoverageException("No localization keys supplied to check.");
+            throw new LocalizationCoverageException(
+                LocalizationCoverageRefusal.KeyUniverseEmpty, "No localization keys supplied to check.");
         }
 
-        AssertCore(distinct, "the supplied keys", resources, satelliteCultures);
+        AssertCore(distinct, "the supplied keys", keysType: null, resources, satelliteCultures);
     }
 
+    // Each problem line has typed findings built beside it, in the same order, so the message stays the prose
+    // projection of Findings. A culture's placeholder line yields one finding per key, in the line's order.
     private static void AssertCore(
-        IReadOnlyList<string> keys, string sourceName, ResourceManager resources, string[]? satelliteCultures)
+        IReadOnlyList<string> keys, string sourceName, Type? keysType, ResourceManager resources,
+        string[]? satelliteCultures)
     {
         var problems = new List<string>();
+        var findings = new List<LocalizationCoverageFinding>();
 
         // Neutral (invariant) resx: every key must resolve. (Vacuous when the universe came from the neutral
         // resx itself, but kept uniform across all entry points.)
@@ -199,6 +216,7 @@ public static class LocalizationCoverage
         if (neutral is null)
         {
             problems.Add("neutral resx could not be loaded (no invariant resource set).");
+            findings.Add(new LocalizationCoverageFinding(LocalizationCoverageRefusal.NeutralResourcesUnavailable));
         }
         else
         {
@@ -206,7 +224,13 @@ public static class LocalizationCoverage
             foreach (string key in keys)
                 if (neutral.GetString(key) is null) missingNeutral.Add(key);
             if (missingNeutral.Count > 0)
+            {
                 problems.Add($"neutral resx is missing keys: {string.Join(", ", missingNeutral)}");
+                findings.Add(new LocalizationCoverageFinding(LocalizationCoverageRefusal.NeutralKeysMissing)
+                {
+                    MissingKeys = missingNeutral,
+                });
+            }
         }
 
         // Each satellite: parent fallback OFF, so a missing entry reads as null here (never the neutral value).
@@ -214,7 +238,15 @@ public static class LocalizationCoverage
         {
             CultureInfo culture;
             try { culture = CultureInfo.GetCultureInfo(cultureName); }
-            catch (CultureNotFoundException) { problems.Add($"'{cultureName}' is not a valid culture name."); continue; }
+            catch (CultureNotFoundException)
+            {
+                problems.Add($"'{cultureName}' is not a valid culture name.");
+                findings.Add(new LocalizationCoverageFinding(LocalizationCoverageRefusal.CultureNameInvalid)
+                {
+                    CultureName = cultureName,
+                });
+                continue;
+            }
 
             ResourceSet? set = SetFor(resources, culture);
             if (set is null)
@@ -222,11 +254,16 @@ public static class LocalizationCoverage
                 problems.Add(
                     $"{cultureName}: no resource set (is the {cultureName} satellite resx present and embedded?). "
                     + $"All {keys.Count} keys unresolved.");
+                findings.Add(new LocalizationCoverageFinding(LocalizationCoverageRefusal.SatelliteResourcesUnavailable)
+                {
+                    CultureName = cultureName,
+                });
                 continue;
             }
 
             var missing = new List<string>();
             var placeholderMismatches = new List<string>();
+            var placeholderFindings = new List<LocalizationCoverageFinding>();
             foreach (string key in keys)
             {
                 string? value = set.GetString(key);
@@ -240,13 +277,32 @@ public static class LocalizationCoverage
                 {
                     placeholderMismatches.Add(
                         $"{key} (neutral {{{string.Join(",", expected)}}} vs {cultureName} {{{string.Join(",", actual)}}})");
+                    placeholderFindings.Add(
+                        new LocalizationCoverageFinding(LocalizationCoverageRefusal.PlaceholderSetMismatch)
+                        {
+                            CultureName = cultureName,
+                            Key = key,
+                            ExpectedIndices = [.. expected],
+                            ActualIndices = [.. actual],
+                        });
                 }
             }
 
             if (missing.Count > 0)
+            {
                 problems.Add($"{cultureName} is missing translations: {string.Join(", ", missing)}");
+                findings.Add(new LocalizationCoverageFinding(LocalizationCoverageRefusal.TranslationsMissing)
+                {
+                    CultureName = cultureName,
+                    MissingKeys = missing,
+                });
+            }
+
             if (placeholderMismatches.Count > 0)
+            {
                 problems.Add($"{cultureName} placeholder mismatch: {string.Join("; ", placeholderMismatches)}");
+                findings.AddRange(placeholderFindings);
+            }
         }
 
         if (problems.Count > 0)
@@ -255,7 +311,13 @@ public static class LocalizationCoverage
             sb.Append("Localization coverage failed for ").Append(sourceName)
               .Append(" (").Append(keys.Count).Append(" keys):").Append('\n');
             foreach (string problem in problems) sb.Append(" - ").Append(problem).Append('\n');
-            throw new LocalizationCoverageException(sb.ToString().TrimEnd());
+            throw new LocalizationCoverageException(findings[0].Reason, sb.ToString().TrimEnd())
+            {
+                KeysType = keysType,
+                BaseName = resources.BaseName,
+                KeyCount = keys.Count,
+                Findings = findings,
+            };
         }
     }
 

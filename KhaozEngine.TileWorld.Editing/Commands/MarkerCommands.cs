@@ -11,7 +11,8 @@ namespace KhaozEngine.TileWorld.Editing;
 static class TileMarkerEdit
 {
     internal static TileMarker Require(TileWorldDocument doc, string name) =>
-        doc.FindMarker(name) ?? throw new TileWorldException($"marker '{name}' does not exist");
+        doc.FindMarker(name) ?? throw new TileWorldException(TileWorldRefusal.MarkerMissing, $"marker '{name}' does not exist")
+            { MarkerName = name };
 
     // SetMarker validates the plane and then the region before it drops the marker it is replacing, and a
     // command that captures before that pre-flight records state for a write that may never happen. The

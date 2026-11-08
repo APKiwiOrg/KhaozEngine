@@ -82,8 +82,7 @@ internal sealed class InteriorCutCostScene
     }
 
     internal static Vector2 BuildingCentre(int index, int columns, int rows, float spacing) =>
-        new((index % columns - (columns - 1) * .5f) * spacing,
-            (index / columns - (rows - 1) * .5f) * spacing);
+        RendererPerfSceneInputs.BuildingCentre(index, columns, rows, spacing);
 
     internal float SunAngleFor(int frame) => frame * (.2f / 60f);
     internal bool CutsFor(InteriorCutCostPerfGpuTests.Mode mode) =>

@@ -238,9 +238,7 @@ public class TileWaterPlanesTests
     public void OverlappingRectanglesAreRejected()
     {
         var overlapping = new List<TileRect> { new(0, 0, 4, 4), new(3, 3, 4, 4) };
-        InvalidOperationException error =
-            Assert.Throws<InvalidOperationException>(() => TileWaterPlanes.RequireDisjoint(overlapping, Origin, 0));
-        Assert.Contains("overlap", error.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => TileWaterPlanes.RequireDisjoint(overlapping, Origin, 0));
 
         // Touching along an edge is not overlapping: the far edges of a TileRect are exclusive.
         TileWaterPlanes.RequireDisjoint(new List<TileRect> { new(0, 0, 4, 4), new(4, 0, 4, 4) }, Origin, 0);

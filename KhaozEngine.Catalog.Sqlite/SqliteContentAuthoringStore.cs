@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
@@ -73,6 +74,16 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
         PackStore = packStore;
     }
 
+    /// <summary>UpgradeLifetimeCatalogTests captures the actual held native handle before failed setup.
+    /// The read-only probe reports that same handle's closure and the provider state without lending either object.</summary>
+    internal Func<(ConnectionState State, bool NativeHandleClosed)> CaptureConnectionLifetimeForTests()
+    {
+        SqliteConnection connection = _connection.Connection;
+        // Internal invariant: this probe borrows the handle of the connection the constructor opened.
+        var native = connection.Handle ?? throw new InvalidOperationException("The held SQLite connection has no native handle.");
+        return () => (connection.State, native.IsClosed);
+    }
+
     /// <summary>The allocator this store hands its two allocation members to.</summary>
     public ContentIdAllocator Allocator => _allocator;
 
@@ -94,7 +105,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteCommand command = Command("SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;");
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw as string ?? throw NoMetadata();
+        return RequireMetadataScalar<string>(raw);
     }
 
     /// <inheritdoc />
@@ -113,67 +124,12 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
     }
 
     /// <inheritdoc />
-    public async Task SetPinnedVersionAsync(
+    public Task SetPinnedVersionAsync(
         int? version,
         string actor,
         string operatorId,
         CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-
-        using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
-        using SqliteTransaction transaction = _connection.BeginTransaction();
-
-        if (version is int held && !await VersionExistsAsync(held, transaction, cancellationToken).ConfigureAwait(false))
-        {
-            // The reason token is the one the in-memory reference store answers with, so a console that keys
-            // on it reads the same answer whichever provider is behind the seam.
-            throw new ContentAuthoringException(
-                FormattableString.Invariant($"Version {held} does not exist, so it cannot be pinned."),
-                default,
-                0,
-                ContentAuthoringException.UnknownTypeReason);
-        }
-
-        int? before;
-        using (SqliteCommand read = Command(
-            "SELECT pinned_version FROM catalog_metadata WHERE metadata_key = 1;", transaction))
-        {
-            object? raw = await read.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            before = raw is long pinned ? (int)pinned : null;
-        }
-
-        using (SqliteCommand write = Command(
-            """
-            UPDATE catalog_metadata
-            SET pinned_version = $pinned, updated_at_utc = $now
-            WHERE metadata_key = 1;
-            """,
-            transaction))
-        {
-            Bind(write, "$pinned", version);
-            Bind(write, "$now", Millis(_clock()));
-            await write.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        await AppendAuditAsync(
-            transaction,
-            ContentAuditActions.Pin,
-            actor,
-            operatorId,
-            default,
-            0,
-            default,
-            string.Empty,
-            Render(before),
-            Render(version),
-            0,
-            string.Empty,
-            cancellationToken).ConfigureAwait(false);
-
-        transaction.Commit();
-    }
+        => SetPinAsync(version, actor, operatorId, null, cancellationToken);
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<ContentVersionRecord>> ListVersionsAsync(
@@ -259,7 +215,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
     {
         using SqliteCommand command = Command(sql, transaction);
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw is long value ? value : throw NoMetadata();
+        return RequireMetadataScalar<long>(raw);
     }
 
     /// <summary>A command on the held connection, enlisted in a transaction when one is open.</summary>
@@ -280,33 +236,43 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
 
     static long Millis(DateTimeOffset at) => at.ToUnixTimeMilliseconds();
 
+    static T RequireMetadataScalar<T>(object? raw)
+    {
+        if (raw is T value) return value;
+        if (raw is null or DBNull) throw NoMetadata();
+        throw new ContentAuthoringException(ContentAuthoringRefusal.StoredScalarTypeMismatch,
+            DescribeMissingMetadata(), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ExpectedScalarType = typeof(T), ActualScalarType = raw.GetType() };
+    }
+
+    static string DescribeMissingMetadata()
+        => FormattableString.Invariant(
+            $"The database carries no catalog_metadata row, so it has not been initialized. Call {nameof(InitializeAsync)} first.");
+
     static ContentAuthoringException NoMetadata()
-        => new(
-            FormattableString.Invariant(
-                $"The database carries no catalog_metadata row, so it has not been initialized. Call {nameof(InitializeAsync)} first."),
-            default,
-            0,
-            ContentAuthoringException.SchemaMismatchReason);
+        => new(ContentAuthoringRefusal.SchemaMetadataMissing,
+            DescribeMissingMetadata(), default, 0, ContentAuthoringException.SchemaMismatchReason);
 
     static ContentAuthoringException UnknownVersion(int versionNumber)
-        => new(
+        => new(ContentAuthoringRefusal.VersionUnknown,
             FormattableString.Invariant($"This store holds no version {versionNumber}."),
             default,
             0,
-            ContentAuthoringException.UnknownVersionReason);
+            ContentAuthoringException.UnknownVersionReason) { VersionNumber = versionNumber };
 
     static ContentAuthoringException NoPackStore(string member)
-        => new(
+        => new(ContentAuthoringRefusal.PackStoreMissing,
             FormattableString.Invariant(
                 $"{nameof(SqliteContentAuthoringStore)}.{member} needs a pack store and this store was built with none. A publish writes files before it writes rows, so the pack target is not optional for it."),
             default,
             0,
-            ContentAuthoringException.NoPackStoreReason);
+            ContentAuthoringException.NoPackStoreReason) { MemberName = member };
 
     ContentTypeRegistration RequireType(ContentTypeId type)
         => _registry.TryGet(type, out ContentTypeRegistration? registration)
             ? registration
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"Content type {type.Value} is not registered, so this store carries no declaration for it."),
                 type,

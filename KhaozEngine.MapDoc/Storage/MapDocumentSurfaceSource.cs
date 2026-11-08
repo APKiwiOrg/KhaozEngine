@@ -81,7 +81,9 @@ public sealed partial class MapDocumentSurfaceSource : IMapSurfaceAcquisitionSou
         }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("surface scope not representable", ex);
+            // Present keys belong to captured patches admitted by BuildResidentIndex. Their cell ranges
+            // already fit signed 64-bit coordinates, so overflow in this snapshot merge is an invariant failure.
+            throw new InvalidOperationException("surface scope not representable", ex);
         }
     }
     MapPatchFindResult Find(MapSurfaceStorageIndex index, MapSurfaceScope scope, MapPageBudget budget) => MapSurfaceQuery.Find(this, index, scope,

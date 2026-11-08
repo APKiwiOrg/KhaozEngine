@@ -38,6 +38,21 @@ public sealed partial class Scene3D
         return replaced ? ShadowLayoutReplacementResult.Replaced : ShadowLayoutReplacementResult.Failed;
     }
 
+    /// <summary>RendererPerfColdLifecycleTests identifies receivers in scene order without exposing live sets.</summary>
+    internal IReadOnlyList<object> LiveMaterialSetIdentitiesForTests
+    {
+        get
+        {
+            var sets = new List<IGpuResourceSet>();
+            CollectLiveMaterialSets(sets);
+            return sets.ConvertAll(TestObservationIdentity.For).AsReadOnly();
+        }
+    }
+
+    /// <summary>RendererPerfColdLifecycleTests locates each opaque receiver identity among its own factory fakes.</summary>
+    internal static bool MaterialSetMatchesIdentityForTests(IGpuResourceSet candidate, object identity) =>
+        ReferenceEquals(TestObservationIdentity.For(candidate), identity);
+
     /// <summary>Every live resource set that carries a shadow binding, which is what a texture swap has to rebuild
     /// and hand back. One definition, because the cascade atlas replacement and the point-shadow atlas bind change
     /// the same sets for the same reason, and a set missing from one of the two lists would keep binding a freed
@@ -64,7 +79,7 @@ public sealed partial class Scene3D
             if (_meshes[i] is not { MaterialSet: { } oldSet } mesh) continue;
             _meshes[i] = new Mesh(mesh.Vb, mesh.OutlineNormalVb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
                 in mesh.Bounds, replacementFor(oldSet), mesh.OutlineMaterialSet, mesh.SplatMaterial, mesh.AlphaCutoff,
-                mesh.TileGroundMaterial, mesh.ShadowCutoutSet);
+                mesh.TileGroundMaterial, mesh.ShadowCutoutSet, mesh.OpaqueFoliage);
         }
 
         for (int i = 0; i < _skinnedMeshes.Count; i++)

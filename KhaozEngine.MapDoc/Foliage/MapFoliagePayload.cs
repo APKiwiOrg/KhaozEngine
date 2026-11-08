@@ -203,7 +203,8 @@ public sealed class MapFoliageLayer
         var key = new MapFoliageChunkKey(x / MapFoliageChunk.Size, z / MapFoliageChunk.Size);
         if (_byKey.TryGetValue(key, out MapFoliageChunk? chunk))
             return chunk.DensityAt(x % MapFoliageChunk.Size, z % MapFoliageChunk.Size);
-        if (_advertisedKeys.Contains(key)) throw new MapDocumentException($"foliage layer '{Id}' chunk {key} is unavailable.");
+        if (_advertisedKeys.Contains(key)) throw new MapDocumentException(MapDocumentRefusal.FoliageChunkUnavailable, $"foliage layer '{Id}' chunk {key} is unavailable.")
+        { LayerId = Id, FoliageChunk = key };
         return 0;
     }
 
@@ -222,7 +223,8 @@ public sealed class MapFoliageLayer
         foreach (MapFoliageChunkDigest row in Copy(advertised, nameof(advertised)))
         {
             MapFoliageRegionPack.RequireDigest(row.Sha256);
-            if (!digests.TryAdd(row.Key, row)) throw new MapDocumentException("foliage: duplicate advertised chunk key.");
+            if (!digests.TryAdd(row.Key, row)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "foliage: duplicate advertised chunk key.")
+            { LayerId = Id, FoliageChunk = row.Key, SubjectKind = "advertised foliage chunk" };
         }
         foreach (MapFoliageChunk chunk in _chunks) digests[chunk.Key] = new(chunk.Key, Digest(chunk));
         _digests = Array.AsReadOnly(digests.Values.OrderBy(d => d.Key.Z).ThenBy(d => d.Key.X).ToArray());

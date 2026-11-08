@@ -50,7 +50,7 @@ GPU-free building blocks almost every other package sits on.
 | [KhaozEngine.Content](../KhaozEngine.Content/README.md) | Loads JSON configuration, validates schemas, and enforces content schemas during consumer builds. | Diagnostics, Serialization, Primitives (+ JsonSchema.Net) | Every umbrella |
 | [KhaozEngine.Ecs](../KhaozEngine.Ecs/README.md) | Archetype entity-component system with by-reference components, safe iteration, deferred commands, parallel queries, and world snapshots. | Serialization, Simulation, Primitives | Every umbrella |
 | [KhaozEngine.Determinism](../KhaozEngine.Determinism/README.md) | Controls and restores per-thread floating-point settings for deterministic fixed-tick simulations. | Diagnostics | Every umbrella |
-| [KhaozEngine.Imaging](../KhaozEngine.Imaging/README.md) | PNG reading and writing, JPEG encoding, thumbnail decoding and image regression comparisons. | None | Every umbrella |
+| [KhaozEngine.Imaging](../KhaozEngine.Imaging/README.md) | PNG reading and writing, JPEG encoding, thumbnail decoding and image regression comparisons. | Primitives | Every umbrella |
 | [KhaozEngine.Http](../KhaozEngine.Http/README.md) | Sends HTTP requests with bounded attempts, per-attempt timeouts, configurable backoff, and cancellation-aware retries. | None | Every umbrella |
 
 ## GPU and windowing
@@ -80,7 +80,7 @@ What draws, plays and lays out a frame, plus the game loop and headless screensh
 | [KhaozEngine.Particles.Render3D](../KhaozEngine.Particles.Render3D/README.md) | Draws particle simulations as sprites, trails, lights, flipbooks and distortion effects, with ready-to-use presets. | Particles, Render3D | Game3D |
 | [KhaozEngine.Telegraphs](../KhaozEngine.Telegraphs/README.md) | Animated attack warnings and danger zones with reusable styles and a 2D renderer. | Render2D, Primitives | Game2D, Game3D |
 | [KhaozEngine.Telegraphs.Render3D](../KhaozEngine.Telegraphs.Render3D/README.md) | Paints animated danger zones and fading impact marks onto 3D ground and terrain. | Telegraphs, Render3D | Game3D |
-| [KhaozEngine.Attachments](../KhaozEngine.Attachments/README.md) | Defines and validates rigid and skinned attachment sets, canonical JSON and self-contained mesh assets. | None | Game3D |
+| [KhaozEngine.Attachments](../KhaozEngine.Attachments/README.md) | Defines rigid and skinned attachment sets, validates embedded mesh assets and computes animation-independent body rig identities. | Primitives | Game3D |
 | [KhaozEngine.Attachments.Render3D](../KhaozEngine.Attachments.Render3D/README.md) | Binds attachments to animated skeletons and manages shared uploads, drawing and outlines. | Attachments, Render3D | Game3D |
 | [KhaozEngine.Game](../KhaozEngine.Game/README.md) | Game loop, scenes, UI passes, diagnostics and staged startup screens. | Windowing, Render2D, Gui, Updates, ServerStatus, Simulation | Game2D, Game3D |
 | [KhaozEngine.Game.Render3D](../KhaozEngine.Game.Render3D/README.md) | Connects the game loop to 3D scenes and supplies character movement, facing and animation. | Game, Render3D, Locomotion, Physics | Game3D |
@@ -111,7 +111,7 @@ Terrain, tile worlds, native maps, navigation, physics and character movement.
 | [KhaozEngine.Physics](../KhaozEngine.Physics/README.md) | Defines headless 3D physics, rigid bodies, joints, collision queries, baked shapes, and support-query measurements. | None | Every umbrella |
 | [KhaozEngine.Physics.Bepu](../KhaozEngine.Physics.Bepu/README.md) | Runs deterministic 3D physics through Bepu with rigid bodies, joints, powered drives, and collision queries. | Physics (+ BepuPhysics) | Opt-in |
 | [KhaozEngine.Locomotion](../KhaozEngine.Locomotion/README.md) | Shared character movement for local control, server simulation and prediction, including collision, jumping, slopes, wading and swimming. | Primitives, Physics | Every umbrella |
-| [KhaozEngine.Movement](../KhaozEngine.Movement/README.md) | Body-aware reach, absolute ground movement, physics-backed navigation profiles and exact range steering. | Locomotion, Navigation, Physics | Opt-in |
+| [KhaozEngine.Movement](../KhaozEngine.Movement/README.md) | Body-aware reach, absolute ground movement, physics-backed navigation profiles, exact range steering and committed ground pursuit. | Locomotion, Navigation, Physics | Opt-in |
 | [KhaozEngine.SegmentRig](../KhaozEngine.SegmentRig/README.md) | Procedural poses, action strokes, skeleton transforms and held-item sockets for rigid-segment humanoids and quadrupeds. | None | Every umbrella |
 
 ## Gameplay and content
@@ -192,7 +192,7 @@ Analyzers, test kits, the Debug-only automation endpoint and author-time command
 |---|---|---|---|
 | [KhaozEngine.Automation](../KhaozEngine.Automation/README.md) | Debug-only playtest endpoint for injected input, frame stepping, state inspection and game-defined commands. | Windowing | Opt-in |
 | [KhaozEngine.Localization.Analyzers](../KhaozEngine.Localization.Analyzers/README.md) | Checks player-facing localization usage and generates typed string keys from neutral resource files. | None at runtime | Game2D, Game3D |
-| [KhaozEngine.CodeHealth.Analyzers](../KhaozEngine.CodeHealth.Analyzers/README.md) | Enforces file-size limits and prevents files from growing beyond recorded baselines. | None at runtime | Every umbrella |
+| [KhaozEngine.CodeHealth.Analyzers](../KhaozEngine.CodeHealth.Analyzers/README.md) | Enforces file-size and test-health ratchets against recorded baselines, with report-only loop-assertion review. | None at runtime | Every umbrella |
 | [KhaozEngine.Localization.TestKit](../KhaozEngine.Localization.TestKit/README.md) | Checks localization completeness and format placeholders across neutral resources and shipped languages. | App | Opt-in |
 | [KhaozEngine.Gpu.TestKit](../KhaozEngine.Gpu.TestKit/README.md) | GPU availability checks and golden-image comparisons for a game's tests without requiring a particular test framework. | Gpu, Gpu.D3D11, Gpu.Vulkan, Gpu.Metal, Imaging | Opt-in |
 | [KhaozEngine.Updates.Tool](../KhaozEngine.Updates.Tool/README.md) | Generates, signs, and verifies update manifests from publish pipelines. | Updates | Opt-in |

@@ -108,8 +108,8 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
             {
                 await using SqlCommand command = Command(
                     scope, "SELECT store_epoch FROM dbo.catalog_metadata WHERE metadata_key = 1;");
-                return await command.ExecuteScalarAsync(token).ConfigureAwait(false) as string
-                    ?? throw NoMetadata();
+                object? raw = await command.ExecuteScalarAsync(token).ConfigureAwait(false);
+                return RequireMetadataScalar<string>(raw);
             },
             cancellationToken);
 
@@ -137,64 +137,7 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
         string actor,
         string operatorId,
         CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-
-        return WriteAsync(
-            async (scope, token) =>
-            {
-                if (version is int held
-                    && !await VersionExistsAsync(scope, held, token).ConfigureAwait(false))
-                {
-                    // The reason token is the one the in-memory reference store answers with, defect and all
-                    // (https://github.com/APKiwiOrg/KhaozEngine/issues/919), so a console that keys on it
-                    // reads the same answer whichever provider is behind the seam.
-                    throw new ContentAuthoringException(
-                        FormattableString.Invariant($"Version {held} does not exist, so it cannot be pinned."),
-                        default,
-                        0,
-                        ContentAuthoringException.UnknownTypeReason);
-                }
-
-                int? before;
-                await using (SqlCommand read = Command(
-                    scope, "SELECT pinned_version FROM dbo.catalog_metadata WHERE metadata_key = 1;"))
-                {
-                    object? raw = await read.ExecuteScalarAsync(token).ConfigureAwait(false);
-                    before = raw is int pinned ? pinned : null;
-                }
-
-                await using (SqlCommand write = Command(
-                    scope,
-                    """
-                    UPDATE dbo.catalog_metadata
-                    SET pinned_version = @pinned, updated_at_utc = @now
-                    WHERE metadata_key = 1;
-                    """))
-                {
-                    BindInt(write, "@pinned", version);
-                    BindTime(write, "@now", _clock());
-                    await write.ExecuteNonQueryAsync(token).ConfigureAwait(false);
-                }
-
-                await AppendAuditAsync(
-                    scope,
-                    ContentAuditActions.Pin,
-                    actor,
-                    operatorId,
-                    default,
-                    0,
-                    default,
-                    string.Empty,
-                    Render(before),
-                    Render(version),
-                    0,
-                    string.Empty,
-                    token).ConfigureAwait(false);
-            },
-            cancellationToken);
-    }
+        => SetPinAsync(version, actor, operatorId, null, cancellationToken);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<ContentVersionRecord>> ListVersionsAsync(
@@ -276,7 +219,7 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
     {
         await using SqlCommand command = Command(scope, sql);
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw is int value ? value : throw NoMetadata();
+        return RequireMetadataScalar<int>(raw);
     }
 
     /// <summary>A command on the scope's connection, enlisted in its transaction when one is open.</summary>
@@ -288,33 +231,49 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
         return command;
     }
 
+    static T RequireMetadataScalar<T>(object? raw)
+    {
+        if (raw is T value) return value;
+        if (raw is null or DBNull) throw NoMetadata();
+        throw new ContentAuthoringException(ContentAuthoringRefusal.StoredScalarTypeMismatch,
+            DescribeMissingMetadata(), default, 0, ContentAuthoringException.SchemaMismatchReason)
+        { ExpectedScalarType = typeof(T), ActualScalarType = raw.GetType() };
+    }
+
+    static string DescribeMissingMetadata()
+        => FormattableString.Invariant(
+            $"The database carries no catalog_metadata row, so it has not been initialized. Call {nameof(InitializeAsync)} first.");
+
     static ContentAuthoringException NoMetadata()
         => new(
-            FormattableString.Invariant(
-                $"The database carries no catalog_metadata row, so it has not been initialized. Call {nameof(InitializeAsync)} first."),
+            ContentAuthoringRefusal.SchemaMetadataMissing,
+            DescribeMissingMetadata(),
             default,
             0,
             ContentAuthoringException.SchemaMismatchReason);
 
     static ContentAuthoringException UnknownVersion(int versionNumber)
         => new(
+            ContentAuthoringRefusal.VersionUnknown,
             FormattableString.Invariant($"This store holds no version {versionNumber}."),
             default,
             0,
-            ContentAuthoringException.UnknownVersionReason);
+            ContentAuthoringException.UnknownVersionReason) { VersionNumber = versionNumber };
 
     static ContentAuthoringException NoPackStore(string member)
         => new(
+            ContentAuthoringRefusal.PackStoreMissing,
             FormattableString.Invariant(
                 $"{nameof(SqlServerContentAuthoringStore)}.{member} needs a pack store and this store was built with none. A publish writes files before it writes rows, so the pack target is not optional for it."),
             default,
             0,
-            ContentAuthoringException.NoPackStoreReason);
+            ContentAuthoringException.NoPackStoreReason) { MemberName = member };
 
     ContentTypeRegistration RequireType(ContentTypeId type)
         => _registry.TryGet(type, out ContentTypeRegistration? registration)
             ? registration
             : throw new ContentAuthoringException(
+                ContentAuthoringRefusal.TypeUnknown,
                 FormattableString.Invariant(
                     $"Content type {type.Value} is not registered, so this store carries no declaration for it."),
                 type,

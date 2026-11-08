@@ -35,8 +35,9 @@ internal sealed class AnimatedFoliageStyleSnapshot
         styleIds.Sort(StringComparer.Ordinal);
         foreach (string id in styleIds)
             if (!_selectedArchetypes.Contains(id))
-                throw new ArgumentException($"Animated foliage style '{id}' does not exactly name a selected archetype.",
-                    nameof(TileWorldViewOptions.AnimatedFoliageStyles));
+                throw new AnimatedFoliageStyleArgumentException(AnimatedFoliageStyleRefusal.StyleOutsideSelection,
+                    $"Animated foliage style '{id}' does not exactly name a selected archetype.",
+                    nameof(TileWorldViewOptions.AnimatedFoliageStyles)) { ArchetypeId = id };
 
         var ids = new List<string>(_selectedArchetypes);
         ids.Sort(StringComparer.Ordinal);
@@ -81,7 +82,9 @@ internal sealed class AnimatedFoliageStyleSnapshot
             return;
         }
         if (EffectiveStyle(owner) != EffectiveStyle(id))
-            throw new ArgumentException($"Animated foliage archetypes '{owner}' and '{id}' share a mesh but have conflicting styles.",
-                nameof(TileWorldViewOptions.AnimatedFoliageStyles));
+            throw new AnimatedFoliageStyleArgumentException(AnimatedFoliageStyleRefusal.SharedMeshStyleConflict,
+                $"Animated foliage archetypes '{owner}' and '{id}' share a mesh but have conflicting styles.",
+                nameof(TileWorldViewOptions.AnimatedFoliageStyles))
+            { FirstArchetypeId = owner, SecondArchetypeId = id };
     }
 }

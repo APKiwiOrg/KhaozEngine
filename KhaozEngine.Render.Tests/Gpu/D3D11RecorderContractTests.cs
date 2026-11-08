@@ -157,7 +157,7 @@ namespace KhaozEngine.Tests.Gpu
                 deferred.Draw(1);
                 deferred.End();
 
-                Assert.Throws<InvalidOperationException>(() => deferred.Draw(2));
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => deferred.Draw(2)).Reason);
 
                 var emitter = new D3D11CountingEmitter(deferredLog);
                 D3D11CommandDrivers.Replay(deferred, ref emitter);
@@ -171,7 +171,7 @@ namespace KhaozEngine.Tests.Gpu
                 immediate.Draw(1);
                 immediate.End();
 
-                Assert.Throws<InvalidOperationException>(() => immediate.Draw(2));
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => immediate.Draw(2)).Reason);
             }
 
             Assert.Equal(new[] { "Begin()", "Draw(1,1,0,0)", "End()" }, deferredLog.Trace);
@@ -189,7 +189,7 @@ namespace KhaozEngine.Tests.Gpu
             list.End();
             int recorded = list.Emitter.Stream.Count;
 
-            Assert.Throws<InvalidOperationException>(() => list.Draw(2));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.Draw(2)).Reason);
 
             Assert.Equal(recorded, list.Emitter.Stream.Count);
             Assert.True(list.IsSealed, "A refused command cleared the seal that End set.");
@@ -213,14 +213,18 @@ namespace KhaozEngine.Tests.Gpu
                 var log = new D3D11EmitterCallLog();
                 using IGpuCommandList list = CreateList(immediate, log);
 
-                InvalidOperationException before = Assert.Throws<InvalidOperationException>(() => call(list));
-                Assert.Contains(member, before.Message, StringComparison.Ordinal);
+                GpuRecordingStateException before = Assert.Throws<GpuRecordingStateException>(() => call(list));
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, before.Reason);
+            Assert.Equal(member, before.Command);
+                Assert.Equal(GpuBackendKind.Direct3D11Native, before.Backend);
 
                 list.Begin();
                 list.End();
 
-                InvalidOperationException after = Assert.Throws<InvalidOperationException>(() => call(list));
-                Assert.Contains(member, after.Message, StringComparison.Ordinal);
+                GpuRecordingStateException after = Assert.Throws<GpuRecordingStateException>(() => call(list));
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, after.Reason);
+            Assert.Equal(member, after.Command);
+                Assert.Equal(GpuBackendKind.Direct3D11Native, after.Backend);
             }
         }
 
@@ -314,6 +318,7 @@ namespace KhaozEngine.Tests.Gpu
             => new (string, Action<IGpuCommandList>)[]
             {
                 (nameof(IGpuCommandList.SetFramebuffer), l => l.SetFramebuffer(f.Framebuffer)),
+                (nameof(IGpuCommandList.SetFramebufferWithStoreActions), l => l.SetFramebufferWithStoreActions(f.Framebuffer, default)),
                 (nameof(IGpuCommandList.ClearColorTarget), l => l.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f))),
                 (nameof(IGpuCommandList.ClearDepthStencil), l => l.ClearDepthStencil(1f)),
                 (nameof(IGpuCommandList.SetPipeline), l => l.SetPipeline(f.Pipeline)),

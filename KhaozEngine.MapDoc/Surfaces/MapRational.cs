@@ -10,15 +10,21 @@ public readonly struct MapRational : IEquatable<MapRational>
 
     public MapRational(int numerator, int denominator)
     {
-        if (numerator <= 0 || denominator <= 0) throw new MapDocumentException("unit parts must be positive");
-        if (MapExactValue.Gcd(numerator, denominator) != 1) throw new MapDocumentException("unit must be reduced");
+        if (numerator <= 0 || denominator <= 0)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "unit parts must be positive")
+            { FieldPath = numerator <= 0 ? "numerator" : "denominator", ActualInteger = numerator <= 0 ? numerator : denominator, MinimumInteger = 1 };
+        if (MapExactValue.Gcd(numerator, denominator) != 1)
+            throw new MapDocumentException(MapDocumentRefusal.SurfaceUnitUnreduced, "unit must be reduced")
+            { Numerator = numerator, Denominator = denominator };
         Numerator = numerator;
         Denominator = denominator;
     }
 
     internal MapExactValue Exact()
     {
-        if (Numerator <= 0 || Denominator <= 0) throw new MapDocumentException("unit parts must be positive");
+        if (Numerator <= 0 || Denominator <= 0)
+            throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "unit parts must be positive")
+            { FieldPath = Numerator <= 0 ? "numerator" : "denominator", ActualInteger = Numerator <= 0 ? Numerator : Denominator, MinimumInteger = 1 };
         return new(Numerator, Denominator);
     }
 

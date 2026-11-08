@@ -8,6 +8,13 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class SilhouetteRenderer
 {
+    /// <summary>InteriorCutHighlightTests verifies packed GPU payload offsets without mutating the staging image.</summary>
+    internal byte[] DrawImageForTests => (byte[])_image.Clone();
+
+    /// <summary>InteriorCutHighlightTests verifies payload, slot and actual uniform-struct sizes agree with the GPU layout.</summary>
+    internal static (int PayloadBytes, int SlotBytes, int UboBytes) DrawLayoutForTests =>
+        (PayloadBytes, SlotBytes, Marshal.SizeOf<DrawUbo>());
+
     readonly IGpuResourceLayout _interiorCutLayout;
     readonly InteriorCutBinding _interiorCutBinding;
     InteriorCutUniforms _interiorUniforms;

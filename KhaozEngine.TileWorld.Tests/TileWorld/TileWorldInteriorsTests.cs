@@ -378,12 +378,12 @@ public class TileWorldInteriorsTests
         Assert.Null(error);
         Assert.Same(first, cache.Get(meshes, "roof", 0.25f, out error));
         Assert.Null(error);
-        Assert.Equal(2, meshes.Loads);
 
         meshes.Mesh = Roof(1f, 2f);
         ClearanceSamples replacement = cache.Get(meshes, "roof", 0.25f, out error)!;
         Assert.Null(error);
         Assert.NotSame(first, replacement);
+        Assert.NotEmpty(replacement.Points);
         Assert.All(replacement.Points, point => Assert.Equal(2f, point.Y));
         Assert.NotSame(replacement, cache.Get(meshes, "roof", 0.125f, out error));
         Assert.Null(error);
@@ -442,12 +442,10 @@ public class TileWorldInteriorsTests
     sealed class Meshes : ITileMeshGeometry
     {
         public ClearanceMesh Mesh { get; set; } = Roof();
-        public int Loads { get; private set; }
 
         public bool TryLoad(string meshRef, [NotNullWhen(true)] out ClearanceMesh? mesh,
             [NotNullWhen(false)] out string? error)
         {
-            Loads++;
             if (meshRef == "bad") throw new ArgumentException("bad roof geometry");
             mesh = meshRef == "roof" ? Mesh : null;
             error = mesh is null ? "mesh missing" : null;

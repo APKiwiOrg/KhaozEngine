@@ -159,6 +159,14 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuBuffer _ubo;
         readonly IGpuResourceLayout _layout;
         readonly IGpuSampler _sampler;          // shared linear/wrap sampler (the device built-in, NOT owned here)
+        /// <summary>RendererPerfColdLifecycleTests identifies the default texture and observes its release.
+        /// Borrowed for observation. Never dispose or mutate it.</summary>
+        internal IGpuTexture WhiteTextureForTests => _white;
+
+        /// <summary>RendererPerfColdLifecycleTests observes default receiver bindings and release after atlas replacement.
+        /// Borrowed for observation. Never dispose or mutate it.</summary>
+        internal IGpuResourceSet DefaultSetForTests => _defaultSet;
+
         readonly IGpuTexture _white;            // 1x1 white default; white*vColor*vTint == vColor*vTint (untextured invariant)
         readonly IGpuTexture _flatNormal;       // 1x1 (128,128,255): tangent-space (0,0,1); no-map normal default
         readonly IGpuTexture _defaultRough;     // 1x1 (0,0,0): roughness 0 (fully smooth); no-map spec default
@@ -262,6 +270,7 @@ namespace KhaozEngine.Render3D.Rendering
             CreatePointLightBuffer(factory);
             CreatePointLightClusters(factory);
             CreateWaterVolumes(factory);
+            CreateCausticPlaceholder(factory);
 
             _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AppendWaterVolumeLayout(AppendInteriorCutLayout(AtmosphereBindings.AppendLayout(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
@@ -575,8 +584,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// <see cref="UploadInstances"/> (the depth pass reuses that instance buffer).
         /// <paramref name="noiseScales"/> is the per-cascade dissolve noise scale (issue #391).</summary>
         public void BeginShadowPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount,
-            Vector3 renderOrigin, ReadOnlySpan<float> noiseScales) =>
-            _shadowMap.BeginDepthPass(cl, depthMats, cascadeCount, renderOrigin, noiseScales);
+            Vector3 renderOrigin, ReadOnlySpan<float> noiseScales, bool discardWorkingDepth = true) =>
+            _shadowMap.BeginDepthPass(cl, depthMats, cascadeCount, renderOrigin, noiseScales, discardWorkingDepth);
 
         /// <summary>Bind cascade <paramref name="cascade"/> (scissor its atlas column + rebase the light matrix) for
         /// the rigid + CPU-skinned caster draws that follow. <see cref="BeginShadowPass"/> must be bound.</summary>
@@ -635,6 +644,7 @@ namespace KhaozEngine.Render3D.Rendering
             _bonePalette.Dispose();   // after _shadowMap, which binds the same set
             _pointLightClusterBuffer.Dispose();
             _waterVolumeBuffer.Dispose();
+            DisposeCausticPlaceholder();
             _pointLightBuffer.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();

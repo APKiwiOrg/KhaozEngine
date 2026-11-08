@@ -208,15 +208,13 @@ public static class MapFoliageSupport
         _ => MapFoliageStatus.Invalid,
     };
 
-    static MapFoliageStatus? Classify(Exception error) => error switch
+    internal static MapFoliageStatus? Classify(Exception error) => error switch
     {
         MapSurfaceCapacityException => MapFoliageStatus.CapacityExceeded,
         MapExactOverflowException or OverflowException => MapFoliageStatus.NotRepresentable,
         MapDocumentException when MapCommonRefinement.NotRepresentable(error) => MapFoliageStatus.NotRepresentable,
-        MapDocumentException { Message: var message } when message.Contains("budget", StringComparison.Ordinal) ||
-            message.Contains("limit exceeded", StringComparison.Ordinal) => MapFoliageStatus.CapacityExceeded,
-        MapDocumentException { Message: var message } when message.Contains("unavailable", StringComparison.Ordinal) ||
-            message.StartsWith("MissingGeometry", StringComparison.Ordinal) => MapFoliageStatus.Unavailable,
+        MapDocumentException refusal when MapGeometryRefusals.FoliageCapacity(refusal) => MapFoliageStatus.CapacityExceeded,
+        MapDocumentException refusal when MapGeometryRefusals.FoliageUnavailable(refusal) => MapFoliageStatus.Unavailable,
         MapDocumentException => MapFoliageStatus.Invalid,
         _ => null,
     };
@@ -303,10 +301,10 @@ public sealed class MapPreparedFoliageSupport
         catch (MapDocumentException error)
         {
             return Refusal(MapCommonRefinement.NotRepresentable(error) ? MapFoliageStatus.NotRepresentable
-                : error.Message.Contains("invalid", StringComparison.Ordinal) ? MapFoliageStatus.Invalid : MapFoliageStatus.Unavailable);
+                : MapGeometryRefusals.Invalid(error) ? MapFoliageStatus.Invalid : MapFoliageStatus.Unavailable);
         }
         // Only a demand outside the prepared chunk context: this point's facts were not prepared.
-        catch (InvalidOperationException error) when (error.Message.StartsWith("context demand", StringComparison.Ordinal))
+        catch (MapBoundContextException error) when (error.Reason == MapDocumentRefusal.ContextDemandUnprepared)
         { return Refusal(MapFoliageStatus.Unavailable); }
     }
 

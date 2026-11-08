@@ -541,8 +541,7 @@ Tick order, matching `MoveToRange` where the rules overlap:
    accepting it only when the result is grounded, not swimming and finite. It then shrinks the command with the
    same stop-ring bisection. A refused preflight requests zero for this tick.
 7. The tick records a sample of current feet XZ and reach distance, because it asked for movement even when the
-   preflight refused. When the stall window is eligible and the net horizontal displacement from its oldest sample to
-   now is below `StallTravelMetres`, the driver latches and returns `Blocked`. When `targetMoves` is false, the
+   preflight refused. When the stall window is eligible and the accumulated horizontal feet travel over its counted intervals is below `StallTravelMetres`, the driver latches and returns `Blocked`. When `targetMoves` is false, the
    approach window is eligible and the reach distance has fallen by less than `ApproachGainMetres` across it, the
    driver latches and returns `Blocked`.
 8. Otherwise it returns `Following` with the command.
@@ -555,13 +554,14 @@ Departures from the reference, recorded so the game can delete its class knowing
 
 - Direction uses the closest horizontal point of a box rather than its centre. For capsules and points they are the
   same. A box approach reaches its near face sooner.
-- The final fraction comes from live bisection against exact reach, not from a 0.05 minimum fraction, so a short
+- The final fraction comes from the shared certified-or-live float interval search against exact reach, not from a 0.05 minimum fraction, so a short
   last step cannot stall or overshoot.
 - A step that would leave the ground or start swimming is refused and counts toward the stall window, so a walk off a
   ledge or into deep water ends `Blocked` instead of falling or swimming.
 - A zero travel bound counts toward neither window, so a rooted body holds without ending its walk.
 - `InRange` clears both windows, so a followed body that moves away starts fresh windows.
-- Stall travel is net displacement across the window, not accumulated path length, so pacing in place is blocked.
+- Stall travel sums horizontal feet travel across counted intervals, so a reversal cannot cancel its own motion.
+  Direct approach still separately checks reach-distance gain for a static target.
 - `Blocked` stays latched until `InRange` or `Reset`. The game ends the walk on the first `Blocked`.
 - The driver holds no target identity. Replacing the target with another one of the same shape needs `Reset`.
 - The caller passes `targetMoves` true for any body target, such as a creature or player, and false for static

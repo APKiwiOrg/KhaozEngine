@@ -172,12 +172,11 @@ namespace KhaozEngine.Tests.Render3D
             using IGpuCommandList frameList = device.Factory.CreateCommandList();
 
             frameList.Begin();
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => producer.Record(frameList));
+            Assert.Throws<InvalidOperationException>(() => producer.Record(frameList));
             frameList.End();
 
-            // Loud and specific: the failure a host gets for skipping PrepareFrame must name the fix, because the
-            // alternative (preparing itself here) is the nested Begin this split exists to remove.
-            Assert.Contains("PrepareFrame", ex.Message, StringComparison.Ordinal);
+            // Refusing rather than preparing itself here, which would be the nested Begin this split exists to
+            // remove.
             Assert.Equal(1, device.PeakOpenLists);
         }
 

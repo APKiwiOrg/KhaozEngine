@@ -27,19 +27,32 @@ internal sealed class OrdinaryPlayerWorld : IDisposable
     public IMovementWaterField? Field { get; }
     public MovementBoundary Boundary { get; }
     public Func<float, float, float> Ground { get; }
+    public Func<float, float, Vector3>? Normal { get; }
     public WorldFrame Frame { get; }
+    readonly ContactPublicationTerrain? terrainSource;
     public OrdinaryPlayerWorld(Vector3 origin = default, bool stairs = false, bool roof = false,
-        bool water = false, float groundY = 0, float island = 20, IMovementWaterField? field = null)
+        bool water = false, float groundY = 0, float island = 20, IMovementWaterField? field = null, float? dropHeight = null, bool terrain = false)
     {
         Frame = WorldFrame.Nearest(origin.X, origin.Z);
         Physics.Rebase(origin);
-        Ground = (_, _) => groundY;
         Boundary = MovementBoundary.Rectangle(origin.X - 20, origin.Z - 20, origin.X + 20, origin.Z + 20);
         Field = field ?? (water ? MovementWaterField.Level("world", 0, -4) : null);
+        if (terrain && dropHeight is { } terrainHeight)
+        {
+            terrainSource = new(Physics, terrainHeight);
+            Ground = terrainSource.Colliders.MovementGroundHeight;
+            Normal = terrainSource.Colliders.MovementGroundNormal;
+            using var terrainLease = Physics.AcquireQueryReadLease();
+            Registration = terrainSource.Installed.CreateMovementRegistrationBuilder("world",
+                new(new(-240, -10, -240), new(240, 12, 240), 0, terrainHeight)).Build(terrainLease);
+            return;
+        }
+        Ground = dropHeight is { } height ? (x, _) => x <= 4 ? height : 0 : (_, _) => groundY;
         var builder = OrdinaryMovementRegistration.CreateBuilder("world", Physics,
-            new(new(origin.X - island, -8, origin.Z - island), new(origin.X + island, 8, origin.Z + island), groundY, groundY));
+            new(new(origin.X - island, -8, origin.Z - island), new(origin.X + island, 8, origin.Z + island), groundY, dropHeight ?? groundY));
         Add("floor", new(origin.X - island, groundY - 0.25f, origin.Z - island),
             new(origin.X + island, groundY, origin.Z + island));
+        if (dropHeight is { } top) Add("ledge", new(-8, 0, -8), new(4, top, 8));
         if (stairs)
             for (int i = 0; i < 4; i++)
                 Add($"step-{i}", new(origin.X + 0.4f + i * 0.25f, groundY, origin.Z - 4),
@@ -56,10 +69,10 @@ internal sealed class OrdinaryPlayerWorld : IDisposable
     }
     public PlayerMoveSimulator Simulator(MoveTuning? tuning = null, SamplerSpace space = SamplerSpace.World,
         WorldBounds? bounds = null, MovementBoundary? boundary = null) => new(Ground, tuning ?? Tuning,
-        null, bounds, Physics, null, space, null, Field, Registration, boundary ?? Boundary)
+        Normal, bounds, Physics, null, space, null, Field, Registration, boundary ?? Boundary)
         { Frame = Frame };
     public EffectiveMovementBinding Reference(MoveTuning? tuning = null) => EffectiveMovementBinding.Ordinary(
-        tuning ?? Tuning, Physics, Registration, Ground, null, Boundary, Field);
+        tuning ?? Tuning, Physics, Registration, Ground, Normal, Boundary, Field);
     public PlayerMoveState Initial(float x = 0, float z = 0, float? y = null) =>
         new()
         {

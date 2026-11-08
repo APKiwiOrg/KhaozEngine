@@ -22,7 +22,8 @@ public sealed class CatalogRunGuardTests
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
         using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite, packs);
         var clock = new ManualCatalogPhaseClock();
-        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: clock);
+        var safety = new ManualCatalogPhaseClock();
+        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: clock, safetyClock: safety);
         // Each actual filesystem read advances less than one phase budget. Several reads exceed the
         // entire old budget while the waiting peer must keep observing its producer's real progress.
         packs.BeforeRead = () => clock.Advance(TimeSpan.FromSeconds(11));
@@ -49,20 +50,30 @@ public sealed class CatalogRunGuardTests
         var bounded = new ScriptedUpgradeStore(rival, 5, 1, 2);
         var owner = new CatalogRunnerLifetime();
 
-        InvalidOperationException failure = await Assert.ThrowsAsync<InvalidOperationException>(() => owner.ExecuteAsync(async () =>
+        CatalogScriptException failure = await Assert.ThrowsAsync<CatalogScriptException>(() => owner.ExecuteAsync(async () =>
         {
             Task<ContentUpgradeReport> run = owner.Start(token => ContentUpgradeRunner.RunAsync(
                 bounded, registry, set, UpgradeFixtures.Apply(), token));
             return await owner.AwaitAsync(run);
         }));
 
-        Assert.Contains("observation bound 5 exceeded at read 6", failure.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<InvalidOperationException>(failure);
+        Assert.Equal(CatalogScriptRefusal.ObservationBoundExceeded, failure.Reason);
+        Assert.Equal(5, failure.MaximumReads);
+        Assert.Equal(6, failure.ActualReads);
         Assert.Equal(6, bounded.DraftReads);
         Assert.True(rival.RepeatedReads > 1);
         Assert.True((await lease.Store.GetOpenDraftAsync())!.IsFrozen);
         Assert.Single(await lease.Store.ListVersionsAsync());
         Assert.Empty(await ((IContentUpgradeLedger)lease.Store).ListUpgradesAsync());
         Assert.False(owner.Diagnostic.Task.IsCompleted);
+
+        var control = new ScriptedUpgradeStore(lease.Store, 5, 1, 2);
+        for (int read = 0; read < 5; read++)
+        {
+            Assert.NotNull(await control.GetOpenDraftAsync());
+        }
+        Assert.Equal(5, control.DraftReads);
     }
 
     [Theory]
@@ -74,7 +85,8 @@ public sealed class CatalogRunGuardTests
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
         using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
         var clock = new ManualCatalogPhaseClock();
-        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: clock);
+        var safety = new ManualCatalogPhaseClock();
+        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: clock, safetyClock: safety);
         var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         scenario.Sequence.BeforeSnapshot = async () => { held.TrySetResult(); await hold.Task; };
@@ -83,19 +95,25 @@ public sealed class CatalogRunGuardTests
         Task? cleanup = null;
         try
         {
-            await scenario.Owner.ReadyAsync(scenario.Sequence.OlderWaiting.Task, older, "older sweep wait");
-            Task missing = scenario.Owner.ReadyAsync(scenario.Sequence.SecondFrozen.Task, older, "next complete freeze");
-            clock.ExpireActive();
+            await scenario.Owner.ReadyAsync(scenario.Sequence.OlderWaiting.Task, older, CatalogPhase.OlderSweepWait);
+            Task missing = scenario.Owner.ReadyAsync(scenario.Sequence.SecondFrozen.Task, older, CatalogPhase.NextCompleteFreeze);
+            clock.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            Assert.False(missing.IsFaulted);
+            clock.Advance(TimeSpan.FromTicks(1));
             Assert.True(scenario.Owner.Diagnostic.Task.IsCompletedSuccessfully, "the independent diagnostic never expired");
-            var failure = await Assert.ThrowsAsync<TimeoutException>(() => missing);
+            var failure = await Assert.ThrowsAsync<CatalogPhaseTimeoutException>(() => missing);
             primary = failure;
-            Assert.Contains("older sweep waiting for next complete freeze", failure.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<TimeoutException>(failure);
+            Assert.Equal(CatalogPhaseRefusal.PhaseStalled, failure.Reason);
+            Assert.Equal(CatalogPhase.OlderSweepWaitingForNextFreeze, failure.Phase);
+            Assert.Equal(TimeSpan.FromSeconds(20), failure.Budget);
             Assert.False(scenario.Owner.Token.IsCancellationRequested, "the diagnostic itself cancelled normal IO");
             cleanup = scenario.Owner.FinishAsync(failure);
             await held.Task.WaitAsync(TimeSpan.FromSeconds(20));
             Assert.False(cleanup.IsCompleted, "cleanup returned while an owned snapshot operation was held");
             hold.TrySetResult();
-            Assert.Same(failure, await Assert.ThrowsAsync<TimeoutException>(() => cleanup));
+            Assert.Same(failure, await Assert.ThrowsAsync<CatalogPhaseTimeoutException>(() => cleanup));
             Assert.All(scenario.Owner.Runs, run => Assert.True(run.IsCompleted));
         }
         finally
@@ -127,21 +145,25 @@ public sealed class CatalogRunGuardTests
         {
             // Establish the real blocked producer using System time, not the held diagnostic clock.
             await scenario.Sequence.OlderWaiting.Task.WaitAsync(TimeSpan.FromSeconds(20));
-            Task readiness = scenario.Owner.ReadyAsync(withheld.Task, older, "withheld older readiness");
-            safety.ExpireActive();
+            Task readiness = scenario.Owner.ReadyAsync(withheld.Task, older, CatalogPhase.WithheldOlderReadiness);
+            safety.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            Assert.False(readiness.IsFaulted);
+            safety.Advance(TimeSpan.FromTicks(1));
             Assert.True(scenario.Owner.Diagnostic.Task.IsCompletedSuccessfully,
                 "readiness has no independent safety clock while the producer clock is held");
-            var failure = await Assert.ThrowsAsync<TimeoutException>(() => readiness);
+            var failure = await Assert.ThrowsAsync<CatalogPhaseTimeoutException>(() => readiness);
             primary = failure;
-            Assert.Contains("Catalog safety phase stalled: older sweep waiting for next complete freeze",
-                failure.Message, StringComparison.Ordinal);
+            Assert.Equal(CatalogPhaseRefusal.SafetyPhaseStalled, failure.Reason);
+            Assert.Equal(CatalogPhase.OlderSweepWaitingForNextFreeze, failure.Phase);
+            Assert.Equal(TimeSpan.FromSeconds(20), failure.Budget);
             Assert.Equal(TimeSpan.Zero, phase.Elapsed);
             Assert.False(scenario.Owner.Token.IsCancellationRequested);
             cleanup = scenario.Owner.FinishAsync(failure);
             await held.Task.WaitAsync(TimeSpan.FromSeconds(20));
             Assert.False(cleanup.IsCompleted, "readiness cleanup returned before joining held work");
             hold.TrySetResult();
-            Assert.Same(failure, await Assert.ThrowsAsync<TimeoutException>(() => cleanup));
+            Assert.Same(failure, await Assert.ThrowsAsync<CatalogPhaseTimeoutException>(() => cleanup));
             Assert.All(scenario.Owner.Runs, run => Assert.True(run.IsCompleted));
         }
         finally
@@ -149,6 +171,44 @@ public sealed class CatalogRunGuardTests
             hold.TrySetResult();
             await CatalogLifetimeTestSafety.JoinAsync(scenario, cleanup, primary);
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReadinessBeforeExpiryCompletesWithoutRefusalAfterBothClocksPassTheBudget(bool sqlite)
+    {
+        using var files = new TemporaryCatalogDatabase();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
+        using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
+        var phase = new ManualCatalogPhaseClock();
+        var safety = new ManualCatalogPhaseClock();
+        var scenario = new UpgradePublishScenario(lease.Store, registry, clock: phase, safetyClock: safety);
+
+        await scenario.Owner.ExecuteAsync(async () =>
+        {
+            Task<ContentUpgradeReport> older = scenario.StartOlder();
+            await scenario.Sequence.OlderWaiting.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            Task readiness = scenario.Owner.ReadyAsync(scenario.Sequence.SecondFrozen.Task, older, CatalogPhase.NextCompleteFreeze);
+            phase.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            safety.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            Assert.False(readiness.IsFaulted);
+
+            Task<ContentUpgradeReport> next = scenario.StartNext();
+            await readiness.WaitAsync(TimeSpan.FromSeconds(20));
+            phase.Advance(TimeSpan.FromTicks(2));
+            safety.Advance(TimeSpan.FromTicks(2));
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            ContentUpgradeReport nextReport = await scenario.Owner.AwaitAsync(next).WaitAsync(TimeSpan.FromSeconds(20));
+            ContentUpgradeReport olderReport = await scenario.Owner.AwaitAsync(older).WaitAsync(TimeSpan.FromSeconds(20));
+
+            Assert.True(readiness.IsCompletedSuccessfully);
+            Assert.True(olderReport.Success);
+            Assert.True(nextReport.Success);
+            Assert.False(scenario.Owner.Diagnostic.Task.IsCompleted);
+            return true;
+        });
     }
 
     sealed class HeldRivalDraftStore(IContentAuthoringStore inner, ContentTypeRegistry registry,

@@ -17,12 +17,14 @@ namespace KhaozEngine.TileWorld.Physics;
 public sealed partial class TileWorldColliders
 {
     readonly byte[] _hash;
+    readonly IMovementAnalyticSupportSource _analyticSupport;
 
     TileWorldColliders(TileCollider[] colliders, byte[] hash, TileGroundSampler ground, TileMediumSampler medium,
         TileColliderProvenance[] provenance, string worldId, TileMovementSnapshot captured, OrdinaryMovementExtent extent)
     {
         Colliders = Array.AsReadOnly(colliders);
         _hash = hash;
+        _analyticSupport = new TileAnalyticSupportSource(captured, worldId);
         Ground = ground;
         Medium = medium;
         _provenance = provenance;
@@ -89,12 +91,15 @@ public sealed partial class TileWorldColliders
     /// <param name="options">Thicknesses and the blocked height, defaults when null.</param>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> or <paramref name="catalogs"/> is
     /// null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><see cref="TileColliderOptions.WallThickness"/>,
+    /// <exception cref="TileColliderOptionsRangeException"><see cref="TileColliderOptions.WallThickness"/>,
     /// <see cref="TileColliderOptions.WalkSurfaceThickness"/> or a set <see cref="TileColliderOptions.BlockedHeight"/>
-    /// is not a finite number above 0. The message names the option.</exception>
+    /// is not a finite number above 0. Carries <see cref="TileColliderOptionsRefusal.OptionNotFinitePositive"/>,
+    /// <see cref="TileColliderOptionsRangeException.OptionName"/>, ParamName = options and ActualValue.</exception>
     /// <exception cref="TileWorldException">A placed <c>Solid</c>, <c>Diagonal</c>, <c>Wall</c> or <c>WallCorner</c>
-    /// object's archetype has no <see cref="TileObjectArchetype.CollisionHeight"/>. The message names the
-    /// archetype.</exception>
+    /// object's archetype has no <see cref="TileObjectArchetype.CollisionHeight"/>. Carries
+    /// <see cref="TileWorldRefusal.ColliderCollisionHeightMissing"/>, <see cref="TileWorldException.ArchetypeId"/>,
+    /// <see cref="TileWorldException.CollisionKind"/>, <see cref="TileWorldException.ObjectId"/> and
+    /// <see cref="TileWorldException.Tile"/>.</exception>
     public static TileWorldColliders Build(TileWorldDocument document, TileWorldCatalogs catalogs,
                                            TileColliderOptions? options = null)
     {
@@ -127,8 +132,8 @@ public sealed partial class TileWorldColliders
         TileColliderBuilder.AddWalkSurfaces(document, catalogs, placed, options.WalkSurfaceThickness, colliders, provenance);
 
         TileCollider[] ordered = colliders.ToArray();
-        var medium = new TileMediumSampler(document, catalogs, regions, worldId);
         var captured = new TileMovementSnapshot(document, regions);
+        var medium = new TileMediumSampler(document, catalogs, regions, worldId, captured);
         TileColliderProvenance[] owners = provenance.ToArray();
         return new TileWorldColliders(ordered, HashOf(ordered), new TileGroundSampler(document, regions), medium,
             owners, worldId, captured, DescribeExtent(document, regions, owners, captured, medium));
@@ -150,7 +155,7 @@ public sealed partial class TileWorldColliders
     /// <exception cref="AggregateException">Adding failed and removing what was added failed too. The add failure is
     /// the first inner exception.</exception>
     public TileColliderRegistration AddTo(IPhysicsWorld world)
-        => TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, null);
+        => TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, null, _analyticSupport);
 
     /// <summary>
     /// Adds only selected colliders as statics, retaining their canonical owners, absolute bounds and the full
@@ -174,14 +179,15 @@ public sealed partial class TileWorldColliders
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(include);
-        return TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, include);
+        return TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, include, _analyticSupport);
     }
 
     static void RequirePositive(float value, string option)
     {
         if (!(float.IsFinite(value) && value > 0f))
-            throw new ArgumentOutOfRangeException("options", value,
-                $"{nameof(TileColliderOptions)}.{option} must be a finite number above 0.");
+            throw new TileColliderOptionsRangeException(TileColliderOptionsRefusal.OptionNotFinitePositive,
+                $"{nameof(TileColliderOptions)}.{option} must be a finite number above 0.", "options", value)
+            { OptionName = option };
     }
 
     static byte[] HashOf(TileCollider[] colliders)

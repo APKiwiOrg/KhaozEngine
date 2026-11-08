@@ -161,7 +161,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (resources.Length != layout.ElementCount)
             {
-                throw new ArgumentException(
+                throw new GpuResourceSetException(GpuResourceSetRefusal.ResourceCountMismatch,
                     "A native Metal resource set was built with "
                     + resources.Length.ToString(CultureInfo.InvariantCulture)
                     + " resources against a layout declaring "
@@ -169,7 +169,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + " elements. Resources are matched to elements POSITIONALLY, because the element's position "
                     + "IS its binding number in the index table, so a count mismatch is not a shortfall the "
                     + "backend can work around.",
-                    nameof(description));
+                    nameof(description))
+                {
+                    DeclaredCount = layout.ElementCount,
+                    SuppliedCount = resources.Length,
+                };
             }
 
             Layout = layout;
@@ -232,19 +236,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (set is null)
             {
-                throw new ArgumentException(
-                    $"{what} was given no resource set.", nameof(set));
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
+                    $"{what} was given no resource set.", nameof(set))
+                {
+                    ResourceKind = nameof(MetalResourceSet),
+                    Context = what,
+                };
             }
 
             MetalResourceSet typed = MetalResourceOwnership.Require<MetalResourceSet>(set, owner, nameof(set));
 
             if (typed.IsDisposed)
             {
-                throw new ObjectDisposedException(
+                throw new GpuResourceOwnershipDisposedException(GpuResourceOwnershipRefusal.NativeHandleReleased,
                     nameof(MetalResourceSet),
                     $"{what} was given a native Metal resource set that is already disposed. A set releases "
                     + "nothing on this backend, so the bind would work and would name resources the caller "
-                    + "considers unbound.");
+                    + "considers unbound.")
+                {
+                    NativeHandleKind = nameof(MetalResourceSet),
+                    ResourceKind = nameof(MetalResourceSet),
+                    Context = what,
+                };
             }
 
             return typed;
@@ -262,17 +275,24 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <exception cref="ArgumentException">The window does not exist inside the buffer.</exception>
         internal static void RequireWindowInBuffer(uint rangeOffset, uint range, uint bufferSizeBytes,
-            string where)
+            string where, string? elementName = null, int? binding = null)
         {
             if (range != 0 && rangeOffset <= bufferSizeBytes && range <= bufferSizeBytes - rangeOffset) return;
 
-            throw new ArgumentException(
+            throw new GpuResourceSetException(GpuResourceSetRefusal.BufferWindowOutsideResource,
                 $"{where} binds {range.ToString(CultureInfo.InvariantCulture)} bytes at offset "
                 + $"{rangeOffset.ToString(CultureInfo.InvariantCulture)} of a "
                 + $"{bufferSizeBytes.ToString(CultureInfo.InvariantCulture)}-byte buffer. The window is resolved "
                 + "once at creation and Metal's own setters carry no length at all, so nothing downstream would "
                 + "report a window that does not exist: the shader would read whatever follows the buffer.",
-                nameof(range));
+                nameof(range))
+            {
+                ElementName = elementName,
+                Binding = binding,
+                RangeOffset = rangeOffset,
+                RangeBytes = range,
+                BufferBytes = bufferSizeBytes,
+            };
         }
 
         /// <summary>
@@ -301,7 +321,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <exception cref="ArgumentException">The texture cannot be read, or cannot be written, the way the
         /// element declares.</exception>
-        internal static void RequireTextureUsage(GpuResourceKind kind, GpuTextureUsage usage, string where)
+        internal static void RequireTextureUsage(GpuResourceKind kind, GpuTextureUsage usage, string where,
+            string? elementName = null, int? binding = null)
         {
             bool write = kind == GpuResourceKind.TextureReadWrite;
 
@@ -311,13 +332,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if ((usage & needed) != 0) return;
 
-            throw new ArgumentException(
+            throw new GpuResourceSetException(GpuResourceSetRefusal.TextureUsageMissing,
                 $"{where} declares a {kind} bound to a texture created with usage {usage}, which cannot be "
                 + (write ? "written" : "read") + " by a shader. A Metal texture's usage bits are fixed at "
                 + "creation from the declared seam usage and no view narrows or widens one here (M-M10), so this "
                 + "is a texture that was not created for the job rather than something the bind could arrange. "
                 + "Add GpuTextureUsage." + (write ? "Storage" : "Sampled") + " to its description.",
-                nameof(usage));
+                nameof(usage))
+            {
+                ElementName = elementName,
+                Binding = binding,
+                ResourceKind = kind,
+                ActualUsage = usage,
+                RequiredUsage = needed,
+            };
         }
 
         // ONE BINDING, FULLY RESOLVED. Every refusal names the element by its declared name, because a message
@@ -330,23 +358,27 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (resource is null)
             {
-                throw new ArgumentException(
+                throw new GpuResourceSetException(GpuResourceSetRefusal.ResourceMissing,
                     $"{where} is null. A set is resolved once at creation and never again, so there is no later "
                     + "point at which a missing resource could arrive.",
-                    nameof(resource));
+                    nameof(resource))
+                {
+                    ElementName = element.Name,
+                    Binding = binding,
+                };
             }
 
             MetalIndexSpace space = MetalIndexSpaces.For(element.Kind);
             return space switch
             {
-                MetalIndexSpace.Buffer => ResolveBuffer(element, resource, where),
-                MetalIndexSpace.Texture => ResolveTexture(element, resource, where),
-                _ => ResolveSampler(element, resource, where),
+                MetalIndexSpace.Buffer => ResolveBuffer(element, resource, where, binding),
+                MetalIndexSpace.Texture => ResolveTexture(element, resource, where, binding),
+                _ => ResolveSampler(element, resource, where, binding),
             };
         }
 
         MetalBoundResource ResolveBuffer(in GpuResourceLayoutElement element, IGpuBindableResource resource,
-            string where)
+            string where, int binding)
         {
             uint rangeOffset;
             uint range;
@@ -354,13 +386,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (resource is GpuBufferRange window)
             {
-                buffer = Require<MetalBuffer>(window.Buffer, element, where, "a buffer");
+                buffer = Require<MetalBuffer>(window.Buffer, element, where, binding, "a buffer");
                 rangeOffset = window.Offset;
                 range = window.Size;
             }
             else
             {
-                buffer = Require<MetalBuffer>(resource, element, where, "a buffer");
+                buffer = Require<MetalBuffer>(resource, element, where, binding, "a buffer");
                 rangeOffset = 0;
 
                 // THE LOGICAL SIZE, which on a ring-backed uniform buffer is emphatically not its allocation:
@@ -368,8 +400,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 range = buffer.SizeInBytes;
             }
 
-            RequireHandle(buffer.Handle.Handle, element, where, "MTLBuffer");
-            RequireWindowInBuffer(rangeOffset, range, buffer.SizeInBytes, where);
+            RequireHandle(buffer.Handle.Handle, element, where, binding, "MTLBuffer");
+            RequireWindowInBuffer(rangeOffset, range, buffer.SizeInBytes, where, element.Name, binding);
 
             MetalUniformRing? ring = buffer.Ring;
             if (ring is not null)
@@ -390,51 +422,54 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         MetalBoundResource ResolveTexture(in GpuResourceLayoutElement element, IGpuBindableResource resource,
-            string where)
+            string where, int binding)
         {
-            MetalTexture texture = Require<MetalTexture>(resource, element, where, "a texture");
+            MetalTexture texture = Require<MetalTexture>(resource, element, where, binding, "a texture");
 
             // A STAGING TEXTURE IS A Shared MTLBuffer AND NOT AN MTLTexture AT ALL (M-C5), so it has no handle
             // for the texture table. Refused by name here rather than binding nil, which would be a validation
             // error at the draw with nothing pointing back at the set that caused it.
             if (texture.IsStaging)
             {
-                throw new ArgumentException(
+                throw new GpuResourceSetException(GpuResourceSetRefusal.StagingTextureCannotBind,
                     $"{where} declares a {element.Kind} bound to a STAGING texture. A staging texture on this "
                     + "backend is a Shared MTLBuffer carrying a software subresource layout, not an MTLTexture, "
                     + "so there is nothing to write into the texture argument table. Copy it into a sampled "
                     + "texture and bind that.",
-                    nameof(resource));
+                    nameof(resource))
+                {
+                    ElementName = element.Name,
+                    Binding = binding,
+                    ResourceKind = element.Kind,
+                };
             }
 
-            RequireTextureUsage(element.Kind, texture.Usage, where);
-            RequireHandle(texture.Handle.Handle, element, where, "MTLTexture");
+            RequireTextureUsage(element.Kind, texture.Usage, where, element.Name, binding);
+            RequireHandle(texture.Handle.Handle, element, where, binding, "MTLTexture");
 
             return new MetalBoundResource(
                 MetalIndexSpace.Texture, texture, RangeOffset: 0, Range: 0, AppliesCallerOffset: false);
         }
 
         MetalBoundResource ResolveSampler(in GpuResourceLayoutElement element, IGpuBindableResource resource,
-            string where)
+            string where, int binding)
         {
-            MetalSampler sampler = Require<MetalSampler>(resource, element, where, "a sampler");
-            RequireHandle(sampler.Handle.Handle, element, where, "MTLSamplerState");
+            MetalSampler sampler = Require<MetalSampler>(resource, element, where, binding, "a sampler");
+            RequireHandle(sampler.Handle.Handle, element, where, binding, "MTLSamplerState");
 
             return new MetalBoundResource(
                 MetalIndexSpace.Sampler, sampler, RangeOffset: 0, Range: 0, AppliesCallerOffset: false);
         }
 
-        // THE WRONG-THING REFUSAL IS THIS TYPE'S AND THE WRONG-DEVICE ONE IS SHARED. The kind mismatch is what a
-        // caller actually hits (a resource array one step out of line with its layout), so it names the element,
-        // the kind it declares and what arrived. The identity half is MetalResourceOwnership's, unchanged, and
-        // asking it a second time after the cast has already passed costs one type test and keeps that message in
-        // exactly one place.
-        T Require<T>(object? resource, in GpuResourceLayoutElement element, string where, string what)
+        // Classify a failed adapter cast by the shared logical kind first. A correctly shaped resource from
+        // another backend is an ownership refusal. A resource in the wrong layout slot is a kind mismatch.
+        // After a successful cast, MetalResourceOwnership still checks the creating device.
+        T Require<T>(object? resource, in GpuResourceLayoutElement element, string where, int binding, string what)
             where T : class, IMetalOwnedResource
         {
             if (resource is not T typed)
             {
-                throw new ArgumentException(
+                throw GpuResourceSetMismatch.Refusal(resource, element, binding, GpuBackendKind.MetalNative, typeof(T),
                     $"{where} declares {element.Kind}, which needs {what} created by the native Metal backend. It "
                     + $"was given a {resource?.GetType().Name ?? "null"}.",
                     nameof(resource));
@@ -449,16 +484,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // refusal adds is the case where there was never anything to bind at all. Binding nil is legal
         // Objective-C and reads as an unbound slot at the draw, which is exactly the silent-wrong-pixel shape
         // this backend spends the whole of section 2.2b avoiding on the index side.
-        static void RequireHandle(IntPtr handle, in GpuResourceLayoutElement element, string where,
+        static void RequireHandle(IntPtr handle, in GpuResourceLayoutElement element, string where, int binding,
             string objectType)
         {
             if (handle != IntPtr.Zero) return;
 
-            throw new ArgumentException(
+            throw new GpuResourceSetException(GpuResourceSetRefusal.NativeHandleMissing,
                 $"{where} declares a {element.Kind} bound to a resource with no {objectType} handle, which means "
                 + "it has already been disposed. A set resolves its resources once at creation, so a resource "
                 + "that is nil here is nil for the set's whole life with nothing later to fix it.",
-                nameof(element));
+                nameof(element))
+            {
+                ElementName = element.Name,
+                Binding = binding,
+                ResourceKind = element.Kind,
+                NativeHandleKind = objectType,
+            };
         }
 
         static string Describe(in GpuResourceLayoutElement element)

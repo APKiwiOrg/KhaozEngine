@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using System.Threading;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -275,7 +274,5 @@ public sealed partial class StaticMutationLeaseTests
         return read.GeometryGeneration;
     }
 
-    static IDisposable EnterQuery(BepuPhysicsWorld world) => Assert.IsAssignableFrom<IDisposable>(
-        typeof(BepuPhysicsWorld).GetMethod("EnterQuery", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(world, [false]));
+    static IDisposable EnterQuery(BepuPhysicsWorld world) => world.EnterQueryForTests();
 }

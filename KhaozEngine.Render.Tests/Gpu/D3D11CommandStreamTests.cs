@@ -181,17 +181,16 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>A mismatch between what the encoder stored and what the replay asks for is a defect in this
-        /// package, so it says so rather than handing back a null the emitter would dereference.</summary>
+        /// package, so it refuses rather than handing back a null the emitter would dereference.</summary>
         [Fact]
         public void AMistypedReference_FailsWithAMessageNamingTheDisagreement()
         {
             var references = new D3D11ReferenceList();
-            int index = references.Add(new FakeBuffer(64));
+            var buffer = new FakeBuffer(64);
+            int index = references.Add(buffer);
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
-                () => references.Get<IGpuTexture>(index));
-
-            Assert.Contains("disagree", ex.Message, StringComparison.Ordinal);
+            Assert.Same(buffer, references.Get<IGpuBuffer>(index));
+            Assert.Throws<InvalidOperationException>(() => references.Get<IGpuTexture>(index));
         }
 
         // ---- The payload arena ----

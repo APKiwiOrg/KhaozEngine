@@ -31,6 +31,9 @@ namespace KhaozEngine.NetWorld;
 /// wrong for six of the seven generations it had to read; there is one shared table now
 /// (<see cref="BuiltinBlobLayout"/>), pinned to the codec by test.
 /// <para>
+/// A body no candidate can walk throws <see cref="CellBlobMigrationException"/> with
+/// <see cref="CellBlobMigrationRefusal.NoInferredGeneration"/>. A failed stated-generation walk instead carries
+/// <see cref="CellBlobMigrationRefusal.KnownGenerationUnwalkable"/> and the source and target generations.
 /// Inference is not a choice between plausible readings. Every candidate is judged against what the writer is known
 /// to do (<see cref="CellBlobWalkPolicy"/>) and the ones that recovered something no build writes are discarded; if
 /// more than one survives to a DIFFERENT result the migration throws

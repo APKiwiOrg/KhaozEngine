@@ -1077,6 +1077,8 @@ jobs:
       # And it is scoped to the ONE test project that owns these tests, because run over the whole solution the
       # setting fails on each of the other 17 test projects, where matching zero is the correct outcome.
       - name: Shader FXC validation and Vortice struct sizes (no device)
+        env:
+          KE_DUMP_FOLIAGE_DXBC: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter == 'FullyQualifiedName~DumpFoliageOpaqueDisassembly' && '1' || '' }}
         # THE ONE WINDOWS LEG. Nothing here creates a device or selects a backend, so the step is device-free
         # and backend-independent, and it used to be pinned to `direct3d11` because the incumbent and native
         # Windows legs would otherwise run byte-identical work twice at the Windows 2x rate. 18.0.0 deleted the
@@ -1352,7 +1354,7 @@ jobs:
           # still guards the rule for the next backend that shares rather than owns.
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
           KE_RENDER_TEST_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter || '' }}
-          KE_TEST_FILTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter) || ((matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests') }}
+          KE_TEST_FILTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter) || ((matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket&Category!=Diagnostic' || '(FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests)&Category!=Diagnostic') }}
           # WARP saturates the Windows runner's CPUs. Keep Render.Tests out of the other hosts' pass while
           # retaining parallel execution among those hosts. Golden-only and targeted render runs stay single-pass.
           # A sharded full suite (#1438) isolates by construction, because Render.Tests never shares a job with
@@ -1969,7 +1971,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p TestResults
-          dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden|FullyQualifiedName~Compute|FullyQualifiedName~FoliageGpuTests" --blame --results-directory TestResults --logger "console;verbosity=detailed" 2>&1 | tee TestResults/sync-validation.log
+          dotnet test -c Release --no-build --filter "(FullyQualifiedName~Golden|FullyQualifiedName~Compute|FullyQualifiedName~FoliageGpuTests)&Category!=Diagnostic" --blame --results-directory TestResults --logger "console;verbosity=detailed" 2>&1 | tee TestResults/sync-validation.log
         shell: bash
 
       # WHAT MAKES TIER TWO A GATE. The engine does not fail a sync run on an error (the job header says why,

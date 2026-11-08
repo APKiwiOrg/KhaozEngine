@@ -192,16 +192,34 @@ internal static class SqlServerJournalTestDatabase
         """;
 
     private const string DedicatedDatabaseMarker = "-journal-test-";
+    private const string ConnectionVariable = "KE_SQLSERVER_TEST_CONNSTRING";
 
     internal static string RequireDedicatedTestDatabase(string? connectionString)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
-            throw new InvalidOperationException("SQL Server journal tests require KE_SQLSERVER_TEST_CONNSTRING.");
+            throw new JournalLiveTestConfigurationException(JournalLiveTestConfigurationRefusal.ConnectionMissing,
+                $"SQL Server journal tests require {ConnectionVariable}.")
+            {
+                SourceName = ConnectionVariable,
+            };
         var builder = new SqlConnectionStringBuilder(connectionString);
         if (!builder.InitialCatalog.Contains(DedicatedDatabaseMarker, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException(
-                $"SQL Server journal live tests require Initial Catalog to contain '{DedicatedDatabaseMarker}'.");
+            throw new JournalLiveTestConfigurationException(JournalLiveTestConfigurationRefusal.DedicatedDatabaseRequired,
+                $"SQL Server journal live tests require Initial Catalog to contain '{DedicatedDatabaseMarker}'.")
+            {
+                RequiredMarker = DedicatedDatabaseMarker,
+            };
         return connectionString;
+    }
+
+    internal static async Task ExecuteAsync(string connectionString, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using SqlCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        foreach (var (name, value) in parameters) SqlServerMutationJournalStore.Add(command, name, value);
+        await command.ExecuteNonQueryAsync();
     }
 
     internal static async Task<bool> IndexExistsAsync(string connectionString, string indexName)

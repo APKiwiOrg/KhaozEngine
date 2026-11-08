@@ -62,8 +62,10 @@ public sealed class ContactLifetimeTests
         Assert.Throws<InvalidOperationException>(() =>
             ((IPhysicsSupportFootprint)view).AssertFootprintCurrent(footprint, environment.LastPhysicsLease!));
         Exception? error = null, readError = null, pinError = null, physicsError = null;
+        int owner = Environment.CurrentManagedThreadId, caller = 0;
         var thread = new Thread(() =>
         {
+            caller = Environment.CurrentManagedThreadId;
             error = Record.Exception(next.Dispose);
             readError = Record.Exception(next.AssertCurrent);
             pinError = Record.Exception(environment.LastPin!.AssertCurrent);
@@ -72,8 +74,12 @@ public sealed class ContactLifetimeTests
         { IsBackground = true };
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)));
-        Assert.IsType<InvalidOperationException>(error);
-        Assert.IsType<InvalidOperationException>(readError);
+        var disposal = Assert.IsType<MovementReadException>(error);
+        var read = Assert.IsType<MovementReadException>(readError);
+        Assert.Equal(MovementReadRefusal.LeaseThreadMismatch, disposal.Reason);
+        Assert.Equal(disposal.Reason, read.Reason);
+        Assert.Equal(owner, read.OwnerThreadId);
+        Assert.Equal(caller, read.CallerThreadId);
         Assert.IsType<InvalidOperationException>(pinError);
         Assert.IsType<InvalidOperationException>(physicsError);
         next.AssertCurrent();

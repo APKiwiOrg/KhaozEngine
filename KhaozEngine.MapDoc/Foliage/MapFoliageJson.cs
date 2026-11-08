@@ -26,16 +26,17 @@ internal sealed class MapFoliageSetJsonConverter : JsonConverter<MapFoliageSet>
 
     public override MapFoliageSet Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Null) throw new JsonException("foliage: omit the section instead of writing null.");
+        if (reader.TokenType == JsonTokenType.Null) throw new MapFoliageJsonException(MapDocumentRefusal.FoliageSectionNull, "foliage: omit the section instead of writing null.") { FieldPath = "$" };
         // Measure the buffered value before parsing it, so an oversized section never reaches a document. A section the
         // reader cannot skip is not fully buffered and cannot be measured, so it refuses instead of escaping the limit.
         Utf8JsonReader probe = reader;
-        if (!probe.TrySkip()) throw new JsonException("foliage: the section must be fully buffered before it is read.");
+        if (!probe.TrySkip()) throw new MapFoliageJsonException(MapDocumentRefusal.FoliageSectionIncomplete, "foliage: the section must be fully buffered before it is read.") { FieldPath = "$" };
         if (probe.BytesConsumed - reader.TokenStartIndex > _maxUtf8Bytes)
-            throw new JsonException($"foliage: the section exceeds {_maxUtf8Bytes} UTF-8 bytes.");
+            throw new MapFoliageJsonException(MapDocumentRefusal.FoliageSectionByteLimitExceeded, $"foliage: the section exceeds {_maxUtf8Bytes} UTF-8 bytes.")
+            { FieldPath = "$", ActualByteCount = probe.BytesConsumed - reader.TokenStartIndex, Limit = _maxUtf8Bytes };
         using JsonDocument json = JsonDocument.ParseValue(ref reader);
         try { return MapFoliageJson.Read(json.RootElement, _maxUtf8Bytes); }
-        catch (MapDocumentException ex) { throw new JsonException(ex.Message, ex); }
+        catch (MapDocumentException ex) { throw MapFoliageJsonException.FromDocument(ex); }
     }
 
     public override void Write(Utf8JsonWriter writer, MapFoliageSet value, JsonSerializerOptions options)
@@ -89,20 +90,24 @@ internal static class MapFoliageJson
 
     static MapFoliageSet ReadCore(JsonElement value, long maxUtf8Bytes, bool stored)
     {
-        if (value.ValueKind != JsonValueKind.Object) throw Fail("foliage must be an object.");
-        if (JsonMarshal.GetRawUtf8Value(value).Length > maxUtf8Bytes)
-            throw Fail($"foliage: the section exceeds {maxUtf8Bytes} UTF-8 bytes.");
-        Closed(value, "foliage", stored ? ["payloadVersion", "layers", "packs"] : SetMembers);
-        RequireVersion(value, "foliage");
-        JsonElement layers = RequireArray(value, "layers", "foliage", MapFoliagePayloadLimits.MaxLayers);
+        var at = new MapFoliageJsonContext("foliage", "$");
+        if (value.ValueKind != JsonValueKind.Object) throw at.Refuse(MapDocumentRefusal.SchemaObjectRequired, "foliage must be an object.");
+        int utf8Length = JsonMarshal.GetRawUtf8Value(value).Length;
+        if (utf8Length > maxUtf8Bytes)
+            throw at.Refuse(MapDocumentRefusal.FoliageSectionByteLimitExceeded, $"foliage: the section exceeds {maxUtf8Bytes} UTF-8 bytes.",
+                actualByteCount: utf8Length, limit: maxUtf8Bytes);
+        Closed(value, at, stored ? ["payloadVersion", "layers", "packs"] : SetMembers);
+        RequireVersion(value, at);
+        JsonElement layers = RequireArray(value, "layers", at, MapFoliagePayloadLimits.MaxLayers);
 
         // Every count is charged before any layer materializes, so an oversized payload allocates nothing nested.
         long documentChunks = 0;
         int index = 0;
         foreach (JsonElement layer in layers.EnumerateArray())
         {
-            string label = $"foliage layer [{index++}]";
-            if (layer.ValueKind != JsonValueKind.Object) throw Fail(label + " must be an object.");
+            var label = new MapFoliageJsonContext($"foliage layer [{index}]", $"$.layers[{index}]", Index: index);
+            index++;
+            if (layer.ValueKind != JsonValueKind.Object) throw label.Refuse(MapDocumentRefusal.SchemaObjectRequired, label + " must be an object.");
             Closed(layer, label, LayerMembers);
             RequireVersion(layer, label);
             RequireArray(layer, "models", label, MapFoliagePayloadLimits.MaxModels);
@@ -114,28 +119,31 @@ internal static class MapFoliageJson
             RequireArray(layer, "ownerSupports", label, MapFoliagePayloadLimits.MaxOwnerSupports);
             documentChunks += RequireArray(layer, "chunks", label, MapFoliagePayloadLimits.MaxChunksPerLayer).GetArrayLength();
             if (documentChunks > MapFoliagePayloadLimits.MaxDocumentChunks)
-                throw Fail($"foliage: density exceeds {MapFoliagePayloadLimits.MaxDensityBytes} decoded bytes per document.");
+                throw label.Property("chunks").Refuse(MapDocumentRefusal.WorkCapacityExceeded,
+                    $"foliage: density exceeds {MapFoliagePayloadLimits.MaxDensityBytes} decoded bytes per document.",
+                    budget: "decoded density bytes per document", actualByteCount: documentChunks * MapFoliageChunk.ByteLength,
+                    limit: MapFoliagePayloadLimits.MaxDensityBytes);
         }
-        return new MapFoliageSet(1, layers.EnumerateArray().Select((l, i) => ReadLayer(l, $"foliage layer [{i}]", !stored)).ToArray());
+        return new MapFoliageSet(1, layers.EnumerateArray().Select((l, i) => ReadLayer(l, new($"foliage layer [{i}]", $"$.layers[{i}]", Index: i), !stored)).ToArray());
     }
 
-    static MapFoliageLayer ReadLayer(JsonElement e, string label, bool readChunks)
+    static MapFoliageLayer ReadLayer(JsonElement e, MapFoliageJsonContext label, bool readChunks)
     {
         string id = Text(e, "id", label);
-        label = $"foliage layer '{id}'";
-        return new MapFoliageLayer(1, id, ReadBinding(e.GetProperty("support"), label + " support"),
+        label = label with { Label = $"foliage layer '{id}'", LayerId = id };
+        return new MapFoliageLayer(1, id, ReadBinding(e.GetProperty("support"), label.Property("support")),
             Finite(e, "originX", label), Finite(e, "originZ", label), Finite(e, "cellSize", label),
             Int(e, "width", label), Int(e, "depth", label), RowDirection(e, label), Int(e, "seed", label),
             Finite(e, "spacing", label), Finite(e, "scaleMin", label), Finite(e, "scaleMax", label), Finite(e, "rootOffset", label),
             Items(e, "models", label, (m, at) => { Closed(m, at, ModelMembers); return new MapFoliageModel(Text(m, "assetId", at), Finite(m, "weight", at)); }),
-            e.GetProperty("allowedVisibleMaterials").EnumerateArray().Select(m => MaterialId(m, label + " allowedVisibleMaterials")).ToArray(),
+            e.GetProperty("allowedVisibleMaterials").EnumerateArray().Select((m, i) => MaterialId(m, label.Item("allowedVisibleMaterials", i) with { Label = label + " allowedVisibleMaterials" })).ToArray(),
             Items(e, "materials", label, (m, at) =>
             {
                 Closed(m, at, MaterialMembers);
-                return new MapFoliageMaterial(MaterialId(m.GetProperty("id"), at + " id"), Text(m, "resourceId", at),
+                return new MapFoliageMaterial(MaterialId(m.GetProperty("id"), at.Property("id")), Text(m, "resourceId", at),
                     Name<MapFoliageMaterialKind>(m, "kind", at));
             }),
-            ReadPolicy(RequireObject(e, "policy", label), label + " policy"),
+            ReadPolicy(RequireObject(e, "policy", label), label.Property("policy")),
             Bool(e, "excludeIndoors", label), Bool(e, "excludeSolidObjects", label),
             Finite(e, "doorClearance", label), Finite(e, "edgeFade", label),
             Items(e, "compatibilityOrdinals", label, (o, at) =>
@@ -148,30 +156,33 @@ internal static class MapFoliageJson
                 Closed(r, at, RuleMembers, RuleOptional);
                 return new MapFoliageClearanceRule(Text(r, "id", at), Text(r, "assetId", at),
                     r.TryGetProperty("placementTag", out _) ? Text(r, "placementTag", at) : null,
-                    Name<MapFoliageClearanceKind>(r, "kind", at), ReadRect(RequireObject(r, "footprint", at), at + " footprint"));
+                    Name<MapFoliageClearanceKind>(r, "kind", at), ReadRect(RequireObject(r, "footprint", at), at.Property("footprint")));
             }),
             Items(e, "exceptionMasks", label, (m, at) =>
             {
                 Closed(m, at, MaskMembers);
-                return new MapFoliageMask(Text(m, "id", at), ReadReference(RequireObject(m, "owner", at), at + " owner"),
-                    ReadBinding(m.GetProperty("support"), at + " support"), Name<MapFoliageClearanceKind>(m, "kind", at),
-                    ReadRect(RequireObject(m, "footprint", at), at + " footprint"));
+                return new MapFoliageMask(Text(m, "id", at), ReadReference(RequireObject(m, "owner", at), at.Property("owner")),
+                    ReadBinding(m.GetProperty("support"), at.Property("support")), Name<MapFoliageClearanceKind>(m, "kind", at),
+                    ReadRect(RequireObject(m, "footprint", at), at.Property("footprint")));
             }),
             Items(e, "ownerSupports", label, (o, at) =>
             {
                 Closed(o, at, OwnerSupportMembers);
-                return new MapFoliageOwnerSupport(ReadReference(RequireObject(o, "owner", at), at + " owner"),
-                    ReadBinding(o.GetProperty("support"), at + " support"));
+                return new MapFoliageOwnerSupport(ReadReference(RequireObject(o, "owner", at), at.Property("owner")),
+                    ReadBinding(o.GetProperty("support"), at.Property("support")));
             }),
             readChunks ? Items(e, "chunks", label, (c, at) => ReadChunk(c, at)) : []);
     }
 
     /// <summary>The closed foliage support binding: a Surface binding carries only its surface ID, and a Space binding
     /// carries its space ID, reference height and both search extents.</summary>
-    internal static MapSupportBinding ReadBinding(JsonElement e, string label)
+    internal static MapSupportBinding ReadBinding(JsonElement e, string label) => ReadBinding(e, new MapFoliageJsonContext(label));
+
+    static MapSupportBinding ReadBinding(JsonElement e, MapFoliageJsonContext label)
     {
-        if (e.ValueKind != JsonValueKind.Object) throw Fail(label + " must be an object.");
-        if (!e.TryGetProperty("kind", out JsonElement kind)) throw Fail(label + ": missing required property 'kind'.");
+        if (e.ValueKind != JsonValueKind.Object) throw label.Refuse(MapDocumentRefusal.SchemaObjectRequired, label + " must be an object.");
+        if (!e.TryGetProperty("kind", out JsonElement kind))
+            throw label.Property("kind").Refuse(MapDocumentRefusal.SchemaValueRequired, label + ": missing required property 'kind'.");
         switch (kind.ValueKind == JsonValueKind.String ? kind.GetString() : null)
         {
             case "Surface":
@@ -181,13 +192,34 @@ internal static class MapFoliageJson
                 Closed(e, label, SpaceMembers);
                 return new(MapSupportBindingKind.Space, null, Text(e, "spaceId", label), Finite(e, "referenceY", label),
                     Finite(e, "searchBelow", label), Finite(e, "searchAbove", label));
-            default: throw Fail(label + ": 'kind' must be Surface or Space.");
+            default: throw label.Property("kind").Refuse(MapDocumentRefusal.SchemaEnumUnsupported, label + ": 'kind' must be Surface or Space.",
+                actualText: kind.ValueKind == JsonValueKind.String ? kind.GetString() : null, enumType: typeof(MapSupportBindingKind));
         }
     }
 
-    internal static void WriteBinding(Utf8JsonWriter w, MapSupportBinding value, string label)
+    internal static void WriteBinding(Utf8JsonWriter w, MapSupportBinding value, string label, string? layerId = null)
     {
-        if (!MapSupportBindingRules.TryWrite(w, value)) throw Fail(label + " carries exactly the members of its kind.");
+        if (!MapSupportBindingRules.TryWrite(w, value))
+        {
+            (MapDocumentRefusal reason, string field) = value.Kind switch
+            {
+                MapSupportBindingKind.Surface when value.SurfaceId is null => (MapDocumentRefusal.SchemaValueRequired, "surfaceId"),
+                MapSupportBindingKind.Surface => (MapDocumentRefusal.AuthoredOwnershipMismatch,
+                    value.SpaceId is not null ? "spaceId" : value.ReferenceY is not null ? "referenceY" :
+                    value.SearchBelow is not null ? "searchBelow" : "searchAbove"),
+                MapSupportBindingKind.Space when value.SpaceId is null => (MapDocumentRefusal.SchemaValueRequired, "spaceId"),
+                MapSupportBindingKind.Space when value.SurfaceId is not null => (MapDocumentRefusal.AuthoredOwnershipMismatch, "surfaceId"),
+                MapSupportBindingKind.Space => (MapDocumentRefusal.SchemaValueRequired,
+                    value.ReferenceY is null ? "referenceY" : value.SearchBelow is null ? "searchBelow" : "searchAbove"),
+                _ => (MapDocumentRefusal.SchemaEnumUnsupported, "kind"),
+            };
+            throw new MapDocumentException(reason, label + " carries exactly the members of its kind.")
+            {
+                LayerId = layerId, FieldPath = "support." + field, SurfaceId = value.SurfaceId, SpaceId = value.SpaceId,
+                EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapSupportBindingKind) : null,
+                ActualInteger = reason == MapDocumentRefusal.SchemaEnumUnsupported ? (long)value.Kind : null,
+            };
+        }
     }
 
     internal static void Write(Utf8JsonWriter w, MapFoliageSet set)
@@ -211,7 +243,7 @@ internal static class MapFoliageJson
         w.WriteNumber("payloadVersion", layer.PayloadVersion);
         w.WriteString("id", layer.Id);
         w.WritePropertyName("support");
-        WriteBinding(w, layer.Support, label + " support");
+        WriteBinding(w, layer.Support, label + " support", layer.Id);
         w.WriteNumber("originX", layer.OriginX);
         w.WriteNumber("originZ", layer.OriginZ);
         w.WriteNumber("cellSize", layer.CellSize);
@@ -282,7 +314,7 @@ internal static class MapFoliageJson
             w.WriteString("id", mask.Id);
             WriteReference(w, mask.Owner);
             w.WritePropertyName("support");
-            WriteBinding(w, mask.Support, $"{label} mask '{mask.Id}' support");
+            WriteBinding(w, mask.Support, $"{label} mask '{mask.Id}' support", layer.Id);
             w.WriteString("kind", mask.Kind.ToString());
             WriteRect(w, mask.Footprint);
             w.WriteEndObject();
@@ -294,7 +326,7 @@ internal static class MapFoliageJson
             w.WriteStartObject();
             WriteReference(w, owner.Owner);
             w.WritePropertyName("support");
-            WriteBinding(w, owner.Support, $"{label} owner support");
+            WriteBinding(w, owner.Support, $"{label} owner support", layer.Id);
             w.WriteEndObject();
         }
         w.WriteEndArray();
@@ -331,125 +363,167 @@ internal static class MapFoliageJson
         w.WriteEndObject();
     }
 
-    static MapFoliagePolicy ReadPolicy(JsonElement e, string label)
+    static MapFoliagePolicy ReadPolicy(JsonElement e, MapFoliageJsonContext label)
     {
         Closed(e, label, PolicyMembers);
         return new(Text(e, "id", label), Int(e, "version", label), Finite(e, "normalBoundaryHeight", label));
     }
 
-    static MapPrefabReference ReadReference(JsonElement e, string label)
+    static MapPrefabReference ReadReference(JsonElement e, MapFoliageJsonContext label)
     {
         Closed(e, label, ReferenceMembers);
         return new(Name<MapPrefabReferenceScope>(e, "scope", label), Name<MapPrefabChildKind>(e, "kind", label), Text(e, "id", label));
     }
 
-    static MapFoliageRect ReadRect(JsonElement e, string label)
+    static MapFoliageRect ReadRect(JsonElement e, MapFoliageJsonContext label)
     {
         Closed(e, label, RectMembers);
         return new(Finite(e, "minX", label), Finite(e, "minZ", label), Finite(e, "maxX", label), Finite(e, "maxZ", label));
     }
 
-    static MapFoliageChunk ReadChunk(JsonElement e, string label)
+    static MapFoliageChunk ReadChunk(JsonElement e, MapFoliageJsonContext label)
     {
         Closed(e, label, ChunkMembers);
         var key = new MapFoliageChunkKey(Int(e, "x", label), Int(e, "z", label));
-        label = $"{label} ({key.X}, {key.Z})";
+        label = label with { Label = $"{label} ({key.X}, {key.Z})", FoliageChunk = key };
         JsonElement token = e.GetProperty("density");
-        if (token.ValueKind != JsonValueKind.String) throw Fail(label + ": density must be a base64 string.");
+        if (token.ValueKind != JsonValueKind.String) throw label.Property("density").Refuse(MapDocumentRefusal.SchemaValueRequired, label + ": density must be a base64 string.");
         // An escaped token may spell each character in six bytes. Anything longer cannot be a legal token, so it refuses
         // before the string is materialized.
-        if (JsonMarshal.GetRawUtf8Value(token).Length > 6 * MapFoliagePayloadLimits.MaxTokenChars + 2)
-            throw Fail($"{label}: density token exceeds {MapFoliagePayloadLimits.MaxTokenChars} characters.");
+        int tokenBytes = JsonMarshal.GetRawUtf8Value(token).Length;
+        if (tokenBytes > 6 * MapFoliagePayloadLimits.MaxTokenChars + 2)
+            throw label.Property("density").Refuse(MapDocumentRefusal.WorkCapacityExceeded,
+                $"{label}: density token exceeds {MapFoliagePayloadLimits.MaxTokenChars} characters.",
+                budget: "density token UTF-8 bytes", actualByteCount: tokenBytes, limit: 6 * MapFoliagePayloadLimits.MaxTokenChars + 2);
         string text = token.GetString()!;
         if (text.Length > MapFoliagePayloadLimits.MaxTokenChars)
-            throw Fail($"{label}: density token exceeds {MapFoliagePayloadLimits.MaxTokenChars} characters.");
+            throw label.Property("density").Refuse(MapDocumentRefusal.WorkCapacityExceeded,
+                $"{label}: density token exceeds {MapFoliagePayloadLimits.MaxTokenChars} characters.",
+                budget: "density token characters", actualCount: text.Length, limit: MapFoliagePayloadLimits.MaxTokenChars);
         Span<byte> bytes = stackalloc byte[MapFoliagePayloadLimits.MaxTokenChars];
-        if (!Convert.TryFromBase64String(text, bytes, out int written)) throw Fail(label + ": density is not valid base64.");
+        if (!Convert.TryFromBase64String(text, bytes, out int written))
+            throw label.Property("density").Refuse(MapDocumentRefusal.SchemaBase64Malformed, label + ": density is not valid base64.");
         if (written != MapFoliageChunk.ByteLength)
-            throw Fail($"{label}: density decodes to {written} bytes, not {MapFoliageChunk.ByteLength}.");
+            throw label.Property("density").Refuse(MapDocumentRefusal.SchemaArrayLengthMismatch,
+                $"{label}: density decodes to {written} bytes, not {MapFoliageChunk.ByteLength}.",
+                actualByteCount: written, expectedByteCount: MapFoliageChunk.ByteLength);
         if (!string.Equals(Convert.ToBase64String(bytes[..written]), text, StringComparison.Ordinal))
-            throw Fail(label + ": density is not canonical base64.");
+            throw label.Property("density").Refuse(MapDocumentRefusal.SchemaBase64Malformed, label + ": density is not canonical base64.");
         return new MapFoliageChunk(key, bytes[..written]);
     }
 
-    static T[] Items<T>(JsonElement e, string name, string label, Func<JsonElement, string, T> read)
+    static T[] Items<T>(JsonElement e, string name, MapFoliageJsonContext label, Func<JsonElement, MapFoliageJsonContext, T> read)
     {
         JsonElement array = e.GetProperty(name);
         var result = new T[array.GetArrayLength()];
         int i = 0;
         foreach (JsonElement item in array.EnumerateArray())
         {
-            string at = $"{label} {name}[{i}]";
-            if (item.ValueKind != JsonValueKind.Object) throw Fail(at + " must be an object.");
+            MapFoliageJsonContext at = label.Item(name, i);
+            if (item.ValueKind != JsonValueKind.Object) throw at.Refuse(MapDocumentRefusal.SchemaObjectRequired, at + " must be an object.");
             result[i++] = read(item, at);
         }
         return result;
     }
 
     // Unknown, repeated and null members refuse, and every required member must be present. Names compare ordinally.
-    internal static void Closed(JsonElement e, string label, string[] required, string[]? optional = null)
+    internal static void Closed(JsonElement e, string label, string[] required, string[]? optional = null) =>
+        Closed(e, new MapFoliageJsonContext(label), required, optional);
+
+    static void Closed(JsonElement e, MapFoliageJsonContext label, string[] required, string[]? optional = null)
     {
-        if (e.ValueKind != JsonValueKind.Object) throw Fail(label + " must be an object.");
+        if (e.ValueKind != JsonValueKind.Object) throw label.Refuse(MapDocumentRefusal.SchemaObjectRequired, label + " must be an object.");
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (JsonProperty p in e.EnumerateObject())
         {
             if (!required.Contains(p.Name, StringComparer.Ordinal) && (optional is null || !optional.Contains(p.Name, StringComparer.Ordinal)))
-                throw Fail($"{label}: unknown property '{p.Name}'.");
-            if (!seen.Add(p.Name)) throw Fail($"{label}: duplicate property '{p.Name}'.");
-            if (p.Value.ValueKind == JsonValueKind.Null) throw Fail($"{label}: property '{p.Name}' must not be null.");
+                throw label.Property(p.Name).Refuse(MapDocumentRefusal.SchemaMemberUnknown, $"{label}: unknown property '{p.Name}'.");
+            if (!seen.Add(p.Name)) throw label.Property(p.Name).Refuse(MapDocumentRefusal.SchemaMemberDuplicate, $"{label}: duplicate property '{p.Name}'.");
+            if (p.Value.ValueKind == JsonValueKind.Null) throw label.Property(p.Name).Refuse(MapDocumentRefusal.SchemaValueRequired,
+                $"{label}: property '{p.Name}' must not be null.");
         }
         foreach (string name in required)
-            if (!seen.Contains(name)) throw Fail($"{label}: missing required property '{name}'.");
+            if (!seen.Contains(name)) throw label.Property(name).Refuse(MapDocumentRefusal.SchemaValueRequired,
+                $"{label}: missing required property '{name}'.");
     }
 
-    static void RequireVersion(JsonElement e, string label)
+    static void RequireVersion(JsonElement e, MapFoliageJsonContext label)
     {
-        if (Int(e, "payloadVersion", label) != 1) throw Fail(label + ": unsupported payloadVersion, only payload 1 is supported.");
+        int version = Int(e, "payloadVersion", label);
+        if (version != 1) throw label.Property("payloadVersion").Refuse(MapDocumentRefusal.SchemaPayloadVersionUnsupported,
+            label + ": unsupported payloadVersion, only payload 1 is supported.", actualVersion: version);
     }
 
-    internal static JsonElement RequireArray(JsonElement e, string name, string label, int max)
+    internal static JsonElement RequireArray(JsonElement e, string name, string label, int max) =>
+        RequireArray(e, name, new MapFoliageJsonContext(label), max);
+
+    static JsonElement RequireArray(JsonElement e, string name, MapFoliageJsonContext label, int max)
     {
         JsonElement value = e.GetProperty(name);
-        if (value.ValueKind != JsonValueKind.Array) throw Fail($"{label}: '{name}' must be an array.");
-        if (value.GetArrayLength() > max) throw Fail($"{label}: '{name}' exceeds {max} entries.");
+        if (value.ValueKind != JsonValueKind.Array) throw label.Property(name).Refuse(MapDocumentRefusal.SchemaArrayRequired, $"{label}: '{name}' must be an array.");
+        if (value.GetArrayLength() > max) throw label.Property(name).Refuse(MapDocumentRefusal.WorkCapacityExceeded, $"{label}: '{name}' exceeds {max} entries.",
+            budget: name, actualCount: value.GetArrayLength(), limit: max);
         return value;
     }
 
-    static JsonElement RequireObject(JsonElement e, string name, string label)
+    static JsonElement RequireObject(JsonElement e, string name, MapFoliageJsonContext label)
     {
         JsonElement value = e.GetProperty(name);
-        return value.ValueKind == JsonValueKind.Object ? value : throw Fail($"{label}: '{name}' must be an object.");
+        return value.ValueKind == JsonValueKind.Object ? value : throw label.Property(name).Refuse(MapDocumentRefusal.SchemaObjectRequired, $"{label}: '{name}' must be an object.");
     }
 
-    internal static string Text(JsonElement e, string name, string label) => e.GetProperty(name) is { ValueKind: JsonValueKind.String } value
-        ? value.GetString()! : throw Fail($"{label}: '{name}' must be a string.");
+    internal static string Text(JsonElement e, string name, string label) => Text(e, name, new MapFoliageJsonContext(label));
 
-    static float Finite(JsonElement e, string name, string label) =>
-        e.GetProperty(name) is { ValueKind: JsonValueKind.Number } value && value.TryGetSingle(out float number) && float.IsFinite(number)
-            ? number : throw Fail($"{label}: '{name}' must be a finite number.");
+    static string Text(JsonElement e, string name, MapFoliageJsonContext label) => e.GetProperty(name) is { ValueKind: JsonValueKind.String } value
+        ? value.GetString()! : throw label.Property(name).Refuse(MapDocumentRefusal.SchemaValueRequired, $"{label}: '{name}' must be a string.");
 
-    internal static int Int(JsonElement e, string name, string label) =>
-        e.GetProperty(name) is { ValueKind: JsonValueKind.Number } value && value.TryGetInt32(out int number)
-            ? number : throw Fail($"{label}: '{name}' must be a 32-bit integer.");
+    static float Finite(JsonElement e, string name, MapFoliageJsonContext label)
+    {
+        JsonElement value = e.GetProperty(name);
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out float number) && float.IsFinite(number)) return number;
+        throw label.Property(name).Refuse(MapDocumentRefusal.ValueNonfinite, $"{label}: '{name}' must be a finite number.",
+            actualNumber: Number(value));
+    }
 
-    static bool Bool(JsonElement e, string name, string label) => e.GetProperty(name).ValueKind switch
+    internal static int Int(JsonElement e, string name, string label) => Int(e, name, new MapFoliageJsonContext(label));
+
+    static int Int(JsonElement e, string name, MapFoliageJsonContext label)
+    {
+        JsonElement value = e.GetProperty(name);
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number)) return number;
+        throw label.Property(name).Refuse(MapDocumentRefusal.ValueOutsideRange, $"{label}: '{name}' must be a 32-bit integer.",
+            actualNumber: Number(value), actualInteger: Integer(value), minimumInteger: int.MinValue, maximumInteger: int.MaxValue);
+    }
+
+    static bool Bool(JsonElement e, string name, MapFoliageJsonContext label) => e.GetProperty(name).ValueKind switch
     {
         JsonValueKind.True => true,
         JsonValueKind.False => false,
-        _ => throw Fail($"{label}: '{name}' must be a boolean."),
+        _ => throw label.Property(name).Refuse(MapDocumentRefusal.SchemaBooleanRequired, $"{label}: '{name}' must be a boolean."),
     };
 
-    static ushort MaterialId(JsonElement e, string label) =>
-        e.ValueKind == JsonValueKind.Number && e.TryGetUInt16(out ushort id)
-            ? id : throw Fail(label + ": material IDs are integers from 0 to 65535.");
+    static ushort MaterialId(JsonElement e, MapFoliageJsonContext label)
+    {
+        if (e.ValueKind == JsonValueKind.Number && e.TryGetUInt16(out ushort id)) return id;
+        throw label.Refuse(MapDocumentRefusal.ValueOutsideRange, label + ": material IDs are integers from 0 to 65535.",
+            actualNumber: Number(e), actualInteger: Integer(e), minimumInteger: 0, maximumInteger: ushort.MaxValue);
+    }
 
-    static MapRowDirection RowDirection(JsonElement e, string label) => Name<MapRowDirection>(e, "rowDirection", label);
+    // TryGetDouble reads an out-of-range literal such as 1e400 as an infinity the input never held, so only a finite
+    // value is kept as the refused number.
+    static double? Number(JsonElement e) =>
+        e.ValueKind == JsonValueKind.Number && e.TryGetDouble(out double number) && double.IsFinite(number) ? number : null;
+    static long? Integer(JsonElement e) => e.ValueKind == JsonValueKind.Number && e.TryGetInt64(out long number) ? number : null;
+
+    static MapRowDirection RowDirection(JsonElement e, MapFoliageJsonContext label) => Name<MapRowDirection>(e, "rowDirection", label);
 
     // Exact declared names only. Numeric spellings and case variants refuse.
-    static T Name<T>(JsonElement e, string name, string label) where T : struct, Enum =>
-        e.GetProperty(name) is { ValueKind: JsonValueKind.String } value && value.GetString() is { } text &&
-        Enum.GetNames<T>().Contains(text, StringComparer.Ordinal)
-            ? Enum.Parse<T>(text) : throw Fail($"{label}: '{name}' must be one of {string.Join(", ", Enum.GetNames<T>())}.");
-
-    static MapDocumentException Fail(string message) => new(message);
+    static T Name<T>(JsonElement e, string name, MapFoliageJsonContext label) where T : struct, Enum
+    {
+        JsonElement value = e.GetProperty(name);
+        string? text = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        if (text is not null && Enum.GetNames<T>().Contains(text, StringComparer.Ordinal)) return Enum.Parse<T>(text);
+        throw label.Property(name).Refuse(MapDocumentRefusal.SchemaEnumUnsupported,
+            $"{label}: '{name}' must be one of {string.Join(", ", Enum.GetNames<T>())}.", actualText: text, enumType: typeof(T));
+    }
 }

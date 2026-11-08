@@ -15,50 +15,28 @@ namespace KhaozEngine.Tests.Render2D
 
         static readonly FixedFont Font = new();
 
-        [Fact]
-        public void Default_CollapsesInteriorSpaceRun()
+        [Theory]
+        [InlineData(false, "Alice: hello world")]
+        [InlineData(true, "Alice: hello  world")]
+        public void Interior_space_runs_follow_the_selected_mode(bool preserveSpaceRuns, string expected)
         {
-            // The proven repro: no wrap occurs (19 chars = 190px < 500), but the double space is collapsed to one.
-            var lines = TextLayout.Wrap(Font, "Alice: hello  world", 500f);
+            var lines = TextLayout.Wrap(Font, "Alice: hello  world", 500f, preserveSpaceRuns: preserveSpaceRuns);
             Assert.Single(lines);
-            Assert.Equal("Alice: hello world", lines[0]);
+            Assert.Equal(expected, lines[0]);
         }
 
-        [Fact]
-        public void Preserve_KeepsInteriorSpaceRunVerbatim()
+        [Theory]
+        [InlineData("xx  yy zzzzz", "xx  yy", "zzzzz")]
+        [InlineData("aaaaa  bbbbb", "aaaaa", "bbbbb")]
+        public void Preserve_wraps_at_space_runs(string text, string first, string second)
         {
-            // Same string, preserve mode on: the double space survives, still no wrap.
-            var lines = TextLayout.Wrap(Font, "Alice: hello  world", 500f, preserveSpaceRuns: true);
-            Assert.Single(lines);
-            Assert.Equal("Alice: hello  world", lines[0]);
-        }
-
-        [Fact]
-        public void Preserve_RunOnANonBreakingLine_ButWrapTakenLater()
-        {
-            // "xx  yy zzzzz": the double space packs onto line 0 verbatim; the single space before the long word is a
-            // break point that pushes it to line 1 (which carries no leading spaces).
-            var lines = TextLayout.Wrap(Font, "xx  yy zzzzz", 60f, preserveSpaceRuns: true);
-            Assert.Equal(2, lines.Count);
-            Assert.Equal("xx  yy", lines[0]);
-            Assert.Equal("zzzzz", lines[1]);
-        }
-
-        [Fact]
-        public void Preserve_BreakTakenAtMultiSpaceRun_ConsumesIt()
-        {
-            // "aaaaa  bbbbb" is 12 chars = 120px > 60, so a break is taken AT the double-space run. The run is
-            // consumed: the fresh line starts with "bbbbb", no leading spaces - matching the default break behaviour.
-            var lines = TextLayout.Wrap(Font, "aaaaa  bbbbb", 60f, preserveSpaceRuns: true);
-            Assert.Equal(2, lines.Count);
-            Assert.Equal("aaaaa", lines[0]);
-            Assert.Equal("bbbbb", lines[1]);
+            var lines = TextLayout.Wrap(Font, text, 60f, preserveSpaceRuns: true);
+            Assert.Equal(new[] { first, second }, lines);
         }
 
         [Theory]
         // The whole default-mode matrix must be UNCHANGED by the new parameter: every case collapses runs exactly as
         // before. Each pair is (input, expected single/joined default output).
-        [InlineData("Alice: hello  world", "Alice: hello world")]
         [InlineData("a  b   c", "a b c")]
         [InlineData("  leading and trailing  ", "leading and trailing")]
         [InlineData("single space", "single space")]
@@ -76,6 +54,7 @@ namespace KhaozEngine.Tests.Render2D
             var d = TextLayout.Wrap(Font, "one two three four", 1000f);
             var p = TextLayout.Wrap(Font, "one two three four", 1000f, preserveSpaceRuns: true);
             Assert.Equal(d, p);
+            Assert.Single(p);
             Assert.Equal("one two three four", p[0]);
         }
 

@@ -22,22 +22,25 @@ public static class NativeMapAssetLoader
     /// tangents keep their directions under the uniform scale. The resource must be a self-contained binary glTF, parsed
     /// from the bytes the closure verified and nothing else. A buffer or image that names an external URI is refused,
     /// since its bytes would come from outside the closure. Embedded <c>data:</c> URIs are part of the verified bytes
-    /// and load. Throws <see cref="MapDocumentException"/> naming the asset and resource when the descriptor is not the
-    /// closure's own, the resource is not a binary glTF, it names an external URI, or the mesh does not load.</summary>
+    /// and load. Throws <see cref="MapDocumentException"/> with its reason and known asset and resource identifiers
+    /// when the descriptor is not the closure's own, the resource is not a binary glTF, it names an external URI,
+    /// or the mesh does not load.</summary>
     public static GltfMesh Load(MapResolvedAsset asset, MapAssetClosure closure)
     {
         ArgumentNullException.ThrowIfNull(asset);
         ArgumentNullException.ThrowIfNull(closure);
         if (!ReferenceEquals(closure.GetAsset(asset.Id), asset))
-            throw new MapDocumentException($"Native asset '{asset.Id}' is not the descriptor of the supplied closure.");
+            throw new MapDocumentException(MapDocumentRefusal.AssetDescriptorMismatch, $"Native asset '{asset.Id}' is not the descriptor of the supplied closure.")
+            { AssetId = asset.Id };
         MapResolvedResource resource = closure.GetResource(asset.MeshResourceId);
         if (resource.Kind != MapResourceKind.Mesh)
-            throw new MapDocumentException(
-                $"Native asset '{asset.Id}' requires Mesh resource '{asset.MeshResourceId}', which is {resource.Kind}.");
+            throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch,
+                $"Native asset '{asset.Id}' requires Mesh resource '{asset.MeshResourceId}', which is {resource.Kind}.")
+            { AssetId = asset.Id, ResourceId = asset.MeshResourceId, ExpectedResourceKind = MapResourceKind.Mesh, ActualResourceKind = resource.Kind };
 
         ReadOnlyMemory<byte> bytes = resource.Bytes;
         string what = $"Native asset '{asset.Id}' mesh resource '{asset.MeshResourceId}'";
-        RequireSelfContained(bytes.Span, what);
+        RequireSelfContained(bytes.Span, what, asset, resource);
         GltfMesh source;
         try
         {
@@ -45,7 +48,7 @@ public static class NativeMapAssetLoader
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            throw new MapDocumentException($"{what} cannot be loaded: {ex.Message}", ex);
+            throw MeshLoadFailure(ex, asset, resource);
         }
 
         float scale = asset.SourceUnitsToMetres;
@@ -60,38 +63,55 @@ public static class NativeMapAssetLoader
         return new GltfMesh(scaled, source.Indices32);
     }
 
+    // Value-taking fault seam for the external loader boundary, without changing the closure's state.
+    internal static MapDocumentException MeshLoadFailure(Exception error, MapResolvedAsset asset, MapResolvedResource resource)
+    {
+        string what = $"Native asset '{asset.Id}' mesh resource '{asset.MeshResourceId}'";
+        for (Exception? cause = error; cause is not null; cause = cause.InnerException)
+            if (cause is MapDocumentException known)
+                return known.WithSourceName(null, $"{what} cannot be loaded: {error.Message}",
+                    resourceId: asset.MeshResourceId, assetId: asset.Id);
+        return new MapDocumentException(MapDocumentRefusal.AssetPayloadUnreadable, $"{what} cannot be loaded: {error.Message}", error)
+        { AssetId = asset.Id, ResourceId = asset.MeshResourceId, Path = resource.Reference.Path, ExpectedHash = resource.Reference.Sha256 };
+    }
+
     // Reads the GLB header and JSON chunk and refuses any buffer or image URI that is not an embedded data URI.
-    static void RequireSelfContained(ReadOnlySpan<byte> glb, string what)
+    static void RequireSelfContained(ReadOnlySpan<byte> glb, string what, MapResolvedAsset asset, MapResolvedResource resource)
     {
         if (glb.Length < 20 || BinaryPrimitives.ReadUInt32LittleEndian(glb) != GlbMagic)
-            throw new MapDocumentException($"{what} is not a binary glTF.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, $"{what} is not a binary glTF.")
+            { AssetId = asset.Id, ResourceId = asset.MeshResourceId };
         uint jsonLength = BinaryPrimitives.ReadUInt32LittleEndian(glb[12..]);
         if (BinaryPrimitives.ReadUInt32LittleEndian(glb[16..]) != JsonChunk || jsonLength > (uint)(glb.Length - 20))
-            throw new MapDocumentException($"{what} is not a binary glTF: its first chunk is not a complete JSON chunk.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, $"{what} is not a binary glTF: its first chunk is not a complete JSON chunk.")
+            { AssetId = asset.Id, ResourceId = asset.MeshResourceId };
         try
         {
             var reader = new Utf8JsonReader(glb.Slice(20, (int)jsonLength));
             using JsonDocument json = JsonDocument.ParseValue(ref reader);
-            RefuseExternal(json.RootElement, "buffers", "buffer", what);
-            RefuseExternal(json.RootElement, "images", "image", what);
+            RefuseExternal(json.RootElement, "buffers", "buffer", what, asset);
+            RefuseExternal(json.RootElement, "images", "image", what, asset);
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException($"{what} is not a binary glTF: its JSON chunk does not parse.", ex);
+            throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, $"{what} is not a binary glTF: its JSON chunk does not parse.", ex)
+            { AssetId = asset.Id, ResourceId = resource.Reference.Id, FieldPath = ex.Path, LineNumber = ex.LineNumber, BytePositionInLine = ex.BytePositionInLine };
         }
     }
 
-    static void RefuseExternal(JsonElement root, string member, string kind, string what)
+    static void RefuseExternal(JsonElement root, string member, string kind, string what, MapResolvedAsset asset)
     {
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(member, out JsonElement list) ||
             list.ValueKind != JsonValueKind.Array) return;
-        foreach (JsonElement item in list.EnumerateArray())
+        for (int index = 0; index < list.GetArrayLength(); index++)
         {
+            JsonElement item = list[index];
             if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("uri", out JsonElement uri)) continue;
             string? text = uri.ValueKind == JsonValueKind.String ? uri.GetString() : uri.GetRawText();
             if (text is not null && text.StartsWith("data:", StringComparison.Ordinal)) continue;
-            throw new MapDocumentException(
-                $"{what} names external {kind} URI '{text}'. A native mesh must be self-contained, because only bytes the closure verified may be parsed.");
+            throw new MapDocumentException(MapDocumentRefusal.AssetGlbExternalUri,
+                $"{what} names external {kind} URI '{text}'. A native mesh must be self-contained, because only bytes the closure verified may be parsed.")
+            { AssetId = asset.Id, ResourceId = asset.MeshResourceId, FieldPath = $"$.{member}[{index}].uri", Uri = text };
         }
     }
 }

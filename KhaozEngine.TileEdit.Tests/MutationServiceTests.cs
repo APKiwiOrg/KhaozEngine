@@ -198,7 +198,9 @@ public class MutationServiceTests
 
         MutationResult removed = f.Mutate.ObjectRemove(placed.ObjectId);
         Assert.Equal("Remove object", removed.Label);
-        Assert.Throws<TileWorldException>(() => f.Query.ObjectGet(placed.ObjectId));
+        TileWorldException missing = Assert.Throws<TileWorldException>(() => f.Query.ObjectGet(placed.ObjectId));
+        Assert.Equal(TileWorldRefusal.ObjectMissing, missing.Reason);
+        Assert.Equal(placed.ObjectId, missing.ObjectId);
 
         // The undo puts it back with the SAME id, so nothing that referred to it is left dangling.
         f.Mutate.Undo();
@@ -255,8 +257,12 @@ public class MutationServiceTests
         // every point and report a successful placement of nothing.
         ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
             () => f.Mutate.ObjectScatter("tree", new TileRect(20, 20, 8, 8), 9, 3, 1, seed: 7));
-        Assert.Contains("0..3", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("plane", ex.ParamName);
+        Assert.Equal(9, ex.ActualValue);
         Assert.Empty(f.Query.ObjectFind(archetypeId: "tree"));
+
+        // The top plane of the four is in range, so the same scatter there is not refused.
+        Assert.Null(Record.Exception(() => f.Mutate.ObjectScatter("tree", new TileRect(20, 20, 8, 8), 3, 3, 1, seed: 7)));
     }
 
     [Fact]
@@ -268,7 +274,8 @@ public class MutationServiceTests
         // no point never builds.
         TileWorldException ex = Assert.Throws<TileWorldException>(
             () => f.Mutate.ObjectScatter("no-such-archetype", new TileRect(20, 20, 8, 8), 0, 3, 1, seed: 7));
-        Assert.Contains("no-such-archetype", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.CatalogArchetypeMissing, ex.Reason);
+        Assert.Equal("no-such-archetype", ex.ArchetypeId);
     }
 
     [Fact]
@@ -400,23 +407,45 @@ public class MutationServiceTests
         Assert.Equal((byte)255, f.Query.FoliageGet("meadow").Density[4]);
     }
 
-    [Fact]
-    public void RejectedFoliageRequestsChangeNeitherDocumentNorHistory()
+    [Theory]
+    [InlineData("archetype", TileWorldRefusal.FoliageCatalogArchetypeMissing)]
+    [InlineData("underlay", TileWorldRefusal.FoliageCatalogUnderlayMissing)]
+    [InlineData("density", TileWorldRefusal.FoliageLayerMissing)]
+    [InlineData("paint", TileWorldRefusal.FoliageLayerMissing)]
+    public void RejectedFoliageRequestsChangeNeitherDocumentNorHistory(string request, TileWorldRefusal reason)
     {
         using var f = new Fixture();
+        var valid = new FoliageLayerInfo("meadow", 0, 0f, 0f, 1f, 1, 1,
+            new byte[] { 255 }, 1, 0.3f, 1f, 1f, 0f,
+            new[] { new FoliageArchetypeInfo("tree", 1f) }, new[] { 1 }, true, true, 0f, 0f);
+        f.Mutate.FoliageLayerSet(valid);
+        TileFoliageLayer original = f.Session.Read(e => e.Document.GetFoliageLayer("meadow")!);
         int depth = f.Session.Summary().UndoDepth;
         string hash = f.Session.Summary().WorldHash;
-        var missingArchetype = new FoliageLayerInfo("bad", 0, 0f, 0f, 1f, 1, 1,
-            new byte[] { 255 }, 1, 0.3f, 1f, 1f, 0f,
-            new[] { new FoliageArchetypeInfo("not-in-catalog", 1f) }, new[] { 1 }, true, true, 0f, 0f);
+        Action refused = request switch
+        {
+            "archetype" => () => f.Mutate.FoliageLayerSet(valid with
+                { Archetypes = new[] { new FoliageArchetypeInfo("not-in-catalog", 1f) } }),
+            "underlay" => () => f.Mutate.FoliageLayerSet(valid with { AllowedUnderlays = new[] { 99 } }),
+            "density" => () => f.Mutate.FoliageDensitySet("missing", 1, 1, new[] { new[] { 1 } }),
+            "paint" => () => f.Mutate.FoliagePaint("missing", 0f, 0f, 1f, 2, 0.5f),
+            _ => throw new ArgumentOutOfRangeException(nameof(request)),
+        };
 
-        Assert.Throws<TileWorldException>(() => f.Mutate.FoliageLayerSet(missingArchetype));
-        Assert.Throws<TileWorldException>(() => f.Mutate.FoliageDensitySet("missing", 1, 1,
-            new[] { new[] { 1 } }));
-        Assert.Throws<TileWorldException>(() => f.Mutate.FoliagePaint("missing", 0f, 0f, 1f, 2, 0.5f));
-
+        TileWorldException ex = Assert.Throws<TileWorldException>(refused);
+        Assert.Equal(reason, ex.Reason);
+        Assert.Equal(reason == TileWorldRefusal.FoliageLayerMissing ? "missing" : "meadow", ex.LayerId);
+        if (request == "archetype") Assert.Equal("not-in-catalog", ex.ArchetypeId);
+        if (request == "underlay") Assert.Equal((ushort)99, ex.MaterialId);
         Assert.Equal(depth, f.Session.Summary().UndoDepth);
         Assert.Equal(hash, f.Session.Summary().WorldHash);
+        Assert.Same(original, Assert.Single(f.Session.Read(e => e.Document.FoliageLayers)));
+
+        // Fix only the missing catalog reference or requested layer id.
+        if (request == "density") f.Mutate.FoliageDensitySet("meadow", 1, 1, new[] { new[] { 1 } });
+        else if (request == "paint") f.Mutate.FoliagePaint("meadow", 0f, 0f, 1f, 2, 0.5f);
+        else f.Mutate.FoliageLayerSet(valid);
+        Assert.Equal(depth + 1, f.Session.Summary().UndoDepth);
     }
 
     // The north-west corner of the 3 by 3 test lattice, which is row 0 (highest z) column 0 (lowest x).

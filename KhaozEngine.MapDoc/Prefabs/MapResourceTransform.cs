@@ -45,7 +45,13 @@ public sealed record MapResourceTransform(MapEffectiveTransform Transform)
     internal static MapExactValue Freeze(double value)
     {
         if (!double.IsFinite(value) || Math.Abs(value) > MaxCoordinateMetres)
-            throw new MapDocumentException("Effective coordinate is not representable within the installed metre limit.");
+            throw new MapDocumentException(!double.IsFinite(value) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                "Effective coordinate is not representable within the installed metre limit.")
+            {
+                Operation = nameof(Freeze), ActualNumber = value,
+                MinimumNumber = double.IsFinite(value) ? -MaxCoordinateMetres : null,
+                MaximumNumber = double.IsFinite(value) ? MaxCoordinateMetres : null,
+            };
         try { return new(checked((long)Math.Round(value * Quantum, MidpointRounding.ToEven)), Quantum); }
         catch (OverflowException) { throw new MapExactOverflowException(); }
     }
@@ -53,8 +59,9 @@ public sealed record MapResourceTransform(MapEffectiveTransform Transform)
     internal static void RequireWithinWorld(string owner, double x, double y, double z)
     {
         if (Math.Abs(x) > MaxCoordinateMetres || Math.Abs(y) > MaxCoordinateMetres || Math.Abs(z) > MaxCoordinateMetres)
-            throw new MapDocumentException(FormattableString.Invariant(
-                $"Static '{owner}' at ({x}, {y}, {z}) lies beyond {MaxCoordinateMetres:N0} m from the world origin on an axis."));
+            throw new MapDocumentException(MapDocumentRefusal.PrefabWorldCoordinateLimitExceeded, FormattableString.Invariant(
+                $"Static '{owner}' at ({x}, {y}, {z}) lies beyond {MaxCoordinateMetres:N0} m from the world origin on an axis."))
+                { OwnerId = owner, PositionX = x, PositionY = y, PositionZ = z, Limit = (long)MaxCoordinateMetres };
     }
 
     public Vector3 ToFrame(MapExactPoint world, WorldFrame frame)
@@ -63,7 +70,13 @@ public sealed record MapResourceTransform(MapEffectiveTransform Transform)
         float z = world.Z.Subtract(new((long)frame.Z * (long)WorldFrame.Grid, 1)).ToSingle();
         float y = world.Y.ToSingle();
         if (!float.IsFinite(y) || (double)x * x + (double)z * z > (double)WorldFrame.MaxLocalRadius * WorldFrame.MaxLocalRadius)
-            throw new MapDocumentException("Effective coordinate exceeds frame radius.");
+            throw new MapDocumentException(!float.IsFinite(y) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.FrameRadiusExceeded,
+                "Effective coordinate exceeds frame radius.")
+            {
+                Operation = nameof(ToFrame), PositionX = x, PositionY = y, PositionZ = z,
+                FieldPath = !float.IsFinite(y) ? "$.position.y" : null, ActualNumber = !float.IsFinite(y) ? y : null,
+                Limit = float.IsFinite(y) ? (long)WorldFrame.MaxLocalRadius : null,
+            };
         return new(x, y, z);
     }
 

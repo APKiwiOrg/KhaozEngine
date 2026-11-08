@@ -47,6 +47,9 @@ internal static class SqliteAccountSchema
     // The columns the ensure adds to a table without them, in the order it adds them. Constants, never input.
     private static readonly string[] AddedColumns = { "ban_reason", "ban_until", "created_at_utc", "updated_at_utc" };
 
+    // The only collation a subject key may use.
+    private const string SubjectKeyCollation = "BINARY";
+
     /// <summary>Every column the store reads, in the order it unpacks them.</summary>
     internal const string ReadColumns =
         "subject, display_name, whitelisted, banned, ban_reason, ban_until, created_at_utc, updated_at_utc";
@@ -58,8 +61,8 @@ internal static class SqliteAccountSchema
     /// other operation can hold the connection.
     /// </summary>
     /// <returns>Whether <c>display_name</c> is <c>NOT NULL</c>, which only a legacy table declares.</returns>
-    /// <exception cref="InvalidOperationException">The table exists without one of the four original columns, or
-    /// with a subject key that is not <c>BINARY</c>. Nothing is changed either way.</exception>
+    /// <exception cref="AccountDataException">The table exists without one of the four original columns, or with a
+    /// subject key that is not <c>BINARY</c>. Nothing is changed either way.</exception>
     internal static bool Ensure(SqliteStoreConnection db, string table, string quoted)
     {
         using SqliteTransaction tx = db.BeginTransaction();
@@ -79,17 +82,25 @@ internal static class SqliteAccountSchema
         foreach (string column in CoreColumns)
         {
             if (!notNullByColumn.ContainsKey(column))
-                throw new InvalidOperationException(
+                throw new AccountDataException(AccountDataRefusal.CoreColumnMissing,
                     $"The account table exists without its '{column}' column, so it is not an accounts table this " +
-                    "store can adopt. Name a different table in AccountTableOptions.");
+                    "store can adopt. Name a different table in AccountTableOptions.")
+                {
+                    TableName = table,
+                    ColumnName = column,
+                };
         }
 
         if (FirstNonBinarySubjectKey(db, tx, table) is { } collation)
-            throw new InvalidOperationException(
+            throw new AccountDataException(AccountDataRefusal.SubjectKeyCollationUnsupported,
                 $"The account table's subject key compares under the {collation} collation, not BINARY. The " +
                 "find-or-create upsert matches under the key's collation, so a sign-in could land on another account " +
                 "whose subject differs only in case or padding and be handed that account. Rebuild the table with a " +
-                "BINARY subject key, or name a different table in AccountTableOptions.");
+                "BINARY subject key, or name a different table in AccountTableOptions.")
+            {
+                ActualCollation = collation,
+                ExpectedCollation = SubjectKeyCollation,
+            };
 
         foreach (string column in AddedColumns)
         {
@@ -143,7 +154,7 @@ internal static class SqliteAccountSchema
         {
             if (columns is [var only]
                 && string.Equals(only.Column, "subject", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(only.Collation, "BINARY", StringComparison.OrdinalIgnoreCase))
+                && !string.Equals(only.Collation, SubjectKeyCollation, StringComparison.OrdinalIgnoreCase))
                 return only.Collation;
         }
         return null;

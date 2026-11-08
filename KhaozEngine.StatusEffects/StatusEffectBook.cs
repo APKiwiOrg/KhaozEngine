@@ -30,6 +30,10 @@ public sealed partial class StatusEffectBook
         _maxEffectsPerActor = maxEffectsPerActor;
     }
 
+    /// <summary>StatusEffectBookLifecycleTests seeds the uint boundary so it can prove modifier versions keep
+    /// advancing beyond it without applying billions of effects.</summary>
+    internal void SeedModifierStampForTests(ulong stamp) => _modifierStamp = stamp;
+
     /// <summary>Retained actors, including empty actors awaiting a changed-actor drain.</summary>
     public int ActorCount => _actors.Count;
 

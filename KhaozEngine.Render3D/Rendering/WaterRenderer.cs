@@ -277,6 +277,7 @@ namespace KhaozEngine.Render3D.Rendering
             float breakDepth = shoreLive
                 ? WaterShoaling.BreakDepth(ocean.SignificantHeight, settings.SurfBreakerIndex)
                 : 0f;
+            WaterWaveUniforms waves = WaterWaveUniforms.From(settings, timeSeconds);
             var u = new WaterUbo
             {
                 ViewProj = clipViewProj,
@@ -287,29 +288,22 @@ namespace KhaozEngine.Render3D.Rendering
                 DeepColor = deep,
                 ShallowColor = shallow,
                 HorizonColor = horizon,
-                WaveParams = new Vector4(settings.WaveScale, settings.WaveSpeed, settings.NormalStrength, timeSeconds),
+                WaveParams = waves.WaveParams,
                 ShoreGlint = new Vector4(settings.ShoreFadeDistance, settings.GlintStrength, settings.GlintExponent, settings.Opacity),
-                DetailParams = new Vector4(settings.WaveWarpStrength, settings.DetailFadeDistance,
-                    settings.DistantDetailScale, settings.ShallowDepth),
+                DetailParams = waves.DetailParams,
                 SkyHorizon = skyHorizon,
                 SkyZenith = skyZenith,
                 SkyParams = new Vector4(discCount, atmosphereEnabled ? 1f : 0f, 0f, 0f),
                 ReflectGlint = new Vector4(settings.SkyReflectionStrength, settings.SkyReflectionSunStrength,
                     settings.GlintRoughness, settings.GlintDistantRoughness),
-                SwellParams = new Vector4(settings.SwellAmplitude, settings.SwellWavelength,
-                    GerstnerWaves.DegreesToRadians(settings.SwellDirectionDegrees),
-                    GerstnerWaves.DegreesToRadians(settings.SwellSpreadDegrees)),
-                SwellShape = new Vector4(settings.SwellSteepness, settings.SwellSpeed,
-                    Math.Clamp(settings.SwellComponents, 1, GerstnerWaves.MaxComponents), settings.SwellSeed),
+                SwellParams = waves.SwellParams,
+                SwellShape = waves.SwellShape,
                 Absorption = absorption,
                 FoamColor = foam,
                 FoamParams = new Vector4(settings.FoamStrength, settings.FoamCrestCoverage,
                     settings.FoamShoreWidth, settings.FoamPatternScale),
-                RippleSpectrum = new Vector4(
-                    Math.Clamp(settings.RippleComponents, 1, Internal.RippleSpectrum.MaxComponents),
-                    settings.RippleLacunarity, settings.RippleGain, settings.RippleSeed),
-                FootprintParams = new Vector4(settings.FootprintSamples, settings.VarianceToRoughness,
-                    MathF.Max(settings.ClipmapBandLimitSamples, 1f), 0f),
+                RippleSpectrum = waves.RippleSpectrum,
+                FootprintParams = waves.FootprintParams,
                 // FftParams.w is the top mip index of the live maps, and it is the switch that turns the whole
                 // band-limit on: 0 (which is what an ocean with no mip chain reports, i.e. every consumer that has
                 // not opted into the clipmap) makes oceanMip early-return and both stages sample a literal LOD 0.
@@ -529,10 +523,12 @@ namespace KhaozEngine.Render3D.Rendering
             // its OWN for already ran in PrepareFrame, before this list was opened.
             // The demand is re-derived here and compared: a host that queued a plane AFTER preparing would
             // otherwise render an ocean plane procedurally with nothing to show for it.
-            if (AnyPlaneWantsOcean(planes, settings) != _preparedWantOcean)
-                throw new InvalidOperationException(
+            bool wantOcean = AnyPlaneWantsOcean(planes, settings);
+            if (wantOcean != _preparedWantOcean)
+                throw new WaterFrameStateException(WaterFrameRefusal.OceanDemandChanged,
                     "The water planes changed between PrepareFrame and Draw. Queue every plane before calling "
-                    + "Scene3D.PrepareFrame() (see IFramePreparer).");
+                    + "Scene3D.PrepareFrame() (see IFramePreparer).")
+                { PreparedOceanDemand = _preparedWantOcean, ActualOceanDemand = wantOcean };
             _ocean.Record(cl);
             var oceanMaps = OceanMaps.From(_ocean);
             // The depth field, likewise once per frame and ahead of BindTargets. Uploads only when the field

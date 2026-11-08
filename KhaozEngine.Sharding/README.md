@@ -217,3 +217,16 @@ preserves source pose and ownership. This is the explicit NetWorld teleport/rest
 Admission receives `CellImportPurpose.Restore`, `Transfer` or `Relocate`. The distinction is semantic:
 a live transfer preserves carried motion and accepted input buffers, while a cold restore or relocation
 settles and reclassifies its destination. Neither purpose may publish an unproved batch prefix.
+
+## Frame refusals
+
+`ShardFrameException` derives from `ArgumentException`, retaining `ParamName` (`physicsFactory`). Its required
+`Reason` is a `ShardFrameRefusal`. Messages remain developer prose.
+
+| `Reason` | What it refuses | Identifiers |
+| --- | --- | --- |
+| `PhysicsFactoryOriginMismatch` | a factory world whose origin differs from the framed cell's anchor | `Cell`, `MemberName` (`PhysicsWorldFactory`), `ActualOrigin`, `ExpectedOrigin` |
+
+`ShardHost` captures the compared origin once, before disposing the refused world, and publishes no cell for
+that refusal. With frame anchoring off, it does not validate the origin. The family lives here because Sharding
+owns admission of a factory world. It does not depend on NetWorld.

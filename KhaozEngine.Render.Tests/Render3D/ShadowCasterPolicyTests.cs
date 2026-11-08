@@ -203,8 +203,11 @@ namespace KhaozEngine.Tests.Render3D
         {
             // The contradiction: no colour pass and no depth pass is an instance that costs a slot and draws
             // nothing anywhere. Refused where it is queued rather than dropped silently deeper in the frame.
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => Inst(0, 0f, castsShadows: false, shadowOnly: true));
+            var ex = Assert.Throws<DrawAdmissionArgumentException>(() => Inst(0, 0f, castsShadows: false, shadowOnly: true));
             Assert.Equal("shadowOnly", ex.ParamName);
+            Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, ex.Reason);
+            Assert.True(ex.ShadowOnly);
+            Assert.False(ex.CastsShadows);
             // Either flag alone is fine.
             Assert.False(Inst(0, 0f, castsShadows: false).ShadowOnly);
             Assert.True(Inst(0, 0f, shadowOnly: true).CastsShadows);

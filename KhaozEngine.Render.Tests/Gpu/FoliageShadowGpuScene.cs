@@ -14,7 +14,7 @@ public sealed class FoliageShadowGpuScene : IDisposable
     Render3DPreview? _preview;
     public MeshHandle Shrub { get; private set; }
     public MeshHandle Floor { get; private set; }
-    public static GltfMesh ShrubMesh() => MeshPrimitives.Tile(.8f, 2f);
+    public static GltfMesh ShrubMesh() => RendererPerfSceneInputs.ShrubMesh();
 
     public Scene3D Scene
     {

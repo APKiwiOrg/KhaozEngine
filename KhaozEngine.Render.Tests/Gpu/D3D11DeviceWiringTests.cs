@@ -40,36 +40,22 @@ namespace KhaozEngine.Tests.Gpu
         // The provider's throw-to-real transition.
         // ---------------------------------------------------------------------------------------------------
 
-        /// <summary>
-        /// THE OLD "NOT BUILT YET" ANSWER IS GONE, and off Windows what replaces it is a PLATFORM answer. This is
-        /// the exception a caller who named the native backend on macOS or Linux actually reads, and it must not
-        /// say the backend is unfinished (it is not) or that their machine is at fault in some unnamed way.
-        /// <para>
-        /// It must also reach that answer WITHOUT loading the Direct3D interop, which is the whole reason the
-        /// platform guard is the first statement of both entry points rather than a check inside the creation
-        /// body.
-        /// </para>
-        /// </summary>
+        /// <summary>Both entry points refuse an unsupported platform before loading Direct3D interop.</summary>
         [Fact]
-        public void OffWindows_BothCreationEntryPoints_RefuseWithAPlatformAnswerAndLoadNoInterop()
+        public void OffWindows_BothCreationEntryPoints_RefuseAndLoadNoInterop()
         {
-            if (KhaozEngineD3D11.IsPlatformSupported) return;   // on Windows they create a real device
+            if (KhaozEngineD3D11.IsPlatformSupported) return;
 
             var provider = new D3D11BackendProvider();
-
-            var windowed = Assert.Throws<PlatformNotSupportedException>(
+            var windowed = Assert.Throws<D3D11BackendCreationPlatformException>(
                 () => provider.CreateForWindow(new GpuWindowedDeviceRequest(
                     new GpuWindowHandle(GpuWindowKind.Win32, new IntPtr(1)), 640, 480, true)));
-            var headless = Assert.Throws<PlatformNotSupportedException>(() => provider.CreateHeadless());
+            var headless = Assert.Throws<D3D11BackendCreationPlatformException>(() => provider.CreateHeadless());
 
+            // The retired message. A build that still said this would be telling a tester the row never
+            // landed, which is the one thing this exception must no longer claim.
             foreach (Exception ex in new Exception[] { windowed, headless })
-            {
-                Assert.Contains("Direct3D 11", ex.Message, StringComparison.Ordinal);
-                Assert.Contains("operating system", ex.Message, StringComparison.Ordinal);
-                // The retired message. A build that still said this would be telling a tester the row never
-                // landed, which is the one thing this exception must no longer claim.
                 Assert.DoesNotContain("still being built", ex.Message, StringComparison.Ordinal);
-            }
 
             D3D11InteropLoad.AssertNotLoaded();
         }

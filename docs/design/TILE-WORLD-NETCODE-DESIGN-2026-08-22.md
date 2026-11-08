@@ -395,8 +395,12 @@ and shows it immediately without waiting.
 constructed with `cellSize = TileRegion.Size` (64) and every insert, query and `CellCoord.FromWorld` call takes
 `(tileX, tileZ)` as the floats. A cell is then exactly a `RegionCoord`, floor division on integers with no negated-z
 off-by-one at boundaries (`TileWorldSpace` negates z for rendering only and is never consulted here). Interest radius
-is 15 tiles (OSRS's view distance) and the overlap margin 16, satisfying `InterestRadius <= OverlapMargin`. Planes do
-not shard: a cell holds every plane of its region and interest is filtered by plane in the snapshot.
+is 15 tiles (OSRS's view distance) and the default overlap margin is 25, covering the inflated query for every
+legal footprint at that radius. Server construction enforces `InterestRadius <= OverlapMargin`, and definition
+and spawn admission enforce the footprint's inflated query radius. The
+[interest refusal table](../../KhaozEngine.TileWorld.Netcode/README.md#interest-refusals) names the reasons and
+typed radii. Planes do not shard: a cell holds every plane of its region and interest is filtered by plane in the
+snapshot.
 
 Per cell: the ECS world with `TileMoveState` (replicated, extension id assigned in `TileProtocol`), `TileIdentity`
 (display name, replicated), a `RemoteCommandQueue<TileCommand>` per resident player, and the cell's own replicator

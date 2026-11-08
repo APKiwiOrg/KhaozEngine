@@ -121,18 +121,15 @@ public class MathUtilTests
         Assert.Equal(MathF.PI, MathUtil.DeltaAngle(0f, -MathF.PI));
     }
 
-    [Fact]
-    public void MoveTowardsAngle_StepsAtMostMaxDelta()
+    [Theory]
+    [InlineData(1f, 0.1f, 0.1f)]
+    [InlineData(-1f, 0.1f, -0.1f)]
+    [InlineData(1f, 5f, 1f)]
+    [InlineData(-1f, 5f, -1f)]
+    public void MoveTowardsAngle_StepsByAtMostMaxDeltaWithoutOvershooting(
+        float target, float maxDelta, float expected)
     {
-        Assert.Equal(0.1f, MathUtil.MoveTowardsAngle(0f, 1f, 0.1f), 1e-5f);
-        Assert.Equal(-0.1f, MathUtil.MoveTowardsAngle(0f, -1f, 0.1f), 1e-5f);
-    }
-
-    [Fact]
-    public void MoveTowardsAngle_ArrivesWithoutOvershooting()
-    {
-        Assert.Equal(1f, MathUtil.MoveTowardsAngle(0f, 1f, 5f), 1e-5f);
-        Assert.Equal(-1f, MathUtil.MoveTowardsAngle(0f, -1f, 5f), 1e-5f);
+        Assert.Equal(expected, MathUtil.MoveTowardsAngle(0f, target, maxDelta), 1e-5f);
     }
 
     [Fact]

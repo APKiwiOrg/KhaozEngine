@@ -20,23 +20,24 @@ public sealed class MapMarkerRegistryTests
     {
         // disabled-child: only the prefab child is disabled.
         MarkerFixture child = MarkerFixtures.DuplicateNames("disabled-child");
-        string[] errorsBeforeRename = RefuseBothPaths(child);
+        MapDocumentFinding errorsBeforeRename = RefuseBothPaths(child);
         MapPrefabMarkerChild entry = EntryChild(child);
         var renamedChild = MarkerFixtures.WithEntryOverride(child,
             new MapPrefabReplaceOverride(MarkerFixtures.EntryKey, entry with { Value = entry.Value with { Name = "arrival-child" } }));
         MapMarkerRegistry childRenamed = AcceptBothPaths(renamedChild);
         _ = AcceptBothPaths(MarkerFixtures.WithEntryOverride(child, new MapPrefabRemoveOverride(MarkerFixtures.EntryKey)));
-        string[] errorsAfterRestore = RefuseBothPaths(MarkerFixtures.WithEntryOverride(renamedChild, null));
+        MapDocumentFinding errorsAfterRestore = RefuseBothPaths(MarkerFixtures.WithEntryOverride(renamedChild, null));
 
-        Assert.Contains(errorsBeforeRename, e => e.Contains("duplicate marker name", StringComparison.Ordinal) &&
-            e.EndsWith("explicit marker replace override with a new name, or rename the world marker.", StringComparison.Ordinal));
+        Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, errorsBeforeRename.Reason);
+        Assert.Equal("arrival", errorsBeforeRename.MarkerName);
+        Assert.Equal(new[] { "a/entry", "w" }, errorsBeforeRename.MarkerIds);
         Assert.Equal(new[] { "arrival", "arrival-child" }, childRenamed.All.Select(m => m.Name).Order(StringComparer.Ordinal));
         Assert.Equal("w", childRenamed.FindByName("arrival")!.Id);
         Assert.Equal("a/entry", childRenamed.FindByName("arrival-child")!.Id);
         Assert.Null(childRenamed.FindByName("Arrival"));
         Assert.Equal(2, childRenamed.All.Count);
         Assert.Equal("w", Assert.Single(childRenamed.Enabled).Id);
-        Assert.Equal(errorsBeforeRename, errorsAfterRestore);
+        SameCollision(errorsBeforeRename, errorsAfterRestore);
 
         // disabled-world: only the world marker is disabled.
         MarkerFixture world = MarkerFixtures.DuplicateNames("disabled-world");
@@ -48,14 +49,16 @@ public sealed class MapMarkerRegistryTests
         errorsAfterRestore = RefuseBothPaths(MarkerFixtures.WithWorldMarkers(renamedWorld, original));
         IReadOnlyList<MapMarkerFinding> findings = new MapMarkerRoleCatalog(new[] { "entry-role" }).Validate(worldRenamed);
 
-        Assert.Contains(errorsBeforeRename, e => e.Contains("duplicate marker name", StringComparison.Ordinal));
+        Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, errorsBeforeRename.Reason);
+        Assert.Equal("arrival", errorsBeforeRename.MarkerName);
+        Assert.Equal(new[] { "a/entry", "w" }, errorsBeforeRename.MarkerIds);
         Assert.Equal(new[] { "arrival", "arrival-world" }, worldRenamed.All.Select(m => m.Name).Order(StringComparer.Ordinal));
         Assert.Equal(new[] { "second", "first" }, worldRenamed.FindById("w")!.Tags);
         Assert.Equal("unknown-role", Assert.Single(findings).Code);
         Assert.Equal("w", findings[0].MarkerId);
         Assert.Equal("unregistered-role", worldRenamed.FindById("w")!.Role);
         Assert.Equal("a/entry", Assert.Single(worldRenamed.Enabled).Id);
-        Assert.Equal(errorsBeforeRename, errorsAfterRestore);
+        SameCollision(errorsBeforeRename, errorsAfterRestore);
     }
 
     [Fact]
@@ -65,11 +68,14 @@ public sealed class MapMarkerRegistryTests
         MapLocalMarkerDoc w = MarkerFixtures.DuplicateWorldMarker("disabled-world") with { Name = "arrival-world" };
 
         // World against prefab-derived: the world marker takes the instance child's world ID under its own name.
-        string[] prefabId = RefuseBothPaths(MarkerFixtures.WithWorldMarkers(basis, w with { Id = "a/entry" }));
-        Assert.Contains(prefabId, e => e.Contains("duplicate marker ID 'a/entry'", StringComparison.Ordinal));
+        MapDocumentFinding prefabId = RefuseBothPaths(MarkerFixtures.WithWorldMarkers(basis, w with { Id = "a/entry" }));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, prefabId.Reason);
+        Assert.Equal("a/entry", prefabId.MarkerId);
         // World against world, under distinct names.
-        string[] worldId = RefuseBothPaths(MarkerFixtures.WithWorldMarkers(basis, w, w with { Name = "arrival-other" }));
-        Assert.Contains(worldId, e => e.Contains("uplicate marker", StringComparison.Ordinal) && e.Contains("'w'", StringComparison.Ordinal));
+        MapDocumentFinding worldId = RefuseBothPaths(MarkerFixtures.WithWorldMarkers(basis, w, w with { Name = "arrival-other" }));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, worldId.Reason);
+        Assert.Equal("w", worldId.EntityId);
+        Assert.Equal("marker", worldId.SubjectKind);
         // Positive control: distinct IDs and names pass.
         Assert.Equal(new[] { "a/entry", "w", "w2" }, AcceptBothPaths(MarkerFixtures.WithWorldMarkers(basis, w,
             w with { Id = "w2", Name = "arrival-other" })).All.Select(m => m.Id));
@@ -80,9 +86,35 @@ public sealed class MapMarkerRegistryTests
         _ = MapResolverV2.Resolve(stacked.Document, stacked.Assets, counting, MarkerFixtures.Options());
         Assert.True(counting.ReadPatchCalls + counting.FindPatchesCalls > 0);
         var markers = stacked.Document.BuildingIntent!.Markers;
-        string[] stackedName = RefuseBothPaths(MarkerFixtures.WithWorldMarkers(stacked,
+        MapDocumentFinding stackedName = RefuseBothPaths(MarkerFixtures.WithWorldMarkers(stacked,
             markers.Select(m => m.Id == "stacked-disabled" ? m with { Name = "stacked-surface-name" } : m).ToArray()));
-        Assert.Contains(stackedName, e => e.Contains("duplicate marker name 'stacked-surface-name'", StringComparison.Ordinal));
+        Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, stackedName.Reason);
+        Assert.Equal("stacked-surface-name", stackedName.MarkerName);
+        _ = AcceptBothPaths(stacked);
+    }
+
+    [Theory]
+    [InlineData(false, MapDocumentRefusal.MarkerNameDuplicate)]
+    [InlineData(true, MapDocumentRefusal.IdentityDuplicate)]
+    public void MetadataUniqueness_ReportsTheTypedCollision(bool duplicateId, MapDocumentRefusal reason)
+    {
+        MarkerFixture basis = MarkerFixtures.DuplicateNames("disabled-world");
+        MapLocalMarkerDoc world = MarkerFixtures.DuplicateWorldMarker("disabled-world");
+        if (duplicateId) world = world with { Id = "a/entry", Name = "arrival-world" };
+        MarkerFixture invalid = MarkerFixtures.WithWorldMarkers(basis, world);
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerExpansion.RequireUnique(invalid.Document, invalid.Assets));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(duplicateId ? "a/entry" : null, error.MarkerId);
+        Assert.Equal(duplicateId ? null : "arrival", error.MarkerName);
+        Assert.Equal(duplicateId ? new[] { "a/entry", "a/entry" } : new[] { "a/entry", "w" }, error.MarkerIds);
+        MapDocumentFinding finding = Assert.Single(error.Findings!);
+        Assert.Equal(reason, finding.Reason);
+        Assert.Equal(error.MarkerId, finding.MarkerId);
+        Assert.Equal(error.MarkerName, finding.MarkerName);
+        Assert.Equal(error.MarkerIds, finding.MarkerIds);
+        Assert.Equal(new[] { world }, invalid.Document.BuildingIntent!.Markers);
+        MarkerFixture control = MarkerFixtures.WithWorldMarkers(basis, world with { Id = "w", Name = "arrival-world" });
+        MapMarkerExpansion.RequireUnique(control.Document, control.Assets);
     }
 
     [Fact]
@@ -225,8 +257,8 @@ public sealed class MapMarkerRegistryTests
         fixture.Assets.GetPrefab(MarkerFixtures.DuplicateResource).Children.OfType<MapPrefabMarkerChild>().Single();
 
     /// <summary>The loaded expansion and the stored resolver both refuse before any patch read, the loaded one also
-    /// before stage ExpandedGeometry, with one message.</summary>
-    static string[] RefuseBothPaths(MarkerFixture fixture)
+    /// before stage ExpandedGeometry, for the duplicate marker identity.</summary>
+    static MapDocumentFinding RefuseBothPaths(MarkerFixture fixture)
     {
         var loaded = new CountingSurfaceSource(MapDocumentSurfaceSource.Capture(fixture.Document));
         var stages = new List<string>();
@@ -240,8 +272,18 @@ public sealed class MapMarkerRegistryTests
             MapResolverV2.Resolve(fixture.Document, fixture.Assets, stored, MarkerFixtures.Options()));
         Assert.Equal(0, stored.ReadPatchCalls);
         Assert.Equal(0, stored.FindPatchesCalls);
-        Assert.Equal(error.Message, storedError.Message);
-        return error.Message.Split('\n');
+        MapDocumentFinding Finding(MapDocumentException e) => e.Findings is { } findings
+            ? Assert.Single(findings) : Assert.IsType<MapDocumentFinding>(MapDocumentFinding.FromException(e));
+        MapDocumentFinding loadedFinding = Finding(error), storedFinding = Finding(storedError);
+        SameCollision(loadedFinding, storedFinding);
+        return loadedFinding;
+    }
+
+    static void SameCollision(MapDocumentFinding expected, MapDocumentFinding actual)
+    {
+        Assert.Equal((expected.Reason, expected.MarkerId, expected.MarkerName, expected.EntityId, expected.SubjectKind, expected.FieldPath),
+            (actual.Reason, actual.MarkerId, actual.MarkerName, actual.EntityId, actual.SubjectKind, actual.FieldPath));
+        Assert.Equal(expected.MarkerIds, actual.MarkerIds);
     }
 
     static MapMarkerRegistry AcceptBothPaths(MarkerFixture fixture)

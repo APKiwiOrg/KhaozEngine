@@ -5,7 +5,15 @@ namespace KhaozEngine.NetWorld;
 
 /// <summary>The authoritative result of one commitment lifecycle transition.</summary>
 public readonly record struct MovementCommitmentResult(int Slot, uint Sequence, MovementCommitmentEndReason Reason,
-    Vector3 Position, Vector2 Direction);
+    Vector3 Position, Vector2 Direction)
+{
+    internal static MovementCommitmentResult From(int slot, in PlayerMoveState state, MovementCommitmentEndReason reason)
+    {
+        MovementCommitment movement = state.Move.Commitment;
+        return new(slot, movement.Sequence, GroundTravelCommitment.ResolveEndReason(movement, reason),
+            state.Absolute.Position, movement.Direction);
+    }
+}
 
 // The bridge from the request to the Locomotion state the float heads carry. The request moved down into
 // KhaozEngine.Netcode with IAdminControllable (see TypeForwards.cs), below Locomotion, so these two halves of it
@@ -15,7 +23,10 @@ internal static class MovementCommitmentRequestExtensions
 {
     /// <summary>Builds the commitment this request describes, stamped with <paramref name="sequence"/>.</summary>
     public static MovementCommitment Start(this in MovementCommitmentRequest request, uint sequence) =>
-        new(sequence, request.Direction, request.HorizontalSpeed, request.VerticalSpeed, request.Gravity,
+        request.IsGroundTravel
+            ? MovementCommitment.ForGroundTravel(sequence, request.Direction, request.HorizontalSpeed,
+                request.DistanceRemaining, request.PreparationSeconds, request.RecoverySeconds, request.TimeoutSeconds)
+            : new(sequence, request.Direction, request.HorizontalSpeed, request.VerticalSpeed, request.Gravity,
             request.PreparationSeconds, request.RecoverySeconds, request.TimeoutSeconds);
 
     /// <summary>Refuses a request MovementCommitment would refuse. A default request never ran the constructor,

@@ -64,7 +64,15 @@ public sealed class InMemoryTextAuthoringTests
         var unknown = await Assert.ThrowsAsync<ContentAuthoringException>(() => ApplyAsync(
             text, null, ContentTextEdit.Remove(Target(NameField, "fr"))));
         Assert.Equal(ContentAuthoringException.TextLanguageUndeclaredReason, unknown.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextLanguageUndeclared, unknown.Refusal);
+        Assert.Equal(Item, unknown.Type);
+        Assert.Equal(0, unknown.Id);
+        Assert.Equal("name", unknown.FieldName);
+        Assert.Equal("fr", unknown.Language);
         Assert.Single((await store.GetOpenDraftAsync())!.TextState!.Introductions);
+        await ApplyAsync(text, null, ContentTextEdit.Set(Target(NameField, "fr"), "Epee"));
+        ContentDraft repaired = await ApplyAsync(text, null, ContentTextEdit.Remove(Target(NameField, "fr")));
+        Assert.Contains(repaired.TextState!.Edits, edit => edit.Target.Language == "fr" && edit.Operation == ContentTextEditOperation.Remove);
     }
 
     [Fact]
@@ -141,6 +149,10 @@ public sealed class InMemoryTextAuthoringTests
         var missing = await Assert.ThrowsAsync<ContentAuthoringException>(() => ApplyAsync(
             text, null, ContentTextEdit.Set(Target(NameField, "en", "ghost"), "Nobody")));
         Assert.Equal(ContentAuthoringException.UnknownRowReason, missing.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextBindingRowUnknown, missing.Refusal);
+        Assert.Equal(Item, missing.Type);
+        Assert.Equal(0, missing.Id);
+        Assert.Equal("ghost", missing.RowKey);
 
         string longField = new('f', ContentTextKey.MaxKeyLength);
         ContentFieldSchema schema = new(new ContentFieldEntry[]
@@ -157,6 +169,9 @@ public sealed class InMemoryTextAuthoringTests
         Assert.Equal(ContentAuthoringException.TextBoundsReason, tooLong.Reason);
         Assert.Null(await wide.GetOpenDraftAsync());
         Assert.Null(await store.GetOpenDraftAsync());
+        ContentDraft repaired = await ApplyAsync(text, [Add("ghost")],
+            ContentTextEdit.Set(Target(NameField, "en", "ghost"), "Nobody"));
+        Assert.Equal("ghost", Assert.Single(repaired.TextState!.Edits).Target.Key.ToString());
     }
 
     [Fact]
@@ -170,6 +185,14 @@ public sealed class InMemoryTextAuthoringTests
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => ApplyAsync(
             text, new[] { Add() }, ContentTextEdit.Set(Target(over, "en"), "Sword")));
         Assert.Equal(ContentAuthoringException.TextBoundsReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextFieldNameTooLong, refused.Refusal);
+        Assert.Equal(Item, refused.Type);
+        Assert.Equal(0, refused.Id);
+        Assert.Equal("item", refused.TypeKey);
+        Assert.Equal(over, refused.FieldName);
+        Assert.Equal("en", refused.Language);
+        Assert.Equal(65, refused.ActualCharacters);
+        Assert.Equal(64, refused.MaximumCharacters);
         Assert.Null(await store.GetOpenDraftAsync());
         Assert.Equal(0, await AuditCountAsync(store));
 
@@ -207,11 +230,15 @@ public sealed class InMemoryTextAuthoringTests
         IContentTextAuthoringStore text = store;
         var empty = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.FreezeChangesAsync(0));
         Assert.Equal(ContentAuthoringException.NoOpenDraftReason, empty.Reason);
+        Assert.Equal(ContentAuthoringRefusal.NoPendingDraft, empty.Refusal);
 
         await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Name, string.Empty));
         await ApplyAsync(text, null, ContentTextEdit.Remove(Name));
         var moved = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.FreezeChangesAsync(4));
         Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, moved.Reason);
+        Assert.Equal(ContentAuthoringRefusal.BaseVersionMoved, moved.Refusal);
+        Assert.Equal(4, moved.ExpectedBaseVersion);
+        Assert.Equal(0, moved.ActualBaseVersion);
         Assert.False((await store.GetOpenDraftAsync())!.IsFrozen);
 
         ContentTextPublishSnapshot snapshot = await text.FreezeChangesAsync(0);
@@ -228,6 +255,13 @@ public sealed class InMemoryTextAuthoringTests
         var frozen = await Assert.ThrowsAsync<ContentAuthoringException>(() => ApplyAsync(
             text, null, ContentTextEdit.Set(Name, "late")));
         Assert.Equal(ContentAuthoringException.PublishInProgressReason, frozen.Reason);
+        Assert.Equal(ContentAuthoringRefusal.PublishInProgress, frozen.Refusal);
+        Assert.Equal("ApplyChangesAsync", frozen.MemberName);
+        Assert.Equal(0, frozen.FrozenForBaseVersion);
+        Assert.Equal(ContentTextEditOperation.Remove, (await store.GetOpenDraftAsync())!.TextState!.Edits.Single().Operation);
+        await store.ClearDraftFreezeAsync();
+        ContentDraft repaired = await ApplyAsync(text, null, ContentTextEdit.Set(Name, "late"));
+        Assert.Equal("late", Assert.Single(repaired.TextState!.Edits).Value);
     }
 
     [Fact]
@@ -300,10 +334,15 @@ public sealed class InMemoryTextAuthoringTests
         var foreign = TextStore();
         IContentTextAuthoringStore other = foreign;
         await ApplyAsync(other, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
-        await other.FreezeChangesAsync(0);
+        ContentTextPublishSnapshot foreignSnapshot = await other.FreezeChangesAsync(0);
         var epoch = await Assert.ThrowsAsync<ContentAuthoringException>(() => other.CommitTextPublishAsync(plan, Request(0), null));
         Assert.Equal(ContentAuthoringException.TextStateMismatchReason, epoch.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextPlanEpochMismatch, epoch.Refusal);
+        Assert.Equal(plan.StoreEpoch, epoch.ExpectedEpoch);
+        Assert.Equal(await foreign.GetStoreEpochAsync(), epoch.ActualEpoch);
         Assert.Empty(await foreign.ListVersionsAsync());
+        var foreignPlan = new ContentTextPublishPlan(rowPlan, foreignSnapshot, plan.Candidate, new[] { chunk });
+        Assert.Equal(1, (await other.CommitTextPublishAsync(foreignPlan, Request(0), null)).VersionNumber);
 
         await store.ClearDraftFreezeAsync();
         await ApplyAsync(text, null, ContentTextEdit.Set(Name, "Rival"));
@@ -311,9 +350,15 @@ public sealed class InMemoryTextAuthoringTests
         int audits = await AuditCountAsync(store);
         var rival = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.CommitTextPublishAsync(plan, Request(0), null));
         Assert.Equal(ContentAuthoringException.TextStateMismatchReason, rival.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextPlanDraftMismatch, rival.Refusal);
+        Assert.Equal(0, rival.ExpectedBaseVersion);
         Assert.Empty(await store.ListVersionsAsync());
         Assert.Equal("Rival", (await store.GetOpenDraftAsync())!.TextState!.Edits.Single().Value);
         Assert.Equal(audits, await AuditCountAsync(store));
+        await store.ClearDraftFreezeAsync();
+        await ApplyAsync(text, null, ContentTextEdit.Set(Name, "Sword"));
+        await text.FreezeChangesAsync(0);
+        Assert.Equal(1, (await text.CommitTextPublishAsync(plan, Request(0), null)).VersionNumber);
     }
 
     [Fact]

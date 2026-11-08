@@ -240,9 +240,11 @@ namespace KhaozEngine.Tests.MapEditTool
             {
                 (MapEditSession session, QueryService query) = OpenSample(dir);
 
-                MapDocumentException ex = Assert.Throws<MapDocumentException>(() =>
+                Assert.Throws<MapDocumentException>(() =>
                     query.ScatterPreviewInRect("does-not-exist", -10f, -10f, 10f, 10f));
-                Assert.Contains("does-not-exist", ex.Message);
+
+                ScatterPreviewResult accepted = query.ScatterPreviewInRect("trees", -10f, -10f, 10f, 10f);
+                Assert.Equal("trees", accepted.Layer);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

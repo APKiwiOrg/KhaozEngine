@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
 using KhaozEngine.Attachments;
 using Xunit;
@@ -14,18 +13,19 @@ public class AuthoredStringTests
     [InlineData("joint", '\uDC00')]
     [InlineData("mesh", '\uD800')]
     [InlineData("mesh", '\uDC00')]
-    public void Constructor_RejectsMalformedUtf16WithPartAndReferenceContext(string field, char surrogate)
+    public void Constructor_RejectsMalformedUtf16WithParameterContext(string field, char surrogate)
     {
         RigidAttachmentPartDefinition part = AttachmentFixtures.Part(7);
         string reference = field == "joint" ? "hip" + surrogate : "parts/plate" + surrogate + ".glb";
         part = field == "joint" ? part with { Joint = reference } : part with { Mesh = new(reference, AttachmentFixtures.Hash) };
 
-        ArgumentException error = Assert.Throws<ArgumentException>(() => new AttachmentSetDefinition(new[] { part }));
+        var error = Assert.Throws<AttachmentSetArgumentException>(() => new AttachmentSetDefinition(new[] { part }));
 
         Assert.Equal("parts", error.ParamName);
-        Assert.Contains("part 7", error.Message);
-        Assert.Contains(field, error.Message);
-        Assert.Contains(reference, error.Message);
+        Assert.Equal(field == "joint" ? AttachmentSetRefusal.JointNameMalformedUtf16 : AttachmentSetRefusal.MeshKeyInvalid, error.Reason);
+        Assert.Equal(7u, error.PartId);
+        if (field == "joint") Assert.Equal(reference, error.JointName);
+        else Assert.Equal(reference, error.MeshKey);
     }
 
     [Theory]
@@ -38,10 +38,12 @@ public class AuthoredStringTests
         string json = AttachmentFixtures.SetJson(AttachmentFixtures.PartJson()).Replace(
             field == "joint" ? "hip" : "parts/plate.glb", escape, StringComparison.Ordinal);
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
+        var error = Assert.Throws<AttachmentSetDataException>(() =>
             AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), "malformed.json"));
 
-        Assert.Contains("malformed.json", error.Message);
+        Assert.Equal(AttachmentSetRefusal.JsonValueShapeInvalid, error.Reason);
+        Assert.Equal("malformed.json", error.SourceName);
+        Assert.NotNull(error.InnerException);
     }
 
     [Theory]
@@ -86,6 +88,9 @@ public class AuthoredStringTests
         AttachmentSetDefinition parsed = AttachmentSetJson.Parse(AttachmentSetJson.Write(first), "ordinal.json");
         var joints = new HashSet<string>(StringComparer.Ordinal) { decomposed.Joint };
         var meshes = new Dictionary<string, string>(StringComparer.Ordinal) { [decomposed.Mesh.Key] = AttachmentFixtures.Hash };
-        Assert.Throws<InvalidDataException>(() => parsed.ValidateReferences(joints, meshes));
+        if (field == "joint")
+            AttachmentSetReferenceAssertions.Joint(() => parsed.ValidateReferences(joints, meshes), 7, "h\u00EDp");
+        else
+            AttachmentSetReferenceAssertions.Mesh(() => parsed.ValidateReferences(joints, meshes), 7, "parts/pl\u00E1te.glb", null);
     }
 }

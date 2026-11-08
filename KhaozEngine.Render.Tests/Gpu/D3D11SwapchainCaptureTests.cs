@@ -85,9 +85,11 @@ namespace KhaozEngine.Tests.Gpu
             var destination = new FakeTexture(1280, 720, 1, 1, GpuPixelFormat.B8G8R8A8UNorm);
             var commands = new RecordingGpuCommandList(new NullGpuCommandList());
 
-            Assert.Throws<InvalidOperationException>(
+            var refusal = Assert.Throws<GpuSwapchainCopyStateException>(
                 () => D3D11BackBufferCopySource.RecordCopy(swapchain, commands, destination));
-            Assert.Throws<InvalidOperationException>(
+            Assert.Equal(GpuSwapchainCopyRefusal.SwapchainNotCopyable, refusal.Reason);
+            Assert.Equal("CopySwapchainColor", refusal.Command);
+            Assert.Throws<GpuSwapchainCopyStateException>(
                 () => D3D11BackBufferCopySource.RecordCopy(null, commands, destination));
             Assert.Empty(commands.TextureCopies);
         }
@@ -112,13 +114,15 @@ namespace KhaozEngine.Tests.Gpu
             recorder.SetFramebuffer(offscreen);
             log.Reset();
 
-            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+            GpuSwapchainCopyStateException refused = Assert.Throws<GpuSwapchainCopyStateException>(
                 () => D3D11BackBufferCopySource.RecordCopy(swapchain, recorder, destination));
-            Assert.Equal(SwapchainCopyCheck.NotBoundMessage, refused.Message);
+            Assert.IsAssignableFrom<InvalidOperationException>(refused);
+                Assert.Equal(GpuSwapchainCopyRefusal.SwapchainNotBound, refused.Reason);
+                Assert.Equal("CopySwapchainColor", refused.Command);
             Assert.Empty(log.Trace);
 
             var foreign = new RecordingGpuCommandList(new NullGpuCommandList());
-            Assert.Throws<InvalidOperationException>(
+            Assert.Throws<GpuSwapchainCopyStateException>(
                 () => D3D11BackBufferCopySource.RecordCopy(swapchain, foreign, destination));
             Assert.Empty(foreign.TextureCopies);
 
@@ -131,7 +135,7 @@ namespace KhaozEngine.Tests.Gpu
 
             recorder.Begin();
             Assert.False(recorder.BoundSwapchainFramebuffer);
-            Assert.Throws<InvalidOperationException>(
+            Assert.Throws<GpuSwapchainCopyStateException>(
                 () => D3D11BackBufferCopySource.RecordCopy(swapchain, recorder, destination));
             recorder.End();
         }

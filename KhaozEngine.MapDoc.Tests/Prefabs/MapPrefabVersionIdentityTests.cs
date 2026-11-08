@@ -45,7 +45,8 @@ public sealed class MapPrefabVersionIdentityTests
             "extra-segment" => "prefab/hut/" + sha + "/extra",
             _ => "other/hut/" + sha,
         };
-        Assert.Equal("Prefab payload ID does not match its resource ID.", Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(bytes, id)).Message);
+        Assert.Equal("hut", MapPrefabFile.Read(bytes, "hut").Id);
+        Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(bytes, id));
     }
     [Fact]
     public void LoadedAndStoredClosures_AcceptTheSameLogicalPayload()

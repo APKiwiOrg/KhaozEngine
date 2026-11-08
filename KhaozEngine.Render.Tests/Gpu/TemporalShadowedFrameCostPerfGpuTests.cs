@@ -55,9 +55,11 @@ namespace KhaozEngine.Tests.Gpu
         internal const int CoverageFrame = 90;
         const int DarkenedLevels = 4, EdgePixels = 2;
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheShadowedYardAtQualityIsMeasuredAt1440p() => Run(2560, 1440, TemporalUpscale.Quality);
 
+        [Trait("Category", "Diagnostic")]
         [GpuFact(RequiresRealGpu = true)]
         public void TheShadowedYardAtNativeIsMeasuredAt1440p() => Run(2560, 1440, TemporalUpscale.Native);
 

@@ -174,6 +174,10 @@ public sealed class SqlServerAccountStore : IAccountStore
                         (object?)name ?? DBNull.Value;
                     cmd.Parameters.Add("@whitelisted", SqlDbType.Bit).Value = WhitelistOnCreate;
                     cmd.Parameters.Add("@now", SqlDbType.DateTimeOffset).Value = UtcNow();
+                    // An internal invariant no input reaches. One source row and two unconditional arms make the MERGE
+                    // update or insert at least one row, and OUTPUT returns every such row. The ways SQLite discards a
+                    // write fail the statement here instead: MERGE ignores IGNORE_DUP_KEY, so a duplicate is an error,
+                    // and OUTPUT without INTO is an error on a target with an enabled insert or update trigger.
                     return await ReadOneAsync(cmd, table, token).ConfigureAwait(false)
                         ?? throw new InvalidOperationException("The account upsert returned no row.");
                 }, ct).ConfigureAwait(false);
@@ -305,7 +309,7 @@ public sealed class SqlServerAccountStore : IAccountStore
         {
             if (shape is { } known) return known;
             bool displayNameRequired = await SqlServerAccountSchema
-                .EnsureAsync(connection, schemaName, qualified, Options.SchemaMode, ct).ConfigureAwait(false);
+                .EnsureAsync(connection, schemaName, Options.Table, qualified, Options.SchemaMode, ct).ConfigureAwait(false);
             var bootstrapped = new TableShape(displayNameRequired);
             shape = bootstrapped;
             return bootstrapped;

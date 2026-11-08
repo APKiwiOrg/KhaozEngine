@@ -78,12 +78,16 @@ public sealed class NameplateLegacyTemplateTests
         var canvas = Canvas();
         var plate = Plate(1);
         NameplateStyle style = default;
+        NameplateTemplate? firstFrame = null;
         for (int frame = 0; frame < 100; frame++)
         {
             style = NameplateStyle.Default with { PanelFill = NameplateStyle.Default.PanelFill.WithAlpha(frame / 100f) };
             canvas.Calls.Clear();
             Assert.True(Draw(canvas, plate, style));
-            Assert.InRange(CacheCount(), 1, 16);
+            // A fade changes only alpha, so every frame reuses the first frame's template rather than churning
+            // the cache with a new geometry per frame.
+            firstFrame ??= LegacyFor(style, 1);
+            Assert.Same(firstFrame, LegacyFor(style, 1));
         }
 
         NameplateTemplate cached = LegacyFor(style, 1);
@@ -184,10 +188,13 @@ public sealed class NameplateLegacyTemplateTests
     [Fact]
     public void FiveBarsStillDraw()
     {
+        NameplateTemplate warm = LegacyFor(NameplateStyle.Default, 1);
         NameplateTemplate first = LegacyFor(NameplateStyle.Default, 5);
-        int cachedBefore = CacheCount();
         Assert.NotSame(first, LegacyFor(NameplateStyle.Default, 5));
-        Assert.Equal(cachedBefore, CacheCount());
+        // A five-bar template is built per call and never cached: sixteen of them would otherwise evict the warm
+        // template from the sixteen-entry cache.
+        for (int i = 0; i < 16; i++) LegacyFor(NameplateStyle.Default, 5);
+        Assert.Same(warm, LegacyFor(NameplateStyle.Default, 1));
         Assert.Equal(6, first.Components.Count);
         var canvas = Canvas();
 
@@ -281,13 +288,6 @@ public sealed class NameplateLegacyTemplateTests
 
     private static void LegacyFill(NameplateContent content, Nameplate plate) =>
         NameplateLegacyTemplate.Fill(content, plate);
-
-    private static int CacheCount()
-    {
-        FieldInfo? field = typeof(NameplateLegacyTemplate).GetField("_count", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        return Assert.IsType<int>(field.GetValue(null));
-    }
 
     private static void OnFreshThread(Action action)
     {

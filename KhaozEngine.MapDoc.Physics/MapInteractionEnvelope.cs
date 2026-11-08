@@ -106,8 +106,9 @@ public sealed class MapInteractionEnvelope
                     return (new CompoundShape(children), Vector3.Zero);
                 }
             default:
-                throw new MapDocumentException(
-                    $"Placement '{placementId}' interaction envelope cannot sweep a {shape.GetType().Name}.");
+                throw new MapDocumentException(MapDocumentRefusal.PhysicsSweepShapeUnsupported,
+                    $"Placement '{placementId}' interaction envelope cannot sweep a {shape.GetType().Name}.")
+                { PlacementId = placementId, ShapeType = shape.GetType() };
         }
     }
 

@@ -89,13 +89,16 @@ public class SignInExceptionBaseTests
             new FakeBrowser(holder), _ => new MismatchListener(), new HttpClient(new FakeTokenHandler()));
     }
 
+    /// <summary>A backend outside the engine builds the message-only shape: its text is the payload in
+    /// <see cref="SignInException.Detail"/>, and no engine rule is claimed.</summary>
     [Fact]
     public void Oidc_sign_in_exception_derives_from_the_shared_base()
     {
         OidcSignInException ex = new("boom");
 
         Assert.IsAssignableFrom<SignInException>(ex);
-        Assert.Equal("boom", ex.Message);
+        Assert.Equal("boom", ex.Detail);
+        Assert.Null(ex.Reason);
     }
 
     [Fact]
@@ -104,7 +107,8 @@ public class SignInExceptionBaseTests
         DiscordSignInException ex = new("boom");
 
         Assert.IsAssignableFrom<SignInException>(ex);
-        Assert.Equal("boom", ex.Message);
+        Assert.Equal("boom", ex.Detail);
+        Assert.Null(ex.Reason);
     }
 
     [Fact]
@@ -112,11 +116,15 @@ public class SignInExceptionBaseTests
     {
         InvalidOperationException inner = new("cause");
 
-        Exception oidc = new OidcSignInException("outer", inner);
-        Exception discord = new DiscordSignInException("outer", inner);
+        SignInException oidc = new OidcSignInException("outer", inner);
+        SignInException discord = new DiscordSignInException("outer", inner);
 
         Assert.Same(inner, oidc.InnerException);
         Assert.Same(inner, discord.InnerException);
+        Assert.Equal("outer", oidc.Detail);
+        Assert.Equal("outer", discord.Detail);
+        Assert.Null(oidc.Reason);
+        Assert.Null(discord.Reason);
     }
 
     [Fact]
@@ -147,7 +155,7 @@ public class SignInExceptionBaseTests
     [Fact]
     public async Task One_base_catch_handles_a_failure_from_either_backend()
     {
-        List<string> failures = [];
+        List<(string? ProviderId, SignInRefusal? Reason, string? Detail)> failures = [];
 
         foreach (IIdentityProvider provider in new IIdentityProvider[]
                  { NewOidcProviderThatFailsSignIn(), NewDiscordProviderThatFailsSignIn() })
@@ -158,11 +166,12 @@ public class SignInExceptionBaseTests
             }
             catch (SignInException ex)
             {
-                failures.Add($"{provider.ProviderId}: {ex.Message}");
+                failures.Add((ex.ProviderId, ex.Reason, ex.Detail));
             }
         }
 
-        Assert.Equal(2, failures.Count);
-        Assert.All(failures, f => Assert.Contains("state mismatch", f));
+        (string?, SignInRefusal?, string?)[] expected =
+            [("oidc", SignInRefusal.RedirectStateMismatch, null), ("discord", SignInRefusal.RedirectStateMismatch, null)];
+        Assert.Equal(expected, failures);
     }
 }

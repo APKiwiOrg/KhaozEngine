@@ -110,15 +110,19 @@ public sealed class TileWorldSceneDescriptorTests
         var nowhere = new RigidInstanceDraw(Handle, World) { ShadowOnly = true, CastsShadows = false };
         using var harness = new MotionTestScene();
         harness.Scene.Begin();
-        ArgumentException queue = Assert.Throws<ArgumentException>(() => harness.Scene.Draw(nowhere));
+        var queue = Assert.Throws<DrawAdmissionArgumentException>(() => harness.Scene.Draw(nowhere));
         var legacy = new LegacyTileWorldScene();
         ITileWorldScene scene = legacy;
 
-        ArgumentException fallback = Assert.Throws<ArgumentException>(() => scene.DrawMesh(nowhere));
+        var fallback = Assert.Throws<DrawAdmissionArgumentException>(() => scene.DrawMesh(nowhere));
 
         // The fallback names its own parameter, so only the reason matches the queue's.
         Assert.Equal("draw", fallback.ParamName);
-        Assert.Equal(queue.Message.Replace("'shadowOnly'", "'draw'"), fallback.Message);
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, queue.Reason);
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, fallback.Reason);
+        Assert.Equal("shadowOnly", queue.ParamName);
+        Assert.True(fallback.ShadowOnly);
+        Assert.False(fallback.CastsShadows);
         Assert.Empty(legacy.Drawn);
     }
 

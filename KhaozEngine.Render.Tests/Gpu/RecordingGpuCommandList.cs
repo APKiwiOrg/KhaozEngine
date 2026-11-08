@@ -30,7 +30,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <see cref="CapturePayloads"/> is on) the bytes themselves, and how many draws or dispatches had already
         /// been recorded when it went in. That last number is what turns a pair of uploads into an ORDERING fact:
         /// two writes to one range with no draw between them are a redundant write, and two with a draw between
-        /// them are the ring-collapse hazard <see cref="UniformRewriteAudit"/> looks for (#483).</summary>
+        /// them are the ring-collapse hazard <c>UniformRewriteAudit</c> looks for (#483).</summary>
         internal readonly record struct Upload(IGpuBuffer Buffer, uint Offset, uint Bytes, byte[]? Data = null,
             int DrawsBefore = 0, int FramebufferBindsBefore = 0)
         {
@@ -70,6 +70,18 @@ namespace KhaozEngine.Tests.Gpu
         public int FramebufferBinds => _framebufferBinds;
 
         public RecordingGpuCommandList(IGpuCommandList inner) => Inner = inner;
+        internal bool ForceAttachmentStores { get; init; }
+        internal List<(IGpuFramebuffer Framebuffer, GpuAttachmentStoreActions Stores)> AttachmentStoreBindings { get; } = [];
+        public void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores)
+        {
+            AttachmentStoreBindings.Add((fb, ForceAttachmentStores ? default : stores));
+            if (ForceAttachmentStores) SetFramebuffer(fb);
+            else
+            {
+                NoteFramebuffer(fb);
+                Inner.SetFramebufferWithStoreActions(fb, stores);
+            }
+        }
 
         /// <summary>Keep a COPY of each upload's bytes in <see cref="Upload.Data"/>, so a test can assert what a
         /// packed CPU image actually holds and not only its extent. Off by default: a real frame's list carries
@@ -102,9 +114,11 @@ namespace KhaozEngine.Tests.Gpu
             _resolves.Clear();
             _textureCopies.Clear();
             _colourClears.Clear();
+            _colourClearTargets.Clear();
             ClearDraws();
             _draws = 0;
             _framebufferBinds = 0;
+            FramebufferBindings.Clear();
             ClearReads();
         }
 
@@ -140,12 +154,13 @@ namespace KhaozEngine.Tests.Gpu
         public void End() => Inner.End();
         public void SetFramebuffer(IGpuFramebuffer fb)
         {
-            _framebufferBinds++;
+            NoteFramebuffer(fb);
             Inner.SetFramebuffer(fb);
         }
         public void ClearColorTarget(uint index, Color rgba)
         {
             _colourClears.Add(new ColourClear(index, rgba));
+            _colourClearTargets.Add(FramebufferBindings.Count > 0 ? FramebufferBindings[^1] : null);
             Inner.ClearColorTarget(index, rgba);
         }
         public void ClearDepthStencil(float depth) => Inner.ClearDepthStencil(depth);
@@ -165,12 +180,21 @@ namespace KhaozEngine.Tests.Gpu
         public void SetVertexBuffer(uint slot, IGpuBuffer b) { NoteVertexBuffer(slot, b); Inner.SetVertexBuffer(slot, b); }
         public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes) { NoteVertexBuffer(slot, b); Inner.SetVertexBuffer(slot, b, offsetBytes); }
         public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) { NoteIndexBuffer(b); Inner.SetIndexBuffer(b, fmt); }
-        public void SetScissorRect(uint index, uint x, uint y, uint w, uint h) => Inner.SetScissorRect(index, x, y, w, h);
-        public void SetFullScissorRects() => Inner.SetFullScissorRects();
+        public void SetScissorRect(uint index, uint x, uint y, uint w, uint h)
+        {
+            TraceCommand("scissor", _currentPipeline, x, w);
+            Inner.SetScissorRect(index, x, y, w, h);
+        }
+        public void SetFullScissorRects()
+        {
+            TraceCommand("full-scissor", _currentPipeline);
+            Inner.SetFullScissorRects();
+        }
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
             TraceCommand("draw", _currentPipeline, instanceStart, instanceCount);
             NoteGraphicsReads();
+            if (CaptureInstancedBindings) NoteDrawBindings();
             _draws++;
             Inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
         }

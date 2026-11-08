@@ -44,51 +44,38 @@ public class PhysicsColumnProbeSolidTests
         Assert.True(float.IsPositiveInfinity(hits[0].Headroom));
     }
 
-    [Fact]
-    public void TwoStackedSolidBoxes_WithGap_TwoSurfaces_HeadroomToUnderside()
+    // Distinct solid columns, including their original headroom bands and full box geometry.
+    public static TheoryData<string, Vector3, Vector3, Vector3, Vector3, float, float, float, float> StackedSolids => new()
     {
-        // Upper box spans 3.0 .. 3.2 (top 3.2), lower box spans 2.0 .. 2.4 (top 2.4). Gap 0.6 between the
-        // upper underside (3.0) and the lower top (2.4). Two standable tops; the lower top's headroom is
-        // measured to the upper box's underside, not to its far-off top.
+        {
+            "stacked boxes", new(5f, 3.1f, 5f), new(0.5f, 0.1f, 0.5f),
+            new(5f, 2.2f, 5f), new(0.5f, 0.2f, 0.5f), 2.4f, 3.2f, 0.58f, 0.62f
+        },
+        {
+            "deck over ground", new(0f, -0.5f, 0f), new(4f, 0.5f, 4f),
+            new(0f, 1.9f, 0f), new(1f, 0.1f, 1f), 0f, 2f, 1.78f, 1.82f
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(StackedSolids))]
+    public void StackedSolids_ExposeOnlyTheirTops_WithHeadroomToTheUnderside(string scenario,
+        Vector3 firstCenter, Vector3 firstHalf, Vector3 secondCenter, Vector3 secondHalf,
+        float lowerTop, float upperTop, float minimumHeadroom, float maximumHeadroom)
+    {
         using var w = SettledWorld();
-        AddBox(w, new Vector3(5f, 3.1f, 5f), new Vector3(0.5f, 0.1f, 0.5f));  // 3.0 .. 3.2
-        AddBox(w, new Vector3(5f, 2.2f, 5f), new Vector3(0.5f, 0.2f, 0.5f));  // 2.0 .. 2.4
+        AddBox(w, firstCenter, firstHalf);
+        AddBox(w, secondCenter, secondHalf);
         w.Step(1f / 60f);
 
         var probe = new PhysicsColumnProbe(w);
         Span<ColumnSurface> hits = stackalloc ColumnSurface[8];
-        int n = probe.Sample(5f, 5f, hits);
+        int n = probe.Sample(firstCenter.X, firstCenter.Z, hits);
 
-        Assert.Equal(2, n);
-        // Ascending: lower top first.
-        Assert.Equal(2.4f, hits[0].Height, 3);
-        Assert.InRange(hits[0].Headroom, 0.58f, 0.62f);      // ~0.6 to the upper underside (3.0)
-        Assert.Equal(3.2f, hits[1].Height, 3);
-        Assert.True(float.IsPositiveInfinity(hits[1].Headroom));
-    }
-
-    [Fact]
-    public void SolidDeckOverGround_DeckUndersideIsCeilingOnly_NotAStandableSurface()
-    {
-        // The bridge scenario from the fake-world tests, now with a REAL solid deck: a thin deck box
-        // spanning 1.8 .. 2.0 sitting above a ground slab whose top is 0. Two standable surfaces (ground
-        // and deck top); the deck's underside (1.8) is a ceiling only - it bounds the ground's headroom
-        // and never appears as its own surface.
-        using var w = SettledWorld();
-        AddBox(w, new Vector3(0f, -0.5f, 0f), new Vector3(4f, 0.5f, 4f));   // ground slab, top at 0
-        AddBox(w, new Vector3(0f, 1.9f, 0f), new Vector3(1f, 0.1f, 1f));    // deck 1.8 .. 2.0
-        w.Step(1f / 60f);
-
-        var probe = new PhysicsColumnProbe(w);
-        Span<ColumnSurface> hits = stackalloc ColumnSurface[8];
-        int n = probe.Sample(0f, 0f, hits);
-
-        Assert.Equal(2, n);
-        // Ascending: ground first, its headroom bounded by the deck underside (~1.8).
-        Assert.Equal(0f, hits[0].Height, 3);
-        Assert.InRange(hits[0].Headroom, 1.78f, 1.82f);
-        // Deck top, open sky above.
-        Assert.Equal(2.0f, hits[1].Height, 3);
+        Assert.True(n == 2, $"{scenario}: expected two exposed top surfaces, got {n}");
+        Assert.Equal(lowerTop, hits[0].Height, 3);
+        Assert.InRange(hits[0].Headroom, minimumHeadroom, maximumHeadroom);
+        Assert.Equal(upperTop, hits[1].Height, 3);
         Assert.True(float.IsPositiveInfinity(hits[1].Headroom));
     }
 

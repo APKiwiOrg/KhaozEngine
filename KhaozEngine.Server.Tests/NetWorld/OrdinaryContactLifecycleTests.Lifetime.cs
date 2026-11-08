@@ -1,7 +1,4 @@
 using System;
-using System.Collections;
-using System.Linq;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
@@ -32,12 +29,11 @@ public partial class OrdinaryContactLifecycleTests
             }, (_, _) => 0, OrdinaryPlayerWorld.Tuning);
             var coord = new CellCoord(0, 0);
             var cell = server.Host.EnsureCell(coord);
-            var runtime = Runtime(server, coord);
-            var binding = (EffectiveMovementBinding)Property(runtime, "Binding");
-            Assert.Same(binding, ((PlayerMovementSystem)Property(runtime, "Movement")).Binding);
-            Assert.Same(binding, ((PlayerMoveSimulator)Property(runtime, "Clamp")).Binding);
-            Assert.Same(binding, cell.ImportAdmission!.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
-                .Single(field => field.FieldType == typeof(EffectiveMovementBinding)).GetValue(cell.ImportAdmission));
+            var binding = server.CellBindingSnapshotForTests(cell);
+            Assert.True(binding.MovementSharesBinding);
+            Assert.True(binding.ClampSharesBinding);
+            Assert.True(binding.AdmissionSharesBinding);
+            Assert.True(binding.IsCurrent());
             Assert.Equal(1, source!.ViewCreations);
             if (teardown) server.Dispose();
             else Assert.True(server.Host.RemoveCell(coord));
@@ -46,7 +42,7 @@ public partial class OrdinaryContactLifecycleTests
             if (!teardown)
             {
                 server.Host.EnsureCell(coord);
-                Assert.NotSame(binding, Property(Runtime(server, coord), "Binding"));
+                Assert.False(binding.IsCurrent());
             }
         }
     }
@@ -90,9 +86,4 @@ public partial class OrdinaryContactLifecycleTests
         return OrdinaryMovementRegistration.CreateBuilder("world", physics,
             new(new(-20, -8, -20), new(20, 8, 20), 0, 0)).Build(read);
     }
-
-    static object Runtime(ShardedWorldServer server, CellCoord coord) =>
-        ((IDictionary)typeof(ShardedWorldServer).GetField("cellRuntime", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(server)!)[coord]!;
-    static object Property(object value, string name) => value.GetType().GetProperty(name)!.GetValue(value)!;
 }

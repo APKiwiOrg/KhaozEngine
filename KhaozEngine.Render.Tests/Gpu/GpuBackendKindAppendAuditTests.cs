@@ -187,8 +187,10 @@ namespace KhaozEngine.Tests.Gpu
             var ex = Assert.Throws<GpuBackendProviderMissingException>(
                 () => GpuBackendProviders.Require((GpuBackendKind)9003));
 
-            Assert.Contains("9003", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("Register()", ex.Message, StringComparison.Ordinal);
+            Assert.Equal((GpuBackendKind)9003, ex.Backend);
+            Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+            Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+            Assert.Null(ex.RegistrationMethod);
         }
 
         // --- row 5: GpuBackendSelector.TryParseBackend ---
@@ -448,14 +450,8 @@ namespace KhaozEngine.Tests.Gpu
         public void AnUnmappedKind_ThrowsRatherThanInventingAFamily()
             => Assert.Throws<NotSupportedException>(() => GoldenCompare.GoldenBackendToken((GpuBackendKind)9001));
 
-        /// <summary>
-        /// The bake, which this kind is now ALLOWED to take. It owns <c>direct3d11-native</c>, so
-        /// <c>KE_UPDATE_GOLDENS</c> writes the family it is itself checked against and nothing else, which is
-        /// what owning a family means.
-        /// </summary>
-        [Fact]
-        public void Baking_IsAllowedOnTheNativeKind_BecauseItOwnsItsFamily()
-            => Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.Direct3D11Native, familyOverride: false));
+        // The native kind is allowed to bake because it owns direct3d11-native. That is asserted by the
+        // Direct3D11Native row of Baking_IsAllowedOnEveryBackendThatOwnsItsFamily below.
 
         /// <summary>A backend that OWNS its family bakes as it always did, and since 17.41.0 that is every live
         /// member of the enum. The guard must not cost the ordinary rebake anything, or it gets worked around
@@ -592,9 +588,10 @@ namespace KhaozEngine.Tests.Gpu
 
                 Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
                 Assert.DoesNotContain("Metal", ex.Message);
-                // The actionable line stays THIS backend's own. Pinned once the second provider-backed backend
-                // arrived and the message stopped being able to name one entry point as though it were generic.
-                Assert.Contains("KhaozEngineD3D11.Register()", ex.Message, StringComparison.Ordinal);
+                // The known backend keeps its own remedy beside the generic convention.
+                Assert.Equal(GpuBackendProviderMissingRefusal.ProviderNotRegistered, ex.Reason);
+                Assert.Equal("KhaozEngine<Backend>.Register()", ex.RegistrationConvention);
+                Assert.Equal("KhaozEngineD3D11.Register()", ex.RegistrationMethod);
             }
         }
 
@@ -765,35 +762,5 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         public void Dispose() => Environment.SetEnvironmentVariable(_name, _previous);
-    }
-
-    /// <summary>
-    /// Registers (or, with a null provider, temporarily REMOVES) a backend provider for the duration of a test and
-    /// restores whatever was there before. The registry is process-wide static state, so a leaked fake would
-    /// follow every later test in the run.
-    /// <para>
-    /// Restoring rather than simply unregistering matters because these tests name a REAL backend kind: once
-    /// <c>KhaozEngine.Gpu.D3D11</c> exists, this test assembly registers a genuine provider for it at load, and a
-    /// scope that unregistered on the way out would take that away from every test after it.
-    /// </para>
-    /// </summary>
-    internal sealed class BackendProviderScope : IDisposable
-    {
-        readonly GpuBackendKind _backend;
-        readonly IGpuBackendProvider? _previous;
-
-        internal BackendProviderScope(GpuBackendKind backend, IGpuBackendProvider? provider)
-        {
-            _backend = backend;
-            GpuBackendProviders.TryGet(backend, out _previous);
-            if (provider is null) GpuBackendProviders.Unregister(backend);
-            else GpuBackendProviders.Register(backend, provider);
-        }
-
-        public void Dispose()
-        {
-            if (_previous is null) GpuBackendProviders.Unregister(_backend);
-            else GpuBackendProviders.Register(_backend, _previous);
-        }
     }
 }

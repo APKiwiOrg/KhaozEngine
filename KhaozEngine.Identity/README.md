@@ -18,7 +18,7 @@ Pluggable player-identity seam: provider sign-in + server-side verified-subject 
 - **SessionToken** - A stateless HMAC-SHA256 token for a request path of the consumer's own: mint it after validating a credential, verify it on every later request. The engine exchange mints a `SignedToken` (`KhaozEngine.Netcode`) for the game server's connect door instead
 - **IdentitySession** - The client-side orchestrator: restores the cached session at launch (`RequiresSignIn` / `OfflineGrace` / `SignedIn`), drives interactive sign-in, renews a lapsed credential silently via `RefreshCredentialAsync`, and completes the exchange handshake via `AttachSessionTokenAsync`
 - **CredentialRefreshResult** / **CredentialRefreshOutcome** - The result of `RefreshCredentialAsync`: `Refreshed` (a new rotated credential, already persisted) or `Rejected` (a dead chain, fall back to interactive sign-in)
-- **SignInException** - The shared base every provider backend's sign-in failure derives from, so cross-provider code catches one type instead of one per backend
+- **SignInException** / **SignInRefusal** - The shared base every provider backend's sign-in failure derives from, so cross-provider code catches one type instead of one per backend, and the reason it carries (see [Sign-in refusals](#sign-in-refusals))
 - **AuthExchangeRequest** / **AuthExchangeResponse** / **AuthExchangeStatuses** - The `/auth/exchange` wire contract a client and an auth service share, so the JSON shape cannot drift between them
 
 Provider implementations (OIDC, Discord) and the exchange behind `/auth/exchange` are opt-in sibling packages. This
@@ -158,8 +158,9 @@ try
 }
 catch (SignInException ex)
 {
-    // Recoverable, whichever backend the player picked: show a retryable sign-in error.
-    ShowSignInError(ex.Message);
+    // Recoverable, whichever backend the player picked: show a retryable, localized sign-in error chosen by
+    // ex.Reason. The message is developer prose.
+    ShowSignInError(ex.Reason);
 }
 ```
 
@@ -167,6 +168,39 @@ Code that does care which backend failed still catches the provider type. The ba
 rather than `IdentitySignInException` on purpose: a consumer's sign-in file imports `KhaozEngine.Identity`
 alongside a provider namespace, and a base sharing the providers' simple name would make every unqualified
 reference in those files ambiguous.
+
+### Sign-in refusals
+
+Every refusal the engine providers throw carries a `SignInRefusal` in `Reason` and `ProviderId` (`oidc` or
+`discord`). `Reason` is null only for an instance another backend built through a message-only constructor.
+`Detail` is untrusted caller text passed to a message-only constructor and is null on every engine refusal.
+The shared base and both provider types are fenced against engine calls to legacy constructors. A protected
+nullable-reason initialization constructor preserves legacy provider forwarding, including `Detail` and the
+inner cause. It adds no unspecified reason to the public enum.
+
+The reasons are `SignInRefusal` members, and `EndpointRole` is a `SignInEndpointRole`.
+
+| `Reason` | What it refuses | Identifiers |
+|---|---|---|
+| `TimedOut` | an interactive sign-in that outlived the provider's `SignInTimeout` | `Timeout` |
+| `BrowserLaunchFailed` | a sign-in whose browser launcher could not open the authorize URL | none |
+| `RedirectStateMismatch` | a loopback redirect whose `state` is absent or differs from the one sent | none, never either state |
+| `AuthorizationCodeMissing` | a loopback redirect whose `code` is absent or empty | none |
+| `AuthorityNotAbsolute` | an OIDC authority that is not an absolute URL | none, never the authority |
+| `AuthorityNotHttps` | an OIDC authority that is not https, other than a plain-http loopback authority under `AllowInsecureLoopbackAuthority` | `ActualScheme` |
+| `DiscoveryHttpFailure` | a discovery document request answered with a non-success status | `StatusCode`, `EndpointRole` |
+| `DiscoveryEndpointMissing` | a discovery document without `authorization_endpoint` or `token_endpoint` | `MemberName`, the first one missing |
+| `DiscoveryEndpointEmpty` | a discovery document whose `authorization_endpoint` or `token_endpoint` is null or empty | `MemberName`, the first one empty |
+| `TokenHttpFailure` | a token request answered with a non-success status, other than the 400 or 401 a refresh reads as a dead chain | `StatusCode`, `EndpointRole` |
+| `TokenMemberMissing` | a token response without its credential, `id_token` for OIDC and `access_token` for Discord | `MemberName` |
+| `TokenMemberEmpty` | a token response whose credential member is null or empty | `MemberName` |
+| `TokenExpiryMalformed` | a token response whose `expires_in` is not a JSON number within `int` range | `MemberName`, `expires_in` |
+| `EndpointJsonMalformed` | a success response whose body is not JSON | `EndpointRole`, and the parser's `JsonException` as the inner exception |
+
+`EndpointRole` is `DiscoveryDocument` or `TokenEndpoint`. `MemberName` is a member's name, never its value. No
+identifier carries a token, an authorization code, a `state` value, a client secret, an authority URL or a response
+body. The parser's inner exception names at most the offending character or a few bytes of a malformed literal and
+its position, never a string value from the body.
 
 ## Durable silent refresh
 

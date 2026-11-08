@@ -285,3 +285,24 @@ even before its issue number exists. The append worker throws an internal `Repor
 redelivery until the issue exists, then no-ops when the snapshot is already `InBody` or `Commented`.
 GitHub failures and storage faults propagate to the host. Durable redelivery, poison routing and recovery
 remain host duties.
+
+## GitHub refusals
+
+`GitHubAppIssueClient` refuses a response with `GitHubApiException`. `Reason` is the rule, and `StatusCode`,
+`IsRateLimited` and `RetryAfter` describe the response. `Reason` is null only for an instance another
+`IGitHubIssueClient` built through the message-only constructor.
+
+The reasons are `GitHubApiRefusal` members, and `ResponsePart` is a `GitHubResponsePart`.
+
+| `Reason` | What it refuses | Identifiers |
+|---|---|---|
+| `HttpFailure` | a status the client treats as a failure, rate limits included | `UpstreamDetail` |
+| `InvalidSuccessResponse` | a 2xx response with a part the client needs unreadable, so a create may already have taken effect | `ResponsePart`, one of `InstallationToken`, `IssueNumber` or `IssueUrl` |
+| `RedirectDestinationUnusable` | an update GitHub answered with a move whose destination is not an issue on the API host | `StatusCode`, the 301 or the followed status, with no `ResponsePart` |
+
+`UpstreamDetail` is GitHub's own `message` field, at most 200 characters, and never the raw body. It is null when
+the body holds no such field, or when the message held a bearer token, an authorization value, an installation
+token, a private key, a signed app token or a configured credential, because the whole message is dropped before it
+is bounded. The text is still untrusted, so encode it for wherever it is shown. An update's followed redirect is
+judged by its destination, so `RedirectDestinationUnusable` can carry a redirect or a failure status, and nothing
+shows the update was applied.

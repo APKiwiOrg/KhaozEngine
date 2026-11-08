@@ -92,6 +92,19 @@ public sealed partial class ShardedWorldServer
     // a genuinely fresh CellSim with an empty world, so its runtime has to be fresh too).
     private readonly Dictionary<CellCoord, CellRuntime> cellRuntime = new();
 
+    /// <summary>OrdinaryContactLifecycleTests checks all consumers share the cell binding and that recreation
+    /// owns a fresh binding. The identity predicate captures the binding privately without exposing its owner.</summary>
+    internal (bool MovementSharesBinding, bool ClampSharesBinding, bool AdmissionSharesBinding, Func<bool> IsCurrent)
+        CellBindingSnapshotForTests(CellSim cell)
+    {
+        CellRuntime runtime = cellRuntime[cell.Coord];
+        EffectiveMovementBinding binding = runtime.Binding;
+        CellCoord coord = cell.Coord;
+        return (ReferenceEquals(binding, runtime.Movement.Binding), ReferenceEquals(binding, runtime.Clamp.Binding),
+            cell.ImportAdmission is ExplicitCellAdmission admission && admission.UsesBindingForTests(binding),
+            () => ReferenceEquals(binding, cellRuntime[coord].Binding));
+    }
+
     /// <summary>
     /// One cell's simulation runtime: the <see cref="PlayerMovementSystem"/> added to that cell's world, plus the
     /// spawn ground-clamp that runs in the same space. Both are constructed against the cell's OWN physics world and
@@ -212,11 +225,19 @@ public sealed partial class ShardedWorldServer
         float worstAxis = config.CellSize * 0.5f + config.OverlapMargin + WorldFrame.Grid * 0.5f;
         float worstPlanar = worstAxis * MathF.Sqrt(2f);
         if (worstPlanar > WorldFrame.MaxLocalRadius)
-            throw new ArgumentException(
+            throw new WorldConfigurationException(float.IsFinite(worstPlanar)
+                    ? WorldConfigurationRefusal.FramePlanarMagnitudeExceeded
+                    : WorldConfigurationRefusal.FramePlanarMagnitudeNonfinite,
                 $"CellSize {config.CellSize} with OverlapMargin {config.OverlapMargin} puts a cell's worst frame-local "
               + $"coordinate at {worstAxis} m per axis, a planar magnitude of {worstPlanar} m, past the "
               + $"{WorldFrame.MaxLocalRadius} m float32 divergence ceiling (the ceiling is on the planar magnitude). "
-              + "Reduce CellSize, or turn FrameAnchoring off and accept the precision.", nameof(config));
+              + "Reduce CellSize, or turn FrameAnchoring off and accept the precision.", nameof(config))
+            {
+                CellSize = config.CellSize,
+                OverlapMargin = config.OverlapMargin,
+                ActualPlanarMagnitude = worstPlanar,
+                MaximumPlanarMagnitude = float.IsFinite(worstPlanar) ? WorldFrame.MaxLocalRadius : null,
+            };
     }
 
     /// <summary>

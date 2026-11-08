@@ -34,11 +34,8 @@ public sealed class RigidAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
 
-        Assert.Contains("set.json", error.Message);
-        Assert.Contains("7", error.Message);
-        Assert.Contains("skinned", error.Message);
         Assert.Equal("set.json", Assert.Single(source.Reads).Key);
         Assert.Equal(buffers, harness.Factory.Buffers.Count);
         Assert.Equal(textures, harness.Factory.Textures.Count);
@@ -77,13 +74,16 @@ public sealed class RigidAttachmentAssetTests
         var source = new AttachmentTestSource();
         AttachmentMeshRef mesh = source.Mesh("parts/mesh.glb", AttachmentTestSource.Glb());
         string hash = source.Set("set.json", mesh);
-        source.Bytes[changeDefinition ? "set.json" : mesh.Key][0] ^= 1;
+        // Valid replacement bytes, so only the declared hash can refuse them.
+        if (changeDefinition)
+            source.Bytes["set.json"] = AttachmentSetJson.Write(new AttachmentSetDefinition(
+                [new RigidAttachmentPartDefinition(2, mesh, "hip", Matrix4x4.Identity)]));
+        else source.Bytes[mesh.Key] = AttachmentTestSource.Glb(materials: 2);
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
 
-        Assert.Contains(changeDefinition ? "set.json" : mesh.Key, error.Message);
         Assert.Equal(buffers, harness.Factory.Buffers.Count);
         Assert.Equal(textures, harness.Factory.Textures.Count);
     }
@@ -99,9 +99,10 @@ public sealed class RigidAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        var error = Assert.Throws<AttachmentGlbContainerDataException>(() => cache.Get("set.json", hash));
+        Assert.Equal(AttachmentGlbContainerRefusal.HeaderInvalid, error.Reason);
+        Assert.NotNull(error.SourceName);
 
-        Assert.Contains("z.glb", error.Message);
         Assert.Equal(buffers, harness.Factory.Buffers.Count);
     }
 
@@ -215,10 +216,13 @@ public sealed class RigidAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         LoadedAttachmentSet loaded = cache.Get("set.json", hash);
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
+        var error = Assert.Throws<AttachmentBindingDataException>(() =>
             loaded.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
 
-        Assert.Contains("unknown", error.Message);
+        Assert.Equal(AttachmentBindingRefusal.RigidJointUnresolved, error.Reason);
+        Assert.Equal(1u, error.PartId);
+        Assert.Equal("unknown", error.JointName);
+        Assert.NotNull(error.InnerException);
         Assert.Same(loaded, cache.Get("set.json", hash));
     }
 

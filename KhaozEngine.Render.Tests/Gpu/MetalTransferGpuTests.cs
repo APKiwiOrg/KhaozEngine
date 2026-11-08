@@ -449,7 +449,7 @@ namespace KhaozEngine.Tests.Gpu
         /// not a multisampled and a single-sample pair.</para>
         /// </summary>
         [GpuFact]
-        public void EveryTextureShapeRefusalFiresWithItsOwnMessage()
+        public void EveryTextureShapeRefusalCarriesItsReason()
         {
             if (!Available()) return;
 
@@ -467,47 +467,59 @@ namespace KhaozEngine.Tests.Gpu
             using MetalCommandList list = device.CreateCommandList();
             list.Begin();
 
-            Assert.Contains("do not agree on",
-                Assert.Throws<ArgumentException>(() => list.CopyTexture(small, large)).Message,
-                StringComparison.Ordinal);
+            var shape = Assert.Throws<GpuTextureTransferArgumentException>(() => list.CopyTexture(small, large));
+            Assert.IsAssignableFrom<ArgumentException>(shape);
+            Assert.Equal(GpuTextureTransferRefusal.TextureShapeMismatch, shape.Reason);
+            Assert.Equal("destination", shape.ParamName);
+            Assert.Equal(Size, shape.SourceWidth);
+            Assert.Equal(Size * 2, shape.DestinationWidth);
 
-            ArgumentOutOfRangeException badMip = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuTextureTransferRangeException badMip = Assert.Throws<GpuTextureTransferRangeException>(
                 () => list.CopyTextureSubresource(small, 7, 0, staging, Size, Size));
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(badMip);
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, badMip.Reason);
+            Assert.Equal("source", badMip.Side);
+            Assert.Equal(7u, badMip.MipLevel);
+            Assert.Equal(0u, badMip.ArrayLayer);
+            Assert.Equal(1u, badMip.MipLevels);
+            Assert.Equal(1u, badMip.ArrayLayers);
             Assert.Equal("mipLevel", badMip.ParamName);
-            Assert.Contains("mip level(s)", badMip.Message, StringComparison.Ordinal);
+            Assert.Equal(7u, badMip.ActualValue);
 
-            ArgumentOutOfRangeException badArrayLayer = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuTextureTransferRangeException badArrayLayer = Assert.Throws<GpuTextureTransferRangeException>(
                 () => list.CopyTextureSubresource(small, 0, 7, staging, Size, Size));
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, badArrayLayer.Reason);
             Assert.Equal("arrayLayer", badArrayLayer.ParamName);
 
             // THE DESTINATION SIDE HAS ITS OWN CHECK, and it names "destination" rather than "source", which is
             // the half a single shared guard would lose.
-            Assert.Contains("destination",
-                Assert.Throws<ArgumentOutOfRangeException>(
-                    () => list.CopyTextureSubresource(small, 0, 0, staging, 4, 0, Size, Size)).Message,
-                StringComparison.Ordinal);
+            var destinationMip = Assert.Throws<GpuTextureTransferRangeException>(
+                () => list.CopyTextureSubresource(small, 0, 0, staging, 4, 0, Size, Size));
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, destinationMip.Reason);
+            Assert.Equal("destination", destinationMip.Side);
+            Assert.Equal(4u, destinationMip.MipLevel);
 
-            Assert.Contains("generateMipmapsForTexture",
-                Assert.Throws<ArgumentException>(() => list.GenerateMipmaps(small)).Message,
-                StringComparison.Ordinal);
+            var smallMip = Assert.Throws<GpuTextureTransferArgumentException>(() => list.GenerateMipmaps(small));
+            Assert.Equal(GpuTextureTransferRefusal.MipChainRequired, smallMip.Reason);
+            Assert.Equal(false, smallMip.IsStaging);
 
-            Assert.Contains("STAGING texture",
-                Assert.Throws<ArgumentException>(() => list.GenerateMipmaps(staging)).Message,
-                StringComparison.Ordinal);
+            var stagingMip = Assert.Throws<GpuTextureTransferArgumentException>(() => list.GenerateMipmaps(staging));
+            Assert.Equal(GpuTextureTransferRefusal.MipChainRequired, stagingMip.Reason);
+            Assert.Equal(true, stagingMip.IsStaging);
 
             // THE FOUR WAYS A RESOLVE IS NOT ONE, each through the same named refusal: a single-sample source, a
             // multisampled destination, a size mismatch, and a staging side.
-            Assert.Throws<ArgumentException>(() => list.ResolveTexture(small, small));
-            Assert.Throws<ArgumentException>(() => list.ResolveTexture(small, multisampled));
-            Assert.Throws<ArgumentException>(() => list.ResolveTexture(multisampled, large));
-            Assert.Contains("multisample resolve",
-                Assert.Throws<ArgumentException>(() => list.ResolveTexture(multisampled, staging)).Message,
-                StringComparison.Ordinal);
+            Assert.Throws<GpuTextureTransferArgumentException>(() => list.ResolveTexture(small, small));
+            Assert.Throws<GpuTextureTransferArgumentException>(() => list.ResolveTexture(small, multisampled));
+            Assert.Throws<GpuTextureTransferArgumentException>(() => list.ResolveTexture(multisampled, large));
+            var resolve = Assert.Throws<GpuTextureTransferArgumentException>(() => list.ResolveTexture(multisampled, staging));
+            Assert.Equal(GpuTextureTransferRefusal.ResolveShapeMismatch, resolve.Reason);
+            Assert.Equal(true, resolve.DestinationIsStaging);
+            Assert.Equal(4u, resolve.SourceSampleCount);
 
             list.End();
 
-            _output.WriteLine("nine texture-shape refusals, each read by its own message rather than by its "
-                + "exception type.");
+            _output.WriteLine("Texture-shape refusals carry their reason and resource diagnostics.");
         }
 
         // ---- Fixtures ----------------------------------------------------------------------------------------

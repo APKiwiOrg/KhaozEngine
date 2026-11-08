@@ -118,9 +118,11 @@ int healsIndex = ContentFieldLookup.IndexIn(runtime, foodType, FoodContentType.H
 int valueIndex = ContentFieldLookup.IndexIn(runtime, tuningType, GameTuningContentType.ValueField, out int scale);
 ```
 
-**A field the schema lacks is a REFUSAL, not a miss.** It throws, naming the type key and the field, so a
-publish that moved a field stops a boot rather than pricing a world at zero and carrying on. Run it at reader
-construction, which on a server is before a socket is open.
+**A field the schema lacks is a REFUSAL, not a miss.** It throws `ContentFieldLookupException` with
+`Reason == ContentFieldLookupRefusal.FieldUndeclared`, `Type`, `TypeKey` and `FieldName`, so a publish that
+moved a field stops a boot rather than pricing a world at zero and carrying on. An unregistered type uses
+`TypeUnregistered` and has no `TypeKey`. Existing `InvalidOperationException` catches still match. Run it at
+reader construction, which on a server is before a socket is open.
 
 ## `GameContentFindings`
 

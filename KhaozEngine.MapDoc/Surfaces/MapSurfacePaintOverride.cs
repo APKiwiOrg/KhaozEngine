@@ -11,7 +11,15 @@ internal static class MapSurfacePaintOverride
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(surface);
         if (surface.Role != MapSurfaceRole.PaintOverride || surface.PaintTargetSurfaceId != target.Key.SurfaceId)
-            throw new MapDocumentException("paint override must name its target surface");
+            throw new MapDocumentException(!Enum.IsDefined(surface.Role) ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.SurfacePaintTargetInvalid,
+                "paint override must name its target surface")
+            {
+                SurfaceId = surface.Id, OtherSurfaceId = target.Key.SurfaceId,
+                FieldPath = surface.Role != MapSurfaceRole.PaintOverride ? nameof(surface.Role) : nameof(surface.PaintTargetSurfaceId),
+                EnumType = surface.Role != MapSurfaceRole.PaintOverride ? typeof(MapSurfaceRole) : null,
+                ActualInteger = surface.Role != MapSurfaceRole.PaintOverride ? (byte)surface.Role : null,
+                ActualText = surface.Role == MapSurfaceRole.PaintOverride ? surface.PaintTargetSurfaceId : null,
+            };
         // This temporary triangulation describes paint regions. No face from it is returned as support.
         MapCompiledPatch regions = MapSurfaceCompiler.Compile(surface with { Role = MapSurfaceRole.SupportFloor, PaintPriority = 0 }, patch);
         try
@@ -41,13 +49,15 @@ internal static class MapSurfacePaintOverride
                             if (area.Sign == 0) continue;
                             MapPaintCoverage next = regions.Paint[index] with { Face = face.Key };
                             if (selected is { } previous && previous != next)
-                                throw new MapDocumentException("paint override boundary crosses physical face. Use MapPaintRegionSet for partial-face materials.");
+                                throw new MapDocumentException(MapDocumentRefusal.SurfacePaintCrossesPhysicalFace, "paint override boundary crosses physical face. Use MapPaintRegionSet for partial-face materials.")
+                                { SurfaceId = surface.Id, OtherSurfaceId = target.Key.SurfaceId, Patch = target.Key, Index = i, FieldPath = "Material" };
                             selected = next;
                             covered = covered.Add(area);
                         }
                     }
                 if (selected is not null && covered != Unsigned(MapSubdividedTriangle.Cross(triangle.A, triangle.B, triangle.C)).Divide(new(2, 1)))
-                    throw new MapDocumentException("paint override presence boundary crosses physical face. Use MapPaintRegionSet for partial-face materials.");
+                    throw new MapDocumentException(MapDocumentRefusal.SurfacePaintCrossesPhysicalFace, "paint override presence boundary crosses physical face. Use MapPaintRegionSet for partial-face materials.")
+                    { SurfaceId = surface.Id, OtherSurfaceId = target.Key.SurfaceId, Patch = target.Key, Index = i, FieldPath = "Presence" };
                 paint[i] = selected ?? target.Paint[i];
             }
             return new(target.Key, target.Role, target.Anchor, target.VertexIds, target.ExactVertices,
@@ -55,7 +65,8 @@ internal static class MapSurfacePaintOverride
         }
         catch (MapExactOverflowException error)
         {
-            throw new MapDocumentException("paint override is not representable", error);
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "paint override is not representable", error)
+            { SurfaceId = surface.Id, OtherSurfaceId = target.Key.SurfaceId, Patch = target.Key, Operation = "paint override" };
         }
     }
 

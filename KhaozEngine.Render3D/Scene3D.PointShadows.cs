@@ -103,8 +103,10 @@ namespace KhaozEngine.Render3D
             // signature and every row the pass draws below asks this one index rather than walking every instance.
             EnsurePointCasterIndex();
             AcquirePointShadowSlots(cache, frame);
+            PrepareRigidPointBaseRows(cache);
             ChoosePointShadowRebuilds(cache, settings);
-            ScheduleSkinnedPointShadows(cache, settings, frame);
+            ScheduleCurrentPointShadows(cache, settings, frame);
+            ScheduleRigidPointBaseRows(cache);
             int draws;
             using (ProfilePass(cl, "shadow.point", executed: _pointRebuilds.Count + _selectedPointTransientRequests.Count > 0))
                 draws = RenderChosenPointShadowRows(cl, cache, frame);
@@ -151,13 +153,18 @@ namespace KhaozEngine.Render3D
             for (int i = 0; i < _pointRequests.Count; i++)
             {
                 PointShadowRequest request = _pointRequests[i];
-                if (request.Slot < 0 || request.Mode != LightShadowMode.Static) continue;
-                long signature = PointCasterSignature(request.Position, request.Radius, request.NearRadius,
-                    request.ExclusionMin, request.ExclusionMax);
-                // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
-                // signature left behind by the row's previous owner cannot accidentally report it clean.
-                if (_pointCasterSignatures[request.Slot] != signature) cache.MarkDirty(request.Slot);
-                _pointCasterSignatures[request.Slot] = signature;
+                if (request.Slot < 0) continue;
+                request.TouchesSkinned = PointRequestTouchesSkinned(request);
+                if (request.Mode == LightShadowMode.Static)
+                {
+                    long signature = PointCasterSignature(request.Position, request.Radius, request.NearRadius,
+                        request.ExclusionMin, request.ExclusionMax, out request.TouchesMovingRigid);
+                    // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
+                    // signature left behind by the row's previous owner cannot accidentally report it clean.
+                    if (_pointCasterSignatures[request.Slot] != signature) cache.MarkDirty(request.Slot);
+                    _pointCasterSignatures[request.Slot] = signature;
+                }
+                _pointRequests[i] = request;
             }
         }
 
@@ -180,6 +187,7 @@ namespace KhaozEngine.Render3D
                 {
                     PointShadowRequest r = _pointRequests[i];
                     if (r.Mode != LightShadowMode.Static || r.Slot < 0) continue;
+                    if (_pointRigidBaseWork[i] != Internal.PointRigidBaseWork.None) continue;
                     if (!cache.IsDirty(r.Slot) || _pointRebuilds.Contains(i)) continue;
                     if (pick < 0 || cache.LastRenderedFrame(r.Slot) < cache.LastRenderedFrame(_pointRequests[pick].Slot))
                         pick = i;
@@ -210,8 +218,7 @@ namespace KhaozEngine.Render3D
             {
                 int requestIndex = _pointRebuilds[packed];
                 PointShadowRequest r = _pointRequests[requestIndex];
-                PointShadowCasterSet casters = PointShadowCasterSet.Rigid;
-                if (_pointDynamicSkinnedRequests[requestIndex]) casters |= PointShadowCasterSet.Skinned;
+                PointShadowCasterSet casters = PointBaseCasterSet(requestIndex);
                 PackPointShadowSlotForTarget(_pointShadowAtlas, packed, r.Slot, r.Position, r.Radius,
                     r.NearRadius, r.ExclusionMin, r.ExclusionMax, requestIndex, casters);
             }
@@ -222,18 +229,23 @@ namespace KhaozEngine.Render3D
                 int packed = _pointRebuilds.Count + selected;
                 PackPointShadowSlotForTarget(_pointShadowTransientAtlas, packed,
                     _pointTransientRowsByRequest[requestIndex], r.Position, r.Radius,
-                    r.NearRadius, r.ExclusionMin, r.ExclusionMax, requestIndex, PointShadowCasterSet.Skinned);
+                    r.NearRadius, r.ExclusionMin, r.ExclusionMax, requestIndex, PointShadowCasterSet.MovingRigid | PointShadowCasterSet.Skinned);
             }
             using (ProfileCpu("cpu.shadow.point-upload-packing"))
             using (ProfilePass(cl, "shadow.point.uploads"))
             {
                 UploadPointShadowFaces(cl);
                 if (UseGpuSkinning && (_selectedPointTransientRequests.Count > 0
+                    || _pointRigidFallbackRowsThisFrame > 0
                     || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
                     PrepareGpuSkinnedPointCasters(cl);
             }
             int draws = RenderPointShadowSlots(cl);
-            foreach (int index in _pointRebuilds) cache.MarkClean(_pointRequests[index].Slot, frame);
+            foreach (int index in _pointRebuilds)
+            {
+                cache.MarkClean(_pointRequests[index].Slot, frame);
+                RecordPointBaseContent(index);
+            }
             return draws;
         }
 
@@ -282,7 +294,8 @@ namespace KhaozEngine.Render3D
         {
             int statics = 0, dynamics = 0;
             foreach (int index in _pointRebuilds)
-                if (_pointRequests[index].Mode == LightShadowMode.Static) statics++; else dynamics++;
+                if (_pointRequests[index].Mode != LightShadowMode.Static) dynamics++;
+                else if (_pointRigidBaseWork[index] == Internal.PointRigidBaseWork.None) statics++;
             _lastShadowPassDiagnostics = _lastShadowPassDiagnostics with
             {
                 PointShadowedLights = PointShadowedLights,
@@ -292,13 +305,17 @@ namespace KhaozEngine.Render3D
                 PointTransientRowsRendered = _pointTransientRowsRenderedThisFrame,
                 PointDynamicSkinnedDrawCalls = _pointDynamicSkinnedDrawCallsThisFrame,
                 PointStaticTransientSkinnedDrawCalls = _pointStaticTransientSkinnedDrawCallsThisFrame,
+                PointStaticTransientRigidDrawCalls = _pointStaticTransientRigidDrawCallsThisFrame,
+                PointStaticFallbackSkinnedDrawCalls = _pointStaticFallbackSkinnedDrawCallsThisFrame,
+                PointRigidFallbackRowsRendered = _pointRigidFallbackRowsThisFrame,
+                PointRigidTransitionRowsRendered = _pointRigidTransitionRowsThisFrame,
                 PointFaceDrawCalls = draws,
                 PointSlotsInUse = cache.InUse,
             };
         }
 
         /// <summary>
-        /// A 64-bit signature of everything that would be drawn into one static light's map: every rigid caster
+        /// A 64-bit signature of one pure static base: every Static rigid caster
         /// standing inside the light sphere, by mesh identity, world matrix, cast kind and dissolve (its threshold in
         /// sixteen steps and its complement phase), then every rest-pose casting foliage proxy by mesh identity and
         /// rest transform, combined with the light's own position, radius, near radius and exclusion box quantised
@@ -324,7 +341,7 @@ namespace KhaozEngine.Render3D
         /// </para>
         /// </summary>
         long PointCasterSignature(Vector3 lightPosAbsolute, float radius, float nearRadius,
-            Vector3 exclusionMin, Vector3 exclusionMax)
+            Vector3 exclusionMin, Vector3 exclusionMax, out bool movingRigid)
         {
             ulong hash = PointSignatureSeed;
             MixPointSignature(ref hash, unchecked((ulong)_model.InteriorResources.Version));
@@ -345,15 +362,7 @@ namespace KhaozEngine.Render3D
             // Read by reference: an InstanceData is 128 bytes and this runs once per touching caster per static
             // request per frame.
             QueryPointCasters(lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
-            Span<ModelRenderer.InstanceData> instances = CollectionsMarshal.AsSpan(_instanceData);
-            foreach (int slot in _pointCasterHits)
-            {
-                MeshHandle mesh = _runs[_pointCasterIndex.RunOf(slot)].Mesh;
-                ref ModelRenderer.InstanceData data = ref instances[slot];
-                MixPointSignature(ref hash, SignatureWord((uint)mesh.Index, (uint)mesh.Generation));
-                MixPointSignature(ref hash, SignatureWord(PointDissolveWord(data), (uint)PointCasterKind(slot)));
-                MixPointSignature(ref hash, data.Model);
-            }
+            MixStaticRigidPointCasters(ref hash, out movingRigid);
             // Casting foliage joins at its rest pose (Scene3D.FoliagePointShadows.cs), so its motion never
             // dirties a row.
             MixFoliagePointSignature(ref hash, lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
@@ -519,6 +528,11 @@ namespace KhaozEngine.Render3D
 
             /// <summary>The atlas row it was given, or -1 when the cache had none to give.</summary>
             public int Slot = -1;
+
+            // Fresh membership for this gathered request, shared by eligibility, assignment and final planning.
+            // Moving membership comes from the static signature query, never from retained spatial hits.
+            public bool TouchesMovingRigid;
+            public bool TouchesSkinned;
         }
     }
 }

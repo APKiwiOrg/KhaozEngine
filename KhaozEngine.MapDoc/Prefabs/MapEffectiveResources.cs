@@ -83,7 +83,8 @@ public sealed class MapEffectiveResources
             p => (IReadOnlyList<MapExactPoint>)Array.AsReadOnly(p.Value.ToArray()), StringComparer.Ordinal));
         Attachments = Array.AsReadOnly(attachments.ToArray());
         var paintTargets = context.Surfaces.Refs.Where(context.IsPartialPaint)
-            .Select(s => s.PaintTargetSurfaceId ?? throw new MapDocumentException("PaintOverride requires a target surface."))
+            .Select(s => s.PaintTargetSurfaceId ?? throw new MapDocumentException(MapDocumentRefusal.PrefabPaintTargetRequired, "PaintOverride requires a target surface.")
+                { SurfaceId = s.Id })
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         var paintRegions = new Dictionary<string, MapPaintRegionSet>(StringComparer.Ordinal);
         if (paintTargets.Length != 0)
@@ -129,7 +130,8 @@ internal sealed class MapEffectiveContext
         Transforms = new ReadOnlyDictionary<string, MapEffectiveTransform>(new Dictionary<string, MapEffectiveTransform>(transforms, StringComparer.Ordinal));
         Digest = digest;
     }
-    internal MapSurfaceRef Surface(string id) => _surfaces.TryGetValue(id, out var surface) ? surface : throw new MapDocumentException($"Missing effective surface '{id}'.");
+    internal MapSurfaceRef Surface(string id) => _surfaces.TryGetValue(id, out var surface) ? surface
+        : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Missing effective surface '{id}'.") { SurfaceId = id };
     internal MapExactXz Xz(string id, MapExactXz local) => Transform(MapPrefabChildKind.Surface, id)?.Xz(local) ?? local;
     // Installed prefab/resource surfaces and precise native poses are additive R5 geometry. World paint
     // without such a pose keeps the released path, including when an unrelated prefab is present.

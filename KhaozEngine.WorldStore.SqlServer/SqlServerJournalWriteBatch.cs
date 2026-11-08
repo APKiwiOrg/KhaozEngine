@@ -141,6 +141,9 @@ internal static class SqlServerJournalWriteBatch
             DECLARE @outcome int = 1;
             DECLARE @lockResult int = 0;
             DECLARE @limitStream nvarchar(256) = NULL;
+            DECLARE @limitReason int = NULL;
+            DECLARE @limitActual bigint = NULL;
+            DECLARE @limitMaximum bigint = NULL;
             DECLARE @storedIntent binary(32) = NULL;
             DECLARE @head bigint = NULL;
             DECLARE @sections int = 0;
@@ -222,7 +225,23 @@ internal static class SqlServerJournalWriteBatch
                     WHERE stream_key = {stream};
                     IF @sections + {Number(end - start + 1)} > {Number(limits.ProjectionSectionsPerStream)}
                         OR @bytes + {Number(replacedBytes)} > {Number(limits.AggregateProjectionBytesPerStream)}
-                    BEGIN SET @outcome = 5; SET @limitStream = {stream}; BREAK; END
+                    BEGIN
+                        SET @outcome = 5;
+                        SET @limitStream = {stream};
+                        IF @sections + {Number(end - start + 1)} > {Number(limits.ProjectionSectionsPerStream)}
+                        BEGIN
+                            SET @limitReason = {Number((int)JournalStoreRefusal.ProjectionSectionCountExceeded)};
+                            SET @limitActual = @sections + {Number(end - start + 1)};
+                            SET @limitMaximum = {Number(limits.ProjectionSectionsPerStream)};
+                        END
+                        ELSE
+                        BEGIN
+                            SET @limitReason = {Number((int)JournalStoreRefusal.ProjectionByteCountExceeded)};
+                            SET @limitActual = @bytes + {Number(replacedBytes)};
+                            SET @limitMaximum = {Number(limits.AggregateProjectionBytesPerStream)};
+                        END
+                        BREAK;
+                    END
 
 
                 """);
@@ -366,7 +385,7 @@ internal static class SqlServerJournalWriteBatch
                 BREAK;
             END
 
-            SELECT @outcome, @lockResult, @limitStream;
+            SELECT @outcome, @lockResult, @limitStream, @limitReason, @limitActual, @limitMaximum;
             IF @outcome = 3
             BEGIN
                 SELECT result_schema, result_schema_version, result_data, result_sha256, committed_at_utc
@@ -400,6 +419,8 @@ internal static class SqlServerJournalWriteBatch
         for (int index = 0; index < streams.Length; index++)
             if (StringComparer.Ordinal.Equals(streams[index].StreamKey, streamKey))
                 return index;
+        // JournalCommit validates membership and owns immutable stream, projection and event snapshots.
+        // Neither caller collections nor collection interface casts can invalidate it before this builder runs.
         throw new InvalidOperationException($"Projection stream '{streamKey}' is not touched by the operation.");
     }
 

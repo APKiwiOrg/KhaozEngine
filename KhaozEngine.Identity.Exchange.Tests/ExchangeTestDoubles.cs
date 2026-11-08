@@ -197,9 +197,13 @@ internal sealed class FaultyPolicy(bool failResolve = false, bool failIssue = fa
     public string? ResolveDisplayName(VerifiedIdentity identity) =>
         failResolve ? throw new InvalidOperationException("resolve fault") : identity.DisplayName;
 
+    /// <summary>The exception <see cref="IssueClaimsAsync"/> throws when told to fail, kept so a test can show the
+    /// exchange surfaces this very object.</summary>
+    public Exception IssueFault { get; } = new InvalidOperationException("issue fault");
+
     public ValueTask<SessionClaims> IssueClaimsAsync(AccountRecord account, CancellationToken ct)
     {
-        if (failIssue) throw new InvalidOperationException("issue fault");
+        if (failIssue) throw IssueFault;
         return ValueTask.FromResult(issueNoName ? default : new SessionClaims("name", null));
     }
 }

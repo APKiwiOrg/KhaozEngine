@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -190,28 +191,42 @@ namespace KhaozEngine.Tests.Gpu
         /// liveness token can prove, and what actually keeps the guard from being deleted, is that a dead device
         /// refuses by name, drains nothing and submits nothing.</para>
         /// </summary>
-        [Fact]
-        public void MappingOnALostDevice_IsRefusedAndFlushesNothing()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void MappingOnALostDevice_IsRefusedAndFlushesNothing(bool latchLoss)
         {
-            using var fixture = new VulkanDeviceFixture();
+            var liveness = new DeviceLiveness();
+            var latch = new VulkanDeviceLossLatch(liveness,
+                new VulkanDeviceLossLatchTests.FakeFault("fault address 0x12"));
+            using var fixture = new VulkanDeviceFixture(nonCoherentReadback: true, liveness: liveness, loss: latch);
             using IGpuTexture staging = fixture.StagingTexture();
             using IGpuBuffer buffer = fixture.StagingBuffer();
             using IGpuTexture target = fixture.OpenSetupWork();
 
-            fixture.Liveness.MarkDead();
+            if (latchLoss) latch.Check(Silk.NET.Vulkan.Result.ErrorDeviceLost, "vkMapMemory");
+            else fixture.Liveness.MarkDead();
 
-            InvalidOperationException texture = Assert.Throws<InvalidOperationException>(
+            var texture = Assert.Throws<VulkanDeviceMapException>(
                 () => fixture.Device.Map(staging, GpuMapMode.Read));
-            InvalidOperationException written = Assert.Throws<InvalidOperationException>(
+            var written = Assert.Throws<VulkanDeviceMapException>(
                 () => fixture.Device.Map(buffer, GpuMapMode.Write));
 
             // The reason travels with the refusal, which is the whole difference between this and a null check.
-            Assert.Contains("LOST", texture.Message, StringComparison.Ordinal);
-            Assert.Contains("LOST", written.Message, StringComparison.Ordinal);
+            foreach (var refusal in new[] { texture, written })
+            {
+                Assert.Equal(latchLoss ? VulkanDeviceMapRefusal.LossLatched : VulkanDeviceMapRefusal.DeadWithoutLossRecord, refusal.Reason);
+                Assert.Equal(latchLoss ? "VK_ERROR_DEVICE_LOST at vkMapMemory (fault address 0x12)" : null, refusal.LossReason);
+                Assert.Equal(latchLoss ? "vkMapMemory" : null, refusal.LossSite);
+                Assert.Equal(latchLoss ? (int)Silk.NET.Vulkan.Result.ErrorDeviceLost : (int?)null, refusal.ResultCode);
+                Assert.IsAssignableFrom<InvalidOperationException>(refusal);
+            }
 
             // AND THE REFUSAL IS THE FIRST THING EITHER ONE DOES: no flush, no drain, no native call on a device
             // the driver has already taken.
             Assert.Empty(fixture.CommandApi.Submissions);
+            Assert.Empty(fixture.MemoryApi.Flushes);
+            Assert.Empty(fixture.MemoryApi.Invalidates);
             Assert.Equal(0, fixture.Semaphore.WaitCount);
             Assert.Equal(0, fixture.Device.Counters.DrainCount);
         }
@@ -258,8 +273,10 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             Assert.Empty(memoryApi.Flushes);
-            Assert.Throws<InvalidOperationException>(() => device.Unmap(texture));
-            Assert.Throws<InvalidOperationException>(() => device.Unmap(buffer));
+            Assert.Equal(GpuStagingMapRefusal.NotMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => device.Unmap(texture)).Reason);
+            Assert.Equal(GpuStagingMapRefusal.NotMapped,
+                Assert.Throws<GpuStagingMapStateException>(() => device.Unmap(buffer)).Reason);
         }
 
         // ---- The hook's own contract ---------------------------------------------------------------------
@@ -275,10 +292,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var fixture = new VulkanDeviceFixture();
 
-            System.InvalidOperationException ex = Assert.Throws<System.InvalidOperationException>(
+            var ex = Assert.Throws<VulkanDeviceWiringException>(
                 () => fixture.Device.Factory.CreateCommandList());
 
-            Assert.Contains("no VkInstance", ex.Message, System.StringComparison.Ordinal);
+            Assert.Equal(VulkanDeviceWiringRefusal.InstanceMissing, ex.Reason);
+            Assert.Equal("VkInstance", ex.NativeObjectKind);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
         }
 
         /// <summary>

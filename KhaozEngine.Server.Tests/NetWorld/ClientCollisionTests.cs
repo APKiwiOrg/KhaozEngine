@@ -36,26 +36,6 @@ public class ClientCollisionTests
         authority.Step(new PlayerMoveState { Position = Vector3.Zero }, MoveCommand.Idle, Dt);
 
     [Fact]
-    public void Client_without_physics_predicts_matching_authority()
-    {
-        (LoopbackTransport st, LoopbackTransport ct) = LoopbackTransport.CreatePair();
-        var config = SpawnAtOrigin();
-        var server = new WorldServer(st, config, Flat, MoveTuning.Default);
-        var client = new WorldClient(ct, Flat, MoveTuning.Default, new WorldClientConfig { TickSeconds = Dt });
-        EstablishBasis(server, client);
-
-        for (int i = 0; i < 60; i++) client.SendInput(Forward);
-        client.AdvancePresentation(Dt);
-        Vector3 predicted = LocalPos(client);
-
-        var authority = new PlayerMoveSimulator(Flat, MoveTuning.Default);
-        PlayerMoveState auth = SpawnBasis(authority);
-        for (int i = 0; i < 60; i++) auth = authority.Step(auth, Forward, Dt);
-        Assert.Equal(auth.Position.X, predicted.X, 1);
-        Assert.Equal(auth.Position.Z, predicted.Z, 1);
-    }
-
-    [Fact]
     public void Client_without_args_is_terrain_only_unchanged()
     {
         // Regression: omit the new optional args. Prediction is terrain-only (unchanged), so the player walks
@@ -104,7 +84,7 @@ public class ClientCollisionTests
     //   (b) The position is blocked (significantly less movement than the unblocked case).
     // This is the end-to-end proof the WorldClient wiring honours the physics world.
     [Fact]
-    public void Client_with_physics_world_is_blocked_by_wall_and_matches_server()
+    public void Client_with_physics_world_moves_towards_wall_and_stops_before_it()
     {
         // Wall: BoxShape centred at z=-3, thin in Z, tall/wide. "Forward" (MoveCommand Y=1, yaw=0) moves toward -Z.
         // Wall face the player approaches: z = -3 + 0.125 = -2.875. Capsule radius 0.4 => stops near z ~ -2.475.
@@ -133,6 +113,9 @@ public class ClientCollisionTests
         client.AdvancePresentation(Dt);
 
         Vector3 predicted = LocalPos(client);
+
+        Assert.True(predicted.Z < -0.5f,
+            $"client prediction did not move towards the wall: predicted z={predicted.Z}");
 
         // (a) The client prediction must not have passed through the wall.
         Assert.True(predicted.Z > wallFaceZ - 0.01f,

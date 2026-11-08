@@ -69,13 +69,11 @@ internal static partial class SqlServerJournalSchema
         }
         catch (OperationCanceledException exception)
         {
-            throw Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled before a transaction began.", exception);
+            throw Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled before a transaction began.", exception, JournalOperationStage.SchemaOpen);
         }
         catch (SqlException exception)
         {
-            throw cancellationToken.IsCancellationRequested
-                ? Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled before a transaction began.", exception)
-                : Failure(JournalStoreFailureKind.Unavailable, "SQL Server journal schema could not open a connection.", exception);
+            throw ProviderFailure(exception.Number, JournalOperationStage.SchemaOpen, exception, cancellationToken.IsCancellationRequested);
         }
 
         await using SqlTransaction transaction = await BeginTransactionAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -112,7 +110,7 @@ internal static partial class SqlServerJournalSchema
                 cancellationToken).ConfigureAwait(false);
             if (journalObjectCount == 0)
             {
-                if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw Mismatch("missing");
+                if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw Mismatch(JournalStoreRefusal.SchemaMissing, "missing");
                 await using SqlCommand create = Command(connection, transaction, commandTimeoutSeconds, SchemaSql);
                 await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -127,18 +125,18 @@ internal static partial class SqlServerJournalSchema
             if (declaredVersion == 1)
             {
                 await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, 1, cancellationToken).ConfigureAwait(false);
-                if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw Mismatch("unsupported version '1'");
+                if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw UnsupportedVersion(1);
                 await MigrateAsync(connection, transaction, commandTimeoutSeconds, VersionOneMigrationSql, cancellationToken).ConfigureAwait(false);
                 declaredVersion = 2;
             }
             if (declaredVersion == 2)
             {
                 await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, 2, cancellationToken).ConfigureAwait(false);
-                if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw Mismatch("unsupported version '2'");
+                if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw UnsupportedVersion(2);
                 await MigrateAsync(connection, transaction, commandTimeoutSeconds, VersionTwoMigrationSql, cancellationToken).ConfigureAwait(false);
                 declaredVersion = CurrentVersion;
             }
-            if (declaredVersion != CurrentVersion) throw Mismatch($"unsupported version '{declaredVersion}'");
+            if (declaredVersion != CurrentVersion) throw UnsupportedVersion(declaredVersion);
             await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, CurrentVersion, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             completed = true;
@@ -158,20 +156,14 @@ internal static partial class SqlServerJournalSchema
         catch (SqlException exception)
         {
             bool rolledBack = await TryRollbackAsync(transaction).ConfigureAwait(false);
-            if (!rolledBack) throw Unknown("Schema initialization failed and rollback could not be confirmed.", exception);
-            if (cancellationToken.IsCancellationRequested)
-                throw Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled.", exception);
-            throw exception.Number switch
-            {
-                1205 => Failure(JournalStoreFailureKind.Deadlock, "Schema initialization was a deadlock victim.", exception),
-                1222 or -2 => Failure(JournalStoreFailureKind.Timeout, "Schema initialization timed out.", exception),
-                _ => Failure(JournalStoreFailureKind.Unavailable, "SQL Server journal schema initialization failed.", exception),
-            };
+            throw ProviderFailure(exception.Number, JournalOperationStage.SchemaInitialization, exception,
+                cancellationToken.IsCancellationRequested, rolledBack);
         }
     }
 
     internal static JournalStoreException ApplicationLockFailure(int returnCode)
-        => Failure(
+        => new(
+            JournalStoreRefusal.ApplicationLockNotGranted,
             returnCode switch
             {
                 -1 => JournalStoreFailureKind.Timeout,
@@ -179,7 +171,11 @@ internal static partial class SqlServerJournalSchema
                 -3 => JournalStoreFailureKind.Deadlock,
                 _ => JournalStoreFailureKind.Unavailable,
             },
-            $"SQL Server journal schema application lock failed with return code {returnCode}.");
+            JournalStoreFailureCertainty.DefinitelyNotCommitted,
+            JournalStoreFailureScope.WholeStore,
+            null,
+            $"SQL Server journal schema application lock failed with return code {returnCode}.")
+        { ReturnCode = returnCode };
 
     private static async Task<int> CountJournalObjectsAsync(
         SqlConnection connection,
@@ -217,7 +213,7 @@ internal static partial class SqlServerJournalSchema
             """))
         {
             if (Convert.ToInt32(await shape.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 1)
-                throw Mismatch("missing or malformed metadata version");
+                throw Mismatch(JournalStoreRefusal.SchemaMetadataShapeInvalid, "missing or malformed metadata version");
         }
 
         await using SqlCommand command = Command(
@@ -228,7 +224,8 @@ internal static partial class SqlServerJournalSchema
         object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         return value is int version
             ? version
-            : throw Mismatch(value is null or DBNull ? "missing metadata" : "malformed metadata version");
+            : throw Mismatch(value is null or DBNull ? JournalStoreRefusal.SchemaMetadataMissing : JournalStoreRefusal.SchemaVersionMalformed,
+                value is null or DBNull ? "missing metadata" : "malformed metadata version", metadataType: value is null or DBNull ? null : value.GetType());
     }
 
     /// <summary>
@@ -273,7 +270,9 @@ internal static partial class SqlServerJournalSchema
                 actualColumns.Add(Column(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt16(3), reader.GetBoolean(4), reader.GetString(5)));
         }
         if (!ColumnsMatch(actualColumns, expectedVersion))
-            throw Mismatch("partial, malformed, or contains unsupported columns");
+            throw ShapeMismatch(JournalStoreRefusal.SchemaColumnsMismatch, "partial, malformed, or contains unsupported columns",
+                expectedVersion, expectedVersion == 2 ? actualColumns.Except(VersionThreeColumns, StringComparer.Ordinal) : actualColumns,
+                ExpectedColumnsFor(expectedVersion));
 
         var indexes = new HashSet<string>(StringComparer.Ordinal);
         await using (SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
@@ -294,7 +293,8 @@ internal static partial class SqlServerJournalSchema
                     reader.GetString(0), reader.GetString(1), reader.GetBoolean(2), reader.GetBoolean(3),
                     reader.GetString(4), reader.GetByte(5), reader.GetString(6), reader.GetBoolean(7), reader.GetBoolean(8)));
         }
-        if (!indexes.SetEquals(expectedIndexes)) throw Mismatch($"version {expectedVersion} indexes do not match the supported shape");
+        if (!indexes.SetEquals(expectedIndexes)) throw ShapeMismatch(JournalStoreRefusal.SchemaIndexesMismatch, $"version {expectedVersion} indexes do not match the supported shape",
+            expectedVersion, indexes, expectedIndexes);
 
         var foreignKeys = new HashSet<string>(StringComparer.Ordinal);
         await using (SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
@@ -316,7 +316,8 @@ internal static partial class SqlServerJournalSchema
                     reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
                     reader.GetString(5), reader.GetString(6), reader.GetBoolean(7), reader.GetBoolean(8), reader.GetInt32(9)));
         }
-        if (!foreignKeys.SetEquals(ExpectedForeignKeys)) throw Mismatch($"version {expectedVersion} foreign keys do not match the supported shape");
+        if (!foreignKeys.SetEquals(ExpectedForeignKeys)) throw ShapeMismatch(JournalStoreRefusal.SchemaForeignKeysMismatch, $"version {expectedVersion} foreign keys do not match the supported shape",
+            expectedVersion, foreignKeys, ExpectedForeignKeys);
 
         var constraints = new HashSet<string>(StringComparer.Ordinal);
         await using (SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
@@ -330,7 +331,8 @@ internal static partial class SqlServerJournalSchema
                 constraints.Add(Check(reader.GetString(0),
                     SqlServerJournalMetadata.ReadDefinition(reader, 1, reader.GetString(0)), reader.GetBoolean(2), reader.GetBoolean(3)));
         }
-        if (!constraints.SetEquals(ExpectedChecks)) throw Mismatch($"version {expectedVersion} check constraints do not match the supported shape");
+        if (!constraints.SetEquals(ExpectedChecks)) throw ShapeMismatch(JournalStoreRefusal.SchemaChecksMismatch, $"version {expectedVersion} check constraints do not match the supported shape",
+            expectedVersion, constraints, ExpectedChecks);
 
         HashSet<string> expectedDefaults = expectedVersion == 1 ? ExpectedDefaultsV1 : ExpectedDefaults;
         var defaults = new HashSet<string>(StringComparer.Ordinal);
@@ -347,7 +349,8 @@ internal static partial class SqlServerJournalSchema
                 defaults.Add(Default(reader.GetString(0), reader.GetString(1), reader.GetString(2),
                     SqlServerJournalMetadata.ReadDefinition(reader, 3, reader.GetString(0))));
         }
-        if (!defaults.SetEquals(expectedDefaults)) throw Mismatch($"version {expectedVersion} defaults do not match the supported shape");
+        if (!defaults.SetEquals(expectedDefaults)) throw ShapeMismatch(JournalStoreRefusal.SchemaDefaultsMismatch, $"version {expectedVersion} defaults do not match the supported shape",
+            expectedVersion, defaults, expectedDefaults);
 
         var triggers = new HashSet<string>(StringComparer.Ordinal);
         await using (SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
@@ -364,15 +367,16 @@ internal static partial class SqlServerJournalSchema
                     SqlServerJournalMetadata.ReadDefinition(reader, 2, reader.GetString(0)), reader.GetBoolean(3)));
         }
         HashSet<string> expectedTriggers = expectedVersion == 1 ? ExpectedTriggersV1 : ExpectedTriggers;
-        if (!triggers.SetEquals(expectedTriggers)) throw Mismatch($"version {expectedVersion} triggers do not match the supported shape");
+        if (!triggers.SetEquals(expectedTriggers)) throw ShapeMismatch(JournalStoreRefusal.SchemaTriggersMismatch, $"version {expectedVersion} triggers do not match the supported shape",
+            expectedVersion, triggers, expectedTriggers);
 
         await using SqlCommand metadata = Command(connection, transaction, commandTimeoutSeconds, "SELECT schema_version, store_epoch FROM dbo.journal_metadata WHERE metadata_key = 1;");
         await using SqlDataReader metadataReader = await metadata.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        if (!await metadataReader.ReadAsync(cancellationToken).ConfigureAwait(false)) throw Mismatch("missing metadata");
+        if (!await metadataReader.ReadAsync(cancellationToken).ConfigureAwait(false)) throw Mismatch(JournalStoreRefusal.SchemaMetadataMissing, "missing metadata");
         int version = metadataReader.GetInt32(0);
         Guid epoch = metadataReader.GetGuid(1);
-        if (version != expectedVersion) throw Mismatch($"unsupported version '{version}'");
-        if (epoch == Guid.Empty) throw Mismatch("metadata has an empty store epoch");
+        if (version != expectedVersion) throw UnsupportedVersion(version, expectedVersion);
+        if (epoch == Guid.Empty) throw Mismatch(JournalStoreRefusal.SchemaEpochEmpty, "metadata has an empty store epoch");
     }
 
     private static readonly HashSet<string> ExpectedIndexes = new(StringComparer.Ordinal)
@@ -471,6 +475,11 @@ internal static partial class SqlServerJournalSchema
             false),
     };
 
+    /// <summary>SqlServerJournalMigrationBackfillProbe registers its one real trigger while the serialized
+    /// migration race runs. Disposing the scope restores the original expected inventory.</summary>
+    internal static IDisposable RegisterTriggerForTests(string name, string table, string definition, bool disabled = false)
+        => new TriggerRegistrationForTests(Trigger(name, table, definition, disabled));
+
     private static readonly HashSet<string> ExpectedTriggersV1 = new(StringComparer.Ordinal);
 
     private static string Column(string table, string column, string type, int length, bool nullable, string collation)
@@ -539,18 +548,11 @@ internal static partial class SqlServerJournalSchema
         }
         catch (OperationCanceledException exception)
         {
-            throw Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled before the transaction began.", exception);
+            throw Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled before the transaction began.", exception, JournalOperationStage.SchemaTransactionBegin);
         }
         catch (SqlException exception)
         {
-            if (cancellationToken.IsCancellationRequested)
-                throw Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled before the transaction began.", exception);
-            throw exception.Number switch
-            {
-                1205 => Failure(JournalStoreFailureKind.Deadlock, "Schema initialization was a deadlock victim before transaction admission.", exception),
-                1222 or -2 => Failure(JournalStoreFailureKind.Timeout, "Schema initialization timed out before transaction admission.", exception),
-                _ => Failure(JournalStoreFailureKind.Unavailable, "SQL Server journal schema could not begin its transaction.", exception),
-            };
+            throw ProviderFailure(exception.Number, JournalOperationStage.SchemaTransactionBegin, exception, cancellationToken.IsCancellationRequested);
         }
     }
 
@@ -575,36 +577,35 @@ internal static partial class SqlServerJournalSchema
     {
         Assembly assembly = typeof(SqlServerJournalSchema).Assembly;
         string resourceName = assembly.GetManifestResourceNames().Single(name => name.EndsWith(suffix, StringComparison.Ordinal));
+        // The suffix and manifest are fixed by this assembly, never supplied by a caller or database.
         using Stream stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException("Embedded SQL Server journal schema is missing.");
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }
 
-    private static JournalStoreException Mismatch(string actual, Exception? exception = null)
-        => new(
+    private static JournalStoreException UnsupportedVersion(long version, long supportedVersion = CurrentVersion)
+        => Mismatch(JournalStoreRefusal.SchemaVersionUnsupported, $"unsupported version '{version}'",
+            actualVersion: version, supportedVersions: [supportedVersion]);
+
+    private static JournalStoreException ShapeMismatch(JournalStoreRefusal reason, string actual, int version,
+        IEnumerable<string> actualObjects, IEnumerable<string> expectedObjects)
+        => Mismatch(reason, actual, expectedVersion: version,
+            missingObjects: expectedObjects.Except(actualObjects, StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal).ToArray(),
+            unexpectedObjects: actualObjects.Except(expectedObjects, StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+
+    private static JournalStoreException Mismatch(JournalStoreRefusal reason, string actual, long? expectedVersion = null,
+        long? actualVersion = null, IReadOnlyList<long>? supportedVersions = null, Type? metadataType = null,
+        IReadOnlyList<string>? missingObjects = null, IReadOnlyList<string>? unexpectedObjects = null)
+        => new(reason,
             JournalStoreFailureKind.SchemaMismatch,
             JournalStoreFailureCertainty.DefinitelyNotCommitted,
             JournalStoreFailureScope.WholeStore,
             null,
-            $"SQL Server mutation journal schema is {actual}. Apply migration '{RequiredMigration}'.",
-            exception);
-
-    private static JournalStoreException Failure(JournalStoreFailureKind kind, string message, Exception? exception = null)
-        => new(
-            kind,
-            JournalStoreFailureCertainty.DefinitelyNotCommitted,
-            JournalStoreFailureScope.WholeStore,
-            null,
-            message,
-            exception);
-
-    private static JournalStoreException Unknown(string message, Exception exception)
-        => new(
-            JournalStoreFailureKind.UnknownOutcome,
-            JournalStoreFailureCertainty.Unknown,
-            JournalStoreFailureScope.WholeStore,
-            null,
-            message,
-            exception);
+            $"SQL Server mutation journal schema is {actual}. Apply migration '{RequiredMigration}'.")
+        {
+            RequiredMigration = RequiredMigration, ExpectedVersion = expectedVersion, ActualVersion = actualVersion,
+            SupportedVersions = supportedVersions, MetadataType = metadataType,
+            MissingObjects = missingObjects, UnexpectedObjects = unexpectedObjects,
+        };
 }

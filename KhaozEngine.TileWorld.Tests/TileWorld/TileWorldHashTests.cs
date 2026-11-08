@@ -278,8 +278,18 @@ public class TileWorldHashTests
     public void Manifest_composition_refuses_a_null_hash_and_a_repeated_region()
     {
         (RegionCoord, string)[] nulled = { (new RegionCoord(0, 0), null!) };
-        Assert.Throws<TileWorldException>(() => TileWorldHash.OfManifestRegions(1f, 4, 3f, nulled));
+        var missing = Assert.Throws<TileWorldException>(() => TileWorldHash.OfManifestRegions(1f, 4, 3f, nulled));
+        Assert.Equal(TileWorldRefusal.ManifestRegionHashMissing, missing.Reason);
+        Assert.Equal(new RegionCoord(0, 0), missing.Region);
+        nulled[0] = (new RegionCoord(0, 0), "aa");
+        Assert.NotEmpty(TileWorldHash.OfManifestRegions(1f, 4, 3f, nulled));
+
         (RegionCoord, string)[] repeated = { (new RegionCoord(2, 3), "aa"), (new RegionCoord(2, 3), "bb") };
-        Assert.Throws<TileWorldException>(() => TileWorldHash.OfManifestRegions(1f, 4, 3f, repeated));
+        var duplicate = Assert.Throws<TileWorldException>(() => TileWorldHash.OfManifestRegions(1f, 4, 3f, repeated));
+        Assert.Equal(TileWorldRefusal.ManifestRegionDuplicate, duplicate.Reason);
+        Assert.Equal(new RegionCoord(2, 3), duplicate.Region);
+        Assert.Null(duplicate.SourceName);
+        repeated[1] = (new RegionCoord(3, 3), "bb");
+        Assert.NotEmpty(TileWorldHash.OfManifestRegions(1f, 4, 3f, repeated));
     }
 }

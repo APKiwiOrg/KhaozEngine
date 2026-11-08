@@ -10,6 +10,26 @@ namespace KhaozEngine.Windowing
     /// </summary>
     public sealed partial class AppWindow
     {
+        /// <summary>AppWindowDisposalTests drives ordinary teardown with owned headless resources and no native setup.</summary>
+        internal static AppWindow CreateForTests(Frame frame, GpuDeviceContext gpu, IGpuCommandList commands,
+            Rumble.IRumble rumble, Silk.NET.Input.IInputContext input, Silk.NET.Windowing.IWindow window) =>
+            new(frame, gpu, commands, rumble, input, window);
+
+        AppWindow(Frame frame, GpuDeviceContext gpu, IGpuCommandList commands, Rumble.IRumble rumble,
+            Silk.NET.Input.IInputContext input, Silk.NET.Windowing.IWindow window)
+        {
+            _frame = frame;
+            _gpu = gpu;
+            _device = gpu.GpuDevice;
+            _cl = commands;
+            _rumble = rumble;
+            _input = input;
+            _window = window;
+        }
+
+        /// <summary>AppWindowDisposalTests verifies every capture tap is removed even if detachment fails.</summary>
+        internal int CaptureTapCountForTests => _captureTaps?.Count ?? 0;
+
         FrameCaptureTaps? _captureTaps;
 
         /// <summary>

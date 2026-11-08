@@ -148,7 +148,10 @@ public sealed class PerspectiveExpectationTests
         Assert.Equal(2, scan.Count);
         Assert.Equal((2, 0), scan.At);
         Assert.Equal(.03f, scan.Worst, 5);
-        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => MotionExpectation.HoldDrawnPixels(motion, (_, _) => Vector2.Zero, .02f));
+        var failure = Assert.Throws<MotionExpectationException>(() => MotionExpectation.HoldDrawnPixels(motion, (_, _) => Vector2.Zero, .02f));
+        Assert.Equal(MotionExpectationRefusal.OutsideTolerance, failure.Reason);
+        Assert.Equal(scan.At, failure.Pixel);
+        Assert.Equal(scan.Count, failure.Count);
     }
 
     [Fact]
@@ -160,10 +163,12 @@ public sealed class PerspectiveExpectationTests
 
         Assert.Equal(1, MotionExpectation.AssertCovered(motion, (x, _) => x == 0));
         Assert.Equal(1, MotionExpectation.AssertCovered(motion, (x, _) => x == 3));
-        var background = Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => MotionExpectation.AssertCovered(motion, (x, _) => x < 2));
-        Assert.Contains("pixel (1, 0)", background.Message);
-        var infinity = Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => MotionExpectation.AssertCovered(motion, (x, _) => x >= 2));
-        Assert.Contains("pixel (2, 0)", infinity.Message);
+        var background = Assert.Throws<MotionExpectationException>(() => MotionExpectation.AssertCovered(motion, (x, _) => x < 2));
+        Assert.Equal(MotionExpectationRefusal.InvalidCoveredMotion, background.Reason);
+        Assert.Equal((1, 0), background.Pixel);
+        var infinity = Assert.Throws<MotionExpectationException>(() => MotionExpectation.AssertCovered(motion, (x, _) => x >= 2));
+        Assert.Equal(MotionExpectationRefusal.InvalidCoveredMotion, infinity.Reason);
+        Assert.Equal((2, 0), infinity.Pixel);
     }
 
     [Fact]

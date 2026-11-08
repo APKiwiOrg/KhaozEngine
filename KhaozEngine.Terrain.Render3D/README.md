@@ -117,12 +117,15 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
     the caller must flush in-flight builds first (`TerrainStreamer.FlushPendingBuilds`) before swapping, so a
     build already running against the old field cannot land after the swap. The map editor runs its streamer
     synchronously, so that ordering concern does not apply there. Swapping while a build is EXECUTING throws
-    `InvalidOperationException` naming the number of builds it caught (issue #105), because that build reads the
+    `ChunkSinkConfigurationStateException` with `ChunkSinkConfigurationRefusal.FieldChangeDuringBuild` and
+    `BuildCount` naming the number of builds it caught (issue #105), because that build reads the
     field at several points and would otherwise mesh one chunk from two fields. A build that has already returned
     and is waiting to apply is the half `FlushPendingBuilds` covers, so the fix for that exception is to flush,
     never to retry.
   - **`UpdateLayers(layers)`** swaps the captured generation configs every FUTURE chunk build reads, under the same
-    flush precondition and in-flight refusal as `UpdateField`. The list must pass the construction rules again
+    flush precondition as `UpdateField`. Its in-flight refusal is `LayersChangeDuringBuild`, with `BuildCount`.
+    `ReconfigureLod` likewise refuses active builds with `LodChangeDuringBuild` and `BuildCount`.
+    The list must pass the construction rules again
     and keep the sink's topology: the same count and, per index, the same kind and HLOD presence, with every
     placement layer unchanged. The placement buckets and the HLOD gate derive from exactly those parts, so they
     stay valid without a rebuild. A companion may name a different host, which is only safe when every loaded
@@ -340,6 +343,21 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   closure, a resource that is not a binary glTF, an external URI or a mesh that does not load throws
   `MapDocumentException`.
 
+Native adapter refusals preserve `MapDocumentException` and share `MapDocumentRefusal` with MapDoc.
+
+| Reason | Refused rule | Identifiers when known |
+| --- | --- | --- |
+| `AssetDescriptorMismatch` | A descriptor from another closure | `AssetId` |
+| `ReferenceKindMismatch` | A native mesh reference with a different resource kind | `AssetId`, `ResourceId`, `ExpectedResourceKind`, `ActualResourceKind` |
+| `SchemaMalformed` | An invalid GLB header, JSON chunk header or JSON payload | `AssetId`, `ResourceId`, JSON `FieldPath`, `LineNumber`, `BytePositionInLine` |
+| `AssetGlbExternalUri` | An external buffer or image URI | `AssetId`, `ResourceId`, indexed `FieldPath`, `Uri` |
+| `AssetPayloadUnreadable` | A mesh decode failure or a missing or unreadable adapter file | `AssetId`, `ResourceId`, `Path`, `ExpectedHash`, original `InnerException` |
+| `DigestMismatch` | Adapter file bytes differing from their verified pin | `DigestKind` `resource bytes`, `SubjectKind` `resource`, `EntityId`, `ResourceId`, `Path`, `ExpectedHash`, `ActualHash` |
+
+The loader preserves a known structured document refusal found in an external loader failure through
+the shared context-copy method, keeping its identifiers and original cause. Other loader failures use
+`AssetPayloadUnreadable`. Unavailable identifiers remain null.
+
 R5's format-7 effective prefab resources retain this one-way leaf mesh loader. Prefabs have no mesh of their
 own. Partial-face paint drawing, room-based roof colour/shadows, camera policy and local-light presentation
 remain R8 work. Consume the effective MapDoc snapshot rather than re-expanding children in this adapter.
@@ -382,3 +400,20 @@ statics). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the wal
 (its foliage scatter uses this multi-part form so the re-baked textured pine/oak/rock kit renders textured).
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).
+
+## Configuration refusals
+
+`ChunkSinkConfigurationArgumentException` derives from `ArgumentException`, and
+`ChunkSinkConfigurationStateException` derives from `InvalidOperationException`. Both carry
+`ChunkSinkConfigurationRefusal` in the `KhaozEngine.Terrain` namespace. Construction keeps each argument's
+`ParamName`. Flush or drain CPU builds before replacing their field, layer configuration or LOD table.
+Topology checks remain owned by `PropLayerTopology`, and a negative `collisionLod` remains a BCL
+`ArgumentOutOfRangeException` with `ParamName` and `ActualValue`.
+
+| ChunkSinkConfigurationRefusal | Refused input | Identifiers |
+|---|---|---|
+| `DynamicsRequiresPhysics` | A dynamics source without a physics world | `ParamName` |
+| `CollisionRequiresPhysics` | Terrain collision without a physics world | `ParamName` |
+| `FieldChangeDuringBuild` | Replacing the field during CPU chunk builds | `BuildCount` |
+| `LayersChangeDuringBuild` | Replacing captured layer configuration during CPU chunk builds | `BuildCount` |
+| `LodChangeDuringBuild` | Replacing the LOD table during CPU chunk builds | `BuildCount` |

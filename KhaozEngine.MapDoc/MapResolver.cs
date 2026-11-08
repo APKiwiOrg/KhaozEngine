@@ -39,7 +39,9 @@ public static class MapResolver
         float z, float yaw, float scale, string[] tags, Func<string, float, float, float> supportHeight)
     {
         float y = authoredY ?? supportHeight(id, x, z);
-        if (!float.IsFinite(y)) throw new MapDocumentException($"Placement '{id}' has nonfinite support height.");
+        if (!float.IsFinite(y))
+            throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, $"Placement '{id}' has nonfinite support height.")
+            { PlacementId = id };
         return new MapResolvedPlacement(id, kind, assetId, numericId, new MapTransform(new Vector3(x, y, z), yaw, scale), tags);
     }
 }

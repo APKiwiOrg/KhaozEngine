@@ -88,9 +88,7 @@ public sealed partial class SqlServerMutationJournalStore
             transaction,
             "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');");
         object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return value is DateTimeOffset now
-            ? now
-            : throw Corrupt(Array.Empty<string>(), "SQL Server did not return its UTC clock.");
+        return RequireDatabaseUtcNow(value);
     }
 
     private static DateTimeOffset SubtractOrMinimum(DateTimeOffset value, TimeSpan duration)

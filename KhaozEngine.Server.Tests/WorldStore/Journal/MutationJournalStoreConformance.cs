@@ -163,20 +163,20 @@ public abstract class MutationJournalStoreConformance
         MutationJournalStoreHarness resolveHarness = CreateStore();
         JournalInitializeResult initialized = await resolveHarness.Store.InitializeAsync(Initialization(Operation(1), "player/a", result: Bytes(4)));
         await resolveHarness.CorruptStoredResultAsync(initialized.Receipt!.OperationId);
-        await AssertCorrupt(() => resolveHarness.Store.ResolveOperationAsync(Operation(1)));
+        await AssertCorrupt(() => resolveHarness.Store.ResolveOperationAsync(Operation(1)), Operation(1).OperationId, "player/a");
 
         MutationJournalStoreHarness initializeHarness = CreateStore();
         JournalInitialization initialization = Initialization(Operation(2), "player/b", result: Bytes(5));
         JournalInitializeResult first = await initializeHarness.Store.InitializeAsync(initialization);
         await initializeHarness.CorruptStoredResultAsync(first.Receipt!.OperationId);
-        await AssertCorrupt(() => initializeHarness.Store.InitializeAsync(initialization));
+        await AssertCorrupt(() => initializeHarness.Store.InitializeAsync(initialization), initialization.Identity.OperationId, "player/b");
 
         MutationJournalStoreHarness commitHarness = CreateStore();
         await commitHarness.Store.InitializeAsync(Initialization(Operation(3), "player/c"));
         JournalCommit commit = Commit(Operation(4), Mutation("player/c", 0, Event(1)), result: Bytes(6));
         JournalCommitResult committed = await commitHarness.Store.CommitAsync(commit);
         await commitHarness.CorruptStoredResultAsync(committed.Receipt!.OperationId);
-        await AssertCorrupt(() => commitHarness.Store.CommitAsync(commit));
+        await AssertCorrupt(() => commitHarness.Store.CommitAsync(commit), commit.Identity.OperationId, "player/c");
     }
 
     [Fact]
@@ -416,9 +416,14 @@ public abstract class MutationJournalStoreConformance
         Assert.Single((await harness.Store.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024))).Events);
     }
 
-    private static async Task AssertCorrupt(Func<Task> action)
+    private async Task AssertCorrupt(Func<Task> action, Guid operationId, string streamKey)
     {
         JournalStoreException exception = await Assert.ThrowsAsync<JournalStoreException>(action);
+        AssertResultRefusal(exception, operationId, streamKey);
+    }
+
+    protected virtual void AssertResultRefusal(JournalStoreException exception, Guid operationId, string streamKey)
+    {
         Assert.Equal(JournalStoreFailureKind.CorruptData, exception.Kind);
         Assert.Equal(JournalStoreFailureCertainty.CommittedDataUnreadable, exception.Certainty);
         Assert.Equal(JournalStoreFailureScope.OperationStreams, exception.Scope);

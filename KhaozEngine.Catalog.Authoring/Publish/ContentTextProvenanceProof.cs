@@ -123,9 +123,10 @@ internal static class ContentTextProvenanceProof
     /// <param name="versionNumber">The version.</param>
     public static ContentAuthoringException Unknown(int versionNumber)
         => new(
+            ContentAuthoringRefusal.TextProvenanceUnknown,
             FormattableString.Invariant(
                 $"Version {versionNumber} has no complete text record, and neither its stored manifests nor manifests rebuilt from its recorded chunks prove it named no language. Its text is unknown rather than empty, so nothing was written."),
             default,
             0,
-            ContentAuthoringException.TextProvenanceUnknownReason);
+            ContentAuthoringException.TextProvenanceUnknownReason) { VersionNumber = versionNumber };
 }

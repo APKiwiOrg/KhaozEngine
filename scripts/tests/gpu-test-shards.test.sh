@@ -48,8 +48,8 @@ PY
 echo "expand: which triggers shard which legs"
 check "push keeps Metal's full suite on one job" "3 none"    "$(expand push false '')"
 check "pull_request matches push"           "3 none"          "$(expand pull_request false '')"
-check "dispatch shards all three"           "24 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
-check "schedule matches dispatch"           "24 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
+check "dispatch shards all three"           "22 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
+check "schedule matches dispatch"           "22 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
 check "a bake shards nothing"               "3 none"          "$(expand workflow_dispatch true '')"
 check "a render filter shards nothing"      "3 none"          "$(expand workflow_dispatch false 'FullyQualifiedName~Golden')"
 
@@ -70,7 +70,7 @@ The following Tests are available:
     $G.TemporalGhostingGpuTests.TheGhostingTableCoversEveryPreset
     $G.TemporalPerspectiveFollowGpuTests.A_followed_avatar_leaves_no_trail_on_the_ground_it_uncovers
     $G.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender
-    $G.ShadowCascadeCullPerfGpuTests.Consumer_shaped_caster_load_costs_less_per_cascade_after_culling
+    $G.ShadowCascadeCullPerfGpuTests.A_small_caster_fixture_draws_fewer_instances_with_culling
     $G.ShadowRerecordBenchGpuTests.The_hold_releases_on_a_cadence_the_threshold_predicts
     $G.WaterGoldenTests.Golden_water
     $G.AtmosphereFogGoldenTests.Golden_fog
@@ -85,14 +85,18 @@ done
 run check-render vulkan-native "$TMPROOT/list.txt" > /dev/null
 check "vulkan render-1 holds the Quality orthographic sweep alone" 1 "$(grep -c '^vulkan-native render-1: 1 listed test methods$' "$OUTFILE")"
 check "vulkan render-6 holds Native, the phase lines and atmosphere" 1 "$(grep -c '^vulkan-native render-6: 3 listed test methods$' "$OUTFILE")"
+check "vulkan render-9 holds cascade, hold cadence and follow stop" 1 "$(grep -c '^vulkan-native render-9: 3 listed test methods$' "$OUTFILE")"
+check "vulkan no longer dedicates render-2 to cascade culling" 0 "$(grep -c '^vulkan-native render-2:' "$OUTFILE")"
 check "vulkan render-12 takes the unnamed classes" 1 "$(grep -c '^vulkan-native render-12: 2 listed test methods$' "$OUTFILE")"
 run check-render direct3d11-native "$TMPROOT/list.txt" > /dev/null
-check "d3d11 render-1 holds the cascade cull alone" 1 "$(grep -c '^direct3d11-native render-1: 1 listed test methods$' "$OUTFILE")"
-check "d3d11 render-4 takes every class outside Temporal" 1 "$(grep -c '^direct3d11-native render-4: 5 listed test methods$' "$OUTFILE")"
+check "d3d11 no longer dedicates render-1 to cascade culling" 0 "$(grep -c '^direct3d11-native render-1:' "$OUTFILE")"
+check "d3d11 render-4 takes every class outside Temporal" 1 "$(grep -c '^direct3d11-native render-4: 6 listed test methods$' "$OUTFILE")"
 run check-render metal-native "$TMPROOT/list.txt" > /dev/null
 check "metal render-1 holds the follow sweeps" 1 "$(grep -c '^metal-native render-1: 9 listed test methods$' "$OUTFILE")"
 check "an empty listing is refused" 1 "$(run check-render metal-native /dev/null)"
 check "an unknown backend is refused" 1 "$(run filter opengl render-1)"
+check "the removed Windows cascade slice is refused" 1 "$(run filter direct3d11-native render-1)"
+check "the removed Vulkan cascade slice is refused" 1 "$(run filter vulkan-native render-2)"
 check "an unknown slice is refused" 1 "$(run filter metal-native render-3)"
 check "the last slice negates every earlier rule" 0 "$(run filter metal-native render-2)"
 check "the last slice filter" "FullyQualifiedName!~$G.TemporalFollow&FullyQualifiedName!~$G.TemporalLongHoldFollowGpuTests." "$(cat "$OUTFILE")"
@@ -215,7 +219,9 @@ check "derived solutions partition projects and rebase paths" 0 "$_rc"
 
 echo "build solutions: only shard test roots and required instrumentation"
 for backend in metal-native direct3d11-native vulkan-native; do
-  for shard in rest render-1; do
+  render_shard=render-1
+  [ "$backend" != direct3d11-native ] || render_shard=render-4
+  for shard in rest "$render_shard"; do
     check "$backend $shard build solution" 0 \
       "$(run build-solution "$backend" "$shard" "$S/Fixture.slnx" "$S/output/build-$backend-$shard.slnx")"
   done
@@ -239,7 +245,8 @@ editor = {"../KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj"}
 named = {f"../{n}/{n}.csproj" for n in
          ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests")}
 for backend in ("metal-native", "direct3d11-native", "vulkan-native"):
-    assert paths(backend, "render-1") == render
+    render_shard = "render-4" if backend == "direct3d11-native" else "render-1"
+    assert paths(backend, render_shard) == render
     rest = paths(backend, "rest")
     assert "../Lib/Lib.csproj" not in rest, "standalone library roots are unnecessary"
     assert "../A.Tests/A.Tests.csproj" in rest, "new test projects must default to rest"

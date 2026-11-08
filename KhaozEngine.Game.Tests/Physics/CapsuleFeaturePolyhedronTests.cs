@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuCompound = BepuPhysics.Collidables.Compound;
 using BepuHull = BepuPhysics.Collidables.ConvexHull;
 using BepuSim = BepuPhysics.Simulation;
@@ -271,9 +270,7 @@ public class CapsuleFeaturePolyhedronTests
         // This reads only the test's owned registry under its actual lease. It does not call a solver
         // or construct an expected witness from query output. Any rounding mismatch is setup failure.
         scene.Lease.AssertCurrent();
-        FieldInfo? field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        BepuSim simulation = Assert.IsType<BepuSim>(field.GetValue(scene.World));
+        BepuSim simulation = scene.World.SimulationForTests;
         Assert.Equal(2, simulation.Statics.Count); // The excluded floor and this one target.
         int target = -1;
         for (int i = 0; i < simulation.Statics.Count; i++)

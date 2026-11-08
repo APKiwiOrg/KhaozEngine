@@ -28,8 +28,8 @@ namespace KhaozEngine.Render3D
     /// and the frame origin rides in the uniform slot for the dissolve variants' world-anchored noise.
     /// </para>
     /// <para>
-    /// Static base rows keep rigid casters only. Skinned casters write current poses into transient rows, while
-    /// dynamic base rows receive both types after their per-frame clear.
+    /// Pure static bases keep Static rigid casters. Moving rigid and skinned casters share transient rows, while
+    /// dynamic and compatibility fallback bases receive complete current geometry after their clear.
     /// </para>
     /// </remarks>
     public sealed partial class Scene3D
@@ -40,6 +40,17 @@ namespace KhaozEngine.Render3D
 
         // Per-render scratch, reused rather than reallocated: the caster spans one light draws.
         readonly List<ShadowCasterSpan> _pointCasterSpans = new();
+
+        /// <summary>RendererPerfPointTraceTests requires a nonempty packed layout before corrupting profiling metadata.</summary>
+        internal int PackedPointSlotCountForTests => _packedPointSlots.Count;
+
+        /// <summary>RendererPerfPointTraceTests faults only profiling request lookup, leaving rigid recording usable.</summary>
+        internal void CorruptPointProfilingRequestsForTests(int requestIndex)
+        {
+            for (int i = 0; i < _packedPointSlots.Count; i++)
+                _packedPointSlots[i] = _packedPointSlots[i] with
+                { RequestIndex = requestIndex, Casters = PointShadowCasterSet.StaticRigid };
+        }
 
         // The lights packed into this frame's slot ring, in the order they were packed. Cleared by
         // BeginPointShadowFrame and walked by RenderPointShadowSlots.
@@ -221,12 +232,12 @@ namespace KhaozEngine.Render3D
         /// near radius and the exclusion box are its exact test.
         /// </summary>
         void BuildPointCasterSpans(Vector3 lightPosAbsolute, float radius, float nearRadius,
-            Vector3 exclusionMin, Vector3 exclusionMax)
+            Vector3 exclusionMin, Vector3 exclusionMax, PointShadowCasterSet casters = PointShadowCasterSet.Rigid)
         {
             _pointCasterSpans.Clear();
             if (_instanceData.Count == 0) return;
             QueryPointCasters(lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
-            AppendPointCasterSpans(_pointCasterSpans);
+            AppendPointCasterSpans(_pointCasterSpans, casters);
         }
 
         /// <summary>
@@ -297,6 +308,7 @@ namespace KhaozEngine.Render3D
         // Model-owned and external material receivers must all relinquish the shared atlas pair.
         void DisposePointShadowResources(Internal.ResourceDisposal disposal, bool shadowReceiversReleased)
         {
+            _pointRigidLayers.Reset(0);
             if (_pointShadowOwnersReleased && shadowReceiversReleased)
             {
                 if (disposal.Release("pointShadow.transientAtlas", () => _pointShadowTransientAtlas?.Dispose())) _pointShadowTransientAtlas = null;
@@ -308,6 +320,7 @@ namespace KhaozEngine.Render3D
         /// <summary>Keep the outgoing pass and atlases until submitted readers complete.</summary>
         void RetirePointShadows()
         {
+            _pointRigidLayers.Reset(0);
             _retired.Retire(_pointShadows, _pointShadowTransientAtlas, _pointShadowAtlas);
             _pointShadows = null;
             _pointShadowTransientAtlas = null;

@@ -28,8 +28,10 @@ public class ContactMoveToRangeTests
         MoveTuning wrong = contactGraph ? legacy : Tuning;
         // Invalid body and dt would fail later. A kind refusal must win before any planning or prediction.
         var body = new MoveState { Position = new(float.NaN), Grounded = true };
-        Assert.Contains("Kind", Assert.Throws<ArgumentException>(() =>
-            move.Tick(body, wrong, default, 0, false, float.NaN, context)).Message, StringComparison.Ordinal);
+        var refusal = Assert.Throws<NavigationProfileException>(() =>
+            move.Tick(body, wrong, default, 0, false, float.NaN, context));
+        Assert.Equal("binding", refusal.ParamName);
+        Assert.Equal(NavigationProfileRefusal.BindingKindMismatch, refusal.Reason);
     }
 
     [Theory]
@@ -78,8 +80,11 @@ public class ContactMoveToRangeTests
         var target = ReachTarget.Point(body.Position);
         Assert.Equal(RangeMoveStatus.InRange, move.Tick(body, Tuning, target, 0, false, 1f / 30f, context).Status);
         MoveTuning wrong = Tuning with { Water = new(Tuning.Water.Mode, 1f) };
-        Assert.Contains("Water.SurfaceJumpSpeed", Assert.Throws<ArgumentException>(() =>
-            move.Tick(body, wrong, target, 0, false, 1f / 30f, context)).Message, StringComparison.Ordinal);
+        var refusal = Assert.Throws<NavigationProfileException>(() =>
+            move.Tick(body, wrong, target, 0, false, 1f / 30f, context));
+        Assert.Equal("binding", refusal.ParamName);
+        Assert.Equal(NavigationProfileRefusal.TuningFieldMismatch, refusal.Reason);
+        Assert.Equal("Water.SurfaceJumpSpeed", refusal.FieldName);
     }
 
     [Theory]
@@ -145,6 +150,8 @@ public class ContactMoveToRangeTests
         var body = new MoveState { Position = new(-0.075f, legacy.CapsuleHalfHeight, 0.125f), Grounded = true };
         var target = ReachTarget.Point(body.Position);
         Assert.Equal(RangeMoveStatus.InRange, move.Tick(body, legacy, target, 0, false, 1f / 30f, context).Status);
-        Assert.Throws<ArgumentException>(() => move.Tick(body, legacy with { CapsuleRadius = 0.3f }, target, 0, false, 1f / 30f, context));
+        var refusal = Assert.Throws<NavigationProfileException>(() => move.Tick(body, legacy with { CapsuleRadius = 0.3f }, target, 0, false, 1f / 30f, context));
+        Assert.Equal(NavigationProfileRefusal.GeometryMismatch, refusal.Reason);
+        Assert.Equal("CapsuleRadius", refusal.FieldName);
     }
 }

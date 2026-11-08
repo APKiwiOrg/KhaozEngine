@@ -40,6 +40,17 @@ internal sealed class InstalledSupportMeshWorldCache
     internal int TriangleCountFor(StaticHandle owner) =>
         _statics.TryGetValue(owner.Value, out Slot? slot) ? Volatile.Read(ref slot.Count) : 0;
 
+    /// <summary>Lets MeshWorldForm tests compare a published triangle's actual immutable form identity.</summary>
+    internal InstalledSupportMeshWorldForm PublishedFormForTests(StaticHandle owner, int triangle) =>
+        _statics[owner.Value].Triangles[triangle];
+
+    /// <summary>Lets MeshConcurrency tests replace a paused builder's slot version and verify its identity changed.</summary>
+    internal (TypedIndex Shape, long Version, object Identity) SlotForTests(StaticHandle owner)
+    {
+        Slot slot = _statics[owner.Value];
+        return (slot.Shape, slot.Version, slot);
+    }
+
     Lock.Scope EnterGate()
     {
         Interlocked.Increment(ref _lockAcquisitions);

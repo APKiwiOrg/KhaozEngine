@@ -92,14 +92,19 @@ public sealed class MapMarkerEditTests
         MapLocalMarkerDoc child = new(1, "a/entry", "arrival-changed", new Vector3(1, 2, -1), 0.371f, "entry-role", true, new[] { "first" });
 
         var set = Assert.Throws<MapDocumentException>(() => MapMarkerEdits.Prepare(fixture.Document, fixture.Assets, new MapSetMarker(child)));
-        Assert.Contains("prefab_override", set.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.MarkerPrefabOwnershipProtected, set.Reason);
+        Assert.Equal("a/entry", set.MarkerId);
+        Assert.Equal("a", set.InstanceId);
         var remove = Assert.Throws<MapDocumentException>(() => MapMarkerEdits.Prepare(fixture.Document, fixture.Assets, new MapRemoveMarker("a/entry")));
-        Assert.Contains("prefab_override", remove.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.MarkerPrefabOwnershipProtected, remove.Reason);
+        Assert.Equal("a/entry", remove.MarkerId);
+        Assert.Equal("a", remove.InstanceId);
         Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
 
         // Positive control: a standalone marker beside the live instance is accepted.
         var accepted = MapMarkerEdits.Prepare(fixture.Document, fixture.Assets, new MapSetMarker(child with { Id = "w", Name = "w-name" }));
         Assert.Equal(new[] { "a/entry", "w" }, MapEffectiveAnnotations.Markers(MarkerFixtures.Effective(new(accepted.After, fixture.Assets))).Select(x => x.Id));
+        Assert.Empty(MapMarkerEdits.Prepare(accepted.After, fixture.Assets, new MapRemoveMarker("w")).After.BuildingIntent!.Markers);
     }
 
     [Fact]
@@ -109,29 +114,64 @@ public sealed class MapMarkerEditTests
         MapLocalMarkerDoc m = MarkerFixtures.BasicMarker();
         MapLocalMarkerDoc other = new(1, "other", "other-name", new Vector3(3, 1, 3), 0, "entry-role", true, Array.Empty<string>());
 
-        // Invalid height: a Support height whose owner does not exist, and a Support carrier that is not +0.
-        Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight())), "Marker 'm'");
-        Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight()) with { Position = m.Position }), "+0");
-        Refuses(basic, new MapSetMarker(m with { Position = m.Position with { Y = float.NaN } }), "finite");
+        // Missing support and a noncanonical carrier each refuse independently.
+        Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight())));
+        MarkerFixture stacked = MarkerFixtures.Stacked();
+        MapLocalMarkerDoc support = stacked.Document.BuildingIntent!.Markers.Single(x => x.Id == "stacked-surface")
+            with
+        { Name = "support-renamed" };
+        Refuses(stacked, new MapSetMarker(support with { Position = support.Position with { Y = m.Position.Y } }));
+        var accepted = MapMarkerEdits.Prepare(stacked.Document, stacked.Assets, new MapSetMarker(support));
+        var published = Assert.Single(accepted.After.BuildingIntent!.Markers, x => x.Id == support.Id);
+        Assert.Equal(support.Name, published.Name);
+        Assert.Equal(MapMarkerHeightMode.Support, published.HeightMode);
+        Assert.Equal(0u, BitConverter.SingleToUInt32Bits(published.Position.Y));
+        Assert.Equal(support.SupportBinding, published.SupportBinding);
+        Refuses(basic, new MapSetMarker(m with { Position = m.Position with { Y = float.NaN } }));
         Accepts(basic, new MapSetMarker(MapMarkerHeights.Apply(m, new(13.125f, null))));
 
         // Duplicate name with a positive control.
         MarkerFixture two = MarkerFixtures.WithWorldMarkers(basic, m, other);
-        Refuses(two, new MapSetMarker(other with { Name = "arrival" }), "duplicate marker name 'arrival'");
+        Refuses(two, new MapSetMarker(other with { Name = "arrival" }));
         Accepts(two, new MapSetMarker(other with { Name = "arrival-2" }));
 
         // Duplicate ID against a dormant reservation of a removed instance, with a positive control.
         MarkerFixture prefab = MarkerFixtures.Create("prefab-basic");
         MapDocument removed = MapPrefabEdits.Prepare(prefab.Document, prefab.Assets, new MapRemovePrefab("a")).After;
         var dormant = new MarkerFixture(removed, prefab.Assets);
-        Refuses(dormant, new MapSetMarker(other with { Id = "a/entry" }), "reservation");
+        var reserved = Refuses(dormant, new MapSetMarker(other with { Id = "a/entry" }));
+        Assert.Equal(MapDocumentRefusal.IdentityReserved, reserved.Reason);
+        Assert.Equal("a/entry", reserved.MarkerId);
         Accepts(dormant, new MapSetMarker(other));
 
         // Foreign ownership: a live prefab child is owned by its instance, and a missing standalone ID has nothing to remove.
-        Refuses(prefab, new MapSetMarker(other with { Id = "a/entry" }), "prefab_override");
-        Refuses(basic, new MapRemoveMarker("absent"), "No standalone marker 'absent'");
+        var owned = Refuses(prefab, new MapSetMarker(other with { Id = "a/entry" }));
+        Assert.Equal(MapDocumentRefusal.MarkerPrefabOwnershipProtected, owned.Reason);
+        Assert.Equal("a/entry", owned.MarkerId);
+        Assert.Equal("a", owned.InstanceId);
+        var missing = Refuses(basic, new MapRemoveMarker("absent"));
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, missing.Reason);
+        Assert.Equal("absent", missing.MarkerId);
+        Assert.Empty(MapMarkerEdits.Prepare(basic.Document, basic.Assets, new MapRemoveMarker("m")).After.BuildingIntent!.Markers);
         Accepts(prefab, new MapSetMarker(other));
-        Refuses(basic, new MapSetMarker(other with { Id = " " }), "ID");
+        Refuses(basic, new MapSetMarker(other with { Id = " " }));
+        Accepts(basic, new MapSetMarker(other));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MissingMarkerOrId_RefusesWithoutMutation(bool missingMarker)
+    {
+        MarkerFixture fixture = MarkerFixtures.Create();
+        string before = MapDocumentFile.SaveText(fixture.Document);
+        MapLocalMarkerDoc marker = MarkerFixtures.BasicMarker();
+        var edit = new MapSetMarker(missingMarker ? null! : marker with { Id = " " });
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerEdits.Prepare(fixture.Document, fixture.Assets, edit));
+        Assert.Equal(MapDocumentRefusal.SchemaValueRequired, error.Reason);
+        Assert.Equal(missingMarker ? "marker" : "marker.id", error.FieldPath);
+        Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
+        Accepts(fixture, new MapSetMarker(marker));
     }
 
     [Fact]
@@ -143,10 +183,15 @@ public sealed class MapMarkerEditTests
         foreach (MapMarkerEdit edit in new MapMarkerEdit[] { new MapSetMarker(MarkerFixtures.BasicMarker()), new MapRemoveMarker("m") })
         {
             var refused = Assert.Throws<MapDocumentException>(() => MapMarkerEdits.Prepare(document, assets, edit));
-            Assert.Contains("resolver adoption", refused.Message, StringComparison.Ordinal);
-            Assert.Contains("MapResolverAdoption.ConvertToAuthoredSupport", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, refused.Reason);
+            Assert.Equal(1, refused.PayloadVersion);
+            Assert.Equal(1, refused.ResolverVersion);
+            Assert.Equal(2, refused.ExpectedResolverVersion);
         }
         Assert.Equal(before, MapDocumentFile.SaveText(document));
+        document.ResolverIdentity = new(1, 2);
+        MapMarkerEdits.RequireResolver(document);
+        Accepts(MarkerFixtures.Create(), new MapSetMarker(MarkerFixtures.BasicMarker()));
     }
 
     [Fact]
@@ -195,12 +240,12 @@ public sealed class MapMarkerEditTests
         return result;
     }
 
-    static void Refuses(MarkerFixture fixture, MapMarkerEdit edit, string message)
+    static MapDocumentException Refuses(MarkerFixture fixture, MapMarkerEdit edit)
     {
         string before = MapDocumentFile.SaveText(fixture.Document);
         var refused = Assert.Throws<MapDocumentException>(() => MapMarkerEdits.Prepare(fixture.Document, fixture.Assets, edit));
-        Assert.Contains(message, refused.Message, StringComparison.Ordinal);
         Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
+        return refused;
     }
 
     static void Accepts(MarkerFixture fixture, MapSetMarker edit)

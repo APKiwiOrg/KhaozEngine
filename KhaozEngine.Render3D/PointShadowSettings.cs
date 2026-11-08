@@ -75,13 +75,13 @@ public sealed class PointShadowSettings
     /// into <see cref="MinLights"/>..<see cref="MaxLights"/> by <see cref="ResolvedMaxLights"/>.</summary>
     public int MaxShadowedLights = 8;
 
-    /// <summary>How many CACHED (<see cref="LightShadowMode.Static"/>) maps may be re-rendered on one frame. A
-    /// cached map is rebuilt only when something under it changed, so this caps the cost of a frame in which
-    /// several of them changed at once.</summary>
+    /// <summary>How many ordinary cached <see cref="LightShadowMode.Static"/> base refreshes may run per frame.
+    /// Mandatory moving-rigid fallback and pure-base transitions run outside this budget and have separate
+    /// <see cref="ShadowPassDiagnostics"/> row counters. Each owned base row renders at most once per frame.</summary>
     public int MaxStaticRebuildsPerFrame = 2;
 
     /// <summary>How many <see cref="LightShadowMode.Dynamic"/> maps may be rendered on one frame. Every one of
-    /// them costs six faces every frame, so this is the hard ceiling on the per-frame pass.</summary>
+    /// them costs six faces every frame, so this caps dynamic-light work.</summary>
     public int MaxDynamicLightsPerFrame = 4;
 
     /// <summary>Largest bias a menu value resolves to, for both knobs. The atlas stores distance over radius, so

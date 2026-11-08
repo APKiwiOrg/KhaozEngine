@@ -87,8 +87,9 @@ internal sealed class RebuildServerStreams
         ReplicationStreamOptions? options, float tickSeconds)
     {
         if (!optIn) return null;
-        ReplicationStreamOptions checkedOptions = options ?? throw new ArgumentException(
-            "ReplicationStream is required with AllowUnreliableDeltaReplication.", "config");
+        ReplicationStreamOptions checkedOptions = options ?? throw new WorldConfigurationException(WorldConfigurationRefusal.ReplicationStreamMissing,
+            "ReplicationStream is required with AllowUnreliableDeltaReplication.", "config")
+        { MemberName = nameof(WorldServerConfig.ReplicationStream) };
         return checkedOptions.ValidateConfig(deltaReplication, optIn, tickSeconds);
     }
 

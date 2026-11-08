@@ -9,6 +9,9 @@ internal sealed partial class SupportTiltedCurvedGeometry
     internal int RootLiveHighWater { get; private set; }
     internal int RootTerminalHighWater { get; private set; }
 
+    /// <summary>Observes root capacity refusal without lending the mutable root solver.</summary>
+    internal bool RootCapacityRefusedForTests => _roots.CapacityRefused;
+
     internal void ResetStatistics()
     {
         RootCellCount = 0; RootLiveHighWater = RootTerminalHighWater = 0;

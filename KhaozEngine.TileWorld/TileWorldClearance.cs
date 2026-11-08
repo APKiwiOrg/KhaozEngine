@@ -46,7 +46,9 @@ public static class TileWorldClearance
     /// <summary>Every clearance issue in <paramref name="doc"/>'s loaded regions. Empty when the document declares
     /// no clearance settings or no rules. An object whose archetype the catalogs lack is skipped, because the
     /// validator already reports it as <c>archetype.missing</c>. An object is never paired with itself, and a pair
-    /// is skipped when either object carries the settings' waiver tag. Pairs across planes are checked.</summary>
+    /// is skipped when either object carries the settings' waiver tag. Pairs across planes are checked.
+    /// Overlap issues carry the rule name, both object ids and the sampled depth in
+    /// <see cref="TileWorldIssue.Overlap"/> without requiring message parsing.</summary>
     public static IReadOnlyList<TileWorldIssue> Check(TileWorldDocument doc, TileWorldCatalogs catalogs,
         ITileMeshGeometry meshes)
     {
@@ -223,7 +225,8 @@ public static class TileWorldClearance
         new(OverlapCode,
             string.Create(CultureInfo.InvariantCulture,
                 $"rule '{rule.Name}': {subject.ArchetypeId} #{subject.Id} at ({subject.X}, {subject.Z}) plane {subject.Plane} is {depth:0.000} m inside {obstacle.ArchetypeId} #{obstacle.Id} at ({obstacle.X}, {obstacle.Z}) plane {obstacle.Plane}"),
-            RegionCoord.Of(subject.X, subject.Z), subject.Coord);
+            RegionCoord.Of(subject.X, subject.Z), subject.Coord)
+        { Overlap = new TileClearanceOverlap(rule.Name, subject.Id, obstacle.Id, depth) };
 
     sealed class RulePlan
     {

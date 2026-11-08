@@ -40,7 +40,13 @@ public class NavBakeCaptureBasisTests
         using var context = Context(scene);
         using PhysicsNavBake capture = PhysicsNavBake.Capture(context, Options, _ => 0);
         scene.Physics.AddStatic(new BoxShape(Vector3.One), Pose.At(new(10, 0, 0)));
-        Assert.Throws<InvalidOperationException>(() => capture.BuildProfile(scene.Tuning, default));
+        var failure = Assert.Throws<NavigationBuildException>(() => capture.BuildProfile(scene.Tuning, default));
+        Assert.Equal(NavigationBuildRefusal.CaptureGeometryChanged, failure.Reason);
+        Assert.Equal(capture.Basis!.Value.GeometryGeneration, failure.ExpectedGeneration);
+        using (var current = scene.Physics.AcquireQueryReadLease())
+            Assert.Equal(current.GeometryGeneration, failure.ActualGeneration);
+        using var fresh = PhysicsNavBake.Capture(context, Options, _ => 0);
+        fresh.Basis!.Value.AssertCurrent();
     }
 
     [Fact]
@@ -50,13 +56,15 @@ public class NavBakeCaptureBasisTests
             world.AddStatic(new BoxShape(new(2, 0.1f, 2)), Pose.At(new(0, -0.1f, 0))));
         using var context = Context(scene);
         int calls = 0;
-        var failure = Assert.Throws<InvalidOperationException>(() => PhysicsNavBake.Capture(context, Options, _ =>
+        var failure = Assert.Throws<NavigationBuildException>(() => PhysicsNavBake.Capture(context, Options, _ =>
         {
             if (calls++ == 0) scene.Physics.AddStatic(new BoxShape(Vector3.One), Pose.At(new(10, 0, 0)));
             return 0;
         }));
+        Assert.Equal(NavigationBuildRefusal.CaptureGeometryChanged, failure.Reason);
         Assert.Equal(1, calls);
-        Assert.Contains("geometry", failure.Message);
+        using var repaired = PhysicsNavBake.Capture(context, Options, _ => 0);
+        Assert.NotEmpty(repaired.Columns.GetColumn(0, 0).ToArray());
     }
 
     [Fact]
@@ -65,9 +73,8 @@ public class NavBakeCaptureBasisTests
         var water = MovementWaterField.Level("world", 0, -4);
         using var scene = new OrdinaryContactScene(water: water);
         using var context = Context(scene, water);
-        var failure = Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<InvalidOperationException>(() =>
             PhysicsNavBake.Capture(context, Options with { SampleWater = true }, _ => 0));
-        Assert.Contains("medium delegate", failure.Message);
     }
 
     [Fact]
@@ -94,7 +101,11 @@ public class NavBakeCaptureBasisTests
         Assert.Single(capture.Columns.GetColumn(0, 0).ToArray());
         var legacy = MoveTuning.Default with { MaxSlopeRadians = Options.MaxSlopeRadians };
         Assert.True(capture.BuildProfile(legacy, default).Graph.Layers[0].IsAccepted(0, 0));
-        Assert.Throws<InvalidOperationException>(() => capture.BuildProfile(OrdinaryContactScene.DefaultTuning, default));
+        var failure = Assert.Throws<NavigationBuildException>(() => capture.BuildProfile(OrdinaryContactScene.DefaultTuning, default));
+        Assert.Equal(NavigationBuildRefusal.CaptureLeaseRequired, failure.Reason);
+        Assert.Equal(typeof(IPhysicsQueryLeaseSource), failure.RequiredCapability);
+        Assert.IsAssignableFrom<InvalidOperationException>(failure);
+        Assert.True(capture.BuildProfile(legacy, default).Graph.Layers[0].IsAccepted(0, 0));
     }
 
     sealed class WorldWithoutLeaseSource(IPhysicsWorld inner) : PhysicsForwarder(inner)

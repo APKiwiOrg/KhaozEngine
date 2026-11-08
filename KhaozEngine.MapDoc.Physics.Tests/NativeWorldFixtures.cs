@@ -36,6 +36,38 @@ internal static partial class NativeWorldFixtures
         return (MapAssetClosure.Load(roots, source), roots);
     }
 
+    /// <summary>The same refused asset identity with its payload defect repaired.</summary>
+    internal static MapAssetClosure RepairedShapeAsset(string assetId)
+    {
+        var source = new NativeWorldAssetSource();
+        var mesh = source.Add(SharedMeshId, "mesh:repaired");
+        PhysicsShape shape = assetId switch
+        {
+            "empty-hull-collider" => new ConvexHullShape([Vector3.Zero]),
+            "empty-mesh-collider" => new TriangleMeshShape([Vector3.Zero], Array.Empty<int>()),
+            "mesh-in-compound" => Compound((Box(1, 1, 1), Vector3.Zero)),
+            "mesh-in-nested-compound" => Compound((Compound((Box(1, 1, 1), Vector3.Zero)), Vector3.Zero)),
+            "nan-box-collider" => Compound((Box(1, 1, 1), Vector3.Zero)),
+            "degenerate-orientation-collider" => new CompoundShape(
+                [new CompoundChild(new CylinderShape(0.2f, 0.5f), Pose.Identity)]),
+            "deck-with-support" => Compound((Box(4, 0.25f, 4), new Vector3(0, -0.125f, 0))),
+            _ => Box(1, 1, 1),
+        };
+        var collider = source.Add(assetId + ".collider", ColliderBytes(shape));
+        var resources = new JsonArray(Resource(mesh, MapResourceKind.Mesh), Resource(collider, MapResourceKind.Collider));
+        string[] supportIds = assetId == "deck-with-support" ? [assetId + ".surface"] : [];
+        if (supportIds.Length != 0)
+            resources.Add(Resource(source.Add(supportIds[0], MapSupportResourceFile.Write(
+                new(1, new MapSurfaceSet(), null, Array.Empty<KhaozEngine.MapDoc.Prefabs.MapPrefabReferenceSlot>()))), MapResourceKind.Surface));
+        var root = source.Add("repaired.assets", new JsonObject
+        {
+            ["payloadVersion"] = 1,
+            ["assets"] = new JsonArray(Asset(assetId, -Vector3.One, Vector3.One, collider.Id, null, supportIds)),
+            ["resources"] = resources,
+        }.ToJsonString());
+        return MapAssetClosure.Load([root], source);
+    }
+
     /// <summary>The roots of <see cref="Assets"/> and the source that holds them, so a fixture can add a root of its
     /// own before loading the closure.</summary>
     static (MapAssetRef[] Roots, NativeWorldAssetSource Source) AssetInputs()

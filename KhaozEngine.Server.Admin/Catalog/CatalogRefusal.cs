@@ -10,11 +10,16 @@ namespace KhaozEngine.Server.Admin.Catalog;
 /// One validation finding as a console receives it. The CODE is the stable token an operator runbook, a
 /// counter and a test all key on, and the message is the human half that names the values that failed.
 /// </summary>
-/// <param name="Code">The stable <c>KEC</c> token.</param>
+/// <param name="Code">The stable finding token, engine or consumer-owned.</param>
 /// <param name="Type">The content type's KEY, or empty when the finding is about the candidate as a whole.</param>
 /// <param name="Id">The definition id, or 0 when the finding is about the candidate as a whole.</param>
 /// <param name="Message">The human-readable detail.</param>
-public sealed record CatalogFindingPayload(string Code, string Type, int Id, string Message);
+public sealed record CatalogFindingPayload(string Code, string Type, int Id, string Message)
+{
+    /// <summary>The stable row key on a consumer policy finding, omitted when unavailable.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Key { get; init; }
+}
 
 /// <summary>
 /// The OBJECT error payload every mutating action refuses with (spec 10.5), so one console parser reads
@@ -139,7 +144,9 @@ internal static class CatalogRefusal
 
     /// <summary>
     /// The store's own refusal as a result. The state tokens become a 409 and everything else a 400,
-    /// and a refusal the validator produced carries its findings through unchanged.
+    /// and a refusal the validator produced carries its findings through unchanged. The legacy
+    /// <see cref="ContentAuthoringException.Reason"/> token controls this released projection even when
+    /// <see cref="ContentAuthoringException.Refusal"/> is present. Consumer-built refusals may carry no enum.
     /// </summary>
     /// <param name="failure">The store's refusal.</param>
     /// <param name="registry">The registry a finding's type id is named through.</param>
@@ -196,7 +203,8 @@ internal static class CatalogRefusal
                 finding.Code,
                 registry.TryGet(finding.Type, out ContentTypeRegistration? type) ? type.TypeKey : string.Empty,
                 finding.Id,
-                finding.Message));
+                finding.Message)
+            { Key = finding.Key });
         }
 
         return rendered;

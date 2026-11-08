@@ -108,6 +108,15 @@ public sealed partial class Scene3D
         _meshOutlinePartCount = 0;
     }
 
+    /// <summary>InteriorCutRelevanceTests observes each group's cut decisions while retaining group and part cardinality checks.</summary>
+    internal IReadOnlyList<IReadOnlyList<bool>> OutlineCutsForTests =>
+        _meshOutlineGroups.ConvertAll<IReadOnlyList<bool>>(group =>
+            group.Parts.ConvertAll(part => part.CutInsideInteriors).AsReadOnly()).AsReadOnly();
+
+    /// <summary>InteriorCutHighlightGpuTests reads the actual coverage mask without exposing the outline renderer.
+    /// Borrowed for observation and GPU readback. Never dispose or mutate it.</summary>
+    internal IGpuTexture? OutlineCoverageForTests(bool visible) => _targetOutlines.CoverageForTests(visible);
+
     sealed class MeshOutlineDrawGroup
     {
         public Color Color { get; }

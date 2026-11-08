@@ -83,10 +83,14 @@ public sealed class TerrainEditRegressionTests
     {
         MapSurfaceSet set = FourPatches((_, _) => 500);
         set.Patches[Tile(0, 1)].Heights[63] = 501;
-        string message = Assert.Throws<MapDocumentException>(() =>
-            Prepare(set, new MapSmoothCorners(Tile(1, 1), 0, 0, 1, 1, 1))).Message;
-        Assert.Contains("halo", message);
-        Assert.Contains("ambiguous", message);
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            Prepare(set, new MapSmoothCorners(Tile(1, 1), 0, 0, 1, 1, 1)));
+        Assert.Equal(MapDocumentRefusal.GeometryVertexHeightMismatch, error.Reason);
+        Assert.Equal(MapLatticeAddress.Corner(63, 64), error.Address);
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
+        set.Patches[Tile(0, 1)].Heights[63] = 500;
+        Assert.Equal(500, Prepare(set, new MapSmoothCorners(Tile(1, 1), 0, 0, 1, 1, 1)).Candidate.Patches[Tile(1, 1)].Height(0, 0));
     }
 
     [Fact]
@@ -111,9 +115,12 @@ public sealed class TerrainEditRegressionTests
     {
         MapSurfaceSet set = TerrainEditFixtures.Bump();
         string[] digest = TerrainEditFixtures.Digest(set);
-        Assert.Contains("outside patch rectangle", Assert.Throws<MapDocumentException>(() =>
-            Prepare(set, new MapSetPresence(Bump, new[] { cell }, false))).Message);
+        var error = Assert.Throws<MapDocumentException>(() => Prepare(set, new MapSetPresence(Bump, new[] { cell }, false)));
+        Assert.Equal(cell is < 0 or >= 4096 ? MapDocumentRefusal.TerrainEditRegionOutOfBounds
+            : MapDocumentRefusal.SurfaceAddressOutOfPatch, error.Reason);
+        Assert.Equal(Bump, error.Patch);
         Assert.Equal(digest, TerrainEditFixtures.Digest(set));
+        Assert.False(Prepare(set, new MapSetPresence(Bump, [3 * 64 + 3], false)).Candidate.Patches[Bump].IsPresent(3, 3));
     }
 
     [Theory, InlineData(-1, 0, 1, 1), InlineData(0, -1, 1, 1), InlineData(0, 0, 0, 1), InlineData(0, 0, 1, 0),
@@ -122,14 +129,29 @@ public sealed class TerrainEditRegressionTests
     {
         MapSurfaceSet set = TerrainEditFixtures.Bump();
         int count = Math.Max(0, width) * Math.Max(0, depth);
-        Assert.Contains("region outside patch rectangle", Assert.Throws<MapDocumentException>(() =>
-            Prepare(set, new MapSetCornerHeights(Bump, x, z, width, depth, new int[count]))).Message);
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() => Prepare(set, new MapSetCornerHeights(Bump, x, z, width, depth, new int[count])));
+        Assert.Equal(MapDocumentRefusal.TerrainEditRegionOutOfBounds, error.Reason);
+        Assert.Equal((x, z, width, depth), (error.CellX, error.CellZ, error.Width, error.Depth));
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
+        // The final corner at (Width, Depth) is accepted, with the smallest nonempty region.
+        Assert.NotNull(Prepare(set, new MapSetCornerHeights(Bump, 4, 4, 1, 1, [0])));
     }
 
     [Theory, InlineData(3), InlineData(5)]
     public void SetCornerHeights_RefusesAValueCountThatDiffers(int count)
-        => Assert.Contains("value count differs", Assert.Throws<MapDocumentException>(() =>
-            Prepare(TerrainEditFixtures.Bump(), new MapSetCornerHeights(Bump, 0, 0, 2, 2, new int[count]))).Message);
+    {
+        var set = TerrainEditFixtures.Bump();
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            Prepare(set, new MapSetCornerHeights(Bump, 0, 0, 2, 2, new int[count])));
+        Assert.Equal(MapDocumentRefusal.SchemaArrayLengthMismatch, error.Reason);
+        Assert.Equal("Values", error.FieldPath);
+        Assert.Equal(count, error.ActualCount);
+        Assert.Equal(4, error.ExpectedCount);
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
+        Assert.NotNull(Prepare(set, new MapSetCornerHeights(Bump, 0, 0, 2, 2, new int[4])));
+    }
 
     [Theory, InlineData(-1, 0, 1, 1), InlineData(0, -1, 1, 1), InlineData(0, 0, 0, 1), InlineData(0, 0, 1, 0),
      InlineData(4, 0, 1, 1), InlineData(3, 0, 2, 1), InlineData(0, 3, 1, 2)]
@@ -138,8 +160,12 @@ public sealed class TerrainEditRegressionTests
         MapSurfaceSet set = TerrainEditFixtures.Bump();
         MapSurfaceCell cell = set.Patches[Bump].Cells[0];
         int count = Math.Max(0, width) * Math.Max(0, depth);
-        Assert.Contains("region outside patch rectangle", Assert.Throws<MapDocumentException>(() =>
-            Prepare(set, new MapSetCells(Bump, x, z, width, depth, Enumerable.Repeat(cell, count).ToArray()))).Message);
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() => Prepare(set, new MapSetCells(Bump, x, z, width, depth, Enumerable.Repeat(cell, count).ToArray())));
+        Assert.Equal(MapDocumentRefusal.TerrainEditRegionOutOfBounds, error.Reason);
+        Assert.Equal((x, z, width, depth), (error.CellX, error.CellZ, error.Width, error.Depth));
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
+        Assert.NotNull(Prepare(set, new MapSetCells(Bump, 3, 3, 1, 1, [cell])));
     }
 
     [Theory, InlineData(1), InlineData(3)]
@@ -147,8 +173,15 @@ public sealed class TerrainEditRegressionTests
     {
         MapSurfaceSet set = TerrainEditFixtures.Bump();
         MapSurfaceCell cell = set.Patches[Bump].Cells[0];
-        Assert.Contains("cell value count differs", Assert.Throws<MapDocumentException>(() =>
-            Prepare(set, new MapSetCells(Bump, 0, 0, 2, 1, Enumerable.Repeat(cell, count).ToArray()))).Message);
+        var before = TerrainEditFixtures.Digest(set);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            Prepare(set, new MapSetCells(Bump, 0, 0, 2, 1, Enumerable.Repeat(cell, count).ToArray())));
+        Assert.Equal(MapDocumentRefusal.SchemaArrayLengthMismatch, error.Reason);
+        Assert.Equal("Cells", error.FieldPath);
+        Assert.Equal(count, error.ActualCount);
+        Assert.Equal(2, error.ExpectedCount);
+        Assert.Equal(before, TerrainEditFixtures.Digest(set));
+        Assert.NotNull(Prepare(set, new MapSetCells(Bump, 0, 0, 2, 1, [cell, cell])));
     }
 
     [Fact]

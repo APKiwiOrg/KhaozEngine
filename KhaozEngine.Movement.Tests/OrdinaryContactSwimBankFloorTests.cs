@@ -101,4 +101,78 @@ public sealed class OrdinaryContactSwimBankFloorTests(ITestOutputHelper output)
             }
         });
     }
+
+    [Theory]
+    [InlineData(-0.5200002f, 6.6658833e-7f)]
+    [InlineData(-0.5199998f, -6.6658833e-7f)]
+    public void DrawnBedBankExitNeverPublishesUnsupportedPenetration(float centreY, float vertical)
+    {
+        // #1708: exact drawn-bed membership must not hand an uncleared buoyant bank proposal to air.
+        const float surface = -0.37f;
+        MoveTuning tuning = Tuning;
+        var water = new DrawnBankWater(surface);
+        using var scene = new OrdinaryContactScene(tuning, (_, z) => DrawnBankWater.Floor(z),
+            (_, z) => DrawnBankWater.Floor(z) is > -1.3f and < 0
+                ? Vector3.Normalize(new(0, 1, -0.95f)) : Vector3.UnitY,
+            new(new(100, -4, -245), new(120, 4, -225), -1.3f, 0), water,
+            boundary: MovementBoundary.Rectangle(100, -245, 120, -225));
+        using var lease = scene.Acquire();
+        var state = scene.State(new(110.5f, centreY, -237.03256f), grounded: false);
+        state = new(state.State with
+        {
+            VerticalVelocity = vertical,
+            Swimming = true,
+            WaterExcursion = WaterExcursionState.Surface,
+        }, scene.Frame, null);
+        var proposed = new MovementBodyQuery(new(110.5f, centreY, -236.93256f),
+            tuning.CapsuleRadius, tuning.CapsuleHalfHeight, new("world", "ordinary"), null);
+        Assert.False(water.SampleCentreWater(proposed, Vector3.Zero).InWater);
+        int submergedContacts = 0, published = 0;
+        bool reachedDryFooting = false;
+        for (int tick = 0; tick < 90 && !reachedDryFooting; tick++)
+        {
+            MovementStepResult result = scene.Binding.StepTowards(state, Vector2.UnitY, false, Dt, lease);
+            Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
+            state = result.State;
+            MoveState body = state.State;
+            float bed = DrawnBankWater.Floor(body.Position.Z);
+            float feet = body.Position.Y - tuning.CapsuleHalfHeight;
+            string context = $"tick {tick}, pose {body.Position}, bed {bed:R}";
+            if (!body.Grounded) Assert.True(feet >= bed, context);
+            if (surface - bed > 2 * tuning.CapsuleHalfHeight * tuning.SwimExitDepthFraction)
+            {
+                Assert.True(body.Swimming, context);
+                Assert.False(body.SupportGranted, context);
+                Assert.Equal(WaterExcursionState.Surface, body.WaterExcursion);
+                if (feet >= bed) submergedContacts++;
+            }
+            published++;
+            reachedDryFooting = body.Grounded && feet >= surface;
+        }
+        Assert.True(published > 0);
+        Assert.True(submergedContacts > 0);
+        Assert.True(reachedDryFooting, $"pose {state.State.Position}");
+        Assert.False(state.State.Swimming);
+        Assert.Equal(WaterExcursionState.None, state.State.WaterExcursion);
+    }
+
+    sealed class DrawnBankWater(float surface) : IMovementWaterField
+    {
+        readonly IMovementWaterField level = MovementWaterField.Level("world", surface, -1.3f);
+        public string SemanticIdentity => "drawn-bank";
+        public long Generation => 0;
+        public MovementWaterExtent Extent => level.Extent;
+        internal static float Floor(float z) => Math.Clamp(-1.2359283f + 0.95f * (z + 236.93256f), -1.3f, 0);
+
+        public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body, Vector3 physicsOrigin)
+        {
+            if ((double)body.Centre.Y + physicsOrigin.Y - body.HalfHeight < Floor(body.Centre.Z + physicsOrigin.Z))
+                return new(MovementAvailability.Known, body.CurrentSpace, null, false, 1, null);
+            return level.SampleCentreWater(body, physicsOrigin);
+        }
+
+        public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, Vector3 physicsOrigin,
+            in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts) =>
+            level.TraceWater(query, physicsOrigin, identity, spans, contacts);
+    }
 }

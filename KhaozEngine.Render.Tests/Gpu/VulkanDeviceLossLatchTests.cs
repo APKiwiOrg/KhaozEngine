@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Silk.NET.Vulkan;
 using Xunit;
@@ -78,19 +79,17 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Single(log.Errors);
         }
 
-        /// <summary>
-        /// THE HEADER FIELD, which is what #427 asks for: the stable token plus the site, so a capture groups
-        /// cleanly across sessions while still saying where it was seen. The token is the spec's own spelling,
-        /// because that is what a reader searches for.
-        /// </summary>
-        [Fact]
-        public void TheHeaderValue_IsTheTokenAndTheSite()
+        /// <summary>The persisted session header carries the result token and a useful site, even when unnamed.</summary>
+        [Theory]
+        [InlineData("vkDeviceWaitIdle (WaitForIdle)", "VK_ERROR_DEVICE_LOST at vkDeviceWaitIdle (WaitForIdle)")]
+        [InlineData("  ", "VK_ERROR_DEVICE_LOST at an unnamed site")]
+        public void TheHeaderValue_IsTheTokenAndTheSite(string site, string expected)
         {
             var latch = new VulkanDeviceLossLatch(new DeviceLiveness(), logger: new RecordingLogger());
 
-            latch.Check(Result.ErrorDeviceLost, "vkDeviceWaitIdle (WaitForIdle)");
+            latch.Check(Result.ErrorDeviceLost, site);
 
-            Assert.Equal("VK_ERROR_DEVICE_LOST at vkDeviceWaitIdle (WaitForIdle)", latch.HeaderValue);
+            Assert.Equal(expected, latch.HeaderValue);
         }
 
         /// <summary>
@@ -127,18 +126,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(latch.IsLost);
             Assert.Single(log.Errors);
             Assert.NotNull(latch.Site);
-        }
-
-        /// <summary>An unnamed site is still nameable in the header, because a header reading "at " is worse than
-        /// one that admits it does not know.</summary>
-        [Fact]
-        public void AnUnnamedSite_IsStillNameable()
-        {
-            var latch = new VulkanDeviceLossLatch(new DeviceLiveness(), logger: new RecordingLogger());
-
-            latch.Check(Result.ErrorDeviceLost, "  ");
-
-            Assert.Equal("VK_ERROR_DEVICE_LOST at an unnamed site", latch.HeaderValue);
         }
 
         /// <summary>
@@ -230,17 +217,21 @@ namespace KhaozEngine.Tests.Gpu
         /// throw in EVERY configuration, and this assembly is built the same way the shipped one is.
         /// </summary>
         [Fact]
-        public void RequireThrows_NamingTheCall()
+        public void RequireThrowsForFailure_AndAcceptsSuccess()
         {
             VulkanResultCodes.Require(Result.Success, "vkCreateDevice");
             // A positive result is a SUCCESS code in Vulkan, which is the one that catches people out.
             VulkanResultCodes.Require(Result.Incomplete, "vkEnumeratePhysicalDevices");
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<VulkanResultException>(
                 () => VulkanResultCodes.Require(Result.ErrorIncompatibleDriver, "vkCreateInstance"));
 
-            Assert.Contains("vkCreateInstance", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("VK_ERROR_INCOMPATIBLE_DRIVER", ex.Message, StringComparison.Ordinal);
+            // VulkanResultCodes promises the call name verbatim and the stable result token in the message.
+            Assert.Equal(VulkanResultRefusal.NativeCallFailed, ex.Reason);
+            Assert.Equal("vkCreateInstance", ex.Call);
+            Assert.Equal((int)Result.ErrorIncompatibleDriver, ex.ResultCode);
+            Assert.Equal("VK_ERROR_INCOMPATIBLE_DRIVER", ex.ResultToken);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex);
         }
 
         /// <summary><c>VK_SUBOPTIMAL_KHR</c> is a SUCCESS, which the swapchain row depends on and which is the
@@ -254,7 +245,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(VulkanResultCodes.IsDeviceLoss(Result.ErrorOutOfDeviceMemory));
         }
 
-        sealed class FakeFault(string? detail) : IVulkanDeviceFault
+        internal sealed class FakeFault(string? detail) : IVulkanDeviceFault
         {
             public string? DescribeFault() => detail;
         }

@@ -38,9 +38,11 @@ public class TileWorldCatalogsTests
         File.WriteAllText(tmp.Sub("g.json"), Ground);
         File.WriteAllText(tmp.Sub("g2.json"), Ground);
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Load(new[] { tmp.Sub("g.json"), tmp.Sub("g2.json") }));
-        Assert.Contains("material 1", ex.Message);
-        Assert.Contains("g2.json", ex.Message);
-        Assert.Contains("g.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogMaterialDuplicate, ex.Reason);
+        Assert.Equal((ushort)1, ex.MaterialId);
+        Assert.Equal("grass", ex.MaterialName);
+        Assert.Equal(tmp.Sub("g2.json"), ex.SourceName);
+        Assert.Equal(tmp.Sub("g.json"), ex.FirstSourceName);
     }
 
     [Fact]
@@ -51,14 +53,23 @@ public class TileWorldCatalogsTests
         File.WriteAllText(tmp.Sub("b.json"), Arch);
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Load(new[] { tmp.Sub("a.json"), tmp.Sub("b.json") }));
         // The bare path, never the (Name, IsFile) pair the source is recorded as.
-        Assert.Equal($"{tmp.Sub("b.json")}: archetype 'wall' is already defined in {tmp.Sub("a.json")}", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogArchetypeDuplicate, ex.Reason);
+        Assert.Equal(tmp.Sub("b.json"), ex.SourceName);
+        Assert.Equal(tmp.Sub("a.json"), ex.FirstSourceName);
+        Assert.Equal("wall", ex.ArchetypeId);
+        Assert.DoesNotContain($"({tmp.Sub("a.json")}, ", ex.Message);
     }
 
-    [Fact]
-    public void Malformed_json_names_the_source()
+    [Theory]
+    [InlineData("{ oops", null)]
+    [InlineData("{ \"materials\": [{ \"id\": 1.0, \"name\": \"A\", \"color\": \"#ffffff\" }] }", "$.materials[0].id")]
+    public void Malformed_json_names_the_source(string json, string? field)
     {
-        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson("{ oops", "bad.json"));
-        Assert.Contains("bad.json", ex.Message);
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(json, "bad.json"));
+        Assert.Equal(TileWorldRefusal.CatalogJsonMalformed, ex.Reason);
+        Assert.Equal("bad.json", ex.SourceName);
+        Assert.Equal(field, ex.Field);
+        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
     }
 
     // Pins the embedded schema itself. Every case here is one the JsonStringEnumConverter and the
@@ -70,8 +81,8 @@ public class TileWorldCatalogsTests
     public void Schema_rejects_what_the_converter_would_accept(string json)
     {
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(json, "pin.json"));
-        Assert.Contains("does not match the schema", ex.Message);
-        Assert.Contains("pin.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogSchemaMismatch, ex.Reason);
+        Assert.Equal("pin.json", ex.SourceName);
     }
 
     [Fact]
@@ -79,7 +90,8 @@ public class TileWorldCatalogsTests
     {
         var ex = Assert.Throws<TileWorldException>(() =>
             TileWorldCatalogs.LoadJson("""{ "materials": [ { "id": 1, "name": "x", "color": "#000000", "kind": "Lava" } ] }""", "bad.json"));
-        Assert.Contains("bad.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogSchemaMismatch, ex.Reason);
+        Assert.Equal("bad.json", ex.SourceName);
     }
 
     [Fact]
@@ -120,8 +132,8 @@ public class TileWorldCatalogsTests
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
             $$"""{ "archetypes": [ { "id": "tree", "name": "Tree", "meshRef": "kit/tree.glb", "lodMeshRef": {{value}} } ] }""",
             "bad-lod.json"));
-        Assert.Contains("does not match the schema", ex.Message);
-        Assert.Contains("bad-lod.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogSchemaMismatch, ex.Reason);
+        Assert.Equal("bad-lod.json", ex.SourceName);
     }
 
     [Fact]
@@ -188,8 +200,8 @@ public class TileWorldCatalogsTests
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
             $$"""{ "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ {{surface}} ] } ] }""",
             "bad-surface.json"));
-        Assert.Contains("does not match the schema", ex.Message);
-        Assert.Contains("bad-surface.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogSchemaMismatch, ex.Reason);
+        Assert.Equal("bad-surface.json", ex.SourceName);
     }
 
     // An absent collisionHeight is null in memory, but a JSON null is refused like a walk surface's null extent.
@@ -199,23 +211,27 @@ public class TileWorldCatalogsTests
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
             """{ "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "m", "collisionHeight": null } ] }""",
             "null-height.json"));
-        Assert.Contains("does not match the schema", ex.Message);
-        Assert.Contains("null-height.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogSchemaMismatch, ex.Reason);
+        Assert.Equal("null-height.json", ex.SourceName);
     }
 
     [Theory]
-    [InlineData("\"minX\": 2, \"maxX\": -2", "minX")]
-    [InlineData("\"minX\": 1, \"maxX\": 1", "minX")]
-    [InlineData("\"minZ\": 0.5, \"maxZ\": 0.25", "minZ")]
-    public void A_walk_surface_whose_min_is_not_below_its_max_refuses_to_load(string extents, string field)
+    [InlineData("\"minX\": 2, \"maxX\": -2", "minX", "maxX", 2f, -2f)]
+    [InlineData("\"minX\": 1, \"maxX\": 1", "minX", "maxX", 1f, 1f)]
+    [InlineData("\"minZ\": 0.5, \"maxZ\": 0.25", "minZ", "maxZ", 0.5f, 0.25f)]
+    public void A_walk_surface_whose_min_is_not_below_its_max_refuses_to_load(string extents, string field, string maxField, float minimum, float maximum)
     {
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
             $$"""{ "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ { "height": 0 }, { "height": 1, {{extents}} } ] } ] }""",
             "inverted.json"));
-        Assert.Contains("inverted.json", ex.Message);
-        Assert.Contains("'deck'", ex.Message);
-        Assert.Contains("walk surface 1", ex.Message);
-        Assert.Contains(field, ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogWalkSurfaceBoundsUnordered, ex.Reason);
+        Assert.Equal("inverted.json", ex.SourceName);
+        Assert.Equal("deck", ex.ArchetypeId);
+        Assert.Equal(1, ex.SurfaceIndex);
+        Assert.Equal(field, ex.MinField);
+        Assert.Equal(maxField, ex.MaxField);
+        Assert.Equal(minimum, ex.Minimum);
+        Assert.Equal(maximum, ex.Maximum);
     }
 
     [Fact]
@@ -250,9 +266,12 @@ public class TileWorldCatalogsTests
         }
 
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Merge(part));
-        Assert.Contains("'deck'", ex.Message);
-        Assert.Contains(field, ex.Message);
-        Assert.Contains("not a finite number", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogWalkSurfaceNonFinite, ex.Reason);
+        Assert.Equal("deck.json", ex.SourceName);
+        Assert.Equal("deck", ex.ArchetypeId);
+        Assert.Equal(0, ex.SurfaceIndex);
+        Assert.Equal(field, ex.Field);
+        Assert.Equal(field == "height" ? float.NaN : field == "minX" ? float.PositiveInfinity : float.NegativeInfinity, ex.Value);
     }
 
     [Fact]
@@ -261,7 +280,12 @@ public class TileWorldCatalogsTests
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
             """{ "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ { "height": 1e39 } ] } ] }""",
             "overflow.json"));
-        Assert.Contains("overflow.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogWalkSurfaceNonFinite, ex.Reason);
+        Assert.Equal("overflow.json", ex.SourceName);
+        Assert.Equal("deck", ex.ArchetypeId);
+        Assert.Equal(0, ex.SurfaceIndex);
+        Assert.Equal("height", ex.Field);
+        Assert.Equal(float.PositiveInfinity, ex.Value);
     }
 
     [Fact]
@@ -295,15 +319,18 @@ public class TileWorldCatalogsTests
         part.Archetype("rock")!.CollisionHeight = height;
 
         var merged = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Merge(part));
-        Assert.Contains("'rock'", merged.Message);
-        Assert.Contains("collisionHeight", merged.Message);
+        Assert.Equal(TileWorldRefusal.CatalogCollisionHeightInvalid, merged.Reason);
+        Assert.Equal("rock.json", merged.SourceName);
+        Assert.Equal("rock", merged.ArchetypeId);
+        Assert.Equal("collisionHeight", merged.Field);
+        Assert.Equal(height, merged.Value);
 
         if (!float.IsFinite(height)) return;
         string value = height.ToString("R", CultureInfo.InvariantCulture);
         var loaded = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
             $$"""{ "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "m", "collisionHeight": {{value}} } ] }""", "bad-height.json"));
-        Assert.Contains("does not match the schema", loaded.Message);
-        Assert.Contains("bad-height.json", loaded.Message);
+        Assert.Equal(TileWorldRefusal.CatalogSchemaMismatch, loaded.Reason);
+        Assert.Equal("bad-height.json", loaded.SourceName);
     }
 
     [Fact]
@@ -312,8 +339,8 @@ public class TileWorldCatalogsTests
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
             """{ "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "m", "collisionHeight": 2, "collisionTop": 3 } ] }""",
             "unknown.json"));
-        Assert.Contains("does not match the schema", ex.Message);
-        Assert.Contains("unknown.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogSchemaMismatch, ex.Reason);
+        Assert.Equal("unknown.json", ex.SourceName);
     }
 
     [Fact]
@@ -333,6 +360,47 @@ public class TileWorldCatalogsTests
         string baselineHash = TileWorldHash.OfCatalogs(baseline);
         Assert.NotEqual(baselineHash, TileWorldHash.OfCatalogs(changedFull));
         Assert.NotEqual(baselineHash, TileWorldHash.OfCatalogs(changedLod));
+    }
+
+    [Fact]
+    public void An_unreadable_catalog_names_its_source()
+    {
+        using var tmp = new TempDir();
+        string path = tmp.Sub("missing.json");
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Load(new[] { path }));
+        Assert.Equal(TileWorldRefusal.CatalogReadFailed, ex.Reason);
+        Assert.Equal(path, ex.SourceName);
+        Assert.IsAssignableFrom<IOException>(ex.InnerException);
+    }
+
+    [Theory]
+    [InlineData(TileWorldRefusal.CatalogMaterialIdReserved)]
+    [InlineData(TileWorldRefusal.CatalogArchetypeIdMissing)]
+    [InlineData(TileWorldRefusal.CatalogWalkSurfaceNull)]
+    public void Merge_rechecks_mutable_catalog_identifiers_and_surfaces(TileWorldRefusal reason)
+    {
+        TileWorldCatalogs part = TileWorldCatalogs.LoadJson(
+            """
+            { "materials": [ { "id": 1, "name": "grass", "color": "#ffffff" } ],
+              "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ { "height": 1 } ] } ] }
+            """,
+            "edited.json");
+        Assert.NotNull(TileWorldCatalogs.Merge(part).Archetype("deck"));
+        TileObjectArchetype archetype = part.Archetype("deck")!;
+        switch (reason)
+        {
+            case TileWorldRefusal.CatalogMaterialIdReserved: part.Material(1)!.Id = 0; break;
+            case TileWorldRefusal.CatalogArchetypeIdMissing: archetype.Id = " "; break;
+            case TileWorldRefusal.CatalogWalkSurfaceNull: archetype.WalkSurfaces![0] = null!; break;
+        }
+
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Merge(part));
+        Assert.Equal(reason, ex.Reason);
+        // Changing an id loses its origin lookup, so these two guards truthfully know the merge label only.
+        Assert.Equal(reason == TileWorldRefusal.CatalogWalkSurfaceNull ? "edited.json" : "catalog #0", ex.SourceName);
+        if (reason == TileWorldRefusal.CatalogMaterialIdReserved) Assert.Equal((ushort)0, ex.MaterialId);
+        else Assert.Equal(reason == TileWorldRefusal.CatalogArchetypeIdMissing ? " " : "deck", ex.ArchetypeId);
+        if (reason == TileWorldRefusal.CatalogWalkSurfaceNull) Assert.Equal(0, ex.SurfaceIndex);
     }
 
     [Fact]
@@ -393,8 +461,8 @@ public class TileWorldCatalogsTests
     {
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
             $$"""{ "materials": [ { "id": 1, "name": "x", "color": "#000000", "tilesPerMetre": {{value}} } ] }""", "bad.json"));
-        Assert.Contains("does not match the schema", ex.Message);
-        Assert.Contains("bad.json", ex.Message);
+        Assert.Equal(TileWorldRefusal.CatalogSchemaMismatch, ex.Reason);
+        Assert.Equal("bad.json", ex.SourceName);
     }
 
     [Fact]

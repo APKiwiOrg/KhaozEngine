@@ -92,9 +92,15 @@ public sealed class NativeStorageNamespaceTests : IDisposable
         string reservedFile = Path.Combine(_root, "tiles", reserved + ".bin");
         var ex = Assert.Throws<MapDocumentException>(() =>
             MapAssetClosure.Load(roots, new MapStorageGuardedAssetSource(_root, MapDocumentForm.Tiled)));
-        Assert.Contains("reserved", ex.Message, StringComparison.Ordinal);
-        Assert.Contains($"'{reserved}'", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(MapDocumentRefusal.AssetStoragePathReserved, ex.Reason);
+        Assert.Equal(reserved, ex.ResourceId);
+        Assert.Equal(reservedFile, ex.Path);
+        Assert.Equal(_root, ex.StoragePath);
+        Assert.Equal(MapDocumentForm.Tiled, ex.DocumentForm);
         Assert.True(File.Exists(reservedFile));
+        var control = MapAssetClosure.Load(WriteClosure(null, absolute),
+            new MapStorageGuardedAssetSource(_root, MapDocumentForm.Tiled));
+        Assert.Equal("prop", Assert.Single(control.Assets).Id);
     }
 
     [Fact]

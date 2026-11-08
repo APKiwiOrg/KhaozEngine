@@ -5,6 +5,88 @@ server that needs body-aware movement geometry, absolute-coordinate ground movem
 ground navigation profile, a baked profile set loaded without physics, or a route-free approach. It stays
 outside every umbrella and carries no backend, input or rendering dependency.
 
+Ordinary contact configuration refusals use the shared
+[Locomotion reason and identifier contract](../KhaozEngine.Locomotion/README.md#configuration-and-capability-refusals).
+`MovementConfigurationException` preserves `ArgumentException` catches and `MovementCapabilityException`
+preserves `NotSupportedException` catches. Head admission and movement arithmetic are unchanged.
+
+## Ground pursuit for committed travel
+
+`GroundPursuit` plans and steers one active pursuit without stepping physics or writing actor state. Construct it
+with `GroundNavigation` and optional `PathFollowConfig`, or supply equivalent `IRegionPathPlanner`, `NavSpace`
+and supported-walk segment admission. The convenience constructor checks the actual capsule and resolved
+`GroundMoveContext` binding against the baked profile. The lower-level caller owns equivalent compatibility.
+
+`Admit(in MoveState, in MoveTuning, in ReachTarget, in GroundPursuitSettings, GroundMoveContext)` checks current
+exact 3D reach first, then the shape-distance `TriggerRange`. It requires a Complete, nonempty route whose endpoint
+belongs to current reach, whose waypoints are all Walk and whose horizontal length fits `MaximumPathLength`.
+Hop, Drop and unknown transitions refuse. Pursuit sets `PathQueryBudget.WalkOnly` on admission and every replan,
+so a drop-enabled profile can choose a longer walking detour. It also checks returned waypoint kinds for planners
+that ignore that option. `RouteStraightener` drops only guarded walking shortcuts. Actual-to-route entry and every
+kept segment use the supplied supported-walk guard.
+
+For an ability that refuses an area the actor may otherwise enter, pass
+`navigation.ExcludingAreas(wetSurfaceBit)` to `GroundPursuit`. The mask uses the game's captured `uint` area
+bits. This immutable view shares the baked graph and captured columns, including those loaded from a bake,
+without another capture or profile bake. Reuse a view across pursuits. Zero returns the same instance and
+chained calls accumulate exclusions. The baked required and excluded masks remain in force, so excluding a
+required bit refuses every affected surface rather than replacing the original filter.
+
+The full capsule footprint checks the exclusion at search nodes and along directed edges, including Stair
+links with dry endpoints. Admission, every replan, straightening, actual-to-route entry and waypoint advancement
+use the narrowed supported-walk guard. If a filtered route fails, pursuit tries one diagnostic walking query
+against the original baked profile with the same budget. A complete, valid original route produces NoPath with
+`GroundPursuitDetail.ExcludedArea`. Otherwise the filtered query's existing detail is retained. This diagnostic
+can consume one extra query budget and never supplies steering or authorizes travel. Default construction
+without a narrowed view retains its existing behavior.
+Use the profile constructor for area-specific diagnostics. The lower-level constructor has no original
+profile policy to compare.
+
+`GroundPursuitSettings(triggerRange, maximumPathLength, stopDistance)` requires finite positive trigger and path
+limits, and finite nonnegative stop distance. Trigger range applies only at admission. The path cap applies to the
+remaining route at admission and every replan, not total distance travelled. Route length and
+`GroundPursuitResult.RemainingPathLength` are horizontal XZ metres. Slope rise does not consume budget, so these
+values are not surface arc length. Endpoint membership and arrival always use exact 3D capsule-to-target reach.
+The commitment timeout bounds total pursuit duration.
+
+Ready always supplies a finite nonzero unit `Direction` and positive finite remaining length for
+`MovementCommitmentRequest.ForGroundTravel`. AlreadyInRange and OutOfRange are separate admission outcomes.
+NoPath, TooLong and UnsupportedState refuse or terminate. `GroundPursuitDetail` distinguishes partial,
+unreachable, excluded-area, non-walk, empty, invalid endpoint, invalid entry and unusable direction routes, plus unsupported
+state and profile diagnostics. Malformed parameters remain BCL exceptions.
+
+Call `Tick(in MoveState, in MoveTuning, ReachTarget? target, float dt, GroundMoveContext)` from the authoritative
+game tick. It checks the current target's exact reach before route following. It replans on target drift, corridor
+exit, route consumption or invalid endpoint membership, including target motion below the normal drift threshold.
+Budget, drift, corridor and cooldown defaults come from `PathFollowConfig`. A previously nonterminal corridor
+reaching its stale terminal refreshes once immediately under waypoint radius and layer checks. A fresh query
+already terminal at its start keeps the cooldown. A due replan cooling down returns Travelling with the last valid
+direction and zero remaining length to hold the commitment. Route consumption, a cached endpoint or a spent
+commitment budget never proves arrival. A valid final approach keeps steering with positive remaining length
+inside `AcceptRadius` while outside exact reach. Terminal proximity only changes the timing of an otherwise due
+replan. No usable horizontal direction outside exact reach also makes a replan due, preserving cooldown holds
+until refresh can supply a route. An unusable fresh route still returns NoPath with NoDirection.
+
+Crossing an intermediate waypoint counts as progress along the actor's active steering leg, including at corners.
+The leg begins at the query start, then at the actor's current feet whenever advancement selects another waypoint.
+Proximity skipping a waypoint does not visit it and cannot witness crossing its successor without actor movement.
+Advancement requires supported-walk admission from the current feet to the next waypoint. If a crossed entry is
+refused, replanning becomes due instead of steering back across the old waypoint. Corridor distance still uses
+the route's original segments.
+
+The game owns target identity, speed, preparation, timeout, recovery and cancellation. After a Ready admission,
+queue begin with the returned direction and length. On each `OnBeforeTick`, forward Travelling to
+`SteerMovementCommitment(actor, sequence, result.Direction, result.RemainingPathLength)`. Map Arrived, TargetLost,
+NoPath, TooLong and UnsupportedState to the corresponding `EndMovementCommitment` reason. Stop ticking on a
+terminal result. Use the authoritative arrival event for validated effects and the ended event for cleanup.
+Pass null for a missing target. Call `Reset()` for target replacement, teleport or manual cancellation, then admit
+afresh. Tick after reset reports UnsupportedState with NotAdmitted. Clients replay carried controls without a
+navigation query. Load a server-side profile matching the actor capsule and resolved movement binding before
+admission. The actor must be grounded, neither swimming nor airborne from water, without buffered jump or an
+active commitment. Game root and stun policy is caller-owned. See the
+[consumer contract](../docs/USING-KHAOZENGINE.md) for the complete `OnBeforeTick` example, immediate strike on
+arrival and cleanup on end, and the [rationale](../docs/design/FORCED-MOVEMENT.md) for the package and prediction tradeoffs.
+
 ## Exact 3D reach
 
 `MovementBody` is an upright capsule in absolute metres. `Centre` is the capsule centre, `Radius` is
@@ -130,12 +212,28 @@ depth fraction. The selected foot radius must be at least 0.01 m. No missing cap
 The context implements `IDisposable`. A supplied `MovementQueries` view remains borrowed. Without one, a contact
 construction creates one selected view and releases it on disposal. It never disposes the physics source.
 `legacyOnlyContactRefusal` lets a producer record a restriction when constructing the context, before tuning is
-known. Every later contact use throws `NotSupportedException` with that message. Resolver-1 MapDoc contexts set
-`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.` Here `G1b` names the native
-MapDoc contact adapter. No production friend access is required. Movement depends on Locomotion, Navigation and
-Physics, with no renderer dependency. The input-driven `CharacterController3D` lives in
+known. Every later contact use throws `GroundContactCapabilityException` with `ContactProducerRestricted` and
+that producer-supplied text in `Restriction`. The existing constructor keeps its signature. An additional overload
+accepts `GroundContactProducerKind? producerKind` and `GroundContactCapability? requiredCapability` after the
+restriction string. These identifiers are optional metadata and do not change admission. Resolver-1 MapDoc contexts
+carry `ProducerKind = MapDocResolverOne` and `RequiredCapability = NativeMapDocContact`, the native G1b adapter.
+The string-only overload leaves both identifiers null. No production friend access is required. Movement depends on
+Locomotion, Navigation and Physics, with no renderer dependency. The input-driven `CharacterController3D` lives in
 `KhaozEngine.Game.Render3D` and selects the same binding through its own Update overload. Dispose the context
 or controller to release its engine-created view. Caller-supplied views and physics sources remain borrowed.
+
+### Ground context contact refusals
+
+`GroundContactCapabilityException` derives from `NotSupportedException`, preserving existing catches, and carries
+a non-nullable `GroundContactCapabilityRefusal Reason`. Messages remain developer prose. `Restriction` is open,
+producer-supplied text. Known engine producer and capability values use `GroundContactProducerKind` and
+`GroundContactCapability` enums. Identifiers are null when the reason does not use them or the producer omitted them.
+
+| `GroundContactCapabilityRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ContactProducerRestricted` | The producer restricted this context to legacy movement | `Restriction`, optional `ProducerKind` and `RequiredCapability` |
+| `OrdinaryContextRequired` | Contact movement requires an ordinary-constructed context | `RequiredKind = OrdinaryContact` |
+| `OrdinaryPredictionRequired` | Contact prediction requires an ordinary contact binding | `RequiredKind = OrdinaryContact` |
 
 ## Bounded static physics capture
 
@@ -229,6 +327,7 @@ public sealed record GroundProfileOptions
 {
     public static GroundProfileOptions Default { get; }
     public bool Aquatic { get; init; } // default false
+    public float MaxDropMetres { get; init; } // default zero
 }
 ```
 
@@ -242,16 +341,20 @@ public sealed class GroundNavigation
     public float AgentRadius { get; }
     public float AgentHeight { get; }
     public bool Aquatic { get; }
+    public float MaxDropMetres { get; }
+    public bool AllowTerrainDescents { get; }
+    public GroundNavigation ExcludingAreas(uint excludedAreas);
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
     public void Validate(in MoveTuning tuning);
+    public void PrepareTerrainDescents();
 }
 ```
 
 The two-argument `BuildProfile` builds a ground profile and equals the overload with `GroundProfileOptions.Default`.
 Both overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Load` expectation normalize the
 controller and water selection before other profile work or stream reads. Malformed Contact selections throw
-`ArgumentException`. Contact aquatic profiles throw `NotSupportedException` naming #1389. Contact ground profiles
+`ArgumentException`. Contact aquatic profiles throw `NavigationProfileCapabilityException` with `ContactAquaticUnsupported` and `IssueUrl` naming #1389. Contact ground profiles
 require an ordinary-constructed context and an unchanged leased capture basis. Phase 5b ground navigation is
 released in 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles
 are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). Legacy v1 bytes remain unchanged.
@@ -264,10 +367,10 @@ With `SampleWater`, a contact water field requires a supplied medium delegate an
 `AllowsSegment`, call `Validate(binding)` with the runtime `EffectiveMovementBinding`. `MoveToRange` calls it
 against the context's resolved binding before planning and prediction. `Validate(tuning)` is a convenience door
 that resolves Legacy or OrdinaryContact from tuning, but cannot detect a public explicit binding. PublicExplicit
-throws `NotSupportedException` naming #1389. A different binding kind or retained input throws `ArgumentException`.
+throws `NavigationProfileCapabilityException` with `PublicExplicitProfileUnsupported` and `IssueUrl` naming #1389. A different binding kind or retained input throws `NavigationProfileException`.
 Legacy graphs compare radius, half-height, slope and step, plus swim fractions for aquatic graphs. Contact graphs
 compare every retained tuning field, controller, foot fraction, placement offset and effective water policy.
-`WalkSpeed`, `RunSpeed` and `AirMomentum` may differ because proofs normalize them. Numeric runtime comparisons
+`WalkSpeed`, `RunSpeed` and `AirMomentum` may differ only for zero-allowance profiles, whose supported proofs normalize them. Positive `MaxDropMetres` validates their actual values. Numeric runtime comparisons
 use value equality, so +0 and -0 are compatible. File identity and load comparisons remain bitwise.
 
 Legacy directed proofs use unit walk and run pace, dry medium, grounded state, no jump, no airborne momentum and
@@ -296,7 +399,7 @@ and route straightening use resting heights, with surface fallback for legacy gr
 The profile filters the whole circular footprint against captured columns and their area tags. A centre point
 or bounding square is not enough. It uses raw radius-zero grid checks because the capsule was already checked
 by the physical hold and directed core proof, so the radius is not eroded twice. The grounded bake allocates
-within `MaxLayerCells`, produces only `Stair` links, and never generates `Hop` links. Candidate links in
+within `MaxLayerCells` and produces Stair seams. Contact profiles with positive `MaxDropMetres` additionally prove one-way Drop links. It never generates Hop links. Candidate links in
 `Space.Links` are separate from the accepted links retained by the guarded planner. `Planner` and
 `AllowsSegment` use the accepted graph and exact profile radius, and routes keep unsmoothed cell-centre
 waypoints. `MoveToRange` straightens them under `RouteApproachOptions.StraightenRoutes`.
@@ -329,6 +432,49 @@ arrival tolerance and drop out of the graph, and at runtime `MoveToRange` can st
 slope. This is open as [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)
 and is not fixed in this release. Check routes over sloped physics ground in the game's own world.
 
+### Unpowered Contact Drop routes
+
+Set finite nonnegative `GroundProfileOptions.MaxDropMetres` or `NavBakeProfile.MaxDropMetres` per body profile.
+Zero preserves existing topology and identity. Positive allowance requires an OrdinaryContact ground profile,
+independently of manual falls and fall damage. The sharp candidate horizon is `1 + ceil(2 * radius / cellSize)`. Opted-in terrain routes use their authenticated
+geometry-derived band and bounded fringe instead.
+Only the nearest eligible lower admitted surface is considered in a direction without a supported ordinary exit.
+Both usable walk/run modes must prove an unpowered fall, supported target arrival and post-landing Hold within
+the existing total edge duration. Full tuning includes actual pace and momentum. First landing, unwalkable contact
+and any selected swimming mode are retained even when a tick ends dry and grounded. Supported wading is allowed.
+
+Each fall certifies known eligible columns across the projected capsule corridor and composes that certificate with
+the original play-area boundary. Air feet can stand above lower support only during the named transition. Ordinary
+`AllowsSegment` remains supported-only. A forbidden surface, insufficient clearance, missing column or unsupported
+landing cannot borrow permission from a lower allowed surface. Unknown evidence refuses the bake, not one edge.
+Unavailable Drop pacing or step evidence throws `ContactDropProofException`, an `InvalidOperationException`
+with a stable `Reason` and the corresponding `Availability` or `Outcome`. Exception wording is developer prose.
+
+`MoveToRange` aligns on real support at the physical source, then previews the actual body, momentum, SpeedScale,
+run mode, timestep and current Contact environment before departure. The slice bound is the floor of baked duration
+divided by dt and includes both Holds. Preview never publishes movement or arrival. Changed actual motion, controls
+or read identity cannot reuse that preview. Flight suspends on a mismatch and replans once supported. A known obstruction is Blocked.
+Unavailable evidence suspends or follows the existing environment error contract. The active fall requests Dropping
+input through both built-in host adapters and is excluded from airborne ground-stall accounting. Completion requires
+the supplied body's actual supported non-swimming target cell/layer and shared 3D arrival sphere, then a supported
+Hold. Unexpected actual support replans there. Reset cancels route ownership while gravity and collision continue.
+Commitments, buffered jumps and unrelated airborne bodies stay Suspended. No jump or direct fallback is introduced.
+Player hosts pass the tick's `PlayerPathInput` to `Tick` and use its `Command` for actual movement. The preview and
+continuation check execute that exact camera-relative command, including its fractional axis and rounding. The
+overload without this input retains NPC world-space execution. Body, run mode, timestep and environment checks
+remain exact. Camera yaw may change between ticks when the same input value is used for preview and submission.
+The follower cooldown advances once per active Drop tick, including suspended flight and supported completion.
+After acknowledgement the latest goal can replan in that landing tick before the old route's next transition.
+A target that moves past retarget tolerance refreshes at the Drop source and throughout supported alignment,
+rooted holds and the supported launch prefix, even inside the cooldown. Current range membership cancels preparation
+without acknowledging an untraversed Drop. Refresh uses the follower's single query site and retains the fresh
+result's ordinary cooldown. A replacement without that Drop releases its preparation. The first command that
+enters certified descent commits the transition, including steep sliding. Its source and landing remain fixed
+through the supported lower fringe until terminal Hold. Refresh still requires ordinary raw admission at the
+actual supported pose. A prefix outside that admission can return Unreachable and cancel preparation. It never
+borrows the old source node as a substitute query origin.
+See [Contact Drop links](../docs/design/CONTACT-DROP-LINKS.md) for costs, follower acknowledgement and storage reasons.
+
 ### Parallel contact bake
 
 ```csharp
@@ -344,7 +490,7 @@ A null execution or a degree of 1 runs the serial build, and the existing `Build
 a null execution. Execution options are not part of `PhysicsNavBakeOptions` or the bake identity. Every degree
 produces the same graphs, resting heights and file bytes.
 
-Above degree 1 an ordinary contact profile proves admissions, edges and Stair links on up to
+Above degree 1 an ordinary contact profile proves admissions, edges, Stair links and enabled Drop links on up to
 `MaxDegreeOfParallelism` worker threads. Each phase splits its rows into `min(rows, workers * 4)` contiguous bands,
 workers claim bands in ascending order, and the build never starts more workers than bands. Layering stays serial.
 Legacy profiles always build serially, including in an all-legacy bake above degree 1.
@@ -402,9 +548,9 @@ scope on success and on any failure.
 
 After existing degree and profile argument checks, the complete physics source and any selected movement query view
 must themselves declare `IPhysicsQueryLeaseSource`. A wrapper does not inherit its backend's capability. Otherwise
-the opted-in legacy profile throws `NotSupportedException` before providers or proofs execute. The selected view
+the opted-in legacy profile throws `NavigationReadCapabilityException` with `LegacyQueryLeaseRequired` before providers or proofs execute. The selected view
 must still name that exact owner and origin, and its live lease must match the captured geometry generation and
-origin. An identity or captured-basis change throws `InvalidOperationException`. Disposed and wrong-thread lease
+origin. A live identity or captured-basis change throws `NavigationBuildException`. Disposed and wrong-thread lease
 refusals propagate. No second lease is acquired to validate the basis within the scope.
 
 ```csharp
@@ -412,12 +558,102 @@ var execution = new NavBakeExecution(1) { UseStableLegacyReadScope = true };
 GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
 ```
 
+### Navigation profile refusals
+
+`NavigationProfileException` derives from `ArgumentException`, retaining `ParamName`.
+`NavigationProfileCapabilityException` derives from `NotSupportedException`. Both carry
+`NavigationProfileRefusal` as non-nullable `Reason`. Identifiers are nullable when the selected reason does
+not use them. `ProfileName` is null for an unnamed `BuildProfile` and names a supplied profile where known.
+
+| `NavigationProfileRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ContactAquaticUnsupported` | Contact aquatic navigation is deferred | `IssueUrl` (the #1389 URL), `ProfileName` |
+| `DropProfileUnsupported` | Drop requires non-aquatic OrdinaryContact | `ProfileName`, `ActualKind`, `Aquatic` |
+| `PublicExplicitProfileUnsupported` | Public explicit navigation is deferred | `IssueUrl` (the #1389 URL), `ActualKind` |
+| `BindingKindMismatch` | Runtime binding kind differs from the baked kind | `ExpectedKind`, `ActualKind` |
+| `CaptureSlopeMismatch` | Profile slope differs from the capture | `ProfileName`, `ExpectedSlope`, `ActualSlope` |
+| `CaptureWaterNotSampled` | Aquatic profile lacks captured water | `ProfileName` |
+| `GeometryMismatch` | Legacy capsule or step geometry differs | `FieldName`, `ExpectedNumber`, `ActualNumber` |
+| `SwimFractionsMismatch` | Legacy aquatic fractions differ | `FieldName`, `ExpectedNumber`, `ActualNumber` |
+| `SwimFractionsUnordered` | Aquatic fractions are not ordered exit, submersion, enter | `ExitFraction`, `SubmersionFraction`, `EnterFraction` |
+| `TerrainDropPermissionRequired` | Terrain descents have no positive Drop permission | `AllowTerrainDescents`, `MaxDropMetres` |
+| `TuningFieldMismatch` | A retained Contact field differs | `FieldName`, `ExpectedBits`, `ActualBits` |
+
+Geometry and swim mismatch identifiers select the first differing field in the documented comparison order.
+Contact tuning identifiers come directly from the identity producer. `ExpectedBits` denotes the baked value
+and `ActualBits` the runtime value, represented as float bits or the enum or Boolean integer value.
+The existing identity difference text remains its prose projection, and runtime signed zeros remain compatible.
+
+### Navigation capture and read refusals
+
+`NavigationBuildException` derives from `InvalidOperationException`. `NavigationReadCapabilityException`
+derives from `NotSupportedException`. Each carries a non-nullable `Reason`. Messages remain developer prose.
+The capture and read identifiers are nullable when the selected reason does not use them.
+
+| `NavigationBuildRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `CaptureGeometryChanged` | Geometry changed since capture | `ExpectedGeneration`, `ActualGeneration` |
+| `CaptureLeaseRequired` | Contact capture lacks query leases | `RequiredCapability` |
+| `CaptureOriginChanged` | Origin changed since capture | `ExpectedOrigin`, `ActualOrigin` |
+| `ColumnSurfaceCapExceeded` | Column exceeds its configured inclusive cap | `AbsoluteX`, `AbsoluteZ`, `MaximumCount`, `ActualCount` |
+| `EnvelopeOutsideServedScope` | Required contact envelope exceeds the ordinary scope | `Minimum`, `Maximum` in the physics frame |
+| `MovementLeaseFrameMismatch` | Lease frame differs from the proof | `CellX`, `CellZ`, `ExpectedFrame`, `ActualFrame` |
+| `MovementLeaseGenerationMismatch` | Lease geometry differs from the capture | `CellX`, `CellZ`, `ExpectedGeneration`, `ActualGeneration` |
+| `MovementLeaseIdentityChanged` | Lease identity differs from the first proof lease | `CellX`, `CellZ`, `ExpectedLease`, `ActualLease` |
+| `MovementLeaseOriginMismatch` | Lease origin differs from the capture | `CellX`, `CellZ`, `ExpectedOrigin`, `ActualOrigin` |
+| `MovementLeaseSourceMismatch` | Lease belongs to another capture source | `CellX`, `CellZ` |
+| `MovementLeaseUnavailable` | Acquisition cannot supply known evidence | `CellX`, `CellZ`, `Availability` |
+| `ProofFrameChanged` | Context frame differs from the proof | `CellX`, `CellZ`, `ExpectedFrame`, `ActualFrame` |
+| `RegistrationGenerationChanged` | Registration changed since snapshot | `ExpectedGeneration`, `ActualGeneration` |
+| `RestingAnchorUnavailable` | Anchor query cannot supply known evidence | `CellX`, `CellZ`, `Availability` |
+| `SnapshotBasisOriginChanged` | Snapshot frame origin differs bitwise from the capture | `ExpectedOrigin`, `ActualOrigin` |
+| `SnapshotContextFrameChanged` | Context frame differs bitwise from the snapshot | `ExpectedFrame`, `ActualFrame` |
+| `SnapshotLeaseFrameChanged` | Worker lease frame differs bitwise from the snapshot | `ExpectedFrame`, `ActualFrame` |
+| `SnapshotLeaseGenerationChanged` | Worker lease geometry differs from the snapshot | `ExpectedGeneration`, `ActualGeneration` |
+| `SnapshotLeaseSourceChanged` | Worker lease belongs to another snapshot source | `SourceRole` (`ReadLease`) |
+| `SnapshotViewOriginChanged` | Query view origin differs bitwise from the snapshot | `ExpectedOrigin`, `ActualOrigin` |
+| `SnapshotViewSourceChanged` | Query view belongs to another snapshot source | `SourceRole` (`MovementQueryView`) |
+| `SupportEnvelopeUnbounded` | Support footprint has no finite outward bounds | `FootRadius` and `SupportReach` in metres, `SupportSlope` in radians |
+| `WaterExtentChanged` | Water extent differs bitwise from the snapshot | `ExpectedExtent`, `ActualExtent` |
+| `WaterGenerationChanged` | Water generation changed since snapshot | `ExpectedGeneration`, `ActualGeneration` |
+| `WaterIdentityChanged` | Water semantic identity changed since snapshot | `ExpectedIdentity`, `ActualIdentity` |
+| `LegacyLeaseGenerationChanged` | Stable lease generation changed | `ExpectedGeneration`, `ActualGeneration` |
+| `LegacyLeaseOriginChanged` | Stable lease origin changed | `ExpectedOrigin`, `ActualOrigin` |
+| `LegacyLeaseSourceChanged` | Stable lease belongs to another owner | `SourceRole` (`ReadLease`) |
+| `LegacyViewOriginChanged` | Selected view origin changed | `ExpectedOrigin`, `ActualOrigin` |
+| `LegacyViewSourceChanged` | Selected view belongs to another owner | `SourceRole` (`MovementQueryView`) |
+| `LegacyWorldOriginChanged` | Complete physics origin changed during a stable read | `ExpectedOrigin`, `ActualOrigin` |
+| `PhysicsOriginNonfinite` | Physics origin has a nonfinite coordinate | `ActualOrigin` |
+| `RuntimeStaticsPresent` | Authored navigation has live runtime statics | `SourceRole` (`MovementRegistration`) |
+| `SurfaceHeadroomNaN` | Surface headroom is NaN | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeadroom` |
+| `SurfaceHeadroomNegative` | Surface headroom is below zero | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeadroom` |
+| `SurfaceHeightNonfinite` | Absolute surface height is nonfinite | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeight` |
+| `SurfaceHeightNotAscending` | Absolute surface height does not exceed its predecessor | `ColumnX`, `ColumnZ`, `SurfaceIndex`, `ActualHeight`, `PreviousHeight` |
+
+| `NavigationReadRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `ConcurrentReadsRequired` | Parallel contact build lacks `IPhysicsConcurrentReadSource` | `RequiredCapability`, `SourceRole` |
+| `LegacyQueryLeaseRequired` | Stable legacy build lacks `IPhysicsQueryLeaseSource` | `RequiredCapability`, `SourceRole` |
+
+For read capability refusals, `SourceRole` is a `NavigationSourceRole` and names `PhysicsSource` or `MovementQueryView`, in that order.
+Surface validation selects height nonfiniteness, nonascending height, NaN headroom, then negative headroom,
+in the same order as the capture guard. Positive infinity headroom remains valid. Column indices and surface
+indices are zero-based. A stable read compares each producer value once, so identifiers retain the value
+that actually failed even if a faulty provider would return something different on its next read.
+Proof cell indices are zero-based. Lease checks select source, geometry generation, origin, frame, then first-lease
+identity in that order. Snapshot checks select lease source, geometry generation and bitwise frame during worker
+authentication. Publication checks select view source, view origin, basis origin and context frame, followed by
+registration generation, runtime statics, water generation, ordinal semantic identity and bitwise extent. Only the
+first failing input is reported. A lower live read can refuse before those checks with `MovementReadException`
+and its `MovementReadRefusal`, preserved without a navigation wrapper.
+
+
 ### Parallel contact provider contract
 
 Checks run in a fixed order. A degree below 1 throws `ArgumentOutOfRangeException` first. Every existing argument
 and profile check follows in its usual order. Only then does a contact profile above degree 1 require
 `IPhysicsConcurrentReadSource` on both the capture's physics source and the context's selected query view, and throw
-`NotSupportedException` when either lacks it. `BepuPhysicsWorld` and its restricted views declare it. A borrowed
+`NavigationReadCapabilityException` with `ConcurrentReadsRequired` when either lacks it. `BepuPhysicsWorld` and its restricted views declare it. A borrowed
 wrapper without it refuses above degree 1 and still builds at degree 1. A mixed `Create` above degree 1 checks every
 profile before it builds any.
 
@@ -550,6 +786,7 @@ public sealed class NavBakeSources
 public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilter Areas)
 {
     public bool Aquatic { get; init; } // default false
+    public float MaxDropMetres { get; init; } // default zero
 }
 
 public sealed record NavBakeExpectation(PhysicsNavBakeOptions Options, NavBakeSources Sources,
@@ -577,14 +814,70 @@ public sealed class GroundNavigationBake
 }
 ```
 
-`Create` builds every profile through `capture.BuildProfile` with its `Aquatic` flag while the capture is live, so each
+`Create` builds every profile through `capture.BuildProfile` with its `Aquatic`, `MaxDropMetres` and `AllowTerrainDescents` options while the capture is live, so each
 profile is exactly the fresh build. The `execution` overload builds profiles one after another and passes the setting to
 each contact profile, as [Parallel contact bake](#parallel-contact-bake) describes. An aquatic profile from a capture
 without `SampleWater` is refused there.
-`WriteTo` writes a little-endian `KENB` file. All-Legacy sets retain format 1 and their exact bytes. Any contact
-profile selects format 2 for the whole set, including mixed contact ground and legacy aquatic profiles. Format 2
-adds each profile's effective kind, foot fraction, water policy and zero placement offset to the identity. Only
-OrdinaryContact layers append one resting float per open cell after that layer's exits, in clear-bit order. Legacy
+`WriteTo` writes a little-endian `KENB` file. Format selection is explicit and old layouts stay frozen.
+
+| Format | Selection | Profile identity and candidate recipe |
+| --- | --- | --- |
+| 1 | All profiles are Legacy with zero Drop allowance | Original supported tuning and Stair recipe |
+| 2 | Contact exists and every Drop allowance is zero | Format 1 plus effective kind, foot fraction, water policy and zero placement offset |
+| 3 | Evidence capture is off and any profile has positive `MaxDropMetres` | Format 2 plus f32 allowance, f32 walk speed, f32 run speed and u8 air momentum per profile. Ordered Stair candidates precede Drop candidates |
+| 4 | `CaptureTerrainDescentEvidence` is true | Format 3 identity plus explicit capture/profile terrain flags, canonical physical evidence and authenticated per-profile ordered workloads |
+
+`PhysicsNavBakeOptions.CaptureTerrainDescentEvidence` and per-profile `AllowTerrainDescents` are non-positional,
+explicit opt-ins, both false by default. An enabled terrain profile requires non-aquatic OrdinaryContact, positive
+finite `MaxDropMetres`, and captured evidence. Capture alone never enables a profile, and zero permission is invalid
+with the profile flag. Consumers must opt in and rebake after adopting the released capability.
+
+Terrain opt-in is additive. Every candidate with sharp topology attempts the unchanged sharp proof first.
+Only a sharp refusal with applicable terrain can attempt the terrain proof. New terrain topology uses the terrain
+proof alone. Every accepted Drop retains its proving route. Policy selection reads that route, never geometry.
+
+Format 4 stores the ordered candidate list as canonical unsigned LEB128 counts and ZigZag LEB128 deltas of flattened
+integer layer/cell endpoints, followed by link-kind bytes. Each profile retains its original layer data and acceptance
+bits, then a facts block with the bake-time f32 slope cosine, f64 footprint surface reach, length-prefixed endpoints
+and a terrain-route bitset. Disabled profiles store a zero cosine and no terrain routes. A terrain bit must name an
+accepted Drop on an enabled profile. The workload digest binds the full identity, canonical container evidence,
+profile name, frozen profile bytes and exact facts bytes. Loading validates counts against remaining bytes and
+storage capacity, canonical integers, bounds, duplicate endpoints, endpoint admission, routes and the digest.
+Disabled profiles must match their frozen candidate recipe and order, using scalar arithmetic without terrain
+regeneration. Enabled profiles require legal Stair/Drop shapes and positive non-aquatic OrdinaryContact Drop
+permission. Their candidates are never regenerated. Loading never replays refused verdicts. Refusals remain
+authenticated bake-time facts.
+
+Evidence is pooled across enabled profiles and retains only accepted terrain proofs' reads and certificate inputs,
+including whole queried columns, original raw identities and required complete solid groups. Neither sharp proof
+reads, refused attempts, recipe closure nor the global steep inventory is retained. Certificate reconstruction and
+terrain policy reads are local. Certificates reconstruct lazily on first use with the persisted threshold bits.
+Finite water-coverage uncertainty above the existing 1 mm budget refuses a Drop as `PrecisionExceeded`.
+The Contact step reports `PrecisionRefused`, so sharp and terrain following return `Blocked`, including during
+alignment. Actual unresolved, invalid or mismatched environment evidence retains its prior error/suspension path.
+No precision threshold or physical gate is widened.
+
+Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
+synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
+or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
+Loading and reconstruction use no platform trigonometric functions. Excluded evidence always throws
+`DependencyMissing`, including steep-presence queries. It cannot select a fallback policy. No trajectories or
+per-mode physics verdicts are stored. Formats 1, 2 and 3 keep their exact bytes and candidate meanings.
+
+Terrain preview and following use the same `ContactTerrainDropPolicy` as the bake. The stored route selects the
+policy before evidence access. Sharp routes retain their existing preview and follower. Each terrain preview and
+follower owns its corridor, support witness and descent state. Cached certificates hold immutable topology only.
+The terrain follower returns a zero-input `Dropping` command for terminal Hold and retains ownership until the
+next supplied body authenticates that command. A later Walk cannot replace the Hold before submission.
+A missing retained dependency returns `Blocked` with `RangeSteering.DropRefusal` set to
+`ContactDropRuntimeRefusal.DependencyMissing`, ending that attempt without sharp fallback or a host exception.
+
+In format 3, disabled profiles encode those four appended values as 0, 1, 1 and false. Enabled profiles
+retain their actual flight inputs. The 13 added identity bytes per profile change neither the layer layout
+nor the meaning of format 1/2 acceptance bits. Drop candidates regenerate from admitted nodes, physical
+resting heights and directed ordinary exits without physics. Stored acceptance remains an ordered bitset,
+with no endpoint or trajectory samples. A loader counts candidates before allocating their endpoint array.
+Only OrdinaryContact layers append one resting float per open cell after that layer's exits, in clear-bit order. Legacy
 layers keep the format 1 layout, store no resting section and get their resting height from the raw surface at runtime.
 Load restores resting heights only for contact layers. Two writes of one bake
 are byte-identical. A loaded profile is a `GroundNavigation` like any other, and its `Space`, graph, columns, `AllowsSegment` and `Planner`
@@ -597,8 +890,9 @@ unique. A bake needs at least one source and 1 to 256 profiles, and `MaxSurfaces
 `Add` takes an exact 32-byte digest, and `AddHashOf` digests content with SHA-256.
 
 The identity covers the engine version, every capture option including `SampleWater`, the caller's labelled source
-digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except `WalkSpeed`,
-`RunSpeed` and `AirMomentum`, which the probe overwrites. So a bake sampled differently, or a profile baked aquatic
+digests, and each profile's name, area filter, `Aquatic` flag and retained `MoveTuning` fields. Supported
+proofs normalize `WalkSpeed`, `RunSpeed` and `AirMomentum`. Positive `MaxDropMetres` additionally retains
+those real flight inputs and checks them during runtime compatibility validation. So a bake sampled differently, or a profile baked aquatic
 against a ground expectation, is refused as stale and never loads as the other kind. The identity is canonical, so
 equal inputs give equal bytes in any insertion order and on any architecture. A bake is valid only for the engine
 version that wrote it.
@@ -731,9 +1025,10 @@ regression pin, with no controller fix or claim about every terrain sampler. #13
 body's capsule and the target's observed shape to decide whether the body is in range. The mover's
 `MoveState.Position` is its capsule centre. Navigation and route waypoints use the mover's own feet, and a
 capsule target supplies its own feet from its own half-height. Reach has zero tolerance in this API. The tick
-validates and evaluates current reach, then an airborne or committed body reports `Suspended` in preference to
-`InRange`, with zero requested input. A swimming body is not grounded, so it is suspended too unless the driver opts
-into swim steering. `InRange` means the supplied current body already passes
+validates and evaluates current reach, then an unrelated airborne body or a committed body reports `Suspended` in
+preference to `InRange`, with zero requested input. An active proved Contact Drop owns its airborne traversal.
+A swimming body is not grounded, so it is suspended too unless the driver opts into swim steering.
+`InRange` means the supplied current body already passes
 `ReachGeometry.Within`, never that a waypoint or predicted endpoint would.
 
 The public driver surface is:
@@ -741,7 +1036,7 @@ The public driver surface is:
 ```csharp
 public enum RangeMoveStatus
 {
-    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended, Blocked,
+    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended, Blocked, Dropping,
 }
 
 public readonly record struct RangeSteering(Vector2 WorldDirection, RangeMoveStatus Status);
@@ -756,6 +1051,8 @@ public sealed class MoveToRange
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options);
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput input);
     public void Reset();
 }
 
@@ -787,22 +1084,45 @@ public static class PlayerPathMovement
 {
     public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw);
 }
+
+public readonly record struct PlayerPathInput
+{
+    public PlayerPathInput(float cameraYaw); // finite yaw, default is zero
+    public float CameraYaw { get; }
+    public MoveCommand Command(in RangeSteering steering, bool run);
+}
 ```
 
-`MoveToRange` returns `Blocked` only under `RouteApproachOptions.Stall`, described below. The route-free
-`DirectMoveToRange` described below always runs its own stall window. Both adapters treat every status other than
-`Following` as idle.
+`MoveToRange` returns `Blocked` under `RouteApproachOptions.Stall` or a known live Drop launch obstruction.
+The route-free `DirectMoveToRange` always runs its own stall window. Both adapters transmit Following and Dropping
+input, and treat the other statuses as idle.
 
 `MoveToRange` copies the supplied `PathFollowConfig` and clamps `AcceptRadius` to at most `0.00001f`,
-including when the supplied value is zero. Its near-ring preflight resolves copies of `MoveState` through the
-live context, with a bounded bisection of up to 32 candidates plus endpoint and final checks. It performs no
-world step and writes no entity state. The command cap includes the requested walk or run pace, the body's
+including when the supplied value is zero. Its near-ring preflight keeps the same bounded float interval
+search of up to 32 candidates plus endpoint and final checks. A certified flat, unchanged analytic support
+region evaluates the command-dependent state algebra directly under one authenticated read interval, with
+zero full movement previews inside the search. The certificate requires exact field provenance, complete
+selected-static absence across support and shell paths, strictly dry whole-body coverage and the existing
+scope and convex play-area bounds. A supplied water field must also opt into `IMovementDryTracePointProof`
+and certify successful dry point classification throughout this particular enclosure. Without that separate
+operation-level guarantee, both drivers retain full previews and the direct driver's ordinary pacing point read. Only grounded bodies without swimming, commitments, buffered jumps or
+carried climb signals use the algebra. A conservative roundoff enclosure must fit the unchanged coverage skin,
+otherwise the live solver retains each trial's precision refusal. The direct driver's dry pacing reads share that certificate. If a producer revokes the
+read, the proof closes and the remaining candidates use the exact solver from the current float bracket.
+The search never restarts its earlier decisions. Every other
+case resolves each copied state through the exact live solver. Both drivers retain identical command bits,
+state and admission decisions, including custom segment guards. No reach tolerance, iteration limit, world
+step, position snap or entity publication changes. The command cap includes the requested walk or run pace, the body's
 `SpeedScale`, and medium boosts above one. A slowing medium only shortens the core's resulting travel. The
 follower uses `GroundNavigation` or an equivalent guarded planner, so an area or graph refusal, an exhausted
 partial route waiting on cooldown, an unreachable or refused route, or a `Hop` waypoint returns zero requested
 input and never becomes an unrestricted press. A valid partial corridor still requests bounded travel until it is
 exhausted. A blocked near-field shortcut keeps the detour. Target translation follows the follower's configured
-drift and replan cooldown while the route remains valid.
+drift and replan cooldown while the route remains valid. A previously nonterminal Complete route refreshes
+when the follower reaches its old terminal outside current range, using the configured arrival radius and
+layer checks. Physics rebasing need not produce the waypoint's exact coordinates.
+A fresh Complete result already terminal when queried keeps the ordinary cooldown, including after
+replacing a stale route, so an unchanged no-progress start-cell result cannot query again every tick.
 
 The constructors without options use `RouteApproachOptions.Default`, which keeps every behaviour above.
 
@@ -820,7 +1140,8 @@ step the guard refuses falls back to the active waypoint. A caller can also turn
 `ArgumentException` naming `options` when the profile is not aquatic. The planner constructor trusts its caller.
 With the option:
 
-- An airborne body that is not swimming, and a committed body, stay `Suspended` before `InRange`, as without it.
+- An unrelated airborne body that is not swimming, and a committed body, stay `Suspended` before `InRange`.
+  An active proved Contact Drop owns its airborne traversal.
 - A swimming body is also `Suspended` before `InRange` while it settles: when the context has no medium, the medium at
   its feet is not water, or its feet lie farther than `max(StepHeight, 1 mm)` from its float line
   `WaterSurfaceY - SwimSurfaceSubmersionFraction x 2 x CapsuleHalfHeight`. A body that fell into deep water holds
@@ -861,7 +1182,7 @@ a window of 1 to 65,535 ticks and a finite positive travel, validated with the s
   refused step, a refused straightened step, a zero offset waypoint and an exhausted partial route waiting on its
   cooldown all count. `Suspended`, `InRange`, `Unreachable` and `UnsupportedTransition` count toward nothing, and the
   last two return as without the option.
-- A window of `N` ticks spans `N` intervals between `N + 1` counted samples. When net horizontal feet displacement
+- A window of `N` ticks spans `N` intervals between `N + 1` counted samples. When accumulated horizontal feet travel
   across the last window is under `TravelMetres`, that tick returns `Blocked` with zero input, so a window of 15
   latches on the 16th counted tick.
 - A latched `Blocked` holds until `InRange`, `Reset` or a change of target shape, range or capsule, which unlatches on
@@ -874,14 +1195,15 @@ a window of 1 to 65,535 ticks and a finite positive travel, validated with the s
 - With `StraightenRoutes`, a refused straightened step is one counted tick of zero travel and the raw replan moves, so
   the fallback alone never latches. A raw step the guard keeps refusing latches within the window instead of holding
   `Following`.
-- The ring holds `WindowTicks + 1` samples, allocated once by the constructor, and a warmed tick allocates nothing.
+- The ring holds `WindowTicks + 1` samples and keeps a rolling sum of interval lengths in constant time.
+  A route reversal cannot cancel its own motion. Storage is allocated once and a warmed tick allocates nothing.
 
 Both adapters treat `Blocked` as idle, so a caller maps it to its own give-up rule.
 
 `OrdinaryMovementRegistration.ApplyRuntimeStatics` changes live collision and support without changing the
 authored graph, planner, routes, profile compatibility, `NavBakeSources`, `NavBakeIdentity` or KENB bytes. A route
 can still lead through a runtime wall while the body travels toward it and collision stops it. `Stall` measures
-that actual displacement and latches `Blocked`. After sanctioned removal, call `MoveToRange.Reset` to resume a
+that actual travel and latches `Blocked`. After sanctioned removal, call `MoveToRange.Reset` to resume a
 latched follower. Dropping a route, replanning or returning home remains the caller's policy. No runtime navigation
 overlay or automatic detour is supplied.
 
@@ -897,7 +1219,9 @@ at its authoritative boundary. Shape kind, dimensions, box yaw and range changes
 immutable profile requires a new `MoveToRange` instance. Call `Reset` for a target identity change, teleport,
 manual input, target death or invalidity, or cancellation. The strict `AcceptRadius` cap can hold at float
 resolution, including when the caller supplies zero. The profile must match radius, half-height, slope and step
-for the tuning it serves. Walk and run pace, climb pace and effect scale can differ.
+for the tuning it serves. A Legacy graph lets walk and run pace and climb pace differ. A Contact graph compares every
+retained tuning field, including climb pace, and its walk pace, run pace and air momentum can differ only with zero
+`MaxDropMetres`. Effect scale is a per-tick input and can differ on either.
 
 An NPC keeps the physics world, providers, tuning, body and target snapshots. The area mask is caller-owned
 `uint` policy:
@@ -943,7 +1267,7 @@ MovementBody targetBody = gameTarget.BodySnapshot;
 ReachTarget target = ReachTarget.Capsule(in targetBody);
 RangeSteering steering = follower.Tick(
     in npcState, in npcTuning, in target, gameNpc.NominalRange, gameNpc.Run, dt, context);
-MoveState next = steering.Status == RangeMoveStatus.Following
+MoveState next = steering.Status is RangeMoveStatus.Following or RangeMoveStatus.Dropping
     ? NpcGroundMovement.Step(in npcState, in steering, gameNpc.Run, dt, in npcTuning, context)
     : NpcGroundMovement.Hold(in npcState, dt, in npcTuning, context);
 npcState = next;
@@ -1009,11 +1333,11 @@ else
     ReachTarget target = gameTarget.CurrentShapeSnapshot;
     bool observedReach = ReachGeometry.Within(
         in bodyShape, in target, gameTarget.NominalRange);
+    var input = new PlayerPathInput(gameCamera.Yaw);
     RangeSteering steering = follower.Tick(
         in body, in playerTuning, in target, gameTarget.NominalRange,
-        gameTarget.Run, dt, gamePlayerGroundContext);
-    command = PlayerPathMovement.Command(
-        in steering, gameTarget.Run, gameCamera.Yaw);
+        gameTarget.Run, dt, gamePlayerGroundContext, input);
+    command = input.Command(in steering, gameTarget.Run);
 }
 
 client.SendInput(in command); // exactly one normal submission per simulation tick
@@ -1080,7 +1404,7 @@ window. After landing the approach resumes, and the drop's travel counts as prog
 Each tick validates like `MoveToRange`, then returns `Suspended` for an airborne or committed body, `InRange` when
 the current body already passes `ReachGeometry.Within`, and `Blocked` while a block is latched. Otherwise it requests
 bounded travel toward the closest horizontal point of the target, preflights the step on a copy through the live
-context, and shrinks it with the same stop ring bisection. Keep range and target shape constant for a walk, and call
+context, and shrinks it with the same certified-or-live stop ring interval search. Keep range and target shape constant for a walk, and call
 Reset to start a new one.
 
 ```csharp
@@ -1104,7 +1428,7 @@ Differences from a typical game-side walk-up rule:
 
 - Direction uses the closest horizontal point of a box rather than its centre. For capsules and points they are the
   same. A box approach reaches its near face sooner.
-- The final fraction comes from live bisection against exact reach, not from a minimum fraction, so a short last step
+- The final fraction comes from the shared float interval search against exact reach, not from a minimum fraction, so a short last step
   cannot stall or overshoot.
 - A step that would leave the ground or start swimming is refused and counts toward the stall window, so a walk off a
   ledge or into deep water ends `Blocked` instead of falling or swimming. A step decides swimming from its starting
@@ -1114,7 +1438,8 @@ Differences from a typical game-side walk-up rule:
 - A zero travel bound, such as a rooted body, counts toward neither window, so a rooted body holds without ending its
   walk. Airborne and committed ticks return `Suspended` and also count toward neither window.
 - `InRange` clears both windows, so a followed body that moves away starts fresh windows.
-- Stall travel is net displacement across the window, not accumulated path length, so pacing in place is blocked.
+- Stall travel sums horizontal feet travel across counted intervals, so a reversal cannot cancel its own motion.
+  Direct approach still separately checks reach-distance gain for a static target.
 - `Blocked` stays latched until `InRange`, `Reset`, or a change of target shape, range or capsule geometry. End the
   walk on the first `Blocked`.
 - A change of target kind, shape, yaw, range or capsule geometry resets the windows. A change of `targetMoves` clears
@@ -1180,3 +1505,100 @@ This API adds no native sampler, tiled bake or legacy bake-format change. Adopti
 [#1344](https://github.com/APKiwiOrg/KhaozEngine/issues/1344) small bodies. Generic tests cover dry and
 surface motion, a live wall, exact-view matching, refusal after earlier steps, all tuning inputs,
 semantic-source order and synthetic adjacent-frame equivalence. Real native adoption remains G1b.
+
+## Certified movement and publication
+
+Every sharp and terrain Drop proof, launch preview and continuation executes the same
+`PlayerMovementPublication` policy from Locomotion. Publication is part of each step, including the next
+slice's input. The follower still matches the actual supplied body exactly. Rounding only its saved expectation
+would certify a trajectory the authority never ran. Position error alone cannot establish agreement because
+publication can change carried velocity while leaving position identical.
+
+Player hosts execute `EffectiveMovementBinding.StepPlayer`, or NetWorld's `PlayerMoveSimulator`, with the same
+`PlayerPathInput` command used for preview. World-space Drop hosts use `StepPlayerTowards`.
+`NpcGroundMovement.Step` applies this policy during certified Contact `Dropping`. Ordinary creature and NPC
+steering keeps the raw full-precision contract. No arrival, footprint, roof, raw-layer or proof-budget rule changes.
+
+Every Contact bake identity contains the engine-owned `engine/player-publication` source digest. Consumers must
+rebake, including Contact profiles with Drops disabled. An older policy returns `SourcesChanged` even at the same
+engine version. Callers supply their own source digests and must not supply that reserved label. Frozen KENB
+formats still decode with their original layouts. Legacy-only identities keep their ordinary engine, source and
+profile checks, with no player-publication source row.
+
+## Internal terrain descent evidence
+
+The internal `PhysicsNavBake.CaptureDescent` entry captures immutable physical evidence beside ordinary
+`PhysicsNavColumns`. The public capture path is unchanged. The new path retains exact installed face geometry,
+source adjacency, classified column references, complete coverage or known emptiness, and original raw surface
+addresses. It observes the unchanged column probe's real rays to bind the original ordinal and raw height bits.
+The optional `IPhysicsStaticEvidenceRaycast` capability retains the actual selected installed leaf from that same
+ray. Bepu supplies it for standalone and compound primitives. Curved raw surfaces bind to their represented
+primitive identity without a fabricated plane or a slope-normal filter. Curved geometry inside a descent corridor
+still refuses certification conservatively, while an unrelated curved prop does not abort capture.
+Analytic faces retain both the installed mesh owner and the canonical field owner. Selected support must match
+the latter and the captured canonical feature geometry, while physical installation provenance remains intact.
+At a raw ray point shared by analytic triangles, capture collects every containing face at the exact selected
+height. Candidate bounds, containment and canonical selection use the returned ray point reconstructed in
+absolute coordinates, since a float rebase round trip can shift it from the requested anchor. The faces must
+form one incident component through source-certified positive shared edges, with no
+duplicate identities or positive-area overlaps between any pair. Point-only neighbours can join through other
+members of the fan, but a shared point alone never certifies an edge. Capture then binds the field's canonical
+`Describe` member within that component. Missing canonical identity, disconnected owners and gaps separating
+the incident component still refuse. These predicates use exact rational arithmetic over captured coordinates.
+`ContactTerrainProfileEvidence` associates admitted original layer/cell addresses with those raw sources, without
+looking up a layer by resting-height proximity. Missing capability, source identity, ambiguous raw support or
+capacity has a structured `PhysicsNavDescentEvidenceException` reason. No partial evidence is published.
+
+Capture uses inclusive projected bounds to narrow cell candidates and processes them in original face ordinal
+order. Boundary-only touches, vertical faces and zero-area projections remain candidates. The original exact
+clip, overlap and source adjacency predicates decide retention. A source may provide a complete adjacency-key
+candidate visitation, otherwise capture keeps the all-pairs path. For inputs the original capture already accepted,
+the test-only all-face/all-pairs oracle checks every output field. The oracle remains frozen in the test project.
+Index arrays and conservative bookkeeping share a checked aggregate byte budget bounded
+by `Array.MaxLength`. `IndexStorageExceeded` reports requested and maximum bytes before unsupported storage is
+allocated. Existing feature, reference, sweep and proof budgets are unchanged.
+Frozen evidence builds exact raw-address and full-solid interval lookups once. Raw lookup preserves height bits
+and the original duplicate ambiguity result. Solid ranges retain every matching Source/Address part, including
+roofs outside the aperture. Their queries record only contributing group dependencies. Receipts share privately
+immutable face membership, so constructing a worker or candidate receipt never scans the world. These derived
+lookups share the checked index reserve and add no persisted geometry bytes.
+
+`ContactTerrainDropCandidates` is pure and deterministic. It retains the fixed source and neighbor order,
+ordinary exit suppression, nearest eligible lower column, highest eligible layer, step-band stop and exact
+allowance subtraction. Connected steep geometry and the unchanged capsule/cell intersection helper derive its
+rasterized fringes and finite reach. Per-body directional band endpoints and a next-admitted-column index remove
+repeated band walks. Each ray stops at the first gap in its contiguous dilated band, with only the first downstream
+cell included. A later arm of the same connected component cannot bridge an unadmitted apron.
+Band endpoints occupy sparse component/cell records, with a checked aggregate limit of `MaxLayerCells` before
+endpoint-array allocation. Overlapping components remain ambiguous. Source lookup reads one indexed cell rather
+than scanning every component. Numeric index payload is at most 36 bytes per counted record, excluding managed
+collection overhead and bounded construction scratch. Exceeding the record limit reports `CapacityExceeded`.
+There is no radius-only terrain horizon or universal height-over-slope reach formula.
+Gentle slopes receive no terrain extension. Each source still contributes at most eight candidates.
+
+`ContactTerrainDropCorridor` checks exact column coverage over the doubled-radius projection, first physical
+obstructions and solid occupancy. The height band tests only ground inside the exact projected capsule, including
+its circular caps. `ContactTerrainHeightBand` intersects each violating height half-plane with that capsule
+using rational clips and squared-distance predicates. Ground outside that projection cannot refuse solely
+through height. The height limits and doubled radius stay fixed. Coverage, single-source identity, overlapping-layer checks, exact ground area, minimum bed
+and all obstruction checks retain their whole-cell scope. Foreign geometry below complete ground cannot replace
+that ground, and a roof cannot be skipped to reach an allowed floor. Mesh faces are clipped exactly against the ground and vertical body
+envelope, including intersections whose original vertices all lie outside that envelope.
+The original narrow center corridor, play boundary and highest-launch
+descent bound remain composed through `NavDropFootprint`. Geometry supplies evidence, not collision permission.
+The internal fresh-bake proof opts in through `ContactNavigationProof.EnableTerrainDescents`. One
+`ContactTerrainDropPolicy` authenticates launch, descending support, the bounded lower fringe and terminal Hold.
+It keeps the full actual walk/run tuning, original raw target layer, ordinary terminal footprint, 1 mm sphere,
+original boundary and 64-slice duration. Selected support binds canonical feature geometry and owner separately
+from the ordinary adapter's selector owner, which must remain unchanged after the real source Hold.
+Explicit capture/profile flags publish these certified links and retain their evidence in KENB 4. Runtime preview
+and following use this same policy, selected by the stored route. Supported alignment and launch preparation stay
+reversible. The first accepted command entering descent commits the transition through the supported lower fringe
+until the actual body supplies terminal support and a real Hold. Ordinary `AllowsSegment` remains unchanged.
+
+Calling-thread dependency receipts retain only accepted terrain proof reads and their certificate inputs.
+The subset includes observed coverage and columns, original raw rows, local faces and complete solid groups needed
+by occupancy checks. Other cells are explicitly `Excluded` and a later query throws `DependencyMissing`.
+Raw bindings use original captured column ordinals and raw grid heights, never resting-height proximity.
+The stored candidates and route facts remove any need for recipe closure or a global steep inventory.
+Another tuning or workload needs a new bake. Accepted terrain certificates reconstruct on first use.

@@ -18,7 +18,14 @@ public static class MapBackendPoseAdapter
         var (s, c) = Math.SinCos(transform.YawRadians * 0.5);
         Quaternion q = new(0, (float)s, 0, (float)c);
         if (!float.IsFinite(p.X) || !float.IsFinite(p.Y) || !float.IsFinite(p.Z) || !float.IsFinite((float)transform.Scale) || (float)transform.Scale <= 0)
-            throw new MapDocumentException("Backend pose is not representable.");
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "Backend pose is not representable.")
+            {
+                Operation = nameof(Pose),
+                FieldPath = !float.IsFinite(p.X) ? "Position.X" : !float.IsFinite(p.Y) ? "Position.Y" :
+                    !float.IsFinite(p.Z) ? "Position.Z" : "Scale",
+                ActualNumber = !float.IsFinite(p.X) ? transform.X - frame.Anchor.X : !float.IsFinite(p.Y) ? transform.Y :
+                    !float.IsFinite(p.Z) ? transform.Z - frame.Anchor.Z : transform.Scale,
+            };
         return new(p, q);
     }
 
@@ -46,7 +53,8 @@ public static class MapBackendPoseAdapter
     static double HalfUlp(double value)
     {
         float f = (float)Math.Abs(value);
-        if (!float.IsFinite(f)) throw new MapDocumentException("Backend error bound is not representable.");
+        if (!float.IsFinite(f)) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "Backend error bound is not representable.")
+            { Operation = nameof(ErrorMetres), FieldPath = nameof(HalfUlp), ActualNumber = value };
         return ((double)MathF.BitIncrement(f) - f) * 0.5;
     }
 }

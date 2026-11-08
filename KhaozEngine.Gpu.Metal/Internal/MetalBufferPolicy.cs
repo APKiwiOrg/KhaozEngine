@@ -69,7 +69,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// records it, which is the point of the decision: it should be found in the documentation rather than
         /// discovered by a consumer.</para>
         /// </summary>
-        /// <exception cref="ArgumentException">The usage is ring-backed and declares a structured binding.</exception>
+        /// <exception cref="GpuBufferUsageArgumentException">The usage is ring-backed and declares a structured binding.</exception>
         internal static void RequireCreatable(GpuBufferUsage usage)
         {
             const GpuBufferUsage Structured =
@@ -77,7 +77,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (!IsRingBacked(usage) || (usage & Structured) == 0) return;
 
-            throw new ArgumentException(
+            throw new GpuBufferUsageArgumentException(GpuBufferUsageRefusal.UniformBindingCombination,
                 "The native Metal backend cannot create a buffer that is both a uniform buffer and a structured "
                 + "buffer (asked for "
                 + usage.ToString()
@@ -86,11 +86,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "that frame happened to land on. The seam allows the combination and nothing in this engine "
                 + "creates it, so this is a documented creation failure of this backend rather than a gap: "
                 + "create two buffers.",
-                nameof(usage));
+                nameof(usage))
+            {
+                Usage = usage,
+                ConflictingUsage = usage & Structured,
+            };
         }
 
         /// <summary>
-        /// Refuse a write that runs off the end of a buffer, by name and with both numbers. The write itself is
+        /// Refuse a write that runs off the end of a buffer, carrying its offset, write size and capacity
+        /// on <see cref="GpuBufferTransferRangeException"/>. The write itself is
         /// an unguarded copy into <c>contents()</c>, so without this refusal the same mistake is a silent write
         /// into whatever the allocator put next.
         /// </summary>
@@ -98,7 +103,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if ((ulong)offsetBytes + writeBytes <= sizeInBytes) return;
 
-            throw new ArgumentOutOfRangeException(nameof(writeBytes), writeBytes,
+            throw new GpuBufferTransferRangeException(GpuBufferTransferRefusal.WindowOutsideBuffer, nameof(writeBytes), writeBytes,
                 "A native Metal buffer write of "
                 + writeBytes.ToString(CultureInfo.InvariantCulture)
                 + " bytes at offset "
@@ -106,7 +111,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + " runs past the end of a buffer of "
                 + sizeInBytes.ToString(CultureInfo.InvariantCulture)
                 + " bytes. The copy underneath is into contents() with no bound check of its own, so without "
-                + "this refusal the same call overwrites whatever the driver placed after this allocation.");
+                + "this refusal the same call overwrites whatever the driver placed after this allocation.")
+            {
+                OffsetBytes = offsetBytes,
+                SizeBytes = writeBytes,
+                BufferBytes = sizeInBytes,
+            };
         }
     }
 }

@@ -166,7 +166,10 @@ internal sealed partial class WaterRenderer
         _preparedBound = AnyBound(frame.WaterPlanes);
         RetryWaterOutputReplacement();
         ReadOnlySpan<WaterPlane> planes = frame.WaterPlanes;
-        if (absolute.Length != planes.Length) throw new ArgumentException("The absolute queue must match the frame.", nameof(absolute));
+        if (absolute.Length != planes.Length)
+            throw new WaterFrameArgumentException(WaterFrameRefusal.AbsoluteQueueCountMismatch,
+                "The absolute queue must match the frame.", nameof(absolute))
+            { AbsoluteCount = absolute.Length, PlaneCount = planes.Length };
         if (_bound is not null && !TargetsMatch(targets)) RetireWaterSets();
         _frameFields.Clear();
         for (int i = 0; i < planes.Length; i++)
@@ -227,7 +230,7 @@ internal sealed partial class WaterRenderer
 
     internal void VerifyOpticsFrame(RenderResources targets, ReadOnlySpan<WaterPlane> planes, WaterSettings settings, float time)
     {
-        if (!OpticsFrameMatches(targets, planes, settings, time)) throw ChangedOpticsInputs();
+        if (!OpticsFrameMatches(targets, planes, settings, time)) throw ChangedOpticsInputs(planes.Length);
     }
 
     // Whether recording still sees the inputs the prepared bindings were built from. Bound handles resolve here,
@@ -257,8 +260,12 @@ internal sealed partial class WaterRenderer
         return false;
     }
 
-    static InvalidOperationException ChangedOpticsInputs() => new(
-        "Bound water inputs changed or were not prepared. Queue all water and call Scene3D.PrepareFrame(width, height) before recording.");
+    WaterFrameStateException ChangedOpticsInputs(int actualPlaneCount) => new(
+        WaterFrameRefusal.OpticsInputsChangedOrUnprepared,
+        "Bound water inputs changed or were not prepared. Queue all water and call Scene3D.PrepareFrame(width, height) before recording.")
+    {
+        Prepared = _opticsPrepared, PreparedPlaneCount = _preparedPlaneCount, ActualPlaneCount = actualPlaneCount,
+    };
 
     void PackOptics(ref WaterUbo u, in WaterPlane plane)
     {

@@ -10,12 +10,17 @@ public static class MapWaterMigration
     public static JsonObject Upgrade(JsonObject source)
     {
         ArgumentNullException.ThrowIfNull(source);
-        if (source["formatVersion"] is not JsonValue value ||
-            !value.TryGetValue(out int version) || (version != 5 && version != 6))
-            throw new MapDocumentException("Water migration requires formatVersion 5 or 6.");
+        JsonNode? node = source["formatVersion"];
+        int version = 0;
+        bool integer = node is JsonValue value && value.TryGetValue(out version);
+        int? actual = integer ? version : null;
+        if (!integer || (actual != 5 && actual != 6))
+            throw new MapDocumentException(integer ? MapDocumentRefusal.SchemaPayloadVersionUnsupported
+                : MapDocumentRefusal.SchemaValueRequired, "Water migration requires formatVersion 5 or 6.")
+            { FieldPath = "formatVersion", ActualVersion = actual, SupportedVersions = integer ? [5, 6] : null };
 
         var result = (JsonObject)source.DeepClone();
-        if (version == 6) return result;
+        if (actual == 6) return result;
         result["formatVersion"] = 6;
         return result;
     }

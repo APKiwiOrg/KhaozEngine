@@ -66,7 +66,7 @@ public sealed partial class SqlServerContentAuthoringStore
     }
 
     /// <summary>
-    /// The ONE import both routes share: the empty-store and pack-target refusals, the type agreement, the
+    /// The import trusted and operator seed routes share: the empty-store and pack-target refusals, the type agreement, the
     /// staging of families, marks and rules, the draft and the publish, and the reset on any refusal after
     /// staging began. A row-only import passes no text. A companion import passes the bundle's complete text,
     /// whose targets are checked BEFORE anything is staged, and lands it in the same draft transaction as the
@@ -79,6 +79,7 @@ public sealed partial class SqlServerContentAuthoringStore
     /// <param name="note">The operator's note.</param>
     /// <param name="member">The public member importing, which a refusal names.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
+    /// <param name="publishPolicy">The operator policy, or null for a trusted server seed.</param>
     async Task<ContentPublishResult> ImportAsync(
         ContentBundle bundle,
         ContentBundleTextState? text,
@@ -86,7 +87,8 @@ public sealed partial class SqlServerContentAuthoringStore
         string operatorId,
         string note,
         string member,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IContentPublishPolicy? publishPolicy = null)
     {
         // The reset below is destructive by design, so it may not run until this import has actually written
         // something. The two refusals above the staging (a database that already published, a store with no
@@ -106,11 +108,12 @@ public sealed partial class SqlServerContentAuthoringStore
                     if (already > 0)
                     {
                         throw new ContentAuthoringException(
+                            ContentAuthoringRefusal.CatalogNotEmpty,
                             FormattableString.Invariant(
                                 $"This store already stands at version {active}, and a bundle is imported into an EMPTY store only. A deployed catalog's values change through an edit and a publish and through nothing else."),
                             default,
                             0,
-                            ContentAuthoringException.CatalogNotEmptyReason);
+                            ContentAuthoringException.CatalogNotEmptyReason) { ActiveVersion = active };
                     }
 
                     if (PackStore is null)
@@ -145,7 +148,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 cancellationToken).ConfigureAwait(false);
 
             ContentPublishResult published = await PublishAsync(
-                new ContentPublishRequest(actor, operatorId, note, 0), cancellationToken).ConfigureAwait(false);
+                new ContentPublishRequest(actor, operatorId, note, 0) { PublishPolicy = publishPolicy }, cancellationToken).ConfigureAwait(false);
 
             await WriteAsync(
                 (scope, token) => AppendAuditAsync(
@@ -247,8 +250,8 @@ public sealed partial class SqlServerContentAuthoringStore
                 await using (SqlCommand command = Command(
                     scope, "SELECT store_epoch FROM dbo.catalog_metadata WHERE metadata_key = 1;"))
                 {
-                    epoch = await command.ExecuteScalarAsync(token).ConfigureAwait(false) as string
-                        ?? throw NoMetadata();
+                    object? raw = await command.ExecuteScalarAsync(token).ConfigureAwait(false);
+                    epoch = RequireMetadataScalar<string>(raw);
                 }
 
                 return ContentBundleTextCompatibility.Export(epoch, versionNumber, types, rows, families, rules, text);
@@ -293,6 +296,7 @@ public sealed partial class SqlServerContentAuthoringStore
             if (!_registry.TryGet(declared.Type, out ContentTypeRegistration? registration))
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.TypeUnknown,
                     FormattableString.Invariant(
                         $"The bundle carries content type {declared.Type.Value} '{declared.TypeKey}', which this process has not registered. A codec is code, so an import needs the type already declared against the codec that decodes it."),
                     declared.Type,
@@ -304,11 +308,12 @@ public sealed partial class SqlServerContentAuthoringStore
                 || registration.ChunkSlots != declared.ChunkSlots)
             {
                 throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.BundleTypeDeclarationMismatch,
                     FormattableString.Invariant(
                         $"The bundle declares content type {declared.Type.Value} as '{declared.TypeKey}' with {declared.ChunkSlots} chunk slots and this process registers it as '{registration.TypeKey}' with {registration.ChunkSlots}. The two declarations disagree about where an id falls, so the import is refused whole."),
                     declared.Type,
                     0,
-                    ContentAuthoringException.BundleFormatReason);
+                    ContentAuthoringException.BundleFormatReason) { ActualTypeKey = declared.TypeKey, RegisteredTypeKey = registration.TypeKey, ActualChunkSlots = declared.ChunkSlots, RegisteredChunkSlots = registration.ChunkSlots };
             }
         }
     }
@@ -476,11 +481,12 @@ public sealed partial class SqlServerContentAuthoringStore
                 if (!byKey.TryGetValue((row.Type.Value, familyKey), out long held))
                 {
                     throw new ContentAuthoringException(
+                        ContentAuthoringRefusal.BundleFamilyUnknown,
                         FormattableString.Invariant(
                             $"Bundle row '{row.Key}' of content type {row.Type.Value} names family '{familyKey}', which the bundle's own family list does not carry."),
                         row.Type,
                         row.Id ?? 0,
-                        ContentAuthoringException.UnknownFamilyReason);
+                        ContentAuthoringException.UnknownFamilyReason) { RowKey = row.Key.ToString(), FamilyKey = familyKey };
                 }
 
                 familyId = held;

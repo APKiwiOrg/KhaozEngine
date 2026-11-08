@@ -46,7 +46,14 @@ public sealed class NativeResolverTests
         Assert.Equal(new[] { ("a", "building_inn", "tree", (long?)11, 7f), ("b", "scenery", "tree", (long?)12, 2.5f) },
             first.Placements.Select(p => (p.PlacementId, p.Kind, p.AssetId, p.NumericId, p.Transform.Position.Y)));
         Assert.Equal(first.Placements.Select(p => p.Transform), second.Placements.Select(p => p.Transform));
-        Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets, (_, _) => float.NaN, f.Options));
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets, (_, _) => float.NaN, f.Options));
+        Assert.Equal(MapDocumentRefusal.ValueNonfinite, error.Reason);
+        Assert.Equal("a", error.PlacementId);
+        Assert.Null(error.ActualNumber);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        var control = MapResolver.Resolve(f.Document, f.Assets, (_, _) => float.MaxValue, f.Options);
+        Assert.Equal(float.MaxValue, control.Placements.Single(p => p.PlacementId == "a").Transform.Position.Y);
     }
 
     [Fact]
@@ -109,8 +116,17 @@ public sealed class NativeResolverTests
             case "scale-infinity": f.Document.Placements[0].Scale = float.PositiveInfinity; break;
             case "bounds": f.Document.Bounds.MinX = float.NegativeInfinity; break;
         }
-        Assert.Throws<MapDocumentException>(() => MapAuthoredIdentity.Compute(f.Document, f.Assets, f.Options));
-        Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets, (_, _) => 0, f.Options));
+        var identity = Assert.Throws<MapDocumentException>(() => MapAuthoredIdentity.Compute(f.Document, f.Assets, f.Options));
+        var resolved = Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets, (_, _) => 0, f.Options));
+        if (fault is "payload" or "resolver" or "missing")
+        {
+            Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, identity.Reason);
+            Assert.Equal(identity.Reason, resolved.Reason);
+            Assert.Equal(f.Document.ResolverIdentity?.PayloadVersion, identity.PayloadVersion);
+            Assert.Equal(f.Document.ResolverIdentity?.ResolverVersion, identity.ResolverVersion);
+            f.Document.ResolverIdentity = new(1, 1);
+            Assert.False(string.IsNullOrEmpty(MapAuthoredIdentity.Compute(f.Document, f.Assets, f.Options)));
+        }
     }
 
     [Theory]

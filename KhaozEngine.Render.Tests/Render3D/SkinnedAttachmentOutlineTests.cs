@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -42,7 +43,9 @@ public sealed class SkinnedAttachmentOutlineTests
         MeshOutlineGroup group = fixture.Scene.BeginMeshOutline(Color.White, 2);
         fixture.Palette[0].M41 = float.NaN;
 
-        Assert.Throws<ArgumentException>(() => fixture.Bound.QueueOutline(fixture.Skeleton, fixture.Palette, fixture.Model, group, .5f, true));
+        var error = Assert.Throws<AttachmentBindingArgumentException>(() => fixture.Bound.QueueOutline(fixture.Skeleton, fixture.Palette, fixture.Model, group, .5f, true));
+        Assert.Equal(rigidLast ? AttachmentBindingRefusal.PoseCompositionFailed : AttachmentBindingRefusal.HostJointPoseInvalid, error.Reason);
+        Assert.Equal(2u, error.PartId);
 
         fixture.AssertNoCalls();
     }

@@ -215,7 +215,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             foreach (var completion in completions)
             {
                 if (completion is not D3D11GpuFence fence)
-                    throw new ArgumentException("A completion fence belongs to another backend.", nameof(completions));
+                    throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend, "A completion fence belongs to another backend.", nameof(completions))
+                    {
+                        ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                        ActualType = completion?.GetType(),
+                        ResourceKind = "fence",
+                    };
                 fence.RequireOwner(_fences, nameof(completions));
                 if (fence.Target != 0) throw new InvalidOperationException("Reset completion fences before submitting.");
             }
@@ -335,10 +340,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (width == 0 || height == 0 || data.Length == 0) return;
 
             D3D11Texture destination = texture as D3D11Texture
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {texture.GetType().Name} was handed to the native Direct3D 11 device as an upload target. "
                     + "A texture this backend created carries the ID3D11Texture2D an update names, and a texture "
-                    + "from another backend carries another backend's.", nameof(texture));
+                    + "from another backend carries another backend's.", nameof(texture))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = texture.GetType(),
+                    ExpectedType = typeof(D3D11Texture),
+                    ResourceKind = "texture",
+                    Context = nameof(UpdateTexture),
+                };
 
             // THE PHANTOM LAYER IS REFUSED HERE AND NOT BY D3D11 (#695). UpdateSubresource drops a subresource
             // index past the end of the resource without an HRESULT, so nothing downstream of this line would

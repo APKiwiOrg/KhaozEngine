@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -45,7 +44,7 @@ public sealed class WaterColumnRiverScene : IDisposable
         for (int frame = 0; frame < Math.Max(1, warmupFrames); frame++)
         {
             scene.Begin();
-            scene.EffectTimeSeconds = 0f;
+            scene.EffectTimeSeconds = settings.Time;
             Draw(scene, settings);
             scene.PrepareFrame(settings.Size, settings.Size);
             using (GpuRecording.Open(device, _commands!, nameof(WaterColumnRiverScene)))
@@ -55,20 +54,17 @@ public sealed class WaterColumnRiverScene : IDisposable
             device.Present();
         }
         _previous = settings;
-        RenderResources resources = Borrow<RenderResources>("_res");
+        var resources = scene.ColorTargetsForTests;
         Assert.Equal(settings.Aa.Mode == AntiAliasingMode.Msaa ? 4 : 1, resources.SampleCount);
         Assert.Equal(settings.Size, resources.Width);
         float[] linear = ReadRgb(resources.ColorTex);
-        WaterColumnColorSource source = Borrow<WaterColumnColorSource>("_waterColumnColor");
-        float[] copied = scene.WaterColumnLightDiagnostics.CopyRan ? ReadRgb(source.Texture!) : [];
+        IGpuTexture source = scene.WaterColumnColorTextureForTests!;
+        float[] copied = scene.WaterColumnLightDiagnostics.CopyRan ? ReadRgb(source) : [];
         float[] resolved = settings.Aa.Mode == AntiAliasingMode.Temporal
             ? ReadRgb(scene.TemporalHistory.Color(scene.TemporalHistory.WriteIndex)) : linear;
         return new WaterColumnImage(GpuReadback.ToRgba(device, _color!, _size, _size), linear,
             camera.ViewProjection, scene.WaterColumnLightDiagnostics, settings, copied, resolved);
     }
-
-    T Borrow<T>(string field) => (T)typeof(Scene3D).GetField(field,
-        BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_scene)!;
 
     float[] ReadRgb(IGpuTexture texture)
     {
@@ -214,7 +210,7 @@ public sealed class WaterColumnRiverScene : IDisposable
             Water(0f, 1f, Look(new Color(0.04f, 0.35f, 0.65f), 0.4f, s.Enabled));
             Water(2f, 1f, Look(s.WaterColor, s.Clarity, false));
         }
-        else Water(0f, 6f, Look(s.WaterColor, s.Clarity, s.Enabled));
+        else Water(0f, 6f, s.Look ?? Look(s.WaterColor, s.Clarity, s.Enabled));
     }
 
     void Ensure(int size)

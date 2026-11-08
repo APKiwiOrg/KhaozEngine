@@ -8,27 +8,55 @@ namespace KhaozEngine.MapDoc.Support;
 /// searchBelow and searchAbove. The placement binding keeps its released nullable rule and is not covered here.</summary>
 internal static class MapSupportBindingRules
 {
-    /// <summary>Adds each violated rule to <paramref name="errors"/>, every message prefixed with <paramref name="at"/>.</summary>
-    internal static void Validate(MapSupportBinding binding, string at, List<string> errors)
+    /// <summary>Adds each violated rule to <paramref name="errors"/>, every message prefixed with <paramref name="at"/>,
+    /// and a matching typed finding when requested.</summary>
+    internal static void Validate(MapSupportBinding binding, string at, List<string> errors,
+        List<MapDocumentFinding>? findings = null, string? markerId = null)
     {
         switch (binding.Kind)
         {
             case MapSupportBindingKind.Surface:
                 if (string.IsNullOrWhiteSpace(binding.SurfaceId) || binding.SpaceId is not null ||
                     binding.ReferenceY is not null || binding.SearchBelow is not null || binding.SearchAbove is not null)
-                    errors.Add(at + "a Surface binding names only a surfaceId.");
+                    Add(string.IsNullOrWhiteSpace(binding.SurfaceId) ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.AuthoredOwnershipMismatch,
+                        string.IsNullOrWhiteSpace(binding.SurfaceId) ? "surfaceId" : binding.SpaceId is not null ? "spaceId" :
+                        binding.ReferenceY is not null ? "referenceY" : binding.SearchBelow is not null ? "searchBelow" : "searchAbove",
+                        "a Surface binding names only a surfaceId.");
                 break;
             case MapSupportBindingKind.Space:
                 if (string.IsNullOrWhiteSpace(binding.SpaceId) || binding.SurfaceId is not null)
-                    errors.Add(at + "a Space binding names a spaceId and no surfaceId.");
+                    Add(string.IsNullOrWhiteSpace(binding.SpaceId) ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.AuthoredOwnershipMismatch,
+                        string.IsNullOrWhiteSpace(binding.SpaceId) ? "spaceId" : "surfaceId", "a Space binding names a spaceId and no surfaceId.");
                 if (binding.ReferenceY is not { } y || !float.IsFinite(y) ||
                     binding.SearchBelow is not { } below || !float.IsFinite(below) || below < 0 ||
                     binding.SearchAbove is not { } above || !float.IsFinite(above) || above < 0)
-                    errors.Add(at + "a Space binding requires a finite referenceY and finite nonnegative searchBelow and searchAbove.");
+                {
+                    (string field, float? value) = binding.ReferenceY is not { } reference || !float.IsFinite(reference)
+                        ? ("referenceY", binding.ReferenceY)
+                        : binding.SearchBelow is not { } lower || !float.IsFinite(lower) || lower < 0
+                            ? ("searchBelow", binding.SearchBelow) : ("searchAbove", binding.SearchAbove);
+                    Add(value is null ? MapDocumentRefusal.SchemaValueRequired : !float.IsFinite(value.Value)
+                            ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
+                        field, "a Space binding requires a finite referenceY and finite nonnegative searchBelow and searchAbove.", value);
+                }
                 break;
             default:
-                errors.Add(at + "unsupported support binding kind.");
+                Add(MapDocumentRefusal.SchemaEnumUnsupported, "kind", "unsupported support binding kind.");
                 break;
+        }
+
+        void Add(MapDocumentRefusal reason, string field, string message, float? actual = null)
+        {
+            errors.Add(at + message);
+            findings?.Add(new(reason, at + message)
+            {
+                MarkerId = markerId, SubjectKind = markerId is null ? "support binding" : "marker",
+                FieldPath = "$.supportBinding." + field, SurfaceId = binding.SurfaceId, SpaceId = binding.SpaceId,
+                ActualNumber = actual is { } value && float.IsFinite(value) ? value : null,
+                MinimumNumber = reason == MapDocumentRefusal.ValueOutsideRange ? 0 : null,
+                EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapSupportBindingKind) : null,
+                ActualInteger = reason == MapDocumentRefusal.SchemaEnumUnsupported ? (long)binding.Kind : null,
+            });
         }
     }
 
@@ -59,5 +87,29 @@ internal static class MapSupportBindingRules
             default:
                 return false;
         }
+    }
+
+    // Describes only the shape rejected by TryWrite. Its released writer admits blank names and signed ranges,
+    // so the stricter semantic validator above cannot classify this refusal without changing admission.
+    internal static MapDocumentFinding WriteRefusal(MapSupportBinding value, string message)
+    {
+        (MapDocumentRefusal reason, string field) = value.Kind switch
+        {
+            MapSupportBindingKind.Surface when value.SurfaceId is null => (MapDocumentRefusal.SchemaValueRequired, "surfaceId"),
+            MapSupportBindingKind.Surface => (MapDocumentRefusal.AuthoredOwnershipMismatch,
+                value.SpaceId is not null ? "spaceId" : value.ReferenceY is not null ? "referenceY" :
+                value.SearchBelow is not null ? "searchBelow" : "searchAbove"),
+            MapSupportBindingKind.Space when value.SpaceId is null => (MapDocumentRefusal.SchemaValueRequired, "spaceId"),
+            MapSupportBindingKind.Space when value.SurfaceId is not null => (MapDocumentRefusal.AuthoredOwnershipMismatch, "surfaceId"),
+            MapSupportBindingKind.Space => (MapDocumentRefusal.SchemaValueRequired,
+                value.ReferenceY is null ? "referenceY" : value.SearchBelow is null ? "searchBelow" : "searchAbove"),
+            _ => (MapDocumentRefusal.SchemaEnumUnsupported, "kind"),
+        };
+        return new(reason, message)
+        {
+            FieldPath = "$." + field, SurfaceId = value.SurfaceId, SpaceId = value.SpaceId,
+            EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapSupportBindingKind) : null,
+            ActualInteger = reason == MapDocumentRefusal.SchemaEnumUnsupported ? (long)value.Kind : null,
+        };
     }
 }

@@ -122,14 +122,15 @@ public class GameTypeRegisterTests
     }
 
     [Fact]
-    public void RegisteringTwiceIsRefusedRatherThanQuietlyReplacing()
+    public void AnOccupiedTypeIdIsRefusedRatherThanQuietlyReplacing()
     {
-        var registry = new ContentTypeRegistry();
-        EngineContentTypes.Register(registry);
-        ToolTierContentType.Register(registry, validator: null);
+        var declared = new ContentTypeRegistry();
+        ToolTierContentType.Register(declared, validator: null);
+        ContentTypeRegistry registry = ContentRegistryRefusalFixtures.WithOccupiedTypeId(Assert.Single(declared.ByTypeId));
 
-        Assert.Throws<ContentRegistrationException>(
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => ToolTierContentType.Register(registry, validator: null));
+        Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
     }
 
     sealed class CountingValidator : IContentValidator

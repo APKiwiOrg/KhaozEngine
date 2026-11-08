@@ -174,12 +174,21 @@ public sealed partial class MapPrefabTransformTests
     {
         var f = PrefabFixtures.MaterializedOverrideFixture();
         var asset = f.Assets.GetPrefab("hut");
+        var original = asset;
         asset = asset with
         {
             MaterializedAttachments = asset.MaterializedAttachments.Select(r => r with
             { Children = r.Children.Select(c => c with { SourceDigest = new string('0', 64) }).ToArray() }).ToArray()
         };
-        Assert.Throws<MapDocumentException>(() => MapPrefabMaterializationOverrides.Reconcile(asset, new[] { PrefabFixtures.MaterializedTransformOverride("floor") }));
+        byte[] before = MapPrefabJson.Bytes(asset);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabMaterializationOverrides.Reconcile(asset, new[] { PrefabFixtures.MaterializedTransformOverride("floor") }));
+        Assert.Equal(MapDocumentRefusal.DigestMismatch, error.Reason);
+        Assert.Equal("captured definition", error.DigestKind);
+        Assert.Equal(new string('0', 64), error.ExpectedHash);
+        Assert.NotNull(error.ActualHash);
+        Assert.NotEqual(error.ExpectedHash, error.ActualHash);
+        Assert.Equal(before, MapPrefabJson.Bytes(asset));
+        Assert.NotEmpty(MapPrefabMaterializationOverrides.Reconcile(original, new[] { PrefabFixtures.MaterializedTransformOverride("floor") }).EffectiveAsset.Children);
     }
 
     [Fact]

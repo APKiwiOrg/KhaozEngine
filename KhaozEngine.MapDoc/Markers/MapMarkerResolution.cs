@@ -101,10 +101,12 @@ internal static class MapMarkerResolution
         try { support = MapResolverV2.SeatSupport(point, binding, surfaces, assetSha256, limits); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException($"Marker '{id}' support status NotRepresentable: overflow.");
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, $"Marker '{id}' support status NotRepresentable: overflow.")
+                { MarkerId = id, SupportStatus = MapSupportStatus.NotRepresentable, Operation = nameof(Sample) };
         }
         if (support.Status != MapSupportStatus.Supported)
-            throw new MapDocumentException($"Marker '{id}' support status {support.Status}: {support.Detail}");
+            throw new MapDocumentException(MapDocumentRefusal.MarkerSupportUnresolved, $"Marker '{id}' support status {support.Status}: {support.Detail}")
+                { MarkerId = id, SupportStatus = support.Status };
         return support;
     }
 

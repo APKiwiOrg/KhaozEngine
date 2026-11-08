@@ -80,7 +80,14 @@ public class NetIdBlobMigrationTests
     public void WidenV1ToV2_throws_on_a_truncated_body()
     {
         // A body claiming one entity but cut off mid-netId: undecodable -> throws (the driver quarantines it).
-        Assert.Throws<InvalidOperationException>(() => NetIdBlobMigration.WidenV1ToV2(new byte[] { 1, 0, 0, 0, 5, 0 }));
+        var ex = Assert.Throws<CellBlobMigrationException>(() => NetIdBlobMigration.WidenV1ToV2(new byte[] { 1, 0, 0, 0, 5, 0 }));
+        Assert.Equal(CellBlobMigrationRefusal.NoInferredGeneration, ex.Reason);
+        Assert.Equal("v1 (32-bit netId)", ex.SchemaLabel);
+        Assert.Equal(1, ex.OldestGeneration);
+        Assert.Equal(1, ex.NewestGeneration);
+        Assert.Empty(ex.UnregisteredExtensionIds!);
+        Assert.Equal(new[] { "AssumedWireGeneration", "Registry" }, ex.RecoveryMembers);
+        Assert.NotEmpty(NetIdBlobMigration.WidenV1ToV2(V1Body(5)));
     }
 
     [Fact]

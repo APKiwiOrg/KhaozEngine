@@ -29,13 +29,14 @@ public sealed class SkinnedAttachmentSubmissionTests
         using var fixture = new MixedAttachmentSubmissionFixture();
         BoundAttachmentSet bound = fixture.Bound;
         RigidInstanceDraw template = MixedAttachmentSubmissionFixture.Template with
-        { CastsShadows = castsShadows, ShadowOnly = shadowOnly };
+        { CastsShadows = castsShadows, ShadowOnly = shadowOnly, ShadowMobility = ShadowCasterMobility.Dynamic };
         var draws = new AttachmentDraw[4];
         Assert.Equal(3, bound.DrawCount);
         Assert.Equal(3, bound.WriteDraws(fixture.Skeleton, fixture.Palette, fixture.Model, fixture.Key, template, draws));
         Assert.Equal(default, draws[3]);
         Assert.Equal(1u, draws[0].PartId);
         Assert.False(draws[0].IsSkinned);
+        Assert.Equal(ShadowCasterMobility.Dynamic, draws[0].Rigid.ShadowMobility);
         Assert.True(draws[0].BoneMatrices.IsEmpty);
         Assert.Equal(2u, draws[1].PartId);
         Assert.True(draws[1].IsSkinned);
@@ -50,7 +51,7 @@ public sealed class SkinnedAttachmentSubmissionTests
         {
             if (property.Name is nameof(RigidInstanceDraw.Mesh) or nameof(RigidInstanceDraw.World) or nameof(RigidInstanceDraw.Motion)) continue;
             Assert.Equal(property.GetValue(template), property.GetValue(draws[0].Rigid));
-            if (property.Name == nameof(RigidInstanceDraw.CutInsideInteriors)) continue;
+            if (property.Name is nameof(RigidInstanceDraw.CutInsideInteriors) or nameof(RigidInstanceDraw.ShadowMobility)) continue;
             Assert.Equal(property.GetValue(template), typeof(SkinnedInstanceDraw).GetProperty(property.Name)!.GetValue(draws[1].Skinned));
         }
 
@@ -63,7 +64,9 @@ public sealed class SkinnedAttachmentSubmissionTests
         Assert.Equal(draws[2].Skinned, fixture.Capability.SkinnedDraws[1]);
         Assert.Equal(fixture.Palette[1], fixture.Capability.Palettes[0][0]);
         Assert.Equal(fixture.Palette[0], fixture.Capability.Palettes[0][1]);
-        Assert.Equal(draws[0].Rigid.World, Assert.Single(fixture.Scene.QueuedInstancesForTests).World);
+        SceneInstances.Instance queuedRigid = Assert.Single(fixture.Scene.QueuedInstancesForTests);
+        Assert.Equal(draws[0].Rigid.World, queuedRigid.World);
+        Assert.Equal(ShadowCasterMobility.Dynamic, queuedRigid.ShadowMobility);
         for (int i = 0; i < 2; i++)
         {
             AssertQueuedSkin(draws[i + 1].Skinned, fixture.Scene.QueuedSkinnedInstancesForTests[i]);
@@ -111,11 +114,15 @@ public sealed class SkinnedAttachmentSubmissionTests
         AttachmentDraw[] before = (AttachmentDraw[])draws.Clone();
         fixture.Palette[0].M41 = float.NaN;
 
-        Assert.Throws<ArgumentException>(() => fixture.Bound.WriteDraws(fixture.Skeleton, fixture.Palette,
+        var written = Assert.Throws<AttachmentBindingArgumentException>(() => fixture.Bound.WriteDraws(fixture.Skeleton, fixture.Palette,
             fixture.Model, fixture.Key, MixedAttachmentSubmissionFixture.Template, draws));
+        Assert.Equal(rigidLast ? AttachmentBindingRefusal.PoseCompositionFailed : AttachmentBindingRefusal.HostJointPoseInvalid, written.Reason);
+        Assert.Equal(2u, written.PartId);
         Assert.Equal(before, draws);
-        Assert.Throws<ArgumentException>(() => fixture.Bound.Queue(fixture.Skeleton, fixture.Palette,
+        var queued = Assert.Throws<AttachmentBindingArgumentException>(() => fixture.Bound.Queue(fixture.Skeleton, fixture.Palette,
             fixture.Model, fixture.Key, MixedAttachmentSubmissionFixture.Template));
+        Assert.Equal(rigidLast ? AttachmentBindingRefusal.PoseCompositionFailed : AttachmentBindingRefusal.HostJointPoseInvalid, queued.Reason);
+        Assert.Equal(2u, queued.PartId);
         fixture.AssertNoCalls();
     }
 
@@ -125,17 +132,29 @@ public sealed class SkinnedAttachmentSubmissionTests
         using var fixture = new MixedAttachmentSubmissionFixture();
         AttachmentDraw[] shortBuffer = fixture.Write(fixture.Bound)[..2];
         AttachmentDraw[] beforeShort = (AttachmentDraw[])shortBuffer.Clone();
-        Assert.Throws<ArgumentException>(() => fixture.Bound.WriteDraws(fixture.Skeleton, fixture.Palette,
+        var capacity = Assert.Throws<AttachmentSubmissionArgumentException>(() => fixture.Bound.WriteDraws(fixture.Skeleton, fixture.Palette,
             fixture.Model, fixture.Key, MixedAttachmentSubmissionFixture.Template, shortBuffer));
+        Assert.Equal(AttachmentSubmissionRefusal.OutputTooSmall, capacity.Reason);
+        Assert.Equal(2, capacity.ActualCapacity);
+        Assert.Equal(3, capacity.RequiredCapacity);
+        Assert.Equal("destination", capacity.ParamName);
         Assert.Equal(beforeShort, shortBuffer);
         AttachmentDraw[] draws = fixture.Write(fixture.Bound);
         AttachmentDraw[] before = (AttachmentDraw[])draws.Clone();
         RigidInstanceDraw invalid = MixedAttachmentSubmissionFixture.Template with { ShadowOnly = true, CastsShadows = false };
-        Assert.Throws<ArgumentException>(() => fixture.Bound.WriteDraws(fixture.Skeleton, fixture.Palette,
+        var written = Assert.Throws<DrawAdmissionArgumentException>(() => fixture.Bound.WriteDraws(fixture.Skeleton, fixture.Palette,
             fixture.Model, fixture.Key, invalid, draws));
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, written.Reason);
+        Assert.Equal("template", written.ParamName);
+        Assert.True(written.ShadowOnly);
+        Assert.False(written.CastsShadows);
         Assert.Equal(before, draws);
-        Assert.Throws<ArgumentException>(() => fixture.Bound.Queue(fixture.Skeleton, fixture.Palette,
+        var queued = Assert.Throws<DrawAdmissionArgumentException>(() => fixture.Bound.Queue(fixture.Skeleton, fixture.Palette,
             fixture.Model, fixture.Key, invalid));
+        Assert.Equal(DrawAdmissionRefusal.ShadowOnlyWithoutCasting, queued.Reason);
+        Assert.Equal("template", queued.ParamName);
+        Assert.True(queued.ShadowOnly);
+        Assert.False(queued.CastsShadows);
         fixture.AssertNoCalls();
     }
 
@@ -143,10 +162,15 @@ public sealed class SkinnedAttachmentSubmissionTests
     public void Mixed_sets_refuse_rigid_descriptors_and_map_only_binding()
     {
         using var fixture = new MixedAttachmentSubmissionFixture();
-        Assert.Throws<InvalidDataException>(() => fixture.Loaded.Bind(fixture.Map));
+        var map = Assert.Throws<AttachmentBindingDataException>(() => fixture.Loaded.Bind(fixture.Map));
+        Assert.Equal(AttachmentBindingRefusal.HostMeshRequired, map.Reason);
+        Assert.Equal(2u, map.PartId);
         RigidInstanceDraw[] draws = Enumerable.Repeat(MixedAttachmentSubmissionFixture.Template, 3).ToArray();
-        Assert.Throws<InvalidOperationException>(() => fixture.Bound.WriteDraws(fixture.Skeleton, fixture.Palette,
+        var state = Assert.Throws<AttachmentSubmissionStateException>(() => fixture.Bound.WriteDraws(fixture.Skeleton, fixture.Palette,
             fixture.Model, fixture.Key, MixedAttachmentSubmissionFixture.Template, draws));
+        Assert.Equal(AttachmentSubmissionRefusal.MixedDrawRequired, state.Reason);
+        Assert.Equal(1, state.SkinnedPartCount);
+        Assert.IsAssignableFrom<InvalidOperationException>(state);
         Assert.All(draws, draw => Assert.Equal(MixedAttachmentSubmissionFixture.Template, draw));
     }
 

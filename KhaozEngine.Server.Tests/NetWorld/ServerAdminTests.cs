@@ -55,7 +55,7 @@ public class ServerAdminTests
         string seat = ResumePositionCache.GuestAccountPrefix + "0";
         ArgumentException refused = await Assert.ThrowsAsync<ArgumentException>(
             async () => await admin.BanAsync(seat, "griefing"));
-        Assert.Contains(seat, refused.Message, StringComparison.Ordinal);
+        Assert.Equal("accountId", refused.ParamName);
 
         Assert.False(bans.IsBanned(seat));
         Assert.Empty(admin.ListBans());

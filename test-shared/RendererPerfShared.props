@@ -1,0 +1,61 @@
+<Project>
+  <!-- Helper-only sources retain their engine-test owners and physical ratchet paths. -->
+  <PropertyGroup>
+    <RendererPerfRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</RendererPerfRepositoryRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/CommandTallyGpuCommandList.cs" Link="Shared/Gpu/CommandTallyGpuCommandList.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/CountingGpuTexture.cs" Link="Shared/Gpu/CountingGpuTexture.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/CoveragePerf/D3D11TimestampEndFixture.cs" Link="Shared/Gpu/CoveragePerf/D3D11TimestampEndFixture.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/D3D11TimestampTestApi.cs" Link="Shared/Gpu/D3D11TimestampTestApi.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/D3D11TimestampTestEmitter.cs" Link="Shared/Gpu/D3D11TimestampTestEmitter.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeD3D11InfoQueue.cs" Link="Shared/Gpu/FakeD3D11InfoQueue.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeD3D11Ring.cs" Link="Shared/Gpu/FakeD3D11Ring.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeGpuDevice.cs" Link="Shared/Gpu/FakeGpuDevice.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeMetalEncoderSink.cs" Link="Shared/Gpu/FakeMetalEncoderSink.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeMetalRenderApi.cs" Link="Shared/Gpu/FakeMetalRenderApi.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeMetalSetupNative.cs" Link="Shared/Gpu/FakeMetalSetupNative.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeMetalSharedEvent.cs" Link="Shared/Gpu/FakeMetalSharedEvent.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeMetalStaging.cs" Link="Shared/Gpu/FakeMetalStaging.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanBarrierRecorder.cs" Link="Shared/Gpu/FakeVulkanBarrierRecorder.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanCommandApi.MemoryRelease.cs" Link="Shared/Gpu/FakeVulkanCommandApi.MemoryRelease.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanCommandApi.cs" Link="Shared/Gpu/FakeVulkanCommandApi.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanDescriptorApi.cs" Link="Shared/Gpu/FakeVulkanDescriptorApi.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanDeviceMemoryApi.cs" Link="Shared/Gpu/FakeVulkanDeviceMemoryApi.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanDrawEmitter.cs" Link="Shared/Gpu/FakeVulkanDrawEmitter.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanPipelineApi.cs" Link="Shared/Gpu/FakeVulkanPipelineApi.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanPipelineBinder.cs" Link="Shared/Gpu/FakeVulkanPipelineBinder.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanRenderApi.cs" Link="Shared/Gpu/FakeVulkanRenderApi.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanResourceApi.cs" Link="Shared/Gpu/FakeVulkanResourceApi.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanSetupSink.cs" Link="Shared/Gpu/FakeVulkanSetupSink.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanShaderApi.cs" Link="Shared/Gpu/FakeVulkanShaderApi.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanTimelineSemaphore.cs" Link="Shared/Gpu/FakeVulkanTimelineSemaphore.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/FakeVulkanTransferSink.cs" Link="Shared/Gpu/FakeVulkanTransferSink.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/test-shared/IlCallGraph.cs" Link="Shared/IlCallGraph.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/MetalBindFixtures.cs" Link="Shared/Gpu/MetalBindFixtures.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/MetalRingHarness.cs" Link="Shared/Gpu/MetalRingHarness.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/MetalSwapchainFakes.cs" Link="Shared/Gpu/MetalSwapchainFakes.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/MetalTimestampTestNative.cs" Link="Shared/Gpu/MetalTimestampTestNative.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/OpenListTrackingGpuDevice.cs" Link="Shared/Gpu/OpenListTrackingGpuDevice.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampFakes.cs" Link="Shared/Gpu/Performance/GpuPerfTimestampFakes.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampRing.cs" Link="Shared/Gpu/Performance/GpuPerfTimestampRing.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Bindings.cs" Link="Shared/Gpu/RecordingGpuCommandList.Bindings.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Commands.cs" Link="Shared/Gpu/RecordingGpuCommandList.Commands.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Draws.cs" Link="Shared/Gpu/RecordingGpuCommandList.Draws.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Reads.cs" Link="Shared/Gpu/RecordingGpuCommandList.Reads.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.cs" Link="Shared/Gpu/RecordingGpuCommandList.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.Visibility.cs" Link="Shared/Gpu/ShippedShaderPrograms.Visibility.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs" Link="Shared/Gpu/ShippedShaderPrograms.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/SpyGpuDevice.cs" Link="Shared/Gpu/SpyGpuDevice.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/SubmissionTestDevice.cs" Link="Shared/Gpu/SubmissionTestDevice.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/UniformWindowIndex.cs" Link="Shared/Gpu/UniformWindowIndex.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/VulkanDeviceHarness.cs" Link="Shared/Gpu/VulkanDeviceHarness.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/VulkanResourceHarness.cs" Link="Shared/Gpu/VulkanResourceHarness.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Render3D/HeadlessSceneRig.cs" Link="Shared/Render3D/HeadlessSceneRig.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/BackendProviderScope.cs" Link="Shared/Gpu/BackendProviderScope.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/VulkanDescriptorCapture.cs" Link="Shared/Gpu/VulkanDescriptorCapture.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/AllocSensitiveCollection.cs" Link="Shared/AllocSensitiveCollection.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/GpuBackendProvidersCollection.cs" Link="Shared/Gpu/GpuBackendProvidersCollection.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/test-shared/RendererPerfSceneInputs.cs" Link="Shared/RendererPerfSceneInputs.cs" />
+  </ItemGroup>
+</Project>

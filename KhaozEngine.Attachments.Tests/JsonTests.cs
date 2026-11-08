@@ -107,8 +107,8 @@ public class JsonTests
     [InlineData("conflicting-hashes")]
     public void V2_refuses_ambiguous_members(string refusal)
     {
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => ParseV2Case(refusal));
-        Assert.Contains(refusal + ".json", error.Message);
+        var error = Assert.Throws<AttachmentSetDataException>(() => ParseV2Case(refusal));
+        AttachmentSetJsonRefusalAssertions.V2(refusal, error);
     }
 
     [Fact]
@@ -135,9 +135,9 @@ public class JsonTests
     [Fact]
     public void InvalidCases_PinRequiredRefusals()
     {
-        Assert.Throws<InvalidDataException>(() => ParseCase("duplicate-id"));
-        Assert.Throws<InvalidDataException>(() => ParseCase("unknown-property"));
-        Assert.Throws<InvalidDataException>(() => ParseCase("non-affine-matrix"));
+        AttachmentSetJsonRefusalAssertions.V1("duplicate-id", Assert.Throws<AttachmentSetDataException>(() => ParseCase("duplicate-id")));
+        AttachmentSetJsonRefusalAssertions.V1("unknown-property", Assert.Throws<AttachmentSetDataException>(() => ParseCase("unknown-property")));
+        AttachmentSetJsonRefusalAssertions.V1("non-affine-matrix", Assert.Throws<AttachmentSetDataException>(() => ParseCase("non-affine-matrix")));
     }
 
     [Theory]
@@ -170,10 +170,17 @@ public class JsonTests
     [InlineData("wrong-mesh")]
     [InlineData("wrong-parts")]
     [InlineData("wrong-joint")]
+    [InlineData("version-string")]
+    [InlineData("version-overflow")]
+    [InlineData("id-string")]
+    [InlineData("id-negative")]
+    [InlineData("matrix-not-array")]
+    [InlineData("matrix-string-component")]
+    [InlineData("empty-joint")]
     public void Parse_RejectsInvalidDataWithSourceContext(string name)
     {
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => ParseCase(name));
-        Assert.Contains(name + ".json", error.Message);
+        var error = Assert.Throws<AttachmentSetDataException>(() => ParseCase(name));
+        AttachmentSetJsonRefusalAssertions.V1(name, error);
     }
 
     [Theory]
@@ -193,7 +200,13 @@ public class JsonTests
     public void Parse_RejectsAssetPathForms(string key)
     {
         string json = AttachmentFixtures.SetJson(AttachmentFixtures.PartJson()).Replace("\"parts/plate.glb\"", System.Text.Json.JsonSerializer.Serialize(key), StringComparison.Ordinal);
-        Assert.Throws<InvalidDataException>(() => Parse(json));
+        var error = Assert.Throws<AttachmentSetDataException>(() => Parse(json));
+        Assert.Equal(AttachmentSetRefusal.MeshKeyInvalid, error.Reason);
+        Assert.Equal("fixture.json", error.SourceName);
+        Assert.Equal(1u, error.PartId);
+        Assert.Equal(key, error.MeshKey);
+        Assert.Equal("parts", error.ParamName);
+        Assert.IsType<AttachmentSetArgumentException>(error.InnerException);
     }
 
     static AttachmentSetDefinition Parse(string json) => AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), "fixture.json");
@@ -262,7 +275,7 @@ public class JsonTests
             "malformed-string" => AttachmentFixtures.SetJson(part.Replace("\"hip\"", "\"\\uD800\"", StringComparison.Ordinal)),
             "nan" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[NaN,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]", StringComparison.Ordinal)),
             "overflow" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[1e100,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]", StringComparison.Ordinal)),
-            "singular" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]", StringComparison.Ordinal)),
+            "singular" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]", StringComparison.Ordinal)),
             "non-affine-matrix" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[1,0,0,1,0,1,0,0,0,0,1,0,0,0,0,1]", StringComparison.Ordinal)),
             "short-matrix" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[1]", StringComparison.Ordinal)),
             "long-matrix" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0]", StringComparison.Ordinal)),
@@ -273,6 +286,13 @@ public class JsonTests
             "wrong-part" => AttachmentFixtures.SetJson("null"),
             "wrong-mesh" => AttachmentFixtures.SetJson(part.Replace("{\"key\":\"parts/plate.glb\",\"sha256\":\"" + AttachmentFixtures.Hash + "\"}", "null", StringComparison.Ordinal)),
             "wrong-parts" => "{\"formatVersion\":1,\"parts\":{}}",
+            "version-string" => AttachmentFixtures.SetJson(part).Replace("Version\":1", "Version\":\"1\"", StringComparison.Ordinal),
+            "version-overflow" => AttachmentFixtures.SetJson(part).Replace("Version\":1", "Version\":2147483648", StringComparison.Ordinal),
+            "id-string" => AttachmentFixtures.SetJson(part.Replace("\"id\":1", "\"id\":\"1\"", StringComparison.Ordinal)),
+            "id-negative" => AttachmentFixtures.SetJson(part.Replace("\"id\":1", "\"id\":-1", StringComparison.Ordinal)),
+            "matrix-not-array" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "null", StringComparison.Ordinal)),
+            "matrix-string-component" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[1,\"0\",0,0,0,1,0,0,0,0,1,0,0,0,0,1]", StringComparison.Ordinal)),
+            "empty-joint" => AttachmentFixtures.SetJson(part.Replace("\"hip\"", "\" \"", StringComparison.Ordinal)),
             "wrong-joint" => AttachmentFixtures.SetJson(part.Replace("\"hip\"", "null", StringComparison.Ordinal)),
             _ => throw new ArgumentException(name),
         };

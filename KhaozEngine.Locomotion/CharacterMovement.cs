@@ -47,7 +47,9 @@ public static partial class CharacterMovement
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         if (tuning.Controller == MovementControllerKind.Contact)
-            throw new NotSupportedException("Contact movement requires the stateful CharacterMovement.Step(in MoveState, ...) overload.");
+            throw new MovementCapabilityException(MovementConfigurationRefusal.StatefulOverloadRequired,
+                "Contact movement requires the stateful CharacterMovement.Step(in MoveState, ...) overload.")
+            { RequiredOverload = "CharacterMovement.Step(in MoveState, ...)", RequiredStateType = typeof(MoveState) };
         MovementConfigurationValidation.ValidateLegacy(tuning);
 
         (Vector2 moveDir, float speedFraction, bool run) = ResolveCameraCommand(cmd, tuning);
@@ -221,11 +223,8 @@ public static partial class CharacterMovement
             MoveState swim = SwimStep(s, moveDir, speedFraction, jump, dt, t, medNow, groundHeight, clampXz, halfH,
                 faceYaw);
             if (s.Commitment.IsActive)
-                swim.Commitment = s.Commitment with
-                {
-                    Phase = MovementCommitmentPhase.Aborted,
-                    EndReason = MovementCommitmentEndReason.EnteredWater,
-                };
+                swim.Commitment = ExplicitCharacterMovement.WaterAborted(s.Commitment);
+            GroundTravelCommitment.StopTerminalMotion(ref swim);
             return swim;
         }
 
@@ -255,7 +254,8 @@ public static partial class CharacterMovement
         // is the IN-PLANE part alone (fall line plus contour), so the contour input steer cannot accumulate into the
         // carry tick after tick.
         float wade = WadeSpeedScale(s.Position.X, s.Position.Z, s.Position.Y - halfH, t, medium);
-        float speedScale = (s.Grounded ? 1f : t.AirControl) * wade * s.SpeedScale;
+        bool groundCommitment = commitmentControlledTick && s.Commitment.Kind == MovementCommitmentKind.Ground;
+        float speedScale = groundCommitment ? 1f : (s.Grounded ? 1f : t.AirControl) * wade * s.SpeedScale;
         float dx, dz, slideVVel = 0f;
         Vector2 commandedVel, carrySeed;
         if (committedFlight)
@@ -274,7 +274,7 @@ public static partial class CharacterMovement
         {
             (dx, dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, s.Position.Y - halfH, speedScale, NoFootingReach(s, t, dt), tractionGate);
             commandedVel = moveDir * commandedSpeed;
-            if (t.AirMomentum && !s.Grounded)
+            if (t.AirMomentum && !s.Grounded && !groundCommitment)
                 (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, wade, tractionGate);
             carrySeed = commandedVel;
         }
@@ -556,8 +556,9 @@ public static partial class CharacterMovement
             // from. On a slide it carries a contour steer the carry does not, and reading the carry alone against a
             // displacement the steer helped produce would clip the carry for the steer's travel (see there).
             HorizontalVelocity = ClipCarryToAchieved(carrySeed, commandedVel, achievedHorizontal, dt),
-            Commitment = FinishCommitmentTick(s.Commitment, launchedThisTick, grounded, start, pos, dt),
+            Commitment = FinishCommitmentTick(s.Commitment, launchedThisTick, grounded, start, pos, dt, world is null ? 0 : SweepTravelResolution),
         };
+        GroundTravelCommitment.StopTerminalMotion(ref result);
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
         // past every clamp and replicate. Hold the last good state instead of propagating a poisoned position.

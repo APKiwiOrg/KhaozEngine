@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using KhaozEngine.Locomotion.Contacts;
@@ -167,15 +166,9 @@ public partial class SupportFootprintTests
     // Replaces the owner's slot with one keyed by the next geometry version, as a version change does.
     static void ReplaceMeshSlot(InstalledSupportMeshWorldCache cache, StaticHandle owner)
     {
-        var slots = (IDictionary)typeof(InstalledSupportMeshWorldCache)
-            .GetField("_statics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!;
-        object slot = slots[owner.Value]!;
-        var shape = (TypedIndex)slot.GetType().GetProperty("Shape", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(slot)!;
-        long version = (long)slot.GetType().GetProperty("Version", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(slot)!;
-        cache.Matches(owner, shape, version + 1, new RigidPose(Vector3.Zero));
-        Assert.NotSame(slot, slots[owner.Value]);
+        var slot = cache.SlotForTests(owner);
+        cache.Matches(owner, slot.Shape, slot.Version + 1, new RigidPose(Vector3.Zero));
+        Assert.NotSame(slot.Identity, cache.SlotForTests(owner).Identity);
     }
 
     static void JoinMeshReaders(BoundedThread[] threads)

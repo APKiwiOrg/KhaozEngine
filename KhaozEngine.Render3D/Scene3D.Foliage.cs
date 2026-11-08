@@ -208,7 +208,7 @@ public sealed partial class Scene3D
             MeshHandle handle = draw.Patch.Mesh;
             if (!_slots.IsValid(handle.Index, handle.Generation) || _meshes[handle.Index] is not { } mesh) continue;
             _model.DrawFoliageMesh(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet);
+                draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet, mesh.OpaqueFoliage);
             CountMeshDraw(mesh.IndexCount, (uint)draw.Count);
             candidates += draw.Count;
             patches++;

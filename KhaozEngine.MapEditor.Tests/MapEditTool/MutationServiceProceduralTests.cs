@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.MapEditTool
     /// override's name back to unnamed. Every mutation runs against <see cref="SampleDocs.SampleDoc"/> opened
     /// through a fresh session and holds the shared apply, validate, revert-on-error invariant the rest of the
     /// suite already exercises.</summary>
-    public class MutationServiceProceduralTests
+    public partial class MutationServiceProceduralTests
     {
         static string NewTempDir()
         {
@@ -58,9 +58,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.FeatureRename(1, "big-lake"));
-                Assert.Contains("already exists", ex.Message);
+                AssertProceduralRefusal(() =>
+                    mutation.FeatureRename(1, "big-lake"), "terrain feature", "big-lake");
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -92,12 +91,14 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ExclusionRename(1, "no-scatter-camp"));
-                Assert.Contains("already exists", ex.Message);
+                AssertProceduralRefusal(() =>
+                    mutation.ExclusionRename(1, "no-scatter-camp"), "exclusion", "no-scatter-camp");
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
+
+                mutation.ExclusionRename(1, "other-camp");
+                Assert.Equal("other-camp", session.WithDocument((doc, _) => doc.Exclusions[1].Name));
 
                 mutation.ExclusionRename(0, "");
                 Assert.Null(session.WithDocument((doc, _) => doc.Exclusions[0].Name));
@@ -153,9 +154,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ScatterOverrideRename(1, "no-scatter-camp"));
-                Assert.Contains("already exists", ex.Message);
+                AssertProceduralRefusal(() =>
+                    mutation.ScatterOverrideRename(1, "no-scatter-camp"), "scatter override", "no-scatter-camp");
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -205,18 +205,6 @@ namespace KhaozEngine.Tests.MapEditTool
                 });
 
                 Assert.Empty(session.Validate().StructuralErrors);
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
-
-        [Fact]
-        public void TerrainEdit_NoParams_Throws()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
-                Assert.Throws<ArgumentException>(() => mutation.TerrainEdit());
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -275,26 +263,19 @@ namespace KhaozEngine.Tests.MapEditTool
 
                 ArgumentException ex = Assert.Throws<ArgumentException>(() =>
                     mutation.BiomeBandEdit(99, null, null, "Meadow", 0f, 0f));
-                Assert.Contains("out of range", ex.Message);
+                Assert.Equal("index", ex.ParamName);
 
                 Assert.Throws<ArgumentException>(() => mutation.BiomeBandRemove(99));
+
+                mutation.BiomeBandEdit(0, null, null, "Meadow", 0f, 0f);
+                Assert.Equal(BiomeId.Meadow, session.WithDocument((doc, _) => doc.Terrain.Biomes[0].Biome));
 
                 Assert.Empty(session.Validate().StructuralErrors);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
 
-        [Fact]
-        public void BiomeBandAdd_UnknownBiome_ThrowsArgumentException()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
-                Assert.Throws<ArgumentException>(() => mutation.BiomeBandAdd(biome: "Volcano"));
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
+
 
         // ---- scatter layers -----------------------------------------------------------------------------------
 
@@ -351,12 +332,14 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ScatterLayerAdd("trees"));
-                Assert.Contains("already exists", ex.Message);
+                AssertProceduralRefusal(() =>
+                    mutation.ScatterLayerAdd("trees"), "scatter layer", "trees");
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
+
+                mutation.ScatterLayerAdd("shrubs");
+                Assert.Single(session.WithDocument((doc, _) => doc.ScatterLayers), layer => layer.Name == "shrubs");
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -373,6 +356,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal("scatter_layer_rename", rename.Verb);
                 Assert.False(rename.WorldChanged);
                 Assert.Equal("forest", rename.Id);
+                Assert.Matches(@"\b2\b", rename.Detail);
 
                 session.WithDocument((doc, _) =>
                 {
@@ -381,24 +365,6 @@ namespace KhaozEngine.Tests.MapEditTool
                     Assert.Equal(new List<string> { "forest" }, doc.ScatterOverrides[0].Layers);
                     return 0;
                 });
-
-                Assert.Empty(session.Validate().StructuralErrors);
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
-
-        [Fact]
-        public void ScatterLayerRename_ReferencedLayer_DetailReportsCascadedCount()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
-
-                // SampleDoc's "trees" layer is referenced by companion layer "understory" (host) and
-                // ScatterOverrides[0] (layer filter): two cascaded references.
-                MutationResult rename = mutation.ScatterLayerRename("trees", "forest");
-                Assert.Contains(", cascaded 2 reference(s)", rename.Detail);
 
                 Assert.Empty(session.Validate().StructuralErrors);
             }
@@ -415,10 +381,10 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ScatterLayerRemove("trees"));
-                Assert.Contains("Cannot remove scatter layer 'trees'", ex.Message);
-                Assert.Contains("companion layer 'understory'", ex.Message);
+                var ex = AssertProceduralRefusal(() =>
+                    mutation.ScatterLayerRemove("trees"), "scatter layer", "trees", MapDocumentRefusal.EditorScatterLayerReferenced);
+                Assert.Equal("trees", ex.LayerId);
+                Assert.Equal(new[] { "understory", "ScatterOverrides[0]" }, ex.SourceIds);
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
@@ -496,17 +462,7 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { Directory.Delete(dir, recursive: true); }
         }
 
-        [Fact]
-        public void ScatterRuleEdit_NoParams_Throws()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
-                Assert.Throws<ArgumentException>(() => mutation.ScatterRuleEdit("trees", 0));
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
+
 
         [Fact]
         public void ScatterRuleEdit_IndexOutOfRange_ThrowsArgumentException()
@@ -518,52 +474,21 @@ namespace KhaozEngine.Tests.MapEditTool
 
                 ArgumentException ex = Assert.Throws<ArgumentException>(() =>
                     mutation.ScatterRuleEdit("trees", 99, density: 0.5f));
-                Assert.Contains("out of range", ex.Message);
+                Assert.Equal("ruleIndex", ex.ParamName);
 
                 Assert.Throws<ArgumentException>(() => mutation.ScatterRuleRemove("trees", 99));
+
+                mutation.ScatterRuleEdit("trees", 0, density: 0.5f);
+                Assert.Equal(0.5f, session.WithDocument((doc, _) => doc.ScatterLayers.Single(l => l.Name == "trees").Rules[0].Density));
 
                 Assert.Empty(session.Validate().StructuralErrors);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
 
-        [Fact]
-        public void ScatterRuleAdd_UnknownLayer_ThrowsWithPreciseMessage()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.ScatterRuleAdd("ghost-layer", "Meadow"));
-                Assert.Equal("No scatter layer named 'ghost-layer' in the document.", ex.Message);
 
-                Assert.Throws<InvalidOperationException>(() => mutation.ScatterRuleEdit("ghost-layer", 0, density: 0.5f));
-                Assert.Throws<InvalidOperationException>(() => mutation.ScatterRuleRemove("ghost-layer", 0));
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
 
-        [Fact]
-        public void ScatterRuleAdd_GarbageKindWeight_RejectedAndReverted()
-        {
-            string dir = NewTempDir();
-            try
-            {
-                (MapEditSession session, MutationService mutation) = OpenSample(dir);
-                string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
-                bool dirtyBefore = session.IsDirty;
-
-                ArgumentException ex = Assert.Throws<ArgumentException>(() =>
-                    mutation.ScatterRuleAdd("trees", "Meadow", kinds: new[] { "oak:notanumber" }));
-                Assert.Contains("is not a number", ex.Message);
-
-                Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
-                Assert.Equal(dirtyBefore, session.IsDirty);
-            }
-            finally { Directory.Delete(dir, recursive: true); }
-        }
 
         // ---- companion layers ---------------------------------------------------------------------------------
 
@@ -624,13 +549,14 @@ namespace KhaozEngine.Tests.MapEditTool
                 string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 bool dirtyBefore = session.IsDirty;
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    mutation.CompanionLayerAdd("ghost-fans", "ghost-layer"));
-                Assert.StartsWith("mutation rejected:", ex.Message);
-                Assert.Contains("not a scatter layer", ex.Message);
+                var ex = Assert.Throws<MapMutationException>(() => mutation.CompanionLayerAdd("ghost-fans", "ghost-layer"));
+                Assert.Equal(MapDocumentRefusal.ReferenceMissing, ex.Reason);
+                Assert.Equal("ghost-layer", ex.LayerId);
+                Assert.Equal("ghost-fans", ex.EntityId);
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);
+                Assert.NotNull(mutation.CompanionLayerAdd("ghost-fans", "trees"));
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

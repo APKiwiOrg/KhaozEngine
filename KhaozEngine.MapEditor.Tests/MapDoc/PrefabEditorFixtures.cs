@@ -217,22 +217,22 @@ internal static class PrefabEditorFixtures
     internal static string OtherMapBefore(MapEditSession session) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(session.DocumentPath)!, "other.map.json"));
     internal static string OtherMapNow(MapEditSession session) => OtherMapBefore(session);
     internal static MapPrefabMarkerChild Marker(MapPrefabAsset asset) => (MapPrefabMarkerChild)asset.Children.Single(c => c.Key.Kind == MapPrefabChildKind.Marker);
-    internal static void PublishMarkerChange(MapEditSession session, string checkpoint)
+    internal static void PublishMarkerChange(MapEditSession session, string checkpoint, Exception? fault = null)
     {
         var service = new PrefabService(session);
         var asset = service.Open("hut");
         var marker = Marker(asset);
         service.Edit(marker with { Value = marker.Value with { Name = "Changed" } });
-        new PrefabAssetPublisher(session, new FaultFiles(checkpoint)).Publish(service.Export(), "hut", "published", true);
+        new PrefabAssetPublisher(session, new FaultFiles(checkpoint, fault ?? new MapDocumentException("publication fault " + checkpoint))).Publish(service.Export(), "hut", "published", true);
     }
-    sealed class FaultFiles(string checkpoint) : IMapPrefabPublicationFiles
+    sealed class FaultFiles(string checkpoint, Exception fault) : IMapPrefabPublicationFiles
     {
         public void PublishNew(string path, ReadOnlyMemory<byte> bytes)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             if (!File.Exists(path)) File.WriteAllBytes(path, bytes.ToArray());
         }
-        public void Checkpoint(string name) { if (name == checkpoint) throw new MapDocumentException("publication fault " + name); }
+        public void Checkpoint(string name) { if (name == checkpoint) throw fault; }
     }
     internal static IReadOnlyList<PrefabSessionState> ApplyMixedHistory(MapEditSession session, bool water = false)
     {

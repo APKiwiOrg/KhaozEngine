@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- Measurement tool, not a shipped package: never packed, never on the version line. The timing loop
-         only runs via `dotnet run`; CI's `dotnet test` never invokes it, so it stays out of CI's timed path.
-         (The harness's deterministic/structural behaviour IS covered in KhaozEngine.Tests, which run in CI.) -->
+    <!-- Measurement tool, never packed or on the version line. Default engine CI retains structural
+         and instrument checks in Server.Tests. The outside-solution Items.Benchmark.Tests quick run
+         gates explicit benchmark validation before evidence publication, not engine CI timing. -->
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
@@ -34,5 +34,6 @@
          the CI suite pins rather than something only a hand-run benchmark would notice. See
          KhaozEngine.Server.Tests/Benchmarks/ResidentMemoryTests.cs. -->
     <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
+    <InternalsVisibleTo Include="Items.Benchmark.Tests" />
   </ItemGroup>
 </Project>

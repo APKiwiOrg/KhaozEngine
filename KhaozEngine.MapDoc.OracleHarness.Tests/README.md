@@ -75,6 +75,70 @@ including dangling links. Parent directory links are resolved before containment
 Missing or mismatched private inputs fail, never skip. Actual private source
 selection, extraction and execution belong to the controller's separate acceptance step.
 
+### Sanitized refusals
+
+`PrivateOracleInputException` and `PrivateOracleFailure` are internal to this non-packable harness.
+Every constructor requires its family's reason. Their messages remain prose, and guards assert
+`Reason` and the safe members below. Neither type accepts a private inner exception. Source paths,
+coordinates, input values, provenance digests and original exception objects stay behind the entry
+boundary. `InputName` is only one of the four static variable names above. `ReportSha256` identifies
+the completed secure report, never the source or provenance content.
+
+| Family | Reason | Refused input or failure | Safe members |
+|---|---|---|---|
+| `PrivateOracleInputRefusal` | `MissingInput` | A required input is absent or blank | `InputName` |
+| `PrivateOracleInputRefusal` | `ProvenanceDigestMismatch` | Provenance bytes differ from the supplied digest | None |
+| `PrivateOracleInputRefusal` | `ProvenanceUnreadable` | Input reading, provenance parsing or path admission failed | None |
+| `PrivateOracleInputRefusal` | `ReportAlreadyExists` | The report path already names a file, directory or link | None |
+| `PrivateOracleInputRefusal` | `ReportInsideWorktree` | The report destination is inside a git worktree | None |
+| `PrivateOracleInputRefusal` | `SourceVerificationFailed` | Source verification or catalog attestation failed | `MismatchCount` |
+| `PrivateOracleFailureRefusal` | `ComparisonMismatches` | A comparison category failed | `Category`, `MismatchCount`, `ReportSha256` |
+| `PrivateOracleFailureRefusal` | `ExecutionFailed` | The body threw and its details were written securely | `ReportSha256` |
+| `PrivateOracleFailureRefusal` | `SecureReportUnavailable` | Secure report creation, completion or digest reading failed | None |
+
+Members not applicable to a reason are null. A comparison refusal carries the first failing category
+and the number of failed `Check` calls for that category, rather than any count nested in its private
+details. A source verification refusal carries only its mismatch count, never the source file names.
+The closed-report `Record` lifetime check remains `ObjectDisposedException` with its object name.
+Public guard runs select only `PrivateOracleGuardTests`, `ShippedBuildingInputGuardTests`,
+`ShippedFoliageInputGuardTests`, `ShippedFoliagePolygonGuardTests`, `ShippedMarkerInputGuardTests` and `ShippedSpikeOutcomeTests` through
+explicit fully qualified name filters. They never enable private comparison or recording inputs.
+
+### Attested comparison data refusals
+
+The internal, non-packable `PrivateOracleDataException` derives from `KhaozEngine.MalformedDataException`.
+It requires a non-nullable `PrivateOracleDataRefusal` reason. Its reason-taking constructors retain no
+private original exception. The readers carry no identifier fields because source paths, coordinates,
+identities, tags, content digests and inventory counts belong only in the secure report. The existing
+messages remain developer prose. The entry boundary still sanitizes all failures.
+
+| Reason | Refused data | Identifiers |
+|---|---|---|
+| `AttestedDigestMismatch` | Captured bytes or semantic data differ from their attestation | None |
+| `CorrespondenceMismatch` | Source and native inventories or captures disagree | None |
+| `DependencyUnattested` | A required dependency is absent from the attested capture | None |
+| `ExtractionChanged` | The extraction changed before capture or during loading | None |
+| `IdentityNotUniqueOrCanonical` | An identity or JSON member is duplicated or noncanonical | None |
+| `InputBudgetExceeded` | Room-cell closure would exceed the comparison work budget | None |
+| `KindUnsupported` | A kind, binding mode or convention is outside the comparison contract | None |
+| `OwnershipMismatch` | Source ownership, membership or support belongs to the wrong scope or plane | None |
+| `PathUnsafe` | A dependency path violates extraction containment or path admission | None |
+| `ReferenceMissing` | A reference has no declared source or correspondence target | None |
+| `SchemaShapeInvalid` | A JSON value does not have the required shape | None |
+| `SourceCoordinateContractMismatch` | Source units, coordinates or region ownership violate the contract | None |
+| `SymlinkUnsupported` | An attested dependency path contains a link | None |
+| `ValueNonfinite` | A numeric field is nonfinite | None |
+| `ValueOutsideDomain` | A finite value lies outside its admitted domain | None |
+| `ValueRequired` | A required value is absent or empty | None |
+| `VersionUnsupported` | A schema, document, resolver or payload version is unsupported | None |
+
+The provenance, building, foliage input and manifest, marker readers and foliage correspondence checks
+use these reasons. Building geometry refuses unsupported primitives with `KindUnsupported`. Shared
+guard helpers require a reason. Compound guards select the first failing rule, with source and native
+inventory mismatches classified as `CorrespondenceMismatch`, support ownership as `OwnershipMismatch`
+and semantic support-patch digest mismatches as `AttestedDigestMismatch`. A foliage closure miss remains
+`DependencyUnattested`, translated from `MapDocumentException` without attaching private context.
+
 ## Exhaustive terrain comparison
 
 `ShippedTerrainComparisonTests` enters through `PrivateOracleEntry.Run`. `ShippedSourceInventory.ReadRegions`
@@ -107,6 +171,10 @@ the terrain comparison through `PrivateOracleEntry.Run`. `ShippedSourceInventory
 attested world and its catalogs. Catalog entries resolve against the world directory and must name files
 in the verified provenance. Missing or unverified inputs fail through the existing private entry boundary.
 The harness links `LegacyWaterConverter` and `LegacyWaterComparison` without the synthetic oracle world.
+Its comparison-scope guards throw the internal test-only `LegacyWaterComparisonException`.
+`Reason` is `LegacyWaterComparisonRefusal.PlaneUnsupported` with the refused `Plane` for water off plane
+zero, or `RegionMissing` with no `Plane` when there is no plane-zero source region. These reasons belong
+only to the comparison harness and are absent from the shipped `MapDocumentRefusal` enum.
 
 The test records only counts through `report.Record`, covering bodies, rectangles, cells, boundary samples,
 boundary ownership changes and floors above the water surface. Comparison failures are checked only through
@@ -289,7 +357,7 @@ native scaffold carries it as a standalone placement with the original numeric I
 inventory entry and no roof link. No prefab definition is fabricated for it. It counts toward `originalLeaves`
 and `roofs`, never toward `buildings` or `definitions`. Its transform, mesh, collider, selection and numeric ID
 compare like any other leaf, and Auto must keep it visible. A standalone roof with concealment links refuses,
-and a standalone leaf that is not a roof refuses as an unassigned building leaf. `worldId`, `key` and `assetId` identify
+and a standalone leaf that is not a roof refuses with `OwnershipMismatch`. `worldId`, `key` and `assetId` identify
 that effective leaf without changing its original ID. `meshPath` must equal the source archetype's
 `meshRef`. `selectionPath` is the original authored KECL selection, or null when no selection was authored.
 Metadata is the frozen original asset metadata. Bounds use finite XYZ arrays in asset source units.

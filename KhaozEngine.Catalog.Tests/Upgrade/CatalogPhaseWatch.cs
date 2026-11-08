@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using KhaozEngine.Catalog.Authoring;
 
 namespace KhaozEngine.Tests.Catalog.Upgrade;
 
@@ -19,12 +20,13 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
     ITimer? _timer;
     int _generation;
     bool _stopped;
-    string _phase = "runner start";
+    CatalogPhasePosition _phase = new(CatalogPhase.RunnerStart);
     event Action? Activity;
 
     public static CatalogPhaseWatch? Current => Ambient.Value;
 
-    public static void Enter(string phase) => Ambient.Value?.Arm(phase);
+    public static void Enter(CatalogPhase phase, ContentPublishStep? publishStep = null)
+        => Ambient.Value?.Arm(new CatalogPhasePosition(phase, publishStep));
 
     public async Task<T> RunAsync<T>(Func<Task<T>> run)
     {
@@ -32,7 +34,7 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
         Ambient.Value = this;
         try
         {
-            Arm("runner start");
+            Arm(new CatalogPhasePosition(CatalogPhase.RunnerStart));
             return await run();
         }
         finally
@@ -49,7 +51,7 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
         }
     }
 
-    public static async Task<T> ObserveAsync<T>(string phase, Func<Task<T>> operation)
+    public static async Task<T> ObserveAsync<T>(CatalogPhase phase, Func<Task<T>> operation)
     {
         Enter(phase);
         try
@@ -58,11 +60,11 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
         }
         finally
         {
-            Enter("runner progress after " + phase);
+            Ambient.Value?.Arm(new CatalogPhasePosition(phase, IsRunnerProgress: true));
         }
     }
 
-    public static async Task ObserveAsync(string phase, Func<Task> operation)
+    public static async Task ObserveAsync(CatalogPhase phase, Func<Task> operation)
     {
         Enter(phase);
         try
@@ -71,7 +73,7 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
         }
         finally
         {
-            Enter("runner progress after " + phase);
+            Ambient.Value?.Arm(new CatalogPhasePosition(phase, IsRunnerProgress: true));
         }
     }
 
@@ -94,7 +96,7 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
         public void Dispose() => producer.Activity -= refresh;
     }
 
-    void Arm(string? phase, bool announce = true)
+    void Arm(CatalogPhasePosition? phase, bool announce = true)
     {
         lock (_sync)
         {
@@ -104,7 +106,8 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
             }
 
             _phase = phase ?? _phase;
-            string name = _phase;
+            CatalogPhasePosition position = _phase;
+            string name = position.ToString();
             _timer?.Dispose();
             _safetyTimer?.Dispose();
             int generation = ++_generation;
@@ -115,7 +118,14 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
                     if (!_stopped && _generation == generation)
                     {
                         string prefix = safety ? "Catalog safety phase stalled: " : "Catalog phase stalled: ";
-                        diagnostic.TrySetResult(new TimeoutException(prefix + name));
+                        diagnostic.TrySetResult(new CatalogPhaseTimeoutException(safety
+                            ? CatalogPhaseRefusal.SafetyPhaseStalled : CatalogPhaseRefusal.PhaseStalled, prefix + name)
+                        {
+                            Phase = position.Phase,
+                            Budget = Budget,
+                            PublishStep = position.PublishStep,
+                            IsRunnerProgress = position.IsRunnerProgress,
+                        });
                     }
                 }
             }

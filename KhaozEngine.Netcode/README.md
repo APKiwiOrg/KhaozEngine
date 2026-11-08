@@ -509,13 +509,21 @@ byte[] devSecret = SigningSecret.CreateEphemeral();
 
 - `Decode(raw, sourceName)` returns `null` when the value is unset or blank, and the decoded key when it is standard
   base64 (the output of `openssl rand -base64 32`, trimmed) of at least `MinimumBytes` (32) bytes. A value that is
-  set but not base64, or decodes shorter, throws `InvalidOperationException`, so a misconfigured production key fails
-  loudly instead of becoming a door that verifies nothing. The message names `sourceName` and the rule it broke and
-  never any part of the value.
+  set but not base64, or decodes shorter, throws `SigningSecretException`, an `InvalidOperationException`, so a
+  misconfigured production key fails loudly instead of becoming a door that verifies nothing. Its `SourceName` is
+  `sourceName` and its `Reason` is the rule it broke, as in the table below. Nothing it carries, the message included,
+  holds any part of the value or of the decoded key.
 - `Load(read, variable)` is `Decode(read(variable), variable)`. The environment arrives as a delegate, so an
   in-process host or a test hands it a map and writes no process state.
 - `CreateEphemeral()` is 32 bytes from `RandomNumberGenerator`, for local development only. Never ship a key as a
   source constant.
+
+The reasons are `SigningSecretRefusal` members.
+
+| `Reason` | What it refuses | Identifiers |
+|---|---|---|
+| `NotStandardBase64` | a set value that is not standard base64 once trimmed, the url-safe alphabet included | `SourceName` |
+| `DecodedKeyTooShort` | a set value that decodes to fewer than `MinimumBytes` (32) bytes | `SourceName`, `ActualBytes`, `MinimumBytes` |
 
 The loader compares nothing. The one comparison under the key is `SignedToken.TryVerify`, which already checks the
 MAC with `CryptographicOperations.FixedTimeEquals`. The key itself stays in the game's secret store under the game's
@@ -596,14 +604,40 @@ consumer compiles and binds unchanged and a file importing both namespaces sees 
   `KhaozEngine.Accounts.AccountBanStore`, which files each ban on the account row the exchange reads.
 
 **One admin seam.** `IAdminControllable` (the live-admin surface: `ListOnline`, `Teleport`, `SetPosition`, `Kick`,
-`Broadcast` and the movement commitment pair) lives here on the same terms as the ban seam, with the three types it
-names: `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest`. Their full names are still
+`Broadcast` and movement commitment controls) lives here on the same terms as the ban seam, with its three
+original companions: `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest`. Their full names are still
 `KhaozEngine.NetWorld.*` and `KhaozEngine.NetWorld` type-forwards all four, so existing implementers and callers
 compile and bind unchanged. A head that never references `NetWorld` can implement it, which is what
 `KhaozEngine.TileWorld.Netcode`'s `TileWorldServer` does. `ServerAdmin`, the facade over it, stays in `NetWorld`.
 `MovementCommitmentRequest` validates its arguments without Locomotion, so its refusals are a restatement of
 `KhaozEngine.Locomotion.MovementCommitment`'s, held equal by `MovementCommitmentRequestParityTests` in
-`KhaozEngine.Server.Tests`.
+`KhaozEngine.Server.Tests`. `MovementCommitmentRequest.ForGroundTravel(direction, speed, distance)` creates
+an immutable ground request with optional preparation, recovery and timeout durations. Speed and begin distance
+are positive and finite. Directions are finite, nonzero and normalized, including extreme finite magnitudes.
+`IsGroundTravel` and `DistanceRemaining` identify this request without a Locomotion dependency. Existing ballistic
+requests default to false and zero. Ground state rides wire generation 15. Adoption requires matched client
+and server plus a major engine repin. The [rationale](../docs/design/FORCED-MOVEMENT.md) explains why scalar
+controls stay here while pursuit remains opt-in.
+
+Both float heads implement queued `SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining)`
+and `EndMovementCommitment(target, expectedSequence, reason)`, also exposed by `ServerAdmin`. The dependency-free
+`MovementCommitmentStopReason` lives here under `KhaozEngine.NetWorld`. `None` is invalid. `Arrived`, `TargetLost`,
+`NoPath`, `TooLong` and `UnsupportedState` map to the corresponding Locomotion reasons, while `Cancelled` maps to
+`Aborted`. A nonzero sequence, finite nonzero direction and finite nonnegative steering distance are validated
+before queueing, even for absent or stale targets. Zero distance holds. Both controls ignore stale sequences,
+inactive or ballistic state, and recovery. Use `AbortMovementCommitment` to cancel recovery. Unsupported heads
+retain default methods that throw `NotSupportedException`.
+
+The float heads admit a ground begin only for grounded actors that are neither swimming nor airborne from water.
+A refused request leaves the current commitment intact and emits one `MovementCommitmentEnded` result for the
+refused sequence with `UnsupportedState`. `MovementCommitmentArrived` fires once at accepted ground arrival,
+immediately after the admin drain and before movement advances optional recovery. Commands queued by its handlers
+apply on the next frame. The travel timeout stops applying at accepted ground arrival. `MovementCommitmentEnded`
+fires once at release and reports `Arrived` after accepted arrival, including when recovery is interrupted.
+Arrival precedes end when both happen in one frame, and both precede snapshots. Opt-in
+[`GroundPursuit`](../KhaozEngine.Movement/README.md#ground-pursuit-for-committed-travel) supplies walking route
+admission and per-tick direction and remaining length. Games forward its results through these controls from
+`OnBeforeTick`, and use commitment arrival and ended events for effects and cleanup.
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 They forward both optional verified-claim companions. Version and world gates unwrap their own token layer before

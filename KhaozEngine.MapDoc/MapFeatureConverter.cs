@@ -21,10 +21,12 @@ internal sealed class MapFeatureConverter : JsonConverter<MapFeature>
         using JsonDocument doc = JsonDocument.ParseValue(ref reader);
         string? type = doc.RootElement.TryGetProperty("type", out JsonElement t) ? t.GetString() : null;
         if (type is null || !_registry.TryGetFeatureDocType(type, out Type docType))
-            throw new JsonException($"Unknown terrain feature type '{type ?? "(missing)"}'.");
+            throw new MapFeatureJsonException(type is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.DocumentTerrainFeatureUnknown,
+                $"Unknown terrain feature type '{type ?? "(missing)"}'.") { FieldPath = "$.type", ActualText = type };
         // docType is a concrete type, never MapFeature itself, so this does not re-enter the converter.
         var feature = (MapFeature?)doc.RootElement.Deserialize(docType, options);
-        return feature ?? throw new JsonException($"Terrain feature '{type}' deserialized to null.");
+        return feature ?? throw new MapFeatureJsonException(MapDocumentRefusal.SchemaValueRequired, $"Terrain feature '{type}' deserialized to null.")
+            { FieldPath = "$", ActualText = type };
     }
 
     public override void Write(Utf8JsonWriter writer, MapFeature value, JsonSerializerOptions options)

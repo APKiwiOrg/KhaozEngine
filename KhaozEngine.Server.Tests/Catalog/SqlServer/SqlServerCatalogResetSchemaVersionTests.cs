@@ -126,11 +126,17 @@ public class SqlServerCatalogResetSchemaVersionTests
         TakeBackToVersionOne(database);
         database.Execute("DROP TABLE dbo.catalog_chunk;");
         int standing = SqlServerCatalogResetHarness.CountTables(database);
+        string before = SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
 
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqlServerCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "content release"));
         Assert.Equal("catalog-partial", refused.Reason);
-        Assert.Contains("schema version '1'", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.ResetTablesPartial, refused.Refusal);
+        Assert.Equal(13, refused.StandingTableCount);
+        Assert.Equal(19, refused.ExpectedTableCount);
+        Assert.Equal(1L, refused.ActualVersion);
+        Assert.Equal(true, refused.ForceRequired);
+        Assert.Equal(before, SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal(standing, SqlServerCatalogResetHarness.CountTables(database));
         Assert.Equal(1, database.Scalar("SELECT schema_version FROM dbo.catalog_metadata;"));
 
@@ -154,15 +160,21 @@ public class SqlServerCatalogResetSchemaVersionTests
         database.Execute(FormattableString.Invariant(
             $"UPDATE dbo.catalog_metadata SET schema_version = {Current + 1} WHERE metadata_key = 1;"));
 
+        string before = SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqlServerCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "content release", force: true));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains(FormattableString.Invariant($"version '{Current + 1}', newer"), refused.Message, StringComparison.Ordinal);
-        Assert.Contains("Nothing was dropped", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.ResetVersionNewer, refused.Refusal);
+        Assert.Equal(5L, refused.ActualVersion);
+        Assert.Equal(4L, refused.MaximumVersion);
         AssertUntouched(database, epochBefore, SqlServerCatalogSchemaExpectations.Tables.Count);
         Assert.Equal(Current + 1, database.Scalar("SELECT schema_version FROM dbo.catalog_metadata;"));
+        Assert.Equal(before, SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
+        database.Execute("UPDATE dbo.catalog_metadata SET schema_version = 4 WHERE metadata_key = 1;");
+        Assert.Equal(4, (await SqlServerCatalogReset.ResetAsync(
+            database.ConnectionString, Actor, Operator, "repair", force: true)).SchemaVersion);
     }
 
     [CatalogSqlServerFact]
@@ -177,12 +189,20 @@ public class SqlServerCatalogResetSchemaVersionTests
 
         // The version is still READABLE, so it still decides. Force repairs a partial catalog, and this one is
         // partial, but recreating an older schema over a database that says it is newer is not a repair.
+        string before = SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => SqlServerCatalogReset.ResetAsync(
                 database.ConnectionString, Actor, Operator, "repair", force: true));
 
         Assert.Equal("schema-mismatch", refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.ResetVersionNewer, refused.Refusal);
+        Assert.Equal(5L, refused.ActualVersion);
+        Assert.Equal(4L, refused.MaximumVersion);
         AssertUntouched(database, epochBefore, SqlServerCatalogSchemaExpectations.Tables.Count - 1);
+        Assert.Equal(before, SqlServerCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
+        database.Execute("UPDATE dbo.catalog_metadata SET schema_version = 4 WHERE metadata_key = 1;");
+        Assert.Equal(4, (await SqlServerCatalogReset.ResetAsync(
+            database.ConnectionString, Actor, Operator, "repair", force: true)).SchemaVersion);
     }
 
     /// <summary>A published store with one version, two rows and an audit trail.</summary>
@@ -222,12 +242,16 @@ public class SqlServerCatalogResetSchemaVersionTests
     /// </summary>
     static async Task AssertIsVersionAsync(SqlServerCatalogDatabase database, int version)
     {
+        string before = SqlServerCatalogSnapshot.Read(database.ConnectionString);
         var store = new SqlServerContentAuthoringStore(
             database.ConnectionString, SqlServerCatalogResetHarness.Registry(), database.Pack());
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
-        Assert.Contains(
-            FormattableString.Invariant($"at unsupported version '{version}'"), refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaVersionUnsupported, refused.Refusal);
+        Assert.Equal((long)version, refused.ActualVersion);
+        Assert.Equal(new long[] { 4 }, refused.SupportedVersions);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        Assert.Equal(before, SqlServerCatalogSnapshot.Read(database.ConnectionString));
     }
 
     /// <summary>Every row and every table of the seeded catalog where it was, down to the epoch.</summary>

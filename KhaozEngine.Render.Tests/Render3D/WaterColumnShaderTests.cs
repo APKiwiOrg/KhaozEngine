@@ -70,13 +70,15 @@ public sealed class WaterColumnShaderTests
         Assert.Equal("ColumnSceneColor", ((FakeResourceLayout)first.Layout!).Description.Elements[15].Name);
         Assert.Equal("ColumnColorSampler", ((FakeResourceLayout)first.Layout!).Description.Elements[16].Name);
         renderer.ColumnShadows.SetColor(source.Texture, source.Generation + 1);
-        Assert.Throws<InvalidOperationException>(() => renderer.VerifyOpticsFrame(targets, planes, settings, 0f));
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared,
+            Assert.Throws<WaterFrameStateException>(() => renderer.VerifyOpticsFrame(targets, planes, settings, 0f)).Reason);
         renderer.PrepareOpticsFrame(targets, frame);
         FakeResourceSet second = factory.ResourceSets.Last(s => s.Resources.Length == 17);
         Assert.NotSame(first, second);
         source.Prepare(targets, false);
         renderer.ColumnShadows.SetColor(source.Texture, source.Generation);
-        Assert.Throws<InvalidOperationException>(() => renderer.VerifyOpticsFrame(targets, planes, settings, 0f));
+        Assert.Equal(WaterFrameRefusal.OpticsInputsChangedOrUnprepared,
+            Assert.Throws<WaterFrameStateException>(() => renderer.VerifyOpticsFrame(targets, planes, settings, 0f)).Reason);
         renderer.PrepareOpticsFrame(targets, frame);
         Assert.Same(source.Texture, factory.ResourceSets.Last(s => s.Resources.Length == 17).Resources[15]);
     }

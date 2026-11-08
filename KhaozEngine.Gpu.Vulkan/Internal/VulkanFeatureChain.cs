@@ -75,7 +75,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// type exists to not reproduce. Two things follow from it, both bad. The engine's real dependencies become
     /// unknowable from the code, because every feature is enabled and none of them is named anywhere. And a
     /// future device missing one fails at an unrelated call site, on frame one, in a driver, instead of failing at
-    /// device creation with the feature's name in the message.
+    /// device creation with <see cref="VulkanFeatureException.FeatureName"/>.
     /// </para>
     /// <para>
     /// THREE ARE REQUIRED AND FOUR ARE OPTIONAL, and the difference is what a missing bit costs. The three
@@ -101,7 +101,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// </summary>
     internal static class VulkanFeatureChain
     {
-        /// <summary><c>VkPhysicalDeviceVulkan13Features.dynamicRendering</c>, as it is spelled in the message a
+        /// <summary><c>VkPhysicalDeviceVulkan13Features.dynamicRendering</c>, as it is spelled in the diagnostic a
         /// rejected device produces and in <see cref="VulkanFeatureSelection.EnabledFeatureNames"/>.</summary>
         internal const string DynamicRendering = "dynamicRendering";
 
@@ -128,30 +128,33 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// reported.
         /// </summary>
         /// <param name="support">The bits read off the physical device through the chained feature query.</param>
-        /// <param name="deviceName">The device's own name, for the message a rejection produces. A rejection that
+        /// <param name="deviceName">The device's own name, carried by <see cref="VulkanFeatureException.DeviceName"/>. A rejection that
         /// does not say WHICH device it is about is unreadable on a two-device machine.</param>
-        /// <exception cref="NotSupportedException">A REQUIRED feature is missing. The message names the feature
-        /// and says what depends on it, which is the whole reason the enable is by name.</exception>
+        /// <exception cref="VulkanFeatureException">A REQUIRED feature is missing. The refusal carries
+        /// <see cref="VulkanFeatureException.FeatureName"/> and <see cref="VulkanFeatureException.DeviceName"/>.</exception>
         internal static VulkanFeatureSelection Select(in VulkanFeatureSupport support, string deviceName)
         {
             string device = string.IsNullOrWhiteSpace(deviceName) ? "this device" : $"'{deviceName}'";
 
-            if (!support.DynamicRendering) throw Missing(device, DynamicRendering,
+            if (!support.DynamicRendering) throw Missing(device, deviceName, DynamicRendering,
                 "the whole rendering path is vkCmdBeginRendering, and there is no VkRenderPass and no "
                 + "VkFramebuffer anywhere in this backend to fall back to");
 
-            if (!support.Synchronization2) throw Missing(device, Synchronization2,
+            if (!support.Synchronization2) throw Missing(device, deviceName, Synchronization2,
                 "every barrier the layout tracker emits is vkCmdPipelineBarrier2 with explicit stage and access "
                 + "masks, and there is no barrier-1 path beside it");
 
-            if (!support.TimelineSemaphore) throw Missing(device, TimelineSemaphore,
+            if (!support.TimelineSemaphore) throw Missing(device, deviceName, TimelineSemaphore,
                 "the device's one monotonic timeline is a timeline semaphore: every submit signals it, every "
                 + "fence is a target on it, and WaitForIdle is a host wait on it");
 
             // The order here is the order the design lists them, and it is the order the INFO line prints, so a
             // session log and the design read the same way. Required first, because a reader scanning the line
             // for what a device is missing is looking for one of those three.
-            var enabled = new List<string>(7) { DynamicRendering, Synchronization2, TimelineSemaphore };
+            var enabled = new List<string>(7)
+            {
+                DynamicRendering, Synchronization2, TimelineSemaphore,
+            };
             if (support.SamplerAnisotropy) enabled.Add(SamplerAnisotropy);
             if (support.FillModeNonSolid) enabled.Add(FillModeNonSolid);
             if (support.DepthClamp) enabled.Add(DepthClamp);
@@ -180,11 +183,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + ". Every capability that depends on one of those reads false for this session.";
         }
 
-        static NotSupportedException Missing(string device, string feature, string why)
-            => new($"The native Vulkan backend cannot create a device on {device}: it reports no {feature}, and "
+        static VulkanFeatureException Missing(string device, string deviceName, string feature, string why)
+            => new(VulkanFeatureRefusal.RequiredFeatureMissing, $"The native Vulkan backend cannot create a device on {device}: it reports no {feature}, and "
                 + $"{why}. This feature is MANDATORY on a conformant Vulkan 1.3 device, so a device reporting the "
                 + "1.3 version floor and not this bit is below spec. There is no second Vulkan path to fall back "
                 + "to on this machine: GpuBackendKind.Vulkan named the Veldrid backend and was retired in "
-                + "18.0.0.");
+                + "18.0.0.")
+                {
+                    FeatureName = feature,
+                    DeviceName = deviceName,
+                };
     }
 }

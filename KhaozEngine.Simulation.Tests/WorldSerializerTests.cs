@@ -62,14 +62,15 @@ public class WorldSerializerTests
     }
 
     [Fact]
-    public void UnknownComponentOnLoadThrowsClearly()
+    public void UnknownComponentOnLoadThrows()
     {
         var w = new World();
         w.Set(w.Spawn(), new SrHealth { Hp = 1 });
         string json = new WorldSerializer(typeof(SrHealth)).Save(w);
-        var ex = Assert.Throws<InvalidOperationException>(
+        Assert.Throws<InvalidOperationException>(
             () => new WorldSerializer(typeof(SrTransform)).Load(json));   // SrHealth not registered
-        Assert.Contains("SrHealth", ex.Message);
+        World loaded = new WorldSerializer(typeof(SrHealth)).Load(json);
+        Assert.Equal(1, loaded.Get<SrHealth>(new Entity(0, 1)).Hp);
     }
 
     [Fact]

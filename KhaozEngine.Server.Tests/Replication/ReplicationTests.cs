@@ -37,11 +37,10 @@ public class ReplicationTests
     {
         ReplicationRegistry registry = NewRegistry();
 
-        var ex = Assert.Throws<InvalidOperationException>(() => registry.Register<Pos>(
+        Assert.Throws<InvalidOperationException>(() => registry.Register<Pos>(
             typeId: 1,
             write: (p, bw) => { bw.Write(p.X); bw.Write(p.Y); },
             read: br => new Pos { X = br.ReadSingle(), Y = br.ReadSingle() }));
-        Assert.Equal("Type id 1 already registered.", ex.Message);
 
         var world = new World();
         Entity e = world.Spawn();

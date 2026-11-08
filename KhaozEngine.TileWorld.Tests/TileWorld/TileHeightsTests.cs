@@ -44,7 +44,11 @@ public class TileHeightsTests
         Assert.Equal(90, doc.CornerHeightCm(64, 64, 0));
         Assert.Equal(0, doc.CornerHeightCm(-1, -1, 0));
         Assert.False(doc.TrySetCornerHeightCm(-1, -1, 0, 5));
-        Assert.Throws<TileWorldException>(() => doc.SetCornerHeightCm(-1, -1, 0, 5));
+        var ex = Assert.Throws<TileWorldException>(() => doc.SetCornerHeightCm(-1, -1, 0, 5));
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(-1, -1), ex.Region);
+        Assert.Equal(-1, ex.TileX);
+        Assert.Equal(-1, ex.TileZ);
     }
 
     [Fact]
@@ -84,8 +88,10 @@ public class TileHeightsTests
         TileWorldDocument doc = TileWorldTestData.FlatWorld();
         doc.UnloadedRegionHashes[new RegionCoord(5, 5)] = "abc123";
         var ex = Assert.Throws<TileWorldException>(() => doc.SetCornerHeightCm(320, 320, 0, 1));
-        Assert.Contains("(5, 5)", ex.Message);
-        Assert.Contains("not loaded", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionNotLoaded, ex.Reason);
+        Assert.Equal(new RegionCoord(5, 5), ex.Region);
+        Assert.Equal(320, ex.TileX);
+        Assert.Equal(320, ex.TileZ);
         Assert.False(doc.TrySetCornerHeightCm(320, 320, 0, 1));
     }
 

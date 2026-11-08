@@ -81,6 +81,11 @@ internal static class CapsuleCylinderSweep
         return null;
     }
 
+    /// <summary>Lets CertifiedCurvedSweepLifetimeTests exhaust refinement after a cylinder was already admitted.</summary>
+    internal static CapsuleSweepResult ProveForTests(in CapsuleCylinderFrame frame, Vector3 delta, double length,
+        double width, double? witness, ref CapsuleSweepWork work, CapsuleSweepScratch scratch) =>
+        Prove(frame, delta, length, width, witness, ref work, scratch);
+
     static CapsuleSweepResult Prove(in CapsuleCylinderFrame frame, Vector3 delta, double length, double width,
         double? witness, ref CapsuleSweepWork work, CapsuleSweepScratch scratch)
     {

@@ -101,7 +101,6 @@ public class ContactNavigationInitialHoldReuseTests(ITestOutputHelper output)
             SupportQueryDiagnostics.Reset();
             Exception? failure = Record.Exception(() => actual = fixture.Build(new(1)));
             Assert.Equal(originalFailure?.GetType(), failure?.GetType());
-            Assert.Equal(originalFailure?.Message, failure?.Message);
             Assert.Equal(reference, actual);
             Assert.Equal(trace, fixture.Trace.ToArray());
             Assert.Equal(0, SupportQueryDiagnostics.Snapshot().InitialHoldReuseHits);
@@ -144,8 +143,12 @@ public class ContactNavigationInitialHoldReuseTests(ITestOutputHelper output)
             Assert.Equal(budget == 2, proof.TryEdge(from, outsideBall));
             Assert.True(SupportQueryDiagnostics.Snapshot().InitialHoldReuseHits > 0);
             fixture.Water.Advance();
-            string original = Assert.Throws<InvalidOperationException>(() => reference.TryEdge(from, from)).Message;
-            Assert.Equal(original, Assert.Throws<InvalidOperationException>(() => proof.TryEdge(from, from)).Message);
+            var referenceFailure = Assert.Throws<NavigationBuildException>(() => reference.TryEdge(from, from));
+            var reusedFailure = Assert.Throws<NavigationBuildException>(() => proof.TryEdge(from, from));
+            Assert.Equal(NavigationBuildRefusal.MovementLeaseIdentityChanged, referenceFailure.Reason);
+            Assert.Equal(referenceFailure.Reason, reusedFailure.Reason);
+            Assert.Equal(1, reusedFailure.ExpectedLease!.Value.EnvironmentGeneration);
+            Assert.Equal(2, reusedFailure.ActualLease!.Value.EnvironmentGeneration);
         }
         finally { SupportQueryDiagnostics.Exchange(prior); }
     }
@@ -206,7 +209,25 @@ public class ContactNavigationInitialHoldReuseTests(ITestOutputHelper output)
             case "extent": fixture.Water.ExtentOverride = new(Vector3.Zero, new(2, 1, 1)); break;
             default: fixture.Water.ExtentOverride = new(new(-0f, 0, 0), Vector3.One); break;
         }
-        Assert.Throws<InvalidOperationException>(() => proof.TryEdge(fixture.From, fixture.From));
+        var failure = Assert.Throws<NavigationBuildException>(() => proof.TryEdge(fixture.From, fixture.From));
+        Assert.Equal(change == "generation" ? NavigationBuildRefusal.MovementLeaseIdentityChanged
+            : change == "signed-zero-extent" ? NavigationBuildRefusal.WaterExtentChanged
+            : NavigationBuildRefusal.MovementLeaseUnavailable, failure.Reason);
+        if (change == "generation")
+        {
+            Assert.Equal(1, failure.ExpectedLease!.Value.EnvironmentGeneration);
+            Assert.Equal(2, failure.ActualLease!.Value.EnvironmentGeneration);
+        }
+        else if (change == "signed-zero-extent")
+        {
+            Assert.Equal(new MovementWaterExtent(Vector3.Zero, Vector3.One), failure.ExpectedExtent);
+            Assert.Equal(fixture.Water.ExtentOverride, failure.ActualExtent);
+        }
+        else Assert.Equal(MovementAvailability.Unresolved, failure.Availability);
+        fixture.Water.IdentityOverride = null;
+        fixture.Water.ExtentOverride = new(Vector3.Zero, Vector3.One);
+        using var repaired = fixture.Proof(false, true);
+        Assert.True(repaired.TryEdge(fixture.From, fixture.From));
     }
 
     public static IEnumerable<object[]> PinnedDegrees => ContactNavigationBaselineTests.Baselines
@@ -262,9 +283,12 @@ public class ContactNavigationInitialHoldReuseTests(ITestOutputHelper output)
                             fixture.Water.Advance();
                     },
                 });
-                var refused = Assert.Throws<InvalidOperationException>(() => scene.Build(new(degree)));
-                Assert.Contains("snapshot changed", refused.Message);
+                var refused = Assert.Throws<NavigationBuildException>(() => scene.Build(new(degree)));
+                Assert.Equal(NavigationBuildRefusal.WaterGenerationChanged, refused.Reason);
+                Assert.Equal(0, refused.ExpectedGeneration);
+                Assert.Equal(1, refused.ActualGeneration);
                 Assert.True(SupportQueryDiagnostics.Snapshot().InitialHoldReuseHits > 0);
+                Assert.NotEmpty(scene.Build(new(degree)).Space.Layers);
                 return;
             }
             fixture.Water.GenerationReads = 0;
@@ -277,9 +301,13 @@ public class ContactNavigationInitialHoldReuseTests(ITestOutputHelper output)
             {
                 if (fixture.Water.GenerationReads == finalRead) fixture.Water.Advance();
             };
-            var failure = Assert.Throws<InvalidOperationException>(() => fixture.Build(new(1) { UseStableContactHoldReuse = true }));
-            Assert.Contains("snapshot changed", failure.Message);
+            var failure = Assert.Throws<NavigationBuildException>(() => fixture.Build(new(1) { UseStableContactHoldReuse = true }));
+            Assert.Equal(NavigationBuildRefusal.WaterGenerationChanged, failure.Reason);
+            Assert.Equal(0, failure.ExpectedGeneration);
+            Assert.Equal(1, failure.ActualGeneration);
             Assert.True(SupportQueryDiagnostics.Snapshot().InitialHoldReuseHits > 0);
+            fixture.Water.BeforeGenerationRead = null;
+            Assert.NotEmpty(fixture.Build(new(1) { UseStableContactHoldReuse = true }));
         }
         finally { SupportQueryDiagnostics.Exchange(prior); }
     }
@@ -413,8 +441,10 @@ public class ContactNavigationInitialHoldReuseTests(ITestOutputHelper output)
         Vector2 v => v + Vector2.One,
         Vector3 v => v + Vector3.One,
         MovementControllerKind => MovementControllerKind.Legacy,
+        MovementCommitmentKind => MovementCommitmentKind.Ground,
         MovementCommitmentPhase => MovementCommitmentPhase.Preparing,
         MovementCommitmentEndReason => MovementCommitmentEndReason.Landed,
+        byte b => (byte)(b + 1),
         uint => 1u,
         WaterExcursionState => WaterExcursionState.Surface,
         MovementCommitment => new MovementCommitment(1, Vector2.UnitX, 2, 3, 4, 0.5f, 0.25f, 5),

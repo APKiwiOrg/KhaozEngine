@@ -118,7 +118,8 @@ public class ItemContainerTests
             Assert.Throws<ArgumentOutOfRangeException>(() => ItemContainerCodec.Encode(tooWide));
 
         Assert.Equal(3, widest.Length);
-        Assert.Contains(ushort.MaxValue.ToString(), error.Message, StringComparison.Ordinal);
+        Assert.Equal("container", error.ParamName);
+        Assert.Equal(tooWide.SlotCount, error.ActualValue);
     }
 
     [Fact]

@@ -5,6 +5,8 @@
     <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.*, consistent with every other split
          test project. -->
     <RootNamespace>KhaozEngine.Tests</RootNamespace>
+    <!-- Canonical paths preserve the shared architecture helper's test-health exemption. -->
+    <ArchitectureTestSourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../test-shared'))</ArchitectureTestSourceRoot>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
@@ -12,14 +14,19 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <ItemGroup>
-    <!-- TWO references, and no more. Push CI selects test projects by the reference graph, so a third would
-         only widen what an unrelated diff drags in.
-         The tool (RootNamespace KhaozEngine.TileEdit) brings TileWorld.Editing, TileWorld.Render3D, Imaging,
+    <!-- The tool (RootNamespace KhaozEngine.TileEdit) brings TileWorld, TileWorld.Editing, Imaging,
          ModelContextProtocol and Microsoft.Extensions.Hosting transitively. -->
     <ProjectReference Include="../KhaozEngine.TileEdit.Tool/KhaozEngine.TileEdit.Tool.csproj" />
+    <!-- The TileWorldException constructor fence scans these complete assemblies as well as the tool,
+         TileWorld and TileWorld.Editing. Keep its dependency graph explicit. -->
+    <ProjectReference Include="../KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.TileWorld.Render3D/KhaozEngine.TileWorld.Render3D.csproj" />
     <!-- TestSupport.Gpu is here for [GpuFact] alone, which gates the render rows on a real headless device and
          registers the native backends for this assembly. Same precedent as KhaozEngine.MapEditor.Tests, whose
          RenderService rows need exactly this and nothing else. -->
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="$(ArchitectureTestSourceRoot)/RefusalConstructorFence.cs" Link="Shared/RefusalConstructorFence.cs" />
   </ItemGroup>
 </Project>

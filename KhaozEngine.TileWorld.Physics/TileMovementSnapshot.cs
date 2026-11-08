@@ -10,9 +10,10 @@ namespace KhaozEngine.TileWorld.Physics;
 // The captured document is private to its sampler and never escapes to an editor or a caller.
 internal sealed class TileMovementSnapshot
 {
-    readonly TileGroundSampler _ground;
+    readonly CapturedTileGround _ground;
+    internal CapturedTileGround Ground => _ground;
     readonly TileWorldDocument _captured;
-    readonly float _minimumX, _maximumX, _minimumZ, _maximumZ;
+    readonly TileGroundBounds _bounds;
     internal float MinimumY { get; }
     internal float MaximumY { get; }
 
@@ -30,13 +31,7 @@ internal sealed class TileMovementSnapshot
             to.Settings = from.Settings?.ToArray();
         }
         _ground = new(_captured, regions);
-        if (regions.Length > 0)
-        {
-            _minimumX = (float)regions.Min(r => r.Rx) * TileRegion.Size;
-            _maximumX = MathF.BitDecrement((float)(regions.Max(r => r.Rx) + 1L) * TileRegion.Size);
-            _minimumZ = (float)regions.Min(r => r.Rz) * TileRegion.Size;
-            _maximumZ = MathF.BitDecrement((float)(regions.Max(r => r.Rz) + 1L) * TileRegion.Size);
-        }
+        _bounds = new(regions);
         float min = 0, max = 0;
         foreach (RegionCoord coord in regions)
             for (int z = coord.OriginZ; z <= coord.OriginZ + TileRegion.Size; z++)
@@ -56,9 +51,7 @@ internal sealed class TileMovementSnapshot
     bool Resident(float x, float z)
     {
         if (!float.IsFinite(x) || !float.IsFinite(z)) return false;
-        float tx = TileWorldSpace.TileX(x, _captured.TileSize), tz = TileWorldSpace.TileZ(z, _captured.TileSize);
-        tx = Math.Clamp(tx, _minimumX, _maximumX);
-        tz = Math.Clamp(tz, _minimumZ, _maximumZ);
+        if (!_bounds.TryMap(x, z, _captured.TileSize, out float tx, out float tz)) return false;
         if (tx < int.MinValue || tx >= int.MaxValue || tz < int.MinValue || tz >= int.MaxValue) return false;
         return _captured.GetRegion(RegionCoord.Of((int)MathF.Floor(tx), (int)MathF.Floor(tz))) is not null;
     }

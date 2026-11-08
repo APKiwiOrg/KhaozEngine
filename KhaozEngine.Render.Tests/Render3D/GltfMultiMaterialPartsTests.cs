@@ -198,7 +198,12 @@ namespace KhaozEngine.Tests.Render3D
             try
             {
                 var entry = new AssetEntry("stack", path, heightMeters: 500f, source: "", license: "", textured: true);
-                Assert.Throws<InvalidOperationException>(() => PropLoader.LoadPropParts(entry));
+                var error = Assert.Throws<PropLoadStateException>(() => PropLoader.LoadPropParts(entry));
+                Assert.Equal(PropLoadRefusal.DeclaredHeightOutsideRange, error.Reason);
+                Assert.Equal("stack", error.EntryId);
+                Assert.Equal(500f, error.HeightMeters);
+                Assert.Equal(PropValidation.Default.MinHeightMeters, error.MinimumHeightMeters);
+                Assert.Equal(PropValidation.Default.MaxHeightMeters, error.MaximumHeightMeters);
             }
             finally { File.Delete(path); }
         }

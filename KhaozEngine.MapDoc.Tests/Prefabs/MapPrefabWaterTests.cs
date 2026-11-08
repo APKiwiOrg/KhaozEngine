@@ -281,8 +281,12 @@ public class MapPrefabWaterTests
         var body = Assert.Single(MapWaterCompiler.Compile(r.CompleteView(), r.Water!));
         Assert.Equal(MapWaterCompileStatus.Invalid, body.Status);
         Assert.Contains("not connected below its surface", body.Detail);
-        Assert.Contains("not connected below its surface", Assert.Throws<MapDocumentException>(() =>
-            MapBoundDocumentValidation.ValidateEffectiveWater(r, invalid.Assets)).Message);
+        var error = Assert.Throws<MapDocumentException>(() => MapBoundDocumentValidation.ValidateEffectiveWater(r, invalid.Assets));
+        Assert.Equal(MapDocumentRefusal.WaterSpacesDisconnected, error.Reason);
+        Assert.Equal(r.Water!.Bodies.Single().Id, error.EntityId);
+        Assert.Equal(2, error.SourceIds!.Count);
+        Assert.Equal(MapDocumentRefusal.WaterSpacesDisconnected, Assert.Single(error.Findings!).Reason);
+        MapBoundDocumentValidation.ValidateEffectiveWater(control, valid.Assets);
     }
 
     [Fact]
@@ -305,8 +309,9 @@ public class MapPrefabWaterTests
         var f = PrefabFixtures.Create("all-resources");
         source.MissingPrefab = true;
         var error = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(roots, source));
-        Assert.Contains("hut", error.Message);
-        Assert.Contains(f.Assets.GetResource("hut").Reference.Sha256, error.Message);
+        Assert.Equal(MapDocumentRefusal.AssetPayloadUnreadable, error.Reason);
+        Assert.Equal("hut", error.ResourceId);
+        Assert.Equal(f.Assets.GetResource("hut").Reference.Sha256, error.ExpectedHash);
         source.MissingPrefab = false;
         var captured = MapAssetClosure.Load(roots, source);
         var r = MapPrefabResolver.Expand(f.Document, captured);
@@ -339,17 +344,26 @@ public class MapPrefabWaterTests
     [InlineData("scale")]
     [InlineData("yaw")]
     [InlineData("position")]
-    public void ReleasedPlacementRefusal_KeepsItsDetail(string fault)
+    public void ReleasedPlacementRefusal_RejectsEachInvalidComponent(string fault)
     {
         var placement = new MapWaterPlacement(new(10.25f, 5, -3.125f), 0.371f, 0.8f);
+        var domain = PrefabFixtures.Domain(0, 0, 4, 4);
+        var rects = domain.Rects.ToArray();
+        Assert.NotEmpty(MapWaterDomain.Compile(domain, placement).Pieces);
+        var valid = placement;
         placement = fault switch
         {
             "scale" => placement with { Scale = 0 },
             "yaw" => placement with { Yaw = float.NaN },
             _ => placement with { Position = new(10.25f, float.NaN, -3.125f) },
         };
-        var error = Assert.Throws<MapDocumentException>(() => MapWaterDomain.Compile(PrefabFixtures.Domain(0, 0, 4, 4), placement));
-        Assert.Equal("water domain: placement must be finite with a positive scale.", error.Message);
+        var error = Assert.Throws<MapDocumentException>(() => MapWaterDomain.Compile(domain, placement));
+        Assert.Equal(fault == "scale" ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite, error.Reason);
+        Assert.Equal(fault == "scale" ? "Placement.Scale" : fault == "yaw" ? "Placement.YawRadians" : "Placement.Y", error.FieldPath);
+        if (fault == "scale") Assert.Equal(0d, error.ActualNumber);
+        else Assert.True(double.IsNaN(error.ActualNumber!.Value));
+        Assert.Equal(rects, domain.Rects);
+        Assert.NotEmpty(MapWaterDomain.Compile(domain, valid).Pieces);
     }
 
     [Fact]

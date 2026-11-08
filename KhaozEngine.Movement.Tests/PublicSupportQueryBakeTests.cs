@@ -99,7 +99,7 @@ public class PublicSupportQueryBakeTests
 
         static WorkerDiagnosticsRecord Record(string label, long count, long keys, long bytes, bool complete) => new(
             (SupportQueryCounts)typeof(SupportQueryCounts).GetConstructors().Single()
-                .Invoke(Enumerable.Repeat((object)count, 48).ToArray()),
+                .Invoke(Enumerable.Repeat((object)count, Enum.GetValues<SupportQueryCounter>().Length).ToArray()),
             new(count, count, count, keys, count, count, count, count, count, count),
             new(0, 0, keys, bytes), label, complete);
 

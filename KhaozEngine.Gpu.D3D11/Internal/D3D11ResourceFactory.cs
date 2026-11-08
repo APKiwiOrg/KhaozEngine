@@ -259,15 +259,23 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public IGpuTimestampPool CreateTimestampPool(uint capacity)
         {
             if (!_supportsTimestamps || _timestamps is null || _timestampFences is null || _submitLock is null)
-                throw new NotSupportedException("This Direct3D 11 device has no timestamp query support.");
+                throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Direct3D 11 device has no timestamp query support.") { Backend = GpuBackendKind.Direct3D11Native, Command = nameof(CreateTimestampPool) };
             using (_creation.Enter()) return new D3D11TimestampPool(_timestamps, _timestampFences, _submitLock, capacity);
         }
 
         static D3D11Texture Require(IGpuTexture texture, string what)
             => texture as D3D11Texture
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(texture is null
+                    ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The {what} was not created by the native Direct3D 11 backend, so it carries none of the "
-                    + "views a framebuffer binds.", nameof(texture));
+                    + "views a framebuffer binds.", nameof(texture))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = texture?.GetType(),
+                    ExpectedType = typeof(D3D11Texture),
+                    ResourceKind = "texture",
+                    Context = what,
+                };
 
         static NotSupportedException NotBuiltYet(string what)
             => new($"{what} is not built yet on the native Direct3D 11 backend. Resources, resource layouts, "

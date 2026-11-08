@@ -231,8 +231,10 @@ void main() { fsColor = vec4(1, 0, 0, 1); }";
                 () => SpirvFrontEnd.ToSpirv("#version 450\nvoid main() { this is not glsl }",
                     GpuShaderStages.Fragment, "broken pass"));
 
-            Assert.Contains("broken pass", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("Fragment", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(ShaderValidationRefusal.FrontEndCompileFailed, ex.Reason);
+            Assert.Equal("broken pass", ex.Label);
+            Assert.Equal(GpuShaderStages.Fragment, ex.Stage);
+            Assert.Equal("SPIR-V", ex.Target);
         }
 
         /// <summary>

@@ -52,6 +52,10 @@ internal sealed class RouteStraightener : IRegionPathPlanner
         IReadOnlyList<NavWaypoint> wp = inner.Waypoints;
         int n = wp.Count;
         if (n < 2) return inner;
+        // Keep malformed planner output intact for the caller's typed admission checks. A shortcut must
+        // neither hide an invalid waypoint nor index its unknown layer while seeking an anchor.
+        for (int i = 0; i < n; i++)
+            if (!TryFeet(wp[i], out _)) return inner;
         int startLayer = _space.LayerAt(start);
         var kept = new List<NavWaypoint>(n);
         Vector3 anchorFeet = start;
@@ -79,23 +83,26 @@ internal sealed class RouteStraightener : IRegionPathPlanner
         return straightened;
     }
 
-    // The final waypoint carries region membership, a hop needs its start and landing, and a layer change needs
+    // The final waypoint carries region membership, a special transition needs its start and landing, and a layer change needs
     // both ends, so a scan never passes any of them.
     private static bool Mandatory(IReadOnlyList<NavWaypoint> wp, int i, int startLayer)
     {
-        if (i == wp.Count - 1 || wp[i].Kind == NavWaypointKind.Hop) return true;
+        if (i == wp.Count - 1 || wp[i].Kind != NavWaypointKind.Walk) return true;
         int previousLayer = i == 0 ? startLayer : wp[i - 1].Layer;
-        return wp[i].Layer != previousLayer || wp[i + 1].Kind == NavWaypointKind.Hop || wp[i + 1].Layer != wp[i].Layer;
+        return wp[i].Layer != previousLayer || wp[i + 1].Kind != NavWaypointKind.Walk || wp[i + 1].Layer != wp[i].Layer;
     }
 
     // A waypoint on a heightless or blocked cell has no feet to check, so no shortcut reaches or leaves it.
     private bool TryFeet(NavWaypoint waypoint, out Vector3 feet)
     {
+        feet = default;
+        if ((uint)waypoint.Layer >= (uint)_space.Layers.Count ||
+            !float.IsFinite(waypoint.Position.X) || !float.IsFinite(waypoint.Position.Y)) return false;
         NavGrid grid = _space.Layers[waypoint.Layer];
         (int x, int z) = grid.CellOf(waypoint.Position.X, waypoint.Position.Y);
         float? height = grid.RestingHeightAt(x, z);
         feet = new Vector3(waypoint.Position.X, height ?? 0f, waypoint.Position.Y);
-        return height.HasValue;
+        return height.HasValue && float.IsFinite(height.Value);
     }
 
     private bool Clear(Vector3 from, Vector3 to, int layer)

@@ -20,7 +20,8 @@ internal static class NativeDocumentSnapshot
     {
         t_clones++;
         if (document.Tiles is { IsPartial: true })
-            throw new MapDocumentException("Native snapshots require a complete document, not a windowed document.");
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Native snapshots require a complete document, not a windowed document.")
+            { DocumentId = document.Id, Operation = nameof(Clone) };
         // Snapshotting a complete tiled world is independent of the small-file embedding limit.
         var root = new MapDocument
         {
@@ -61,8 +62,10 @@ internal static class NativeDocumentSnapshot
         candidate.Foliage = document.Foliage?.Clone();
         MapFoliageStorage.RequireComplete(candidate.Foliage);
         var foliageErrors = new List<string>();
-        MapFoliageValidation.ValidateDocument(candidate, foliageErrors);
-        if (foliageErrors.Count > 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
+        var foliageFindings = new List<MapDocumentFinding>();
+        MapFoliageValidation.ValidateDocument(candidate, foliageErrors, foliageFindings);
+        if (foliageErrors.Count > 0) throw MapDocumentRefusalFactory.FromFinding(foliageFindings[0],
+            string.Join("\n", foliageErrors), findings: foliageFindings);
         candidate.Tiles = document.Tiles;
         return candidate;
     }

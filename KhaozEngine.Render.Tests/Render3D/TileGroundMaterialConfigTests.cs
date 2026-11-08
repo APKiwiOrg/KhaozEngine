@@ -61,15 +61,23 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(new Vector4(0.42f, 1f, 0f, 0f), tail[TileGroundMaterialConfig.MiscIndex]);
         }
 
-        [Fact]
-        public void BuildParams_RejectsAnEmptySetAndOneOverTheCeiling()
+        [Theory]
+        [InlineData(0)]
+        [InlineData(TileGroundMaterialConfig.MaxMaterials + 1)]
+        public void BuildParams_RejectsAnEmptySetAndOneOverTheCeiling(int count)
         {
-            Assert.Throws<ArgumentException>(() =>
-                TileGroundMaterialConfig.BuildParams(Array.Empty<TileGroundLayerImage>(), 0.15f));
+            var layers = new TileGroundLayerImage[count];
+            for (int i = 0; i < count; i++) layers[i] = Layer(Color.White, 0.5f);
 
-            var tooMany = new TileGroundLayerImage[TileGroundMaterialConfig.MaxMaterials + 1];
-            for (int i = 0; i < tooMany.Length; i++) tooMany[i] = Layer(Color.White, 0.5f);
-            Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(tooMany, 0.15f));
+            var error = Assert.Throws<TileGroundUploadArgumentException>(() =>
+                TileGroundMaterialConfig.BuildParams(layers, 0.15f));
+
+            Assert.IsAssignableFrom<ArgumentException>(error);
+            Assert.Equal("layers", error.ParamName);
+            Assert.Equal(TileGroundUploadRefusal.LayerCountOutsideRange, error.Reason);
+            Assert.Equal(count, error.LayerCount);
+            Assert.Equal(1, error.MinimumLayerCount);
+            Assert.Equal(TileGroundMaterialConfig.MaxMaterials, error.MaximumLayerCount);
         }
 
         [Fact]

@@ -14,6 +14,7 @@ public class TileWorldValidatorTests
         doc.AddObject("tree", 5, 5, 0, 0);
         doc.SetMarker("spawn", 6, 6, 0);
         Assert.Empty(TileWorldValidator.Validate(doc, TileWorldCatalogs.Greybox()));
+        TileWorldValidator.ValidateOrThrow(doc, TileWorldCatalogs.Greybox());
     }
 
     [Fact]
@@ -46,7 +47,9 @@ public class TileWorldValidatorTests
         r.Markers.Add(new TileMarker { Name = "m", X = 200, Z = 200 });
         r.Markers.Add(new TileMarker { Name = "m", X = 1, Z = 1 });
 
-        var codes = TileWorldValidator.Validate(doc, TileWorldCatalogs.Greybox()).Select(i => i.Code).ToList();
+        var issues = TileWorldValidator.Validate(doc, TileWorldCatalogs.Greybox());
+        var codes = issues.Select(i => i.Code).ToList();
+        Assert.Equal(8, codes.Count);
         Assert.Equal(2, codes.Count(c => c == "material.missing"));
         Assert.Contains("archetype.missing", codes);
         Assert.Contains("object.footprint", codes);
@@ -54,8 +57,13 @@ public class TileWorldValidatorTests
         Assert.Contains("object.duplicateId", codes);
         Assert.Contains("marker.region", codes);
         Assert.Contains("marker.duplicateName", codes);
-        var ex = Assert.Throws<TileWorldException>(() => TileWorldValidator.ValidateOrThrow(doc, TileWorldCatalogs.Greybox()));
-        Assert.Contains("issues", ex.Message);
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TileWorldValidator.ValidateOrThrow(doc, TileWorldCatalogs.Greybox()));
+        Assert.Equal(TileWorldRefusal.WorldValidationFailed, ex.Reason);
+        Assert.Equal("test", ex.WorldId);
+        Assert.Equal(8, ex.IssueCount);
+        Assert.NotNull(ex.Issues);
+        Assert.Equal(8, ex.Issues.Count);
+        Assert.Equal(issues, ex.Issues);
     }
 
     [Fact]
@@ -80,7 +88,7 @@ public class TileWorldValidatorTests
     }
 
     [Fact]
-    public void Header_fields_out_of_range_are_reported_and_the_throw_names_the_count()
+    public void Header_fields_out_of_range_are_reported_and_the_throw_carries_the_count_and_codes()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();
         doc.PlaneCount = 0;
@@ -88,14 +96,20 @@ public class TileWorldValidatorTests
         doc.PlaneHeight = -1f;
 
         var codes = TileWorldValidator.Validate(doc, TileWorldCatalogs.Greybox()).Select(i => i.Code).ToList();
+        Assert.Equal(4, codes.Count);
         Assert.Contains("header.planeCount", codes);
         Assert.Contains("header.tileSize", codes);
         Assert.Contains("header.planeHeight", codes);
+        Assert.Contains("region.planeCount", codes);
 
         var ex = Assert.Throws<TileWorldException>(() => TileWorldValidator.ValidateOrThrow(doc, TileWorldCatalogs.Greybox()));
-        Assert.Contains($"has {codes.Count} validation issues", ex.Message);
-        Assert.Contains("[header.planeCount]", ex.Message);
-        Assert.Equal(4, ex.Message.Split(" | ").Length);
+        Assert.Equal(TileWorldRefusal.WorldValidationFailed, ex.Reason);
+        Assert.Equal("test", ex.WorldId);
+        Assert.Equal(4, ex.IssueCount);
+        Assert.NotNull(ex.Issues);
+        Assert.Equal(4, ex.Issues.Count);
+        Assert.Equal(new[] { "header.planeCount", "header.planeHeight", "header.tileSize", "region.planeCount" },
+            ex.Issues.Select(i => i.Code).Order(StringComparer.Ordinal));
     }
 
     [Fact]

@@ -211,7 +211,7 @@ vec3 sampleMaterial(int sl, vec3 wpAbs, vec3 dWx, vec3 dWy, vec3 tw, bool tri) {
     }
     return c * TintTiling[sl].xyz;
 }
-" + MaterialLodGradGlsl + LightingCommonGlsl + AtmosphereBindingsAt3Glsl + AtmosphereFogGlsl + @"
+" + MaterialLodGradGlsl + LightingCommonGlsl + AtmosphereBindingsAt3Glsl + AtmosphereFogGlsl + AtmosphereFogKeyShadowGlsl + @"
 void main() {
     vec3 Ngeo = normalize(vNormalW);
 
@@ -266,21 +266,35 @@ void main() {
         tw /= tw.x + tw.y + tw.z;
     }
 
+    // Repeated active roles have identical position, explicit gradients, projection weights and slope.
+    // Cache the complete material including its steep companion. Keep thresholds and each ordered wl * c
+    // addition unchanged: combining equal-slot weights would change floating-point rounding (#1677).
+    vec3 materialSamples[5];
     vec3 albedo = vec3(0.0);
     for (int L = 0; L < 5; L++) {
         float wl = w[L];
         if (wl <= 0.001) continue;
         int sl = slot[L];
-        vec3 c = sampleMaterial(sl, wpAbs, dWx, dWy, tw, tri);
-        // The material's steep companion, a property of the MATERIAL whatever slot role it fills here. Its own
-        // companion is never followed. A material with none, or a slope below its band, takes no extra tap.
-        vec4 sb = SteepBand[sl];
-        if (sb.x > 0.5) {
-            float s = 1.0 - smoothstep(sb.y, sb.z, ny);
-            if (s > 0.0) {
-                c = mix(c, sampleMaterial(clamp(int(sb.x - 0.5), 0, maxSlot), wpAbs, dWx, dWy, tw, tri), s);
+        int reuse = -1;
+        for (int P = 0; P < L; P++) {
+            if (w[P] > 0.001 && slot[P] == sl) { reuse = P; break; }
+        }
+        vec3 c;
+        if (reuse >= 0) {
+            c = materialSamples[reuse];
+        } else {
+            c = sampleMaterial(sl, wpAbs, dWx, dWy, tw, tri);
+            // The material's steep companion, a property of the MATERIAL whatever slot role it fills here. Its own
+            // companion is never followed. A material with none, or a slope below its band, takes no extra tap.
+            vec4 sb = SteepBand[sl];
+            if (sb.x > 0.5) {
+                float s = 1.0 - smoothstep(sb.y, sb.z, ny);
+                if (s > 0.0) {
+                    c = mix(c, sampleMaterial(clamp(int(sb.x - 0.5), 0, maxSlot), wpAbs, dWx, dWy, tw, tri), s);
+                }
             }
         }
+        materialSamples[L] = c;
         albedo += wl * c;
     }
     // The per-vertex jitter is the soft tile-to-tile brightness variation the colour path already had, kept here so
@@ -301,7 +315,7 @@ void main() {
     vec3 diffuse; vec3 specColor;
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, Ngeo, vWorldPos, specStrength, TILEGROUND_SPEC_EXP, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (indirectDiffuse(Ngeo, vWorldPos) + diffuse) + specColor + vEmissive.rgb;
-    lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
+    lit = atmosphereFogKeyShadowed(lit, vWorldPos, RenderOrigin.w > 0.5, ShadowMap, ShadowSamp);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass
     // Per-fragment NDC depth, never a varying: see the note at the top of ShaderSources.Model.cs (issue #301).

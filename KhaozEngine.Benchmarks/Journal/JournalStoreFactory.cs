@@ -9,6 +9,8 @@ namespace KhaozEngine.Benchmarks.Journal;
 
 internal sealed class JournalStoreScope : IDisposable
 {
+    private const string DedicatedCatalogMarker = "-journal-benchmark-";
+
     private readonly IDisposable? disposable;
     private readonly bool deleteDatabase;
 
@@ -39,12 +41,18 @@ internal sealed class JournalStoreScope : IDisposable
         if (config.SqlServerEnvironmentVariable is not null)
         {
             string connectionString = Environment.GetEnvironmentVariable(config.SqlServerEnvironmentVariable)
-                ?? throw new InvalidOperationException($"SQL Server environment variable '{config.SqlServerEnvironmentVariable}' is not set.");
+                ?? throw new JournalBenchmarkConfigurationException(JournalBenchmarkRefusal.ConnectionVariableMissing,
+                    $"SQL Server environment variable '{config.SqlServerEnvironmentVariable}' is not set.")
+                {
+                    SourceName = config.SqlServerEnvironmentVariable,
+                };
             if (string.IsNullOrWhiteSpace(connectionString))
-                throw new InvalidOperationException($"SQL Server environment variable '{config.SqlServerEnvironmentVariable}' is empty.");
-            var builder = new SqlConnectionStringBuilder(connectionString);
-            if (!builder.InitialCatalog.Contains("-journal-benchmark-", StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException("SQL Server Initial Catalog must contain '-journal-benchmark-'.", nameof(config));
+                throw new JournalBenchmarkConfigurationException(JournalBenchmarkRefusal.ConnectionVariableBlank,
+                    $"SQL Server environment variable '{config.SqlServerEnvironmentVariable}' is empty.")
+                {
+                    SourceName = config.SqlServerEnvironmentVariable,
+                };
+            RequireDedicatedCatalog(connectionString);
             var store = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(connectionString)
             {
                 Limits = limits,
@@ -62,6 +70,18 @@ internal sealed class JournalStoreScope : IDisposable
             Limits = limits,
         });
         return new JournalStoreScope(sqlite, sqlite, "sqlite", database, sqlite, config.DatabasePath is null);
+    }
+
+    // This boot safety check performs no I/O, so callers can validate a catalog before opening it.
+    internal static void RequireDedicatedCatalog(string connectionString)
+    {
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!builder.InitialCatalog.Contains(DedicatedCatalogMarker, StringComparison.OrdinalIgnoreCase))
+            throw new JournalBenchmarkArgumentException(JournalBenchmarkRefusal.DedicatedDatabaseRequired,
+                $"SQL Server Initial Catalog must contain '{DedicatedCatalogMarker}'.", "config")
+            {
+                RequiredMarker = DedicatedCatalogMarker,
+            };
     }
 
     internal static long? DatabaseBytes(string? path)

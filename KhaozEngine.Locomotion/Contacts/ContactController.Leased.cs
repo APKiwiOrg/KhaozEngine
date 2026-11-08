@@ -19,10 +19,11 @@ internal static partial class ContactController
     internal static MovementStepResult StepLeased(in FramedMovementState state, Vector2 moveDir,
         float speedFraction, bool run, bool jump, float dt, in MoveTuning tuning, in WaterTraversalPolicy water,
         MovementQueryLease queries, in ContactComposition composition, MovementBoundary? boundary = null,
-        float? faceYaw = null)
+        float? faceYaw = null, MovementSelection? validatedPlacement = null)
     {
         using var entry = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ControllerEntry);
         ArgumentNullException.ThrowIfNull(queries);
+        queries.DescentEvidence?.Begin();
         if (!state.IsValid || !ExplicitCharacterMovement.Valid(tuning) ||
             !ExplicitCharacterMovement.ValidCarriedState(state.State) || !water.IsValid ||
             water.Mode == WaterTraversalMode.Legacy || !float.IsFinite(dt) || dt <= 0 ||
@@ -64,7 +65,14 @@ internal static partial class ContactController
                 tuning.CapsuleHalfHeight, selection.Space, selection.Support);
             MovementStepOutcome placement;
             using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Placement))
-                placement = ExplicitCharacterMovement.WaterPlacement(body, tuning, water, queries, boundary);
+            {
+                if (validatedPlacement is { } certified && certified == selection)
+                {
+                    MovementPlacementDiagnostics.Reuse();
+                    placement = MovementStepOutcome.Advanced;
+                }
+                else placement = ExplicitCharacterMovement.WaterPlacement(body, tuning, water, queries, boundary);
+            }
             if (placement != MovementStepOutcome.Advanced) return HoldLeased(state, placement);
             var leased = queries.Workspace.Queries;
             leased.Initialize(queries, tuning, selection,
@@ -74,6 +82,7 @@ internal static partial class ContactController
             if (point.Space != selection.Space)
                 return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid);
             MoveState start = ClassifyStartWater(state.State, point, feet, tuning, water, leased, foot);
+            queries.DescentEvidence?.Medium(point, start.Swimming, start.WaterExcursion);
             if (start.Commitment.IsActive) start.JumpBufferRemaining = 0;
             var modes = queries.Workspace.Modes;
             modes.Initialize(leased, start, tuning, water, jump);
@@ -104,14 +113,26 @@ internal static partial class ContactController
             if (!MovementFrameRebinding.TryRebind(framed, framed.Frame, out _))
                 return HoldLeased(state, MovementStepOutcome.EnvironmentUnresolved);
             queries.AssertCurrent();
-            return new(framed, leased.Outcome);
+            if (leased.Outcome == MovementStepOutcome.Advanced) queries.DescentEvidence?.Complete(queries);
+            return new(framed, leased.Outcome)
+            {
+                ContactEnteredSwimming = modes.EnteredWater,
+                ContactAirLanded = continuation.AirLanded,
+                ContactWalkableSupport = next.Grounded && continuation.Support.Status == SupportStatus.Walkable,
+                ContactUnwalkableSupport = continuation.UnwalkableSupport,
+                ContactFirstAirLandingFeet = continuation.FirstAirLandingFeet,
+            };
         }
         catch (ContactQueryFailure failure) { return HoldLeased(state, failure.Outcome); }
         catch (InvalidOperationException) { return HoldLeased(state, MovementStepOutcome.EnvironmentUnresolved); }
         catch (ArgumentException) { return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid); }
         finally
         {
-            if (beganTick) queries.EndContactTick();
+            if (beganTick)
+            {
+                queries.DescentEvidence?.End();
+                queries.EndContactTick();
+            }
         }
     }
 

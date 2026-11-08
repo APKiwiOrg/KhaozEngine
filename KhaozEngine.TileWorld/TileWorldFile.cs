@@ -11,10 +11,12 @@ namespace KhaozEngine.TileWorld;
 
 /// <summary>Save/load of the one on-disk form: a directory with <c>world.json</c> and
 /// <c>regions/r_&lt;rx&gt;_&lt;rz&gt;.json</c>. Every file lands via tmp + rename, the manifest last, and every
-/// region's bytes are hashed against the manifest on load, so a torn write is refused by name rather than
-/// loaded as a subtly different world. That is DETECTION, not rollback: region bytes are overwritten in
-/// place, so a save interrupted part way through leaves the regions it already replaced replaced, and the
-/// next load names the first file whose bytes disagree with the manifest.</summary>
+/// region's bytes are hashed against the manifest on load, so a torn write is refused with
+/// <see cref="TileWorldRefusal.RegionHashMismatch"/> rather than loaded as a subtly different world.
+/// <see cref="TileWorldException.Region"/>, <see cref="TileWorldException.SourceName"/>,
+/// <see cref="TileWorldException.ExpectedHash"/> and <see cref="TileWorldException.ActualHash"/> identify
+/// the mismatch. That is DETECTION, not rollback: region bytes are overwritten in place, so a save
+/// interrupted part way through leaves the regions it already replaced replaced.</summary>
 public static partial class TileWorldFile
 {
     /// <summary>Format version this engine writes, and the version every load is migrated up to.</summary>
@@ -42,7 +44,9 @@ public static partial class TileWorldFile
     /// no longer has, then the manifest. Clears <see cref="TileRegion.Dirty"/> on what it wrote. Before writing
     /// anything it refuses a document a load would reject: a region whose plane count disagrees with the
     /// document's, or an object or marker anchored outside its own region or on a plane the world does not
-    /// have.</summary>
+    /// have. A stale-file deletion failure uses <see cref="TileWorldRefusal.WorldStaleRegionDeleteFailed"/>
+    /// with the file's <see cref="TileWorldException.SourceName"/>, <see cref="TileWorldException.Region"/>
+    /// and original <see cref="Exception.InnerException"/>.</summary>
     public static void Save(TileWorldDocument doc, string directory, bool force = false)
     {
         ArgumentNullException.ThrowIfNull(doc);
@@ -56,21 +60,26 @@ public static partial class TileWorldFile
         foreach (TileRegion region in doc.Regions.Values)
         {
             if (region.Planes.Length != doc.PlaneCount)
-                throw new TileWorldException($"region {region.Coord}: has {region.Planes.Length} planes, the document has {doc.PlaneCount}, refusing to save an inconsistent world");
+                throw new TileWorldException(TileWorldRefusal.RegionPlaneCountMismatch, $"region {region.Coord}: has {region.Planes.Length} planes, the document has {doc.PlaneCount}, refusing to save an inconsistent world")
+                { Region = region.Coord, ActualPlaneCount = region.Planes.Length, ExpectedPlaneCount = doc.PlaneCount };
             TileRect rect = region.Coord.Rect;
             foreach (TileObject o in region.Objects)
             {
                 if (!rect.Contains(o.X, o.Z))
-                    throw new TileWorldException($"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is anchored at ({o.X}, {o.Z}), outside its own region, refusing to save a world no load would accept");
+                    throw new TileWorldException(TileWorldRefusal.RegionObjectOutsideBounds, $"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is anchored at ({o.X}, {o.Z}), outside its own region, refusing to save a world no load would accept")
+                    { Region = region.Coord, ObjectId = o.Id, ArchetypeId = o.ArchetypeId, Tile = o.Coord };
                 if ((uint)o.Plane >= (uint)doc.PlaneCount)
-                    throw new TileWorldException($"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is on plane {o.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept");
+                    throw new TileWorldException(TileWorldRefusal.RegionObjectPlaneOutsideRange, $"region {region.Coord}: object {o.Id} '{o.ArchetypeId}' is on plane {o.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept")
+                    { Region = region.Coord, ObjectId = o.Id, ArchetypeId = o.ArchetypeId, Plane = o.Plane, PlaneCount = doc.PlaneCount };
             }
             foreach (TileMarker m in region.Markers)
             {
                 if (!rect.Contains(m.X, m.Z))
-                    throw new TileWorldException($"region {region.Coord}: marker '{m.Name}' is at ({m.X}, {m.Z}), outside its own region, refusing to save a world no load would accept");
+                    throw new TileWorldException(TileWorldRefusal.RegionMarkerOutsideBounds, $"region {region.Coord}: marker '{m.Name}' is at ({m.X}, {m.Z}), outside its own region, refusing to save a world no load would accept")
+                    { Region = region.Coord, MarkerName = m.Name, Tile = m.Coord };
                 if ((uint)m.Plane >= (uint)doc.PlaneCount)
-                    throw new TileWorldException($"region {region.Coord}: marker '{m.Name}' is on plane {m.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept");
+                    throw new TileWorldException(TileWorldRefusal.RegionMarkerPlaneOutsideRange, $"region {region.Coord}: marker '{m.Name}' is on plane {m.Plane}, the document has {doc.PlaneCount}, refusing to save a world no load would accept")
+                    { Region = region.Coord, MarkerName = m.Name, Plane = m.Plane, PlaneCount = doc.PlaneCount };
             }
         }
         string regionsDir = Path.Combine(directory, RegionsDirectoryName);
@@ -102,7 +111,7 @@ public static partial class TileWorldFile
             try { File.Delete(stale); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                throw new TileWorldException($"{stale}: cannot delete the file of a region the world no longer has. {ex.Message}", ex);
+                throw StaleRegionDeleteFailure(stale, c, ex);
             }
         }
 
@@ -132,7 +141,10 @@ public static partial class TileWorldFile
         foreach (TileRegion region in written) region.Dirty = false;
     }
 
-    /// <summary>Loads the manifest and every region, hash-checked.</summary>
+    /// <summary>Loads the manifest and every region, hash-checked. Manifest admission failures carry the
+    /// file path in <see cref="TileWorldException.SourceName"/> and distinguish JSON, version, migration and
+    /// field refusals through <see cref="TileWorldException.Reason"/>. I/O failures keep the original cause,
+    /// and <see cref="TileWorldRefusal.RegionReadFailed"/> also identifies the region coordinate.</summary>
     public static TileWorldDocument Load(string directory, TileWorldLoadOptions? options = null)
     {
         TileWorldSource source = TileWorldSource.Open(directory, options);
@@ -147,31 +159,58 @@ public static partial class TileWorldFile
         try { json = File.ReadAllText(path); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new TileWorldException($"{path}: cannot read world manifest. {ex.Message}", ex);
+            throw new TileWorldException(TileWorldRefusal.ManifestReadFailed, $"{path}: cannot read world manifest. {ex.Message}", ex)
+            { SourceName = path };
         }
         JsonObject root;
-        try { root = Jsonc.ParseNode(json) as JsonObject ?? throw new TileWorldException($"{path}: manifest is not a JSON object"); }
-        catch (JsonException ex) { throw new TileWorldException($"{path}: {ex.Message}", ex); }
+        try
+        {
+            root = Jsonc.ParseNode(json) as JsonObject
+                ?? throw new TileWorldException(TileWorldRefusal.ManifestNotObject, $"{path}: manifest is not a JSON object")
+                { SourceName = path };
+        }
+        catch (JsonException ex)
+        {
+            throw new TileWorldException(TileWorldRefusal.ManifestJsonMalformed, $"{path}: {ex.Message}", ex)
+            { SourceName = path, Field = ex.Path };
+        }
 
-        JsonNode? versionNode = root["formatVersion"] ?? throw new TileWorldException($"{path}: manifest has no formatVersion");
+        JsonNode? versionNode = root["formatVersion"]
+            ?? throw new TileWorldException(TileWorldRefusal.ManifestFormatVersionMissing, $"{path}: manifest has no formatVersion")
+            { SourceName = path, Field = "formatVersion" };
         if (versionNode is not JsonValue versionValue || !versionValue.TryGetValue(out int version))
-            throw new TileWorldException($"{path}: formatVersion must be an integer");
+            throw new TileWorldException(TileWorldRefusal.ManifestFormatVersionNotInteger, $"{path}: formatVersion must be an integer")
+            { SourceName = path, Field = "formatVersion" };
         if (version > CurrentFormatVersion)
-            throw new TileWorldException($"{path}: formatVersion {version} is newer than this engine's {CurrentFormatVersion}");
+            throw new TileWorldException(TileWorldRefusal.ManifestFormatVersionUnsupported, $"{path}: formatVersion {version} is newer than this engine's {CurrentFormatVersion}")
+            { SourceName = path, FormatVersion = version, SupportedFormatVersion = CurrentFormatVersion };
         for (int v = version; v < CurrentFormatVersion; v++)
         {
             if (!options.Migrations.TryGetValue(v, out Func<JsonObject, JsonObject>? step))
-                throw new TileWorldException($"{path}: formatVersion {version} needs a migration from {v} to {v + 1}, and none is registered");
-            root = step(root) ?? throw new TileWorldException($"{path}: migration from formatVersion {v} returned null");
+                throw new TileWorldException(TileWorldRefusal.ManifestMigrationMissing, $"{path}: formatVersion {version} needs a migration from {v} to {v + 1}, and none is registered")
+                { SourceName = path, FormatVersion = version, MigrationFrom = v, MigrationTo = v + 1 };
+            root = step(root)
+                ?? throw new TileWorldException(TileWorldRefusal.ManifestMigrationReturnedNull, $"{path}: migration from formatVersion {v} returned null")
+                { SourceName = path, MigrationFrom = v, MigrationTo = v + 1 };
             root["formatVersion"] = v + 1;
         }
 
         TileWorldManifest m;
-        try { m = root.Deserialize<TileWorldManifest>(TileWorldJson.Manifest) ?? throw new TileWorldException($"{path}: empty manifest"); }
-        catch (JsonException ex) { throw new TileWorldException($"{path}: {ex.Message}", ex); }
-        if (m.PlaneCount < 1) throw new TileWorldException($"{path}: planeCount must be at least 1");
-        if (!(m.TileSize > 0f)) throw new TileWorldException($"{path}: tileSize must be positive");
-        if (string.IsNullOrWhiteSpace(m.Id)) throw new TileWorldException($"{path}: id is required");
+        try { m = RequireManifestResult(root.Deserialize<TileWorldManifest>(TileWorldJson.Manifest), path); }
+        catch (JsonException ex)
+        {
+            throw new TileWorldException(TileWorldRefusal.ManifestJsonMalformed, $"{path}: {ex.Message}", ex)
+            { SourceName = path, Field = ex.Path };
+        }
+        if (m.PlaneCount < 1)
+            throw new TileWorldException(TileWorldRefusal.ManifestPlaneCountInvalid, $"{path}: planeCount must be at least 1")
+            { SourceName = path, Field = "planeCount", PlaneCount = m.PlaneCount };
+        if (!(m.TileSize > 0f))
+            throw new TileWorldException(TileWorldRefusal.ManifestTileSizeInvalid, $"{path}: tileSize must be positive")
+            { SourceName = path, Field = "tileSize", TileSize = m.TileSize };
+        if (string.IsNullOrWhiteSpace(m.Id))
+            throw new TileWorldException(TileWorldRefusal.ManifestIdMissing, $"{path}: id is required")
+            { SourceName = path, Field = "id" };
         ValidateFoliageDtos(m.FoliageLayers, m.PlaneCount, path);
         ValidateClearanceDto(m.Clearance, path);
         return m;
@@ -183,9 +222,27 @@ public static partial class TileWorldFile
         try { return File.ReadAllBytes(path); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new TileWorldException($"{path}: cannot read region {c}. {ex.Message}", ex);
+            throw new TileWorldException(TileWorldRefusal.RegionReadFailed, $"{path}: cannot read region {c}. {ex.Message}", ex)
+            { SourceName = path, Region = c };
         }
     }
+
+    /// <summary>Exercises empty-result admission without changing the serializer or its non-null JSON root.</summary>
+    internal static void ReadEmptyManifestForTests(TileWorldManifest? result, string sourceName) =>
+        _ = RequireManifestResult(result, sourceName);
+
+    static TileWorldManifest RequireManifestResult(TileWorldManifest? result, string path) =>
+        result ?? throw new TileWorldException(TileWorldRefusal.ManifestEmpty, $"{path}: empty manifest")
+        { SourceName = path };
+
+    /// <summary>Exercises the stale-delete failure translation without platform-specific locks or permissions.
+    /// The supplied cause is the value received after the production I/O exception filter.</summary>
+    internal static void FailStaleRegionDeleteForTests(string sourceName, RegionCoord region, Exception cause) =>
+        throw StaleRegionDeleteFailure(sourceName, region, cause);
+
+    static TileWorldException StaleRegionDeleteFailure(string stale, RegionCoord region, Exception ex) =>
+        new(TileWorldRefusal.WorldStaleRegionDeleteFailed, $"{stale}: cannot delete the file of a region the world no longer has. {ex.Message}", ex)
+        { SourceName = stale, Region = region };
 
     // The manifest as it stands on disk, or null when there is none or it cannot be read. An unreadable or corrupt
     // previous manifest carries nothing forward, so every loaded region is rewritten and only the markers of loaded

@@ -94,10 +94,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>A pipeline this backend created, refused by name for anything else.</summary>
         internal static VulkanGraphicsPipeline Require(IGpuPipeline? pipeline, string what)
             => pipeline as VulkanGraphicsPipeline
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(pipeline is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The graphics pipeline handed to {what} was not created by the native Vulkan backend, so it "
                     + "carries no VkPipeline and no VkPipelineLayout. Create pipelines through the same "
                     + "IGpuDevice.Factory the command list records against.",
-                    nameof(pipeline));
+                    nameof(pipeline))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = pipeline?.GetType(),
+                    ExpectedType = typeof(VulkanGraphicsPipeline),
+                    Context = what,
+                    ResourceKind = "graphics pipeline",
+                };
     }
 }

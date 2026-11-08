@@ -173,7 +173,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// The frame boundary, which on a windowed device is <c>Present</c>
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/527">row 17</see>).
         /// <para>
-        /// CALL IT WITHOUT THE SUBMIT LOCK, AND A CALLER HOLDING IT IS REFUSED BY NAME. This is the one member here
+        /// CALL IT WITHOUT THE SUBMIT LOCK, AND A CALLER HOLDING IT IS REFUSED with
+        /// <see cref="VulkanRingWaitRefusal.SubmitLockHeld"/>. This is the one member here
         /// that can BLOCK: the gate waits until the GPU has finished with the segment being opened, which is up to
         /// a frame. Under the lock that would be a frame-long hold of the lock V-W8 caps at microseconds, and it
         /// would also shut out the submission that would end the wait.
@@ -192,11 +193,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (Monitor.IsEntered(_submitLock))
             {
-                throw new InvalidOperationException(
-                    "BeginFrame was called on the native Vulkan ring allocator while the caller held the submit "
+                throw new VulkanRingWaitException(VulkanRingWaitRefusal.SubmitLockHeld, "BeginFrame was called on the native Vulkan ring allocator while the caller held the submit "
                     + "lock. Opening a frame waits for the GPU to finish with the segment it opens, which is up to "
                     + "a frame, and the submit lock is held for microseconds, never across a GPU wait. Call it after "
-                    + "the present has released the lock, not inside it.");
+                    + "the present has released the lock, not inside it.") { Operation = nameof(BeginFrame) };
             }
 
             _frameIndex++;
@@ -241,11 +241,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 if (Monitor.IsEntered(_submitLock))
                 {
-                    throw new InvalidOperationException(
-                        "A record-time uniform write on the native Vulkan ring owed a segment rotation while the "
+                    throw new VulkanRingWaitException(VulkanRingWaitRefusal.SubmitLockHeld, "A record-time uniform write on the native Vulkan ring owed a segment rotation while the "
                         + "caller held the submit lock. The rotation waits for the GPU to finish with the segment it "
                         + "opens, and the submit lock is held for microseconds, never across a GPU wait. Record "
-                        + "outside the lock.");
+                        + "outside the lock.") { Operation = "BeforeRecordWrite" };
                 }
 
                 Rotate();

@@ -42,8 +42,11 @@ public sealed partial class MapPrefabTransformTests
         var f = PrefabFixtures.SourceConsumer(prefab);
         var source = new FilteredSurfaceSource(MapDocumentSurfaceSource.Capture(f.Document), new MapPatchKey("exterior", 0, 0));
         var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options()));
-        Assert.Contains("consumer", error.Message);
-        Assert.Contains("MissingGeometry", error.Message);
+        Assert.Equal(MapDocumentRefusal.SupportUnresolved, error.Reason);
+        Assert.Equal("consumer", error.PlacementId);
+        Assert.Equal(MapSupportStatus.MissingGeometry, error.SupportStatus);
+        Assert.Equal(MapSupportStatus.Supported, Assert.Single(MapResolverV2.Resolve(f.Document, f.Assets,
+            MapDocumentSurfaceSource.Capture(f.Document), PrefabFixtures.Options()).Supports).Support.Status);
     }
 
     [Fact]
@@ -76,8 +79,11 @@ public sealed partial class MapPrefabTransformTests
             else SurfaceStorageFixtures.DeletePayload(directory, key);
             var source = MapStoredSurfaceSource.Open(directory);
             var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options()));
-            Assert.Contains("consumer", error.Message);
-            Assert.Contains("MissingGeometry", error.Message);
+            Assert.Equal(MapDocumentRefusal.SupportUnresolved, error.Reason);
+            Assert.Equal("consumer", error.PlacementId);
+            Assert.Equal(MapSupportStatus.MissingGeometry, error.SupportStatus);
+            Assert.Equal(MapSupportStatus.Supported, Assert.Single(MapResolverV2.Resolve(f.Document, f.Assets,
+                MapDocumentSurfaceSource.Capture(f.Document), PrefabFixtures.Options()).Supports).Support.Status);
         }
         finally { System.IO.Directory.Delete(directory, true); }
     }
@@ -107,8 +113,12 @@ public sealed partial class MapPrefabTransformTests
         IMapSurfaceSource source = MapDocumentSurfaceSource.Capture(supplied);
         if (unavailable)
         {
-            source = new FilteredSurfaceSource(source, MapPatchKey.ForCell("exterior", point.X.Floor(), point.Z.Negate().Floor()));
-            Assert.Contains("MissingGeometry", Assert.Throws<MapDocumentException>(() => MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options())).Message);
+            var missing = new FilteredSurfaceSource(source, MapPatchKey.ForCell("exterior", point.X.Floor(), point.Z.Negate().Floor()));
+            var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.Resolve(f.Document, f.Assets, missing, PrefabFixtures.Options()));
+            Assert.Equal(MapDocumentRefusal.SupportUnresolved, error.Reason);
+            Assert.Equal("consumer", error.PlacementId);
+            Assert.Equal(MapSupportStatus.MissingGeometry, error.SupportStatus);
+            Assert.Equal(4, MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options()).Document.Placements.Single(p => p.PlacementId == "consumer").Transform.Position.Y);
         }
         else
         {
@@ -148,10 +158,12 @@ public sealed partial class MapPrefabTransformTests
         IMapSurfaceSource source = MapDocumentSurfaceSource.Capture(supplied);
         if (unavailable)
         {
-            source = new FilteredSurfaceSource(source, new MapPatchKey(id, 0, 0));
-            var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options()));
-            Assert.Contains("consumer", error.Message);
-            Assert.Contains("MissingGeometry", error.Message);
+            var missing = new FilteredSurfaceSource(source, new MapPatchKey(id, 0, 0));
+            var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.Resolve(f.Document, f.Assets, missing, PrefabFixtures.Options()));
+            Assert.Equal(MapDocumentRefusal.SupportUnresolved, error.Reason);
+            Assert.Equal("consumer", error.PlacementId);
+            Assert.Equal(MapSupportStatus.MissingGeometry, error.SupportStatus);
+            Assert.Equal(9.8f, MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options()).Document.Placements.Single(p => p.PlacementId == "consumer").Transform.Position.Y);
         }
         else
         {
@@ -173,9 +185,11 @@ public sealed partial class MapPrefabTransformTests
     {
         var f = PrefabFixtures.MissingYProvider(materialized, space);
         var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(f));
-        Assert.Contains("consumer", error.Message);
-        Assert.Contains("provider", error.Message);
-        Assert.Contains("missing Y", error.Message);
+        Assert.Equal(MapDocumentRefusal.SupportProviderHeightMissing, error.Reason);
+        Assert.Equal("consumer", error.PlacementId);
+        Assert.Equal("provider", error.ProviderPlacementId);
+        var control = PrefabFixtures.MissingYProvider(materialized, space, explicitProvider: true);
+        Assert.Equal(MapSupportStatus.Supported, PrefabFixtures.Effective(control).PlacementSupports.Single(p => p.PlacementId == "consumer").Support.Status);
     }
 
     [Fact]

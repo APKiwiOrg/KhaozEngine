@@ -217,10 +217,11 @@ sealed partial class ContentUpgradeRun
         // the same step. The row-only freeze refuses a draft holding text, which is exactly this one.
         return await Route.FreezeAsync(plan, Active, CancellationToken).ConfigureAwait(false)
             ?? throw new ContentAuthoringException(
+                ContentAuthoringRefusal.FrozenDraftLost,
                 "the draft this run froze for its own publish is no longer open.",
                 default,
                 0,
-                ContentAuthoringException.NoOpenDraftReason);
+                ContentAuthoringException.NoOpenDraftReason) { ExpectedBaseVersion = Active };
     }
 
     /// <summary>

@@ -23,9 +23,12 @@ public sealed record MapMarkerConsumerOptions(MapMarkerConsumerRoles? Roles, str
     {
         if (Roles is { } roles &&
             (string.IsNullOrWhiteSpace(roles.PlayerStartRole) || string.IsNullOrWhiteSpace(roles.SpawnRole) || string.IsNullOrWhiteSpace(roles.LandmarkRole)))
-            throw new MapDocumentException("Marker consumer roles require a nonblank player start, spawn and landmark role.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Marker consumer roles require a nonblank player start, spawn and landmark role.")
+            { FieldPath = string.IsNullOrWhiteSpace(roles.PlayerStartRole) ? "roles.playerStartRole"
+                : string.IsNullOrWhiteSpace(roles.SpawnRole) ? "roles.spawnRole" : "roles.landmarkRole" };
         if (LegacySpawnSurfaceId is not null && string.IsNullOrWhiteSpace(LegacySpawnSurfaceId))
-            throw new MapDocumentException("The legacy spawn Surface owner must be nonblank when given.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "The legacy spawn Surface owner must be nonblank when given.")
+            { FieldPath = "legacySpawnSurfaceId" };
     }
 }
 
@@ -42,11 +45,17 @@ public static class MapMarkerAnchors
     /// <paramref name="assets"/> refuses. The aggregate expansion preflight charges the loaded metadata and every
     /// instance first, so an input whose per-instance expansion exceeds a ceiling refuses before any candidate is
     /// materialized.</summary>
-    public static IReadOnlyList<MapMarkerAnchor> Read(MapDocument manifest, MapAssetClosure assets)
+    public static IReadOnlyList<MapMarkerAnchor> Read(MapDocument manifest, MapAssetClosure assets) => ReadCore(manifest, assets, new());
+
+    /// <summary>Runs the real anchor read at an injected reference ceiling and returns only its detached count.</summary>
+    internal static int ReadWithReferenceEdgeLimitForTests(MapDocument manifest, MapAssetClosure assets, int limit) =>
+        ReadCore(manifest, assets, new(MaxReferenceEdges: limit)).Count;
+
+    static IReadOnlyList<MapMarkerAnchor> ReadCore(MapDocument manifest, MapAssetClosure assets, MapPrefabExpansionLimits limits)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentNullException.ThrowIfNull(assets);
-        _ = MapPrefabPreflight.Count(manifest, assets, new());
+        _ = MapPrefabPreflight.Count(manifest, assets, limits);
         var anchors = new List<MapMarkerAnchor>();
         foreach (MapMarkerCandidate candidate in MapMarkerExpansion.Capture(manifest, assets))
         {

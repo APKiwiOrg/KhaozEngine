@@ -196,7 +196,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             stencil.SetTexture(texture);
             stencil.SetLoadAction(load);
-            stencil.SetStoreAction(store);
+            stencil.SetStoreAction(ToStoreAction(depth.StencilStoreAction));
 
             // ZERO, ALWAYS, because the seam's ClearDepthStencil carries no stencil value and the incumbent
             // clears the plane to zero alongside the depth. Leaving the plane out entirely would leave it holding

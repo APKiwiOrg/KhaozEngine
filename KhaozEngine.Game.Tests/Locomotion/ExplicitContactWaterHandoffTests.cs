@@ -95,26 +95,30 @@ public sealed class ExplicitContactWaterHandoffTests
         Assert.Equal(0, result.State.State.ClimbRate);
     }
 
-    [Fact]
-    public void MixedModeCommitmentKeepsItsHeadingAndAdvancesItsLifecycleOnce()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MixedModeCommitmentKeepsItsHeadingAndAdvancesItsLifecycleOnce(bool ground)
     {
         using var scene = new Crossing([Wet(0.5f, 1)], floor: true);
-        var state = scene.State(new(0, 0.751f, 0)) with
+        var state = scene.State(new(0, 0.751f, 0), grounded: ground) with
         {
-            VerticalVelocity = -1,
+            VerticalVelocity = ground ? 0 : -1,
             HorizontalVelocity = new(3, 0),
             FacingYaw = 0.7f,
-            Commitment = new MovementCommitment(1, Vector2.UnitX, 3, 4, 20, 0, 0.1f, 3)
-            { Phase = MovementCommitmentPhase.Airborne },
+            Commitment = ground ? MovementCommitment.ForGroundTravel(1, Vector2.UnitX, 3, 6, recoverySeconds: 0.1f, timeoutSeconds: 3)
+                : new MovementCommitment(1, Vector2.UnitX, 3, 4, 20, 0, 0.1f, 3)
+                { Phase = MovementCommitmentPhase.Airborne },
         };
         var result = scene.Step(state, 1, jump: true, direction: Vector2.UnitY, facing: 2);
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
-        Assert.Equal(3, result.State.State.Position.X);
+        if (ground) Assert.InRange(result.State.State.Position.X, 0.25f, 3f);
+        else Assert.Equal(3, result.State.State.Position.X);
         Assert.Equal(0, result.State.State.Position.Z);
         Assert.True(result.State.State.Grounded);
         Assert.True(result.State.State.SupportGranted);
         Assert.Equal(new MovementSupportKey("world", "floor"), result.State.Selection!.Value.Support);
-        Assert.Equal(0.7f, result.State.State.FacingYaw);
+        Assert.Equal(ground ? -MathF.PI / 2 : 0.7f, result.State.State.FacingYaw);
         Assert.Equal(MovementCommitmentPhase.Aborted, result.State.State.Commitment.Phase);
         Assert.Equal(MovementCommitmentEndReason.EnteredWater, result.State.State.Commitment.EndReason);
         Assert.Equal(2, result.State.State.Commitment.TimeoutRemaining);

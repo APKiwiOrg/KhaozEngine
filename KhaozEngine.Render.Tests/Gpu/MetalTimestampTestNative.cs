@@ -22,8 +22,8 @@ namespace KhaozEngine.Tests.Gpu
         internal readonly List<ulong> Signals = new();
         internal System.Collections.Immutable.ImmutableArray<MetalCounterSetMetadata> CounterSets = [];
         internal int MetadataReads;
-        internal Exception? MetadataFailure;
-        internal Exception? DiscoveryFailure;
+        internal Exception? MetadataFailure = null;
+        internal Exception? DiscoveryFailure = null;
         internal readonly List<uint> SamplingQueries = new();
         public string? SampleBufferFailureReason => FailSamples ? "injected sample allocation refused" : null;
         public System.Collections.Immutable.ImmutableArray<MetalCounterSetMetadata> ReadCounterSets()

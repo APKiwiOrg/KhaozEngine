@@ -45,21 +45,29 @@ namespace KhaozEngine.Tests.Terrain
 
         // ---- Merge: world-space concat, deterministic, per-kit opt-in ----
 
-        [Fact]
-        public void Merge_ConcatenatesEveryPlacementIntoOneMesh()
+        [Theory]
+        [InlineData(false, 9, 3)]
+        [InlineData(true, 3, 1)]
+        public void Merge_ConcatenatesKnownPlacementsAndSkipsMissingMeshes(
+            bool includeMissingMesh, int expectedVertices, int expectedTriangles)
         {
             var kit = Kit(("pine", Tri(Vector3.Zero, new Vector4(1f, 0f, 0f, 1f))));
             var placements = new List<PropPlacement>
             {
                 new PropPlacement("pine", 0f, 0f, 0f, 1f, 0f, 0),
-                new PropPlacement("pine", 10f, 0f, 0f, 1f, 0f, 0),
-                new PropPlacement("pine", 0f, 0f, 20f, 1f, 0f, 0),
             };
+            if (includeMissingMesh)
+                placements.Add(new PropPlacement("ghost", 5f, 0f, 0f, 1f, 0f, 0));
+            else
+            {
+                placements.Add(new PropPlacement("pine", 10f, 0f, 0f, 1f, 0f, 0));
+                placements.Add(new PropPlacement("pine", 0f, 0f, 20f, 1f, 0f, 0));
+            }
 
             GltfMesh merged = PropHlod.Merge(placements, kit);
 
-            Assert.Equal(9, merged.Vertices.Length);   // 3 placements * 3 verts
-            Assert.Equal(3, merged.TriangleCount);      // 3 placements * 1 tri
+            Assert.Equal(expectedVertices, merged.Vertices.Length);
+            Assert.Equal(expectedTriangles, merged.TriangleCount);
         }
 
         [Fact]
@@ -73,21 +81,6 @@ namespace KhaozEngine.Tests.Terrain
 
             Assert.Equal(new Vector3(10f, 5f, 20f), merged.Vertices[0].Position);
             Assert.Equal(new Vector3(11f, 5f, 20f), merged.Vertices[1].Position);   // (1,0,0) offset carried through
-        }
-
-        [Fact]
-        public void Merge_SkipsPlacementsWithNoSourceMesh()
-        {
-            var kit = Kit(("pine", Tri(Vector3.Zero, new Vector4(1f, 1f, 1f, 1f))));
-            var placements = new List<PropPlacement>
-            {
-                new PropPlacement("pine", 0f, 0f, 0f, 1f, 0f, 0),
-                new PropPlacement("ghost", 5f, 0f, 0f, 1f, 0f, 0),   // no mesh for this kit: contributes nothing
-            };
-
-            GltfMesh merged = PropHlod.Merge(placements, kit);
-
-            Assert.Equal(3, merged.Vertices.Length);   // only the pine, the ghost is skipped
         }
 
         [Fact]

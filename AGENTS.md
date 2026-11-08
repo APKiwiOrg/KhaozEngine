@@ -14,14 +14,15 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
 | Task | Read first |
 |---|---|
 | Engine code or tests | [Contributor rules: Engine code and test contracts](docs/CONTRIBUTOR-RULES.md#engine-code-and-test-contracts) |
+| Writing, changing or deleting tests | [Contributor rules: Writing tests](docs/CONTRIBUTOR-RULES.md#writing-tests) |
 | Package or dependency changes | [Contributor rules: Dependencies and package structure](docs/CONTRIBUTOR-RULES.md#dependencies-and-package-structure), [DEPENDENCY-SEAMS.md](docs/DEPENDENCY-SEAMS.md) |
-| Build or CI work | [Contributor rules: Build and CI](docs/CONTRIBUTOR-RULES.md#build-and-ci), [CI selective design](docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md) |
+| Build or CI work | [Contributor rules: Build and CI](docs/CONTRIBUTOR-RULES.md#build-and-ci), [CI selective design](docs/design/CI-SELECTIVE-TESTS.md) |
 | Version, pack or release work | [Contributor rules: Version, package and release rules](docs/CONTRIBUTOR-RULES.md#version-package-and-release-rules) |
 | Documentation | [Contributor rules: Documentation governance](docs/CONTRIBUTOR-RULES.md#documentation-governance), [docs index](docs/INDEX.md) |
 | Discovered work or handoffs | [Contributor rules: Issues and handoffs](docs/CONTRIBUTOR-RULES.md#issues-and-handoffs) |
 | Rendering verification | [CROSS-PLATFORM.md](docs/CROSS-PLATFORM.md), relevant pipeline and design docs |
 | Security-sensitive work | [SECURITY-BASELINE.md](docs/SECURITY-BASELINE.md) |
-| Starting, continuing or finishing a long-running program | [Programs](docs/programs/README.md) and the program's tracker |
+| Starting, continuing or finishing a long-running program | [Programs](docs/programs/README.md) and the owner's program store |
 
 ## Before changing anything
 
@@ -44,6 +45,9 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
   the engine projects they use and keep namespaces under `KhaozEngine.Tests.*`.
 - Tests that mutate process-global state use a collection definition with
   `DisableParallelization = true`.
+- A refusal callers may tell apart carries a public reason enum and its promised identifiers on a
+  refusal-family exception derived from the type thrown before, filled at every throw site. Messages are
+  prose, never a contract. Plain parameter checks stay BCL.
 - Player-facing text resolves through the localization catalog with `StringId`. Prefer
   `LocalizedText` at GUI sinks. Raw text is limited to developer output and non-localizable tokens.
 - Third-party libraries sit behind dependency-free engine seams with opt-in backends. Read
@@ -51,11 +55,29 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
 - KESIZE is a structure ratchet. Put new behavior in a new type. Do not split at an arbitrary line.
   Baseline growth and exemptions require owner approval. Ratchet down freely with
   `scripts/check-file-size.sh --update`.
+- KETEST is a test-health ratchet. Baseline growth and exemptions require owner approval. Ratchet
+  down with `build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update`.
 - Warnings are errors. Fix them at the source. Do not add blanket suppressions or disable the rule.
 - CI tests Release. Validate any Debug-only behavior in Release with a configuration-independent
   observable.
 - No em-dash or en-dash glyphs in shipped prose or comments. No prose semicolons in Markdown. Run the
   whole-tree guards before completion.
+
+## Writing tests
+
+These are binding here and in every game repo. Reasons and the full list:
+[Contributor rules: Writing tests](docs/CONTRIBUTOR-RULES.md#writing-tests).
+
+- EVERY TEST GUARDS SOMETHING DISTINCT: a contract, a rule, an owner ruling or a past regression. Decide a
+  test is needed before writing it, and favour a similar existing test: extend it with a theory row or
+  combine the two. A new test is for behaviour no test covers.
+- ASSERT THE CONTRACT, NEVER INCIDENTAL DETAIL: no exception message wording, call counts on fakes, private
+  members by reflection, log text or internal order. Exact values only where they are the contract.
+  KETEST001 and KETEST002 fail the build on two of these.
+- KEEP ABSENCE CHECKS AND DOCUMENTED DIAGNOSTIC VALUES. They are contracts, not wording.
+- A TEST MUST BE ABLE TO FAIL, AND IS NEVER DELETED OR WEAKENED WITHOUT NAMING ITS SURVIVOR.
+- TIMING NEVER GATES DEFAULT CI, AND FLAKES GET A DETERMINISTIC FIX, NEVER A SLEEP OR RETRY. Report-only
+  tests carry `[Trait("Category", "Diagnostic")]`.
 
 ## Build and test
 
@@ -64,7 +86,7 @@ Create the gitignored local source before restore:
 ```sh
 mkdir -p local-feed
 sh scripts/build-release-tests.sh KhaozEngine.slnx
-dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket&Category!=Diagnostic"
 ```
 
 Also run the checks appropriate to the files changed. Repository governance changes run at least:
@@ -116,10 +138,9 @@ merging into or pushing `main`, and wait while a release holds the lock.
 - Docs describe the system as it is today. Update them in the same commit as the behaviour they describe,
   with each reason or gotcha next to the behaviour it explains. Delete superseded text, git history is the
   archive. Never name a doc by date.
-- A long-running program, meaning work that spans more than one landing, has one tracker at
-  `docs/programs/<name>.md` in the shape [docs/programs/README.md](docs/programs/README.md) sets. Update it
-  in the same commit as each milestone. When the program is done, move every decision still in force into
-  the docs and delete the tracker.
+- Long-running program state lives in the owner's program store. Read it with gauge:program_get,
+  using the old tracker basename as its id when resuming. Follow docs/programs/README.md. Never commit
+  program state under docs/programs/.
 - Specs, plans, subagent ledgers, briefs, reports, receipts and sourced scripts are work files. They live in
   the work folder `~/.local/share/agent-work/<repo>/<key>/` from the moment they are written, never only in
   `/tmp` or a worktree. They are never committed, and no tracked file names a file inside `docs/superpowers/`

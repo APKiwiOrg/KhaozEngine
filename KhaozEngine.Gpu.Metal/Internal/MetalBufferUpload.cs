@@ -85,7 +85,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 MetalCopyAlignment.RequireAlignedOffset(offsetBytes, nameof(offsetBytes),
                     "A record-time upload of " + lengthBytes.ToString(CultureInfo.InvariantCulture)
-                    + " bytes to a non-uniform native Metal buffer", "destination");
+                    + " bytes to a non-uniform native Metal buffer", "destination", lengthBytes);
             }
 
             return MetalCopyAlignment.PaddedSize(lengthBytes);

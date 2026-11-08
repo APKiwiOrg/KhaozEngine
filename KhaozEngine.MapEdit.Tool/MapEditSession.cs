@@ -60,10 +60,9 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
-            if (!NativeDocumentService.IsNative(_doc!) || _nativeAssets is null || _storagePath is null)
-                throw new MapDocumentException("Native asset editing requires an open native document with a bound asset closure.");
-            string storagePath = Path.GetFullPath(_storagePath);
-            return fn(new NativeAssetContext(_doc!, _nativeAssets, MapDocumentStorage.ResourceRoot(storagePath, _storageForm),
+            MapSessionAdmission.RequireNativeAssets(_doc!, _nativeAssets, _storagePath);
+            string storagePath = Path.GetFullPath(_storagePath!);
+            return fn(new NativeAssetContext(_doc!, _nativeAssets!, MapDocumentStorage.ResourceRoot(storagePath, _storageForm),
                 new MapStorageGuardedAssetSource(storagePath, _storageForm), _registry));
         }
     }
@@ -139,10 +138,10 @@ public sealed partial class MapEditSession
             if (existingForm != MapDocumentForm.None && !overwrite)
                 throw new IOException($"{path}: already exists. Pass overwrite to replace it.");
             if (existingForm == MapDocumentForm.Tiled)
-                throw new MapDocumentException(
+                throw new MapDocumentException(MapDocumentRefusal.DocumentStorageFormConflict,
                     $"{path}: a tiled document (a directory) already exists there. Create always writes a " +
                     "monolithic file, so overwrite cannot replace a directory. Delete it first or choose a " +
-                    "different path.");
+                    "different path.") { Path = path, DocumentForm = existingForm, ExpectedDocumentForm = MapDocumentForm.Monolithic, Operation = nameof(Create) };
 
             string? parent = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
@@ -224,13 +223,16 @@ public sealed partial class MapEditSession
         {
             RequireDocumentLocked();
             if (_doc!.Tiles is not { SourceDirectory: { } directory })
-                throw new InvalidOperationException(
+                throw new MapSessionException(MapDocumentRefusal.ToolTiledSessionRequired,
                     "set_window only applies to a tiled document opened from (or converted to) a directory. " +
-                    "This document is monolithic or was built in memory.");
+                    "This document is monolithic or was built in memory.")
+                { DocumentId = _doc.Id, Path = _storagePath, Operation = nameof(SetWindow), FieldPath = "Tiles.SourceDirectory",
+                    DocumentForm = _storageForm, ExpectedDocumentForm = MapDocumentForm.Tiled };
             if (_dirty && !discard)
-                throw new InvalidOperationException(
+                throw new MapSessionException(MapDocumentRefusal.ToolUnsavedChanges,
                     "the open document has unsaved changes. Save first (map_save), then move the window, or " +
-                    "pass discard to move it now and lose them.");
+                    "pass discard to move it now and lose them.")
+                { DocumentId = _doc.Id, Path = _storagePath, Operation = nameof(SetWindow), FieldPath = nameof(IsDirty), DocumentForm = _storageForm };
 
             var options = new MapDocumentLoadOptions { Registry = _registry };
             var rect = MapTileGrid.RectOf(new RectArea(minX, minZ, maxX, maxZ), _doc.TileSize);
@@ -294,8 +296,9 @@ public sealed partial class MapEditSession
                 ? MapDocumentStorage.HoldsTiledDocument(directory)
                 : MapDocumentFile.DetectForm(directory) == MapDocumentForm.Tiled;
             if (occupied)
-                throw new MapDocumentException(
-                    $"{directory}: a tiled document already exists there. Convert or delete it first.");
+                throw new MapDocumentException(MapDocumentRefusal.DocumentStorageFormConflict,
+                    $"{directory}: a tiled document already exists there. Convert or delete it first.")
+                { Path = directory, DocumentForm = MapDocumentForm.Tiled, ExpectedDocumentForm = MapDocumentForm.Tiled };
             string target = native ? Path.GetFullPath(directory) : directory;
             string storage = Path.GetFullPath(directory);
             // The tiled target's namespace is checked even when the source is monolithic.
@@ -331,8 +334,9 @@ public sealed partial class MapEditSession
         {
             RequireDocumentLocked();
             if (MapDocumentFile.DetectForm(path) == MapDocumentForm.Tiled)
-                throw new MapDocumentException(
-                    $"{path}: a tiled document (a directory) already exists there. Convert or delete it first.");
+                throw new MapDocumentException(MapDocumentRefusal.DocumentStorageFormConflict,
+                    $"{path}: a tiled document (a directory) already exists there. Convert or delete it first.")
+                { Path = path, DocumentForm = MapDocumentForm.Tiled, ExpectedDocumentForm = MapDocumentForm.Monolithic };
             bool native = NativeDocumentService.IsNative(_doc!);
             string target = native ? Path.GetFullPath(path) : path;
             string storage = Path.GetFullPath(path);
@@ -375,10 +379,11 @@ public sealed partial class MapEditSession
             if (!(tileSize > 0f) || !float.IsFinite(tileSize))
                 throw new ArgumentOutOfRangeException(nameof(tileSize), tileSize, "tileSize must be positive and finite.");
             if (_doc!.Tiles is { IsPartial: true })
-                throw new MapDocumentException(
+                throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
                     "refusing to retile a windowed document: retiling rewrites every tile, and a partial " +
                     "document would silently drop every tile the window did not load. Load the whole world " +
-                    "first (set_window over the full extent, or reopen without one).");
+                    "first (set_window over the full extent, or reopen without one).")
+                { DocumentId = _doc.Id, Operation = nameof(Retile), Path = _path };
 
             string oldHash = MapDocumentHash.OfWorld(_doc, _registry);
             float oldTileSize = _doc.TileSize;
@@ -614,10 +619,11 @@ public sealed partial class MapEditSession
             tiles.Entries.Count, tiles.LoadedCount);
     }
 
-    void RequireDocumentLocked()
+    void RequireDocumentLocked([System.Runtime.CompilerServices.CallerMemberName] string operation = "")
     {
         if (_doc is null)
-            throw new InvalidOperationException("No map document is open. Call map_open or map_create first.");
+            throw new MapSessionException(MapDocumentRefusal.ToolDocumentRequired,
+                "No map document is open. Call map_open or map_create first.") { Operation = operation };
     }
 
     static IReadOnlyList<string> CopyManifests(IReadOnlyList<string>? manifestPaths)

@@ -124,19 +124,35 @@ public sealed class GpuRetireQueueSubmissionTests
         Assert.True(resource.Disposed); Assert.Equal(1, resource.Disposals);
     }
 
-    [Fact]
-    public void A_foreign_host_cannot_prove_completion_for_this_device()
+    [Theory]
+    [InlineData(false, GpuResourceOwnershipRefusal.DifferentDevice)]
+    [InlineData(true, GpuResourceOwnershipRefusal.ForeignBackend)]
+    public void A_foreign_host_cannot_prove_completion_for_this_device(bool foreignBackend,
+        GpuResourceOwnershipRefusal reason)
     {
         using var device = new GpuPerfTimestampTestDevice();
         using var other = new GpuPerfTimestampTestDevice();
+        using var otherBackend = new FakeGpuDevice(device.Backend == GpuBackendKind.VulkanNative
+            ? GpuBackendKind.MetalNative : GpuBackendKind.VulkanNative);
         using var queue = GpuRetireQueue.Create(device);
-        using var host = new GpuFrameSubmission(other);
+        using var host = new GpuFrameSubmission(foreignBackend ? otherBackend : other);
         var resource = new Resource();
         queue.Retire(resource); host.Begin();
-        Assert.Throws<ArgumentException>(() => queue.BeginFrame(host));
+        var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(() => queue.BeginFrame(host));
+        Assert.Equal(reason, refusal.Reason);
+        Assert.Equal("submission", refusal.ParamName);
+        Assert.Equal(device.Backend, refusal.ExpectedBackend);
+        Assert.Equal(foreignBackend ? typeof(FakeGpuDevice) : typeof(GpuPerfTimestampTestDevice), refusal.ActualType);
+        Assert.Equal(typeof(GpuPerfTimestampTestDevice), refusal.ExpectedType);
+        Assert.Equal("frame submission", refusal.ResourceKind);
+        Assert.Equal("BeginFrame", refusal.Context);
         Assert.False(resource.Disposed);
         Assert.Equal(0, device.Submissions); Assert.Equal(0, other.Submissions);
         host.Abandon();
+        using var own = new GpuFrameSubmission(device);
+        own.Begin();
+        queue.BeginFrame(own);
+        own.Abandon();
     }
 
     sealed class Resource : IDisposable

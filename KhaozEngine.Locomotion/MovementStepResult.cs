@@ -10,12 +10,22 @@ public enum MovementStepOutcome
     Blocked,
     EnvironmentInvalid,
     PlacementRefused,
-    FrameMismatch
+    FrameMismatch,
+    /// <summary>The proposed geometry could not meet the coverage precision budget.</summary>
+    PrecisionRefused
 }
 
 /// <summary>Pure state to publish while the caller still owns the MovementQueryLease.</summary>
 public readonly record struct MovementStepResult(FramedMovementState State, MovementStepOutcome Outcome)
 {
+    /// <summary>Monotonic selected-mode history, including swimming that ends before publication.</summary>
+    internal bool ContactEnteredSwimming { get; init; }
+    /// <summary>Certified controller evidence, including a fall and landing wholly inside one tick.</summary>
+    internal bool ContactAirLanded { get; init; }
+    internal bool ContactWalkableSupport { get; init; }
+    internal bool ContactUnwalkableSupport { get; init; }
+    internal Vector3? ContactFirstAirLandingFeet { get; init; }
+
     /// <summary>Holds carried pose/velocity while consuming the refused press and clearing step-only effects.</summary>
     public static MoveState HoldState(MoveState state)
     {

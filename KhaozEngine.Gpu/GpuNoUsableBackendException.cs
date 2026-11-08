@@ -14,8 +14,9 @@ namespace KhaozEngine.Gpu
     /// first. A reader who only ever sees the second re-derives the whole sequence from a log line.
     /// </para>
     /// <para>
-    /// SO BOTH ARE KEPT, in the two places a reader looks. The message names both backends and both reasons, in
-    /// the order they were tried, which is what a session log and a support paste show. The first failure is
+    /// SO BOTH ARE KEPT. <see cref="Reason"/> identifies the requested refusal, with the requested diagnostic on
+    /// <see cref="RequestedFailure"/> and both backend identifiers on <see cref="RequestedBackend"/> and
+    /// <see cref="FallbackBackend"/>. The first failure is
     /// <see cref="Exception.InnerException"/>, so a debugger stops on the attempt that started this rather than
     /// on the recovery from it, and the second is <see cref="FallbackFailure"/>. Nothing is rendered into the
     /// message in place of an exception object: both stacks stay reachable.
@@ -27,13 +28,29 @@ namespace KhaozEngine.Gpu
     /// </summary>
     public sealed class GpuNoUsableBackendException : InvalidOperationException
     {
+        /// <summary>The refusal reason. Null only for a consumer-created instance built through a
+        /// message-only constructor outside the engine.</summary>
+        public GpuNoUsableBackendRefusal? Reason { get; }
+
+        /// <summary>Build a refusal with its structured reason and developer message.</summary>
+        public GpuNoUsableBackendException(GpuNoUsableBackendRefusal reason, string message)
+            : base(message) => Reason = reason;
+
+        /// <summary>Build a refusal with its structured reason, developer message and original failure.</summary>
+        public GpuNoUsableBackendException(GpuNoUsableBackendRefusal reason, string message, Exception inner)
+            : base(message, inner) => Reason = reason;
+
+        /// <summary>The requested backend's failure diagnostic, including a probe or missing-provider refusal
+        /// when creation never threw. Null for a consumer-created message-only instance.</summary>
+        public string? RequestedFailure { get; init; }
+
         /// <summary>The backend that was asked for and tried first. Default when this was built by one of the
         /// standard constructors.</summary>
-        public GpuBackendKind RequestedBackend { get; }
+        public GpuBackendKind RequestedBackend { get; init; }
 
         /// <summary>The backend the engine fell back to, which then failed as well. Default when this was built
         /// by one of the standard constructors.</summary>
-        public GpuBackendKind FallbackBackend { get; }
+        public GpuBackendKind FallbackBackend { get; init; }
 
         /// <summary>
         /// The FALLBACK's exception, whole. <see cref="Exception.InnerException"/> is the requested backend's
@@ -42,34 +59,28 @@ namespace KhaozEngine.Gpu
         /// reason and no exception) the two are the same object, since there is only one exception to carry.
         /// Null when this was built by one of the standard constructors.
         /// </summary>
-        public Exception? FallbackFailure { get; }
+        public Exception? FallbackFailure { get; init; }
 
         /// <summary>
         /// The exception as the creation paths throw it. <paramref name="requestedFailure"/> is the rendered
         /// reason the requested backend did not work, and <paramref name="requestedCause"/> is the exception
-        /// behind it, null when the machine reported no support and nothing threw.
+        /// behind it, null when the machine reported no support or a stored preference had no provider.
         /// </summary>
         internal static GpuNoUsableBackendException Build(
+            GpuNoUsableBackendRefusal reason,
             GpuBackendKind requested,
             string requestedFailure,
             GpuBackendKind fallback,
             Exception fallbackFailure,
             Exception? requestedCause)
-            => new(
-                BuildMessage(requested, requestedFailure, fallback, fallbackFailure),
-                requested,
-                fallback,
-                fallbackFailure,
-                requestedCause ?? fallbackFailure);
-
-        GpuNoUsableBackendException(string message, GpuBackendKind requested, GpuBackendKind fallback,
-            Exception fallbackFailure, Exception inner)
-            : base(message, inner)
-        {
-            RequestedBackend = requested;
-            FallbackBackend = fallback;
-            FallbackFailure = fallbackFailure;
-        }
+            => new(reason, BuildMessage(requested, requestedFailure, fallback, fallbackFailure),
+                requestedCause ?? fallbackFailure)
+            {
+                RequestedBackend = requested,
+                FallbackBackend = fallback,
+                RequestedFailure = requestedFailure,
+                FallbackFailure = fallbackFailure,
+            };
 
         /// <summary>Standard parameterless constructor. Every property is left at its default.</summary>
         public GpuNoUsableBackendException()

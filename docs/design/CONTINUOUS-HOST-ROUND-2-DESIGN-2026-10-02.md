@@ -241,8 +241,11 @@ for that bound only. A candidate succeeds only on the exact shape predicate. Reg
 surface-height grids. They do not invent Y from the target centre for a grid without surface heights.
 
 Grid search terminates at a passable member of the region, retaining fixed scan and tie order and
-`PathQueryBudget` limits. A heuristic must underestimate cost to the region on every layer. Starting
-with zero heuristic on cross-layer search is acceptable. Avoid one A* per sampled face.
+`PathQueryBudget` limits. Shared-frame priority uses the admitted members' containing local cell-index box.
+Differing frames use the containing world XZ square. Both use the construction-time spatial ratio on every
+layer, and g-scores and priorities sum actual edge prices in double. The
+[Navigation numeric cost contract](../../KhaozEngine.Navigation/README.md#numeric-cost-contract) owns the
+accumulation error bound, conditioning and scale range. The detailed cost section defines the geometric metrics. Avoid one A* per sampled face.
 An exhausted budget can return Partial, with the existing NavPath semantics. Complete means its
 endpoint belongs to the region. Snapping cannot silently substitute a point outside it.
 
@@ -250,10 +253,13 @@ The region follower reuses the existing replan, cooldown and layer-aware state. 
 checks region membership. It keeps the final waypoint until actual region entry, rather than consuming
 it merely because its default 0.6 m AcceptRadius was met. Consuming a partial corridor holds for the
 next replan instead of producing the point overload's current one-tick raw-goal press.
-The point overload is unchanged. Region calls require an `IRegionPathPlanner`, with a clear failure
+Region calls require an `IRegionPathPlanner`, with a clear failure
 for an unsupported planner rather than an implicit point-query fallback.
 Add a `PathFollowState.WaitingForPath` result for the region overload's exhausted partial corridor
-while a replan is gated by cooldown. The point overload never returns that new state. Do not infer
+while a replan is gated by cooldown. Point following also returns it when a query is deferred after route
+consumption or changing a failed intent. Point Complete endpoints witness arrival only for the same queried
+intent, including snapped endpoints. A previously useful route reaching an obsolete terminal refreshes
+immediately through the same query site. Fresh exhausted results keep the ordinary cooldown. Do not infer
 waiting from a zero waypoint, which can be a real world coordinate.
 
 ### Guarded graph
@@ -288,15 +294,15 @@ decisions without making legacy point queries inherit guarded semantics.
 
 | Id | Contract and reason |
 | --- | --- |
-| B1.1 | Grounded link generation shares the existing scan but emits Stair only. A dummy jump height must not accidentally admit Hop links or alter legacy ordering. |
+| B1.1 | The grounded base scan emits Stair only. Movement appends separately proved, opt-in Contact Drop candidates afterward. A dummy jump height must not admit Hop links or alter legacy ordering. |
 | B1.2 | MaxLayerCells is enforced after layer assignment and before dense arrays. A post-allocation guard would not bound memory. |
 | B2.2 | Guarded snapping requires an admitted raw-passable own cell and returns its centre. A nearby accepted ring cannot authorize crossing a rejected node. |
 | B3.1 | Safe search priority is separate from progress toward actual member feet. Zero heuristic must not pin every Partial to the start. |
 | B3.2 | Capture real admitted region members once before search. Empty membership refuses, with no invented target Y or anchor replacement. Discovery is separate from the expansion-node budget. |
-| B3.3 | Cross-layer or underpriced same-layer links disable the spatial lower-bound priority. Dijkstra ordering costs more expansions but preserves admissibility. |
+| B3.3 | A construction-time minimum edge-cost-to-spatial-span ratio scales point and region priority across every layer. Cheap links weaken the exact-arithmetic geometric bound instead of disabling it. Complete costs follow the [numeric contract](../../KhaozEngine.Navigation/README.md#numeric-cost-contract). Non-finite costs or nonpositive ratios retain zero priority. |
 | B3.4, B3.5 | Member discovery uses the conservative anchor/extent bound and finite-safe double distance arithmetic. Bounds reduce discovery work without changing actual predicate membership, and wide differences avoid float overflow. |
 | B4.2 | A retained waypoint with zero XZ offset stays finite and Following until true membership or replanning. Same XZ on another floor is not arrival. |
-| B4.3 | A reached Complete endpoint outside membership makes replanning due, so small target motion cannot leave a permanent zero-direction hold. |
+| B4.3 | A reached Complete endpoint outside membership makes replanning due. A previously nonterminal corridor refreshes under the follower's configured arrival radius and layer checks, without exact coordinate equality. A fresh result already terminal at query time keeps the ordinary cooldown, including after a stale-route refresh, until it leaves terminal state. Region membership remains the only Arrived witness. |
 | B4.4 | Advance the existing region corridor before query eligibility. Exhausted Partial waits with zero input during cooldown. A fresh exhausted Partial at zero cooldown returns Unreachable for that tick, then permits the next query, never a same-tick query loop. |
 
 ## 5. Physics bake and game-owned area masks
@@ -489,7 +495,7 @@ The D identifiers here are scoped to movement drivers, distinct from delta-strea
 | D0.2 | After validation and reach evaluation, an active commitment or unsupported airborne automation is Suspended before InRange. The explicit route swimming option is separately admitted. Pure reach callers can use ReachGeometry. |
 | D0.3 | LocalPredictedState is an absolute read-only simulation copy. LocalRenderState includes presentation interpolation/correction and cannot govern exact stop-ring steering. |
 | D1.1 | Copy AcceptRadius as min(supplied, 1e-5 m), preserving supplied zero. Broad point tolerance must not consume a mandatory physical turn. |
-| D1.3 | Up to 32 live copy-state bisection candidates, with endpoint/final preflights, resolve near-ring travel. Support, medium and collision remain in the shared core, with no world step, position snap or entity publication. |
+| D1.3 | Up to 32 identical float interval decisions, with endpoint/final preflights, resolve near-ring travel. Certified flat unchanged analytic support uses exact state algebra under one read interval. Every other case uses live copy-state movement. Support, medium and collision proofs stay mandatory, with no world step, position snap or entity publication. |
 | D3.1 | Nonfinite/unknown command requests become finite idle, and invalid yaw stores zero. Malformed automation must not send invalid wire floats. |
 | D3.2 | A double norm clamps oversized finite direction before camera projection, bounding pace without maximum-float overflow. |
 | D3.3 | CameraRelativeDir reports unit heading. Precise movement consumes the fraction once, so heading-only assertions cannot establish final travel. |

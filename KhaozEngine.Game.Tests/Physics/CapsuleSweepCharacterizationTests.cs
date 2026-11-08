@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using BepuUtilities.Memory;
@@ -56,11 +55,9 @@ public class CapsuleSweepCharacterizationTests(ITestOutputHelper output)
         var capsule = new CapsuleShape(radius, cylinderLength);
         bool legacyHit = view.SweepCapsule(capsule, Pose.At(start), Vector3.UnitX, length, out SweepHit legacy, QueryFilter.StaticsOnly);
 
-        // Read the actual private test world's simulation, under its physical read gate. There is one
+        // Read the test world's owned simulation through its internal seam, under its physical read gate. There is one
         // static, no dynamics and no excluded body, so the raw handler uses exactly that selection.
-        FieldInfo? simulationField = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(simulationField);
-        BepuSim simulation = Assert.IsType<BepuSim>(simulationField.GetValue(world));
+        BepuSim simulation = world.SimulationForTests;
         var handler = new CaptureSweep();
         var pool = new BufferPool();
         try

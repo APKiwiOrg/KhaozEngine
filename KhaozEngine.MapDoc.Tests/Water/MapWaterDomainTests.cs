@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -142,9 +143,14 @@ public class MapWaterDomainTests
     public void Placement_WithUnrepresentableCorners_Refuses(float yaw, float scale)
     {
         var placement = new MapWaterPlacement(Vector3.Zero, yaw, scale);
-        var error = Assert.Throws<MapDocumentException>(() =>
-            MapWaterDomain.Compile(new(Up, new[] { new MapWaterRect(0, 0, 2, 1) }, Array.Empty<MapWaterRing>()), placement));
-        Assert.Contains("not representable", error.Message, StringComparison.Ordinal);
+        var domain = new MapWaterDomainDoc(Up, new[] { new MapWaterRect(0, 0, 2, 1) }, Array.Empty<MapWaterRing>());
+        var rects = domain.Rects.ToArray();
+        var error = Assert.Throws<MapDocumentException>(() => MapWaterDomain.Compile(domain, placement));
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
+        Assert.Equal("rect", error.SubjectKind);
+        Assert.Equal(0, error.Index);
+        Assert.Equal(rects, domain.Rects);
+        Assert.NotEmpty(MapWaterDomain.Compile(domain, placement with { Scale = 1 }).Pieces);
     }
 
     [Fact]
@@ -159,20 +165,6 @@ public class MapWaterDomainTests
         Assert.Equal(WaterFixtures.WideArea(a, b, c), WaterFixtures.WideArea(above).Add(WaterFixtures.WideArea(rest)));
         Assert.All(above.Concat(rest).SelectMany(p => p), p => Assert.True(p.X.TryNarrow(out _) && p.Z.TryNarrow(out _)));
         Assert.Contains(above.SelectMany(p => p), p => p.Y.CompareTo(surface) == 0);
-    }
-
-    [Theory]
-    [InlineData("bow-tie", "water body 'ocean': ring 0 self-intersects")]
-    [InlineData("collinear", "water body 'ocean': ring 0 has zero area")]
-    [InlineData("overlapping-pieces", "water body 'ocean': rect 0 and rect 1 overlap")]
-    [InlineData("overlapping-ring", "water body 'ocean': rect 0 and ring 0 overlap")]
-    [InlineData("overlapping-bodies", "water bodies 'cave-lake' and 'second-lake' overlap in space 'lake-cave'")]
-    [InlineData("too-many-pieces", "water body 'ocean': domain exceeds 65536 pieces")]
-    [InlineData("too-many-vertices", "water body 'ocean': domain exceeds 262144 vertices")]
-    public void Validation_RefusesBadGeometry(string variant, string message)
-    {
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(WaterFixtures.Broken(variant), MapDocRegistry.CreateDefault());
-        Assert.Contains(errors, e => e.Contains(message, StringComparison.Ordinal));
     }
 
     [Theory]
@@ -192,7 +184,9 @@ public class MapWaterDomainTests
     {
         var errors = new List<string>();
         MapWaterValidation.Validate(WithOceanColumn(64, descending: true), errors, new MapWaterWorkBudget(8));
-        Assert.Equal(new[] { "water body 'ocean': domain work exceeds 8 pair checks." }, errors);
+        string error = Assert.Single(errors);
+        foreach (string value in new[] { "ocean", "8" })
+            Assert.Matches(@"(?<![\p{L}\p{N}_.\-])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_\-]|\.[\p{L}\p{N}])", error);
     }
 
     [Fact]

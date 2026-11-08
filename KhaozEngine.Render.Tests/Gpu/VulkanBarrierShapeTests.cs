@@ -198,7 +198,8 @@ namespace KhaozEngine.Tests.Gpu
                 () => VulkanImageTransition.For(
                     ImageHandle, Range(), ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal));
 
-            Assert.Contains("DISCARDS", error.Message, StringComparison.Ordinal);
+            // The discard rule refuses the OLD side. The VUID 01198 rule refuses the new side as newLayout.
+            Assert.Equal("oldLayout", error.ParamName);
         }
 
         /// <summary>
@@ -221,10 +222,10 @@ namespace KhaozEngine.Tests.Gpu
                 () => VulkanImageTransition.For(
                     ImageHandle, Range(), ImageLayout.ColorAttachmentOptimal, ImageLayout.Undefined));
 
-            Assert.Contains("newLayout-01198", general.Message, StringComparison.Ordinal);
+            Assert.Equal("newLayout", general.ParamName);
 
-            Assert.Throws<ArgumentException>(
-                () => VulkanImageTransition.Reacquired(ImageHandle, Range(), ImageLayout.Undefined));
+            Assert.Equal("newLayout", Assert.Throws<ArgumentException>(
+                () => VulkanImageTransition.Reacquired(ImageHandle, Range(), ImageLayout.Undefined)).ParamName);
         }
 
         /// <summary>

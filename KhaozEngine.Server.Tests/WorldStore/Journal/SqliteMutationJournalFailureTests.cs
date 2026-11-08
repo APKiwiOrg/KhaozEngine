@@ -13,13 +13,11 @@ public sealed class SqliteMutationJournalFailureTests : IDisposable
 {
     private readonly SqliteJournalTestDatabase database = new();
 
-    [Fact]
-    public Task Failure_after_event_writes_rolls_back_all_mutation_rows()
-        => InjectedStatementBoundaryFailureRollsBackAllMutationRows(JournalTestHookPhase.AfterEventWrites);
-
-    [Fact]
-    public Task Failure_after_projection_writes_rolls_back_all_mutation_rows()
-        => InjectedStatementBoundaryFailureRollsBackAllMutationRows(JournalTestHookPhase.AfterProjectionWrites);
+    [Theory]
+    [InlineData(nameof(JournalTestHookPhase.AfterEventWrites))]
+    [InlineData(nameof(JournalTestHookPhase.AfterProjectionWrites))]
+    public Task Failure_at_a_statement_boundary_rolls_back_all_mutation_rows(string phase)
+        => InjectedStatementBoundaryFailureRollsBackAllMutationRows(Enum.Parse<JournalTestHookPhase>(phase));
 
     private async Task InjectedStatementBoundaryFailureRollsBackAllMutationRows(JournalTestHookPhase failurePhase)
     {
@@ -54,13 +52,20 @@ public sealed class SqliteMutationJournalFailureTests : IDisposable
         using var locker = new SqliteConnection(database.ConnectionString(path));
         locker.Open();
         using SqliteTransaction held = locker.BeginTransaction(deferred: false);
+        SqliteJournalFileState before = SqliteJournalFileState.Capture(path);
 
         JournalStoreException exception = await Assert.ThrowsAsync<JournalStoreException>(() => store.CommitAsync(Commit(2)));
 
+        Assert.Equal(JournalStoreRefusal.ProviderOperationFailed, exception.Reason);
+        Assert.Equal(5, exception.ProviderCode);
+        Assert.Equal(JournalOperationStage.Operation, exception.Stage);
         Assert.Equal(JournalStoreFailureKind.Timeout, exception.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, exception.Certainty);
         Assert.Equal(JournalStoreFailureScope.OperationStreams, exception.Scope);
         Assert.Equal(new[] { "player/a" }, exception.StreamKeys);
+        Assert.Equal(before, SqliteJournalFileState.Capture(path));
+        held.Rollback();
+        Assert.Equal(JournalCommitStatus.Applied, (await store.CommitAsync(Commit(2))).Status);
     }
 
     [Fact]
@@ -68,9 +73,10 @@ public sealed class SqliteMutationJournalFailureTests : IDisposable
     {
         string path = database.NewPath();
         bool armed = false;
+        var cause = new InjectedJournalFailure();
         var hook = new SqliteJournalTestHook(phase =>
         {
-            if (armed && phase == JournalTestHookPhase.AfterCommitBeforeResponse) throw new InjectedJournalFailure();
+            if (armed && phase == JournalTestHookPhase.AfterCommitBeforeResponse) throw cause;
         });
         using SqliteMutationJournalStore store = database.Open(path, hook: hook);
         await store.InitializeAsync(Initialization(1));
@@ -81,8 +87,13 @@ public sealed class SqliteMutationJournalFailureTests : IDisposable
         armed = false;
         JournalCommitResult replay = await store.CommitAsync(commit);
 
+        Assert.Equal(JournalStoreRefusal.CommitOutcomeUnknown, exception.Reason);
+        Assert.Equal(JournalOperationStage.AfterCommit, exception.Stage);
         Assert.Equal(JournalStoreFailureKind.UnknownOutcome, exception.Kind);
         Assert.Equal(JournalStoreFailureCertainty.Unknown, exception.Certainty);
+        Assert.Equal(JournalStoreFailureScope.OperationStreams, exception.Scope);
+        Assert.Equal("player/a", Assert.Single(exception.StreamKeys));
+        Assert.Same(cause, exception.InnerException);
         Assert.Equal(JournalCommitStatus.Replayed, replay.Status);
         Assert.Single((await store.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024))).Events);
     }
@@ -189,44 +200,48 @@ public sealed class SqliteMutationJournalFailureTests : IDisposable
             phases);
     }
 
-    [Fact]
-    public async Task Malformed_stored_checksums_map_to_committed_data_corruption()
+    [Theory]
+    [InlineData("snapshot", JournalStoreRefusal.SnapshotChecksumMismatch)]
+    [InlineData("event", JournalStoreRefusal.EventChecksumMismatch)]
+    [InlineData("projection", JournalStoreRefusal.ProjectionChecksumMismatch)]
+    [InlineData("operation", JournalStoreRefusal.ResultChecksumMismatch)]
+    public async Task Malformed_stored_checksums_map_to_committed_data_corruption(string target, JournalStoreRefusal reason)
     {
-        string snapshotPath = database.NewPath();
-        using SqliteMutationJournalStore snapshotStore = database.Open(snapshotPath);
-        await snapshotStore.InitializeAsync(Initialization(1, new byte[] { 3 }));
-        database.Execute(snapshotPath, "PRAGMA ignore_check_constraints = ON; UPDATE journal_snapshot SET data_sha256 = X'00';");
-        await AssertCorrupt(() => snapshotStore.LoadSnapshotAsync("player/a"));
-
-        string eventPath = database.NewPath();
-        using SqliteMutationJournalStore eventStore = database.Open(eventPath);
-        await eventStore.InitializeAsync(Initialization(1));
-        await eventStore.CommitAsync(Commit(2));
-        database.Execute(eventPath, "PRAGMA ignore_check_constraints = ON; UPDATE journal_event SET payload_sha256 = X'00';");
-        await AssertCorrupt(() => eventStore.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024)));
-
-        string projectionPath = database.NewPath();
-        using SqliteMutationJournalStore projectionStore = database.Open(projectionPath);
-        await projectionStore.InitializeAsync(Initialization(1));
-        await projectionStore.CommitAsync(Commit(2));
-        database.Execute(projectionPath, "PRAGMA ignore_check_constraints = ON; UPDATE journal_projection SET data_sha256 = X'00';");
-        await AssertCorrupt(() => projectionStore.ReadProjectionsAsync(new JournalProjectionQuery("player/a")));
-
-        string operationPath = database.NewPath();
-        using SqliteMutationJournalStore operationStore = database.Open(operationPath);
-        JournalInitialization initialization = Initialization(1);
-        await operationStore.InitializeAsync(initialization);
-        database.Execute(operationPath, "PRAGMA ignore_check_constraints = ON; UPDATE journal_operation SET result_sha256 = X'00';");
-        await AssertCorrupt(() => operationStore.ResolveOperationAsync(initialization.Identity));
+        string path = database.NewPath();
+        using SqliteMutationJournalStore store = database.Open(path);
+        JournalInitialization initialization = Initialization(1, new byte[] { 3 });
+        await store.InitializeAsync(initialization);
+        await store.CommitAsync(Commit(2));
+        string column = target switch { "snapshot" => "data_sha256", "event" => "payload_sha256", "projection" => "data_sha256", _ => "result_sha256" };
+        byte[] data = target switch { "snapshot" => [3], "event" => [7], "projection" => [9], _ => [1] };
+        string filter = target == "operation" ? $" WHERE operation_id = '{initialization.Identity.OperationId:D}'" : "";
+        database.Execute(path, $"PRAGMA ignore_check_constraints = ON; UPDATE journal_{target} SET {column} = X'00'{filter};");
+        Task Read() => target switch
+        {
+            "snapshot" => store.LoadSnapshotAsync("player/a"),
+            "event" => store.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024)),
+            "projection" => store.ReadProjectionsAsync(new JournalProjectionQuery("player/a")),
+            _ => store.ResolveOperationAsync(initialization.Identity),
+        };
+        JournalStoreException refused = await Assert.ThrowsAsync<JournalStoreException>(Read);
+        Assert.Equal(reason, refused.Reason);
+        Assert.Equal(JournalStoreFailureKind.CorruptData, refused.Kind);
+        Assert.Equal(JournalStoreFailureCertainty.CommittedDataUnreadable, refused.Certainty);
+        Assert.Equal(JournalStoreFailureScope.OperationStreams, refused.Scope);
+        Assert.Equal("player/a", Assert.Single(refused.StreamKeys));
+        if (target == "operation") Assert.Equal(initialization.Identity.OperationId, refused.OperationId);
+        else Assert.Equal("player/a", refused.StreamKey);
+        if (target == "event") Assert.Equal(1, refused.StreamVersion);
+        if (target == "projection") Assert.Equal("bag", refused.SectionName);
+        database.Execute(path, $"UPDATE journal_{target} SET {column} = $hash{filter};", ("$hash", JournalCanonicalizer.ComputeSha256(data)));
+        await Read();
     }
 
-    [Fact]
-    public Task Failure_after_snapshot_write_preserves_prior_snapshot_and_tail()
-        => CompactionFailureBoundaryPreservesPriorSnapshotAndTail(JournalTestHookPhase.SnapshotWrittenBeforeVerification);
-
-    [Fact]
-    public Task Failure_before_event_prune_preserves_prior_snapshot_and_tail()
-        => CompactionFailureBoundaryPreservesPriorSnapshotAndTail(JournalTestHookPhase.SnapshotVerifiedBeforePrune);
+    [Theory]
+    [InlineData(nameof(JournalTestHookPhase.SnapshotWrittenBeforeVerification))]
+    [InlineData(nameof(JournalTestHookPhase.SnapshotVerifiedBeforePrune))]
+    public Task Failure_at_a_compaction_boundary_preserves_prior_snapshot_and_tail(string phase)
+        => CompactionFailureBoundaryPreservesPriorSnapshotAndTail(Enum.Parse<JournalTestHookPhase>(phase));
 
     private async Task CompactionFailureBoundaryPreservesPriorSnapshotAndTail(JournalTestHookPhase failurePhase)
     {
@@ -267,13 +282,6 @@ public sealed class SqliteMutationJournalFailureTests : IDisposable
 
     private static JournalOperationIdentity Identity(int suffix)
         => new(new Guid(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, checked((byte)suffix)), "world/account", "bank.deposit", new byte[] { checked((byte)suffix) });
-
-    private static async Task AssertCorrupt(Func<Task> action)
-    {
-        JournalStoreException exception = await Assert.ThrowsAsync<JournalStoreException>(action);
-        Assert.Equal(JournalStoreFailureKind.CorruptData, exception.Kind);
-        Assert.Equal(JournalStoreFailureCertainty.CommittedDataUnreadable, exception.Certainty);
-    }
 
     public void Dispose() => database.Dispose();
 

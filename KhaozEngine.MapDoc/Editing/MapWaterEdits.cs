@@ -34,13 +34,23 @@ public static class MapWaterEdits
                 {
                     if (document.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ||
                         document.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2)
-                        throw new MapDocumentException("bounded water requires a resolver-2 native document");
+                        throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch, "bounded water requires a resolver-2 native document")
+                        {
+                            PayloadVersion = document.ResolverIdentity?.PayloadVersion,
+                            ResolverVersion = document.ResolverIdentity?.ResolverVersion,
+                            SupportRecipe = document.SupportRecipe,
+                            ExpectedResolverVersion = 2,
+                            ExpectedSupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
+                            FieldPath = document.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe",
+                            SubjectKind = "water",
+                        };
                     after ??= new MapWaterSet();
                 }
                 else
                 {
                     if (after is { Bodies.Count: > 0 })
-                        throw new MapDocumentException("remove every water body before using legacy global water");
+                        throw new MapDocumentException(MapDocumentRefusal.WaterBodiesPreventLegacyMode, "remove every water body before using legacy global water")
+                        { ActualCount = after.Bodies.Count, FieldPath = "Bodies" };
                     after = null;
                 }
                 break;
@@ -54,7 +64,8 @@ public static class MapWaterEdits
             case MapRemoveWaterBody remove:
                 MapWaterSet remaining = RequireBounded(after);
                 int removeIndex = remaining.Bodies.FindIndex(b => b.Id == remove.BodyId);
-                if (removeIndex < 0) throw new MapDocumentException($"no water body '{remove.BodyId}'");
+                if (removeIndex < 0) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"no water body '{remove.BodyId}'")
+                { EntityId = remove.BodyId, SubjectKind = "water body" };
                 remaining.Bodies.RemoveAt(removeIndex);
                 break;
             case MapUpsertWaterMedium upsert:
@@ -68,23 +79,27 @@ public static class MapWaterEdits
                 MapWaterSet unused = RequireBounded(after);
                 string? user = unused.Bodies.Where(b => b.Medium == remove.Key)
                     .Select(b => b.Id).Order(StringComparer.Ordinal).FirstOrDefault();
-                if (user is not null) throw new MapDocumentException($"water medium '{remove.Key}' is used by '{user}'");
+                if (user is not null) throw new MapDocumentException(MapDocumentRefusal.WaterMediumInUse, $"water medium '{remove.Key}' is used by '{user}'")
+                { EntityId = user, ActualText = remove.Key, FieldPath = "Medium" };
                 int unusedIndex = unused.Media.FindIndex(m => m.Key == remove.Key);
-                if (unusedIndex < 0) throw new MapDocumentException($"no water medium '{remove.Key}'");
+                if (unusedIndex < 0) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"no water medium '{remove.Key}'")
+                { EntityId = remove.Key, SubjectKind = "water medium" };
                 unused.Media.RemoveAt(unusedIndex);
                 break;
-            default: throw new MapDocumentException("unknown water edit type");
+            default: throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "unknown water edit type")
+                { Operation = nameof(Prepare), ActualText = edit.GetType().FullName };
         }
         // Upserts can carry caller-owned nested collections. Detach them before validation or returning the set.
         after = after?.Clone();
         var errors = new List<string>();
+        var findings = new List<MapDocumentFinding>();
         MapWaterValidation.Validate(new MapDocument
         {
             ResolverIdentity = document.ResolverIdentity,
             SupportRecipe = document.SupportRecipe,
             Water = after,
-        }, errors);
-        if (errors.Count != 0) throw new MapDocumentException(errors[0]);
+        }, errors, new MapWaterWorkBudget(), findings);
+        if (errors.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], errors[0], findings: findings);
         MapNativeEditEffects effects = Describe(document.Water, after, edit);
         MapNativeWriteSet writes = MapNativeWriteSet.PlacementsOnly with { Placements = false, Water = true };
         return new(after, writes, effects);
@@ -111,7 +126,8 @@ public static class MapWaterEdits
         };
     }
 
-    static MapWaterSet RequireBounded(MapWaterSet? water) => water ?? throw new MapDocumentException("bounded water is off");
+    static MapWaterSet RequireBounded(MapWaterSet? water) => water ?? throw new MapDocumentException(MapDocumentRefusal.WaterBoundedModeRequired, "bounded water is off")
+    { FieldPath = "Water" };
 
     static MapNativeEditEffects Describe(MapWaterSet? before, MapWaterSet? after, MapWaterEdit edit)
     {

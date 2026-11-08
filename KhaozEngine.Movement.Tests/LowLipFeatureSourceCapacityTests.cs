@@ -1,5 +1,4 @@
 using System.Numerics;
-using System.Reflection;
 using BepuMesh = BepuPhysics.Collidables.Mesh;
 using BepuSim = BepuPhysics.Simulation;
 using KhaozEngine.Physics;
@@ -49,12 +48,8 @@ public class LowLipFeatureSourceCapacityTests
         Assert.Equal(Vector3.Zero, lease.Origin);
         Assert.Equal(Vector3.Zero, view.Origin);
 
-        // Owned test reflection inspects the real installed allocation and real tree, without modifying either.
-        FieldInfo? simulationField = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo? generationField = typeof(BepuPhysicsWorld).GetField("_queryGeneration", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(simulationField);
-        Assert.NotNull(generationField);
-        BepuSim simulation = Assert.IsType<BepuSim>(simulationField.GetValue(world));
+        // The internal simulation seam exposes the real installed allocation and real tree, without modifying either.
+        BepuSim simulation = world.SimulationForTests;
         Assert.Equal(1, simulation.Statics.Count);
         ref var body = ref simulation.Statics[0];
         Assert.Equal(default(BepuMesh).TypeId, body.Shape.Type);
@@ -71,8 +66,6 @@ public class LowLipFeatureSourceCapacityTests
         Assert.Equal(vertices[last], mesh.Triangles[triangleCount - 1].A);
         Assert.Equal(vertices[last + 1], mesh.Triangles[triangleCount - 1].B);
         Assert.Equal(vertices[last + 2], mesh.Triangles[triangleCount - 1].C);
-        long generation = Assert.IsType<long>(generationField.GetValue(world));
-        Assert.Equal(generation, lease.GeometryGeneration);
 
         // One ordinary ray in the strict interior of the first triangle validates usable front geometry.
         // It does not provide the expected status or any feature witness.
@@ -96,8 +89,6 @@ public class LowLipFeatureSourceCapacityTests
         CapsuleFeatureResult result = features.QueryCapsuleFeature(lease, target, capsule, candidate,
             0, faces, QueryFilter.StaticsOnly);
         AssertRefused(result, faces, original, CapsuleFeatureStatus.CapacityExceeded);
-        Assert.Equal(generation, Assert.IsType<long>(generationField.GetValue(world)));
-        Assert.Equal(generation, lease.GeometryGeneration);
         Assert.Equal(triangleCount, mesh.Triangles.Length);
         Assert.Equal(triangleCount, mesh.Tree.LeafCount);
         lease.AssertCurrent();

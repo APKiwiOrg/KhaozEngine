@@ -229,9 +229,11 @@ public sealed class TileWorldViewAnimatedFoliageTests
         styles["tree"] = new(new FoliageMotionProfile(.3f, .15f, .4f, .035f), true);
         scene.ClearFrame();
 
-        ArgumentException outside = Assert.Throws<ArgumentException>(() => view.Draw(Vector3.Zero));
+        AnimatedFoliageStyleArgumentException outside = Assert.Throws<AnimatedFoliageStyleArgumentException>(() => view.Draw(Vector3.Zero));
 
         Assert.Equal("AnimatedFoliageStyles", outside.ParamName);
+        Assert.Equal(AnimatedFoliageStyleRefusal.StyleOutsideSelection, outside.Reason);
+        Assert.Equal("tree", outside.ArchetypeId);
         Assert.Empty(scene.FoliageReleases);
         Assert.Empty(scene.FoliageDraws);
         styles.Remove("tree");
@@ -255,10 +257,11 @@ public sealed class TileWorldViewAnimatedFoliageTests
         view.Draw(Vector3.Zero);
         styles["tree"] = new(FoliageMotionProfile.Blade, false);
 
-        ArgumentException outside = Assert.Throws<ArgumentException>(() => view.Draw(Vector3.Zero));
+        AnimatedFoliageStyleArgumentException outside = Assert.Throws<AnimatedFoliageStyleArgumentException>(() => view.Draw(Vector3.Zero));
 
         Assert.Equal("AnimatedFoliageStyles", outside.ParamName);
-        Assert.Contains("tree", outside.Message);
+        Assert.Equal(AnimatedFoliageStyleRefusal.StyleOutsideSelection, outside.Reason);
+        Assert.Equal("tree", outside.ArchetypeId);
         Assert.Empty(scene.FoliageDraws);
     }
 
@@ -275,12 +278,13 @@ public sealed class TileWorldViewAnimatedFoliageTests
             ["bush"] = new(new FoliageMotionProfile(.3f, .15f, .4f, .035f), true),
         };
 
-        ArgumentException conflict = Assert.Throws<ArgumentException>(() =>
+        AnimatedFoliageStyleArgumentException conflict = Assert.Throws<AnimatedFoliageStyleArgumentException>(() =>
             new TileWorldView(scene, World(), catalogs, new GreyboxMeshResolver(), options));
 
         Assert.Equal("AnimatedFoliageStyles", conflict.ParamName);
-        Assert.Contains("bush", conflict.Message);
-        Assert.Contains("tree", conflict.Message);
+        Assert.Equal(AnimatedFoliageStyleRefusal.SharedMeshStyleConflict, conflict.Reason);
+        Assert.Equal("bush", conflict.FirstArchetypeId);
+        Assert.Equal("tree", conflict.SecondArchetypeId);
         Assert.Empty(scene.MaterialLoads);
         Assert.Empty(scene.PropMeshLoads);
     }
@@ -296,12 +300,13 @@ public sealed class TileWorldViewAnimatedFoliageTests
             ["bush"] = new(new FoliageMotionProfile(.3f, .15f, .4f, .035f), true),
         };
 
-        ArgumentException conflict = Assert.Throws<ArgumentException>(() =>
+        AnimatedFoliageStyleArgumentException conflict = Assert.Throws<AnimatedFoliageStyleArgumentException>(() =>
             new TileWorldView(scene, World(), TileRenderTestData.Catalogs, new UnresolvedFoliageResolver(), options));
 
         Assert.Equal("AnimatedFoliageStyles", conflict.ParamName);
-        Assert.Contains("bush", conflict.Message);
-        Assert.Contains("tree", conflict.Message);
+        Assert.Equal(AnimatedFoliageStyleRefusal.SharedMeshStyleConflict, conflict.Reason);
+        Assert.Equal("bush", conflict.FirstArchetypeId);
+        Assert.Equal("tree", conflict.SecondArchetypeId);
         Assert.NotEmpty(scene.PropMeshLoads);
         Assert.Equal(0, scene.AliveMeshCount);
         Assert.Single(scene.MaterialLoads);

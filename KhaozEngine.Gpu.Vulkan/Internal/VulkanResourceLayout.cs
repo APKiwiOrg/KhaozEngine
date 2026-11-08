@@ -107,10 +107,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// and by row 13's pipelines, because both would otherwise carry the same message.</summary>
         internal static VulkanResourceLayout Require(IGpuResourceLayout? layout, string what)
             => layout as VulkanResourceLayout
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(layout is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The resource layout handed to {what} was not created by the native Vulkan backend, so it "
                     + "carries no VkDescriptorSetLayout and no per-type descriptor cost. Create it through the "
                     + "same IGpuDevice.Factory the set or the pipeline is being created from.",
-                    nameof(layout));
+                    nameof(layout))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = layout?.GetType(),
+                    ExpectedType = typeof(VulkanResourceLayout),
+                    Context = what,
+                    ResourceKind = "resource layout",
+                };
     }
 }

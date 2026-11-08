@@ -77,9 +77,15 @@ internal sealed class MapFoliageChangedInputs
         { _all = true; }
     }
 
-    static MapEffectiveContext Effective(MapEffectiveResources resources) =>
-        (resources.SurfaceSource as IMapEffectiveSurfaceContext)?.EffectiveContext
-        ?? throw new MapDocumentException("foliage finalization requires captured effective surfaces");
+    static MapEffectiveContext Effective(MapEffectiveResources resources) => RequireEffectiveContext(resources.SurfaceSource);
+
+    // Invokes the real source guard without exposing the captured context to the test.
+    internal static void RequireEffectiveContextForTests(IMapSurfaceSource source) => RequireEffectiveContext(source);
+
+    static MapEffectiveContext RequireEffectiveContext(IMapSurfaceSource source) =>
+        (source as IMapEffectiveSurfaceContext)?.EffectiveContext
+        ?? throw new MapDocumentException(MapDocumentRefusal.FoliageEffectiveContextRequired, "foliage finalization requires captured effective surfaces")
+        { SourceType = source.GetType(), Operation = "foliage finalization" };
 
     // Patches present on one side only, or whose digest, surface metadata or pose differ, with every record they hold.
     static void Surfaces(MapEffectiveContext a, MapEffectiveContext b, List<Bounds> rects)

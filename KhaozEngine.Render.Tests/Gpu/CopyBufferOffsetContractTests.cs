@@ -31,18 +31,12 @@ namespace KhaozEngine.Tests.Gpu
     /// the tolerant behaviour. The incumbent went in 18.0.0 and took its two rows with it, and the rest
     /// stay.</para>
     ///
-    /// <para><b>WHAT A RED RUN MEANS.</b> Either a backend stopped enforcing the rule, or one of them started
-    /// wording its refusal differently, or the rule stopped being four bytes on one side of the seam and not the
+    /// <para><b>WHAT A RED RUN MEANS.</b> Either a backend stopped enforcing the rule, or one of them named the
+    /// wrong parameter or offset, or the rule stopped being four bytes on one side of the seam and not the
     /// other, or an aligned copy stopped being recorded at all.</para>
     /// </summary>
     public sealed class CopyBufferOffsetContractTests : IDisposable
     {
-        // The sentence every backend's refusal carries, because they all come out of one helper. Asserting the
-        // shared text is what makes "identically" a claim rather than a hope: four separately worded refusals
-        // would all still be ArgumentOutOfRangeExceptions.
-        const string SharedSentence =
-            "IGpuCommandList.CopyBuffer requires that of both of its offsets on every backend";
-
         const uint Unaligned = 3;
         const uint UnalignedDestination = 6;
         const uint SmallestAligned = 4;
@@ -74,7 +68,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY BACKEND REFUSES AN UNALIGNED SOURCE OFFSET, AND SAYS THE SAME THING. The parameter name is the
+        /// EVERY BACKEND REFUSES AN UNALIGNED SOURCE OFFSET WITH THE SAME PARAMETER AND VALUE. The name is the
         /// seam's own <c>srcOffsetBytes</c> on all four, so a caller catching the exception reads one name
         /// whichever machine reported it.
         /// </summary>
@@ -83,18 +77,19 @@ namespace KhaozEngine.Tests.Gpu
         {
             foreach ((string backend, Action<uint, uint> copy) in EveryBackend())
             {
-                ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
                     () => copy(Unaligned, 0));
 
                 Assert.Equal("srcOffsetBytes", thrown.ParamName);
-                Assert.Contains("source offset of 3", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains("not a multiple of 4", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains(SharedSentence, thrown.Message, StringComparison.Ordinal);
+                Assert.Equal("source", thrown.Side);
+                Assert.Equal((ulong)Unaligned, thrown.ActualValue);
 
                 // The side-naming is the whole point of passing it through: a refusal that named the other end
                 // sends the reader to the buffer that was fine.
                 Assert.DoesNotContain("destination offset", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains(backend, thrown.Message, StringComparison.Ordinal);
+                Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, thrown.Reason);
+                Assert.Contains(backend, thrown.Context, StringComparison.Ordinal);
+                Assert.Equal(4u, thrown.AlignmentBytes);
             }
         }
 
@@ -107,14 +102,16 @@ namespace KhaozEngine.Tests.Gpu
         {
             foreach ((string backend, Action<uint, uint> copy) in EveryBackend())
             {
-                ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
                     () => copy(SmallestAligned, UnalignedDestination));
 
                 Assert.Equal("dstOffsetBytes", thrown.ParamName);
-                Assert.Contains("destination offset of 6", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains(SharedSentence, thrown.Message, StringComparison.Ordinal);
+                Assert.Equal("destination", thrown.Side);
+                Assert.Equal((ulong)UnalignedDestination, thrown.ActualValue);
                 Assert.DoesNotContain("source offset", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains(backend, thrown.Message, StringComparison.Ordinal);
+                Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, thrown.Reason);
+                Assert.Contains(backend, thrown.Context, StringComparison.Ordinal);
+                Assert.Equal(4u, thrown.AlignmentBytes);
             }
         }
 
@@ -166,12 +163,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ReadBuffer_RefusesAnUnalignedOffset_BeforeItTouchesTheDevice()
         {
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
                 () => GpuReadback.ReadBuffer<uint>(null!, null!, 4, Unaligned));
 
             Assert.Equal("srcOffsetBytes", thrown.ParamName);
-            Assert.Contains("A buffer readback (GpuReadback.ReadBuffer)", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains(SharedSentence, thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("source", thrown.Side);
+            Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, thrown.Reason);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
+            Assert.Equal("A buffer readback (GpuReadback.ReadBuffer)", thrown.Context);
         }
 
         /// <summary>
@@ -187,7 +186,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuBuffer buffer = device.Factory.CreateBuffer(
                 new GpuBufferDescription(256, GpuBufferUsage.StructuredBufferReadWrite, sizeof(uint)));
 
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<GpuCopyAlignmentException>(
                 () => GpuReadback.ReadBuffer<uint>(device, buffer, 4, Unaligned));
         }
 
@@ -199,7 +198,7 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         [Fact]
         public void ReadBuffer_RefusesAnUnalignedOffset_EvenForZeroElements()
-            => Assert.Throws<ArgumentOutOfRangeException>(
+            => Assert.Throws<GpuCopyAlignmentException>(
                 () => GpuReadback.ReadBuffer<uint>(null!, null!, 0, Unaligned));
 
         // ---- The four backends, as one table -------------------------------------------------------------

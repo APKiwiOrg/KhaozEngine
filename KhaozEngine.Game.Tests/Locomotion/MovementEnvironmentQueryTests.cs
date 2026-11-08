@@ -117,14 +117,20 @@ public class MovementEnvironmentQueryTests
         var environment = new EnvironmentAcquisitionFixture(view);
         using var lease = Acquire(environment);
         Exception? error = null;
+        int owner = Environment.CurrentManagedThreadId, caller = 0;
         var thread = new Thread(() =>
         {
+            caller = Environment.CurrentManagedThreadId;
             try { if (dispose) lease.Dispose(); else lease.AssertCurrent(); }
             catch (Exception exception) { error = exception; }
         });
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(2)));
-        Assert.IsType<InvalidOperationException>(error);
+        var failure = Assert.IsType<MovementReadException>(error);
+        Assert.Equal(MovementReadRefusal.LeaseThreadMismatch, failure.Reason);
+        Assert.Equal(owner, failure.OwnerThreadId);
+        Assert.Equal(caller, failure.CallerThreadId);
+        Assert.IsAssignableFrom<InvalidOperationException>(failure);
         lease.AssertCurrent();
         Assert.False(environment.Disposed);
     }

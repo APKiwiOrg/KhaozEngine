@@ -168,17 +168,10 @@ namespace KhaozEngine.Tests.Gpu
 
                 _output.WriteLine(error.Message);
 
-                // Metal's own diagnostic, not a paraphrase. It names the attribute, which is the only thing that
-                // makes a rejected pipeline actionable.
-                Assert.Contains("rejected this graphics pipeline", error.Message, StringComparison.Ordinal);
-
-                // THE TOKEN ONLY METAL CAN SUPPLY. The wrapper's own prefix and tail already contain "rejected
-                // this graphics pipeline" and the words "vertex layouts", so an assertion on either passes on
-                // the arm where -newRenderPipelineStateWithDescriptor:error: answered nil and wrote NO NSError,
-                // which is precisely the case this row exists to distinguish. "attribute" appears nowhere in the
-                // wrapper and is the word Metal's own message is built around (measured: "Vertex attribute
-                // m_17(2) is missing from the vertex descriptor").
-                Assert.Contains("attribute", error.Message, StringComparison.Ordinal);
+                Assert.Equal(ShaderValidationRefusal.MetalGraphicsPipelineRejected, error.Reason);
+                Assert.Equal("graphics", error.PipelineKind);
+                Assert.False(error.NativeDiagnosticMissing);
+                Assert.False(string.IsNullOrWhiteSpace(error.Diagnostic));
 
                 // And the nil arm named outright, so a future edit to the wrapper's wording cannot make the line
                 // above pass for the wrong reason.

@@ -47,7 +47,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// buffer with padding survives, and a zero stride is the sum of the slot's element sizes, which is what
     /// almost every shipped call site relies on.</para>
     ///
-    /// <para><b>A STEP RATE ABOVE ONE IS REFUSED BY NAME.</b> Vulkan has no per-instance DIVISOR in core: the rate
+    /// <para><b>A STEP RATE ABOVE ONE CARRIES InstanceDivisorUnsupported.</b> Vulkan has no per-instance DIVISOR in core: the rate
     /// is a two-valued <c>VkVertexInputRate</c>, and a divisor needs
     /// <c>VK_EXT_vertex_attribute_divisor</c>, which this backend does not enable (V-N6). The shipped instance
     /// stream uses a rate of exactly 1, so nothing is lost, and refusing is the alternative to silently drawing
@@ -79,7 +79,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="layouts">One layout per vertex buffer slot, in slot order.</param>
         /// <param name="attributes">The attributes, in location order.</param>
         /// <returns>The bindings, in slot order.</returns>
-        /// <exception cref="ArgumentException">A layout declares an instance step rate this backend cannot
+        /// <exception cref="VulkanVertexInputException">A layout declares an instance step rate this backend cannot
         /// express.</exception>
         internal static VulkanVertexBinding[] Build(IReadOnlyList<GpuVertexLayoutDescription>? layouts,
             out VulkanVertexAttribute[] attributes)
@@ -125,7 +125,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (stepRate <= SupportedInstanceStepRate) return;
 
-            throw new ArgumentException(
+            throw new VulkanVertexInputException(VulkanVertexInputRefusal.InstanceDivisorUnsupported,
                 "A native Vulkan graphics pipeline was given an instance step rate of "
                 + stepRate.ToString(CultureInfo.InvariantCulture) + " at vertex buffer slot "
                 + slot.ToString(CultureInfo.InvariantCulture)
@@ -133,7 +133,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "and the divisor extension is not enabled on this backend, so a rate above 1 cannot be honoured "
                 + "and is refused rather than flattened to 1, which would draw every instance from the same "
                 + "element. Every shipped instance stream declares a rate of 1.",
-                nameof(stepRate));
+                nameof(stepRate))
+            {
+                InstanceStepRate = stepRate,
+                Slot = slot,
+                MaximumStepRate = SupportedInstanceStepRate,
+            };
         }
 
         static GpuVertexElement[] ElementsOf(in GpuVertexLayoutDescription layout) => layout.Elements ?? [];

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -26,12 +27,15 @@ public class DiscordClientProviderTests
     {
         public Uri? Launched;
 
+        /// <summary>What the launcher reports. False is a browser that could not open the authorize URL.</summary>
+        public bool Opens = true;
+
         public Task<bool> LaunchAsync(Uri url, CancellationToken ct = default)
         {
             Launched = url;
             var q = HttpUtility.ParseQueryString(url.Query);
             holder.State = q["state"];
-            return Task.FromResult(true);
+            return Task.FromResult(Opens);
         }
     }
 
@@ -46,13 +50,23 @@ public class DiscordClientProviderTests
         public void Dispose() { }
     }
 
-    private sealed class MismatchListener : ILoopbackListener
+    /// <summary>Echoes the real redirect, then applies one named defect to its query. <c>none</c> is the control.</summary>
+    private sealed class DefectiveRedirectListener(StateHolder holder, string defect) : ILoopbackListener
     {
         public Uri RedirectUri { get; } = new("http://127.0.0.1:12345/");
 
         public Task<LoopbackResult> WaitForRedirectAsync(CancellationToken ct)
-            => Task.FromResult(new LoopbackResult(RedirectUri.ToString(),
-                new Dictionary<string, string> { ["code"] = "auth-code", ["state"] = "not-the-real-state" }));
+        {
+            Dictionary<string, string> query = new() { ["code"] = "auth-code", ["state"] = holder.State ?? "" };
+            switch (defect)
+            {
+                case "state-mismatch": query["state"] = "not-the-real-state"; break;
+                case "state-missing": query.Remove("state"); break;
+                case "code-missing": query.Remove("code"); break;
+                case "code-empty": query["code"] = ""; break;
+            }
+            return Task.FromResult(new LoopbackResult(RedirectUri.ToString(), query));
+        }
 
         public void Dispose() { }
     }
@@ -103,20 +117,50 @@ public class DiscordClientProviderTests
         Assert.Equal("authorization_code", handler.SeenGrantType);
     }
 
-    [Fact]
-    public async Task SignIn_throws_when_redirect_state_mismatches()
+    private static DiscordClientProvider ProviderWithRedirect(StateHolder holder, string defect)
+        => new(new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(holder), _ => new DefectiveRedirectListener(holder, defect),
+            new HttpClient(new FakeTokenHandler()));
+
+    /// <summary>Neither state value nor the code may reach the refusal: the state is the CSRF guard and the code is
+    /// redeemable with the verifier.</summary>
+    [Theory]
+    [InlineData("state-mismatch", SignInRefusal.RedirectStateMismatch)]
+    [InlineData("state-missing", SignInRefusal.RedirectStateMismatch)]
+    [InlineData("code-missing", SignInRefusal.AuthorizationCodeMissing)]
+    [InlineData("code-empty", SignInRefusal.AuthorizationCodeMissing)]
+    public async Task SignIn_refuses_a_redirect_that_breaks_one_rule(string defect, SignInRefusal expected)
     {
         StateHolder holder = new();
-        FakeBrowser browser = new(holder);
-        FakeTokenHandler handler = new();
-        HttpClient http = new(handler);
-        // The listener returns a state that never matches the provider-generated one.
-        Func<int, ILoopbackListener> listenerFactory = _ => new MismatchListener();
+
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => ProviderWithRedirect(holder, defect).SignInAsync(CancellationToken.None));
+
+        Assert.Equal(expected, ex.Reason);
+        Assert.Equal("discord", ex.ProviderId);
+        SignInRefusalSecrets.AssertCarriesNone(ex, holder.State!, "not-the-real-state", "auth-code");
+
+        ProviderCredential control = await ProviderWithRedirect(new StateHolder(), "none").SignInAsync(CancellationToken.None);
+        Assert.Equal("the-access-token", control.CredentialToken);
+    }
+
+    [Fact]
+    public async Task SignIn_refuses_when_the_browser_does_not_launch()
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder) { Opens = false };
         DiscordClientProvider provider = new(
             new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
-            browser, listenerFactory, http);
+            browser, _ => new FakeListener(holder), new HttpClient(new FakeTokenHandler()));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.BrowserLaunchFailed, ex.Reason);
+        Assert.Equal("discord", ex.ProviderId);
+
+        browser.Opens = true;
+        Assert.Equal("the-access-token", (await provider.SignInAsync(CancellationToken.None)).CredentialToken);
     }
 
     [Fact]
@@ -152,6 +196,14 @@ public class DiscordClientProviderTests
         => new(new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
             new FakeBrowser(new StateHolder()), _ => new FakeListener(new StateHolder()), new HttpClient(handler));
 
+    /// <summary>A provider whose browser and listener share one state, so its interactive sign-in can succeed.</summary>
+    private static DiscordClientProvider SignInProviderWith(HttpMessageHandler handler)
+    {
+        StateHolder holder = new();
+        return new(new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(holder), _ => new FakeListener(holder), new HttpClient(handler));
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.BadRequest)]
     [InlineData(HttpStatusCode.Unauthorized)]
@@ -171,8 +223,16 @@ public class DiscordClientProviderTests
         DiscordClientProvider provider = ProviderWith(new StatusTokenHandler(HttpStatusCode.ServiceUnavailable));
         ProviderCredential expired = new("discord", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
 
-        await Assert.ThrowsAsync<IdentitySignInException>(
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => provider.RefreshAsync(expired, CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.TokenHttpFailure, ex.Reason);
+        Assert.Equal(503, ex.StatusCode);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
+        Assert.Equal("discord", ex.ProviderId);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "old-token", "old-refresh");
+
+        Assert.NotNull(await ProviderWith(new FakeTokenHandler()).RefreshAsync(expired, CancellationToken.None));
     }
 
     [Fact]
@@ -185,7 +245,12 @@ public class DiscordClientProviderTests
             new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
             browser, _ => new FakeListener(holder), http);
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.TokenHttpFailure, ex.Reason);
+        Assert.Equal(400, ex.StatusCode);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
     }
 
     /// <summary>Serves a caller-chosen 200 body for the token POST, so a malformed-but-successful token
@@ -214,7 +279,37 @@ public class DiscordClientProviderTests
             new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
             browser, _ => new FakeListener(holder), new HttpClient(new BodyTokenHandler(tokenBody)));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.TokenExpiryMalformed, ex.Reason);
+        Assert.Equal("expires_in", ex.MemberName);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "the-access-token");
+
+        ProviderCredential control = await SignInProviderWith(
+            new BodyTokenHandler("{\"access_token\":\"the-access-token\",\"expires_in\":3600}"))
+            .SignInAsync(CancellationToken.None);
+        Assert.Equal("the-access-token", control.CredentialToken);
+    }
+
+    [Theory]
+    [InlineData("{\"refresh_token\":\"leaked-refresh\",\"expires_in\":3600}", SignInRefusal.TokenMemberMissing)]
+    [InlineData("{\"access_token\":\"\",\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty)]
+    [InlineData("{\"access_token\":null,\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty)]
+    public async Task SignIn_refuses_a_token_response_without_its_access_token(string tokenBody, SignInRefusal expected)
+    {
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => SignInProviderWith(new BodyTokenHandler(tokenBody)).SignInAsync(CancellationToken.None));
+
+        Assert.Equal(expected, ex.Reason);
+        Assert.Equal("access_token", ex.MemberName);
+        Assert.Equal("discord", ex.ProviderId);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "leaked-refresh");
+
+        ProviderCredential control = await SignInProviderWith(
+            new BodyTokenHandler("{\"access_token\":\"the-access-token\",\"refresh_token\":\"leaked-refresh\"}"))
+            .SignInAsync(CancellationToken.None);
+        Assert.Equal("the-access-token", control.CredentialToken);
     }
 
     /// <summary>The abandoned flow: the player opens the browser and never comes back, so the redirect never
@@ -253,7 +348,11 @@ public class DiscordClientProviderTests
             },
             new FakeBrowser(holder), _ => listener, new HttpClient(new FakeTokenHandler()));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.SignInAsync(CancellationToken.None));
+        Assert.Equal(SignInRefusal.TimedOut, ex.Reason);
+        Assert.Equal(TimeSpan.FromMilliseconds(50), ex.Timeout);
+        Assert.Equal("discord", ex.ProviderId);
         Assert.True(listener.Disposed);
     }
 
@@ -275,17 +374,25 @@ public class DiscordClientProviderTests
 
     /// <summary>#175: a non-JSON 200 (a captive-portal interstitial on hotel or airport wifi, a misconfigured
     /// reverse proxy) used to throw a raw JsonException straight out of sign-in, past every caller catching the
-    /// provider's own failure type.</summary>
-    [Fact]
-    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_non_json()
+    /// provider's own failure type. The parser's exception stays the inner exception, so the form-encoded and
+    /// truncated bodies prove it does not echo a token.</summary>
+    [Theory]
+    [InlineData("<html><body>Sign in to the hotel network</body></html>", "hotel network")]
+    [InlineData("access_token=leaked-access-token&refresh_token=leaked-refresh", "leaked-access-token")]
+    [InlineData("{\"access_token\":\"leaked-access-token", "leaked-access-token")]
+    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_non_json(string body, string bodyValue)
     {
-        StateHolder holder = new();
-        DiscordClientProvider provider = new(
-            new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
-            new FakeBrowser(holder), _ => new FakeListener(holder),
-            new HttpClient(new BodyTokenHandler("<html><body>Sign in to the hotel network</body></html>")));
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
+            () => SignInProviderWith(new BodyTokenHandler(body)).SignInAsync(CancellationToken.None));
 
-        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+        Assert.Equal(SignInRefusal.EndpointJsonMalformed, ex.Reason);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
+        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        SignInRefusalSecrets.AssertCarriesNone(ex, bodyValue);
+
+        ProviderCredential control = await SignInProviderWith(
+            new BodyTokenHandler("{\"access_token\":\"the-access-token\"}")).SignInAsync(CancellationToken.None);
+        Assert.Equal("the-access-token", control.CredentialToken);
     }
 
     [Fact]
@@ -297,8 +404,12 @@ public class DiscordClientProviderTests
             new HttpClient(new BodyTokenHandler("<html><body>Sign in to the hotel network</body></html>")));
         ProviderCredential expired = new("discord", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
 
-        await Assert.ThrowsAsync<IdentitySignInException>(
+        IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => provider.RefreshAsync(expired, CancellationToken.None));
+
+        Assert.Equal(SignInRefusal.EndpointJsonMalformed, ex.Reason);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
+        SignInRefusalSecrets.AssertCarriesNone(ex, "old-token", "old-refresh");
     }
 
     [Fact]

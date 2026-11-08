@@ -348,6 +348,8 @@ internal static class ShippedMarkerGuardFixtures
             case "parents": markerRows[1]!["parents"] = new JsonArray("imaginary-parent"); break;
             case "binding": nativeMarkers[1] = nativeMarkers[1] with { SupportBinding = nativeMarkers[0].SupportBinding }; break;
             case "missing-support": supports.RemoveAt(1); break;
+            case "unused-support": supports.Add(Support("spare-terrain", "plane-0", "terrain", null)); break;
+            case "wrong-owner-plane": supports[1]!["source"]!["plane"] = 1; break;
             case "extra-native": nativeMarkers.Add(nativeMarkers[3] with { Id = "extra", Name = "extra" }); break;
             case "expectation": comparison["expectations"]!["total"] = 5; break;
             case "standing-rule": roleRows[1]!["heightRule"] = "terrain"; break;
@@ -386,6 +388,8 @@ internal static class ShippedMarkerGuardFixtures
         if (variant == "format-eight-native") nativeText = nativeText.Replace("\"formatVersion\": 9", "\"formatVersion\": 8", StringComparison.Ordinal);
         File.WriteAllText(Path.Combine(root, "native.json"), nativeText);
         string rolesText = roles.ToJsonString();
+        if (variant == "nonfinite-offset") rolesText = rolesText.Replace("\"offsetX\":0.5", "\"offsetX\":1e400", StringComparison.Ordinal);
+        if (variant == "float-offset") rolesText = rolesText.Replace("\"offsetX\":0.5", "\"offsetX\":1e300", StringComparison.Ordinal);
         if (variant == "duplicate-role-field") rolesText = rolesText.Replace("\"offsetX\":0.5", "\"offsetX\":0.5,\"offsetX\":0.5", StringComparison.Ordinal);
         if (variant == "case-role-field") rolesText = rolesText.Replace("\"offsetX\":0.5", "\"OffsetX\":0.5", StringComparison.Ordinal);
         if (variant == "case-duplicate-role-field") rolesText = rolesText.Replace("\"offsetX\":0.5", "\"offsetX\":0.5,\"OffsetX\":0.5", StringComparison.Ordinal);

@@ -91,7 +91,7 @@ Facts at `ec20a2b61`, from code.
   `ClientPrediction.cs:382-385`).
 - `MoveToRange` settling, `SwimPace` and `DirectMoveToRange` read water only through `GroundMoveContext.Medium`
   (`MoveToRange.cs:131-139`, `SwimPace.cs:16`, `DirectMoveToRange.cs:117`).
-- Generation 14 (`MoveProtocol.cs:70`) carries the `MovementState` fields the explicit heads use to replicate the
+- The current movement transport (`MoveProtocol.WireProtocolVersion`) carries the `MovementState` fields the explicit heads use to replicate the
   contact controller. Neither tuning nor any profile identity crosses the wire.
 - The first adopter, Grimhollow, runs ordinary heads with `TileMediumSampler` water, which keeps one surface per water
   tile and discards body identity and bed data (`TileMediumSampler.cs:21-47`). `TileWorldColliders` installs every
@@ -259,13 +259,15 @@ contact controller.
 `SampleCentreWater`, so `MoveToRange` settling, `SwimPace` and `DirectMoveToRange` keep working. Motion always uses the
 certified trace through the lease.
 
-**P5A-11. No wire change.** Generation 14 stays. Ordinary contact heads replicate through the explicit fields every
+**P5A-11. No selector wire change.** Selecting Contact adds no transport fields. Ordinary contact heads replicate through the explicit fields every
 lifecycle door already uses via P5A-7. Selection is not exchanged, because both heads build tuning from the same build
 or published catalog under the consumer protocol version. Cost if wrong: a mismatched client is corrected every tick,
 and the repair is a tuning fingerprint in the consumer token.
 
-**P5A-12. Resolver-1 MapDoc contexts stay legacy-only.** `MapPhysicsRegistration` refuses a contact tuning with a
-message naming native G1b. Cost if wrong: a later factory supplies their registration, field and boundary.
+**P5A-12. Resolver-1 MapDoc contexts stay legacy-only.** Contexts from `MapPhysicsRegistration` refuse contact
+with `GroundContactCapabilityException`, reason `ContactProducerRestricted`, `ProducerKind = MapDocResolverOne`
+and `RequiredCapability = NativeMapDocContact` (G1b). Cost if wrong: a later factory supplies their registration,
+field and boundary.
 
 **P5A-13. Navigation waits for 5b.** `PhysicsNavBake.BuildProfile` and `GroundNavigationBake.Create` refuse a non-legacy
 profile with `NotSupportedException` naming phase 5b. Legacy capture and every bake byte stay unchanged in 5a.

@@ -6,11 +6,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     internal sealed partial class MetalCommandList
     {
         readonly MetalTimeline? _timestampTimeline;
+        readonly System.Collections.Generic.HashSet<MetalTimestampPool> _frameTimestampPools = [];
 
         public void BeginTimestamps(IGpuTimestampPool pool, uint count)
         {
             using var autorelease = ObjCAutoreleasePool.Enter();
-            RequireTimestampPool(pool).Begin(_commandBuffer, count, this, _timestampRecordingId);
+            MetalTimestampPool timestamps = RequireTimestampPool(pool);
+            timestamps.Begin(_commandBuffer, count, this, _timestampRecordingId);
+            _frameTimestampPools.Add(timestamps);
         }
 
         public void WriteTimestamp(IGpuTimestampPool pool, uint index)
@@ -56,14 +59,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _encoders.RecordExternalEncoderBoundary();
         }
 
-        MetalTimestampPool RequireTimestampPool(IGpuTimestampPool pool)
+        MetalTimestampPool RequireTimestampPool(IGpuTimestampPool pool, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             RequireRecording("Recording timestamps");
             ArgumentNullException.ThrowIfNull(pool);
-            if (_timestampTimeline is null) throw new NotSupportedException("This Metal command list has no timestamp device.");
+            if (_timestampTimeline is null) throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Metal command list has no timestamp device.") { Backend = GpuBackendKind.MetalNative, Command = member };
             if (pool is not MetalTimestampPool timestamps)
-                throw new ArgumentException("Use this Metal device's timestamp pool.", nameof(pool));
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend, "Use this Metal device's timestamp pool.", nameof(pool)) { ExpectedBackend = GpuBackendKind.MetalNative, ActualType = pool.GetType(), ExpectedType = typeof(MetalTimestampPool), ResourceKind = "timestamp pool", Context = "timestamp pool" };
             timestamps.RequireOwner(_timestampTimeline, _liveness);
             return timestamps;
         }

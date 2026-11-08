@@ -2,10 +2,12 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Attachments</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>GPU-free rigid attachment definitions, canonical JSON, reference validation and embedded asset policy. BCL-only and explicitly referenced.</Description>
+    <Description>GPU-free rigid and skinned attachment definitions, canonical JSON, embedded asset validation and versioned body rig identities. References only the shared Primitives and is explicitly referenced.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <InternalsVisibleTo Include="KhaozEngine.Attachments.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

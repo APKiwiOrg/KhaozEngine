@@ -134,9 +134,26 @@ internal static class SupportCostVerdict
                 a.Remove(key);
                 b.Remove(key);
             }
+            AddCommitmentDefaults(a);
+            AddCommitmentDefaults(b);
             if (!JsonNode.DeepEquals(a, b)) return false;
         }
         return true;
+    }
+
+    // Only the commitment fields added after the committed evidence have implicit defaults.
+    static void AddCommitmentDefaults(JsonObject scene)
+    {
+        if (scene["InputState"]?["Commitment"] is not JsonObject commitment) return;
+        foreach (string field in new[]
+            {
+                nameof(MovementCommitment.Kind),
+                nameof(MovementCommitment.DistanceRemaining),
+                nameof(MovementCommitment.ConsecutiveBlockedTicks),
+            })
+        {
+            if (!commitment.ContainsKey(field)) commitment.Add(field, 0);
+        }
     }
 
     static bool SameTuningInputs(JsonNode? reference, JsonNode? hosted)

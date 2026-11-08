@@ -42,12 +42,12 @@ public partial class CharacterController3DContactTests
             var command = new MoveCommand(Vector2.UnitX, true, 0.3f, jump);
             var frame = new MovementFrameDescriptor(default, physics.Origin, 1);
             var local = expected with { Position = expected.Position - physics.Origin };
-            MoveState? dry = !wet ? CharacterMovement.Step(local, command, Dt, (_, _) => -0.9f - originY,
-                Tuning, world: physics) : null;
+            MoveState? dry = !wet ? PlayerMovementPublication.Canonicalize(CharacterMovement.Step(PlayerMovementPublication.PrepareStep(local), command, Dt, (_, _) => -0.9f - originY,
+                Tuning, world: physics)) : null;
             Assert.Equal(MovementAvailability.Known, reference.TryAcquire(reference.CreateOrdinaryScope(frame), out var queries));
             using (queries)
             {
-                var result = reference.Step(new(local, frame, null), command, Dt, queries!);
+                var result = reference.StepPlayer(new(local, frame, null), command, Dt, queries!);
                 Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
                 if (dry.HasValue) Assert.Equal(dry.Value, result.State.State);
                 expected = result.State.State with { Position = result.State.State.Position + physics.Origin };
@@ -130,28 +130,54 @@ public partial class CharacterController3DContactTests
     }
 
     [Theory]
-    [InlineData("gravity")]
-    [InlineData("fall")]
-    [InlineData("registration")]
-    [InlineData("boundary")]
-    [InlineData("field")]
-    [InlineData("sweep")]
-    [InlineData("selection")]
-    public void ConfigurationRefusalPreservesTheUnsteppedState(string refusal)
+    [InlineData("physics", typeof(MovementConfigurationException))]
+    [InlineData("gravity", typeof(MovementConfigurationException))]
+    [InlineData("fall", typeof(MovementConfigurationException))]
+    [InlineData("registration", typeof(MovementConfigurationException))]
+    [InlineData("boundary", typeof(MovementConfigurationException))]
+    [InlineData("field", typeof(MovementConfigurationException))]
+    [InlineData("sweep", typeof(MovementCapabilityException))]
+    [InlineData("selection", typeof(NotSupportedException))]
+    public void ConfigurationRefusalPreservesTheUnsteppedState(string refusal, Type expectedType)
     {
         using var physics = new LifecycleWorld { CertifiedSweep = refusal != "sweep", Selectable = refusal != "selection" };
         var registration = Registration(physics);
+        using var repairedPhysics = new LifecycleWorld();
         using var controller = new CharacterController3D { Controller = Tuning.Controller, Water = Tuning.Water };
         if (refusal == "gravity") controller.Gravity = 0;
         if (refusal == "fall") controller.MaxFallSpeed = 0;
         var before = controller.MovementState;
-        Action update = () => controller.Update(Keys(false, Key.D), Dt, 0, Ground, null, physics,
+        Action update = () => controller.Update(Keys(false, Key.D), Dt, 0, Ground, null, refusal == "physics" ? null : physics,
             refusal == "field" ? (_, _, _) => MovementMedium.Dry : null, null,
             refusal == "registration" ? null : registration, refusal == "boundary" ? null : Boundary);
-        if (refusal is "sweep" or "selection") Assert.Throws<NotSupportedException>(update);
-        else Assert.Throws<ArgumentException>(update);
+        var failure = Assert.Throws(expectedType, update);
+        if (failure is MovementCapabilityException capability)
+            Assert.Equal(MovementConfigurationRefusal.CapsuleSweepRequired, capability.Reason);
+        if (failure is MovementConfigurationException configuration)
+            Assert.Equal(refusal switch
+            {
+                "physics" => MovementConfigurationRefusal.PhysicsRequired,
+                "registration" => MovementConfigurationRefusal.RegistrationRequired,
+                "boundary" => MovementConfigurationRefusal.BoundaryRequired,
+                "field" => MovementConfigurationRefusal.WaterFieldRequired,
+                _ => MovementConfigurationRefusal.KernelPositiveValueRequired
+            }, configuration.Reason);
+        if (failure is MovementConfigurationException missing && refusal is "physics" or "registration" or "boundary" or "field")
+            Assert.Equal(refusal switch
+            {
+                "physics" => typeof(IPhysicsWorld),
+                "registration" => typeof(OrdinaryMovementRegistration),
+                "boundary" => typeof(MovementBoundary),
+                _ => typeof(IMovementWaterField)
+            }, missing.RequiredCapability);
         Assert.Equal(before, controller.MovementState);
         Assert.Equal(physics.ViewCreations, physics.ViewDisposals);
+        IPhysicsWorld complete = refusal is "sweep" or "selection" ? repairedPhysics : physics;
+        controller.Gravity = Tuning.Gravity;
+        controller.MaxFallSpeed = Tuning.MaxFallSpeed;
+        controller.Update(Keys(false, Key.D), Dt, 0, Ground, null, complete,
+            refusal == "field" ? (_, _, _) => MovementMedium.Dry : null,
+            refusal == "field" ? MovementWaterField.Level("world", 1, -4) : null, Registration(complete), Boundary);
     }
 
     static OrdinaryMovementRegistration Registration(IPhysicsWorld world, float originX = 0, float ground = -0.9f)

@@ -307,9 +307,14 @@ public class PhysicsNavProfileTests
         using var world = GroundTraversalProbeTests.FlatWorld();
         using var bake = Capture(world);
 
-        Assert.Throws<ArgumentException>(() => bake.BuildProfile(Tuning with { MaxSlopeRadians = 0.7f }, default));
+        var slope = Assert.Throws<NavigationProfileException>(() => bake.BuildProfile(Tuning with { MaxSlopeRadians = 0.7f }, default));
+        Assert.Equal(NavigationProfileRefusal.CaptureSlopeMismatch, slope.Reason);
+        Assert.Equal(0.8f, slope.ExpectedSlope);
+        Assert.Equal(0.7f, slope.ActualSlope);
+        Assert.NotNull(bake.BuildProfile(Tuning, default));
         world.Rebase(new Vector3(100f, 20f, -80f));
-        Assert.Throws<InvalidOperationException>(() => bake.BuildProfile(Tuning, default));
+        var failure = Assert.Throws<NavigationBuildException>(() => bake.BuildProfile(Tuning, default));
+        Assert.Equal(NavigationBuildRefusal.CaptureOriginChanged, failure.Reason);
     }
 
     [Theory]
@@ -330,7 +335,18 @@ public class PhysicsNavProfileTests
             _ => Tuning with { StepHeight = 0.3f },
         };
 
-        Assert.Throws<ArgumentException>(() => nav.Validate(changed));
+        var failure = Assert.Throws<NavigationProfileException>(() => nav.Validate(changed));
+        Assert.Equal(NavigationProfileRefusal.GeometryMismatch, failure.Reason);
+        (string name, float expected, float actual) = field switch
+        {
+            0 => ("CapsuleRadius", Tuning.CapsuleRadius, 0.21f),
+            1 => ("CapsuleHalfHeight", Tuning.CapsuleHalfHeight, 0.8f),
+            2 => ("MaxSlopeRadians", Tuning.MaxSlopeRadians, 0.7f),
+            _ => ("StepHeight", Tuning.StepHeight, 0.3f),
+        };
+        Assert.Equal(name, failure.FieldName);
+        Assert.Equal((double)expected, failure.ExpectedNumber);
+        Assert.Equal((double)actual, failure.ActualNumber);
         nav.Validate(Tuning with { WalkSpeed = 0f, RunSpeed = 100f, MaxStepClimbSpeed = 0f });
         Assert.Throws<ArgumentException>(() => nav.Planner.FindPath(Vector3.Zero, Vector3.UnitX, 0.21f, PathQueryBudget.Default));
     }

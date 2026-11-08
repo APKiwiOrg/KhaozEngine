@@ -75,7 +75,7 @@ public sealed class CertifiedSweepDomainTests
         Refused(Query(QueryFilter.StaticsOnly));
         var general = world.AddDynamic(new SphereShape(1), Pose.At(new(20, 0, 0)), new DynamicBodyDescription(1));
         Refused(Query(QueryFilter.DynamicsOnly));
-        var bodies = (Dictionary<int, (BepuPhysics.BodyHandle Handle, BepuPhysics.Collidables.TypedIndex Shape)>)Field(world, "_dynamics");
+        var bodies = world.DynamicHandlesForTests;
         Mutate(world, sim => { var body = sim.Bodies[bodies[general.Value].Handle]; body.Awake = false; });
         Assert.False(world.IsAwake(general));
         Refused(Query(QueryFilter.DynamicsOnly));

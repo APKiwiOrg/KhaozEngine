@@ -31,7 +31,7 @@ public sealed partial class GroundNavigationBake
     private readonly Dictionary<string, GroundNavigation> _byName;
 
     private GroundNavigationBake(byte[] identity, Vector3 origin, PhysicsNavColumns columns,
-        string[] names, GroundNavigation[] profiles)
+        string[] names, GroundNavigation[] profiles, ushort? formatVersion = null, PhysicsNavDescentEvidence? terrain = null)
     {
         _identity = identity;
         _fingerprint = SHA256.HashData(identity);
@@ -43,9 +43,20 @@ public sealed partial class GroundNavigationBake
         foreach (GroundNavigation profile in profiles)
             if (profile.Identity.Kind == EffectiveMovementBindingKind.OrdinaryContact)
                 _formatVersion = NavBakeIdentity.ContactFormatVersion;
+        foreach (GroundNavigation profile in profiles)
+            if (profile.MaxDropMetres > 0) _formatVersion = NavBakeIdentity.DropFormatVersion;
+        if (formatVersion is { } version) _formatVersion = version;
+        _terrainEvidence = terrain;
         _byName = new Dictionary<string, GroundNavigation>(names.Length, StringComparer.Ordinal);
         for (int i = 0; i < names.Length; i++) _byName.Add(names[i], profiles[i]);
         ProfileNames = Array.AsReadOnly(names);
+    }
+
+    /// <summary>Lets ContactNavigationReuseFixture replace re-proved traversal in both stored profile indexes.</summary>
+    internal void ReplaceProfileForTests(string name, GroundNavigation replacement)
+    {
+        _profiles[Array.IndexOf(_names, name)] = replacement;
+        _byName[name] = replacement;
     }
 
     /// <summary>SHA-256 of the identity block, for logs and build manifests.</summary>
@@ -63,8 +74,8 @@ public sealed partial class GroundNavigationBake
     /// <exception cref="ArgumentException">A source, profile name, count or tuning is invalid, a profile slope differs
     /// from the capture slope, an aquatic profile's capture did not sample water or its swim fractions are out of
     /// order, or the identity block exceeds 1 MiB.</exception>
-    /// <exception cref="InvalidOperationException">The physics origin changed, or a fresh profile's candidate links
-    /// differ from the list regenerated from its grids, which is an engine defect.</exception>
+    /// <exception cref="InvalidOperationException">The physics origin changed, or a non-terrain profile's candidate
+    /// links differ from its frozen recipe, which is an engine defect.</exception>
     public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
         IReadOnlyList<NavBakeProfile> profiles)
         => Create(capture, sources, profiles, null);
@@ -108,15 +119,24 @@ public sealed partial class GroundNavigationBake
         {
             NavBakeProfile profile = sorted[i];
             GroundNavigation navigation = capture.BuildProfile(profile.Tuning, profile.Areas,
-                new GroundProfileOptions { Aquatic = profile.Aquatic }, execution);
-            IReadOnlyList<NavLink> regenerated = NavLayerLinks.GenerateGrounded(navigation.Space.Layers, profile.Tuning.StepHeight);
+                new GroundProfileOptions
+                {
+                    Aquatic = profile.Aquatic,
+                    MaxDropMetres = profile.MaxDropMetres,
+                    AllowTerrainDescents = profile.AllowTerrainDescents
+                }, execution);
+            IEnumerable<NavLink> regenerated = profile.AllowTerrainDescents ? navigation.Space.Links : profile.MaxDropMetres > 0
+                ? ContactDropTopology.Enumerate(navigation.Space.Layers, navigation.Graph.Layers, profile.Tuning, profile.MaxDropMetres)
+                : NavLayerLinks.GenerateGrounded(navigation.Space.Layers, profile.Tuning.StepHeight);
             if (!SameLinks(regenerated, navigation.Space.Links))
                 throw new InvalidOperationException(
                     $"Profile '{profile.Name}' candidate links differ from the list regenerated from its grids.");
             names[i] = profile.Name;
             built[i] = navigation;
         }
-        return new GroundNavigationBake(identity, capture.Origin, capture.Columns, names, built);
+        var terrain = ContainerTerrain(capture, built);
+        return new GroundNavigationBake(identity, capture.Origin, capture.Columns, names, built,
+            NavBakeIdentity.FormatFor(options, sorted), terrain);
     }
 
     /// <summary>Loads a bake when its identity equals the one encoded from <paramref name="expected"/>. Checks run in
@@ -143,11 +163,13 @@ public sealed partial class GroundNavigationBake
         return sorted;
     }
 
-    private static bool SameLinks(IReadOnlyList<NavLink> a, IReadOnlyList<NavLink> b)
+    private static bool SameLinks(IEnumerable<NavLink> a, IReadOnlyList<NavLink> b)
     {
-        if (a.Count != b.Count) return false;
-        for (int i = 0; i < a.Count; i++)
-            if (a[i] != b[i]) return false;
-        return true;
+        int next = 0;
+        foreach (NavLink link in a)
+        {
+            if (next >= b.Count || link != b[next++]) return false;
+        }
+        return next == b.Count;
     }
 }

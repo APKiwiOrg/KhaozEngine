@@ -122,9 +122,8 @@ public sealed class CatalogReadRegistrationTests : IDisposable
         ArgumentException after = Assert.Throws<ArgumentException>(
             () => CatalogAdminActions.Register(reads, _harness.Store, _harness.Registry));
 
-        Assert.Equal(twice.GetType(), after.GetType());
-        Assert.Equal(twice.ParamName, after.ParamName);
-        Assert.Equal(twice.Message, after.Message);
+        Assert.Equal("name", twice.ParamName);
+        Assert.Equal("name", after.ParamName);
         Assert.Equal(TheFive, reads.ActionNames.OrderBy(static name => name, StringComparer.Ordinal).ToArray());
     }
 

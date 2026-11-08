@@ -159,7 +159,11 @@ public sealed class NativeFoliageStampTests
             {
                 MapDocumentException? error = null;
                 var work = FoliageEditorFixtures.Work(() => error = Assert.Throws<MapDocumentException>(action));
-                Assert.StartsWith("Foliage CapacityExceeded", error!.Message, StringComparison.Ordinal);
+                Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error!.Reason);
+                Assert.Equal(MapFoliageStatus.CapacityExceeded, error.FoliageStatus);
+                Assert.Equal("MaxPaintTargets", error.Budget);
+                Assert.Equal(4097, error.ActualCount);
+                Assert.Equal(4096, error.Limit);
                 Assert.Equal((0L, 0L, 0L), (work.Clones, work.Expansions, work.Captures));
                 Assert.Equal(beforeState, FoliageEditorFixtures.State(session));
             }
@@ -183,6 +187,8 @@ public sealed class NativeFoliageStampTests
             Assert.True(refused.IsError == true);
             Assert.Contains("Foliage CapacityExceeded", string.Join("\n", refused.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
             Assert.Equal(wireBefore, FoliageEditorFixtures.State(wireSession));
+            var admitted = FoliageFixtures.PaintTargets(4096);
+            NativeDocumentTransaction.Stage(admitted.Document, new MarkerEditCommand(marker), false, admitted.Assets);
         }
         finally
         {

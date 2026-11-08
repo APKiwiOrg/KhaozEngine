@@ -199,7 +199,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public IGpuTimestampPool CreateTimestampPool(uint capacity)
         {
             if (!_capabilities.SupportsTimestamps || !_timestamps.IsSupported || _createTimestampApi is null)
-                throw new NotSupportedException("This Vulkan queue has no usable timestamp counter.");
+                throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Vulkan queue has no usable timestamp counter.") { Backend = GpuBackendKind.VulkanNative, Command = nameof(CreateTimestampPool) };
             return new VulkanTimestampPool(_createTimestampApi(), _owner.Timeline, _owner, capacity,
                 _timestamps.ValidBits, _timestamps.TickPeriodNanoseconds);
         }

@@ -156,8 +156,15 @@ public class ContactNavigationAdmissionTests
             extent: new(new(-1, -1, -1), new(1, 1, 1), 0, 0));
         using var context = Context(scene);
         using var capture = PhysicsNavBake.Capture(context, Options with { MinX = 100, MaxX = 103 }, _ => 0);
-        Assert.Throws<InvalidOperationException>(() => capture.BuildProfile(Tuning, default));
+        var failure = Assert.Throws<NavigationBuildException>(() => capture.BuildProfile(Tuning, default));
+        Assert.Equal(NavigationBuildRefusal.EnvelopeOutsideServedScope, failure.Reason);
+        Assert.True(failure.Minimum!.Value.X < failure.Maximum!.Value.X);
+        Assert.True(failure.Minimum.Value.X > 1);
         Assert.Equal(0, proofs);
+        using var repairedScene = new OrdinaryContactScene(Tuning);
+        using var repairedContext = Context(repairedScene);
+        using var repaired = PhysicsNavBake.Capture(repairedContext, Options, _ => 0);
+        Assert.NotEmpty(repaired.BuildProfile(Tuning, default).Space.Layers);
     }
 
     [Fact]

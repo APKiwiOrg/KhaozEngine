@@ -187,8 +187,11 @@ public class WorldServerFrameAnchoringTests
     {
         (LoopbackTransport st, _) = LoopbackTransport.CreatePair();
         var config = new WorldServerConfig { FrameAnchoring = true };
-        Assert.Throws<ArgumentException>(() =>
+        WorldConfigurationException refusal = Assert.Throws<WorldConfigurationException>(() =>
             new WorldServer(st, config, Flat, Unit, physics: new UnrebasableWorld()));
+        Assert.Equal(WorldConfigurationRefusal.PhysicsCannotRebase, refusal.Reason);
+        Assert.Equal("CanRebase", refusal.MemberName);
+        Assert.Equal("physics", refusal.ParamName);
 
         // Without a physics world at all it is fine: there is no second space to disagree with.
         var ok = new WorldServer(st, config, Flat, Unit);
@@ -201,8 +204,13 @@ public class WorldServerFrameAnchoringTests
         // The mirror of the server's own guard (An_unrebasable_physics_world_is_refused...), proving
         // WorldClientConfig.FrameAnchoring's new gate did not accidentally loosen the default-on behaviour.
         (LoopbackTransport st, _) = LoopbackTransport.CreatePair();
-        Assert.Throws<ArgumentException>(() =>
+        WorldConfigurationException refusal = Assert.Throws<WorldConfigurationException>(() =>
             new WorldClient(st, Flat, Unit, new WorldClientConfig(), physics: new UnrebasableWorld()));
+        Assert.Equal(WorldConfigurationRefusal.PhysicsCannotRebase, refusal.Reason);
+        Assert.Equal("CanRebase", refusal.MemberName);
+        Assert.Equal("physics", refusal.ParamName);
+
+        using var control = new WorldClient(st, Flat, Unit, new WorldClientConfig());
     }
 
     [Fact]

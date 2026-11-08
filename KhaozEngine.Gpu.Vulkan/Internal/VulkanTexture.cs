@@ -202,10 +202,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>The texture as this backend's own, or a named refusal for one another backend made.</summary>
         internal static VulkanTexture Require(IGpuTexture? texture, string what)
             => texture as VulkanTexture
-                ?? throw new ArgumentException(
+                ?? throw new GpuResourceOwnershipArgumentException(texture is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"The texture handed to {what} was not created by the native Vulkan backend, so it carries no "
                     + "VkImage and no VkImageView. Create it through the same IGpuDevice.Factory.",
-                    nameof(texture));
+                    nameof(texture))
+                {
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ActualType = texture?.GetType(),
+                    ExpectedType = typeof(VulkanTexture),
+                    Context = what,
+                    ResourceKind = "texture",
+                };
 
         /// <summary>The diagnostic line a refusal quotes.</summary>
         internal string Describe()

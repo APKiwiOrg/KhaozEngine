@@ -62,6 +62,20 @@ internal readonly struct InstalledPoseOperator
     internal InstalledPoseOperator WithTranslation(Vector3 position) => IsResolved &&
         Within(position, RepresentedGeometryTransforms.MaximumPositionMagnitude) ? new(this, position) : default;
 
+    /// <summary>Lets CertifiedHullSweepLifetimeTests corrupt only X while preserving every captured derived coefficient.</summary>
+    internal InstalledPoseOperator WithXForTests(FeaturePoint x) => new(this, x);
+
+    InstalledPoseOperator(in InstalledPoseOperator source, FeaturePoint x)
+    {
+        this = source;
+        X = x;
+    }
+
+    /// <summary>Lets RepresentedSource tests supply mismatched source and represented bases to source admission.</summary>
+    internal static InstalledPoseOperator CreateForTests(FeaturePoint x, FeaturePoint y, FeaturePoint z,
+        Vector3 translation, FeaturePoint representedX, FeaturePoint representedY, FeaturePoint representedZ) =>
+        new(x, y, z, translation, representedX, representedY, representedZ);
+
     // Test observation of legacy dual admissions on this thread. Support queries must leave it unchanged.
     [ThreadStatic] static StrongBox<int>? t_dualAdmissions;
 

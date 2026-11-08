@@ -158,14 +158,14 @@ public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (Binding.UsesLease) return StepExplicit(state, command, dt);
-        MoveState m = CharacterMovement.Step(state.Move, command, dt, groundHeightAdapter, tuning, groundNormalAdapter,
+        MoveState m = CharacterMovement.Step(PlayerMovementPublication.PrepareStep(state.Move), command, dt, groundHeightAdapter, tuning, groundNormalAdapter,
             physics, clampXzAdapter, mediumAdapter);
         // Carry the teleport epoch through unchanged: it is a networking marker, not a movement quantity, so a step
         // only advances position/vertical. This keeps a teleport marker alive across the single-World server's next
         // per-tick step (the sharded head preserves it in-place via PlayerMovementSystem's ref-component write).
         return new PlayerMoveState
         {
-            Move = m,
+            Move = PlayerMovementPublication.Canonicalize(m),
             TeleportEpoch = state.TeleportEpoch,
             FrameAnchor = new Vector2(Frame.Anchor.X, Frame.Anchor.Z),
         };

@@ -89,6 +89,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalRingAllocator
     {
+        internal MetalCpuReadProtection CpuReads { get; }
         readonly MetalTimeline _timeline;
         readonly WaitAccumulator _backpressure;
         readonly object _submitLock;
@@ -110,8 +111,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         ulong _recordingIndex;
 
         // The DEVICE-level current segment: what the off-timeline write treats as current and what Map answers.
-        // Written under the submit lock, and read lock-free only by those two, whose stale read is the same window
-        // a device-level write racing a Begin already has.
+        // Written under the submit lock. Device updates and mapping-base capture read it under that same lock.
         int _segment;
 
         int _stallCount;
@@ -143,15 +143,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (framesInFlight < MetalFramesInFlight.Minimum || framesInFlight > MetalFramesInFlight.Maximum)
             {
-                throw new ArgumentOutOfRangeException(nameof(framesInFlight), framesInFlight,
+                throw new MetalRingLayoutException(MetalRingLayoutRefusal.FrameDepthOutsideRange, nameof(framesInFlight), framesInFlight,
                     "A native Metal uniform ring runs between " + MetalFramesInFlight.Minimum + " and "
                     + MetalFramesInFlight.Maximum + " frame segments. " + MetalFramesInFlight.EnvVarName
-                    + " clamps to that range before it gets here.");
+                    + " clamps to that range before it gets here.")
+                    {
+                        MinimumDepth = MetalFramesInFlight.Minimum,
+                        MaximumDepth = MetalFramesInFlight.Maximum,
+                        EnvironmentVariable = MetalFramesInFlight.EnvVarName,
+                    };
             }
 
             _timeline = timeline;
             _backpressure = backpressure;
             _submitLock = submitLock;
+            CpuReads = new MetalCpuReadProtection(submitLock, () => timeline.CompletedValue, () => timeline.LastSubmitted, framesInFlight);
             _segmentOwner = new ulong[framesInFlight];
             FramesInFlight = framesInFlight;
         }
@@ -236,12 +242,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (Monitor.IsEntered(_submitLock))
             {
-                throw new InvalidOperationException(
+                throw new MetalRingWaitException(MetalRingWaitRefusal.SubmitLockHeld,
                     "BeginRecording was called on the native Metal ring allocator while the caller held the "
                     + "submit lock. Claiming a segment waits for the GPU to finish with the submission that last "
                     + "read it, and the value it waits for is registered under that same lock (M-N2), so waiting "
                     + "while holding it would shut out the only thing that could end the wait. Begin takes it "
-                    + "nowhere, so reaching this means a new caller was added inside the lock.");
+                    + "nowhere, so reaching this means a new caller was added inside the lock.")
+                    {
+                        Operation = nameof(BeginRecording),
+                    };
             }
 
             bool blocked = false;
@@ -251,6 +260,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             Monitor.Enter(_submitLock, ref taken);
             try
             {
+                CpuReads.RequireSlotAvailable((int)((_recordingIndex + 1) % (ulong)FramesInFlight));
                 _recordingIndex++;
                 int segment = (int)(_recordingIndex % (ulong)FramesInFlight);
 
@@ -405,24 +415,32 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             lock (_submitLock)
             {
+                // Account for the existing floor wait before deciding which physical bytes are writable.
+                // A current unfinished prefix still refuses: it has no submitted value this wait can cover.
+                if (CurrentSegmentIsGatedAtDepthOne) WaitForCurrentSegmentUnderLock();
                 bool wasPatched = ring.HasPendingPatches;
 
                 ulong completed = 0;
                 bool polled = false;
+                Span<bool> deferred = stackalloc bool[FramesInFlight];
+
+                // Plan first, then preflight only immediate copies. A private deferred patch never touches
+                // protected storage. No copy or patch changes until every immediate target is accepted (#1682).
+                for (int segment = 0; segment < FramesInFlight; segment++)
+                {
+                    deferred[segment] = segment != _segment && DeferralIsOwed(ring, segment, ref completed, ref polled);
+                    if (!deferred[segment])
+                        CpuReads.RequireWritable(ring.CpuResource, ring.SegmentBaseBytes(segment) + offsetBytes, (ulong)data.Length);
+                }
 
                 for (int segment = 0; segment < _segmentOwner.Length; segment++)
                 {
-                    // _segment is read and written under this lock alone, so this comparison is exact rather than
-                    // a benign stale read.
-                    if (segment != _segment && DeferralIsOwed(ring, segment, ref completed, ref polled))
+                    if (deferred[segment])
                     {
                         _patchesCoalesced += ring.RecordPendingPatchUnderLock(segment, offsetBytes, data);
                         _patchesDeferred++;
                         continue;
                     }
-
-                    // AND THE CURRENT SEGMENT IS GATED AT THE FLOOR, where it is the only segment there is.
-                    if (CurrentSegmentIsGatedAtDepthOne) WaitForCurrentSegmentUnderLock();
 
                     ring.CopyIntoSegmentUnderLock(segment, offsetBytes, data);
                 }

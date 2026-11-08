@@ -32,7 +32,8 @@ namespace KhaozEngine.Accounts.SqlServer;
 /// </para>
 /// <para>
 /// <b>The check</b> reads <c>sys.columns</c> and refuses a table missing an owned column or declaring one with a type
-/// the store cannot read or a width under the limits. Its message names columns and never a row.
+/// the store cannot read or a width under the limits. Its <see cref="AccountSchemaException"/> names columns through
+/// <see cref="AccountSchemaException.Findings"/> and never a row.
 /// </para>
 /// </remarks>
 internal static class SqlServerAccountSchema
@@ -68,20 +69,18 @@ internal static class SqlServerAccountSchema
     /// </summary>
     /// <param name="connection">An open connection.</param>
     /// <param name="schema">The schema name, unquoted.</param>
+    /// <param name="table">The table name, unquoted.</param>
     /// <param name="qualified">The bracket-quoted <c>[schema].[table]</c>.</param>
     /// <param name="mode">Whether DDL is allowed.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>Whether <c>display_name</c> is <c>NOT NULL</c>, which only a legacy table declares.</returns>
-    /// <exception cref="InvalidOperationException">The schema does not exist, or the table is missing under
+    /// <exception cref="AccountSchemaException">The schema does not exist, or the table is missing under
     /// <see cref="AccountSchemaMode.ValidateOnly"/>, or it does not match the layout.</exception>
-    internal static async Task<bool> EnsureAsync(SqlConnection connection, string schema, string qualified,
-        AccountSchemaMode mode, CancellationToken ct)
+    internal static async Task<bool> EnsureAsync(SqlConnection connection, string schema, string table,
+        string qualified, AccountSchemaMode mode, CancellationToken ct)
     {
         (bool schemaExists, bool tableExists) = await ProbeAsync(connection, schema, qualified, ct).ConfigureAwait(false);
-        if (!schemaExists)
-            throw new InvalidOperationException(
-                "The account table's schema does not exist. Create it, or name an existing one in " +
-                "SqlServerAccountStoreOptions.");
+        RefuseMissingObjects(schemaExists, tableExists, schema, table, mode);
 
         if (mode == AccountSchemaMode.AutoCreate)
         {
@@ -90,14 +89,29 @@ internal static class SqlServerAccountSchema
             if (tableExists) await CheckAsync(connection, qualified, mode, addedMayBeMissing: true, ct).ConfigureAwait(false);
             await CreateOrWidenAsync(connection, qualified, ct).ConfigureAwait(false);
         }
-        else if (!tableExists)
-        {
-            throw new InvalidOperationException(
-                "The account table does not exist, and ValidateOnly never creates it. Run the store once under " +
-                "AutoCreate with an identity that holds DDL rights, or create the table from the package README.");
-        }
 
         return await CheckAsync(connection, qualified, mode, addedMayBeMissing: false, ct).ConfigureAwait(false);
+    }
+
+    // What the probe answered, apart from the catalog read so every leg can reach both refusals with no server.
+    internal static void RefuseMissingObjects(bool schemaExists, bool tableExists, string schema, string table,
+        AccountSchemaMode mode)
+    {
+        if (!schemaExists)
+            throw new AccountSchemaException(AccountSchemaRefusal.SchemaMissing,
+                "The account table's schema does not exist. Create it, or name an existing one in " +
+                "SqlServerAccountStoreOptions.")
+            {
+                SchemaName = schema,
+            };
+
+        if (mode != AccountSchemaMode.AutoCreate && !tableExists)
+            throw new AccountSchemaException(AccountSchemaRefusal.TableMissing,
+                "The account table does not exist, and ValidateOnly never creates it. Run the store once under " +
+                "AutoCreate with an identity that holds DDL rights, or create the table from the package README.")
+            {
+                TableName = table,
+            };
     }
 
     private static async Task<(bool SchemaExists, bool TableExists)> ProbeAsync(SqlConnection connection,
@@ -171,25 +185,56 @@ internal static class SqlServerAccountSchema
                 found[reader.GetString(0)] = (reader.GetString(1), reader.GetInt16(2), reader.GetBoolean(3));
         }
 
-        var problems = new List<string>();
+        return CheckColumns(found, mode, addedMayBeMissing);
+    }
+
+    // What the catalog answered, apart from the read so every leg can reach the layout refusals with no server. Each
+    // column keeps its first broken rule, and the refusal takes its reason from the first column in layout order.
+    internal static bool CheckColumns(IReadOnlyDictionary<string, (string Type, int MaxBytes, bool Nullable)> found,
+        AccountSchemaMode mode, bool addedMayBeMissing)
+    {
+        var findings = new List<AccountSchemaFinding>();
         foreach ((string name, string type, int minBytes) in OwnedColumns)
         {
             if (!found.TryGetValue(name, out (string Type, int MaxBytes, bool Nullable) column))
             {
-                if (!addedMayBeMissing || Array.IndexOf(AddedColumns, name) < 0) problems.Add($"'{name}' is missing");
+                if (!addedMayBeMissing || Array.IndexOf(AddedColumns, name) < 0)
+                    findings.Add(new AccountSchemaFinding(AccountSchemaRefusal.ColumnMissing, name, $"'{name}' is missing"));
             }
             else if (!string.Equals(column.Type, type, StringComparison.OrdinalIgnoreCase))
-                problems.Add($"'{name}' is {column.Type} where {type} is expected");
+                findings.Add(new AccountSchemaFinding(AccountSchemaRefusal.ColumnTypeMismatch, name,
+                    $"'{name}' is {column.Type} where {type} is expected")
+                {
+                    ActualType = column.Type,
+                    ExpectedType = type,
+                });
             else if (minBytes > 0 && column.MaxBytes != -1 && column.MaxBytes < minBytes)
-                problems.Add($"'{name}' holds fewer than {minBytes / 2} characters");
+                findings.Add(new AccountSchemaFinding(AccountSchemaRefusal.ColumnTooNarrow, name,
+                    $"'{name}' holds fewer than {minBytes / 2} characters")
+                {
+                    ActualCharacters = column.MaxBytes / 2,
+                    MinimumCharacters = minBytes / 2,
+                });
         }
 
-        if (problems.Count > 0)
-            throw new InvalidOperationException(
-                "The account table does not match the engine layout: " + string.Join(", ", problems) + ". " +
+        if (findings.Count > 0)
+        {
+            AccountSchemaFinding first = findings[0];
+            throw new AccountSchemaException(first.Reason,
+                "The account table does not match the engine layout: " +
+                string.Join(", ", findings.ConvertAll(finding => finding.Message)) + ". " +
                 (mode == AccountSchemaMode.ValidateOnly
                     ? "ValidateOnly never alters it, so run the store once under AutoCreate with an identity that holds DDL rights."
-                    : "AutoCreate adds only a missing ban or time column, so correct the table by hand."));
+                    : "AutoCreate adds only a missing ban or time column, so correct the table by hand."))
+            {
+                ColumnName = first.ColumnName,
+                ActualType = first.ActualType,
+                ExpectedType = first.ExpectedType,
+                ActualCharacters = first.ActualCharacters,
+                MinimumCharacters = first.MinimumCharacters,
+                Findings = findings,
+            };
+        }
 
         return !found["display_name"].Nullable;
     }

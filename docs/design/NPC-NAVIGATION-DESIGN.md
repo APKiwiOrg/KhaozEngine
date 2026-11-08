@@ -113,10 +113,10 @@ the public constructors.
 
 `GridPathPlanner` implements `IPathPlanner` over a `NavSpace`:
 
-- **Fast path first.** If `GridRay.IsClear` from start to goal at the agent's clearance, return the
+- **Fast path first.** When no link undercuts the spatial bound and `GridRay.IsClear` from start to goal at the agent's clearance, return the
   trivial two-point path with no A* at all. Open-terrain chase, the overwhelmingly common case, costs
   one DDA walk.
-- **A\***, 8-connected with corner-cut prevention, octile heuristic, uniform cost. A per-cell cost
+- **A\***, 8-connected with corner-cut prevention, a construction-time scaled spatial bound across layers, uniform cost. A per-cell cost
   field is a recorded follow-up seam (it would be a parallel array, the clearance byte leaves no
   room).
 - **String-pulling** on the raw cell path via `GridRay` line-of-sight, so the output is a short list
@@ -138,17 +138,26 @@ the public constructors.
 
 `PathFollower` is per-agent mutable state the brain owns. One call per tick:
 `Tick(currentPosition, goalPosition, dt) -> PathFollowOutput` where the output carries `worldDir`
-(a `Vector2` ready for `StepTowards`), a state enum (`Following`, `Arrived`, `Unreachable`), and the
-active waypoint for debugging.
+(a `Vector2` ready for `StepTowards`), a state enum (`Following`, `Arrived`, `Unreachable`, `Hopping`,
+`WaitingForPath`, `Dropping`), and the active waypoint for debugging. Contact Drop hosts also read
+`DropTraversal` and acknowledge actual supported completion through `CompleteDrop()`, as
+[Contact Drop links](CONTACT-DROP-LINKS.md) describes.
 
 Replan triggers, all configured by a `PathFollowConfig` with defaults:
 
 - Goal drifted more than `GoalRetargetTolerance` from where it was when the current path was planned
   (a moving player).
 - Agent diverged more than `CorridorTolerance` from the current path segment (shoved, slid, blocked).
-- Waypoint reached within `AcceptRadius` advances the index. Final waypoint reached flips to
-  `Arrived`.
+- Waypoint reached within `AcceptRadius` advances the index on the agent's layer. A Complete point
+  terminal witnesses `Arrived` only for the same queried point intent, including snapped endpoints.
+  Current goal proximity also witnesses arrival. An obsolete terminal on a previously useful route
+  refreshes immediately, even for drift below the retarget tolerances.
 - A `ReplanCooldown` floor so an agent pinned against a moving target does not replan every tick.
+  Fresh exhausted results retain that cooldown, including after an immediate stale-route replacement.
+  A point query deferred after route consumption or changing a failed intent returns `WaitingForPath`
+  at zero motion instead of an unqueried failure. Point Partial exhaustion retains its one-tick raw-goal steer.
+  A due replan runs before locking an unlocked Drop, even inside cooldown. Once airborne, the Drop keeps its
+  committed route until supported acknowledgement or explicit Reset.
 
 The dynamic-avoidance seam is the follower's output: a later avoidance layer adjusts `worldDir` after
 the follower and before `StepTowards`, touching neither planner nor follower.
@@ -167,7 +176,8 @@ All headless xUnit in `KhaozEngine.Tests`:
 - **Baker:** synthetic analytic terrain plus hand-placed colliders, assert expected clearance at known
   cells (flat clear, steep slope blocked, shrinking clearance near cylinder and box footprints,
   `extraBlocked` respected). Chamfer verified against brute-force distance on a small grid.
-- **Planner:** optimality on open grids (octile distance match), corner-cut never happens, partial
+- **Planner:** open-grid cost conformance (octile distance match within the
+  [numeric contract](../../KhaozEngine.Navigation/README.md#numeric-cost-contract)), corner-cut never happens, partial
   flag on walled-off goals, node budget respected, endpoint snapping, fast-path short-circuit when
   line-of-sight is clear, determinism (same inputs twice give identical waypoints).
 - **Dungeon:** bake a small generated `DungeonLayout`, assert a ground-floor to upper-floor path

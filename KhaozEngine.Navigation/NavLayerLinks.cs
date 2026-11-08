@@ -45,7 +45,7 @@ public static class NavLayerLinks
         if (jumpHeight <= stepHeight)
             throw new ArgumentOutOfRangeException(nameof(jumpHeight), jumpHeight, "Jump height must be greater than step height.");
 
-        return GenerateCore(layers, stepHeight, jumpHeight);
+        return new List<NavLink>(EnumerateCore(layers, stepHeight, jumpHeight));
     }
 
     /// <summary>
@@ -64,10 +64,13 @@ public static class NavLayerLinks
         if (!float.IsFinite(stepHeight) || stepHeight < 0f)
             throw new ArgumentOutOfRangeException(nameof(stepHeight), stepHeight, "Step height must be finite and non-negative.");
 
-        return GenerateCore(layers, stepHeight, jumpHeight: null);
+        return new List<NavLink>(EnumerateCore(layers, stepHeight, jumpHeight: null));
     }
 
-    static IReadOnlyList<NavLink> GenerateCore(IReadOnlyList<NavGrid> layers, float stepHeight, float? jumpHeight)
+    internal static IEnumerable<NavLink> EnumerateGrounded(IReadOnlyList<NavGrid> layers, float stepHeight)
+        => EnumerateCore(layers, stepHeight, null);
+
+    static IEnumerable<NavLink> EnumerateCore(IReadOnlyList<NavGrid> layers, float stepHeight, float? jumpHeight)
     {
         NavGrid first = layers[0] ?? throw new ArgumentException("Layer 0 is null.", nameof(layers));
         for (int i = 0; i < layers.Count; i++)
@@ -82,7 +85,6 @@ public static class NavLayerLinks
                 throw new ArgumentException($"Layer {i} does not share layer 0's dimensions, cell size, origin, and yaw.", nameof(layers));
         }
 
-        var links = new List<NavLink>();
         for (int a = 0; a < layers.Count - 1; a++)
         {
             for (int b = a + 1; b < layers.Count; b++)
@@ -107,20 +109,18 @@ public static class NavLayerLinks
                             float rise = MathF.Abs(hb.Value - ha.Value);
                             if (rise <= stepHeight)
                             {
-                                links.Add(new NavLink(a, cx, cz, b, nx, nz));
-                                links.Add(new NavLink(b, nx, nz, a, cx, cz));
+                                yield return new NavLink(a, cx, cz, b, nx, nz);
+                                yield return new NavLink(b, nx, nz, a, cx, cz);
                             }
                             else if (jumpHeight is not null && rise <= jumpHeight.Value)
                             {
-                                links.Add(new NavLink(a, cx, cz, b, nx, nz) { Kind = NavLinkKind.Hop });
-                                links.Add(new NavLink(b, nx, nz, a, cx, cz) { Kind = NavLinkKind.Hop });
+                                yield return new NavLink(a, cx, cz, b, nx, nz) { Kind = NavLinkKind.Hop };
+                                yield return new NavLink(b, nx, nz, a, cx, cz) { Kind = NavLinkKind.Hop };
                             }
                         }
                     }
                 }
             }
         }
-
-        return links;
     }
 }

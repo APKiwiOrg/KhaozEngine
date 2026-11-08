@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using KhaozEngine.Render3D;
 
@@ -17,9 +16,11 @@ internal sealed class SkinnedAttachmentBinding
         SkinnedGltfMesh hostMesh, IReadOnlyList<string> names, IReadOnlyList<Matrix4x4> inverseBind, int restCount)
     {
         string context = Context(part);
-        CheckCount(names.Count, context);
+        CheckCount(names.Count, part);
         if (inverseBind.Count != names.Count || restCount != names.Count)
-            throw new InvalidDataException($"{context}: garment inverse binds and rest poses must have one entry per skin joint.");
+            throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentBindCountsMismatch,
+                $"{context}: garment inverse binds and rest poses must have one entry per skin joint.")
+            { PartId = part.Id, MeshKey = part.Mesh.Key, JointCount = names.Count, InverseBindCount = inverseBind.Count, RestCount = restCount };
         _partId = part.Id;
         _hostBones = new int[names.Count];
         for (int garmentBone = 0; garmentBone < names.Count; garmentBone++)
@@ -29,11 +30,15 @@ internal sealed class SkinnedAttachmentBinding
             try { hostBone = map.Bone(name); }
             catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or ArgumentException)
             {
-                throw new InvalidDataException($"{context}: joint '{name}' cannot bind to the host skin.", error);
+                throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentJointUnresolved,
+                    $"{context}: joint '{name}' cannot bind to the host skin.", error)
+                { PartId = part.Id, MeshKey = part.Mesh.Key, JointName = name };
             }
             Matrix4x4 garmentBind = inverseBind[garmentBone], hostBind = hostMesh.InverseBind[hostBone];
             if (!MatchingBind(garmentBind, hostBind))
-                throw new InvalidDataException($"{context}: joint '{name}' inverse bind must be finite and match the host within {BindTolerance} per element.");
+                throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentBindMismatch,
+                    $"{context}: joint '{name}' inverse bind must be finite and match the host within {BindTolerance} per element.")
+                { PartId = part.Id, MeshKey = part.Mesh.Key, JointName = name, BindTolerance = BindTolerance };
             _hostBones[garmentBone] = hostBone;
         }
     }
@@ -43,28 +48,39 @@ internal sealed class SkinnedAttachmentBinding
     internal static void ValidateHost(ContractJointMap map, SkinnedGltfMesh hostMesh)
     {
         if (!ReferenceEquals(hostMesh.Skeleton, map.Skeleton))
-            throw new ArgumentException("The host mesh and contract map must use the exact same skeleton instance.", nameof(hostMesh));
+            throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.HostSkeletonMismatch,
+                "The host mesh and contract map must use the exact same skeleton instance.", nameof(hostMesh));
         if (hostMesh.InverseBind.Length != map.Skeleton.BoneCount || hostMesh.RestPose.Length != map.Skeleton.BoneCount)
-            throw new InvalidDataException("The attachment host mesh needs one inverse bind and rest pose per host skin bone.");
+            throw new AttachmentBindingDataException(AttachmentBindingRefusal.HostBindCountsMismatch,
+                "The attachment host mesh needs one inverse bind and rest pose per host skin bone.")
+            { JointCount = map.Skeleton.BoneCount, InverseBindCount = hostMesh.InverseBind.Length, RestCount = hostMesh.RestPose.Length };
         for (int bone = 0; bone < hostMesh.InverseBind.Length; bone++)
             if (!AttachmentSetBinding.Finite(hostMesh.InverseBind[bone]))
-                throw new InvalidDataException($"Attachment host mesh: skin bone {bone} has a non-finite inverse bind.");
+                throw new AttachmentBindingDataException(AttachmentBindingRefusal.HostInverseBindNonFinite,
+                    $"Attachment host mesh: skin bone {bone} has a non-finite inverse bind.")
+                { BoneIndex = bone };
     }
 
     internal static SkinnedAttachmentBinding FromMesh(SkinnedAttachmentPartDefinition part, ContractJointMap map,
         SkinnedGltfMesh hostMesh, IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh> meshes)
     {
         if (!meshes.TryGetValue(part.Mesh, out SkinnedGltfMesh? mesh) || mesh is null)
-            throw new InvalidDataException($"{Context(part)}: garment mesh metadata is missing.");
+            throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentMetadataMissing,
+                $"{Context(part)}: garment mesh metadata is missing.")
+            { PartId = part.Id, MeshKey = part.Mesh.Key };
         if (mesh.Skeleton is not { } skeleton)
-            throw new InvalidDataException($"{Context(part)}: garment skin metadata needs a skeleton.");
-        CheckCount(skeleton.BoneCount, Context(part));
+            throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentSkeletonMissing,
+                $"{Context(part)}: garment skin metadata needs a skeleton.")
+            { PartId = part.Id, MeshKey = part.Mesh.Key };
+        CheckCount(skeleton.BoneCount, part);
         var names = new string[skeleton.BoneCount];
         for (int bone = 0; bone < names.Length; bone++)
         {
             int node = skeleton.JointToNode[bone];
             if (node < 0 || node >= skeleton.NodeCount)
-                throw new InvalidDataException($"{Context(part)}: garment skin joint {bone} refers to missing node {node}.");
+                throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentNodeMissing,
+                    $"{Context(part)}: garment skin joint {bone} refers to missing node {node}.")
+                { PartId = part.Id, MeshKey = part.Mesh.Key, BoneIndex = bone, NodeIndex = node, NodeCount = skeleton.NodeCount };
             names[bone] = skeleton.NodeNames[node];
         }
         return new SkinnedAttachmentBinding(part, map, hostMesh, names, mesh.InverseBind, mesh.RestPose.Length);
@@ -74,7 +90,9 @@ internal sealed class SkinnedAttachmentBinding
         SkinnedGltfMesh hostMesh, AttachmentPartResources resources)
     {
         if (!resources.IsSkinned)
-            throw new InvalidDataException($"{Context(part)}: garment skin metadata is missing.");
+            throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentMetadataMissing,
+                $"{Context(part)}: garment skin metadata is missing.")
+            { PartId = part.Id, MeshKey = part.Mesh.Key };
         return new SkinnedAttachmentBinding(part, map, hostMesh, resources.JointNames, resources.InverseBind, resources.RestPose.Count);
     }
 
@@ -82,21 +100,27 @@ internal sealed class SkinnedAttachmentBinding
     {
         foreach (int bone in _hostBones)
             if (!AttachmentSetBinding.ValidMatrix(hostPalette[bone]))
-                throw new ArgumentException($"Attachment part {_partId}: host skin bone {bone} has an invalid joint model matrix.", nameof(hostPalette));
+                throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.HostJointPoseInvalid,
+                    $"Attachment part {_partId}: host skin bone {bone} has an invalid joint model matrix.", nameof(hostPalette))
+                { PartId = _partId, BoneIndex = bone };
     }
 
     internal void CopyPalette(ReadOnlySpan<Matrix4x4> hostPalette, Span<Matrix4x4> destination)
     {
         if (destination.Length < JointCount)
-            throw new ArgumentException($"Output capacity {destination.Length} must hold {JointCount} garment joints for attachment part {_partId}.", nameof(destination));
+            throw new AttachmentBindingArgumentException(AttachmentBindingRefusal.GarmentPaletteOutputTooSmall,
+                $"Output capacity {destination.Length} must hold {JointCount} garment joints for attachment part {_partId}.", nameof(destination))
+            { PartId = _partId, ActualCapacity = destination.Length, RequiredCapacity = JointCount };
         ValidatePalette(hostPalette);
         for (int bone = 0; bone < _hostBones.Length; bone++) destination[bone] = hostPalette[_hostBones[bone]];
     }
 
-    static void CheckCount(int count, string context)
+    static void CheckCount(int count, SkinnedAttachmentPartDefinition part)
     {
         if (count < 1 || count > SkinningMath.MaxBonesPerDraw)
-            throw new InvalidDataException($"{context}: garment skin joint count {count} must be between 1 and {SkinningMath.MaxBonesPerDraw}.");
+            throw new AttachmentBindingDataException(AttachmentBindingRefusal.GarmentJointCountOutsideRange,
+                $"{Context(part)}: garment skin joint count {count} must be between 1 and {SkinningMath.MaxBonesPerDraw}.")
+            { PartId = part.Id, MeshKey = part.Mesh.Key, JointCount = count, MinimumJointCount = 1, MaximumJointCount = SkinningMath.MaxBonesPerDraw };
     }
 
     static bool MatchingBind(in Matrix4x4 garment, in Matrix4x4 host)

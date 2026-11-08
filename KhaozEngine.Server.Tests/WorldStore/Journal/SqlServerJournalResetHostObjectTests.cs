@@ -46,7 +46,7 @@ public sealed class SqlServerJournalResetHostObjectTests
             JournalResetTestSupport.Seeded seeded = await SqlServerJournalResetHarness.SeedAsync();
             await CreateHostTableAsync(action, seeded.First);
             KeyValuePair<string, long>[] before = await SqlServerJournalResetHarness.CountsAsync();
-            string metadata = await SqlServerJournalResetHarness.MetadataAsync();
+            string content = await SqlServerJournalSnapshot.CaptureAsync(SqlServerJournalResetHarness.ConnectionString);
 
             JournalStoreException refused = await Assert.ThrowsAsync<JournalStoreException>(
                 () => SqlServerJournalReset.ResetAsync(SqlServerJournalResetHarness.ConnectionString));
@@ -54,13 +54,21 @@ public sealed class SqlServerJournalResetHostObjectTests
             Assert.Equal(JournalStoreFailureKind.SchemaMismatch, refused.Kind);
             Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
             Assert.Equal(JournalStoreFailureScope.WholeStore, refused.Scope);
-            Assert.Contains($"host table 'dbo.{HostTable}'", refused.Message, StringComparison.Ordinal);
-            Assert.Contains("journal table 'journal_stream'", refused.Message, StringComparison.Ordinal);
-            Assert.Contains($"ON DELETE {action}", refused.Message, StringComparison.Ordinal);
-            Assert.Contains("Nothing was deleted", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(JournalStoreRefusal.HostForeignKeyActionUnsafe, refused.Reason);
+            JournalHostObjectFinding key = Assert.Single(refused.HostObjects!);
+            Assert.Equal(JournalStoreRefusal.HostForeignKeyActionUnsafe, key.Reason);
+            Assert.Equal("dbo", key.HostSchema);
+            Assert.Equal("reset_test_host_character", key.HostTable);
+            Assert.Equal("fk_reset_test_host_character_stream", key.ForeignKeyName);
+            Assert.Equal("journal_stream", key.ReferencedTable);
+            Assert.Equal(action, key.DeleteAction);
+            Assert.Null(key.TriggerName);
             Assert.Equal(before, await SqlServerJournalResetHarness.CountsAsync());
-            Assert.Equal(metadata, await SqlServerJournalResetHarness.MetadataAsync());
+            Assert.Equal(content, await SqlServerJournalSnapshot.CaptureAsync(SqlServerJournalResetHarness.ConnectionString));
             Assert.Equal(1L, await HostRowsReferencingAsync(seeded.First));
+            await DropHostObjectsAsync();
+            JournalResetResult repaired = await SqlServerJournalReset.ResetAsync(SqlServerJournalResetHarness.ConnectionString);
+            Assert.Equal(before, JournalResetTestSupport.CountsByTable(repaired));
         }
         finally
         {
@@ -83,16 +91,23 @@ public sealed class SqlServerJournalResetHostObjectTests
                 END
                 """);
             KeyValuePair<string, long>[] before = await SqlServerJournalResetHarness.CountsAsync();
-            string metadata = await SqlServerJournalResetHarness.MetadataAsync();
+            string content = await SqlServerJournalSnapshot.CaptureAsync(SqlServerJournalResetHarness.ConnectionString);
 
             JournalStoreException refused = await Assert.ThrowsAsync<JournalStoreException>(
                 () => SqlServerJournalReset.ResetAsync(SqlServerJournalResetHarness.ConnectionString));
 
             Assert.Equal(JournalStoreFailureKind.SchemaMismatch, refused.Kind);
             Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
-            Assert.Contains("triggers do not match", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(JournalStoreRefusal.SchemaTriggersMismatch, refused.Reason);
+            Assert.Equal(3L, refused.ExpectedVersion);
+            Assert.Equal("sqlserver-journal-v3-row-timestamps", refused.RequiredMigration);
+            Assert.Empty(refused.MissingObjects!);
+            Assert.Equal(new[] { "reset_test_stream_audit|journal_stream|CREATETRIGGERDBO.RESET_TEST_STREAM_AUDITONDBO.JOURNAL_STREAMAFTERDELETEASBEGINSETNOCOUNTON;END|False" }, refused.UnexpectedObjects);
             Assert.Equal(before, await SqlServerJournalResetHarness.CountsAsync());
-            Assert.Equal(metadata, await SqlServerJournalResetHarness.MetadataAsync());
+            Assert.Equal(content, await SqlServerJournalSnapshot.CaptureAsync(SqlServerJournalResetHarness.ConnectionString));
+            await DropHostObjectsAsync();
+            JournalResetResult repaired = await SqlServerJournalReset.ResetAsync(SqlServerJournalResetHarness.ConnectionString);
+            Assert.Equal(before, JournalResetTestSupport.CountsByTable(repaired));
         }
         finally
         {

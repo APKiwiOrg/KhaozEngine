@@ -5,8 +5,6 @@ using System.Security.Cryptography;
 
 namespace KhaozEngine.Tests.MapDocOracle;
 
-internal sealed class PrivateOracleInputException(string message) : Exception(message);
-
 internal sealed class PrivateOracleInputs
 {
     static readonly string[] Names =
@@ -35,7 +33,7 @@ internal sealed class PrivateOracleInputs
         {
             foreach (string name in Names) values.Add(name, read(name));
         }
-        catch (Exception) { throw new PrivateOracleInputException("provenance unreadable"); }
+        catch (Exception) { throw new PrivateOracleInputException(PrivateOracleInputRefusal.ProvenanceUnreadable, "provenance unreadable"); }
         return Require(values);
     }
 
@@ -43,24 +41,24 @@ internal sealed class PrivateOracleInputs
     {
         try { return RequireCore(environment); }
         catch (PrivateOracleInputException) { throw; }
-        catch (Exception) { throw new PrivateOracleInputException("provenance unreadable"); }
+        catch (Exception) { throw new PrivateOracleInputException(PrivateOracleInputRefusal.ProvenanceUnreadable, "provenance unreadable"); }
     }
 
     static PrivateOracleInputs RequireCore(IReadOnlyDictionary<string, string?> environment)
     {
         foreach (string name in Names)
             if (!environment.TryGetValue(name, out string? value) || string.IsNullOrWhiteSpace(value))
-                throw new PrivateOracleInputException("missing " + name);
+                throw new PrivateOracleInputException(PrivateOracleInputRefusal.MissingInput, "missing " + name) { InputName = name };
 
         byte[] bytes;
         try { bytes = File.ReadAllBytes(environment[Names[1]]!); }
-        catch (Exception) { throw new PrivateOracleInputException("provenance unreadable"); }
+        catch (Exception) { throw new PrivateOracleInputException(PrivateOracleInputRefusal.ProvenanceUnreadable, "provenance unreadable"); }
         if (!string.Equals(Convert.ToHexStringLower(SHA256.HashData(bytes)), environment[Names[2]], StringComparison.Ordinal))
-            throw new PrivateOracleInputException("provenance digest mismatch");
+            throw new PrivateOracleInputException(PrivateOracleInputRefusal.ProvenanceDigestMismatch, "provenance digest mismatch");
 
         ShippedSourceProvenance provenance;
         try { provenance = ShippedSourceProvenance.Parse(bytes); }
-        catch (Exception) { throw new PrivateOracleInputException("provenance unreadable"); }
+        catch (Exception) { throw new PrivateOracleInputException(PrivateOracleInputRefusal.ProvenanceUnreadable, "provenance unreadable"); }
 
         string reportPath;
         try
@@ -70,19 +68,25 @@ internal sealed class PrivateOracleInputs
             {
                 string marker = Path.Combine(directory.FullName, ".git");
                 if (File.Exists(marker) || Directory.Exists(marker))
-                    throw new PrivateOracleInputException("report path inside a git work tree");
+                    throw new PrivateOracleInputException(PrivateOracleInputRefusal.ReportInsideWorktree, "report path inside a git work tree");
             }
             if (File.Exists(reportPath) || Directory.Exists(reportPath) || new FileInfo(reportPath).LinkTarget is not null)
-                throw new PrivateOracleInputException("report path already exists");
+                throw new PrivateOracleInputException(PrivateOracleInputRefusal.ReportAlreadyExists, "report path already exists");
         }
         catch (PrivateOracleInputException) { throw; }
-        catch (Exception) { throw new PrivateOracleInputException("provenance unreadable"); }
+        catch (Exception) { throw new PrivateOracleInputException(PrivateOracleInputRefusal.ProvenanceUnreadable, "provenance unreadable"); }
 
         string sourceRoot;
         try { sourceRoot = PrivateOraclePaths.Canonical(environment[Names[0]]!); }
-        catch (Exception) { throw new PrivateOracleInputException("source verification failed: 1 files"); }
+        catch (Exception)
+        {
+            throw new PrivateOracleInputException(PrivateOracleInputRefusal.SourceVerificationFailed, "source verification failed: 1 files")
+            { MismatchCount = 1 };
+        }
         int mismatches = provenance.Verify(sourceRoot);
-        if (mismatches != 0) throw new PrivateOracleInputException($"source verification failed: {mismatches} files");
+        if (mismatches != 0)
+            throw new PrivateOracleInputException(PrivateOracleInputRefusal.SourceVerificationFailed, $"source verification failed: {mismatches} files")
+            { MismatchCount = mismatches };
         return new(sourceRoot, provenance, reportPath);
     }
 }

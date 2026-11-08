@@ -16,9 +16,11 @@ run, jump and precise small magnitudes retain their existing meanings. Contact g
 foot fraction in (0, 1], a foot radius of at least 0.01 m and a valid knee-height shell.
 A physics world must offer `IPhysicsQueryLeaseSource` and `IPhysicsSupportFootprint`. Null physics supports
 analytic-only dry movement. Clamp and dry medium delegates are allowed. A wet point sample refuses with
-`NotSupportedException` naming the ordinary `IMovementWaterField` route.
+`MovementCapabilityException` with `PointSampledWaterUnsupported` and
+`RequiredCapability == typeof(IMovementWaterField)`.
 
-The position-only `Step(Vector3, ...)` refuses Contact and names the stateful overload. Legacy requires
+The position-only `Step(Vector3, ...)` refuses Contact with `StatefulOverloadRequired`,
+`RequiredOverload == "CharacterMovement.Step(in MoveState, ...)"` and `RequiredStateType == typeof(MoveState)`. Legacy requires
 the default foot fraction and the complete default water policy, including zero surface jump speed.
 Undefined selectors throw `ArgumentOutOfRangeException`. Released legacy movement arithmetic is unchanged.
 Phase 5a is released in 20.37.0. Network and local heads select the same contact kernel.
@@ -32,15 +34,118 @@ Public explicit configuration selects contact independently of the selector, use
 and accepts tuning water only when default or equal to that policy. Heads reject Contact plus public explicit
 configuration as two selections.
 
+## Configuration and capability refusals
+
+The shared selector and binding validators throw `MovementConfigurationException : ArgumentException` for
+configuration rules and `MovementCapabilityException : NotSupportedException` for missing capabilities.
+Both require `MovementConfigurationRefusal Reason`. Ordinary local, rendering and network heads use the same
+reasons for missing physics, registration and boundary. Contact cell factory refusals preserve `ParamName = config`. The network explicit-movement constructor
+preserves `ParamName = water` for its Legacy mode refusal, while tuning validation names `tuning`. Configuration refusals preserve `ParamName` when the
+original guard named an argument. Existing base catches still work. Messages remain developer prose.
+The kernel predicate and shell admission run in their existing order. The first failed kernel predicate
+supplies the reason, with nonfinite numbers checked before their domain. Direct dry contact does not acquire
+ordinary kernel requirements. The immutable water policy validates itself at construction, so its validity
+check inside explicit admission is an internal invariant.
+
+| Reason | Refused rule | Identifiers |
+| --- | --- | --- |
+| `CapsuleContactsRequired` | Complete shell contacts are unavailable | `RequiredCapability = typeof(IPhysicsCapsuleContacts)` |
+| `CapsuleSweepRequired` | Ordinary contact has no certified capsule sweep | `RequiredCapability = typeof(IPhysicsCapsuleSweep)` |
+| `PointSampledWaterUnsupported` | A point medium reports water on the dry contact path | `RequiredCapability = typeof(IMovementWaterField)` |
+| `QueryLeaseSourceRequired` | Contact physics has no read leases | `RequiredCapability = typeof(IPhysicsQueryLeaseSource)` |
+| `StatefulOverloadRequired` | Contact was selected on the position-only overload | `RequiredOverload`, `RequiredStateType` as above |
+| `SupportFootprintRequired` | Physics has no complete footprint queries | `RequiredCapability = typeof(IPhysicsSupportFootprint)` |
+| `BoundaryRequired` | Ordinary validation has no certified boundary | `RequiredCapability = typeof(MovementBoundary)` |
+| `PhysicsRequired` | An ordinary movement head has no physics world | `RequiredCapability = typeof(IPhysicsWorld)` |
+| `RegistrationRequired` | Ordinary validation has no registration | `RequiredCapability = typeof(OrdinaryMovementRegistration)` |
+| `WaterFieldRequired` | An ordinary medium delegate has no field | `RequiredCapability = typeof(IMovementWaterField)` |
+| `ExplicitWaterModeRequired` | Explicit admission receives Legacy water | `ActualMode` |
+| `KernelNumberNonfinite` | The first failing kernel number is not finite | `FieldName`, `ActualNumber` |
+| `KernelPositiveValueRequired` | A finite kernel field is zero or negative | `FieldName`, `ActualNumber`, `MinimumExclusive = 0` |
+| `KernelNonnegativeValueRequired` | A finite kernel field is negative | `FieldName`, `ActualNumber`, `MinimumNumber = 0` |
+| `KernelFractionExceeded` | A finite kernel fraction exceeds one | `FieldName`, `ActualNumber`, `MaximumNumber = 1` |
+| `KernelHalfHeightBelowRadius` | Capsule half height is below radius | `CapsuleHalfHeight`, `CapsuleRadius` |
+| `KernelWadeFractionsUnordered` | Wade end is at or below start | `StartFraction`, `EndFraction` |
+| `KernelSwimFractionsUnordered` | Swim exit exceeds enter | `ExitFraction`, `EnterFraction` |
+| `KernelSlopeAtOrAboveHalfPi` | Maximum slope reaches or exceeds half pi | `ActualSlope`, `MaximumExclusive` (half pi radians) |
+| `LegacyFootRadiusNondefault` | Legacy receives a nondefault foot fraction | `FieldName`, `ActualNumber`, `ExpectedNumber = 0.5` |
+| `LegacyWaterNondefault` | Legacy receives a nondefault water policy | `FieldName`, `ActualWater`, `ExpectedWater` (complete default policy) |
+| `WaterPoliciesConflict` | Nondefault tuning water differs from the supplied policy | `ActualWater` (tuning), `ExpectedWater` (supplied) |
+| `LegacyControllerRequired` | A Legacy binding receives another controller | `ActualController`, `ExpectedController = Legacy` |
+| `ContactControllerRequired` | An ordinary binding receives another controller | `ActualController`, `ExpectedController = Contact` |
+| `ConflictingMovementSelections` | Public explicit binding receives Contact as a second selection | `ActualController`, `RequestedKind = PublicExplicit` |
+| `PhysicsFactoryRequired` | Contact cells have no physics factory | `MemberName = PhysicsWorldFactory` |
+| `RegistrationFactoryRequired` | Contact cells have no registration factory | `MemberName = MovementRegistrationFactory` |
+| `BoundaryFactoryRequired` | Contact cells have no boundary factory or certified bounds | `MemberName = MovementBoundaryFactory` |
+| `WaterFieldFactoryRequired` | A contact cell medium delegate has no field factory | `MemberName = MovementWaterFieldFactory` |
+
+Kernel number domains apply in predicate order: positive radius and half height, half height at least radius,
+positive gravity and fall speed, nonnegative movement speeds, jump speed, ground epsilon and step height,
+wade fractions in [0, 1] with end greater than start, wade minimum speed scale in [0, 1], swim enter in (0, 1],
+swim exit in [0, enter], surface submersion in [0, 1], nonnegative buoyancy, coyote time and jump buffer,
+air control in [0, 1], nonnegative air brake acceleration, and maximum slope in [0, half pi).
+
 ## Ordinary contact environment
 
 `EffectiveMovementBinding.Ordinary` composes the leased contact controller at zero placement offset.
+At certified support placement and publication, Contact converts geometric feet to a capsule centre with
+directed rounding whenever the exact centre minus half height would fall below support. Settling and tick
+publication share this producer, including
+the dry Contact path. World-to-frame analytic support conversion also rounds upward when its exact translated
+height would fall below the original world bed. The public explicit composition retains its checked placement offset and the same
+non-penetration guarantee. Water membership continues to compare exact feet with the represented bed.
+Every supported conversion checks its final numerical displacement against the existing coverage precision
+budget, including the exact world-to-frame residual and any final upward increment. The explicit composition's
+fixed placement offset remains separate from that numerical error. An unrepresentable pose is unresolved
+and holds the input pose and velocity through the normal refusal path. It is never clamped into admission.
+Finite geometric coverage error above the existing precision budget reports `MovementAvailability.PrecisionExceeded`.
+Contact holds that proposal as `MovementStepOutcome.PrecisionRefused`. Unresolved evidence, stale queries and
+frame failures retain their environment-refusal outcomes.
+Unsupported integration and speculative body queries retain their nearest centre mapping. A falling body
+does not receive a support lift when a tiny vertical integration cannot change its represented feet.
 The static installer publishes fixed authored provenance in `OrdinaryMovementRegistration` under its source read lease,
 with a finite `OrdinaryMovementExtent`, inclusive feature ranges and authored `MovementSupportKey` owners.
 Several pieces may alias one owner. Ambiguous, missing, excluded and stale features refuse binding.
 Register excluded statics before publication so their provenance participates in portable identity.
 The optional `IPhysicsStaticGeometrySource` marker keeps a registration valid across steps and pure rebases.
 Without it, a fresh physics geometry generation requires a fresh registration.
+
+### Analytic support provenance
+
+`OrdinaryMovementRegistration.Builder.WithAnalyticSupport` optionally attaches an immutable
+`IMovementAnalyticSupportSource`. It must recognize the exact height and normal delegates through `Matches`,
+including their coordinate convention. Ordinary support selection keeps its existing owner, coarse flags
+and result. Existing delegates remain valid without provenance.
+
+`Describe` identifies the same authored face the field selects. `MovementSurfaceFeatureKey` contains a source
+provenance string, an opaque source address and a part number. `GetFeature` resolves that exact address to copied
+triangle geometry and its canonical owner. `AreAdjacent` authenticates both keys and uses source topology,
+never height similarity. An unknown address or a field without provenance returns unavailable evidence.
+`IMovementAnalyticSupportPin` provides the same facts within an authenticated movement read.
+
+`IMovementAnalyticSupportCandidates` optionally accelerates source-topology lookup. A Known visitation must include
+every key that `AreAdjacent` could accept. It supplies candidates, never adjacency permission. Consumers still call
+the unchanged exact predicate and fall back to all pairs when no complete candidate capability is available.
+
+`IMovementFlatAnalyticSupportSource` optionally certifies a closed absolute XZ rectangle with one exact float
+height, `Vector3.UnitY` normal and unchanged analytic ownership. Known promises the matching delegates return
+those facts at every represented axis in the rectangle. Sampled endpoints or matching triangle heights alone
+are insufficient evidence. Ordinary range approaches use this under a current pin, together with complete
+selected-static absence, strictly dry whole-body coverage, successful dry point-operation closure and convex
+boundary/scope containment. The proof
+lives only for the borrowed read interval. Unsupported, wet, obstructed, nonuniform or refused regions retain
+the exact movement solver. The tile producer checks every captured triangle in every covered cell, including
+cell seams, within the existing dependency-visit bound. It declines missing ground and negative-zero heights.
+
+The internal Contact descent witness records selected steep support and first walkable support from Air, Slide
+and water handoffs, including support left again inside one tick and recertification after horizontal rounding.
+It copies analytic feature identity while the
+lease is current. Physics addresses are visible only to an in-lease validator, and no continuity arena escapes.
+Its fixed 256-event storage is opt-in and reusable. Overflow, unavailable support and missing analytic identity
+have distinct structured statuses and never alter movement. Selected-pose wetness and selected swimming and
+water-excursion history accumulate across subsegments. They do not replace a swept water certificate.
+This evidence does not enable terrain Drop transitions. Their separate capture and physical certificate remain
+required by the [Drop contract](../docs/design/CONTACT-DROP-LINKS.md).
 
 ### Runtime statics
 
@@ -128,11 +233,31 @@ so a wet point's local interval contains its local feet. Traces add only that co
 producer's certified error under the 0.001 m budget. Mutable producers advance `Generation` before changing
 answers.
 
+`IMovementDryTracePointProof` is a separate opt-in guarantee for skipping point operations after a known,
+completely dry trace. `CanClassifyDryTracePoints` must prove that every valid enclosed feet point has a successful
+Known dry classification with speed scale one and no domain or interval, under the same space, origin and
+generation. A dry geometric result alone says nothing about point-operation refusals. Fields without this
+capability, or whose proof declines the particular region, keep the exact per-trial solver and pacing reads.
+Ordinary absence has an intrinsic successful dry point operation. The level field opts in because its valid
+point queries use exact dyadic signs and have no precision refusal path. Its trace's independent precision and
+capacity checks must still succeed first. Wrappers that alter point availability cannot inherit this guarantee
+by forwarding only the inner field's trace or proof.
+
 `EffectiveMovementBinding.SampleWaterForPacing(state, queries, out swimming)` reads frame-local point water and
 shares the controller's tick-start swimmer classification, including supported footing and the free-surface flag.
 Use the returned local interval and the carried local feet for approach settling. This point query authorizes no
 motion or placement. A refused point returns its availability with `swimming` false. Movement still requires the
 certified whole-path water trace.
+
+Live reads throw `MovementReadException`, derived from `InvalidOperationException`, with a non-nullable
+`MovementReadRefusal Reason`. Existing invalid-operation catches keep working. Messages remain developer prose.
+Identifiers are nullable when the selected reason does not use them.
+
+| `MovementReadRefusal` | Refused rule | Identifiers |
+| --- | --- | --- |
+| `EnvironmentPinStale` | Ordinary producer state no longer matches the retained pin | `Frame` |
+| `LeaseThreadMismatch` | A lease is used outside its acquiring thread | `OwnerThreadId`, `CallerThreadId` |
+| `QueryBindingStale` | A query binding no longer matches its retained identity and frame | `LeaseId`, `Frame` |
 
 An ordinary binding owns a view created from the source when none is supplied. A supplied view is
 borrowed after source validation and must represent the registration's selected exclusions.
@@ -152,7 +277,7 @@ Ordinary contact ground navigation is released in 20.39.0 through
 anchors, wet unit-pace proofs, KENB format 2 and runtime binding validation. Contact aquatic navigation,
 footprint-only seeds and public explicit bake profiles remain deferred to
 [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
-Wire generation 14 and legacy v1 bake bytes stay unchanged.
+This navigation composition preserves legacy v1 bake bytes. Current movement transport is generation 15.
 
 ## API
 
@@ -646,6 +771,13 @@ readiness cleared and the out selection empty. The same null-hint witness stays 
 success, while subsequent requests carry the returned canonical key. This guard does not cache
 membership or replace producer validation.
 
+Water coverage validation and the boundary resolver borrow separate bounded buffers from the interval workspace.
+They retain storage across serial queries and ticks, with the lease's thread and lifetime checks. Reentrant producer
+queries use isolated pooled fallback storage without retaining additional buffers. Producer-exposed contact slices
+are inspected on return because a refusing or throwing producer can leave partial writes. Only initialized runs are
+cleared, while validated boundary output clears its written prefix. Value-only span storage is reset before producer
+callbacks, so missing writes cannot reuse an earlier certificate.
+
 `MovementQueryLease.EnumerateSupport` and `TraceWater` use cleared private scratch and validate the
 complete producer result before publishing caller buffers. Refusal or a provider exception leaves
 both caller buffers untouched. Initial operational limits are 256 support candidates, 64 spans and
@@ -734,9 +866,11 @@ seat constrains the horizontal proposal and keeps the feasible along-shore compo
 sample the crossed tread along the actual proposal and use bounded axis cuts to locate its boundary.
 The retry runs the same shell,
 support and placement passes under the original pin and climb budget. Coverage uses the full body.
-Scripted movement commitments use the shared preparation, ballistic seed, timeout and recovery lifecycle.
-They suppress player steering and buffered jumps, retain their carried collision-clipped velocity,
-and use the same leased contact tick on land. Surface entry aborts the commitment. An environment refusal
+Scripted movement commitments share preparation, timeout and recovery. Ballistic travel seeds a launch,
+while ground travel retains the ordinary vertical integrator and spends a horizontal distance budget.
+They suppress player steering and buffered jumps. Ballistic travel retains its collision-clipped velocity.
+Both use the same leased contact tick on land. Surface entry releases control, preserving accepted ground arrival
+as the terminal outcome during recovery. An environment refusal
 preserves its original lifecycle and pose while consuming the player press. Sharded integration,
 generic nav proof and native acceptance remain in development.
 Dry explicit motion uses carried coyote/buffer timers and the existing pure air-momentum law.
@@ -781,8 +915,10 @@ A buoyant floor's published feet must clear the whole certified bed interval at 
 clearance and centre mapping. A clearance push or refused seat that cannot satisfy this condition
 blocks and holds the original pose for the tick. Land placement keeps its intentional paced leg lag.
 A swimming segment seeks footing whatever the sign of its buoyant vertical speed, because a waterline
-settle can approach rest from below forever. Rising, it contacts only walkable support above its highest
-feet, so a bed it rises off seats nothing. A bank deeper than the seated swim exit line keeps the body
+settle can approach rest from below forever. It resolves bank support and clearance before an unsupported
+handoff, including when exact drawn-bed membership rejects the proposed feet. A refused buoyant footprint holds
+the original tick, rising or descending, while proved absence retains unsupported motion. Rising, it contacts only walkable
+support above its highest feet, so a bed it rises off seats nothing. A bank deeper than the seated swim exit line keeps the body
 Swimming/Surface on the bed. Once that same depth test allows footing, the body lands Grounded/None.
 The existing legacy swimming path is unchanged. The generic fixtures do not establish native
 producer acceptance or a playable consumer feature.
@@ -813,13 +949,34 @@ producer acceptance or a playable consumer feature.
   a run tick, with no consumer of its own.
   A rejected non-finite tick holds the last good pose and clears `StepDeltaY`, so its previous step impulse
   is not replayed while the input remains invalid.
-- **`MoveState.Commitment`** - optional carried `MovementCommitment` state for a server-authored ballistic move.
-  `Preparing`, `Airborne`, and `Recovering` suppress command movement, jump, and facing. Entering surface-swimming
+- **`MoveState.Commitment`** - optional carried `MovementCommitment` state for server-authored ballistic or ground travel.
+  `Preparing`, `Airborne`, `Travelling` and `Recovering` suppress command movement, jump and facing. Entering surface-swimming
   depth aborts with `MovementCommitmentEndReason.EnteredWater` and hands control to the ordinary swim state.
   The airborne phase uses its latched XZ direction, horizontal speed, vertical speed, and gravity through the normal
   swept collision, support, and bounds path. `Completed` and `Aborted` are terminal states that clear on the next
-  step. The zero default is ordinary command-driven locomotion. NetWorld creates and replicates this state through
-  `MovementCommitmentRequest` rather than accepting it from the client.
+  step. The zero default is ordinary command-driven locomotion. NetWorld carries ballistic and ground state over
+  wire generation 15. Both float heads provide queued ground admission, steering, end and arrival events, described
+  in the [NetWorld committed movement contract](../KhaozEngine.NetWorld/README.md#server-authored-committed-movement).
+  `MovementCommitment.ForGroundTravel(sequence, direction, speed, distance)` creates positive-budget ground state,
+  with optional preparation, recovery and timeout durations. The factory validates values. Its caller admits only
+  supported, non-swimming actors. Ground travel faces its committed direction, ignores `SpeedScale`, suppresses any
+  buffered jump and uses ordinary gravity, traction, step handling, bounds and collide-and-slide on both controllers.
+  `DistanceRemaining` subtracts achieved XZ displacement length. Exhaustion holds active with zero horizontal carry
+  until steering or an explicit end, because an old endpoint does not establish arrival at a moving target.
+  Three consecutive nonzero steps with less than 10 percent progress abort as `Blocked`. Adequate progress resets
+  `ConsecutiveBlockedTicks`, while steering and zero-budget holds retain it. Final budgets below the controller's
+  resolvable travel are exhausted, using binary32 spacing on the travel axes and Legacy's sweep remainder limit.
+  `GroundTravelCommitment.Steer` re-aims or replaces the budget in preparation or travel, allowing zero distance.
+  `GroundTravelCommitment.End` accepts `Arrived` into optional recovery or completion, preserving that reason through
+  recovery. At accepted arrival the travel timeout stops applying, and `RecoveryRemaining` alone bounds recovery.
+  Other terminal reasons abort before arrival. Both controls require the matching sequence, ignore inapplicable
+  state and never restart recovery. Invalid supplied values throw even for stale sequences. Water entry aborts
+  with `EnteredWater`, and lost grounded support aborts with `UnsupportedState` during preparation or travel.
+  During recovery those conditions still release control immediately, retaining `Arrived` as the terminal reason.
+  `GroundTravelCommitment.ResolveEndReason` preserves that accepted outcome for every external release, including
+  teleport, supersession, disconnect and abort. The float heads apply it when constructing end results, so each
+  release path reports the same outcome. Ballistic recovery remains subject to its original timeout.
+  See the [forced movement rationale](../docs/design/FORCED-MOVEMENT.md) for authority, lifecycle and prediction tradeoffs.
 - **`MoveState.SpeedScale`** (14.26.0) - per-entity HORIZONTAL speed multiplier: haste (`> 1`), slow (`< 1`),
   root (`0`), unmodified (`1`, the default). A movement INPUT the step reads and carries through unchanged, and nothing
   in the sim derives or decays it. It multiplies INTO the existing speed product rather than replacing any of it, so
@@ -938,6 +1095,38 @@ free flight under constant gravity, with no collision or other vertical interven
 peaks at the requested height. Its sampled peak is lower by at most `gravity * stepSeconds^2 / 8`, before
 float rounding. The helper does not change the default tuning or compensate for variable steps, ceilings,
 swimming, support changes or other forces.
+
+## Player state publication
+
+`PlayerMovementPublication` owns the state a player carries between steps. `MovementStateQuantization` owns
+its unchanged wire grids. `EffectiveMovementBinding.StepPlayer` and `StepPlayerTowards` prepare the canonical
+input, execute the real controller and publish the canonical result under the same query lease. Use them for
+player simulation and certified Drop execution. NetWorld applies this policy to forward prediction, pending
+replay, both authorities and admitted placements. The local Contact `CharacterController3D` uses it too.
+
+`CertifyPlayerPlacement` performs the same cold classification as `ValidatePlacement` and returns an opaque
+`MovementColdPlacement` on success. `StepPlayerWithPlacement` can consume it for one identical first player
+Step in the same read. Copies share that single use. The certificate binds raw and prepared state bits,
+selection, frame, binding identity (including immutable tuning, water policy and composition), boundary and
+exact lease. The controller authenticates the current generations and reconstructs selection before reuse.
+A default, consumed or mismatched certificate takes the regular validation path. Keep the certificate inside
+the caller's read scope, discard it on correction or replay, and never serialize it. Disposal invalidates
+its use. `StepPlayer` remains the ordinary uncached entry point.
+
+Horizontal velocity rounds independently per axis to 1/256 m/s and clamps to +/-127 m/s. Speed scale uses the
+existing offset-from-one 1/1024 grid and 0 through 8 range. Heading and climb rate keep their existing wire grids.
+The next ascent average starts from the positive decoded climb signal, exactly as owner reconstruction and
+handoff do. A previous `StepDeltaY` is cleared before the next step. New step events and the unconstrained
+`CommandedVelocity` remain available to their consumers without quantization. Pose, vertical velocity, both feel
+timers, water excursion and commitment remain exact.
+
+Rounding is IEEE binary32 ties-to-even implemented with bit operations. The grid arithmetic uses explicit
+float operations and no platform math library. The same input bits therefore publish the same bits on Linux,
+macOS and Windows. Horizontal and speed-scale quanta are powers of two, so their decodes are exact.
+
+Raw `Step` and `StepTowards` remain full precision for unreplicated locomotion. Ordinary NPC steering does not
+inherit player wire limits. An NPC explicitly executing a certified Contact Drop must execute that proof's
+publication policy, which `NpcGroundMovement.Step` does for `Dropping`.
 
 ## Airborne momentum (16.0.0, opt-in)
 

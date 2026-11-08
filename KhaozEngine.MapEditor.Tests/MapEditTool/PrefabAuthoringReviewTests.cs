@@ -142,9 +142,17 @@ public sealed class PrefabAuthoringReviewTests
         var before = PrefabEditorFixtures.State(session);
         var selected = candidate.Prefabs!.Instances.SelectMany(i => i.Bindings.Entries).Where(b => !b.Removed)
             .Select(b => new MapPrefabReference(MapPrefabReferenceScope.World, b.Child.Kind, b.WorldId)).ToArray();
-        Assert.Contains("ambiguous authored parent", Assert.Throws<MapDocumentException>(() => service.Extract(selected, new(Vector3.Zero, 0, 1), "ambiguous")).Message);
+        var error = Assert.Throws<MapDocumentException>(() => service.Extract(selected, new(Vector3.Zero, 0, 1), "ambiguous"));
+        Assert.Equal(MapDocumentRefusal.ToolExtractionParentAmbiguous, error.Reason);
+        Assert.Equal(candidate.Id, error.DocumentId);
+        Assert.Equal(2, error.SpaceIds!.Count);
+        Assert.Contains(parent.Id, error.SpaceIds);
+        Assert.Contains("parent-alias", error.SpaceIds);
         Assert.Equal(before, PrefabEditorFixtures.State(session));
         Assert.Equal(MapPrefabFile.Write(existing), MapPrefabFile.Write(service.Export()));
+        var singleParent = candidate.Prefabs.Instances.First().Bindings.Entries.Where(b => !b.Removed)
+            .Select(b => new MapPrefabReference(MapPrefabReferenceScope.World, b.Child.Kind, b.WorldId)).ToArray();
+        Assert.NotNull(service.Extract(singleParent, new(Vector3.Zero, 0, 1), "unambiguous"));
     }
 
     internal static MapPrefabReference[] Selection(MapDocument document) => document.Prefabs!.Instances.Single().Bindings.Entries

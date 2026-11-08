@@ -1,8 +1,6 @@
 using System;
-using System.Threading.Tasks;
 using KhaozEngine.WorldStore.Journal;
 using KhaozEngine.WorldStore.SqlServer;
-using Xunit;
 
 namespace KhaozEngine.Tests.WorldStore.Journal;
 
@@ -39,13 +37,6 @@ public sealed partial class SqlServerMutationJournalFailureTests
 
     private static JournalOperationIdentity Identity(int suffix)
         => new(new Guid(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, checked((byte)suffix)), "world/account", "bank.deposit", new byte[] { checked((byte)suffix) });
-
-    private static async Task AssertCorrupt(Func<Task> action)
-    {
-        JournalStoreException exception = await Assert.ThrowsAsync<JournalStoreException>(action);
-        Assert.Equal(JournalStoreFailureKind.CorruptData, exception.Kind);
-        Assert.Equal(JournalStoreFailureCertainty.CommittedDataUnreadable, exception.Certainty);
-    }
 
     public void Dispose()
     {

@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Tests.Locomotion.Contacts;
@@ -154,18 +153,13 @@ public partial class SupportFootprintTests
         using var lease = world.AcquireQueryReadLease();
         var capability = Capability(world);
         var result = capability.QuerySupportFootprint(lease, Request(), [], []);
-        foreach (var change in new (string Property, object Value)[]
+        foreach (SupportFootprintResult corrupt in new[]
         {
-            (nameof(result.SourceWorld), other), (nameof(result.Origin), Vector3.One),
-            (nameof(result.GeometryGeneration), result.GeometryGeneration + 1),
+            result.WithCapturedMetadataForTests(other, result.Origin, result.GeometryGeneration),
+            result.WithCapturedMetadataForTests(result.SourceWorld, Vector3.One, result.GeometryGeneration),
+            result.WithCapturedMetadataForTests(result.SourceWorld, result.Origin, result.GeometryGeneration + 1),
         })
-        {
-            object boxed = result;
-            typeof(SupportFootprintResult).GetField($"<{change.Property}>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(boxed, change.Value);
-            var corrupt = (SupportFootprintResult)boxed;
             Assert.Throws<InvalidOperationException>(() => capability.AssertFootprintCurrent(corrupt, lease));
-        }
         using var foreign = other.AcquireQueryReadLease();
         var members = MemberSentinels(1);
         Assert.Throws<ArgumentException>(() => capability.QuerySupportFootprint(foreign, Request(), members, new ulong[1]));
@@ -203,20 +197,17 @@ public partial class SupportFootprintTests
             Assert.Equal(2, SupportQueryDiagnostics.Snapshot().Proposals);
             Assert.Equal(1, SupportQueryDiagnostics.Snapshot().Volumes);
             object scratch = FootprintScratch(scene.World);
-            long payload = (long)typeof(KhaozEngine.Tests.Locomotion.Contacts.SupportCostScratch)
-                .GetMethod("Visit", BindingFlags.Static | BindingFlags.NonPublic)!
-                .Invoke(null, [scratch, new HashSet<object>(ReferenceEqualityComparer.Instance)])!;
+            long payload = SupportCostScratch.Visit(scratch, new HashSet<object>(ReferenceEqualityComparer.Instance));
             _output.WriteLine($"{partition} coldBytes={coldBytes} warmBytes={allocated} scratchPayloadBytes={payload} members={result.Members}");
         }
         finally { SupportQueryDiagnostics.Enable(false); }
     }
 
     internal static BepuPhysics.Simulation SimulationOf(BepuPhysicsWorld world) =>
-        (BepuPhysics.Simulation)typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+        world.SimulationForTests;
 
-    internal static Dictionary<int, (BepuPhysics.StaticHandle Handle, BepuPhysics.Collidables.TypedIndex Shape)> HandlesOf(BepuPhysicsWorld world) =>
-        (Dictionary<int, (BepuPhysics.StaticHandle Handle, BepuPhysics.Collidables.TypedIndex Shape)>)typeof(BepuPhysicsWorld)
-            .GetField("_handles", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+    internal static IReadOnlyDictionary<int, (BepuPhysics.StaticHandle Handle, BepuPhysics.Collidables.TypedIndex Shape)> HandlesOf(BepuPhysicsWorld world) =>
+        world.StaticHandlesForTests;
 
     static void ContainsReference(GeometryInterval actual, SupportFootprintExactOracle.Bounds reference)
     {

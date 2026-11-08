@@ -45,9 +45,9 @@ public class RebuildProtocolTests
     }
 
     [Fact]
-    public void WireGenerationFourteenKeepsTheExistingControlSizes()
+    public void WireGenerationFifteenKeepsTheExistingControlSizes()
     {
-        Assert.Equal(14, MoveProtocol.WireProtocolVersion);
+        Assert.Equal(15, MoveProtocol.WireProtocolVersion);
         Assert.Equal(11, RebuildProtocol.EncodeAcceptance(1).Length);
         Assert.Equal(14, RebuildProtocol.EncodeAck(new(1, 1)).Length);
         Assert.Equal(19, RebuildProtocol.EncodeRepair(1, 1, 0).Length);

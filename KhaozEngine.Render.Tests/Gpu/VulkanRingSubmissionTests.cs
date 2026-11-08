@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu.Vulkan;
 using System;
 using System.Threading;
 using KhaozEngine.Gpu.Vulkan.Internal;
@@ -179,11 +180,12 @@ namespace KhaozEngine.Tests.Gpu
             harness.Ring.Write(0, First);
             harness.Submit(1);
 
-            InvalidOperationException refused;
+            VulkanRingWaitException refused;
             lock (harness.SubmitLock)
-                refused = Assert.Throws<InvalidOperationException>(() => harness.Ring.Write(0, Second));
+                refused = Assert.Throws<VulkanRingWaitException>(() => harness.Ring.Write(0, Second));
 
-            Assert.Contains("submit lock", refused.Message);
+            Assert.Equal(VulkanRingWaitRefusal.SubmitLockHeld, refused.Reason);
+            Assert.Equal("BeforeRecordWrite", refused.Operation);
             Assert.Equal(0, harness.Allocator.CurrentSegment);
             Assert.Equal(First, Segment(harness, 0));
         }

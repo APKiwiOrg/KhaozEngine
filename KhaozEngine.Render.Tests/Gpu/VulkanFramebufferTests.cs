@@ -153,7 +153,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             var fixture = new VulkanResourceFixture();
 
-            Assert.Throws<ArgumentException>(() => fixture.Factory.CreateFramebuffer(null));
+            var refusal = Assert.Throws<GpuFramebufferException>(() => fixture.Factory.CreateFramebuffer(null));
+            Assert.IsAssignableFrom<ArgumentException>(refusal);
+            Assert.Equal(GpuFramebufferRefusal.NoAttachments, refusal.Reason);
+            Assert.Equal("colour", refusal.ParamName);
+            Assert.Equal(0, refusal.ColourAttachmentCount);
+            Assert.Equal(false, refusal.HasDepth);
         }
 
         /// <summary>Attachments of different sizes are refused, because the render area and the pipeline's sample
@@ -169,7 +174,15 @@ namespace KhaozEngine.Tests.Gpu
                 IGpuTexture colour = Colour(fixture, owned);
                 IGpuTexture depth = Depth(fixture, owned, size: 128);
 
-                Assert.Throws<ArgumentException>(() => fixture.Factory.CreateFramebuffer(depth, colour));
+                var refusal = Assert.Throws<GpuFramebufferException>(() => fixture.Factory.CreateFramebuffer(depth, colour));
+                Assert.Equal(GpuFramebufferRefusal.AttachmentShapeMismatch, refusal.Reason);
+                Assert.Equal("depth attachment", refusal.Attachment);
+                Assert.Equal(depth.Width, refusal.Width);
+                Assert.Equal(depth.Height, refusal.Height);
+                Assert.Equal(colour.Width, refusal.ExpectedWidth);
+                Assert.Equal(colour.Height, refusal.ExpectedHeight);
+                Assert.Equal(depth.SampleCount, refusal.SampleCount);
+                Assert.Equal(colour.SampleCount, refusal.ExpectedSampleCount);
             }
             finally
             {
@@ -182,8 +195,11 @@ namespace KhaozEngine.Tests.Gpu
         /// views follow from the declared usage at creation and there is no view factory reachable from here
         /// (V-M11). The refusal names the usage the caller should have asked for.
         /// </summary>
-        [Fact]
-        public void AColourAttachmentWithoutRenderTargetUsage_IsRefused()
+        [Theory]
+        [InlineData(GpuTextureUsage.Sampled, GpuFramebufferRefusal.AttachmentViewMissing)]
+        [InlineData(GpuTextureUsage.Staging, GpuFramebufferRefusal.AttachmentNotRenderable)]
+        public void AColourAttachmentWithoutRenderTargetUsage_IsRefused(
+            GpuTextureUsage usage, GpuFramebufferRefusal reason)
         {
             var fixture = new VulkanResourceFixture();
             var owned = new List<IDisposable>();
@@ -191,10 +207,18 @@ namespace KhaozEngine.Tests.Gpu
             try
             {
                 IGpuTexture sampled = fixture.Factory.CreateTexture(
-                    VulkanResourceFixture.Texture(64, 64, GpuTextureUsage.Sampled));
+                    VulkanResourceFixture.Texture(64, 64, usage));
                 owned.Add(sampled);
 
-                Assert.Throws<ArgumentException>(() => fixture.Factory.CreateFramebuffer(null, sampled));
+                var refusal = Assert.Throws<GpuFramebufferException>(() => fixture.Factory.CreateFramebuffer(null, sampled));
+                Assert.Equal(reason, refusal.Reason);
+                Assert.Equal("colour attachment 0", refusal.Attachment);
+                Assert.Equal(GpuTextureUsage.RenderTarget, refusal.RequiredUsage);
+                Assert.Equal(usage, refusal.ActualUsage);
+                Assert.Equal(usage == GpuTextureUsage.Staging, refusal.IsStaging);
+                using IGpuTexture target = fixture.Factory.CreateTexture(
+                    VulkanResourceFixture.Texture(64, 64, GpuTextureUsage.RenderTarget));
+                using IGpuFramebuffer control = fixture.Factory.CreateFramebuffer(null, target);
             }
             finally
             {
@@ -327,10 +351,10 @@ namespace KhaozEngine.Tests.Gpu
 
                 using VulkanCommandList list = fixture.CreateList();
 
-                Assert.Throws<InvalidOperationException>(() => list.SetFramebuffer(framebuffer));
-                Assert.Throws<InvalidOperationException>(() => list.ClearColorTarget(0, Color.White));
-                Assert.Throws<InvalidOperationException>(() => list.SetScissorRect(0, 0, 0, 8, 8));
-                Assert.Throws<InvalidOperationException>(list.SetFullScissorRects);
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.SetFramebuffer(framebuffer)).Reason);
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.ClearColorTarget(0, Color.White)).Reason);
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.SetScissorRect(0, 0, 0, 8, 8)).Reason);
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(list.SetFullScissorRects).Reason);
             }
             finally
             {
@@ -348,7 +372,7 @@ namespace KhaozEngine.Tests.Gpu
             using VulkanCommandList list = fixture.CreateList();
             list.Begin();
 
-            Assert.Throws<ArgumentException>(() => list.SetFramebuffer(new ForeignFramebuffer()));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => list.SetFramebuffer(new ForeignFramebuffer()));
         }
 
         // ---- Fixtures ----

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -349,49 +350,83 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuTexture sampled = fixture.Factory.CreateTexture(
                 VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.Sampled));
 
-            // Too few resources for the layout's elements.
-            Assert.Contains("POSITIONALLY", Throws(() => fixture.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(uniformLayout))), StringComparison.Ordinal);
+            var count = Assert.Throws<GpuResourceSetException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout)));
+            Assert.Equal(GpuResourceSetRefusal.ResourceCountMismatch, count.Reason);
+            Assert.Equal(1, count.DeclaredCount);
+            Assert.Equal(0, count.SuppliedCount);
 
-            // A null resource, which no later write could fill in.
-            Assert.Contains("Frame", Throws(() => fixture.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(uniformLayout, [null!]))), StringComparison.Ordinal);
+            var missing = Assert.Throws<GpuResourceSetException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout, [null!])));
+            Assert.Equal(GpuResourceSetRefusal.ResourceMissing, missing.Reason);
+            Assert.Equal("Frame", missing.ElementName);
+            Assert.Equal(0, missing.Binding);
 
-            // A texture where a buffer belongs.
-            Assert.Contains("Frame", Throws(() => fixture.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(uniformLayout, sampled))), StringComparison.Ordinal);
+            var kind = Assert.Throws<GpuResourceSetException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout, sampled)));
+            Assert.Equal(GpuResourceSetRefusal.ResourceKindMismatch, kind.Reason);
+            Assert.Equal("Frame", kind.ElementName);
+            Assert.Equal(0, kind.Binding);
+            Assert.Equal(GpuResourceKind.UniformBuffer, kind.ResourceKind);
+            Assert.Equal(typeof(VulkanTexture), kind.ActualType);
+            Assert.Equal(typeof(VulkanBuffer), kind.ExpectedType);
 
-            // A buffer with no ring on a uniform element, which would be bound with an offset nothing supplies.
-            Assert.Contains("ring-backed", Throws(() => fixture.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(uniformLayout, vertex))), StringComparison.Ordinal);
+            var noRing = Assert.Throws<VulkanResourceSetRingException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout, vertex)));
+            Assert.IsAssignableFrom<ArgumentException>(noRing);
+            Assert.Equal(VulkanResourceSetRingRefusal.UniformBufferNotRingBacked, noRing.Reason);
+            Assert.Equal("resource", noRing.ParamName);
+            Assert.Equal("Frame", noRing.ElementName);
+            Assert.Equal(0, noRing.Binding);
+            Assert.Equal(GpuBufferUsage.VertexBuffer, noRing.ActualUsage);
 
-            // A ring-backed buffer on a storage element, which would address segment zero forever while the
-            // writes went to the current segment.
-            Assert.Contains("segment zero", Throws(() => fixture.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(storageLayout, uniform))), StringComparison.Ordinal);
+            var storageRing = Assert.Throws<VulkanResourceSetRingException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(storageLayout, uniform)));
+            Assert.Equal(VulkanResourceSetRingRefusal.RingBufferUsedAsStorage, storageRing.Reason);
+            Assert.Equal("Bones", storageRing.ElementName);
+            Assert.Equal(0, storageRing.Binding);
+            Assert.Equal(GpuResourceKind.StructuredBufferReadOnly, storageRing.ResourceKind);
 
-            // A texture with no sampled view, because it was not created with the usage that makes one.
-            Assert.Contains("Albedo", Throws(() => fixture.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(textureLayout, renderTarget))), StringComparison.Ordinal);
+            var sampledUsage = Assert.Throws<GpuResourceSetException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(textureLayout, renderTarget)));
+            Assert.Equal(GpuResourceSetRefusal.TextureUsageMissing, sampledUsage.Reason);
+            Assert.Equal("Albedo", sampledUsage.ElementName);
+            Assert.Equal(GpuTextureUsage.RenderTarget, sampledUsage.ActualUsage);
+            Assert.Equal(GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps, sampledUsage.RequiredUsage);
 
-            // And with no storage view, for the same reason.
-            Assert.Contains("Target", Throws(() => fixture.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(storageImageLayout, sampled))), StringComparison.Ordinal);
+            var storageUsage = Assert.Throws<GpuResourceSetException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(storageImageLayout, sampled)));
+            Assert.Equal(GpuResourceSetRefusal.TextureUsageMissing, storageUsage.Reason);
+            Assert.Equal("Target", storageUsage.ElementName);
+            Assert.Equal(GpuTextureUsage.Storage, storageUsage.RequiredUsage);
 
-            // A zero-length window, which is the caller's way of writing VK_WHOLE_SIZE by accident.
-            Assert.Contains("BIND WINDOW", Throws(() => fixture.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(uniformLayout, new GpuBufferRange(uniform, 0, 0)))),
-                StringComparison.Ordinal);
+            var emptyWindow = Assert.Throws<GpuResourceSetException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout, new GpuBufferRange(uniform, 0, 0))));
+            Assert.Equal(GpuResourceSetRefusal.BufferWindowOutsideResource, emptyWindow.Reason);
+            Assert.Equal(0u, emptyWindow.RangeBytes);
+            var window = Assert.Throws<GpuResourceSetException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout, new GpuBufferRange(uniform, 200, 128))));
+            Assert.Equal(GpuResourceSetRefusal.BufferWindowOutsideResource, window.Reason);
+            Assert.Equal("Frame", window.ElementName);
+            Assert.Equal(0, window.Binding);
+            Assert.Equal(200u, window.RangeOffset);
+            Assert.Equal(128u, window.RangeBytes);
+            Assert.Equal(256u, window.BufferBytes);
 
-            // And one that leaves the buffer.
-            Assert.Contains("BIND WINDOW", Throws(() => fixture.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(uniformLayout, new GpuBufferRange(uniform, 200, 128)))),
-                StringComparison.Ordinal);
+            var missingBuffer = Assert.Throws<GpuResourceSetException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout, new GpuBufferRange(null!, 0, 256))));
+            Assert.Equal(GpuResourceSetRefusal.ResourceKindMismatch, missingBuffer.Reason);
+            Assert.Null(missingBuffer.ActualType);
+            Assert.Equal(typeof(VulkanBuffer), missingBuffer.ExpectedType);
+            Assert.Equal("Frame", missingBuffer.ElementName);
+            Assert.Equal(0, missingBuffer.Binding);
 
             // NOTHING NATIVE HAPPENED for any of them: no set was allocated and none was written, which is what
             // keeps a caller error from leaving a half-built descriptor set behind.
             Assert.Equal(0, fixture.DescriptorApi.AllocateCount);
             Assert.Equal(0, fixture.DescriptorApi.UpdateCount);
+            using IGpuResourceSet control = fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout, new GpuBufferRange(uniform, 0, 256)));
         }
 
         /// <summary>
@@ -400,13 +435,12 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ASetFromAnotherBackend_IsRefusedByName()
         {
-            Assert.Contains("native Vulkan backend",
-                Assert.Throws<ArgumentException>(
-                    () => VulkanResourceSet.Require(new ForeignSet(), "a bind")).Message,
-                StringComparison.Ordinal);
+            var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => VulkanResourceSet.Require(new ForeignSet(), "a bind"));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, refusal.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, refusal.ExpectedBackend);
+            Assert.Equal(typeof(ForeignSet), refusal.ActualType);
         }
-
-        static string Throws(Action action) => Assert.Throws<ArgumentException>(action).Message;
 
         sealed class ForeignSet : IGpuResourceSet
         {

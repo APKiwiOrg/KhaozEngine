@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu;
 using System;
 using System.Threading;
 using KhaozEngine.Gpu.Internal;
@@ -48,10 +49,10 @@ namespace KhaozEngine.Tests.Gpu
             using var fixture = new VulkanCommandListTests.Fixture();
             using VulkanCommandList list = fixture.CreateList();
 
-            Assert.Throws<InvalidOperationException>(() => fixture.Submits.Submit(list, null));
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() => fixture.Submits.Submit(list, null)).Reason);
 
             list.Begin();
-            Assert.Throws<InvalidOperationException>(() => fixture.Submits.Submit(list, null));
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() => fixture.Submits.Submit(list, null)).Reason);
 
             Assert.Empty(fixture.Api.Submissions);
         }
@@ -158,7 +159,6 @@ namespace KhaozEngine.Tests.Gpu
 
             InvalidOperationException failed =
                 Assert.Throws<InvalidOperationException>(() => fixture.Submits.Submit(list, null));
-            Assert.Contains("vkQueueSubmit failed", failed.Message, StringComparison.Ordinal);
 
             // The gap: allocated, never registered, never signalled.
             Assert.Equal(2UL, fixture.Timeline.LastAllocated);

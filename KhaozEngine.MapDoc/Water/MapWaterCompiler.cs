@@ -59,6 +59,7 @@ public static class MapWaterCompiler
         bool _usesOccupied;
         IReadOnlyList<MapOccupiedPiece>? _occupied;
         IReadOnlyList<MapWaterFragmentBounds> _fragmentBounds = Array.Empty<MapWaterFragmentBounds>();
+        MapDocumentFinding? _finding;
         float Level => _effective?.SurfaceY.ToSingle() ?? body.SurfaceY;
 
         internal MapCompiledWaterBody Run(ref MapWaterConnectivity? graph)
@@ -66,16 +67,19 @@ public static class MapWaterCompiler
             MapWaterCompileStatus status;
             string? detail;
             try { (status, detail) = Compile(ref graph); }
-            catch (MapWaterCapacityException limit) { (status, detail) = (MapWaterCompileStatus.CapacityExceeded, limit.Message); }
+            catch (MapWaterCapacityException limit)
+            { _finding = limit.Finding; (status, detail) = (MapWaterCompileStatus.CapacityExceeded, limit.Message); }
             catch (Exception error) when (error is MapExactOverflowException or OverflowException)
             {
                 (status, detail) = (MapWaterCompileStatus.NotRepresentable, $"{_label}: not representable");
+                _finding = new(MapDocumentRefusal.GeometryNotRepresentable, detail) { EntityId = body.Id, Operation = "water compile" };
             }
             catch (MapDocumentException error)
             {
-                (status, detail) = (MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.OrdinalIgnoreCase) ? MapWaterCompileStatus.NotRepresentable
-                    : _usesOccupied && error.Message.Contains("missing geometry", StringComparison.Ordinal) ? MapWaterCompileStatus.Incomplete
-                    : _usesOccupied && (error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal))
+                _finding = MapDocumentFinding.FromException(error);
+                (status, detail) = (MapGeometryRefusals.Representability(error) ? MapWaterCompileStatus.NotRepresentable
+                    : _usesOccupied && MapGeometryRefusals.MissingGeometry(error) ? MapWaterCompileStatus.Incomplete
+                    : _usesOccupied && MapGeometryRefusals.Capacity(error)
                         ? MapWaterCompileStatus.CapacityExceeded : MapWaterCompileStatus.Invalid, $"{_label}: {error.Message}");
             }
             if (status is not (MapWaterCompileStatus.Complete or MapWaterCompileStatus.Incomplete))
@@ -90,8 +94,11 @@ public static class MapWaterCompiler
             {
                 if (_usesOccupied) deepest = (float)bed.ToDouble();
                 else if (bed.TryNarrow(out MapExactValue exact)) deepest = exact.ToSingle();
-                else (status, detail, _regions) = (MapWaterCompileStatus.NotRepresentable, $"{_label}: deepest bed is not representable",
-                    Array.Empty<MapWaterRegion>());
+                else
+                {
+                    (status, detail, _regions) = (MapWaterCompileStatus.NotRepresentable, $"{_label}: deepest bed is not representable", Array.Empty<MapWaterRegion>());
+                    _finding = new(MapDocumentRefusal.GeometryNotRepresentable, detail) { EntityId = body.Id, Operation = "deepest bed" };
+                }
             }
             MapBox3? bounds = _fragmentBounds.Count != 0 ? _fragmentBounds.Select(b => b.Bounds).Aggregate((a, b) => a.Union(b))
                 : deepest is { } low ? Bounds(low) : null;
@@ -100,6 +107,8 @@ public static class MapWaterCompiler
             return new MapCompiledWaterBody(body.Id, Level, medium, body.RenderMaterial, _regions, deepest, bounds, status, detail,
                 _meter.Work, digest)
             {
+                Finding = status == MapWaterCompileStatus.Complete ? null : _finding is { } finding
+                    ? finding with { Message = detail ?? finding.Message, OwnerId = finding.OwnerId ?? body.Id, InvalidPrefixSuppressed = true } : null,
                 Domain = _domain,
                 Footprints = _footprints.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
                 ClosedContours = _closedContours,
@@ -111,31 +120,37 @@ public static class MapWaterCompiler
 
         (MapWaterCompileStatus, string?) Compile(ref MapWaterConnectivity? graph)
         {
-            if (body.Domain is null) return (MapWaterCompileStatus.Invalid, $"{_label}: domain is required");
+            if (body.Domain is null) return Refuse(MapWaterCompileStatus.Invalid,
+                new(MapDocumentRefusal.SchemaValueRequired, $"{_label}: domain is required") { EntityId = body.Id, FieldPath = "Domain" });
             _meter.ChargeDomain(body.Domain);
-            if (_medium is null) return (MapWaterCompileStatus.Invalid, $"{_label}: unknown medium '{body.Medium}'");
+            if (_medium is null) return Refuse(MapWaterCompileStatus.Invalid,
+                new(MapDocumentRefusal.ReferenceMissing, $"{_label}: unknown medium '{body.Medium}'") { EntityId = body.Id, ActualText = body.Medium, FieldPath = "Medium" });
             MapExactValue level;
             try { level = MapExactValue.FromSingle(body.SurfaceY); }
             catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
             {
-                return (MapWaterCompileStatus.NotRepresentable, $"{_label}: surfaceY is not representable");
+                return Refuse(MapWaterCompileStatus.NotRepresentable,
+                    new(float.IsFinite(body.SurfaceY) ? MapDocumentRefusal.GeometryNotRepresentable : MapDocumentRefusal.ValueNonfinite,
+                        $"{_label}: surfaceY is not representable")
+                    { EntityId = body.Id, ActualNumber = body.SurfaceY, FieldPath = "SurfaceY" });
             }
             var errors = new List<string>();
+            var findings = new List<MapDocumentFinding>();
             if (view.EffectiveContext?.Transform(MapPrefabChildKind.WaterBody, body.Id) is not null)
             {
                 _effective = MapEffectiveWater.Resolve(view, body, _meter.Pairs);
                 _domain = _effective.Domain;
                 level = _effective.SurfaceY;
             }
-            else _domain = MapWaterDomain.TryCompile(body.Domain, null, errors, _meter.Pairs);
+            else _domain = MapWaterDomain.TryCompile(body.Domain, null, errors, _meter.Pairs, findings);
             if (_domain is not null && view.EffectiveContext is not null)
             {
                 _effective ??= new(body, _domain, level, body.Id, body.Covers, "");
                 _usesOccupied = MapEffectiveWater.UsesOccupied(view, _effective);
             }
             if (_domain is null)
-                return (errors[0].Contains("not representable", StringComparison.Ordinal) ? MapWaterCompileStatus.NotRepresentable
-                    : MapWaterCompileStatus.Invalid, $"{_label}: {errors[0]}");
+                return Refuse(findings[0].Reason == MapDocumentRefusal.GeometryNotRepresentable ? MapWaterCompileStatus.NotRepresentable
+                    : MapWaterCompileStatus.Invalid, findings[0] with { Message = $"{_label}: {errors[0]}" });
 
             string[] spaces = (body.Covers ?? Array.Empty<MapRecordRef>()).Where(c => c is not null).Select(c => c.Id).Distinct(StringComparer.Ordinal)
                 .Order(StringComparer.Ordinal).ToArray();
@@ -145,10 +160,14 @@ public static class MapWaterCompiler
             var prepared = new MapWaterContainment.Prepared(level, _domain, Footprints, _meter.Pairs, _patches, _usesOccupied ? Occupied : null,
                 _usesOccupied ? _relations : null);
             MapWaterContainmentReport containment = MapWaterContainment.ValidateBody(view, body, prepared, ref graph);
+            _finding = containment.Findings.FirstOrDefault();
             if (containment.Complete && containment.Errors.Count != 0) return (MapWaterCompileStatus.Invalid, containment.Errors[0]);
             string? incomplete = containment.Errors.FirstOrDefault();
             if (!_usesOccupied && spaces.FirstOrDefault(s => !_footprintsComplete[s]) is { } partial)
+            {
                 incomplete ??= $"{_label}: footprints of space '{partial}' are not proven complete in this view";
+                _finding ??= new(MapDocumentRefusal.AcquisitionIncomplete, incomplete) { EntityId = body.Id, SpaceId = partial, FieldPath = "Footprints" };
+            }
 
             var builder = new MapWaterRegionBuilder(view, _domain, level, limits.Reads ?? new MapRefinementLimits(), _meter);
             if (_usesOccupied)
@@ -158,8 +177,8 @@ public static class MapWaterCompiler
                     foreach (string space in spaces)
                         foreach (var piece in Occupied(space)) builder.Add(piece);
                 }
-                catch (MapDocumentException error) when (error.Message.Contains("missing geometry", StringComparison.Ordinal))
-                { return (MapWaterCompileStatus.Incomplete, incomplete ?? $"{_label}: {error.Message}"); }
+                catch (MapDocumentException error) when (MapGeometryRefusals.MissingGeometry(error))
+                { _finding = MapDocumentFinding.FromException(error); return (MapWaterCompileStatus.Incomplete, incomplete ?? $"{_label}: {error.Message}"); }
             }
             else
                 foreach (string space in spaces)
@@ -167,6 +186,7 @@ public static class MapWaterCompiler
                         if (builder.Add(rect) is { } failure)
                         {
                             Absorb(builder);
+                            _finding = failure.Finding;
                             return (failure.Status, $"{_label}: {failure.Detail}");
                         }
             Absorb(builder);
@@ -174,9 +194,13 @@ public static class MapWaterCompiler
             _closedContours = builder.ClosedContours.AsReadOnly();
             _deepest = builder.DeepestBed;
             _fragmentBounds = builder.FragmentBounds;
+            _finding ??= builder.UnresolvedFinding;
             incomplete ??= builder.Unresolved is { } gap ? $"{_label}: {gap}" : null;
             return incomplete is null ? (MapWaterCompileStatus.Complete, null) : (MapWaterCompileStatus.Incomplete, incomplete);
         }
+
+        (MapWaterCompileStatus, string?) Refuse(MapWaterCompileStatus status, MapDocumentFinding finding)
+        { _finding = finding; return (status, finding.Message); }
 
         IReadOnlyList<MapOccupiedPiece> Occupied(string space)
         {

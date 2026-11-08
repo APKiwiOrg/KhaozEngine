@@ -16,7 +16,7 @@ public sealed class InteriorCutPlacementSlotTests
         Scene3D scene = rig.Scene;
         scene.InteriorCut = InteriorCutShadowTests.Field();
         MeshHandle mesh = scene.LoadMesh(MeshPrimitives.Box());
-        var cache = HighlightTestAccess.Field<InteriorCutRelevanceCache>(scene, "_interiorRelevance");
+
         void Submit()
         {
             scene.Begin();
@@ -24,11 +24,11 @@ public sealed class InteriorCutPlacementSlotTests
                 scene.Draw(new RigidInstanceDraw(mesh, Matrix4x4.CreateTranslation(x, 0, 0)) { CutInsideInteriors = true });
         }
         Submit();
-        int checks = cache.ContextChecks, reads = scene.InteriorMeshReads;
+        int checks = scene.InteriorRelevanceForTests.ContextChecks, reads = scene.InteriorMeshReads;
 
         Submit();
 
-        Assert.Equal(checks + 1, cache.ContextChecks);
+        Assert.Equal(checks + 1, scene.InteriorRelevanceForTests.ContextChecks);
         Assert.Equal(reads, scene.InteriorMeshReads);
         Assert.True(scene.QueuedInstancesForTests[0].CutInsideInteriors);
         Assert.False(scene.QueuedInstancesForTests[1].CutInsideInteriors);
@@ -102,7 +102,7 @@ public sealed class InteriorCutPlacementSlotTests
         using var rig = new MotionTestScene();
         Scene3D scene = rig.Scene;
         MeshHandle mesh = scene.LoadMesh(MeshPrimitives.Box());
-        var cache = HighlightTestAccess.Field<InteriorCutRelevanceCache>(scene, "_interiorRelevance");
+
         scene.InteriorCut = InteriorCutShadowTests.Field();
         float middle = 20;
         void Submit()
@@ -112,21 +112,21 @@ public sealed class InteriorCutPlacementSlotTests
                 scene.Draw(new RigidInstanceDraw(mesh, Matrix4x4.CreateTranslation(x, 0, 0)) { CutInsideInteriors = true });
         }
         Submit();
-        Assert.Equal(3, cache.Evaluations);
-        int lookups = cache.Lookups;
+        Assert.Equal(3, scene.InteriorRelevanceForTests.Evaluations);
+        int lookups = scene.InteriorRelevanceForTests.Lookups;
         Submit();
-        Assert.Equal(3, cache.Evaluations);
-        Assert.Equal(lookups, cache.Lookups);
+        Assert.Equal(3, scene.InteriorRelevanceForTests.Evaluations);
+        Assert.Equal(lookups, scene.InteriorRelevanceForTests.Lookups);
         middle++;
         Submit();
-        Assert.Equal(4, cache.Evaluations);
-        Assert.Equal(lookups + 1, cache.Lookups);
+        Assert.Equal(4, scene.InteriorRelevanceForTests.Evaluations);
+        Assert.Equal(lookups + 1, scene.InteriorRelevanceForTests.Lookups);
         scene.InteriorCut = InteriorCutShadowTests.Field();
         Submit();
-        Assert.Equal(7, cache.Evaluations);
+        Assert.Equal(7, scene.InteriorRelevanceForTests.Evaluations);
         Submit();
-        Assert.Equal(7, cache.Evaluations);
-        Assert.Equal(lookups + 4, cache.Lookups);
+        Assert.Equal(7, scene.InteriorRelevanceForTests.Evaluations);
+        Assert.Equal(lookups + 4, scene.InteriorRelevanceForTests.Lookups);
     }
 
     [Fact]
@@ -142,8 +142,7 @@ public sealed class InteriorCutPlacementSlotTests
         {
             scene.Begin();
             scene.DrawMeshSilhouette(mesh, world, Color.White, width, true);
-            var draws = HighlightTestAccess.Field<System.Collections.IList>(scene, "_silhouetteDraws");
-            return (bool)draws[0]!.GetType().GetProperty("CutInsideInteriors")!.GetValue(draws[0])!;
+            return scene.SilhouetteCutsForTests[0];
         }
         Assert.False(Submit());
         Assert.False(Submit());

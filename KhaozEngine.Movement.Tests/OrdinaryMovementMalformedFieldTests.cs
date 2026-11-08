@@ -13,8 +13,8 @@ public class OrdinaryMovementMalformedFieldTests
     [InlineData("identity", MovementStepOutcome.EnvironmentInvalid)]
     [InlineData("gap", MovementStepOutcome.EnvironmentInvalid)]
     [InlineData("unordered", MovementStepOutcome.EnvironmentInvalid)]
-    [InlineData("error", MovementStepOutcome.EnvironmentUnresolved)]
-    public void MalformedFieldEvidenceRetainsExistingLeaseRefusal(string fault, MovementStepOutcome expected)
+    [InlineData("error", MovementStepOutcome.PrecisionRefused)]
+    public void FieldEvidenceSeparatesPrecisionFromInvalidStructure(string fault, MovementStepOutcome expected)
     {
         using var scene = new OrdinaryContactScene(water: new MalformedField(fault));
         using var lease = scene.Acquire();

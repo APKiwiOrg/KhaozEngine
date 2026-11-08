@@ -18,6 +18,11 @@
     <None Include="NetWorld/Fixtures/cell-v1-32bit.blob" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../test-shared/RefusalConstructorFence.cs" Link="Shared/RefusalConstructorFence.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs" Link="NetWorld/Fixtures/LocomotionStateBits.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/TileWorldPhysicsTestData.cs" Link="NetWorld/Fixtures/TileWorldPhysicsTestData.cs" />
+    <Compile Include="../test-shared/ItemsBenchmarkFields.cs" Link="Benchmarks/ItemsBenchmarkFields.cs" />
+    <Compile Include="../test-shared/ItemsBenchmarkFixtureDirectory.cs" Link="Benchmarks/ItemsBenchmarkFixtureDirectory.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/SupportAllocationRegion.cs" Link="NetWorld/Fixtures/SupportAllocationRegion.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.cs" Link="NetWorld/Fixtures/AnalyticMovementEnvironment.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" Link="NetWorld/Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" />
@@ -78,6 +83,7 @@
     <!-- Items/InstancePayloadCapParityTests.cs holds TileProtocol.MaxInstancePayloadBytes against
          ItemSlot.MaxPayloadBytes. The tile netcode cannot reference the item packages, so the two constants
          can drift, and this is the only project that sees both. -->
+    <ProjectReference Include="../KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />

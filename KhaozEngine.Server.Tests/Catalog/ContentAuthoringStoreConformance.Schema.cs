@@ -51,7 +51,10 @@ public abstract partial class ContentAuthoringStoreConformance
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
-        Assert.Contains(RequiredMigration, refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.SchemaMissing, refused.Refusal);
+        Assert.Equal("catalog-v4-text-authoring", refused.RequiredMigration);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
     }
 
     /// <summary>

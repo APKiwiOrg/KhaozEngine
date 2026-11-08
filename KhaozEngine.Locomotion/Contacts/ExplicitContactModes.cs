@@ -54,11 +54,11 @@ internal sealed class ExplicitContactModes : ContactMediumPolicy
             _queries.BodyCentre(seated).Y, _tuning, _water);
     }
 
-    MoveState Classified(Vector3 feet, float vertical, in SupportSample support, bool grounded, bool descending = false)
+    MoveState Classified(Vector3 feet, float vertical, in SupportSample support, bool grounded, out MovementWaterPoint point, bool descending = false)
     {
         MoveState next = _state with { Position = _queries.BodyCentre(feet), VerticalVelocity = vertical };
         bool footing = grounded && AllowsFooting(feet, support);
-        MovementWaterPoint point = _queries.SampleMedium(feet)!.Value;
+        point = _queries.SampleMedium(feet)!.Value;
         ExplicitCharacterMovement.ClassifyWater(ref next, point, footing, _state.Swimming,
             _tuning, _water, vertical < 0 || descending);
         next.Grounded = footing;
@@ -67,13 +67,14 @@ internal sealed class ExplicitContactModes : ContactMediumPolicy
 
     internal override bool ChangesOwner(Vector3 feet, float verticalVelocity, in SupportSample support, bool grounded)
     {
-        MoveState next = Classified(feet, verticalVelocity, support, grounded);
+        MoveState next = Classified(feet, verticalVelocity, support, grounded, out _);
         return next.Swimming != _state.Swimming || next.WaterExcursion != _state.WaterExcursion;
     }
 
     internal bool Accept(Vector3 feet, float vertical, in SupportSample support, bool grounded, bool descending = false)
     {
-        _state = Classified(feet, vertical, support, grounded, descending);
+        _state = Classified(feet, vertical, support, grounded, out var point, descending);
+        _queries.DescentEvidence?.Medium(point, _state.Swimming, _state.WaterExcursion);
         if (_state.Swimming)
         {
             EnteredWater = true;
@@ -121,6 +122,7 @@ internal sealed class ExplicitContactModes : ContactMediumPolicy
         {
             _state.Swimming = false;
             _state.WaterExcursion = WaterExcursionState.AirborneFromWater;
+            _queries.DescentEvidence?.Medium(point, _state.Swimming, _state.WaterExcursion);
             PressConsumed = true;
         }
         AirStepResult step = AirPass.StepWithMedium(feet, continuation.HorizontalVelocity, proposed.Y, time, 0,

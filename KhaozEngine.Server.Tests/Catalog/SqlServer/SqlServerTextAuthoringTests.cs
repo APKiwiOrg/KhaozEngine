@@ -269,6 +269,8 @@ public sealed class SqlServerTextAuthoringTests
         await text.FreezeChangesAsync(0);
         var stale = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.CommitTextPublishAsync(plan, Request(0), null));
         Assert.Equal(ContentAuthoringException.TextStateMismatchReason, stale.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextPlanDraftMismatch, stale.Refusal);
+        Assert.Equal(0, stale.ExpectedBaseVersion);
 
         Assert.Empty(await store.ListVersionsAsync());
         Assert.Equal(audits + 1, await AuditCountAsync(store));
@@ -355,6 +357,12 @@ public sealed class SqlServerTextAuthoringTests
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => SqlServerContentAuthoringStore.WriteTextAsync(
             scope, 2, new SqlServerContentAuthoringStore.ContentTextCommit([], [close], [], null), DateTimeOffset.UnixEpoch, default));
         Assert.Equal(ContentAuthoringException.TextStateMismatchReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextCloseRevisionMissing, refused.Refusal);
+        Assert.Equal(Item, refused.TextRowType);
+        Assert.Equal(sword, refused.TextRowId);
+        Assert.Equal("name", refused.FieldName);
+        Assert.Equal("en", refused.Language);
+        Assert.Equal(1, refused.FromVersion);
         Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_text WHERE replaced_in_version IS NOT NULL;"));
 
         await SqlServerContentAuthoringStore.DeletePublishedTextAsync(
@@ -364,6 +372,10 @@ public sealed class SqlServerTextAuthoringTests
         await SqlServerContentAuthoringStore.DeletePublishedTextAsync(
             scope, new ContentDraftTextState([ContentTextEdit.Set(Target(NameField, "en"), "Blade ")], []), default);
         Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_draft_text_edit;"));
+        var repaired = new ContentTextRevision(Item, sword, NameField, "en", "Sword ", 1, null);
+        await SqlServerContentAuthoringStore.WriteTextAsync(
+            scope, 2, new SqlServerContentAuthoringStore.ContentTextCommit([], [repaired], [], null), DateTimeOffset.UnixEpoch, default);
+        Assert.Equal(2, database.Scalar("SELECT replaced_in_version FROM dbo.catalog_text;"));
     }
 
     /// <summary>

@@ -37,28 +37,15 @@ namespace KhaozEngine.Tests.Windowing
             Assert.Equal(baseCap, plan.CapHz);
         }
 
-        [Fact]
-        public void Unfocused_visible_renders_but_caps_to_the_unfocused_rate()
+        [Theory]
+        [InlineData(120, 15)]
+        [InlineData(0, 15)]
+        [InlineData(10, 10)]
+        public void Unfocused_renders_at_the_lower_of_base_and_unfocused_caps(int baseCap, int expectedCap)
         {
-            FramePlan plan = Def.Plan(Unfocused, baseCapHz: 120);
+            FramePlan plan = Def.Plan(Unfocused, baseCap);
             Assert.True(plan.RenderAndPresent);
-            Assert.Equal(15, plan.CapHz); // min(120, 15)
-        }
-
-        [Fact]
-        public void Unfocused_uses_the_unfocused_rate_when_base_is_uncapped()
-        {
-            FramePlan plan = Def.Plan(Unfocused, baseCapHz: 0);
-            Assert.True(plan.RenderAndPresent);
-            Assert.Equal(15, plan.CapHz);
-        }
-
-        [Fact]
-        public void Unfocused_keeps_a_lower_base_cap_rather_than_raising_it()
-        {
-            FramePlan plan = Def.Plan(Unfocused, baseCapHz: 10); // already below UnfocusedHz
-            Assert.True(plan.RenderAndPresent);
-            Assert.Equal(10, plan.CapHz); // min(10, 15)
+            Assert.Equal(expectedCap, plan.CapHz);
         }
 
         [Fact]

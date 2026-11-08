@@ -12,16 +12,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             MetalTimestampPool native = RequireTimestampPool(pool);
             if (_timestampEndPool is not null)
-                throw new InvalidOperationException("A final timestamp tail is already armed for this recording.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.TailAlreadyArmed, "A final timestamp tail is already armed for this recording.") { Backend = GpuBackendKind.MetalNative };
             native.ValidateTimestampEnd(this, _timestampRecordingId, _commandBuffer, finalIndex);
             _timestampEndPool = native;
             _timestampEndIndex = finalIndex;
         }
 
-        void RefuseArmedTimestampPool(MetalTimestampPool pool)
+        void RefuseArmedTimestampPool(MetalTimestampPool pool, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             if (ReferenceEquals(pool, _timestampEndPool))
-                throw new InvalidOperationException("The timestamp pool's final marker and batch end are armed for End.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.ManualFinalizationWhileArmed, "The timestamp pool's final marker and batch end are armed for End.") { Backend = GpuBackendKind.MetalNative, Command = member };
         }
 
         void EmitTimestampEnd()
@@ -35,6 +35,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         void BeginTimestampRecording()
         {
+            _frameTimestampPools.Clear();
             ClearTimestampEnd();
             // Native handles can repeat even though Metal command buffers are single-use.
             unchecked { _timestampRecordingId++; }

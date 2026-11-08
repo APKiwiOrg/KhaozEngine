@@ -102,6 +102,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             Api.Dispose();
         }
 
+        // Fault injection takes only the loader failure and delegates to the native catch's refusal.
+        internal static void RefuseLoaderFailureForTests(Exception ex)
+        {
+            throw new VulkanBackendCreationUnsupportedException(VulkanBackendCreationRefusal.LoaderUnavailable,
+                "The native Vulkan backend cannot create a device on this machine: no Vulkan loader could be "
+                + $"resolved ({ex.GetType().Name}: {ex.Message}). This is a statement about the MACHINE and "
+                + "not about the package, so read GpuBackendSelector.IsBackendSupported to ask the same "
+                + "question without a device. macOS is the expected case in this fleet: there is no Vulkan "
+                + "loader there, this package loads harmlessly, and phase 4 of the native GPU program brings "
+                + "a real Metal backend.", ex)
+            { LoaderExceptionType = ex.GetType(), Probe = "GpuBackendSelector.IsBackendSupported" };
+        }
+
+
         // The native creation, in the order the loader wants it: version, then what is actually installed, then
         // the request built from the intersection, then the messenger.
         static VulkanInstance CreateNative(VulkanInstanceKey key)
@@ -119,13 +133,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // is about the MACHINE rather than about anything the caller did, and the D3D11 package answers
                 // its equivalent with a named PlatformNotSupportedException off a static guard. Vulkan has no
                 // static guard to answer from (V-P1), so the rename happens where the loader actually fails.
-                throw new NotSupportedException(
-                    "The native Vulkan backend cannot create a device on this machine: no Vulkan loader could be "
-                    + $"resolved ({ex.GetType().Name}: {ex.Message}). This is a statement about the MACHINE and "
-                    + "not about the package, so read GpuBackendSelector.IsBackendSupported to ask the same "
-                    + "question without a device. macOS is the expected case in this fleet: there is no Vulkan "
-                    + "loader there, this package loads harmlessly, and phase 4 of the native GPU program brings "
-                    + "a real Metal backend.", ex);
+                RefuseLoaderFailureForTests(ex);
+                throw;
             }
 
             uint loaderVersion = 0;

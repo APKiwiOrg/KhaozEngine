@@ -19,7 +19,8 @@ public static class MapAuthoredIdentityV2
     {
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
-            throw new MapDocumentException("Whole authored identity cannot hash a partial window.");
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Whole authored identity cannot hash a partial window.")
+                { DocumentId = document.Id, Operation = "ComputeWholeAuthoredIdentity" };
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(options);
         Validate(document.ResolverIdentity, document.SupportRecipe, options);
@@ -46,17 +47,35 @@ public static class MapAuthoredIdentityV2
         foreach (MapSurfaceIndexEntry entry in source.EnumeratePinnedEntries(work))
             patches.Add(entry.Key, source.IdentityPatchDigest(entry, work));
         foreach (MapSurfaceRef surface in source.Surfaces)
-            if (MapSurfaceSemantics.SurfaceDigest(surface, patches.Where(p => p.Key.SurfaceId == surface.Id)) != surface.SemanticSha256)
-                throw new MapDocumentException($"Corrupt surface semantic digest for '{surface.Id}'.");
+        {
+            string actual = MapSurfaceSemantics.SurfaceDigest(surface, patches.Where(p => p.Key.SurfaceId == surface.Id));
+            if (actual != surface.SemanticSha256)
+                throw new MapDocumentException(MapDocumentRefusal.DigestMismatch, $"Corrupt surface semantic digest for '{surface.Id}'.")
+                {
+                    DigestKind = "surface semantics",
+                    SubjectKind = "surface",
+                    SurfaceId = surface.Id,
+                    EntityId = surface.Id,
+                    ExpectedHash = surface.SemanticSha256,
+                    ActualHash = actual,
+                };
+        }
         return MapAuthoredIdentityProjection.Compute(source.RootSha256, source.IdentityContentDigest(assets), patches, assets, options);
     }
 
     static void Validate(MapResolverIdentityDoc? resolver, MapSupportRecipe recipe, MapResolveOptions options)
     {
         if (resolver is not { PayloadVersion: 1, ResolverVersion: 2 } || recipe != MapSupportRecipe.AuthoredBindingsV2)
-            throw new MapDocumentException("Whole authored identity requires resolver (1, 2) and supportRecipe AuthoredBindingsV2.");
-        if (options.ResolverVersion != 2 || string.IsNullOrWhiteSpace(options.BuilderId) ||
-            options.BuilderVersion <= 0 || string.IsNullOrWhiteSpace(options.OptionsHash))
-            throw new MapDocumentException("Whole authored identity requires resolver 2, builder ID, positive version and options hash.");
+            throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch,
+                "Whole authored identity requires resolver (1, 2) and supportRecipe AuthoredBindingsV2.")
+            {
+                PayloadVersion = resolver?.PayloadVersion,
+                ResolverVersion = resolver?.ResolverVersion,
+                SupportRecipe = recipe,
+                ExpectedResolverVersion = 2,
+                ExpectedSupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
+                FieldPath = resolver is not { PayloadVersion: 1, ResolverVersion: 2 } ? "resolverIdentity" : "supportRecipe",
+            };
+        MapAuthoredIdentityOptions.Require(options, 2, "Whole authored identity requires resolver 2, builder ID, positive version and options hash.");
     }
 }

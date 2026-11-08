@@ -40,9 +40,9 @@ public sealed partial class GroundNavigationBake
         ushort flags = BinaryPrimitives.ReadUInt16LittleEndian(header[6..]);
         uint identityLength = BinaryPrimitives.ReadUInt32LittleEndian(header[8..]);
         ulong payloadLength = BinaryPrimitives.ReadUInt64LittleEndian(header[12..]);
-        if (version is not (NavBakeIdentity.FormatVersion or NavBakeIdentity.ContactFormatVersion) || flags != 0)
+        if (version is not (NavBakeIdentity.FormatVersion or NavBakeIdentity.ContactFormatVersion or NavBakeIdentity.DropFormatVersion or NavBakeIdentity.TerrainFormatVersion) || flags != 0)
             return Refuse(NavBakeLoadStatus.UnsupportedFormat, $"Format version {version} with flags {flags} is not " +
-                "supported. This engine reads versions 1 and 2 with flags 0.");
+                "supported. This engine reads versions 1, 2, 3 and 4 with flags 0.");
         if (identityLength > MaxIdentityLength)
             return Refuse(NavBakeLoadStatus.Corrupt, $"Identity block length {identityLength} exceeds 1 MiB.");
         if (source.CanSeek && identityLength > source.Length - source.Position)
@@ -53,7 +53,7 @@ public sealed partial class GroundNavigationBake
         read = source.ReadAtLeast(identity, identity.Length, throwOnEndOfStream: false);
         if (read < identity.Length)
             return Refuse(NavBakeLoadStatus.Corrupt, $"The identity block is truncated at {read} of {identity.Length} bytes.");
-        (NavBakeLoadStatus status, string detail) = NavBakeIdentity.Compare(identity, encoded, version, NavBakeIdentity.FormatFor(plan.Profiles));
+        (NavBakeLoadStatus status, string detail) = NavBakeIdentity.Compare(identity, encoded, version, NavBakeIdentity.FormatFor(plan.Options, plan.Profiles));
         if (status != NavBakeLoadStatus.Loaded) return Refuse(status, detail);
 
         ulong bound = PayloadBound(plan, version);
@@ -65,10 +65,20 @@ public sealed partial class GroundNavigationBake
             if (remaining < 0 || (ulong)remaining != payloadLength)
                 return Refuse(NavBakeLoadStatus.Corrupt, $"Payload length {payloadLength} differs from the {remaining} remaining stream bytes.");
         }
-        byte[] payload = new byte[(int)payloadLength];
-        read = source.ReadAtLeast(payload, payload.Length, throwOnEndOfStream: false);
-        if (read < payload.Length)
-            return Refuse(NavBakeLoadStatus.Corrupt, $"The payload is truncated at {read} of {payload.Length} bytes.");
+        byte[] payload;
+        if (version == NavBakeIdentity.TerrainFormatVersion)
+        {
+            byte[]? terrainPayload = ReadTerrainPayload(source, (int)payloadLength);
+            if (terrainPayload is null) return Refuse(NavBakeLoadStatus.Corrupt, "The terrain payload is truncated.");
+            payload = terrainPayload;
+        }
+        else
+        {
+            payload = new byte[(int)payloadLength];
+            read = source.ReadAtLeast(payload, payload.Length, throwOnEndOfStream: false);
+            if (read < payload.Length)
+                return Refuse(NavBakeLoadStatus.Corrupt, $"The payload is truncated at {read} of {payload.Length} bytes.");
+        }
         Span<byte> probe = stackalloc byte[1];
         if (source.Read(probe) != 0) return Refuse(NavBakeLoadStatus.Corrupt, "Bytes follow the payload.");
         Span<byte> checksum = stackalloc byte[32];
@@ -78,14 +88,22 @@ public sealed partial class GroundNavigationBake
 
         try
         {
-            string? problem = Decode(payload, plan, out Vector3 origin, out PhysicsNavColumns? columns, out GroundNavigation[]? profiles);
+            Vector3 origin; PhysicsNavColumns? columns; GroundNavigation[]? profiles; PhysicsNavDescentEvidence? terrain = null;
+            string? problem = version == NavBakeIdentity.TerrainFormatVersion
+                ? DecodeTerrain(payload, plan, identity, out origin, out columns, out profiles, out terrain)
+                : Decode(payload, plan, version, out origin, out columns, out profiles);
             if (problem is not null) return Refuse(NavBakeLoadStatus.Corrupt, problem);
             var names = Array.ConvertAll(plan.Profiles, static p => p.Name);
-            return new NavBakeLoadResult(NavBakeLoadStatus.Loaded, "", new GroundNavigationBake(identity, origin, columns!, names, profiles!));
+            return new NavBakeLoadResult(NavBakeLoadStatus.Loaded, "", new GroundNavigationBake(identity, origin, columns!, names, profiles!, version, terrain));
         }
         catch (ArgumentException e)
         {
             return Refuse(NavBakeLoadStatus.Corrupt, $"Navigation validation rejected the payload: {e.Message}");
+        }
+        catch (Exception e) when (version == NavBakeIdentity.TerrainFormatVersion &&
+            e is InvalidDataException or PhysicsNavDescentEvidenceException or InvalidOperationException or OverflowException)
+        {
+            return Refuse(NavBakeLoadStatus.Corrupt, e.Message);
         }
     }
 
@@ -108,16 +126,21 @@ public sealed partial class GroundNavigationBake
         {
             GroundMoveContext.CheckTuning(profile.Tuning);
             if (profile.Tuning.MaxSlopeRadians != options.MaxSlopeRadians)
-                throw new ArgumentException($"Profile '{profile.Name}' slope must equal the capture slope.", nameof(expected));
+                throw new NavigationProfileException(NavigationProfileRefusal.CaptureSlopeMismatch,
+                    $"Profile '{profile.Name}' slope must equal the capture slope.", nameof(expected))
+                    { ProfileName = profile.Name, ExpectedSlope = options.MaxSlopeRadians, ActualSlope = profile.Tuning.MaxSlopeRadians };
             if (!float.IsFinite(2f * profile.Tuning.CapsuleHalfHeight))
                 throw new ArgumentOutOfRangeException(nameof(expected), $"Profile '{profile.Name}' height must be finite.");
             if (profile.Aquatic && !options.SampleWater)
-                throw new ArgumentException($"Aquatic profile '{profile.Name}' needs a capture that sampled water.", nameof(expected));
+                throw new NavigationProfileException(NavigationProfileRefusal.CaptureWaterNotSampled,
+                    $"Aquatic profile '{profile.Name}' needs a capture that sampled water.", nameof(expected)) { ProfileName = profile.Name };
             MoveTuning swim = profile.Tuning;
             if (profile.Aquatic && !(swim.SwimExitDepthFraction <= swim.SwimSurfaceSubmersionFraction &&
                 swim.SwimSurfaceSubmersionFraction <= swim.SwimEnterDepthFraction))
-                throw new ArgumentException(
-                    $"Aquatic profile '{profile.Name}' needs swim fractions ordered exit, submersion, enter.", nameof(expected));
+                throw new NavigationProfileException(NavigationProfileRefusal.SwimFractionsUnordered,
+                    $"Aquatic profile '{profile.Name}' needs swim fractions ordered exit, submersion, enter.", nameof(expected))
+                    { ExitFraction = swim.SwimExitDepthFraction, SubmersionFraction = swim.SwimSurfaceSubmersionFraction,
+                        EnterFraction = swim.SwimEnterDepthFraction };
         }
         return new LoadPlan(options, width, height, cells, options.MaxLayerCells / cells, sorted);
     }
@@ -125,6 +148,7 @@ public sealed partial class GroundNavigationBake
     // The design bound plus one stored candidate count per profile, saturating instead of overflowing.
     private static ulong PayloadBound(LoadPlan plan, ushort version)
     {
+        if (version == NavBakeIdentity.TerrainFormatVersion) return (ulong)Array.MaxLength;
         ulong c = (ulong)plan.Cells, m = (ulong)plan.Options.MaxSurfacesPerColumn;
         ulong layers = (ulong)plan.MaxLayers, n = (ulong)plan.Profiles.Length;
         ulong surfaces = Add(Add(CaptureHeaderBytes, c), Mul(Mul(SurfaceBytes, c), m));
@@ -133,13 +157,16 @@ public sealed partial class GroundNavigationBake
         ulong links = Mul(Mul(layers, layers == 0 ? 0 : layers - 1), c);
         ulong profile = Add(Add(Add(4, Mul(layers, layer)), LinkCountBytes), links);
         ulong total = Add(capture, Mul(n, profile));
-        if (version == NavBakeIdentity.ContactFormatVersion)
+        if (NavBakeIdentity.HasContactIdentity(version))
         {
             ulong contact = 0;
             foreach (NavBakeProfile selection in plan.Profiles)
                 if (selection.Tuning.Controller == MovementControllerKind.Contact) contact++;
             total = Add(total, Mul(Mul(Mul(4, c), layers), contact));
         }
+        if (version == NavBakeIdentity.DropFormatVersion)
+            foreach (NavBakeProfile selection in plan.Profiles)
+                if (selection.MaxDropMetres > 0) total = Add(total, Mul(c, layers));
         return Math.Min(total, (ulong)Array.MaxLength);
     }
 
@@ -147,7 +174,7 @@ public sealed partial class GroundNavigationBake
 
     private static ulong Mul(ulong a, ulong b) => a != 0 && b > ulong.MaxValue / a ? ulong.MaxValue : a * b;
 
-    private static string? Decode(ReadOnlySpan<byte> payload, LoadPlan plan, out Vector3 origin,
+    private static string? Decode(ReadOnlySpan<byte> payload, LoadPlan plan, ushort version, out Vector3 origin,
         out PhysicsNavColumns? columns, out GroundNavigation[]? profiles)
     {
         profiles = null;
@@ -156,10 +183,10 @@ public sealed partial class GroundNavigationBake
         var built = new GroundNavigation[plan.Profiles.Length];
         // One scratch set for every layer of every profile. Grids and traversal layers copy their inputs.
         var scratch = new LayerScratch(new bool[plan.Cells], new bool[plan.Cells], new float[plan.Cells], new byte[plan.Cells],
-            NavBakeIdentity.FormatFor(plan.Profiles) == NavBakeIdentity.ContactFormatVersion ? new float[plan.Cells] : null);
+            NavBakeIdentity.HasContactIdentity(version) ? new float[plan.Cells] : null);
         for (int i = 0; i < built.Length; i++)
         {
-            if (DecodeProfile(ref reader, plan, plan.Profiles[i], columns!, scratch, out GroundNavigation? profile) is { } failed)
+            if (DecodeProfile(ref reader, plan, version, plan.Profiles[i], columns!, scratch, out GroundNavigation? profile) is { } failed)
                 return failed;
             built[i] = profile!;
         }
@@ -252,7 +279,7 @@ public sealed partial class GroundNavigationBake
         return null;
     }
 
-    private static string? DecodeProfile(ref NavBakeReader reader, LoadPlan plan, NavBakeProfile profile,
+    private static string? DecodeProfile(ref NavBakeReader reader, LoadPlan plan, ushort version, NavBakeProfile profile,
         PhysicsNavColumns columns, LayerScratch scratch, out GroundNavigation? navigation)
     {
         navigation = null;
@@ -265,7 +292,7 @@ public sealed partial class GroundNavigationBake
         var grids = new NavGrid[layerCount];
         var traversal = new NavTraversalLayer[layerCount];
         (bool[] blocked, bool[] accepted, float[] heights, byte[] exits, float[]? resting) = scratch;
-        bool contact = profile.Tuning.Controller == MovementControllerKind.Contact;
+        bool contact = NavBakeIdentity.HasContactIdentity(version) && profile.Tuning.Controller == MovementControllerKind.Contact;
         PhysicsNavBakeOptions options = plan.Options;
         for (int layer = 0; layer < layerCount; layer++)
         {
@@ -328,7 +355,13 @@ public sealed partial class GroundNavigationBake
         if (storedCandidates < 0 || BitsetLength(storedCandidates) > reader.Remaining)
             return $"Profile '{name}' candidate link count {storedCandidates} is impossible for the remaining bytes.";
         MoveTuning tuning = profile.Tuning;
-        IReadOnlyList<NavLink> candidates = NavLayerLinks.GenerateGrounded(grids, tuning.StepHeight);
+        bool formatThree = version == NavBakeIdentity.DropFormatVersion;
+        int regeneratedCount = formatThree ? ContactDropTopology.Count(grids, traversal, tuning, profile.MaxDropMetres) : -1;
+        if (formatThree && storedCandidates != regeneratedCount)
+            return $"Profile '{name}' stores {storedCandidates} candidate links but its grids regenerate {regeneratedCount}.";
+        IReadOnlyList<NavLink> candidates = formatThree
+            ? ContactDropTopology.Generate(grids, traversal, tuning, profile.MaxDropMetres, regeneratedCount)
+            : NavLayerLinks.GenerateGrounded(grids, tuning.StepHeight);
         if (storedCandidates != candidates.Count)
             return $"Profile '{name}' stores {storedCandidates} candidate links but its grids regenerate {candidates.Count}.";
         if (!reader.TryReadBytes(BitsetLength(candidates.Count), out ReadOnlySpan<byte> linkBits))
@@ -343,7 +376,7 @@ public sealed partial class GroundNavigationBake
         // An aquatic profile rebuilds its own derived view, as BuildProfile does. Ground profiles share the captured one.
         PhysicsNavColumns footprintColumns = profile.Aquatic ? AquaticColumns.Derive(columns, tuning) : columns;
         navigation = new GroundNavigation(graph, tuning, new NavAreaFootprint(footprintColumns, options, tuning, profile.Areas),
-            profile.Aquatic);
+            profile.Aquatic, profile.MaxDropMetres);
         return null;
     }
 

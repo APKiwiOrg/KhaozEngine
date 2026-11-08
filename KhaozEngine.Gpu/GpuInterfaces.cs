@@ -174,9 +174,9 @@ namespace KhaozEngine.Gpu
         /// a frame list and retain one per pending frame in a fixed caller-owned ring. Unsupported devices
         /// report <see cref="GpuCapabilities.SupportsTimestamps"/> false and throw rather than estimate time.</summary>
         /// <exception cref="ArgumentOutOfRangeException">A supported device was given zero capacity.</exception>
-        /// <exception cref="NotSupportedException">Timestamp pools are not supported by this factory.</exception>
+        /// <exception cref="GpuTimestampUnsupportedException">Timestamp pools are not supported by this factory.</exception>
         IGpuTimestampPool CreateTimestampPool(uint capacity)
-            => throw new NotSupportedException("This GPU factory does not support timestamps.");
+            => throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This GPU factory does not support timestamps.") { Command = nameof(CreateTimestampPool) };
     }
 
     /// <summary>Records GPU commands for one submission.</summary>
@@ -229,9 +229,9 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// THE ENGINE'S OWN NATIVE METAL BACKEND IS PERMISSIVE TOO, AND IT COSTS THAT BACKEND NOTHING TO BE.
         /// Each list holds its own <c>MTLCommandBuffer</c> and its own encoders, which is the allocation the queue
-        /// hands out per recording rather than anything shared, and that backend keeps no record-time state
-        /// outside the list at all: no layout tracker, no barrier batch, no device state cache. So N lists there
-        /// record concurrently and submit order is the observable order, because the commits are serialised. That
+        /// hands out per recording rather than a shared encoder. Prefix CPU-access protection is registered
+        /// under the device's submit lock. N lists can record concurrently, and queue commit order is observable,
+        /// including an offscreen prefix committed during drawable resolution. That
         /// is the same shape the native Vulkan backend has, reached from Metal's object model instead of from a
         /// barrier design, and it is a BACKEND PROPERTY with all the same caveats: the retired
         /// <c>GpuBackendKind.Metal</c>, which named the Veldrid Metal backend, did not have it.
@@ -244,6 +244,10 @@ namespace KhaozEngine.Gpu
         void End();
         /// <summary>Bind a framebuffer as the render target.</summary>
         void SetFramebuffer(IGpuFramebuffer fb);
+        /// <summary>Bind a framebuffer with per-attachment store intent. This intent applies to each native
+        /// rendering pass opened for the binding. A transfer or dispatch can end one, so callers must not
+        /// reopen a pass and load discarded data. Default implementations conservatively retain contents.</summary>
+        void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores) => SetFramebuffer(fb);
         /// <summary>Clear colour attachment <paramref name="index"/> to <paramref name="rgba"/>.</summary>
         void ClearColorTarget(uint index, Color rgba);
         /// <summary>Clear the depth attachment.</summary>
@@ -284,7 +288,8 @@ namespace KhaozEngine.Gpu
         /// staging-copy-map-unmap dance.
         /// <para>
         /// <b>BOTH OFFSETS MUST BE MULTIPLES OF FOUR, ON EVERY BACKEND, AND ONE THAT IS NOT IS REFUSED WITH AN
-        /// <see cref="ArgumentOutOfRangeException"/> NAMING THE SIDE IT CAME FROM.</b> macOS requires it of
+        /// <see cref="GpuCopyAlignmentException"/> WITH <see cref="GpuCopyAlignmentRefusal.UnalignedOffset"/>
+        /// AND <see cref="GpuCopyAlignmentException.Side"/> NAMING THE SIDE IT CAME FROM.</b> macOS requires it of
         /// <c>copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:</c>, so until 17.40.0 the same call
         /// succeeded on three backends and threw on Metal
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/602">#602</see>). The strictest backend's
@@ -404,29 +409,29 @@ namespace KhaozEngine.Gpu
         /// belong to this device and have no recording or unresolved batch. Count is 1 through Capacity.
         /// A successful begin clears the prior terminal result. See <see cref="IGpuTimestampPool"/>.</summary>
         /// <exception cref="ArgumentOutOfRangeException">Count is zero or exceeds the pool capacity.</exception>
-        /// <exception cref="InvalidOperationException">The pool already has a recording or unresolved batch.</exception>
-        /// <exception cref="NotSupportedException">Timestamp commands are not supported by this list.</exception>
+        /// <exception cref="GpuTimestampStateException">The pool already has a recording or unresolved batch.</exception>
+        /// <exception cref="GpuTimestampUnsupportedException">Timestamp commands are not supported by this list.</exception>
         void BeginTimestamps(IGpuTimestampPool pool, uint count)
-            => throw new NotSupportedException("This GPU command list does not support timestamps.");
+            => throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This GPU command list does not support timestamps.") { Command = nameof(BeginTimestamps) };
 
         /// <summary>Encode a pass-boundary query without submitting. Write each index from zero through count
         /// minus one exactly once, in increasing order, in the same list that began the batch. For completed-frame
         /// timing, reserve the last index for <see cref="IGpuCommandListTimestampEnd"/> instead of writing it here.</summary>
         /// <exception cref="ArgumentOutOfRangeException">Index is outside the current batch count.</exception>
-        /// <exception cref="InvalidOperationException">The batch is not recording or the index is not next.</exception>
-        /// <exception cref="NotSupportedException">Timestamp commands are not supported by this list.</exception>
+        /// <exception cref="GpuTimestampStateException">The batch is not recording or the index is not next.</exception>
+        /// <exception cref="GpuTimestampUnsupportedException">Timestamp commands are not supported by this list.</exception>
         void WriteTimestamp(IGpuTimestampPool pool, uint index)
-            => throw new NotSupportedException("This GPU command list does not support timestamps.");
+            => throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This GPU command list does not support timestamps.") { Command = nameof(WriteTimestamp) };
 
         /// <summary>Encode the end of the batch after every index was written, without submitting. Submit this
         /// list with the same-device fence later supplied to <see cref="IGpuTimestampPool.TryResolve"/>. Keep
         /// that fence alive and unreset until the result and every associated readback have been consumed.
         /// An armed <see cref="IGpuCommandListTimestampEnd"/> tail ends the batch instead and refuses this call.
         /// Ordinary markers before End cannot prove completed-frame timing without that optional interface.</summary>
-        /// <exception cref="InvalidOperationException">The batch is not recording or an index is missing.</exception>
-        /// <exception cref="NotSupportedException">Timestamp commands are not supported by this list.</exception>
+        /// <exception cref="GpuTimestampStateException">The batch is not recording or an index is missing.</exception>
+        /// <exception cref="GpuTimestampUnsupportedException">Timestamp commands are not supported by this list.</exception>
         void EndTimestamps(IGpuTimestampPool pool)
-            => throw new NotSupportedException("This GPU command list does not support timestamps.");
+            => throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This GPU command list does not support timestamps.") { Command = nameof(EndTimestamps) };
     }
 
     /// <summary>The GPU device: backend info, capabilities, the resource factory, the swapchain framebuffer,
@@ -525,6 +530,10 @@ namespace KhaozEngine.Gpu
         /// instead, which copies at RECORD time and applies in list order. This one is for uploads that happen
         /// once (mesh vertices, an index buffer, a baked field) or that a drain already orders. The FFT ocean lost
         /// a frame of surface phase to exactly this when the drain that had been hiding it went away (#398).
+        /// Native Metal may commit an offscreen prefix when the drawable resolves, before the explicit Submit.
+        /// CPU-visible bytes that prefix can read stay immutable until the final frame buffer completes.
+        /// Overlapping CPU writes and writable mappings are refused with MetalFrameAccessException. Disjoint
+        /// byte ranges remain writable. Record-time GPU copies retain their queue ordering.
         /// </para>
         /// </summary>
         void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged;
@@ -584,8 +593,9 @@ namespace KhaozEngine.Gpu
         /// <see cref="ObjectDisposedException"/> is what most backends throw, and a caller catches the base type
         /// because a backend may throw either. A disposed fence or buffer throws
         /// <see cref="ObjectDisposedException"/>. A null argument throws <see cref="ArgumentNullException"/>. A
-        /// fence or buffer from another device or backend, and a buffer without
-        /// <see cref="GpuBufferUsage.Staging"/>, throw <see cref="ArgumentException"/> naming the parameter. An
+        /// fence or buffer from another device or backend throws <see cref="ArgumentException"/> naming the
+        /// parameter. A buffer without <see cref="GpuBufferUsage.Staging"/> throws
+        /// <see cref="GpuStagingMapArgumentException"/> with <see cref="GpuStagingMapRefusal.StagingUsageRequired"/>. An
         /// unaligned or past-the-end <paramref name="offsetBytes"/> throws
         /// <see cref="ArgumentOutOfRangeException"/> naming <c>offsetBytes</c>, and a window that starts inside
         /// the buffer but runs off its end names <c>destination</c>.

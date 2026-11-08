@@ -126,7 +126,8 @@ public static class MapDocumentFile
         try { json = File.ReadAllText(path); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new MapDocumentException($"{path}: cannot read map document. {ex.Message}", ex);
+            throw new MapDocumentException(MapDocumentRefusal.DocumentReadFailed, $"{path}: cannot read map document. {ex.Message}", ex)
+                { SourceName = path, Path = path };
         }
         return LoadText(json, options, path);
     }
@@ -145,18 +146,28 @@ public static class MapDocumentFile
     {
         options ??= new MapDocumentLoadOptions();
         string where = sourcePath ?? "(inline)";
+        try { return LoadTextCore(json, options, where); }
+        catch (MapDocumentException ex) when (ex.SourceName is null)
+        {
+            // Every nested reader uses the same context copy, retaining its original text and typed refusal.
+            throw ex.WithSourceName(where, ex.Message);
+        }
+    }
 
+    static MapDocument LoadTextCore(string json, MapDocumentLoadOptions options, string where)
+    {
         JsonObject root;
         try
         {
             JsonNode? node = Jsonc.ParseNode(json);
             root = node as JsonObject
-                ?? throw new MapDocumentException($"{where}: document root must be a JSON object.");
+                ?? throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, $"{where}: document root must be a JSON object.")
+                { SourceName = where, FieldPath = "$" };
             MapDocumentMembers.RequireUniqueMembers(root, where);
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException($"{where}: invalid JSON. {ex.Message}", ex);
+            throw MapDocumentJsonErrors.Wrap(ex, where, $"{where}: invalid JSON. {ex.Message}");
         }
 
         root = Migrate(root, options, where);
@@ -169,18 +180,18 @@ public static class MapDocumentFile
         MapDocument doc;
         try
         {
-            doc = root.Deserialize<MapDocument>(CreateOptions(options.Registry, write: false))
-                ?? throw new MapDocumentException($"{where}: document deserialized to null.");
+            doc = MapDocumentJsonErrors.RequireDeserializedValue(root.Deserialize<MapDocument>(CreateOptions(options.Registry, write: false)),
+                $"{where}: document deserialized to null.", where);
         }
         catch (JsonException ex)
         {
-            throw new MapDocumentException($"{where}: {ex.Message}", ex);
+            throw MapDocumentJsonErrors.Wrap(ex, where, $"{where}: {ex.Message}");
         }
         foreach (var patch in patches.Patches) doc.Surfaces.Patches.Add(patch.Key, patch.Value);
 
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
-        if (errors.Count > 0)
-            throw new MapDocumentException($"{where}: invalid map document:\n  " + string.Join("\n  ", errors));
+        IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, options.Registry);
+        if (findings.Count > 0)
+            throw MapDocumentRefusalFactory.FromFinding(findings[0] with { SourceName = where }, $"{where}: invalid map document:\n  " + string.Join("\n  ", findings.Select(f => f.Message)), findings: findings);
         return doc;
     }
 
@@ -189,18 +200,23 @@ public static class MapDocumentFile
     internal static JsonObject Migrate(JsonObject root, MapDocumentLoadOptions options, string where)
     {
         if (root["formatVersion"] is not JsonValue versionValue || !versionValue.TryGetValue(out int version))
-            throw new MapDocumentException($"{where}: missing or non-integer formatVersion.");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaMemberMissing, $"{where}: missing or non-integer formatVersion.")
+            { SourceName = where, FieldPath = "$.formatVersion" };
 
         if (version > CurrentFormatVersion)
-            throw new MapDocumentException(
-                $"{where}: formatVersion {version} is newer than this engine supports ({CurrentFormatVersion}). Update the engine.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentVersionUnsupported,
+                $"{where}: formatVersion {version} is newer than this engine supports ({CurrentFormatVersion}). Update the engine.")
+                { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version, SupportedVersions = [CurrentFormatVersion] };
 
         while (version < CurrentFormatVersion)
         {
             if (!options.Migrations.TryGetValue(version, out Func<JsonObject, JsonObject>? step))
-                throw new MapDocumentException(
-                    $"{where}: formatVersion {version} needs a migration to {version + 1} and none is registered.");
-            root = step(root) ?? throw new MapDocumentException($"{where}: migration from formatVersion {version} returned null.");
+                throw new MapDocumentException(MapDocumentRefusal.DocumentMigrationMissing,
+                    $"{where}: formatVersion {version} needs a migration to {version + 1} and none is registered.")
+                    { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version, TargetVersion = version + 1 };
+            root = step(root) ?? throw new MapDocumentException(MapDocumentRefusal.DocumentMigrationReturnedNull,
+                $"{where}: migration from formatVersion {version} returned null.")
+                { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version };
             version++;
             root["formatVersion"] = version;
         }
@@ -242,11 +258,18 @@ public static class MapDocumentFile
     /// consumers use it, and documented as SMALL DOCUMENTS ONLY: it is no longer the way to obtain bytes to
     /// hash (<see cref="MapDocumentHash.OfWorld"/> is), and it is subject to the single-object ceiling
     /// <see cref="SaveTo"/> exists to clear.</summary>
-    public static string SaveText(MapDocument doc, MapDocRegistry? registry = null)
+    public static string SaveText(MapDocument doc, MapDocRegistry? registry = null) =>
+        SaveTextCore(doc, registry, MapSurfaceEmbedding.MaxPatches, MapSurfaceEmbedding.MaxEncodedBytes);
+
+    /// <summary>Runs the real text save with per-call embedding limits, without changing shared defaults.</summary>
+    internal static string SaveTextWithEmbeddingLimitsForTests(MapDocument doc, int maxPatches, long maxEncodedBytes) =>
+        SaveTextCore(doc, null, maxPatches, maxEncodedBytes);
+
+    static string SaveTextCore(MapDocument doc, MapDocRegistry? registry, int maxPatches, long maxEncodedBytes)
     {
         ArgumentNullException.ThrowIfNull(doc);
         registry ??= MapDocRegistry.CreateDefault();
-        MapDocument writable = PrepareWholeWrite(doc, registry);
+        MapDocument writable = PrepareWholeWrite(doc, registry, maxPatches: maxPatches, maxEncodedBytes: maxEncodedBytes);
         return JsonSerializer.Serialize(writable, CreateOptions(registry, write: true));
     }
 
@@ -281,8 +304,9 @@ public static class MapDocumentFile
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         MapDocumentForm form = DetectForm(path);
         if (form == MapDocumentForm.None)
-            throw new MapDocumentException(
-                $"{path}: nothing exists here, so this path has no form to save back into. Name one with SaveAs.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentSaveSourceMissing,
+                $"{path}: nothing exists here, so this path has no form to save back into. Name one with SaveAs.")
+                { Path = path, DocumentForm = form };
         SaveAs(doc, path, form, registry, save);
     }
 
@@ -297,7 +321,9 @@ public static class MapDocumentFile
             case MapDocumentForm.Tiled: SaveTiled(doc, path, registry, save); break;
             case MapDocumentForm.Monolithic: Save(doc, path, registry); break;
             default:
-                throw new MapDocumentException($"{path}: MapDocumentForm.None is not a form a document can be written in.");
+                throw new MapDocumentException(MapDocumentRefusal.DocumentSaveFormInvalid,
+                    $"{path}: MapDocumentForm.None is not a form a document can be written in.")
+                    { Path = path, DocumentForm = form };
         }
     }
 
@@ -322,17 +348,19 @@ public static class MapDocumentFile
     /// the tiled form byte-stable, since the tiled reader always rebuilds a block header. An empty block at a
     /// NON-default cell size is kept, because that cell size is authored information a save must not
     /// silently drop.</para></summary>
-    static MapDocument PrepareWholeWrite(MapDocument doc, MapDocRegistry registry, bool foliage = true)
+    static MapDocument PrepareWholeWrite(MapDocument doc, MapDocRegistry registry, bool foliage = true,
+        int maxPatches = MapSurfaceEmbedding.MaxPatches, long maxEncodedBytes = MapSurfaceEmbedding.MaxEncodedBytes)
     {
         if (doc.Tiles is { IsPartial: true })
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
                 "refusing to write a windowed document as a whole document: it would silently drop every tile the " +
-                "window did not load. Save it back to its own directory with SaveTiled, or load the whole world first.");
+                "window did not load. Save it back to its own directory with SaveTiled, or load the whole world first.")
+                { DocumentId = doc.Id, Operation = "SaveWholeDocument" };
 
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
-        if (errors.Count > 0)
-            throw new MapDocumentException("refusing to save an invalid map document:\n  " + string.Join("\n  ", errors));
-        MapSurfaceEmbedding.Check(doc.Surfaces, MapSurfaceEmbedding.MaxPatches, MapSurfaceEmbedding.MaxEncodedBytes);
+        IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, registry);
+        if (findings.Count > 0)
+            throw MapDocumentRefusalFactory.FromFinding(findings[0], "refusing to save an invalid map document:\n  " + string.Join("\n  ", findings.Select(f => f.Message)), findings: findings);
+        MapSurfaceEmbedding.Check(doc.Surfaces, maxPatches, maxEncodedBytes);
         MapSurfaceSaveGuard.Whole(doc.Surfaces);
 
         MapDocument copy = MapTiledFile.GlobalsOnly(doc);

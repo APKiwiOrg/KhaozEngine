@@ -109,7 +109,7 @@ public sealed class InteriorCutRelevanceTests
         var pointSpans = scene.DebugPointCasterSpans(new Vector3(25, 3, -25), 100f);
         Assert.Equal(new[] { ShadowCastKind.Dissolving, ShadowCastKind.Opaque },
             pointSpans.Where(span => span.Index == treeMesh.Index).Select(span => span.Kind));
-        var cascadeSpans = HighlightTestAccess.Field<List<Scene3D.ShadowCasterSpan>[]>(scene, "_cascadeCasterSpans");
+        var cascadeSpans = scene.CascadeCasterSpansForTests;
         Assert.Equal(new[] { ShadowCastKind.Dissolving, ShadowCastKind.Opaque },
             cascadeSpans[0].Where(span => span.Index == treeMesh.Index).Select(span => span.Kind));
         Assert.Equal(!selectFar, OutlineCut(scene));
@@ -154,8 +154,7 @@ public sealed class InteriorCutRelevanceTests
         rig.Render();
 
         Assert.Equal(enableLate, Assert.Single(scene.QueuedInstancesForTests).CutInsideInteriors);
-        Assert.Equal(enableLate ? 1f : 0f, Assert.Single(HighlightTestAccess.Field<List<ModelRenderer.InstanceData>>(
-            scene, "_instanceData")).SpecParams.W);
+        Assert.Equal(enableLate ? 1f : 0f, Assert.Single(scene.InstanceDataForTests).SpecParams.W);
         Assert.Equal(enableLate, OutlineCut(scene));
         Assert.Equal(enableLate, SilhouetteCut(scene));
     }
@@ -216,19 +215,10 @@ public sealed class InteriorCutRelevanceTests
         Assert.Equal(1, Evaluations(scene));
     }
 
-    static bool SilhouetteCut(Scene3D scene) => CutOf(Assert.Single(
-        HighlightTestAccess.Field<IList>(scene, "_silhouetteDraws").Cast<object>()));
+    static bool SilhouetteCut(Scene3D scene) => Assert.Single(scene.SilhouetteCutsForTests);
 
-    static bool CutOf(object draw) => (bool)draw.GetType().GetProperty("CutInsideInteriors")!.GetValue(draw)!;
-
-    static bool OutlineCut(Scene3D scene)
-    {
-        object group = Assert.Single(HighlightTestAccess.Field<IList>(scene, "_meshOutlineGroups").Cast<object>());
-        var parts = (IList)group.GetType().GetProperty("Parts")!.GetValue(group)!;
-        object part = Assert.Single(parts.Cast<object>());
-        return CutOf(part);
-    }
+    static bool OutlineCut(Scene3D scene) => Assert.Single(Assert.Single(scene.OutlineCutsForTests));
 
     static int Evaluations(Scene3D scene) =>
-        HighlightTestAccess.Field<InteriorCutRelevanceCache>(scene, "_interiorRelevance").Evaluations;
+        scene.InteriorRelevanceForTests.Evaluations;
 }

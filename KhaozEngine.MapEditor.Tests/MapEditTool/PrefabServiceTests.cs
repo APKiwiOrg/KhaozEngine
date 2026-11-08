@@ -25,14 +25,20 @@ public sealed class PrefabServiceTests
     public void AssetPublicationFailure_LeavesSessionAndOtherMapsUntouched(string checkpoint)
     {
         var session = PrefabEditorFixtures.Session(PrefabEditorFixtures.Create("two-instances"));
+        string otherIdentity = PrefabEditorFixtures.State(session).Identity;
+        new MutationService(session).TerrainEdit(seed: 42);
         var before = PrefabEditorFixtures.State(session);
+        Assert.True(session.NativeHistoryState.Depth > 0);
         string other = PrefabEditorFixtures.OtherMapBefore(session);
-        Assert.Contains("publication fault " + checkpoint, Assert.Throws<MapDocumentException>(() => PrefabEditorFixtures.PublishMarkerChange(session, checkpoint)).Message);
+        var fault = new MapDocumentException("selected publication fault");
+        Assert.Same(fault, Assert.Throws<MapDocumentException>(() => PrefabEditorFixtures.PublishMarkerChange(session, checkpoint, fault)));
         Assert.Equal(before, PrefabEditorFixtures.State(session));
         Assert.Equal(other, PrefabEditorFixtures.OtherMapNow(session));
         var otherSession = new MapEditSession();
         otherSession.Open(Path.Combine(Path.GetDirectoryName(session.DocumentPath)!, "other.map.json"));
-        Assert.Equal(before.Identity, PrefabEditorFixtures.State(otherSession).Identity);
+        Assert.Equal(otherIdentity, PrefabEditorFixtures.State(otherSession).Identity);
+        PrefabEditorFixtures.PublishMarkerChange(session, "no-fault");
+        Assert.NotEqual(before.Identity, PrefabEditorFixtures.State(session).Identity);
     }
     [Fact]
     public void Publication_UpdatesEveryReferrerAndKeepsOtherMapPinned()
@@ -168,9 +174,21 @@ public sealed class PrefabServiceTests
         var roomless = PrefabFixtures.Create("roomless");
         var local = new MapPrefabLocalSession(roomless.Assets.GetPrefab("hut"), roomless.Assets, roomless.Document);
         Assert.Single(local.Export().Children);
-        var parent = PrefabEditorFixtures.Create("empty-map");
-        var service = new PrefabService(PrefabEditorFixtures.Session(parent));
-        Assert.Throws<MapDocumentException>(() => service.Open("hut"));
+        var parent = PrefabFixtures.Create();
+        PrefabFixtures.AuthorWorldParent(parent, new(Vector3.Zero, 0, 1));
+        parent.Document.Prefabs = new(1, 1, [], []);
+        var session = PrefabEditorFixtures.Session(parent);
+        var service = new PrefabService(session);
+        var before = PrefabEditorFixtures.State(session);
+        var error = Assert.Throws<MapDocumentException>(() => service.Open("hut"));
+        Assert.Equal(MapDocumentRefusal.AuthoredValueRequired, error.Reason);
+        Assert.Equal("hut", error.ResourceId);
+        Assert.Equal("hut", error.AssetId);
+        Assert.Equal(parent.Document.Id, error.DocumentId);
+        Assert.Equal("Open", error.Operation);
+        Assert.Equal("parentSpace", error.FieldPath);
+        Assert.Equal(before, PrefabEditorFixtures.State(session));
+        Assert.NotNull(service.Open("hut", PrefabEditorFixtures.ParentRef(parent)));
     }
     [Fact]
     public void SavingAnIdenticalVersion_CreatesNoHistoryOrDirtyTransition()

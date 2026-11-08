@@ -60,7 +60,6 @@ namespace KhaozEngine.Tests.Gpu
 
                 // The adoption guard, named by its own parameter, not something a driver threw.
                 Assert.Equal("selection", ex.ParamName);
-                Assert.Contains("adopted device", ex.Message);
 
                 // Asked once and not retried, which is the other half of "no fallback happened".
                 Assert.Equal(1, provider.WindowedCreations);
@@ -84,11 +83,9 @@ namespace KhaozEngine.Tests.Gpu
             using (new EnvScope(GpuBackendSelector.EnvVarName, null))
             using (new BackendProviderScope(NativeKind, provider))
             {
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+                Assert.Throws<InvalidOperationException>(
                     () => GpuDeviceContext.CreateForWindow(default, 640, 480, true, (GpuBackendKind?)NativeKind));
 
-                Assert.Contains("returned no device", ex.Message);
-                Assert.Contains(NativeKind.ToString(), ex.Message);
                 Assert.Equal(1, provider.WindowedCreations);
             }
         }

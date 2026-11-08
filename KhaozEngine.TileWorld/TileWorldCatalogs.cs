@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using KhaozEngine.Content;
@@ -24,7 +25,7 @@ public sealed class GroundMaterial
 {
     /// <summary>Catalog id, referenced from the underlay and overlay layers. 0 is reserved for void.</summary>
     public ushort Id { get; set; }
-    /// <summary>Authoring name, quoted in error messages and shown in the editor.</summary>
+    /// <summary>Authoring name shown in the editor and retained in refusal diagnostics.</summary>
     public string Name { get; set; } = "";
     /// <summary><c>#rrggbb</c>.</summary>
     public string Color { get; set; } = "#ffffff";
@@ -195,12 +196,25 @@ public sealed class TileWorldCatalogs
         // deserialize below. Both paths have to name the source or the caller gets a bare offset.
         ValidationReport report;
         try { report = JsonSchemaValidator.Validate(json, TileWorldSchema.GetCatalogJson()); }
-        catch (JsonException ex) { throw new TileWorldException($"{sourceName}: {ex.Message}", ex); }
+        catch (JsonException ex)
+        {
+            throw new TileWorldException(TileWorldRefusal.CatalogJsonMalformed, $"{sourceName}: {ex.Message}", ex)
+            { SourceName = sourceName, Field = ex.Path };
+        }
         if (!report.IsValid)
-            throw new TileWorldException($"{sourceName}: catalog does not match the schema: {string.Join("; ", report.Errors)}");
+            throw new TileWorldException(TileWorldRefusal.CatalogSchemaMismatch, $"{sourceName}: catalog does not match the schema: {string.Join("; ", report.Errors)}")
+            {
+                SourceName = sourceName,
+                SchemaFields = report.Findings.Select(finding => finding.InstanceLocation).Distinct().ToArray(),
+                SchemaFindings = report.Findings,
+            };
         CatalogFile file;
         try { file = JsonSerializer.Deserialize<CatalogFile>(json, ReadOptions) ?? new CatalogFile(); }
-        catch (JsonException ex) { throw new TileWorldException($"{sourceName}: {ex.Message}", ex); }
+        catch (JsonException ex)
+        {
+            throw new TileWorldException(TileWorldRefusal.CatalogJsonMalformed, $"{sourceName}: {ex.Message}", ex)
+            { SourceName = sourceName, Field = ex.Path };
+        }
 
         var c = new TileWorldCatalogs();
         foreach (GroundMaterial m in file.Materials ?? new()) c.AddMaterial(m, sourceName, sourceIsFile);
@@ -221,7 +235,7 @@ public sealed class TileWorldCatalogs
             try { json = File.ReadAllText(path); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                throw new TileWorldException($"{path}: cannot read catalog. {ex.Message}", ex);
+                throw new TileWorldException(TileWorldRefusal.CatalogReadFailed, $"{path}: cannot read catalog. {ex.Message}", ex) { SourceName = path };
             }
             merged.MergeFrom(LoadJson(json, path, sourceIsFile: true), path);
         }
@@ -256,18 +270,24 @@ public sealed class TileWorldCatalogs
 
     void AddMaterial(GroundMaterial m, string source, bool sourceIsFile = false)
     {
-        if (m.Id == 0) throw new TileWorldException($"{source}: material id 0 is reserved for void");
+        if (m.Id == 0)
+            throw new TileWorldException(TileWorldRefusal.CatalogMaterialIdReserved, $"{source}: material id 0 is reserved for void")
+            { SourceName = source, MaterialId = m.Id };
         if (_materials.ContainsKey(m.Id))
-            throw new TileWorldException($"{source}: material {m.Id} ('{m.Name}') is already defined in {_materialSources[m.Id].Name}");
+            throw new TileWorldException(TileWorldRefusal.CatalogMaterialDuplicate, $"{source}: material {m.Id} ('{m.Name}') is already defined in {_materialSources[m.Id].Name}")
+            { SourceName = source, FirstSourceName = _materialSources[m.Id].Name, MaterialId = m.Id, MaterialName = m.Name };
         _materials.Add(m.Id, m);
         _materialSources[m.Id] = (source, sourceIsFile);
     }
 
     void AddArchetype(TileObjectArchetype a, string source, bool sourceIsFile = false)
     {
-        if (string.IsNullOrWhiteSpace(a.Id)) throw new TileWorldException($"{source}: an archetype has no id");
+        if (string.IsNullOrWhiteSpace(a.Id))
+            throw new TileWorldException(TileWorldRefusal.CatalogArchetypeIdMissing, $"{source}: an archetype has no id")
+            { SourceName = source, ArchetypeId = a.Id };
         if (_archetypes.ContainsKey(a.Id))
-            throw new TileWorldException($"{source}: archetype '{a.Id}' is already defined in {_archetypeSources[a.Id].Name}");
+            throw new TileWorldException(TileWorldRefusal.CatalogArchetypeDuplicate, $"{source}: archetype '{a.Id}' is already defined in {_archetypeSources[a.Id].Name}")
+            { SourceName = source, FirstSourceName = _archetypeSources[a.Id].Name, ArchetypeId = a.Id };
         if (string.IsNullOrWhiteSpace(a.LodMeshRef)) a.LodMeshRef = null;
         if (a.WalkSurfaces is { Count: 0 }) a.WalkSurfaces = null;
         ValidateWalkSurfaces(a, source);
@@ -287,14 +307,16 @@ public sealed class TileWorldCatalogs
         for (int i = 0; i < surfaces.Count; i++)
         {
             string at = $"{source}: archetype '{a.Id}' walk surface {i}";
-            if (surfaces[i] is not { } s) throw new TileWorldException($"{at} is null");
-            RequireFinite(at, "height", s.Height);
-            RequireFinite(at, "minX", s.MinX);
-            RequireFinite(at, "maxX", s.MaxX);
-            RequireFinite(at, "minZ", s.MinZ);
-            RequireFinite(at, "maxZ", s.MaxZ);
-            RequireOrdered(at, "minX", s.MinX, "maxX", s.MaxX);
-            RequireOrdered(at, "minZ", s.MinZ, "maxZ", s.MaxZ);
+            if (surfaces[i] is not { } s)
+                throw new TileWorldException(TileWorldRefusal.CatalogWalkSurfaceNull, $"{at} is null")
+                { SourceName = source, ArchetypeId = a.Id, SurfaceIndex = i };
+            RequireFinite(source, a.Id, i, at, "height", s.Height);
+            RequireFinite(source, a.Id, i, at, "minX", s.MinX);
+            RequireFinite(source, a.Id, i, at, "maxX", s.MaxX);
+            RequireFinite(source, a.Id, i, at, "minZ", s.MinZ);
+            RequireFinite(source, a.Id, i, at, "maxZ", s.MaxZ);
+            RequireOrdered(source, a.Id, i, at, "minX", s.MinX, "maxX", s.MaxX);
+            RequireOrdered(source, a.Id, i, at, "minZ", s.MinZ, "maxZ", s.MaxZ);
         }
     }
 
@@ -303,21 +325,24 @@ public sealed class TileWorldCatalogs
     static void ValidateCollisionHeight(TileObjectArchetype a, string source)
     {
         if (a.CollisionHeight is { } h && !(float.IsFinite(h) && h > 0f))
-            throw new TileWorldException(
-                $"{source}: archetype '{a.Id}': collisionHeight {h.ToString(CultureInfo.InvariantCulture)} is not a finite number above 0");
+            throw new TileWorldException(TileWorldRefusal.CatalogCollisionHeightInvalid,
+                $"{source}: archetype '{a.Id}': collisionHeight {h.ToString(CultureInfo.InvariantCulture)} is not a finite number above 0")
+            { SourceName = source, ArchetypeId = a.Id, Field = "collisionHeight", Value = h };
     }
 
-    static void RequireFinite(string at, string field, float? value)
+    static void RequireFinite(string source, string archetypeId, int surfaceIndex, string at, string field, float? value)
     {
         if (value is { } v && !float.IsFinite(v))
-            throw new TileWorldException($"{at}: {field} {v.ToString(CultureInfo.InvariantCulture)} is not a finite number");
+            throw new TileWorldException(TileWorldRefusal.CatalogWalkSurfaceNonFinite, $"{at}: {field} {v.ToString(CultureInfo.InvariantCulture)} is not a finite number")
+            { SourceName = source, ArchetypeId = archetypeId, SurfaceIndex = surfaceIndex, Field = field, Value = v };
     }
 
-    static void RequireOrdered(string at, string minField, float? min, string maxField, float? max)
+    static void RequireOrdered(string source, string archetypeId, int surfaceIndex, string at, string minField, float? min, string maxField, float? max)
     {
         if (min is { } lo && max is { } hi && !(lo < hi))
-            throw new TileWorldException(
-                $"{at}: {minField} {lo.ToString(CultureInfo.InvariantCulture)} is not below {maxField} {hi.ToString(CultureInfo.InvariantCulture)}");
+            throw new TileWorldException(TileWorldRefusal.CatalogWalkSurfaceBoundsUnordered,
+                $"{at}: {minField} {lo.ToString(CultureInfo.InvariantCulture)} is not below {maxField} {hi.ToString(CultureInfo.InvariantCulture)}")
+            { SourceName = source, ArchetypeId = archetypeId, SurfaceIndex = surfaceIndex, MinField = minField, MaxField = maxField, Minimum = lo, Maximum = hi };
     }
 
     /// <summary>The engine's minimal test/greybox catalogs: six materials and twelve archetypes covering every

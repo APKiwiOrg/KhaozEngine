@@ -63,7 +63,8 @@ public partial class OrdinaryContactConfigurationTests
             sourceCell.RegisterOwned(99, entity);
             void Refuses(Action action)
             {
-                if (failure == "view") Assert.Throws<NotSupportedException>(action);
+                if (failure == "view") Assert.Equal(MovementConfigurationRefusal.CapsuleSweepRequired,
+                    Assert.Throws<MovementCapabilityException>(action).Reason);
                 else Assert.Throws<InvalidOperationException>(action);
             }
             Refuses(() => server.EnsureCell(destination));

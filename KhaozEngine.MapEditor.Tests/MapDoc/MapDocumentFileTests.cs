@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using KhaozEngine.Content;
 using KhaozEngine.MapDoc;
 using Xunit;
@@ -151,21 +153,43 @@ namespace KhaozEngine.Tests.MapDoc
         public void LoadText_InvalidJson_ThrowsWithSource()
         {
             var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText("{ not json", sourcePath: "bad.map.json"));
-            Assert.Contains("bad.map.json", ex.Message);
+            Assert.Equal(MapDocumentRefusal.SchemaMalformed, ex.Reason);
+            Assert.Equal("bad.map.json", ex.SourceName);
+            var json = Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+            Assert.Equal(json.Path, ex.FieldPath);
+            Assert.Equal(json.LineNumber, ex.LineNumber);
+            Assert.Equal(json.BytePositionInLine, ex.BytePositionInLine);
+            Assert.Equal("test-zone", MapDocumentFile.LoadText(MapDocumentFile.SaveText(SampleDoc())).Id);
         }
 
-        [Fact]
-        public void LoadText_NonObjectRoot_ThrowsWithSource()
+        [Theory]
+        [InlineData("[1, 2, 3]")]
+        [InlineData("42")]
+        [InlineData("null")]
+        public void LoadText_NonObjectRoot_ThrowsWithSource(string json)
         {
-            var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText("[1, 2, 3]", sourcePath: "arr.map.json"));
-            Assert.Contains("arr.map.json", ex.Message);
-            Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText("42"));
+            var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(json, sourcePath: "arr.map.json"));
+            Assert.Equal(MapDocumentRefusal.SchemaObjectRequired, ex.Reason);
+            Assert.Equal("arr.map.json", ex.SourceName);
+            Assert.Equal("$", ex.FieldPath);
+            Assert.Equal("test-zone", MapDocumentFile.LoadText(MapDocumentFile.SaveText(SampleDoc())).Id);
         }
 
-        [Fact]
-        public void LoadText_MissingFormatVersion_Throws()
+        [Theory]
+        [InlineData("missing")]
+        [InlineData("null")]
+        [InlineData("string")]
+        public void LoadText_MissingFormatVersion_Throws(string breakage)
         {
-            Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText("{\"id\":\"x\"}"));
+            var root = JsonNode.Parse(MapDocumentFile.SaveText(SampleDoc()))!.AsObject();
+            if (breakage == "missing") root.Remove("formatVersion");
+            else root["formatVersion"] = breakage == "null" ? null : JsonValue.Create("nine");
+            var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(root.ToJsonString()));
+            Assert.Equal(MapDocumentRefusal.SchemaMemberMissing, error.Reason);
+            Assert.Equal("$.formatVersion", error.FieldPath);
+            Assert.Equal("(inline)", error.SourceName);
+            root["formatVersion"] = MapDocumentFile.CurrentFormatVersion;
+            Assert.Equal("test-zone", MapDocumentFile.LoadText(root.ToJsonString()).Id);
         }
 
         [Fact]
@@ -173,7 +197,14 @@ namespace KhaozEngine.Tests.MapDoc
         {
             string json = WithFormatVersion(MapDocumentFile.SaveText(SampleDoc()), 99);
             var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(json));
-            Assert.Contains("99", ex.Message);
+            Assert.Equal(MapDocumentRefusal.DocumentVersionUnsupported, ex.Reason);
+            Assert.Equal(99, ex.ActualVersion);
+            Assert.Equal(new[] { MapDocumentFile.CurrentFormatVersion }, ex.SupportedVersions);
+            Assert.Equal("$.formatVersion", ex.FieldPath);
+            Assert.Equal("(inline)", ex.SourceName);
+            JsonNode repaired = JsonNode.Parse(json)!;
+            repaired["formatVersion"] = MapDocumentFile.CurrentFormatVersion;
+            Assert.Equal("test-zone", MapDocumentFile.LoadText(repaired.ToJsonString()).Id);
         }
 
         [Fact]

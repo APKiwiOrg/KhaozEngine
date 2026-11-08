@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Terrain;
@@ -17,6 +18,12 @@ namespace KhaozEngine.Tests.MapEditor
         static MapDocument Sample() => KhaozEngine.Tests.MapDoc.MapDocumentFileTests.SampleDoc();
 
         static string Save(MapDocument d) => MapDocumentFile.SaveText(d);
+
+        static void AssertDocumentValue<T>(T expected, T actual)
+        {
+            var options = MapDocumentFile.CreateOptions(MapDocRegistry.CreateDefault(), write: false);
+            Assert.Equal(JsonSerializer.Serialize(expected, options), JsonSerializer.Serialize(actual, options));
+        }
 
         static MapPlacement P(string id, float x = 0f, float z = 0f) =>
             new MapPlacement { Id = id, Kind = "prop", X = x, Z = z };
@@ -136,7 +143,7 @@ namespace KhaozEngine.Tests.MapEditor
             // and leaves the history untouched, because History.Execute applies BEFORE it pushes, so a throwing
             // Apply never lands an undo step or mutates the source name.
             var ed = new EditorDocument(doc);
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameRegionCommand("town", "village")));
+            AssertIdentityRefusal(ed, new RenameRegionCommand("town", "village"), "region", "village", new RenameRegionCommand("town", "new-region"));
             Assert.False(ed.History.CanUndo);
             Assert.Contains(doc.Regions, r => r.Name == "town");     // source name intact
             Assert.Single(doc.Regions, r => r.Name == "village");    // target still unique: no clone
@@ -201,7 +208,7 @@ namespace KhaozEngine.Tests.MapEditor
             // and leaves the history untouched, because History.Execute applies BEFORE it pushes, so a throwing
             // Apply never lands an undo step or mutates the source id.
             var ed = new EditorDocument(doc);
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenamePlacementCommand("inn", "shed")));
+            AssertIdentityRefusal(ed, new RenamePlacementCommand("inn", "shed"), "placement", "shed", new RenamePlacementCommand("inn", "new-placement"));
             Assert.False(ed.History.CanUndo);
             Assert.Contains(doc.Placements, p => p.Id == "inn");    // source id intact
             Assert.Single(doc.Placements, p => p.Id == "shed");     // target still unique: no clone
@@ -216,7 +223,7 @@ namespace KhaozEngine.Tests.MapEditor
             AssertRoundTrip(doc, new RenameSpawnCommand("wolf-1", "wolf-2"));
 
             var ed = new EditorDocument(doc);
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameSpawnCommand("wolf-1", "bear-1")));
+            AssertIdentityRefusal(ed, new RenameSpawnCommand("wolf-1", "bear-1"), "spawn", "bear-1", new RenameSpawnCommand("wolf-1", "new-spawn"));
             Assert.False(ed.History.CanUndo);
             Assert.Contains(doc.Spawns, s => s.Id == "wolf-1");
             Assert.Single(doc.Spawns, s => s.Id == "bear-1");
@@ -270,7 +277,7 @@ namespace KhaozEngine.Tests.MapEditor
             AssertRoundTrip(doc, new RenamePlayerSpawnCommand("start", "start-2"));
 
             var ed = new EditorDocument(doc);
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenamePlayerSpawnCommand("start", "rally")));
+            AssertIdentityRefusal(ed, new RenamePlayerSpawnCommand("start", "rally"), "player spawn", "rally", new RenamePlayerSpawnCommand("start", "new-player-spawn"));
             Assert.False(ed.History.CanUndo);
             Assert.Contains(doc.PlayerSpawns, s => s.Id == "start");
             Assert.Single(doc.PlayerSpawns, s => s.Id == "rally");
@@ -307,6 +314,7 @@ namespace KhaozEngine.Tests.MapEditor
             ed.Execute(new MovePlayerSpawnCommand("start", 1f, 1f));
             ed.Execute(new MovePlayerSpawnCommand("start", 2f, 2f));
             Assert.Equal(2f, doc.PlayerSpawns.First(s => s.Id == "start").X);
+            Assert.Equal(1, ed.History.UndoDepth);
 
             Assert.True(ed.Undo());
             Assert.Equal(20f, doc.PlayerSpawns.First(s => s.Id == "start").X);
@@ -347,28 +355,6 @@ namespace KhaozEngine.Tests.MapEditor
             MapPlayerSpawn added = doc.PlayerSpawns.First(s => s.Id == "start");
             Assert.Equal(1f, added.X);
             Assert.Equal(new[] { "a" }, added.Tags);
-        }
-
-        [Fact]
-        public void PlayerSpawnCommands_RoundTrip_MoveMerges_RenameGuarded()
-        {
-            // Round-trip: Add mutates the document, then undoes to a byte-identical serialized form.
-            AssertRoundTrip(Sample(), new AddPlayerSpawnCommand(new MapPlayerSpawn { Id = "start", X = 4f, Z = 9f, Yaw = 0.5f }));
-
-            // Move coalescing: two same-id moves collapse to one undo step whose undo restores the origin.
-            var doc = Sample();
-            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 20f, Z = 5f });
-            var ed = new EditorDocument(doc);
-            ed.Execute(new MovePlayerSpawnCommand("start", 1f, 1f));
-            ed.Execute(new MovePlayerSpawnCommand("start", 2f, 2f));
-            Assert.Equal(1, ed.History.UndoDepth);
-            Assert.Equal(2f, doc.PlayerSpawns.First(s => s.Id == "start").X);
-
-            // Rename guard: renaming onto an existing id throws in Apply and lands no undo step.
-            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "rally", X = 0f, Z = 0f });
-            var ed2 = new EditorDocument(doc);
-            Assert.Throws<InvalidOperationException>(() => ed2.Execute(new RenamePlayerSpawnCommand("start", "rally")));
-            Assert.False(ed2.History.CanUndo);
         }
 
         [Fact]
@@ -427,7 +413,7 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.DoesNotContain(middle, doc.Terrain.Features);
 
             ed.Undo();
-            Assert.Same(middle, doc.Terrain.Features[1]);   // back at the middle, not appended
+            AssertDocumentValue(middle, doc.Terrain.Features[1]);   // back at the middle, not appended
         }
 
         [Fact]
@@ -444,15 +430,15 @@ namespace KhaozEngine.Tests.MapEditor
 
             var ed = new EditorDocument(doc);
             ed.Execute(new ReorderFeatureCommand(0, 2));   // move `a` to the end: it now folds last, so it wins overlaps
-            Assert.Same(b, doc.Terrain.Features[0]);
-            Assert.Same(c, doc.Terrain.Features[1]);
-            Assert.Same(a, doc.Terrain.Features[2]);
+            AssertDocumentValue(b, doc.Terrain.Features[0]);
+            AssertDocumentValue(c, doc.Terrain.Features[1]);
+            AssertDocumentValue(a, doc.Terrain.Features[2]);
             Assert.True(ed.WorldRebuildPending);           // reordering changes terrain shape
 
             Assert.True(ed.Undo());
-            Assert.Same(a, doc.Terrain.Features[0]);        // revert restores the original fold order
-            Assert.Same(b, doc.Terrain.Features[1]);
-            Assert.Same(c, doc.Terrain.Features[2]);
+            AssertDocumentValue(a, doc.Terrain.Features[0]);        // revert restores the original fold order
+            AssertDocumentValue(b, doc.Terrain.Features[1]);
+            AssertDocumentValue(c, doc.Terrain.Features[2]);
         }
 
         [Fact]
@@ -468,8 +454,8 @@ namespace KhaozEngine.Tests.MapEditor
 
             var ed = new EditorDocument(doc);
             ed.Execute(new ReorderExclusionCommand(0, 1));   // move e0 to the end
-            Assert.Same(e1, doc.Exclusions[0]);
-            Assert.Same(e0, doc.Exclusions[1]);
+            AssertDocumentValue(e1, doc.Exclusions[0]);
+            AssertDocumentValue(e0, doc.Exclusions[1]);
             // Exclusions combine as a pure union, so their order never changes the scatter: no world rebuild.
             Assert.False(ed.WorldRebuildPending);
 
@@ -699,10 +685,10 @@ namespace KhaozEngine.Tests.MapEditor
             var ed = new EditorDocument(doc);
             ed.Execute(new EditFeatureCommand(0, v1, original));
             ed.Execute(new EditFeatureCommand(0, v2, v1));
-            Assert.Same(v2, doc.Terrain.Features[0]);
+            AssertDocumentValue(v2, doc.Terrain.Features[0]);
 
             Assert.True(ed.Undo());
-            Assert.Same(original, doc.Terrain.Features[0]);   // back to the original feature in one step
+            AssertDocumentValue(original, doc.Terrain.Features[0]);   // back to the original feature in one step
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));
         }
@@ -747,7 +733,7 @@ namespace KhaozEngine.Tests.MapEditor
             // Guards duplicates: renaming feature 1 onto feature 0's name throws before mutating anything, and
             // leaves no undo step (the RenameRegionCommand guard idiom, ported to the index-addressed
             // feature/exclusion rename commands).
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameFeatureCommand(1, "north-lake", "south-flat")));
+            AssertIdentityRefusal(ed, new RenameFeatureCommand(1, "north-lake", "south-flat"), "terrain feature", "north-lake", new RenameFeatureCommand(1, "new-feature", "south-flat"));
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));   // document untouched, byte for byte
 
@@ -800,8 +786,8 @@ namespace KhaozEngine.Tests.MapEditor
             ed.Execute(new EditFeatureCommand(1, newF1, f1));
 
             Assert.True(ed.Undo());                       // undoes index 1 only
-            Assert.Same(f1, doc.Terrain.Features[1]);
-            Assert.Same(newF0, doc.Terrain.Features[0]);
+            AssertDocumentValue(f1, doc.Terrain.Features[1]);
+            AssertDocumentValue(newF0, doc.Terrain.Features[0]);
             Assert.True(ed.History.CanUndo);
         }
 
@@ -817,16 +803,16 @@ namespace KhaozEngine.Tests.MapEditor
             // Apply replaces the shape instance and forces a world rebuild (scatter inputs changed).
             var ed = new EditorDocument(doc);
             ed.Execute(new EditExclusionShapeCommand(0, v1, original));
-            Assert.Same(v1, doc.Exclusions[0].Shape);
+            AssertDocumentValue(v1, doc.Exclusions[0].Shape);
             Assert.True(ed.WorldRebuildPending);
 
             // A second edit of the same index coalesces (scrub coalescing): the shape moves on, no new undo step.
             ed.Execute(new EditExclusionShapeCommand(0, v2, v1));
-            Assert.Same(v2, doc.Exclusions[0].Shape);
+            AssertDocumentValue(v2, doc.Exclusions[0].Shape);
 
             // One undo reverts the whole gesture to the original shape, deep-equal to the pre-edit document.
             Assert.True(ed.Undo());
-            Assert.Same(original, doc.Exclusions[0].Shape);
+            AssertDocumentValue(original, doc.Exclusions[0].Shape);
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));
         }
@@ -860,7 +846,7 @@ namespace KhaozEngine.Tests.MapEditor
             // Guards duplicates: renaming exclusion 1 onto exclusion 0's name throws before mutating anything,
             // and leaves no undo step (the RenameRegionCommand guard idiom, ported to the index-addressed
             // feature/exclusion rename commands).
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameExclusionCommand(1, "market-clearing", "second-yard")));
+            AssertIdentityRefusal(ed, new RenameExclusionCommand(1, "market-clearing", "second-yard"), "exclusion", "market-clearing", new RenameExclusionCommand(1, "new-exclusion", "second-yard"));
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));   // document untouched, byte for byte
 
@@ -938,15 +924,15 @@ namespace KhaozEngine.Tests.MapEditor
             // Apply replaces the shape; regions are game-interpreted, so no world rebuild is forced.
             var ed = new EditorDocument(doc);
             ed.Execute(new EditRegionShapeCommand("town", v1, original));
-            Assert.Same(v1, doc.Regions[0].Shape);
+            AssertDocumentValue(v1, doc.Regions[0].Shape);
             Assert.False(ed.WorldRebuildPending);
 
             // A second edit of the same region name coalesces into the first.
             ed.Execute(new EditRegionShapeCommand("town", v2, v1));
-            Assert.Same(v2, doc.Regions[0].Shape);
+            AssertDocumentValue(v2, doc.Regions[0].Shape);
 
             Assert.True(ed.Undo());
-            Assert.Same(original, doc.Regions[0].Shape);
+            AssertDocumentValue(original, doc.Regions[0].Shape);
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));
         }
@@ -1519,24 +1505,6 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void EditTerrain_ScrubMerge_SameField_FirstOldLastNew()
-        {
-            var doc = Sample();
-            var ed = new EditorDocument(doc);
-            float w0 = doc.Terrain.WaterLevel;
-
-            // Two water edits of the same gesture coalesce: the level moves to the last value, but a single undo
-            // reverts the whole scrub to the first old (no barrier between them).
-            ed.Execute(new EditTerrainCommand(newWaterLevel: 1f, oldWaterLevel: w0));
-            ed.Execute(new EditTerrainCommand(newWaterLevel: 2f, oldWaterLevel: 1f));
-            Assert.Equal(2f, doc.Terrain.WaterLevel);
-
-            Assert.True(ed.Undo());
-            Assert.Equal(w0, doc.Terrain.WaterLevel);   // first-old wins the revert
-            Assert.False(ed.History.CanUndo);
-        }
-
-        [Fact]
         public void EditTerrain_Merge_UnionOfDifferentFields_EachOldFromFirstSetter()
         {
             var doc = Sample();
@@ -1597,9 +1565,9 @@ namespace KhaozEngine.Tests.MapEditor
             ed2.Execute(new EditBiomeBandCommand(0, v1, original));
             Assert.True(ed2.WorldRebuildPending);
             ed2.Execute(new EditBiomeBandCommand(0, v2, v1));   // same index, same gesture: coalesces
-            Assert.Same(v2, doc.Terrain.Biomes[0]);
+            AssertDocumentValue(v2, doc.Terrain.Biomes[0]);
             Assert.True(ed2.Undo());                            // one undo reverts the whole scrub
-            Assert.Same(original, doc.Terrain.Biomes[0]);
+            AssertDocumentValue(original, doc.Terrain.Biomes[0]);
             Assert.False(ed2.History.CanUndo);
 
             // Remove round-trips (restores at the same index).
@@ -1612,9 +1580,9 @@ namespace KhaozEngine.Tests.MapEditor
             var ed3 = new EditorDocument(doc3);
             ed3.Execute(new RemoveBiomeBandCommand(0));
             Assert.Single(doc3.Terrain.Biomes);
-            Assert.Same(b, doc3.Terrain.Biomes[0]);
+            AssertDocumentValue(b, doc3.Terrain.Biomes[0]);
             Assert.True(ed3.Undo());
-            Assert.Same(a, doc3.Terrain.Biomes[0]);   // back at index 0, not appended
+            AssertDocumentValue(a, doc3.Terrain.Biomes[0]);   // back at index 0, not appended
         }
 
         [Fact]
@@ -1658,11 +1626,11 @@ namespace KhaozEngine.Tests.MapEditor
             var ed2 = new EditorDocument(doc);
             ed2.Execute(new EditScatterLayerCommand("trees", v1, live));
             Assert.True(ed2.WorldRebuildPending);
-            Assert.Same(v1, doc.ScatterLayers[0]);
+            AssertDocumentValue(v1, doc.ScatterLayers[0]);
             ed2.Execute(new EditScatterLayerCommand("trees", v2, v1));   // same name, same gesture: coalesces
-            Assert.Same(v2, doc.ScatterLayers[0]);
+            AssertDocumentValue(v2, doc.ScatterLayers[0]);
             Assert.True(ed2.Undo());
-            Assert.Same(live, doc.ScatterLayers[0]);
+            AssertDocumentValue(live, doc.ScatterLayers[0]);
             Assert.False(ed2.History.CanUndo);
 
             // Remove of an UNREFERENCED layer round-trips (restores at the same index, not appended).
@@ -1736,9 +1704,9 @@ namespace KhaozEngine.Tests.MapEditor
             // Removing a referenced scatter layer throws BEFORE it mutates, listing the referencing elements, and
             // lands no undo step: the document is untouched (rejected-and-reverted via the reject-before-mutate
             // guard, the standard validate-revert invariant rendered as a precise up-front reject).
-            var ex = Assert.Throws<InvalidOperationException>(() => ed.Execute(new RemoveScatterLayerCommand("trees")));
-            Assert.Contains("trees", ex.Message);
-            Assert.Contains("understory", ex.Message);   // the companion host reference is surfaced
+            var ex = AssertIdentityRefusal(ed, new RemoveScatterLayerCommand("trees"), "scatter layer", "trees", reason: MapDocumentRefusal.EditorScatterLayerReferenced);
+            Assert.Equal("trees", ex.LayerId);
+            Assert.Equal(new[] { "understory", "ScatterOverrides[0]" }, ex.SourceIds);
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));              // untouched, byte for byte
 
@@ -1778,7 +1746,7 @@ namespace KhaozEngine.Tests.MapEditor
             // The target name must be unique: renaming onto an existing layer's name throws before mutating.
             doc.ScatterLayers.Add(new MapScatterLayer { Name = "meadow-scatter" });
             string before2 = Save(doc);
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameScatterLayerCommand("trees", "meadow-scatter")));
+            AssertIdentityRefusal(ed, new RenameScatterLayerCommand("trees", "meadow-scatter"), "scatter layer", "meadow-scatter", new RenameScatterLayerCommand("trees", "new-scatter"));
             Assert.Equal(before2, Save(doc));
         }
 
@@ -1847,9 +1815,9 @@ namespace KhaozEngine.Tests.MapEditor
             var ed2 = new EditorDocument(doc);
             ed2.Execute(new EditCompanionLayerCommand("understory", w1, live));
             ed2.Execute(new EditCompanionLayerCommand("understory", w2, w1));
-            Assert.Same(w2, doc.CompanionLayers[0]);
+            AssertDocumentValue(w2, doc.CompanionLayers[0]);
             Assert.True(ed2.Undo());
-            Assert.Same(live, doc.CompanionLayers[0]);
+            AssertDocumentValue(live, doc.CompanionLayers[0]);
 
             // A bogus HostLayer is caught by the standard validator on save: the editor's chooser only offers real
             // scatter layers, but a scripted edit relies on this net (the exclusion-layer-filter invariant).
@@ -1878,7 +1846,7 @@ namespace KhaozEngine.Tests.MapEditor
             var ed = new EditorDocument(doc);
 
             // Renaming "understory" onto "canopy" throws before mutating, leaving no undo step.
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameCompanionLayerCommand("understory", "canopy")));
+            AssertIdentityRefusal(ed, new RenameCompanionLayerCommand("understory", "canopy"), "companion layer", "canopy", new RenameCompanionLayerCommand("understory", "new-companion"));
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));
 
@@ -1948,17 +1916,17 @@ namespace KhaozEngine.Tests.MapEditor
             // Apply replaces the shape instance and forces a world rebuild (scatter inputs changed).
             var ed = new EditorDocument(doc);
             ed.Execute(new EditScatterOverrideShapeCommand(0, v1, original));
-            Assert.Same(v1, doc.ScatterOverrides[0].Shape);
+            AssertDocumentValue(v1, doc.ScatterOverrides[0].Shape);
             Assert.True(ed.WorldRebuildPending);
 
             // A second edit of the same index coalesces (drag coalescing): the shape moves on, no new undo step.
             ed.Execute(new EditScatterOverrideShapeCommand(0, v2, v1));
-            Assert.Same(v2, doc.ScatterOverrides[0].Shape);
+            AssertDocumentValue(v2, doc.ScatterOverrides[0].Shape);
             Assert.Equal(1, ed.History.UndoDepth);
 
             // One undo reverts the whole gesture to the original shape, deep-equal to the pre-edit document.
             Assert.True(ed.Undo());
-            Assert.Same(original, doc.ScatterOverrides[0].Shape);
+            AssertDocumentValue(original, doc.ScatterOverrides[0].Shape);
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));
         }
@@ -2085,7 +2053,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             // Guards duplicates: renaming override 1 onto override 0's name throws before mutating anything, and
             // leaves no undo step (the RenameExclusionCommand guard idiom).
-            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameScatterOverrideCommand(1, "shrine-clearing", "second-patch")));
+            AssertIdentityRefusal(ed, new RenameScatterOverrideCommand(1, "shrine-clearing", "second-patch"), "scatter override", "shrine-clearing", new RenameScatterOverrideCommand(1, "new-override", "second-patch"));
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));   // document untouched, byte for byte
 
@@ -2114,8 +2082,8 @@ namespace KhaozEngine.Tests.MapEditor
 
             var ed = new EditorDocument(doc);
             ed.Execute(new ReorderScatterOverrideCommand(0, 1));   // move o0 to the end
-            Assert.Same(o1, doc.ScatterOverrides[0]);
-            Assert.Same(o0, doc.ScatterOverrides[1]);
+            AssertDocumentValue(o1, doc.ScatterOverrides[0]);
+            AssertDocumentValue(o0, doc.ScatterOverrides[1]);
             // Unlike exclusions (a pure set union), an override's order is first-match-wins, so reordering changes
             // which override governs overlapping ground: this DOES force a world rebuild (the deliberate inversion
             // of ReorderExclusionCommand_RoundTrips_AndDoesNotForceWorldRebuild).

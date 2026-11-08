@@ -103,10 +103,13 @@ What it owns today:
   captures and will never see it on a live 18.0.0 run.
 - **`GpuNoUsableBackendException`** (17.40.0) - the DOUBLE FALL: the requested backend failed, the engine fell
   back, and the fallback failed too, so there is no device. It carries `RequestedBackend`, `FallbackBackend` and
-  both failures, and its message names both backends and both reasons in the order they were tried. The FIRST
+  `RequestedFailure`, `Reason` and both failures. `Reason` is `GpuNoUsableBackendRefusal.RequestedCreationFailed`
+  when creation threw, `RequestedMachineUnsupported` when the support probe refused, or
+  `RequestedProviderNotRegistered` when a stored preference had no registered provider. The FIRST
   failure is `InnerException`, because on a native backend and its deleted Veldrid twin the two usually shared
   one underlying cause and the one worth reading is the first, and the fallback's own exception is on
-  `FallbackFailure` so neither stack has to be reconstructed from a log. A backend NAMED outright never reaches
+  `FallbackFailure` so neither stack has to be reconstructed from a log. When the request never threw,
+  `InnerException` is the same object as `FallbackFailure`. A backend NAMED outright never reaches
   it: naming one turns fallback off, so its failure propagates alone.
 - **`GpuThreadingCaps` / `GpuThreadingDiagnostics`** (17.22.0) - the graphics driver's multi-threading
   capabilities, on **Direct3D11 only**: `DriverCommandLists` and `DriverConcurrentCreates`, read straight off the
@@ -245,9 +248,10 @@ What it owns today:
   with no backend in it, because a reader who meets a backend name in a portable refusal reasonably stops
   applying the rule once that backend is gone.
   `GpuRecording.Open(device, list, owner)` begins the list and claims the device, the returned scope ends it and
-  releases, and a second `Open` on the same device throws `GpuNestedRecordingException` carrying `Owner` (who is
-  already recording) and `Attempted` (who was refused). `OpenOwner(device)` and `CanOpen(device)` answer the same
-  question without being refused. Every recording the engine opens goes through it (the windowed frame list, both
+  releases, and a second `Open` on the same device throws `GpuNestedRecordingException` with
+  `Reason = GpuNestedRecordingRefusal.RecordingAlreadyOpen`, carrying `Owner` (who is already recording) and
+  `Attempted` (who was refused). Move that work to the frame's pre-record phase. `OpenOwner(device)` and
+  `CanOpen(device)` answer the same question without being refused. Every recording the engine opens goes through it (the windowed frame list, both
   snapshot hosts, the preview, the offscreen 2D captures, the ocean's priming pass, the retire barrier, the mipmap
   generates and every readback), so the refusal reads the same on every backend and is provable with no GPU.
   Calling `IGpuCommandList.Begin` directly stays legal and unwatched: a consumer's own list gets whatever its
@@ -268,7 +272,9 @@ What it owns today:
   `MaxFragmentStorageBuffers` reports the per-stage storage buffer limit, with Vulkan reading
   `maxPerStageDescriptorStorageBuffers`, Direct3D11 reporting 128 SRV slots and Metal reporting 31 buffer slots.
   Older capability producers default to four. Explicit reports below three make Render3D scene and standalone
-  lit renderer construction throw `NotSupportedException` before GPU allocation, naming `maxPerStageDescriptorStorageBuffers`.
+  lit renderer construction throw Render3D's `LitReceiverNotSupportedException` before GPU allocation, with
+  `LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`, `AvailableCount` and
+  `CapabilityName` (`maxPerStageDescriptorStorageBuffers`).
   `MaxStorageBufferRangeBytes` is the maximum admitted whole storage
   binding in bytes, or zero when unknown. Vulkan retains `maxStorageBufferRange` from the selected
   physical device. Direct3D 11 folds its adapter-dependent resource guarantee with the full raw-view
@@ -357,7 +363,7 @@ What it owns today:
   - **`ToRgba`'s SOURCE must already be single-mip, single-sample `R8G8B8A8UNorm` at the size asked for.** It
     allocates a staging texture of exactly that shape and takes a WHOLE-texture copy into it, and a whole copy names
     every subresource on both sides, so anything else is not a copy a backend can narrow. A source that disagrees is
-    refused with an `ArgumentException` naming the readback and what the texture actually is, before anything is
+    refused with `GpuRgbaReadbackException` and `SourceShapeMismatch`, carrying the requested and actual shape, before anything is
     allocated or submitted. Native Metal and Vulkan already refused it in their own `CopyTexture`, but Direct3D 11's
     `CopyResource` is silent about a mismatch, so the same call used to throw on two backends and hand back
     channel-swapped or garbage bytes on the third
@@ -434,7 +440,8 @@ What it owns today:
   once per batch of at most three, including the final short batch, then harvests once. The ring retains the
   exact submission fence through immutable publication and quarantines pending or invalid results without
   waiting or polling again. Pass labels and skipped-pass status remain adapter-owned.
-  The internal renderer harness adds `RendererPerfRecorder`, `RendererPerfDevice` and
+  The outside-solution [renderer tooling harness](../tools/Renderer.Perf.Tooling.Tests/README.md)
+  adds `RendererPerfRecorder`, `RendererPerfDevice` and
   `RendererPerfCommandList` beside its protocol records. They retain fixed command-owner, CPU-span,
   dispatch-size and framebuffer-format storage before recording. Logical requested calls, redundant bind
   requests, upload bytes and copy bytes stay separate from optional native emitted-state counters.
@@ -555,11 +562,12 @@ What it owns today:
     one's base level per array layer; `GenerateMipmaps` then fills the rest. Both go in the same list as the
     dispatch and cost no extra drain - a transfer is where every backend synchronises anyway.
 - **`ShaderValidation`** - `ValidatePair(vertexGlsl, fragmentGlsl, label?)` compiles a GLSL 450 vertex/fragment
-  pair to SPIR-V and cross-compiles it to every backend target (HLSL, MSL, GLSL, ESSL) with NO `GraphicsDevice`,
+  pair to SPIR-V and cross-compiles it to every backend target (HLSL and MSL) with NO `GraphicsDevice`,
   so a shader syntax error or a backend miscompile is caught in a fast GPU-free test loop instead of at first run
   on a real device of that backend. `ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a
-  compute shader. A compile failure throws `ShaderValidationException` naming the label and the failing
-  stage/target. BOTH ALSO CHECK THE METAL BINDING ORDER (17.36.0, and `ValidateCompute` alone since 16.3.0),
+  compute shader. A compile failure throws `ShaderValidationException` with `Reason`, `Label`, `Stage` and
+  `Target`. `FrontEndCompileFailed` retains its native cause and diagnostic. `CrossCompileFailed` retains the
+  inner validation refusal. BOTH ALSO CHECK THE METAL BINDING ORDER (17.36.0, and `ValidateCompute` alone since 16.3.0),
   which is not a compile failure anywhere and is the one shader bug that renders a wrong picture instead of
   throwing. Metal has no binding decorations, so the cross-compiler assigns each resource an index of its own in
   first-reference order while the deleted Veldrid Metal backend bound a resource set by counting the layout in
@@ -568,8 +576,8 @@ What it owns today:
   - **Index order, per stage, over buffers AND textures AND samplers.** Each emitted argument is joined back to
     the `(set, binding)` you declared through that stage's own SPIR-V decorations, so a swap between two
     resources OF THE SAME KIND is caught as well (two storage buffers are both `device T&` in Metal, which is
-    why the 16.3.0 kind comparison could not see it). The message names both `layout(set=, binding=)` pairs and
-    the slot they collided on. Since 18.0.0 the engine AUTHORS each Metal argument index by walking the
+    why the 16.3.0 kind comparison could not see it). `MetalBindingOrderMismatch` carries both pairs in
+    `DeclaredSet` / `DeclaredBinding` and `EmittedSet` / `EmittedBinding`, plus `ArgumentIndex` and `ExpectedIndex`. Since 18.0.0 the engine AUTHORS each Metal argument index by walking the
     reflected layout in binding order, and the native Metal backend binds against that same scheme, so this
     confirms the authored scheme reached the emission rather than constraining how the shader is written.
 
@@ -600,6 +608,175 @@ there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `p
 `<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>`. It ships here as well as in `Foundation`
 because `Foundation` is not in this package's dependency closure, so a project that references this one and no
 umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.
+
+## Refusals
+
+`GpuBackendProviderMissingException`, `GpuBackendRetiredException` and `GpuNoUsableBackendException`
+retain their existing constructors and `InvalidOperationException` base. Engine paths always fill
+their nullable `Reason`. A consumer-created message-only instance can leave it null.
+`GpuNestedRecordingException` retains its owner/attempted constructor and `InvalidOperationException`
+base. Every constructor fills its nullable `Reason`.
+
+The BCL subtypes `GpuRecordingStateException` and `GpuTimestamp*Exception` require a reason in
+every constructor and expose a non-nullable `Reason`. Each derives from the refusal's original BCL
+exception type. Message text is developer prose. Branch on the reason and read the diagnostic properties.
+
+`ShaderValidationException` keeps its `Exception` base and message-only constructors. Engine callers fill
+`ShaderValidationRefusal` and the applicable identifiers. `RepairSourcePaths` copies supplied paths into an
+exception-owned read-only snapshot, including when consumer code initializes it. `CrossCompileFailed` retains its inner refusal,
+and `FrontEndCompileFailed` retains the actual compiler failure. `ShaderValidationArgumentException`,
+`ShaderValidationRangeException` and `ShaderValidationStateException` derive from the original
+`ArgumentException`, `ArgumentOutOfRangeException` and `InvalidOperationException` bases and require a reason.
+The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumentException`, retaining
+`ParamName` and carrying `ByteLength` and `WordBytes`. Message text stays developer prose.
+
+| Exception and reason member | What it refuses | Identifiers |
+|---|---|---|
+| `GpuBufferUsageArgumentException`, `GpuBufferUsageRefusal.UniformBindingCombination` | Refuses a uniform buffer combined with another binding of the same bytes. | `ParamName`, `Usage`, `ConflictingUsage` |
+| `GpuBufferTransferRangeException`, `GpuBufferTransferRefusal.WindowOutsideBuffer` | Refuses a buffer write or copy window outside the logical buffer. | `ParamName`, `ActualValue`, `OffsetBytes`, `SizeBytes`, `BufferBytes`, optional `Side` |
+| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copy, staging or upload subresource outside the texture. | `ParamName`, `ActualValue`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers`, optional `Side` |
+| `GpuTimestampDisposedException`, `GpuTimestampRefusal.TimestampDeviceUnavailable` | Refuses timestamp work after the Direct3D 11 device is lost or disposed. | `ObjectName`, `Backend` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `Set` and `Binding` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.WindowOutsideSegment` | Refuses a uniform window outside its own frame-ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `RecoveryOperation` |
+| `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
+| `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
+| `GpuDynamicBindingException`, `GpuDynamicBindingRefusal.DynamicElementMissing` | Refuses a nonzero dynamic offset on a set with no dynamic layout element. | `ParamName`, `Backend`, `Set`, `DynamicOffset` |
+| `ShaderValidationException`, `ShaderValidationRefusal.ComputeLocalSizeMissing` | Refuses a compute module without a literal local-size execution mode. | `Label` |
+| `ShaderValidationException`, `ShaderValidationRefusal.ComputeLocalSizeSpecialized` | Refuses a compute local size requiring specialization constant evaluation. | `Label`, `ExecutionMode` |
+| `ShaderValidationException`, `ShaderValidationRefusal.CrossCompileFailed` | Refuses a shader translation after a structured cross-compiler failure is caught. | `Label`, `Stage`, `Target`, `InnerException` |
+| `ShaderValidationException`, `ShaderValidationRefusal.CrossContextCreationFailed` | Refuses a SPIRV-Cross context that cannot be created. | `Label`, `Operation`, `ResultCode` |
+| `ShaderValidationException`, `ShaderValidationRefusal.CrossNativeCallFailed` | Refuses a failed SPIRV-Cross native operation. | `Label`, `Operation`, `ResultCode`, `Diagnostic` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11FxcOutputEmpty` | Refuses successful FXC compilation that produced no bytecode. | `Label`, `Profile` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11FxcRejected` | Refuses emitted HLSL rejected by FXC. | `Label`, `Profile`, `HResult`, `Diagnostic` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11UserSemanticHole` | Refuses a holed user-semantic sequence that the native compiler can miscompile. | `Label`, `Semantic`, `FirstMissingIndex`, `RepairSourcePaths` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11VertexModuleEmpty` | Refuses reflection of an empty compiled vertex module. | `Label` |
+| `ShaderValidationException`, `ShaderValidationRefusal.D3D11VertexReflectionFailed` | Refuses a vertex module whose compiled signature cannot be reflected. | `Label`, `Diagnostic`, `InnerException` |
+| `ShaderValidationException`, `ShaderValidationRefusal.FrontEndCompileFailed` | Refuses GLSL source that fails compilation to SPIR-V. | `Label`, `Stage`, `Target`, `Diagnostic` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.FrontEndCompilerInitializationFailed` | Refuses a front-end compiler initialization that returns null. | `NativeObjectKind` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.FrontEndNativeCompileFailed` | Refuses a failed native front-end compile result. | `Status`, `Diagnostic` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.FrontEndOptionsInitializationFailed` | Refuses front-end compile options initialization that returns null. | `NativeObjectKind` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.FrontEndResultMissing` | Refuses front-end compilation that returns no native result. | `NativeOperation` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalBindingIndexInvalid` | Refuses an emitted resource use naming an undeclared binding. | `Label`, `Stage`, `Set`, `Binding`, `ElementCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalBindingOrderMismatch` | Refuses a Metal resource argument whose index disagrees with authored binding order. | `Label`, `Stage`, `Space`, `ArgumentIndex`, `DeclaredSet`, `DeclaredBinding`, `EmittedSet`, `EmittedBinding`, `ExpectedIndex` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalBufferKindOrderMismatch` | Refuses emitted Metal buffer kinds that disagree with reflected binding order. | `Label`, `Slot`, `DeclaredBufferKind`, `EmittedKind` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalCachedStageMissing` | Refuses a cached resource use whose stage has no source payload. | `Label`, `Stage`, `Set`, `Binding` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalComputePipelineRejected` | Refuses a compute pipeline rejected by the native Metal device. | `PipelineKind`, `Diagnostic`, `NativeDiagnosticMissing` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.MetalDepthStateUnavailable` | Refuses a nil native depth-stencil state during pipeline construction. | `NativeClass` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalEntryArgumentsMissing` | Refuses an emitted Metal entry point without an argument list. | `Label`, `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalEntryArgumentsUnclosed` | Refuses an emitted Metal entry point with an unclosed argument list. | `Label`, `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalEntryNameUnreadable` | Refuses an emitted Metal entry point whose function name cannot be read. | `Label`, `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalEntryPointMissing` | Refuses emitted MSL with no entry point for the requested stage. | `Label`, `Stage`, `EntryPointKeyword` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalGraphicsPipelineRejected` | Refuses a graphics pipeline rejected by the native Metal device. | `PipelineKind`, `Diagnostic`, `NativeDiagnosticMissing` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalHelperBufferUnnumbered` | Refuses a Metal helper buffer or memory argument outside the authored index scheme. | `Label`, `Stage`, `HelperKind`, `Policy` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLayoutCountMismatch` | Refuses a pipeline layout array whose length differs from shader reflection. | `Label`, `DeclaredLayoutCount`, `ReflectedLayoutCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLayoutElementCountMismatch` | Refuses a resource layout whose element count differs from shader reflection. | `Label`, `Set`, `DeclaredElementCount`, `ReflectedElementCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLayoutKindMismatch` | Refuses a resource layout whose element kind differs from shader reflection. | `Label`, `Set`, `Binding`, `DeclaredKind`, `ReflectedKind` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLibraryFunctionMissing` | Refuses a compiled Metal library without the parsed entry-point function. | `Label`, `Stage`, `EntryPoint`, `Policy` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalLibraryRejected` | Refuses emitted MSL rejected by the native Metal library compiler. | `Label`, `Stage`, `EntryPoint`, `Diagnostic`, `NativeDiagnosticMissing`, `SourceOrigin` |
+| `ShaderValidationStateException`, `ShaderValidationRefusal.MetalNativeClassUnavailable` | Refuses shader or pipeline descriptor creation when the Objective-C class is unavailable. | `NativeClass` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalProgramStageMissing` | Refuses a Metal program stage that the program does not contain. | `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalProgramStageShapeInvalid` | Refuses a Metal program that is neither a compute stage nor a vertex and fragment pair. | `Label`, `StageCount`, `Stages` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalResourceUseDuplicate` | Refuses a repeated resource use in one Metal stage. | `Label`, `Stage`, `Set`, `Binding` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalResourceUseListMissing` | Refuses a cross-compiled Metal stage with no resource-use list. | `Label`, `Stage` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalSetIndexInvalid` | Refuses an emitted resource use naming an undeclared set. | `Label`, `Stage`, `Set`, `LayoutCount`, `Binding` |
+| `ShaderValidationException`, `ShaderValidationRefusal.MetalVertexBufferCollision` | Refuses a reflected vertex resource buffer colliding with vertex stream indices. | `Label`, `Set`, `Binding`, `ArgumentIndex`, `StreamCount`, `LowestStreamIndex`, `BufferTableSize`, `Policy` |
+| `ShaderValidationArgumentException`, `ShaderValidationRefusal.SpirvLengthInvalid` | Refuses an empty or unaligned SPIR-V module at Vulkan cache admission. | `ParamName`, `ByteLength`, `WordBytes` |
+| `ShaderValidationRangeException`, `ShaderValidationRefusal.MetalVertexStreamCountInvalid` | Refuses a vertex stream count outside the Metal argument table capacity. | `ParamName`, `ActualValue`, `Label`, `StreamCount`, `BufferTableSize` |
+| `ShaderValidationException`, `ShaderValidationRefusal.ReflectionResourceKindUnsupported` | Refuses a reflected resource kind absent from the GPU contract mirror. | `Label`, `NativeResourceKind`, `SourceDeclaration` |
+| `ShaderValidationException`, `ShaderValidationRefusal.ReflectionVertexFormatUnsupported` | Refuses a reflected vertex input format absent from the GPU contract mirror. | `Label`, `NativeBaseType`, `ComponentCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.SpirvInstructionMalformed` | Refuses a truncated or non-advancing SPIR-V instruction. | `Label`, `WordOffset`, `WordCount`, `ModuleWordCount` |
+| `ShaderValidationException`, `ShaderValidationRefusal.SpirvLengthInvalid` | Refuses bytes that cannot form the required SPIR-V word or module layout. | `Label`, `ByteLength`, `MinimumHeaderBytes`, `WordBytes` |
+| `ShaderValidationException`, `ShaderValidationRefusal.SpirvMagicInvalid` | Refuses a SPIR-V module with the wrong magic number. | `Label`, `ActualMagic`, `ExpectedMagic` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.BufferWindowOutsideResource` | Refuses a binding window that does not fit within the buffer. | `ParamName`, `ElementName`, `Binding`, `RangeOffset`, `RangeBytes`, `BufferBytes` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.NativeHandleMissing` | Refuses a set resource whose native handle was already released. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `NativeHandleKind` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.ResourceCountMismatch` | Refuses a set whose resource count differs from its layout. | `ParamName`, `DeclaredCount`, `SuppliedCount` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.ResourceKindMismatch` | Refuses a resource whose type does not match the layout element. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `ActualType`, `ExpectedType` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.ResourceMissing` | Refuses a null resource in a set declaration. | `ParamName`, `ElementName`, `Binding` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.StagingTextureCannotBind` | Refuses a staging texture as a shader texture binding. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.TextureUsageMissing` | Refuses a texture lacking the usage required by the layout binding. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `ActualUsage`, `RequiredUsage` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.DifferentDevice` | Refuses a resource created by a different device of the same backend. | `ParamName`, `ExpectedBackend`, `ResourceKind`, `Context` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a resource from another backend at bind, map, readback or upload admission. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context`, `ResourceIndex`, `PipelineKind` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a required resource that was not supplied. | `ParamName`, `ResourceKind`, `Context`, optional `ResourceIndex`, `ActualType`, `ExpectedType`, `RegisterLetter` |
+| `GpuResourceOwnershipDisposedException`, `GpuResourceOwnershipRefusal.NativeHandleReleased` | Refuses use of a resource whose native handle has been released. | `ObjectName`, `NativeHandleKind`, `ResourceKind`, `Context` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentNotRenderable` | Refuses an attachment without the native texture or view needed for rendering. | `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentShapeMismatch` | Refuses attachments that do not share one size and sample count. | `Attachment`, `Width`, `Height`, `SampleCount`, `ExpectedWidth`, `ExpectedHeight`, `ExpectedSampleCount` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentViewMissing` | Refuses an attachment with no required native render view. | `ParamName`, `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.NoAttachments` | Refuses a framebuffer with no colour or depth attachment. | `ParamName`, `ColourAttachmentCount`, `HasDepth` |
+| `GpuPipelineOutputsException`, `GpuPipelineOutputsRefusal.BlendCountMismatch` | Refuses a graphics pipeline whose blend state count differs from its colour outputs. | `ParamName`, `DeclaredBlendCount`, `ColourOutputCount`, `PipelineKind` |
+| `GpuResourceLayoutException`, `GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind` | Refuses a dynamic offset on a resource kind the backend cannot rebase. | `ParamName`, `Backend`, `ElementName`, `Binding`, `ResourceKind` |
+| `GpuTextureTransferArgumentException`, `GpuTextureTransferRefusal.MipChainRequired` | Refuses mip generation without a real texture and multiple mip levels. | `ParamName`, `MipLevels`, `IsStaging`, `NativeHandleMissing` |
+| `GpuTextureTransferArgumentException`, `GpuTextureTransferRefusal.ResolveShapeMismatch` | Refuses a multisample resolve whose source or destination is not a compatible attachment. | `ParamName`, `SourceSampleCount`, `DestinationSampleCount`, `SourceWidth`, `SourceHeight`, `DestinationWidth`, `DestinationHeight`, `SourceFormat`, `DestinationFormat`, `SourceIsStaging`, `DestinationIsStaging` |
+| `GpuTextureTransferArgumentException`, `GpuTextureTransferRefusal.TextureShapeMismatch` | Refuses a whole-texture copy between incompatible shapes. | `ParamName`, `SourceWidth`, `SourceHeight`, `SourceFormat`, `SourceMipLevels`, `SourceArrayLayers`, `DestinationWidth`, `DestinationHeight`, `DestinationFormat`, `DestinationMipLevels`, `DestinationArrayLayers` |
+| `GpuSwapchainCopyArgumentException`, `GpuSwapchainCopyRefusal.ColourAttachmentCount` | Refuses a swapchain source without exactly one colour attachment. | `ParamName`, `ColourAttachmentCount` |
+| `GpuSwapchainCopyArgumentException`, `GpuSwapchainCopyRefusal.DestinationShapeMismatch` | Refuses a swapchain copy destination whose complete texture shape differs. | `ParamName`, `SourceWidth`, `SourceHeight`, `SourceFormat`, `DestinationWidth`, `DestinationHeight`, `DestinationFormat`, `DestinationMipLevels`, `DestinationSampleCount` |
+| `GpuSwapchainCopyStateException`, `GpuSwapchainCopyRefusal.SwapchainNotBound` | Refuses a swapchain copy before the source swapchain is bound in this recording. | `Command` |
+| `GpuSwapchainCopyStateException`, `GpuSwapchainCopyRefusal.SwapchainNotCopyable` | Refuses a copy without a live copyable swapchain image. | `Command` |
+| `GpuBackendProviderMissingException`, `GpuBackendProviderMissingRefusal.ProviderNotRegistered` | A backend has no registered provider and cannot fall back. | `Backend`, `RegistrationConvention`, optional `RegistrationMethod` |
+| `GpuBackendRetiredException`, `GpuBackendRetiredRefusal.BackendRetired` | An explicitly named backend whose implementation was retired. | `Backend`, `Replacement`, `RetirementVersion` |
+| `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedCreationFailed` | The requested backend and its fallback both threw. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |
+| `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedMachineUnsupported` | The requested backend failed its support probe and the fallback failed. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |
+| `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedProviderNotRegistered` | A stored preference had no registered provider and its fallback failed. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |
+| `GpuNestedRecordingException`, `GpuNestedRecordingRefusal.RecordingAlreadyOpen` | A second recording while one is already open on the device. | `Owner`, `Attempted` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.BeginWhileRecording` | Begin while a command list is already recording | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.CommandOutsideRecording` | a command that requires an open recording | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.EndWithoutRecording` | End before a recording has begun or after a failed recording was abandoned | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.RecordingAlreadySealed` | End when the recording is already sealed | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.SubmissionWithoutSeal` | submission of a command list without a sealed recording | `Backend`, `Command` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotEnded` | resolving or awaiting a batch that has not ended | `Command`, `Count` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotRecording` | a timestamp write or tail arm before the batch begins | `Command` |
+| `GpuTimestampRangeException`, `GpuTimestampRefusal.FinalIndexRequired` | arming any index except the batch final index | `ParamName`, `ActualValue`, `FinalIndex`, `Count` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.IncompleteBatch` | ending a batch whose timestamps are incomplete | `WrittenCount`, `Count` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.IndexOutOfSequence` | an index that repeats or skips the next timestamp | `Index`, `ExpectedIndex`, `Count` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.ManualFinalizationWhileArmed` | manual write or end of the timestamp pool reserved for command-list End | `Backend`, `Command` |
+| `GpuTimestampArgumentException`, `GpuTimestampRefusal.OutputTooSmall` | an output span that cannot hold the batch | `ParamName`, `SuppliedCount`, `RequiredCount` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.TailAlreadyArmed` | arming a second timestamp tail in one recording | `Backend` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.TailPrefixIncomplete` | arming until all earlier timestamps are written and the final one is unwritten | `ExpectedIndex`, `FinalIndex`, `Count` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.TimestampDeviceUnavailable` | using a timestamp device that is lost or disposed | `Backend` |
+| `GpuTimestampUnsupportedException`, `GpuTimestampRefusal.TimestampUnsupported` | timestamps when the device or adapter has no timestamp capability | `Backend`, `Command`, `Detail` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.UnresolvedBatch` | beginning a batch while the preceding batch is unresolved | `Count`, `Backend` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.WrongRecording` | timestamp work on another list, command buffer or recording | `Backend`, `Command`, `RecordingId` |
+
+Ownership checks also cover framebuffer attachment adapters, pipeline and resource-set binds, uploads,
+completed staging-buffer reads and swapchain-copy command lists. A null slot in a pipeline's layout
+array carries `MissingResource` with `ResourceIndex`. A retirement queue refuses a frame submission
+from another device with `DifferentDevice`, or `ForeignBackend` when its backend differs. These checks
+retain their original parameter names.
+
+Missing-provider refusals always carry `RegistrationConvention = "KhaozEngine<Backend>.Register()"`.
+`RegistrationMethod` carries the known startup entry point, such as `KhaozEngineD3D11.Register()`, and is null
+for an unrecognized backend. The convention remains actionable for appended backends without adding a branch
+to device creation. Retired-backend refusals carry `RetirementVersion = new Version(18, 0, 0)`.
+For `RecordingAlreadyOpen`, put per-frame producer work in `AppWindow.Run`'s `onPrepare` callback or
+`Scene3D.PrepareFrame` before the frame recording opens. Loads, readbacks and offscreen captures belong outside
+the frame when they are not per-frame work.
+
+Copy alignment, whole-source RGBA8 shape and native staging admission use public exceptions in this
+package. Each derives from the BCL type previously thrown, so existing catches still work. `Reason`
+is required. Messages are developer prose. `ParamName` and `ActualValue` keep their existing values.
+
+| Exception and reason | What it refuses | Identifiers |
+|---|---|---|
+| `GpuCopyAlignmentException`, `GpuCopyAlignmentRefusal.UnalignedOffset` | A copy or readback offset not divisible by four | `ParamName`, `ActualValue`, `Context`, `Side`, `AlignmentBytes`, optional `PayloadBytes`, `RecoveryOperation` |
+| `GpuRgbaReadbackException`, `GpuRgbaReadbackRefusal.SourceShapeMismatch` | A whole-source RGBA8 readback with incompatible format, mip count, sample count or dimensions | `ParamName`, `RequestedWidth`, `RequestedHeight`, `SourceWidth`, `SourceHeight`, `SourceFormat`, `SourceMipLevels`, `SourceSampleCount`, `MipReadbackOperation`, `ResolveOperation` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.AlreadyMapped` | A second map while the resource is mapped | `Backend`, `ExistingMode`, `RequestedMode` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.NotMapped` | An unmap without an open map | `Backend` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.CompletionNotSignaled` | A fenced read map before completion | `Command` |
+| `GpuStagingMapStateException`, `GpuStagingMapRefusal.MappingMissing` | A Vulkan staging write without mapped backing memory | `Backend` |
+| `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.StagingUsageRequired` | A map or read of a resource without the required staging usage | `ParamName` where previously supplied, `Backend`, `ResourceKind`, `RequiredBufferUsage` or `RequiredTextureUsage` |
+
+The state exception derives from `InvalidOperationException`, the staging and shape argument exceptions
+from `ArgumentException`, and the alignment exception from `ArgumentOutOfRangeException`. A shape's
+requested dimensions are signed, preserving a negative request. Backends retain their existing map
+state tracking. These members do not introduce double-map detection where a backend did not have it.
+
+Staging framebuffer attachments use `AttachmentNotRenderable` on all native backends. A non-staging
+attachment without its required native render view uses `AttachmentViewMissing`. A missing swapchain
+attachment handle also uses `AttachmentNotRenderable`. These classifications preserve the existing
+validation points and backend admission differences.
+
+A `GpuBufferRange` whose `Buffer` is null carries `ResourceKindMismatch`. A null resource entry
+in a set declaration carries `ResourceMissing`.
 
 ## Optional compiler and memory diagnostics
 
@@ -740,13 +917,36 @@ is presented.
   or a recreation.
 - **Copy.** `CopySwapchainColor(commands, destination)` records, into an open recording, a whole copy of the
   current swapchain colour image into `destination`. The destination must have the size of `SwapchainFramebuffer`,
-  the swapchain's colour format, one mip and one sample, or it is refused with an `ArgumentException` naming both
-  shapes. `commands` must have bound `SwapchainFramebuffer` in its current recording, which makes it the frame's
+  the swapchain's colour format, one mip and one sample, or `GpuSwapchainCopyArgumentException` carries
+  `DestinationShapeMismatch` and both shapes. `commands` must have bound `SwapchainFramebuffer` in its current recording, which makes it the frame's
   own list. Only that list is ordered after the image's acquire and holds what the frame drew. A list that never
-  bound it, and an uncopyable swapchain, are both refused with an `InvalidOperationException`, with one message
-  for the first on every backend. Nothing is recorded on any refusal.
+  bound it is refused with `GpuSwapchainCopyStateException` and `SwapchainNotBound` on every backend.
+  An uncopyable swapchain carries `SwapchainNotCopyable` on the same type. Nothing is recorded on any refusal.
 - **Direct3D 11.** The request is stored and changes nothing, because a `RenderTargetOutput` back buffer is
   already a `CopyResource` source. The image is copyable whenever the swapchain's attachments are live.
 
 `SwapchainCopyCheck` holds the destination rule and the bound-this-recording refusal for all three backends. `SwapchainCopyCheckTests` drives it, and
 `D3D11SwapchainCaptureTests` drives the Direct3D 11 half over a fake swapchain surface.
+
+## Attachment lifetime and early submission
+
+`SetFramebufferWithStoreActions` takes per-colour, depth and stencil intent through
+`GpuAttachmentStoreActions`. Store is the default. Discard is valid only when the pass owner proves no later
+read, including a reopened pass, capture or readback. Metal and Vulkan map it directly. Other implementations
+may retain the data. Native Metal may commit an offscreen prefix during drawable resolution, making that
+prefix's CPU-visible access ranges immutable through final frame completion. See
+[frame submission](../docs/METAL-FRAME-SUBMISSION.md) for the structured refusal and mapping contract.
+
+Recording-state refusals derive from `InvalidOperationException`. Timestamp state, argument, range and
+unsupported subtypes derive from `InvalidOperationException`, `ArgumentException`,
+`ArgumentOutOfRangeException` and `NotSupportedException` respectively. Plain count and index bounds
+remain BCL checks. Timestamp pools and completion fences use `GpuResourceOwnershipArgumentException` with
+`GpuResourceOwnershipRefusal.ForeignBackend` for another backend or `DifferentDevice` for another
+device/timeline. They preserve `ParamName` and carry `ExpectedBackend`, `ActualType`, `ExpectedType`,
+`ResourceKind` and `Context`.
+
+A resource of the declared logical kind from another backend uses `GpuResourceOwnershipRefusal.ForeignBackend`
+in resource-set admission. A genuinely different logical kind keeps `GpuResourceSetRefusal.ResourceKindMismatch`.
+The ownership carrier records `ElementName`, `ResourceIndex`, `ResourceKind`, `ExpectedBackend`, `ActualType`
+and `ExpectedType` where the guard has them. An absent D3D11 register view uses `MissingResource` and
+`RegisterLetter`, with the original parameter and resource types.

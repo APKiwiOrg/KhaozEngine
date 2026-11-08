@@ -54,28 +54,36 @@ public sealed class MapAssetClosure
     internal bool HasSupport(string id) => _supports.ContainsKey(id);
     internal bool HasLight(string id) => _lights.ContainsKey(id);
     public MapResolvedAsset GetAsset(string assetId) => _assets.TryGetValue(assetId, out var asset)
-        ? asset : throw new MapDocumentException($"Native asset '{assetId}' is not in the verified closure.");
+        ? asset : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Native asset '{assetId}' is not in the verified closure.")
+        { AssetId = assetId, SubjectKind = "asset" };
 
     public MapResolvedResource GetResource(string resourceId) => _resources.TryGetValue(resourceId, out var resource)
-        ? resource : throw new MapDocumentException($"Native resource '{resourceId}' is not in the verified closure.");
+        ? resource : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Native resource '{resourceId}' is not in the verified closure.")
+        { ResourceId = resourceId, SubjectKind = "resource" };
 
     /// <summary>A detached copy of a bounded prefab decoded from the verified immutable snapshot.</summary>
     public MapPrefabAsset GetPrefab(string resourceId) => _prefabs.TryGetValue(resourceId, out var prefab)
-        ? MapPrefabJson.Copy(prefab) : throw new MapDocumentException($"Native prefab '{resourceId}' is not in the verified closure.");
+        ? MapPrefabJson.Copy(prefab) : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Native prefab '{resourceId}' is not in the verified closure.")
+        { ResourceId = resourceId, SubjectKind = "prefab", ExpectedResourceKind = MapResourceKind.Prefab };
 
     internal IEnumerable<MapResolvedResource> CapturedResources => _resources.Values;
     internal int ResourceByteLength(string resourceId) => _snapshots.TryGetValue(resourceId, out var bytes)
-        ? bytes.Length : throw new MapDocumentException($"Native resource '{resourceId}' is not captured.");
+        ? bytes.Length : throw new MapDocumentException(MapDocumentRefusal.AssetPayloadNotCaptured, $"Native resource '{resourceId}' is not captured.")
+        { ResourceId = resourceId };
     internal ReadOnlyMemory<byte> BorrowVerifiedResourceBytes(string resourceId) => _snapshots.TryGetValue(resourceId, out var bytes)
-        ? bytes : throw new MapDocumentException($"Native resource '{resourceId}' is not captured.");
+        ? bytes : throw new MapDocumentException(MapDocumentRefusal.AssetPayloadNotCaptured, $"Native resource '{resourceId}' is not captured.")
+        { ResourceId = resourceId };
     internal MapPrefabAsset BorrowPrefab(string id) => _prefabs.TryGetValue(id, out var prefab)
-        ? prefab : throw new MapDocumentException($"Native prefab '{id}' is not captured.");
+        ? prefab : throw new MapDocumentException(MapDocumentRefusal.AssetPayloadNotCaptured, $"Native prefab '{id}' is not captured.")
+        { ResourceId = id, ExpectedResourceKind = MapResourceKind.Prefab };
     internal MapSupportResource BorrowSupport(string id) => _supports.TryGetValue(id, out var support) ? support
         : _resources.ContainsKey(id) ? throw MapTypedResourceSchema.Opaque("support", id, MapTypedResourceSchema.Support)
-        : throw new MapDocumentException($"Native support '{id}' is not captured.");
+        : throw new MapDocumentException(MapDocumentRefusal.AssetPayloadNotCaptured, $"Native support '{id}' is not captured.")
+        { ResourceId = id, ExpectedResourceKind = MapResourceKind.Surface };
     internal MapLocalLightDoc BorrowLight(string id) => _lights.TryGetValue(id, out var light) ? light
         : _resources.ContainsKey(id) ? throw MapTypedResourceSchema.Opaque("light", id, MapTypedResourceSchema.Light)
-        : throw new MapDocumentException($"Native light '{id}' is not captured.");
+        : throw new MapDocumentException(MapDocumentRefusal.AssetPayloadNotCaptured, $"Native light '{id}' is not captured.")
+        { ResourceId = id, ExpectedResourceKind = MapResourceKind.Light };
 
     /// <summary>Looks up a resource without throwing. A null id is never in the closure.</summary>
     internal bool TryGetResource(string? resourceId, out MapResolvedResource? resource)
@@ -99,7 +107,8 @@ public sealed class MapAssetClosure
         {
             MapAssetManifestReader.ValidateResource(resource);
             string id = resource.Reference.Id;
-            if (!resources.TryAdd(id, resource)) throw new MapDocumentException($"Duplicate native resource ID '{id}'.");
+            if (!resources.TryAdd(id, resource)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Duplicate native resource ID '{id}'.")
+            { ResourceId = id, SubjectKind = "resource" };
             edges.Add(id, new HashSet<string>(resource.Dependencies, StringComparer.Ordinal));
             pending.Add(id);
         }
@@ -117,13 +126,15 @@ public sealed class MapAssetClosure
             byte[] bytes = Snapshot(source, resource.Reference);
             string digest = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
             if (!StringComparer.Ordinal.Equals(digest, resource.Reference.Sha256))
-                throw new MapDocumentException($"SHA-256 mismatch for native resource '{id}'.");
+                throw new MapDocumentException(MapDocumentRefusal.DigestMismatch, $"SHA-256 mismatch for native resource '{id}'.")
+                { ResourceId = id, Path = resource.Reference.Path, DigestKind = "resource bytes", ExpectedHash = resource.Reference.Sha256, ActualHash = digest };
             snapshots.Add(id, bytes);
             if (resource.Kind != MapResourceKind.Manifest) continue;
             MapAssetManifestDoc manifest = MapAssetManifestReader.Read(bytes, id);
             foreach (MapAssetDoc asset in manifest.Assets)
             {
-                if (!assets.TryAdd(asset.Id, asset)) throw new MapDocumentException($"Duplicate native asset ID '{asset.Id}'.");
+                if (!assets.TryAdd(asset.Id, asset)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Duplicate native asset ID '{asset.Id}'.")
+                { AssetId = asset.Id, SubjectKind = "asset" };
                 edges[id].UnionWith(MapAssetManifestReader.ResourceReferences(asset).Select(reference => reference.Id));
             }
             foreach (MapResourceDoc child in manifest.Resources)
@@ -147,9 +158,10 @@ public sealed class MapAssetClosure
             // Verify this copy and publish copies of this same buffer. Never read the source a second time.
             return source.Read(reference).ToArray();
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or KeyNotFoundException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or KeyNotFoundException or MalformedDataException)
         {
-            throw new MapDocumentException($"Cannot read native resource '{reference.Id}' with expected SHA-256 '{reference.Sha256}'.", ex);
+            throw new MapDocumentException(MapDocumentRefusal.AssetPayloadUnreadable, $"Cannot read native resource '{reference.Id}' with expected SHA-256 '{reference.Sha256}'.", ex)
+            { ResourceId = reference.Id, ExpectedHash = reference.Sha256, Path = reference.Path };
         }
     }
 
@@ -160,7 +172,8 @@ public sealed class MapAssetClosure
             foreach (string dependency in pair.Value)
             {
                 if (!incoming.ContainsKey(dependency))
-                    throw new MapDocumentException($"Resource '{pair.Key}' requires missing resource '{dependency}'.");
+                    throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Resource '{pair.Key}' requires missing resource '{dependency}'.")
+                    { ResourceId = pair.Key, DependencyId = dependency, SubjectKind = "resource dependency" };
                 incoming[dependency]++;
             }
         var ready = new SortedSet<string>(incoming.Where(pair => pair.Value == 0).Select(pair => pair.Key), StringComparer.Ordinal);
@@ -173,7 +186,8 @@ public sealed class MapAssetClosure
             foreach (string dependency in edges[id])
                 if (--incoming[dependency] == 0) ready.Add(dependency);
         }
-        if (visited != edges.Count) throw new MapDocumentException("Native resource dependency cycle.");
+        if (visited != edges.Count) throw new MapDocumentException(MapDocumentRefusal.AssetDependencyCycle, "Native resource dependency cycle.")
+        { ResourceIds = incoming.Where(pair => pair.Value != 0).Select(pair => pair.Key).Order(StringComparer.Ordinal).ToArray() };
     }
 
     static string ComputeHash(Dictionary<string, MapResourceDoc> resources)

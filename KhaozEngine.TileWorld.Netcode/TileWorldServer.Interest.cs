@@ -66,11 +66,17 @@ public sealed partial class TileWorldServer
         if (size <= LargestFootprintSize) return;
         float radius = QueryRadiusFor(size);
         if (radius <= config.OverlapMargin) return;
-        throw new ArgumentOutOfRangeException(paramName, size,
+        throw new TileInterestRangeException(TileInterestRefusal.FootprintRadiusExceedsMargin, paramName, size,
             $"A footprint of {size} needs an interest query of {radius} tiles (InterestRadius "
           + $"{config.InterestRadius} plus the body's diagonal), which exceeds OverlapMargin "
           + $"{config.OverlapMargin}: the home cell cannot hold the whole area of interest as ghosts. Raise "
-          + "OverlapMargin to at least that query radius, or author a smaller body.");
+          + "OverlapMargin to at least that query radius, or author a smaller body.")
+        {
+            RequiredQueryRadius = radius,
+            InterestRadius = config.InterestRadius,
+            OverlapMargin = config.OverlapMargin,
+            FootprintSize = size,
+        };
     }
 
     // Raised only once the spawn is committed, so a placement or a cap refusal cannot leave the serve paying for a
@@ -102,7 +108,17 @@ public sealed partial class TileWorldServer
     // entity the pass could not measure is KEPT, the same way the plane filter keeps one it could not place.
     bool IsOutsideFootprintInterest(long netId)
     {
-        if (!footprintByNetId.TryGetValue(netId, out TileRect rect)) return false;
+        return footprintByNetId.TryGetValue(netId, out TileRect rect)
+            && IsOutsideFootprintInterest(viewerTileX, viewerTileZ, config.InterestRadius, rect);
+    }
+
+    /// <summary>TileFootprintInterestTests exercises degenerate rectangles without mutating a live serve.
+    /// The public serving tests exercise the same distance predicate through the real interest path.</summary>
+    internal static bool IsOutsideFootprintInterestForTests(float viewerTileX, float viewerTileZ, float radius, TileRect rect)
+        => IsOutsideFootprintInterest(viewerTileX, viewerTileZ, radius, rect);
+
+    private static bool IsOutsideFootprintInterest(float viewerTileX, float viewerTileZ, float radius, TileRect rect)
+    {
         float nearestX = rect.X, nearestZ = rect.Z;
         if (!rect.IsEmpty)
         {
@@ -110,7 +126,6 @@ public sealed partial class TileWorldServer
             nearestZ = Math.Clamp(viewerTileZ, rect.Z, rect.Z1 - 1);
         }
         float dx = nearestX - viewerTileX, dz = nearestZ - viewerTileZ;
-        float radius = config.InterestRadius;
         return dx * dx + dz * dz > radius * radius;
     }
 }

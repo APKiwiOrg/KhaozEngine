@@ -197,9 +197,10 @@ more than a paragraph.
   enumerates `SPVC_RESOURCE_TYPE_{UNIFORM_BUFFER, STORAGE_BUFFER, SEPARATE_IMAGE, STORAGE_IMAGE,
   SEPARATE_SAMPLERS, STAGE_INPUT}`, reads `DescriptorSet` / `Binding` / `Location`, resolves the stage input
   formats through `spvc_type_get_basetype` and `spvc_type_get_vector_size`, sorts, and fills the same
-  `GpuVertexElement` and `GpuResourceLayoutDescription` shapes. The two `ShaderValidationException` messages
-  naming an unmodelled `GpuResourceKind` or `GpuVertexElementFormat` are kept verbatim, because they are how
-  this failure has always read.
+  `GpuVertexElement` and `GpuResourceLayoutDescription` shapes. `ShaderValidationException.Reason` names
+  unmodelled resources with `ReflectionResourceKindUnsupported` and vertex formats with
+  `ReflectionVertexFormatUnsupported`. Native kind or base-type/component identifiers describe the refused
+  shape. Message text remains developer prose.
 - `SpirvToolchainVersion.Identity` reads the Silk.NET assemblies instead, and the token changes shape. It keys
   a disk cache, so the change is the invalidation.
 - The `MSL` binding table replaces `MetalShaderIndexTable`'s parse and the SPIR-V decoration walk behind it,

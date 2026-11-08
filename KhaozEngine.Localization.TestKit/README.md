@@ -37,8 +37,9 @@ public void EveryResxKey_IsTranslatedInEveryShippedCulture()
     => LocalizationCoverage.AssertComplete(Resources.ResourceManager, "es-ES", "fr-FR");
 ```
 
-A gap throws `LocalizationCoverageException` listing every missing key and placeholder mismatch, which fails the
-test. Pass no satellite cultures to check the neutral resx only.
+A gap throws `LocalizationCoverageException`, which fails the test. Its `Findings` list every missing key and
+placeholder mismatch, and its message lists the same gaps for the developer reading the failed run (see
+[Refusals](#refusals)). Pass no satellite cultures to check the neutral resx only.
 
 ## What it checks
 
@@ -70,3 +71,31 @@ test. Pass no satellite cultures to check the neutral resx only.
   xUnit `[Theory]` off the same source.
 - `LocalizationCoverage.NeutralKeys(ResourceManager resources)` - the neutral resx's string-entry keys
   (ordinally sorted), for a `[Theory]` or for filtering before the key-sequence overload.
+
+## Refusals
+
+Every refusal throws `LocalizationCoverageException`, which derives from `Exception`. `Reason` names the rule and
+the message stays developer prose, never a contract. A null keys type, `ResourceManager` or key sequence throws
+`ArgumentNullException`.
+
+The reasons are `LocalizationCoverageRefusal` members.
+
+A coverage failure checks every key in every culture before it throws. `Findings` holds one
+`LocalizationCoverageFinding` per gap, in the order the message lists them: the neutral resx first, then each
+satellite in the order passed, with its missing translations before its placeholder mismatches. `Reason` is the
+first finding's reason. A coverage failure also sets `BaseName` (the `ResourceManager`'s base name), `KeyCount`
+(the distinct keys checked) and, for the keys-class overload, `KeysType`.
+
+| `Reason` | What it refuses | Identifiers |
+| --- | --- | --- |
+| `KeyUniverseEmpty` | a keys class with no key fields, a neutral resx with no string entries or a key sequence with no non-empty key, before any check | `KeysType` (keys class) or `BaseName` (resx), `Findings` null |
+| `NeutralResourcesUnavailable` | a neutral (invariant) resource set that cannot be loaded | `BaseName`. From `NeutralKeys` and the resx overload, which read the universe first, `Findings` is null. From the other overloads it is a finding |
+| `NeutralKeysMissing` | keys the neutral resx does not hold | finding `MissingKeys` |
+| `CultureNameInvalid` | a satellite name that is not a valid culture name | finding `CultureName` |
+| `SatelliteResourcesUnavailable` | a satellite with no resource set of its own, which leaves all `KeyCount` keys unresolved | finding `CultureName` |
+| `TranslationsMissing` | keys a satellite does not hold, read with parent fallback off | finding `CultureName`, `MissingKeys` |
+| `PlaceholderSetMismatch` | a translation whose placeholder indices differ from its neutral template's, one finding per key | finding `CultureName`, `Key`, `ExpectedIndices`, `ActualIndices` |
+
+`MissingKeys` follows the key universe's order, and both index lists are ascending. Every collection is an owned,
+read-only snapshot. Reassigning a nonempty collection, even from the same finding, creates a distinct
+snapshot identity for record equality. A `with` copy without collection reassignment retains equality.

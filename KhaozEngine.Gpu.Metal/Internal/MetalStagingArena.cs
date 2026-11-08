@@ -220,10 +220,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // arena would have to do, costs a whole size class on every power-of-two request.
             if (sizeBytes % CopyAlignment != 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(sizeBytes), sizeBytes,
+                throw new MetalStagingArenaRangeException(MetalStagingArenaRefusal.LeaseSizeUnaligned, nameof(sizeBytes), sizeBytes,
                     "A native Metal staging lease is taken at a multiple of " + CopyAlignment
                     + " bytes, which is what the copy selector requires of its size on macOS. Round the payload "
-                    + "with MetalStagingArena.AlignedCopyBytes before asking for it.");
+                    + "with MetalStagingArena.AlignedCopyBytes before asking for it.")
+                {
+                    AlignmentBytes = CopyAlignment,
+                    RecoveryOperation = "MetalStagingArena.AlignedCopyBytes",
+                };
             }
 
             if (_liveness.IsDead) return default;
@@ -243,6 +247,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ref OpenBlock opened = ref CollectionsMarshal.AsSpan(open)[open.Count - 1];
             if (TryBump(ref opened, sizeBytes, out MetalStagingLease fresh)) return fresh;
 
+            // Internal arithmetic invariant: TakeBlock sizes a fresh block for this aligned request.
             throw new InvalidOperationException(
                 "A native Metal staging block of " + opened.Block.SizeBytes + " bytes could not hold a request "
                 + "of " + sizeBytes + " bytes. A fresh block starts at offset 0, which is aligned to everything, "
@@ -392,11 +397,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (!block.IsValid)
             {
-                throw new InvalidOperationException(
+                throw new MetalStagingArenaStateException(MetalStagingArenaRefusal.BlockAllocationFailed,
                     "The native Metal device would not allocate a " + blockBytes
                     + "-byte Shared staging block for a record-time buffer upload. "
                     + "-newBufferWithLength:options: answers nil only when the allocation itself fails, so this "
-                    + "is memory pressure rather than a malformed request.");
+                    + "is memory pressure rather than a malformed request.")
+                {
+                    BlockBytes = blockBytes,
+                };
             }
 
             return block;

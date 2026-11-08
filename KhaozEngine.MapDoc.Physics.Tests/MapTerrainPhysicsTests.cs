@@ -44,8 +44,20 @@ public class MapTerrainPhysicsTests
 
     [Fact]
     public void DenseCell_RefusesWithPhysicsChunkCapacity()
-        => Assert.Contains("physics chunk capacity", Assert.Throws<MapDocumentException>(() =>
-            MapTerrainPhysics.Compile(NativeWorldFixtures.DenseCell().View, new MapTerrainChunkPolicy(64))).Message);
+    {
+        var view = NativeWorldFixtures.DenseCell().View;
+        var error = Assert.Throws<MapDocumentException>(() => MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(129)));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, error.Reason);
+        Assert.Equal("MaxTrianglesPerChunk", error.Budget);
+        Assert.Equal(new MapPatchKey("dense", 0, 0), error.Patch);
+        Assert.Equal(0, error.SlotCell);
+        Assert.Equal(0, error.CellX);
+        Assert.Equal(0, error.CellZ);
+        Assert.Equal(130, error.ActualCount);
+        Assert.Equal(129, error.Limit);
+        var control = MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(130));
+        Assert.Equal(130, Assert.Single(control.Chunks).TriangleOwners.Count);
+    }
 
     [Fact]
     public void LongStripsAndHighLegacyTerrain_StayWithinTheFeatureQueryExtent()
@@ -108,7 +120,19 @@ public class MapTerrainPhysicsTests
     {
         var view = NativeWorldFixtures.FinePatch().View;
         if (valid) Assert.NotEmpty(MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(cap)).Chunks);
-        else Assert.Throws<ArgumentOutOfRangeException>(() => MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(cap)));
+        else
+        {
+            var error = Assert.Throws<MapWorldBuildRangeException>(() => MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(cap)));
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);
+            Assert.Equal("policy", error.ParamName);
+            Assert.Null(error.ActualValue);
+            Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+            Assert.Equal("MaxTrianglesPerChunk", error.FieldPath);
+            Assert.Equal(cap, error.ActualInteger);
+            Assert.Equal(64, error.MinimumInteger);
+            Assert.Equal(1024, error.MaximumInteger);
+            Assert.NotEmpty(MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(cap < 64 ? 64 : 1024)).Chunks);
+        }
     }
 
     static void AssertEveryFaceOnceWithUniqueIds(TerrainFixture f, MapTerrainChunkSet set)
@@ -121,9 +145,16 @@ public class MapTerrainPhysicsTests
     [Fact]
     public void IncompleteViewAndUnresolvedChain_Refuse()
     {
-        Assert.Contains("complete", Assert.Throws<MapDocumentException>(() =>
-            MapTerrainPhysics.Compile(NativeWorldFixtures.IncompleteView(), new MapTerrainChunkPolicy())).Message);
-        Assert.Contains("unresolved chain", Assert.Throws<MapDocumentException>(() =>
-            MapTerrainPhysics.Compile(NativeWorldFixtures.UnresolvedStripView(), new MapTerrainChunkPolicy())).Message);
+        var incomplete = Assert.Throws<MapDocumentException>(() =>
+            MapTerrainPhysics.Compile(NativeWorldFixtures.IncompleteView(), new MapTerrainChunkPolicy()));
+        Assert.Equal(MapDocumentRefusal.AcquisitionIncomplete, incomplete.Reason);
+        Assert.Equal(KhaozEngine.MapDoc.Storage.MapAcquireStatus.Incomplete, incomplete.AcquireStatus);
+        Assert.Equal("CompileTerrainPhysics", incomplete.Operation);
+        MapDocumentException error = Assert.Throws<MapDocumentException>(() =>
+            MapTerrainPhysics.Compile(NativeWorldFixtures.UnresolvedStripView(), new MapTerrainChunkPolicy()));
+        Assert.Equal(MapDocumentRefusal.PhysicsWallChainUnresolved, error.Reason);
+        Assert.Equal("unresolved-upper", error.RecordId);
+        Assert.Equal(new MapPatchKey("unresolved-yard", 0, 0), error.Patch);
+        Assert.NotEmpty(MapTerrainPhysics.Compile(NativeWorldFixtures.UnresolvedStripView(includeLid: true), new MapTerrainChunkPolicy()).Chunks);
     }
 }

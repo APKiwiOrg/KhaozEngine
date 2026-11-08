@@ -10,10 +10,16 @@ namespace KhaozEngine.Tests.Dungeon
         public void Require_Unmapped_Throws_NamingPiece()
         {
             var map = new DungeonKitMap();
+            map.Map(DungeonPiece.Floor, "floor");
 
-            var ex = Assert.Throws<InvalidOperationException>(() => map.Require(DungeonPiece.Wall));
+            var ex = Assert.Throws<DungeonKitException>(() => map.Require(DungeonPiece.Wall));
 
-            Assert.Contains(nameof(DungeonPiece.Wall), ex.Message);
+            Assert.Equal(DungeonKitRefusal.PieceUnmapped, ex.Reason);
+            Assert.Equal(DungeonPiece.Wall, ex.Piece);
+            Assert.IsAssignableFrom<InvalidOperationException>(ex); // existing catches still hold
+
+            map.Map(DungeonPiece.Wall, "wall");
+            Assert.Equal("wall", map.Require(DungeonPiece.Wall));
         }
 
         [Fact]

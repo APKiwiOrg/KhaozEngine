@@ -61,6 +61,23 @@ The binding creates its movement view with ground handles excluded. Ground meshe
 complete physics world. Use `CreateMovementRegistrationBuilder(worldId, combinedExtent)` to retain tile owners
 and exclusions while adding other installed statics. Build that combined registration under a fresh source lease.
 
+A complete ground installation also attaches optional `OrdinaryMovementRegistration.AnalyticSupport`.
+The captured source offers `IMovementFlatAnalyticSupportSource` for exact constant-height regions, including
+flat cell seams. Nonuniform or missing captured triangles decline this optional arrival proof and keep live
+movement previews. [Analytic support provenance](../KhaozEngine.Locomotion/README.md#analytic-support-provenance)
+defines the certificate contract.
+It recognizes the exact captured `MovementGroundHeight` and `MovementGroundNormal` delegates in world coordinates.
+Wrapping those delegates requires a separately authenticated source, even when their sampled values agree.
+The canonical key qualifies packed signed tile X/Z and the triangle ordinal with the world and immutable captured
+lattice fingerprint. It uses the same drawn-triangle selector as the field. Shared-edge adjacency comes from the
+original integer half-tile lattice, including partial edge joins at corner cuts. It does not join faces by height.
+Keys survive a rebase and are independent of local handles. Editing the source document cannot mutate the captured
+identity. Rebuilding edited geometry produces new provenance. No authored file format changes are needed.
+
+Holes, clamped exterior samples, unknown keys and a partial installation that omits any ground collider supply no
+analytic identity. Ordinary movement and its existing fallback sampling remain unchanged. Only an identity consumer
+must refuse that unavailable evidence. This capability does not create terrain navigation links.
+
 Retain the returned `OrdinaryMovementRegistration` for `ApplyRuntimeStatics` batches between movement reads.
 Use `CreateMovementRegistrationBuilder(worldId, combinedExtent)` to reserve possible runtime height and width
 before binding, even for a flat tile world. The default tile extent does not reserve future walls automatically.
@@ -76,11 +93,20 @@ Outside the loaded bounding rectangle, captured analytic terrain extends the nea
 including objects outside their anchor region.
 
 `TileMediumSampler` implements `IMovementWaterField` with immutable body identities, finite beds and free surfaces.
+Its optional `IMovementDryTracePointProof` accepts only a trace whose directed lateral capsule-path bounds are
+disjoint from every captured column projection. Such points return Known dry before any rounded drawn-bed
+lookup, even at large coordinates. An overlapping projection declines the proof, including dry regions below
+beds or above water, because the separate bed lookup can refuse. This adds no tolerance and does not relax any
+trace precision or capacity check. The bound uses the same immutable column index as point selection.
 A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
-feet in [bed, surface). Its trace certifies rounded capsule coverage of the framed sweep against column unions,
-including exposed face patches and dry volume.
-Point and trace queries receive the physics-local body plus its frame origin and compare their double sum
-against the captured absolute column bounds. An immutable column index searches the actual rounded XZ bounds,
+feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height
+evaluation. The lower boundary follows the selected triangle at the queried axis, including sloped beds and a
+level triangle beside a lower corner. A triangle at or above the free surface contributes no positive water volume.
+Trace coverage uses water prisms bounded by those triangles and clipped at the body's free surface, including
+exposed patches and dry volume. Internal triangle and same-body tile edges contribute no dry wall.
+Point and trace queries receive the physics-local body plus its frame origin. Exact predicates select the
+lateral column, then the bed uses the same world-axis mapping as ordinary support. An immutable column index
+searches the actual rounded XZ bounds,
 including large tile addresses whose rounded faces move across several nominal tiles. Candidate generation
 does not assume a fixed neighbouring-tile radius and never turns a missing candidate into a false dry fact.
 Equal-height bodies in different regions keep distinct identities. Internal same-body faces are suppressed.
@@ -172,12 +198,24 @@ complete collider hash and tuning unchanged. Consumer material policies belong i
 - **`TileCollider(Kind, Shape, Pose)`**: one static. `TileColliderKind` is `Ground`, `Wall`, `Blocked`, `Object` or
   `WalkSurface`, and its declaration order is the canonical order.
 - **`TileColliderOptions`**: `WallThickness` (0.1 m), `BlockedHeight` (null means the document's plane height) and
-  `WalkSurfaceThickness` (0.1 m). `Build` refuses a value that is not a finite number above 0 with an
-  `ArgumentOutOfRangeException` naming the option.
+  `WalkSurfaceThickness` (0.1 m). `Build` refuses a value that is not a finite number above 0 with a
+  `TileColliderOptionsRangeException` carrying `TileColliderOptionsRefusal.OptionNotFinitePositive`, `OptionName`,
+  `ParamName = options` and the numeric `ActualValue`.
 - **`TileColliderRegistration`**: compact `Handles`, original `ColliderIndices`, selected `GroundHandles`,
   `Remove` and `Dispose`.
 - **`TileGroundSampler`**: `HeightAt(worldX, worldZ)` and `NormalAt(worldX, worldZ)`.
 - **`TileMediumSampler`**: `MediumAt(worldX, worldZ, feetY)`.
+
+## Refusals
+
+Inspect the reason and identifiers rather than parsing the developer-facing message.
+`TileColliderOptionsRangeException` derives from `ArgumentOutOfRangeException`, so existing range catches still
+match. Missing collision heights keep the exact `TileWorldException` type.
+
+| Exception and reason | What it refuses | Identifiers |
+| --- | --- | --- |
+| `TileColliderOptionsRangeException`, `TileColliderOptionsRefusal.OptionNotFinitePositive` | A thickness or set blocked height that is not finite and positive | `OptionName`, `ParamName = options`, `ActualValue` |
+| `TileWorldException`, `TileWorldRefusal.ColliderCollisionHeightMissing` | A collidable placed archetype without a collision height | `ArchetypeId`, `CollisionKind`, `ObjectId`, `Tile` including its known plane |
 
 ## What becomes a collider
 
@@ -204,7 +242,8 @@ an object top. A deck, a crate or a bridge holds a body up only as a physics sta
 high deck on the ground and stand on it from above.
 
 **Every Solid, Diagonal, Wall and WallCorner archetype needs a `collisionHeight`.** `Build` throws a
-`TileWorldException` naming the archetype when a placed one has none. `ke-tileedit` fills them from the kit:
+`TileWorldException` with `TileWorldRefusal.ColliderCollisionHeightMissing`, `ArchetypeId`, `CollisionKind`,
+`ObjectId` and `Tile` when a placed one has none. `ke-tileedit` fills them from the kit:
 `archetype_measure_heights` reads each model's top and `archetype_set_collision_heights` writes the heights into the
 catalog files.
 
@@ -248,13 +287,31 @@ bounding the loaded regions is first moved just inside it, so the floor carries 
 tile with no ground (no underlay, `TileSettings.NoDraw`, or a missing region inside the rectangle) they answer the
 document's lattice height, `TileWorldDocument.HeightAt`, with a straight up normal. They never answer NaN.
 
+Triangle heights interpolate differences from one lattice vertex. A level triangle keeps that exact lattice
+height, so certified support and the water field use the same bed boundary.
+The evaluated height stays inside the selected triangle's exact vertex range, including rounded seams. This
+prevents a rounding undershoot from creating support or water below a level that all drawn vertices bound.
+Captured support and water borrow the same immutable triangle records. The water semantic identity includes
+their complete captured geometry and loaded-region arrangement, so edits that change a sampled bed invalidate
+the field identity even when the tile's minimum corner stays unchanged.
+
 `MediumAt` is in water only when the point is over a water body and `feetY` is below that body's surface, so a body
 standing on a deck above a river is dry. The surface is the body's rim less `TileWaterBodies.SurfaceDropMetres`. An
 in-water answer is always built through the `MovementMedium` constructor and leaves the wade speed to the tuning.
 
 The legacy samplers have no shared scratch. The ground sampler needs its document to remain unedited while read.
 The water field and certified ground delegates retain immutable captured data. Water tracing uses bounded
-per-thread scratch and precomputed exact rectangular unions, so independent readers do not share scratch.
+per-thread scratch and precomputed exterior topology. A proved constant captured bed can use an exact rectangular
+union specialization. Immutable bounds trees select flat columns and their boundary and exterior patches in original
+source order. A whole capsule path with no potential column certifies a single dry interval immediately, without
+geometric intersections. Nonuniform-bed selection uses its own captured column tree. Fixed candidate storage is
+only an optimization: overflow retains the original full scan and all original refusal limits. Trace certificates include represented height-evaluation and geometric arithmetic error.
+Point membership retains exact half-open comparisons, and an error beyond the existing coverage limit refuses
+the whole trace. A finite over-budget certificate reports `MovementAvailability.PrecisionExceeded` without
+publishing spans or contacts. Unresolved geometry and unavailable evidence keep their existing refusal kinds.
+Independent readers do not share mutable scratch.
+An owned lateral column with no reachable captured bed answers unresolved. Represented loaded rectangles use
+directed lower and upper bounds, retaining a coordinate even when the nominal region is narrower than one float step.
 
 These providers were audited for a parallel contact navigation bake, `NavBakeExecution` above degree 1 in
 [KhaozEngine.Movement](../KhaozEngine.Movement/README.md#parallel-contact-bake), and are endorsed by method:

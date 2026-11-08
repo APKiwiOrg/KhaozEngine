@@ -20,9 +20,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// <para>
     /// A PIPELINE THAT DOES NOT IMPLEMENT THIS DECLARES NO LAYOUTS, which the flush treats as an empty array
-    /// rather than an error. Binding a set under such a pipeline then fails at the flush with the register
-    /// scheme's own "the set index addresses the pipeline's resource-layout array" message, which names the actual
-    /// mismatch, instead of failing at the pipeline bind with a message about an interface.
+    /// rather than an error. Binding a set under such a pipeline then fails at the flush when the set index
+    /// is outside the pipeline's resource-layout array.
     /// </para>
     /// </summary>
     internal interface ID3D11PipelineLayouts

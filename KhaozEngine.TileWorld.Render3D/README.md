@@ -92,7 +92,9 @@ so nothing in the upload path moves.
 - **The colour path stays, and nothing in the mesh path reads it.** `TileGroundMesher.CornerColor` still blends
   the up-to-four sharing visible underlays' jittered material colours (`TileColors.Blend`, all-void blends to
   `TileColors.Void`), and `TileColors.Parse` still reads `#rrggbb` or `#rrggbbaa` and throws
-  `TileWorldException` on anything else, a null colour included. That pair is the GPU-free
+  `TileWorldException` on anything else, selecting `TileWorldRefusal.ColourNull`, `ColourShapeInvalid` or
+  `ColourDigitInvalid`. Malformed strings carry `ColourText`, and a bad digit also carries `CharacterIndex`
+  and `Character`. A null colour carries no identifiers. That pair is the GPU-free
   colour surface, for a caller that wants a tile's colour without the textured pipeline behind it: a minimap, a
   2D painter, a tool query. The vertices do not carry it any more, and the mesher itself only calls
   `TileColors.Jitter`.
@@ -148,13 +150,17 @@ a catalog id with its layer and `MissingSlot` is that trailing layer, which is w
 - **Paths resolve against the catalog FILE.** A relative `Texture` is combined with the directory of the catalog
   the material was declared in (`TileWorldCatalogs.MaterialSource`), the same rule `world.json` uses for its
   catalog paths. An absolute path is taken as written. A catalog built in memory has no directory to resolve
-  against, so a relative texture on one throws a `TileWorldException` naming the material.
+  against, so a relative texture on one throws a `TileWorldException` with
+  `TileWorldRefusal.GroundMaterialTextureSourceMissing`, `MaterialId`, `MaterialName` and `TexturePath`.
 - **One size for the whole set.** Every layer is one slice of ONE texture array, so the first textured material
-  decides the size and any other textured material of a different size throws, naming the material and both sizes,
-  rather than being resampled behind your back. With nothing textured the flat fills are 1x1.
+  decides the size and any other textured material of a different size throws `TileWorldException` with
+  `TileWorldRefusal.GroundMaterialTextureSizeMismatch`. It carries `MaterialId`, `MaterialName`, `Width`,
+  `Height`, `ReferenceMaterialId`, `ReferenceMaterialName`, `ExpectedWidth` and `ExpectedHeight`, rather than
+  resampling behind your back. With nothing textured the flat fills are 1x1.
 - `TilesPerMetre` is the material's own value or `TileGroundMaterials.DefaultTilesPerMetre` (0.5, a 2 m repeat).
-  A catalog larger than `TileGroundMaterialConfig.MaxMaterials - 1` materials throws: the set is one uniform
-  buffer, and splitting a catalog across several sets is not built.
+  A catalog larger than `TileGroundMaterialConfig.MaxMaterials - 1` materials throws `TileWorldException` with
+  `TileWorldRefusal.GroundMaterialLayerLimitExceeded`, `MaterialCount` and `MaximumMaterialCount`: the set is
+  one uniform buffer, and splitting a catalog across several sets is not built.
 
 Hand-build a `TileGroundMaterialSet` directly when the layers come from somewhere other than a catalog. The
 constructor takes the size, the material id of each leading slot, and one layer per id PLUS the trailing reserved
@@ -265,7 +271,9 @@ differences in scale (the sea's 1.6 m foam band and 2.5 m ripple wavelength woul
 Its column inputs are linear RGB `WaterColor = (0.28, 0.30, 0.18)` and `Clarity = 1.5` m, chosen by the owner
 from synthetic daylight renders for a sunlit silty river close to the current tone, with an attached column
 shadow and physical depth fade. `WaterColumnLight` remains null, so consumers must explicitly opt in through
-their scene settings or a copied look. Grimhollow chooses its own final tuning at adoption.
+their scene settings or a copied look. River sets `CausticStrength = 4` from the owner's engine contact sheets and
+leaves the caustic opt-in inherited, so consumers still opt in explicitly. Grimhollow chooses its own final tuning
+at adoption.
 **It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
 own through `TileWorldViewOptions.WaterLook`.
 
@@ -595,11 +603,13 @@ refuses the call clearly because neither a rigid fallback nor a no-op can preser
 `DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, boneMatrices)` carry a full draw descriptor,
 motion key included, so a moving body reports its own motion to temporal rendering. The shipped adapter forwards them
 whole. Their defaults fall back to the older draws, so an older scene keeps compiling and draws what it drew before.
-The rigid default drops the key, the tint, the material, `CastsShadows` and `InvertShadowDissolve`, and does not
+The rigid default drops the key, the tint, the material, `ShadowMobility`, `CastsShadows` and `InvertShadowDissolve`, and does not
 forward `DissolveComplement`. It draws nothing for a shadow-only descriptor. It also draws nothing for a complement
 phase above one half with no dissolve. `Scene3D` shows no body for that draw, at most a shadow, so the fallback treats
-it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the same `ArgumentException`
-the scene's instance queue throws. The skinned default keeps the tint, drops the key, the material and the shadow opt-out, and
+it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws
+`DrawAdmissionArgumentException` with `DrawAdmissionRefusal.ShadowOnlyWithoutCasting`, `ShadowOnly`,
+`CastsShadows` and `ParamName` set to `draw`. The scene's instance queue uses the same shared reason.
+The skinned default keeps the tint, drops the key, the material and the shadow opt-out, and
 still refuses the call on a scene without skinned meshes.
 `CreatePropClusterOwner()` is the opt-in cluster seam. Its default throws `NotSupportedException`, so a custom
 scene can continue to host an ordinary view and fails clearly only when `PropLayers` asks it for large-world
@@ -647,8 +657,9 @@ catalog archetype up front, so a region load is placements alone.
   `ArchetypeIds`, `DrawRadius`, `LodDistance`, `LodCrossfadeWidth`, `HlodDistance`, `HlodCrossfadeWidth`,
   `HlodWeldCell`, and `CastsShadows` (default true). Construction rejects missing archetypes, duplicate layer IDs,
   duplicate archetype selection, non-finite or negative tuning, and a LOD or HLOD distance past
-  the draw radius. A layer selects either only catalog roofs or no roofs. Mixing them fails before upload,
-  naming the layer and both kinds. Roof layers cannot enable `CutInsideInteriors`.
+  the draw radius. A layer selects either only catalog roofs or no roofs. Mixing them fails before upload.
+  `TilePropLayerArgumentException` carries `TilePropLayerRefusal.RoofAndOrdinaryMixed`, `LayerId`,
+  `RoofArchetypeId` and `OrdinaryArchetypeId`. Roof layers cannot enable `CutInsideInteriors`.
   When HLOD is enabled, its positive distance must also be greater than `LodDistance`.
   A selected object leaves the ordinary prop list and enters exactly one `TilePropLayerSnapshot`, so it cannot
   double-submit. `TileRegionProps` publishes these detached, object-ID-ordered batches with region, plane and
@@ -790,9 +801,11 @@ The host advances `Scene3D.EffectTimeSeconds`.
 `AnimatedFoliageStyle(FoliageMotionProfile Motion, bool CastsShadows)`. It starts empty and refuses
 null. A selected archetype without a style uses `FoliageMotionProfile.Blade` `(1, 0.65, 1, 0)` with
 casting off, independently of short cover's global casting. A style outside the selection or not
-exactly naming an authored selected archetype throws `ArgumentException` naming its ID. Selected
+exactly naming an authored selected archetype throws `AnimatedFoliageStyleArgumentException` with
+`Reason = AnimatedFoliageStyleRefusal.StyleOutsideSelection` and `ArchetypeId`. Selected
 archetypes sharing a catalog mesh reference or any resolved multipart mesh handle must have the same
-effective motion and casting style, including omitted defaults. A conflict names both IDs.
+effective motion and casting style, including omitted defaults. A conflict carries
+`AnimatedFoliageStyleRefusal.SharedMeshStyleConflict`, `FirstArchetypeId` and `SecondArchetypeId`.
 
 ```csharp
 options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall", "bush" };
@@ -877,8 +890,9 @@ collision, navigation, simulation, replication or hashes.
   change eligibility, including regions reached by the door clearance.
 - A DIRTY region is never dropped: unloading one with unsaved edits would throw, so it stays resident past the
   ring and says so once through `Log`. Regions the manifest does not list are skipped and do not spend the budget.
-- A torn region file throws `TileWorldException` straight out of `Update`. A world whose files no longer match
-  what wrote them is not something a streaming loop should paper over by drawing a hole.
+- A torn region file throws `TileWorldException` straight out of `Update`, with
+  `TileWorldRefusal.RegionHashMismatch`, `Region`, `SourceName`, `ExpectedHash` and `ActualHash`. A world whose
+  files no longer match what wrote them is not something a streaming loop should paper over by drawing a hole.
 
 The first shared one-metre-tile profile is:
 
@@ -977,3 +991,41 @@ it can gate, or a Metal-only bake turns `main` red on every other backend.
 Cut-aware object and walk-surface picks use `ITileWorldScene.InteriorCutFrame` from the current picture.
 `Scene3DTileWorldScene` supplies the live scene origin. A custom scene supplies the same frame it used for
 its interior cut uniforms. The default frame and the frameless core query overloads use origin zero.
+
+## TileWorld render refusals
+
+`AnimatedFoliageStyleArgumentException`, `TileGroundMaterialSetArgumentException` and
+`TilePropLayerArgumentException` derive from `ArgumentException`. `TilePropLayerRangeException` derives from
+`ArgumentOutOfRangeException`. Each carries a non-null `Reason` and preserves `ParamName` and any `ActualValue`.
+Optional identifiers are null when that reason does not use them. Messages remain developer prose.
+Shared steep-band rules forward `TileGroundSteepArgumentException` from Render3D without translation.
+Catalog companion checks in `TileGroundMaterials.Build` delegate to `GroundMaterialSteepRules` and throw
+`TileWorldException` with the core `TileWorldRefusal` reason, `SourceName` equal to `ground material set`,
+`MaterialId`, `MaterialName` and the applicable companion or band identifiers. See the
+[core refusal table](../KhaozEngine.TileWorld/README.md#refusals) for the seven steep reasons.
+
+| Reason | Refused input | Identifiers |
+|---|---|---|
+| `TileWorldRefusal.GroundMaterialLayerLimitExceeded` | a catalog with too many materials for one set including its reserved layer | `MaterialCount`, `MaximumMaterialCount` |
+| `TileWorldRefusal.GroundMaterialTextureSizeMismatch` | a texture whose dimensions differ from the first textured material | `MaterialId`, `MaterialName`, `Width`, `Height`, `ReferenceMaterialId`, `ReferenceMaterialName`, `ExpectedWidth`, `ExpectedHeight` |
+| `TileWorldRefusal.GroundMaterialTextureSourceMissing` | a relative texture on a catalog with no source file | `MaterialId`, `MaterialName`, `TexturePath` |
+| `TileWorldRefusal.ColourNull` | a null authored colour | none |
+| `TileWorldRefusal.ColourShapeInvalid` | a colour without the `#rrggbb` or `#rrggbbaa` shape | `ColourText` |
+| `TileWorldRefusal.ColourDigitInvalid` | a non-hex character in a correctly shaped colour | `ColourText`, `CharacterIndex`, `Character` |
+| `AnimatedFoliageStyleRefusal.StyleOutsideSelection` | a style key that does not exactly name a selected authored archetype | `ArchetypeId` |
+| `AnimatedFoliageStyleRefusal.SharedMeshStyleConflict` | selected archetypes sharing geometry with different effective styles | `FirstArchetypeId`, `SecondArchetypeId` |
+| `TileGroundMaterialSetRefusal.LayerCountMismatch` | layers not matching material count plus the reserved layer | `MaterialCount`, `ActualLayerCount`, `RequiredLayerCount` |
+| `TileGroundMaterialSetRefusal.LayerLimitExceeded` | a hand-built set above the material layer limit | `LayerCount`, `MaximumLayerCount` |
+| `TileGroundMaterialSetRefusal.LayerByteLengthMismatch` | a material layer with the wrong RGBA byte length | `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width`, `Height` |
+| `TileGroundMaterialSetRefusal.DuplicateMaterialId` | a material id assigned to more than one render slot | `MaterialId`, `FirstSlot`, `DuplicateSlot` |
+| `TileGroundMaterialSetRefusal.MissingLayerHasCompanion` | a steep companion on the reserved missing-material layer | `LayerIndex` |
+| `TileGroundMaterialSetRefusal.CompanionIsMissingLayer` | a steep companion referencing the reserved missing slot | `LayerIndex`, `CompanionSlot`, `MaterialSlotCount` |
+| `TilePropLayerRefusal.DefinitionNull` | a null prop-layer definition | `LayerIndex` |
+| `TilePropLayerRefusal.LayerIdMissing` | a prop layer without an id | `LayerIndex` |
+| `TilePropLayerRefusal.LayerIdDuplicate` | duplicate prop-layer ids | `LayerId`, `LayerIndex` |
+| `TilePropLayerRefusal.SelectionEmpty` | a prop layer selecting no archetypes | `LayerId` |
+| `TilePropLayerRefusal.ArchetypeMissing` | a prop layer naming an unknown archetype | `LayerId`, `ArchetypeId` |
+| `TilePropLayerRefusal.ArchetypeSelectedTwice` | an archetype selected by multiple prop layers | `ArchetypeId`, `FirstLayerId`, `SecondLayerId` |
+| `TilePropLayerRefusal.RoofAndOrdinaryMixed` | a layer mixing roof and ordinary archetypes | `LayerId`, `RoofArchetypeId`, `OrdinaryArchetypeId` |
+| `TilePropLayerRefusal.RoofInteriorCutEnabled` | a roof layer enabling interior cuts | `LayerId` |
+| `TilePropLayerRefusal.DistanceOrderingInvalid` | aggregate LOD HLOD and draw distances with an invalid ordering | `LayerId`, `LodDistance`, `HlodDistance`, `DrawRadius` |

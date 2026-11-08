@@ -247,12 +247,25 @@ public sealed class PrefabVillageWorkflowTests
 
         // The same second request without its override, and one with duplicate initial keys, refuse without any trace.
         var second = Request("canopy-b", 28.25f, -26.125f);
-        foreach (var (request, fault) in new[] { (second, "duplicate marker name 'Canopy entry'"),
-            (second with { InitialOverrides = new[] { Named("arrival-b"), Named("arrival-c") } }, "Duplicate initial override") })
+        foreach (var (request, reason) in new[] { (second, MapDocumentRefusal.MarkerNameDuplicate),
+            (second with { InitialOverrides = new[] { Named("arrival-b"), Named("arrival-c") } }, MapDocumentRefusal.PrefabOverrideDuplicate) })
         {
             var refused = Assert.Throws<MapDocumentException>(() => mutation.PrefabApply(request));
-            Assert.Contains(fault, refused.Message, StringComparison.Ordinal);
-            Assert.Contains(fault, Text(await Place(request, false)), StringComparison.Ordinal);
+            Assert.Equal(reason, refused.Reason);
+            if (reason == MapDocumentRefusal.MarkerNameDuplicate)
+            {
+                Assert.Equal("Canopy entry", refused.MarkerName);
+                Assert.Equal(new[] { "canopy/entry", "prefab/canopy-b/Marker/entry" }, refused.MarkerIds);
+                Assert.Equal(reason, Assert.Single(refused.Findings!).Reason);
+            }
+            else
+            {
+                Assert.Equal(entry.Key, refused.Child);
+                Assert.Equal("canopy-b", refused.InstanceId);
+                Assert.Equal(1, refused.Index);
+                Assert.Equal("$.initialOverrides[1]", refused.FieldPath);
+            }
+            await Place(request, false);
             Assert.Equal(afterFirst, Bytes(direct)); Assert.Equal(afterFirst, Bytes(live));
             Assert.Equal(history, direct.NativeHistoryState); Assert.Equal(liveHistory, live.NativeHistoryState);
             Assert.DoesNotContain(PrefabEditorFixtures.Document(direct).Prefabs!.Instances, i => i.Id == "canopy-b");

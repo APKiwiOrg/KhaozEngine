@@ -164,11 +164,13 @@ public class GameContentTypesRegisterTests
     }
 
     [Fact]
-    public void RegisteringTwiceIsRefusedRatherThanQuietlyReplacing()
+    public void AnOccupiedTypeIdIsRefusedRatherThanQuietlyReplacing()
     {
-        ContentTypeRegistry registry = Registered();
+        ContentTypeRegistration declaration = Registered().ByTypeId.First(type => type.Band == ContentRegistrationBand.Game);
+        ContentTypeRegistry registry = ContentRegistryRefusalFixtures.WithOccupiedTypeId(declaration);
 
-        Assert.Throws<ContentRegistrationException>(
+        ContentRegistrationException error = Assert.Throws<ContentRegistrationException>(
             () => GameContentTypes.Register(registry, ContentDurationUnit.Ticks, Options()));
+        Assert.Equal(ContentRegistrationRefusal.TypeIdDuplicate, error.Reason);
     }
 }

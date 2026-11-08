@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -94,11 +95,16 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(Assert.Single(bindings).PerInstance);
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => VulkanVertexInput.Build(
+            VulkanVertexInputException ex = Assert.Throws<VulkanVertexInputException>(() => VulkanVertexInput.Build(
                 [new GpuVertexLayoutDescription(0, 2, [new GpuVertexElement("I", GpuVertexElementFormat.Float4)])],
                 out _));
 
-            Assert.Contains("divisor", ex.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.Equal(VulkanVertexInputRefusal.InstanceDivisorUnsupported, ex.Reason);
+            Assert.Equal("stepRate", ex.ParamName);
+            Assert.Equal(2u, ex.InstanceStepRate);
+            Assert.Equal(0, ex.Slot);
+            Assert.Equal(1u, ex.MaximumStepRate);
         }
 
         /// <summary>A FULLSCREEN PASS DECLARES NO VERTEX LAYOUT AT ALL, which is a legal and common vertex input
@@ -193,21 +199,22 @@ namespace KhaozEngine.Tests.Gpu
         {
             // Fewer declared than there are outputs. Padding would write every channel of an attachment nobody
             // described.
-            ArgumentException tooFew = Assert.Throws<ArgumentException>(
+            GpuPipelineOutputsException tooFew = Assert.Throws<GpuPipelineOutputsException>(
                 () => VulkanGraphicsPipelineSpec.ResolveBlends([GpuBlendAttachment.AlphaBlend], colourCount: 3));
 
-            Assert.Contains("1 blend attachment state", tooFew.Message, StringComparison.Ordinal);
-            Assert.Contains("3 colour output", tooFew.Message, StringComparison.Ordinal);
-            Assert.Contains("one per colour output", tooFew.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuPipelineOutputsRefusal.BlendCountMismatch, tooFew.Reason);
+            Assert.Equal(1, tooFew.DeclaredBlendCount);
+            Assert.Equal(3, tooFew.ColourOutputCount);
+            Assert.Equal("graphics", tooFew.PipelineKind);
 
             // More declared than there are outputs: the extras name attachments that do not exist, and dropping
             // them throws away a state the caller wrote and meant.
-            Assert.Throws<ArgumentException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(
+            Assert.Throws<GpuPipelineOutputsException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(
                 [GpuBlendAttachment.AlphaBlend, GpuBlendAttachment.Additive], colourCount: 1));
 
             // Declaring none is a mismatch too, whenever there IS a colour output to describe.
-            Assert.Throws<ArgumentException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(null, 1));
-            Assert.Throws<ArgumentException>(
+            Assert.Throws<GpuPipelineOutputsException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(null, 1));
+            Assert.Throws<GpuPipelineOutputsException>(
                 () => VulkanGraphicsPipelineSpec.ResolveBlends([GpuBlendAttachment.OverrideBlend], 0));
         }
 
@@ -226,13 +233,13 @@ namespace KhaozEngine.Tests.Gpu
                 var shaders = (VulkanShaderSet)fixture.Factory.CreateShadersFromSpirv(VertGlsl, FragGlsl);
                 owned.Add(shaders);
 
-                ArgumentException ex = Assert.Throws<ArgumentException>(
+                GpuPipelineOutputsException ex = Assert.Throws<GpuPipelineOutputsException>(
                     () => fixture.Factory.CreateGraphicsPipeline(Description(shaders, [],
                         outputs: new GpuOutputDescription(
                             null, GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R16G16B16A16Float),
                         blends: [GpuBlendAttachment.AlphaBlend])));
 
-                Assert.Contains("one per colour output", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(GpuPipelineOutputsRefusal.BlendCountMismatch, ex.Reason);
                 Assert.Empty(fixture.PipelineApi.Graphics);
             }
             finally
@@ -429,22 +436,25 @@ namespace KhaozEngine.Tests.Gpu
                 var shaders = (VulkanShaderSet)fixture.Factory.CreateShadersFromSpirv(VertGlsl, FragGlsl);
                 owned.Add(shaders);
 
-                ArgumentException foreignShaders = Assert.Throws<ArgumentException>(
+                GpuResourceOwnershipArgumentException foreignShaders = Assert.Throws<GpuResourceOwnershipArgumentException>(
                     () => fixture.Factory.CreateGraphicsPipeline(Description(new ForeignShaderSet(), [])));
-                Assert.Contains("not compiled by the native Vulkan backend", foreignShaders.Message,
-                    StringComparison.Ordinal);
+                Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, foreignShaders.Reason);
+                Assert.Equal(GpuBackendKind.VulkanNative, foreignShaders.ExpectedBackend);
+                Assert.Equal(typeof(ForeignShaderSet), foreignShaders.ActualType);
 
-                ArgumentException foreignLayout = Assert.Throws<ArgumentException>(
+                GpuResourceOwnershipArgumentException foreignLayout = Assert.Throws<GpuResourceOwnershipArgumentException>(
                     () => fixture.Factory.CreateGraphicsPipeline(
                         Description(shaders, [new ForeignResourceLayout()])));
-                Assert.Contains("not created by the native Vulkan backend", foreignLayout.Message,
-                    StringComparison.Ordinal);
+                Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, foreignLayout.Reason);
+                Assert.Equal(GpuBackendKind.VulkanNative, foreignLayout.ExpectedBackend);
+                Assert.Equal(typeof(ForeignResourceLayout), foreignLayout.ActualType);
 
-                ArgumentException foreignCompute = Assert.Throws<ArgumentException>(
+                GpuResourceOwnershipArgumentException foreignCompute = Assert.Throws<GpuResourceOwnershipArgumentException>(
                     () => fixture.Factory.CreateComputePipeline(
                         new GpuComputePipelineDescription(new ForeignComputeShader())));
-                Assert.Contains("not compiled by the native Vulkan backend", foreignCompute.Message,
-                    StringComparison.Ordinal);
+                Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, foreignCompute.Reason);
+                Assert.Equal(GpuBackendKind.VulkanNative, foreignCompute.ExpectedBackend);
+                Assert.Equal(typeof(ForeignComputeShader), foreignCompute.ActualType);
 
                 Assert.Empty(fixture.PipelineApi.Graphics);
                 Assert.Empty(fixture.PipelineApi.Compute);
@@ -481,8 +491,9 @@ namespace KhaozEngine.Tests.Gpu
                     owned.Add(layouts[i]);
                 }
 
-                Assert.Throws<NotSupportedException>(
-                    () => fixture.Factory.CreateGraphicsPipeline(Description(shaders, layouts)));
+                Assert.Equal(VulkanDescriptorLimitRefusal.DynamicUniformLimitExceeded,
+                    Assert.Throws<VulkanDescriptorLimitException>(
+                        () => fixture.Factory.CreateGraphicsPipeline(Description(shaders, layouts))).Reason);
 
                 Assert.Empty(fixture.PipelineApi.Graphics);
             }

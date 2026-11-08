@@ -49,29 +49,16 @@ public class CharacterMovementMediumTests
         Assert.Equal(1f, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, dry), 6);
     }
 
-    [Fact]
-    public void Wade_scale_is_full_at_and_below_ankle_depth()
+    [Theory]
+    [InlineData(0.15f, 1f, 6)] // Ankle boundary.
+    [InlineData(0.05f, 1f, 6)] // Below ankle.
+    [InlineData(0.65f, 0.45f, 6)] // Chest boundary, minimum scale.
+    [InlineData(1f, 0.45f, 6)] // Beyond chest.
+    [InlineData(0.40f, 0.725f, 5)] // Halfway through the ramp.
+    [InlineData(0.275f, 0.8625f, 5)] // One quarter through the ramp.
+    public void Wade_scale_follows_the_depth_ramp(float depth, float expected, int precision)
     {
-        // At the start depth (0.15) exactly, and shallower (0.05), still full speed.
-        Assert.Equal(1f, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(0.15f)), 6);
-        Assert.Equal(1f, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(0.05f)), 6);
-    }
-
-    [Fact]
-    public void Wade_scale_hits_the_floor_at_and_beyond_chest_depth()
-    {
-        // At the end depth (0.65) and deeper (1.0) the ramp sits at the floor (0.45).
-        Assert.Equal(Unit.WadeMinSpeedScale, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(0.65f)), 6);
-        Assert.Equal(Unit.WadeMinSpeedScale, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(1.0f)), 6);
-    }
-
-    [Fact]
-    public void Wade_scale_lerps_linearly_between_ankle_and_chest()
-    {
-        // Midpoint depth 0.40: tNorm = (0.40 - 0.15) / (0.65 - 0.15) = 0.5, ramp = 1 + (0.45 - 1) * 0.5 = 0.725.
-        Assert.Equal(0.725f, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(0.40f)), 5);
-        // Quarter of the way in, depth 0.275: tNorm = 0.25, ramp = 1 + (-0.55) * 0.25 = 0.8625.
-        Assert.Equal(0.8625f, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(0.275f)), 5);
+        Assert.Equal(expected, CharacterMovement.WadeSpeedScale(0f, 0f, 0f, Unit, Water(depth)), precision);
     }
 
     [Fact]
@@ -144,6 +131,7 @@ public class CharacterMovementMediumTests
         Vector3 wet = CharacterMovement.Step(Standing, Forward, 1f, Flat, Unit, null, Water(1.0f));
         float dryDist = MathF.Abs(dry.Z - Standing.Z);
         float wetDist = MathF.Abs(wet.Z - Standing.Z);
+        Assert.True(dryDist > 0f);
         Assert.Equal(dryDist * Unit.WadeMinSpeedScale, wetDist, 5);
     }
 
@@ -155,6 +143,7 @@ public class CharacterMovementMediumTests
         MoveState wet = CharacterMovement.Step(s, Forward, 1f, Flat, Unit, null, null, null, Water(0.40f));  // ramp 0.725
         float dryDist = MathF.Abs(dry.Position.Z - Standing.Z);
         float wetDist = MathF.Abs(wet.Position.Z - Standing.Z);
+        Assert.True(dryDist > 0f);
         Assert.Equal(dryDist * 0.725f, wetDist, 5);
     }
 

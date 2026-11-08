@@ -115,19 +115,28 @@ public class ExchangeHostingPrimitiveTests
         IPNetwork catchAll = scenario == "default" ? default : IPNetwork.Parse(scenario);
         IPNetwork[] trusted = { IPNetwork.Parse("10.0.0.0/8"), catchAll };
 
-        ArgumentException helper = Assert.Throws<ArgumentException>(() => TrustedProxyNetworks.WithBothFamilies(trusted));
-        ArgumentException atAdd = Assert.Throws<ArgumentException>(() =>
+        TrustedProxyConfigurationException helper = Assert.Throws<TrustedProxyConfigurationException>(
+            () => TrustedProxyNetworks.WithBothFamilies(trusted));
+        TrustedProxyConfigurationException atAdd = Assert.Throws<TrustedProxyConfigurationException>(() =>
             Microsoft.AspNetCore.Builder.WebApplication.CreateSlimBuilder().AddAuthExchangeHosting(
                 new AuthExchangeHostingOptions { TrustedProxies = trusted }));
 
         Assert.Equal("networks", helper.ParamName);
         Assert.Equal(nameof(AuthExchangeHostingOptions.TrustedProxies), atAdd.ParamName);
-        foreach (ArgumentException refusal in new[] { helper, atAdd })
+        foreach (TrustedProxyConfigurationException refusal in new[] { helper, atAdd })
         {
-            Assert.Contains("[1]", refusal.Message, StringComparison.Ordinal);
-            Assert.Contains("every", refusal.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain(catchAll.ToString(), refusal.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(refusal);
+            Assert.Equal(TrustedProxyConfigurationRefusal.CatchAllNetwork, refusal.Reason);
+            // The position in the list as passed, not in the paired result, where the 10/8 twin would shift it to 2.
+            Assert.Equal(1, refusal.Index);
+            Assert.DoesNotContain(catchAll.ToString(), refusal.ToString(), StringComparison.Ordinal);
         }
+
+        // The control repairs only the catch-all: the same list with a named network in its place passes both.
+        IPNetwork[] repaired = { IPNetwork.Parse("10.0.0.0/8"), IPNetwork.Parse("192.168.0.0/16") };
+        Assert.Equal(4, TrustedProxyNetworks.WithBothFamilies(repaired).Count);
+        Microsoft.AspNetCore.Builder.WebApplication.CreateSlimBuilder().AddAuthExchangeHosting(
+            new AuthExchangeHostingOptions { TrustedProxies = repaired });
     }
 
     [Fact]

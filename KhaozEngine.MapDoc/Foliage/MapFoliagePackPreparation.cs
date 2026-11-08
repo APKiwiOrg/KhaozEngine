@@ -19,7 +19,8 @@ internal static class MapFoliagePackPreparation
         if (document.Tiles?.IsPartial == true && prior is not null)
             foreach (var row in prior.Chunks.Where(r => !prior.WasResident(r.LayerId, r.Key)))
                 if (!logical.TryGetValue(row.LayerId, out var rows) || !rows.TryGetValue(row.Key, out var digest) || digest.Sha256 != row.Sha256)
-                    throw new MapDocumentException("foliage partial save would drop or replace unavailable advertised data.");
+                    throw new MapDocumentException(MapDocumentRefusal.FoliagePartialSaveUnsafe, "foliage partial save would drop or replace unavailable advertised data.")
+                    { LayerId = row.LayerId, FoliageChunk = row.Key, ExpectedHash = row.Sha256 };
 
         var packs = new List<MapFoliagePackRef>();
         var references = new List<MapFoliageChunkRef>();
@@ -76,7 +77,8 @@ internal static class MapFoliagePackPreparation
                 if (resident.TryGetValue(row.Digest.Key, out var chunk)) return chunk;
                 if (prior is null || !prior.TryGetChunk(layer.Id, row.Digest.Key, out var old) || old.Sha256 != row.Digest.Sha256 ||
                     !prior.TryGetPack(layer.Id, old.OwnerRegion, out var pack))
-                    throw new MapDocumentException("foliage advertised density is unavailable, refusing to publish zero.");
+                    throw new MapDocumentException(MapDocumentRefusal.FoliageChunkUnavailable, "foliage advertised density is unavailable, refusing to publish zero.")
+                    { LayerId = layer.Id, FoliageChunk = row.Digest.Key, ExpectedHash = row.Digest.Sha256 };
                 var address = (pack.LayerId, pack.Region);
                 if (!decoded.TryGetValue(address, out var chunks))
                 {
@@ -103,7 +105,8 @@ internal static class MapFoliagePackPreparation
     static void ValidateChunk(MapFoliageLayer layer, MapFoliageChunk chunk)
     {
         var errors = new List<string>();
-        MapFoliageValidation.ValidateChunk(layer, chunk, errors);
-        if (errors.Count > 0) throw new MapDocumentException(string.Join("\n", errors));
+        var findings = new List<MapDocumentFinding>();
+        MapFoliageValidation.ValidateChunk(layer, chunk, errors, findings);
+        if (errors.Count > 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], string.Join("\n", errors), findings: findings);
     }
 }

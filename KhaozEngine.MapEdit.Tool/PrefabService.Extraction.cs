@@ -19,7 +19,8 @@ public sealed partial class PrefabService
             .Where(r => r.Kind == MapSpaceKind.Room && keys.Contains(new(MapPrefabChildKind.Record, r.Id)));
         var parents = rooms.Select(r => r.Parent).Concat(sources.Select(i => i.ParentSpace)).OfType<MapRecordRef>()
             .Where(r => !keys.Contains(new(MapPrefabChildKind.Record, r.Id))).Distinct().ToArray();
-        if (parents.Length > 1) throw new MapDocumentException("The extraction selection has ambiguous authored parent spaces.");
+        if (parents.Length > 1) throw new MapDocumentException(MapDocumentRefusal.ToolExtractionParentAmbiguous, "The extraction selection has ambiguous authored parent spaces.")
+        { DocumentId = document.Id, SpaceIds = parents.Select(p => p.Id).ToArray() };
         return (parents.SingleOrDefault(), sources.SelectMany(i => i.Bindings.Entries)
             .Select(b => new MapPrefabChildKey(b.Child.Kind, b.WorldId)).Concat(keys).ToHashSet());
     }

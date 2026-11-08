@@ -72,13 +72,13 @@ namespace KhaozEngine.Tests.Gpu
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                     StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"),
                     T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"),
-                    T("PointShadowTransientMap")), T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment)],
-                "b0 t0 t1 t2 t3 t4 s0 t5 s1 t6 t7 b1 t8 s2 t9 t10"),
+                    T("PointShadowTransientMap")), T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")],
+                "b0 t0 t1 t2 t3 t4 s0 t5 s1 t6 t7 b1 t8 s2 t9 t10 t11 s3"),
             // Shared frame, per-draw vertex block, atmosphere and the appended water reader.
             ("ModelRenderer._skinnedMainLayout",
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                     StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true)),
-                    StructRO("WaterVolumes", GpuShaderStages.Fragment)], "b0 t0 t1 b1 b2 t2 s0 t3"),
+                    StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")], "b0 t0 t1 b1 b2 t2 s0 t3 t4 s1"),
             ("ModelRenderer._skinnedFragLayout",
                 new[] { T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap") },
@@ -94,7 +94,7 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer._splatFrameLayout",
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                     StructRO("PointLightClusters", GpuShaderStages.Fragment)),
-                    StructRO("WaterVolumes", GpuShaderStages.Fragment)], "b0 t0 t1 b1 t2 s0 t3"),
+                    StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")], "b0 t0 t1 b1 t2 s0 t3 t4 s1"),
             ("ModelRenderer._splatMaterialLayout",
                 new[] { U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap") },
@@ -104,7 +104,7 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer._tileGroundFrameLayout",
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                     StructRO("PointLightClusters", GpuShaderStages.Fragment)),
-                    StructRO("WaterVolumes", GpuShaderStages.Fragment)], "b0 t0 t1 b1 t2 s0 t3"),
+                    StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")], "b0 t0 t1 b1 t2 s0 t3 t4 s1"),
             ("ModelRenderer._tileGroundMaterialLayout",
                 new[] { U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                     T("PointShadowMap"), T("PointShadowTransientMap") },
@@ -327,7 +327,7 @@ namespace KhaozEngine.Tests.Gpu
             using var skinnedMain = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                 StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true)),
-                StructRO("WaterVolumes", GpuShaderStages.Fragment)]));
+                StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")]));
             using var skinnedFrag = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                 T("PointShadowMap"), T("PointShadowTransientMap")));
@@ -335,8 +335,8 @@ namespace KhaozEngine.Tests.Gpu
                 U("Palette", dynamic: true)));
             D3D11ResourceLayout[] skinned = { skinnedMain, skinnedFrag, bonePalette };
 
-            Assert.Equal("b0 t0 t1 b1 b2 t2 s0 t3", Absolute(skinned, 0));
-            Assert.Equal("t4 t5 t6 s1 t7 s2 t8 t9", Absolute(skinned, 1));
+            Assert.Equal("b0 t0 t1 b1 b2 t2 s0 t3 t4 s1", Absolute(skinned, 0));
+            Assert.Equal("t5 t6 t7 s2 t8 s3 t9 t10", Absolute(skinned, 1));
             Assert.Equal("b3", Absolute(skinned, 2));
 
             // The skinned DEPTH pass takes the SAME palette layout object at a different slot, where the base in
@@ -353,41 +353,41 @@ namespace KhaozEngine.Tests.Gpu
             // 0 carries frame b0 and atmosphere b1, so set 1's own params buffer lands at b2.
             using var splatFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
-                StructRO("PointLightClusters", GpuShaderStages.Fragment)), StructRO("WaterVolumes", GpuShaderStages.Fragment)]));
+                StructRO("PointLightClusters", GpuShaderStages.Fragment)), StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")]));
             using var splatMaterial = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                 T("PointShadowMap"), T("PointShadowTransientMap")));
             D3D11ResourceLayout[] splat = { splatFrame, splatMaterial };
 
-            Assert.Equal("b0 t0 t1 b1 t2 s0 t3", Absolute(splat, 0));
-            Assert.Equal("b2 t4 t5 s1 t6 s2 t7 t8", Absolute(splat, 1));
+            Assert.Equal("b0 t0 t1 b1 t2 s0 t3 t4 s1", Absolute(splat, 0));
+            Assert.Equal("b2 t5 t6 s2 t7 s3 t8 t9", Absolute(splat, 1));
 
             // The tile-ground pass, the second shipped case of that same b accumulation since #727. Asserted
             // separately rather than treated as the splat shape again, because its material set carries one albedo
             // array instead of two and the t and s files therefore flatten differently.
             using var groundFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
-                StructRO("PointLightClusters", GpuShaderStages.Fragment)), StructRO("WaterVolumes", GpuShaderStages.Fragment)]));
+                StructRO("PointLightClusters", GpuShaderStages.Fragment)), StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")]));
             using var groundMaterial = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                 T("PointShadowMap"), T("PointShadowTransientMap")));
             D3D11ResourceLayout[] ground = { groundFrame, groundMaterial };
 
-            Assert.Equal("b0 t0 t1 b1 t2 s0 t3", Absolute(ground, 0));
-            Assert.Equal("b2 t4 s1 t5 s2 t6 t7", Absolute(ground, 1));
+            Assert.Equal("b0 t0 t1 b1 t2 s0 t3 t4 s1", Absolute(ground, 0));
+            Assert.Equal("b2 t5 s2 t6 s3 t7 t8", Absolute(ground, 1));
 
             // The rigid temporal variant: the model layout at set 0 and the motion set at set 1, so the motion block is
-            // b2 and the previous transforms follow the model layout's eleven t registers.
+            // b2 and the previous transforms follow the model layout's twelve t registers.
             using var model = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                 StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"), T("RoughnessMap"),
                 S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
-                T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment)]));
+                T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")]));
             using var rigidMotion = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("MotionFrame"), StructRO("PreviousInstanceTransforms", GpuShaderStages.Vertex)));
             D3D11ResourceLayout[] rigid = { model, rigidMotion };
 
-            Assert.Equal("b2 t11", Absolute(rigid, 1));
+            Assert.Equal("b2 t12", Absolute(rigid, 1));
 
             // The skinned temporal variant: the three skinned sets, then the motion set at set 3, whose two uniform
             // buffers continue the b file after the palette's b3.
@@ -414,9 +414,9 @@ namespace KhaozEngine.Tests.Gpu
             D3D11ResourceLayout[] splatTemporal = { splatFrame, splatMaterial, motionFrame };
             D3D11ResourceLayout[] groundTemporal = { groundFrame, groundMaterial, motionFrame };
 
-            Assert.Equal("b2 t4 t5 s1 t6 s2 t7 t8", Absolute(splatTemporal, 1));
+            Assert.Equal("b2 t5 t6 s2 t7 s3 t8 t9", Absolute(splatTemporal, 1));
             Assert.Equal("b3", Absolute(splatTemporal, 2));
-            Assert.Equal("b2 t4 s1 t5 s2 t6 t7", Absolute(groundTemporal, 1));
+            Assert.Equal("b2 t5 s2 t6 s3 t7 t8", Absolute(groundTemporal, 1));
             Assert.Equal("b3", Absolute(groundTemporal, 2));
 
             // The temporal resolve's debug view: the resolve's own layout at set 0, so the view re-evaluates the
@@ -530,11 +530,21 @@ namespace KhaozEngine.Tests.Gpu
         {
             var element = new GpuResourceLayoutElement("Work", kind, GpuShaderStages.Compute, dynamic: true);
 
-            ArgumentException error = Assert.Throws<ArgumentException>(
+            GpuResourceLayoutException error = Assert.Throws<GpuResourceLayoutException>(
                 () => new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Frame"), element)));
 
-            Assert.Contains("Work", error.Message, StringComparison.Ordinal);
-            Assert.Contains("dynamic", error.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(error);
+            Assert.Equal(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind, error.Reason);
+            Assert.Equal("Work", error.ElementName);
+            Assert.Equal(1, error.Binding);
+            Assert.Equal(kind, error.ResourceKind);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, error.Backend);
+            Assert.Equal("description", error.ParamName);
+
+            var accepted = new GpuResourceLayoutElement("Work", kind, GpuShaderStages.Compute);
+            using var layout = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Frame"), accepted));
+            Assert.Equal(2, layout.ElementCount);
+            Assert.False(layout.IsDynamic(1));
         }
 
         /// <summary>The same element without the dynamic flag is ordinary and numbers as the table above says, so

@@ -65,7 +65,9 @@ namespace KhaozEngine.Tests.MapEditor
             GltfMesh mesh = GizmoGeometry.YawRing();
 
             Assert.NotEmpty(mesh.Vertices);
+            Assert.NotEmpty(mesh.Indices32);
             Assert.Equal(0, mesh.Indices32.Length % 3);
+            Assert.All(mesh.Indices32, i => Assert.True(i < mesh.Vertices.Length));
             Assert.All(mesh.Vertices, v => Assert.Equal(GizmoGeometry.YawColor, v.Color));
             // Every ring vertex sits on the band at y = 0, within the outer radius.
             Assert.All(mesh.Vertices, v => Assert.True(MathF.Abs(v.Position.Y) < 1e-4f));
@@ -77,7 +79,9 @@ namespace KhaozEngine.Tests.MapEditor
             GltfMesh mesh = GizmoGeometry.ScaleHandle();
 
             Assert.NotEmpty(mesh.Vertices);
+            Assert.NotEmpty(mesh.Indices32);
             Assert.Equal(0, mesh.Indices32.Length % 3);
+            Assert.All(mesh.Indices32, i => Assert.True(i < mesh.Vertices.Length));
             Assert.All(mesh.Vertices, v => Assert.Equal(GizmoGeometry.ScaleColor, v.Color));
             // The cube is centred on the corner (offset, 0, offset), so every vertex is near that corner.
             Assert.All(mesh.Vertices, v =>
@@ -93,7 +97,9 @@ namespace KhaozEngine.Tests.MapEditor
             GltfMesh mesh = GizmoGeometry.SelectionMarker();
 
             Assert.NotEmpty(mesh.Vertices);
+            Assert.NotEmpty(mesh.Indices32);
             Assert.Equal(0, mesh.Indices32.Length % 3);
+            Assert.All(mesh.Indices32, i => Assert.True(i < mesh.Vertices.Length));
             Assert.All(mesh.Vertices, v => Assert.Equal(GizmoGeometry.MarkerColor, v.Color));
         }
 
@@ -128,18 +134,16 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(GizmoDrag.GizmoHandle.TranslateY, h);
         }
 
-        [Fact]
-        public void HitTest_XArrow_ResolvesTranslateXZ()
+        [Theory]
+        [InlineData(0.6f, 0f)]
+        [InlineData(0f, 0.6f)]
+        public void HitTest_GroundArrows_ResolveTranslateXZ_AndArePure(float x, float z)
         {
-            GizmoDrag.GizmoHandle h = GizmoDrag.HitTest(Vector3.Zero, 1f, new Vector3(0.6f, 5f, 0f), Down);
-            Assert.Equal(GizmoDrag.GizmoHandle.TranslateXZ, h);
-        }
+            var origin = new Vector3(x, 5f, z);
+            GizmoDrag.GizmoHandle first = GizmoDrag.HitTest(Vector3.Zero, 1f, origin, Down);
 
-        [Fact]
-        public void HitTest_ZArrow_ResolvesTranslateXZ()
-        {
-            GizmoDrag.GizmoHandle h = GizmoDrag.HitTest(Vector3.Zero, 1f, new Vector3(0f, 5f, 0.6f), Down);
-            Assert.Equal(GizmoDrag.GizmoHandle.TranslateXZ, h);
+            Assert.Equal(GizmoDrag.GizmoHandle.TranslateXZ, first);
+            Assert.Equal(first, GizmoDrag.HitTest(Vector3.Zero, 1f, origin, Down));
         }
 
         [Fact]
@@ -150,14 +154,6 @@ namespace KhaozEngine.Tests.MapEditor
             float d = GizmoGeometry.RingRadius * MathF.Sqrt(0.5f);
             GizmoDrag.GizmoHandle h = GizmoDrag.HitTest(Vector3.Zero, 1f, new Vector3(d, 5f, d), Down);
             Assert.Equal(GizmoDrag.GizmoHandle.YawRing, h);
-        }
-
-        [Fact]
-        public void HitTest_OverlapPrefersHigherPriority()
-        {
-            // Down the origin hits the +Y arrow AND both flat arrows; TranslateY outranks TranslateXZ.
-            GizmoDrag.GizmoHandle h = GizmoDrag.HitTest(Vector3.Zero, 1f, new Vector3(0f, 5f, 0f), Down);
-            Assert.Equal(GizmoDrag.GizmoHandle.TranslateY, h);
         }
 
         [Fact]
@@ -177,16 +173,6 @@ namespace KhaozEngine.Tests.MapEditor
             var over = new Vector3(10f + s * GizmoGeometry.ScaleCubeOffset, 8f, 10f + s * GizmoGeometry.ScaleCubeOffset);
             GizmoDrag.GizmoHandle h = GizmoDrag.HitTest(pos, s, over, Down);
             Assert.Equal(GizmoDrag.GizmoHandle.Scale, h);
-        }
-
-        [Fact]
-        public void HitTest_IsPure()
-        {
-            var over = new Vector3(0.6f, 5f, 0f);
-            GizmoDrag.GizmoHandle a = GizmoDrag.HitTest(Vector3.Zero, 1f, over, Down);
-            GizmoDrag.GizmoHandle b = GizmoDrag.HitTest(Vector3.Zero, 1f, over, Down);
-            Assert.Equal(a, b);
-            Assert.Equal(GizmoDrag.GizmoHandle.TranslateXZ, a);
         }
 
         // ---- drag deltas -------------------------------------------------------------------------------

@@ -15,8 +15,8 @@ public static partial class MapSurfacePatchCodec
     public static byte[] Encode(MapSurfacePatch patch)
     {
         ArgumentNullException.ThrowIfNull(patch);
-        IReadOnlyList<string> errors = patch.ValidateLocal();
-        if (errors.Count != 0) throw new MapDocumentException(errors[0]);
+        IReadOnlyList<MapDocumentFinding> errors = patch.ValidateLocalFindings();
+        if (errors.Count != 0) throw LocalRefusal(errors);
         using var output = new BoundedOutput();
         using (var writer = new Utf8JsonWriter(output))
         {
@@ -62,22 +62,25 @@ public static partial class MapSurfacePatchCodec
 
     public static MapSurfacePatch Decode(ReadOnlySpan<byte> bytes, MapPatchKey expectedKey)
     {
-        if (bytes.Length > MaxEncodedBytes) throw Limit();
+        if (bytes.Length > MaxEncodedBytes) throw Limit(actualByteCount: bytes.Length);
         try
         {
             // The parser's storage is bounded by the input cap. Size-based payload arrays follow dimension/length checks.
             var reader = new Utf8JsonReader(bytes, new JsonReaderOptions { MaxDepth = 16 });
             using JsonDocument document = JsonDocument.ParseValue(ref reader);
-            if (reader.Read()) throw new MapDocumentException("trailing patch payload");
+            RequireNoTrailingValue(reader.Read(), expectedKey);
             JsonElement root = document.RootElement;
             Members(root, "key", "cellMinX", "cellMinZ", "width", "depth", "heights", "cells", "presence",
                 "cornerDependencies", "edgeSubdivisions", "records");
             MapPatchKey key = ReadKey(root.GetProperty("key"));
-            if (key != expectedKey) throw new MapDocumentException("patch key does not match expected key");
+            if (key != expectedKey)
+                throw new MapDocumentException(MapDocumentRefusal.SurfacePatchKeyMismatch, "patch key does not match expected key")
+                { Patch = key, ExpectedPatch = expectedKey };
             int minX = root.GetProperty("cellMinX").GetInt32(), minZ = root.GetProperty("cellMinZ").GetInt32();
             int width = root.GetProperty("width").GetInt32(), depth = root.GetProperty("depth").GetInt32();
             if (!MapSurfacePatch.ValidRectangle(minX, minZ, width, depth))
-                throw new MapDocumentException("invalid patch width, depth or cell minimum");
+                throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "invalid patch width, depth or cell minimum")
+                { Patch = key, FieldPath = "rectangle", Width = width, Depth = depth };
             int cornerCount = (width + 1) * (depth + 1), cellCount = width * depth, wordCount = (cellCount + 63) / 64;
             byte[] heightBytes = Base64(root.GetProperty("heights"), cornerCount * 4, "heights");
             byte[] cellBytes = Base64(root.GetProperty("cells"), cellCount * 8, "cells");
@@ -110,8 +113,8 @@ public static partial class MapSurfacePatchCodec
                 Members(owner, "patch", "address"); JsonElement address = owner.GetProperty("address");
                 Members(address, "x", "z", "d");
                 patch.CornerDependencies.Add(new(d.GetProperty("cornerX").GetInt32(), d.GetProperty("cornerZ").GetInt32(),
-                    new(ReadKey(owner.GetProperty("patch")), MapLatticeAddress.Create(Long(address.GetProperty("x")),
-                        Long(address.GetProperty("z")), address.GetProperty("d").GetInt32()))));
+                    new(ReadKey(owner.GetProperty("patch")), MapLatticeAddress.Create(Long(address.GetProperty("x"), "x"),
+                        Long(address.GetProperty("z"), "z"), address.GetProperty("d").GetInt32()))));
             }
             foreach (JsonElement e in edges.EnumerateArray())
             {
@@ -123,30 +126,54 @@ public static partial class MapSurfacePatchCodec
             foreach (JsonElement value in records.EnumerateArray())
             {
                 MapTopologyRecord record = ReadRecord(value);
-                if (!recordIds.Add(record.Id)) throw new MapDocumentException("duplicate record id");
+                if (!recordIds.Add(record.Id))
+                    throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "duplicate record id")
+                    { RecordId = record.Id, FieldPath = "id", Index = patch.Records.Count };
                 patch.Records.Add(record);
             }
-            IReadOnlyList<string> errors = patch.ValidateLocal();
-            if (errors.Count != 0) throw new MapDocumentException(errors[0]);
+            IReadOnlyList<MapDocumentFinding> errors = patch.ValidateLocalFindings();
+            if (errors.Count != 0) throw LocalRefusal(errors);
             return patch;
         }
         catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException or OverflowException or KeyNotFoundException)
         {
-            throw new MapDocumentException("invalid surface patch payload", ex);
+            throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "invalid surface patch payload", ex)
+            {
+                Patch = expectedKey, FieldPath = (ex as JsonException)?.Path,
+                LineNumber = (ex as JsonException)?.LineNumber, BytePositionInLine = (ex as JsonException)?.BytePositionInLine,
+            };
         }
     }
 
+    internal static MapDocumentException LocalRefusal(IReadOnlyList<MapDocumentFinding> findings)
+    {
+        MapDocumentFinding first = findings[0];
+        return MapDocumentRefusalFactory.FromFinding(first, first.Message, findings: findings);
+    }
+
+    static void RequireNoTrailingValue(bool hasTrailingValue, MapPatchKey key)
+    {
+        if (hasTrailingValue)
+            throw new MapDocumentException(MapDocumentRefusal.SurfacePatchTrailingBytes, "trailing patch payload") { Patch = key };
+    }
+
+    // The reader currently refuses a second root before returning true. Inject only that guard value.
+    internal static void RequireNoTrailingValueForTests(bool hasTrailingValue, MapPatchKey key) => RequireNoTrailingValue(hasTrailingValue, key);
+
     static string Decimal(long value) => MapSignedDecimal.Format(value);
-    static long Long(JsonElement value)
+    static long Long(JsonElement value, string fieldPath)
     {
         if (!MapSignedDecimal.TryParse(value.GetString(), out long result))
-            throw new MapDocumentException("invalid decimal int64 string");
+            throw new MapDocumentException(MapDocumentRefusal.SchemaInt64Malformed, "invalid decimal int64 string")
+            { FieldPath = fieldPath, ActualText = value.GetString(), MinimumInteger = long.MinValue, MaximumInteger = long.MaxValue };
         return result;
     }
     static void WriteKey(Utf8JsonWriter writer, MapPatchKey key)
     {
-        if (string.IsNullOrWhiteSpace(key.SurfaceId)) throw new MapDocumentException("surface id is required");
-        if (key.SurfaceId.Length > MaxEncodedBytes) throw Limit();
+        if (string.IsNullOrWhiteSpace(key.SurfaceId))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "surface id is required")
+            { Patch = key, FieldPath = "surfaceId", ActualText = key.SurfaceId };
+        if (key.SurfaceId.Length > MaxEncodedBytes) throw Limit(fieldPath: "surfaceId", actualCount: key.SurfaceId.Length);
         writer.WriteStartObject(); writer.WriteString("surfaceId", key.SurfaceId);
         writer.WriteString("slotX", Decimal(key.SlotX)); writer.WriteString("slotZ", Decimal(key.SlotZ)); writer.WriteEndObject();
     }
@@ -154,39 +181,56 @@ public static partial class MapSurfacePatchCodec
     {
         Members(key, "surfaceId", "slotX", "slotZ");
         string? id = key.GetProperty("surfaceId").GetString();
-        if (string.IsNullOrWhiteSpace(id)) throw new MapDocumentException("surface id is required");
-        return new(id, Long(key.GetProperty("slotX")), Long(key.GetProperty("slotZ")));
+        if (string.IsNullOrWhiteSpace(id))
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "surface id is required")
+            { FieldPath = "surfaceId", ActualText = id };
+        return new(id, Long(key.GetProperty("slotX"), "slotX"), Long(key.GetProperty("slotZ"), "slotZ"));
     }
     static void Members(JsonElement value, params string[] names)
     {
-        if (value.ValueKind != JsonValueKind.Object) throw new MapDocumentException("expected patch object");
+        if (value.ValueKind != JsonValueKind.Object) throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, "expected patch object");
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (JsonProperty property in value.EnumerateObject())
         {
             if (!names.Contains(property.Name, StringComparer.Ordinal))
-                throw new MapDocumentException($"unknown member '{property.Name}'");
-            if (!seen.Add(property.Name)) throw new MapDocumentException($"duplicate member '{property.Name}'");
+                throw new MapDocumentException(MapDocumentRefusal.SchemaMemberUnknown, $"unknown member '{property.Name}'") { FieldPath = property.Name };
+            if (!seen.Add(property.Name)) throw new MapDocumentException(MapDocumentRefusal.SchemaMemberDuplicate, $"duplicate member '{property.Name}'") { FieldPath = property.Name };
         }
         foreach (string name in names)
-            if (!seen.Contains(name)) throw new MapDocumentException($"missing member '{name}'");
+            if (!seen.Contains(name)) throw new MapDocumentException(MapDocumentRefusal.SchemaMemberMissing, $"missing member '{name}'") { FieldPath = name };
     }
     static JsonElement Array(JsonElement value, int maxCount, string name)
     {
         if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > maxCount)
-            throw new MapDocumentException($"invalid {name} length");
+            throw new MapDocumentException(value.ValueKind != JsonValueKind.Array ? MapDocumentRefusal.SchemaArrayRequired : MapDocumentRefusal.WorkCapacityExceeded,
+                $"invalid {name} length")
+            {
+                FieldPath = name, Budget = value.ValueKind == JsonValueKind.Array ? name : null,
+                ActualCount = value.ValueKind == JsonValueKind.Array ? value.GetArrayLength() : null,
+                Limit = value.ValueKind == JsonValueKind.Array ? maxCount : null,
+            };
         return value;
     }
     static byte[] Base64(JsonElement value, int expectedBytes, string name)
     {
-        if (value.ValueKind != JsonValueKind.String) throw new MapDocumentException($"invalid {name} base64");
+        if (value.ValueKind != JsonValueKind.String)
+            throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"invalid {name} base64")
+            { FieldPath = name, ExpectedByteCount = expectedBytes };
         string text = value.GetString()!;
-        if (text.Length != ((expectedBytes + 2) / 3) * 4) throw new MapDocumentException($"invalid {name} length");
+        if (text.Length != ((expectedBytes + 2) / 3) * 4)
+            throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, $"invalid {name} length")
+            { FieldPath = name, ActualCount = text.Length, ExpectedCount = ((expectedBytes + 2) / 3) * 4, ExpectedByteCount = expectedBytes };
         var bytes = new byte[expectedBytes];
-        if (!Convert.TryFromBase64String(text, bytes, out int written) || written != expectedBytes)
-            throw new MapDocumentException($"invalid {name} base64 length");
+        bool decoded = Convert.TryFromBase64String(text, bytes, out int written);
+        if (!decoded || written != expectedBytes)
+            throw new MapDocumentException(decoded ? MapDocumentRefusal.SchemaArrayLengthMismatch : MapDocumentRefusal.SchemaBase64Malformed,
+                $"invalid {name} base64 length")
+            { FieldPath = name, ExpectedByteCount = expectedBytes, ActualByteCount = decoded ? written : null };
         return bytes;
     }
-    static MapDocumentException Limit() => new($"patch payload exceeds {MaxEncodedBytes} bytes");
+    static MapDocumentException Limit(long? actualByteCount = null, string? fieldPath = null, long? actualCount = null) =>
+        new(MapDocumentRefusal.WorkCapacityExceeded, $"patch payload exceeds {MaxEncodedBytes} bytes")
+        { Budget = "SurfacePatchEncodedBytes", Limit = MaxEncodedBytes, ActualByteCount = actualByteCount, FieldPath = fieldPath, ActualCount = actualCount };
 
     sealed class BoundedOutput : Stream
     {
@@ -200,7 +244,7 @@ public static partial class MapSurfacePatchCodec
         public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
         public override void Write(ReadOnlySpan<byte> buffer)
         {
-            if (buffer.Length > MaxEncodedBytes - _stream.Length) throw Limit();
+            if (buffer.Length > MaxEncodedBytes - _stream.Length) throw Limit(actualByteCount: _stream.Length + buffer.Length);
             _stream.Write(buffer);
         }
         public override void Flush() { }

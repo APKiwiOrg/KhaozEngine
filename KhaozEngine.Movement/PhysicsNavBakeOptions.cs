@@ -17,6 +17,9 @@ public sealed record PhysicsNavBakeOptions(
     /// medium. Part of the bake identity.</summary>
     public bool SampleWater { get; init; }
 
+    /// <summary>Captures authenticated physical evidence for opted-in terrain descents. Default false.</summary>
+    public bool CaptureTerrainDescentEvidence { get; init; }
+
     internal (int Width, int Height, int Cells, int Samples) Validate(Vector3 origin)
     {
         ValidateFields();

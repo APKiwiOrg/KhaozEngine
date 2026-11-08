@@ -116,10 +116,23 @@ public sealed class SurfaceCompilerTests
     public void EdgeSubdivision_RefusesInteriorAndOutOfRangeSplits()
     {
         var (s, p) = CompilerFixtures.Row(MapPresencePolicy.Native, (CompilerFixtures.Full, true), (CompilerFixtures.Full, true));
-        p.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.East, 2));
-        Assert.Contains("interior", Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(s, p)).Message);
+        p.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.West, 2));
+        Assert.NotEmpty(MapSurfaceCompiler.Compile(s, p).Faces);
+        p.EdgeSubdivisions[0] = new(0, 0, MapCellEdge.East, 2);
+        Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(s, p));
         var (s1, p1) = CompilerFixtures.OneCell(0, 0, 0, 0, CompilerFixtures.Full);
-        p1.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.South, 65));
-        Assert.Contains("segments", Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(s1, p1)).Message);
+        p1.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.South, 64));
+        Assert.NotEmpty(MapSurfaceCompiler.Compile(s1, p1).Faces);
+        p1.EdgeSubdivisions[0] = new(0, 0, MapCellEdge.South, 65);
+        var error = Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(s1, p1));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+        Assert.Equal("EdgeSubdivisions[0].Segments", error.FieldPath);
+        Assert.Equal(p1.Key, error.Patch);
+        Assert.Equal(65L, error.ActualInteger);
+        Assert.Equal(2L, error.MinimumInteger);
+        Assert.Equal(64L, error.MaximumInteger);
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, Assert.Single(error.Findings!).Reason);
+        p1.EdgeSubdivisions[0] = new(0, 0, MapCellEdge.South, 64);
+        Assert.NotEmpty(MapSurfaceCompiler.Compile(s1, p1).Faces);
     }
 }

@@ -162,11 +162,28 @@ public sealed class TextCrashSafetyTests
             Array.Empty<ContentTextRevision>(), new[] { revision }), new[] { chunk });
         ContentPublishCommit legacy = Commit(store, pack, TextAuthoringFixtures.TextRegistry(), store);
 
+        using var missingRoot = new TemporaryRoot();
+        var missingPack = new FileSystemPackStore(missingRoot.Path);
+        ContentPublishCommit missing = Commit(store, missingPack, TextAuthoringFixtures.TextRegistry(), store);
+        var unwritten = await Assert.ThrowsAsync<ContentAuthoringException>(() => missing.WriteAsync(rowPlan));
+        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, unwritten.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextChunkMissingOnRowOnlyRoute, unwritten.Refusal);
+        Assert.Equal(nameof(ContentPublishCommit.WriteAsync), unwritten.MemberName);
+        Assert.Equal("en-us", unwritten.Language);
+        Assert.Equal(chunk.Hash, unwritten.TextHash);
+        Assert.Empty(await ObjectsAsync(missingPack));
+        await missingPack.PutAsync(chunk.Hash, chunk.StoredFile);
+        await missing.WriteAsync(rowPlan);
+
+        await pack.PutAsync(chunk.Hash, chunk.StoredFile);
+        IReadOnlyList<string> before = await ObjectsAsync(pack);
         var marked = await Assert.ThrowsAsync<ContentAuthoringException>(() => legacy.WriteAsync(plan.RowPlan));
         Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, marked.Reason);
-        var unwritten = await Assert.ThrowsAsync<ContentAuthoringException>(() => legacy.WriteAsync(rowPlan));
-        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, unwritten.Reason);
-        Assert.Empty(await ObjectsAsync(pack));
+        Assert.Equal(ContentAuthoringRefusal.TextPlanOnRowOnlyRoute, marked.Refusal);
+        Assert.Equal(nameof(ContentPublishCommit.WriteAsync), marked.MemberName);
+        Assert.Equal(1, marked.VersionNumber);
+        Assert.Equal(before, await ObjectsAsync(pack));
+        await legacy.WriteAsync(rowPlan);
     }
 
     [Fact]

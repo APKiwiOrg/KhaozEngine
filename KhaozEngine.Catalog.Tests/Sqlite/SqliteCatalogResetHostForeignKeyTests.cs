@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
@@ -58,21 +59,27 @@ public class SqliteCatalogResetHostForeignKeyTests
                 body TEXT NOT NULL);
             INSERT INTO host_notes(id, version_number, body) VALUES (1, 1, 'first'), (2, 1, 'second');
             """));
+        database.Execute("CREATE TABLE host_more(id INTEGER REFERENCES catalog_type(type_id) ON DELETE SET NULL);");
         string hostBefore = SqliteCatalogResetHarness.Text(database, HostRowsSql);
         Assert.Equal("1,1,'first';2,1,'second'", hostBefore);
 
+        string before = SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString);
         Exception? thrown = await Record.ExceptionAsync(
             () => SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "content release"));
 
-        // The host's rows first, because they are what the refusal exists to protect.
+        // The host and catalog rows are what this refusal protects.
+        Assert.Equal(before, SqliteCatalogNonmutatingOpenTests.Snapshot(database.ConnectionString));
         Assert.Equal(hostBefore, SqliteCatalogResetHarness.Text(database, HostRowsSql));
 
         ContentAuthoringException refused = Assert.IsType<ContentAuthoringException>(thrown);
         Assert.Equal(ContentAuthoringException.HostForeignKeyReason, refused.Reason);
-        Assert.Contains("'host_notes'", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("'catalog_version'", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("ON DELETE " + action, refused.Message, StringComparison.Ordinal);
-        Assert.Contains("Nothing was dropped", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(ContentAuthoringRefusal.HostForeignKeyActionUnsafe, refused.Refusal);
+        Assert.NotNull(refused.HostObjects);
+        Assert.Equal(new[]
+        {
+            new ContentHostForeignKeyFinding("host_more", "catalog_type", "SET NULL"),
+            new ContentHostForeignKeyFinding("host_notes", "catalog_version", action),
+        }, refused.HostObjects.OrderBy(finding => finding.HostTable, StringComparer.Ordinal));
 
         // And the catalog is exactly the one that stood, down to the epoch and the audit trail.
         Assert.Equal(epochBefore, SqliteCatalogResetHarness.Text(database, "SELECT store_epoch FROM catalog_metadata;"));
@@ -85,5 +92,7 @@ public class SqliteCatalogResetHostForeignKeyTests
             database.ConnectionString, SqliteCatalogResetHarness.Registry(), database.Pack());
         await reopened.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
         Assert.Equal(1, await reopened.GetActiveVersionAsync());
+        database.Execute("DROP TABLE host_notes; DROP TABLE host_more;");
+        await SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "repair");
     }
 }

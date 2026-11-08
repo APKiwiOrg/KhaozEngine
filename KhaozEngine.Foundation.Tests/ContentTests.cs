@@ -54,7 +54,7 @@ public class ContentTests
         Assert.True(JsonSchemaValidator.Validate("{ \"name\":\"x\", \"count\":1 }", Schema).IsValid);
         var bad = JsonSchemaValidator.Validate("{ \"name\":\"x\" }", Schema);   // missing required count
         Assert.False(bad.IsValid);
-        Assert.NotEmpty(bad.Errors);
+        Assert.NotEmpty(bad.Findings);
     }
 
     [Fact]

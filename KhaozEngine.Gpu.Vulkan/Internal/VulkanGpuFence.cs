@@ -97,10 +97,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (ReferenceEquals(_owner, owner)) return;
 
-            throw new ArgumentException(
+            throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.DifferentDevice,
                 "That fence was created by a DIFFERENT native Vulkan device, so it names a value on another "
                 + "device's timeline and would read signalled for work this device never ran. Use a fence from the "
-                + "device that submitted the copy.", parameterName);
+                + "device that submitted the copy.", parameterName)
+            {
+                ExpectedBackend = GpuBackendKind.VulkanNative,
+                ResourceKind = "fence",
+                Context = parameterName,
+            };
         }
 
         /// <summary>

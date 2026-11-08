@@ -189,7 +189,8 @@ order. A material group is a separate draw, so a part containing two materials n
 
 ## Package ownership
 
-- `KhaozEngine.Attachments` is a GPU-free, BCL-only package for immutable definitions, JSON, resource
+- `KhaozEngine.Attachments` is a GPU-free package referencing only Primitives for the shared malformed-data
+  exception base. It owns immutable definitions, JSON, resource
   reference validation, source keys and embedded rigid GLB preflight. Headless publishers reference it
   directly. It is not added to Foundation or Server by default.
 - `KhaozEngine.Attachments.Render3D` depends on that package and Render3D. It owns rig binding, uploaded

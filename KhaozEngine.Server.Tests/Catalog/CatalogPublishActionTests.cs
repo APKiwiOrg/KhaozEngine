@@ -210,15 +210,17 @@ public sealed class CatalogPublishActionTests : IDisposable
     }
 
     /// <summary>
-    /// <c>expectedBaseVersion</c> is REQUIRED optimistic concurrency, so a publish that names none is a 400
-    /// rather than a publish against whatever the store happens to stand at.
+    /// A publish requires an expected base version for optimistic concurrency, and a pin requires a
+    /// version or explicit null. Neither action treats an absent version as a default.
     /// </summary>
-    [Fact]
-    public async Task Publish_WithNoExpectedBaseVersion_IsRefused()
+    [Theory]
+    [InlineData("catalog-publish", "expectedBaseVersion")]
+    [InlineData("catalog-pin", "version")]
+    public async Task AVersionMutationWithoutItsRequiredVersionIsRefused(string action, string fieldName)
     {
-        JsonElement body = await _harness.RefusedAsync("catalog-publish", """{ "operator": "oid:8f2c" }""");
+        JsonElement body = await _harness.RefusedAsync(action, """{ "operator": "oid:8f2c" }""");
 
-        Assert.Contains("expectedBaseVersion", body.GetProperty("error").GetString()!, StringComparison.Ordinal);
+        Assert.Contains(fieldName, body.GetProperty("error").GetString()!, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -239,7 +241,8 @@ public sealed class CatalogPublishActionTests : IDisposable
         { "operator": "oid:8f2c", "expectedBaseVersion": {{published - 1}} }
         """);
 
-        Assert.Equal("base version moved", body.GetProperty("error").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("error").GetString()));
+        Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, body.GetProperty("reason").GetString());
         Assert.Equal(published - 1, body.GetProperty("expectedBaseVersion").GetInt32());
         Assert.Equal(published, body.GetProperty("actualBaseVersion").GetInt32());
     }
@@ -281,7 +284,8 @@ public sealed class CatalogPublishActionTests : IDisposable
 
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         using JsonDocument refused = JsonDocument.Parse(await stale.Content.ReadAsStringAsync());
-        Assert.Equal("base version moved", refused.RootElement.GetProperty("error").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(refused.RootElement.GetProperty("error").GetString()));
+        Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, refused.RootElement.GetProperty("reason").GetString());
         Assert.Equal(published - 1, refused.RootElement.GetProperty("expectedBaseVersion").GetInt32());
         Assert.Equal(published, refused.RootElement.GetProperty("actualBaseVersion").GetInt32());
 
@@ -351,15 +355,6 @@ public sealed class CatalogPublishActionTests : IDisposable
         JsonElement cleared = await _harness.OkAsync("catalog-pin", """{ "version": null }""");
         Assert.Equal(JsonValueKind.Null, cleared.GetProperty("pinnedVersion").ValueKind);
         Assert.Null(await _harness.Store.GetPinnedVersionAsync());
-    }
-
-    /// <summary>A pin naming neither a version nor null is refused, because absent and null mean different things.</summary>
-    [Fact]
-    public async Task Pin_NamingNeitherAVersionNorNull_IsRefused()
-    {
-        JsonElement body = await _harness.RefusedAsync("catalog-pin", """{ "operator": "oid:8f2c" }""");
-
-        Assert.Contains("version", body.GetProperty("error").GetString()!, StringComparison.Ordinal);
     }
 
     /// <summary>

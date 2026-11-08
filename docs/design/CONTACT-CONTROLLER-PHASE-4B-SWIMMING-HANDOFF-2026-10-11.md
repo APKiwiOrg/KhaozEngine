@@ -458,13 +458,14 @@ claim old explicit ground bytes are preserved while replacing its algorithm.
 
 ## Identity, wire and owned invariants
 
-**Ruling 4b-17.** Keep generation 14 and its excursion byte. Add no new carried mode detector, owner handle or
+**Ruling 4b-17.** Reuse the carried excursion byte without another swimming wire change. Add no new carried mode detector, owner handle or
 lease token. After the integrated behavior passes its suite, change the explicit profile model identity to
 `contact-shell-footprint-swim-v1` and include its fixed footprint fraction, placement offset and handoff/proof
 recipe versions. Cost if wrong: explicit portable fingerprints change, intentionally preventing an old motion
 proof from certifying a new controller.
 
-Generation 14 remains in `KhaozEngine.NetWorld/MoveProtocol.cs`. The verified profile in
+Current movement transport is generation 15 in `KhaozEngine.NetWorld/MoveProtocol.cs`.
+The [forced movement rationale](FORCED-MOVEMENT.md) describes its fine speed and ground-state amendment. The verified profile in
 `KhaozEngine.Movement/ExplicitMovementProfile.cs` is `contact-shell-footprint-swim-v1`, with footprint
 radius fraction 0.5, placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 1.
 I1 rejects the old F3 certificate and matches an independently encoded recipe for dry and wet motion.
@@ -531,7 +532,7 @@ certified synthetic facts. These rows were planned while drafting and are now im
 | W6 | Dry cave below wet level, bridge above it, closed flooded chamber | Located full-body facts keep dry routes dry. Closed overlap refuses placement |
 | W7 | Policy contrast on the same contact core, and default legacy fixtures | SurfaceSwimmer keeps free-water behavior. Existing default legacy fluid results are unchanged |
 | A1 | Exact correction, cold settle and live continuation on bank/shallow water | Shell proof, same source binding, no continuation movement/time advance, accepted land buffer preserved |
-| R1 | Cross-medium command stream, two heads, correction and replay | Same state bits for the same wire basis, no duplicated local step event, generation 14 retained |
+| R1 | Cross-medium command stream, two heads, correction and replay | Same state bits for the same wire basis, no duplicated local step event, current movement transport retained |
 | I1 | Runtime/probe and new profile identity | Same outcomes and motion recipe. Old f3-full-capsule-v1 fingerprint cannot certify the new behavior |
 
 Dry parity rows use no medium contacts or speed modifiers. Run flat walking, isolated step up/down, stairs,
@@ -613,7 +614,7 @@ build-slot. No local stress or flake loop. Full verification belongs to the fina
    bridge/cave intervals and closed water. Run `ExplicitCharacterMovementTests.NonSwimmer`, new
    `ExplicitContactDeepWaterTests` and affected default legacy swim fixtures. No nav bake or MoveTuning flag.
 8. **Profile, heads and documentation integration.** After behavior verification, own the profile identity and
-   shared runtime/probe tests I1/R1. Check both heads and replay with generation 14, null-hint correction and
+   shared runtime/probe tests I1/R1. Check both heads and replay with current movement transport, null-hint correction and
    publication inside the lease. Run affected Movement explicit-profile tests and Server explicit movement/
    admission/replication tests. Sweep public docs, index this spec and update the ledger as implemented results
    warrant. Keep phase 5 and native gates explicit. The orchestrator performs whole-branch review, reconciles
@@ -678,6 +679,6 @@ cannot establish these native producer facts, which must be answered before G1b 
 - What native registration table will bind installed static/feature provenance, including joined features and
   frame migration, to canonical support owners and legal links under the environment pin?
 - What phase 5 capture format will retain geometric support h separately from the explicit resting feet h + s,
-  and distinguish old bakes from this profile without changing generation 14 prematurely?
+  and distinguish old bakes from this profile without an unrelated movement wire change?
 
 No native answer is inferred from the generic fixtures or the historical swimming ledger.

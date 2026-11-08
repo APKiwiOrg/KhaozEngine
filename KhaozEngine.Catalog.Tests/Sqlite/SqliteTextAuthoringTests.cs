@@ -217,10 +217,19 @@ public sealed class SqliteTextAuthoringTests
         using var otherFiles = new TemporaryCatalogDatabase();
         using SqliteContentAuthoringStore other = await OpenAsync(otherFiles);
         await ApplyAsync(other, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
-        await ((IContentTextAuthoringStore)other).FreezeChangesAsync(0);
+        ContentTextPublishSnapshot otherSnapshot = await ((IContentTextAuthoringStore)other).FreezeChangesAsync(0);
+        var otherAudit = await other.ListAuditAsync(default, 0, 0, 500);
         var foreign = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => ((IContentTextAuthoringStore)other).CommitTextPublishAsync(plan, Request(0), null));
         Assert.Equal(ContentAuthoringException.TextStateMismatchReason, foreign.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextPlanEpochMismatch, foreign.Refusal);
+        Assert.Equal(plan.StoreEpoch, foreign.ExpectedEpoch);
+        Assert.Equal(await other.GetStoreEpochAsync(), foreign.ActualEpoch);
+        Assert.True(ContentTextCompatibility.SameDraft(otherSnapshot.Draft, (await other.GetOpenDraftAsync())!));
+        Assert.Empty(await other.ListVersionsAsync());
+        Assert.Equal(otherAudit, await other.ListAuditAsync(default, 0, 0, 500));
+        ContentTextPublishPlan otherPlan = await PlanAsync(other, chunk);
+        Assert.Equal(1, (await ((IContentTextAuthoringStore)other).CommitTextPublishAsync(otherPlan, Request(0), null)).VersionNumber);
 
         // A chunk that is not the plan's own values is refused, never trusted.
         var mismatch = await Assert.ThrowsAsync<ContentAuthoringException>(

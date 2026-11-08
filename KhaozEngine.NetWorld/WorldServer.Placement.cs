@@ -31,6 +31,7 @@ public sealed partial class WorldServer
         if (!entityBySlot.TryGetValue(slot, out Entity e)) return false;
         uint baseEpoch = TeleportEpochGuard.BaseEpoch(stateBySlot, slot);
         PlayerMoveState next = ToIsland(state);
+        next.Move = PlayerMovementPublication.Canonicalize(next.Move);
         if (teleport)
         {
             next.Move.Commitment = default;

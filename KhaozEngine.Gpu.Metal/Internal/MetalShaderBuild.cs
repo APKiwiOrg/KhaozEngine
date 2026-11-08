@@ -55,9 +55,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="cache">The emission cache, or null to emit unconditionally. Null is what a test that
         /// wants to measure or compare the emission itself passes.</param>
         /// <param name="memo">An explicit device frontend memo, or null for ordinary defaults.</param>
-        /// <param name="label">Optional name for the program, included in every error message.</param>
+        /// <param name="label">Optional name for the program, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
-        /// cross-compile, or the emission could not be read (any of 2.2b pin 1's classes).</exception>
+        /// cross-compile, or the emission could not be read (any of 2.2b pin 1's classes). Reason distinguishes
+        /// FrontEndCompileFailed, CrossCompileFailed and the Metal entry-point or binding-table refusals. Label
+        /// identifies the program, with Stage when known.</exception>
         internal static MetalMslProgram Pair(string vertexGlsl, string fragmentGlsl, MetalMslCache? cache,
             string? label = null, SpirvCompileCache? memo = null)
         {
@@ -91,9 +93,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <c>layout(local_size_x = ...) in;</c> declaration.</param>
         /// <param name="cache">The emission cache, or null to emit unconditionally.</param>
         /// <param name="memo">An explicit device frontend memo, or null for ordinary defaults.</param>
-        /// <param name="label">Optional name for the shader, included in every error message.</param>
+        /// <param name="label">Optional name for the shader, carried in <see cref="ShaderValidationException.Label"/>.</param>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, failed to
-        /// cross-compile, declares no resolvable workgroup size, or its emission could not be read.</exception>
+        /// cross-compile, declares no resolvable workgroup size, or its emission could not be read. Label
+        /// identifies the shader, with Stage when known. Reason distinguishes FrontEndCompileFailed,
+        /// CrossCompileFailed, ComputeLocalSizeMissing / ComputeLocalSizeSpecialized and the Metal entry-point
+        /// or binding-table refusals.</exception>
         internal static (MetalMslProgram Program, uint X, uint Y, uint Z) Compute(string computeGlsl,
             MetalMslCache? cache, string? label = null, SpirvCompileCache? memo = null)
         {
@@ -139,7 +144,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // The cross-compile returns one use list per stage it emitted, so a missing one means the emission and
         // this assembly disagree about which stages the program has. Defaulting to an empty list would build a
         // table binding nothing for that stage, which is a black frame with no error.
-        static IReadOnlyList<MslResourceRef> UseFor(MslStageUse[] use, MetalShaderStage stage, string tag)
+        internal static IReadOnlyList<MslResourceRef> UseFor(MslStageUse[] use, MetalShaderStage stage, string tag)
         {
             GpuShaderStages wanted = stage switch
             {
@@ -153,10 +158,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
             foreach (MslStageUse candidate in use)
                 if (candidate.Stage == wanted) return candidate.Used;
 
-            throw new ShaderValidationException(
+            throw new ShaderValidationException(ShaderValidationRefusal.MetalResourceUseListMissing,
                 $"{tag}: the MSL cross-compile returned no resource-use list for the "
                 + stage.ToString().ToLowerInvariant() + " stage, so there is nothing to say which of the "
-                + "program's authored indices that stage actually binds.");
+                + "program's authored indices that stage actually binds.")
+            {
+                Label = tag,
+                Stage = wanted,
+            };
         }
 
     }

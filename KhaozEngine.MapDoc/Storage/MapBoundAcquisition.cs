@@ -26,7 +26,12 @@ internal static class MapBoundAcquisition
                 foreach (MapBoundRef bound in new[] { footprint.Lower, footprint.Upper })
                 {
                     if (bound.Kind is not (MapBoundKind.SupportFloor or MapBoundKind.Ceiling or MapBoundKind.LegacyExteriorV1)) continue;
-                    if (string.IsNullOrWhiteSpace(bound.SurfaceId)) throw new MapDocumentException("bound surface is undeclared");
+                    if (string.IsNullOrWhiteSpace(bound.SurfaceId))
+                        throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "bound surface is undeclared")
+                        {
+                            RecordId = footprint.Id, SurfaceId = bound.SurfaceId,
+                            FieldPath = ReferenceEquals(bound, footprint.Lower) ? "Lower.SurfaceId" : "Upper.SurfaceId",
+                        };
                     MapSurfaceRef target = surface(bound.SurfaceId);
                     MapCellRect cells = MapLatticeRanges.CellRange(target.Frame, rect[0], rect[1]);
                     MapSlotRect slots = MapSurfaceRanges.Slots(cells);

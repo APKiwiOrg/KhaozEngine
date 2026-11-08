@@ -63,10 +63,24 @@ public class GenerationTablesTests
         ContentSnapshot candidate = Snapshot(registry, [.. rows]);
         ModCandidateTables tables = ModCandidateTables.Build(candidate);
 
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
+        GenerationTableException failure = Assert.Throws<GenerationTableException>(
             () => GenerationTables.Build(tables, candidate));
-        Assert.Contains("4096", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("LIVE", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(GenerationTableRefusal.ExcludedRunCountExceeded, failure.Reason);
+        Assert.Equal(4_160L, failure.ActualCount);
+        Assert.Equal(4_096, failure.MaximumCount);
+        Assert.Equal(255L, failure.AffixCount);
+        Assert.Equal(16, failure.WidestGroup);
+        Assert.Equal(4_160, failure.WidestBucket);
+
+        rows.RemoveAll(row => row.Type.Value == InstanceContentTypeIds.ModTierWeightTypeId && row.Id > 4_096);
+        ContentSnapshot withinLimit = Snapshot(registry, [.. rows]);
+        GenerationTables built = GenerationTables.Build(ModCandidateTables.Build(withinLimit), withinLimit);
+        Assert.Equal(withinLimit.VersionNumber, built.ContentVersion);
+        Assert.Equal(4_096L, built.Candidates.TableEntries);
+        rows.RemoveAll(row => row.Type.Value == InstanceContentTypeIds.ModTierWeightTypeId && row.Id == 4_096);
+        ContentSnapshot belowLimit = Snapshot(registry, [.. rows]);
+        GenerationTables below = GenerationTables.Build(ModCandidateTables.Build(belowLimit), belowLimit);
+        Assert.Equal(4_095L, below.Candidates.TableEntries);
     }
 
     [Fact]
@@ -83,9 +97,13 @@ public class GenerationTablesTests
         ContentSnapshot candidate = Snapshot(registry, [.. rows]);
         ModCandidateTables tables = ModCandidateTables.Build(candidate);
 
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
+        GenerationTableException failure = Assert.Throws<GenerationTableException>(
             () => GenerationTables.Build(tables, candidate));
-        Assert.Contains(InstanceContentFindings.RareNameCoverage, failure.Message, StringComparison.Ordinal);
+        Assert.Equal(GenerationTableRefusal.RareNamePositionUncovered, failure.Reason);
+        Assert.Equal(2, failure.RarityId);
+        Assert.Equal(0, failure.Signature);
+        Assert.Equal(1, failure.Position);
+        Assert.Equal(2, failure.RequiredPositions);
 
         // And the whole world, with both positions covered, still builds. What is refused is the UNCOVERED
         // position rather than a rarity that rolls a name at all.

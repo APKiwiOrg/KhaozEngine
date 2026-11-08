@@ -66,6 +66,21 @@ public sealed class MapMarkerEffectTests
         Assert.Equal("""{"oldBounds":null,"newBounds":null,"patches":[],"spaceIds":[],"dependencyIds":[],"digestChanges":[],"invalidates":0}""", same.Describe());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DuplicateIds_RefuseBeforeProducingEffects(bool duplicateBefore)
+    {
+        MapEffectiveMarker marker = Point("m", 1, 2, 3);
+        MapEffectiveMarker[] duplicates = [marker, marker with { Name = "other-name" }];
+        var error = Assert.Throws<MapDocumentException>(() => MapMarkerEffects.Describe(
+            duplicateBefore ? duplicates : [marker], duplicateBefore ? [marker] : duplicates));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
+        Assert.Equal("m", error.MarkerId);
+        Assert.Equal(new[] { "m", "m" }, duplicates.Select(m => m.Id));
+        Assert.Empty(MapMarkerEffects.Describe([marker], [marker]).MarkerIds);
+    }
+
     static MapEffectiveMarker Point(string id, float x, float y, float z) =>
         new(2, id, id + "-name", MarkerFixtures.Exact(x, y, z), 0.25f, "guard-role", true, new[] { "first" }, null)
         { HeightProvenance = new(MapMarkerHeightMode.Explicit, null, null, null, null, null) };

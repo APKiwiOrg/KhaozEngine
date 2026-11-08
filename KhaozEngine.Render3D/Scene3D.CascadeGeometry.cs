@@ -45,7 +45,7 @@ public sealed partial class Scene3D
         {
             UploadFoliageShadowCascades(cl);
             _model.BeginShadowPass(cl, _cascadeDepthVps.AsSpan(0, count), count, _frameOrigin,
-                _cascadeNoiseScales.AsSpan(0, count));
+                _cascadeNoiseScales.AsSpan(0, count), discardWorkingDepth: _profiling is null);
         }
         int rigidOccurrence = 0;
 

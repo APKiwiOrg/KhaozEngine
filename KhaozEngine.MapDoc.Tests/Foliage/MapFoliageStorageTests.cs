@@ -206,7 +206,13 @@ public sealed class MapFoliageStorageTests
         if (failure == "pack-type") root["foliage"]!["packs"]![0] = 1;
         else root["foliage"]!["packs"]![0]!["region"] = 1;
         using var json = System.Text.Json.JsonDocument.Parse(root["foliage"]!.ToJsonString());
-        Assert.Throws<MapDocumentException>(() => MapFoliageStorage.ReadManifest(json.RootElement));
+        var error = Assert.Throws<MapDocumentException>(() => MapFoliageStorage.ReadManifest(json.RootElement));
+        Assert.Equal(MapDocumentRefusal.SchemaObjectRequired, error.Reason);
+        // These label-only shared calls do not know an indexed JSON path or layer identity.
+        Assert.Null(error.FieldPath);
+        Assert.Null(error.LayerId);
+        using var control = System.Text.Json.JsonDocument.Parse(FoliageStorageFixtures.Manifest(dir.Root)["foliage"]!.ToJsonString());
+        Assert.Single(MapFoliageStorage.ReadManifest(control.RootElement).Set.Layers);
     }
 
     [Fact]
@@ -253,10 +259,19 @@ public sealed class MapFoliageStorageTests
         using (var writer = new System.Text.Json.Utf8JsonWriter(bytes)) MapFoliageStorage.WriteManifest(writer, set, index);
         long exact = bytes.Length;
         MapFoliageManifestBudget.Check(set, index, exact);
-        Assert.Throws<MapDocumentException>(() => MapFoliageManifestBudget.Check(set, index, exact - 1));
+        var bytesError = Assert.Throws<MapDocumentException>(() => MapFoliageManifestBudget.Check(set, index, exact - 1));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, bytesError.Reason);
+        Assert.Equal("stored foliage UTF-8 bytes", bytesError.Budget);
+        Assert.Equal(exact - 1, bytesError.Limit);
+        Assert.Equal(exact, bytesError.ActualByteCount);
+        MapFoliageManifestBudget.Check(set, index, exact);
         // Every coordinate row needs at least 13 UTF-8 bytes, even before commas and field names.
         MapFoliageManifestBudget.CheckMemberships(10, 130);
-        Assert.Throws<MapDocumentException>(() => MapFoliageManifestBudget.CheckMemberships(11, 130));
+        var memberships = Assert.Throws<MapDocumentException>(() => MapFoliageManifestBudget.CheckMemberships(11, 130));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, memberships.Reason);
+        Assert.Equal(11L, memberships.ActualCount);
+        Assert.Equal(130L, memberships.Limit);
+        MapFoliageManifestBudget.CheckMemberships(10, 130);
     }
 
     [Theory]
@@ -315,8 +330,44 @@ public sealed class MapFoliageStorageTests
         manifest["resolverIdentity"]!["resolverVersion"] = 1;
         manifest["supportRecipe"] = "LegacyXzCallbackV1";
         File.WriteAllText(Path.Combine(dir.Root, "map.json"), manifest.ToJsonString());
-        Assert.Contains("foliage: requires resolver identity", Assert.Throws<MapDocumentException>(() =>
-            MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir.Root), fixture.Assets, FoliageFixtures.Options())).Message,
-            StringComparison.Ordinal);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir.Root), fixture.Assets, FoliageFixtures.Options()));
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, error.Reason);
+        Assert.Equal("document", error.SubjectKind);
+        Assert.Equal(1, error.ResolverVersion);
+        Assert.Equal(1, error.ExpectedResolverVersion);
+        Assert.Equal(new[] { "document", "foliage" }, error.Findings!.Select(f => f.SubjectKind));
+        var foliage = Assert.Single(error.Findings!, f => f.SubjectKind == "foliage");
+        Assert.Equal(MapDocumentRefusal.ResolverContractMismatch, foliage.Reason);
+        Assert.Equal(1, foliage.ResolverVersion);
+        Assert.Equal(2, foliage.ExpectedResolverVersion);
+        manifest["resolverIdentity"]!["resolverVersion"] = 2;
+        manifest["supportRecipe"] = "AuthoredBindingsV2";
+        File.WriteAllText(Path.Combine(dir.Root, "map.json"), manifest.ToJsonString());
+        Assert.NotEmpty(MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir.Root), fixture.Assets, FoliageFixtures.Options()));
+    }
+
+    [Fact]
+    public void StoredBoundFoliageAdapter_RetainsEveryFindingWithoutChangingTheManifest()
+    {
+        using var dir = new FoliageStorageFixtures.DirectoryScope();
+        var fixture = FoliageFixtures.Create();
+        MapDocumentFile.SaveTiled(fixture.Document, dir.Root);
+        string path = Path.Combine(dir.Root, "map.json");
+        byte[] original = File.ReadAllBytes(path);
+        JsonObject manifest = FoliageStorageFixtures.Manifest(dir.Root);
+        var models = manifest["foliage"]!["layers"]![0]!["models"]!.AsArray();
+        models[0]!["assetId"] = "absent-a";
+        models[1]!["assetId"] = "absent-b";
+        File.WriteAllText(path, manifest.ToJsonString());
+        byte[] before = File.ReadAllBytes(path);
+        var error = Assert.Throws<MapDocumentException>(() =>
+            MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir.Root), fixture.Assets, FoliageFixtures.Options()));
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
+        Assert.Equal("absent-a", error.AssetId);
+        Assert.Equal(new[] { "absent-a", "absent-b" }, error.Findings!.Select(f => f.AssetId));
+        Assert.Equal(before, File.ReadAllBytes(path));
+        File.WriteAllBytes(path, original);
+        Assert.NotEmpty(MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir.Root), fixture.Assets, FoliageFixtures.Options()));
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
 using Xunit;
 
@@ -219,7 +220,7 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
 
-            Assert.Throws<InvalidOperationException>(emitter.SetFullScissorRects);
+            Assert.Equal("SetFullScissorRects", Assert.Throws<GpuBoundFramebufferException>(emitter.SetFullScissorRects).Command);
         }
 
         /// <summary>
@@ -229,8 +230,8 @@ namespace KhaozEngine.Tests.Gpu
         /// either. One of the copies is in a Windows-only body no test off Windows can execute, so a change to
         /// the reachable one would have stayed invisible until a Windows leg ran.
         /// <para>
-        /// It still says what the FULL SCISSOR case needs rather than the generic attachment sentence the other
-        /// two wrappers take, because this command names the framebuffer's extent and not an attachment of it.
+        /// Both entry points refuse without a framebuffer and accept a bound target. The compiled-call check
+        /// below separately guards that both emitters route through the shared helper.
         /// </para>
         /// </summary>
         [Fact]
@@ -239,13 +240,13 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
 
-            var thrown = Assert.Throws<InvalidOperationException>(emitter.SetFullScissorRects);
-            var shared = Assert.Throws<InvalidOperationException>(
-                () => D3D11BindResolve.RequireScissorExtent(null));
+            Assert.Equal("SetFullScissorRects", Assert.Throws<GpuBoundFramebufferException>(emitter.SetFullScissorRects).Command);
+            Assert.Equal(GpuBoundFramebufferRefusal.FramebufferNotBound, Assert.Throws<GpuBoundFramebufferException>(() => D3D11BindResolve.RequireScissorExtent(null)).Reason);
 
-            Assert.Equal(shared.Message, thrown.Message);
-            Assert.Contains("The full scissor IS the bound framebuffer's extent", thrown.Message,
-                StringComparison.Ordinal);
+            FakeFramebuffer target = Framebuffer(640, 480);
+            Assert.Same(target, D3D11BindResolve.RequireScissorExtent(target));
+            emitter.SetFramebuffer(target);
+            emitter.SetFullScissorRects();
         }
 
         /// <summary>
@@ -273,14 +274,22 @@ namespace KhaozEngine.Tests.Gpu
         /// here at all: while it lived in the Vortice body, the trace emitter recorded the same stream happily and
         /// the two disagreed about what the seam permits, unnoticed on this machine.
         /// </summary>
-        [Fact]
-        public void AClearWithNoFramebufferBound_IsRefused()
+        [Theory]
+        [InlineData("ClearColorTarget")]
+        [InlineData("ClearDepthStencil")]
+        public void AClearWithNoFramebufferBound_IsRefused(string command)
         {
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
-
-            Assert.Throws<InvalidOperationException>(() => emitter.ClearColorTarget(0, KhaozEngine.Primitives.Color.Black));
-            Assert.Throws<InvalidOperationException>(() => emitter.ClearDepthStencil(1f));
+            Action clear = command == "ClearColorTarget"
+                ? () => emitter.ClearColorTarget(0, KhaozEngine.Primitives.Color.Black)
+                : () => emitter.ClearDepthStencil(1f);
+            var refusal = Assert.Throws<GpuBoundFramebufferException>(clear);
+            Assert.Equal(GpuBoundFramebufferRefusal.FramebufferNotBound, refusal.Reason);
+            Assert.Equal(command, refusal.Command);
+            Assert.IsAssignableFrom<InvalidOperationException>(refusal);
+            emitter.SetFramebuffer(Framebuffer(640, 480));
+            clear();
         }
 
         /// <summary>An index past the bound framebuffer's colour attachments is refused rather than clearing
@@ -298,8 +307,12 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
                 () => emitter.ClearColorTarget(1, KhaozEngine.Primitives.Color.Black));
 
-            Assert.Contains("1 colour attachments", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("index", ex.ParamName);
+            Assert.Equal(1u, ex.ActualValue);
             Assert.Empty(log.Trace);
+
+            emitter.ClearColorTarget(0, KhaozEngine.Primitives.Color.Black);
+            Assert.Single(log.Trace);
         }
 
         /// <summary>And a depth clear against a framebuffer that declares no depth attachment, which would
@@ -313,7 +326,12 @@ namespace KhaozEngine.Tests.Gpu
             emitter.SetFramebuffer(new FakeFramebuffer(
                 new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm), 64, 64));
 
-            Assert.Throws<InvalidOperationException>(() => emitter.ClearDepthStencil(1f));
+            var refusal = Assert.Throws<GpuBoundFramebufferException>(() => emitter.ClearDepthStencil(1f));
+            Assert.Equal(GpuBoundFramebufferRefusal.DepthAttachmentMissing, refusal.Reason);
+            Assert.Equal("ClearDepthStencil", refusal.Command);
+            Assert.IsAssignableFrom<InvalidOperationException>(refusal);
+            emitter.SetFramebuffer(Framebuffer(64, 64));
+            emitter.ClearDepthStencil(1f);
         }
 
         /// <summary>The other half, and the one that keeps the three above from passing vacuously: a clear that
@@ -468,7 +486,17 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
 
-            Assert.Throws<ArgumentException>(() => emitter.SetPipeline(new FakePipeline()));
+            using var foreign = new FakePipeline();
+            var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(() => emitter.SetPipeline(foreign));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, refusal.Reason);
+            Assert.Equal("pipeline", refusal.ParamName);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, refusal.ExpectedBackend);
+            Assert.Equal(typeof(FakePipeline), refusal.ActualType);
+            Assert.Equal(typeof(ID3D11PipelineState), refusal.ExpectedType);
+            Assert.Equal("graphics pipeline", refusal.Context);
+            Assert.Equal("graphics", refusal.PipelineKind);
+            using var own = Pipeline();
+            emitter.SetPipeline(own);
         }
 
         // ---- Decision R8: precise scrub and unbind on disposal ----

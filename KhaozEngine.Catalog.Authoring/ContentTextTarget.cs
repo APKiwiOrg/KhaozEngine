@@ -23,21 +23,31 @@ public sealed record ContentTextTarget
     /// <exception cref="ArgumentException">The key is empty, the field is blank, or the language breaks the grammar.</exception>
     public ContentTextTarget(ContentTypeId type, ContentKey key, string fieldName, string language)
     {
-        ArgumentNullException.ThrowIfNull(fieldName);
-        if (key.IsEmpty)
-        {
-            throw new ArgumentException("A text target names a row by its content key, which may not be empty.", nameof(key));
-        }
-
-        if (string.IsNullOrWhiteSpace(fieldName))
-        {
-            throw new ArgumentException("A text target names its localized text marker field.", nameof(fieldName));
-        }
+        if (FindDefect(key, fieldName, language) is { } finding) throw finding.ToException();
 
         Type = type;
         Key = key;
         FieldName = fieldName;
         Language = ContentTextLanguageTag.Normalize(language);
+    }
+
+    /// <summary>The first target rule the supplied arguments break, in constructor order.</summary>
+    internal static ContentTextFinding? FindDefect(ContentKey key, string fieldName, string language)
+    {
+        ArgumentNullException.ThrowIfNull(fieldName);
+        if (key.IsEmpty)
+        {
+            return new(ContentAuthoringRefusal.BundleTextTargetKeyEmpty,
+                "A text target names a row by its content key, which may not be empty.", nameof(key)) { MemberName = "key" };
+        }
+
+        if (string.IsNullOrWhiteSpace(fieldName))
+        {
+            return new(ContentAuthoringRefusal.BundleTextTargetFieldBlank,
+                "A text target names its localized text marker field.", nameof(fieldName)) { MemberName = "field" };
+        }
+
+        return ContentTextLanguageTag.FindDefect(language) is { } tag ? tag with { MemberName = "language" } : null;
     }
 
     /// <summary>The content type.</summary>

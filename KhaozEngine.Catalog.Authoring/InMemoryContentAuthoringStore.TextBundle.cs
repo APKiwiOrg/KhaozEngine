@@ -55,6 +55,8 @@ public sealed partial class InMemoryContentAuthoringStore
     /// <param name="note">The operator's note.</param>
     void ApplyImportedTextLocked(ContentBundleTextState text, string actor, string operatorId, string note)
     {
+        // Internal invariant: ImportAsync always applies the row edits, even an empty list,
+        // before this locked call, which creates the draft. No external callback runs between them.
         ContentDraft open = _draft
             ?? throw new InvalidOperationException("The import's row edits open the draft its text lands in.");
 

@@ -51,12 +51,12 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
         JournalEventPage events = await reader.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024));
         JournalProjectionRead projections = await reader.ReadProjectionsAsync(new JournalProjectionQuery("player/a"));
         JournalOperationResolution resolution = await reader.ResolveOperationAsync(Identity(3));
-        await AssertRefused(nameof(inner.InitializeAsync), () => reader.InitializeAsync(Initialization(10, "player/c")));
-        await AssertRefused(nameof(inner.CommitAsync), () => reader.CommitAsync(Commit(11, "player/a", 2, 7)));
-        await AssertRefused(nameof(inner.CompactAsync), () => reader.CompactAsync(new JournalCompaction("player/a", 2, "player.v2", 2, new byte[] { 40 }, 2)));
-        await AssertRefused(nameof(inner.PurgeOperationsAsync), () => inner.PurgeOperationsAsync(new JournalOperationPurge(DateTimeOffset.MaxValue, 10)));
-        await AssertRefused(nameof(inner.PurgeOperationsByAgeAsync), () => inner.PurgeOperationsByAgeAsync(new JournalOperationAgePurge(TimeSpan.Zero, 10)));
-        await AssertRefused(nameof(inner.RotateStoreEpochAsync), () => inner.RotateStoreEpochAsync());
+        await AssertRefused(() => reader.InitializeAsync(Initialization(10, "player/c")));
+        await AssertRefused(() => reader.CommitAsync(Commit(11, "player/a", 2, 7)));
+        await AssertRefused(() => reader.CompactAsync(new JournalCompaction("player/a", 2, "player.v2", 2, new byte[] { 40 }, 2)));
+        await AssertRefused(() => inner.PurgeOperationsAsync(new JournalOperationPurge(DateTimeOffset.MaxValue, 10)));
+        await AssertRefused(() => inner.PurgeOperationsByAgeAsync(new JournalOperationAgePurge(TimeSpan.Zero, 10)));
+        await AssertRefused(() => inner.RotateStoreEpochAsync());
         string after = await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, writer.Prefix);
 
         Assert.Equal(new[] { ("player/a", 2L), ("player/b", 0L) }, page.Streams.Select(value => (value.StreamKey, value.HeadVersion)));
@@ -74,6 +74,7 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
     {
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
         string before = await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, "journal-test/none/");
+        string contentBefore = await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString);
         var hook = new SqlServerJournalSchemaTestHook(async (connection, transaction, cancellationToken) =>
         {
             foreach (string table in TablesInDropOrder)
@@ -87,9 +88,10 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
 
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => OpenReadOnly(hook));
 
-        AssertSchemaRefusal(exception);
-        Assert.Contains("missing", exception.Message, StringComparison.Ordinal);
+        AssertSchemaRefusal(exception, JournalStoreRefusal.SchemaMissing);
         Assert.Equal(before, await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, "journal-test/none/"));
+        Assert.Equal(contentBefore, await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString));
+        _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(DedicatedConnectionString) { SchemaMode = SqlServerJournalSchemaMode.ReadOnly });
     }
 
     [SqlServerFact]
@@ -97,6 +99,7 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
     {
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
         string before = await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, "journal-test/none/");
+        string contentBefore = await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString);
         short isolationLevel = 0;
         string applicationLock = string.Empty;
         var hook = new SqlServerJournalSchemaTestHook(async (connection, transaction, cancellationToken) =>
@@ -117,11 +120,14 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
 
         JournalStoreException exception = Assert.Throws<JournalStoreException>(() => OpenReadOnly(hook));
 
-        AssertSchemaRefusal(exception);
-        Assert.Contains("unsupported version '1'", exception.Message, StringComparison.Ordinal);
+        AssertSchemaRefusal(exception, JournalStoreRefusal.SchemaVersionUnsupported);
+        Assert.Equal(1L, exception.ActualVersion);
+        Assert.Equal(new long[] { 3 }, exception.SupportedVersions);
         Assert.Equal((short)2, isolationLevel);
         Assert.Equal("NoLock", applicationLock);
         Assert.Equal(before, await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, "journal-test/none/"));
+        Assert.Equal(contentBefore, await SqlServerJournalSnapshot.CaptureAsync(DedicatedConnectionString));
+        _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(DedicatedConnectionString) { SchemaMode = SqlServerJournalSchemaMode.ReadOnly });
     }
 
     [SqlServerFact]
@@ -168,6 +174,8 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
                 await Task.WhenAny(opening, Task.Delay(WaiterBound)) == opening,
                 "The cancelled read only validation kept waiting on its command.");
             JournalStoreException exception = await Assert.ThrowsAsync<JournalStoreException>(() => opening);
+            Assert.Equal(JournalStoreRefusal.SchemaCancelled, exception.Reason);
+            Assert.Equal(JournalOperationStage.SchemaReadOnlyValidation, exception.Stage);
             Assert.Equal(JournalStoreFailureKind.Cancelled, exception.Kind);
             Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, exception.Certainty);
             Assert.Equal(JournalStoreFailureScope.WholeStore, exception.Scope);
@@ -248,19 +256,18 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
         await writer.CompactAsync(new JournalCompaction("player/a", 1, "player.v1", 1, new byte[] { 30 }, null));
     }
 
-    private static async Task AssertRefused(string operation, Func<Task> write)
+    private static async Task AssertRefused(Func<Task> write)
     {
-        NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(write);
-        Assert.Contains(nameof(SqlServerJournalSchemaMode.ReadOnly), exception.Message, StringComparison.Ordinal);
-        Assert.Contains(operation, exception.Message, StringComparison.Ordinal);
+        await Assert.ThrowsAsync<NotSupportedException>(write);
     }
 
-    private static void AssertSchemaRefusal(JournalStoreException exception)
+    private static void AssertSchemaRefusal(JournalStoreException exception, JournalStoreRefusal reason)
     {
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
         Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, exception.Certainty);
         Assert.Equal(JournalStoreFailureScope.WholeStore, exception.Scope);
-        Assert.Contains(SqlServerJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(reason, exception.Reason);
+        Assert.Equal("sqlserver-journal-v3-row-timestamps", exception.RequiredMigration);
     }
 
     private static JournalOperationIdentity Identity(int suffix)

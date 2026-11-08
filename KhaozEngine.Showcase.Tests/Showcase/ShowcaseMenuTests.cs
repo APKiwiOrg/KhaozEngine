@@ -86,40 +86,26 @@ namespace KhaozEngine.Tests.Showcase
             Assert.Equal(4, m.Selected);
         }
 
-        [Fact]
-        public void MoveDown_From5_ClampsIntoShortLastRow()
+        [Theory]
+        [InlineData(5, 6)]
+        [InlineData(6, 6)]
+        public void MoveDown_clamps_at_the_short_last_row(int start, int expected)
         {
             var m = Grid();
-            m.SelectAt(5);          // right cell of row 2, and row 3 has no right cell
+            m.SelectAt(start);
             m.MoveDown();
-            Assert.Equal(6, m.Selected);
+            Assert.Equal(expected, m.Selected);
         }
 
-        [Fact]
-        public void MoveDown_From6_IsNoOp()
+        [Theory]
+        [InlineData(6, 4)]
+        [InlineData(1, 1)]
+        public void MoveUp_stays_within_the_grid(int start, int expected)
         {
             var m = Grid();
-            m.SelectAt(6);          // already on the last row
-            m.MoveDown();
-            Assert.Equal(6, m.Selected);
-        }
-
-        [Fact]
-        public void MoveUp_From6_GoesTo4()
-        {
-            var m = Grid();
-            m.SelectAt(6);
+            m.SelectAt(start);
             m.MoveUp();
-            Assert.Equal(4, m.Selected);
-        }
-
-        [Fact]
-        public void MoveUp_At_TopRow_IsNoOp()
-        {
-            var m = Grid();
-            m.SelectAt(1);
-            m.MoveUp();
-            Assert.Equal(1, m.Selected);
+            Assert.Equal(expected, m.Selected);
         }
 
         [Fact]

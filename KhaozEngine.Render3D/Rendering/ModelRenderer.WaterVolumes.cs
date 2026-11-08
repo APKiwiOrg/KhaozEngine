@@ -24,14 +24,19 @@ internal sealed partial class ModelRenderer
     }
 
     static GpuResourceLayoutElement[] AppendWaterVolumeLayout(params GpuResourceLayoutElement[] existing) =>
-        [.. existing, new("WaterVolumes", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment)];
+        [.. existing, new("WaterVolumes", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
+            new("CausticMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+            new("CausticSampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment)];
 
     IGpuBindableResource[] AppendWaterVolumeResources(params IGpuBindableResource[] existing) =>
-        [.. existing, _waterVolumeBuffer];
+        WaterVolumeResources(_causticMap, existing);
+
+    IGpuBindableResource[] WaterVolumeResources(IGpuTexture causticMap, IGpuBindableResource[] existing) =>
+        [.. existing, _waterVolumeBuffer, causticMap, _causticSampler];
 
     internal void BuildAndUploadLightingClusters(IGpuCommandList cl, ReadOnlySpan<PointLightData> lights,
         ReadOnlySpan<WaterVolumeRecord> waterRecords, Matrix4x4 viewProjection, Vector3 eyeRender,
-        Vector3 forward, Matrix4x4 projection, Vector3 renderOrigin)
+        Vector3 forward, Matrix4x4 projection, Vector3 renderOrigin, Vector4 causticWindow = default)
     {
         // Reset before either early return. Stale buffer contents are unreachable after an opt-out transition.
         WaterVolumeDiagnostics = default;
@@ -64,5 +69,14 @@ internal sealed partial class ModelRenderer
         if (_waterVolumeClusters.UsedUIntCount == 0) return;
         cl.UpdateBuffer<uint>(_waterVolumeBuffer, 0,
             _waterVolumeClusters.Image.AsSpan(0, _waterVolumeClusters.UsedUIntCount));
+        if (causticWindow.W > 0f)
+        {
+            Span<uint> window = _waterVolumeClusters.Image.AsSpan(WaterVolumeClusterBuilder.WindowUIntOffset, 4);
+            window[0] = BitConverter.SingleToUInt32Bits(causticWindow.X);
+            window[1] = BitConverter.SingleToUInt32Bits(causticWindow.Y);
+            window[2] = BitConverter.SingleToUInt32Bits(causticWindow.Z);
+            window[3] = BitConverter.SingleToUInt32Bits(causticWindow.W);
+            cl.UpdateBuffer<uint>(_waterVolumeBuffer, WaterVolumeClusterBuilder.WindowUIntOffset * sizeof(uint), window);
+        }
     }
 }

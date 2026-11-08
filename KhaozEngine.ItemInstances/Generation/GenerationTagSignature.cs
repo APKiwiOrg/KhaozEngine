@@ -83,7 +83,7 @@ public sealed class GenerationTagSignature
     /// <param name="snapshot">The loaded version, read for its <c>item</c> ROWS and nothing else.</param>
     /// <param name="maxTagPositions">The ceiling a base's tag list may not pass.</param>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
-    /// <exception cref="InvalidOperationException">A live base carries more tags than the ceiling permits.</exception>
+    /// <exception cref="GenerationTableException">A live base carries more tags than the ceiling permits.</exception>
     public static GenerationTagSignature Build(IContentSnapshot snapshot, int maxTagPositions)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -114,8 +114,13 @@ public sealed class GenerationTagSignature
             ReadTags(row, scratch);
             if (scratch.Count > maxTagPositions)
             {
-                throw new InvalidOperationException(FormattableString.Invariant(
-                    $"{InstanceContentFindings.GenerationTagPositions}: item base {row.Id} carries {scratch.Count} authored tags, over the generation ceiling of {maxTagPositions}. The candidate tables size their suppression headers by the tag POSITION count, so a base past the ceiling makes the table build unbounded."));
+                throw new GenerationTableException(GenerationTableRefusal.BaseTagCountExceeded, FormattableString.Invariant(
+                    $"{InstanceContentFindings.GenerationTagPositions}: item base {row.Id} carries {scratch.Count} authored tags, over the generation ceiling of {maxTagPositions}. The candidate tables size their suppression headers by the tag POSITION count, so a base past the ceiling makes the table build unbounded."))
+                {
+                    BaseId = row.Id,
+                    ActualCount = scratch.Count,
+                    MaximumCount = maxTagPositions,
+                };
             }
 
             int signature = Intern(tags, start, count, byHash, scratch);

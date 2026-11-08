@@ -1,16 +1,13 @@
 using System;
-using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Physics;
 
 public sealed class SupportFootprintProofReuseBasisTests
 {
-    const BindingFlags Instance = BindingFlags.Instance | BindingFlags.NonPublic;
-
     [Theory]
     [InlineData("X", 1)]
     [InlineData("Y", 1)]
@@ -26,12 +23,11 @@ public sealed class SupportFootprintProofReuseBasisTests
         using var session = fixture.Open(lease, view);
         var capability = (IPhysicsSupportFootprint)view;
         capability.QuerySupportFootprint(lease, fixture.Request, fixture.Members, fixture.Joins);
-        var type = session.GetType();
-        var matches = type.GetMethod("Matches", Instance)!.CreateDelegate<Func<IPhysicsQueryLease, bool>>(session);
-        var current = type.GetMethod("CurrentBasis", Instance)!;
+        var capturedSession = Assert.IsType<BepuPhysicsWorld.FootprintReuseSession>(session);
+        Func<IPhysicsQueryLease, bool> matches = capturedSession.MatchesForTests;
         var before = SupportQueryDiagnostics.Snapshot();
         Assert.True(matches(lease));
-        Assert.True((bool)current.Invoke(session, null)!);
+        Assert.True(capturedSession.CurrentBasisForTests);
 
         // Synthetic session comparison only. Public entry points reject a wrapper even with identical metadata.
         var same = new OriginLease(lease, lease.Origin);
@@ -48,13 +44,13 @@ public sealed class SupportFootprintProofReuseBasisTests
 
         // Clone without registering or disposing it. It borrows the original memo and domain, never their ownership.
         // Only one captured origin field changes. The live owner, real lease, generations and request key stay fixed.
-        object captured = typeof(object).GetMethod("MemberwiseClone", Instance)!.Invoke(session, null)!;
-        string fieldName = "_origin" + axis;
-        type.GetField(fieldName, Instance)!.SetValue(captured, bits);
-        foreach (var field in type.GetFields(Instance).Where(field => field.Name != fieldName))
-            Assert.Equal(field.GetValue(session), field.GetValue(captured));
-        Assert.False((bool)current.Invoke(captured, null)!);
-        Assert.True((bool)current.Invoke(session, null)!);
+        var captured = capturedSession.CloneWithOriginForTests(axis, bits);
+        Assert.True(capturedSession.HasSameNonOriginStateForTests(captured));
+        var originalBits = capturedSession.OriginBitsForTests;
+        Assert.Equal((axis == "X" ? bits : originalBits.X, axis == "Y" ? bits : originalBits.Y,
+            axis == "Z" ? bits : originalBits.Z), captured.OriginBitsForTests);
+        Assert.False(captured.CurrentBasisForTests);
+        Assert.True(capturedSession.CurrentBasisForTests);
         Assert.True(matches(lease));
         Assert.Equal(before, SupportQueryDiagnostics.Snapshot());
         Assert.Equal(1, SupportQueryDiagnostics.Retention.Keys);

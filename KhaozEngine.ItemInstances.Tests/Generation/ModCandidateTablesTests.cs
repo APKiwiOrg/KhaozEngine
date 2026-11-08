@@ -328,126 +328,6 @@ public class ModCandidateTablesTests
     }
 
     [Fact]
-    public void A_bucket_above_65535_entries_THROWS_at_build_rather_than_wrapping_a_ushort()
-    {
-        ContentTypeRegistry registry = Registry();
-        var rows = new List<ContentRow>
-        {
-            Tag(registry, 5, "metal"),
-            Item(registry, 40, "greatsword", [5]),
-        };
-
-        // Fifteen tiers a mod is the packed key's whole ceiling, so 4,370 mods is the cheapest way past a
-        // 16 bit entry index in one (tag, kind, band) bucket.
-        const int mods = 4370;
-        int tier = 0;
-        for (int mod = 1; mod <= mods; mod++)
-        {
-            rows.Add(Mod(registry, mod, FormattableString.Invariant($"m{mod}")));
-            for (int ordinal = 1; ordinal <= ModCandidateTables.MaxTierOrdinal; ordinal++)
-            {
-                tier++;
-                rows.Add(ModTier(registry, tier, FormattableString.Invariant($"t{tier}"), modId: mod, ordinal: ordinal));
-                rows.Add(ModTierWeight(registry, tier, FormattableString.Invariant($"w{tier}"), tierId: tier, tagId: 5, weight: 1));
-            }
-        }
-
-        Assert.Equal(65_550, tier);
-        ContentSnapshot candidate = Snapshot(registry, rows.ToArray());
-
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
-            () => ModCandidateTables.Build(candidate));
-        Assert.Contains("65535", failure.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_signatures_UNION_weight_past_int_MaxValue_THROWS_at_build_because_a_draw_is_bounded_by_an_int()
-    {
-        ContentTypeRegistry registry = Registry();
-
-        // KEC0113 bounds the rows sharing one TAG, and this is the union over a base's tag positions, which
-        // is a superset of any one of them. Two tags each holding 1.5 billion sit comfortably under the
-        // per-tag ceiling and sum to 3 billion, which is what a roll would have to draw over.
-        const int half = 1_500_000_000;
-        ContentRow[] Rows(int weight) =>
-        [
-            Tag(registry, 5, "metal"),
-            Tag(registry, 6, "blade"),
-            Item(registry, 40, "greatsword", [5, 6]),
-            Mod(registry, 1, "sharp"),
-            Mod(registry, 2, "keen"),
-            ModTier(registry, 1, "sharp_t1", modId: 1, ordinal: 1),
-            ModTier(registry, 2, "keen_t1", modId: 2, ordinal: 1),
-            ModTierWeight(registry, 1, "sharp_t1_metal", tierId: 1, tagId: 5, weight: weight),
-            ModTierWeight(registry, 2, "keen_t1_blade", tierId: 2, tagId: 6, weight: weight),
-        ];
-
-        // A union just under the ceiling builds, so the refusal is the CEILING rather than a pair of big
-        // numbers. The two mods differ, so nothing here is suppressed and both weights are live.
-        ModCandidateTables under = ModCandidateTables.Build(Snapshot(registry, Rows(1_000_000_000)));
-        Assert.Equal(2_000_000_000L, under.LiveWeight(SignatureOf(under, 40), KindPosition(under, ModContentType.PrefixKind), 0));
-
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
-            () => ModCandidateTables.Build(Snapshot(registry, Rows(half))));
-        Assert.Contains("3000000000", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("2147483647", failure.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_tier_ordinal_above_15_THROWS_at_build_because_the_packed_key_carries_four_bits()
-    {
-        ContentTypeRegistry registry = Registry();
-
-        ContentRow[] Rows(int ordinal) =>
-        [
-            Tag(registry, 5, "metal"),
-            Item(registry, 40, "greatsword", [5]),
-            Mod(registry, 1, "sharp"),
-            ModTier(registry, 1, "sharp_t", modId: 1, ordinal: ordinal),
-            ModTierWeight(registry, 1, "w", tierId: 1, tagId: 5, weight: 3),
-        ];
-
-        // Fifteen is the ceiling and it builds. Sixteen would alias onto tier 0 of the next mod id, which is
-        // the silent failure the packed key's four bits have to refuse, so a publish reports KEC0102 and a
-        // hand built snapshot that reached a boot without one is refused here.
-        ModCandidateTables fifteen = ModCandidateTables.Build(Snapshot(registry, Rows(15)));
-        Assert.Equal(1L, fifteen.TableEntries);
-
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
-            () => ModCandidateTables.Build(Snapshot(registry, Rows(16))));
-        Assert.Contains("16", failure.Message, StringComparison.Ordinal);
-        Assert.Contains(InstanceContentFindings.TierOrdinal, failure.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_base_tag_list_past_the_generation_ceiling_THROWS_at_build()
-    {
-        ContentTypeRegistry registry = Registry();
-        var tags = new List<int>();
-        var rows = new List<ContentRow>();
-        for (int tag = 1; tag <= ModCandidateTables.MaxGenerationTagPositions + 1; tag++)
-        {
-            tags.Add(tag);
-            rows.Add(Tag(registry, tag, FormattableString.Invariant($"tag{tag}")));
-        }
-
-        rows.Add(Item(registry, 40, "greatsword", tags));
-
-        // The suppression header count is signatures times bands times kinds times POSITIONS, so an
-        // unbounded position count makes the table build unbounded. A publish reports KEC0114 and the build
-        // refuses it for the same reason the ordinal ceiling does.
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
-            () => ModCandidateTables.Build(Snapshot(registry, rows.ToArray())));
-        Assert.Contains("8", failure.Message, StringComparison.Ordinal);
-        Assert.Contains(InstanceContentFindings.GenerationTagPositions, failure.Message, StringComparison.Ordinal);
-
-        // At the ceiling it builds, and the header space is the positions the signature actually has.
-        rows[^1] = Item(registry, 40, "greatsword", tags.GetRange(0, ModCandidateTables.MaxGenerationTagPositions));
-        ModCandidateTables tables = ModCandidateTables.Build(Snapshot(registry, rows.ToArray()));
-        Assert.Equal(ModCandidateTables.MaxGenerationTagPositions, tables.TagPositionCount);
-    }
-
-    [Fact]
     public void A_snapshot_with_NO_mod_tier_weight_rows_builds_empty_tables_which_is_a_CLIENT()
     {
         ContentTypeRegistry registry = Registry();
@@ -576,12 +456,26 @@ public class ModCandidateTablesTests
 
         ContentLoadIndexException failure = Assert.Throws<ContentLoadIndexException>(runtime.BuildLoadIndexes);
         Assert.Equal(InstanceContentTypeIds.ModTypeId, failure.Type.Value);
-        Assert.IsType<InvalidOperationException>(failure.InnerException);
+        GenerationTableException inner = Assert.IsType<GenerationTableException>(failure.InnerException);
+        Assert.Equal(GenerationTableRefusal.TierOrdinalExceeded, inner.Reason);
+        Assert.Equal(1, inner.TierId);
+        Assert.Equal(16L, inner.ActualOrdinal);
+        Assert.Equal(15, inner.MaximumOrdinal);
         Assert.False(runtime.LoadIndexesBuilt);
 
         // A partial index is never left behind, and the tables a failed build would have handed out are not
         // reachable at all.
         Assert.Throws<InvalidOperationException>(() => _ = index.Tables);
+
+        ContentRuntime control = ContentRuntime.FromSnapshot(Snapshot(registry,
+            Tag(registry, 5, "metal"),
+            Item(registry, 40, "greatsword", [5]),
+            Mod(registry, 1, "sharp"),
+            ModTier(registry, 1, "sharp_t", modId: 1, ordinal: 15),
+            ModTierWeight(registry, 1, "w", tierId: 1, tagId: 5, weight: 3)), registry);
+        control.BuildLoadIndexes();
+        Assert.True(control.LoadIndexesBuilt);
+        Assert.Equal(1L, index.Tables.TableEntries);
     }
 
     [Fact]

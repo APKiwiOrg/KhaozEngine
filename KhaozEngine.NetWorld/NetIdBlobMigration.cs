@@ -8,7 +8,8 @@ namespace KhaozEngine.NetWorld;
 /// body whose entity ids are 32-bit (schema <see cref="NetId32SchemaVersion"/>, the pre-10.0.0 wire) into the 64-bit
 /// form (schema <see cref="NetId64SchemaVersion"/>), leaving every component frame byte-for-byte identical - only the
 /// per-entity id field grows from 4 to 8 bytes (little-endian, high 32 bits zero = node 0, so id 42 stays 42). A body
-/// that does not decode as a well-formed v1 snapshot throws, so the <see cref="CellPersistence"/> driver quarantines
+/// that does not decode as a well-formed v1 snapshot throws <see cref="CellBlobMigrationException"/> with
+/// <see cref="CellBlobMigrationRefusal.NoInferredGeneration"/>, so the <see cref="CellPersistence"/> driver quarantines
 /// it rather than crash-looping. A <see cref="CellPersistence"/> at schema version &gt;=
 /// <see cref="NetId64SchemaVersion"/> includes this step automatically (see
 /// <see cref="CellPersistenceConfig.IncludeEngineMigrations"/>); it is also exposed as a plain

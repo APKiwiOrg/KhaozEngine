@@ -17,8 +17,10 @@ public partial class OrdinaryContactConfigurationTests
         using (st) using (ct)
         {
             int connections = 0;
-            Assert.Throws<ArgumentException>(() => new WorldClient(() => { connections++; return ct; },
+            var failure = Assert.Throws<MovementConfigurationException>(() => new WorldClient(() => { connections++; return ct; },
                 world.Ground, OrdinaryPlayerWorld.Tuning, new() { FrameAnchoring = false }, physics: world.Physics));
+            Assert.Equal(MovementConfigurationRefusal.RegistrationRequired, failure.Reason);
+            Assert.Equal(typeof(OrdinaryMovementRegistration), failure.RequiredCapability);
             Assert.Equal(0, connections);
         }
     }
@@ -35,14 +37,15 @@ public partial class OrdinaryContactConfigurationTests
             Assert.Throws<ArgumentOutOfRangeException>(() => new WorldServer(st, new()
             { FrameAnchoring = false, MaxPlayers = 0, ExplicitMovement = settings },
                 (_, _) => 0, ExplicitPlayerEnvironment.Tuning, physics: environment.Physics));
-            Assert.Throws<ArgumentException>(() => new WorldClient(ct, (_, _) => 0,
+            Assert.Equal(WorldConfigurationRefusal.ServerTickWithUnreliableReplication,
+                Assert.Throws<WorldConfigurationException>(() => new WorldClient(ct, (_, _) => 0,
                 ExplicitPlayerEnvironment.Tuning, new()
                 {
                     FrameAnchoring = false,
                     ExplicitMovement = settings,
                     ReceiveServerTick = true,
                     RequestUnreliableDeltaReplication = true
-                }, physics: environment.Physics));
+                }, physics: environment.Physics)).Reason);
         }
         var first = new PlayerMoveSimulator((_, _) => 0, ExplicitPlayerEnvironment.Tuning, null, null,
             environment.Physics, null, SamplerSpace.World, settings);
@@ -72,14 +75,15 @@ public partial class OrdinaryContactConfigurationTests
                 MovementBoundary = world.Boundary
             }, world.Ground, OrdinaryPlayerWorld.Tuning, physics: world.Physics));
             Assert.Equal(before + 1, world.Physics.ViewDisposals);
-            Assert.Throws<ArgumentException>(() => new WorldClient(ct, world.Ground, OrdinaryPlayerWorld.Tuning, new()
+            Assert.Equal(WorldConfigurationRefusal.ServerTickWithUnreliableReplication,
+                Assert.Throws<WorldConfigurationException>(() => new WorldClient(ct, world.Ground, OrdinaryPlayerWorld.Tuning, new()
             {
                 FrameAnchoring = false,
                 ReceiveServerTick = true,
                 RequestUnreliableDeltaReplication = true,
                 MovementRegistration = world.Registration,
                 MovementBoundary = world.Boundary
-            }, physics: world.Physics));
+            }, physics: world.Physics)).Reason);
             Assert.Equal(before + 2, world.Physics.ViewDisposals);
             Assert.Equal(0, world.Physics.SourceDisposals);
         }

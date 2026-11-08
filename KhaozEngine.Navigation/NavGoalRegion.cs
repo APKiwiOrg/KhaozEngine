@@ -11,7 +11,7 @@ public sealed class NavGoalRegion
     /// <summary>World anchor used only to bound the search estimate, not as a snapped goal.</summary>
     public Vector3 Anchor { get; }
 
-    /// <summary>Conservative horizontal radius around <see cref="Anchor"/> containing every member.</summary>
+    /// <summary>Half-extent on each world XZ axis of the square around <see cref="Anchor"/> containing every member.</summary>
     public float HorizontalExtent { get; }
 
     /// <summary>

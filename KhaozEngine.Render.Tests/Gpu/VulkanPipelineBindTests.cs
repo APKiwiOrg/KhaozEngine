@@ -351,13 +351,15 @@ namespace KhaozEngine.Tests.Gpu
             using VulkanCommandList list = fixture.CreateList();
             list.Begin();
 
-            Assert.Contains("not created by the native Vulkan backend",
-                Assert.Throws<ArgumentException>(() => list.SetPipeline(new ForeignPipeline())).Message,
-                StringComparison.Ordinal);
-            Assert.Contains("not created by the native Vulkan backend",
-                Assert.Throws<ArgumentException>(
-                    () => list.SetComputePipeline(new ForeignComputePipeline())).Message,
-                StringComparison.Ordinal);
+            var graphics = Assert.Throws<GpuResourceOwnershipArgumentException>(() => list.SetPipeline(new ForeignPipeline()));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, graphics.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, graphics.ExpectedBackend);
+            Assert.Equal(typeof(ForeignPipeline), graphics.ActualType);
+            var compute = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => list.SetComputePipeline(new ForeignComputePipeline()));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, compute.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, compute.ExpectedBackend);
+            Assert.Equal(typeof(ForeignComputePipeline), compute.ActualType);
 
             Assert.Empty(fixture.PipelineBinder.Binds);
         }
@@ -382,9 +384,9 @@ namespace KhaozEngine.Tests.Gpu
                 using VulkanCommandList list = fixture.CreateList();
                 list.Begin();
 
-                Assert.Contains("null VkPipeline",
-                    Assert.Throws<ObjectDisposedException>(() => list.SetPipeline(pipeline)).Message,
-                    StringComparison.Ordinal);
+                // The live list's own disposed guard names the list. The pipeline guard names the VkPipeline.
+                Assert.Equal("VkPipeline",
+                    Assert.Throws<GpuResourceOwnershipDisposedException>(() => list.SetPipeline(pipeline)).ObjectName);
 
                 Assert.Empty(fixture.PipelineBinder.Binds);
             }
@@ -410,9 +412,8 @@ namespace KhaozEngine.Tests.Gpu
                 using VulkanCommandList list = fixture.CreateList();
                 list.Begin();
 
-                Assert.Contains("null VkPipeline",
-                    Assert.Throws<ObjectDisposedException>(() => list.SetComputePipeline(pipeline)).Message,
-                    StringComparison.Ordinal);
+                Assert.Equal("VkPipeline",
+                    Assert.Throws<GpuResourceOwnershipDisposedException>(() => list.SetComputePipeline(pipeline)).ObjectName);
 
                 Assert.Empty(fixture.PipelineBinder.Binds);
             }
@@ -440,9 +441,11 @@ namespace KhaozEngine.Tests.Gpu
 
                 using VulkanCommandList list = fixture.CreateList();
 
-                Assert.Contains("needs an open recording",
-                    Assert.Throws<InvalidOperationException>(() => list.SetPipeline(pipeline)).Message,
-                    StringComparison.Ordinal);
+                // Never begun and the pipeline is live, so the recording guard is the one refusing.
+                var ex = Assert.Throws<GpuRecordingStateException>(() => list.SetPipeline(pipeline));
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, ex.Reason);
+                Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
+                Assert.Equal("Binding a graphics pipeline", ex.Command);
 
                 Assert.Empty(fixture.PipelineBinder.Binds);
             }

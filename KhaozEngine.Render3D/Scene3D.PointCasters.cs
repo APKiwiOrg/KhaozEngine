@@ -91,13 +91,14 @@ public sealed partial class Scene3D
     /// missed slot reads <see cref="ShadowCastKind.None"/>, which is how the pass built its spans before the index,
     /// without visiting a slot the light does not touch.
     /// </summary>
-    void AppendPointCasterSpans(List<ShadowCasterSpan> spans)
+    void AppendPointCasterSpans(List<ShadowCasterSpan> spans, PointShadowCasterSet set)
     {
         int run = -1;
         uint start = 0, count = 0;
         ShadowCastKind kind = ShadowCastKind.None;
         foreach (int slot in _pointCasterHits)
         {
+            if (!PointCasterInSet(slot, set)) continue;
             int slotRun = _pointCasterIndex.RunOf(slot);
             ShadowCastKind slotKind = PointCasterKind(slot);
             if (count > 0 && slotRun == run && slotKind == kind && (uint)slot == start + count)

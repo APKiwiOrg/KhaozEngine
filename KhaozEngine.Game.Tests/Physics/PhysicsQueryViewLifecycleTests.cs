@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -271,27 +270,13 @@ public class PhysicsQueryViewLifecycleTests
         Assert.True(owner.Raycast(Vector3.Zero, Vector3.UnitX, 8f, out RayHit ray));
         owner.GetDynamicVelocity(moving, out Vector3 linear, out Vector3 angular);
         return new OwnerState(ray, owner.GetDynamicPose(moving), owner.GetDynamicPose(jointBody), linear, angular,
-            owner.IsAwake(moving), owner.Origin, MapCount(owner, "_handles"), MapCount(owner, "_dynamics"),
-            MapCount(owner, "_constraints"));
+            owner.IsAwake(moving), owner.Origin, ((BepuPhysicsWorld)owner).RegistrationCountsForTests.Statics,
+            ((BepuPhysicsWorld)owner).RegistrationCountsForTests.Dynamics,
+            ((BepuPhysicsWorld)owner).RegistrationCountsForTests.Constraints);
     }
 
-    static int MapCount(IPhysicsWorld owner, string name) =>
-        Assert.IsAssignableFrom<IDictionary>(BackendField(owner, name)).Count;
-
-    static BepuStaticHandle BackendHandle(IPhysicsWorld owner, SeamStaticHandle seam)
-    {
-        var reverse = Assert.IsType<Dictionary<int, int>>(BackendField(owner, "_reverseHandles"));
-        return new BepuStaticHandle(Assert.Single(reverse, pair => pair.Value == seam.Value).Key);
-    }
-
-    static object BackendField(IPhysicsWorld owner, string name)
-    {
-        FieldInfo field = typeof(BepuPhysicsWorld).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Assert.NotNull(field);
-        object? value = field.GetValue(owner);
-        Assert.NotNull(value);
-        return value;
-    }
+    static BepuStaticHandle BackendHandle(IPhysicsWorld owner, SeamStaticHandle seam) =>
+        new(Assert.Single(((BepuPhysicsWorld)owner).ReverseStaticHandlesForTests, pair => pair.Value == seam.Value).Key);
 
     readonly record struct OwnerState(RayHit Ray, Pose MovingPose, Pose JointPose, Vector3 Linear, Vector3 Angular,
         bool Awake, Vector3 Origin, int StaticCount, int DynamicCount, int ConstraintCount);

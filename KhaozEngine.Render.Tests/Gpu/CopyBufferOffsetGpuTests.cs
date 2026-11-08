@@ -65,34 +65,38 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             uint[] read = ReadStaging(dev, staging, (int)(Elements - 1));
+            Assert.Equal((int)(Elements - 1), read.Length);
             for (int i = 0; i < read.Length; i++)
             {
                 Assert.Equal(values[i + 1], read[i]);
             }
 
             // ---- And the refusal, on the same device, through the same member ------------------------------
-            ArgumentOutOfRangeException seam = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            GpuCopyAlignmentException seam = Assert.Throws<GpuCopyAlignmentException>(() =>
             {
                 using IGpuCommandList cl = f.CreateCommandList();
                 using (GpuRecording.Open(dev, cl, nameof(CopyBufferOffsetGpuTests)))
                     cl.CopyBuffer(source, UnalignedOffset, staging, 0, copied);
             });
 
+            Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, seam.Reason);
             Assert.Equal("srcOffsetBytes", seam.ParamName);
-            Assert.Contains("not a multiple of 4", seam.Message, StringComparison.Ordinal);
+            Assert.Equal((ulong)UnalignedOffset, seam.ActualValue);
 
             // ---- And through the helper that produced the divergence in the first place --------------------
             uint[] viaHelper = GpuReadback.ReadBuffer<uint>(dev, source, (int)(Elements - 1), AlignedOffset);
+            Assert.Equal((int)(Elements - 1), viaHelper.Length);
             for (int i = 0; i < viaHelper.Length; i++)
             {
                 Assert.Equal(values[i + 1], viaHelper[i]);
             }
 
-            ArgumentOutOfRangeException helper = Assert.Throws<ArgumentOutOfRangeException>(
+            GpuCopyAlignmentException helper = Assert.Throws<GpuCopyAlignmentException>(
                 () => GpuReadback.ReadBuffer<uint>(dev, source, (int)(Elements - 1), UnalignedOffset));
 
+            Assert.Equal(GpuCopyAlignmentRefusal.UnalignedOffset, helper.Reason);
             Assert.Equal("srcOffsetBytes", helper.ParamName);
-            Assert.Contains("A buffer readback (GpuReadback.ReadBuffer)", helper.Message, StringComparison.Ordinal);
+            Assert.Equal((ulong)UnalignedOffset, helper.ActualValue);
         }
 
         /// <summary>Map the staging buffer and copy <paramref name="count"/> unsigned integers out of it. The

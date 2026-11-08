@@ -228,7 +228,8 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuTexture destination = fixture.StagingTexture();
             using VulkanCommandList list = fixture.RecordedList();
-            Assert.Throws<InvalidOperationException>(() => capture.CopySwapchainColor(list, destination));
+            Assert.Equal(GpuSwapchainCopyRefusal.SwapchainNotCopyable,
+                Assert.Throws<GpuSwapchainCopyStateException>(() => capture.CopySwapchainColor(list, destination)).Reason);
         }
 
         // ---- the copy ----
@@ -260,10 +261,12 @@ namespace KhaozEngine.Tests.Gpu
                 list.SetFramebuffer(offscreen);
                 fixture.Trace.Clear();
 
-                InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+                GpuSwapchainCopyStateException refused = Assert.Throws<GpuSwapchainCopyStateException>(
                     () => list.CopyFromSwapchain(swapchain.Attachment, destination));
 
-                Assert.Equal(SwapchainCopyCheck.NotBoundMessage, refused.Message);
+                Assert.IsAssignableFrom<InvalidOperationException>(refused);
+                Assert.Equal(GpuSwapchainCopyRefusal.SwapchainNotBound, refused.Reason);
+                Assert.Equal("CopySwapchainColor", refused.Command);
                 Assert.Empty(fixture.Trace);
                 Assert.Empty(fixture.TransferSink.ImageCopies);
 
@@ -273,7 +276,7 @@ namespace KhaozEngine.Tests.Gpu
                 list.End();
 
                 list.Begin();
-                Assert.Throws<InvalidOperationException>(
+                Assert.Throws<GpuSwapchainCopyStateException>(
                     () => list.CopyFromSwapchain(swapchain.Attachment, destination));
                 list.End();
             }

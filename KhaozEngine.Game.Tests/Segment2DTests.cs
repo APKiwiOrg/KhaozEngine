@@ -8,44 +8,16 @@ public class Segment2DTests
 {
     private const float Eps = 1e-5f;
 
-    [Fact]
-    public void PointBesideMiddleMeasuresPerpendicularDistance()
+    [Theory]
+    [InlineData(5f, 3f, 3f, 0.5f)] // Perpendicular distance beside the middle.
+    [InlineData(-4f, 0f, 4f, 0f)] // Clamp to the start.
+    [InlineData(13f, 0f, 3f, 1f)] // Clamp to the end.
+    [InlineData(2.5f, 0f, 0f, 0.25f)] // On the segment.
+    public void PointProjectionMeasuresDistanceAndClampsToSegment(float x, float y, float expectedDistance, float expectedT)
     {
-        // Horizontal segment from (0,0) to (10,0); point sits 3 units above the midpoint.
-        float distance = Segment2D.DistanceToSegment(new Vector2(5f, 3f), Vector2.Zero, new Vector2(10f, 0f), out float t);
-
-        Assert.Equal(3f, distance, Eps);
-        Assert.Equal(0.5f, t, Eps);
-    }
-
-    [Fact]
-    public void PointBeyondStartClampsToA()
-    {
-        // Point is off the 'a' end; closest point on the segment is 'a' itself, so t clamps to 0.
-        float distance = Segment2D.DistanceToSegment(new Vector2(-4f, 0f), Vector2.Zero, new Vector2(10f, 0f), out float t);
-
-        Assert.Equal(4f, distance, Eps);
-        Assert.Equal(0f, t, Eps);
-    }
-
-    [Fact]
-    public void PointBeyondEndClampsToB()
-    {
-        // Point is off the 'b' end; closest point on the segment is 'b' itself, so t clamps to 1.
-        float distance = Segment2D.DistanceToSegment(new Vector2(13f, 0f), Vector2.Zero, new Vector2(10f, 0f), out float t);
-
-        Assert.Equal(3f, distance, Eps);
-        Assert.Equal(1f, t, Eps);
-    }
-
-    [Fact]
-    public void PointOnSegmentHasZeroDistance()
-    {
-        // Point lies exactly on the segment a quarter of the way along.
-        float distance = Segment2D.DistanceToSegment(new Vector2(2.5f, 0f), Vector2.Zero, new Vector2(10f, 0f), out float t);
-
-        Assert.Equal(0f, distance, Eps);
-        Assert.Equal(0.25f, t, Eps);
+        float distance = Segment2D.DistanceToSegment(new Vector2(x, y), Vector2.Zero, new Vector2(10f, 0f), out float t);
+        Assert.Equal(expectedDistance, distance, Eps);
+        Assert.Equal(expectedT, t, Eps);
     }
 
     [Fact]
@@ -80,14 +52,15 @@ public class Segment2DTests
         Assert.Equal(0.5f, t, Eps); // closest approach is at the midpoint, usable for ordering hits along the path
     }
 
-    [Fact]
-    public void SegmentToSegmentParallelSeparatedMeasuresGap()
+    [Theory]
+    [InlineData(10f, 0f, 0f, 3f, 10f, 3f, 3f)] // Parallel segments, perpendicular gap.
+    [InlineData(1f, 0f, 3f, 0f, 3f, 4f, 2f)] // Nonparallel segments, closest endpoints.
+    public void SeparatedSegmentsMeasureTheirClosestGap(float endX, float endY, float otherStartX,
+        float otherStartY, float otherEndX, float otherEndY, float expectedDistance)
     {
-        // Two horizontal segments 3 units apart; closest approach is the perpendicular gap.
-        float distance = Segment2D.SegmentToSegmentDistance(
-            Vector2.Zero, new Vector2(10f, 0f), new Vector2(0f, 3f), new Vector2(10f, 3f));
-
-        Assert.Equal(3f, distance, Eps);
+        float distance = Segment2D.SegmentToSegmentDistance(Vector2.Zero, new Vector2(endX, endY),
+            new Vector2(otherStartX, otherStartY), new Vector2(otherEndX, otherEndY));
+        Assert.Equal(expectedDistance, distance, Eps);
     }
 
     [Fact]
@@ -98,16 +71,6 @@ public class Segment2DTests
             Vector2.Zero, new Vector2(10f, 0f), new Vector2(5f, -5f), new Vector2(5f, 5f));
 
         Assert.Equal(0f, distance, Eps);
-    }
-
-    [Fact]
-    public void SegmentToSegmentDisjointMeasuresClosestEndpoints()
-    {
-        // Non-parallel, non-touching: seg1's 'b' end (1,0) is closest to seg2's lower end (3,0), gap 2.
-        float distance = Segment2D.SegmentToSegmentDistance(
-            Vector2.Zero, new Vector2(1f, 0f), new Vector2(3f, 0f), new Vector2(3f, 4f));
-
-        Assert.Equal(2f, distance, Eps);
     }
 
     [Fact]

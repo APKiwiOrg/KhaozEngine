@@ -61,31 +61,45 @@ public sealed class TileClearanceSettings
     /// <see cref="MaxCellSize"/>.</param>
     /// <param name="waiverTag">Object tag that exempts an object from every rule, or null for none.</param>
     /// <param name="rules">Rules in authoring order, names unique by ordinal comparison.</param>
-    /// <exception cref="ArgumentException">Any value outside the contract above, an empty tag list or tag, or a
-    /// negative or non-finite tolerance.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="meshRoot"/> is null.</exception>
+    /// <exception cref="TileClearanceArgumentException">Any other value outside the contract above, an empty tag
+    /// list or tag, or a negative or non-finite tolerance.</exception>
     public TileClearanceSettings(string meshRoot, float cellSize = DefaultCellSize, string? waiverTag = null,
         IReadOnlyList<TileClearanceRule>? rules = null)
     {
         ArgumentNullException.ThrowIfNull(meshRoot);
         if (IsRooted(meshRoot))
-            throw Invalid($"meshRoot '{meshRoot}' is rooted, it must be relative to the world directory");
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceMeshRootRooted,
+                $"Invalid clearance settings: meshRoot '{meshRoot}' is rooted, it must be relative to the world directory.", null)
+            { MeshRoot = meshRoot };
         if (meshRoot.Contains('\\', StringComparison.Ordinal))
-            throw Invalid($"meshRoot '{meshRoot}' contains a backslash, it must use forward slashes");
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceMeshRootBackslash,
+                $"Invalid clearance settings: meshRoot '{meshRoot}' contains a backslash, it must use forward slashes.", null)
+            { MeshRoot = meshRoot };
         if (!(cellSize >= MinCellSize && cellSize <= MaxCellSize))
-            throw Invalid($"cellSize {cellSize} is outside {MinCellSize} through {MaxCellSize}");
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceCellSizeOutsideRange,
+                $"Invalid clearance settings: cellSize {cellSize} is outside {MinCellSize} through {MaxCellSize}.", null)
+            { CellSize = cellSize, Minimum = MinCellSize, Maximum = MaxCellSize };
         if (waiverTag is not null && string.IsNullOrWhiteSpace(waiverTag))
-            throw Invalid("waiverTag cannot be empty, leave it out for no waiver");
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceWaiverTagBlank,
+                "Invalid clearance settings: waiverTag cannot be empty, leave it out for no waiver.", null)
+            { WaiverTag = waiverTag };
 
         var copied = new List<TileClearanceRule>(rules?.Count ?? 0);
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (TileClearanceRule? rule in rules ?? Array.Empty<TileClearanceRule>())
         {
-            TileClearanceRule checkedRule = Validated(rule);
-            if (!names.Add(checkedRule.Name)) throw Invalid($"rule '{checkedRule.Name}' is listed twice");
+            TileClearanceRule checkedRule = Validated(rule, copied.Count);
+            if (!names.Add(checkedRule.Name))
+                throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceRuleDuplicate,
+                    $"Invalid clearance settings: rule '{checkedRule.Name}' is listed twice.", null)
+                { RuleName = checkedRule.Name };
             copied.Add(checkedRule);
         }
         if (copied.Count > 0 && string.IsNullOrWhiteSpace(meshRoot))
-            throw Invalid("meshRoot is required while rules exist");
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceMeshRootRequired,
+                "Invalid clearance settings: meshRoot is required while rules exist.", null)
+            { MeshRoot = meshRoot, RuleCount = copied.Count };
 
         MeshRoot = meshRoot;
         CellSize = cellSize;
@@ -123,10 +137,13 @@ public sealed class TileClearanceSettings
     }
 
     /// <summary>Removes the named rule.</summary>
-    /// <exception cref="ArgumentException">No rule has that name.</exception>
+    /// <exception cref="TileClearanceArgumentException">No rule has that name.</exception>
     public TileClearanceSettings WithoutRule(string name)
     {
-        if (Rule(name) is null) throw Invalid($"no rule is named '{name}'");
+        if (Rule(name) is null)
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceRuleMissing,
+                $"Invalid clearance settings: no rule is named '{name}'.", null)
+            { RuleName = name };
         return new TileClearanceSettings(MeshRoot, CellSize, WaiverTag,
             Rules.Where(r => !string.Equals(r.Name, name, StringComparison.Ordinal)).ToList());
     }
@@ -136,12 +153,20 @@ public sealed class TileClearanceSettings
         new(meshRoot, cellSize, waiverTag, Rules);
 
     // A copy with private tag lists, so a caller that keeps and edits the lists it passed in changes nothing here.
-    static TileClearanceRule Validated(TileClearanceRule? rule)
+    static TileClearanceRule Validated(TileClearanceRule? rule, int ruleIndex)
     {
-        if (rule is null) throw Invalid("a rule entry cannot be null");
-        if (string.IsNullOrWhiteSpace(rule.Name)) throw Invalid("a rule name cannot be empty");
+        if (rule is null)
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceRuleNull,
+                "Invalid clearance settings: a rule entry cannot be null.", null)
+            { RuleIndex = ruleIndex };
+        if (string.IsNullOrWhiteSpace(rule.Name))
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceRuleNameBlank,
+                "Invalid clearance settings: a rule name cannot be empty.", null)
+            { RuleName = rule.Name };
         if (!(rule.Tolerance >= 0f) || float.IsInfinity(rule.Tolerance))
-            throw Invalid($"rule '{rule.Name}' tolerance {rule.Tolerance} must be finite and not negative");
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceToleranceInvalid,
+                $"Invalid clearance settings: rule '{rule.Name}' tolerance {rule.Tolerance} must be finite and not negative.", null)
+            { RuleName = rule.Name, Tolerance = rule.Tolerance };
         return rule with
         {
             SubjectTags = Tags(rule.SubjectTags, rule.Name, "subjectTags"),
@@ -151,10 +176,16 @@ public sealed class TileClearanceSettings
 
     static ReadOnlyCollection<string> Tags(IReadOnlyList<string>? tags, string rule, string field)
     {
-        if (tags is null || tags.Count == 0) throw Invalid($"rule '{rule}' {field} cannot be empty");
+        if (tags is null || tags.Count == 0)
+            throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceTagsEmpty,
+                $"Invalid clearance settings: rule '{rule}' {field} cannot be empty.", null)
+            { RuleName = rule, Field = field, TagCount = tags?.Count };
         string[] copy = tags.ToArray();
-        foreach (string tag in copy)
-            if (string.IsNullOrWhiteSpace(tag)) throw Invalid($"rule '{rule}' {field} cannot hold an empty tag");
+        for (int i = 0; i < copy.Length; i++)
+            if (string.IsNullOrWhiteSpace(copy[i]))
+                throw new TileClearanceArgumentException(TileWorldRefusal.ClearanceTagBlank,
+                    $"Invalid clearance settings: rule '{rule}' {field} cannot hold an empty tag.", null)
+                { RuleName = rule, Field = field, TagIndex = i, Tag = copy[i] };
         return Array.AsReadOnly(copy);
     }
 
@@ -163,6 +194,4 @@ public sealed class TileClearanceSettings
     static bool IsRooted(string meshRoot) =>
         meshRoot.StartsWith('/') || meshRoot.StartsWith('\\')
         || (meshRoot.Length >= 2 && meshRoot[1] == ':' && char.IsAsciiLetter(meshRoot[0]));
-
-    static ArgumentException Invalid(string detail) => new($"Invalid clearance settings: {detail}.");
 }

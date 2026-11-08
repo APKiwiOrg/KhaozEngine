@@ -37,9 +37,9 @@ public class WaterExcursionTransportTests
             Assert.Equal(source.FacingYawQ, restored.FacingYawQ);
             Assert.Equal(source.SpeedScaleQ, restored.SpeedScaleQ);
             byte[] payload = snapshot[14..^2];
-            Assert.Equal(57, payload.Length);
-            Assert.Equal((byte)excursion, payload[^1]);
-            Assert.Equal(CellBlobFixtures.Movement(13, source), payload[..^1]);
+            Assert.Equal(64, payload.Length);
+            Assert.Equal((byte)excursion, payload[57]);
+            Assert.Equal(CellBlobFixtures.Movement(15, source), payload);
         }
     }
 
@@ -106,7 +106,7 @@ public class WaterExcursionTransportTests
     public void InvalidExcursionByteRejectsTheSnapshot()
     {
         byte[] snapshot = Snapshot(Set(default(MovementState), 2));
-        snapshot[^3] = 255;
+        snapshot[14 + 57] = 255;
         var view = new ClientReplicationView(MoveProtocol.CreateRegistry());
         Assert.False(view.TryApply(new World(), snapshot, out string? error));
         Assert.False(string.IsNullOrWhiteSpace(error));
@@ -123,7 +123,8 @@ public class WaterExcursionTransportTests
     public void ExcursionPayloadIsCoveredByTheAutomaticWireHandshakeGeneration()
     {
         Assert.True(MoveProtocol.WireProtocolVersion > 13);
-        Assert.Equal(57, BuiltinBlobLayout.MovementPayloadLength(MoveProtocol.WireProtocolVersion));
+        Assert.Equal(64, BuiltinBlobLayout.MovementPayloadLength(MoveProtocol.WireProtocolVersion));
+        Assert.Equal(57, BuiltinBlobLayout.MovementPayloadLength(14));
         Assert.Equal(56, BuiltinBlobLayout.MovementPayloadLength(13));
     }
 

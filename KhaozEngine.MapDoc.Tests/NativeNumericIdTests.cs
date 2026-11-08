@@ -1,4 +1,6 @@
 using System;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using Xunit;
@@ -57,11 +59,22 @@ public sealed class NativeNumericIdTests
         root["placements"]![0]!["numericId"] = 12;
         Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(root.ToJsonString()));
         MapNumericIds.Reserve(doc, new[] { 11L });
-        Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 12L, 12L }));
+        string before = Snapshot(doc);
+        var duplicate = Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 12L, 12L }));
+        Assert.Equal(MapDocumentRefusal.IdentityDuplicate, duplicate.Reason);
+        Assert.Equal(12L, duplicate.NumericId);
+        Assert.Equal(before, Snapshot(doc));
         Assert.Equal(11L, doc.NumericIdHighWaterMark);
-        Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 12L, 0L }));
+        var zero = Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 12L, 0L }));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, zero.Reason);
+        Assert.Equal(0L, zero.ActualInteger);
+        Assert.Equal(1L, zero.MinimumInteger);
+        Assert.Equal(before, Snapshot(doc));
         Assert.Equal(11L, doc.NumericIdHighWaterMark);
-        Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 12L, -1L }));
+        var negative = Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 12L, -1L }));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, negative.Reason);
+        Assert.Equal(-1L, negative.ActualInteger);
+        Assert.Equal(before, Snapshot(doc));
         Assert.Equal(11L, doc.NumericIdHighWaterMark);
         Assert.Equal(12L, MapNumericIds.Allocate(doc));
         doc.NumericIdHighWaterMark = 0;
@@ -69,6 +82,9 @@ public sealed class NativeNumericIdTests
         Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(doc));
         Assert.Throws<MapDocumentException>(() => MapNumericIds.Allocate(doc));
         Assert.Equal(0L, doc.NumericIdHighWaterMark);
+        var control = Load();
+        MapNumericIds.Reserve(control, new[] { 12L, 1L });
+        Assert.Equal(12L, control.NumericIdHighWaterMark);
     }
 
     [Theory]
@@ -122,8 +138,17 @@ public sealed class NativeNumericIdTests
         doc.Placements[0].NumericId = 7;
         doc.Placements.Add(new MapPlacement { Id = "other", Kind = "tree", NumericId = 7 });
         Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(doc));
-        Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 20L }));
-        Assert.Throws<MapDocumentException>(() => MapNumericIds.Allocate(doc));
+        string before = Snapshot(doc);
+        var reservation = Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 20L }));
+        var allocation = Assert.Throws<MapDocumentException>(() => MapNumericIds.Allocate(doc));
+        foreach (var error in new[] { reservation, allocation })
+        {
+            Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
+            Assert.Equal(7L, error.NumericId);
+            Assert.Equal("other", error.EntityId);
+            Assert.Single(error.Findings!);
+        }
+        Assert.Equal(before, Snapshot(doc));
         Assert.Equal(7L, doc.NumericIdHighWaterMark);
         var root = Root();
         root["numericIdHighWaterMark"] = "7";
@@ -133,6 +158,9 @@ public sealed class NativeNumericIdTests
         other["id"] = "other";
         placements.Add(other);
         Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(root.ToJsonString()));
+        doc.Placements.RemoveAt(1);
+        MapNumericIds.Reserve(doc, new[] { 20L });
+        Assert.Equal(21L, MapNumericIds.Allocate(doc));
     }
 
     [Fact]
@@ -157,10 +185,19 @@ public sealed class NativeNumericIdTests
         var doc = Load();
         doc.NumericIdHighWaterMark = mark;
         doc.Placements[0].NumericId = id;
-        Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 20L }));
+        string before = Snapshot(doc);
+        var error = Assert.Throws<MapDocumentException>(() => MapNumericIds.Reserve(doc, new[] { 20L }));
+        Assert.Equal(MapDocumentRefusal.ValueOutsideRange, error.Reason);
+        Assert.Equal(mark < 0 ? "$.numericIdHighWaterMark" : "$.placements[0].numericId", error.FieldPath);
+        Assert.Single(error.Findings!);
+        Assert.Equal(before, Snapshot(doc));
         Assert.Equal(mark, doc.NumericIdHighWaterMark);
         Assert.Equal(id, doc.Placements[0].NumericId);
         Assert.Equal("old-inn", Assert.Single(doc.Placements).Id);
+        if (mark < 0) doc.NumericIdHighWaterMark = 0;
+        else doc.Placements[0].NumericId = 1;
+        MapNumericIds.Reserve(doc, new[] { 20L });
+        Assert.Equal(20L, doc.NumericIdHighWaterMark);
     }
 
     [Fact]
@@ -179,5 +216,19 @@ public sealed class NativeNumericIdTests
     }
 
     static MapDocument Load() => MapDocumentFile.LoadText(NativeFixtures.AnalyticV3Json());
+    static string Snapshot(MapDocument doc)
+    {
+        var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(info =>
+        {
+            foreach (var property in info.Properties)
+                if (property.CustomConverter is MapNumericIdJsonConverter or MapNullableNumericIdJsonConverter)
+                    property.CustomConverter = null;
+        });
+        var options = MapDocumentFile.CreateOptions(MapDocRegistry.CreateDefault(), write: true);
+        // Capture the whole refused value, including IDs the persisted writer correctly rejects.
+        options.TypeInfoResolver = resolver;
+        return JsonSerializer.Serialize(doc, options);
+    }
     static JsonObject Root() => JsonNode.Parse(MapDocumentFile.SaveText(Load()))!.AsObject();
 }

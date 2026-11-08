@@ -60,17 +60,32 @@ public static class TilePrefabFile
         File.Move(tmp, path, overwrite: true);
     }
 
-    /// <summary>Reads a prefab back, throwing a <see cref="TileWorldException"/> naming the file on any
-    /// malformed or inconsistent content.</summary>
+    /// <summary>Reads a prefab back, throwing a <see cref="TileWorldException"/> with its
+    /// <see cref="TileWorldException.Reason"/> and file path in <see cref="TileWorldException.SourceName"/>
+    /// on malformed or inconsistent content. Shape refusals also carry the known
+    /// <see cref="TileWorldException.PrefabName"/>. Dense-layer refusals retain their codec reason.</summary>
     public static TilePrefab Load(string path)
     {
         PrefabDto dto;
-        try { dto = JsonSerializer.Deserialize<PrefabDto>(File.ReadAllBytes(path), TileWorldJson.Manifest) ?? throw new TileWorldException($"{path}: empty prefab"); }
-        catch (JsonException ex) { throw new TileWorldException($"{path}: {ex.Message}", ex); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { throw new TileWorldException($"{path}: cannot read prefab. {ex.Message}", ex); }
+        try { dto = JsonSerializer.Deserialize<PrefabDto>(File.ReadAllBytes(path), TileWorldJson.Manifest) ?? throw new TileWorldException(TileWorldRefusal.PrefabEmpty, $"{path}: empty prefab") { SourceName = path }; }
+        catch (JsonException ex) { throw new TileWorldException(TileWorldRefusal.PrefabJsonMalformed, $"{path}: {ex.Message}", ex) { SourceName = path, Field = ex.Path }; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { throw new TileWorldException(TileWorldRefusal.PrefabReadFailed, $"{path}: cannot read prefab. {ex.Message}", ex) { SourceName = path }; }
         List<PlaneDto?> planes = dto.Planes ?? new();
         if (dto.Width < 1 || dto.Height < 1 || dto.PlaneCount < 1 || planes.Count != dto.PlaneCount)
-            throw new TileWorldException($"{path}: prefab dimensions are inconsistent");
+        {
+            TileWorldRefusal reason = dto.Width < 1 || dto.Height < 1 ? TileWorldRefusal.PrefabSizeNonPositive
+                : dto.PlaneCount < 1 ? TileWorldRefusal.PrefabPlaneCountNonPositive
+                : TileWorldRefusal.PrefabPlaneCountMismatch;
+            throw new TileWorldException(reason, $"{path}: prefab dimensions are inconsistent")
+            {
+                SourceName = path, PrefabName = dto.Name,
+                Width = reason == TileWorldRefusal.PrefabSizeNonPositive ? dto.Width : null,
+                Height = reason == TileWorldRefusal.PrefabSizeNonPositive ? dto.Height : null,
+                PlaneCount = reason == TileWorldRefusal.PrefabPlaneCountNonPositive ? dto.PlaneCount : null,
+                ActualPlaneCount = reason == TileWorldRefusal.PrefabPlaneCountMismatch ? planes.Count : null,
+                ExpectedPlaneCount = reason == TileWorldRefusal.PrefabPlaneCountMismatch ? dto.PlaneCount : null,
+            };
+        }
         int tiles = dto.Width * dto.Height, corners = (dto.Width + 1) * (dto.Height + 1);
         var prefab = new TilePrefab { Name = dto.Name, Width = dto.Width, Height = dto.Height, PlaneCount = dto.PlaneCount, Objects = dto.Objects ?? new(), Markers = dto.Markers ?? new() };
         // The plane is checked alongside the footprint, and for the same reason: a hand-written "plane": -1 is
@@ -79,29 +94,32 @@ public static class TilePrefabFile
         foreach (TilePrefabObject o in prefab.Objects)
         {
             if (!InFootprint(prefab, o.X, o.Z))
-                throw new TileWorldException($"{path}: object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is outside the {prefab.Width}x{prefab.Height} prefab");
+                throw new TileWorldException(TileWorldRefusal.PrefabObjectOutsideBounds, $"{path}: object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is outside the {prefab.Width}x{prefab.Height} prefab")
+                { SourceName = path, PrefabName = prefab.Name, ArchetypeId = o.ArchetypeId, Tile = new TileCoord(o.X, o.Z, o.Plane), Width = prefab.Width, Height = prefab.Height };
             if ((uint)o.Plane >= (uint)prefab.PlaneCount)
-                throw new TileWorldException($"{path}: object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is on plane {o.Plane}, the prefab has {prefab.PlaneCount}");
+                throw new TileWorldException(TileWorldRefusal.PrefabObjectPlaneOutsideRange, $"{path}: object '{o.ArchetypeId}' at ({o.X}, {o.Z}) is on plane {o.Plane}, the prefab has {prefab.PlaneCount}")
+                { SourceName = path, PrefabName = prefab.Name, ArchetypeId = o.ArchetypeId, Plane = o.Plane, PlaneCount = prefab.PlaneCount, Tile = new TileCoord(o.X, o.Z, o.Plane) };
         }
         foreach (TilePrefabMarker m in prefab.Markers)
         {
             if (!InFootprint(prefab, m.X, m.Z))
-                throw new TileWorldException($"{path}: marker '{m.Name}' at ({m.X}, {m.Z}) is outside the {prefab.Width}x{prefab.Height} prefab");
+                throw new TileWorldException(TileWorldRefusal.PrefabMarkerOutsideBounds, $"{path}: marker '{m.Name}' at ({m.X}, {m.Z}) is outside the {prefab.Width}x{prefab.Height} prefab")
+                { SourceName = path, PrefabName = prefab.Name, MarkerName = m.Name, Tile = new TileCoord(m.X, m.Z, m.Plane), Width = prefab.Width, Height = prefab.Height };
             if ((uint)m.Plane >= (uint)prefab.PlaneCount)
-                throw new TileWorldException($"{path}: marker '{m.Name}' at ({m.X}, {m.Z}) is on plane {m.Plane}, the prefab has {prefab.PlaneCount}");
+                throw new TileWorldException(TileWorldRefusal.PrefabMarkerPlaneOutsideRange, $"{path}: marker '{m.Name}' at ({m.X}, {m.Z}) is on plane {m.Plane}, the prefab has {prefab.PlaneCount}")
+                { SourceName = path, PrefabName = prefab.Name, MarkerName = m.Name, Plane = m.Plane, PlaneCount = prefab.PlaneCount, Tile = new TileCoord(m.X, m.Z, m.Plane) };
         }
         for (int i = 0; i < planes.Count; i++)
         {
             PlaneDto? p = planes[i];
-            string where = $"{path} plane {i}";
             prefab.Planes.Add(p is null ? null : new TilePrefabPlane
             {
-                HeightsRelative = p.HeightsRelative is null ? null : TileLayerCodec.DecodeShorts(p.HeightsRelative, corners, where + " heights"),
-                Underlay = p.Underlay is null ? null : TileLayerCodec.DecodeUShorts(p.Underlay, tiles, where + " underlay"),
-                Overlay = p.Overlay is null ? null : TileLayerCodec.DecodeUShorts(p.Overlay, tiles, where + " overlay"),
-                OverlayShape = p.OverlayShape is null ? null : TileLayerCodec.DecodeBytes(p.OverlayShape, tiles, where + " overlayShape"),
-                OverlayRotation = p.OverlayRotation is null ? null : TileLayerCodec.DecodeBytes(p.OverlayRotation, tiles, where + " overlayRotation"),
-                Settings = p.Settings is null ? null : TileLayerCodec.DecodeBytes(p.Settings, tiles, where + " settings"),
+                HeightsRelative = p.HeightsRelative is null ? null : TileLayerCodec.DecodeShorts(p.HeightsRelative, corners, "heights", path, i),
+                Underlay = p.Underlay is null ? null : TileLayerCodec.DecodeUShorts(p.Underlay, tiles, "underlay", path, i),
+                Overlay = p.Overlay is null ? null : TileLayerCodec.DecodeUShorts(p.Overlay, tiles, "overlay", path, i),
+                OverlayShape = p.OverlayShape is null ? null : TileLayerCodec.DecodeBytes(p.OverlayShape, tiles, "overlayShape", path, i),
+                OverlayRotation = p.OverlayRotation is null ? null : TileLayerCodec.DecodeBytes(p.OverlayRotation, tiles, "overlayRotation", path, i),
+                Settings = p.Settings is null ? null : TileLayerCodec.DecodeBytes(p.Settings, tiles, "settings", path, i),
             });
         }
         return prefab;

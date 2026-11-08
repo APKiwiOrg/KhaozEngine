@@ -12,12 +12,20 @@ public static class MapSurfaceTopology
         byte rotation, MapCellTopology topology)
     {
         if (rotation > 3 || cut > MapOverlayCut.CornerThreeQuarter || topology > MapCellTopology.ForceNwSe)
-            throw new MapDocumentException("invalid cell topology, cut or rotation");
+            throw new MapDocumentException(rotation > 3 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.SchemaEnumUnsupported,
+                "invalid cell topology, cut or rotation")
+            { ResolutionStatus = MapResolveStatus.Invalid,
+                FieldPath = rotation > 3 ? "rotation" : cut > MapOverlayCut.CornerThreeQuarter ? "cut" : "topology",
+                ActualInteger = rotation > 3 ? rotation : cut > MapOverlayCut.CornerThreeQuarter ? (byte)cut : (byte)topology,
+                MinimumInteger = rotation > 3 ? 0 : null, MaximumInteger = rotation > 3 ? 3 : null,
+                EnumType = rotation > 3 ? null : cut > MapOverlayCut.CornerThreeQuarter ? typeof(MapOverlayCut) : typeof(MapCellTopology),
+            };
         if (topology != MapCellTopology.Auto)
         {
             bool forced = topology == MapCellTopology.ForceSwNe;
             if (cut == MapOverlayCut.DiagonalHalf && forced != (rotation % 2 == 0))
-                throw new MapDocumentException("forced topology contradicts DiagonalHalf rotation");
+                throw new MapDocumentException(MapDocumentRefusal.SurfaceForcedTopologyConflict, "forced topology contradicts DiagonalHalf rotation")
+                { FieldPath = "topology", ActualInteger = (byte)topology, EnumType = typeof(MapCellTopology) };
             return forced;
         }
         return cut == MapOverlayCut.DiagonalHalf ? rotation % 2 == 0

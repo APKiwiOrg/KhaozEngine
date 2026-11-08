@@ -40,4 +40,8 @@ public sealed record WaterColumnCase
     public int Size { get; init; } = WaterColumnRiverScene.Size;
     public int ShadowResolution { get; init; } = 2048;
     public int ShadowCascades { get; init; } = 1;
+    /// <summary>Effect time in seconds, which moves the ripples.</summary>
+    public float Time { get; init; }
+    /// <summary>A whole look for the single plane, replacing the column fields above. Null builds the look from them.</summary>
+    public WaterLook? Look { get; init; }
 }

@@ -245,7 +245,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 EnsureOpen();
 
                 ulong buffer = _ring.BufferAt(_slot);
-                VulkanStagingLease lease = _arena.Take(required);
+                ulong alignment = upload.DepthStencil ? 4ul
+                    : Math.Max(4ul, VulkanStagingLayout.BytesPerTexel(upload.Format));
+                VulkanStagingLease lease = _arena.Take(required, alignment);
                 lease.Write(data[..(int)required]);
 
                 ImageSubresourceRange range = VulkanSetupBarrier.OneSubresource(

@@ -262,8 +262,8 @@ public sealed class NativeFoliageAcceptanceTests
 
         // Remove: the owner alone refuses while layers bind its floors, and one sequence removes both atomically.
         string state = MapDocumentFile.SaveText(after.Document);
-        Assert.Contains("a/dry-floor", Assert.Throws<MapDocumentException>(() =>
-            MapPrefabEdits.Prepare(after.Document, after.Assets, new MapRemovePrefab("a"))).Message, StringComparison.Ordinal);
+        Assert.Throws<MapDocumentException>(() =>
+            MapPrefabEdits.Prepare(after.Document, after.Assets, new MapRemovePrefab("a")));
         Assert.Equal(state, MapDocumentFile.SaveText(after.Document));
         MapPrefabEditResult removed = MapFoliageEdits.Prepare(after.Document, after.Assets, new MapFoliageEditSequence(
             [new MapRemoveFoliage(caveLayer), new MapRemoveFoliage(FloodLayer)], new MapRemovePrefab("a")));

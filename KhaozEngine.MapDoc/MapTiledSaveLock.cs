@@ -17,9 +17,9 @@ internal static class MapTiledSaveLock
         }
         catch (IOException ex)
         {
-            throw new MapDocumentException(
+            throw new MapDocumentException(MapDocumentRefusal.DocumentSaveLockUnavailable,
                 $"{directory}: could not acquire exclusive save access. Another writer may be saving this " +
-                "directory. Retry after it finishes.", ex);
+                "directory. Retry after it finishes.", ex) { Path = directory };
         }
     }
 }

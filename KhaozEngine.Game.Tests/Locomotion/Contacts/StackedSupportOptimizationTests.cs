@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -34,8 +33,8 @@ public sealed class StackedSupportOptimizationTests(ITestOutputHelper output)
                 TickResult reference = Tick(execution, row, reference: true, sample: true);
                 TickResult optimized = Tick(execution, row, reference: false, sample: false);
                 TickResult sampled = Tick(execution, row, reference: false, sample: true);
-                AssertSameBits(reference.Result, optimized.Result, name);
-                AssertSameBits(reference.Result, sampled.Result, name + " sampled");
+                LocomotionStateBits.AssertEqual(reference.Result, optimized.Result, LocomotionStateBits.Policy.IncludeContinuityHandle);
+                LocomotionStateBits.AssertEqual(reference.Result, sampled.Result, LocomotionStateBits.Policy.IncludeContinuityHandle);
                 Assert.Equal(0, reference.Counts.FindMemoHits);
 
                 // With the skip disabled, the stacked optimizations issue the reference's reads bit for bit.
@@ -111,35 +110,7 @@ public sealed class StackedSupportOptimizationTests(ITestOutputHelper output)
     static void AssertSameReads(SupportFindObservation[] expected, SupportFindObservation[] actual, string path)
     {
         Assert.True(expected.Length == actual.Length, $"{path}: {expected.Length} reads against {actual.Length}");
-        for (int i = 0; i < expected.Length; i++) AssertSameBits(expected[i], actual[i], $"{path} read {i}");
-    }
-
-    static void AssertSameBits(object expected, object actual, string path)
-    {
-        Assert.Equal(expected.GetType(), actual.GetType());
-        if (expected is float f)
-        {
-            Assert.True(BitConverter.SingleToInt32Bits(f) == BitConverter.SingleToInt32Bits((float)actual),
-                $"{path}: expected {f:R}, actual {actual}");
-            return;
-        }
-        if (expected is double d)
-        {
-            Assert.True(BitConverter.DoubleToInt64Bits(d) == BitConverter.DoubleToInt64Bits((double)actual),
-                $"{path}: expected {d:R}, actual {actual}");
-            return;
-        }
-        Type type = expected.GetType();
-        if (type.IsPrimitive || type.IsEnum || type == typeof(string))
-        {
-            Assert.True(expected.Equals(actual), $"{path}: {expected} against {actual}");
-            return;
-        }
-        foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-        {
-            object? left = field.GetValue(expected), right = field.GetValue(actual);
-            if (left is null) Assert.Null(right);
-            else AssertSameBits(left, right!, path + "." + field.Name);
-        }
+        for (int i = 0; i < expected.Length; i++)
+            LocomotionStateBits.AssertEqual(expected[i], actual[i], LocomotionStateBits.Policy.IncludeContinuityHandle);
     }
 }

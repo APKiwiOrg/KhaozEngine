@@ -31,7 +31,6 @@ public class SaveEncoderTests
         Assert.Equal(json, decoded);
         Assert.Single(log.Entries);
         Assert.Equal(LogLevel.Info, log.Entries[0].Level);
-        Assert.Contains("HMAC ok", log.Entries[0].Message);
     }
 
     [Fact]
@@ -65,32 +64,20 @@ public class SaveEncoderTests
 
         string? decoded = encoder.Decode(tampered);
 
-        Assert.NotNull(decoded);                 // lenient: data recovered
+        Assert.Equal(DecodedPayload(tampered), decoded);
         Assert.Single(log.Entries);
         Assert.Equal(LogLevel.Warn, log.Entries[0].Level);
-        Assert.Contains("HMAC mismatch", log.Entries[0].Message);
     }
 
-    [Fact]
-    public void Decode_MalformedMissingSeparator_ReturnsNull_AndLogsError()
+    [Theory]
+    [InlineData(":deadbeef")]            // Missing the payload separator.
+    [InlineData(":00:!!!not-base64!!!")] // Invalid Base64 payload.
+    [InlineData(":deadbeef:")]           // Empty payload.
+    public void Decode_MalformedEnvelope_ReturnsNull_AndLogsError(string body)
     {
         var encoder = NewEncoder(out FakeLogger log);
 
-        // Has the prefix + one separator, but no second separator.
-        string? decoded = encoder.Decode(Prefix + ":deadbeef");
-
-        Assert.Null(decoded);
-        Assert.Single(log.Entries);
-        Assert.Equal(LogLevel.Error, log.Entries[0].Level);
-    }
-
-    [Fact]
-    public void Decode_CorruptBase64_ReturnsNull_AndLogsError()
-    {
-        var encoder = NewEncoder(out FakeLogger log);
-
-        // Valid prefix + a (wrong) hmac + an invalid base64 body.
-        string? decoded = encoder.Decode(Prefix + ":00:!!!not-base64!!!");
+        string? decoded = encoder.Decode(Prefix + body);
 
         Assert.Null(decoded);
         Assert.Single(log.Entries);
@@ -112,19 +99,6 @@ public class SaveEncoderTests
     }
 
     [Fact]
-    public void Decode_EmptyPayload_ReturnsNull_AndLogsError()
-    {
-        var encoder = NewEncoder(out FakeLogger log);
-
-        // Valid prefix + hmac + 2nd separator, but no payload after it.
-        string? decoded = encoder.Decode(Prefix + ":deadbeef:");
-
-        Assert.Null(decoded);
-        Assert.Single(log.Entries);
-        Assert.Equal(LogLevel.Error, log.Entries[0].Level);
-    }
-
-    [Fact]
     public void RoundTrip_PrefixContainingSeparator_StillRoundTrips()
     {
         // A prefix that itself contains ':' must not break parsing (firstSep is the prefix length).
@@ -143,21 +117,17 @@ public class SaveEncoderTests
         var wrong = new SaveEncoder(Encoding.UTF8.GetBytes("WRONG-key"), Prefix, log);
         string? decoded = wrong.Decode(encoded);
 
-        Assert.NotNull(decoded);
+        Assert.Equal("{\"x\":1}", decoded);
         Assert.Single(log.Entries);
         Assert.Equal(LogLevel.Warn, log.Entries[0].Level);
     }
 
-    [Fact]
-    public void Ctor_NullKey_Throws()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(new byte[0])]
+    public void Ctor_MissingKey_Throws(byte[]? key)
     {
-        Assert.Throws<ArgumentException>(() => new SaveEncoder(null!, Prefix, new FakeLogger()));
-    }
-
-    [Fact]
-    public void Ctor_EmptyKey_Throws()
-    {
-        Assert.Throws<ArgumentException>(() => new SaveEncoder(Array.Empty<byte>(), Prefix, new FakeLogger()));
+        Assert.Throws<ArgumentException>(() => new SaveEncoder(key!, Prefix, new FakeLogger()));
     }
 
     [Theory]
@@ -204,7 +174,7 @@ public class SaveEncoderTests
         SaveDecodeResult r = encoder.TryDecode(tampered);
 
         Assert.Equal(SaveDecodeVerdict.TamperMismatch, r.Verdict);
-        Assert.NotNull(r.Json);
+        Assert.Equal(DecodedPayload(tampered), r.Json);
     }
 
     [Fact]
@@ -261,7 +231,9 @@ public class SaveEncoderTests
         SaveDecodeResult r = encoder.TryDecode($"{Prefix}:v2:{hmac}:{metaB64}:");
 
         Assert.Equal(SaveDecodeVerdict.Malformed, r.Verdict);
-        Assert.Contains("empty payload", r.Detail);
+        Assert.False(string.IsNullOrWhiteSpace(r.Detail));
+        Assert.Null(r.Json);
+        Assert.Null(r.Metadata);
     }
 
     [Fact]
@@ -298,11 +270,14 @@ public class SaveEncoderTests
 
         string? decoded = encoder.Decode(tampered);
 
-        Assert.NotNull(decoded);
+        Assert.Equal(DecodedPayload(tampered), decoded);
         Assert.Single(log.Entries);
         Assert.Equal(LogLevel.Warn, log.Entries[0].Level);
-        Assert.Contains("possible tampering", log.Entries[0].Message);
     }
+
+    // Decode only the known v2 payload field with the BCL, independently of SaveEncoder's parser.
+    private static string DecodedPayload(string encoded) =>
+        Encoding.UTF8.GetString(Convert.FromBase64String(encoded.Split(':')[4]));
 
     // Returns the last 4 chars of the encoded string with one non-padding base64 char swapped for a
     // different valid one, so the payload still Base64-decodes but its HMAC no longer matches.

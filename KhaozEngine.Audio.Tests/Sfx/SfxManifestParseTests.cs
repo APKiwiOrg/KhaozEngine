@@ -9,7 +9,7 @@ public class SfxManifestParseTests
     const string WithCommentsAndTrailingCommas = """
     {
         // global settings
-        "model": "eleven_text_to_sound_v2",
+        "model": "eleven_text_to_sound_v3",
         "sounds": [
             {
                 "key": "ui/confirm",

@@ -494,7 +494,8 @@ public class ContentFetchLoopTests
         var local = new FetchPackStore();
         remote.PlantPack(pack);
         remote.WithholdUntilAttempt(pack.ItemChunkOne.Hash, 5);
-        var reports = new List<ContentFetchProgress>();
+        // #1725. Worker callbacks may overlap and their reports have no promised order.
+        var reports = new ConcurrentBag<ContentFetchProgress>();
         var options = new ContentFetchOptions
         {
             ClientBuild = 12,
@@ -510,9 +511,11 @@ public class ContentFetchLoopTests
         Assert.True(result.Success);
         Assert.Equal(3, result.Attempts);
         Assert.NotEmpty(reports);
-        Assert.All(reports, report => Assert.Equal(pack.EveryClientHash().Count - 1, report.ChunksRequired));
-        Assert.Equal(pack.EveryClientHash().Count - 1, reports[^1].ChunksHeld);
-        Assert.Equal(1.0, reports[^1].Fraction);
+        int required = pack.EveryClientHash().Count - 1;
+        Assert.All(reports, report => Assert.Equal(required, report.ChunksRequired));
+        Assert.Contains(reports, report => report.ChunksHeld == required && report.Fraction == 1.0);
+        Assert.Equal(required, result.Progress.ChunksHeld);
+        Assert.Equal(1.0, result.Progress.Fraction);
     }
 
     // The manifest carries the build ordinal as a UINT and the client surface is an INT, so a version naming

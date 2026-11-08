@@ -1,10 +1,8 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -35,9 +33,10 @@ public sealed class SkinnedAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int beforeUploads = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        var error = Assert.Throws<AttachmentGlbContainerDataException>(() => cache.Get("set.json", hash));
+        Assert.Equal(AttachmentGlbContainerRefusal.HeaderInvalid, error.Reason);
+        Assert.NotNull(error.SourceName);
 
-        Assert.Contains("z-invalid.glb", error.Message);
         Assert.Equal(1, source.Reads[rigid.Key]);
         Assert.Equal(1, source.Reads[skinned.Key]);
         Assert.Equal(beforeUploads, harness.Factory.Buffers.Count);
@@ -69,8 +68,12 @@ public sealed class SkinnedAttachmentAssetTests
         Assert.Single(recording.Uploads);
         Assert.Single(second.Definition.Parts);
         Assert.Equal(firstHash, first.DefinitionSha256);
-        Assert.Throws<InvalidDataException>(() => first.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
-        Assert.Throws<InvalidDataException>(() => second.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
+        var firstError = Assert.Throws<AttachmentBindingDataException>(() => first.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
+        Assert.Equal(AttachmentBindingRefusal.HostMeshRequired, firstError.Reason);
+        Assert.Equal(2u, firstError.PartId);
+        var secondError = Assert.Throws<AttachmentBindingDataException>(() => second.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
+        Assert.Equal(AttachmentBindingRefusal.HostMeshRequired, secondError.Reason);
+        Assert.Equal(7u, secondError.PartId);
     }
 
     [Fact]
@@ -97,9 +100,11 @@ public sealed class SkinnedAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        var error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        var importError = Assert.IsType<GltfImportDataException>(error.InnerException);
+        Assert.Equal(GltfImportRefusal.MalformedModel, importError.Reason);
+        Assert.NotNull(importError.InnerException);
 
-        Assert.Contains("z-skinned.glb", error.Message);
         Assert.Equal(1, source.Reads[invalid.Key]);
         Assert.Equal(buffers, harness.Factory.Buffers.Count);
         Assert.Equal(textures, harness.Factory.Textures.Count);
@@ -114,7 +119,11 @@ public sealed class SkinnedAttachmentAssetTests
         var source = new AttachmentTestSource();
         AttachmentMeshRef skin = source.Mesh("skin.glb", Glb());
         string hash = Set(source, "set.json", Skin(1, skin));
-        source.Bytes[changeDefinition ? "set.json" : skin.Key][0] ^= 1;
+        // Valid replacement bytes, so only the declared hash can refuse them. A flipped first byte would also
+        // fail the GLB header or the JSON parse with the same exception type.
+        if (changeDefinition)
+            source.Bytes["set.json"] = AttachmentSetJson.Write(new AttachmentSetDefinition([Skin(2, skin)]));
+        else source.Bytes[skin.Key] = Glb(materials: 2);
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count;
 
@@ -141,9 +150,8 @@ public sealed class SkinnedAttachmentAssetTests
         LoadedAttachmentSet previous = cache.Get("previous.json", previousHash);
         int beforeUploads = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("wrong.json", wrongHash));
+        Assert.Throws<InvalidDataException>(() => cache.Get("wrong.json", wrongHash));
 
-        Assert.Contains("shared.glb", error.Message);
         Assert.Equal(1, source.Reads[mesh.Key]);
         Assert.Equal(beforeUploads, harness.Factory.Buffers.Count);
         Assert.Equal(textures, harness.Factory.Textures.Count);
@@ -162,7 +170,20 @@ public sealed class SkinnedAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count;
 
-        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        if (skinnedBytes)
+        {
+            var error = Assert.Throws<AttachmentRigidGeometryDataException>(() => cache.Get("set.json", hash));
+            Assert.Equal(AttachmentRigidGeometryRefusal.SkinPresent, error.Reason);
+            Assert.Equal("set.json: attachment part 1, mesh 'wrong.glb'", error.SourceName);
+        }
+        else
+        {
+            var error = Assert.Throws<AttachmentAccessorDataException>(() => cache.Get("set.json", hash));
+            Assert.Equal(AttachmentAccessorRefusal.PropertyMissing, error.Reason);
+            Assert.Equal("skins", error.PropertyName);
+            Assert.Equal("$", error.JsonPath);
+            Assert.NotNull(error.SourceName);
+        }
 
         Assert.Equal(buffers, harness.Factory.Buffers.Count);
     }
@@ -241,8 +262,8 @@ public sealed class SkinnedAttachmentAssetTests
 
         LoadedAttachmentSet loaded = cache.Get("set.json", hash);
 
-        AssertCachedSnapshotHashes(cache, "_meshes", skin.Sha256, later.Sha256);
-        AssertCachedSnapshotHashes(cache, "_definitions", hash);
+        AssertCachedSnapshotHashes(cache.MeshSnapshotHashesForTests, skin.Sha256, later.Sha256);
+        AssertCachedSnapshotHashes(cache.DefinitionSnapshotHashesForTests, hash);
         Assert.Equal(hash, loaded.DefinitionSha256);
         Assert.Equal(2, loaded.Definition.Parts.Count);
         IReadOnlyList<GltfSkinnedMeshPart> captured = Assert.Single(recording.SkinnedParts);
@@ -314,17 +335,8 @@ public sealed class SkinnedAttachmentAssetTests
         Assert.Equal(0, harness.Scene.LiveSkinnedMeshCount);
     }
 
-    static void AssertCachedSnapshotHashes(AttachmentSetCache cache, string fieldName, params string[] expected)
-    {
-        var snapshots = Assert.IsAssignableFrom<IDictionary>(typeof(AttachmentSetCache)
-            .GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache));
-        IEnumerable<string> hashes = snapshots.Values.Cast<object>().Select(snapshot =>
-        {
-            byte[] bytes = Assert.IsType<byte[]>(snapshot.GetType().GetProperty("Bytes")!.GetValue(snapshot));
-            return Convert.ToHexStringLower(SHA256.HashData(bytes));
-        });
+    static void AssertCachedSnapshotHashes(IReadOnlyList<string> hashes, params string[] expected) =>
         Assert.Equal(expected.Order(), hashes.Order());
-    }
 
     static RigidAttachmentPartDefinition Rigid(uint id, AttachmentMeshRef mesh) => new(id, mesh, "hip", Matrix4x4.Identity);
     static SkinnedAttachmentPartDefinition Skin(uint id, AttachmentMeshRef mesh) => new(id, mesh);

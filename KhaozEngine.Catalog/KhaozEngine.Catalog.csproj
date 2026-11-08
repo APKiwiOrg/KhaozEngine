@@ -21,6 +21,10 @@
          the highest live id plus one, KeyIds open addressed with 0 empty, no Keys array) are exactly what
          the runtime tests pin, so the test assembly sees inside and nothing else does. -->
     <InternalsVisibleTo Include="KhaozEngine.Catalog.Tests" />
+    <!-- The bundle reader maps ContentFieldSchema's typed finding to its own refusal. The finding is internal
+         so the schema's public contract stays the plain argument exceptions, and both packages ship under one
+         KhaozEngineVersion, so the grant cannot skew. -->
+    <InternalsVisibleTo Include="KhaozEngine.Catalog.Authoring" />
   </ItemGroup>
 
 </Project>

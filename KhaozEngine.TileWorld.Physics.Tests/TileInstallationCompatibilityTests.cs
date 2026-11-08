@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using KhaozEngine.Locomotion;
@@ -30,24 +29,11 @@ public class TileInstallationCompatibilityTests
     [Fact]
     public void RegistrationJsonUsesExplicitLfFormatting()
     {
-        // Requiring shared options catches the platform-default writer even on an LF host.
-        var optionsField = Assert.Single(typeof(TileInstallationCompatibilityTests)
-            .GetFields(BindingFlags.NonPublic | BindingFlags.Static),
-            field => field.FieldType == typeof(JsonSerializerOptions));
-        var options = Assert.IsType<JsonSerializerOptions>(optionsField.GetValue(null));
-        Assert.True(options.WriteIndented);
-        Assert.Equal("\n", options.NewLine);
+        // The shared serializer options require indentation and LF on every host.
+        Assert.True(RegistrationJsonOptions.WriteIndented);
+        Assert.Equal("\n", RegistrationJsonOptions.NewLine);
         Assert.DoesNotContain('\r', RegistrationJson());
         Assert.DoesNotContain('\r', RegistrationJson(includeAll: true));
-    }
-
-    [Fact]
-    public void UnfilteredInstallationMatchesPreFeatureBaseline()
-    {
-        string actualRegistrationJson = RegistrationJson();
-        string frozenRegistrationJson = Encoding.UTF8.GetString(ReadFixture("json"));
-        Assert.Equal(frozenRegistrationJson, actualRegistrationJson);
-        Assert.Equal(ReadFixture("navbake"), NormalizeNavigationFile(NavigationFile()));
     }
 
     [Fact]

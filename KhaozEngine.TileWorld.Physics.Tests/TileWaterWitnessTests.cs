@@ -34,7 +34,7 @@ public class TileWaterWitnessTests
         var spans = new MovementCoverageSpan[64];
         var contacts = new MovementDomainContact[256];
         var result = field.TraceWater(query, Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
-        Assert.Equal(MovementAvailability.Unresolved, result.Availability);
+        Assert.Equal(MovementAvailability.PrecisionExceeded, result.Availability);
         Assert.Equal(0, result.SpansWritten);
         Assert.Equal(0, result.ContactsWritten);
         Assert.All(spans, s => Assert.Equal(default, s));

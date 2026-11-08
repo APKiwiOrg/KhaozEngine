@@ -42,7 +42,11 @@ public sealed partial class CharacterController3D
         {
             EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.OrdinaryContact);
             if (physics is null || registration is null || boundary is null)
-                throw new ArgumentException("Ordinary contact movement requires physics, a registration and a MovementBoundary.");
+                throw new MovementConfigurationException(physics is null ? MovementConfigurationRefusal.PhysicsRequired
+                    : registration is null ? MovementConfigurationRefusal.RegistrationRequired : MovementConfigurationRefusal.BoundaryRequired,
+                    "Ordinary contact movement requires physics, a registration and a MovementBoundary.")
+                { RequiredCapability = physics is null ? typeof(IPhysicsWorld)
+                    : registration is null ? typeof(OrdinaryMovementRegistration) : typeof(MovementBoundary) };
             next = EffectiveMovementBinding.Ordinary(tuning, physics, registration, height, normal, boundary, field, medium);
         }
         else next = EffectiveMovementBinding.Legacy(tuning);
@@ -70,13 +74,13 @@ public sealed partial class CharacterController3D
         var scope = binding.CreateOrdinaryScope(_contactFrame);
         if (binding.TryAcquire(scope, out var queries) != MovementAvailability.Known)
         {
-            _state = MovementStepResult.HoldState(_state);
+            _state = PlayerMovementPublication.Canonicalize(MovementStepResult.HoldState(_state));
             return;
         }
         using (queries)
         {
             var local = _state with { Position = _state.Position - origin };
-            var result = binding.Step(new(local, _contactFrame, null), command, dt, queries!,
+            var result = binding.StepPlayer(new(local, _contactFrame, null), command, dt, queries!,
                 binding.CaptureOrdinaryBoundary(_contactFrame));
             queries!.AssertCurrent();
             _state = result.State.State with { Position = result.State.State.Position + origin };

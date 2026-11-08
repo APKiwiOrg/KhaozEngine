@@ -10,8 +10,9 @@ Program issues: phase 1 [#1366](https://github.com/APKiwiOrg/KhaozEngine/issues/
 [Grimhollow#490](https://github.com/APKiwiOrg/Grimhollow/issues/490), with server weather in
 [Grimhollow#491](https://github.com/APKiwiOrg/Grimhollow/issues/491).
 
-This document is the program tracker and the full design for phase 1. Phases 2 to 4 are outlined here and get
-their own design section, reviewed by the owner, before each is planned.
+This document is the full design for phase 1. Its milestones live in the `atmosphere` program in the
+owner's program store. Phases 2 to 4 are outlined here and get their own design section, reviewed by the
+owner, before each is planned.
 
 ## The problem
 
@@ -195,10 +196,14 @@ One shared GLSL chunk, `AtmosphereFogGlsl`, with its bindings chunk, spliced by 
   and the 20.39.0 eye-level join is unchanged. In vacuum `R` is one.
 - **Why that colour.** A horizontal ray at infinite distance has `T = 0`, so distant terrain converges exactly to
   the sky behind it and the horizon has no seam. The forward-scattering glow toward a low sun comes from the LUT
-  on horizontal rays and from the phase ratio below them. Two known errors remain with the volume in #1364: haze
-  in deep shadowed valleys under a low sun is too bright, because the in-scatter is not shadowed by geometry, and
-  there is no separate ground-mist layer with its own base height. Haze extinguishes only and takes the Earth
-  air's colour.
+  on horizontal rays and from the phase ratio below them. Lit models, terrain, tile ground and foliage estimate
+  the key body's visibility along the segment from the key shadow atlas. `AerialShadowSamples` defaults to 8
+  and accepts 0 through 16. Zero disables it. Equal in-scatter shares under a uniform-density grey model place
+  point comparisons after inverting the aerial onset. Only the key's direct source is scaled, leaving the
+  other body's source, multiple scattering and the night floor. Unoccluded output retains the original
+  arithmetic for byte identity. Uncovered taps count as lit, so distant shadowed valley haze beyond the atlas
+  and fog on non-lit consumers remain uncorrected. The volume in #1364 also leaves a separate ground-mist
+  layer with its own base height open. Haze extinguishes only and takes the Earth air's colour.
 - **Where it applies.** `ModelFrag`, `ModelDissolveFrag`, `SkinnedModelFrag`, `SkinnedModelDissolveFrag`,
   `SplatFrag`, `TileGroundFrag`, the foliage path, `WaterFrag`, `DecalFrag`, `BillboardFrag`,
   `TexturedBillboardFrag`, `ParticleFrag`, `TrailFrag` and `BeamFrag`. Debug lines and `DistortionFrag` are left

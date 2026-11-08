@@ -117,35 +117,55 @@ public class PngReaderTests
         }, image.Bytes);
     }
 
-    [Fact]
-    public void Transparency_chunk_order_size_and_color_type_are_validated()
+    [Theory]
+    [InlineData(0, PngDecodeRefusal.TransparencyOutOfOrder)]
+    [InlineData(1, PngDecodeRefusal.PaletteOutOfOrder)]
+    [InlineData(2, PngDecodeRefusal.TransparencyOutOfOrder)]
+    [InlineData(3, PngDecodeRefusal.TransparencyLengthMismatch)]
+    [InlineData(4, PngDecodeRefusal.TransparencyLengthMismatch)]
+    [InlineData(5, PngDecodeRefusal.TransparencyWithAlphaColorType)]
+    [InlineData(6, PngDecodeRefusal.TransparencyWithAlphaColorType)]
+    public void Transparency_chunk_order_size_and_color_type_are_validated(int fault, PngDecodeRefusal reason)
     {
-        byte[] header = Header(1, 1, 8, 0, 0);
+        byte[] ihdr = Chunk("IHDR", Header(1, 1, 8, 0, 0));
         byte[] data = Chunk("IDAT", Compress(new byte[] { 0, 42 }));
         byte[] transparency = Chunk("tRNS", new byte[] { 0, 42 });
-
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
-            Join(Signature, Chunk("IHDR", header), data, transparency, Chunk("IEND", Array.Empty<byte>()))));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
-            Join(Signature, Chunk("IHDR", header), transparency, Chunk("PLTE", new byte[] { 0, 0, 0 }), data,
-                Chunk("IEND", Array.Empty<byte>()))));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
-            Join(Signature, Chunk("IHDR", header), transparency, transparency, data, Chunk("IEND", Array.Empty<byte>()))));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
-            Join(Signature, Chunk("IHDR", header), Chunk("tRNS", new byte[] { 42 }), data,
-                Chunk("IEND", Array.Empty<byte>()))));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
-            Join(Signature, Chunk("IHDR", Header(1, 1, 8, 2, 0)), Chunk("tRNS", new byte[] { 0, 1 }),
-                Chunk("IDAT", Compress(new byte[] { 0, 1, 2, 3 })), Chunk("IEND", Array.Empty<byte>()))));
-
-        foreach (byte alphaColorType in new byte[] { 4, 6 })
+        byte[] end = Chunk("IEND", Array.Empty<byte>());
+        byte[] palette = Chunk("PLTE", new byte[] { 0, 0, 0 });
+        byte[] png = fault switch
         {
-            int channels = alphaColorType == 4 ? 2 : 4;
-            byte[] alphaData = Chunk("IDAT", Compress(new byte[1 + channels]));
-            Assert.Throws<InvalidDataException>(() => PngReader.Decode(
-                Join(Signature, Chunk("IHDR", Header(1, 1, 8, alphaColorType, 0)), transparency, alphaData,
-                    Chunk("IEND", Array.Empty<byte>()))));
+            0 => Join(Signature, ihdr, data, transparency, end),
+            1 => Join(Signature, ihdr, transparency, palette, data, end),
+            2 => Join(Signature, ihdr, transparency, transparency, data, end),
+            3 => Join(Signature, ihdr, Chunk("tRNS", new byte[] { 42 }), data, end),
+            4 => Join(Signature, Chunk("IHDR", Header(1, 1, 8, 2, 0)), transparency,
+                Chunk("IDAT", Compress(new byte[] { 0, 1, 2, 3 })), end),
+            _ => Join(Signature, Chunk("IHDR", Header(1, 1, 8, fault == 5 ? (byte)4 : (byte)6, 0)),
+                transparency, Chunk("IDAT", Compress(new byte[fault == 5 ? 3 : 5])), end),
+        };
+        byte[] control = fault switch
+        {
+            1 => Join(Signature, ihdr, palette, transparency, data, end),
+            4 => Join(Signature, Chunk("IHDR", Header(1, 1, 8, 2, 0)),
+                Chunk("tRNS", new byte[] { 0, 1, 0, 2, 0, 3 }),
+                Chunk("IDAT", Compress(new byte[] { 0, 1, 2, 3 })), end),
+            5 or 6 => BuildPng(1, 1, 8, fault == 5 ? (byte)4 : (byte)6, 0,
+                new byte[fault == 5 ? 3 : 5]),
+            _ => Join(Signature, ihdr, transparency, data, end),
+        };
+        Assert.Equal(1, PngReader.Decode(control).Width);
+
+        PngDecodeDataException error = Assert.Throws<PngDecodeDataException>(() => PngReader.Decode(png));
+
+        Assert.Equal(reason, error.Reason);
+        if (fault <= 2) Assert.Equal(fault == 0 ? 33 + data.Length : 47, error.Offset);
+        if (fault is 3 or 4)
+        {
+            Assert.Equal(fault == 3 ? 1 : 2, error.ActualLength);
+            Assert.Equal(fault == 3 ? 2 : 6, error.ExpectedLength);
+            Assert.Equal(fault == 3 ? 0 : 2, error.ColorType);
         }
+        if (fault >= 5) Assert.Equal(fault == 5 ? 4 : 6, error.ColorType);
     }
 
     [Fact]
@@ -154,8 +174,14 @@ public class PngReaderTests
         byte[] png = Join(Signature, Chunk("IHDR", Header(140_000_000, 1, 8, 0, 0)),
             Chunk("tRNS", new byte[] { 0, 42 }), Chunk("IEND", Array.Empty<byte>()));
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => PngReader.Decode(png));
-        Assert.Contains("allocation cap", error.Message, StringComparison.Ordinal);
+        PngDecodeDataException error = Assert.Throws<PngDecodeDataException>(() => PngReader.Decode(png));
+
+        Assert.Equal(PngDecodeRefusal.TransparencyAllocationCapExceeded, error.Reason);
+        Assert.Equal(280_000_000L, error.RequiredBytes);
+        Assert.Equal(PngReader.MaxDecodedBytes, error.MaximumBytes);
+        Assert.Equal(140_000_000u, error.Width);
+        Assert.Equal(1u, error.Height);
+        Assert.Equal(2, error.OutputChannels);
     }
 
     [Theory]
@@ -188,34 +214,76 @@ public class PngReaderTests
         Assert.Equal(channels, image.Channels);
     }
 
-    [Fact]
-    public void Bad_crc_and_truncated_chunks_are_rejected()
+    [Theory]
+    [InlineData(false, PngDecodeRefusal.ChunkCrcMismatch)]
+    [InlineData(true, PngDecodeRefusal.ChunkHeaderTruncated)]
+    public void Bad_crc_and_truncated_chunks_are_rejected(bool truncate, PngDecodeRefusal reason)
     {
         byte[] png = BuildPng(1, 1, 8, 0, 0, new byte[] { 0, 42 });
-        png[29] ^= 1;
+        Assert.Equal(new byte[] { 42 }, PngReader.Decode(png).Bytes);
+        if (truncate) Array.Resize(ref png, png.Length - 3);
+        else png[29] ^= 1;
 
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(png));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(png.AsSpan(0, png.Length - 3)));
+        PngDecodeDataException error = Assert.Throws<PngDecodeDataException>(() => PngReader.Decode(png));
+
+        Assert.Equal(reason, error.Reason);
+        if (truncate)
+        {
+            Assert.Equal(png.Length - 9, error.Offset);
+            Assert.Equal(9, error.AvailableBytes);
+        }
+        else
+        {
+            Assert.Equal("IHDR", error.ChunkType);
+            Assert.Equal(8, error.Offset);
+            Assert.Equal(0x3b7e9b55u, error.ExpectedCrc);
+            Assert.Equal(0x3a7e9b55u, error.ActualCrc);
+        }
     }
 
-    [Fact]
-    public void Invalid_chunk_order_and_wrong_payload_size_are_rejected()
+    [Theory]
+    [InlineData(0, PngDecodeRefusal.DecodedLengthMismatch)]
+    [InlineData(1, PngDecodeRefusal.DecodedLengthMismatch)]
+    [InlineData(2, PngDecodeRefusal.DataOutOfOrder)]
+    public void Invalid_chunk_order_and_wrong_payload_size_are_rejected(int fault, PngDecodeRefusal reason)
     {
-        byte[] ihdr = Header(1, 1, 8, 0, 0);
-        byte[] tooShort = BuildPng(1, 1, 8, 0, 0, new byte[] { 0 });
-        byte[] tooLong = BuildPng(1, 1, 8, 0, 0, new byte[] { 0, 1, 2 });
-        byte[] wrongOrder = Join(Signature, Chunk("IDAT", Compress(new byte[] { 0, 1 })), Chunk("IHDR", ihdr), Chunk("IEND", Array.Empty<byte>()));
+        byte[] png = fault switch
+        {
+            0 => BuildPng(1, 1, 8, 0, 0, new byte[] { 0 }),
+            1 => BuildPng(1, 1, 8, 0, 0, new byte[] { 0, 1, 2 }),
+            _ => Join(Signature, Chunk("IDAT", Compress(new byte[] { 0, 1 })),
+                Chunk("IHDR", Header(1, 1, 8, 0, 0)), Chunk("IEND", Array.Empty<byte>())),
+        };
+        Assert.Equal(new byte[] { 1 }, PngReader.Decode(BuildPng(1, 1, 8, 0, 0, new byte[] { 0, 1 })).Bytes);
 
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(tooShort));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(tooLong));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(wrongOrder));
+        PngDecodeDataException error = Assert.Throws<PngDecodeDataException>(() => PngReader.Decode(png));
+
+        Assert.Equal(reason, error.Reason);
+        if (fault < 2)
+        {
+            Assert.Equal(2, error.ExpectedLength);
+            Assert.Equal(fault == 0 ? 1 : 2, error.ActualLength);
+            Assert.Equal(fault == 1, error.HasTrailingData);
+        }
+        else
+        {
+            Assert.Equal("IDAT", error.ChunkType);
+            Assert.Equal(8, error.Offset);
+        }
     }
 
     [Fact]
     public void Oversized_decodes_are_rejected_before_allocation()
     {
         byte[] huge = Join(Signature, Chunk("IHDR", Header(100_000, 100_000, 16, 6, 0)), Chunk("IEND", Array.Empty<byte>()));
-        Assert.Throws<InvalidDataException>(() => PngReader.Decode(huge));
+
+        PngDecodeDataException error = Assert.Throws<PngDecodeDataException>(() => PngReader.Decode(huge));
+
+        Assert.Equal(PngDecodeRefusal.DecodedAllocationCapExceeded, error.Reason);
+        Assert.Equal(80_000_000_000L, error.RasterBytes);
+        Assert.Equal(80_000_000_000L, error.ExpandedBytes);
+        Assert.Equal(80_000_100_000L, error.FilteredBytes);
+        Assert.Equal(PngReader.MaxDecodedBytes, error.MaximumBytes);
     }
 
     internal static byte[] BuildPng(int width, int height, byte depth, byte color, byte interlace, byte[] filtered) =>

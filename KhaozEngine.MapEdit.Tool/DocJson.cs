@@ -13,15 +13,17 @@ public static class DocJson
 {
     /// <summary>Parses a single terrain feature object (registry-open tagged union) using the document's own
     /// serializer options. The options carry <c>MapFeatureConverter</c>, so the registry discriminators drive the
-    /// parse and an unknown discriminator throws <see cref="JsonException"/> with the SDK's precise message. A null
-    /// deserialization result also throws.</summary>
+    /// parse. An unknown discriminator throws <see cref="MapFeatureJsonException"/> with
+    /// <see cref="MapDocumentRefusal.DocumentTerrainFeatureUnknown"/>, its ActualText and FieldPath.
+    /// A null deserialization result also throws.</summary>
     public static MapFeature ParseFeature(string featureJson, MapDocRegistry registry)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(featureJson);
         ArgumentNullException.ThrowIfNull(registry);
         MapFeature? feature = JsonSerializer.Deserialize<MapFeature>(
             featureJson, MapDocumentFile.CreateOptions(registry, write: false));
-        return feature ?? throw new JsonException("terrain feature JSON deserialized to null.");
+        return feature ?? throw new MapToolJsonException(MapDocumentRefusal.SchemaValueRequired, "terrain feature JSON deserialized to null.")
+        { FieldPath = "$", SubjectKind = "terrain feature" };
     }
 
     /// <summary>Parses a shape object (the closed disc/rect/polygon tagged union) using the document's own
@@ -32,7 +34,8 @@ public static class DocJson
         ArgumentNullException.ThrowIfNull(registry);
         MapShapeDoc? shape = JsonSerializer.Deserialize<MapShapeDoc>(
             shapeJson, MapDocumentFile.CreateOptions(registry, write: false));
-        return shape ?? throw new JsonException("shape JSON deserialized to null.");
+        return shape ?? throw new MapToolJsonException(MapDocumentRefusal.SchemaValueRequired, "shape JSON deserialized to null.")
+        { FieldPath = "$", SubjectKind = "shape" };
     }
 
     /// <summary>Serializes a feature back to compact JSON (the write:false options are not indented) for change

@@ -120,12 +120,15 @@ namespace KhaozEngine.Tests.Gpu
 
             Upload(setup);
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
-                () => MetalGpuDevice.PrepareForCommit(list, setup, alive: true));
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(
+                () => MetalGpuDevice.PrepareForCommit(list, setup, alive: true)).Reason);
 
-            Assert.Contains("without a sealed recording", thrown.Message, StringComparison.Ordinal);
             Assert.Empty(native.Committed);
             Assert.True(setup.HasPendingWork);
+            list.Begin();
+            list.End();
+            Assert.NotEqual(IntPtr.Zero, MetalGpuDevice.PrepareForCommit(list, setup, alive: true));
+            Assert.Single(native.Committed);
         }
 
         (MetalCommandList List, FakeMetalCommandBufferSource Buffers) NewList()

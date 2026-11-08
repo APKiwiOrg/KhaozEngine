@@ -58,13 +58,21 @@ public sealed partial class TileWorldPropClusters : IDisposable
         for (int i = 0; i < definitions.Count; i++)
         {
             TilePropLayerDefinition definition = definitions[i]
-                ?? throw new ArgumentException("A prop layer definition cannot be null.", nameof(definitions));
+                ?? throw new TilePropLayerArgumentException(TilePropLayerRefusal.DefinitionNull,
+                    "A prop layer definition cannot be null.", nameof(definitions))
+                { LayerIndex = i };
             if (string.IsNullOrWhiteSpace(definition.Id))
-                throw new ArgumentException("A prop layer id is required.", nameof(definitions));
+                throw new TilePropLayerArgumentException(TilePropLayerRefusal.LayerIdMissing,
+                    "A prop layer id is required.", nameof(definitions))
+                { LayerIndex = i };
             if (!layerIds.Add(definition.Id))
-                throw new ArgumentException($"Prop layer id '{definition.Id}' is duplicated.", nameof(definitions));
+                throw new TilePropLayerArgumentException(TilePropLayerRefusal.LayerIdDuplicate,
+                    $"Prop layer id '{definition.Id}' is duplicated.", nameof(definitions))
+                { LayerId = definition.Id, LayerIndex = i };
             if (definition.ArchetypeIds is null || definition.ArchetypeIds.Count == 0)
-                throw new ArgumentException($"Prop layer '{definition.Id}' must select at least one archetype.", nameof(definitions));
+                throw new TilePropLayerArgumentException(TilePropLayerRefusal.SelectionEmpty,
+                    $"Prop layer '{definition.Id}' must select at least one archetype.", nameof(definitions))
+                { LayerId = definition.Id };
             PositiveFinite(definition.DrawRadius, nameof(definition.DrawRadius));
             NonNegativeFinite(definition.LodDistance, nameof(definition.LodDistance));
             NonNegativeFinite(definition.HlodDistance, nameof(definition.HlodDistance));
@@ -74,8 +82,12 @@ public sealed partial class TileWorldPropClusters : IDisposable
             if (definition.LodDistance > definition.DrawRadius ||
                 definition.HlodDistance > definition.DrawRadius ||
                 definition.HlodDistance > 0f && definition.LodDistance >= definition.HlodDistance)
-                throw new ArgumentOutOfRangeException(nameof(definitions),
-                    $"Prop layer '{definition.Id}' distances must satisfy LOD < HLOD <= draw radius.");
+                throw new TilePropLayerRangeException(TilePropLayerRefusal.DistanceOrderingInvalid, nameof(definitions), null,
+                    $"Prop layer '{definition.Id}' distances must satisfy LOD < HLOD <= draw radius.")
+                {
+                    LayerId = definition.Id, LodDistance = definition.LodDistance,
+                    HlodDistance = definition.HlodDistance, DrawRadius = definition.DrawRadius,
+                };
             var archetypeIds = new string[definition.ArchetypeIds.Count];
             int archetypeIndex = 0;
             string? roofId = null, ordinaryId = null;
@@ -83,22 +95,32 @@ public sealed partial class TileWorldPropClusters : IDisposable
             {
                 TileObjectArchetype? archetype = catalogs.Archetype(archetypeId);
                 if (string.IsNullOrWhiteSpace(archetypeId) || archetype is null)
-                    throw new ArgumentException($"Prop layer '{definition.Id}' names unknown archetype '{archetypeId}'.",
-                        nameof(definitions));
+                    throw new TilePropLayerArgumentException(TilePropLayerRefusal.ArchetypeMissing,
+                        $"Prop layer '{definition.Id}' names unknown archetype '{archetypeId}'.",
+                        nameof(definitions))
+                    { LayerId = definition.Id, ArchetypeId = archetypeId };
                 if (archetype.IsRoof) roofId ??= archetypeId;
                 else ordinaryId ??= archetypeId;
                 if (!selected.TryAdd(archetypeId, i))
-                    throw new ArgumentException($"Archetype '{archetypeId}' is selected by more than one prop layer.",
-                        nameof(definitions));
+                    throw new TilePropLayerArgumentException(TilePropLayerRefusal.ArchetypeSelectedTwice,
+                        $"Archetype '{archetypeId}' is selected by more than one prop layer.",
+                        nameof(definitions))
+                    {
+                        ArchetypeId = archetypeId, FirstLayerId = definitions[selected[archetypeId]].Id,
+                        SecondLayerId = definition.Id,
+                    };
                 archetypeIds[archetypeIndex++] = archetypeId;
             }
             if (roofId is not null && ordinaryId is not null)
-                throw new ArgumentException(
+                throw new TilePropLayerArgumentException(TilePropLayerRefusal.RoofAndOrdinaryMixed,
                     $"Prop layer '{definition.Id}' mixes roof archetype '{roofId}' and non-roof archetype '{ordinaryId}'.",
-                    nameof(definitions));
+                    nameof(definitions))
+                { LayerId = definition.Id, RoofArchetypeId = roofId, OrdinaryArchetypeId = ordinaryId };
             if (roofId is not null && definition.CutInsideInteriors)
-                throw new ArgumentException($"Roof prop layer '{definition.Id}' cannot enable CutInsideInteriors.",
-                    nameof(definitions));
+                throw new TilePropLayerArgumentException(TilePropLayerRefusal.RoofInteriorCutEnabled,
+                    $"Roof prop layer '{definition.Id}' cannot enable CutInsideInteriors.",
+                    nameof(definitions))
+                { LayerId = definition.Id };
             layers[i] = new ValidatedLayer(definition, archetypeIds, roofId is not null);
         }
         return new ValidatedLayers(layers, selected);

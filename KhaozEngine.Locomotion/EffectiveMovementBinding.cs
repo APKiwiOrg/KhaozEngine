@@ -36,11 +36,16 @@ public sealed partial class EffectiveMovementBinding : IDisposable
             ContactComposition.Ordinary(tuning) : ContactComposition.PublicExplicit(tuning));
     }
 
+    /// <summary>Lets ContactNavigationReuseFixture trace the actual environment provider through a decorating wrapper.</summary>
+    internal void DecorateProviderForTests(Func<IMovementEnvironmentProvider, IMovementEnvironmentProvider> decorate) =>
+        _context!.DecorateProviderForTests(decorate);
+
     public static EffectiveMovementBinding Legacy(in MoveTuning tuning)
     {
         MovementConfigurationValidation.ValidateLegacy(tuning);
         if (tuning.Controller != MovementControllerKind.Legacy)
-            throw new ArgumentException("A Legacy binding requires the Legacy controller.", nameof(tuning));
+            throw new MovementConfigurationException(MovementConfigurationRefusal.LegacyControllerRequired, "A Legacy binding requires the Legacy controller.", nameof(tuning))
+            { ActualController = tuning.Controller, ExpectedController = MovementControllerKind.Legacy };
         return new(EffectiveMovementBindingKind.Legacy, tuning, tuning.Water);
     }
 
@@ -55,7 +60,8 @@ public sealed partial class EffectiveMovementBinding : IDisposable
         ArgumentNullException.ThrowIfNull(groundHeight);
         ArgumentNullException.ThrowIfNull(boundary);
         if (tuning.Controller != MovementControllerKind.Contact)
-            throw new ArgumentException("An ordinary contact binding requires the Contact controller.", nameof(tuning));
+            throw new MovementConfigurationException(MovementConfigurationRefusal.ContactControllerRequired, "An ordinary contact binding requires the Contact controller.", nameof(tuning))
+            { ActualController = tuning.Controller, ExpectedController = MovementControllerKind.Contact };
         if (!ReferenceEquals(registration.SourceWorld, physics))
             throw new ArgumentException("The registration must name the configured physical source.", nameof(registration));
         bool owned = movementQueries is null;
@@ -77,7 +83,9 @@ public sealed partial class EffectiveMovementBinding : IDisposable
     {
         ArgumentNullException.ThrowIfNull(environment);
         if (tuning.Controller == MovementControllerKind.Contact)
-            throw new ArgumentException("A public explicit environment and the Contact selector are two movement selections.", nameof(tuning));
+            throw new MovementConfigurationException(MovementConfigurationRefusal.ConflictingMovementSelections,
+                "A public explicit environment and the Contact selector are two movement selections.", nameof(tuning))
+            { ActualController = tuning.Controller, RequestedKind = EffectiveMovementBindingKind.PublicExplicit };
         MovementConfigurationValidation.ValidateExplicit(tuning, water);
         return new(EffectiveMovementBindingKind.PublicExplicit, tuning, water, environment);
     }

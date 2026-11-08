@@ -128,12 +128,14 @@ namespace KhaozEngine.Tests.Gpu
 
             fences.SignalEndOfReplay(fence);
 
-            InvalidOperationException ex =
-                Assert.Throws<InvalidOperationException>(() => fences.SignalEndOfReplay(fence));
-            Assert.Contains("Reset", ex.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => fences.SignalEndOfReplay(fence));
 
             Assert.Equal(2, timeline.SignalCount);              // the failed submit still signalled
             Assert.Equal(1UL, ((D3D11GpuFence)fence).Target);   // and did not retarget the fence
+
+            fence.Reset();
+            fences.SignalEndOfReplay(fence);
+            Assert.Equal(3UL, ((D3D11GpuFence)fence).Target);
         }
 
         /// <summary>A fence from another backend cannot be armed, and saying so beats an
@@ -145,9 +147,10 @@ namespace KhaozEngine.Tests.Gpu
             var timeline = new FakeD3D11FenceTimeline();
             using D3D11FenceSubsystem fences = Subsystem(timeline);
 
-            ArgumentException ex =
-                Assert.Throws<ArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
-            Assert.Contains(nameof(ForeignFence), ex.Message, StringComparison.Ordinal);
+            GpuResourceOwnershipArgumentException ex =
+                Assert.Throws<GpuResourceOwnershipArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
+            Assert.Equal(typeof(ForeignFence), ex.ActualType);
             Assert.Equal(0, timeline.SignalCount);
         }
 
@@ -164,7 +167,7 @@ namespace KhaozEngine.Tests.Gpu
             var liveness = new FakeD3D11DeviceLiveness { IsDead = true };
             using D3D11FenceSubsystem fences = Subsystem(timeline, liveness);
 
-            Assert.Throws<ArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
             Assert.Equal(0, timeline.SignalCount);
         }
 

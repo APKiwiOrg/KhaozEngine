@@ -62,7 +62,7 @@ public class PositionFrameBlobMigrationTests
         Swimming = generation >= 3 && m.Swimming,
         TeleportEpoch = generation >= 4 ? m.TeleportEpoch : 0u,
         ClimbRateQ = generation >= 5 ? m.ClimbRateQ : (sbyte)0,
-        SpeedScaleQ = generation >= 6 ? m.SpeedScaleQ : (sbyte)0,
+        SpeedScaleQ = generation >= 15 ? m.SpeedScaleQ : generation >= 6 ? (short)(m.SpeedScaleQ * 64) : (short)0,
         HorizontalVelocityXQ = generation >= 7 ? m.HorizontalVelocityXQ : (short)0,
         HorizontalVelocityZQ = generation >= 7 ? m.HorizontalVelocityZQ : (short)0,
         FacingYawQ = generation >= 10 ? m.FacingYawQ : (short)0,
@@ -281,12 +281,27 @@ public class PositionFrameBlobMigrationTests
                 (MoveProtocol.MovementTypeId, new byte[17]))
             .ToBody();
 
-        Assert.Throws<InvalidOperationException>(() => PositionFrameBlobMigration.FrameV2ToV3(corrupt));
+        var ex = Assert.Throws<CellBlobMigrationException>(() => PositionFrameBlobMigration.FrameV2ToV3(corrupt));
+        Assert.Equal(CellBlobMigrationRefusal.NoInferredGeneration, ex.Reason);
+        Assert.Equal("v2 (absolute position)", ex.SchemaLabel);
+        Assert.Equal(2, ex.OldestGeneration);
+        Assert.Equal(8, ex.NewestGeneration);
+        Assert.Empty(ex.UnregisteredExtensionIds!);
+        byte[] control = new CellBlobFixtures.BodyBuilder().Entity(1,
+            (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(4, PlayerPos)),
+            (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(4, default))).ToBody();
+        Assert.NotEmpty(PositionFrameBlobMigration.FrameV2ToV3(control));
     }
 
     [Fact]
     public void FrameV2ToV3_TruncatedBody_Throws()
     {
-        Assert.Throws<InvalidOperationException>(() => PositionFrameBlobMigration.FrameV2ToV3(new byte[] { 1, 0, 0, 0, 5, 0 }));
+        var ex = Assert.Throws<CellBlobMigrationException>(() => PositionFrameBlobMigration.FrameV2ToV3(new byte[] { 1, 0, 0, 0, 5, 0 }));
+        Assert.Equal(CellBlobMigrationRefusal.NoInferredGeneration, ex.Reason);
+        Assert.Equal("v2 (absolute position)", ex.SchemaLabel);
+        Assert.Equal(2, ex.OldestGeneration);
+        Assert.Equal(8, ex.NewestGeneration);
+        Assert.Empty(ex.UnregisteredExtensionIds!);
+        Assert.NotEmpty(PositionFrameBlobMigration.FrameV2ToV3(new CellBlobFixtures.BodyBuilder().Entity(5).ToBody()));
     }
 }

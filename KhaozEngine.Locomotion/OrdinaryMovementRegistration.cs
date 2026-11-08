@@ -34,6 +34,7 @@ public sealed partial class OrdinaryMovementRegistration
     OrdinaryMovementRegistration(Builder builder, IPhysicsQueryLease lease, Dictionary<StaticHandle, Entry[]> entries,
         StaticHandle[] exclusions, string digest)
     {
+        AnalyticSupport = builder.AnalyticSupport;
         WorldId = builder.WorldId;
         SourceWorld = builder.Source;
         Extent = builder.Extent;

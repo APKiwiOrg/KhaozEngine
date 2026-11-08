@@ -319,6 +319,7 @@ sealed partial class ContentUpgradeRun
             return plan;
         }
         catch (Exception refused) when (refused is InvalidDataException
+            or MalformedDataException
             or ContentAuthoringException
             or ArgumentException)
         {

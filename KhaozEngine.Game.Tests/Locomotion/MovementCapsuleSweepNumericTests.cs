@@ -1,7 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -109,20 +107,9 @@ public class MovementCapsuleSweepNumericTests
         Assert.Equal(MovementAvailability.Known, acquired.Status);
         using var lease = Assert.IsType<MovementQueryLease>(acquired.Lease);
         var body = new MovementBodyQuery(Vector3.Zero, 0.3f, 0.75f, new MovementSpaceKey("world", "room"), null);
-        MethodInfo? method = typeof(MovementQueryLease).GetMethod("QuerySolidSweep",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        object?[] args = [body, displacement, new CapsuleSweepResult(CapsuleSweepStatus.Clear, 123f, null, 0f)];
-        try
-        {
-            var availability = (MovementAvailability)method.Invoke(lease, args)!;
-            return new Capture(availability, (CapsuleSweepResult)args[2]!, view.Calls, view.ObservedDisplacement);
-        }
-        catch (TargetInvocationException exception) when (exception.InnerException is not null)
-        {
-            ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
-            throw;
-        }
+        var result = new CapsuleSweepResult(CapsuleSweepStatus.Clear, 123f, null, 0f);
+        MovementAvailability availability = lease.QuerySolidSweep(body, displacement, out result);
+        return new Capture(availability, result, view.Calls, view.ObservedDisplacement);
     }
 
     readonly record struct Capture(MovementAvailability Availability, CapsuleSweepResult Result,

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -11,15 +12,8 @@ namespace KhaozEngine.Tests.Gpu
     /// breakdown row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/580), over
     /// <c>MetalCommandList.Transfers.cs</c>.
     ///
-    /// <para><b>WHAT IS HERE IS THE BUFFER COPY AND THE ARGUMENT REFUSALS, AND THAT IS A LIMIT OF THE FIXTURE
-    /// RATHER THAN OF THE ROW.</b> A <see cref="MetalTexture"/> has a private constructor and one factory that
-    /// takes an <c>MTLDevice</c>, so there is no way to stand one up off a device and no fake can substitute for
-    /// it: the four texture members type-check their arguments to that concrete class. So every claim below the
-    /// ownership check on <c>CopyTexture</c>, both <c>CopyTextureSubresource</c> overloads,
-    /// <c>GenerateMipmaps</c> and <c>ResolveTexture</c> lives in the <c>[GpuFact]</c> companion instead, and this
-    /// file asserts what it genuinely can: the whole of <c>CopyBuffer</c>, and the argument, ownership, recording
-    /// and disposal refusals every member shares. <see cref="MetalRenderPassScheduleTests"/> records the same
-    /// constraint for the pass schedule, for the same reason.</para>
+    /// <para>The harness supplies native-free textures for subresource validation. GPU companions also exercise
+    /// those refusals over real resources and validate the transfer results.</para>
     ///
     /// <para><b>THE ENCODER BOUNDARY IS THE CLAIM WORTH THE MOST HERE.</b> Four of the five members open a BLIT
     /// encoder, which is a DIFFERENT kind from the one a draw uses, so ending the open render pass first is M-A5
@@ -59,6 +53,37 @@ namespace KhaozEngine.Tests.Gpu
         {
             _list.Dispose();
             _harness.Dispose();
+        }
+
+        [Theory]
+        [InlineData("source", true)]
+        [InlineData("source", false)]
+        [InlineData("destination", true)]
+        [InlineData("destination", false)]
+        public void SubresourceRefusalsIdentifyTheSideAndItsLimits(string side, bool mip)
+        {
+            using MetalTexture source = _harness.NewTexture(GpuTextureDescription.Texture2D(
+                8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            using MetalTexture destination = _harness.NewTexture(GpuTextureDescription.Texture2D(
+                8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            _list.Begin();
+            _list.CopyTextureSubresource(source, 0, 0, destination, 0, 0, 8, 8);
+            uint level = mip ? 1u : 0u;
+            uint layer = mip ? 0u : 1u;
+            var refusal = Assert.Throws<GpuTextureTransferRangeException>(() =>
+                _list.CopyTextureSubresource(source, side == "source" ? level : 0,
+                    side == "source" ? layer : 0, destination, side == "destination" ? level : 0,
+                    side == "destination" ? layer : 0, 8, 8));
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(refusal);
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, refusal.Reason);
+            Assert.Equal(mip ? "mipLevel" : "arrayLayer", refusal.ParamName);
+            Assert.Equal(1u, refusal.ActualValue);
+            Assert.Equal(side, refusal.Side);
+            Assert.Equal(level, refusal.MipLevel);
+            Assert.Equal(layer, refusal.ArrayLayer);
+            Assert.Equal(1u, refusal.MipLevels);
+            Assert.Equal(1u, refusal.ArrayLayers);
+            _list.End();
         }
 
         // ---- CopyBuffer: the copy itself ---------------------------------------------------------------------
@@ -241,50 +266,22 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- CopyBuffer: the refusals ------------------------------------------------------------------------
 
-        /// <summary>
-        /// AN UNALIGNED SOURCE OFFSET IS REFUSED AND THE MESSAGE SAYS SOURCE. Section 9.3's ruling is asymmetric
-        /// on purpose: the size is padded and the offsets throw, because the incumbent's answer to an unaligned
-        /// offset is an embedded compute shader driven by a dedicated compute pipeline, and shipping a second
-        /// metallib for a case no shipped call site produces is the unreachable-code reproduction G1 declined
-        /// once already.
-        /// <para>
-        /// NAMING THE SIDE IS THE POINT OF THE ROW. Both offsets go through one helper, so a refusal that named
-        /// the wrong end would send a caller to inspect the buffer that was fine.
-        /// </para>
-        /// </summary>
-        [Fact]
-        public void AnUnalignedSourceOffsetIsRefusedAndNamesTheSource()
+        /// <summary>Unaligned offsets refuse the offending side before opening an encoder or recording work.</summary>
+        [Theory]
+        [InlineData(3u, 0u, "srcOffsetBytes", "destination offset")]
+        [InlineData(4u, 6u, "dstOffsetBytes", "source offset")]
+        public void AnUnalignedOffset_IsRefusedAndNamesItsParameter(uint sourceOffset, uint destinationOffset,
+            string parameter, string otherSide)
         {
             (MetalBuffer source, MetalBuffer destination) = Buffers();
             _list.Begin();
 
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
-                () => _list.CopyBuffer(source, 3, destination, 0, 16));
+            GpuCopyAlignmentException thrown = Assert.Throws<GpuCopyAlignmentException>(
+                () => _list.CopyBuffer(source, sourceOffset, destination, destinationOffset, 16));
 
-            Assert.Contains("source offset of 3", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("multiple of 4", thrown.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("destination offset", thrown.Message, StringComparison.Ordinal);
-
-            AssertNothingWasSpent();
-        }
-
-        /// <summary>
-        /// AND THE DESTINATION END, SEPARATELY, with an ALIGNED source so only one of the two can be the cause.
-        /// A single row covering both offsets would pass on an implementation that checked one of them twice.
-        /// </summary>
-        [Fact]
-        public void AnUnalignedDestinationOffsetIsRefusedAndNamesTheDestination()
-        {
-            (MetalBuffer source, MetalBuffer destination) = Buffers();
-            _list.Begin();
-
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
-                () => _list.CopyBuffer(source, 4, destination, 6, 16));
-
-            Assert.Contains("destination offset of 6", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("multiple of 4", thrown.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("source offset", thrown.Message, StringComparison.Ordinal);
-
+            Assert.Equal(parameter, thrown.ParamName);
+            // The refusal must not blame the side that was aligned.
+            Assert.DoesNotContain(otherSide, thrown.Message, StringComparison.Ordinal);
             AssertNothingWasSpent();
         }
 
@@ -300,11 +297,11 @@ namespace KhaozEngine.Tests.Gpu
             _list.Begin();
 
             // The SOURCE is 256 bytes, so a 64-byte read from 224 runs off it.
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<GpuBufferTransferRangeException>(
                 () => _list.CopyBuffer(source, SourceSize - 32, destination, 0, 64));
 
             // The DESTINATION is 128, so a 64-byte write from 96 runs off it while the source is comfortable.
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<GpuBufferTransferRangeException>(
                 () => _list.CopyBuffer(source, 0, destination, DestinationSize - 32, 64));
 
             AssertNothingWasSpent();
@@ -363,11 +360,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             (MetalBuffer source, MetalBuffer destination) = Buffers();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
-                () => _list.CopyBuffer(source, 0, destination, 0, 16));
-
-            Assert.Contains("Copying between buffers", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("Call Begin", thrown.Message, StringComparison.Ordinal);
+            var ex = Assert.Throws<GpuRecordingStateException>(() => _list.CopyBuffer(source, 0, destination, 0, 16));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, ex.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, ex.Backend);
+            Assert.Equal("Copying between buffers", ex.Command);
 
             AssertNothingWasSpent();
         }
@@ -381,13 +377,10 @@ namespace KhaozEngine.Tests.Gpu
             var foreign = new FakeBuffer(SourceSize);
             _list.Begin();
 
-            Assert.Contains("not created by the native Metal backend",
-                Assert.Throws<ArgumentException>(() => _list.CopyBuffer(foreign, 0, destination, 0, 16)).Message,
-                StringComparison.Ordinal);
-
-            Assert.Contains("not created by the native Metal backend",
-                Assert.Throws<ArgumentException>(() => _list.CopyBuffer(source, 0, foreign, 0, 16)).Message,
-                StringComparison.Ordinal);
+            Assert.Equal("src", Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => _list.CopyBuffer(foreign, 0, destination, 0, 16)).ParamName);
+            Assert.Equal("dst", Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => _list.CopyBuffer(source, 0, foreign, 0, 16)).ParamName);
 
             AssertNothingWasSpent();
         }
@@ -405,7 +398,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             _list.Begin();
 
-            foreach (Action member in EveryMemberWith(null!, null!)) Assert.Throws<ArgumentNullException>(member);
+            Action[] members = EveryMemberWith(null!, null!);
+            Assert.NotEmpty(members);
+            foreach (Action member in members) Assert.Throws<ArgumentNullException>(member);
 
             AssertNothingWasSpent();
         }
@@ -413,8 +408,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// AND EVERY MEMBER REFUSES A RESOURCE ANOTHER BACKEND CREATED, which is as far into the four texture
         /// members as a device-free fixture can reach: the check is a type test against
-        /// <see cref="MetalTexture"/>, and that class has a private constructor and one factory that takes an
-        /// <c>MTLDevice</c>.
+        /// <see cref="MetalTexture"/>. Native-free textures for checks below that cast come from the ring harness.
         /// <para>
         /// WHAT A RED RUN MEANS: a resource created on one backend is being used on another's device, which on a
         /// machine with more than one Metal device is an illegal copy and on Apple silicon, where the whole
@@ -428,12 +422,9 @@ namespace KhaozEngine.Tests.Gpu
             var texture = new FakeTexture(8, 8, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
             _list.Begin();
 
-            foreach (Action member in EveryMemberWith(texture, texture))
-            {
-                ArgumentException thrown = Assert.Throws<ArgumentException>(member);
-                Assert.Contains("not created by the native Metal backend", thrown.Message,
-                    StringComparison.Ordinal);
-            }
+            Action[] members = EveryMemberWith(texture, texture);
+            Assert.NotEmpty(members);
+            foreach (Action member in members) Assert.Throws<GpuResourceOwnershipArgumentException>(member);
 
             AssertNothingWasSpent();
         }
@@ -450,8 +441,9 @@ namespace KhaozEngine.Tests.Gpu
             _list.Begin();
             _list.Dispose();
 
-            foreach (Action member in EveryMemberWith(texture, texture))
-                Assert.Throws<ObjectDisposedException>(member);
+            Action[] members = EveryMemberWith(texture, texture);
+            Assert.NotEmpty(members);
+            foreach (Action member in members) Assert.Throws<ObjectDisposedException>(member);
 
             Assert.Throws<ObjectDisposedException>(() => _list.CopyBuffer(null!, 0, null!, 0, 16));
         }

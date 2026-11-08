@@ -18,18 +18,13 @@ public class NavGridTests
             Assert.Equal(0, grid.ClearanceAt(3, z));
     }
 
-    [Fact]
-    public void FromWalkable_BlockedColumn_NeighborIsPassableAtSmallRadius()
+    [Theory]
+    [InlineData(0.2f)]
+    [InlineData(0f)]
+    public void FromWalkable_BlockedColumn_NeighborIsPassable(float radius)
     {
         NavGrid grid = MakeBlockedColumnGrid();
-        Assert.True(grid.IsPassable(2, 2, 0.2f));
-    }
-
-    [Fact]
-    public void FromWalkable_BlockedColumn_NeighborIsPassableAtZeroRadius()
-    {
-        NavGrid grid = MakeBlockedColumnGrid();
-        Assert.True(grid.IsPassable(2, 2, 0f));
+        Assert.True(grid.IsPassable(2, 2, radius));
     }
 
     [Fact]
@@ -82,21 +77,12 @@ public class NavGridTests
         Assert.Throws<ArgumentNullException>(() => NavGrid.FromWalkable(4, 4, 1f, 0f, 0f, null!));
     }
 
-    [Fact]
-    public void FromWalkable_NonPositiveWidth_Throws()
+    [Theory]
+    [InlineData(0, 4, 1f)] // Width.
+    [InlineData(4, 0, 1f)] // Height.
+    [InlineData(4, 4, 0f)] // Cell size.
+    public void FromWalkable_NonPositiveDimensions_Throw(int width, int height, float cellSize)
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => NavGrid.FromWalkable(0, 4, 1f, 0f, 0f, (_, _) => true));
-    }
-
-    [Fact]
-    public void FromWalkable_NonPositiveHeight_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => NavGrid.FromWalkable(4, 0, 1f, 0f, 0f, (_, _) => true));
-    }
-
-    [Fact]
-    public void FromWalkable_NonPositiveCellSize_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => NavGrid.FromWalkable(4, 4, 0f, 0f, 0f, (_, _) => true));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NavGrid.FromWalkable(width, height, cellSize, 0f, 0f, (_, _) => true));
     }
 }

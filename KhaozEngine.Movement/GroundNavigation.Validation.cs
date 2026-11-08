@@ -30,24 +30,52 @@ public sealed partial class GroundNavigation
         float placementOffset, string parameter)
     {
         if (kind == EffectiveMovementBindingKind.PublicExplicit)
-            throw new NotSupportedException("Explicit navigation profiles are not supported yet. " +
-                "See https://github.com/APKiwiOrg/KhaozEngine/issues/1389.");
+            throw new NavigationProfileCapabilityException(NavigationProfileRefusal.PublicExplicitProfileUnsupported,
+                "Explicit navigation profiles are not supported yet. " +
+                "See https://github.com/APKiwiOrg/KhaozEngine/issues/1389.") { IssueUrl = NavBakeProfile.DeferredIssue, ActualKind = kind };
         if (kind != Identity.Kind)
-            throw new ArgumentException($"Movement binding Kind {kind} must equal the baked profile Kind {Identity.Kind}.", parameter);
+            throw new NavigationProfileException(NavigationProfileRefusal.BindingKindMismatch,
+                $"Movement binding Kind {kind} must equal the baked profile Kind {Identity.Kind}.", parameter)
+                { ExpectedKind = Identity.Kind, ActualKind = kind };
         if (kind == EffectiveMovementBindingKind.Legacy)
         {
             if (tuning.CapsuleRadius != _tuning.Radius || tuning.CapsuleHalfHeight != _tuning.HalfHeight ||
                 tuning.MaxSlopeRadians != _tuning.Slope || tuning.StepHeight != _tuning.Step)
-                throw new ArgumentException("Movement geometry must equal the baked profile geometry.", parameter);
+                throw tuning.CapsuleRadius != _tuning.Radius
+                    ? NumericMismatch(NavigationProfileRefusal.GeometryMismatch, nameof(tuning.CapsuleRadius), _tuning.Radius, tuning.CapsuleRadius,
+                        "Movement geometry must equal the baked profile geometry.", parameter)
+                    : tuning.CapsuleHalfHeight != _tuning.HalfHeight
+                    ? NumericMismatch(NavigationProfileRefusal.GeometryMismatch, nameof(tuning.CapsuleHalfHeight), _tuning.HalfHeight, tuning.CapsuleHalfHeight,
+                        "Movement geometry must equal the baked profile geometry.", parameter)
+                    : tuning.MaxSlopeRadians != _tuning.Slope
+                    ? NumericMismatch(NavigationProfileRefusal.GeometryMismatch, nameof(tuning.MaxSlopeRadians), _tuning.Slope, tuning.MaxSlopeRadians,
+                        "Movement geometry must equal the baked profile geometry.", parameter)
+                    : NumericMismatch(NavigationProfileRefusal.GeometryMismatch, nameof(tuning.StepHeight), _tuning.Step, tuning.StepHeight,
+                        "Movement geometry must equal the baked profile geometry.", parameter);
             if (Aquatic && (tuning.SwimEnterDepthFraction != _swim.Enter || tuning.SwimExitDepthFraction != _swim.Exit ||
                 tuning.SwimSurfaceSubmersionFraction != _swim.Submersion))
-                throw new ArgumentException("Swim fractions must equal the baked aquatic profile's.", parameter);
+                throw tuning.SwimEnterDepthFraction != _swim.Enter
+                    ? NumericMismatch(NavigationProfileRefusal.SwimFractionsMismatch, nameof(tuning.SwimEnterDepthFraction), _swim.Enter, tuning.SwimEnterDepthFraction,
+                        "Swim fractions must equal the baked aquatic profile's.", parameter)
+                    : tuning.SwimExitDepthFraction != _swim.Exit
+                    ? NumericMismatch(NavigationProfileRefusal.SwimFractionsMismatch, nameof(tuning.SwimExitDepthFraction), _swim.Exit, tuning.SwimExitDepthFraction,
+                        "Swim fractions must equal the baked aquatic profile's.", parameter)
+                    : NumericMismatch(NavigationProfileRefusal.SwimFractionsMismatch, nameof(tuning.SwimSurfaceSubmersionFraction), _swim.Submersion, tuning.SwimSurfaceSubmersionFraction,
+                        "Swim fractions must equal the baked aquatic profile's.", parameter);
             return;
         }
         MoveTuning runtime = tuning with { Water = water };
-        string? difference = NavBakeIdentity.FirstRuntimeDifference(Identity.Tuning, runtime);
-        if (difference is not null) throw new ArgumentException($"Movement {difference}.", parameter);
+        NavigationTuningDifference? difference = NavBakeIdentity.FirstRuntimeFinding(Identity.Tuning, runtime);
+        if (MaxDropMetres > 0) difference ??= NavBakeIdentity.FirstDropRuntimeFinding(Identity.Tuning, runtime);
+        if (difference is { } finding)
+            throw new NavigationProfileException(NavigationProfileRefusal.TuningFieldMismatch, $"Movement {finding.Detail}.", parameter)
+                { FieldName = finding.FieldName, ExpectedBits = finding.ExpectedBits, ActualBits = finding.ActualBits };
+        // Internal invariant: PublicExplicit is refused above, Legacy returned, and Ordinary composition and baked identity both use zero.
         if (placementOffset != Identity.PlacementOffset)
             throw new ArgumentException("Movement PlacementOffset must equal the baked profile's.", parameter);
     }
+
+    private static NavigationProfileException NumericMismatch(NavigationProfileRefusal reason, string field,
+        double expected, double actual, string message, string parameter) =>
+        new(reason, message, parameter) { FieldName = field, ExpectedNumber = expected, ActualNumber = actual };
 }

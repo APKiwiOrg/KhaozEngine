@@ -115,10 +115,7 @@ public sealed class RenderService(MapEditSession session)
         var eye = new Vector3(eyeX, eyeY, eyeZ);
         var target = new Vector3(targetX, targetY, targetZ);
         Vector3 d = target - eye;
-        if (d.LengthSquared() < 1e-12f)
-            throw new ArgumentException(
-                "render_view eye and target coincide, so the look direction is zero. Move the eye away from the target.");
-        Vector3 dNorm = Vector3.Normalize(d);
+        Vector3 dNorm = MapRenderViewAdmission.LookDirection(eye, target);
 
         return session.WithDocument((doc, registry) =>
         {
@@ -169,7 +166,7 @@ public sealed class RenderService(MapEditSession session)
     }
 
     // Runs the headless capture and encodes it to a PNG, wrapping any capture failure in an
-    // InvalidOperationException that names the selected backend, so the client learns which backend the render was
+    // MapRenderException that names the selected backend, so the client learns which backend the render was
     // attempted on. Two frames so the streamer settles before the pixels are read back.
     //
     // The wrapper states the backend and hands the inner message straight through, and does NOT name a cause. It
@@ -189,19 +186,7 @@ public sealed class RenderService(MapEditSession session)
     // reference, is safe too - this comment's "would throw" is historical, not a live constraint on this flow.
     static byte[] CaptureToPng(int width, int height, Action<Scene3D> setup, Action<Scene3D> drawFrame)
     {
-        byte[] rgba;
-        try
-        {
-            rgba = Render3DSnapshot.Capture(width, height, setup, drawFrame, frames: 2);
-        }
-        catch (Exception ex)
-        {
-            GpuBackendKind selected = GpuBackendSelector.Select();
-            throw new InvalidOperationException("render failed for backend " + selected
-                + ". The reason is in the details below: a machine with no headless device, a backend whose "
-                + "provider was never registered, and a failure inside the render itself all arrive here. Set "
-                + "KE_GRAPHICS_BACKEND to render on a different backend. Details: " + ex.Message);
-        }
+        byte[] rgba = MapRenderCapture.Capture(() => Render3DSnapshot.Capture(width, height, setup, drawFrame, frames: 2));
         return PngWriter.Encode(rgba, width, height);
     }
 

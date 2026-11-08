@@ -65,7 +65,8 @@ public class WorldClientLocalYawTests
         client.SendInput(new MoveCommand(Vector2.Zero, false, 0.6f, faceCamera: true));
         client.AdvancePresentation(1f / 60f);
 
-        Assert.Equal(0.3f, LocalFacing(client), 1e-5f);
+        float target = MovementState.DecodeFacingYaw(MovementState.QuantizeFacingYaw(0.6f));
+        Assert.Equal(target * 0.5f, LocalFacing(client), 1e-5f);
     }
 
     [Fact]
@@ -77,6 +78,7 @@ public class WorldClientLocalYawTests
         client.SendInput(new MoveCommand(Vector2.Zero, false, 0.6f, faceCamera: true));
         client.AdvancePresentation(1f / 60f);
 
-        Assert.Equal(BitConverter.SingleToInt32Bits(0.6f), BitConverter.SingleToInt32Bits(LocalFacing(client)));
+        float target = MovementState.DecodeFacingYaw(MovementState.QuantizeFacingYaw(0.6f));
+        Assert.Equal(BitConverter.SingleToInt32Bits(target), BitConverter.SingleToInt32Bits(LocalFacing(client)));
     }
 }

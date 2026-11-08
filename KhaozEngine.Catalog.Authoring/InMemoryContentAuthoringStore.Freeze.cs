@@ -32,6 +32,7 @@ public sealed partial class InMemoryContentAuthoringStore
         {
             ContentDraft open = _draft
                 ?? throw new ContentAuthoringException(
+                    ContentAuthoringRefusal.NoPendingDraft,
                     "There is no open draft to freeze, so there is nothing to publish.",
                     default,
                     0,
@@ -89,11 +90,13 @@ public sealed partial class InMemoryContentAuthoringStore
         if (_draft is { FrozenForBaseVersion: int frozen })
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.PublishInProgress,
                 FormattableString.Invariant(
                     $"{member} is refused: a publish standing on version {frozen} holds this draft frozen. The change set that publish read at step 1 is the one it will delete, so an edit arriving now would either be published without review or be deleted unpublished."),
                 default,
                 0,
-                ContentAuthoringException.PublishInProgressReason);
+                ContentAuthoringException.PublishInProgressReason)
+            { MemberName = member, FrozenForBaseVersion = frozen };
         }
     }
 

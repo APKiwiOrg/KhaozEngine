@@ -49,7 +49,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     imageView: new ImageView(colour[i].View),
                     imageLayout: ImageLayout.ColorAttachmentOptimal,
                     loadOp: Load(colour[i].LoadOp),
-                    storeOp: AttachmentStoreOp.Store,
+                    storeOp: colour[i].Discard ? AttachmentStoreOp.DontCare : AttachmentStoreOp.Store,
                     clearValue: new ClearValue(new ClearColorValue(
                         colour[i].ClearValue.R, colour[i].ClearValue.G, colour[i].ClearValue.B,
                         colour[i].ClearValue.A)));
@@ -65,7 +65,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     imageView: new ImageView(attachment.View),
                     imageLayout: ImageLayout.DepthStencilAttachmentOptimal,
                     loadOp: Load(attachment.LoadOp),
-                    storeOp: AttachmentStoreOp.Store,
+                    storeOp: attachment.DiscardDepth ? AttachmentStoreOp.DontCare : AttachmentStoreOp.Store,
                     clearValue: new ClearValue(depthStencil: new ClearDepthStencilValue(
                         attachment.ClearDepth, 0)));
 
@@ -74,6 +74,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // VulkanDepthAttachment for why a combined format names both rather than leaving the stencil
                 // plane holding whatever the last pass left in it.
                 stencilInfo = depthInfo;
+                stencilInfo.StoreOp = attachment.DiscardStencil ? AttachmentStoreOp.DontCare : AttachmentStoreOp.Store;
             }
 
             fixed (RenderingAttachmentInfo* pColour = attachments)

@@ -1,8 +1,6 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using KhaozEngine.Tests.WorldStore;
 using KhaozEngine.WorldStore.Journal;
@@ -91,9 +89,16 @@ public sealed class MutationJournalRecoveryTests
     {
         var store = new InMemoryMutationJournalStore();
         await SeedTwoEventsAsync(store, 50);
-        DeleteInMemoryEvent(store, index: 0);
+        store.RemoveStoredEventForTests(StreamKey, streamVersion: 1);
 
-        await AssertCorruptAsync(() => ReadAllAsync(store));
+        JournalStoreException refused = await AssertCorruptAsync(() => ReadAllAsync(store));
+        Assert.Equal(JournalStoreRefusal.EventSequenceGap, refused.Reason);
+        Assert.Equal(StreamKey, refused.StreamKey);
+        Assert.Equal(1, refused.ExpectedVersion);
+        Assert.Equal(2, refused.ActualVersion);
+        var repaired = new InMemoryMutationJournalStore();
+        await SeedTwoEventsAsync(repaired, 50);
+        Assert.Equal(2, (await ReadAllAsync(repaired)).Events.Count);
     }
 
     [Fact]
@@ -101,9 +106,16 @@ public sealed class MutationJournalRecoveryTests
     {
         var store = new InMemoryMutationJournalStore();
         await SeedTwoEventsAsync(store, 55);
-        DeleteInMemoryEvent(store, index: 1);
+        store.RemoveStoredEventForTests(StreamKey, streamVersion: 2);
 
-        await AssertCorruptAsync(() => ReadAllAsync(store));
+        JournalStoreException refused = await AssertCorruptAsync(() => ReadAllAsync(store));
+        Assert.Equal(JournalStoreRefusal.EventPageIncomplete, refused.Reason);
+        Assert.Equal(StreamKey, refused.StreamKey);
+        Assert.Equal(2, refused.ExpectedThroughVersion);
+        Assert.Equal(1, refused.ActualThroughVersion);
+        var repaired = new InMemoryMutationJournalStore();
+        await SeedTwoEventsAsync(repaired, 55);
+        Assert.Equal(2, (await ReadAllAsync(repaired)).Events.Count);
     }
 
     [SqlServerFact]
@@ -160,9 +172,13 @@ public sealed class MutationJournalRecoveryTests
     {
         var store = new InMemoryMutationJournalStore();
         await store.InitializeAsync(Initialization(80, snapshotValue: 8));
-        CorruptInMemorySnapshot(store);
+        store.CorruptStoredSnapshotChecksumForTests(StreamKey);
 
-        await AssertCorruptAsync(() => store.LoadSnapshotAsync(StreamKey));
+        JournalStoreException refused = await AssertCorruptAsync(() => store.LoadSnapshotAsync(StreamKey));
+        Assert.Equal(JournalStoreRefusal.SnapshotChecksumMismatch, refused.Reason);
+        Assert.Equal(StreamKey, refused.StreamKey);
+        store.CorruptStoredSnapshotChecksumForTests(StreamKey);
+        Assert.Equal(new byte[] { 8 }, (await store.LoadSnapshotAsync(StreamKey))!.Data.ToArray());
     }
 
     [Fact]
@@ -326,31 +342,6 @@ public sealed class MutationJournalRecoveryTests
         }
 
         await AssertCorruptAsync(() => ReadAllAsync(store), expectedStreamKey);
-    }
-
-    private static void DeleteInMemoryEvent(InMemoryMutationJournalStore store, int index)
-    {
-        object state = typeof(InMemoryMutationJournalStore)
-            .GetField("state", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(store)!;
-        object streams = state.GetType().GetProperty("Streams")!.GetValue(state)!;
-        object stream = streams.GetType().GetProperty("Item")!.GetValue(streams, new object[] { StreamKey })!;
-        var events = (IList)stream.GetType().GetProperty("Events")!.GetValue(stream)!;
-        events.RemoveAt(index);
-    }
-
-    private static void CorruptInMemorySnapshot(InMemoryMutationJournalStore store)
-    {
-        object state = typeof(InMemoryMutationJournalStore)
-            .GetField("state", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(store)!;
-        object streams = state.GetType().GetProperty("Streams")!.GetValue(state)!;
-        object stream = streams.GetType().GetProperty("Item")!.GetValue(streams, new object[] { StreamKey })!;
-        var snapshot = (JournalSnapshot)stream.GetType().GetProperty("Snapshot")!.GetValue(stream)!;
-        var checksum = (byte[])typeof(JournalSnapshot)
-            .GetField("dataChecksum", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(snapshot)!;
-        checksum[0] ^= 0xff;
     }
 
     private static async Task DeleteSqlServerEventAsync(Task6SqlServerScope scope, long streamVersion)

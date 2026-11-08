@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Tests.Locomotion.Fixtures;
@@ -178,18 +177,12 @@ public class MovementCombinedPathTests
         Assert.All(result.Path, point => Assert.Equal(Sentinel, point));
     }
 
-    delegate MovementAvailability ResolveDelegate(in MovementBodyQuery body, Vector3 delta,
-        MovementQueryLease lease, Span<Vector3> path, out int written, out bool blocked);
     sealed record Capture(MovementAvailability Status, Vector3[] Path, int Count, bool Blocked);
     static Capture Resolve(MovementBodyQuery body, Vector3 delta, MovementQueryLease lease)
     {
-        Type type = typeof(MovementQueryLease).Assembly.GetType("KhaozEngine.Locomotion.MovementCapsuleResolver")!;
-        MethodInfo? method = type.GetMethod("TryResolve", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        var resolve = method.CreateDelegate<ResolveDelegate>();
         Vector3[] path = new Vector3[9];
         Array.Fill(path, Sentinel);
-        var status = resolve(body, delta, lease, path, out int count, out bool blocked);
+        var status = MovementCapsuleResolver.TryResolve(body, delta, lease, path, out int count, out bool blocked);
         return new(status, path, count, blocked);
     }
 }

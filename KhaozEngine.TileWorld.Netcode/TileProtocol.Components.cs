@@ -315,10 +315,10 @@ public static partial class TileProtocol
     {
         TileDirection[] steps = v.Remaining ?? Array.Empty<TileDirection>();
         if (steps.Length > MaxRouteSteps)
-            throw new ArgumentException(
+            throw new TileComponentCodecArgumentException(TileComponentCodecRefusal.RouteWriteLimitExceeded,
                 $"A replicated route is capped at {MaxRouteSteps} steps and this one carries {steps.Length}. " +
                 "TileMoveSimulator truncates at TileMoveOptions.MaxRouteSteps, so this route was built elsewhere.",
-                nameof(v));
+                nameof(v)) { ActualCount = steps.Length, MaximumCount = MaxRouteSteps };
         w.Write((ushort)steps.Length);
         for (int i = 0; i < steps.Length; i++) w.Write((byte)steps[i]);
     }
@@ -341,18 +341,30 @@ public static partial class TileProtocol
     {
         int declared = r.ReadUInt16();
         if (declared > MaxRouteSteps)
-            throw new InvalidDataException($"A replicated route declares {declared} steps, over the {MaxRouteSteps} cap.");
+            throw new TileComponentCodecDataException(TileComponentCodecRefusal.RouteReadLimitExceeded,
+                $"A replicated route declares {declared} steps, over the {MaxRouteSteps} cap.")
+            { DeclaredCount = declared, MaximumCount = MaxRouteSteps };
         long available = PayloadRemaining(r);
         if (available < declared)
-            throw new InvalidDataException(
-                $"A replicated route declares {declared} steps behind {available} payload bytes.");
+            throw new TileComponentCodecDataException(TileComponentCodecRefusal.RoutePayloadTruncated,
+                $"A replicated route declares {declared} steps behind {available} payload bytes.")
+            { DeclaredCount = declared, AvailableByteCount = available };
         Span<byte> raw = stackalloc byte[declared];
-        if (r.Read(raw) != declared)   // the unbounded fallback: a non-seekable stream has no length to check first
-            throw new InvalidDataException($"A replicated route declares {declared} steps the frame does not hold.");
+        RefuseRouteStreamShortRead(declared, r.Read(raw));
         var steps = new TileDirection[declared];
         for (int i = 0; i < declared; i++)
             steps[i] = raw[i] <= (byte)TileDirection.NE ? (TileDirection)raw[i] : TileDirection.W;
         return new TileRouteState { Remaining = steps };
+    }
+
+    // The unbounded fallback: a non-seekable stream has no length to check first. Value-taking so the short read
+    // can be injected without changing the framed apply path, whose stream is always seekable.
+    internal static void RefuseRouteStreamShortRead(int declared, int actualReadCount)
+    {
+        if (actualReadCount != declared)
+            throw new TileComponentCodecDataException(TileComponentCodecRefusal.RouteStreamShortRead,
+                $"A replicated route declares {declared} steps the frame does not hold.")
+            { DeclaredCount = declared, ActualReadCount = actualReadCount };
     }
 
     // Truncated at a UTF-8 CODEPOINT boundary, never at the byte cap: cutting inside a multi-byte sequence ships
@@ -374,16 +386,26 @@ public static partial class TileProtocol
     {
         int declared = r.ReadUInt16();
         if (declared > MaxDisplayNameBytes)
-            throw new InvalidDataException(
-                $"A replicated display name declares {declared} bytes, over the {MaxDisplayNameBytes} cap.");
+            throw new TileComponentCodecDataException(TileComponentCodecRefusal.NameReadLimitExceeded,
+                $"A replicated display name declares {declared} bytes, over the {MaxDisplayNameBytes} cap.")
+            { DeclaredByteCount = declared, MaximumByteCount = MaxDisplayNameBytes };
         long available = PayloadRemaining(r);
         if (available < declared)
-            throw new InvalidDataException(
-                $"A replicated display name declares {declared} bytes behind {available} payload bytes.");
+            throw new TileComponentCodecDataException(TileComponentCodecRefusal.NamePayloadTruncated,
+                $"A replicated display name declares {declared} bytes behind {available} payload bytes.")
+            { DeclaredByteCount = declared, AvailableByteCount = available };
         Span<byte> text = stackalloc byte[declared];
-        if (r.Read(text) != declared)   // the unbounded fallback, as in ReadRoute
-            throw new InvalidDataException($"A replicated display name declares {declared} bytes the frame does not hold.");
+        RefuseNameStreamShortRead(declared, r.Read(text));
         return new TileIdentity { DisplayName = Encoding.UTF8.GetString(text) };
+    }
+
+    // The same value-taking fallback as the route check, after the production read and before UTF-8 decoding.
+    internal static void RefuseNameStreamShortRead(int declared, int actualReadCount)
+    {
+        if (actualReadCount != declared)
+            throw new TileComponentCodecDataException(TileComponentCodecRefusal.NameStreamShortRead,
+                $"A replicated display name declares {declared} bytes the frame does not hold.")
+            { DeclaredByteCount = declared, ActualReadCount = actualReadCount };
     }
 
     // Four bytes, both fields whole. No length prefix and nothing declared, so there is no lie a frame can tell
@@ -423,10 +445,11 @@ public static partial class TileProtocol
     {
         byte[] payload = v.Payload ?? Array.Empty<byte>();
         if (payload.Length > MaxInstancePayloadBytes)
-            throw new ArgumentException(
+            throw new TileComponentCodecArgumentException(TileComponentCodecRefusal.InstanceWriteLimitExceeded,
                 $"A replicated item instance is capped at {MaxInstancePayloadBytes} payload bytes and this one " +
                 $"carries {payload.Length}. TileWorldServer.SpawnGroundItem refuses one that long, so this " +
-                "component was seated directly.", nameof(v));
+                "component was seated directly.", nameof(v))
+            { ActualByteCount = payload.Length, MaximumByteCount = MaxInstancePayloadBytes };
         WriteUnsignedVarint(w, (ulong)v.InstanceId);
         WriteUnsignedVarint(w, (ulong)payload.Length);
         w.Write(payload);
@@ -563,8 +586,9 @@ public static partial class TileProtocol
     {
         int plane = reader.ReadInt32();
         if (planeCount is int count && (uint)plane >= (uint)count)
-            throw new InvalidDataException(
-                $"A {component} frame names plane {plane}, outside the world's {count} planes.");
+            throw new TileComponentCodecDataException(TileComponentCodecRefusal.PlaneOutsideWorld,
+                $"A {component} frame names plane {plane}, outside the world's {count} planes.")
+            { ComponentName = component, Plane = plane, PlaneCount = count };
         return plane;
     }
 

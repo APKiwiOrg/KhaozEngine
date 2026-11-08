@@ -21,25 +21,41 @@ public static class MapPrefabExtraction
         var resources = MapPrefabEditPreparation.Begin(document, assets);
         var snapshot = MapPrefabEditPreparation.Snapshot(document, assets, resources);
         var keys = new HashSet<MapPrefabChildKey>();
+        int index = 0;
         foreach (var reference in selected)
         {
             if (reference is null || reference.Scope != MapPrefabReferenceScope.World ||
-                !keys.Add(new(reference.Kind, reference.Id))) throw new MapDocumentException("Selection requires distinct typed World references.");
-            if (!snapshot.ContainsKey(new(reference.Kind, reference.Id))) throw new MapDocumentException("Selection names an absent effective child.");
+                !keys.Add(new(reference.Kind, reference.Id))) throw new MapDocumentException(
+                    reference is null ? MapDocumentRefusal.SchemaValueRequired : reference.Scope != MapPrefabReferenceScope.World
+                        ? MapDocumentRefusal.PrefabExtractionReferenceInvalid : MapDocumentRefusal.IdentityDuplicate,
+                    "Selection requires distinct typed World references.")
+                { FieldPath = $"$.selected[{index}]", Index = index, EntityId = reference?.Id, ChildKind = reference?.Kind, ReferenceScope = reference?.Scope };
+            if (!snapshot.ContainsKey(new(reference.Kind, reference.Id))) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
+                "Selection names an absent effective child.")
+            { FieldPath = $"$.selected[{index}]", Index = index, EntityId = reference.Id, ChildKind = reference.Kind, ReferenceScope = reference.Scope };
+            index++;
         }
-        if (keys.Count == 0) throw new MapDocumentException("Cannot extract an empty selection.");
+        if (keys.Count == 0) throw new MapDocumentException(MapDocumentRefusal.PrefabExtractionEmpty,
+            "Cannot extract an empty selection.") { Operation = nameof(Extract) };
         RequireCompleteSelection(snapshot, keys, resources);
         var rows = resources.Attachments.Where(r => !r.Retired && keys.Contains(new(MapPrefabChildKind.Placement, r.PlacementId))).ToArray();
         foreach (var row in rows)
             foreach (var child in row.Children)
                 if (!keys.Contains(new(child.LocalChild.Kind, child.WorldId)))
-                    throw new MapDocumentException("A selected materialized owner requires every live associated child.");
+                    throw new MapDocumentException(MapDocumentRefusal.PrefabExtractionAttachmentIncomplete,
+                        "A selected materialized owner requires every live associated child.")
+                    { PlacementId = row.PlacementId, Child = child.LocalChild, WorldId = child.WorldId };
         var bindings = (document.Prefabs?.Instances ?? []).SelectMany(i => i.Bindings.Entries)
             .Concat((document.Prefabs?.Transfers ?? []).Select(t => t.Binding)).ToArray();
         var names = keys.ToDictionary(k => k, k => bindings.FirstOrDefault(b => b.Child.Kind == k.Kind && b.WorldId == k.Key)?.Child.Key ?? k.Key);
         foreach (var group in names.GroupBy(p => (p.Key.Kind, p.Value)).Where(g => g.Count() > 1).ToArray())
             foreach (var pair in group) names[pair.Key] = pair.Key.Key;
-        if (names.GroupBy(p => (p.Key.Kind, p.Value)).Any(g => g.Count() > 1)) throw new MapDocumentException("Selected local keys collide.");
+        if (names.GroupBy(p => (p.Key.Kind, p.Value)).Any(g => g.Count() > 1))
+        {
+            var collision = names.GroupBy(p => (p.Key.Kind, p.Value)).First(g => g.Count() > 1);
+            throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Selected local keys collide.")
+            { Child = new(collision.Key.Kind, collision.Key.Value) };
+        }
         var map = new ExtractReferences(names);
         MapPrefabReference Reference(MapPrefabReference r) => names.TryGetValue(new(r.Kind, r.Id), out var local)
             ? new(MapPrefabReferenceScope.Local, r.Kind, local) : r with { Scope = MapPrefabReferenceScope.World };
@@ -130,7 +146,8 @@ public static class MapPrefabExtraction
     {
         void Required(MapPrefabChildKind kind, string id)
         {
-            if (!selected.Contains(new(kind, id))) throw new MapDocumentException("Partial room, floor or roof selection is not lossless.");
+            if (!selected.Contains(new(kind, id))) throw new MapDocumentException(MapDocumentRefusal.PrefabExtractionNotLossless,
+                "Partial room, floor or roof selection is not lossless.") { EntityId = id, ChildKind = kind };
         }
         foreach (var key in selected)
         {
@@ -143,7 +160,7 @@ public static class MapPrefabExtraction
                     if (record.Value is MapSpaceDoc { Kind: MapSpaceKind.Room } room)
                     {
                         var domains = snapshot.Values.OfType<MapPrefabRecordChild>().Where(c => c.Value is MapPrismDomain p && p.Space.Id == room.Id).ToArray();
-                        if (domains.Length != 1) throw new MapDocumentException("A room selection requires its unique prism.");
+                        RequireUniqueRoomPrism(room.Id, domains.Length);
                         Required(MapPrefabChildKind.Record, domains[0].Key.Key);
                     }
                     break;
@@ -155,6 +172,15 @@ public static class MapPrefabExtraction
                 case MapPrefabRoofChild roof: Required(MapPrefabChildKind.Placement, roof.Value.Roof.Id); break;
             }
         }
+    }
+
+    // Expansion normally validates Room occupancy first. Inject only the count at this defensive selection guard.
+    internal static void RequireUniqueRoomPrismForTests(string roomId, int count) => RequireUniqueRoomPrism(roomId, count);
+
+    static void RequireUniqueRoomPrism(string roomId, int count)
+    {
+        if (count != 1) throw new MapDocumentException(MapDocumentRefusal.SpaceRoomOccupancyInvalid, "A room selection requires its unique prism.")
+            { SpaceId = roomId, ActualCount = count, ExpectedCount = 1 };
     }
 
     sealed class ExtractReferences(IReadOnlyDictionary<MapPrefabChildKey, string> names) : MapPrefabReferenceMap

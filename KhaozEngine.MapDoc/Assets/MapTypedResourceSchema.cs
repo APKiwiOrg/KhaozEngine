@@ -30,13 +30,20 @@ internal static class MapTypedResourceSchema
     /// <summary>Refuses a root that does not open with exactly <paramref name="schema"/>.</summary>
     internal static void Require(JsonElement root, string schema, string payload, string resourceId)
     {
-        if (root.ValueKind == JsonValueKind.Object)
+        bool isObject = root.ValueKind == JsonValueKind.Object;
+        if (isObject)
         {
             using var members = root.EnumerateObject();
             if (members.MoveNext() && members.Current.NameEquals(Property) &&
                 members.Current.Value.ValueKind == JsonValueKind.String && members.Current.Value.ValueEquals(schema)) return;
         }
-        throw new MapDocumentException($"{payload} '{resourceId}' must begin with {Property} '{schema}'.");
+        string message = $"{payload} '{resourceId}' must begin with {Property} '{schema}'.";
+        // A root that is not an object has no discriminant to read, so it breaks its own rule at the root.
+        throw isObject
+            ? new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, message)
+            { ResourceId = resourceId, ExpectedSchema = schema, FieldPath = MapDocumentJsonPath.AppendProperty("$", Property) }
+            : new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, message)
+            { ResourceId = resourceId, ExpectedSchema = schema, FieldPath = "$" };
     }
 
     /// <summary>The payload members after the leading discriminant, for a closed member decoder.</summary>
@@ -75,6 +82,7 @@ internal static class MapTypedResourceSchema
 
     /// <summary>The refusal for a typed consumer that finds an opaque resource.</summary>
     internal static MapDocumentException Opaque(string role, string resourceId, string schema) =>
-        new($"Native {role} '{resourceId}' is not captured as a typed payload. Its resource is opaque, and a typed {role} " +
-            $"consumer requires a payload that begins with {Property} '{schema}'.");
+        new(MapDocumentRefusal.AssetTypedPayloadOpaque, $"Native {role} '{resourceId}' is not captured as a typed payload. Its resource is opaque, and a typed {role} " +
+            $"consumer requires a payload that begins with {Property} '{schema}'.")
+        { ResourceId = resourceId, ExpectedSchema = schema, SubjectKind = role };
 }

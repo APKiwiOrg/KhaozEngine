@@ -64,6 +64,12 @@ public abstract partial class ContentAuthoringStoreConformance
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => ApplyAsync(store, ContentEdit.Retire(Thing, 0, new ContentKey("one"), ContentRetirePolicy.Placeholder, 0)));
         Assert.Equal(ContentAuthoringException.EditTargetCollisionReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.EditTargetOperationCollision, refused.Refusal);
+        Assert.Equal(Thing, refused.Type);
+        Assert.Equal(0, refused.Id);
+        Assert.Equal("one", refused.RowKey);
+        Assert.Equal(ContentEditOperation.Add, refused.StandingOperation);
+        Assert.Equal(ContentEditOperation.Retire, refused.RequestedOperation);
 
         await store.PublishAsync(Request(0));
 

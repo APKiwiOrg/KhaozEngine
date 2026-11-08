@@ -38,7 +38,6 @@ public sealed class ContentUpgradeSweepCancellationTests
 
         Assert.True(exercise.IsCancellationRequested);
         Assert.Same(packs.EnumerationCancellation, escaped);
-        Assert.Contains(nameof(FileSystemPackStore), escaped.StackTrace, StringComparison.Ordinal);
         Assert.Equal(2, packs.Enumerations);
         Assert.Equal(2, (await lease.Store.ListVersionsAsync()).Count);
         Assert.Null(await lease.Store.GetOpenDraftAsync());
@@ -53,24 +52,30 @@ public sealed class ContentUpgradeSweepCancellationTests
         using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
         using var exercise = new CancellationTokenSource();
         var clock = new ManualCatalogPhaseClock();
-        var owner = new CatalogRunnerLifetime(clock);
+        var safety = new ManualCatalogPhaseClock();
+        var owner = new CatalogRunnerLifetime(clock, safetyClock: safety);
         var held = new HeldInitialVersionStore(lease.Store);
         Task<ContentUpgradeReport> run = RunAsync(held, registry, exercise.Token, owner);
         try
         {
             // This setup safety does not depend on the deliberately held phase clock.
             await held.Entered.Task.WaitAsync(TimeSpan.FromSeconds(20));
-            clock.ExpireActive();
+            clock.Advance(TimeSpan.FromSeconds(20) - TimeSpan.FromTicks(1));
+            Assert.False(owner.Diagnostic.Task.IsCompleted);
+            Assert.False(run.IsFaulted);
+            clock.Advance(TimeSpan.FromTicks(1));
             Assert.True(owner.Diagnostic.Task.IsCompletedSuccessfully,
                 "the cancellation characterization ran outside its independent phase diagnostic");
-            var failure = Assert.IsType<TimeoutException>(await owner.Diagnostic.Task);
-            Assert.Contains("read active version", failure.Message, StringComparison.Ordinal);
+            var failure = Assert.IsType<CatalogPhaseTimeoutException>(await owner.Diagnostic.Task);
+            Assert.Equal(CatalogPhaseRefusal.PhaseStalled, failure.Reason);
+            Assert.Equal(CatalogPhase.ReadActiveVersion, failure.Phase);
+            Assert.Equal(TimeSpan.FromSeconds(20), failure.Budget);
             Assert.False(exercise.IsCancellationRequested);
             Task<ContentUpgradeReport> owned = Assert.Single(owner.Runs);
             Assert.False(owned.IsCompleted);
             Assert.False(run.IsCompleted, "the characterization returned before its held runner joined");
             held.Release.TrySetResult();
-            Assert.Same(failure, await Assert.ThrowsAsync<TimeoutException>(() => run));
+            Assert.Same(failure, await Assert.ThrowsAsync<CatalogPhaseTimeoutException>(() => run));
             Assert.All(owner.Runs, owned => Assert.True(owned.IsCompleted));
         }
         finally

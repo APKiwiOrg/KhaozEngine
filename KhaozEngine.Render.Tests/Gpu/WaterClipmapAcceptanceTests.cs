@@ -428,9 +428,8 @@ namespace KhaozEngine.Tests.Gpu
         /// the host never prepared at all. It did prepare. It prepared the wrong queue, which is a different
         /// mistake with a different fix, and the error a host reads is the whole value of having two of them.
         /// <para>
-        /// This is a GPU test only because <see cref="WaterRenderer"/> cannot be built without one: its constructor
-        /// cross-compiles the water shaders and creates a pipeline, so the fake-device harness the rest of the
-        /// #423 prepare coverage runs on cannot carry it.
+        /// This native recording regression also covers an already prepared FFT ocean, keeping the previous
+        /// frame's true demand from surviving an empty prepare. Headless coverage checks the same refusal.
         /// </para>
         /// </summary>
         [GpuFact]
@@ -457,8 +456,10 @@ namespace KhaozEngine.Tests.Gpu
             // Now prepare nothing and draw one. Without the clear this reports the producer's "never prepared".
             Exception? thrown = res.Frame(ReadOnlySpan<WaterPlane>.Empty, one, eye, settings, 0.016f);
 
-            Assert.NotNull(thrown);
-            Assert.Contains("changed between PrepareFrame and Draw", thrown!.Message, StringComparison.Ordinal);
+            var error = Assert.IsType<WaterFrameStateException>(thrown);
+            Assert.Equal(WaterFrameRefusal.OceanDemandChanged, error.Reason);
+            Assert.False(error.PreparedOceanDemand);
+            Assert.True(error.ActualOceanDemand);
         }
 
         /// <summary>A minimal Scene3D-free rig around <see cref="WaterRenderer"/>: enough render targets to record

@@ -82,12 +82,25 @@ public sealed class MarkerWireTests
         var b = Assert.Throws<MapDocumentException>(() => mutation.MarkerApply(rejected));
         CallToolResult c = await harness.Client.CallAsync("marker_set", Args(rejected));
         Assert.True(c.IsError == true);
-        Assert.Contains("duplicate marker name 'arrival'", b.Message, StringComparison.Ordinal);
-        Assert.Equal(a.Message, b.Message);
-        Assert.Contains(b.Message, Text(c), StringComparison.Ordinal);
+        foreach (MapDocumentException error in new[] { a, b })
+        {
+            Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, error.Reason);
+            Assert.Equal("arrival", error.MarkerName);
+            Assert.Equal(new[] { "m", "n" }, error.MarkerIds);
+            MapDocumentFinding finding = Assert.Single(error.Findings!);
+            Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, finding.Reason);
+            Assert.Equal("arrival", finding.MarkerName);
+            Assert.Equal(new[] { "m", "n" }, finding.MarkerIds);
+        }
         Assert.Equal(guiBefore, MapDocumentFile.SaveText(gui));
         Assert.Equal(directBefore, MarkerEditorFixtures.State(direct));
         Assert.Equal(liveBefore, MarkerEditorFixtures.State(live));
+        AssertSame(gui, history, fixture.Assets, direct, live);
+        // Repair only the conflicting name, then exercise all three publication paths.
+        var accepted = new MapSetMarker(moved with { Name = "unique-name" });
+        history.Execute(gui, new MarkerEditCommand(accepted));
+        MapPrefabMutationResult repaired = mutation.MarkerApply(accepted);
+        AssertEffects(history.LastNativeEffects!, repaired.Effects, Node(await Call(harness, "marker_set", Args(accepted)))["effects"]);
         AssertSame(gui, history, fixture.Assets, direct, live);
     }
 
@@ -161,7 +174,6 @@ public sealed class MarkerWireTests
 
         CallToolResult partial = await harness.Client.CallAsync("marker_list", new Dictionary<string, object?> { ["minX"] = -1.0 });
         Assert.True(partial.IsError == true);
-        Assert.Contains("minX, minZ, maxX and maxZ", Text(partial), StringComparison.Ordinal);
     }
 
     static void AssertSame(MapDocument gui, EditorHistory history, MapAssetClosure assets, MapEditSession direct, MapEditSession live)

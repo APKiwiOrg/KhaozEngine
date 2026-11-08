@@ -234,6 +234,10 @@ public sealed class TextLegacyCompatibilityTests
 
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => LegacyPublishAsync(store, files.Pack(), Request(1)));
         Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextForkOnRowOnlyRoute, refused.Refusal);
+        Assert.Equal("FreezeDraftAsync", refused.MemberName);
+        Assert.Equal(Item, refused.TextRowType);
+        Assert.Equal(id, refused.TextRowId);
         Assert.Equal(1, await store.GetActiveVersionAsync());
 
         await store.DiscardDraftAsync(Actor, Operator);
@@ -270,6 +274,11 @@ public sealed class TextLegacyCompatibilityTests
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.RollbackToAsync(1, Actor, Operator, "rollback"));
         Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.TextBaseOnRowOnlyRoute, refused.Refusal);
+        Assert.Equal("RollbackToAsync", refused.MemberName);
+        Assert.Equal(2, refused.VersionNumber);
+        Assert.Equal(1, refused.RecordedLanguageCount);
+        Assert.Equal(1, refused.RecordedValueCount);
         Assert.Equal(versions, (await store.ListVersionsAsync()).Count);
         Assert.Equal(2, await store.GetActiveVersionAsync());
         Assert.Null(await store.GetOpenDraftAsync());

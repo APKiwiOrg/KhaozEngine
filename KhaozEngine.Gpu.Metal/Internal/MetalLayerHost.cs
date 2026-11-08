@@ -56,12 +56,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
-            if (window.Kind != GpuWindowKind.Cocoa) throw NotCocoa(window.Kind);
-            if (window.Handle == IntPtr.Zero) throw NoHandle();
+            RequireWindowForTests(window.Kind, window.Handle);
 
             var host = new NSWindow(window.Handle);
             NSView view = host.ContentView();
-            if (view.IsNull) throw NoContentView();
+            RequireContentViewForTests(!view.IsNull);
 
             // POINTS TIMES SCALE IS PIXELS, and the scale is read AFTER the content view has answered, so the
             // selector only ever reaches an object already shown to be a live NSWindow (#605).
@@ -82,7 +81,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // platform guard AT THE CALL SITE and a macOS-only call made from an unguarded static factory is one
             // the analyzer cannot see the guard for. It is the same reason MetalGpuDevice.SubmitCore spells its
             // liveness read inline.
-            if (created.IsNull) throw NoLayer(DescribeClass());
+            if (created.IsNull) RequireNativeLayerForTests(false, DescribeClass());
 
             // wantsLayer FIRST and then the assignment, which is the incumbent's order and AppKit's rule: a view
             // told to want a layer AFTER one was assigned makes its own and discards the assignment.
@@ -91,29 +90,60 @@ namespace KhaozEngine.Gpu.Metal.Internal
             return new MetalSwapchainHost(created, size);
         }
 
-        static ArgumentException NotCocoa(GpuWindowKind kind)
-            => new("A native Metal swapchain can only be built on a Cocoa window handle, and this one is "
+        // Value-only admission checks preserve native refusal points without a Cocoa object in tests.
+        internal static void RequireWindowForTests(GpuWindowKind kind, IntPtr handle)
+        {
+            if (kind != GpuWindowKind.Cocoa) throw NotCocoa(kind);
+            if (handle == IntPtr.Zero) throw NoHandle();
+        }
+
+        internal static void RequireContentViewForTests(bool exists)
+        {
+            if (!exists) throw NoContentView();
+        }
+
+        internal static void RequireNativeLayerForTests(bool exists, string detail)
+        {
+            if (!exists) throw NoLayer(detail);
+        }
+
+        static MetalBackendCreationArgumentException NotCocoa(GpuWindowKind kind)
+            => new(MetalBackendCreationRefusal.WindowKindUnsupported, "A native Metal swapchain can only be built on a Cocoa window handle, and this one is "
                 + kind.ToString() + ". That is a wiring fault rather than a machine fact: the windowing package "
                 + "reports GpuWindowKind.Cocoa on macOS and Metal exists nowhere else, so a handle of another "
                 + "kind means the window and the backend were chosen by two different answers to what platform "
-                + "this is.", nameof(kind));
+                + "this is.", nameof(kind))
+                {
+                    ActualWindowKind = kind,
+                    RequiredWindowKind = GpuWindowKind.Cocoa,
+                };
 
-        static ArgumentException NoHandle()
-            => new("The Cocoa window handle a native Metal swapchain was asked to present to is null. The "
+        static MetalBackendCreationArgumentException NoHandle()
+            => new(MetalBackendCreationRefusal.WindowHandleMissing, "The Cocoa window handle a native Metal swapchain was asked to present to is null. The "
                 + "windowing package reads the NSWindow off the platform window, so a null here means the window "
                 + "had not been created, or had already been destroyed, when the device was asked for.",
-                "window");
+                "window")
+                {
+                    WindowKind = GpuWindowKind.Cocoa,
+                };
 
-        static ArgumentException NoContentView()
-            => new("The NSWindow a native Metal swapchain was asked to present to has no content view, so there "
+        static MetalBackendCreationArgumentException NoContentView()
+            => new(MetalBackendCreationRefusal.ContentViewMissing, "The NSWindow a native Metal swapchain was asked to present to has no content view, so there "
                 + "is nothing to attach a CAMetalLayer to. A window mid-teardown reports this, and so does a "
-                + "handle that is a live Objective-C object but not an NSWindow.", "window");
+                + "handle that is a live Objective-C object but not an NSWindow.", "window")
+                {
+                    WindowKind = GpuWindowKind.Cocoa,
+                };
 
-        static InvalidOperationException NoLayer(string detail)
-            => new("This macOS would not create a CAMetalLayer, on a machine whose Metal support probe answered "
+        static MetalBackendCreationStateException NoLayer(string detail)
+            => new(MetalBackendCreationRefusal.NativeLayerUnavailable, "This macOS would not create a CAMetalLayer, on a machine whose Metal support probe answered "
                 + "yes. The class is looked up after QuartzCore has been loaded explicitly (which is what a "
                 + "process with no Cocoa window would otherwise be missing), so a failure here is the framework "
-                + "itself rather than a load order: " + detail + ".");
+                + "itself rather than a load order: " + detail + ".")
+                {
+                    Detail = detail,
+                    NativeClass = "CAMetalLayer",
+                };
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]

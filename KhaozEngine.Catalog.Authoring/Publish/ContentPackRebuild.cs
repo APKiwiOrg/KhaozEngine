@@ -143,20 +143,29 @@ public static class ContentPackRebuild
         IPackVersionPointerStore pointerStore = pointers
             ?? PackVersionPointers.Resolve(target)
             ?? throw new ContentAuthoringException(
+                ContentAuthoringRefusal.PackPointerStoreRequired,
                 FormattableString.Invariant(
                     $"The pack store {target.GetType().Name} writes no version pointer, so a rebuilt version could never be enumerated out of it and the sweep could never find it again. A rebuild target carries both halves, exactly as a publish target does."),
                 default,
                 0,
-                ContentAuthoringException.NoPackStoreReason);
+                ContentAuthoringException.NoPackStoreReason)
+            {
+                StoreType = target.GetType(),
+                MemberName = nameof(RunAsync),
+            };
 
         ContentVersionRecord record = await store
             .GetVersionAsync(versionNumber, cancellationToken).ConfigureAwait(false)
             ?? throw new ContentAuthoringException(
+                ContentAuthoringRefusal.VersionUnknown,
                 FormattableString.Invariant(
                     $"The store holds no version {versionNumber}, so there are no manifest hashes to rebuild against. A rebuild reproduces a PUBLISHED version and cannot invent one."),
                 default,
                 0,
-                ContentAuthoringException.UnknownVersionReason);
+                ContentAuthoringException.UnknownVersionReason)
+            {
+                VersionNumber = versionNumber,
+            };
 
         ContentRebuildSnapshot snapshot = await ContentRebuildSnapshot
             .ReadAsync(store, registry, versionNumber, cancellationToken).ConfigureAwait(false);
@@ -236,6 +245,7 @@ public static class ContentPackRebuild
         if (findings.Count > 0)
         {
             throw new ContentAuthoringException(
+                ContentAuthoringRefusal.CandidateRejected,
                 Describe(record.VersionNumber, findings),
                 default,
                 0,

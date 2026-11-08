@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Surfaces;
 using Xunit;
 using static KhaozEngine.Tests.MapDoc.SurfaceEmbeddingRegressionFixtures;
@@ -29,7 +30,8 @@ public sealed class SurfaceEmbeddingReadBudgetRegressionTests
         }
 
         var refused = new PayloadArrays(PatchBytes);
-        Refuses(useNode, () => Read(useNode, Array(count), PatchBytes, exactBytes - 1, refused));
+        Refuses(useNode, () => Read(useNode, Array(count), PatchBytes, exactBytes - 1, refused),
+            count == 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.WorkCapacityExceeded);
         Assert.Equal(Math.Max(0, count - 1), refused.Buffers.Count);
         if (count == 2) refused.AssertPayload(0, Patch0);
     }

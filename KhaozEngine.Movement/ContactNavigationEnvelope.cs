@@ -44,14 +44,21 @@ internal static class ContactNavigationEnvelope
                 Math.Max(bare.Maximum.Y, traction.Maximum.Y) - origin.Y),
             OrdinaryServedDomain.Upper(options.MaxZ + margin - origin.Z));
         if (!scope.ContainsBounds(min, max))
-            throw new InvalidOperationException("The contact navigation envelope is outside the ordinary served scope.");
+            throw new NavigationBuildException(NavigationBuildRefusal.EnvelopeOutsideServedScope,
+                "The contact navigation envelope is outside the ordinary served scope.") { Minimum = min, Maximum = max };
     }
+
+    // Inject only footprint inputs, without changing tuning validation or a live proof.
+    internal static void InjectUnboundedSupportForTests(float foot, float reach, float slope) =>
+        _ = Bounds(foot, reach, slope);
 
     static SupportFootprintBounds Bounds(float foot, float reach, float slope)
     {
         var query = new FootSupportQuery(Vector2.Zero, 0, foot, reach, reach, MathF.Cos(slope));
         if (!SupportFootprintBounds.TryCreate(FootSupport.DescribeFootprint(query), out var bounds))
-            throw new InvalidOperationException("The contact navigation support envelope is unbounded.");
+            throw new NavigationBuildException(NavigationBuildRefusal.SupportEnvelopeUnbounded,
+                "The contact navigation support envelope is unbounded.")
+                { FootRadius = foot, SupportReach = reach, SupportSlope = slope };
         return bounds;
     }
 }

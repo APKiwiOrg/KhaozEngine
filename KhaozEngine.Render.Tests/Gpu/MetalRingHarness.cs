@@ -113,6 +113,23 @@ namespace KhaozEngine.Tests.Gpu
                 Rings);
         }
 
+        internal MetalTexture NewTexture(in GpuTextureDescription description)
+            => MetalTexture.Create(new TextureNative(this), Liveness, description);
+
+        sealed class TextureNative(MetalRingHarness harness) : IMetalResourceNative
+        {
+            MetalBuffer? _staging;
+            public MTLBuffer NewBuffer(nuint size)
+            {
+                _staging = harness.NewBuffer(checked((uint)size), GpuBufferUsage.Staging);
+                return _staging.Handle;
+            }
+            public IntPtr Contents(MTLBuffer buffer) => _staging!.Contents;
+            public MTLTexture NewTexture(in GpuTextureDescription description, in MetalTextureViewPlan plan)
+                => new(FabricatedBufferHandle);
+            public void Release(IntPtr handle) { }
+        }
+
         /// <summary>
         /// DISPOSE A HARNESS BUFFER THE WAY A DEAD DEVICE DOES, which is the only safe way to dispose one: the
         /// liveness is marked dead FIRST, so M-F6's no-op path is what runs and the fabricated handle is never

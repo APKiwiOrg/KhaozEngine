@@ -21,7 +21,7 @@ public static class MapBoundDocumentValidation
         RequireRoots(document.NativeAssets, assets);
         MapPrefabIdentity.RequireOwnership(document, assets);
         RequireWaterMaterials(document.Water, assets);
-        Require(MapFoliageValidation.ValidateBound(document, assets));
+        Require(MapFoliageValidation.ValidateBoundFindings(document, assets));
         foreach (MapPlacement placement in document.Placements) RequireClosureAsset(placement, assets);
     }
 
@@ -29,14 +29,31 @@ public static class MapBoundDocumentValidation
     public static void ValidateLocal(MapDocument document, MapDocRegistry? registry = null)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException("Native document validation requires every tile to be loaded.");
+        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Native document validation requires every tile to be loaded.")
+            { DocumentId = document.Id, Operation = "ValidateNativeDocument" };
         if (document.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 1 or 2 })
-            throw new MapDocumentException("Native document requires payload version 1 and resolver version 1 or 2.");
-        if (document.PlayableBounds is null) throw new MapDocumentException("Native document requires playable bounds.");
-        Require(MapDocumentValidator.Validate(document, registry ?? MapDocRegistry.CreateDefault()));
+            throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch,
+                "Native document requires payload version 1 and resolver version 1 or 2.")
+            {
+                PayloadVersion = document.ResolverIdentity?.PayloadVersion,
+                ResolverVersion = document.ResolverIdentity?.ResolverVersion,
+                SupportRecipe = document.SupportRecipe,
+                FieldPath = "resolverIdentity",
+            };
+        if (document.PlayableBounds is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Native document requires playable bounds.")
+            { DocumentId = document.Id, FieldPath = nameof(document.PlayableBounds) };
+        Require(MapDocumentValidator.ValidateFindings(document, registry ?? MapDocRegistry.CreateDefault()));
         if (!float.IsFinite(document.Bounds.MinX) || !float.IsFinite(document.Bounds.MinZ) ||
             !float.IsFinite(document.Bounds.MaxX) || !float.IsFinite(document.Bounds.MaxZ))
-            throw new MapDocumentException("Native storage bounds must be finite.");
+        {
+            string field = !float.IsFinite(document.Bounds.MinX) ? nameof(document.Bounds.MinX)
+                : !float.IsFinite(document.Bounds.MinZ) ? nameof(document.Bounds.MinZ)
+                : !float.IsFinite(document.Bounds.MaxX) ? nameof(document.Bounds.MaxX) : nameof(document.Bounds.MaxZ);
+            throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "Native storage bounds must be finite.")
+            { FieldPath = "Bounds." + field, DocumentId = document.Id,
+                ActualNumber = field == nameof(document.Bounds.MinX) ? document.Bounds.MinX : field == nameof(document.Bounds.MinZ) ? document.Bounds.MinZ
+                    : field == nameof(document.Bounds.MaxX) ? document.Bounds.MaxX : document.Bounds.MaxZ };
+        }
         foreach (MapPlacement p in document.Placements) ValidatePlacement(p);
     }
 
@@ -50,7 +67,11 @@ public static class MapBoundDocumentValidation
         RequireWaterMaterials(water, assets);
         foreach (var body in MapWaterCompiler.Compile(resources.CompleteView(), water))
             if (body.Status != MapWaterCompileStatus.Complete)
-                throw new MapDocumentException(body.Detail ?? $"water body '{body.BodyId}': {body.Status}");
+            {
+                var finding = body.Finding!;
+                throw MapDocumentRefusalFactory.FromFinding(finding,
+                    body.Detail ?? $"water body '{body.BodyId}': {body.Status}", findings: [finding]);
+            }
     }
 
     /// <summary>Validates one slice of a document's content, such as one stored tile, with the rules and messages
@@ -61,7 +82,9 @@ public static class MapBoundDocumentValidation
     internal static void ValidateContent(MapDocument globals, IReadOnlyDictionary<string, MapSurfaceRef> surfaces,
         MapTileContent content, HashSet<long> numericIds, MapAssetClosure assets)
     {
-        Require(MapDocumentValidator.ValidateContent(globals, surfaces, content, numericIds));
+        var findings = new List<MapDocumentFinding>();
+        MapDocumentValidator.ValidateContent(globals, surfaces, content, numericIds, findings);
+        Require(findings);
         foreach (MapPlacement p in content.Placements) ValidatePlacement(p);
         foreach (MapPlacement p in content.Placements) RequireClosureAsset(p, assets);
     }
@@ -70,7 +93,8 @@ public static class MapBoundDocumentValidation
     {
         var roots = new HashSet<MapAssetRef>(nativeAssets);
         if (roots.Count != nativeAssets.Count || roots.Count != assets.Roots.Count || !roots.SetEquals(assets.Roots))
-            throw new MapDocumentException("Native document roots do not match the verified asset closure.");
+            throw new MapDocumentException(MapDocumentRefusal.DocumentAssetRootsMismatch, "Native document roots do not match the verified asset closure.")
+                { ResourceIds = nativeAssets.Select(a => a.Id).ToArray(), ExpectedResourceIds = assets.Roots.Select(a => a.Id).ToArray() };
     }
 
     /// <summary>Requires every water body's render material to be a <see cref="MapResourceKind.Material"/> resource in
@@ -80,25 +104,52 @@ public static class MapBoundDocumentValidation
     {
         ArgumentNullException.ThrowIfNull(assets);
         if (water is null) return;
-        var errors = new List<string>();
+        var findings = new List<MapDocumentFinding>();
         foreach (MapWaterBodyDoc body in water.Bodies.OrderBy(b => b.Id, StringComparer.Ordinal))
-            if (!assets.TryGetResource(body.RenderMaterial, out MapResolvedResource? resource) || resource!.Kind != MapResourceKind.Material)
-                errors.Add($"water body '{body.Id}': render material '{body.RenderMaterial}' is not a Material resource");
-        Require(errors);
+        {
+            bool found = assets.TryGetResource(body.RenderMaterial, out MapResolvedResource? resource);
+            MapResourceKind? kind = found ? resource!.Kind : null;
+            if (!found || kind != MapResourceKind.Material)
+                findings.Add(new(!found ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch,
+                    $"water body '{body.Id}': render material '{body.RenderMaterial}' is not a Material resource")
+                { EntityId = body.Id, ResourceId = body.RenderMaterial, ExpectedResourceKind = MapResourceKind.Material,
+                    ActualResourceKind = kind });
+        }
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0],
+            string.Join("\n", findings.Select(f => f.Message)), findings: findings);
     }
 
-    static void Require(IReadOnlyList<string> errors)
+    static void Require(IReadOnlyList<MapDocumentFinding> findings)
     {
-        if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
+        if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0], string.Join("\n", findings.Select(f => f.Message)), findings: findings);
     }
 
     static void ValidatePlacement(MapPlacement p)
     {
-        if (string.IsNullOrWhiteSpace(p.AssetId)) throw new MapDocumentException($"Placement '{p.Id}' requires a native asset ID.");
+        if (string.IsNullOrWhiteSpace(p.AssetId)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"Placement '{p.Id}' requires a native asset ID.")
+            { PlacementId = p.Id, FieldPath = nameof(p.AssetId) };
+        RequirePlacementTransform(p);
+    }
+
+    static void RequirePlacementTransform(MapPlacement p)
+    {
         if (!float.IsFinite(p.X) || !float.IsFinite(p.Z) || (p.Y is { } y && !float.IsFinite(y)) ||
             !float.IsFinite(p.Yaw) || !float.IsFinite(p.Scale) || p.Scale <= 0 || p.Tags is null || p.Tags.Any(t => t is null))
-            throw new MapDocumentException($"Placement '{p.Id}' has invalid transform or tags.");
+        {
+            string field = !float.IsFinite(p.X) ? nameof(p.X) : !float.IsFinite(p.Z) ? nameof(p.Z)
+                : p.Y is { } height && !float.IsFinite(height) ? nameof(p.Y) : !float.IsFinite(p.Yaw) ? nameof(p.Yaw)
+                : !float.IsFinite(p.Scale) || p.Scale <= 0 ? nameof(p.Scale) : nameof(p.Tags);
+            double? number = field == nameof(p.X) ? p.X : field == nameof(p.Z) ? p.Z : field == nameof(p.Y) ? p.Y
+                : field == nameof(p.Yaw) ? p.Yaw : field == nameof(p.Scale) ? p.Scale : null;
+            int? index = field == nameof(p.Tags) && p.Tags is not null ? p.Tags.FindIndex(t => t is null) : null;
+            throw new MapDocumentException(number is { } n ? double.IsFinite(n) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite
+                : MapDocumentRefusal.SchemaValueRequired, $"Placement '{p.Id}' has invalid transform or tags.")
+                { PlacementId = p.Id, FieldPath = index is { } i ? $"Tags[{i}]" : field, ActualNumber = number, Index = index };
+        }
     }
+
+    /// <summary>Exercises the real placement transform guard on caller-owned input without earlier document admission.</summary>
+    internal static void RequirePlacementTransformForTests(MapPlacement placement) => RequirePlacementTransform(placement);
 
     static void RequireClosureAsset(MapPlacement placement, MapAssetClosure assets) => assets.GetAsset(placement.AssetId!);
 }

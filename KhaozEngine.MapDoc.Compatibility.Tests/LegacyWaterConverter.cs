@@ -33,14 +33,16 @@ internal static class LegacyWaterConverter
             surfaces.Patches.Add(patch.Key, patch);
             IReadOnlyList<TileWaterBody> bodies = TileWaterBodies.Collect(document, catalogs, region, plane);
             if (plane != 0 && bodies.Count != 0)
-                throw new MapDocumentException(string.Create(CultureInfo.InvariantCulture,
-                    $"water on plane {plane} is outside the R4 comparison"));
+                throw new LegacyWaterComparisonException(LegacyWaterComparisonRefusal.PlaneUnsupported,
+                    string.Create(CultureInfo.InvariantCulture, $"water on plane {plane} is outside the R4 comparison"))
+                { Plane = plane };
             for (int i = 0; i < bodies.Count; i++)
                 sources.Add(new(BodyId(region, plane, i), region, plane, i, bodies[i]));
         }
 
         MapSurfacePatch[] ground = surfaces.Patches.Values.Where(p => p.Key.SurfaceId == "plane-0").ToArray();
-        if (ground.Length == 0) throw new MapDocumentException("legacy water comparison requires a plane-0 region");
+        if (ground.Length == 0) throw new LegacyWaterComparisonException(LegacyWaterComparisonRefusal.RegionMissing,
+            "legacy water comparison requires a plane-0 region");
         MapRecordRef cover = new("legacy-world", ground[0].Key);
         var space = new MapSpaceDoc(cover.Id, MapSpaceKind.Exterior, null, null, Array.Empty<string>(),
             Array.Empty<MapBoundaryRef>(), Array.Empty<MapBoundaryRef>(), Array.Empty<MapRecordRef>());

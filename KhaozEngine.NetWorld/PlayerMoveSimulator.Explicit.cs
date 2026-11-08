@@ -37,6 +37,7 @@ public sealed partial class PlayerMoveSimulator
         }
         MovementQueryLease? queries = null;
         MovementBoundary? boundary = null;
+        MovementColdPlacement certificate = default;
         try
         {
             MovementStepOutcome outcome = MovementStepOutcome.FrameMismatch;
@@ -71,7 +72,7 @@ public sealed partial class PlayerMoveSimulator
                                 if (ReferenceEquals(queries.Id.SourceWorld, expected))
                                 {
                                     var framed = new FramedMovementState(OrdinaryPlayerMovement.ToPhysics(basis.Move, queries.Frame), queries.Frame, null);
-                                    outcome = Binding.ValidatePlacement(framed, queries, boundary).Outcome;
+                                    outcome = Binding.CertifyPlayerPlacement(framed, queries, out certificate, boundary).Outcome;
                                 }
                                 else outcome = MovementStepOutcome.EnvironmentInvalid;
                             }
@@ -80,6 +81,7 @@ public sealed partial class PlayerMoveSimulator
                 }
             }
             explicitRead = new PlayerMoveReadScope(queries, outcome, releaseRead, boundary);
+            explicitRead.RememberColdPlacement(certificate, basis);
             return explicitRead;
         }
         catch
@@ -103,6 +105,7 @@ public sealed partial class PlayerMoveSimulator
         PlayerMoveReadScope? read = explicitRead;
         if (read is null) return HoldExplicit(state, MovementStepOutcome.EnvironmentUnresolved);
         read.AssertUsable();
+        var certificate = read.TakeColdPlacement(state);
         if (!read.BasisValid || read.Queries is not { } queries) return HoldExplicit(state, read.Outcome);
         if (state.FrameAnchor != new Vector2(Frame.Anchor.X, Frame.Anchor.Z) || queries.Frame.Frame != Frame)
             return HoldExplicit(state, MovementStepOutcome.FrameMismatch);
@@ -111,7 +114,7 @@ public sealed partial class PlayerMoveSimulator
             // Replay reconstructs each corrected pose from the null-hint witness. No predicted
             // selection or local handle survives through the player state or this adapter.
             var framed = new FramedMovementState(OrdinaryPlayerMovement.ToPhysics(state.Move, queries.Frame), queries.Frame, null);
-            MovementStepResult result = Binding.Step(framed, command, dt, queries, read.Boundary);
+            MovementStepResult result = Binding.StepPlayerWithPlacement(framed, command, dt, queries, certificate, read.Boundary);
             LastExplicitOutcome = result.Outcome;
             return new PlayerMoveState
             {
@@ -127,7 +130,7 @@ public sealed partial class PlayerMoveSimulator
     {
         LastExplicitOutcome = outcome;
         PlayerMoveState held = state;
-        held.Move = MovementStepResult.HoldState(state.Move);
+        held.Move = PlayerMovementPublication.Canonicalize(MovementStepResult.HoldState(state.Move));
         return held;
     }
 }

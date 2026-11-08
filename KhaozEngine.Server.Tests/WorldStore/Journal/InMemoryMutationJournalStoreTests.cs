@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading.Tasks;
 using KhaozEngine.WorldStore.Journal;
 using Xunit;
@@ -18,9 +17,17 @@ public sealed class InMemoryMutationJournalStoreTests : MutationJournalStreamLis
             clock);
         return new MutationJournalStoreHarness(store, store, clock.GetUtcNow, clock.Advance, operationId =>
         {
-            CorruptResultChecksum(store, operationId);
+            store.CorruptStoredResultChecksumForTests(operationId);
             return Task.CompletedTask;
         });
+    }
+
+    protected override void AssertResultRefusal(JournalStoreException exception, Guid operationId, string streamKey)
+    {
+        base.AssertResultRefusal(exception, operationId, streamKey);
+        Assert.Equal(JournalStoreRefusal.ResultChecksumMismatch, exception.Reason);
+        Assert.Equal(operationId, exception.OperationId);
+        Assert.Equal(streamKey, Assert.Single(exception.StreamKeys));
     }
 
     [Fact]
@@ -74,17 +81,6 @@ public sealed class InMemoryMutationJournalStoreTests : MutationJournalStreamLis
         Assert.Equal(Bytes(10), (await store.LoadSnapshotAsync("player/a"))!.Data.ToArray());
         JournalEventPage page = await store.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024));
         Assert.Equal(2, page.Events.Count);
-    }
-
-    private static void CorruptResultChecksum(InMemoryMutationJournalStore store, Guid operationId)
-    {
-        FieldInfo stateField = typeof(InMemoryMutationJournalStore).GetField("state", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object state = stateField.GetValue(store)!;
-        object operations = state.GetType().GetProperty("Operations", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(state)!;
-        object operation = operations.GetType().GetProperty("Item")!.GetValue(operations, new object[] { operationId })!;
-        JournalCommitReceipt receipt = (JournalCommitReceipt)operation.GetType().GetProperty("Receipt", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(operation)!;
-        byte[] checksum = (byte[])typeof(JournalCommitReceipt).GetField("resultChecksum", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(receipt)!;
-        checksum[0] ^= 0xff;
     }
 
     private sealed class ManualTimeProvider : TimeProvider

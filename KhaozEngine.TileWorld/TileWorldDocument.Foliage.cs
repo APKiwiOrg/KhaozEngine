@@ -26,7 +26,9 @@ public sealed partial class TileWorldDocument
     {
         ArgumentNullException.ThrowIfNull(layer);
         if ((uint)layer.Plane >= (uint)PlaneCount)
-            throw TileFoliageLayer.Invalid($"layer '{layer.Id}' uses plane {layer.Plane}, the world has planes 0 through {PlaneCount - 1}");
+            throw new TileFoliageArgumentException(TileWorldRefusal.FoliagePlaneOutsideWorld,
+                TileFoliageLayer.InvalidMessage($"layer '{layer.Id}' uses plane {layer.Plane}, the world has planes 0 through {PlaneCount - 1}"), null)
+            { LayerId = layer.Id, Plane = layer.Plane, PlaneCount = PlaneCount };
         for (int i = 0; i < _foliageLayers.Count; i++)
         {
             if (!string.Equals(_foliageLayers[i].Id, layer.Id, StringComparison.Ordinal)) continue;
@@ -54,9 +56,13 @@ public sealed partial class TileWorldDocument
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (TileFoliageLayer layer in _foliageLayers)
         {
-            if (!ids.Add(layer.Id)) throw TileFoliageLayer.Invalid($"layer '{layer.Id}' is listed twice");
+            if (!ids.Add(layer.Id))
+                throw new TileFoliageArgumentException(TileWorldRefusal.FoliageLayerDuplicate,
+                    TileFoliageLayer.InvalidMessage($"layer '{layer.Id}' is listed twice"), null) { LayerId = layer.Id };
             if ((uint)layer.Plane >= (uint)PlaneCount)
-                throw TileFoliageLayer.Invalid($"layer '{layer.Id}' uses plane {layer.Plane}, the world has planes 0 through {PlaneCount - 1}");
+                throw new TileFoliageArgumentException(TileWorldRefusal.FoliagePlaneOutsideWorld,
+                    TileFoliageLayer.InvalidMessage($"layer '{layer.Id}' uses plane {layer.Plane}, the world has planes 0 through {PlaneCount - 1}"), null)
+                { LayerId = layer.Id, Plane = layer.Plane, PlaneCount = PlaneCount };
         }
     }
 }

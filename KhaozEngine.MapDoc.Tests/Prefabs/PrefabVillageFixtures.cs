@@ -226,7 +226,7 @@ internal static partial class PrefabFixtures
     sealed class VillageSource(Dictionary<string, byte[]> bytes, string? missing = null) : IMapAssetSource
     {
         public ReadOnlyMemory<byte> Read(MapAssetRef reference) => reference.Id == missing
-            ? throw new MapDocumentException("Missing synthetic village resource '" + reference.Id + "'.") : bytes[reference.Id].ToArray();
+            ? throw new KeyNotFoundException("Missing synthetic village resource '" + reference.Id + "'.") : bytes[reference.Id].ToArray();
     }
 
     internal static MapExactPoint VillageExactPoint(MapEffectiveResources resources, string owner, float x, float y, float z) =>

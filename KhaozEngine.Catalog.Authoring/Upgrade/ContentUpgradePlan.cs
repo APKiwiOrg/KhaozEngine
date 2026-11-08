@@ -50,9 +50,9 @@ public sealed class ContentUpgradePlan
         ContentBundleTextState? baselineText)
     {
         Kind = kind;
-        Edits = edits;
-        TextEdits = textEdits;
-        ChangeLines = changeLines;
+        Edits = new CatalogReadOnlyView<ContentEdit>([.. edits]);
+        TextEdits = new CatalogReadOnlyView<ContentTextEdit>([.. textEdits]);
+        ChangeLines = new CatalogReadOnlyView<string>([.. changeLines]);
         Reason = reason;
         BaselineText = baselineText;
     }

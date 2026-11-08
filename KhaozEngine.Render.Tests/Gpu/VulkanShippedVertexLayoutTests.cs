@@ -46,6 +46,8 @@ namespace KhaozEngine.Tests.Gpu
                 sprite, new Vector4(0, 0, 1, 1), Color.White);
             sprites.End();
             model.UploadFoliageUniforms(commands, [default]);
+            using (IGpuBuffer dummy = factory.CreateBuffer(new GpuBufferDescription(256, GpuBufferUsage.VertexBuffer | GpuBufferUsage.IndexBuffer)))
+                model.DrawFoliageMesh(commands, dummy, dummy, 0, GpuIndexFormat.UInt16, dummy, 0, 0, 0, null, true);
             CaptureClipmapPipeline(device, framebuffer.Outputs, commands);
             CaptureTriangleOpticsPipelines(device, framebuffer.Outputs);
             // The point-shadow pass is allocated lazily, so a scene that is never asked for one builds none of its
@@ -56,6 +58,9 @@ namespace KhaozEngine.Tests.Gpu
             CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(false, true));
             CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(true, true));
             CaptureFoliageShadowPipelines(scene, framebuffer, commands);
+            // Built at a scene's first participating body, which this scene never queues.
+            using (GpuRetireQueue retired = GpuRetireQueue.CreateFrameCounted(device, 3))
+            using (new WaterCausticRenderer(device, retired)) { }
 
             ShippedGraphicsProgram[] expectedPrograms = ShippedShaderPrograms.GraphicsPrograms()
                 .Where(program => Parse(program.VertexGlsl).Count > 0)
@@ -188,6 +193,9 @@ namespace KhaozEngine.Tests.Gpu
             GpuOutputDescription target = outputs ?? ModelTargets.Temporal;
             using var model = new ModelRenderer(device, target, 64, 1);
             model.UploadFoliageUniforms(commands, [default]);
+            using (IGpuBuffer dummy = device.Factory.CreateBuffer(new GpuBufferDescription(256,
+                GpuBufferUsage.VertexBuffer | GpuBufferUsage.IndexBuffer)))
+                model.DrawFoliageMesh(commands, dummy, dummy, 0, GpuIndexFormat.UInt16, dummy, 0, 0, 0, null, true);
             using var billboards = new TexturedBillboardRenderer(device, target);
             using var beams = new BeamRenderer(device, target);
             using var trails = new TrailRenderer(device, target);

@@ -6,6 +6,12 @@ namespace KhaozEngine.Render3D.Internal;
 /// <summary>Camera-derived cluster boundaries and depth slices, prepared once per frame and shared by its binners.</summary>
 internal sealed class ClusterFrameGrid
 {
+    const float ProjectionKindEpsilon = 1e-5f;
+
+    /// <summary>The grid's orthographic test, shared by every frame consumer that must agree with it.</summary>
+    internal static bool IsOrthographic(in Matrix4x4 projection) =>
+        MathF.Abs(projection.M34) <= ProjectionKindEpsilon && MathF.Abs(projection.M44) > ProjectionKindEpsilon;
+
     internal const int ClusterCountX = 16;
     internal const int ClusterCountY = 9;
     internal const int ClusterCountZ = 24;
@@ -44,12 +50,10 @@ internal sealed class ClusterFrameGrid
         Vector3 cameraForward = forward / MathF.Sqrt(forwardLengthSquared);
 
         bool perspective;
-        const float projectionKindEpsilon = 1e-5f;
-        if (MathF.Abs(projection.M44) <= projectionKindEpsilon
-            && MathF.Abs(projection.M34) > projectionKindEpsilon)
+        if (MathF.Abs(projection.M44) <= ProjectionKindEpsilon
+            && MathF.Abs(projection.M34) > ProjectionKindEpsilon)
             perspective = true;
-        else if (MathF.Abs(projection.M34) <= projectionKindEpsilon
-                 && MathF.Abs(projection.M44) > projectionKindEpsilon)
+        else if (IsOrthographic(projection))
             perspective = false;
         else
             return false;

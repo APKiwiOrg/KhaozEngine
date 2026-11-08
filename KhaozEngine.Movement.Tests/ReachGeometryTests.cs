@@ -181,6 +181,10 @@ public class ReachGeometryTests
     [InlineData(float.PositiveInfinity, 0f)]
     [InlineData(0f, float.PositiveInfinity)]
     [InlineData(float.MaxValue, float.MaxValue)]
+    [InlineData(float.MaxValue, 1f)]
+    [InlineData(1f, float.MaxValue)]
+    [InlineData(float.MaxValue, float.Epsilon)]
+    [InlineData(float.Epsilon, float.MaxValue)]
     public void WithinRefusesInvalidOrOverflowingThreshold(float range, float tolerance)
     {
         var body = new MovementBody(Vector3.Zero, 0.25f, 0.75f);
@@ -288,17 +292,6 @@ public class ReachGeometryTests
         ReachTarget target = ReachTarget.Point(new Vector3(2f, -2f, 0f));
         Assert.Equal(2.6055512f, ReachGeometry.Distance(body, target));
         Assert.False(ReachGeometry.Within(body, target, 2.6f));
-    }
-
-    [Theory]
-    [InlineData(float.MaxValue, 1f)]
-    [InlineData(1f, float.MaxValue)]
-    [InlineData(float.MaxValue, float.Epsilon)]
-    [InlineData(float.Epsilon, float.MaxValue)]
-    public void WithinRefusesOverflowEvenWhenDoubleAdditionLosesSmallOperand(float range, float tolerance)
-    {
-        var body = new MovementBody(Vector3.Zero, 0.25f, 0.75f);
-        Assert.Throws<ArgumentOutOfRangeException>(() => ReachGeometry.Within(body, ReachTarget.Point(Vector3.Zero), range, tolerance));
     }
 
     [Theory]

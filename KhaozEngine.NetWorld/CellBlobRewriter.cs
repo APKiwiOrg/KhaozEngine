@@ -36,7 +36,8 @@ internal static class CellBlobRewriter
     /// Every candidate is walked under <paramref name="policy"/>, which discards the ones that recover something no
     /// build writes (an unregistered extension id, a built-in out of registration order or repeated, a movement bool
     /// byte that is not 0 or 1, a display name that is not UTF-8). Then exactly one of three things happens: no
-    /// candidate survives and this throws <see cref="InvalidOperationException"/>, every survivor produces the same
+    /// candidate survives and this throws <see cref="CellBlobMigrationException"/>
+    /// with <see cref="CellBlobMigrationRefusal.NoInferredGeneration"/>, every survivor produces the same
     /// bytes and those are returned, or the survivors disagree and this throws
     /// <see cref="AmbiguousCellBlobGenerationException"/>. It never picks.
     /// </para>
@@ -84,8 +85,15 @@ internal static class CellBlobRewriter
         if (verdict.Disagree) throw new AmbiguousCellBlobGenerationException(schemaLabel, verdict.Generations!);
         if (verdict.Survivor is not null) return verdict.Survivor;
 
-        throw new InvalidOperationException(
-            NoCandidateMessage(schemaLabel, oldestGeneration, newestGeneration, unregistered));
+        throw new CellBlobMigrationException(CellBlobMigrationRefusal.NoInferredGeneration,
+            NoCandidateMessage(schemaLabel, oldestGeneration, newestGeneration, unregistered))
+        {
+            SchemaLabel = schemaLabel,
+            OldestGeneration = oldestGeneration,
+            NewestGeneration = newestGeneration,
+            UnregisteredExtensionIds = unregistered ?? [],
+            RecoveryMembers = [nameof(CellBlobMigrationOptions.AssumedWireGeneration), nameof(CellBlobMigrationOptions.Registry)],
+        };
     }
 
     // What one pass over the candidate range came to. Survivor null with Disagree false means the field is empty.
@@ -131,13 +139,16 @@ internal static class CellBlobRewriter
     /// <summary>Rewrites <paramref name="body"/> from a KNOWN wire generation, throwing when it does not walk. The
     /// walk is structural only: a recorded generation is not evidence to be weighed, and a body carrying an extension
     /// id this build's registry has dropped must still come forward (retain-and-rewrite).</summary>
+    /// <exception cref="CellBlobMigrationException"><see cref="CellBlobMigrationRefusal.KnownGenerationUnwalkable"/>
+    /// with the stated source and target generations.</exception>
     internal static byte[] Rewrite(byte[] body, int fromGeneration, int toGeneration, bool widenNetIds)
     {
         ArgumentNullException.ThrowIfNull(body);
         if (TryRewrite(body, fromGeneration, toGeneration, widenNetIds, CellBlobWalkPolicy.Structural,
             out byte[]? rewritten)) return rewritten!;
-        throw new InvalidOperationException(
-            $"Snapshot body does not walk at wire generation {fromGeneration}; cannot bring it to {toGeneration}.");
+        throw new CellBlobMigrationException(CellBlobMigrationRefusal.KnownGenerationUnwalkable,
+            $"Snapshot body does not walk at wire generation {fromGeneration}; cannot bring it to {toGeneration}.")
+        { FromGeneration = fromGeneration, ToGeneration = toGeneration };
     }
 
     /// <summary>
@@ -234,11 +245,10 @@ internal static class CellBlobRewriter
             if (typeId == MoveProtocol.MovementTypeId && !policy.AcceptsMovementPayload(body, pos, fromGeneration))
                 return false;
 
-            if (typeId == MoveProtocol.MovementTypeId && MovementOwnerBlobSplit.Applies(fromGeneration, toGeneration))
+            if (typeId == MoveProtocol.MovementTypeId)
             {
-                // The one built-in that shrank: its feel timers leave for an owner frame of their own, written
-                // after the entity's remaining built-ins (see MovementOwnerBlobSplit).
-                if (!MovementOwnerBlobSplit.TryWriteMovement(body, ref pos, bw, fromLen, toLen, out ownerTimers))
+                // Compose timer removal and in-place speed widening before padding new fields.
+                if (!MovementPayloadRewrite.TryWrite(body, ref pos, bw, fromGeneration, toGeneration, out ownerTimers))
                     return false;
                 continue;
             }

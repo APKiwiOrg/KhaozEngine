@@ -36,7 +36,7 @@ public partial class ContactLeasedQueryTests
         Assert.InRange(queries.BodyCentre(result.Feet).Y - 0.75f, 0.2509f, 0.2511f);
         Assert.Equal(0f, result.StepRise);
         Assert.Equal(0f, result.MoveRise);
-        AssertBits(dry, result);
+        LocomotionStateBits.AssertEqual(dry, result, LocomotionStateBits.Policy.ExcludeContinuityHandle);
     }
 
     [Theory]
@@ -66,7 +66,7 @@ public partial class ContactLeasedQueryTests
                 Settings, queries, stepInProgress: feet.Y > 0 && feet.Y < 0.25f);
             paid += step.StepRise;
             feet = step.Feet;
-            AssertBits(drySteps[tick], step);
+            LocomotionStateBits.AssertEqual(drySteps[tick], step, LocomotionStateBits.Policy.ExcludeContinuityHandle);
         }
         Assert.True(feet.X > 1.1f);
         Assert.InRange(feet.Y, 0.2495f, 0.2505f);

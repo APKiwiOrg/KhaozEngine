@@ -162,7 +162,10 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
             list.End();
 
-            Assert.Throws<InvalidOperationException>(() => list.UpdateBuffer<byte>(Bulk, 0, new byte[] { 1 }));
+            var ex = Assert.Throws<GpuRecordingStateException>(() => list.UpdateBuffer<byte>(Bulk, 0, new byte[] { 1 }));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, ex.Reason);
+            Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
+            Assert.Equal("UpdateBuffer", ex.Command);
             Assert.Equal(0, uploads.Copies);
         }
 

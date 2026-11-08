@@ -22,10 +22,10 @@ public sealed record DirectApproachOptions
         ApproachGainMetres = Metres(approachGainMetres, nameof(approachGainMetres));
     }
 
-    /// <summary>Counted intervals across which net horizontal feet displacement must reach the stall travel.</summary>
+    /// <summary>Counted intervals across which accumulated horizontal feet travel must reach the stall travel.</summary>
     public int StallWindowTicks { get; }
 
-    /// <summary>Net horizontal displacement below which a full stall window latches Blocked.</summary>
+    /// <summary>Accumulated horizontal travel below which a full stall window latches Blocked.</summary>
     public float StallTravelMetres { get; }
 
     /// <summary>Counted intervals across which reach distance must fall by the approach gain.</summary>

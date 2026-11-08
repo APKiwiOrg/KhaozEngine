@@ -54,7 +54,13 @@ public class TileWorldDocumentTests
     {
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
         var ex = Assert.Throws<TileWorldException>(() => doc.SetUnderlay(70, -3, 0, 1));
-        Assert.Contains("(1, -1)", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(1, -1), ex.Region);
+        Assert.Equal(70, ex.TileX);
+        Assert.Equal(-3, ex.TileZ);
+        doc.GetOrCreateRegion(new RegionCoord(1, -1));
+        doc.SetUnderlay(70, -3, 0, 1);
+        Assert.Equal(1, doc.GetUnderlay(70, -3, 0));
     }
 
     [Fact]
@@ -119,13 +125,60 @@ public class TileWorldDocumentTests
         Assert.True(doc.RemoveObject(a.Id));
         Assert.Null(doc.FindObject(a.Id));
         Assert.False(doc.RemoveObject(a.Id));
+
+        TileWorldException missing = Assert.Throws<TileWorldException>(() => doc.MoveObject(a.Id, 3, 4, 0));
+        Assert.Equal(TileWorldRefusal.ObjectMissing, missing.Reason);
+        Assert.Equal(a.Id, missing.ObjectId);
+    }
+
+    [Fact]
+    public void MoveObject_checks_the_destination_before_refusing_a_stale_index()
+    {
+        var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
+        TileRegion from = doc.GetOrCreateRegion(new RegionCoord(0, 0));
+        TileObject o = doc.AddObject("tree", 3, 4, 0, 0);
+        Assert.True(from.Objects.Remove(o));
+        from.Dirty = false;
+
+        TileWorldException destination = Assert.Throws<TileWorldException>(() => doc.MoveObject(o.Id, 70, 4, 2));
+        Assert.Equal(TileWorldRefusal.RegionMissing, destination.Reason);
+        Assert.Equal(new RegionCoord(1, 0), destination.Region);
+        Assert.Equal(70, destination.TileX);
+        Assert.Equal(4, destination.TileZ);
+        Assert.False(from.Dirty);
+
+        TileRegion to = doc.GetOrCreateRegion(new RegionCoord(1, 0));
+        to.Dirty = false;
+        TileWorldException stale = Assert.Throws<TileWorldException>(() => doc.MoveObject(o.Id, 70, 4, 2));
+        Assert.Equal(TileWorldRefusal.ObjectIndexStale, stale.Reason);
+        Assert.Equal(o.Id, stale.ObjectId);
+        Assert.Equal(from.Coord, stale.Region);
+        Assert.Equal(new TileCoord(3, 4, 0), o.Coord);
+        Assert.Empty(from.Objects);
+        Assert.Empty(to.Objects);
+        Assert.False(from.Dirty);
+        Assert.False(to.Dirty);
+
+        // Restoring the indexed object fixes the sole defect in the second refusal.
+        from.Objects.Add(o);
+        doc.MoveObject(o.Id, 70, 4, 2);
+        Assert.Same(o, doc.FindObject(o.Id));
+        Assert.Equal(new TileCoord(70, 4, 2), o.Coord);
+        Assert.Empty(from.Objects);
+        Assert.Same(o, Assert.Single(to.Objects));
     }
 
     [Fact]
     public void AddObject_outside_any_region_throws()
     {
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
-        Assert.Throws<TileWorldException>(() => doc.AddObject("tree", 3, 4, 0, 0));
+        var ex = Assert.Throws<TileWorldException>(() => doc.AddObject("tree", 3, 4, 0, 0));
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(0, 0), ex.Region);
+        Assert.Equal(3, ex.TileX);
+        Assert.Equal(4, ex.TileZ);
+        Assert.Equal(1, doc.NextObjectId);
+        Assert.Empty(doc.AllObjects());
     }
 
     [Fact]
@@ -201,11 +254,22 @@ public class TileWorldDocumentTests
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
         doc.UnloadedRegionHashes[new RegionCoord(2, 3)] = "abc123";
         var ex = Assert.Throws<TileWorldException>(() => doc.GetOrCreateRegion(new RegionCoord(2, 3)));
-        Assert.Contains("(2, 3)", ex.Message);
-        Assert.Contains("not loaded", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionNotLoaded, ex.Reason);
+        Assert.Equal(new RegionCoord(2, 3), ex.Region);
+        Assert.Null(ex.TileX);
+        Assert.Null(ex.TileZ);
         Assert.Empty(doc.Regions);
         var write = Assert.Throws<TileWorldException>(() => doc.SetUnderlay(2 * 64, 3 * 64, 0, 1));
-        Assert.Contains("not loaded", write.Message);
+        Assert.Equal(TileWorldRefusal.RegionNotLoaded, write.Reason);
+        Assert.Equal(new RegionCoord(2, 3), write.Region);
+        Assert.Equal(128, write.TileX);
+        Assert.Equal(192, write.TileZ);
+
+        var loaded = new TileRegion(new RegionCoord(2, 3), doc.PlaneCount);
+        doc.AttachRegion(loaded);
+        Assert.Same(loaded, doc.GetOrCreateRegion(new RegionCoord(2, 3)));
+        doc.SetUnderlay(128, 192, 0, 1);
+        Assert.Equal(1, doc.GetUnderlay(128, 192, 0));
     }
 
     [Fact]
@@ -214,7 +278,11 @@ public class TileWorldDocumentTests
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W" };
         doc.GetOrCreateRegion(new RegionCoord(0, 0));
         doc.SetMarker("spawn", 5, 5, 0);
-        Assert.Throws<TileWorldException>(() => doc.SetMarker("spawn", 500, 500, 0));
+        var ex = Assert.Throws<TileWorldException>(() => doc.SetMarker("spawn", 500, 500, 0));
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(7, 7), ex.Region);
+        Assert.Equal(500, ex.TileX);
+        Assert.Equal(500, ex.TileZ);
         TileMarker? m = doc.FindMarker("spawn");
         Assert.NotNull(m);
         Assert.Equal(5, m!.X);
@@ -250,8 +318,13 @@ public class TileWorldDocumentTests
 
         var ex = Assert.Throws<TileWorldException>(() => doc.AddObjectWithId(first.Id, "tree", 9, 9, 0, 0, null));
 
-        Assert.Contains(first.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), ex.Message);
+        Assert.Equal(TileWorldRefusal.ObjectIdDuplicate, ex.Reason);
+        Assert.Equal(first.Id, ex.ObjectId);
         Assert.Single(doc.AllObjects());
+        Assert.Same(first, doc.FindObject(first.Id));
+
+        TileObject other = doc.AddObjectWithId(doc.NextObjectId, "tree", 9, 9, 0, 0, null);
+        Assert.Same(other, doc.FindObject(other.Id));
     }
 
     [Fact]
@@ -272,15 +345,31 @@ public class TileWorldDocumentTests
         Assert.Throws<ArgumentException>(() => doc.RestoreRegion(region));
     }
 
-    [Fact]
-    public void RestoreRegion_refuses_a_region_whose_plane_count_does_not_match()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Attach_and_restore_refuse_a_region_whose_plane_count_does_not_match(bool restore)
     {
         var doc = new TileWorldDocument { Id = "w", DisplayName = "W", PlaneCount = 4 };
 
-        var ex = Assert.Throws<TileWorldException>(() => doc.RestoreRegion(new TileRegion(new RegionCoord(0, 0), 2)));
+        var coord = new RegionCoord(0, 0);
+        var ex = Assert.Throws<TileWorldException>(() =>
+        {
+            var region = new TileRegion(coord, 2);
+            if (restore) doc.RestoreRegion(region);
+            else doc.AttachRegion(region);
+        });
 
-        Assert.Contains("restore", ex.Message);
+        Assert.Equal(TileWorldRefusal.RegionPlaneCountMismatch, ex.Reason);
+        Assert.Equal(coord, ex.Region);
+        Assert.Equal(2, ex.ActualPlaneCount);
+        Assert.Equal(4, ex.ExpectedPlaneCount);
         Assert.Empty(doc.Regions);
+
+        var matching = new TileRegion(coord, 4);
+        if (restore) doc.RestoreRegion(matching);
+        else doc.AttachRegion(matching);
+        Assert.Same(matching, doc.GetRegion(coord));
     }
 
     [Fact]

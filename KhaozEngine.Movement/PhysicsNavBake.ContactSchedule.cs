@@ -16,10 +16,10 @@ public sealed partial class PhysicsNavBake
     // in that order, so the lowest failing ordinal is the exception the serial build throws first.
     private GroundNavigation BuildContactProfileInParallel(GroundMoveContext context, EffectiveMovementBinding source,
         in MoveTuning tuning, NavAreaFootprint footprint, float height, int maxSurfaces, int degree,
-        ContactNavigationReusePolicy reuse)
+        ContactNavigationReusePolicy reuse, float maxDropMetres, bool allowTerrainDescents)
     {
         ContactNavigationWorkers workers = ContactNavigationWorkers.Create(this, context, source, footprint, degree,
-            Columns.Height, reuse);
+            Columns.Height, reuse, maxDropMetres);
         GroundNavigation navigation;
         try
         {
@@ -96,10 +96,34 @@ public sealed partial class PhysicsNavBake
             for (int index = 0; index < candidates.Count; index++)
                 if (accepted[index]) links.Add(candidates[index]);
 
+            ContactTerrainProfileBuild? terrain = null;
+            if (maxDropMetres > 0)
+            {
+                if (allowTerrainDescents)
+                {
+                    var basis = new GroundNavigation(new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links), tuning, footprint);
+                    terrain = new(DescentEvidence!, basis, tuning, maxDropMetres);
+                    workers.PrepareTerrain(terrain);
+                }
+                var drops = terrain?.Candidates ?? ContactDropCandidates.Generate(space.Layers, layers, tuning, maxDropMetres);
+                space = new NavSpace(space.Layers, [.. space.Links, .. drops]);
+                var dropAccepted = new bool[drops.Count];
+                workers.Run(ContactNavigationPhase.Drops, drops.Count, index => index, (proof, band) =>
+                {
+                    for (int index = band.Start; index < band.End; index++)
+                    {
+                        if (!band.Admits(index)) return;
+                        dropAccepted[index] = terrain is null ? proof.TryDrop(space, drops[index]) : terrain.Prove(proof, space, drops[index]);
+                    }
+                }).ThrowSelected();
+                for (int index = 0; index < drops.Count; index++)
+                    if (dropAccepted[index]) links.Add(drops[index]);
+            }
             workers.Snapshot.AssertCurrent();
             _ = Context;
             var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
-            navigation = new GroundNavigation(graph, tuning, footprint, false);
+            navigation = new GroundNavigation(graph, tuning, footprint, false, maxDropMetres, allowTerrainDescents);
+            terrain?.Attach(navigation);
         }
         catch (Exception failure)
         {
@@ -113,8 +137,11 @@ public sealed partial class PhysicsNavBake
     private static void RequireConcurrentReads(GroundMoveContext context)
     {
         if (context.Physics is not IPhysicsConcurrentReadSource || context.MovementQueries is not IPhysicsConcurrentReadSource)
-            throw new NotSupportedException("A parallel contact navigation build needs IPhysicsConcurrentReadSource on " +
-                "the physics source and on the selected query view.");
+            throw new NavigationReadCapabilityException(NavigationReadRefusal.ConcurrentReadsRequired,
+                "A parallel contact navigation build needs IPhysicsConcurrentReadSource on " +
+                "the physics source and on the selected query view.")
+                { RequiredCapability = typeof(IPhysicsConcurrentReadSource), SourceRole = context.Physics is not IPhysicsConcurrentReadSource
+                    ? NavigationSourceRole.PhysicsSource : NavigationSourceRole.MovementQueryView };
     }
 
     /// <summary>Admits every captured column on the workers when the layered bake asks for its first column, then

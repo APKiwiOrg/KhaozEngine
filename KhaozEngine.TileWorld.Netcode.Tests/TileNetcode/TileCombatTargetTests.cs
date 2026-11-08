@@ -337,8 +337,10 @@ public class TileCombatTargetTests
     // the server's half and is pinned there, by
     // TileCombatResolveTests.A_penned_in_target_stood_on_answers_the_click_with_cannot_reach, because a notice is
     // addressed to a slot and this level has none.
-    [Fact]
-    public void A_follower_inside_a_penned_target_stands_and_the_lock_clears_rather_than_thrashing()
+    [Theory]
+    [InlineData(20, 20)] // inside the target footprint
+    [InlineData(10, 10)] // outside the target footprint
+    public void An_unreachable_target_clears_the_lock_and_the_attacker_stands(int startX, int startZ)
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
         doc.AddObject("tree", 20, 19, 0, 0);
@@ -347,13 +349,14 @@ public class TileCombatTargetTests
         doc.AddObject("tree", 21, 20, 0, 0);
         (TileMoveSimulator sim, FakeTargets targets) = Sim(doc);
         targets.Tiles[42L] = new TileCoord(20, 20, 0);
-        TileMoveState s = TileMoveState.At(new TileCoord(20, 20, 0), TileDirection.N);
+        var start = new TileCoord(startX, startZ, 0);
+        TileMoveState s = TileMoveState.At(start, TileDirection.N);
 
         s = sim.Step(s, TileCommand.Attack(42L, TileMoveMode.Run), Dt);
 
         Assert.Equal(0L, s.CombatTarget);
         Assert.True(s.Route.IsIdle);
-        Assert.Equal(new TileCoord(20, 20, 0), s.Tile);
+        Assert.Equal(start, s.Tile);
         Assert.False(s.IsStepping);
     }
 
@@ -442,28 +445,6 @@ public class TileCombatTargetTests
         targets.Tiles[43L] = new TileCoord(10, 12, 1);
         s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
         Assert.Equal(0L, s.CombatTarget);
-    }
-
-    // A target that cannot be reached AT ALL. The lock clears and the attacker stands: the CannotReach notice that
-    // goes with it is the server's half and lands in task 5.
-    [Fact]
-    public void A_target_with_no_reachable_tile_clears_the_lock_and_stands()
-    {
-        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        // Wall the target in on all four cardinals with solid greybox objects.
-        doc.AddObject("tree", 20, 19, 0, 0);
-        doc.AddObject("tree", 20, 21, 0, 0);
-        doc.AddObject("tree", 19, 20, 0, 0);
-        doc.AddObject("tree", 21, 20, 0, 0);
-        (TileMoveSimulator sim, FakeTargets targets) = Sim(doc);
-        targets.Tiles[42L] = new TileCoord(20, 20, 0);
-        TileMoveState s = TileMoveState.At(new TileCoord(10, 10, 0), TileDirection.N);
-
-        s = sim.Step(s, TileCommand.Attack(42L, TileMoveMode.Run), Dt);
-
-        Assert.Equal(0L, s.CombatTarget);
-        Assert.True(s.Route.IsIdle);
-        Assert.Equal(new TileCoord(10, 10, 0), s.Tile);
     }
 
     // SECTION 6.4's TRACED TABLE, asserted tick by tick. A on (x,0), B on (x,1) cardinally adjacent, both at walk

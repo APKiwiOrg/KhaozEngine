@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Storage;
 
@@ -17,8 +19,9 @@ public sealed partial class MapStoredSurfaceSource
         MapBoundDocumentValidation.RequireRoots(_nativeAssets, assets);
         MapPrefabValidation.RequireDocument(complete, assets);
         MapBoundDocumentValidation.RequireWaterMaterials(complete.Water, assets);
-        var foliageErrors = MapFoliageValidation.ValidateBound(complete, assets);
-        if (foliageErrors.Count > 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
+        var foliageFindings = MapFoliageValidation.ValidateBoundFindings(complete, assets);
+        if (foliageFindings.Count > 0) throw MapDocumentRefusalFactory.FromFinding(foliageFindings[0],
+            string.Join("\n", foliageFindings.Select(f => f.Message)), findings: foliageFindings);
     }
 
     internal IEnumerable<MapSurfaceIndexEntry> EnumeratePinnedEntries(MapWholeIdentityWork? work)
@@ -26,9 +29,9 @@ public sealed partial class MapStoredSurfaceSource
         // Decode the original closure before yielding canonical keys. Metadata caches hold no payloads.
         foreach (MapDirectoryPageRef directory in Index.Directory)
         {
-            RequireIdentityStorage(Directory(directory, new MapPageBudget(1)), "directory " + directory.Sha256);
+            RequireIdentityStorage(Directory(directory, new MapPageBudget(1)), "directory", directory.Sha256);
             foreach (MapIndexPageRef page in Index.DirectoryPages[directory.Sha256])
-                RequireIdentityStorage(Page(directory, page, new MapPageBudget(1)), "index " + page.Sha256);
+                RequireIdentityStorage(Page(directory, page, new MapPageBudget(1)), "index", page.Sha256);
         }
         foreach (MapSurfaceIndexEntry entry in Index.ByKey.Values) yield return entry;
     }
@@ -37,16 +40,22 @@ public sealed partial class MapStoredSurfaceSource
     {
         work?.BeforePayloadRead();
         MapPatchRead read = Payload(entry);
-        RequireIdentityStorage(read.Status, "payload " + entry.Key);
+        RequireIdentityStorage(read.Status, "payload", entry.PayloadSha256, entry.Key, read.Cause);
         work?.HoldPayload();
         // Payload already recomputed the semantic digest from the verified bytes and refused a mismatch.
         try { return read.SemanticSha256!; }
         finally { work?.ReleasePayload(); }
     }
 
-    static void RequireIdentityStorage(MapPatchStatus status, string address)
+    static void RequireIdentityStorage(MapPatchStatus status, string kind, string digest, MapPatchKey? patch = null,
+        System.Exception? cause = null)
     {
         if (status != MapPatchStatus.Present)
-            throw new MapDocumentException($"{status} pinned surface {address}.");
+        {
+            string message = $"{status} pinned surface {kind} {(patch is { } key ? key.ToString() : digest)}.";
+            throw cause is MapDocumentException refusal ? refusal.WithSourceName(null, message, patchStatus: status, expectedHash: digest, patch: patch)
+                : new(MapDocumentRefusal.PinnedContentUnavailable, message, cause!)
+                    { PatchStatus = status, Patch = patch, ExpectedHash = digest, SubjectKind = kind };
+        }
     }
 }

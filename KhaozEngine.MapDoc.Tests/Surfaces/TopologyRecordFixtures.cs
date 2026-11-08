@@ -131,7 +131,7 @@ internal static class TopologyRecordFixtures
             new MapChainVertex(new(source.SurfaceId, MapLatticeAddress.Corner(x1, z1)), null),
         });
 
-    static void Replace<T>(TopologyWorld world, string id, Func<T, T> replace) where T : MapTopologyRecord
+    internal static void Replace<T>(TopologyWorld world, string id, Func<T, T> replace) where T : MapTopologyRecord
     {
         foreach (MapSurfacePatch patch in world.Patches)
         {

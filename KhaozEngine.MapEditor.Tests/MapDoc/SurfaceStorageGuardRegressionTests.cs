@@ -12,17 +12,52 @@ namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class SurfaceStorageGuardRegressionTests
 {
+    [Fact]
+    public void UnrepresentableDependencyOwner_LeavesEverySavedFileByteIdentical() => TiledDocFixture.InDirectory(dir =>
+    {
+        MapDocumentFile.SaveTiled(SurfaceStorageFixtures.ThreeSurfaces(), dir);
+        MapDocument doc = MapDocumentFile.LoadTiled(dir);
+        var key = new MapPatchKey("ground", 0, 0);
+        MapSurfacePatch owner = doc.Surfaces.Patches[key];
+        var broken = owner.Clone();
+        broken.Key = new("ground", long.MaxValue, 0);
+        doc.Surfaces.Patches.Remove(key);
+        doc.Surfaces.Patches.Add(broken.Key, broken);
+        var dependencies = doc.Surfaces.Patches[new("ground", 1, 0)].CornerDependencies;
+        MapCornerDependency[] original = dependencies.ToArray();
+        for (int i = 0; i < dependencies.Count; i++)
+            dependencies[i] = dependencies[i] with { Owner = dependencies[i].Owner with { Patch = broken.Key } };
+        string[] files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToArray();
+        Assert.NotEmpty(files);
+        byte[][] before = files.Select(File.ReadAllBytes).ToArray();
+        var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(doc, dir));
+        Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
+        Assert.Equal("SaveSurfaces", error.Operation);
+        Assert.Equal("CornerDependencies", error.FieldPath);
+        Assert.Equal(files, Directory.GetFiles(dir, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal));
+        for (int i = 0; i < files.Length; i++) Assert.Equal(before[i], File.ReadAllBytes(files[i]));
+        doc.Surfaces.Patches.Remove(broken.Key);
+        doc.Surfaces.Patches.Add(key, owner);
+        dependencies.Clear(); dependencies.AddRange(original);
+        MapDocumentFile.SaveTiled(doc, dir);
+        Assert.Empty(MapDocumentFile.VerifyTiled(dir));
+    });
+
     [Theory]
     [InlineData("missing")]
     [InlineData("type")]
     [InlineData("unloaded")]
+    [InlineData("patch")]
     public void PartialSurfaceMetadataCannotPublishAnUnresolvedParent(string variant) => TiledDocFixture.InDirectory(dir =>
     {
         MapDocumentFile.SaveTiled(SurfaceStorageFixtures.ThreeSurfaces(), dir);
         MapDocument window = SurfaceStorageFixtures.LoadSlotWindow(dir, 0);
         Assert.True(window.Tiles!.IsPartial);
-        var anchor = variant == "unloaded" ? new MapPatchKey("far", 300, 0) : new MapPatchKey("ridge", 0, 0);
-        Assert.Equal(variant != "unloaded", window.Surfaces.Patches.ContainsKey(anchor));
+        var original = window.Surfaces.Clone();
+        var saved = AssertFixtures.Files(dir);
+        var anchor = variant == "unloaded" ? new MapPatchKey("far", 300, 0)
+            : variant == "patch" ? new MapPatchKey("ridge", 20, 0) : new MapPatchKey("ridge", 0, 0);
+        Assert.Equal(variant is not ("unloaded" or "patch"), window.Surfaces.Patches.ContainsKey(anchor));
         int ground = window.Surfaces.Refs.FindIndex(s => s.Id == "ground");
         Assert.True(ground >= 0);
         window.Surfaces.Refs[ground] = window.Surfaces.Refs[ground] with
@@ -34,9 +69,15 @@ public sealed class SurfaceStorageGuardRegressionTests
         byte[] manifest = File.ReadAllBytes(Path.Combine(dir, "map.json"));
         string[] files = SurfaceStorageFixtures.SurfaceFiles(dir).ToArray();
         var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(window, dir));
-        if (variant == "unloaded") Assert.Contains("unloaded", error.Message);
+        Assert.Equal(variant == "unloaded" ? MapDocumentRefusal.StorageReferencedPatchUnloaded
+            : variant == "type" ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.ReferenceMissing, error.Reason);
+        Assert.Equal(anchor, error.Patch);
+        if (variant is "missing" or "type") Assert.Equal(variant == "type" ? "ridge-rim" : "missing-space", error.RecordId);
+        Assert.Equal(saved, AssertFixtures.Files(dir));
         Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));
         Assert.Equal(files, SurfaceStorageFixtures.SurfaceFiles(dir));
+        window.Surfaces = original;
+        MapDocumentFile.SaveTiled(window, dir);
     });
 
     [Fact]
@@ -45,15 +86,22 @@ public sealed class SurfaceStorageGuardRegressionTests
         MapDocumentFile.SaveTiled(SurfaceStorageFixtures.ReverseDependants(withFinePage: true), dir);
         MapDocument window = SurfaceStorageFixtures.LoadSlotWindow(dir, 0);
         Assert.False(window.Surfaces.Patches.ContainsKey(new("fine", 40, 0)));
+        var original = window.Surfaces.Clone();
+        var saved = AssertFixtures.Files(dir);
         window.Surfaces.Patches[SurfaceStorageFixtures.Wide0].Heights[1] = 1100;
         Assert.Equal(1, window.Surfaces.Refs.RemoveAll(s => s.Id == "fine"));
         Assert.Empty(MapDocumentValidator.Validate(window, MapDocRegistry.CreateDefault()));
         byte[] manifest = File.ReadAllBytes(Path.Combine(dir, "map.json"));
         string[] files = SurfaceStorageFixtures.SurfaceFiles(dir).ToArray();
         var error = Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(window, dir));
-        Assert.Contains("unloaded: reverse dependants unknown", error.Message);
+        Assert.Equal(MapDocumentRefusal.StorageReverseKnowledgeUnknown, error.Reason);
+        Assert.Equal(SurfaceStorageFixtures.Wide0, error.Patch);
+        Assert.Equal("fine", error.SurfaceId);
+        Assert.Equal(saved, AssertFixtures.Files(dir));
         Assert.Equal(manifest, File.ReadAllBytes(Path.Combine(dir, "map.json")));
         Assert.Equal(files, SurfaceStorageFixtures.SurfaceFiles(dir));
+        window.Surfaces = original;
+        MapDocumentFile.SaveTiled(window, dir);
     });
 
     [Fact]

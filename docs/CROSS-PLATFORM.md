@@ -143,8 +143,10 @@ is file IO and `KhaozEngine.Gpu` does none. `GpuBackendSource.DefaultProviderMis
 17.40.0 appended for a DEFAULT that fell back to the incumbent, is RETIRED at 18.0.0 with NO PRODUCER: there is
 no incumbent to create instead, so that case throws. The member keeps its number because the enum is
 append-only and a 17.40.0 capture that recorded a 5 still has to read back as what it meant. And when the
-fallback fails too there is no device at all, which `GpuNoUsableBackendException` reports naming both backends
-and both reasons.
+fallback fails too there is no device at all. `GpuNoUsableBackendException.Reason` distinguishes
+`GpuNoUsableBackendRefusal.RequestedCreationFailed`, `RequestedMachineUnsupported` and
+`RequestedProviderNotRegistered`. `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`
+and `FallbackFailure` preserve both attempts.
 
 A RETIRED member never reaches any of this. It is answered before the provider registry: as an env token by
 the redirect, as a stored preference by the self-heal, and in code by `GpuBackendRetiredException`.
@@ -295,7 +297,14 @@ manifest bytes and repeats managed parsing, schedule and recipe identity format 
 batch and enum checks, paid or rehearsal deadlines and budgets, byte-hash and independent authorization
 checks. Empty schedules, malformed hashes, Debug runtime policy, invalid pacing, enum values, paid unit
 or steady frame limits and a UTF-8 byte order mark all refuse before the separate matrix step.
-That step requires successful admission, so no paid runner is allocated on a refusal.
+That step requires successful admission, so no paid runner is allocated on a refusal. The subsequent
+free `renderer-tooling-validation` job runs the complete outside-solution tooling suite at both immutable
+requested and trusted SHAs, deduplicating equal refs, on `ubuntu-26.04`, `windows-latest` and `macos-26`.
+It also requires the one FFT bound correctness fact to pass without a skip on lavapipe, WARP and Metal.
+`renderer-bench` needs both free jobs to succeed before its matrix can allocate. A failed, skipped or
+cancelled tooling gate blocks it, and the first-attempt condition still refuses reruns. The generic
+`bench` job keeps only its existing `legs` prerequisite. This free validation is separate from the
+[authorized entrypoint](../tools/Renderer.Perf.Tests/authorized/README.md) and never executes that fact.
 Observed runtime and native identity, source-root ownership and live recipe construction still run on
 the selected runner, as described in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization).
 Every paid manifest's
@@ -535,16 +544,19 @@ below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
   Server.Tests, so those two move out and leave about 9 minutes on `rest`.
 - `render-1` to `render-N` each run one slice of `KhaozEngine.Render.Tests`. Each backend has its own slice
   table in `scripts/gpu-test-shards.py`, because the three rasterizers disagree about what is expensive:
-  `metal-native` has 2 slices, `direct3d11-native` 4 and `vulkan-native` 12. Every table is an ordered first-match
+  `metal-native` has 2 slices, `direct3d11-native` 3 and `vulkan-native` 11. Every table is an ordered first-match
   partition over `FullyQualifiedName`: a test belongs to the first slice whose rules match it, and the last slice
   takes everything the earlier slices do not name. A new class or method therefore always lands in exactly one
   slice. The heaviest methods are named one by one and set each backend's floor. `TemporalFollowPhaseGpuTests`'
   orthographic sweep took 17 to 22 minutes on serialised lavapipe as one method, so it is split by preset like the
   perspective sweep beside it. Native and Quality now have separate methods and Vulkan slices (#1458), with
-  Performance and UltraPerformance together in a third method. The twelve Vulkan slices cost 10.2 to 10.5
-  normalized test minutes each, leaving more room for runner variation than the former nine.
-  `ShadowCascadeCullPerfGpuTests` takes 13 to 15 minutes on WARP and has a Windows slice to itself. Each shard
-  uploads its TRX files as `shard-trx-<backend>-<shard>`, which carry the per-test durations to re-balance from.
+  Performance and UltraPerformance together in a third method. Before the renderer probe reductions, the
+  twelve Vulkan slices were balanced at 10.2 to 10.5 normalized test minutes in the source runs above.
+  `ShadowCascadeCullPerfGpuTests.A_small_caster_fixture_draws_fewer_instances_with_culling` now uses a
+  small near/far fixture and fixed draw-count observations. It runs in Windows' catch-all `render-4` and
+  Vulkan's S-prefix `render-9`. Its dedicated Windows `render-1` and Vulkan `render-2` slices are removed,
+  with every remaining shard name preserved. Each shard uploads its TRX files as
+  `shard-trx-<backend>-<shard>`, which carry the per-test durations to re-balance from.
 
 Each shard restores and builds a solution containing only its assigned test projects and their project
 references ([#1472](https://github.com/APKiwiOrg/KhaozEngine/issues/1472)). A render shard builds
@@ -555,15 +567,17 @@ coverage guards unchanged. Reduced solutions explicitly preserve Release on thei
 `ShouldUnsetParentConfigurationAndPlatform=false`. Otherwise MSBuild resets unlisted references to their
 default configuration, which is Debug. A build guard rejects any Debug output on the fresh CI checkout.
 Native matrix and sync builds use `scripts/build-release-tests.sh`, including reduced shard solutions.
-When the selected roots include this checkout's `Render.Tests`, setup also builds its outside-solution
-renderer verifier before process tests run with `--no-build`. Shards without `Render.Tests` keep their build slice.
+Engine shards do not build the outside-solution renderer tooling or its offline verifier. The explicit
+`Renderer.Perf.Tooling.Tests` target owns that process-test prerequisite.
 The Windows-only NuGet cache still excludes every KhaozEngine extraction. The
 [measurement record](verification/2026-10-18-gpu-shard-build-cost-1472.md) compares scoped builds with per-OS
 output sharing.
 
-So a default-input dispatch is 3 Metal, 7 Windows and 14 Linux jobs plus the `sync` job. The org's Team plan
+So a default-input dispatch expands to 3 Metal, 6 Windows and 13 Linux jobs plus the `sync` job.
+The source table therefore expands to 22 matrix jobs rather than 24. This is a job-count change,
+not a measured runtime saving. The org's Team plan
 allows 60 concurrent hosted jobs and 5 concurrent macOS jobs
-([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 25 jobs of the dispatch
+([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 23 jobs of the dispatch
 and the 4 of the `ci` dispatch the pre-tag gate runs beside it all start at once. The macOS cap is the one that
 binds: every `push` and `pull_request` runs the Metal full suite too, so overlapping runs share 5 macOS slots.
 Metal stops at 3 jobs because its slowest shard is already well under the Vulkan floor, and a fourth would only
@@ -610,11 +624,18 @@ matrix has produced. The delete also shortened the matrix's own wall clock (slow
 dropped about 63 minutes of runner time from a full dispatch.
 
 - **GitHub-hosted Metal NATIVE leg (`macos-26`)**: the engine's own `KhaozEngine.Gpu.Metal` backend
-  (`KE_GRAPHICS_BACKEND=metal-native`) on the WHOLE test suite (`--filter "Category!=LiveSocket"`) on every
-  trigger - every `[GpuFact]` test (golden and behavioral) plus the headless suite, matching `ci.yml`'s own
-  `Category!=LiveSocket` exclusion (LiveSocket tests need a live network peer, not available here). Since
-  [#1438](https://github.com/APKiwiOrg/KhaozEngine/issues/1438) that suite runs across three jobs on every trigger
-  except a bake or a `renderTestFilter` dispatch, as described above. Metal ran
+  (`KE_GRAPHICS_BACKEND=metal-native`) on the WHOLE test suite
+  (`--filter "Category!=LiveSocket&Category!=Diagnostic"`) on every trigger - every gating `[GpuFact]`
+  test (golden and behavioral) plus the headless suite, matching `ci.yml`'s exclusions. LiveSocket tests
+  need a live network peer. Tests marked `[Trait("Category", "Diagnostic")]` report instead of gating
+  and run on demand by setting the dispatch input `renderTestFilter` to `Category=Diagnostic`, optionally
+  narrowed with `&FullyQualifiedName~<probe-class>`. This includes the 19 renderer timing/cost probes.
+  The four retained atlas, hold cadence, bounded cascade and FFT checks stay in the default filter,
+  as described in [the renderer performance reference](RENDERER-PERFORMANCE.md#default-correctness-and-on-demand-probes).
+  Capability gates and software-adapter refusals still apply, so software runs establish no hardware
+  performance evidence. Since
+  [#1438](https://github.com/APKiwiOrg/KhaozEngine/issues/1438) that suite runs across three jobs on schedules
+  and default-input dispatches. Pushes and pull requests use one job, as described above. Metal ran
   on the dev Mac until [#552](https://github.com/APKiwiOrg/KhaozEngine/issues/552) moved it to a hosted runner,
   and the runner is pinned to `macos-26` by number rather than to `macos-latest` so an image promotion cannot
   move the GPU under a golden gate. It OWNS the `metal-native` golden family since `17.41.0`, exactly as the
@@ -1152,6 +1173,20 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   above it, so it reads it with a `1e-30` weight rather than leave a hole in the pixel-input signature.
   `D3D11FxcValidationTests` asserts on the emitted HLSL that every shadow depth vertex's input signature, and the
   cutout and skinned dissolve fragments' interpolants, are contiguous.
+- **Opaque foliage FXC fixtures stay tied to current source.** The four `FoliageOpaque` fragment variants
+  retain hosted Windows disassembly and GLSL pins under `Fixtures/foliage-opaque-dxbc`. Dispatch
+  `cross-platform-gpu` on the source branch with `legs=direct3d11-native`, `tier=push`, `bake=false` and
+  `renderTestFilter=FullyQualifiedName~DumpFoliageOpaqueDisassembly` to arm its Windows-only dump.
+  The deliberate dump failure prints numbered `FOLIAGEDXBC` lines and `FOLIAGEDXBCSOURCE` hashes.
+  Import contiguous lines with carriage returns removed and the terminal newline retained, then validate
+  on the final commit with the dump disarmed. Windows compares every frozen listing with current FXC
+  output exactly. Existing temporal DXBC fixtures keep their empty stale-source allowance.
+- **Emitted MSL ends the fragment at a discard.** GLSL's `discard` terminates the invocation, but SPIRV-Cross
+  emits a bare `discard_fragment()`, and the rest of `main0` kept running on the discarded fragment. Once a
+  shader grew, discarded pixels held stale memory in every colour attachment on Apple GPUs, with Metal shader
+  validation clean, and the failures moved with unrelated code (issue #1411). `MslDiscardTermination` returns
+  at each discard in the entry point, `MslCrossCompilePin.DiscardHandling` keeps cached emissions apart, and
+  `MslDiscardTerminationTests` pins that no shipped program discards from a helper function, which cannot return.
 - **Sampling textures in binding order is retired.** Native Metal authors resource indices through
   `MslIndexRemap`. The higher-binding-first conditional pixel-readback case in
   `MetalConditionalTextureOrderGpuTests` verifies both runtime branches. Samples can be conditional

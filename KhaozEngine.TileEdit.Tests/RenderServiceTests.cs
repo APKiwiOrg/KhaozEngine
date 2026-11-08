@@ -133,7 +133,7 @@ public class RenderServiceTests
         ArgumentException ex = Assert.Throws<ArgumentException>(() =>
             f.Render.RenderTopDown(new TileRect(0, 0, 4, 4), 0, 4, "grid,heatmap"));
 
-        Assert.Contains("heatmap", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("overlays", ex.ParamName);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class RenderServiceTests
         ArgumentException ex = Assert.Throws<ArgumentException>(() =>
             f.Render.RenderView(new Vector3(1f, 2f, 3f), new Vector3(1f, 2f, 3f), 64, 64));
 
-        Assert.Contains("direction", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("target", ex.ParamName);
     }
 
     [Fact]
@@ -155,6 +155,7 @@ public class RenderServiceTests
         TileWorldException ex = Assert.Throws<TileWorldException>(() =>
             render.RenderTopDown(new TileRect(0, 0, 4, 4), 0, 4));
 
-        Assert.Contains("world_open", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(TileWorldRefusal.SessionNotOpen, ex.Reason);
+        Assert.Equal(new[] { "world_open", "world_create" }, ex.RequiredTools);
     }
 }

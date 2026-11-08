@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -174,11 +173,7 @@ public partial class BepuCertifiedCapsuleSweepTests
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         Clear(Read(world), 4);
         // Owned-world injection through the actual mutation gate models a future missed bookkeeping hook.
-        MethodInfo? enter = typeof(BepuPhysicsWorld).GetMethod("EnterMutation", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(enter);
-        object? operation = enter.Invoke(world, [false, true]);
-        Assert.NotNull(operation);
-        Assert.IsAssignableFrom<IDisposable>(operation).Dispose();
+        world.AdvanceUnhandledGenerationForTests();
         Refused(Read(world));
         world.AddStatic(Box, Pose.Identity);
         Refused(Read(world));

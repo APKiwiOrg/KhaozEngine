@@ -135,7 +135,7 @@ public class SupportQueryWorkerRestorationTests
         {
             error = Record.Exception(() =>
             {
-                var counts = new long[48];
+                var counts = new long[Enum.GetValues<SupportQueryCounter>().Length];
                 counts[0] = 17;
                 var saved = SupportQueryDiagnostics.ThreadState.Fresh(true) with
                 {

@@ -7,7 +7,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Navigation;
 
 /// <summary>
-/// Pins the reused-scratch planner (KhaozEngine#1288) to the v20.24.0 algorithm: every query of a seeded
+/// Pins the reused-scratch planner (KhaozEngine#1288) to the #1712 spatial-bound reference: every query of a seeded
 /// corpus returns exactly the status and waypoints of <see cref="ReferenceGridPathPlanner"/>. One planner
 /// serves every query of its space, so point and region queries interleave on the same scratch.
 /// </summary>

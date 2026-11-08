@@ -63,7 +63,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A RESOURCE WITH NO VIEW FOR THE FILE IS A REFUSAL, and the message names the HLSL register letter so it
+        /// A RESOURCE WITH NO VIEW FOR THE FILE IS A REFUSAL, and RegisterLetter identifies its HLSL register so it
         /// can be matched against a shader. Views follow from the declared usage at creation, so this is the shape
         /// of "a layout element of the wrong kind" and of "a texture created without the usage bit its layout
         /// asks for", both of which would otherwise bind nothing the shader reads.
@@ -73,11 +73,16 @@ namespace KhaozEngine.Tests.Gpu
         {
             var resource = new ViewfulBuffer(shaderResource: new object());
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => D3D11BindResolve.ViewOf(resource, D3D11RegisterFile.Sampler));
 
-            Assert.Contains("'s' register", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("DECLARED", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, ex.Reason);
+            Assert.Equal('s', ex.RegisterLetter);
+            Assert.Equal(typeof(ViewfulBuffer), ex.ActualType);
+            Assert.Equal(typeof(ID3D11BindableViews), ex.ExpectedType);
+            Assert.Equal("resource", ex.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.NotNull(D3D11BindResolve.ViewOf(new ViewfulSampler(), D3D11RegisterFile.Sampler));
         }
 
         /// <summary>And a resource from another backend is refused by name rather than by an
@@ -85,11 +90,16 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AForeignResource_IsRefusedByName()
         {
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => D3D11BindResolve.ViewOf(new FakeSampler(), D3D11RegisterFile.Sampler));
 
-            Assert.Contains(nameof(FakeSampler), ex.Message, StringComparison.Ordinal);
-            Assert.Contains(nameof(ID3D11BindableViews), ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
+            Assert.Equal(typeof(FakeSampler), ex.ActualType);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, ex.ExpectedBackend);
+            Assert.Equal("resource", ex.ParamName);
+            Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.NotNull(D3D11BindResolve.ViewOf(new ViewfulSampler(), D3D11RegisterFile.Sampler));
+            Assert.Equal(typeof(ID3D11BindableViews), ex.ExpectedType);
         }
 
         /// <summary>
@@ -104,19 +114,51 @@ namespace KhaozEngine.Tests.Gpu
         {
             var foreign = new FakeBuffer(64);
 
-            ArgumentException first = Assert.Throws<ArgumentException>(
+            var first = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => D3D11BindResolve.NativeBuffer(foreign));
-            ArgumentException second = Assert.Throws<ArgumentException>(
+            var second = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => D3D11BindResolve.NativeBuffer(foreign));
 
-            Assert.Contains(nameof(FakeBuffer), first.Message, StringComparison.Ordinal);
-            Assert.Equal(first.Message, second.Message);
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, first.Reason);
+            Assert.Equal(typeof(FakeBuffer), first.ActualType);
+            Assert.Equal(typeof(ID3D11BindableViews), first.ExpectedType);
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, second.Reason);
+            Assert.Equal(typeof(FakeBuffer), second.ActualType);
+            Assert.Equal(typeof(ID3D11BindableViews), second.ExpectedType);
+            Assert.Equal("buffer", first.ParamName);
+            Assert.Equal("buffer", second.ParamName);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, first.ExpectedBackend);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, second.ExpectedBackend);
+            Assert.NotNull(D3D11BindResolve.NativeBuffer(new ViewfulBuffer()));
 
             // The other half of the ordering rule, and the reason the resolve has to come first: the cache RECORDS
             // at the first ask, so a bind that resolved after it would find the second ask redundant.
             var streams = new D3D11VertexStreams();
             Assert.True(streams.BindIndexBuffer(foreign, GpuIndexFormat.UInt16));
             Assert.False(streams.BindIndexBuffer(foreign, GpuIndexFormat.UInt16));
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void ANullNativeBufferCarriesTheSharedMissingResourceReason(int absence)
+        {
+            IGpuBuffer? buffer = absence == 0 ? null : new ViewfulBuffer(hasBuffer: false);
+            var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(() =>
+            {
+                if (absence == 2) D3D11BindResolve.ViewOf(new GpuBufferRange(null!, 0, 16), D3D11RegisterFile.ConstantBuffer);
+                else D3D11BindResolve.NativeBuffer(buffer);
+            });
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, refusal.Reason);
+            Assert.Equal(absence == 2 ? "resource" : "buffer", refusal.ParamName);
+            Assert.Equal(absence == 0 ? null : absence == 2 ? typeof(GpuBufferRange) : typeof(ViewfulBuffer),
+                refusal.ActualType);
+            Assert.Equal(typeof(ID3D11BindableViews), refusal.ExpectedType);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, refusal.ExpectedBackend);
+            Assert.NotNull(D3D11BindResolve.NativeBuffer(new ViewfulBuffer()));
+            Assert.NotNull(D3D11BindResolve.ViewOf(new GpuBufferRange(new ViewfulBuffer(), 0, 16),
+                D3D11RegisterFile.ConstantBuffer));
         }
 
         // ---- the two framebuffer types --------------------------------------------------------------------
@@ -163,10 +205,17 @@ namespace KhaozEngine.Tests.Gpu
             var framebuffer = new FakeFramebuffer(
                 new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm), 4, 4);
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => D3D11BindResolve.RenderTargets(framebuffer));
 
-            Assert.Contains(nameof(FakeFramebuffer), ex.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
+            Assert.Equal(typeof(FakeFramebuffer), ex.ActualType);
+            Assert.Equal(typeof(ID3D11RenderTargetSurface), ex.ExpectedType);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, ex.ExpectedBackend);
+            Assert.Equal("framebuffer", ex.ParamName);
+            var own = new D3D11SwapchainFramebuffer(GpuPixelFormat.B8G8R8A8UNorm, null,
+                new D3D11SwapchainAttachments(4, 4, new object(), null));
+            Assert.Same(own, D3D11BindResolve.RenderTargets(own));
         }
 
         // ---- the constant-buffer transposition ------------------------------------------------------------
@@ -213,10 +262,14 @@ namespace KhaozEngine.Tests.Gpu
         {
             var binds = new[] { new D3D11ConstantBufferBind(null, 16, 4) };
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<D3D11BindResolutionArgumentException>(
                 () => D3D11BindResolve.Constants(binds, new int[4], new int[4]));
 
-            Assert.Contains("null entry", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("binds", ex.ParamName);
+            Assert.Equal(D3D11BindResolutionRefusal.NullBufferWindowNonzero, ex.Reason);
+            Assert.Equal(0, ex.RegisterIndex);
+            Assert.Equal(16u, ex.FirstConstant);
+            Assert.Equal(4u, ex.ConstantCount);
         }
 
         /// <summary>A scratch shorter than the bind is a defect in the emitter rather than an oversized bind, and
@@ -231,8 +284,11 @@ namespace KhaozEngine.Tests.Gpu
                 new D3D11ConstantBufferBind(buffer, 16, 16),
             };
 
-            Assert.Throws<ArgumentException>(
+            var ex = Assert.Throws<D3D11BindResolutionArgumentException>(
                 () => D3D11BindResolve.Constants(binds, new int[1], new int[1]));
+            Assert.Equal(D3D11BindResolutionRefusal.TransposeScratchTooSmall, ex.Reason);
+            Assert.Equal(1, ex.SuppliedCount);
+            Assert.Equal(2, ex.RequiredCount);
         }
 
         /// <summary>The scratch grows geometrically and never below eight, which is what "zero per-call
@@ -367,6 +423,15 @@ namespace KhaozEngine.Tests.Gpu
             D3D11InteropLoad.AssertNotLoaded();
         }
 
+        sealed class ViewfulSampler : IGpuSampler, ID3D11BindableViews
+        {
+            public object? BufferObject => null;
+            public object? ShaderResourceViewObject => null;
+            public object? UnorderedAccessViewObject => null;
+            public object? SamplerStateObject { get; } = new object();
+            public void Dispose() { }
+        }
+
         /// <summary>A bindable resource whose views are plain objects, which is all the resolution ever asks of
         /// one. It is a buffer as well, so a <see cref="GpuBufferRange"/> can be built over it.</summary>
         sealed class ViewfulBuffer : IGpuBuffer, ID3D11BindableViews
@@ -374,14 +439,14 @@ namespace KhaozEngine.Tests.Gpu
             readonly object? _shaderResource;
             readonly object? _unorderedAccess;
 
-            internal ViewfulBuffer(object? shaderResource = null, object? unorderedAccess = null)
+            internal ViewfulBuffer(object? shaderResource = null, object? unorderedAccess = null, bool hasBuffer = true)
             {
                 _shaderResource = shaderResource;
                 _unorderedAccess = unorderedAccess;
-                Buffer = new object();
+                Buffer = hasBuffer ? new object() : null;
             }
 
-            internal object Buffer { get; }
+            internal object? Buffer { get; }
 
             public uint SizeInBytes => 1024;
 

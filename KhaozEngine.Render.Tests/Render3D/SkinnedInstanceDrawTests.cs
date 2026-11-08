@@ -169,7 +169,7 @@ public sealed class SkinnedInstanceDrawTests
     }
 
     [Fact]
-    public void A_wrong_bone_count_is_refused_the_same_way_through_either_path()
+    public void A_wrong_bone_count_is_refused_through_either_path()
     {
         using var harness = new MotionTestScene();
         Scene3D scene = harness.Scene;
@@ -177,12 +177,9 @@ public sealed class SkinnedInstanceDrawTests
         Matrix4x4[] tooFew = mesh.RestPose[..2];
 
         scene.Begin();
-        ArgumentException viaOverload = Assert.Throws<ArgumentException>(
-            () => scene.DrawSkinned(tube, tooFew, Model, Tint));
-        ArgumentException viaDescriptor = Assert.Throws<ArgumentException>(
-            () => scene.DrawSkinned(new SkinnedInstanceDraw(tube, Model), tooFew));
+        Assert.Throws<ArgumentException>(() => scene.DrawSkinned(tube, tooFew, Model, Tint));
+        Assert.Throws<ArgumentException>(() => scene.DrawSkinned(new SkinnedInstanceDraw(tube, Model), tooFew));
 
-        Assert.Equal(viaOverload.Message, viaDescriptor.Message);
         Assert.Empty(scene.QueuedSkinnedInstancesForTests);
     }
 

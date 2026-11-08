@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -163,7 +164,11 @@ public class TilePrefabTests
     {
         TileWorldDocument doc = HouseWorld();
         TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(10, 10, 3, 2), 0, 1);
-        Assert.Throws<TileWorldException>(() => TilePrefabs.Place(doc, p, 126, 5, 0, 0));
+        var ex = Assert.Throws<TileWorldException>(() => TilePrefabs.Place(doc, p, 126, 5, 0, 0));
+        Assert.Equal(TileWorldRefusal.RegionMissing, ex.Reason);
+        Assert.Equal(new RegionCoord(2, 0), ex.Region);
+        Assert.Equal(128, ex.TileX);
+        Assert.Equal(5, ex.TileZ);
         Assert.Equal(1, doc.GetUnderlay(126, 5, 0));
         Assert.Equal(0, doc.GetOverlay(126, 5, 0));
     }
@@ -185,30 +190,56 @@ public class TilePrefabTests
         Assert.Equal(0, doc.CornerHeightCm(61, 10, 0));
     }
 
-    [Fact]
-    public void Place_rejects_a_prefab_whose_object_sits_on_a_plane_it_does_not_have()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_prefab_with_an_object_on_a_plane_it_does_not_have_is_refused(bool fromFile)
     {
+        using var tmp = new TempDir();
+        string? source = fromFile ? tmp.Sub("bad-object-plane.json") : null;
         TileWorldDocument doc = HouseWorld();
-        TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(10, 10, 3, 2), 0, 1);
+        TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(10, 10, 3, 2), 0, 1, name: "house");
         p.Objects[0].Plane = -1;
-        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabs.Place(doc, p, 40, 40, 0, 0));
-        Assert.Contains("plane -1", ex.Message);
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => AdmitPrefab(p, doc, source));
+        Assert.Equal(TileWorldRefusal.PrefabObjectPlaneOutsideRange, ex.Reason);
+        Assert.Equal("house", ex.PrefabName);
+        Assert.Equal(source, ex.SourceName);
+        Assert.Equal("wall", ex.ArchetypeId);
+        Assert.Equal(-1, ex.Plane);
+        Assert.Equal(1, ex.PlaneCount);
+        Assert.Equal(new TileCoord(0, 0, -1), ex.Tile);
         // Nothing was written: the layers go down before the first object is placed, so a plane caught late
         // would have torn the stamp.
         Assert.Equal(0, doc.GetOverlay(40, 40, 0));
         Assert.Equal(TileOverlayShape.Full, doc.GetOverlayShape(40, 40, 0));
+
+        p.Objects[0].Plane = 0;
+        AdmitPrefab(p, doc, source);
     }
 
-    [Fact]
-    public void Loading_a_prefab_with_a_marker_on_a_plane_it_does_not_have_throws()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_prefab_with_a_marker_on_a_plane_it_does_not_have_is_refused(bool fromFile)
     {
         using var tmp = new TempDir();
-        TilePrefab p = TilePrefabs.Extract(HouseWorld(), Cat, new TileRect(10, 10, 3, 2), 0, 1);
+        string? source = fromFile ? tmp.Sub("bad-plane.json") : null;
+        TileWorldDocument doc = HouseWorld();
+        TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(10, 10, 3, 2), 0, 1, name: "house");
         p.Markers[0].Plane = 4;
-        TilePrefabFile.Save(p, tmp.Sub("bad-plane.json"));
-        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabFile.Load(tmp.Sub("bad-plane.json")));
-        Assert.Contains("bad-plane.json", ex.Message);
-        Assert.Contains("plane 4", ex.Message);
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => AdmitPrefab(p, doc, source));
+        Assert.Equal(TileWorldRefusal.PrefabMarkerPlaneOutsideRange, ex.Reason);
+        Assert.Equal("house", ex.PrefabName);
+        Assert.Equal(source, ex.SourceName);
+        Assert.Equal("door", ex.MarkerName);
+        Assert.Equal(4, ex.Plane);
+        Assert.Equal(1, ex.PlaneCount);
+        Assert.Equal(new TileCoord(2, 0, 4), ex.Tile);
+        Assert.Equal(0, doc.GetOverlay(40, 40, 0));
+        Assert.DoesNotContain(doc.AllObjects(), o => o.X >= 40);
+
+        p.Markers[0].Plane = 0;
+        AdmitPrefab(p, doc, source);
     }
 
     [Fact]
@@ -231,25 +262,193 @@ public class TilePrefabTests
         Assert.Equal(first, File.ReadAllBytes(tmp.Sub("house.json")));
     }
 
-    [Fact]
-    public void Place_rejects_a_prefab_whose_layers_do_not_match_its_size()
+    [Theory]
+    [InlineData("heights", 11, 12)]
+    [InlineData("underlay", 5, 6)]
+    [InlineData("overlay", 5, 6)]
+    [InlineData("overlayShape", 5, 6)]
+    [InlineData("overlayRotation", 5, 6)]
+    [InlineData("settings", 5, 6)]
+    public void Place_rejects_a_prefab_whose_layers_do_not_match_its_size(string layer, int actual, int expected)
     {
         TileWorldDocument doc = HouseWorld();
-        TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(10, 10, 3, 2), 0, 1);
-        p.Planes[0]!.Underlay = new ushort[5];
-        Assert.Throws<TileWorldException>(() => TilePrefabs.Place(doc, p, 40, 40, 0, 1));
+        TilePrefab p = TilePrefabs.Extract(doc, Cat, new TileRect(10, 10, 3, 2), 0, 1, name: "house");
+        SetLayer(p.Planes[0]!, layer, actual);
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabs.Place(doc, p, 40, 40, 0, 1));
+        Assert.Equal(TileWorldRefusal.PrefabLayerCountMismatch, ex.Reason);
+        Assert.Equal("house", ex.PrefabName);
+        Assert.Null(ex.SourceName);
+        Assert.Equal(0, ex.Plane);
+        Assert.Equal(layer, ex.LayerName);
+        Assert.Equal(actual, ex.ActualCount);
+        Assert.Equal(expected, ex.ExpectedCount);
+        Assert.Equal(3, ex.Width);
+        Assert.Equal(2, ex.Height);
         Assert.Equal(0, doc.GetOverlay(40, 40, 0));
+
+        SetLayer(p.Planes[0]!, layer, expected);
+        TilePrefabs.Place(doc, p, 40, 40, 0, 1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Loading_a_prefab_with_an_object_or_marker_outside_its_footprint_throws(bool marker)
+    {
+        using var tmp = new TempDir();
+        string source = tmp.Sub("bad.json");
+        TilePrefab p = TilePrefabs.Extract(HouseWorld(), Cat, new TileRect(10, 10, 3, 2), 0, 1, name: "house");
+        if (marker) p.Markers[0].X = 7;
+        else p.Objects[0].X = 7;
+        TilePrefabFile.Save(p, source);
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabFile.Load(source));
+        Assert.Equal(marker ? TileWorldRefusal.PrefabMarkerOutsideBounds : TileWorldRefusal.PrefabObjectOutsideBounds, ex.Reason);
+        Assert.Equal("house", ex.PrefabName);
+        Assert.Equal(source, ex.SourceName);
+        if (marker) Assert.Equal("door", ex.MarkerName);
+        else Assert.Equal("wall", ex.ArchetypeId);
+        Assert.Equal(new TileCoord(7, 0, 0), ex.Tile);
+        Assert.Equal(3, ex.Width);
+        Assert.Equal(2, ex.Height);
+
+        if (marker) p.Markers[0].X = 2;
+        else p.Objects[0].X = 0;
+        TilePrefabFile.Save(p, source);
+        Assert.Equal("house", TilePrefabFile.Load(source).Name);
+    }
+
+    [Theory]
+    [InlineData(false, 0, 2)]
+    [InlineData(false, 3, 0)]
+    [InlineData(true, 0, 2)]
+    [InlineData(true, 3, 0)]
+    public void Prefab_dimensions_must_be_positive_through_both_admission_doors(bool fromFile, int width, int height)
+    {
+        using var tmp = new TempDir();
+        string? source = fromFile ? tmp.Sub("size.json") : null;
+        TileWorldDocument doc = HouseWorld();
+        var p = new TilePrefab { Name = "house", Width = width, Height = height, PlaneCount = 1, Planes = { null } };
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => AdmitPrefab(p, doc, source));
+        Assert.Equal(TileWorldRefusal.PrefabSizeNonPositive, ex.Reason);
+        Assert.Equal("house", ex.PrefabName);
+        Assert.Equal(source, ex.SourceName);
+        Assert.Equal(width, ex.Width);
+        Assert.Equal(height, ex.Height);
+
+        p.Width = 3;
+        p.Height = 2;
+        AdmitPrefab(p, doc, source);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Prefab_plane_lists_must_match_the_declared_count_through_both_admission_doors(bool fromFile)
+    {
+        using var tmp = new TempDir();
+        string? source = fromFile ? tmp.Sub("plane-count.json") : null;
+        TileWorldDocument doc = HouseWorld();
+        var p = new TilePrefab { Name = "house", Width = 3, Height = 2, PlaneCount = 2, Planes = { null } };
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => AdmitPrefab(p, doc, source));
+        Assert.Equal(TileWorldRefusal.PrefabPlaneCountMismatch, ex.Reason);
+        Assert.Equal("house", ex.PrefabName);
+        Assert.Equal(source, ex.SourceName);
+        Assert.Equal(1, ex.ActualPlaneCount);
+        Assert.Equal(2, ex.ExpectedPlaneCount);
+
+        p.Planes.Add(null);
+        AdmitPrefab(p, doc, source);
     }
 
     [Fact]
-    public void Loading_a_prefab_with_an_object_outside_its_footprint_throws()
+    public void A_prefab_file_requires_a_positive_plane_count()
     {
         using var tmp = new TempDir();
-        TilePrefab p = TilePrefabs.Extract(HouseWorld(), Cat, new TileRect(10, 10, 3, 2), 0, 1);
-        p.Objects[0].X = 7;
-        TilePrefabFile.Save(p, tmp.Sub("bad.json"));
-        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabFile.Load(tmp.Sub("bad.json")));
-        Assert.Contains("bad.json", ex.Message);
+        string source = tmp.Sub("no-planes.json");
+        var p = new TilePrefab { Name = "house", Width = 3, Height = 2, PlaneCount = 0 };
+        TilePrefabFile.Save(p, source);
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabFile.Load(source));
+        Assert.Equal(TileWorldRefusal.PrefabPlaneCountNonPositive, ex.Reason);
+        Assert.Equal("house", ex.PrefabName);
+        Assert.Equal(source, ex.SourceName);
+        Assert.Equal(0, ex.PlaneCount);
+
+        p.PlaneCount = 1;
+        p.Planes.Add(null);
+        TilePrefabFile.Save(p, source);
+        Assert.Equal(1, TilePrefabFile.Load(source).PlaneCount);
+    }
+
+    [Fact]
+    public void A_null_prefab_file_keeps_its_source_name()
+    {
+        using var tmp = new TempDir();
+        string source = tmp.Sub("empty.json");
+        File.WriteAllText(source, "null");
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabFile.Load(source));
+        Assert.Equal(TileWorldRefusal.PrefabEmpty, ex.Reason);
+        Assert.Equal(source, ex.SourceName);
+        Assert.Null(ex.PrefabName);
+
+        TilePrefabFile.Save(new TilePrefab { Width = 1, Height = 1, PlaneCount = 1, Planes = { null } }, source);
+        Assert.Equal(1, TilePrefabFile.Load(source).Width);
+    }
+
+    [Theory]
+    [InlineData("{", "$")]
+    [InlineData("{\"name\":\"house\",\"width\":\"bad\",\"height\":2,\"planeCount\":1,\"planes\":[null]}", "$.width")]
+    public void Malformed_prefab_json_keeps_the_source_parser_path_and_cause(string json, string field)
+    {
+        using var tmp = new TempDir();
+        string source = tmp.Sub("malformed.json");
+        File.WriteAllText(source, json);
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabFile.Load(source));
+        Assert.Equal(TileWorldRefusal.PrefabJsonMalformed, ex.Reason);
+        Assert.Equal(source, ex.SourceName);
+        Assert.Equal(field, ex.Field);
+        Assert.Null(ex.PrefabName);
+        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+
+        TilePrefabFile.Save(new TilePrefab { Width = 1, Height = 1, PlaneCount = 1, Planes = { null } }, source);
+        Assert.Equal(1, TilePrefabFile.Load(source).Width);
+    }
+
+    [Fact]
+    public void An_unreadable_prefab_keeps_the_source_and_original_cause()
+    {
+        using var tmp = new TempDir();
+        string source = tmp.Sub("missing.json");
+        TileWorldException ex = Assert.Throws<TileWorldException>(() => TilePrefabFile.Load(source));
+        Assert.Equal(TileWorldRefusal.PrefabReadFailed, ex.Reason);
+        Assert.Equal(source, ex.SourceName);
+        Assert.Null(ex.PrefabName);
+        Assert.IsAssignableFrom<IOException>(ex.InnerException);
+
+        TilePrefabFile.Save(new TilePrefab { Width = 1, Height = 1, PlaneCount = 1, Planes = { null } }, source);
+        Assert.Equal(1, TilePrefabFile.Load(source).Width);
+    }
+
+    static void AdmitPrefab(TilePrefab prefab, TileWorldDocument doc, string? source)
+    {
+        if (source is null) TilePrefabs.Place(doc, prefab, 40, 40, 0, 0);
+        else
+        {
+            TilePrefabFile.Save(prefab, source);
+            TilePrefabFile.Load(source);
+        }
+    }
+
+    static void SetLayer(TilePrefabPlane plane, string layer, int count)
+    {
+        switch (layer)
+        {
+            case "heights": plane.HeightsRelative = new short[count]; break;
+            case "underlay": plane.Underlay = new ushort[count]; break;
+            case "overlay": plane.Overlay = new ushort[count]; break;
+            case "overlayShape": plane.OverlayShape = new byte[count]; break;
+            case "overlayRotation": plane.OverlayRotation = new byte[count]; break;
+            case "settings": plane.Settings = new byte[count]; break;
+        }
     }
 
     [Fact]

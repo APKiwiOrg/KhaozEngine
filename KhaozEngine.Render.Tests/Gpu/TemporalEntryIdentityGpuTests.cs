@@ -22,7 +22,7 @@ namespace KhaozEngine.Tests.Gpu
     /// from a rule that decided otherwise. Through packHalf2x16 the values differed on every Vulkan device it ran on,
     /// and the locks with them, so both entries round in integer steps (<c>temporalHalf</c>). This fact is what shows
     /// they agree on a given backend: bit for bit on Metal, on a Tesla T4 on Direct3D 11 and Vulkan, and on WARP
-    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). On a software Vulkan device (Mesa llvmpipe) the colour,
+    /// (TEMPORAL-RESOLVE amendment 23). On a software Vulkan device (Mesa llvmpipe) the colour,
     /// drift and swing differ, since its compiler orders the two programs' arithmetic differently, while the
     /// confidence, the lock, the mark, R8 and depth stay identical. There the fact holds those exact and the colour
     /// within <see cref="TemporalSoftwareCompileDivergenceRule.AbsoluteBound"/> and

@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// Texture detail under a light that never changes, where the release of a pixel whose shading changed must leave
-    /// the resolve as it was (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendments 33 and 34). The release takes a pixel
+    /// the resolve as it was (TEMPORAL-RESOLVE amendments 33 and 34). The release takes a pixel
     /// below <c>LockMotionStartPixels</c> by the still pixel's rule, so a slow pan takes it as a still view does, and it
     /// runs at Quality, where the jitter aliases detail finer than an internal texel. Each run renders
     /// <see cref="FirstMeasured"/> frames and measures <see cref="Measured"/> more over the view less a

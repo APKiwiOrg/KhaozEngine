@@ -1,7 +1,7 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The temporal resolve's PER-PIXEL ACCUMULATION (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): every rule the
+    /// The temporal resolve's PER-PIXEL ACCUMULATION (TEMPORAL-RESOLVE section 3): every rule the
     /// resolve applies per display pixel, as GLSL functions with no stage inputs or outputs. Both entry points call
     /// them over the same 3x3 statistics (<c>temporalGather</c>) and the same prepared surface
     /// (<c>TemporalSurface</c>, <see cref="TemporalPrepareGlsl"/>): the fused resolve after preparing its 3x3 inline,

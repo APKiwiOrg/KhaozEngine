@@ -6,7 +6,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The temporal resolve (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3) where it is easiest to get wrong: a fast camera
+    /// The temporal resolve (TEMPORAL-RESOLVE section 3) where it is easiest to get wrong: a fast camera
     /// step that must keep the disocclusion test, a glint the history fetch must not ring around, an infinite scene
     /// colour, and a moving pixel whose clip must narrow. Same rig and camera as
     /// <see cref="TemporalResolveRendererGpuTests"/>, through <see cref="TemporalResolveGpuFacts"/>.

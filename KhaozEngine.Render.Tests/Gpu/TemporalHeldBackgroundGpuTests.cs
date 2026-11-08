@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="TemporalFastEdgeGpuTests"/> is, crossing the textured wall at 2 internal pixels a frame
     /// (<see cref="TemporalHeldBackgroundRuns"/>). The wall's texels are independent greys, so its pixels take ridges
     /// and hold their locks. Where a pixel's hold is whole, the moving share's colour of
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 takes only the share the hold does not keep, so over a held
+    /// TEMPORAL-RESOLVE amendment 23 takes only the share the hold does not keep, so over a held
     /// background the line reaches the output through the current sample alone. The line's energy on each frame is its
     /// luma less the same frame's without it, over its supersampled coverage, as a share of the reference's own
     /// difference. The same line over the flat wall, which holds no lock, is the control. Report only. HDR is off, the

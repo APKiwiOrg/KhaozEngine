@@ -4,7 +4,7 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// THE DISPLAY-RESOLUTION POST CHAIN OF A TEMPORAL FRAME (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 1), and the
+    /// THE DISPLAY-RESOLUTION POST CHAIN OF A TEMPORAL FRAME (TEMPORAL-RESOLVE section 1), and the
     /// internal-resolution opaque-only copy the resolve's reactive estimate reads. Everything after the resolve runs at
     /// the display size, so this owns a display-size ping pair and, while bloom is on, a half-display-size bloom pair, in
     /// the scene's colour format. The chain's source is the history colour the resolve wrote this frame, which alternates

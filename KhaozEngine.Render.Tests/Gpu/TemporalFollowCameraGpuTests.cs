@@ -7,7 +7,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 under a follow camera: a keyed box with ridged pixels walks
+    /// TEMPORAL-RESOLVE amendment 23 under a follow camera: a keyed box with ridged pixels walks
     /// across the textured wall while the camera keeps it still on screen, as a third-person camera follows a walking
     /// avatar (<see cref="TemporalFollowCameraRuns"/>). The wall pans under the box. Past the dilation's reach each
     /// wall pixel at its trailing edge reprojects by its own motion onto the box's stored depths and state. Under it

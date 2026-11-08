@@ -1,7 +1,7 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The temporal resolve's fused entry point and its depth store (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3), two
+    /// The temporal resolve's fused entry point and its depth store (TEMPORAL-RESOLVE section 3), two
     /// fullscreen fragment programs paired with <see cref="FullscreenVert"/> and recorded by
     /// <c>TemporalResolveRenderer</c>.
     /// <para><b>EVERY RULE LIVES ONCE.</b> The rules are GLSL functions in two shared blocks: the per-texel

@@ -7,7 +7,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// Step 3's check of a history the followed surface's own pixels stored (the followed mark,
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), on synthetic inputs: a pixel whose nearest surface did not move
+    /// TEMPORAL-RESOLVE amendment 23), on synthetic inputs: a pixel whose nearest surface did not move
     /// in the world drops that history only where it moved on screen more than
     /// <see cref="TemporalResolveTuning.FollowedStillDisplayPixels"/> and one of the nine current texels around its
     /// history position, background aside, moves on screen otherwise than the pixel reprojected, by more than

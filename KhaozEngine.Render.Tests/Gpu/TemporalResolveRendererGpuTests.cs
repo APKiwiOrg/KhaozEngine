@@ -6,7 +6,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The temporal resolve against synthetic inputs, one fact per step of TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3,
+    /// The temporal resolve against synthetic inputs, one fact per step of TEMPORAL-RESOLVE section 3,
     /// on an 8 by 8 target at native resolution unless a fact says otherwise, over what
     /// <see cref="TemporalResolveGpuFacts"/> shares. Step 6, the thin feature lock, has its facts in
     /// <see cref="TemporalResolveLockGpuTests"/>, and the resolve under a fast camera step, a glint, an infinite colour

@@ -4,7 +4,7 @@ namespace KhaozEngine.Render3D.Internal
     /// THE RESOLVE'S TUNING CONSTANTS, one for one with the <c>const float</c> block in
     /// <c>ShaderSources.TemporalResolveTuningGlsl</c> and <c>ShaderSources.TemporalCommonGlsl</c>.
     /// <c>TemporalResolveShaderTests</c> pins the two copies together, and the resolve's acceptance tests tune them. Each
-    /// comment names the design step (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3) the constant belongs to.
+    /// comment names the design step (TEMPORAL-RESOLVE section 3) the constant belongs to.
     /// <para><b>ONE SET OF RULES, TWO ENTRY POINTS.</b> The constants are read by shared shader functions, the
     /// per-texel preparation (<see cref="ShaderSources.TemporalPrepareGlsl"/>) and the per-pixel accumulation
     /// (<see cref="ShaderSources.TemporalAccumulateGlsl"/>), which both entry points call: the fused pass, which
@@ -17,7 +17,7 @@ namespace KhaozEngine.Render3D.Internal
     /// The split's targets hold 24 bytes an internal texel, 82.3 MB at 3456x2234 Quality, and exist only while it runs.
     /// <see cref="TemporalResolvePolicy"/> picks the split on every backend at every size, from the hosted NVIDIA
     /// measurements on Direct3D 11 and Vulkan and the Metal figures, and the design records them
-    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, The resolve), with the Vulkan frame boundary that frees replaced
+    /// (TEMPORAL-RESOLVE section 3, The resolve), with the Vulkan frame boundary that frees replaced
     /// targets (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1199">#1199</see>).</para>
     /// </summary>
     internal static class TemporalResolveTuning
@@ -157,7 +157,7 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>Steps 6 and 8. How far past the variance box, in its half-widths beyond the first, a pixel's
         /// history luma lies before the pixel may read as one whose shading changed, a shadow or a light sliding over a
         /// surface, still or moving, and let go of its hold and its accumulated weight for the frame
-        /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendments 33 and 34). The half-width there is at least a ridge's step. On its own
+        /// (TEMPORAL-RESOLVE amendments 33 and 34). The half-width there is at least a ridge's step. On its own
         /// this test released every isolated stable peak every frame (<c>TemporalStablePeakGpuTests</c>), so it is a
         /// gate, and <see cref="ShadingChangeExtents"/> or <see cref="ShadingRingExtents"/> decides. On Metal at 0.125
         /// the stable peaks' frame-to-frame change at Quality over the textured wall rose 12 percent, and at 0 the
@@ -188,7 +188,7 @@ namespace KhaozEngine.Render3D.Internal
         /// reference and 44 percent more temporal error than before the release, and with both 2 and 7.</summary>
         public const float ShadingRingExtents = 0.25f;
         /// <summary>Steps 6 and 8. <see cref="ShadingRingExtents"/> for a pixel that carries a lock with no ridge this
-        /// frame or moves at <see cref="LockMotionStartPixels"/> or more (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment
+        /// frame or moves at <see cref="LockMotionStartPixels"/> or more (TEMPORAL-RESOLVE amendment
         /// 34). Such a pixel's history lies apart from its reconstruction with nothing changed, a sub-texel feature the
         /// jitter missed by nature and a moving one by its resampled history, so its reconstruction never decides
         /// alone and its ring must lie this far from its eight texels. On Metal, with a carried lock's ring at the
@@ -201,7 +201,7 @@ namespace KhaozEngine.Render3D.Internal
         public const float ShadingStrictRingExtents = 1f;
         /// <summary>Steps 6 and 8. The least share of a carried lock's own shift, its history luma less this frame's
         /// reconstruction, that its ring (<see cref="ShadingStrictRingExtents"/>) must read on the history's side for
-        /// it to release (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 34). A sub-texel feature the jitter missed spills
+        /// it to release (TEMPORAL-RESOLVE amendment 34). A sub-texel feature the jitter missed spills
         /// into the ring by a small share of its contrast, and a shading change that passed moves the ring as far as
         /// the pixel. A missed diagonal blade crosses two opposite ring taps. Taking the whole ring's mean let its
         /// spill plus texture noise release the lock: the still 45 degree line at about ten texture half-widths on
@@ -222,7 +222,7 @@ namespace KhaozEngine.Render3D.Internal
         /// Taking the own-shift share on each pair too raised it to 0.0232.</summary>
         public const float ShadingLockPairExtents = 0.75f;
         /// <summary>Steps 6 and 8. The share of the ridge step below which a carried lock's variance box reads as flat
-        /// and the lock keeps its hold whatever its ring reads (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 34). Its 3x3
+        /// and the lock keeps its hold whatever its ring reads (TEMPORAL-RESOLVE amendment 34). Its 3x3
         /// is then flat ground with the thin feature the jitter missed, and the feature's spill into the ring and a
         /// neighbouring feature in it read as a change. Without it, at a share (<see cref="ShadingLockRingShare"/>) of
         /// 0.5, of three still sub-texel lines side by side the outer one at Quality averaged 18.4 percent of its

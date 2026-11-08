@@ -199,7 +199,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="ShadowEdgeMeasure"/>'s, with the travel taken over the receiver: for C the edge advances on screen,
     /// and for M and MS it advances over the strips.
     /// <para>
-    /// It asserts the shading release on moving pixels and on carried locks (TEMPORAL-RESOLVE-UPSCALING-DESIGN
+    /// It asserts the shading release on moving pixels and on carried locks (TEMPORAL-RESOLVE
     /// amendment 34), checked after every case has printed. The S textured tail at 2, 4 and 8 is at most
     /// <see cref="FastTailRatio"/> times the S tail at 1 of the same run, each way and at each preset, except the
     /// owner-accepted Native 8 px advancing ratio. The M and MS

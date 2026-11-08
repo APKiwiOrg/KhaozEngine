@@ -9,7 +9,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// Step 6 of TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, thin feature retention, against both sides of risk 1: a
+    /// Step 6 of TEMPORAL-RESOLVE section 3, thin feature retention, against both sides of risk 1: a
     /// moving thin feature must not trail (section 7 acceptance 3) and a still one narrower than a texel must not
     /// shimmer (acceptance 2). A sub-texel feature must keep holding when its surface moves as a whole, against the sky
     /// and beside a nearer still surface, and a nearer surface crossing it must not carry it away. Same rig and camera

@@ -265,6 +265,7 @@ namespace KhaozEngine.Tests.Gpu
                     native.Resting),
                 new byte[4 * 4 * 4]);
 
+            Assert.NotEmpty(fixture.SetupSink.ImageBarriers);
             Assert.All(fixture.SetupSink.ImageBarriers, barrier =>
             {
                 Assert.Equal(2u, barrier.BaseMipLevel);
@@ -289,10 +290,18 @@ namespace KhaozEngine.Tests.Gpu
 
             var native = (VulkanTexture)texture;
 
-            Assert.Throws<ArgumentException>(() => fixture.Setup.Upload(
-                new VulkanImageUpload(native.Image, false, 0, 0, 0, 0, 4, 4, GpuPixelFormat.R8G8B8A8UNorm,
-                    native.Resting),
-                new byte[4 * 4 * 4 - 1]));
+            var upload = new VulkanImageUpload(native.Image, false, 0, 0, 0, 0, 4, 4,
+                GpuPixelFormat.R8G8B8A8UNorm, native.Resting);
+            ArgumentException ex = Assert.Throws<ArgumentException>(() => fixture.Setup.Upload(
+                upload, new byte[4 * 4 * 4 - 1]));
+            Assert.Equal("data", ex.ParamName);
+            Assert.Empty(fixture.SetupSink.ImageCopies);
+
+            fixture.Setup.Upload(upload, new byte[4 * 4 * 4]);
+            FakeImageCopy copy = Assert.Single(fixture.SetupSink.ImageCopies);
+            Assert.Equal(native.Image, copy.Image);
+            Assert.Equal(4u, copy.BufferRowLength);
+            Assert.Equal(4u, copy.BufferImageHeight);
         }
 
         /// <summary>

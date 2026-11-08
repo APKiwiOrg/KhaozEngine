@@ -81,6 +81,7 @@ namespace KhaozEngine.Tests.Gpu
                     + $"{r.WarmBandMarks} over the warm ones");
                 Assert.True(r.BandMarks.Sum() == 0 && r.WarmBandMarks == 0,
                     $"{r.Name}: a still surface stored the band mark, so a pixel can drop a band history");
+                Assert.True(r.NearestTower < 1f, $"{r.Name}: the eye passed no tower within a metre, so the run proves less");
             }
         }
 

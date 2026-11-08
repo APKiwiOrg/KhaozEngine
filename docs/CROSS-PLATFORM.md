@@ -1181,6 +1181,12 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   Import contiguous lines with carriage returns removed and the terminal newline retained, then validate
   on the final commit with the dump disarmed. Windows compares every frozen listing with current FXC
   output exactly. Existing temporal DXBC fixtures keep their empty stale-source allowance.
+- **Emitted MSL ends the fragment at a discard.** GLSL's `discard` terminates the invocation, but SPIRV-Cross
+  emits a bare `discard_fragment()`, and the rest of `main0` kept running on the discarded fragment. Once a
+  shader grew, discarded pixels held stale memory in every colour attachment on Apple GPUs, with Metal shader
+  validation clean, and the failures moved with unrelated code (issue #1411). `MslDiscardTermination` returns
+  at each discard in the entry point, `MslCrossCompilePin.DiscardHandling` keeps cached emissions apart, and
+  `MslDiscardTerminationTests` pins that no shipped program discards from a helper function, which cannot return.
 - **Sampling textures in binding order is retired.** Native Metal authors resource indices through
   `MslIndexRemap`. The higher-binding-first conditional pixel-readback case in
   `MetalConditionalTextureOrderGpuTests` verifies both runtime branches. Samples can be conditional

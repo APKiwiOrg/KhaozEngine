@@ -14,6 +14,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   remain. Unoccluded output is byte-identical (#1411). Fog beyond shadow coverage waits on the aerial-perspective
   volume (#1364), and the water's reflected horizon on scene reflections in water (#1609). Decals and effects
   keep the unoccluded fog colour.
+- Native Metal shaders now end the fragment at a discard. Discarded pixels could otherwise hold stale memory in
+  every colour attachment once a shader grew (#1411).
 - Underwater caustics for opted-in procedural water. `WaterSettings.UnderwaterCaustics` (off by default) and
   `WaterSettings.CausticStrength` (1, physical) gain `WaterLook` overrides. Strength scales how far refracted sunlight
   lands, so strength `s` at depth `d` matches strength 1 at depth `s * d`. Enabling caustics also enables underwater

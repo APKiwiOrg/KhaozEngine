@@ -6,7 +6,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 23.5.0
 
-2026-11-08
+2026-11-09
 
 - Catalog and journal refusals now carry a public reason enum and typed identifiers, filled at every engine throw
   site. `ContentAuthoringException` gains `ContentAuthoringRefusal? Refusal` beside its existing string `Reason`,

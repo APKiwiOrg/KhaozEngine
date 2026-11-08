@@ -77,7 +77,8 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   casts. An existing structured refusal keeps its carrier and failure dimensions even at a defensive guard
   believed unreachable. Do not downgrade it to a plain BCL exception. A reader of result streams that host triggers
   can write into checks each result set's shape before reading its columns and proves the stream complete before
-  accepting a success outcome. Refusal outcomes keep their historical path.
+  accepting a success outcome. Refusal outcomes keep their historical path. A generated identity comes back through
+  an output parameter, never a result set read after DML, because a trigger's result set arrives first.
 - A test that reaches a numerical guard, such as a singular matrix, a collapsed cosine or a zero length, never
   depends on floating-point cancellation landing on a threshold or on subnormal inputs. CI runs on x64 and
   arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one

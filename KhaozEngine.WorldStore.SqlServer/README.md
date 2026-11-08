@@ -246,8 +246,12 @@ and the original cause. Failure kind, certainty, scope and stream keys keep thei
 | `WriteFailedAfterRollback` | A non-provider commit failure after confirmed rollback. | `Stage` (`Commit`), original `InnerException` |
 | `ProviderClockUnavailable` | SQL Server did not return its UTC clock. | `ProviderName` (`SQL Server`) |
 
-Host triggers may emit result sets before the batch's own protocol. Missing or undefined outcomes, outcomes
-unsupported by the current operation, and incomplete projection-limit payloads throw `JournalStoreStateException`,
+Host triggers may emit result sets before the batch's own protocol. `BatchResultMalformed` on
+`JournalStoreStateException` refuses wrong result shapes or value types and trailing result sets after Applied or
+Replayed. The reader checks the complete expected protocol before accepting success, including replay receipt
+sets. Nullable outcome payloads accept SQL literal NULL values regardless of their metadata type.
+Missing or undefined outcomes, outcomes unsupported by the current operation, and incomplete projection-limit
+payloads throw `JournalStoreStateException`,
 which retains the `InvalidOperationException` catch contract. Its `Reason` is `BatchOutcomeMissing`,
 `BatchOutcomeUndefined`, `BatchOutcomeUnsupported` or `BatchProjectionLimitIncomplete`. Undefined and unsupported
 outcomes carry integer `Outcome`. Missing replay rows and stream result sets retain `JournalStoreException`,

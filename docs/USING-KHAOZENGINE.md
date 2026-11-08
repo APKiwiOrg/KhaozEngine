@@ -28337,7 +28337,10 @@ replacement data mismatch, transport failure after confirmed rollback or before 
 non-provider commit failure with confirmed rollback. Missing replay results retain whole-store
 `JournalStoreException` corruption dimensions and carry `OperationId`. Batch protocol refusals use
 `JournalStoreStateException`, an `InvalidOperationException` subtype with a `JournalStoreRefusal` reason and,
-for undefined or unsupported outcomes, integer `Outcome`. Host trigger result sets can reach these guards.
+for undefined or unsupported outcomes, integer `Outcome`. `BatchResultMalformed` refuses malformed result shapes,
+value types and trailing result sets after Applied or Replayed, so success requires the complete expected
+protocol, including replay receipt sets. Nullable outcome payloads accept SQL literal NULL values regardless of
+metadata type. Host trigger result sets can reach these guards.
 `BatchStreamVanished` uses the same state carrier when a same-transaction trigger removes a validated head.
 The provider README names their identifiers.
 

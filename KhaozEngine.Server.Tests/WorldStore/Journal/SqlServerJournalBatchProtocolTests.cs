@@ -14,6 +14,7 @@ public sealed class SqlServerJournalBatchProtocolTests
     [SqlServerTheory]
     [InlineData("SELECT 0, 0, NULL, NULL, NULL, NULL WHERE 1 = 0;", JournalStoreRefusal.BatchOutcomeMissing)]
     [InlineData("SELECT 99, 0, NULL, NULL, NULL, NULL;", JournalStoreRefusal.BatchOutcomeUndefined)]
+    [InlineData("SELECT 3, 0, NULL, NULL, NULL, NULL;", JournalStoreRefusal.BatchResultMalformed)]
     [InlineData("SELECT 7, 0, NULL, NULL, NULL, NULL;", JournalStoreRefusal.BatchOutcomeUnsupported)]
     [InlineData("SELECT 5, 0, NULL, NULL, NULL, NULL;", JournalStoreRefusal.BatchProjectionLimitIncomplete)]
     [InlineData("SELECT 3, 0, NULL, NULL, NULL, NULL; SELECT 0 WHERE 1 = 0;", JournalStoreRefusal.ReplayedOperationMissing)]
@@ -63,8 +64,10 @@ public sealed class SqlServerJournalBatchProtocolTests
             await ExecuteAsync(scope.ConnectionString, "DROP TRIGGER IF EXISTS dbo.host_journal_batch_fault; DROP TABLE dbo.host_journal_batch_probe;");
         }
     }
-    [SqlServerFact]
-    public async Task Trigger_deleted_stream_refuses_the_head_update_and_restores_all_content()
+    [SqlServerTheory]
+    [InlineData(false, JournalStoreRefusal.BatchStreamVanished)]
+    [InlineData(true, JournalStoreRefusal.BatchResultMalformed)]
+    public async Task Trigger_deleted_stream_refuses_the_batch_and_restores_all_content(bool spoofSuccess, JournalStoreRefusal reason)
     {
         // W7-B18b: serializable locks do not stop a trigger in this same transaction.
         using var scope = new Task6SqlServerScope();
@@ -74,7 +77,7 @@ public sealed class SqlServerJournalBatchProtocolTests
         await ExecuteAsync(scope.ConnectionString, "CREATE TABLE dbo.host_journal_batch_probe (value int NOT NULL);");
         try
         {
-            await ExecuteAsync(scope.ConnectionString, """
+            await ExecuteAsync(scope.ConnectionString, $"""
                 CREATE TRIGGER dbo.host_journal_batch_fault ON dbo.journal_event AFTER INSERT AS
                 BEGIN
                     SET NOCOUNT ON;
@@ -84,13 +87,14 @@ public sealed class SqlServerJournalBatchProtocolTests
                     DELETE o FROM dbo.journal_operation_stream o JOIN inserted i ON i.stream_key = o.stream_key;
                     DELETE e FROM dbo.journal_event e JOIN inserted i ON i.stream_key = e.stream_key;
                     DELETE s FROM dbo.journal_stream s JOIN inserted i ON i.stream_key = s.stream_key;
+                    {(spoofSuccess ? "SELECT 1, 0, NULL, NULL, NULL, NULL;" : string.Empty)}
                 END;
                 """);
             string before = await SqlServerJournalSnapshot.CaptureAsync(scope.ConnectionString);
             var commit = Commit(3, 1, [3], 3, Projection("bag", 3));
             var refused = await Assert.ThrowsAsync<JournalStoreStateException>(() => store.CommitAsync(commit));
             Assert.IsAssignableFrom<InvalidOperationException>(refused);
-            Assert.Equal(JournalStoreRefusal.BatchStreamVanished, refused.Reason);
+            Assert.Equal(reason, refused.Reason);
             Assert.Null(refused.Outcome);
             Assert.Equal(before, await SqlServerJournalSnapshot.CaptureAsync(scope.ConnectionString));
             await ExecuteAsync(scope.ConnectionString, "DROP TRIGGER dbo.host_journal_batch_fault;");

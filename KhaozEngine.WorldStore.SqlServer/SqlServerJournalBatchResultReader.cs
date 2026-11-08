@@ -16,7 +16,15 @@ internal static class SqlServerJournalBatchResultReader
         // Host triggers can emit result sets before the batch protocol, even inside its transaction.
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             throw new JournalStoreStateException(JournalStoreRefusal.BatchOutcomeMissing, "SQL Server mutation journal write batch returned no outcome.");
+        if (reader.FieldCount == 0 || reader.IsDBNull(0) || reader.GetFieldType(0) != typeof(int))
+            throw Malformed();
         var outcome = (SqlServerJournalWriteOutcome)reader.GetInt32(0);
+        if (!Enum.IsDefined(outcome))
+            throw new JournalStoreStateException(JournalStoreRefusal.BatchOutcomeUndefined, $"SQL Server mutation journal write batch reported outcome '{(int)outcome}'.") { Outcome = (int)outcome };
+        if (reader.FieldCount != 6 || reader.IsDBNull(1) || reader.GetFieldType(1) != typeof(int)
+            || !HasNullableType(reader, 2, typeof(string)) || !HasNullableType(reader, 3, typeof(int))
+            || !HasNullableType(reader, 4, typeof(long)) || !HasNullableType(reader, 5, typeof(long)))
+            throw Malformed();
         int lockResult = reader.GetInt32(1);
         string? limitStream = await reader.IsDBNullAsync(2, cancellationToken).ConfigureAwait(false)
             ? null
@@ -24,11 +32,13 @@ internal static class SqlServerJournalBatchResultReader
         JournalStoreRefusal? limitReason = reader.IsDBNull(3) ? null : (JournalStoreRefusal)reader.GetInt32(3);
         long? limitActual = reader.IsDBNull(4) ? null : reader.GetInt64(4);
         long? limitMaximum = reader.IsDBNull(5) ? null : reader.GetInt64(5);
-        if (!Enum.IsDefined(outcome))
-            throw new JournalStoreStateException(JournalStoreRefusal.BatchOutcomeUndefined, $"SQL Server mutation journal write batch reported outcome '{(int)outcome}'.") { Outcome = (int)outcome };
         JournalCommitReceipt? receipt = outcome == SqlServerJournalWriteOutcome.Replayed
             ? await ReadReplayReceiptAsync(reader, operationId, cancellationToken).ConfigureAwait(false)
             : null;
+        // Refusals and conflicts keep their rollback path, including incomplete projection limits.
+        if (outcome is SqlServerJournalWriteOutcome.Applied or SqlServerJournalWriteOutcome.Replayed
+            && await reader.NextResultAsync(cancellationToken).ConfigureAwait(false))
+            throw Malformed();
         return new SqlServerJournalWriteResult(outcome, lockResult, limitStream, limitReason, limitActual, limitMaximum, receipt);
     }
 
@@ -40,6 +50,9 @@ internal static class SqlServerJournalBatchResultReader
         if (!await reader.NextResultAsync(cancellationToken).ConfigureAwait(false)
             || !await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             throw Corrupt(JournalStoreRefusal.ReplayedOperationMissing, Array.Empty<string>(), "Replayed journal operation row could not be read inside its transaction.", operationId);
+        if (!HasShape(reader, typeof(string), typeof(int), typeof(byte[]), typeof(byte[]), typeof(DateTimeOffset))
+            || HasNull(reader))
+            throw Malformed();
         string resultSchema = reader.GetString(0);
         int resultSchemaVersion = reader.GetInt32(1);
         byte[] resultData = reader.GetFieldValue<byte[]>(2);
@@ -48,9 +61,14 @@ internal static class SqlServerJournalBatchResultReader
 
         if (!await reader.NextResultAsync(cancellationToken).ConfigureAwait(false))
             throw Corrupt(JournalStoreRefusal.ReplayedStreamsMissing, Array.Empty<string>(), "Replayed journal operation streams could not be read inside its transaction.", operationId);
+        if (!HasShape(reader, typeof(string), typeof(long), typeof(long), typeof(int)))
+            throw Malformed();
         var ranges = new List<JournalStreamVersionRange>();
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (HasNull(reader)) throw Malformed();
             ranges.Add(new JournalStreamVersionRange(reader.GetString(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt32(3)));
+        }
 
         string[] streamKeys = ranges.Select(value => value.StreamKey).ToArray();
         if (!JournalCanonicalizer.VerifySha256(resultData, resultChecksum))
@@ -65,6 +83,27 @@ internal static class SqlServerJournalBatchResultReader
             resultChecksum,
             isReplay: true);
     }
+
+    private static bool HasNullableType(DbDataReader reader, int ordinal, Type type)
+        => reader.IsDBNull(ordinal) || reader.GetFieldType(ordinal) == type;
+
+    private static bool HasShape(DbDataReader reader, params Type[] types)
+    {
+        if (reader.FieldCount != types.Length) return false;
+        for (int ordinal = 0; ordinal < types.Length; ordinal++)
+            if (reader.GetFieldType(ordinal) != types[ordinal]) return false;
+        return true;
+    }
+
+    private static bool HasNull(DbDataReader reader)
+    {
+        for (int ordinal = 0; ordinal < reader.FieldCount; ordinal++)
+            if (reader.IsDBNull(ordinal)) return true;
+        return false;
+    }
+
+    private static JournalStoreStateException Malformed()
+        => new(JournalStoreRefusal.BatchResultMalformed, "SQL Server mutation journal write batch returned a malformed result.");
 
     internal static JournalStoreException ProjectionLimitFailure(SqlServerJournalWriteResult batch)
     {

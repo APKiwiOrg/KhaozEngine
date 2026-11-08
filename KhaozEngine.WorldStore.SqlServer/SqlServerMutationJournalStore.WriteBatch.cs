@@ -40,9 +40,8 @@ public sealed partial class SqlServerMutationJournalStore
         {
             SqlServerJournalWriteOutcome.ApplicationLock => SqlServerJournalSchema.ApplicationLockFailure(batch.LockResult),
             SqlServerJournalWriteOutcome.ProjectionLimit => SqlServerJournalBatchResultReader.ProjectionLimitFailure(batch),
-            // The serializable head locks exclude concurrent deletion after validation.
             SqlServerJournalWriteOutcome.StreamVanished =>
-                new InvalidOperationException("Validated journal stream disappeared inside its transaction."),
+                new JournalStoreStateException(JournalStoreRefusal.BatchStreamVanished, "Validated journal stream disappeared inside its transaction."),
             _ => new JournalStoreStateException(JournalStoreRefusal.BatchOutcomeUnsupported,
                 $"SQL Server mutation journal write batch reported an unsupported outcome '{batch.Outcome}'.") { Outcome = (int)batch.Outcome },
         };

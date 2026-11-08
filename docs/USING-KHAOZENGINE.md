@@ -28327,6 +28327,7 @@ non-provider commit failure with confirmed rollback. Missing replay results reta
 `JournalStoreException` corruption dimensions and carry `OperationId`. Batch protocol refusals use
 `JournalStoreStateException`, an `InvalidOperationException` subtype with a `JournalStoreRefusal` reason and,
 for undefined or unsupported outcomes, integer `Outcome`. Host trigger result sets can reach these guards.
+`BatchStreamVanished` uses the same state carrier when a same-transaction trigger removes a validated head.
 The provider README names their identifiers.
 
 SQLite schema reasons also carry `RequiredMigration` (`sqlite-journal-v3-row-timestamps`), with actual and supported

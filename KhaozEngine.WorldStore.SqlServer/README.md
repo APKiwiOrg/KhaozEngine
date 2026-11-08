@@ -252,7 +252,10 @@ which retains the `InvalidOperationException` catch contract. Its `Reason` is `B
 `BatchOutcomeUndefined`, `BatchOutcomeUnsupported` or `BatchProjectionLimitIncomplete`. Undefined and unsupported
 outcomes carry integer `Outcome`. Missing replay rows and stream result sets retain `JournalStoreException`,
 `CorruptData`, `CommittedDataUnreadable`, `WholeStore`, and empty `StreamKeys`. Their `OperationId` identifies the
-requested replay. Each refusal rolls back the write, including host trigger writes.
+requested replay. `BatchStreamVanished` uses the same `JournalStoreStateException` carrier without additional
+identifiers when a previously validated stream head cannot be updated. Serializable locks do not stop a trigger
+in that transaction from deleting the stream and its dependants. Each refusal rolls back the write, including
+host trigger writes.
 
 The [core refusal table](../KhaozEngine.WorldStore/README.md#refusals) lists every shared runtime member and its
 identifiers. Replacement verification checks version, requested data, requested checksum and checksum validity in

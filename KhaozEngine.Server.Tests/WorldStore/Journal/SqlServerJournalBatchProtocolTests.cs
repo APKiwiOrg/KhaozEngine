@@ -63,4 +63,43 @@ public sealed class SqlServerJournalBatchProtocolTests
             await ExecuteAsync(scope.ConnectionString, "DROP TRIGGER IF EXISTS dbo.host_journal_batch_fault; DROP TABLE dbo.host_journal_batch_probe;");
         }
     }
+    [SqlServerFact]
+    public async Task Trigger_deleted_stream_refuses_the_head_update_and_restores_all_content()
+    {
+        // W7-B18b: serializable locks do not stop a trigger in this same transaction.
+        using var scope = new Task6SqlServerScope();
+        var store = scope.Open();
+        await store.InitializeAsync(Initialization(1, 7, Projection("bag", 1)));
+        await store.CommitAsync(Commit(2, 0, [2], 2, Projection("bag", 2)));
+        await ExecuteAsync(scope.ConnectionString, "CREATE TABLE dbo.host_journal_batch_probe (value int NOT NULL);");
+        try
+        {
+            await ExecuteAsync(scope.ConnectionString, """
+                CREATE TRIGGER dbo.host_journal_batch_fault ON dbo.journal_event AFTER INSERT AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    INSERT INTO dbo.host_journal_batch_probe VALUES (1);
+                    DELETE p FROM dbo.journal_projection p JOIN inserted i ON i.stream_key = p.stream_key;
+                    DELETE s FROM dbo.journal_snapshot s JOIN inserted i ON i.stream_key = s.stream_key;
+                    DELETE o FROM dbo.journal_operation_stream o JOIN inserted i ON i.stream_key = o.stream_key;
+                    DELETE e FROM dbo.journal_event e JOIN inserted i ON i.stream_key = e.stream_key;
+                    DELETE s FROM dbo.journal_stream s JOIN inserted i ON i.stream_key = s.stream_key;
+                END;
+                """);
+            string before = await SqlServerJournalSnapshot.CaptureAsync(scope.ConnectionString);
+            var commit = Commit(3, 1, [3], 3, Projection("bag", 3));
+            var refused = await Assert.ThrowsAsync<JournalStoreStateException>(() => store.CommitAsync(commit));
+            Assert.IsAssignableFrom<InvalidOperationException>(refused);
+            Assert.Equal(JournalStoreRefusal.BatchStreamVanished, refused.Reason);
+            Assert.Null(refused.Outcome);
+            Assert.Equal(before, await SqlServerJournalSnapshot.CaptureAsync(scope.ConnectionString));
+            await ExecuteAsync(scope.ConnectionString, "DROP TRIGGER dbo.host_journal_batch_fault;");
+            Assert.Equal(JournalCommitStatus.Applied, (await store.CommitAsync(commit)).Status);
+        }
+        finally
+        {
+            await ExecuteAsync(scope.ConnectionString, "DROP TRIGGER IF EXISTS dbo.host_journal_batch_fault; DROP TABLE dbo.host_journal_batch_probe;");
+        }
+    }
+
 }

@@ -117,4 +117,6 @@ public enum JournalStoreRefusal
     ReplayedOperationMissing,
     /// <summary>The SQL Server replay result omitted its stream result set.</summary>
     ReplayedStreamsMissing,
+    /// <summary>The SQL Server batch could not update a previously validated stream head.</summary>
+    BatchStreamVanished,
 }

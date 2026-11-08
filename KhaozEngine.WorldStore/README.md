@@ -263,7 +263,9 @@ Expected races use result statuses. Provider, transport, schema, and corruption 
 `BatchOutcomeMissing` names a missing outcome row, `BatchOutcomeUndefined` names an undefined outcome and carries
 its integer `Outcome`, and `BatchOutcomeUnsupported` names an outcome unsupported by the current operation with
 its integer `Outcome`. `BatchProjectionLimitIncomplete` names an incomplete limit payload. These checks also
-cover result sets emitted by host triggers inside the transaction.
+cover result sets emitted by host triggers inside the transaction. `BatchStreamVanished` names a validated head
+that the SQL Server batch could not update. A same-transaction host trigger can remove it despite the head lock.
+This refusal carries no additional identifier and rolls back the trigger's changes with the rest of the write.
 
 `JournalStoreException.Reason` is a nullable `JournalStoreRefusal` beside `Kind`, `Certainty`, `Scope` and
 `StreamKeys`. The legacy constructor remains available for consumer-built exceptions and leaves `Reason` null.

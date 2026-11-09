@@ -157,9 +157,14 @@ public sealed class MapPrefabAnnotationTests
             what == "group" ? new[] { PrefabFixtures.World(MapPrefabChildKind.RoofGroup, "missing") } : [], 3) }, [],
             what == "light-owner" ? new[] { new MapLocalLightDoc(1, "test-light", PrefabFixtures.World(MapPrefabChildKind.Placement, "missing"), Vector3.Zero, Vector3.One, 1, 2, false) } : [], []);
         Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(f));
-        // Remove only the invalid reference, retaining the same kind of link or light in the control.
+        // Correct only the invalid reference, retaining the same kind of link or light in the control.
+        var validRooms = what is "room" or "non-room" ? new[] { PrefabFixtures.World(MapPrefabChildKind.Record, "a/room") } : Array.Empty<MapPrefabReference>();
+        var validGroups = what == "group" ? new[] { PrefabFixtures.World(MapPrefabChildKind.RoofGroup, "declared-rooms") } : Array.Empty<MapPrefabReference>();
+        var declaredGroups = what == "group"
+            ? new[] { new MapRoofGroupDoc("declared-rooms", new[] { PrefabFixtures.World(MapPrefabChildKind.Record, "a/room") }) }
+            : Array.Empty<MapRoofGroupDoc>();
         f.Document.BuildingIntent = new(1, new[] { new MapRoofLinkDoc("test",
-            PrefabFixtures.World(MapPrefabChildKind.Placement, "a/roof"), [], [], 3) }, [],
+            PrefabFixtures.World(MapPrefabChildKind.Placement, "a/roof"), validRooms, validGroups, 3) }, declaredGroups,
             what == "light-owner" ? new[] { new MapLocalLightDoc(1, "test-light",
                 PrefabFixtures.World(MapPrefabChildKind.Placement, "a/item"), Vector3.Zero, Vector3.One, 1, 2, false) } : [], []);
         Assert.Contains(PrefabFixtures.Effective(f).BuildingIntent.RoofLinks, link => link.Id == "test");

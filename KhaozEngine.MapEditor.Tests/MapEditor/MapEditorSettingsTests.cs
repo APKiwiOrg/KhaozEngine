@@ -412,7 +412,10 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(options.RenderDistance, scene.ViewportRenderDistance);
             Assert.Equal(options.RenderDistance.FarClip, scene.Camera.FarPlane);
             Assert.Equal(options.EditorWindowRadius, scene.EffectiveWindowRadius);
-            Assert.Null(scene.RebuiltProfile);   // nothing changed, so nothing was rebuilt
+
+            scene.OnSettingsChanged();           // an apply with nothing changed
+
+            Assert.Null(scene.RebuiltProfile);   // so nothing is rebuilt
         }
 
         [Fact]
@@ -580,8 +583,8 @@ namespace KhaozEngine.Tests.MapEditor
         public void SettingsMenu_RowsReadAndWriteTheLiveSettings()
         {
             var settings = new EditorSettings();
-            bool notified = false;
-            var dialog = new MapEditorSettingsDialog(settings, () => notified = true);
+            int notifications = 0;
+            var dialog = new MapEditorSettingsDialog(settings, () => notifications++);
 
             ChoiceRow distance = ChoiceRowByLabel(dialog.Grid, "Render distance");
             Assert.Equal("Base", distance.Selected);
@@ -593,7 +596,7 @@ namespace KhaozEngine.Tests.MapEditor
             settings.RenderDistanceMultiplier = 4f;
             dialog.ResetButton.OnClick!.Invoke();
             Assert.Equal(new EditorSettings().RenderDistanceMultiplier, settings.RenderDistanceMultiplier);
-            Assert.True(notified);   // Reset notifies the host to persist and re-apply the reset settings
+            Assert.Equal(1, notifications);   // the documented once, which is where the host persists and re-applies
         }
 
         [Fact]

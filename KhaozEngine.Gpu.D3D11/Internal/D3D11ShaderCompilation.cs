@@ -17,12 +17,15 @@ internal sealed class D3D11ShaderCompilation<T>
     D3D11ShaderCompilation(Func<T> compile, TaskScheduler scheduler)
     {
         this.scheduler = scheduler;
+        // Counted before it is queued, so a wait for idle cannot observe the gap.
+        D3D11ShaderCompileWorkers.Enter();
         result = Task.Factory.StartNew(() =>
         {
             // A discarded shader may never join. Keep failures as data so abandonment cannot leave an
             // unobserved task exception, and rethrow the original exception and worker stack at first use.
             try { return new Outcome(compile(), null); }
             catch (Exception ex) { return new Outcome(default!, ExceptionDispatchInfo.Capture(ex)); }
+            finally { D3D11ShaderCompileWorkers.Exit(); }
         }, CancellationToken.None, TaskCreationOptions.DenyChildAttach, scheduler);
     }
 
@@ -66,8 +69,12 @@ internal sealed class D3D11ShaderCompilation<T>
         }
         if (result.IsCompletedSuccessfully)
             return new(Task.FromResult(Project(result.GetAwaiter().GetResult())), scheduler);
-        return new(result.ContinueWith(completed => Project(completed.GetAwaiter().GetResult()),
-            CancellationToken.None, TaskContinuationOptions.DenyChildAttach, scheduler), scheduler);
+        D3D11ShaderCompileWorkers.Enter();
+        return new(result.ContinueWith(completed =>
+        {
+            try { return Project(completed.GetAwaiter().GetResult()); }
+            finally { D3D11ShaderCompileWorkers.Exit(); }
+        }, CancellationToken.None, TaskContinuationOptions.DenyChildAttach, scheduler), scheduler);
     }
 
     internal T Join()
@@ -85,4 +92,36 @@ internal static class D3D11ShaderCompileWorkers
 {
     internal static readonly TaskScheduler Scheduler = new ConcurrentExclusiveSchedulerPair(
         TaskScheduler.Default, Math.Max(1, Environment.ProcessorCount - 1)).ConcurrentScheduler;
+
+    static readonly object activityGate = new();
+    static int active;
+
+    internal static void Enter()
+    {
+        lock (activityGate) active++;
+    }
+
+    internal static void Exit()
+    {
+        lock (activityGate)
+            if (--active == 0) Monitor.PulseAll(activityGate);
+    }
+
+    /// <summary>Waits until no compile or dependent preparation is queued or running. A discarded shader's compile
+    /// is never joined, so this is the only completion point for it. A test uses it before measuring allocation,
+    /// because these workers allocate on other threads. Throws when <paramref name="limit"/> passes first.</summary>
+    internal static void WaitForIdleForTests(TimeSpan limit)
+    {
+        lock (activityGate)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (active != 0)
+            {
+                TimeSpan left = limit - clock.Elapsed;
+                if (left <= TimeSpan.Zero)
+                    throw new TimeoutException($"{active} D3D11 shader compiles were still outstanding after {limit}.");
+                Monitor.Wait(activityGate, left);
+            }
+        }
+    }
 }

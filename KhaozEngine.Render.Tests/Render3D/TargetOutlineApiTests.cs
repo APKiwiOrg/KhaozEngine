@@ -30,6 +30,11 @@ public sealed class TargetOutlineApiTests
         scene.Begin();
         Assert.Throws<ArgumentException>(() =>
             scene.DrawMeshOutline(group, mesh, Matrix4x4.Identity));
+        MeshOutlineGroup next = scene.BeginMeshOutline(Color.White, 3f, MeshOutlineOcclusion.None);
+        scene.DrawMeshOutline(next, mesh, Matrix4x4.Identity);
+        Assert.Equal(1, scene.MeshOutlineGroupCount);
+        Assert.Equal(1, scene.MeshOutlinePartCount);
+        Assert.Equal(MeshOutlineOcclusion.None, scene.MeshOutlineOcclusionAt(next.Index));
     }
 
     [Fact]

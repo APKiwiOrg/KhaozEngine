@@ -95,6 +95,8 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
     internal readonly IGpuFence[] SubmittedFences = new IGpuFence[8];
     internal int Submissions, Waits, CompletionCount;
     internal bool FailSubmit;
+    internal bool CaptureCommandTrace = true;
+    internal IGpuResourceFactory? ProgramFactory;
     internal Action<IGpuFence>? OnSubmittedFence { get; set; }
     internal Func<uint, IGpuTimestampPool>? PoolFactory { get; set; }
     internal GpuCapabilities Features { get; set; } = new(false, true, supportsCompletionFences: true) { SupportsTimestamps = true };
@@ -126,7 +128,7 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
         var pool = new GpuPerfTimestampTestPool(capacity) { Owners = Fences }; Pools.Add(pool); return pool;
     }
     public IGpuFence CreateFence() { var fence = new SubmissionTestFence(); Fences.Add(fence); return fence; }
-    public IGpuCommandList CreateCommandList() => new GpuPerfTimestampTestCommands { Trace = op => Trace?.Invoke(op) };
+    public IGpuCommandList CreateCommandList() => new GpuPerfTimestampTestCommands { Trace = CaptureCommandTrace ? op => Trace?.Invoke(op) : null };
     public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => new SubmissionTestBuffer(d.SizeInBytes, d.Usage);
     public IGpuTexture CreateTexture(in GpuTextureDescription d) => _inner.Factory.CreateTexture(d);
     public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) => _inner.Factory.CreateFramebuffer(depth, colour);
@@ -134,9 +136,13 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
     public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => _inner.Factory.CreateResourceLayout(d);
     public IGpuSampler CreateSampler(in GpuSamplerDescription d) => _inner.Factory.CreateSampler(d);
     public IGpuShaderSet CreateShadersFromSpirv(string v, string f) => _inner.Factory.CreateShadersFromSpirv(v, f);
-    public IGpuComputeShader CreateComputeShaderFromSpirv(string c) => _inner.Factory.CreateComputeShaderFromSpirv(c);
+    public IGpuShaderSet CreateShadersFromSpirv(string v, string f, GpuShaderCompileOptions options)
+        => (ProgramFactory ?? _inner.Factory).CreateShadersFromSpirv(v, f, options);
+    public IGpuComputeShader CreateComputeShaderFromSpirv(string c) => (ProgramFactory ?? _inner.Factory).CreateComputeShaderFromSpirv(c);
+    public IGpuComputeShader CreateComputeShaderFromSpirv(string c, GpuShaderCompileOptions options)
+        => (ProgramFactory ?? _inner.Factory).CreateComputeShaderFromSpirv(c, options);
     public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d) => _inner.Factory.CreateGraphicsPipeline(d);
-    public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => _inner.Factory.CreateComputePipeline(d);
+    public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => (ProgramFactory ?? _inner.Factory).CreateComputePipeline(d);
     public bool TryReadBuffer(IGpuBuffer staging, IGpuFence completion, uint offsetBytes, Span<byte> destination)
     {
         if (!completion.Signaled) return false;

@@ -1360,7 +1360,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
 - `Scene3D.BeginMeshOutline(Color color, float widthPixels)` plus
   `DrawMeshOutline(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world)` queue one screen-space target
   border across any number of independently transformed parts. The group is valid for its scene and current
-  frame only. Its full alpha-cutout-aware projected union rejects interior strokes, while opaque scene depth
+  frame only. Warm frames reuse group and part storage, with growth reserved for new population or part peaks.
+  Its full alpha-cutout-aware projected union rejects interior strokes, while opaque scene depth
   suppresses occluder cuts and border leaks onto nearer geometry. Width is 0.5 to 8 physical output pixels and
   stays fixed across model size, camera distance, MSAA and render scale. The one-part `DrawMeshOutline(mesh,
   world, color, widthPixels)` overload creates its own group. Mask targets allocate lazily. The older

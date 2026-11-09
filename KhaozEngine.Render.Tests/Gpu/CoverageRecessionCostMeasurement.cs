@@ -84,8 +84,9 @@ internal static class CoverageRecessionCostMeasurement
         { Stage = stage, GpuMicroseconds = Stats(Samples.Select(s => s.StageGpuMicroseconds[i].GpuMicroseconds)) }).ToArray();
     }
 
-    sealed class Driver : IDisposable
+    internal sealed class Driver : IDisposable
     {
+        internal (long Preparation, long Opening, long Encoding, long Submission) LastAllocation { get; private set; }
         readonly IGpuDevice device;
         readonly CoverageRecessionNativeScene scene;
         readonly string layout;
@@ -201,6 +202,7 @@ internal static class CoverageRecessionCostMeasurement
                 submitBytes = GC.GetAllocatedBytesForCurrentThread() - allocation;
             }
             allocated[id] = prepareBytes + openingBytes + encodeBytes + submitBytes;
+            LastAllocation = (prepareBytes, openingBytes, encodeBytes, submitBytes);
             dispatches[id] = commands[slot].Tally[GpuCommandKind.Dispatch];
             draws[id] = commands[slot].Tally[GpuCommandKind.Draw] + commands[slot].Tally[GpuCommandKind.DrawIndexed];
             if (carry)

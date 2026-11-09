@@ -8,6 +8,15 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-10
 
+- Select static evidence through spatial owner and mesh bounds before expanding selected geometry (#1753).
+  Local arrival certification can skip excluded ground meshes without transforming them. Evidence coordinates,
+  output order, feature limits and refusal outcomes stay unchanged.
+- Certify supported slope arrivals with one immutable triangle, clearance and dry-medium capture (#1754).
+  Trials keep the existing float search, drawn triangle ties, rounded support heights and shared contact kernel.
+  Steep, obstructed, wet, unproved and revoked regions retain the exact live solver.
+- Preserve actual water trace operations in certified flat and sloped arrival trials with a supplied field
+  (#1754). A successful dry enclosure and point proof no longer hide a shorter trace's precision refusal.
+  The flat arrival water trace gap released in 23.4.0 is fixed. Intrinsically dry flat trials retain their algebra.
 - Native Vulkan extension loading leaves Silk's layer filter unset, restoring the debug-utils messenger, surface and
   swapchain lookups (#1539). `VulkanValidationRefusal` gains `MessengerUnavailable`, so validation-enabled CI refuses
   a missing messenger instead of silently passing without message capture. Non-CI sessions stay warn-only. A native
@@ -20,15 +29,6 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-09
 
-- Select static evidence through spatial owner and mesh bounds before expanding selected geometry (#1753).
-  Local arrival certification can skip excluded ground meshes without transforming them. Evidence coordinates,
-  output order, feature limits and refusal outcomes stay unchanged.
-- Certify supported slope arrivals with one immutable triangle, clearance and dry-medium capture (#1754).
-  Trials keep the existing float search, drawn triangle ties, rounded support heights and shared contact kernel.
-  Steep, obstructed, wet, unproved and revoked regions retain the exact live solver.
-- Preserve actual water trace operations in certified flat and sloped arrival trials with a supplied field
-  (#1754). A successful dry enclosure and point proof no longer hide a shorter trace's precision refusal.
-  The flat path released in 23.4.0 had the same gap. Intrinsically dry flat trials retain their algebra.
 - Contact arrival keeps the certified flat fast path when `GroundMoveContext` has a `clampXz` delegate (#1737).
   Contact never reads that Legacy-only clamp and enforces the world edge through `MovementBoundary`. Swept regions
   that reach the boundary still use the exact solver, and movement and arrival results are unchanged.

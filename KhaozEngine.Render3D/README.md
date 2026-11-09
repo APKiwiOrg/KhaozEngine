@@ -1932,9 +1932,9 @@ The `2e-5` direction tolerance is conditional on the well-conditioned forward-er
 Degenerate-band CPU/GPU directions need only be finite, with identical positions.
 CPU non-degenerate arithmetic stays exact and uses the same local recovery policy. Sample verification
 no longer creates holes solely for direction problems. Exact geometry certification, whole-skin depth,
-table layout, five stages, slots, overflow preflight and the 15 percent cost limit are unchanged.
-Earlier descriptor identities require rebuilding. None have shipped. Native acceptance and any saving
-remain unproven until separately approved runs.
+table layout, five stages, slots and overflow preflight are unchanged. The cost limit is at most 1.3 ms
+added GPU time at 32 actors on a Tesla T4. Earlier descriptor identities require rebuilding. None have
+shipped. Native acceptance remains unproven until separately approved runs.
 Digest producers hash numeric inputs explicitly in
 little-endian order, never as native-layout struct bytes. This asset codec stores digests rather
 than deriving or verifying them against source content.

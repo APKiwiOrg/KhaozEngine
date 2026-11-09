@@ -31,9 +31,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   current pose, authored direction or a fixed unit direction. A rare degenerate case shows a locally odd
   shaded spot instead of the whole character changing pose. Only position failures publish the whole
   uncovered actor. CPU sample verification no longer rejects solely for direction problems. Exact geometry
-  and depth gates, tangent rules, five stages, slots, history and the 15 percent cost limit are unchanged.
+  and depth gates, tangent rules, five stages, slots and history are unchanged. The cost limit is at most
+  1.3 ms added GPU time at 32 actors on a Tesla T4.
   The `2e-5` direction comparison is conditional on a documented non-degenerate error envelope. Earlier
-  unshipped descriptors require rebuilding. Native correctness and any GPU saving need approved runs.
+  unshipped descriptors require rebuilding. Native correctness needs approved runs.
 - `GpuShaderCompileOptions` adds an opt-in precise compute/vertex math policy without changing default
   compilation or cache identities. Coverage requests that policy. A compiled public consumer example
   and the living equipment coverage guide document complete descriptors, fallback and resource lifetime.

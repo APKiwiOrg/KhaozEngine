@@ -46,6 +46,7 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
                 actors,
                 addedCpuPreparationMicroseconds = CoverageRecessionCostMeasurement.Stats(covered.Samples.Zip(baseline.Samples,
                     (c, b) => c.CpuPreparationMicroseconds - b.CpuPreparationMicroseconds)),
+                addedGpuMicroseconds = covered.GpuMicroseconds.Median - baseline.GpuMicroseconds.Median,
                 aggregateGpuOverheadPercent = (covered.GpuMicroseconds.Median / baseline.GpuMicroseconds.Median - 1) * 100,
             };
         }).ToArray();
@@ -87,7 +88,8 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
         Assert.All(rows, row => Assert.Equal(0, row.WarmManagedBytes.Max));
         var full = deltas.Single(d => d.actors == 32);
         Assert.True(full.addedCpuPreparationMicroseconds.Max <= 2000);
-        Assert.True(full.aggregateGpuOverheadPercent <= 15);
+        // An absolute budget. The fixture's baseline scene is light, so a share of it would not describe a real frame.
+        Assert.True(full.addedGpuMicroseconds <= 1300);
     }
 
     static int Extent(string name, int fallback)

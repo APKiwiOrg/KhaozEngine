@@ -75,8 +75,8 @@ most `2^-20`, and underflow absolute errors at most `2^-126`. Normalization cont
 restriction, not a universal palette, mesh or device guarantee. Cancellation or a small determinant can
 violate that envelope even with NoContraction. In the degenerate band CPU/GPU directions may differ.
 Require finite directions and identical position words there. Wrong normal, tangent and stale-direction
-controls still reject under the tight non-degenerate tolerance. Native accuracy and savings remain
-unproven until approved device and T4 runs. The 15 percent aggregate cost limit is unchanged.
+controls still reject under the tight non-degenerate tolerance. Native accuracy remains unproven until
+approved device runs. The cost limit is at most 1.3 ms added GPU time at 32 actors on a Tesla T4.
 
 The CPU reference keeps its exact non-degenerate direction arithmetic and adopts the same local
 recovery policy. Sample verification no longer creates a hole solely because a direction failed.

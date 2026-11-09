@@ -36,6 +36,12 @@ Window failures carry `Budget`, `ProcessBytes`, `ThreadBytes`, `OtherThreadBytes
 | `RegionEnded` | The no-GC region ended before the window completed |
 
 Nested starts are rejected before calling the runtime so they cannot invalidate an existing region.
+
+`AllocationRegion.BeforeWindow` is a completion wait that runs before the runtime is touched. Another thread
+allocating while a region is being established can start a background collection that loses the region with no
+collection counted in the window, which reports as `RegionEnded`. An assembly that owns process-wide background work
+registers a wait for it. Projects that reference the D3D11 backend link `D3D11CompileQuiesce.cs`, which waits for
+background shader compiles, since nothing joins the compile of a shader that is created and never used.
 The process-wide budget is checked explicitly even when the runtime grants additional space.
 No measurement retries its workload, keeps the smallest of several readings or accepts an
 interrupted counter.

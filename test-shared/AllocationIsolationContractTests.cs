@@ -23,6 +23,21 @@ public sealed class AllocationIsolationContractTests
     }
 
     [Fact]
+    public void The_background_work_wait_runs_before_the_runtime_region_starts()
+    {
+        Action? registered = AllocationRegion.BeforeWindow;
+        GCLatencyMode? seen = null;
+        AllocationRegion.BeforeWindow = () => seen = GCSettings.LatencyMode;
+        try
+        {
+            using var region = AllocationRegion.Start("background work wait probe");
+        }
+        finally { AllocationRegion.BeforeWindow = registered; }
+        Assert.NotNull(seen);
+        Assert.NotEqual(GCLatencyMode.NoGCRegion, seen!.Value);
+    }
+
+    [Fact]
     public void A_copy_of_this_assembly_in_another_load_context_sees_the_same_isolation()
     {
         // Some measurements run in a fresh load context to reset statics, as AmbientFacadeAllocationTests does.

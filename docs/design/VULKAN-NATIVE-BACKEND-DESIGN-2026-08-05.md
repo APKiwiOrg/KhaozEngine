@@ -1943,6 +1943,14 @@ severity at a controlled point), and `sync` (adds the synchronisation-validation
 `VkValidationFeaturesEXT`). Object names are set through the debug-utils naming call when the messenger is on,
 which is what makes a validation message name a buffer instead of a handle.
 
+Silk's extension lookup takes an optional layer name, not an extension name. The extension type already
+identifies the requested capability. All engine lookups leave the layer filter unset, guarded by a headless
+source sweep (#1539). Every validation-enabled CI instance refuses a missing messenger before publishing
+ACTIVE, while non-CI sessions keep warn-only behavior. The native positive control in
+`VulkanValidationComputeGpuTests` checks one deliberate reserved-flags violation through the real callback,
+pump and strict latch with an isolated recording logger. It is selected by the sync job's Compute filter and
+the full strict suite. Historical zero-message results without a messenger do not prove validation coverage.
+
 Three departures from the incumbent's shape, all of them bugs: `VK_EXT_debug_utils` rather than the
 `VK_EXT_debug_report` it uses, which has been deprecated for six years, no request for the long-removed
 `VK_LAYER_LUNARG_standard_validation`, and the callback LOGS rather than throwing a managed exception and

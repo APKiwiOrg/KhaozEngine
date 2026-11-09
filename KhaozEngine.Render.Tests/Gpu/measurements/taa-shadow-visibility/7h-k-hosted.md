@@ -569,8 +569,9 @@ The production fused/split pair remains byte-identical on WARP. Debug/count colo
 exact. These measurements match round 2's differences, now accepted by the owner's explicit round 3 rule.
 
 The exact vulkan-validation-sync artifact contains one VulkanValidationLogHost producer marker explicitly arming
-KE_VULKAN_VALIDATION='sync', and zero warning or error severity lines. This confirms the producer behind the clean
-validation log. All 625 selected sync tests pass, including 459 Render.Tests cases. The artifact is deleted after
+KE_VULKAN_VALIDATION='sync', and zero warning or error severity lines. The marker confirms host logging was armed,
+not that a native messenger delivered messages. This zero count does not establish clean validation (#1539).
+All 625 selected sync tests pass, including 459 Render.Tests cases. The artifact is deleted after
 reading. Every leg's complete log is read and downloaded logs are deleted after the metrics are extracted.
 
 The closeout changes only this record, its manifest hash and the spec/plan status. All shader programs, generated

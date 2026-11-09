@@ -840,6 +840,21 @@ Linux leg as a whole, so a golden-subset push does not add an apt package it has
 manifest is then CHECKED: a missing layer only WARNs and creates the device anyway, which would leave a
 validation gate passing while validating nothing.
 
+**Every validation-enabled CI instance requires a messenger (#1539).** Instance creation now refuses a
+missing debug-utils messenger when `CI=true` (case-insensitive) or `CI=1`, before announcing validation as
+active. This covers both validation tiers and every shard without depending on log parsing. Validation off
+and non-CI warn-only sessions keep their behavior. Silk's optional extension-lookup string is a layer filter,
+so engine lookups leave it unset. A headless source sweep guards this across the Vulkan backend, including
+the surface and swapchain lookups. Those windowed paths still lack native CI coverage.
+
+`VulkanValidationComputeGpuTests.TheNativeMessenger_ReceivesAControlledValidationError` is the native
+positive control. Its name selects it in the existing sync subset and the full strict suite's Vulkan shard.
+It creates an isolated messenger, deliberately violates the reserved messenger flags rule, and requires that
+one error reach the engine pump. Strict must also latch the same VUID. The established recording logger
+captures this expected error instead of sending it to the suite log. The sync error scan has no exclusions.
+A custom `renderTestFilter` can omit this control from the matrix selection, so include its name when
+requesting a filtered strict proof. The separate sync job retains the control in its fixed subset.
+
 **A dispatch can run the whole matrix with the GPU shader caches OFF** (`disableGpuDiskCache`, default
 false). The three backends' DISK caches are one mechanism, `KhaozEngine.Gpu/Internal/GpuDiskCache`, reached through
 `KE_METAL_MSL_CACHE`, `KE_D3D11_SHADER_CACHE`, `KE_VULKAN_SPIRV_CACHE` and `KE_VULKAN_PIPELINE_CACHE`. Each takes a directory path
@@ -1070,8 +1085,10 @@ PASSED:
   backend's log categories exactly then and leaves the ambient logger unconfigured otherwise
   ([#565](https://github.com/APKiwiOrg/KhaozEngine/issues/565)). The Khronos layer's own output
   (`Validation Error:` / `Validation Warning:`) is written by the layer on its own account and is independent of
-  that sink. One line under the category `VulkanValidationLogHost` is written per armed run, so a log with no
-  validation messages in it can be read as a clean sweep rather than as a lost producer. Both armed test steps
+  that sink. One line under the category `VulkanValidationLogHost` is written per armed run. That marker
+  establishes that the sink was configured, not that a native messenger existed.
+  CI now refuses a missing messenger and the native positive control proves delivery when selected. Older
+  zero-message artifacts without a messenger remain unproven. Both armed test steps
   run at `--logger "console;verbosity=detailed"`, which is what forwards the test host's stdout at all and what
   supplies the `Passed <TestName>` lines the interleaving is measured against.
 - **`vulkan-device-limits-<leg>`** is the `vulkaninfo` dump, which runs without `--summary` on purpose so the
@@ -1205,7 +1222,9 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   only the existing software-Vulkan colour exception. Histories follow colour lifetime and copy once per frame.
   The [amendment 35 proof](design/TEMPORAL-RESOLVE.md#plan-amendments) records per-driver
   accepted tail, rim and grain costs. A Vulkan zero-message count is not independent validation evidence when
-  the loader could not create a `VK_EXT_debug_utils` messenger, even if a status line says ACTIVE and STRICT.
+  the loader could not create a `VK_EXT_debug_utils` messenger, even if a historical status line says ACTIVE
+  and STRICT. CI now refuses that state. The lookup fix and native positive control still need an approved
+  hosted Vulkan run before they establish new native validation evidence.
 - **A texture LOD bias that must hold on every backend is a shader argument, never sampler state.** Metal samplers
   carry no LOD bias (`GpuCapabilities.SamplerLodBias` is false there), so a sampler's `mipLodBias` applies on
   Direct3D 11 and Vulkan and is dropped on Metal (`SamplerLodBiasGpuTests` builds one on every backend).

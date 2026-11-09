@@ -121,7 +121,8 @@ bit mismatches 0 in 4,194,304 cases, with the historical P versus B count 268335
 
 The sync validation artifact was downloaded by its exact name, vulkan-validation-sync. It contains one
 VulkanValidationLogHost producer marker, explicitly arming KE_VULKAN_VALIDATION=sync, and zero warning or error
-severity lines. This confirms the clean-log annotation has an armed producer. The artifact was deleted after
+severity lines. This confirms host logging was armed, not that a native messenger delivered messages. The zero
+count does not establish clean validation (#1539). The artifact was deleted after
 reading. Hosted Metal uses the Apple Paravirtual device, WARP the Microsoft Basic Render Driver and lavapipe
 llvmpipe (LLVM 20.1.2, 256 bits).
 

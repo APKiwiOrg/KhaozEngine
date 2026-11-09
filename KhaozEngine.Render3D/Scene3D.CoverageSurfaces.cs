@@ -31,6 +31,14 @@ public sealed partial class Scene3D
         {
             var p = host.Request;
             if (!p.Published) continue;
+            if (!CoverageHasConsumer(p, host.Bounds.Sphere(p), camera, shadows, cascades, points))
+            {
+                _coverageBatch!.CancelOutput(host);
+                p.Published = false;
+                foreach (var draw in p.Draws)
+                    if (draw is { ShadowOnly: false }) _culledSkinnedInstances++;
+                continue;
+            }
             p.View = ActiveCamera;
             p.PreviousSlot = p.History.Corresponds(p, p.View, _coverageSerial) ? p.History.Committed.Slot : -1;
             p.Surface = _coverageBatch!.Surface(host, p.OutputSlot, p.PreviousSlot);
@@ -80,6 +88,25 @@ public sealed partial class Scene3D
         }
         PrepareCoverageDraws(commands, shadows);
         _coverageEncoded = true;
+    }
+
+    bool CoverageHasConsumer(CoveragePreparation p, in PointShadowCasterSphere sphere,
+        FrustumPlanes camera, bool shadows, int cascades, bool points)
+    {
+        bool visible = !FrustumCulling || camera.IntersectsSphere(sphere.Center, sphere.Radius);
+        for (int slice = 0; slice < p.Draws.Length; slice++)
+        {
+            // Outlines have their own full/visible union. Conservatively retain either outline route.
+            if (p.Outlines[slice] is not null) return true;
+            if (p.Draws[slice] is not { } draw) continue;
+            if (!draw.ShadowOnly && visible) return true;
+            if (!draw.CastsShadows) continue;
+            if (shadows)
+                for (int c = 0; c < cascades; c++)
+                    if (_shadowFrustums[c].IntersectsSphereExceptPlane(sphere.Center - _frameOrigin, sphere.Radius, 4)) return true;
+            if (points && PointRequestCanRetainSkinned(sphere, Post.Quality.Shadows.PointShadows)) return true;
+        }
+        return false;
     }
 
     void DrawSkinnedGeometry(IGpuCommandList commands)

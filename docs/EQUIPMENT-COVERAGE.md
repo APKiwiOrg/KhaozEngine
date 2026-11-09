@@ -204,6 +204,11 @@ Holes can cause visible collar jumps. The consumer owns collar tuning, state-bin
 future alternative presentation. Actor, configuration, view or submitted-frame discontinuities also
 seed correspondence again. Origin rebasing preserves absolute model/surface correspondence.
 
+Before recording carry, the scene cancels an actor's pending surface when no main, cascade, possible
+point-shadow or outline consumer remains. That actor contributes no carry uniforms or dispatch work,
+and its submitted history behaves like a frame with no queued host draw. Outline consumers are retained
+conservatively because they have separate full and visible mask passes.
+
 Zero warm managed allocation requires cold reservations for the fixed actor population, topology,
 equipment, descriptors, renderer bindings and output slots, plus an unchanged warm configuration.
 Equipping, loading, growth, shader/pipeline creation and teardown are cold work and can allocate. A

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Gpu;
+using KhaozEngine.Tests.Gpu;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -11,6 +12,31 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed partial class CoverageSubmittedHistoryTests
 {
+    [Theory]
+    [InlineData(false, 20ul)]
+    [InlineData(true, 20ul)]
+    [InlineData(false, 30ul)]
+    [InlineData(true, 30ul)]
+    public void A_surface_unused_by_every_pass_skips_carry_and_preserves_submitted_history(bool outlineConsumes, ulong key)
+    {
+        // T10-R1. A submitted frame with no surface draw must behave like a frame with no queued host.
+        using var f = new CoveragePublicationFixture();
+        f.Scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
+        f.Begin(); f.Queue(); f.Record(); f.Submit();
+        var previous = f.History;
+        Assert.NotNull(previous.SurfaceToken);
+        f.Begin(); f.Queue(key, outlines: outlineConsumes, shadowOnly: true); f.Record();
+        Assert.Equal(outlineConsumes ? 5 : 0, f.Commands.Tally[GpuCommandKind.Dispatch]);
+        f.Submit();
+        if (outlineConsumes) Assert.Equal(key == 30 ? -1 : 1, f.History.Entry);
+        else Assert.Equal(previous, f.History);
+        var retained = f.History;
+        f.Begin(); f.Queue(); f.Record();
+        Assert.NotEmpty(f.Evidence);
+        Assert.All(f.Evidence, e => Assert.Same(outlineConsumes ? retained.SurfaceToken : e.Surface, e.Previous));
+        f.Submit();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

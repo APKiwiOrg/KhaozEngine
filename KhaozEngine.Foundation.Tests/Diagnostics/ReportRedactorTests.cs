@@ -48,9 +48,7 @@ public sealed class ReportRedactorTests
     public void Default_home_is_the_user_profile()
     {
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (home.Length < 3) return;
-
-        Assert.Equal("~", new ReportRedactor(null).Redact(home));
+        Assert.Equal(home.Length < 3 ? home : "~", new ReportRedactor(null).Redact(home));
     }
 
     [Fact]
@@ -300,6 +298,7 @@ public sealed class ReportRedactorTests
             Repeat("-sk", 2_000),
         ];
 
+        Assert.NotEmpty(NoHome.Rules);
         foreach (ReportRedactor.Rule rule in NoHome.Rules)
         {
             var backtracking = new Regex(

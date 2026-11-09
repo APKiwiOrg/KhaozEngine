@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.App;
@@ -209,21 +210,25 @@ public class BootPipelineTests
     [Fact]
     public void Retry_ReRunsAfterFailure()
     {
-        int runs = 0;
+        bool fail = true;
+        var retry = new GateStep(Named("retry"), 1f);
         var step = BootStep.Create(Named("flaky"), 1f, (p, ct) =>
         {
-            runs++;
-            if (runs == 1) throw new BootStepException(Named("first-fail"));
-            return Task.CompletedTask;
+            if (fail) throw new BootStepException(Named("first-fail"));
+            return retry.RunAsync(p, ct);
         });
         var pipeline = new BootPipeline(new[] { step });
 
         pipeline.Start();
         Assert.Equal(BootState.Failed, pipeline.State);
 
+        fail = false;
         pipeline.Retry();
+        Assert.Equal(BootState.Running, pipeline.State);
+        retry.Complete(BootStepResult.Proceed);
+        pipeline.Pump();
         Assert.Equal(BootState.Completed, pipeline.State);
-        Assert.Equal(2, runs);
+        Assert.Null(pipeline.Snapshot().FailureMessage);
     }
 
     [Fact]
@@ -240,11 +245,25 @@ public class BootPipelineTests
         Assert.True(Close(pipeline.Snapshot().Fraction, 1f));
     }
 
-    [Fact]
-    public void EnglishDefaults_CoverEveryBootStringId()
+    public static IEnumerable<object[]> BootStringKeys =>
+        LocalizationCoverage.Keys(typeof(BootStrings)).Select(key => new object[] { key });
+
+    [Theory]
+    [MemberData(nameof(BootStringKeys))]
+    public void EnglishDefaults_CoverEveryBootStringId(string key)
     {
-        foreach (string key in LocalizationCoverage.Keys(typeof(BootStrings)))
-            Assert.True(BootStrings.EnglishDefaults.TryGet(key, out _), $"missing English default for '{key}'");
+        Assert.True(BootStrings.EnglishDefaults.TryGet(key, out _), $"missing English default for '{key}'");
+    }
+
+    [Fact]
+    public void BootStringKeys_CoverEveryPublicStringId()
+    {
+        var keys = LocalizationCoverage.Keys(typeof(BootStrings));
+        Assert.NotEmpty(keys);
+        var shipped = typeof(BootStrings).GetFields()
+            .Where(field => field.FieldType == typeof(StringId))
+            .Select(field => ((StringId)field.GetValue(null)!).Key);
+        Assert.Equal(shipped.Order(), keys.Order());
     }
 
     [Fact]

@@ -71,6 +71,10 @@ public class MapWaterWorldTests
     {
         var before = MapNavTiling.Partition(NativeWorldFixtures.BuildLRiver(), Grids, Nav).ToDictionary(t => t.Coord);
         var after = MapNavTiling.Partition(NativeWorldFixtures.Build(NativeWorldFixtures.LRiver(wadeSpeedScale: 0.5f)), Grids, Nav).ToDictionary(t => t.Coord);
+        Assert.NotEmpty(before);
+        Assert.Contains(before.Keys, coord => Wet.Contains(coord));
+        Assert.Contains(before.Keys, coord => !Wet.Contains(coord));
+        Assert.Equal(before.Keys.OrderBy(c => c.X).ThenBy(c => c.Z), after.Keys.OrderBy(c => c.X).ThenBy(c => c.Z));
         foreach (var (coord, tile) in before)
             Assert.Equal(!Wet.Contains(coord), after[coord].CaptureIdentity == tile.CaptureIdentity);
     }

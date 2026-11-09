@@ -3551,7 +3551,7 @@ file to make the error go away.
 The same package supplies the opt-in KETEST test-health ratchet for xunit compilations. Add a
 `.testhealth-baseline` to adopt it. `KhaozTestHealthBaselineDir` overrides the discovered directory.
 Without that file the KETEST rules stay silent. KETEST001 and KETEST002 enforce exception-message assertion and
-non-public reflection allowances. KETEST003 is report-only because only 6 of 20 sampled findings were
+non-public reflection allowances. KETEST003 is report-only because about a third of its 474 reviewed findings were
 real, as local tables and test-owned case helpers look possibly empty to a syntactic check. The
 [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet) owns rule details,
 report mode, baseline grammar and the owner-approved exemption path.

@@ -23,6 +23,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Computes_orthonormal_tangent_pointing_along_U()
         {
             var mesh = MeshAssembler.Build(Quad(new(0, 0), new(1, 0), new(1, 1), new(0, 1)));
+            Assert.NotEmpty(mesh.Vertices);
             foreach (var v in mesh.Vertices)
             {
                 var t = new Vector3(v.Tangent.X, v.Tangent.Y, v.Tangent.Z);
@@ -37,6 +38,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Degenerate_uv_yields_zero_tangent()
         {
             var mesh = MeshAssembler.Build(Quad(Vector2.Zero, Vector2.Zero, Vector2.Zero, Vector2.Zero));
+            Assert.NotEmpty(mesh.Vertices);
             foreach (var v in mesh.Vertices)
                 Assert.Equal(Vector4.Zero, v.Tangent);
         }
@@ -54,6 +56,7 @@ namespace KhaozEngine.Tests.Render3D
                 new(C, n, Vector4.One, new Vector2(1, 1), src),
             };
             var mesh = MeshAssembler.Build(corners);
+            Assert.NotEmpty(mesh.Vertices);
             foreach (var v in mesh.Vertices)
             {
                 Assert.True(System.MathF.Abs(v.Tangent.Y - 1f) < 1e-4f, $"expected +Y tangent, got {v.Tangent}");

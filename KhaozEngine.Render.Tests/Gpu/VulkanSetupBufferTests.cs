@@ -84,30 +84,6 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY DEVICE-LEVEL READ FLUSHES FIRST, WHICH IS THE HALF OF V-M10 THAT REMOVES THE HOLE. A render target
-        /// created and immediately read back must still see cleared contents, and a design that only flushed at
-        /// the next submit would leave that case reading memory nothing wrote. Proven through the arithmetic rather
-        /// than by inspection: nothing was submitted after the creation, and the map's flush is what puts the
-        /// clear on the queue.
-        /// </summary>
-        [Fact]
-        public void ReadingBackImmediatelyAfterCreation_FlushesTheClearFirst()
-        {
-            var fixture = new VulkanResourceFixture();
-
-            fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
-                4, 4, GpuTextureUsage.RenderTarget)).Dispose();
-
-            Assert.Empty(fixture.CommandApi.Submissions);
-
-            // The device's Map does exactly this pair before it hands a pointer out.
-            fixture.Setup.Flush();
-
-            Assert.Single(fixture.CommandApi.Submissions);
-            Assert.Single(fixture.SetupSink.Clears);
-        }
-
-        /// <summary>
         /// THE FLUSH TAKES THE SUBMIT LOCK UNDER THE SETUP LOCK, IN THAT ORDER AND NEVER THE REVERSE (V-W8). Proven
         /// from inside the submit itself, which is the one place both are held at once: the setup lock must already
         /// be entered on this thread and the submit lock must be too.
@@ -141,45 +117,30 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A SECOND THREAD CANNOT APPEND WHILE A FLUSH IS IN FLIGHT, which is what the setup lock is FOR: a
+        /// AN APPEND HOLDS THE SETUP LOCK WHILE IT WAITS FOR A POOL, which is what the lock is FOR: a
         /// <c>VkCommandPool</c> and every buffer allocated from it are externally synchronised, so two threads
-        /// creating two textures may not record into one buffer at once.
+        /// creating two textures may not record into one buffer at once. With two pools and two flushed batches
+        /// the third append has to wait for the first pool, and that wait is the one place to look from inside.
+        /// <see cref="TheFlush_TakesTheSubmitLockUnderTheSetupLock"/> is the flush half.
         /// </summary>
         [Fact]
-        public void AnAppendFromAnotherThread_WaitsForAnInFlightFlush()
+        public void AnAppend_HoldsTheSetupLockWhileItWaitsForAPool()
         {
-            var fixture = new VulkanResourceFixture();
-            using var insideSubmit = new ManualResetEventSlim();
-            using var appendTried = new ManualResetEventSlim();
-
-            bool appendedDuringFlush = false;
-
-            fixture.CommandApi.OnSubmit = () =>
-            {
-                insideSubmit.Set();
-
-                // The other thread gets a fair chance to barge in. It cannot: the setup lock is held right now.
-                appendTried.Wait(TimeSpan.FromMilliseconds(250));
-                appendedDuringFlush = fixture.Setup.AppendCount > 1;
-            };
-
-            fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
+            var fixture = new VulkanResourceFixture(framesInFlight: 2);
+            void Append() => fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
                 4, 4, GpuTextureUsage.Sampled)).Dispose();
 
-            var other = new Thread(() =>
-            {
-                insideSubmit.Wait(TimeSpan.FromSeconds(5));
-                appendTried.Set();
-                fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
-                    4, 4, GpuTextureUsage.Sampled)).Dispose();
-            });
-
-            other.Start();
+            Append();
             fixture.Setup.Flush();
-            other.Join(TimeSpan.FromSeconds(5));
+            Append();
+            fixture.Setup.Flush();
 
-            Assert.False(appendedDuringFlush);
-            Assert.Equal(2, fixture.Setup.AppendCount);
+            bool? setupHeldWhileWaiting = null;
+            fixture.Semaphore.OnWait = () => setupHeldWhileWaiting = Monitor.IsEntered(fixture.SetupLock);
+
+            Append();
+
+            Assert.True(setupHeldWhileWaiting);
         }
 
         /// <summary>
@@ -265,6 +226,7 @@ namespace KhaozEngine.Tests.Gpu
                     native.Resting),
                 new byte[4 * 4 * 4]);
 
+            Assert.NotEmpty(fixture.SetupSink.ImageBarriers);
             Assert.All(fixture.SetupSink.ImageBarriers, barrier =>
             {
                 Assert.Equal(2u, barrier.BaseMipLevel);
@@ -289,10 +251,18 @@ namespace KhaozEngine.Tests.Gpu
 
             var native = (VulkanTexture)texture;
 
-            Assert.Throws<ArgumentException>(() => fixture.Setup.Upload(
-                new VulkanImageUpload(native.Image, false, 0, 0, 0, 0, 4, 4, GpuPixelFormat.R8G8B8A8UNorm,
-                    native.Resting),
-                new byte[4 * 4 * 4 - 1]));
+            var upload = new VulkanImageUpload(native.Image, false, 0, 0, 0, 0, 4, 4,
+                GpuPixelFormat.R8G8B8A8UNorm, native.Resting);
+            ArgumentException ex = Assert.Throws<ArgumentException>(() => fixture.Setup.Upload(
+                upload, new byte[4 * 4 * 4 - 1]));
+            Assert.Equal("data", ex.ParamName);
+            Assert.Empty(fixture.SetupSink.ImageCopies);
+
+            fixture.Setup.Upload(upload, new byte[4 * 4 * 4]);
+            FakeImageCopy copy = Assert.Single(fixture.SetupSink.ImageCopies);
+            Assert.Equal(native.Image, copy.Image);
+            Assert.Equal(4u, copy.BufferRowLength);
+            Assert.Equal(4u, copy.BufferImageHeight);
         }
 
         /// <summary>

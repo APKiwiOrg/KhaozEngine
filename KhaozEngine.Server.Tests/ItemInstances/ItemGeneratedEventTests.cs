@@ -101,6 +101,7 @@ public class ItemGeneratedEventTests
     {
         byte[] body = new ItemGeneratedEvent(40, 4_201, 3, 7, ItemGeneratedEvent.SourceDrop, 12, SmallPayload).ToArray();
 
+        Assert.NotEmpty(body);
         for (int length = 0; length < body.Length; length++)
         {
             Assert.False(

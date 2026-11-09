@@ -270,6 +270,7 @@ public class RemapRuleCodecTests
     {
         byte[] bytes = Encoded(Rule(1, 1, 1, RemapRuleKind.Retired, 9, 0, Retire(RemapRule.RetirePolicyReplacement, 12)));
 
+        Assert.NotEmpty(bytes);
         for (int length = 0; length < bytes.Length; length++)
         {
             int offset = 0;
@@ -424,6 +425,7 @@ public class RemapRuleCodecTests
     {
         byte[] file = ContentRuleChunkCodec.Encode(SixRules);
 
+        Assert.NotEmpty(file);
         for (int length = 0; length < file.Length; length++)
         {
             Assert.False(ContentRuleChunkCodec.TryDecode(file.AsSpan(0, length), out _, out string? reason));

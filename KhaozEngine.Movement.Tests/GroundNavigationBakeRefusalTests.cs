@@ -112,6 +112,7 @@ public class GroundNavigationBakeRefusalTests
     public void EveryTruncationIsCorruptOrNotABake()
     {
         byte[] file = Deck.Value.File;
+        Assert.NotEmpty(file);
         var lengths = Enumerable.Range(0, 61).Concat(Enumerable.Range(0, file.Length / 97 + 1).Select(i => i * 97))
             .Where(length => length < file.Length).Distinct();
 
@@ -346,6 +347,7 @@ public class GroundNavigationBakeRefusalTests
         Baked pool = WetPool.Value;
         byte[] file = pool.File;
 
+        Assert.NotEmpty(file);
         for (int length = 0; length < file.Length; length++)
         {
             foreach (NavBakeLoadResult result in new[]

@@ -51,8 +51,10 @@ public sealed class RendererPerfReconciliationTests
     {
         using var rig = Warm(mode);
         var hashes = RendererPerfExecutable.ShaderHashes.Values.ToHashSet(StringComparer.Ordinal);
-        foreach (var request in rig.Commands.Events.Select(e => e.Pipeline).OfType<FakePipeline>()
-            .Where(p => p.Request is not null).Select(p => p.Request!.Value).Distinct())
+        var requests = rig.Commands.Events.Select(e => e.Pipeline).OfType<FakePipeline>()
+            .Where(p => p.Request is not null).Select(p => p.Request!.Value).Distinct().ToArray();
+        Assert.NotEmpty(requests);
+        foreach (var request in requests)
         {
             Assert.Contains(RendererPerfRecipe.Hash(Encoding.UTF8.GetBytes(request.VertexGlsl)), hashes);
             string hash = RendererPerfRecipe.Hash(Encoding.UTF8.GetBytes(request.FragmentGlsl));

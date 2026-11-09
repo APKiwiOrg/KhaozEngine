@@ -44,7 +44,10 @@ public class GameContentTypeIdsTests
 
     [Fact]
     public void EveryIdSitsInTheGameBand()
-        => Assert.All(GameContentTypeIds.TypeKeys, pair => Assert.True(new ContentTypeId(pair.Id).IsGame));
+    {
+        Assert.NotEmpty(GameContentTypeIds.TypeKeys);
+        Assert.All(GameContentTypeIds.TypeKeys, pair => Assert.True(new ContentTypeId(pair.Id).IsGame));
+    }
 
     [Fact]
     public void TheIdsAreAscendingAndContiguous()

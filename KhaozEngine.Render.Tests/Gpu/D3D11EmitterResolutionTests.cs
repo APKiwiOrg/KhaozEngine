@@ -270,6 +270,13 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, ex.RegisterIndex);
             Assert.Equal(16u, ex.FirstConstant);
             Assert.Equal(4u, ex.ConstantCount);
+
+            var first = new int[1];
+            var counts = new int[1];
+            D3D11BindResolve.Constants(
+                new[] { new D3D11ConstantBufferBind(new ViewfulBuffer(new object()), 16, 4) }, first, counts);
+            Assert.Equal(16, Assert.Single(first));
+            Assert.Equal(4, Assert.Single(counts));
         }
 
         /// <summary>A scratch shorter than the bind is a defect in the emitter rather than an oversized bind, and
@@ -289,6 +296,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(D3D11BindResolutionRefusal.TransposeScratchTooSmall, ex.Reason);
             Assert.Equal(1, ex.SuppliedCount);
             Assert.Equal(2, ex.RequiredCount);
+
+            var first = new int[2];
+            var counts = new int[2];
+            D3D11BindResolve.Constants(binds, first, counts);
+            Assert.Equal(new[] { 0, 16 }, first);
+            Assert.Equal(new[] { 16, 16 }, counts);
         }
 
         /// <summary>The scratch grows geometrically and never below eight, which is what "zero per-call
@@ -351,6 +364,7 @@ namespace KhaozEngine.Tests.Gpu
             ConstructorInfo[] constructors = typeof(D3D11NativeEmitter)
                 .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
+            Assert.NotEmpty(constructors);
             Assert.All(constructors, c =>
             {
                 Type[] parameters = c.GetParameters().Select(p => p.ParameterType).ToArray();

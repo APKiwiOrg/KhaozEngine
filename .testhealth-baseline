@@ -7,81 +7,81 @@
 # build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update
 
 
-# Bitwise state comparer for locomotion determinism parity (rule 8), merged from five per-file copies (owner decision D17)
+# Bitwise state comparer for locomotion determinism parity (rule 8), merged from five per-file copies (owner approved)
 exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs
-# Shared IL reader for architecture fences: it must enumerate non-public methods and constructors to inspect compiled calls (owner decision D17)
+# Shared IL reader for architecture fences: it must enumerate non-public methods and constructors to inspect compiled calls (owner approved)
 exempt KETEST002 test-shared/IlCallGraph.cs
-# ContentKey field discovery enforces byte-slice storage with no retained string (owner decision D17)
+# ContentKey field discovery enforces byte-slice storage with no retained string (owner approved)
 exempt KETEST002 KhaozEngine.Catalog.Tests/Format/ContentKeyTests.cs
-# Field discovery enforces immutable flat lookup arrays without retained dictionaries or replaceable fields (owner decision D17)
+# Field discovery enforces immutable flat lookup arrays without retained dictionaries or replaceable fields (owner approved)
 exempt KETEST002 KhaozEngine.Catalog.Tests/Runtime/ContentReferenceIndexTests.cs
-# Field and property walks enforce no dictionary, lock or duplicate key storage, one holder field and immutable reachable indexes (owner decision D17)
+# Field and property walks enforce no dictionary, lock or duplicate key storage, one holder field and immutable reachable indexes (owner approved)
 exempt KETEST002 KhaozEngine.Catalog.Tests/Runtime/ContentRuntimeTests.cs
-# Storage walks enforce a shared text body with one offset array, no decoded entries and a cache bounded to 512 entries by construction (owner decision D17)
+# Storage walks enforce a shared text body with one offset array, no decoded entries and a cache bounded to 512 entries by construction (owner approved)
 exempt KETEST002 KhaozEngine.Catalog.Tests/Text/ContentStringCatalogTests.cs
-# Failure injection into fresh Regex objects avoids wall-clock timeouts when no accessible matcher setter exists (owner decision D17)
+# Failure injection into fresh Regex objects avoids wall-clock timeouts when no accessible matcher setter exists (owner approved)
 exempt KETEST002 KhaozEngine.Foundation.Tests/Diagnostics/ReportRedactorMatchingFailureTests.cs
-# The measurement utility walks private storage to account for retained support-query memory (owner decision D17)
+# The measurement utility walks private storage to account for retained support-query memory (owner approved)
 exempt KETEST002 KhaozEngine.Game.Tests/Locomotion/Contacts/SupportCostScratch.cs
-# Outer and composed field discovery enforces the crafting working copy's no allocator authority rule (owner decision D17)
+# Outer and composed field discovery enforces the crafting working copy's no allocator authority rule (owner approved)
 exempt KETEST002 KhaozEngine.ItemInstances.Tests/Crafting/CraftWorkingCopyTests.cs
-# Working-copy field discovery enforces no allocator authority alongside refusing-store execution proof (owner decision D17)
+# Working-copy field discovery enforces no allocator authority alongside refusing-store execution proof (owner approved)
 exempt KETEST002 KhaozEngine.ItemInstances.Tests/Crafting/CraftingRegistryTests.cs
-# Method and field metadata enforce integer-only tolerances under the generation determinism contract (owner decision D17)
+# Method and field metadata enforce integer-only tolerances under the generation determinism contract (owner approved)
 exempt KETEST002 KhaozEngine.ItemInstances.Tests/Generation/GeneratorDistributionTests.cs
-# Compact instance storage discovers every non-public array so newly added columns cannot escape the independent layout assertion. (owner decision R8A-D6)
+# Compact instance storage discovers every non-public array so newly added columns cannot escape the independent layout assertion. (owner approved)
 exempt KETEST002 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageInstanceBatchTests.cs
-# Independent acquisition inventory discovers every backing store inside read-only wrappers. Named owner probes use ForTests seams. (owner decision R8A-D6)
+# Independent acquisition inventory discovers every backing store inside read-only wrappers. Named owner probes use ForTests seams. (owner approved)
 exempt KETEST002 KhaozEngine.MapDoc.Tests/Scene/MapAcquisitionInventoryOracle.cs
-# Bit-exact state discovery and cloning retain every numeric state bit, including private storage canonicalized by public getters (owner decision D17)
+# Bit-exact state discovery and cloning retain every numeric state bit, including private storage canonicalized by public getters (owner approved)
 exempt KETEST002 KhaozEngine.Movement.Tests/ContactNavigationInitialHoldReuseTests.cs
-# Recursive bitwise comparison preserves exact context and core output equivalence, including hidden speed-scale storage (owner decision D17)
+# Recursive bitwise comparison preserves exact context and core output equivalence, including hidden speed-scale storage (owner approved)
 exempt KETEST002 KhaozEngine.Movement.Tests/Fixtures/RuntimeStaticScene.cs
-# Serialized-field discovery catches retained tuning and option fields omitted from the KENB identity encoding (owner decision D17)
+# Serialized-field discovery catches retained tuning and option fields omitted from the KENB identity encoding (owner approved)
 exempt KETEST002 KhaozEngine.Movement.Tests/NavBakeIdentityTests.cs
-# Constructor and field walks enforce caller-provided device state and prohibit Vortice or SharpGen types on off-Windows surfaces (owner decision D17)
+# Constructor and field walks enforce caller-provided device state and prohibit Vortice or SharpGen types on off-Windows surfaces (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11EmitterResolutionTests.cs
-# Constructor and field walks enforce caller-provided device state without missing newly added violating members (owner decision D17)
+# Constructor and field walks enforce caller-provided device state without missing newly added violating members (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11ReplayContractTests.cs
-# Complete instance-field discovery enforces strict leaf ownership of the D3D11 creation gate (owner decision D17)
+# Complete instance-field discovery enforces strict leaf ownership of the D3D11 creation gate (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11ThreadingContractTests.cs
-# Metadata and IL walks enforce autorelease pool ownership at encoder seams and frame-capture roots, with native, interface and generic positive controls (owner decision D17)
+# Metadata and IL walks enforce autorelease pool ownership at encoder seams and frame-capture roots, with native, interface and generic positive controls (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalAutoreleaseArchitectureTests.cs
-# Field-graph traversal enforces no factory, device, layout or liveness reachability from bind records, with plain-data positive controls (owner decision D17)
+# Field-graph traversal enforces no factory, device, layout or liveness reachability from bind records, with plain-data positive controls (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalBindRecordsTests.cs
-# Package-method discovery enforces the M-M10 no-view-factory architecture rule, including future entry points (owner decision D17)
+# Package-method discovery enforces the M-M10 no-view-factory architecture rule, including future entry points (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalEagerViewArchitectureTests.cs
-# Selector field and nested-type discovery enforce the once-per-process hot-selector rule and retain future-field coverage (owner decision D17)
+# Selector field and nested-type discovery enforce the once-per-process hot-selector rule and retain future-field coverage (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalHotSelectorTests.cs
-# Method and nested-type metadata drive the ContentKey name and stage blindness IL fence, including iterator and positive-control paths (owner decision D17)
+# Method and nested-type metadata drive the ContentKey name and stage blindness IL fence, including iterator and positive-control paths (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalIndexTableNameBlindnessTests.cs
-# Reflection confirms forbidden HLSL members exist so the no-HLSL MemberRef fence cannot pass vacuously (owner decision D17)
+# Reflection confirms forbidden HLSL members exist so the no-HLSL MemberRef fence cannot pass vacuously (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/MetalShaderArchitectureTests.cs
-# Owner-retained P2 metadata walk guards against reintroducing Veldrid types (owner decision D17)
+# Owner-retained P2 metadata walk guards against reintroducing Veldrid types (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/SpirvCrossCompileTests.cs
-# Signature and field-graph walks enforce V-M11 and V-D2 view-factory unreachability and its sole allowed edge (owner decision D17)
+# Signature and field-graph walks enforce V-M11 and V-D2 view-factory unreachability and its sole allowed edge (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Gpu/VulkanRecordingUnreachabilityTests.cs
-# Public and protected surface discovery enforces dependency seams, including the retained Veldrid reintroduction guard (owner decision D17)
+# Public and protected surface discovery enforces dependency seams, including the retained Veldrid reintroduction guard (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/GpuPublicApiTests.cs
-# Column ownership contracts discover every backing field to reject hidden copies and prove all arrays die after the last reader. Named group access uses a ForTests snapshot. (owner decision R8A-D6)
+# Column ownership contracts discover every backing field to reject hidden copies and prove all arrays die after the last reader. Named group access uses a ForTests snapshot. (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/MapDoc/NativeFoliageColumnSharingTests.cs
-# Independent foliage inventory discovers every retained field and backing array so added storage cannot escape the census. Named probes use ForTests seams. (owner decision R8A-D6)
+# Independent foliage inventory discovers every retained field and backing array so added storage cannot escape the census. Named probes use ForTests seams. (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/MapDoc/NativeFoliageInventoryTightnessTests.cs
-# Renderer field-type walks enforce the shared GpuRetireQueue rule and absence of private retirement lists (owner decision D17)
+# Renderer field-type walks enforce the shared GpuRetireQueue rule and absence of private retirement lists (owner approved)
 exempt KETEST002 KhaozEngine.Render.Tests/Render3D/GrownBufferRetirementTests.cs
-# Recursive state discovery preserves determinism bits, signed zero and non-replicated storage that public getters or wire bytes can erase (owner decision D17)
+# Recursive state discovery preserves determinism bits, signed zero and non-replicated storage that public getters or wire bytes can erase (owner approved)
 exempt KETEST002 KhaozEngine.Server.Tests/NetWorld/OrdinaryContactReplayTests.RuntimeStatics.cs
-# Provider-field injection deterministically holds SQLite's mid-activation gap open when no engine seam can force that state (owner decision D17)
+# Provider-field injection deterministically holds SQLite's mid-activation gap open when no engine seam can force that state (owner approved)
 exempt KETEST002 KhaozEngine.Server.Tests/Sqlite/SqliteStoreConnectionPoolIsolationTests.cs
-# Snapshot restoration requires the private PhysicsNavBake constructor because no production restore API or supported snapshot format exists (owner decision D17)
+# Snapshot restoration requires the private PhysicsNavBake constructor because no production restore API or supported snapshot format exists (owner approved)
 exempt KETEST002 tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs
-# Cold ocean preparation reads existing Scene3D and WaterRenderer owners without adding seams that change the paid harness hash (owner decision D18)
+# Cold ocean preparation reads existing Scene3D and WaterRenderer owners without adding seams that change the paid harness hash (owner approved)
 exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfColdOcean.cs
-# Shader digest enumeration discovers every source constant, including private SpriteBatch shaders and future additions (owner decision D17)
+# Shader digest enumeration discovers every source constant, including private SpriteBatch shaders and future additions (owner approved)
 exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfExecutable.cs
-# A private-method IL fence verifies the orphan route without constructing a native Metal device headlessly (owner decision D17)
+# A private-method IL fence verifies the orphan route without constructing a native Metal device headlessly (owner approved)
 exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfMetalDiagnosticsTests.Orphan.cs
-# Cold native D3D11 adapter identity inspection deliberately avoids backend API changes (owner decision D18)
+# Cold native D3D11 adapter identity inspection deliberately avoids backend API changes (owner approved)
 exempt KETEST002 tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfNativeIdentity.cs
-# Leak check reads third-party BepuUtilities 2.4.0 BufferPool slot counters, which have no public outstanding-loan count (owner decision D22)
+# Leak check reads third-party BepuUtilities 2.4.0 BufferPool slot counters, which have no public outstanding-loan count (owner approved)
 exempt KETEST002 KhaozEngine.Physics.Tests/StaticMutationLeaseTests.Geometry.cs

@@ -213,68 +213,60 @@ namespace KhaozEngine.Tests.Gpu
                 ["TemporalAccumulateAtDisplaySizeHalfFullyLit"] = "TemporalSplitResolve fully lit accumulate",
             };
 
+        static readonly IReadOnlyDictionary<string, ShippedGraphicsProgram> GraphicsByName =
+            ShippedShaderPrograms.GraphicsPrograms().ToDictionary(p => p.Name, StringComparer.Ordinal);
+
+        static readonly IReadOnlyDictionary<string, ShippedComputeKernel> ComputeByName =
+            ShippedShaderPrograms.ComputeKernels().ToDictionary(k => k.Name, StringComparer.Ordinal);
+
         /// <summary>
         /// EVERY DECLARED <c>(set, binding)</c> IS A REAL INDEX PAIR, and the kind at it matches. This is the
         /// assertion the decision asks for: N indexes the pipeline's layout array and M indexes that layout's
         /// element array.
         /// </summary>
-        [Fact]
-        public void EveryShippedGraphicsProgram_DeclaresSetAndBindingAtTheArrayIndices()
+        [Theory]
+        [MemberData(nameof(GraphicsPrograms))]
+        public void EveryShippedGraphicsProgram_DeclaresSetAndBindingAtTheArrayIndices(string name)
         {
+            ShippedGraphicsProgram program = GraphicsByName[name];
             var problems = new List<string>();
-
-            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
-            {
-                string[] slots = SlotsOf(program.Name, problems);
-                if (slots.Length == 0) continue;
-
-                foreach (Declaration d in Parse(program.VertexGlsl).Concat(Parse(program.FragmentGlsl)))
-                    Check(program.Name, slots, d, problems);
-            }
-
+            string[] slots = SlotsOf(program.Name, problems);
+            Assert.NotEmpty(slots);
+            Declaration[] declarations = Parse(program.VertexGlsl).Concat(Parse(program.FragmentGlsl)).ToArray();
+            Assert.NotEmpty(declarations);
+            foreach (Declaration d in declarations) Check(program.Name, slots, d, problems);
             Assert.True(problems.Count == 0, Report(problems));
         }
 
-        [Fact]
-        public void OpaqueReceivers_AppendAtmosphereAfterTheirOwnSetZeroPrefix()
+        [Theory]
+        [MemberData(nameof(OpaquePrograms))]
+        public void OpaqueReceivers_AppendAtmosphereAfterTheirOwnSetZeroPrefix(string name, int prefix)
         {
-            foreach (var program in ShippedShaderPrograms.GraphicsPrograms())
-            {
-                const string visibilitySuffix = "Visibility";
-                string baseName = program.Name.EndsWith(visibilitySuffix, StringComparison.Ordinal)
-                    ? program.Name[..^visibilitySuffix.Length] : program.Name;
-                int prefix = baseName switch
-                {
-                    "Model" or "ModelDissolve" or "Foliage" or "ModelMotion" or "ModelCpuSkinnedMotion"
-                        or "ModelCpuSkinnedDissolveMotion" or "FoliageMotion"
-                        or "PreparedFoliage" or "PreparedFoliageMotion" => 11,
-                    "FoliageOpaque" or "FoliageOpaqueMotion" or "PreparedFoliageOpaque" or "PreparedFoliageOpaqueMotion" => 7,
-                    "SkinnedModel" or "SkinnedModelDissolve" or "SkinnedModelMotion"
-                        or "SkinnedModelDissolveMotion" => 4,
-                    "Splat" or "TileGround" or "SplatMotion" or "TileGroundMotion" => 3,
-                    _ => -1,
-                };
-                if (prefix < 0) continue;
-                Declaration[] atmosphere =
-                [
-                    new(0, prefix, GpuResourceKind.UniformBuffer, "Atmosphere"),
-                    new(0, prefix + 1, GpuResourceKind.TextureReadOnly, "AtmoSkyView"),
-                    new(0, prefix + 2, GpuResourceKind.Sampler, "AtmoSkySampler"),
-                ];
-                if (prefix == 11)
-                    atmosphere = [.. atmosphere, new(0, 14, GpuResourceKind.TextureReadOnly, "InteriorCut")];
-                int waterBinding = prefix == 11 ? 15 : prefix + 3;
-                atmosphere = [.. atmosphere,
-                    new(0, waterBinding, GpuResourceKind.StructuredBufferReadOnly, "WaterVolumeBuffer"),
-                    new(0, waterBinding + 1, GpuResourceKind.TextureReadOnly, "CausticMap"),
-                    new(0, waterBinding + 2, GpuResourceKind.Sampler, "CausticSampler")];
-                Assert.Equal(atmosphere, Parse(program.FragmentGlsl)
-                    .Where(d => d.Set == 0 && d.Binding >= prefix).OrderBy(d => d.Binding).ToArray());
-            }
+            ShippedGraphicsProgram program = GraphicsByName[name];
+            Declaration[] atmosphere =
+            [
+                new(0, prefix, GpuResourceKind.UniformBuffer, "Atmosphere"),
+                new(0, prefix + 1, GpuResourceKind.TextureReadOnly, "AtmoSkyView"),
+                new(0, prefix + 2, GpuResourceKind.Sampler, "AtmoSkySampler"),
+            ];
+            if (prefix == 11)
+                atmosphere = [.. atmosphere, new(0, 14, GpuResourceKind.TextureReadOnly, "InteriorCut")];
+            int waterBinding = prefix == 11 ? 15 : prefix + 3;
+            atmosphere = [.. atmosphere,
+                new(0, waterBinding, GpuResourceKind.StructuredBufferReadOnly, "WaterVolumeBuffer"),
+                new(0, waterBinding + 1, GpuResourceKind.TextureReadOnly, "CausticMap"),
+                new(0, waterBinding + 2, GpuResourceKind.Sampler, "CausticSampler")];
+            Assert.Equal(atmosphere, Parse(program.FragmentGlsl)
+                .Where(d => d.Set == 0 && d.Binding >= prefix).OrderBy(d => d.Binding).ToArray());
         }
 
-        [Fact]
-        public void WaterPrograms_AppendAtmosphereAfterTheDynamicWaterUniform()
+        [Theory]
+        [InlineData("Water")]
+        [InlineData("WaterClipmap")]
+        [InlineData("BoundedWater")]
+        [InlineData("WaterTriangle")]
+        [InlineData("WaterClipmapTriangle")]
+        public void WaterAndClipmap_AppendAtmosphereAfterTheDynamicWaterUniform(string name)
         {
             var elements = VulkanDescriptorLimitTests.ShippedLayouts["Water"].Elements!;
             Assert.Equal(17, elements.Length);
@@ -293,25 +285,23 @@ namespace KhaozEngine.Tests.Gpu
                 new(0, 15, GpuResourceKind.TextureReadOnly, "ColumnSceneColor"),
                 new(0, 16, GpuResourceKind.Sampler, "ColumnColorSampler"),
             ];
-            foreach (var program in ShippedShaderPrograms.GraphicsPrograms().Where(p => p.Name is "Water" or "WaterClipmap" or "BoundedWater" or "WaterTriangle" or "WaterClipmapTriangle"))
-                Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= 7)
-                    .OrderBy(d => d.Binding).ToArray());
+            ShippedGraphicsProgram program = GraphicsByName[name];
+            Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= 7)
+                .OrderBy(d => d.Binding).ToArray());
         }
 
         /// <summary>The compute half, over all four cascade resolutions of both ocean kernels.</summary>
-        [Fact]
-        public void EveryShippedComputeKernel_DeclaresSetAndBindingAtTheArrayIndices()
+        [Theory]
+        [MemberData(nameof(ComputePrograms))]
+        public void EveryShippedComputeKernel_DeclaresSetAndBindingAtTheArrayIndices(string name)
         {
+            ShippedComputeKernel kernel = ComputeByName[name];
             var problems = new List<string>();
-
-            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
-            {
-                string[] slots = SlotsOf(PipelineOf(kernel.Name), problems, kernel.Name);
-                if (slots.Length == 0) continue;
-
-                foreach (Declaration d in Parse(kernel.ComputeGlsl)) Check(kernel.Name, slots, d, problems);
-            }
-
+            string[] slots = SlotsOf(PipelineOf(kernel.Name), problems, kernel.Name);
+            Assert.NotEmpty(slots);
+            Declaration[] declarations = Parse(kernel.ComputeGlsl).ToArray();
+            Assert.NotEmpty(declarations);
+            foreach (Declaration d in declarations) Check(kernel.Name, slots, d, problems);
             Assert.True(problems.Count == 0, Report(problems));
         }
 
@@ -321,58 +311,46 @@ namespace KhaozEngine.Tests.Gpu
         /// which is either a dead binding or, far worse, an array that has drifted by one and happens to still be
         /// in range at every index a shader names.
         /// </summary>
-        [Fact]
-        public void EveryLayoutElementOfEveryShippedPipeline_IsDeclaredBySomeStageOfItsProgram()
+        [Theory]
+        [MemberData(nameof(AllPrograms))]
+        public void EveryLayoutElementOfEveryShippedPipeline_IsDeclaredBySomeStageOfItsProgram(string name)
         {
+            var (slots, declarations) = LayoutProgram(name);
+            Assert.NotEmpty(slots);
+            var declared = declarations.Select(d => (d.Set, d.Binding)).ToHashSet();
             var problems = new List<string>();
-
-            foreach ((string program, string[] slots, IEnumerable<Declaration> declarations) in EveryProgram())
+            for (int set = 0; set < slots.Length; set++)
             {
-                var declared = declarations.Select(d => (d.Set, d.Binding)).ToHashSet();
-
-                for (int set = 0; set < slots.Length; set++)
+                GpuResourceLayoutElement[] elements =
+                    VulkanDescriptorLimitTests.ShippedLayouts[slots[set]].Elements ?? [];
+                for (int binding = 0; binding < elements.Length; binding++)
                 {
-                    GpuResourceLayoutElement[] elements =
-                        VulkanDescriptorLimitTests.ShippedLayouts[slots[set]].Elements ?? [];
-
-                    for (int binding = 0; binding < elements.Length; binding++)
-                    {
-                        if (declared.Contains((set, binding))) continue;
-
-                        problems.Add($"{program}: layout slot {set} ({slots[set]}) element {binding} "
-                            + $"({elements[binding].Name}, {elements[binding].Kind}) is declared by no stage of "
-                            + "the program. Either the pipeline's layout array carries a resource nothing reads, "
-                            + "or it has drifted out of step with the shader sources.");
-                    }
+                    if (declared.Contains((set, binding))) continue;
+                    problems.Add($"{name}: layout slot {set} ({slots[set]}) element {binding} "
+                        + $"({elements[binding].Name}, {elements[binding].Kind}) is declared by no stage of "
+                        + "the program. Either the pipeline's layout array carries a resource nothing reads, "
+                        + "or it has drifted out of step with the shader sources.");
                 }
             }
-
             Assert.True(problems.Count == 0, Report(problems));
         }
 
         /// <summary>
-        /// THE MAP ITSELF IS COMPLETE AND NAMES REAL PIPELINES, which is what stops the three tests above from
-        /// passing by covering nothing. A program with no entry is skipped by every one of them, so the omission
-        /// has to fail here or it fails nowhere.
+        /// The independent rosters must match every discovered program name. A missing catalog item must fail
+        /// even though it generates no theory case. Every mapped pipeline must also exist in the layout table.
         /// </summary>
         [Fact]
         public void EveryShippedProgram_HasAPipelineAndEveryPipelineNamedIsReal()
         {
-            string[] catalog = ShippedShaderPrograms.GraphicsPrograms().Select(p => p.Name).ToArray();
+            string[] catalog = GraphicsByName.Keys.ToArray();
             var pipelines = VulkanDescriptorLimitTests.ShippedPipelines
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            // Ten certified FullyLit variants cover resolve, debug/count and both split sizes at both precisions.
-            Assert.Equal(143, catalog.Length);
-            Assert.Equal(catalog.Length, ProgramPipelines.Count);
-
-            foreach (string program in catalog)
-            {
-                Assert.True(ProgramPipelines.ContainsKey(program),
-                    $"{program} is in the shipped catalog and has no pipeline in this map, so every assertion in "
-                    + "this file silently skips it.");
-            }
+            Assert.Equal(ProgramPipelines.Keys.OrderBy(n => n, StringComparer.Ordinal),
+                catalog.OrderBy(n => n, StringComparer.Ordinal));
+            Assert.Equal(ComputeRoster.OrderBy(n => n, StringComparer.Ordinal),
+                ComputeByName.Keys.OrderBy(n => n, StringComparer.Ordinal));
             foreach (string pipeline in ProgramPipelines.Values.Concat(["OceanFftProducer row",
                          "OceanFftProducer col"]))
             {
@@ -382,55 +360,68 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        /// <summary>
-        /// THE PARSER READS A MEMORY QUALIFIER ON EITHER SIDE OF THE STORAGE KEYWORD, asserted over a synthetic
-        /// source because nothing shipped is spelled the canonical way yet. That is precisely why it earns a
-        /// test: GLSL's canonical placement is <c>layout(...) readonly buffer B</c>, the pattern here used to
-        /// demand the storage keyword immediately after the layout group and skipped that spelling whole, and a
-        /// skipped declaration surfaces through
-        /// <see cref="EveryLayoutElementOfEveryShippedPipeline_IsDeclaredBySomeStageOfItsProgram"/> as an
-        /// undeclared LAYOUT ELEMENT, which reads as a pipeline bug rather than a parser one.
-        /// </summary>
-        [Fact]
-        public void TheParser_ReadsAMemoryQualifierOnEitherSideOfTheStorageKeyword()
+        static readonly string[] ComputeRoster =
+        [
+            "OceanFftRowPass32", "OceanFftColumnPass32", "OceanFftRowPass64", "OceanFftColumnPass64",
+            "OceanFftRowPass128", "OceanFftColumnPass128", "OceanFftRowPass256", "OceanFftColumnPass256",
+        ];
+
+        public static TheoryData<string> GraphicsPrograms => Names(
+            GraphicsByName.Keys);
+
+        public static TheoryData<string> ComputePrograms => Names(
+            ComputeByName.Keys);
+
+        public static TheoryData<string> AllPrograms => Names(
+            GraphicsByName.Keys
+                .Concat(ComputeByName.Keys));
+
+        public static TheoryData<string, int> OpaquePrograms
         {
-            const string glsl = """
-                layout(std430, set = 0, binding = 0) readonly buffer Before { vec4 a[]; };
-                layout(std430, set = 0, binding = 1) buffer readonly After { vec4 b[]; };
-                layout(std430, set = 0, binding = 2) buffer Writable { vec4 c[]; };
-                layout(set = 1, binding = 0) uniform texture2D Tex;
-                layout(rgba16f, set = 1, binding = 1) uniform readonly image2D Img;
-                """;
+            get
+            {
+                var cases = new TheoryData<string, int>();
+                foreach (ShippedGraphicsProgram program in GraphicsByName.Values)
+                {
+                    string name = program.Name.EndsWith("Visibility", StringComparison.Ordinal)
+                        ? program.Name[..^"Visibility".Length] : program.Name;
+                    // Other programs do not export the opaque receiver's atmosphere layout.
+                    int prefix = name switch
+                    {
+                        "Model" or "ModelDissolve" or "Foliage" or "ModelMotion" or "ModelCpuSkinnedMotion"
+                            or "ModelCpuSkinnedDissolveMotion" or "FoliageMotion"
+                            or "PreparedFoliage" or "PreparedFoliageMotion" => 11,
+                        "FoliageOpaque" or "FoliageOpaqueMotion" or "PreparedFoliageOpaque" or "PreparedFoliageOpaqueMotion" => 7,
+                        "SkinnedModel" or "SkinnedModelDissolve" or "SkinnedModelMotion"
+                            or "SkinnedModelDissolveMotion" => 4,
+                        "Splat" or "TileGround" or "SplatMotion" or "TileGroundMotion" => 3,
+                        _ => -1,
+                    };
+                    if (prefix >= 0) cases.Add(program.Name, prefix);
+                }
+                return cases;
+            }
+        }
 
-            Declaration[] parsed = Parse(glsl).ToArray();
-
-            Assert.Equal(5, parsed.Length);
-            Assert.Equal(new Declaration(0, 0, GpuResourceKind.StructuredBufferReadOnly, "Before"), parsed[0]);
-            Assert.Equal(new Declaration(0, 1, GpuResourceKind.StructuredBufferReadOnly, "After"), parsed[1]);
-            Assert.Equal(new Declaration(0, 2, GpuResourceKind.StructuredBufferReadWrite, "Writable"), parsed[2]);
-            Assert.Equal(new Declaration(1, 0, GpuResourceKind.TextureReadOnly, "Tex"), parsed[3]);
-
-            // A readonly storage image stays the read-write kind on purpose: Vulkan gives it the same descriptor
-            // type as a writable one, and only the buffer case maps to a different engine kind.
-            Assert.Equal(new Declaration(1, 1, GpuResourceKind.TextureReadWrite, "Img"), parsed[4]);
+        static TheoryData<string> Names(IEnumerable<string> names)
+        {
+            var cases = new TheoryData<string>();
+            foreach (string name in names) cases.Add(name);
+            return cases;
         }
 
         // ---- the join ------------------------------------------------------------------------------------
 
-        static IEnumerable<(string Program, string[] Slots, IEnumerable<Declaration> Declarations)> EveryProgram()
+        static (string[] Slots, IEnumerable<Declaration> Declarations) LayoutProgram(string name)
         {
-            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
-            {
-                yield return (program.Name, SlotsOf(program.Name, null),
-                    Parse(program.VertexGlsl).Concat(Parse(program.FragmentGlsl)));
-            }
-            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
-                yield return (kernel.Name, SlotsOf(PipelineOf(kernel.Name), null), Parse(kernel.ComputeGlsl));
+            if (GraphicsByName.TryGetValue(name, out ShippedGraphicsProgram program))
+                return (SlotsOf(name, null), Parse(program.VertexGlsl).Concat(Parse(program.FragmentGlsl)));
+            ShippedComputeKernel kernel = ComputeByName[name];
+            return (SlotsOf(PipelineOf(name), null), Parse(kernel.ComputeGlsl));
         }
 
         // The ocean kernels are compiled per cascade resolution, so the four names of each pass share one
-        // pipeline shape. Matching on the pass rather than listing eight rows keeps this from needing an edit
-        // every time OceanResolutions changes.
+        // pipeline shape. The separate compute roster checks every admitted resolution independently of this join.
         static string PipelineOf(string kernelName)
             => kernelName.StartsWith("OceanFftRowPass", StringComparison.Ordinal)
                 ? "OceanFftProducer row"

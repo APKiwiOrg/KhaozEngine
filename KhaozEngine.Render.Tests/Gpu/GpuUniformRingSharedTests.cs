@@ -80,15 +80,15 @@ namespace KhaozEngine.Tests.Gpu
                 $"{ring.BackendName}: a segment stride of {stride} is under the buffer's own "
                 + $"{ring.LogicalSizeBytes} bytes, so two segments overlap.");
 
-            for (int segment = 1; segment < ring.FramesInFlight; segment++)
+            for (int segment = 1; segment < Frames; segment++)
             {
                 Assert.Equal(stride * (ulong)segment, ring.SegmentBaseBytes(segment));
             }
 
-            for (int frame = 1; frame <= ring.FramesInFlight * 2; frame++)
+            for (int frame = 1; frame <= Frames * 2; frame++)
             {
                 ring.BeginFrame();
-                Assert.Equal(frame % ring.FramesInFlight, ring.CurrentSegment);
+                Assert.Equal(frame % Frames, ring.CurrentSegment);
             }
         }
 
@@ -110,7 +110,7 @@ namespace KhaozEngine.Tests.Gpu
             ring.CompleteWork(9);
 
             // All the way round, back onto the segment whose frame was closed at 5, with the GPU already past it.
-            for (int frame = 0; frame < ring.FramesInFlight; frame++) ring.BeginFrame();
+            for (int frame = 0; frame < Frames; frame++) ring.BeginFrame();
 
             Assert.Equal(0, ring.StallCount);
         }
@@ -130,7 +130,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuUniformRingUnderTest ring = GpuUniformRingAdapters.Create(backend, Size, Frames);
 
             ring.SubmitWork(7);
-            for (int frame = 0; frame < ring.FramesInFlight - 1; frame++) ring.BeginFrame();
+            for (int frame = 0; frame < Frames - 1; frame++) ring.BeginFrame();
 
             Assert.Equal(0, ring.StallCount);
 
@@ -159,7 +159,7 @@ namespace KhaozEngine.Tests.Gpu
             byte[] payload = Payload(16, seed: 1);
             ring.WriteOffTimeline(32, payload);
 
-            for (int segment = 0; segment < ring.FramesInFlight; segment++)
+            for (int segment = 0; segment < Frames; segment++)
             {
                 Assert.Equal(payload, ring.ReadSegment(segment, 32, payload.Length));
             }
@@ -194,9 +194,9 @@ namespace KhaozEngine.Tests.Gpu
             ring.WriteOffTimeline(0, payload);
 
             Assert.Equal(payload, ring.ReadSegment(current, 0, payload.Length));
-            Assert.Equal(ring.FramesInFlight - 1, ring.PendingPatchCount);
+            Assert.Equal(Frames - 1, ring.PendingPatchCount);
 
-            for (int segment = 0; segment < ring.FramesInFlight; segment++)
+            for (int segment = 0; segment < Frames; segment++)
             {
                 if (segment == current) continue;
 
@@ -229,14 +229,14 @@ namespace KhaozEngine.Tests.Gpu
 
             // The call returned rather than blocking, which is the whole claim, and the evidence it left is a
             // queue rather than a wait.
-            Assert.Equal(ring.FramesInFlight - 1, ring.PendingPatchCount);
+            Assert.Equal(Frames - 1, ring.PendingPatchCount);
 
             // Walk all the way round. Every segment is acquired once, and every queued patch drains.
-            for (int frame = 0; frame < ring.FramesInFlight; frame++) ring.BeginFrame();
+            for (int frame = 0; frame < Frames; frame++) ring.BeginFrame();
 
             Assert.Equal(0, ring.PendingPatchCount);
 
-            for (int segment = 0; segment < ring.FramesInFlight; segment++)
+            for (int segment = 0; segment < Frames; segment++)
             {
                 Assert.Equal(payload, ring.ReadSegment(segment, 64, payload.Length));
             }
@@ -264,9 +264,9 @@ namespace KhaozEngine.Tests.Gpu
             ring.WriteOffTimeline(0, older);
             ring.WriteOffTimeline(0, newer);
 
-            for (int frame = 0; frame < ring.FramesInFlight; frame++) ring.BeginFrame();
+            for (int frame = 0; frame < Frames; frame++) ring.BeginFrame();
 
-            for (int segment = 0; segment < ring.FramesInFlight; segment++)
+            for (int segment = 0; segment < Frames; segment++)
             {
                 Assert.Equal(newer, ring.ReadSegment(segment, 0, newer.Length));
             }
@@ -294,7 +294,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(payload, ring.ReadSegment(current, 16, payload.Length));
 
-            for (int segment = 0; segment < ring.FramesInFlight; segment++)
+            for (int segment = 0; segment < Frames; segment++)
             {
                 if (segment == current) continue;
 

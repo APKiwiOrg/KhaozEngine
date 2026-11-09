@@ -81,6 +81,7 @@ namespace KhaozEngine.Tests.Gpu
                     + $"{r.WarmBandMarks} over the warm ones");
                 Assert.True(r.BandMarks.Sum() == 0 && r.WarmBandMarks == 0,
                     $"{r.Name}: a still surface stored the band mark, so a pixel can drop a band history");
+                Assert.True(r.NearestTower < 1f, $"{r.Name}: the eye passed no tower within a metre, so the run proves less");
             }
         }
 
@@ -88,6 +89,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every path, near and far, Native and Quality at 2560 by 1440 from
         /// each pitch and distance, and Native at 3840 by 2160 from the boot and grazing pitches, with the static
         /// travel's distribution and the texels past the world-motion test. Report only.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_still_field_table_prints_the_band_marks_and_the_static_travel()
         {

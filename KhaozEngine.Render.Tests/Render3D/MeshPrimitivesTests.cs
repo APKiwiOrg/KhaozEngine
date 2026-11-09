@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -19,6 +20,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Box_Indices_Are_All_In_Range()
         {
             var box = MeshPrimitives.Box();
+            Assert.NotEmpty(box.Indices);
             foreach (var idx in box.Indices)
                 Assert.InRange(idx, 0, box.Vertices.Length - 1);
         }
@@ -52,59 +54,22 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(thickness, maxY, 4);
         }
 
-        [Fact]
-        public void Primitive_Vertex_Colors_Are_White()
+        [Theory]
+        [MemberData(nameof(AllPrimitives))]
+        public void Primitive_Vertex_Colors_Are_White(GltfMesh mesh)
         {
-            foreach (var mesh in new[]
-            {
-                MeshPrimitives.Box(), MeshPrimitives.Tile(),
-                MeshPrimitives.Cylinder(), MeshPrimitives.Cone(),
-                MeshPrimitives.Pyramid(), MeshPrimitives.Wedge(), MeshPrimitives.Sphere(),
-                MeshPrimitives.Plane(), MeshPrimitives.RoundedBox(),
-                MeshPrimitives.Capsule(), MeshPrimitives.Torus(),
-            })
-                foreach (var v in mesh.Vertices)
-                    Assert.Equal(Vector4.One, v.Color);
+            Assert.NotEmpty(mesh.Vertices);
+            foreach (var v in mesh.Vertices)
+                Assert.Equal(Vector4.One, v.Color);
         }
 
-        // --- shared invariants for every new primitive ---
-
-        public static System.Collections.Generic.IEnumerable<object[]> AllNewPrimitives()
-        {
-            yield return new object[] { MeshPrimitives.Cylinder() };
-            yield return new object[] { MeshPrimitives.Cylinder(capped: false) };
-            yield return new object[] { MeshPrimitives.Cone() };
-            yield return new object[] { MeshPrimitives.Cone(capped: false) };
-            yield return new object[] { MeshPrimitives.Pyramid() };
-            yield return new object[] { MeshPrimitives.Wedge() };
-            yield return new object[] { MeshPrimitives.Sphere() };
-            yield return new object[] { MeshPrimitives.Plane() };
-            yield return new object[] { MeshPrimitives.Plane(2f, 3f, 4, 5) };
-            yield return new object[] { MeshPrimitives.RoundedBox() };
-            yield return new object[] { MeshPrimitives.Capsule() };
-            yield return new object[] { MeshPrimitives.Torus() };
-        }
-
-        // every primitive carries a UV channel; for the bounded mappings (all of them) UVs stay in [0,1].
-        public static System.Collections.Generic.IEnumerable<object[]> AllPrimitives()
-        {
-            yield return new object[] { MeshPrimitives.Box() };
-            yield return new object[] { MeshPrimitives.Tile() };
-            yield return new object[] { MeshPrimitives.Cylinder() };
-            yield return new object[] { MeshPrimitives.Cone() };
-            yield return new object[] { MeshPrimitives.Pyramid() };
-            yield return new object[] { MeshPrimitives.Wedge() };
-            yield return new object[] { MeshPrimitives.Sphere() };
-            yield return new object[] { MeshPrimitives.Plane(2f, 3f, 4, 5) };
-            yield return new object[] { MeshPrimitives.RoundedBox() };
-            yield return new object[] { MeshPrimitives.Capsule() };
-            yield return new object[] { MeshPrimitives.Torus() };
-        }
+        // --- shared invariants for every primitive ---
 
         [Theory]
         [MemberData(nameof(AllPrimitives))]
         public void Primitive_Uvs_Are_Within_Unit_Square(GltfMesh mesh)
         {
+            Assert.NotEmpty(mesh.Vertices);
             foreach (var v in mesh.Vertices)
             {
                 Assert.InRange(v.Uv.X, -1e-4f, 1f + 1e-4f);
@@ -113,24 +78,27 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Theory]
-        [MemberData(nameof(AllNewPrimitives))]
+        [MemberData(nameof(AllPrimitives))]
         public void Primitive_IndexCount_Divisible_By_3(GltfMesh mesh)
         {
+            Assert.NotEmpty(mesh.Indices);
             Assert.Equal(0, mesh.Indices.Length % 3);
         }
 
         [Theory]
-        [MemberData(nameof(AllNewPrimitives))]
+        [MemberData(nameof(AllPrimitives))]
         public void Primitive_Indices_Are_All_In_Range(GltfMesh mesh)
         {
+            Assert.NotEmpty(mesh.Indices);
             foreach (var idx in mesh.Indices)
                 Assert.InRange(idx, 0, mesh.Vertices.Length - 1);
         }
 
         [Theory]
-        [MemberData(nameof(AllNewPrimitives))]
+        [MemberData(nameof(AllPrimitives))]
         public void Primitive_Normals_Are_Unit_Length(GltfMesh mesh)
         {
+            Assert.NotEmpty(mesh.Vertices);
             foreach (var v in mesh.Vertices)
                 Assert.Equal(1f, v.Normal.Length(), 3);
         }
@@ -155,6 +123,8 @@ namespace KhaozEngine.Tests.Render3D
         {
             var capped = MeshPrimitives.Cylinder(capped: true);
             var open = MeshPrimitives.Cylinder(capped: false);
+            Assert.NotEmpty(open.Vertices);
+            Assert.NotEmpty(open.Indices);
             Assert.True(open.Vertices.Length < capped.Vertices.Length);
             Assert.True(open.Indices.Length < capped.Indices.Length);
         }
@@ -186,6 +156,8 @@ namespace KhaozEngine.Tests.Render3D
         {
             var capped = MeshPrimitives.Cone(capped: true);
             var open = MeshPrimitives.Cone(capped: false);
+            Assert.NotEmpty(open.Vertices);
+            Assert.NotEmpty(open.Indices);
             Assert.True(open.Vertices.Length < capped.Vertices.Length);
             Assert.True(open.Indices.Length < capped.Indices.Length);
         }
@@ -230,6 +202,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             const float radius = 1.25f;
             var s = MeshPrimitives.Sphere(radius);
+            Assert.NotEmpty(s.Vertices);
             foreach (var v in s.Vertices)
                 Assert.Equal(radius, v.Position.Length(), 3);
         }
@@ -238,6 +211,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Sphere_Normals_Point_Radially_Outward()
         {
             var s = MeshPrimitives.Sphere(0.5f);
+            Assert.NotEmpty(s.Vertices);
             foreach (var v in s.Vertices)
             {
                 var expected = Vector3.Normalize(v.Position);
@@ -280,6 +254,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Plane_Face_Normals_Point_Up()
         {
             var plane = MeshPrimitives.Plane(2f, 2f, 2, 2);
+            Assert.NotEmpty(plane.Indices);
             for (int t = 0; t < plane.Indices.Length; t += 3)
             {
                 var p0 = plane.Vertices[plane.Indices[t]].Position;
@@ -296,6 +271,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             const float size = 2f, radius = 0.3f;
             var rb = MeshPrimitives.RoundedBox(size, radius, 4);
+            Assert.NotEmpty(rb.Vertices);
             float h = size * 0.5f;
             foreach (var v in rb.Vertices)
             {
@@ -316,6 +292,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             // radius >= size/2 must clamp; no throw, valid mesh, still bounded by half-size.
             var rb = MeshPrimitives.RoundedBox(1f, 5f, 3);
+            Assert.NotEmpty(rb.Indices);
             Assert.Equal(0, rb.Indices.Length % 3);
             Assert.True(rb.Vertices.Length > 0);
             foreach (var v in rb.Vertices)
@@ -343,6 +320,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             // every side/cap normal has a non-negative outward radial component along its own position.
             var cap = MeshPrimitives.Capsule(0.5f, 1f, 12, 4);
+            Assert.Contains(cap.Vertices, v => v.Position.X * v.Position.X + v.Position.Z * v.Position.Z >= 1e-6f);
             foreach (var v in cap.Vertices)
             {
                 var radial = new Vector3(v.Position.X, 0f, v.Position.Z);
@@ -373,6 +351,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             const float major = 0.5f, minor = 0.2f;
             var torus = MeshPrimitives.Torus(major, minor, 12, 8);
+            Assert.NotEmpty(torus.Vertices);
             foreach (var v in torus.Vertices)
             {
                 // the tube-cross-section centre for this vertex lies on the major circle.
@@ -394,6 +373,7 @@ namespace KhaozEngine.Tests.Render3D
             var torus = MeshPrimitives.Torus(0.5f, 0.2f, 2, 1);
             foreach (var m in new[] { plane, rb, cap, torus })
             {
+                Assert.NotEmpty(m.Indices);
                 Assert.Equal(0, m.Indices.Length % 3);
                 Assert.True(m.Vertices.Length > 0);
                 foreach (var idx in m.Indices)
@@ -411,6 +391,8 @@ namespace KhaozEngine.Tests.Render3D
         /// </summary>
         static void AssertAllFaceNormalsOutward(GltfMesh mesh)
         {
+            Assert.NotEmpty(mesh.Vertices);
+            Assert.NotEmpty(mesh.Indices);
             var meshCentroid = Vector3.Zero;
             foreach (var v in mesh.Vertices)
                 meshCentroid += v.Position;
@@ -448,6 +430,8 @@ namespace KhaozEngine.Tests.Render3D
         /// </summary>
         static void AssertWindingMatchesNormals(GltfMesh mesh)
         {
+            Assert.NotEmpty(mesh.Indices);
+            int checkedFaces = 0;
             for (int t = 0; t < mesh.Indices.Length; t += 3)
             {
                 ushort i0 = mesh.Indices[t], i1 = mesh.Indices[t + 1], i2 = mesh.Indices[t + 2];
@@ -457,6 +441,7 @@ namespace KhaozEngine.Tests.Render3D
 
                 var cross = Vector3.Cross(p1 - p0, p2 - p0);
                 if (cross.LengthSquared() < 1e-12f) continue; // degenerate / zero-area triangle
+                checkedFaces++;
                 var faceN = Vector3.Normalize(cross);
 
                 var avgStored = (mesh.Vertices[i0].Normal + mesh.Vertices[i1].Normal + mesh.Vertices[i2].Normal) / 3f;
@@ -464,26 +449,45 @@ namespace KhaozEngine.Tests.Render3D
                     $"Triangle at index {t} winds opposite its stored normals " +
                     $"(dot(faceN {faceN}, avgStoredNormal {avgStored}) = {Vector3.Dot(faceN, avgStored)}).");
             }
+            Assert.True(checkedFaces > 0, "The mesh must contain a non-degenerate face to check winding.");
         }
 
-        // Tile is not in AllPrimitives' degenerate variants; include the full canonical set here.
-        public static System.Collections.Generic.IEnumerable<object[]> AllPrimitivesForWinding()
+        static readonly (string Name, Func<GltfMesh> Build)[] PrimitiveFactories =
+        [
+            (nameof(MeshPrimitives.Box), () => MeshPrimitives.Box()),
+            (nameof(MeshPrimitives.Tile), () => MeshPrimitives.Tile()),
+            (nameof(MeshPrimitives.Cylinder), () => MeshPrimitives.Cylinder()),
+            (nameof(MeshPrimitives.Cone), () => MeshPrimitives.Cone()),
+            (nameof(MeshPrimitives.Pyramid), () => MeshPrimitives.Pyramid()),
+            (nameof(MeshPrimitives.Wedge), () => MeshPrimitives.Wedge()),
+            (nameof(MeshPrimitives.Sphere), () => MeshPrimitives.Sphere()),
+            (nameof(MeshPrimitives.Capsule), () => MeshPrimitives.Capsule()),
+            (nameof(MeshPrimitives.RoundedBox), () => MeshPrimitives.RoundedBox()),
+            (nameof(MeshPrimitives.Torus), () => MeshPrimitives.Torus()),
+            (nameof(MeshPrimitives.Plane), () => MeshPrimitives.Plane()),
+        ];
+
+        // Every shipped factory, guarded by CanonicalCasesCoverEveryPrimitiveFactory, plus the parameters that
+        // change the generated topology.
+        public static System.Collections.Generic.IEnumerable<object[]> AllPrimitives() =>
+            PrimitiveFactories.Select(factory => factory.Build())
+                .Append(MeshPrimitives.Cylinder(capped: false))
+                .Append(MeshPrimitives.Cone(capped: false))
+                .Append(MeshPrimitives.Plane(2f, 3f, 4, 5))
+                .Select(mesh => new object[] { mesh });
+
+        [Fact]
+        public void CanonicalCasesCoverEveryPrimitiveFactory()
         {
-            yield return new object[] { MeshPrimitives.Box() };
-            yield return new object[] { MeshPrimitives.Tile() };
-            yield return new object[] { MeshPrimitives.Cylinder() };
-            yield return new object[] { MeshPrimitives.Cone() };
-            yield return new object[] { MeshPrimitives.Pyramid() };
-            yield return new object[] { MeshPrimitives.Wedge() };
-            yield return new object[] { MeshPrimitives.Sphere() };
-            yield return new object[] { MeshPrimitives.Capsule() };
-            yield return new object[] { MeshPrimitives.RoundedBox() };
-            yield return new object[] { MeshPrimitives.Torus() };
-            yield return new object[] { MeshPrimitives.Plane() }; // single-sided +Y: winding-vs-normal still holds
+            var shipped = typeof(MeshPrimitives).GetMethods()
+                .Where(method => method.IsStatic && method.ReturnType == typeof(GltfMesh))
+                .Select(method => method.Name).OrderBy(name => name, StringComparer.Ordinal);
+            Assert.Equal(shipped, PrimitiveFactories.Select(factory => factory.Name)
+                .OrderBy(name => name, StringComparer.Ordinal));
         }
 
         [Theory]
-        [MemberData(nameof(AllPrimitivesForWinding))]
+        [MemberData(nameof(AllPrimitives))]
         public void Primitive_Winding_Matches_Stored_Normals(GltfMesh mesh)
         {
             AssertWindingMatchesNormals(mesh);
@@ -534,6 +538,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             // not centroid-convex, so check triangle winding agrees with the stored (outward) normals instead.
             var torus = MeshPrimitives.Torus();
+            Assert.NotEmpty(torus.Indices);
             for (int t = 0; t < torus.Indices.Length; t += 3)
             {
                 ushort i0 = torus.Indices[t], i1 = torus.Indices[t + 1], i2 = torus.Indices[t + 2];
@@ -556,6 +561,7 @@ namespace KhaozEngine.Tests.Render3D
             var sphere = MeshPrimitives.Sphere(rings: 1, segments: 2);
             foreach (var m in new[] { cyl, cone, sphere })
             {
+                Assert.NotEmpty(m.Indices);
                 Assert.Equal(0, m.Indices.Length % 3);
                 Assert.True(m.Vertices.Length > 0);
                 foreach (var idx in m.Indices)

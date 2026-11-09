@@ -13,7 +13,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.BugReports.Core;
 
-public sealed class BugReportBundleWriterTests
+public sealed partial class BugReportBundleWriterTests
 {
     const string ReportId = TestBundles.ReportId;
 
@@ -266,26 +266,6 @@ public sealed class BugReportBundleWriterTests
         }
         public IEnumerator<ReportClipFrame> GetEnumerator() { yield return this[0]; }
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-    }
-
-    [Fact]
-    public void Entries_are_stored_not_compressed()
-    {
-        List<ZipArchiveEntry> entries = Entries(BugReportBundleWriter.Write(Draft(screenshot: Png(), clip: ThreeFrames())));
-
-        Assert.All(entries, entry => Assert.Equal(entry.Length, entry.CompressedLength));
-    }
-
-    [Fact]
-    public void Entries_carry_the_capture_time_and_the_same_draft_writes_the_same_bytes()
-    {
-        BugReportDraft draft = Draft(screenshot: Png(), clip: ThreeFrames());
-
-        byte[] first = BugReportBundleWriter.Write(draft);
-
-        // DOS times keep even seconds, so 05.678 reads back as 04.
-        Assert.All(Entries(first), entry => Assert.Equal(new DateTime(2026, 10, 17, 3, 4, 4), entry.LastWriteTime.DateTime));
-        Assert.Equal(first, BugReportBundleWriter.Write(draft));
     }
 
     [Theory]

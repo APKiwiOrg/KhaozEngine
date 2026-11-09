@@ -12,6 +12,10 @@ result or measured memory footprint is claimed here. Verification at samples is 
 ## Assets and shared identity
 
 Load every annotated host material slice from the same source and upload it to the same `Scene3D`.
+Rigid equipment may use legacy loading or incremental resource uploads. Both publication paths retain
+the same immutable geometry witness. Incremental readiness releases its source arrays before publication,
+while the witness stays charged to the resource until release and retirement. Failed publication, release
+and legacy unload remove the generation-keyed witness, so slot reuse cannot inherit it.
 `CreateHostCoverage` validates completeness, the exact skeleton owner and immutable upload evidence.
 Scene-issued `SkinnedMeshHandle` values include an opaque scene stamp. Publicly constructed handles are
 unowned and cannot enter coverage, even when their slot and generation match. Ordinary draws retain

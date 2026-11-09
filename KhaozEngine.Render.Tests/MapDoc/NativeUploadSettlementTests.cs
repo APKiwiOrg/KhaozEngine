@@ -186,13 +186,14 @@ public sealed class NativeUploadSettlementTests
         return new(null, null, foliage, default);
     }
 
-    // Independent one-row inventory. Meshes retain no vertex/index/image inputs. The foliage product owns
+    // Independent one-row inventory. Meshes retain a 384-byte authentication witness allowance, without
+    // retaining vertex/index/image inputs. The foliage product owns
     // nine arrays, including both patch representations and the point-shadow local-transform stream.
     // Its published batch also embeds two 288-byte temporal uniform snapshots, beside 512 bytes of metadata.
     static long RetainedCpu(int kind)
     {
-        if (kind == 0) return 2072;
-        if (kind == 1) return 3128;
+        if (kind == 0) return 2072 + 384;
+        if (kind == 1) return 3128 + 384;
         return 2328 + 2 * 288 + 9 * 24 +
             8 + 24 + 40 + 96 + Aligned(Unsafe.SizeOf<FoliageInstance>()) +
             Aligned(Unsafe.SizeOf<FoliagePatch>()) + 8 + 96 + 64;

@@ -34,10 +34,8 @@ namespace KhaozEngine.Render3D
                 _gd.UpdateBuffer(outlineNormalVb, 0, upload.OutlineNormals);
                 ib = CreateIndexBuffer(upload.Indices, mesh.IndexFormat);
 
-                var handle = PublishMesh(mesh, vb, outlineNormalVb, ib, material, outlineMaterial,
+                return PublishMesh(mesh, vb, outlineNormalVb, ib, material, outlineMaterial,
                     splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
-                _coverageUploads[(handle.Index, handle.Generation)] = new CoverageUploadEvidence(mesh);
-                return handle;
             }
             catch
             {

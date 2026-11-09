@@ -14,6 +14,8 @@ public sealed partial class Scene3D
     readonly List<SkinnedHostCoverage> _coverageHosts = [];
     readonly CoverageFrameArena _coverageArena = new();
     readonly Dictionary<(int, int), CoverageUploadEvidence> _coverageUploads = [];
+    internal bool CoverageUploadRetainedForTests(MeshHandle mesh) =>
+        _coverageUploads.ContainsKey((mesh.Index, mesh.Generation));
 
     static int AllocateCoverageSceneStamp()
     {

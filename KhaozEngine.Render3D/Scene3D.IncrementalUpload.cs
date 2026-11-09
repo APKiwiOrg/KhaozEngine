@@ -70,6 +70,7 @@ public sealed partial class Scene3D
         }
         if (data.Mesh is { } m)
         {
+            cpu = checked(cpu + CoverageUploadEvidence.RetainedCpuBytes);
             if (m.Indices32.Length % 3 != 0) throw new ArgumentException("Mesh requires complete triangles.", nameof(data));
             foreach (var index in m.Indices32)
                 if (index >= m.Vertices.Length) throw new ArgumentException("Mesh index is outside its vertex stream.", nameof(data));
@@ -78,6 +79,7 @@ public sealed partial class Scene3D
             Buffer(checked(m.Vertices.LongLength * 12));
             Buffer(checked(m.Indices32.LongLength * (m.IndexFormat == GpuIndexFormat.UInt16 ? 2 : 4)));
             // Outline normal welding retains positions, groups, dictionary capacity and output streams.
+            // This per-vertex workspace also bounds the earlier, non-overlapping coverage hash position copy.
             cpu = checked(cpu + m.Vertices.LongLength * 512 + m.Indices32.LongLength * 4);
             if (data.Maps is { } maps) { Image(maps.Albedo); Image(maps.Normal); Image(maps.Roughness); }
             if (!data.ClipData.IsEmpty)
@@ -162,10 +164,20 @@ public sealed partial class Scene3D
     }
     SceneResourceUpload PrepareClaimedResourceUpload(SceneUploadData data, SceneUploadDemand demand, ISceneUploadReservation reservation)
     {
-        var upload = new SceneResourceUpload(this, _gd, data, demand, reservation);
-        _sceneUploads.Add(upload);
-        try { upload.Prepare(); return upload; }
-        catch { upload.Dispose(); throw; }
+        SceneResourceUpload? upload = null;
+        try
+        {
+            upload = new SceneResourceUpload(this, _gd, data, demand, reservation);
+            _sceneUploads.Add(upload);
+            upload.Prepare();
+            return upload;
+        }
+        catch
+        {
+            if (upload is not null) upload.Dispose();
+            else { reservation.Retiring(); reservation.Released(); reservation.Dispose(); }
+            throw;
+        }
     }
 
     internal SceneResourceHandle PublishResource(SceneResourceUpload upload)

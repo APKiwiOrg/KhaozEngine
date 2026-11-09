@@ -2297,6 +2297,12 @@ uniform snapshots. Compact value metadata preserves mesh bounds and material set
 is sized for surviving objects and future publication bindings before returning credit. Preparation inputs, welding, mip workspace and CPU transfer staging do
 not remain in that inventory. The original complete peak is still reserved before any preparation or factory.
 
+Mesh publication also retains an immutable geometry authentication witness for equipment coverage. Legacy and
+incremental uploads register it in the same transaction, keyed by mesh slot and generation. Publication failure,
+resource detachment and legacy unload remove that entry. The resource inventory reserves a conservative 384-byte
+CPU allowance per mesh for the witness, digest and index metadata. No source geometry arrays survive for it.
+Its earlier position-copy hash workspace fits within the non-overlapping per-vertex preparation allowance.
+
 `SceneResourceAccess(scene)` resolves published mesh handles through `MeshOf` and submits rigid descriptors
 through `DrawResourceAnchored`. It replaces only the mesh. Water uses the same published mesh and its retained
 original domain. Publishing a native water domain also initializes the renderer's shared neutral colour texture,

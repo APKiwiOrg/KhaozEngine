@@ -10,6 +10,8 @@ namespace KhaozEngine.Render3D;
 // Cold geometry authentication. Asset-byte authentication remains the caller's separate responsibility.
 internal sealed class CoverageUploadEvidence
 {
+    // Conservative owned metadata allowance for the witness, digest string and generation-keyed index entry.
+    internal const long RetainedCpuBytes = 384;
     internal readonly string Fingerprint;
     internal readonly MeshBounds Bounds;
     internal readonly bool FinitePositionSinkInputs;

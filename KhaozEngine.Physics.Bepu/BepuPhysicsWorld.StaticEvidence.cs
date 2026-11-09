@@ -12,6 +12,10 @@ public sealed partial class BepuPhysicsWorld : IPhysicsStaticEvidence
 {
     public PhysicsEvidenceStatus CaptureStaticEvidence(IPhysicsQueryLease lease, Vector3 minimum, Vector3 maximum,
         int maximumFeatures, PhysicsEvidenceVisitor visitor)
+        => CaptureStaticEvidenceCore(lease, minimum, maximum, maximumFeatures, visitor, null);
+
+    PhysicsEvidenceStatus CaptureStaticEvidenceCore(IPhysicsQueryLease lease, Vector3 minimum, Vector3 maximum,
+        int maximumFeatures, PhysicsEvidenceVisitor visitor, StaticQueryExclusions? exclusions, bool indexed = true)
     {
         AuthenticateFeatureLease(lease);
         ArgumentNullException.ThrowIfNull(visitor);
@@ -21,9 +25,21 @@ public sealed partial class BepuPhysicsWorld : IPhysicsStaticEvidence
         using QueryOperation operation = EnterQuery();
         if (!SweepRecordCountsMatch() || !SelectedSweepBoundsProved(QueryMobility.Statics, null))
             return PhysicsEvidenceStatus.Unavailable;
+        if (indexed && _sweepEvidence.IsCurrent(this, _queryGeneration) &&
+            _staticEvidence.Count == _handles.Count && _unprovedStaticEvidenceBounds.Count == 0 &&
+            CapsuleGeneralSweepTraversal.TryValidate(_sim.BroadPhase.StaticTree, minimum, maximum) &&
+            CapsuleGeneralSweepTraversal.TryValidate(_sim.BroadPhase.ActiveTree, minimum, maximum))
+            return CaptureIndexedEvidence(lease, minimum, maximum, maximumFeatures, visitor, exclusions, operation.Scratch);
+        return CaptureFullEvidence(lease, minimum, maximum, maximumFeatures, visitor, exclusions);
+    }
+
+    PhysicsEvidenceStatus CaptureFullEvidence(IPhysicsQueryLease lease, Vector3 minimum, Vector3 maximum,
+        int maximumFeatures, PhysicsEvidenceVisitor visitor, StaticQueryExclusions? exclusions)
+    {
         int features = 0;
         foreach (var row in _handles.OrderBy(row => row.Key))
         {
+            StaticEvidenceDiagnostics.Owner();
             int broad = _sim.Statics[_sim.Statics.HandleToIndex[row.Value.Handle.Value]].BroadPhaseIndex;
             if (!ReadSweepStoredBounds(_sim.BroadPhase.StaticTree, broad, out var min, out var max))
                 return PhysicsEvidenceStatus.Unavailable;
@@ -33,11 +49,14 @@ public sealed partial class BepuPhysicsWorld : IPhysicsStaticEvidence
                 return PhysicsEvidenceStatus.Unsupported;
             _sim.Statics.GetDescription(row.Value.Handle, out var description);
             var status = EmitEvidence(new(row.Key), geometry, description.Pose, minimum, maximum,
-                maximumFeatures, ref features, visitor);
+                maximumFeatures, ref features, Visit);
             if (status != PhysicsEvidenceStatus.Complete) return status;
         }
         lease.AssertCurrent();
         return PhysicsEvidenceStatus.Complete;
+
+        bool Visit(in PhysicsEvidenceFace face, ReadOnlySpan<PhysicsEvidencePoint> points) =>
+            (exclusions?.ExcludesSweepStatic(face.Static.Value) ?? false) || visitor(face, points);
     }
 
     static bool EvidenceOverlap(Vector3 a, Vector3 b, Vector3 min, Vector3 max) =>
@@ -72,6 +91,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsStaticEvidence
             if (!mesh.ProvePose(pose, map)) return PhysicsEvidenceStatus.Unresolved;
             for (int triangle = 0; triangle < mesh.Count; triangle++)
             {
+                StaticEvidenceDiagnostics.Triangle();
                 for (int i = 0; i < 3; i++)
                     if (!EvidencePoint(map, mesh.Vertex(triangle * 3 + i), out vertices[i]))
                         return PhysicsEvidenceStatus.Unresolved;
@@ -100,16 +120,10 @@ public sealed partial class BepuPhysicsWorld : IPhysicsStaticEvidence
         return PhysicsEvidenceStatus.Complete;
     }
 
-    static bool EvidencePoint(InstalledPoseOperator map, Vector3 local, out PhysicsEvidencePoint point)
-    {
-        FeaturePoint exact = map.Point(local, exactZeroProducts: true);
-        point = default;
-        if (!exact.X.IsExact || !exact.Y.IsExact || !exact.Z.IsExact) return false;
-        point = new(exact.X.Value, exact.Y.Value, exact.Z.Value);
-        return true;
-    }
+    static bool EvidencePoint(InstalledPoseOperator map, Vector3 local, out PhysicsEvidencePoint point) =>
+        StaticEvidenceMeshIndex.Point(map, local, out point);
 
-    static bool EvidenceTouches(ReadOnlySpan<PhysicsEvidencePoint> vertices, Vector3 min, Vector3 max)
+    internal static bool EvidenceTouches(ReadOnlySpan<PhysicsEvidencePoint> vertices, Vector3 min, Vector3 max)
     {
         double x0 = double.PositiveInfinity, y0 = x0, z0 = x0;
         double x1 = double.NegativeInfinity, y1 = x1, z1 = x1;

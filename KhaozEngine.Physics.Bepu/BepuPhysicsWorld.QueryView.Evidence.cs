@@ -14,13 +14,10 @@ public sealed partial class BepuPhysicsWorld
             _owner.AuthenticateFeatureLease(lease);
             ThrowIfDisposed();
             ArgumentNullException.ThrowIfNull(visitor);
-            var status = _owner.CaptureStaticEvidence(lease, minimum, maximum, maximumFeatures, Visit);
+            var status = _owner.CaptureStaticEvidenceCore(lease, minimum, maximum, maximumFeatures, visitor, _exclusions);
             ThrowIfDisposed();
             lease.AssertCurrent();
             return status;
-
-            bool Visit(in PhysicsEvidenceFace face, ReadOnlySpan<PhysicsEvidencePoint> vertices) =>
-                _exclusions.ExcludesSweepStatic(face.Static.Value) || visitor(face, vertices);
         }
     }
 }

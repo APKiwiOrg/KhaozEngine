@@ -77,6 +77,18 @@ either value shifts the bit-exact result legitimately.
   while simulation contacts remain unchanged.
   Views also expose `IPhysicsStaticEvidence` for their actual selected statics under the same authenticated
   read interval. A registration's exclusion list never substitutes for that selected capture.
+  Static evidence selects overlapping owners from the current broad phase and sorts only those owners by seam id.
+  Static publication records primitive feature counts and the first unresolved mesh vertex, reusing metadata on rebases.
+  Mesh queries traverse the existing proved tree, sort only candidate triangle ids and expand selected triangles in
+  original order. Excluded meshes use conservative bound counts without expanding their triangles. The indexed path
+  first proves that all candidate features, excluded ones included, fit the historical feature limit. An uncertain
+  capacity uses the original full walk before any callback. This preserves capacity refusals and callback prefixes.
+  An unresolved mesh vertex outside the aperture still refuses. Primitive owners retain every face when their stored
+  owner bounds intersect, including faces outside the aperture. Rebase, replacement and removal refresh or retire the
+  metadata under the writer gate. Unpublished, mismatched or unproved spatial geometry uses the original full walk.
+  The opt-in internal evidence diagnostics count static owners visited during capture and selected triangles expanded.
+  Writer exactness checks are outside those query counters. No second per-triangle index or copied world vertices
+  are retained. Candidate counts can conservatively exceed the number of faces ultimately emitted.
 - **Query read leases** - the owner and its restricted views implement `IPhysicsQueryLeaseSource` and
   `IPhysicsConcurrentReadSource`. A lease is a thread-affine reader interval, and several threads may hold
   leases and query one world at once. Every outer read interval borrows private query scratch, including its

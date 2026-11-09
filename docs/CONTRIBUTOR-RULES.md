@@ -174,78 +174,26 @@ classification is unclear. The detailed rationale lives in
 
 ## Writing tests
 
-Every test guards something distinct: a contract, a rule, an owner ruling or a past regression. A correct
-change should break few tests, and each failure should point at a real defect. These fifteen rules are the
-fleet standard. Every game repo carries the same text as game-template's managed `docs/WRITING-TESTS.md`, so
-keep the two in step and change the shared wording in both.
+Every test guards something distinct: a contract, a rule, an owner ruling or a past regression. These fifteen
+rules bind this repository and every game repo. The reasons and worked lessons behind them are the owner's
+private standard and are not published here. Agents receive them when they work on tests. The headlines are
+listed so a rule can be cited by number.
 
-1. **Decide the test is needed, then find the existing one.** Before writing a test, name what it guards (a
-   contract, a rule, an owner ruling or a past regression) and search for a test that already fails when that
-   breaks. If one does, add nothing, or strengthen that test. If a similar test covers part of the behaviour,
-   favour it: extend it, usually with a theory row, or combine the two into one theory. Add a new test only
-   for behaviour no test covers. Each theory row covers a distinct branch or boundary, so ten rows that take
-   the same path are one row. Sibling facts that differ only in their inputs are one theory. A test that
-   guards nothing new costs CI time on every run and breaks on correct refactors without catching anything.
-2. **Test the rule, not the value.** Do not copy a tunable constant, palette entry, default or published
-   catalog number into an assertion. Such a test fails only when someone retunes on purpose. Assert the
-   property the value must keep: a bound, an ordering, a monotonic step, a conservation.
-3. **One guard per owner ruling.** An approved look or tuned value gets one test named for its ruling, not one
-   assertion per value. A ruling with several behavioural obligations keeps one test per obligation.
-4. **Assert the contract, not incidental detail.** Exception message wording, call or allocation counts on
-   fakes, log text, internal ordering, private members reached by reflection, exact frame indices and exact
-   intermediate values are not contracts unless a document or ruling makes them one. They break on correct
-   refactors and catch nothing a behavioural assertion would miss. Assert the exception type and a structured
-   member (`ParamName`, an error code, a status) instead, and reach behaviour through the public API or an
-   `InternalsVisibleTo` seam. Removing one incidental check never adds another, so do not require an inner
-   exception type, wrapper or library namespace unless a document promises it.
-5. **Validate every shipped item through one validator.** An invariant over assets, clips, meshes, shaders,
-   goldens or catalog rows is written once as a theory with one case per discovered item, plus a fact that the
-   discovered set equals the shipped set from an independent source, with an explicit policy for any item it
-   exempts. It never loops over items inside one fact, because the first failure hides the rest, and it never
-   checks a representative sample, because a defect in one item is invisible in another.
-6. **Use the shared fixtures.** Fakes, host boot, waits, content reads and comparison helpers live in shared
-   fixtures. Extend one instead of writing a local copy, because copies drift and each needs its own fixes.
-7. **Name the regression.** A test written for a defect names its issue number in a comment.
-8. **Exact values where they are the contract.** Wire and persisted formats, determinism hashes, public
-   constants, documented tuning values and golden images are compared exactly. There the exact value is the
-   behaviour, and a looser check lets a format break ship. Compare a documented limit to its literal, never to
-   the production constant that produced it, which moves with the code under test.
-9. **Absence checks and documented diagnostic values stay.** `Assert.DoesNotContain` or `DoesNotMatch` on a
-   message pins what it must never say (a token, a secret, a retired claim), which is a disclosure contract. A
-   diagnostic value the README, consumer docs or a member's XML docs promise (an entry id, the offending index,
-   a count, a path) is the contract, and only the prose around it is a wording pin. Check those docs before
-   removing any message assertion.
-10. **A test must be able to fail.** Assert the expected count or non-emptiness before asserting inside a loop
-    or `Assert.All`, because an empty result passes silently. Never assert a fake's configured answer, a
-    constant the test itself defined, or a golden generated in the same run it is compared against. When an
-    assertion goes, keep the call it made if it is the only exercise of a production path, and assert a
-    property of its result. A no-write assertion needs a fixture that would leave a write if the rollback were
-    missing, such as a side table a trigger fills before it discards the row.
-11. **Never delete or weaken a test without evidence.** A deletion names, in its commit message, the surviving
-    test that fails for the same defect, or shows why the deleted test could not fail. Removing an
-    over-specific line keeps or strengthens the behavioural assertion beside it. A failing test is fixed or its
-    defect is filed, never loosened until it passes.
-12. **Timing never gates default CI.** A test that measures and reports instead of asserting carries
-    `[Trait("Category", "Diagnostic")]`, and default CI excludes that category. Wall-clock bounds flake on
-    shared runners and say nothing about correctness.
-13. **No sleeps, retries or bigger budgets for flakes.** A test that fails intermittently gets an issue when it
-    is first seen and a deterministic fix: a completion signal, a held clock or a serial collection. A sleep or
-    retry hides the race and slows every run. Hold every clock the code under test reads, because one left on wall
-    time can still decide the outcome, and check a time budget one tick short of its limit as well as at it.
-14. **Tooling tests live with their tooling.** Tests of measurement harnesses, evidence pipelines and research
-    tools sit in their own project outside the main test project, with their own CI trigger, so product changes
-    do not pay for them.
-15. **A refusal test breaks one rule.** A test that expects a refusal feeds an input that breaks only the rule
-    under test, beside a passing control that fixes that one defect. An input that breaks two rules still
-    passes when the wrong check refuses it, because the exception type cannot tell the refusals apart. When no
-    input can break one rule alone, assert the structured member that names the rule. A rule with a limit gets
-    its control at the limit, such as a route of exactly the cap or the last plane the world has, so a check
-    tightened by one fails. The control follows the refusal's no-write assertions, so they still prove the
-    refusal wrote nothing.
-    On a write path, compare content, such as saved bytes or a digest, rather than an object reference or a count.
-    A budget control runs the real operation at the exact limit and one below it, not an isolated guard helper. A
-    tiled save commits at its manifest rename, so a refused save leaves the manifest and loaded content unchanged,
-    and a content-addressed file it wrote first is unreferenced until the next save sweeps it.
+1. **Decide the test is needed, then find the existing one.**
+2. **Test the rule, not the value.**
+3. **One guard per owner ruling.**
+4. **Assert the contract, not incidental detail.**
+5. **Validate every shipped item through one validator.**
+6. **Use the shared fixtures.**
+7. **Name the regression.**
+8. **Exact values where they are the contract.**
+9. **Absence checks and documented diagnostic values stay.**
+10. **A test must be able to fail.**
+11. **Never delete or weaken a test without evidence.**
+12. **Timing never gates default CI.**
+13. **No sleeps, retries or bigger budgets for flakes.**
+14. **Tooling tests live with their tooling.**
+15. **A refusal test breaks one rule.**
 
 In this repository:
 
@@ -255,13 +203,6 @@ In this repository:
   value from prose, so a rule 9 value moves onto a structured member of the thrown exception (the refusal
   bullet under "Engine code and test contracts") and the test asserts that member. It is never a deleted
   assertion and never an exemption.
-- A sweep's script hits are candidates, never verdicts, and a sweep that opens a test file judges every test in it.
-- Weak assertions this repository has found repeatedly. A check that a measured cost or duration is finite and
-  positive gates nothing, so that test reports and takes the category below. A list found by reflection or a
-  directory scan is compared with an independently written roster, because `NotEmpty` lets a partial discovery pass
-  (rule 5). A not-mutated check needs an input the operation would really change. A test that exercises only a helper
-  defined in the test cannot fail for a production change. A test claiming something does not block must fail for an
-  implementation that waits.
 - Rule 12's category is excluded by every default filter (`scripts/ci-selective-test.sh`, `ci.yml`,
   `cross-platform-gpu.yml`). Run it on demand with the cross-platform-gpu `renderTestFilter` input set to
   `Category=Diagnostic`. Issue #491 is the precedent: a wall-clock bound that flaked on a loaded shared runner.

@@ -59,24 +59,24 @@ void main() {
 
         /// <summary>Program, whether it is rewritten to D, then its OpImageFetch, OpImageGather and OpLoopMerge
         /// counts. The D rows are D's baseline at 583a3ae7b.</summary>
-        // Shipped pins include the still-flicker lock's visibility veto, which adds one point fetch.
+        // The still-flicker shading-release veto adds one point fetch to the shipped visibility checks.
         // The frozen D rows keep their baseline fetches, gathers and loops.
         public static TheoryData<string, bool, int, int, int> Counts => new()
         {
-            { nameof(ShaderSources.TemporalAccumulateFrag), false, 32, 12, 14 },
-            { nameof(ShaderSources.TemporalAccumulateHalfFrag), false, 32, 12, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), false, 32, 12, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag), false, 32, 12, 14 },
+            { nameof(ShaderSources.TemporalAccumulateFrag), false, 33, 12, 14 },
+            { nameof(ShaderSources.TemporalAccumulateHalfFrag), false, 33, 12, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), false, 33, 12, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag), false, 33, 12, 14 },
             { nameof(ShaderSources.TemporalAccumulateFrag), true, 30, 0, 14 },
             { nameof(ShaderSources.TemporalAccumulateHalfFrag), true, 30, 0, 14 },
             { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), true, 30, 0, 14 },
             { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag), true, 30, 0, 14 },
             { "frozen D helper", false, 7, 0, 4 },
             { "shipped decision helper", false, 7, 12, 4 },
-            { nameof(ShaderSources.TemporalAccumulateFrag) + " (Metal)", false, 41, 8, 14 },
-            { nameof(ShaderSources.TemporalAccumulateHalfFrag) + " (Metal)", false, 41, 8, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) + " (Metal)", false, 41, 8, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag) + " (Metal)", false, 41, 8, 14 },
+            { nameof(ShaderSources.TemporalAccumulateFrag) + " (Metal)", false, 42, 8, 14 },
+            { nameof(ShaderSources.TemporalAccumulateHalfFrag) + " (Metal)", false, 42, 8, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) + " (Metal)", false, 42, 8, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag) + " (Metal)", false, 42, 8, 14 },
             { "shipped decision helper (Metal)", false, 16, 8, 4 },
         };
 

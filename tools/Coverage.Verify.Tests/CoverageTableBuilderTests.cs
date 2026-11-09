@@ -15,6 +15,31 @@ namespace KhaozEngine.Tests.Tools.Coverage;
 public sealed class CoverageTableBuilderTests
 {
     [Fact]
+    public void Direction_cancellation_does_not_create_sample_holes_or_change_exact_scalar_rows()
+    {
+        var input = CoverageBuildFixture.Input();
+        var baseline = CoverageTableBuilder.Build(input);
+        var original = input.Topology.Source;
+        var skin = original.SkinVertices.ToArray();
+        for (int i = 0; i < skin.Length; i++) skin[i].Normal = i % 2 == 0 ? Vector3.UnitY : -Vector3.UnitY;
+        var source = new CoverageSourceTopology("cancelling-directions", original.SourceSha256, original.Positions,
+            original.Vertices, original.Triangles, skin);
+        var topology = CoverageRefinement.Build(source, input.Topology.Map);
+        var samples = input.Samples.Select(s => new CoverageSample(s.Id, s.DomainId, s.AuthoredFrameId, s.BlendPathId,
+            s.StateKey, s.ActorModel, s.Palette, s.Commands.ToArray().Select(c => c with { Topology = topology }).ToArray()));
+        var changed = new CoverageBuildInput(topology, input.InverseBind, input.Domains, samples,
+            input.CandidateSampleIds, input.Identity, input.InputSha256);
+        var result = CoverageTableBuilder.Build(changed);
+        Assert.True(result.Evidence.Complete);
+        Assert.Empty(result.Evidence.Holes);
+        Assert.Equal(4, result.Evidence.PairResults.Count);
+        Assert.Equal(baseline.Evidence.PairResults.Select(p => p.Valid), result.Evidence.PairResults.Select(p => p.Valid));
+        Assert.Equal(baseline.Table.EntryCount, result.Table.EntryCount);
+        for (int entry = 0; entry < result.Table.EntryCount; entry++)
+            Assert.Equal(baseline.Table.Entry(entry).ToArray(), result.Table.Entry(entry).ToArray());
+    }
+
+    [Fact]
     public void Configuration_identity_ignores_serialization_and_asset_locations()
     {
         using var files = new CoverageBuildFiles("task8");

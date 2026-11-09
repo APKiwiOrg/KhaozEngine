@@ -56,8 +56,8 @@ internal sealed class CoverageCarryFailureFixture
         uint[] b = Record(new(2, 0, 0), tangent ? Vector3.UnitX : -Vector3.UnitX,
             new(.75f, .5f, .25f, 1), Vector2.UnitX, new(0, tangent ? -1 : 1, 0, 1));
         a.CopyTo(Work, Source); b.CopyTo(Work, Source + 16); a.CopyTo(Work, Source + 32);
-        Expected = [.. a, .. Record(new(1, 0, 0), tangent ? Vector3.UnitX : Vector3.Zero,
-            new(.5f, .5f, .5f, 1), new(.5f, 0), tangent ? Vector4.Zero : new(0, 1, 0, 1))];
+        Expected = [.. a, .. Record(new(1, 0, 0), Vector3.UnitX,
+            new(.5f, .5f, .5f, 1), new(.5f, 0), new(0, 1, 0, 1))];
         if (execute) Run("CoverageCarryTransport");
     }
 
@@ -84,6 +84,8 @@ internal sealed class CoverageCarryFailureFixture
         uint[] b = Record(new(2, 0, 0), Vector3.UnitX, new(.75f, .5f, .25f, 1), Vector2.UnitX,
             tangent ? new(0, 1, 0, -1) : Vector4.Zero);
         a.CopyTo(Work, Before); b.CopyTo(Work, Before + 16); Expected = [.. a, .. b];
+        a.CopyTo(Work, Source); b.CopyTo(Work, Source + 16); a.CopyTo(Work, Source + 32);
+        Static[151] = 1; Static[154] = 12; Static[155] = Static[156] = 0;
         Work[After] = Bits(0); Work[After + 1] = Bits(0); Work[After + 2] = Bits(-.25f);
         Work[After + 16] = Bits(2); Work[After + 17] = Bits(0); Work[After + 18] = Bits(-.25f);
         Work[Moved] = Work[Moved + 1] = 1;
@@ -143,6 +145,20 @@ internal sealed class CoverageCarryFailureFixture
             : name == "CoverageCarryPublish" ? [Static, Frames, Work, Errors, Current] : [Static, Frames, Work, Errors];
         new CoverageSpirvExecutor(kernel.Source, name, buffers).Run(2);
     }
+    internal void AssertCoveredDirections()
+    {
+        Assert.Equal(0u, Errors[6]);
+        Assert.DoesNotContain(Poison, Current);
+        for (int vertex = 0; vertex < 2; vertex++)
+        {
+            Assert.Equal(Work.AsSpan(After + vertex * 16, 3).ToArray(), Current.AsSpan(vertex * 16, 3).ToArray());
+            for (int field = 3; field < 16; field++)
+                if (field is < 6 or >= 12) Assert.True(float.IsFinite(BitConverter.UInt32BitsToSingle(Current[vertex * 16 + field])));
+        }
+        // The first vertex is the unaffected control in every local failure fixture.
+        Assert.Equal(Expected.AsSpan(3, 13).ToArray(), Current.AsSpan(3, 13).ToArray());
+    }
+
     internal void AssertUncovered()
     {
         Assert.NotEqual(0u, Errors[6]);

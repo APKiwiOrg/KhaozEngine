@@ -7,6 +7,7 @@ namespace KhaozEngine.Render3D;
 internal static class CoverageCarryReference
 {
     /// <summary>Entry -1 successfully publishes the current uncovered pose. Other refusals leave output untouched.
+    /// Direction problems recover locally and never refuse covered positions.
     /// Digest authentication belongs to host/table binding, before this internal application interface.</summary>
     internal static bool TryCarry(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> composedPalette,
         CoverageRecessionTable table, int entryIndex, ReadOnlySpan<CoverageCarryCommand> commands,

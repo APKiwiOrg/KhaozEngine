@@ -88,7 +88,7 @@ public sealed class CoverageSkinOverflowTests
         Assert.All(fixture.Work.AsSpan(CoverageCarryFailureFixture.Before, 32).ToArray(),
             word => Assert.True(float.IsFinite(BitConverter.UInt32BitsToSingle(word))));
         fixture.Publish();
-        fixture.AssertUncovered();
+        fixture.AssertCoveredDirections();
     }
 
     [Fact]

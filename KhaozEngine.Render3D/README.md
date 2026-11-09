@@ -1908,19 +1908,20 @@ and consumer state schema. Configuration covers sorted authored part and command
 attachment and companion identities, command values, static local/socket/body-alignment transforms
 and host contract bindings. Actor incarnation IDs, frame IDs, current palettes and world/model poses
 are excluded, allowing actors to share a table. Refinement covers source ordinals and recipes.
-Arithmetic identifies the carry algorithm. Contract version 2 retains exact position coordinates,
-all publication failure decisions and every intermediate direction consumed by a later predicate.
-Cancellation-sensitive arithmetic is precise (NoContraction). Only final gathered output normalization
-uses native sqrt/division without output software flush. Raw/unmoved directions, handedness, absence,
-gather order and every other record word stay exact. The `2e-5` component tolerance is conditional on
-exact-accepted inputs and native sqrt/division normal-result relative errors at most `2^-20`, with
-underflow absolute error at most `2^-126`. It is not a universal native-transform bound. The derivation,
-exact zero/cancellation rules and native acceptance boundary are documented in the
-[equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md#assets-and-shared-identity).
-Version-one and earlier unaccepted version-two descriptor identities require rebuilding. None have shipped.
-The offline constructor and validator remain exact and read no GPU direction words. Whole-skin
-classification continues to compare complete CPU records, including exact CPU directions.
-Native correctness and any GPU saving require new approved acceptance runs.
+Arithmetic identifies the carry algorithm. Contract version 2 keeps position arithmetic and its actor
+failure decisions exact. Direction operations are native with precise cancellation-sensitive math.
+Bad normals and tangents recover per vertex from the finite uncovered current-pose direction, then
+the authored direction, then unit Z (normal) or unit X (tangent). Generated vertices use the first source
+corner for recovery inputs. Handedness and tangent absence retain their rules. A rare degenerate case
+shows a locally odd shaded spot instead of changing the whole character. Covered positions remain.
+The `2e-5` direction tolerance is conditional on the well-conditioned forward-error envelope in the
+[equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md#assets-and-shared-identity), not universal.
+Degenerate-band CPU/GPU directions need only be finite, with identical positions.
+CPU non-degenerate arithmetic stays exact and uses the same local recovery policy. Sample verification
+no longer creates holes solely for direction problems. Exact geometry certification, whole-skin depth,
+table layout, five stages, slots, overflow preflight and the 15 percent cost limit are unchanged.
+Earlier descriptor identities require rebuilding. None have shipped. Native acceptance and any saving
+remain unproven until separately approved runs.
 Digest producers hash numeric inputs explicitly in
 little-endian order, never as native-layout struct bytes. This asset codec stores digests rather
 than deriving or verifying them against source content.
@@ -1954,7 +1955,8 @@ The internal `CoverageCarryBatch` records five compute dispatches with the preci
 frozen refinement and scalar transport, face basis construction, ordered attribute gathering,
 then final publication with tight bounds. Uncovered records are complete before refinement reports a
 failure. Gathering writes private complete candidates and actor error flags. The final dispatch reads the
-completed actor-wide decision, so any failure selects uncovered current-pose records for every vertex.
+completed actor-wide position decision, so a position failure selects uncovered records for every vertex.
+Normal/tangent failures remain local and cannot write that flag.
 It cannot mix moved and uncovered output or publish stale scratch words. Actors sharing a table share one immutable topology,
 representative vector and entry-major scalar upload. Warm recordings upload current frame uniforms,
 selected row offsets and reset bounds/error words. No runtime recession constructor, exact correction,

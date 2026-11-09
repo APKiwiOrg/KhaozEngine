@@ -23,7 +23,7 @@ public sealed class CoverageNativeDirectionTests
     }
 
     [Fact]
-    public void Multi_component_flush_boundary_matches_the_CPU_unit_decision()
+    public void Degenerate_band_allows_different_unit_decisions_but_requires_finite_directions()
     {
         var f = new CoverageReferenceArithmetic();
         Vector3 value = new(MathF.ScaleB(1, -63), MathF.ScaleB(1, -63), 0);
@@ -31,7 +31,9 @@ public sealed class CoverageNativeDirectionTests
         Assert.Equal(0f, squared);
         uint cpuCode = f.Greater(f.Sqrt(squared), 0) ? 0u : 8u;
         uint[] result = Execute([Bits(value.X), Bits(value.Y), 0]);
-        Assert.Equal(cpuCode, result[0]);
+        Assert.Equal(8u, cpuCode);
+        Assert.True(result[0] is 0 or 8);
+        Assert.All(result[1..], word => Assert.True(float.IsFinite(BitConverter.UInt32BitsToSingle(word))));
     }
 
     [Fact]
@@ -72,7 +74,7 @@ public sealed class CoverageNativeDirectionTests
             #version 450
             layout(local_size_x = 64) in;
             layout(set=0,binding=0) buffer WorkBuf { uint CovWorkWords[]; };
-            """ + CoverageCarryArithmeticShader.Source + CoverageCarryOutputDirectionShader.Source + """
+            """ + CoverageCarryArithmeticShader.Source + CoverageCarryUnitShader.Source + """
             void main() {
                 if (gl_GlobalInvocationID.x != 0u) return;
                 vec3 unit;

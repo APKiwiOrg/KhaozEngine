@@ -104,18 +104,25 @@ internal static class CoverageReferenceSkinning
         }
         Vector3 p = CoverageReferenceMath.Point(f, v.Position, m), n = CoverageReferenceMath.Linear(f, v.Normal, m);
         float length = f.Sqrt(CoverageReferenceMath.Dot3(f, n, n));
-        n = f.Greater(length, 1e-8f) ? new Vector3(f.Div(n.X, length), f.Div(n.Y, length), f.Div(n.Z, length)) : v.Normal;
+        bool normalValid = f.Greater(length, 1e-8f) && f.IsFinite(length);
+        n = normalValid ? new Vector3(f.Div(n.X, length), f.Div(n.Y, length), f.Div(n.Z, length)) : n;
+        n = CoverageDirectionRecovery.Resolve(n, normalValid, v.Normal, v.Normal, false);
         Vector3 t = new Vector3(v.Tangent.X, v.Tangent.Y, v.Tangent.Z);
         // Preserve authored absence words. Nonzero directions below the retained threshold still use the pinned fallback.
         Vector4 tangent = CoverageReferenceMath.Equal3(f, t, default) ? v.Tangent : default;
-        if (f.Greater(CoverageReferenceMath.Dot3(f, t, t), 1e-12f))
+        if (!CoverageDirectionRecovery.Finite(t) || f.Greater(CoverageReferenceMath.Dot3(f, t, t), 1e-12f))
         {
             Vector3 transformed = CoverageReferenceMath.Linear(f, t, m);
             float tl = f.Sqrt(CoverageReferenceMath.Dot3(f, transformed, transformed));
-            transformed = f.Greater(tl, 1e-8f) ? new Vector3(f.Div(transformed.X, tl), f.Div(transformed.Y, tl), f.Div(transformed.Z, tl)) : t;
+            bool valid = f.Greater(tl, 1e-8f) && f.IsFinite(tl);
+            transformed = valid ? new Vector3(f.Div(transformed.X, tl), f.Div(transformed.Y, tl), f.Div(transformed.Z, tl)) : transformed;
+            transformed = CoverageDirectionRecovery.Resolve(transformed, valid, t, t, true);
             tangent = new Vector4(transformed, v.Tangent.W);
         }
+        tangent.W = CoverageDirectionRecovery.Handedness(tangent.W);
         posed = new ModelVertex(p, n, v.Color, v.Uv, tangent);
-        return CoverageReferenceMath.ReadVertex(f, ref posed);
+        // Preserve retained field flushing. Only positions can refuse after local direction recovery.
+        CoverageReferenceMath.ReadVertex(f, ref posed);
+        return CoverageReferenceMath.IsFinite3(f, posed.Position);
     }
 }

@@ -20,7 +20,7 @@ internal static class CoverageCarryInterpolation
         var data = scratch.ReferenceTopology;
         for (int i = 0; i < data.SourceVertexCount; i++)
         {
-            if (!ValidateSource(f, posedSource[i], i, out var input))
+            if (!ValidateSource(f, topology, posedSource[i], i, out var input))
                 return Refuse(topology, CoverageFailureCode.UnsupportedTransform, out failure);
             scratch.FlushedSource[i] = input;
         }
@@ -58,10 +58,16 @@ internal static class CoverageCarryInterpolation
         return true;
     }
 
-    static bool ValidateSource(CoverageReferenceArithmetic f, ModelVertex input, int vertex, out ModelVertex result)
+    static bool ValidateSource(CoverageReferenceArithmetic f, CoverageRefinement topology, ModelVertex input, int vertex, out ModelVertex result)
     {
         result = input;
-        return CoverageReferenceMath.ReadVertex(f, ref result);
+        result.Normal = CoverageDirectionRecovery.Resolve(input.Normal, true, input.Normal, CoverageDirectionRecovery.Source(topology.Source, vertex, false), false);
+        Vector3 t = new(input.Tangent.X, input.Tangent.Y, input.Tangent.Z);
+        t = CoverageDirectionRecovery.Resolve(t, true, t, CoverageDirectionRecovery.Source(topology.Source, vertex, true), true);
+        result.Tangent = new(t, CoverageDirectionRecovery.Handedness(input.Tangent.W));
+        // Retain field flushing without turning a local direction into position admission.
+        CoverageReferenceMath.ReadVertex(f, ref result);
+        return CoverageReferenceMath.IsFinite3(f, result.Position);
     }
 
     static bool AliasesEqual(CoverageReferenceArithmetic f, Vector3 position, Vector3 representative, int vertex)
@@ -108,21 +114,24 @@ internal static class CoverageCarryInterpolation
         var triangle = data.SourceTriangles[record.SourceTriangle];
         ModelVertex a = posed[triangle.A], b = posed[triangle.B], c = posed[triangle.C];
         result = default;
-        if (!Direction(f, a.Normal, b.Normal, c.Normal, weights, out normal)
-            || !Direction(f, new Vector3(a.Tangent.X, a.Tangent.Y, a.Tangent.Z), new Vector3(b.Tangent.X, b.Tangent.Y, b.Tangent.Z),
-                new Vector3(c.Tangent.X, c.Tangent.Y, c.Tangent.Z), weights, out tangentDirection)) return false;
+        bool normalValid = Direction(f, a.Normal, b.Normal, c.Normal, weights, out normal);
+        Vector3 ta = new(a.Tangent.X, a.Tangent.Y, a.Tangent.Z);
+        bool tangentValid = Direction(f, ta, new(b.Tangent.X, b.Tangent.Y, b.Tangent.Z),
+            new(c.Tangent.X, c.Tangent.Y, c.Tangent.Z), weights, out tangentDirection);
+        normal = CoverageDirectionRecovery.Resolve(normal, normalValid, a.Normal, CoverageDirectionRecovery.Authored(data.Topology, vertex, false), false);
+        tangentDirection = CoverageDirectionRecovery.Resolve(tangentDirection, tangentValid, ta, CoverageDirectionRecovery.Authored(data.Topology, vertex, true), true);
         Vector4 tangent = default(Vector4);
         if (!CoverageReferenceMath.Equal3(f, tangentDirection, default(Vector3)))
         {
             float handedness = Sum(f, a.Tangent.W, b.Tangent.W, c.Tangent.W, weights.A, weights.B, weights.C);
-            if (!f.IsFinite(handedness)) return false;
+            handedness = CoverageDirectionRecovery.Handedness(handedness);
             tangent = new Vector4(tangentDirection, f.Less(handedness, 0) ? (float)-1 : 1f);
         }
         result = new ModelVertex(scratch.GroupPositions[record.PositionGroup], normal,
             new Vector4(Value(f, a.Color.X, b.Color.X, c.Color.X, weights), Value(f, a.Color.Y, b.Color.Y, c.Color.Y, weights),
                 Value(f, a.Color.Z, b.Color.Z, c.Color.Z, weights), Value(f, a.Color.W, b.Color.W, c.Color.W, weights)),
             new Vector2(Value(f, a.Uv.X, b.Uv.X, c.Uv.X, weights), Value(f, a.Uv.Y, b.Uv.Y, c.Uv.Y, weights)), tangent);
-        return CoverageReferenceMath.IsFiniteVertex(f, result);
+        return CoverageReferenceMath.IsFinite3(f, result.Position);
     }
 
     static bool Direction(CoverageReferenceArithmetic f, Vector3 a, Vector3 b, Vector3 c, in CoverageReferenceWeights weights, out Vector3 unit)

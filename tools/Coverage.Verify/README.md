@@ -91,14 +91,14 @@ Configuration file paths, member order and whitespace do not affect the digest. 
 ordinals, refined records, integer recipes, indices and triangle ownership in little-endian order.
 Arithmetic identity hashes the embedded versioned carry-contract descriptor used by both the tool and
 runtime, without reading assembly files or locations. Independent frozen vectors guard its output words
-and refusal boundaries. Contract version 2 keeps positions, publication decisions and every direction
-intermediate used by a later predicate exact. Only final gathered output units use native sqrt/division.
-The `2e-5` component tolerance is conditional on exact-accepted inputs and the native operation-error
-envelope derived in the [coverage guide](../../docs/EQUIPMENT-COVERAGE.md#assets-and-shared-identity).
-It is not a universal native-transform guarantee. Version-one and earlier unaccepted version-two
-descriptor identities refuse binding and must be rebuilt. The tool keeps exact CPU direction arithmetic. Neither its
-sample nor dense gates read GPU direction words. Whole-skin classification still compares every byte
-of exact CPU records, while geometry and depth use positions.
+and refusal boundaries. Contract version 2 keeps positions and position-failure publication exact.
+CPU non-degenerate direction math stays exact, while failed directions recover locally through the
+shared policy. A direction problem alone no longer makes an entry/sample pair invalid. Exact geometry
+certification and whole-skin depth/classification remain unchanged and never read GPU directions.
+GPU directions are native. Their `2e-5` component comparison is conditional on the well-conditioned
+[forward-error envelope](../../docs/EQUIPMENT-COVERAGE.md#assets-and-shared-identity), not universal.
+In the degenerate band require finite directions and identical positions. Earlier descriptor identities
+require rebuilding. Exact assembly hashes remain evidence provenance only.
 Changes to scalar rounding, skin composition, refinement, representatives,
 transition weighting, recession direction or gathers must advance the contract version and descriptor.
 Unrelated binary changes preserve compatibility. Exact `toolCodeSha256` and `render3DCodeSha256` values

@@ -10,16 +10,20 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class CoverageCarryFailureGpuTests
 {
     [GpuFact]
-    public void Transport_rejection_publishes_complete_uncovered_records() => Run(transport: true);
+    public void Transport_direction_failure_preserves_covered_positions() => Run(transport: true);
 
     [GpuFact]
-    public void Late_gather_rejection_publishes_the_whole_actor_uncovered() => Run(transport: false);
+    public void Late_gather_direction_failure_remains_local() => Run(transport: false);
 
-    static void Run(bool transport)
+    [GpuFact]
+    public void Position_failure_still_publishes_the_complete_uncovered_actor() => Run(transport: false, positionFailure: true);
+
+    static void Run(bool transport, bool positionFailure = false)
     {
         var fixture = new CoverageCarryFailureFixture();
         if (transport) fixture.CancellingTransport(execute: false);
-        else fixture.FailingGather(fail: true);
+        else fixture.FailingGather(fail: !positionFailure);
+        if (positionFailure) fixture.Work[CoverageCarryFailureFixture.After + 18] = CoverageCarryFailureFixture.Poison;
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
         IGpuDevice device = gpu.GpuDevice;
         var factory = device.Factory;
@@ -59,9 +63,9 @@ public sealed class CoverageCarryFailureGpuTests
             }
             commands.End(); device.Submit(commands); device.WaitForIdle();
             uint[] actual = GpuReadback.ReadBuffer<uint>(device, buffers[4], 32);
-            Assert.NotEqual(0u, GpuReadback.ReadBuffer<uint>(device, buffers[3], 8)[6]);
-            Assert.DoesNotContain(CoverageCarryFailureFixture.Poison, actual);
-            Assert.Equal(fixture.Expected, actual);
+            GpuReadback.ReadBuffer<uint>(device, buffers[3], 8).CopyTo(fixture.Errors, 0);
+            actual.CopyTo(fixture.Current, 0);
+            if (positionFailure) fixture.AssertUncovered(); else fixture.AssertCoveredDirections();
         }
         finally { for (int i = resources.Count - 1; i >= 0; i--) resources[i].Dispose(); }
     }

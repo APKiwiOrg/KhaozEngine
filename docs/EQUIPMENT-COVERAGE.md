@@ -48,43 +48,39 @@ transition weighting, current recession direction and normal/tangent gathers. An
 change requires advancing the contract version and its descriptor. Exact tool and Render3D assembly
 hashes remain in the evidence manifest as producer provenance only.
 
-Carry arithmetic contract version 2 keeps position skinning, refinement interpolation, recession,
-alias position sharing and every failure decision exact. Exact intermediate directions remain wherever
-later fold, alignment, determinant, scale, cancellation or zero/finite decisions consume them. This
-includes Skin, Transport, Basis and per-corner Gather. Cancellation-sensitive operations are precise
-(NoContraction). Only final gathered output normalization uses native sqrt/division without output
-software flush. Raw and unmoved directions remain exact. Handedness, tangent absence, corner order,
-slot ownership and publication selection are unchanged. Version-one tables refuse binding. Tables
-using an earlier, unaccepted version-two descriptor also require rebuilding. None have shipped.
+Carry arithmetic contract version 2 keeps position skinning, refinement, recession and alias sharing
+exact, including every published position word. Normal and tangent math is native GPU binary32, with
+precise (NoContraction) cancellation-sensitive operations. Direction failures cannot set the actor
+failure flag. One parameterless position authority checks exact source, uncovered and transported
+position records and positional aliases before the publication dispatch. Only position problems select
+the complete uncovered pose. The five stages, slots, history and overflow preflight are unchanged.
 
-The final normalization decision uses the retained dot product, including its per-product flush at
-`2^-126`, and the CPU's finite/positive test. Checking the sum against a magnitude floor is not
-equivalent. Skin keeps the exact `1e-8` fallback and `1e-12` tangent presence rule. Refinement keeps the
-exact relative `2^-50` cancellation test. Correctly rounded sqrt/division remain when their values
-feed a later predicate. No approximate direction feeds position publication selection.
+A cancelled, folded, misaligned or non-finite direction recovers locally. The shared chain is the valid
+candidate, then the finite uncovered current-pose direction, then the finite authored direction, then
+unit Z for normals or unit X for tangents. Generated vertices use their first source corner for the
+uncovered/authored recovery inputs. Recovery preserves tangent absence and handedness rules, including
+finite handedness, and never changes covered positions. A rare degenerate case may show a locally odd
+shaded spot instead of the whole character changing pose. Other vertices and the other direction remain
+independent. Native direction words cannot publish NaN or infinity.
 
-The `2e-5` absolute component bound is conditional, not a universal native-transform guarantee. It
-applies to an exact-accepted, retained preflushed gather sum when native sqrt/division normal-result relative error
-is at most `e = 2^-20`, with underflow absolute error at most `2^-126`. With retained rounding error
-`u = 2^-24`, the conservative error is bounded by
-`2 * (((1+e)*(1+u))/((1-e)*(1-u)) - 1) + 2*2^-126 < 4.1e-6`.
-The exact positive dot bounds each normalized component below 2. This removes cancellation amplification
-from the native step, including ill-conditioned palettes, because their intermediate directions remain
-exact. Backend accuracy within this envelope still needs native acceptance. The tolerance continues
-to reject wrong normal, tangent and stale-direction controls.
+The `2e-5` component tolerance is conditional on well-conditioned, normal-range calculations taking the
+same non-recovery branches. One sufficient forward-error envelope is an aggregate pre-normalization
+relative vector perturbation at most `d = 4e-6`, native sqrt/division normal-result relative errors at
+most `2^-20`, and underflow absolute errors at most `2^-126`. Normalization contributes at most
+`2*d/(1-d)`, with less than `5e-6` rounding allowance, below `1.4e-5` total. This is a conditioning
+restriction, not a universal palette, mesh or device guarantee. Cancellation or a small determinant can
+violate that envelope even with NoContraction. In the degenerate band CPU/GPU directions may differ.
+Require finite directions and identical position words there. Wrong normal, tangent and stale-direction
+controls still reject under the tight non-degenerate tolerance. Native accuracy and savings remain
+unproven until approved device and T4 runs. The 15 percent aggregate cost limit is unchanged.
 
-A finite positive retained squared length is normal and has a finite, positive normal square root.
-Dividing its input components by that root has magnitude below 2. Consequently the native finite
-check is defensive only and cannot fire for a conforming operation in this envelope. Native zero or
-non-finite predicates never replace a retained failure decision. Any failure still selects the complete
-uncovered pose atomically for the actor.
-
-The offline constructor, exact CPU carry and validator retain their exact direction arithmetic.
-No offline gate reads GPU normal or tangent words. Geometry certification and depth use positions.
-Whole-skin changed-record classification still compares complete exact CPU records, including CPU
-directions, so its conservative attributes-only gate is unchanged. Native direction error cannot change
-an offline acceptance result. Native portability and any saving remain unproven until approved device
-correctness units and the next approved T4 cost run.
+The CPU reference keeps its exact non-degenerate direction arithmetic and adopts the same local
+recovery policy. Sample verification no longer creates a hole solely because a direction failed.
+The exact constructor's geometry, `CoverageCertification.ValidateGeometry` and whole-skin depth gates
+are unchanged. Certification independently checks positional folds, injectivity and intersections.
+Whole-skin classification still compares complete CPU records, including locally recovered directions.
+No offline gate reads GPU direction words. This change supplies no new continuous position guarantee.
+Version-one and earlier unaccepted version-two descriptor identities require rebuilding. None have shipped.
 
 The consumer owns phase bins, blend bins, clip semantics and their schema digest. The engine only looks
 up the unsigned key, including key zero. It does not sample animation, infer bins from geometry or pick
@@ -192,7 +188,7 @@ failure. Do not reuse an unsealed recording after an exception.
 Each active table group records five GPU dispatches in order: skin the current pose, refine and
 transport the selected scalars, construct face bases, gather attributes and normals, then publish the
 final surface and tight bounds. Gathering writes private candidates and actor-wide error flags.
-Publication makes one decision per actor. Any carry failure selects the complete uncovered current
+Publication makes one position-failure decision per actor. A position failure selects the complete uncovered current
 record for every vertex, without mixing covered and raw records or exposing stale scratch words.
 
 CPU preparation first bounds the composed skin palette using a cold source envelope, the actual maximum
@@ -269,7 +265,8 @@ include labels and control flow, count vector instructions once, and attribute e
 without double counting. They are a relative guide, not GPU timings. The bounded serial executor does
 not model occupancy, divergence, memory bandwidth or device arithmetic. The published surface is also
 compared with the exact CPU reference: positions and other non-direction words match bit for bit,
-normal/tangent XYZ use the same `2e-5` component tolerance. Default CI excludes this Diagnostic profile.
+normal/tangent XYZ use the conditional `2e-5` non-degenerate component tolerance. Degenerate cases compare
+positions exactly and require finite local directions. Default CI excludes this Diagnostic profile.
 
 G1, G2 and G3 are separately approved Metal, Direct3D 11 WARP and Vulkan correctness units. G3 also
 requires Vulkan synchronization validation. The cross-frame read of the slot written by the previous

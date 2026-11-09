@@ -12,7 +12,7 @@ public sealed class CoverageCarryPredicateTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void Basis_alignment_matches_CPU_and_selects_the_same_complete_position_words(bool tinyAlignment)
+    public void Direction_alignment_never_changes_CPU_or_GPU_position_publication(bool tinyAlignment)
     {
         float l = MathF.ScaleB(1, -30), e = MathF.ScaleB(1, tinyAlignment ? -40 : -31);
         Vector3[] positions = [Vector3.Zero, new(l, 0, 0), new(0, l, 0)];
@@ -38,8 +38,8 @@ public sealed class CoverageCarryPredicateTests
         var after = before.ToArray(); after[2].Position = new(0, e, l - e);
         before.CopyTo(scratch.BeforeVertices, 0); after.CopyTo(scratch.After, 0);
         bool accepted = CoverageReferenceNormals.TryUpdate(topology, scratch, out var failure);
-        Assert.Equal(!tinyAlignment, accepted);
-        Assert.Equal(tinyAlignment ? CoverageFailureCode.FoldedPatch : CoverageFailureCode.None, failure.Code);
+        Assert.True(accepted);
+        Assert.True(failure.IsSuccess);
 
         uint[] host = CoverageCarryUpload.Host(topology, 1);
         uint[] work = new uint[CoverageCarryLayout.WorkWords(1, 3, 3, 1)];
@@ -87,8 +87,10 @@ public sealed class CoverageCarryPredicateTests
         posed[1].Normal = new(-1, MathF.ScaleB(1, exponent), 0);
         var scratch = new CoverageCarryScratch(topology, 1);
         bool cpuAccepted = CoverageCarryInterpolation.TryInterpolate(topology, posed, scratch, out var failure);
-        Assert.Equal(accepted, cpuAccepted);
-        Assert.Equal(accepted ? CoverageFailureCode.None : CoverageFailureCode.UnsupportedTransform, failure.Code);
+        Assert.True(cpuAccepted);
+        Assert.True(failure.IsSuccess);
+        int midpoint = Enumerable.Range(0, topology.VertexCount).Single(i => topology.Vertices[i] is { SourceVertex: -1, A: 6, B: 6, C: 0 });
+        Assert.Equal(accepted ? Vector3.UnitY : Vector3.UnitX, scratch.BeforeVertices[midpoint].Normal);
         // Midpoint weights are (6,6,0). Squared surviving and total magnitudes equal the 2^-50 limit at h=2^-24.
         uint[] host = CoverageCarryUpload.Host(topology, 1);
         uint[] work = Enumerable.Repeat(CoverageCarryFailureFixture.Poison,

@@ -9,7 +9,6 @@ internal static class CoverageReferenceNormals
     /// <summary>Writes the completed candidate to Published. Caller output is copied only after this phase succeeds.</summary>
     internal static bool TryUpdate(CoverageRefinement topology, CoverageCarryScratch scratch, out CoverageFailure failure)
     {
-        CoverageFailureCode code;
         ArgumentNullException.ThrowIfNull(topology);
         ArgumentNullException.ThrowIfNull(scratch);
         if (!ReferenceEquals(scratch.ReferenceTopology.Topology, topology))
@@ -17,50 +16,42 @@ internal static class CoverageReferenceNormals
         for (int v = 0; v < topology.VertexCount; v++)
             if (!ValidateVertex(scratch.Arithmetic, scratch, v))
                 return Refuse(topology, CoverageFailureCode.UnsupportedTransform, out failure);
-        // Validate every changed face before gathering any completed record.
-        for (int t = 0; t < topology.TriangleCount; t++)
-            if (Changed(scratch.Arithmetic, scratch, t) && !TryBasis(scratch.Arithmetic, scratch, t, out _, out code))
-                return Refuse(topology, code, out failure);
         for (int vertex = 0; vertex < topology.VertexCount; vertex++)
-            if (!UpdateVertex(scratch.Arithmetic, scratch, vertex, out code))
-                return Refuse(topology, code, out failure);
+            UpdateVertex(scratch.Arithmetic, scratch, vertex);
         failure = default;
         return true;
     }
 
     static bool ValidateVertex(CoverageReferenceArithmetic f, CoverageCarryScratch scratch, int vertex)
     {
-        return CoverageReferenceMath.IsFiniteVertex(f, scratch.BeforeVertices[vertex]) && CoverageReferenceMath.IsFinite3(f, scratch.After[vertex].Position);
+        return CoverageReferenceMath.IsFinite3(f, scratch.BeforeVertices[vertex].Position) && CoverageReferenceMath.IsFinite3(f, scratch.After[vertex].Position);
     }
 
-    static bool UpdateVertex(CoverageReferenceArithmetic f, CoverageCarryScratch scratch,
-        int vertex, out CoverageFailureCode code)
+    static void UpdateVertex(CoverageReferenceArithmetic f, CoverageCarryScratch scratch, int vertex)
     {
         var rows = scratch.ReferenceTopology;
         var before = scratch.BeforeVertices[vertex];
         var result = before;
-        if (!Moved(f, scratch, vertex)) { scratch.Published[vertex] = result; code = default; return true; }
-        result.Position = scratch.After[vertex].Position;
+        bool moved = Moved(f, scratch, vertex);
+        if (moved) result.Position = scratch.After[vertex].Position;
         int shading = scratch.ReferenceTopology.Vertices[vertex].ShadingGroup;
-        if (!CoverageReferenceMath.Equal3(f, before.Normal, default(Vector3)))
+        bool normalValid = true, tangentValid = true;
+        Vector3 normal = before.Normal, tangent = new(before.Tangent.X, before.Tangent.Y, before.Tangent.Z);
+        if (moved && !CoverageReferenceMath.Equal3(f, before.Normal, default(Vector3)))
         {
-            Vector3 normal;
-            if (!Gather(f, scratch, rows.ShadingCorners.AsSpan(rows.ShadingCornerOffsets[shading],
-                rows.ShadingCornerOffsets[shading + 1] - rows.ShadingCornerOffsets[shading]), false, out normal, out code))
-                return false;
-            result.Normal = normal;
+            normalValid = Gather(f, scratch, rows.ShadingCorners.AsSpan(rows.ShadingCornerOffsets[shading],
+                rows.ShadingCornerOffsets[shading + 1] - rows.ShadingCornerOffsets[shading]), false, out normal, out _);
         }
-        if (f.NotEqual(before.Tangent.X, 0) || f.NotEqual(before.Tangent.Y, 0) || f.NotEqual(before.Tangent.Z, 0))
+        if (moved && (f.NotEqual(before.Tangent.X, 0) || f.NotEqual(before.Tangent.Y, 0) || f.NotEqual(before.Tangent.Z, 0)))
         {
-            Vector3 tangent;
-            if (!Gather(f, scratch, rows.VertexCorners.AsSpan(rows.VertexFaceOffsets[vertex],
-                rows.VertexFaceOffsets[vertex + 1] - rows.VertexFaceOffsets[vertex]), true, out tangent, out code))
-                return false;
-            result.Tangent = new Vector4(tangent, before.Tangent.W);
+            tangentValid = Gather(f, scratch, rows.VertexCorners.AsSpan(rows.VertexFaceOffsets[vertex],
+                rows.VertexFaceOffsets[vertex + 1] - rows.VertexFaceOffsets[vertex]), true, out tangent, out _);
         }
+        result.Normal = CoverageDirectionRecovery.Resolve(normal, normalValid, before.Normal, CoverageDirectionRecovery.Authored(rows.Topology, vertex, false), false);
+        result.Tangent = new(CoverageDirectionRecovery.Resolve(tangent, tangentValid,
+            new(before.Tangent.X, before.Tangent.Y, before.Tangent.Z), CoverageDirectionRecovery.Authored(rows.Topology, vertex, true), true),
+            CoverageDirectionRecovery.Handedness(before.Tangent.W));
         scratch.Published[vertex] = result;
-        code = default;
-        return true;
     }
 
     static bool Gather(CoverageReferenceArithmetic f, CoverageCarryScratch scratch, ReadOnlySpan<int> corners,
@@ -140,10 +131,6 @@ internal static class CoverageReferenceNormals
     static Vector3 Divide(CoverageReferenceArithmetic f, Vector3 value, float divisor) => new Vector3(f.Div(value.X, divisor), f.Div(value.Y, divisor), f.Div(value.Z, divisor));
 
     static bool Moved(CoverageReferenceArithmetic f, CoverageCarryScratch scratch, int vertex) => !CoverageReferenceMath.Equal3(f, scratch.BeforeVertices[vertex].Position, scratch.After[vertex].Position);
-
-    static bool Changed(CoverageReferenceArithmetic f, CoverageCarryScratch scratch, int triangle) =>
-        Moved(f, scratch, (int)scratch.ReferenceTopology.Indices[triangle * 3]) || Moved(f, scratch, (int)scratch.ReferenceTopology.Indices[(triangle * 3) + 1])
-        || Moved(f, scratch, (int)scratch.ReferenceTopology.Indices[(triangle * 3) + 2]);
 
     static bool Refuse(CoverageRefinement topology, CoverageFailureCode code, out CoverageFailure failure)
     { failure = new CoverageFailure(code, topology.HostIdentity, 0, 0, 0, 0); return false; }

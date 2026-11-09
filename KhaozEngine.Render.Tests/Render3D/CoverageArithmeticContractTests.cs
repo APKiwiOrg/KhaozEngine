@@ -14,7 +14,7 @@ public sealed class CoverageArithmeticContractTests
 {
     internal const string V1Digest = "e7a4f4b8e168f7524ab3cdc9c0e2b67e71e477a80e6218e726c2ba593444a9d6";
 
-    internal const string V2Digest = "490ef1bde077971ef594afddf336d2220b687e9291a664fd33501d2d8c09957d";
+    internal const string V2Digest = "e29870680fc49dd80c27e283cefef130e0f51c55ed9dfc2b070a591493e08677";
 
     [Fact]
     public void Arithmetic_identity_is_the_frozen_versioned_contract()
@@ -113,7 +113,6 @@ public sealed class CoverageArithmeticContractTests
     }
 
     [Theory]
-    [InlineData(false, CoverageFailureCode.FoldedPatch)]
     [InlineData(true, CoverageFailureCode.UnsupportedTransform)]
     public void Version_two_refusals_never_publish_partial_output(bool nonfinite, CoverageFailureCode expected)
     {
@@ -128,6 +127,23 @@ public sealed class CoverageArithmeticContractTests
         Assert.Equal(before, MemoryMarshal.AsBytes(output.AsSpan()).ToArray());
         Assert.True(CoverageCarryReference.TryCarry(fixture.Topology, [Matrix4x4.Identity], fixture.Table, -1,
             [], new(fixture.Topology, 1), output, out _));
+    }
+
+    [Fact]
+    public void Direction_fold_keeps_the_covered_CPU_positions_and_finite_local_directions()
+    {
+        var fixture = new CoverageRecessionBodySizeFixture(4, 4);
+        var output = new ModelVertex[fixture.Topology.VertexCount];
+        Assert.True(CoverageCarryReference.TryCarry(fixture.Topology, [Matrix4x4.Identity], fixture.Table, 0,
+            [new(0, new(100, 0, 0), 1)], new(fixture.Topology, 1), output, out var failure));
+        Assert.True(failure.IsSuccess);
+        Assert.Equal(fixture.Topology.VertexCount, output.Length);
+        for (int vertex = 0; vertex < output.Length; vertex++)
+        {
+            Assert.Equal(fixture.ExpectedPosition(vertex, 0, new(100, 0, 0), 1, Vector3.Zero), output[vertex].Position);
+            Assert.True(CoverageDirectionRecovery.Finite(output[vertex].Normal));
+            Assert.True(CoverageDirectionRecovery.Finite(new(output[vertex].Tangent.X, output[vertex].Tangent.Y, output[vertex].Tangent.Z)));
+        }
     }
 
     static uint[] Words(ModelVertex value) => MemoryMarshal.Cast<ModelVertex, uint>(MemoryMarshal.CreateReadOnlySpan(in value, 1)).ToArray();

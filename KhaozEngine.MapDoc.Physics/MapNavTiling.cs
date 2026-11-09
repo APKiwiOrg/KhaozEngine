@@ -4,8 +4,10 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -45,9 +47,9 @@ public sealed record MapNavLink(string RecordId, MapNavTileCoord From, MapNavTil
 /// <summary>Deterministic navigation tiles over a built world, with their capture identities, seams, cross-tile links
 /// and the tiles an edit invalidates, so a consumer rebakes only those tiles. Navigation tiles are columns in X and Z.
 /// Vertical layers on native worlds wait for #438 phase 5.</summary>
-public static class MapNavTiling
+public static partial class MapNavTiling
 {
-    /// <summary>The most navigation tiles <see cref="Partition"/> lists, 2^20. At 64 m tiles that is, for example, a
+    /// <summary>The most navigation tiles <see cref="Partition(MapBuiltWorld, MapWorldGrids, MapNavTileOptions)"/> lists, 2^20. At 64 m tiles that is, for example, a
     /// square world about 65 km on a side.</summary>
     public const int MaxPartitionTiles = 1 << 20;
 
@@ -81,41 +83,59 @@ public static class MapNavTiling
         grids.Validate(world);
         (int minX, int maxX, int minZ, int maxZ) = PartitionRange(world, grids);
         long count = RequirePartitionCount(minX, maxX, minZ, maxZ);
-        IReadOnlyList<MapResidencyEntry> entries = MapResidencyOwnership.Build(world, grids);
-        var digests = new Dictionary<string, string>(world.Statics.Count, StringComparer.Ordinal);
-        foreach (MapStaticDescriptor descriptor in world.Statics) digests.Add(descriptor.OwnerId, descriptor.Digest);
-        var statics = new Dictionary<MapNavTileCoord, List<MapResidencyEntry>>();
-        foreach (MapResidencyEntry entry in entries)
-            foreach (MapNavTileCoord tile in CaptureTilesMeeting(entry.WorldBounds.MinX, entry.WorldBounds.MinZ,
-                entry.WorldBounds.MaxX, entry.WorldBounds.MaxZ, grids, options.SeamMarginMetres))
+        _ = MapResidencyOwnership.Build(world, grids);
+        return PartitionDescriptors(world.Bounds, world.Statics, world.LegacySculptTiles, world.Water, world.IsNative,
+            world.LegacyTerrainBlockDigest, grids, options, minX, maxX, minZ, maxZ, count);
+    }
+
+    static IReadOnlyList<MapNavTile> PartitionDescriptors(MapBox3 bounds, IReadOnlyList<MapStaticDescriptor> descriptors,
+        IReadOnlyList<MapLegacySculptTile> legacySculpt, IReadOnlyList<MapCompiledWaterBody> bodies, bool native,
+        string legacyBlock, MapWorldGrids grids, MapNavTileOptions options, int minX, int maxX, int minZ, int maxZ, long count)
+    {
+        MapSceneAdmission.Current?.ReserveBytes(checked(count * 512L + descriptors.Count * 256L + legacySculpt.Count * 128L + bodies.Count * 128L));
+        var digests = new Dictionary<string, string>(descriptors.Count, StringComparer.Ordinal);
+        foreach (MapStaticDescriptor descriptor in descriptors) digests.Add(descriptor.OwnerId, descriptor.Digest);
+        var statics = new Dictionary<MapNavTileCoord, List<MapStaticDescriptor>>();
+        foreach (MapStaticDescriptor entry in descriptors)
+            foreach (MapNavTileCoord tile in CaptureTilesMeeting(entry.Bounds.MinX, entry.Bounds.MinZ,
+                entry.Bounds.MaxX, entry.Bounds.MaxZ, grids, options.SeamMarginMetres, new(minX, minZ), new(maxX, maxZ)))
                 if (tile.X >= minX && tile.X <= maxX && tile.Z >= minZ && tile.Z <= maxZ)
+                {
+                    MapSceneAdmission.Current?.ReserveBytes(checked(256L + 4L * Encoding.UTF8.GetByteCount(entry.OwnerId)));
                     Bucket(statics, tile).Add(entry);
+                }
         var sculpt = new Dictionary<MapNavTileCoord, List<MapLegacySculptTile>>();
-        foreach (MapLegacySculptTile tile in world.LegacySculptTiles)
+        foreach (MapLegacySculptTile tile in legacySculpt)
             foreach (MapNavTileCoord coord in CaptureTilesMeeting(tile.Footprint.MinX, tile.Footprint.MinZ,
-                tile.Footprint.MaxX, tile.Footprint.MaxZ, grids, options.SeamMarginMetres))
+                tile.Footprint.MaxX, tile.Footprint.MaxZ, grids, options.SeamMarginMetres, new(minX, minZ), new(maxX, maxZ)))
                 if (coord.X >= minX && coord.X <= maxX && coord.Z >= minZ && coord.Z <= maxZ)
+                {
+                    MapSceneAdmission.Current?.ReserveBytes(64);
                     Bucket(sculpt, coord).Add(tile);
+                }
         var water = new Dictionary<MapNavTileCoord, List<MapCompiledWaterBody>>();
-        foreach (MapCompiledWaterBody body in world.Water)
-            foreach (MapNavTileCoord coord in WaterCaptureTiles(body, grids, options.SeamMarginMetres))
+        foreach (MapCompiledWaterBody body in bodies)
+            foreach (MapNavTileCoord coord in WaterCaptureTiles(body, grids, options.SeamMarginMetres, new(minX, minZ), new(maxX, maxZ)))
                 if (coord.X >= minX && coord.X <= maxX && coord.Z >= minZ && coord.Z <= maxZ)
+                {
+                    MapSceneAdmission.Current?.ReserveBytes(64);
                     Bucket(water, coord).Add(body);
+                }
 
         var tiles = new List<MapNavTile>((int)count);
         for (long z = minZ; z <= maxZ; z++)
             for (long x = minX; x <= maxX; x++)
             {
                 var coord = new MapNavTileCoord((int)x, (int)z);
-                MapBox3 bounds = TileBounds(coord, grids, world.Bounds.MinY, world.Bounds.MaxY);
-                MapBox3 capture = Grow(bounds, options.SeamMarginMetres);
-                MapResidencyEntry[] seen = statics.TryGetValue(coord, out List<MapResidencyEntry>? found)
-                    ? found.OrderBy(e => e.OwnerId, StringComparer.Ordinal).ToArray() : Array.Empty<MapResidencyEntry>();
+                MapBox3 tileBounds = TileBounds(coord, grids, bounds.MinY, bounds.MaxY);
+                MapBox3 capture = Grow(tileBounds, options.SeamMarginMetres);
+                MapStaticDescriptor[] seen = statics.TryGetValue(coord, out List<MapStaticDescriptor>? found)
+                    ? found.OrderBy(e => e.OwnerId, StringComparer.Ordinal).ToArray() : Array.Empty<MapStaticDescriptor>();
                 MapLegacySculptTile[] touched = sculpt.TryGetValue(coord, out List<MapLegacySculptTile>? cells)
                     ? cells.ToArray() : Array.Empty<MapLegacySculptTile>();
-                string geometry = GeometryDigest(world, seen, digests, touched);
+                string geometry = GeometryDigest(native, legacyBlock, seen, digests, touched);
                 string medium = water.TryGetValue(coord, out List<MapCompiledWaterBody>? wet) ? MediumDigest(wet) : "";
-                tiles.Add(new MapNavTile(coord, bounds, capture, geometry, CaptureIdentity(coord, bounds, geometry, medium, options))
+                tiles.Add(new MapNavTile(coord, tileBounds, capture, geometry, CaptureIdentity(coord, tileBounds, geometry, medium, options))
                 {
                     MediumDigest = medium,
                 });
@@ -132,19 +152,29 @@ public static class MapNavTiling
         ArgumentNullException.ThrowIfNull(tiles);
         ArgumentNullException.ThrowIfNull(world);
         ValidateOptions(options);
+        return SeamDescriptors(tiles, world.Bounds, options);
+    }
+
+    static IReadOnlyList<MapNavSeam> SeamDescriptors(IReadOnlyList<MapNavTile> tiles, MapBox3 bounds, MapNavTileOptions options)
+    {
+        MapSceneAdmission.Current?.ReserveBytes(checked(tiles.Count * 512L));
         var byCoord = new Dictionary<MapNavTileCoord, MapNavTile>(tiles.Count);
         foreach (MapNavTile tile in tiles)
         {
             ArgumentNullException.ThrowIfNull(tile, nameof(tiles));
-            if (tile.Bounds.MinY != world.Bounds.MinY || tile.Bounds.MaxY != world.Bounds.MaxY)
+            if (tile.Bounds.MinY != bounds.MinY || tile.Bounds.MaxY != bounds.MaxY)
                 throw new MapNavigationArgumentException(MapDocumentRefusal.AuthoredValueMismatch,
                     $"Tile {tile.Coord} was not partitioned from this world.", nameof(tiles))
-                { Tile = tile.Coord, FieldPath = tile.Bounds.MinY != world.Bounds.MinY ? "Bounds.MinY" : "Bounds.MaxY",
-                    ActualNumber = tile.Bounds.MinY != world.Bounds.MinY ? tile.Bounds.MinY : tile.Bounds.MaxY,
-                    ExpectedNumber = tile.Bounds.MinY != world.Bounds.MinY ? world.Bounds.MinY : world.Bounds.MaxY };
+                {
+                    Tile = tile.Coord,
+                    FieldPath = tile.Bounds.MinY != bounds.MinY ? "Bounds.MinY" : "Bounds.MaxY",
+                    ActualNumber = tile.Bounds.MinY != bounds.MinY ? tile.Bounds.MinY : tile.Bounds.MaxY,
+                    ExpectedNumber = tile.Bounds.MinY != bounds.MinY ? bounds.MinY : bounds.MaxY
+                };
             if (!byCoord.TryAdd(tile.Coord, tile))
                 throw new MapNavigationArgumentException(MapDocumentRefusal.IdentityDuplicate,
-                    $"Two tiles share the coordinate {tile.Coord}.", nameof(tiles)) { Tile = tile.Coord, FieldPath = "Coord" };
+                    $"Two tiles share the coordinate {tile.Coord}.", nameof(tiles))
+                { Tile = tile.Coord, FieldPath = "Coord" };
         }
         var seams = new List<MapNavSeam>();
         foreach (MapNavTile a in byCoord.Values.OrderBy(t => t.Coord, TileOrder))
@@ -160,7 +190,7 @@ public static class MapNavTiling
     /// <summary>The cross-tile links of every R2 cave portal and vertical link record in the world's surfaces, in ordinal
     /// record id order. A cave portal's aperture is its interval, a vertical link's the opening planes of its horizontal
     /// openings and the intervals of its portals. Each interval segment and opening triangle reaches the tiles its X
-    /// and Z bounds reach under the rule of <see cref="Partition"/>. A record reaching two tiles yields one link. A
+    /// and Z bounds reach under the rule of <see cref="Partition(MapBuiltWorld, MapWorldGrids, MapNavTileOptions)"/>. A record reaching two tiles yields one link. A
     /// record reaching more yields one link per pair of them, ordered by <see cref="MapNavLink.From"/> and then
     /// <see cref="MapNavLink.To"/>. A resolver-1 world has no surfaces and so no links.
     /// <para>Throws <see cref="MapDocumentException"/> naming the grid alignment when the grids do not align with the
@@ -171,10 +201,18 @@ public static class MapNavTiling
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(grids);
         grids.Validate(world);
-        MapScopedSurfaces view = world.Surfaces;
+        return LinkDescriptors(world.Surfaces, grids);
+    }
+
+    static IReadOnlyList<MapNavLink> LinkDescriptors(MapScopedSurfaces view, MapWorldGrids grids)
+    {
+        var admission = MapSceneAdmission.Current;
+        var output = admission?.PreparationScope;
+        MapSceneAdmission.Current?.ReserveBytes(checked(view.Witness.Records.Count * 512L));
         var links = new List<MapNavLink>();
         foreach (MapRecordRef reference in view.Witness.Records.OrderBy(r => r.Id, StringComparer.Ordinal))
         {
+            using var recordPreparation = output is null ? null : admission?.BeginPreparation();
             MapTopologyRecord record = Record<MapTopologyRecord>(view, reference);
             if (record is not (MapCavePortal or MapVerticalLink)) continue;
             var tiles = new SortedSet<MapNavTileCoord>(TileOrder);
@@ -198,6 +236,8 @@ public static class MapNavTiling
             }
             if (tiles.Count < 2) continue;
             string semantic = MapSurfaceSemantics.RecordDigest(reference.Anchor, record);
+            MapSceneAdmission.Current?.ReserveBytes(checked(tiles.Count * 16L + (long)tiles.Count * (tiles.Count - 1) / 2 * 512L));
+            output?.Reserve(checked((long)tiles.Count * (tiles.Count - 1) / 2 * 256L));
             MapNavTileCoord[] reached = tiles.ToArray();
             for (int i = 0; i < reached.Length; i++)
                 for (int j = i + 1; j < reached.Length; j++)
@@ -215,7 +255,7 @@ public static class MapNavTiling
     /// resolver-1 terrain edit it also widens each edit box by the footprint of every sculpt tile position the box meets,
     /// taken arithmetically from <see cref="TerrainSculpt.TileSize"/> and <see cref="MapBuiltWorld.LegacySculptCellSize"/>
     /// whether or not that tile exists, so a sculpt tile the edit added or removed lists every tile whose geometry
-    /// digest it enters or leaves. The result is clipped to the tiles <see cref="Partition"/> lists for
+    /// digest it enters or leaves. The result is clipped to the tiles <see cref="Partition(MapBuiltWorld, MapWorldGrids, MapNavTileOptions)"/> lists for
     /// <paramref name="world"/>. An edit flagged <see cref="MapNativeInvalidation.Unbounded"/>, a full reset, lists every
     /// one of those tiles without first listing every storage tile.
     /// <para>An edit flagged <see cref="MapNativeInvalidation.Medium"/> invalidates navigation too, since the medium
@@ -226,7 +266,7 @@ public static class MapNavTiling
     /// result is clipped to the post-edit partition. A consumer that keeps derived state per tile diffs the old and new
     /// partitions to find removed tiles.</para>
     /// <para>Throws as <see cref="MapResidencyOwnership.Affected(MapBuiltWorld, MapWorldGrids, MapNativeEditEffects)"/> does, including for an unbounded edit's boxes, as
-    /// <see cref="Partition"/> does when an unbounded edit's world reaches more than <see cref="MaxPartitionTiles"/>
+    /// <see cref="Partition(MapBuiltWorld, MapWorldGrids, MapNavTileOptions)"/> does when an unbounded edit's world reaches more than <see cref="MaxPartitionTiles"/>
     /// tiles, and <see cref="ArgumentException"/> for invalid options.</para></summary>
     public static IReadOnlyList<MapNavTileCoord> AffectedTiles(MapBuiltWorld world, MapWorldGrids grids,
         MapNavTileOptions options, MapNativeEditEffects effects)
@@ -309,11 +349,12 @@ public static class MapNavTiling
         if (count > MaxPartitionTiles)
             throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, string.Format(CultureInfo.InvariantCulture,
                 "The world's bounds reach {0:N0} navigation tiles, more than the {1:N0} a partition allows.", count,
-                MaxPartitionTiles)) { Budget = "navigation partition tiles", ActualCount = count, Limit = MaxPartitionTiles };
+                MaxPartitionTiles))
+            { Budget = "navigation partition tiles", ActualCount = count, Limit = MaxPartitionTiles };
         return count;
     }
 
-    /// <summary>The tile range <see cref="Partition"/> lists for <paramref name="world"/>.</summary>
+    /// <summary>The tile range <see cref="Partition(MapBuiltWorld, MapWorldGrids, MapNavTileOptions)"/> lists for <paramref name="world"/>.</summary>
     static (int MinX, int MaxX, int MinZ, int MaxZ) PartitionRange(MapBuiltWorld world, MapWorldGrids grids)
     {
         (int minX, int maxX) = TileAxis(world.Bounds.MinX, world.Bounds.MaxX, grids.Origin.X, grids.NavTileSize, "X");
@@ -368,16 +409,28 @@ public static class MapNavTiling
             throw new MapNavigationArgumentException(!double.IsFinite(min) || !double.IsFinite(max)
                 ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.BoundsInvalid,
                 FormattableString.Invariant($"bounds [{min}, {max}] are not a finite range"))
-            { FieldPath = "Bounds." + axis, MinimumNumber = min, MaximumNumber = max,
-                ActualNumber = !double.IsFinite(min) ? min : max };
+            {
+                FieldPath = "Bounds." + axis,
+                MinimumNumber = min,
+                MaximumNumber = max,
+                ActualNumber = !double.IsFinite(min) ? min : max
+            };
         double first = Math.Floor((min - origin) / size);
         double last = max > min ? Math.Max(first, Math.Ceiling((max - origin) / size) - 1) : first;
         if (first < int.MinValue || last > int.MaxValue)
             throw new MapDocumentException(MapDocumentRefusal.PhysicsNavIndexOutOfRange, FormattableString.Invariant(
                 $"Bounds [{min}, {max}] reach navigation tiles {first:F0} to {last:F0} from origin {origin}, ") +
                 FormattableString.Invariant($"outside the {int.MinValue:N0} to {int.MaxValue:N0} tile range."))
-            { Axis = axis, FirstIndex = first, LastIndex = last, AxisOrigin = origin,
-                MinimumNumber = min, MaximumNumber = max, MinimumInteger = int.MinValue, MaximumInteger = int.MaxValue };
+            {
+                Axis = axis,
+                FirstIndex = first,
+                LastIndex = last,
+                AxisOrigin = origin,
+                MinimumNumber = min,
+                MaximumNumber = max,
+                MinimumInteger = int.MinValue,
+                MaximumInteger = int.MaxValue
+            };
         return ((int)first, (int)last);
     }
 
@@ -395,13 +448,16 @@ public static class MapNavTiling
     /// range one tile wider on each side than the arithmetic needs, and each is kept only when
     /// <see cref="MeetsXz"/> holds against its capture bounds, so rounding never decides membership.</summary>
     static IEnumerable<MapNavTileCoord> CaptureTilesMeeting(double minX, double minZ, double maxX, double maxZ,
-        MapWorldGrids grids, double margin)
+        MapWorldGrids grids, double margin, MapNavTileCoord? minimum = null, MapNavTileCoord? maximum = null)
     {
         double size = grids.NavTileSize;
         int x0 = TileIndex(Math.Floor((minX - margin - grids.Origin.X) / size) - 1, "X", grids.Origin.X);
         int x1 = TileIndex(Math.Floor((maxX + margin - grids.Origin.X) / size) + 1, "X", grids.Origin.X);
         int z0 = TileIndex(Math.Floor((minZ - margin - grids.Origin.Y) / size) - 1, "Z", grids.Origin.Y);
         int z1 = TileIndex(Math.Floor((maxZ + margin - grids.Origin.Y) / size) + 1, "Z", grids.Origin.Y);
+        // A partition visits only its admitted domain even when a capture has a much wider margin.
+        if (minimum is { } low) { x0 = Math.Max(x0, low.X); z0 = Math.Max(z0, low.Z); }
+        if (maximum is { } high) { x1 = Math.Min(x1, high.X); z1 = Math.Min(z1, high.Z); }
         for (long z = z0; z <= z1; z++)
             for (long x = x0; x <= x1; x++)
             {
@@ -417,20 +473,26 @@ public static class MapNavTiling
         ? (int)index
         : throw new MapDocumentException(MapDocumentRefusal.PhysicsNavIndexOutOfRange, FormattableString.Invariant(
             $"Navigation tile {index:F0} lies outside the {int.MinValue:N0} to {int.MaxValue:N0} tile range."))
-        { Axis = axis, FirstIndex = index, LastIndex = index, AxisOrigin = origin,
-            MinimumInteger = int.MinValue, MaximumInteger = int.MaxValue };
+        {
+            Axis = axis,
+            FirstIndex = index,
+            LastIndex = index,
+            AxisOrigin = origin,
+            MinimumInteger = int.MinValue,
+            MaximumInteger = int.MaxValue
+        };
 
     static bool MeetsXz(double aMinX, double aMinZ, double aMaxX, double aMaxZ, double bMinX, double bMinZ, double bMaxX,
         double bMaxZ) => aMinX <= bMaxX && bMinX <= aMaxX && aMinZ <= bMaxZ && bMinZ <= aMaxZ;
 
-    static string GeometryDigest(MapBuiltWorld world, IReadOnlyList<MapResidencyEntry> statics,
+    static string GeometryDigest(bool native, string legacyBlock, IReadOnlyList<MapStaticDescriptor> statics,
         Dictionary<string, string> digests, IReadOnlyList<MapLegacySculptTile> sculpt) => CanonicalHash(w =>
     {
         w.WriteStartObject();
         w.WriteString("domain", "kemap/nav-tile-geometry/1");
-        w.WriteBoolean("native", world.IsNative);
+        w.WriteBoolean("native", native);
         w.WriteStartArray("statics");
-        foreach (MapResidencyEntry entry in statics)
+        foreach (MapStaticDescriptor entry in statics)
         {
             w.WriteStartArray();
             w.WriteStringValue(entry.OwnerId);
@@ -438,7 +500,7 @@ public static class MapNavTiling
             w.WriteEndArray();
         }
         w.WriteEndArray();
-        w.WriteString("legacyTerrainBlock", world.LegacyTerrainBlockDigest);
+        w.WriteString("legacyTerrainBlock", legacyBlock);
         w.WriteStartArray("sculpt");
         foreach (MapLegacySculptTile tile in sculpt)
         {
@@ -454,7 +516,8 @@ public static class MapNavTiling
 
     /// <summary>The tiles whose capture bounds meet any region triangle of <paramref name="body"/> with positive
     /// XZ area. Triangle bounds select candidates only, then the shared exact water kernel clips each intersection.</summary>
-    static IEnumerable<MapNavTileCoord> WaterCaptureTiles(MapCompiledWaterBody body, MapWorldGrids grids, double margin)
+    static IEnumerable<MapNavTileCoord> WaterCaptureTiles(MapCompiledWaterBody body, MapWorldGrids grids, double margin,
+        MapNavTileCoord? minimum = null, MapNavTileCoord? maximum = null)
     {
         var tiles = new SortedSet<MapNavTileCoord>(TileOrder);
         foreach (var region in body.Regions)
@@ -465,13 +528,19 @@ public static class MapNavTiling
                 : region.WidePolygons.Select(p => (Polygon: p, Box: MapWaterOccupiedPieces.Bounds(p, default, default)));
             foreach (var (polygon, box) in pieces)
             {
-                foreach (MapNavTileCoord tile in CaptureTilesMeeting(box.MinX, box.MinZ, box.MaxX, box.MaxZ, grids, margin))
+                foreach (MapNavTileCoord tile in CaptureTilesMeeting(box.MinX, box.MinZ, box.MaxX, box.MaxZ, grids, margin, minimum, maximum))
                 {
                     if (tiles.Contains(tile)) continue;
                     MapBox3 capture = Grow(TileBounds(tile, grids, 0, 0), margin);
                     var min = new MapWideXz(MapWideRational.FromDouble(capture.MinX), MapWideRational.FromDouble(capture.MinZ));
                     var max = new MapWideXz(MapWideRational.FromDouble(capture.MaxX), MapWideRational.FromDouble(capture.MaxZ));
-                    if (MapWaterPolygons.ClipToRect(polygon, min, max).Count > 0) tiles.Add(tile);
+                    using var clipping = MapSceneAdmission.Current?.Workspace();
+                    clipping?.Reserve(checked(256L + polygon.Count * 256L));
+                    if (MapWaterPolygons.ClipToRect(polygon, min, max).Count > 0)
+                    {
+                        MapSceneAdmission.Current?.ReserveBytes(64);
+                        tiles.Add(tile);
+                    }
                 }
             }
         }
@@ -592,6 +661,8 @@ public static class MapNavTiling
         if (count < 2)
             throw new MapDocumentException(MapDocumentRefusal.GeometryVertexSequenceInvalid, $"invalid vertex sequence: portal '{portal.Id}'")
             { RecordId = portal.Id, ActualCount = count, MinimumInteger = 2 };
+        using var preparation = MapSceneAdmission.Current?.Workspace();
+        preparation?.Reserve(checked(portal.Interval.Count * 64L));
         MapExactXz[] points = portal.Interval.Select(v => MapEffectiveGeometry.Vertex(view, v)).ToArray();
         for (int i = 1; i < points.Length; i++)
             AddReach(tiles, grids, points[i - 1].X.ToDouble(), points[i - 1].Z.ToDouble(), points[i].X.ToDouble(),
@@ -601,6 +672,9 @@ public static class MapNavTiling
     static void AddOpening(MapScopedSurfaces view, MapHorizontalOpening opening, MapWorldGrids grids,
         SortedSet<MapNavTileCoord> tiles)
     {
+        var admission = MapSceneAdmission.Current;
+        var output = admission?.PreparationScope;
+        using var preparation = output is null ? null : admission?.BeginPreparation();
         MapPatchRead read = view.Patch(opening.Patch);
         MapSurfacePatch patch = read.Patch
             ?? throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"missing geometry: opening '{opening.Id}' patch {opening.Patch}")
@@ -612,17 +686,26 @@ public static class MapNavTiling
                 MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.B), MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.C));
             double[] xs = { t.A.X.ToDouble(), t.B.X.ToDouble(), t.C.X.ToDouble() };
             double[] zs = { t.A.Z.ToDouble(), t.B.Z.ToDouble(), t.C.Z.ToDouble() };
-            AddReach(tiles, grids, xs.Min(), zs.Min(), xs.Max(), zs.Max());
+            AddReach(tiles, grids, xs.Min(), zs.Min(), xs.Max(), zs.Max(), output);
         }
     }
 
-    static void AddReach(SortedSet<MapNavTileCoord> tiles, MapWorldGrids grids, double ax, double az, double bx, double bz)
+    static void AddReach(SortedSet<MapNavTileCoord> tiles, MapWorldGrids grids, double ax, double az, double bx, double bz,
+        MapPreparationScope? output = null)
     {
         (int minX, int maxX) = TileAxis(Math.Min(ax, bx), Math.Max(ax, bx), grids.Origin.X, grids.NavTileSize, "X");
         (int minZ, int maxZ) = TileAxis(Math.Min(az, bz), Math.Max(az, bz), grids.Origin.Y, grids.NavTileSize, "Z");
         for (long z = minZ; z <= maxZ; z++)
             for (long x = minX; x <= maxX; x++)
-                tiles.Add(new MapNavTileCoord((int)x, (int)z));
+            {
+                var coord = new MapNavTileCoord((int)x, (int)z);
+                if (!tiles.Contains(coord))
+                {
+                    if (output is null) MapSceneAdmission.Current?.ReserveBytes(64);
+                    else output.Reserve(64);
+                }
+                tiles.Add(coord);
+            }
     }
 
     internal static (int Min, int Max) TileAxisForTests(double min, double max, double origin, double size, string axis) =>
@@ -644,7 +727,8 @@ public static class MapNavTiling
 
     static MapSurfaceRef Surface(MapScopedSurfaces view, string id) =>
         view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
-            $"missing geometry: surface '{id}'") { SurfaceId = id };
+            $"missing geometry: surface '{id}'")
+        { SurfaceId = id };
 
     static T Record<T>(MapScopedSurfaces view, MapRecordRef reference) where T : MapTopologyRecord
     {
@@ -663,7 +747,7 @@ public static class MapNavTiling
     static string CanonicalHash(Action<Utf8JsonWriter> body)
     {
         using var stream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false }))
+        using (var writer = new Utf8JsonWriter(stream, MapJsonTextOptions.IndentedWriter with { Indented = false }))
             body(writer);
         return Convert.ToHexStringLower(SHA256.HashData(stream.ToArray()));
     }

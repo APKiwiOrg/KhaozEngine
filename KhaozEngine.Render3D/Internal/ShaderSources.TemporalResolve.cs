@@ -1,7 +1,7 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The temporal resolve's fused entry point and its depth store (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3), two
+    /// The temporal resolve's fused entry point and its depth store (TEMPORAL-RESOLVE section 3), two
     /// fullscreen fragment programs paired with <see cref="FullscreenVert"/> and recorded by
     /// <c>TemporalResolveRenderer</c>.
     /// <para><b>EVERY RULE LIVES ONCE.</b> The rules are GLSL functions in two shared blocks: the per-texel
@@ -83,6 +83,8 @@ const float LockMotionStartPixels = 1.0;
 const float LockMotionEndPixels = 4.0;
 const float LockReactiveRelease = 2.0;
 const float LockDecay = 0.125;
+const float LockShimmerGate = 0.5;
+const float LockShimmerChangeBand = 1.0;
 const float LockHoldGain = 2.0;
 const float LockEdgeRelease = 1.0;
 const float LockEdgeMotionFraction = 0.001953125;
@@ -108,6 +110,13 @@ const float MovingShareConfidence = 0.0;
 const float DisplayKernelConfidenceStart = 0.5;
 const float DisplayKernelMotionPixels = 2.0;
 const float DisplayKernelFullWeight = 0.25;
+const float ChromaPrecisionFloorSteps = 4.0;
+const float ShimmerFloor = 0.03125;
+const float ShimmerStillPixels = 0.25;
+const float ShimmerChangeBand = 3.0;
+const float ShimmerClipGain = 0.35;
+const float MaxStillAccumulation = 63.0;
+const float VisibilityShimmerGate = 0.1;
 ";
 
         // ---- The fused entry point's core: its bindings, the uniforms, the per-texel preparation and per-pixel
@@ -124,7 +133,7 @@ layout(set=0, binding=7) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalResolveVisibilityBindingsGlsl + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityMaskGlsl + TemporalVisibilityGlsl
-            + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalAccumulateGlsl + @"
+            + TemporalShimmerVisibilityGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalShimmerGlsl + TemporalAccumulateGlsl + @"
 // The fused entry point: one display pixel, its 3x3 read from the scene's inputs and prepared inline
 // (temporalWeighted, temporalReactiveDifference, temporalDilate, temporalVisibilityCurrentBit), gathered
 // (temporalGather), its centre texel's surface prepared (temporalPrepareSurface), and the accumulation
@@ -194,7 +203,7 @@ layout(location=1) out vec4 oState;
 void main() {
     TemporalPixel p = temporalResolvePixel(ivec2(gl_FragCoord.xy));
     oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);   // the vUv read changes no output, see the class summary
-    oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), 0.0, 1.0);
+    oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), p.drift, p.swing);
 }";
 
         // ---- The depth store: this frame's linear view depth for next frame's disocclusion test ----

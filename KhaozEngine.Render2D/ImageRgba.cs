@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.IO;
 using StbImageSharp;
@@ -46,8 +48,37 @@ namespace KhaozEngine.Render2D
         /// <summary>Decode an encoded image (PNG/JPG/...) from memory to RGBA on the CPU. No GPU device needed.</summary>
         public static ImageRgba Decode(ReadOnlySpan<byte> fileBytes)
         {
+            ImageDecodeAdmission.EnterPixelDecode();
             ImageResult img = ImageResult.FromMemory(fileBytes.ToArray(), ColorComponents.RedGreenBlueAlpha);
             return new ImageRgba(img.Data, img.Width, img.Height);
+        }
+
+        /// <summary>Refuses unsupported headers and capacity excess before copying or decoding pixels.</summary>
+        public static ImageRgba DecodeBounded(ReadOnlySpan<byte> encoded, long maxPeakBytes, int maxPixels) =>
+            DecodeBounded(encoded, maxPeakBytes, maxPixels, null);
+
+        // A derived decode allowance names its limits record, so evaluated demand reports the originating profile fields.
+        internal static ImageRgba DecodeBounded(ReadOnlySpan<byte> encoded, long maxPeakBytes, int maxPixels, object? allowanceSource)
+        {
+            using var demandScope = DemandDiagnostics.Enter("ImageRgba.DecodeBounded");
+            ImageDecodeInfo info = ImageDecodeAdmission.Probe(encoded);
+            try
+            {
+                long pixels = (long)info.Width * info.Height;
+                if (DemandDiagnostics.Check(null, "ImageRgba.MaxImagePixels.1", "MaxImagePixels", 0, pixels, maxPixels, pixels > maxPixels, CapacityDemandLifetime.Transient, allowanceSource: allowanceSource) || DemandDiagnostics.Check(null, "ImageRgba.MaxImageBufferPixels.1", "MaxImageBufferPixels", 0, pixels, Array.MaxLength / 4, pixels > Array.MaxLength / 4, CapacityDemandLifetime.Transient))
+                    throw new ImageDecodeRefusal(ImageDecodeStatus.CapacityExceeded, "Image decode allowance exceeded.");
+                long peak = ImageDecodeAdmission.Demand(info);
+                if (DemandDiagnostics.Check(null, "ImageRgba.MaxPeakBytes.1", "MaxPeakBytes", 0, peak, maxPeakBytes, peak > maxPeakBytes, CapacityDemandLifetime.Transient, allowanceSource: allowanceSource))
+                    throw new ImageDecodeRefusal(ImageDecodeStatus.CapacityExceeded, "Image decode allowance exceeded.");
+                ImageRgba image = Decode(encoded);
+                if (image.Width != info.Width || image.Height != info.Height)
+                    throw new ImageDecodeRefusal(ImageDecodeStatus.Invalid, "Decoded image dimensions differ from its header.");
+                return image;
+            }
+            catch (OverflowException) { throw new ImageDecodeRefusal(ImageDecodeStatus.CapacityExceeded, "Image demand overflow."); }
+            catch (ImageDecodeRefusal) { throw; }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            { throw new ImageDecodeRefusal(ImageDecodeStatus.Invalid, "Image cannot be decoded: " + ex.Message); }
         }
 
         /// <summary>Decode an image file from disk to RGBA on the CPU. No GPU device needed.</summary>

@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -41,10 +43,11 @@ internal static class MapSupportSelection
     internal static MapSpaceDoc RequireSpace(IReadOnlyList<MapTopologyRecord> records, string spaceId) =>
         records.OfType<MapSpaceDoc>().FirstOrDefault(s => s.Id == spaceId)
             ?? throw new MapDocumentException(MapDocumentRefusal.SupportSpaceMissing, $"missing geometry: space '{spaceId}'")
-                { SpaceId = spaceId };
+            { SpaceId = spaceId };
 
     internal static MapSupportResult Refusal(MapScopedSurfaces view, MapSupportStatus status, string detail) =>
-        new(status, null, 0, null, null, null, null, detail, view.ReadWitness);
+        new(status, null, 0, null, null, null, null, detail, view.ReadWitness)
+        { Capacity = status == MapSupportStatus.CapacityExceeded ? view.Capacity : null };
 
     internal static Outcome Compute(MapPreparedSupport prepared, MapSupportRequest request, MapBoundFaceWork? work, bool sampleSurface,
         MapExactPoint? exactWorld = null) => Compute(prepared, request, work, sampleSurface, exactWorld, null);
@@ -122,7 +125,7 @@ internal static class MapSupportSelection
                         selected = new(context.CompiledFace(face.Key), height);
                 }
                 if (selected is null) continue;
-                if (intersections.Count >= scope.Limits.MaxSupportIntersections)
+                if (DemandDiagnostics.Check(view, "MapSupportSelection.MaxSupportIntersections.1", "MaxSupportIntersections", intersections.Count, 1, scope.Limits.MaxSupportIntersections, intersections.Count >= scope.Limits.MaxSupportIntersections, CapacityDemandLifetime.Inventory, allowanceSource: scope.Limits))
                     return Failure(MapSupportStatus.CapacityExceeded, "support intersections");
                 intersections.Add(selected);
             }
@@ -223,7 +226,8 @@ internal static class MapSupportSelection
         Outcome Failure(MapSupportStatus status, string? detail) => new(Result(status, detail: detail), Array.Empty<Candidate>());
         MapSupportResult Result(MapSupportStatus status, MapFaceKey? face = null, float worldY = 0, Vector3? normal = null,
             MapLegacyCellTag? compatibility = null, string? spaceId = null, MapRecordRef? via = null, string? detail = null) =>
-            new(status, face, worldY, normal, compatibility, spaceId, via, detail, view.ReadWitness);
+            new(status, face, worldY, normal, compatibility, spaceId, via, detail, view.ReadWitness)
+            { Capacity = status == MapSupportStatus.CapacityExceeded ? view.Capacity : null };
     }
 
     internal static Dictionary<string, MapRecordRef?> Reachable(MapScopedSurfaces view, MapSpaceMembership spaces, string owner,

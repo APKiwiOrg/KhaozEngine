@@ -26,6 +26,8 @@ internal static class McpWire
     internal static Task<McpAdapterTests.McpHarness> StartAsync(Action<IMcpServerBuilder>? configure = null) =>
         Run("server start", token => McpAdapterTests.McpHarness.StartAsync(token, configure));
 
+    internal static Task<McpAdapterTests.McpHarness> StartAsync(string nativePolicyPath) => Run("server start", token => McpAdapterTests.McpHarness.StartAsync(token, nativePolicyPath));
+
     internal static Task<CallToolResult> CallAsync(this McpClient client, string name, IReadOnlyDictionary<string, object?> arguments) =>
         Run(name, async token => await client.CallToolAsync(name, arguments, cancellationToken: token));
 

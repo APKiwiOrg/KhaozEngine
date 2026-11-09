@@ -184,7 +184,8 @@ public class MovementCommitmentTests
         };
         state.Commitment = state.Commitment with
         {
-            Phase = phase, RecoveryRemaining = 1,
+            Phase = phase,
+            RecoveryRemaining = 1,
             EndReason = phase == MovementCommitmentPhase.Recovering ? MovementCommitmentEndReason.Arrived : default,
         };
 

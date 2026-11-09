@@ -42,14 +42,14 @@ internal static class MapSurfaceEmbeddedPayload
         if (bytes is null || bytes.Length != length)
             throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch,
                 "embedded payload allocator must return the exact measured size")
-                { SubjectKind = "embedding allocation", ExpectedByteCount = length, ActualByteCount = bytes?.LongLength };
+            { SubjectKind = "embedding allocation", ExpectedByteCount = length, ActualByteCount = bytes?.LongLength };
         return bytes;
     }
 
     static void Finish(int written, int measured)
     {
         if (written != measured) throw new MapDocumentException(MapDocumentRefusal.StorageEmbeddingChanged, "embedded payload changed during encoding")
-            { ExpectedByteCount = measured, ActualByteCount = written };
+        { ExpectedByteCount = measured, ActualByteCount = written };
     }
 
     static void Visit(JsonNode? node, ref MapSurfaceEmbeddedTokenWriter output, int depth, bool packed = false)
@@ -90,11 +90,11 @@ internal static class MapSurfaceEmbeddedPayload
                 if (value.TryGetValue(out JsonElement element)) Visit(element, ref output, depth, packed);
                 else if (value.TryGetValue(out object? scalar)) output.Scalar(scalar, packed);
                 else throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "unsupported JSON scalar in embedded surface patch")
-                    { SubjectKind = "embedded scalar" };
+                { SubjectKind = "embedded scalar" };
                 break;
             default:
                 throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "invalid JSON node in embedded surface patch")
-                    { SubjectKind = "embedded node", RecordType = node.GetType() };
+                { SubjectKind = "embedded node", RecordType = node.GetType() };
         }
     }
 
@@ -146,7 +146,7 @@ internal static class MapSurfaceEmbeddedPayload
                 break;
             default:
                 throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "invalid JSON value in embedded surface patch")
-                    { SubjectKind = "embedded value", FieldPath = "ValueKind", ActualInteger = (int)element.ValueKind };
+                { SubjectKind = "embedded value", FieldPath = "ValueKind", ActualInteger = (int)element.ValueKind };
         }
     }
 
@@ -156,6 +156,6 @@ internal static class MapSurfaceEmbeddedPayload
     {
         if (depth >= MaxDepth) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded,
             "embedded surface patch exceeds its depth limit, use tiled storage")
-            { Budget = "MaxEmbeddingDepth", ActualCount = (long)depth + 1, Limit = MaxDepth };
+        { Budget = "MaxEmbeddingDepth", ActualCount = (long)depth + 1, Limit = MaxDepth };
     }
 }

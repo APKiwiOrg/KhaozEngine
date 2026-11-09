@@ -22,8 +22,11 @@ public sealed class MapInteriorRefusalTests
         {
             "kind" => prism with { Space = prism.Parent },
             "id" => prism with { Id = "replacement" },
-            _ => prism with { Space = prism.Space with
-                { Anchor = document.Surfaces.Patches.Keys.First(k => k != prism.Space.Anchor) } }
+            _ => prism with
+            {
+                Space = prism.Space with
+                { Anchor = document.Surfaces.Patches.Keys.First(k => k != prism.Space.Anchor) }
+            }
         };
         var before = MapDocumentFile.SaveText(document);
         var error = Assert.Throws<MapDocumentException>(() => MapInteriorEdits.Prepare(document, fixture.Assets,

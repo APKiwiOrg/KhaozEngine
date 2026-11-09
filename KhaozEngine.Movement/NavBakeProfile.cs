@@ -43,14 +43,14 @@ public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilte
         if (AllowTerrainDescents && MaxDropMetres == 0)
             throw new NavigationProfileException(NavigationProfileRefusal.TerrainDropPermissionRequired,
                 "Terrain descents require positive Drop permission.", nameof(AllowTerrainDescents))
-                { AllowTerrainDescents = AllowTerrainDescents, MaxDropMetres = MaxDropMetres };
+            { AllowTerrainDescents = AllowTerrainDescents, MaxDropMetres = MaxDropMetres };
         if (MaxDropMetres > 0 && (kind != EffectiveMovementBindingKind.OrdinaryContact || Aquatic))
             throw new NavigationProfileCapabilityException(NavigationProfileRefusal.DropProfileUnsupported,
                 "Drop navigation requires non-aquatic OrdinaryContact movement.")
-                { ProfileName = string.IsNullOrEmpty(Name) ? null : Name, ActualKind = kind, Aquatic = Aquatic };
+            { ProfileName = string.IsNullOrEmpty(Name) ? null : Name, ActualKind = kind, Aquatic = Aquatic };
         if (kind == EffectiveMovementBindingKind.OrdinaryContact && Aquatic)
             throw new NavigationProfileCapabilityException(NavigationProfileRefusal.ContactAquaticUnsupported, DeferredAquaticMessage)
-                { IssueUrl = DeferredIssue, ProfileName = string.IsNullOrEmpty(Name) ? null : Name };
+            { IssueUrl = DeferredIssue, ProfileName = string.IsNullOrEmpty(Name) ? null : Name };
         return kind;
     }
 }

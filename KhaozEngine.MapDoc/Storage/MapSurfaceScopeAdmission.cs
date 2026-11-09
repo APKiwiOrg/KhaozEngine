@@ -31,7 +31,9 @@ internal static class MapSurfaceScopeAdmission
                 return true;
             }) == true || limits is null ||
             limits.MaxCandidatePatches < 0 || limits.MaxPageReads < 0 || limits.MaxInspectedFaces < 0 ||
-            limits.MaxSupportIntersections < 0 || limits.MaxRecordReads < 0 || limits.MaxRecordDepth < 0)
+            limits.MaxSupportIntersections < 0 || limits.MaxRecordReads < 0 || limits.MaxRecordDepth < 0 ||
+            limits.Refinement is { } reads && (reads.MaxSourceFacesPerBound < 0 || reads.MaxPairChecks < 0 ||
+                reads.MaxRefinementFaces < 0 || reads.MaxRefinementVertices < 0 || reads.MaxContextPatches < 0 || reads.MaxContextFaces < 0))
             throw Refusal();
 
         MapSurfaceScopeArgumentException Refusal()
@@ -46,15 +48,20 @@ internal static class MapSurfaceScopeAdmission
             if (minY > maxY) return Number(MapDocumentRefusal.BoundsInvalid, "MaxY", maxY!.Value, minY);
             if (roles is null) return new(MapDocumentRefusal.SchemaValueRequired, message) { FieldPath = "Roles" };
             if (invalidRole is { } role) return new(MapDocumentRefusal.SchemaEnumUnsupported, message)
-                { FieldPath = "Roles", ActualInteger = (long)role, EnumType = typeof(MapSurfaceRole) };
+            { FieldPath = "Roles", ActualInteger = (long)role, EnumType = typeof(MapSurfaceRole) };
             if (invalidSpaceFound) return new(MapDocumentRefusal.SchemaValueRequired, message)
-                { FieldPath = "SpaceIds", ActualText = invalidSpace };
+            { FieldPath = "SpaceIds", ActualText = invalidSpace };
             if (limits is null) return new(MapDocumentRefusal.SchemaValueRequired, message) { FieldPath = "Limits" };
             var (limit, actual) = new[] { ("MaxCandidatePatches", limits.MaxCandidatePatches), ("MaxPageReads", limits.MaxPageReads),
                 ("MaxInspectedFaces", limits.MaxInspectedFaces), ("MaxSupportIntersections", limits.MaxSupportIntersections),
-                ("MaxRecordReads", limits.MaxRecordReads), ("MaxRecordDepth", limits.MaxRecordDepth) }.First(v => v.Item2 < 0);
+                ("MaxRecordReads", limits.MaxRecordReads), ("MaxRecordDepth", limits.MaxRecordDepth) }.FirstOrDefault(v => v.Item2 < 0);
+            if (limit is null && limits.Refinement is { } refinement)
+                (limit, actual) = new[] { ("Refinement.MaxSourceFacesPerBound", refinement.MaxSourceFacesPerBound),
+                    ("Refinement.MaxPairChecks", refinement.MaxPairChecks), ("Refinement.MaxRefinementFaces", refinement.MaxRefinementFaces),
+                    ("Refinement.MaxRefinementVertices", refinement.MaxRefinementVertices), ("Refinement.MaxContextPatches", refinement.MaxContextPatches),
+                    ("Refinement.MaxContextFaces", refinement.MaxContextFaces) }.First(v => v.Item2 < 0);
             return new(MapDocumentRefusal.ValueOutsideRange, message)
-                { FieldPath = "Limits." + limit, ActualInteger = actual, MinimumInteger = 0 };
+            { FieldPath = "Limits." + limit, ActualInteger = actual, MinimumInteger = 0 };
 
             static MapSurfaceScopeArgumentException Number(MapDocumentRefusal reason, string field, float value, float? minimum = null) =>
                 new(reason, message) { FieldPath = field, ActualNumber = value, MinimumNumber = minimum };

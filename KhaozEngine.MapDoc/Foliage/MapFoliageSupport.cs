@@ -1,3 +1,6 @@
+using KhaozEngine.Diagnostics;
+using KhaozEngine.Primitives;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -9,7 +12,6 @@ using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
-using KhaozEngine.Primitives;
 
 namespace KhaozEngine.MapDoc.Foliage;
 
@@ -57,18 +59,22 @@ public static class MapFoliageSupport
     /// layers. A refusal is a prepared value with a non-Complete status, never a partial preparation.</summary>
     public static MapPreparedFoliageSupport Prepare(MapFoliageGenerationContext context, MapFoliageLayer layer, MapFoliageChunkKey chunk,
         MapFoliageLimits limits)
+ => Prepare((IMapFoliageInputs)context, layer, chunk, limits);
+
+    internal static MapPreparedFoliageSupport Prepare(IMapFoliageInputs context, MapFoliageLayer layer, MapFoliageChunkKey chunk,
+        MapFoliageLimits limits)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(layer);
         ArgumentNullException.ThrowIfNull(limits);
         if (context.Foliage is null || !context.Foliage.Layers.Contains(layer))
             throw new ArgumentException("the layer is not one of the context's captured layers", nameof(layer));
-        IReadOnlyList<MapSurfaceRef> declared = context.Resources.SurfaceSource.Surfaces;
+        IReadOnlyList<MapSurfaceRef> declared = context.DeclaredSurfaces;
         MapSurfaceScope scope;
-        try { scope = Scope(layer, chunk, context.SupportFloorsFor(layer, chunk), context.Resources.Transforms); }
+        try { scope = Scope(layer, chunk, context.SupportFloorsFor(layer, chunk), context.Transforms, context.QueryLimits); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
         { return MapPreparedFoliageSupport.Refused(layer, chunk, MapFoliageStatus.NotRepresentable, NoWork, "chunk scope is not representable"); }
-        if (limits.MaxPrepareScopes < 1)
+        if (DemandDiagnostics.Check(context, "MapFoliageSupport.MaxPrepareScopes.1", "MaxPrepareScopes", 0, 1, limits.MaxPrepareScopes, limits.MaxPrepareScopes < 1, CapacityDemandLifetime.Cumulative, allowanceSource: limits))
             return MapPreparedFoliageSupport.Refused(layer, chunk, MapFoliageStatus.CapacityExceeded, NoWork, "prepare scopes");
         MapScopedSurfaces view;
         IReadOnlyDictionary<string, MapPaintRegionSet> paint;
@@ -82,12 +88,33 @@ public static class MapFoliageSupport
         return Prepare(view, paint, declared, layer, chunk, limits, context.DensityDigests(layer)).WithAssets(context.Assets);
     }
 
+    // The closure iteration is shared by metadata acquisition and retained generation inputs.
+    internal static IReadOnlyList<MapSurfaceRef> FloorsFor(MapFoliageLayer layer, MapFoliageChunkKey chunk,
+        IReadOnlyDictionary<string, MapEffectiveTransform> transforms,
+        Func<MapFoliageGenerationContext.Bounds, IEnumerable<MapSurfaceRef>> find)
+    {
+        var rect = MapFoliageSupport.Rect(layer, chunk);
+        var found = new Dictionary<string, MapSurfaceRef>(StringComparer.Ordinal);
+        double pad = 0.01;
+        while (true)
+        {
+            int previous = found.Count;
+            foreach (MapSurfaceRef surface in find(new(rect.MinX - pad, rect.MinZ - pad, rect.MaxX + pad, rect.MaxZ + pad)))
+                found.TryAdd(surface.Id, surface);
+            if (found.Count == previous) return found.Values.OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
+            var floors = found.Values.Select(s => (Surface: s, Pose: transforms.TryGetValue(
+                MapEffectiveContext.Key(MapPrefabChildKind.Surface, s.Id), out MapEffectiveTransform t) ? t : (MapEffectiveTransform?)null)).ToArray();
+            double cell = floors.Max(f => f.Surface.Frame.CellUnitMetres.Exact().ToDouble() * (f.Pose?.Scale ?? 1));
+            pad = 3 * cell + MapFoliageSupport.ReadReach(layer, floors) + 0.01;
+        }
+    }
+
     /// <summary>The acquisition scope of a chunk: its world rectangle widened by the clearance read reach over the spatially contributing
     /// support floors, since grids and the shared context widen by that reach, plus a halo of three of the largest
     /// contributing support cells, which holds every neighbour corner a boundary normal reads. Every role is acquired, since
     /// membership reads ceilings and visible paint reads paint overrides.</summary>
     internal static MapSurfaceScope Scope(MapFoliageLayer layer, MapFoliageChunkKey chunk, IReadOnlyList<MapSurfaceRef> declared,
-        IReadOnlyDictionary<string, MapEffectiveTransform> transforms)
+        IReadOnlyDictionary<string, MapEffectiveTransform> transforms, MapQueryLimits? queryLimits = null)
     {
         (double minX, double minZ, double maxX, double maxZ) = Rect(layer, chunk);
         double cell = 0;
@@ -108,7 +135,7 @@ public static class MapFoliageSupport
         var max = new Vector2(Outward(maxX - ax, lower: false), Outward(maxZ - az, lower: false));
         if (!float.IsFinite(min.X) || !float.IsFinite(min.Y) || !float.IsFinite(max.X) || !float.IsFinite(max.Y))
             throw new MapExactOverflowException();
-        return new(frame, min, max, null, null, Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
+        return new(frame, min, max, null, null, Enum.GetValues<MapSurfaceRole>(), null, queryLimits ?? new MapQueryLimits());
     }
 
     /// <summary>How far outside the chunk clearance reads support, the one reach the acquisition scope, the support grids,

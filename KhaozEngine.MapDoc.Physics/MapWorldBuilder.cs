@@ -11,6 +11,7 @@ using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Physics;
@@ -57,9 +58,19 @@ public static class MapWorldBuilder
         bool completeEffective = effective is not null && (document.Prefabs is not null || document.NativeResourceTransforms is not null ||
             resolved.Placements.Any(p => assets.GetAsset(p.AssetId).SupportResourceIds.Count != 0));
         MapScopedSurfaces surfaces = effective?.CompleteView() ?? MapScopedSurfaces.CompleteView(new MapSurfaceSet());
+        // Coverage and terrain need every surface. A view the declared profile could not complete refuses here.
+        if (surfaces.Status != MapAcquireStatus.Complete)
+        {
+            string message = $"Native world surfaces {surfaces.Status}: {surfaces.Detail}";
+            throw surfaces.Capacity is { } capacity ? MapDocumentRefusalFactory.FromFinding(
+                capacity.Finding with { AcquireStatus = surfaces.Status, Operation = "World.Build" }, message,
+                new MapSceneCapacityException(capacity)) : new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, message)
+                { AcquireStatus = surfaces.Status, Operation = "World.Build" };
+        }
         if (completeEffective)
         {
-            MapSpaceCoverageValidator.Require(surfaces);
+            // Coverage refines under the same declared profile the resolution used.
+            MapSpaceCoverageValidator.Require(surfaces, options.Resolve.QueryLimits.Refinement ?? new());
         }
         MapTerrainChunkSet terrain = MapTerrainPhysics.Compile(surfaces, options.Chunks);
         IReadOnlyList<MapPlacementGeometry> placements = MapPlacementShapes.Resolve(resolved);
@@ -138,7 +149,7 @@ public static class MapWorldBuilder
             { BodyId = body.BodyId };
     }
 
-    static void ValidateOptions(MapWorldBuildOptions options)
+    internal static void ValidateOptions(MapWorldBuildOptions options)
     {
         ArgumentNullException.ThrowIfNull(options.Resolve, nameof(options));
         ArgumentNullException.ThrowIfNull(options.Chunks, nameof(options));
@@ -154,11 +165,15 @@ public static class MapWorldBuilder
         if (options.Chunks.MaxTrianglesPerChunk is < MapTerrainPhysics.MinTrianglesPerChunk or > MapTerrainPhysics.MaxTrianglesPerChunk)
             throw new MapWorldBuildRangeException(MapDocumentRefusal.ValueOutsideRange,
                 $"MaxTrianglesPerChunk must be {MapTerrainPhysics.MinTrianglesPerChunk} to {MapTerrainPhysics.MaxTrianglesPerChunk}.", nameof(options))
-            { FieldPath = "Chunks." + nameof(options.Chunks.MaxTrianglesPerChunk), ActualInteger = options.Chunks.MaxTrianglesPerChunk,
-                MinimumInteger = MapTerrainPhysics.MinTrianglesPerChunk, MaximumInteger = MapTerrainPhysics.MaxTrianglesPerChunk };
+            {
+                FieldPath = "Chunks." + nameof(options.Chunks.MaxTrianglesPerChunk),
+                ActualInteger = options.Chunks.MaxTrianglesPerChunk,
+                MinimumInteger = MapTerrainPhysics.MinTrianglesPerChunk,
+                MaximumInteger = MapTerrainPhysics.MaxTrianglesPerChunk
+            };
     }
 
-    static IReadOnlyList<MapStaticDescriptor> Statics(IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain)
+    internal static IReadOnlyList<MapStaticDescriptor> Statics(IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain)
     {
         var statics = new List<MapStaticDescriptor>();
         var owners = new HashSet<string>(StringComparer.Ordinal);

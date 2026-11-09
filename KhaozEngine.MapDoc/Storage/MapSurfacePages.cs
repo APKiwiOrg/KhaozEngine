@@ -108,8 +108,13 @@ internal static class MapSurfacePages
     {
         if (bytes.Length is < 1 or > MapSurfaceStorageLayout.MaxPageBytes)
             throw new MapDocumentException(bytes.Length < 1 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.WorkCapacityExceeded, "invalid surface storage page")
-            { FieldPath = "$", ActualByteCount = bytes.LongLength, MinimumInteger = bytes.Length < 1 ? 1 : null,
-                Budget = bytes.Length < 1 ? null : "MaxPageBytes", Limit = bytes.Length < 1 ? null : MapSurfaceStorageLayout.MaxPageBytes };
+            {
+                FieldPath = "$",
+                ActualByteCount = bytes.LongLength,
+                MinimumInteger = bytes.Length < 1 ? 1 : null,
+                Budget = bytes.Length < 1 ? null : "MaxPageBytes",
+                Limit = bytes.Length < 1 ? null : MapSurfaceStorageLayout.MaxPageBytes
+            };
         JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 16 });
         try { ClosedValues(json.RootElement, "$"); return json; }
         catch { json.Dispose(); throw; }
@@ -147,9 +152,12 @@ internal static class MapSurfacePages
         if (array.ValueKind != JsonValueKind.Array || array.GetArrayLength() > limit)
             throw new MapDocumentException(array.ValueKind != JsonValueKind.Array ? MapDocumentRefusal.SchemaArrayRequired : MapDocumentRefusal.WorkCapacityExceeded,
                 "invalid surface storage page")
-            { FieldPath = path, ActualCount = array.ValueKind == JsonValueKind.Array ? array.GetArrayLength() : null,
+            {
+                FieldPath = path,
+                ActualCount = array.ValueKind == JsonValueKind.Array ? array.GetArrayLength() : null,
                 Budget = array.ValueKind != JsonValueKind.Array ? null : limit == MaxEntries ? "MaxEntries" : "MaxMetadataEntries",
-                Limit = array.ValueKind == JsonValueKind.Array ? limit : null };
+                Limit = array.ValueKind == JsonValueKind.Array ? limit : null
+            };
     }
     internal static void Validate(MapDirectoryPageRef page)
     {
@@ -175,15 +183,18 @@ internal static class MapSurfacePages
             if (!within || page.EntryCount is < 1 or > MaxEntries)
                 throw new MapDocumentException(!within ? MapDocumentRefusal.BoundsInvalid
                     : page.EntryCount < 1 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.WorkCapacityExceeded, "invalid surface storage page")
-                { FieldPath = path + (!within ? ".covers" : ".entryCount"), Index = i,
+                {
+                    FieldPath = path + (!within ? ".covers" : ".entryCount"),
+                    Index = i,
                     ActualInteger = within && page.EntryCount < 1 ? page.EntryCount : null,
                     MinimumInteger = within && page.EntryCount < 1 ? 1 : null,
                     ActualCount = within && page.EntryCount > MaxEntries ? page.EntryCount : null,
                     Budget = within && page.EntryCount > MaxEntries ? "MaxEntries" : null,
-                    Limit = within && page.EntryCount > MaxEntries ? MaxEntries : null };
+                    Limit = within && page.EntryCount > MaxEntries ? MaxEntries : null
+                };
             for (int j = 0; j < i; j++) if (pages[j].Covers.Overlaps(page.Covers))
                 throw new MapDocumentException(MapDocumentRefusal.StorageDirectoryPagesOverlap, "invalid surface storage page")
-                    { FieldPath = path + ".covers", Index = i, OtherIndex = j };
+                { FieldPath = path + ".covers", Index = i, OtherIndex = j };
         }
     }
     static void ValidateEntries(string surface, MapSlotRect covers, IReadOnlyList<MapSurfaceIndexEntry> entries)
@@ -237,8 +248,14 @@ internal static class MapSurfacePages
         if (values is null || count is < 1 or > MaxEntries)
             throw new MapDocumentException(values is null ? MapDocumentRefusal.SchemaValueRequired
                 : count < 1 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.WorkCapacityExceeded, "invalid surface storage page")
-            { FieldPath = path, ActualCount = count, ActualInteger = count < 1 ? count : null,
-                MinimumInteger = count < 1 ? 1 : null, Budget = count > MaxEntries ? "MaxEntries" : null, Limit = count > MaxEntries ? MaxEntries : null };
+            {
+                FieldPath = path,
+                ActualCount = count,
+                ActualInteger = count < 1 ? count : null,
+                MinimumInteger = count < 1 ? 1 : null,
+                Budget = count > MaxEntries ? "MaxEntries" : null,
+                Limit = count > MaxEntries ? MaxEntries : null
+            };
         return count!.Value;
     }
 
@@ -268,6 +285,6 @@ internal static class MapSurfacePages
             base.Write(buffer, offset, count);
         }
         static MapDocumentException ByteLimit(long actual) => new(MapDocumentRefusal.WorkCapacityExceeded, "surface page exceeds 1 MiB")
-            { FieldPath = "$", Budget = "MaxPageBytes", ActualByteCount = actual, Limit = MapSurfaceStorageLayout.MaxPageBytes };
+        { FieldPath = "$", Budget = "MaxPageBytes", ActualByteCount = actual, Limit = MapSurfaceStorageLayout.MaxPageBytes };
     }
 }

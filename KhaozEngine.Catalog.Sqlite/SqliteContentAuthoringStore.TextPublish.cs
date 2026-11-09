@@ -78,7 +78,8 @@ public sealed partial class SqliteContentAuthoringStore
         {
             throw new ContentAuthoringException(ContentAuthoringRefusal.TextPlanBaselineMismatch,
                 DescribeMismatch("the base version's text or languages are not the ones the plan read"),
-                default, 0, ContentAuthoringException.TextStateMismatchReason) { ExpectedBaseVersion = plan.BaseVersion };
+                default, 0, ContentAuthoringException.TextStateMismatchReason)
+            { ExpectedBaseVersion = plan.BaseVersion };
         }
 
         // Every chunk is regenerated from the plan's own values, never trusted.

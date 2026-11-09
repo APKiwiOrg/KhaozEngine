@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,10 +27,18 @@ internal static class MapEffectiveGeometry
     }
     internal static MapCompiledPatch Patch(MapScopedSurfaces view, MapPatchKey key)
     {
+        using var admitted = view.Scope.SceneAdmission?.Enter();
         if (!view.TryAcquiredPatch(key, out var patch, out var status) || patch is null)
             throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, $"Missing effective patch '{key}' ({status}).")
             { Patch = key, SurfaceId = key.SurfaceId, PatchStatus = status, Operation = nameof(Patch) };
-        return TransformPatch(view, MapSurfaceCompiler.Compile(MapSpaceGeometry.Surface(view, key.SurfaceId), patch));
+        var local = MapSurfaceCompiler.Compile(MapSpaceGeometry.Surface(view, key.SurfaceId), patch);
+        try
+        {
+            var transformed = TransformPatch(view, local);
+            if (!ReferenceEquals(local, transformed)) local.PreparationOwnership?.Dispose();
+            return transformed;
+        }
+        catch { local.PreparationOwnership?.Dispose(); throw; }
     }
     internal static MapCompiledStrip Strip(MapScopedSurfaces view, MapWallStrip strip) => MapWallStripCompiler.Compile(strip,
         MapBoundaryGeometry.ResolveChain(MapSpaceGeometry.Record<MapBoundaryChain>(view, strip.LowerChain), view),
@@ -37,11 +47,15 @@ internal static class MapEffectiveGeometry
     {
         var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, local.Key.SurfaceId);
         if (kernel is null || local.ExactVertices.Count == 0) return local;
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(2L * local.InventoryBytes));
         var vertices = local.ExactVertices.Select(kernel.Point).ToArray();
         var anchor = new MapSubmissionAnchor(vertices.Min(v => v.X.Floor()), vertices.Min(v => v.Y.Floor()), vertices.Min(v => v.Z.Floor()));
         var faces = local.Faces.Select(f => f with { Normal = Normal(new(vertices[f.A], vertices[f.B], vertices[f.C])) }).ToArray();
-        return new(local.Key, local.Role, anchor, local.VertexIds, vertices, vertices.Select(v => MapSubmissionGeometry.Offset(v, anchor)),
+        var result = new MapCompiledPatch(local.Key, local.Role, anchor, local.VertexIds, vertices, vertices.Select(v => MapSubmissionGeometry.Offset(v, anchor)),
             faces, local.Paint, local.LegacyFallbackCells);
+        result.PreparationOwnership = preparation?.Complete(result.InventoryBytes);
+        return result;
     }
     internal static Vector3 Normal(MapExactTriangle t)
     {
@@ -52,7 +66,7 @@ internal static class MapEffectiveGeometry
         double z = ax.Multiply(by).Subtract(ay.Multiply(bx)).ToDouble();
         double length = Math.Sqrt(x * x + y * y + z * z);
         if (!double.IsFinite(length) || length == 0) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "Collapsed effective triangle.", new MapExactOverflowException())
-            { Operation = nameof(Normal) };
+        { Operation = nameof(Normal) };
         return new((float)(x / length), (float)(y / length), (float)(z / length));
     }
     internal static MapExactPoint Point(MapScopedSurfaces view, string surfaceId, MapExactPoint local) =>
@@ -204,15 +218,20 @@ internal static class MapEffectiveGeometry
     internal static MapWideCellRefinement RefinePolygonWide(IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace>? upper,
         IReadOnlyList<MapWideXz> boundary, MapRefinementLimits limits, MapRefinementWork? work = null, MapWaterWorkBudget? budget = null)
     {
+        using var demandScope = DemandDiagnostics.Enter(lower, "MapEffectiveGeometry.RefinePolygon");
         try
         {
             int lowerCount = lower.Count;
             int? upperCount = null;
-            if (lowerCount > limits.MaxSourceFacesPerBound || (upperCount = upper?.Count) > limits.MaxSourceFacesPerBound)
+            if (DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxSourceFacesPerBound.1", "MaxSourceFacesPerBound", 0, lowerCount, limits.MaxSourceFacesPerBound, lowerCount > limits.MaxSourceFacesPerBound, CapacityDemandLifetime.Cumulative, allowanceSource: limits) || DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxSourceFacesPerBound.2", "MaxSourceFacesPerBound", 0, (upperCount = upper?.Count) ?? 0, limits.MaxSourceFacesPerBound, upperCount > limits.MaxSourceFacesPerBound, CapacityDemandLifetime.Cumulative, allowanceSource: limits))
                 return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "source faces",
                     new(MapDocumentRefusal.WorkCapacityExceeded, "source faces")
-                    { Budget = "MaxSourceFacesPerBound", ActualCount = lowerCount > limits.MaxSourceFacesPerBound ? lowerCount : upperCount,
-                        Limit = limits.MaxSourceFacesPerBound, FieldPath = lowerCount > limits.MaxSourceFacesPerBound ? "lower" : "upper" });
+                    {
+                        Budget = "MaxSourceFacesPerBound",
+                        ActualCount = lowerCount > limits.MaxSourceFacesPerBound ? lowerCount : upperCount,
+                        Limit = limits.MaxSourceFacesPerBound,
+                        FieldPath = lowerCount > limits.MaxSourceFacesPerBound ? "lower" : "upper"
+                    });
             var clip = boundary.ToList();
             if (AreaWide(clip).Sign == 0) return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, "cell",
                 new(MapDocumentRefusal.BoundsInvalid, "cell") { FieldPath = "boundary" });
@@ -222,7 +241,7 @@ internal static class MapEffectiveGeometry
             long pairs = upper is null ? 0 : checked((long)bottom.Count * top.Count);
             budget?.Charge(pairs);
             if (work is not null) work.ChargedPairs = pairs;
-            if (pairs > limits.MaxPairChecks) return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "pair checks",
+            if (DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxPairChecks.1", "MaxPairChecks", 0, pairs, limits.MaxPairChecks, pairs > limits.MaxPairChecks, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "pair checks",
                 new(MapDocumentRefusal.WorkCapacityExceeded, "pair checks")
                 { Budget = "MaxPairChecks", ActualCount = pairs, Limit = limits.MaxPairChecks });
             var vertices = new SortedSet<MapWideXz>();
@@ -252,7 +271,7 @@ internal static class MapEffectiveGeometry
                 {
                     var t = face.Triangle;
                     if (MapSubdividedTriangle.CrossWide(t.A, t.B, t.C).Sign == 0) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "degenerate triangle")
-                        { Patch = face.Key.Patch, SurfaceId = face.Key.Patch?.SurfaceId, SlotCell = face.Key.Primitive, Operation = nameof(RefinePolygonWide) };
+                    { Patch = face.Key.Patch, SurfaceId = face.Key.Patch?.SurfaceId, SlotCell = face.Key.Primitive, Operation = nameof(RefinePolygonWide) };
                     var triangle = new[] { new MapExactXz(t.A.X, t.A.Z), new(t.B.X, t.B.Z), new(t.C.X, t.C.Z) }.Select(MapWideXz.From).ToList();
                     if (AreaWide(triangle).Sign < 0) triangle.Reverse();
                     var polygon = Intersect(triangle, clip);
@@ -262,7 +281,7 @@ internal static class MapEffectiveGeometry
             }
             bool Emit(WideFace lo, WideFace? hi, IReadOnlyList<MapWideXz> polygon)
             {
-                if (faces.Count >= limits.MaxRefinementFaces)
+                if (DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxRefinementFaces.1", "MaxRefinementFaces", faces.Count, 1, limits.MaxRefinementFaces, faces.Count >= limits.MaxRefinementFaces, CapacityDemandLifetime.Cumulative, allowanceSource: limits))
                 {
                     capacity = new(MapDocumentRefusal.WorkCapacityExceeded, "refinement faces or vertices")
                     { Budget = "MaxRefinementFaces", ActualCount = (long)faces.Count + 1, Limit = limits.MaxRefinementFaces };
@@ -273,7 +292,7 @@ internal static class MapEffectiveGeometry
                 foreach (var wide in polygon)
                 {
                     var point = wide;
-                    if (!vertices.Contains(point) && vertices.Count >= limits.MaxRefinementVertices)
+                    if (!vertices.Contains(point) && DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxRefinementVertices.1", "MaxRefinementVertices", vertices.Count, 1, limits.MaxRefinementVertices, vertices.Count >= limits.MaxRefinementVertices, CapacityDemandLifetime.Cumulative, allowanceSource: limits))
                     {
                         capacity = new(MapDocumentRefusal.WorkCapacityExceeded, "refinement faces or vertices")
                         { Budget = "MaxRefinementVertices", ActualCount = (long)vertices.Count + 1, Limit = limits.MaxRefinementVertices };
@@ -293,8 +312,10 @@ internal static class MapEffectiveGeometry
             MapWideCellRefinement Capacity() => MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "refinement faces or vertices", capacity);
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
-        { return MapWideCellRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow",
-            new(MapDocumentRefusal.GeometryNotRepresentable, "overflow") { Operation = nameof(RefinePolygonWide) }); }
+        {
+            return MapWideCellRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow",
+            new(MapDocumentRefusal.GeometryNotRepresentable, "overflow") { Operation = nameof(RefinePolygonWide) });
+        }
         catch (MapDocumentException error)
         { return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, error.Message, MapDocumentFinding.FromException(error)); }
     }

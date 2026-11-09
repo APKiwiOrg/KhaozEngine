@@ -83,11 +83,17 @@ internal static class MapWaterBoundsSweep
     /// every returned pair passes its remaining allowance as <paramref name="cap"/>. More pairs than that return null,
     /// with no partial result, before the list grows past the allowance.</summary>
     internal static IReadOnlyList<(int Left, int Right)>? Cross(IReadOnlyList<MapWaterPolygons.Bounds> left,
-        IReadOnlyList<MapWaterPolygons.Bounds> right, long cap)
+        IReadOnlyList<MapWaterPolygons.Bounds> right, long cap) => Cross(left, right, cap, null);
+
+    internal static IReadOnlyList<(int Left, int Right)>? Cross(IReadOnlyList<MapWaterPolygons.Bounds> left,
+        IReadOnlyList<MapWaterPolygons.Bounds> right, long cap, Scene.MapSceneAdmission? admission)
     {
+        using var preparation = admission?.BeginPreparation();
         var result = new List<(int Left, int Right)>();
         int n = left.Count, total = n + right.Count;
         if (n == 0 || right.Count == 0) return result;
+        // Endpoint arrays, both active indexes and their logarithmic interval-node coverage.
+        admission?.ReserveBytes(checked(512L + 256L * total * (1 + (int)Math.Log2(total))));
         MapWaterPolygons.Bounds At(int i) => i < n ? left[i] : right[i - n];
         MapWideRational[] zs = Enumerable.Range(0, total).SelectMany(i => new[] { At(i).Min.Z, At(i).Max.Z }).Distinct().Order().ToArray();
         var low = new int[total];
@@ -135,11 +141,13 @@ internal static class MapWaterBoundsSweep
             state[index] = State.Active;
         }
         result.Sort();
+        preparation?.Complete(checked(8L * result.Capacity));
         return result;
 
         bool Add(int a, int b)
         {
             if (result.Count >= cap) return false;
+            admission?.ReserveBytes(32);
             result.Add(a < n ? (a, b - n) : (b, a - n));
             return true;
         }

@@ -122,8 +122,8 @@ public sealed class WaterOpticsTriangleResourceTests
         scene.Post.Water.SwellAmplitude = 0;
         WaterOpticsHandle handle = scene.LoadWaterOpticsTriangles(field);
         var binding = new WaterOpticsBinding(handle, Vector3.Zero, new(2));
-        Assert.Throws<ArgumentException>(() => scene.DrawWater(new(1, 0, 1, .25f, optics: binding)));
-        scene.DrawWater(new(.5f, 0, 1, .25f, optics: binding));
+        Assert.Throws<ArgumentException>(() => scene.DrawWater(new WaterPlane(1, 0, 1, .25f, optics: binding)));
+        scene.DrawWater(new WaterPlane(.5f, 0, 1, .25f, optics: binding));
     }
 
     [Fact]
@@ -216,8 +216,8 @@ public sealed class WaterOpticsTriangleResourceTests
         scene.Post.Water.SwellAmplitude = 0;
         WaterOpticsHandle handle = scene.LoadWaterOpticsTriangles(Field(partial: true));
         var binding = new WaterOpticsBinding(handle, Vector3.Zero, new(2));
-        scene.DrawWater(new(1, 0, 1, .25f, optics: binding));
-        Assert.Throws<ArgumentException>(() => scene.DrawWater(new(1, 0, 1, .75f, optics: binding)));
+        scene.DrawWater(new WaterPlane(1, 0, 1, .25f, optics: binding));
+        Assert.Throws<ArgumentException>(() => scene.DrawWater(new WaterPlane(1, 0, 1, .75f, optics: binding)));
         scene.Post.Water.SwellWavelength = 2;
         scene.Post.Water.SwellSteepness = 1;
         scene.Post.Water.SwellAmplitude = 1;

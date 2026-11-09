@@ -32,11 +32,12 @@ public sealed partial class GroundNavigation
         if (kind == EffectiveMovementBindingKind.PublicExplicit)
             throw new NavigationProfileCapabilityException(NavigationProfileRefusal.PublicExplicitProfileUnsupported,
                 "Explicit navigation profiles are not supported yet. " +
-                "See https://github.com/APKiwiOrg/KhaozEngine/issues/1389.") { IssueUrl = NavBakeProfile.DeferredIssue, ActualKind = kind };
+                "See https://github.com/APKiwiOrg/KhaozEngine/issues/1389.")
+            { IssueUrl = NavBakeProfile.DeferredIssue, ActualKind = kind };
         if (kind != Identity.Kind)
             throw new NavigationProfileException(NavigationProfileRefusal.BindingKindMismatch,
                 $"Movement binding Kind {kind} must equal the baked profile Kind {Identity.Kind}.", parameter)
-                { ExpectedKind = Identity.Kind, ActualKind = kind };
+            { ExpectedKind = Identity.Kind, ActualKind = kind };
         if (kind == EffectiveMovementBindingKind.Legacy)
         {
             if (tuning.CapsuleRadius != _tuning.Radius || tuning.CapsuleHalfHeight != _tuning.HalfHeight ||
@@ -69,7 +70,7 @@ public sealed partial class GroundNavigation
         if (MaxDropMetres > 0) difference ??= NavBakeIdentity.FirstDropRuntimeFinding(Identity.Tuning, runtime);
         if (difference is { } finding)
             throw new NavigationProfileException(NavigationProfileRefusal.TuningFieldMismatch, $"Movement {finding.Detail}.", parameter)
-                { FieldName = finding.FieldName, ExpectedBits = finding.ExpectedBits, ActualBits = finding.ActualBits };
+            { FieldName = finding.FieldName, ExpectedBits = finding.ExpectedBits, ActualBits = finding.ActualBits };
         // Internal invariant: PublicExplicit is refused above, Legacy returned, and Ordinary composition and baked identity both use zero.
         if (placementOffset != Identity.PlacementOffset)
             throw new ArgumentException("Movement PlacementOffset must equal the baked profile's.", parameter);

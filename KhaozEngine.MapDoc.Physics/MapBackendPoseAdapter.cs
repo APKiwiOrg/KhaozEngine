@@ -54,7 +54,7 @@ public static class MapBackendPoseAdapter
     {
         float f = (float)Math.Abs(value);
         if (!float.IsFinite(f)) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "Backend error bound is not representable.")
-            { Operation = nameof(ErrorMetres), FieldPath = nameof(HalfUlp), ActualNumber = value };
+        { Operation = nameof(ErrorMetres), FieldPath = nameof(HalfUlp), ActualNumber = value };
         return ((double)MathF.BitIncrement(f) - f) * 0.5;
     }
 }

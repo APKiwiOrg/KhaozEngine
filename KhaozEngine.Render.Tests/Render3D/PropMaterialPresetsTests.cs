@@ -24,6 +24,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             GltfMaterialMaps maps = PropMaterialPresets.Procedural(size: 16);
             byte[] n = maps.Normal!.Value.Rgba;
+            Assert.Equal(16 * 16 * 4, n.Length);
             for (int i = 0; i < n.Length; i += 4)
                 Assert.True(n[i + 2] >= 200, "tangent-space normal B (z) should dominate");
         }
@@ -33,6 +34,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             byte[] a = PropMaterialPresets.Procedural(size: 24).Albedo!.Value.Rgba;
             byte[] b = PropMaterialPresets.Procedural(size: 24).Albedo!.Value.Rgba;
+            Assert.NotEmpty(a);
             Assert.Equal(a, b);
         }
     }

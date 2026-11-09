@@ -89,8 +89,13 @@ public sealed class SurfaceEmbeddingRefusalTests
     [InlineData("undefined", MapDocumentRefusal.SchemaMalformed)]
     public void ScalarAdmission_IdentifiesNonfiniteOrMalformedValues(string fault, MapDocumentRefusal expected)
     {
-        object value = fault switch { "single" => float.NaN, "double" => double.PositiveInfinity,
-            "half" => Half.NegativeInfinity, _ => DateTime.UnixEpoch };
+        object value = fault switch
+        {
+            "single" => float.NaN,
+            "double" => double.PositiveInfinity,
+            "half" => Half.NegativeInfinity,
+            _ => DateTime.UnixEpoch
+        };
         var payload = new JsonObject { ["x"] = JsonValue.Create(value) };
         var error = Assert.Throws<MapDocumentException>(() =>
         {

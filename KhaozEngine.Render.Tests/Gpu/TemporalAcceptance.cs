@@ -192,7 +192,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The ghosting measure of TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 3. <paramref name="footprints"/>
+        /// The ghosting measure of TEMPORAL-RESOLVE section 7 item 3. <paramref name="footprints"/>
         /// holds the object's rectangle now, one frame ago, two frames ago and so on, with an empty rectangle for a
         /// frame it was not drawn. A checked pixel is one the object last covered two or more frames ago and that lies
         /// more than one pixel from where it is now. It counts as trail when it differs from the same pixel of the

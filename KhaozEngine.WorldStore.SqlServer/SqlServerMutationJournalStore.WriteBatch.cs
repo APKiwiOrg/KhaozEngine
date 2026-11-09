@@ -44,7 +44,8 @@ public sealed partial class SqlServerMutationJournalStore
             SqlServerJournalWriteOutcome.StreamVanished =>
                 new JournalStoreStateException(JournalStoreRefusal.BatchStreamVanished, "Validated journal stream disappeared inside its transaction."),
             _ => new JournalStoreStateException(JournalStoreRefusal.BatchOutcomeUnsupported,
-                $"SQL Server mutation journal write batch reported an unsupported outcome '{batch.Outcome}'.") { Outcome = (int)batch.Outcome },
+                $"SQL Server mutation journal write batch reported an unsupported outcome '{batch.Outcome}'.")
+            { Outcome = (int)batch.Outcome },
         };
 
     internal static SqlCommand BuildCommitBatchForTest(

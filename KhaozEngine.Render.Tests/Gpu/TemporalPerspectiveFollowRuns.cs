@@ -100,7 +100,7 @@ namespace KhaozEngine.Tests.Gpu
             var history = fx.Scene.TemporalHistory;
             float[] state = TemporalTextureIo.Read(fx.Device, history.Confidence(history.WriteIndex));
             int marks = 0;
-            for (int i = 1; i < state.Length; i += 2) if (state[i] < -2.5f) marks++;
+            for (int i = 1; i < state.Length; i += 4) if (state[i] < -2.5f) marks++;
             return marks;
         }
 

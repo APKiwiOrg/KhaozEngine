@@ -146,7 +146,8 @@ public sealed class CatalogAdapterRefusalTests
     sealed class AcceptPolicy : IContentPublishPolicy
     {
         public void Validate(ContentPublishPolicySnapshot baseline, ContentPublishPolicySnapshot candidate,
-            System.Collections.Generic.ICollection<ContentFinding> findings) { }
+            System.Collections.Generic.ICollection<ContentFinding> findings)
+        { }
     }
 
     sealed class PolicyImportStore(InMemoryContentAuthoringStore inner)

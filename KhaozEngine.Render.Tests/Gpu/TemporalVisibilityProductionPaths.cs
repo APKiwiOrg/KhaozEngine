@@ -12,8 +12,9 @@ namespace KhaozEngine.Tests.Gpu;
 /// or a block over the border), and a call site that copies the shipped path bits, whether the post-release lock's bits are zero, and the signed
 /// change into them. The program's colour output then carries them instead of the colour: the path word in red, the
 /// change's 32 bits in green, blue and alpha, 11, 11 and 10 bits, whole numbers a half float holds exactly. The colour
-/// is still computed, so the program binds what production binds, and the state output is untouched, so a rig running
-/// it still writes production's locks, which the A/B fact checks. The counts are read from that rewrite, never from the
+/// is still computed, so the program binds what production binds, and the state output is untouched. Repeated scene
+/// runs use <see cref="TemporalVisibilityExportHistory"/> to restore production colour before each later frame while
+/// keeping the export's state independent, so the A/B fact still checks the locks it computed. The counts are read from that rewrite, never from the
 /// production program itself, and the lock equality is what ties the two.
 /// <see cref="RewriteKeepingTheDecision"/> leaves the visibility functions as production ships them and changes only
 /// the call site and the colour line, so its path words, less the slow path's reasons, must equal the full export's.

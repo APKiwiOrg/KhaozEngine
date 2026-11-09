@@ -140,6 +140,8 @@ namespace KhaozEngine.Tests.Gpu
                 E("a", GpuResourceKind.TextureReadOnly), E("b", GpuResourceKind.Sampler),
                 E("c", GpuResourceKind.UniformBuffer), E("d", GpuResourceKind.StructuredBufferReadWrite)));
 
+            Assert.Equal(4, layout.ElementCount);
+            Assert.Equal(4, layout.Bindings.Length);
             for (int i = 0; i < layout.ElementCount; i++)
             {
                 Assert.Equal((uint)i, layout.Bindings[i].Binding);
@@ -174,6 +176,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
             Assert.Equal("element", ex.ParamName);
             Assert.Empty(api.Events);
+
+            using var accepted = new VulkanResourceLayout(cache,
+                new GpuResourceLayoutDescription(E("Windowed", kind, dynamic: false)));
+            Assert.Equal(kind, accepted.Elements[0].Kind);
         }
 
         /// <summary>
@@ -348,16 +354,23 @@ namespace KhaozEngine.Tests.Gpu
         /// A LAYOUT FROM ANOTHER BACKEND IS REFUSED BY NAME rather than cast-crashing, which is the message a
         /// consumer that mixed two devices actually needs.
         /// </summary>
-        [Fact]
-        public void ALayoutFromAnotherBackend_IsRefusedByName()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void AForeignOrMissingLayout_IsRefusedByReason(bool missing)
         {
             GpuResourceOwnershipArgumentException ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
-                () => VulkanResourceLayout.Require(new ForeignLayout(), "a resource set"));
+                () => VulkanResourceLayout.Require(missing ? null : new ForeignLayout(), "a resource set"));
 
-            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
+            Assert.Equal(missing ? GpuResourceOwnershipRefusal.MissingResource
+                : GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
             Assert.Equal(GpuBackendKind.VulkanNative, ex.ExpectedBackend);
-            Assert.Equal(typeof(ForeignLayout), ex.ActualType);
-            Assert.Throws<GpuResourceOwnershipArgumentException>(() => VulkanResourceLayout.Require(null, "a resource set"));
+            Assert.Equal(missing ? null : typeof(ForeignLayout), ex.ActualType);
+            Assert.Equal("layout", ex.ParamName);
+
+            (VulkanDescriptorSetLayoutCache cache, _) = NewCache();
+            using var accepted = new VulkanResourceLayout(cache, VulkanResourceFixture.UniformLayout());
+            Assert.Same(accepted, VulkanResourceLayout.Require(accepted, "a resource set"));
         }
 
         sealed class ForeignLayout : IGpuResourceLayout

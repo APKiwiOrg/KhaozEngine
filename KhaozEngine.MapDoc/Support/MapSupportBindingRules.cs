@@ -50,8 +50,11 @@ internal static class MapSupportBindingRules
             errors.Add(at + message);
             findings?.Add(new(reason, at + message)
             {
-                MarkerId = markerId, SubjectKind = markerId is null ? "support binding" : "marker",
-                FieldPath = "$.supportBinding." + field, SurfaceId = binding.SurfaceId, SpaceId = binding.SpaceId,
+                MarkerId = markerId,
+                SubjectKind = markerId is null ? "support binding" : "marker",
+                FieldPath = "$.supportBinding." + field,
+                SurfaceId = binding.SurfaceId,
+                SpaceId = binding.SpaceId,
                 ActualNumber = actual is { } value && float.IsFinite(value) ? value : null,
                 MinimumNumber = reason == MapDocumentRefusal.ValueOutsideRange ? 0 : null,
                 EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapSupportBindingKind) : null,
@@ -107,7 +110,9 @@ internal static class MapSupportBindingRules
         };
         return new(reason, message)
         {
-            FieldPath = "$." + field, SurfaceId = value.SurfaceId, SpaceId = value.SpaceId,
+            FieldPath = "$." + field,
+            SurfaceId = value.SurfaceId,
+            SpaceId = value.SpaceId,
             EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapSupportBindingKind) : null,
             ActualInteger = reason == MapDocumentRefusal.SchemaEnumUnsupported ? (long)value.Kind : null,
         };

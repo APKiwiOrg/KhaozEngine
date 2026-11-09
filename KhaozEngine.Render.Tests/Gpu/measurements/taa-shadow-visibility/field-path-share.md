@@ -112,7 +112,7 @@ accepted sums. When every stored value is 255, both means are 1, regardless of w
 qualification rejects. Its strict `abs(meanCurrent - meanPrevious) > 0.1` release rule cannot be met.
 The export's separate D evaluation reported zero releases for every field sample, including slow pixels
 that do not take R4. See [the frozen D rule](../../TemporalVisibilityFrozenD.cs) and
-[the visibility contract](../../../../docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md).
+[the visibility contract](../../../../docs/design/TEMPORAL-RESOLVE.md).
 
 ## Yard control
 

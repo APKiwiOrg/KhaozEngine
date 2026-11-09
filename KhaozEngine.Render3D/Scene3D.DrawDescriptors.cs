@@ -25,12 +25,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void Draw(in RigidInstanceDraw draw)
         {
-            ValidateCoverageEquipment(draw, false);
-            if (draw.CutInsideInteriors)
-                _instances.Add(in draw, RelevantInteriorCut(draw.Mesh, draw.World));
-            else _instances.Add(in draw);
-            RecordRigidMotion(in draw);
-            RecordCoverageEquipment(draw, false);
+            QueueRigid(in draw, null);
         }
 
         /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/> (no tint).</summary>

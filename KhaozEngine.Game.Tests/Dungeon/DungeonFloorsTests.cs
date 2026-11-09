@@ -231,6 +231,7 @@ namespace KhaozEngine.Tests.Dungeon
         public void WallPass_HoldsPerFloor()
         {
             DungeonLayout layout = StairLayout();
+            Assert.Contains(layout.CellsMutable, DungeonLayout.IsWalkable);
             for (int f = 0; f < layout.Floors; f++)
             {
                 for (int x = 0; x < layout.Width; x++)

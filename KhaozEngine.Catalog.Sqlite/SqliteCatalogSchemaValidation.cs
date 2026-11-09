@@ -289,9 +289,9 @@ internal static partial class SqliteCatalogSchemaValidation
     static ContentAuthoringException Mismatch(ContentAuthoringRefusal reason, string actual, Exception? innerException = null)
         => innerException is null
             ? new(reason, DescribeMismatch(actual, null), default, 0, ContentAuthoringException.SchemaMismatchReason)
-                { RequiredMigration = SqliteCatalogSchema.RequiredMigration }
+            { RequiredMigration = SqliteCatalogSchema.RequiredMigration }
             : new(reason, DescribeMismatch(actual, innerException), default, 0, ContentAuthoringException.SchemaMismatchReason, innerException)
-                { RequiredMigration = SqliteCatalogSchema.RequiredMigration };
+            { RequiredMigration = SqliteCatalogSchema.RequiredMigration };
 
     static string DescribeMismatch(string actual, Exception? innerException)
         => FormattableString.Invariant(

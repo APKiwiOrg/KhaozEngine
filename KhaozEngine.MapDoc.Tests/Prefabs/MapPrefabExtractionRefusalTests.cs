@@ -21,8 +21,11 @@ public sealed class MapPrefabExtractionRefusalTests
         var reference = PrefabFixtures.World(MapPrefabChildKind.Surface, "ground");
         MapPrefabReference[] selected = fault switch
         {
-            "null" => [null!], "local" => [reference with { Scope = MapPrefabReferenceScope.Local }],
-            "duplicate" => [reference, reference], "absent" => [reference with { Id = "absent" }], _ => [],
+            "null" => [null!],
+            "local" => [reference with { Scope = MapPrefabReferenceScope.Local }],
+            "duplicate" => [reference, reference],
+            "absent" => [reference with { Id = "absent" }],
+            _ => [],
         };
         string before = MapDocumentFile.SaveText(f.Document);
         var error = Assert.Throws<MapDocumentException>(() => MapPrefabExtraction.Extract(f.Document, f.Assets, selected,
@@ -68,8 +71,11 @@ public sealed class MapPrefabExtractionRefusalTests
     {
         var f = PrefabFixtures.Create("roomless");
         var original = Assert.IsType<MapPrefabPlacementChild>(Assert.Single(f.Assets.GetPrefab("hut").Children));
-        var odd = original with { Key = new(MapPrefabChildKind.Placement, "a/item"),
-            Value = MapPrefabReferenceWalker.Copy(original.Value, "a/item", original.Value.SupportBinding) };
+        var odd = original with
+        {
+            Key = new(MapPrefabChildKind.Placement, "a/item"),
+            Value = MapPrefabReferenceWalker.Copy(original.Value, "a/item", original.Value.SupportBinding)
+        };
         var assets = PrefabFixtures.PublishPrefab(f.Assets, new(1, "odd", [odd]));
         f.Document.NativeAssets = assets.Roots.ToList();
         var pose = new MapTransform(Vector3.Zero, 0, 1);

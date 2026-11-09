@@ -7,7 +7,7 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering;
 
 /// <summary>Displaced foliage depth pipelines sharing the cascade atlas and retained foliage stream.</summary>
-internal sealed class FoliageShadowRenderer : IDisposable
+internal sealed partial class FoliageShadowRenderer : IDisposable
 {
     internal const int CascadePayloadBytes = 144;
     internal const uint CascadeSlotBytes = 256;
@@ -39,10 +39,14 @@ internal sealed class FoliageShadowRenderer : IDisposable
     }
 
     internal void UploadCascades(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> lightViewProjections,
-        in Matrix4x4 cameraViewProjection, Vector3 renderOrigin)
+        in Matrix4x4 cameraViewProjection, Vector3 renderOrigin, bool ordinary = true,
+        IGpuResourceLayout? preparedAnchorLayout = null)
     {
         if (lightViewProjections.Length > ShadowSettings.MaxCascades)
             throw new ArgumentOutOfRangeException(nameof(lightViewProjections));
+        // Queue every demanded variant before any cascade can bind one and join its compile.
+        if (ordinary) EnsurePipelines();
+        if (preparedAnchorLayout is not null) PrepareAnchoredPipelines(preparedAnchorLayout);
         var origin = new Vector4(renderOrigin, 0f);
         for (int i = 0; i < lightViewProjections.Length; i++)
         {
@@ -104,6 +108,7 @@ internal sealed class FoliageShadowRenderer : IDisposable
 
     public void Dispose()
     {
+        DisposePrepared();
         _cutout?.Dispose();
         _opaque?.Dispose();
         _cutoutShaders?.Dispose();

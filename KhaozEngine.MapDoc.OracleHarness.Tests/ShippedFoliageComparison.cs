@@ -6,7 +6,6 @@ using System.Numerics;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
@@ -26,7 +25,7 @@ internal sealed record FoliageExpectedRow(GroundCoverDecision Decision, TileFoli
 /// and the Task 3 channel kernel. Actual rows come only from the native distribution. Successes stream into aggregate
 /// counts, mismatch details are retained up to a fixed bound per category, and both stay in the private report.</summary>
 [UnsupportedOSPlatform("windows")]
-internal static class ShippedFoliageComparison
+internal static partial class ShippedFoliageComparison
 {
     internal const double PositionTolerance = 0.00001;
     internal const double OrientationTolerance = 0.000001;
@@ -64,7 +63,7 @@ internal static class ShippedFoliageComparison
                     List<MapFoliageDecision>? actual = Actual(context, binding.Row.NativeLayerId, area);
                     if (actual is null)
                     {
-                        tally.Fail("foliage-query", Detail(name, binding, region));
+                        tally.FailResource("foliage-query", Detail(name, binding, region), "layer", "query");
                         continue;
                     }
                     CompareRegion(binding, Layer(context, binding), context.Assets, expected, actual, name, tally, digests[name]);
@@ -79,7 +78,7 @@ internal static class ShippedFoliageComparison
         tally.Add("sourceOwners", inputs.SourceOwnerCount);
         Expectations(inputs.Paths.Expectations, tally);
         report.Record("foliage-summary", tally.Summary(heads.Count));
-        foreach (string category in tally.Categories) report.Check(category, false, tally.Details(category));
+        tally.Report(report);
     }
 
     static List<(string Name, MapFoliageGenerationContext? Context)> Heads(ShippedFoliageInputs inputs, FoliageTally tally)
@@ -202,12 +201,12 @@ internal static class ShippedFoliageComparison
             var key = (row.Address.X, row.Address.Z);
             if (!expected.TryGetValue(key, out FoliageExpectedRow? want) || !seen.Add(key))
             {
-                tally.Fail("foliage-candidate", Detail(head, binding, key.X, key.Z, "unowned or repeated native address"));
+                tally.FailResource("foliage-candidate", Detail(head, binding, key.X, key.Z, "unowned or repeated native address"), "sample", "address");
                 continue;
             }
             tally.Add("comparedRows", 1);
             foreach (string category in CompareRow(binding, layer, assets, want, row))
-                tally.Fail(category, Detail(head, binding, key.X, key.Z, category));
+                tally.FailResource(category, Detail(head, binding, key.X, key.Z, category), "sample", category["foliage-".Length..]);
             if (row.Sample is { } sample && head == "monolithic-client")
             {
                 tally.Count("supportOwners", sample.Key.Address.SupportOwnerId ?? "");
@@ -215,7 +214,7 @@ internal static class ShippedFoliageComparison
             }
         }
         foreach (var key in expected.Keys.Where(k => !seen.Contains(k)))
-            tally.Fail("foliage-candidate", Detail(head, binding, key.X, key.Z, "missing native address"));
+            tally.FailResource("foliage-candidate", Detail(head, binding, key.X, key.Z, "missing native address"), "sample", "address");
         foreach (MapFoliageDecision row in actual.OrderBy(r => r.Address.Z).ThenBy(r => r.Address.X))
             digest.AppendData(Encoding.UTF8.GetBytes(Canonical(binding, row) + "\n"));
     }
@@ -330,9 +329,9 @@ internal static class ShippedFoliageComparison
         Check("door", Bits(native.DoorClearance) == Bits(source.DoorClearance));
         Check("edgeFade", Bits(native.EdgeFade) == Bits(source.EdgeFade));
         Check("policy", native.Policy.Id == "legacy-tile" && native.Policy.Version == 1);
-        foreach (string field in fields) tally.Fail("foliage-settings", Detail(head, binding, field));
+        foreach (string field in fields) tally.FailResource("foliage-settings", Detail(head, binding, field), "layer", field);
         var advertised = native.ChunkDigests.Select(d => d.Key).ToHashSet();
-        if (!advertised.SetEquals(nonzero)) tally.Fail("foliage-chunk", Detail(head, binding, "advertised chunks differ from nonzero source chunks"));
+        if (!advertised.SetEquals(nonzero)) tally.FailResource("foliage-chunk", Detail(head, binding, "advertised chunks differ from nonzero source chunks"), "layer", "chunks");
         if (native.Width != source.Width || native.Depth != source.Height) return;
         for (int z = 0; z < source.Height; z++)
             for (int x = 0; x < source.Width; x++)
@@ -342,8 +341,8 @@ internal static class ShippedFoliageComparison
                 try { got = native.DensityAt(x, z); }
                 catch (MapDocumentException) { got = null; }
                 tally.Add("comparedBytes", 1);
-                if (got is null) tally.Fail("foliage-chunk", Detail(head, binding, x, z, "unavailable advertised chunk"));
-                else if (got != want) tally.Fail("foliage-byte", Detail(head, binding, x, z, "density byte"));
+                if (got is null) tally.FailResource("foliage-chunk", Detail(head, binding, x, z, "unavailable advertised chunk"), "chunk", "availability");
+                else if (got != want) tally.FailResource("foliage-byte", Detail(head, binding, x, z, "density byte"), "chunk", "density");
             }
     }
 
@@ -409,44 +408,4 @@ internal static class ShippedFoliageComparison
     static bool Finite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
     static bool Finite(Quaternion q) => float.IsFinite(q.X) && float.IsFinite(q.Y) && float.IsFinite(q.Z) && float.IsFinite(q.W);
 
-    /// <summary>Aggregate counts and bounded mismatch details. Failure categories keep their first-seen order.</summary>
-    sealed class FoliageTally
-    {
-        readonly Dictionary<string, long> _counts = new(StringComparer.Ordinal);
-        readonly Dictionary<string, Dictionary<string, long>> _breakdowns = new(StringComparer.Ordinal);
-        readonly Dictionary<string, (long Count, List<Dictionary<string, object?>> Details)> _failures = new(StringComparer.Ordinal);
-        readonly List<string> _order = new();
-
-        internal IReadOnlyList<string> Categories => _order;
-        internal void Add(string name, long value) => _counts[name] = checked(_counts.GetValueOrDefault(name) + value);
-        internal long Get(string name) => _counts.GetValueOrDefault(name);
-
-        internal void Count(string breakdown, string key)
-        {
-            if (!_breakdowns.TryGetValue(breakdown, out var counts)) _breakdowns.Add(breakdown, counts = new(StringComparer.Ordinal));
-            counts[key] = checked(counts.GetValueOrDefault(key) + 1);
-        }
-
-        internal void Fail(string category, Dictionary<string, object?> detail)
-        {
-            if (!_failures.TryGetValue(category, out var entry))
-            {
-                _order.Add(category);
-                entry = (0, new());
-            }
-            if (entry.Details.Count < RetainedDetails) entry.Details.Add(detail);
-            _failures[category] = (checked(entry.Count + 1), entry.Details);
-        }
-
-        internal string Summary(int heads) => JsonSerializer.Serialize(new
-        {
-            scope = Scope,
-            heads,
-            counts = _counts,
-            breakdowns = _breakdowns,
-            failures = _order.ToDictionary(c => c, c => _failures[c].Count, StringComparer.Ordinal),
-        });
-
-        internal string Details(string category) => JsonSerializer.Serialize(new { count = _failures[category].Count, details = _failures[category].Details });
-    }
 }

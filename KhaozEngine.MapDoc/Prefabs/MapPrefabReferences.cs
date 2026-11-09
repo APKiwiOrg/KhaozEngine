@@ -99,7 +99,7 @@ public static class MapPrefabReferences
         bool found = bindings.TryGetValue(key, out string? world);
         return found && !string.IsNullOrWhiteSpace(world) ? world
             : throw new MapDocumentException(found ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ReferenceMissing, $"No binding for local {kind} '{id}'.")
-                { Child = key, ChildKind = kind, EntityId = id, WorldId = world, FieldPath = found ? "$.bindings.worldId" : null, SubjectKind = "prefab binding" };
+            { Child = key, ChildKind = kind, EntityId = id, WorldId = world, FieldPath = found ? "$.bindings.worldId" : null, SubjectKind = "prefab binding" };
     };
 
     static MapPrefabChild RemapChild(MapPrefabChild child, Func<MapPrefabChildKind, string, string> world, MapRecordRef? parentSpace)
@@ -277,11 +277,19 @@ public static class MapPrefabReferences
             long? actualCount = null, long? expectedCount = null, MapPatchKey? actualAnchor = null) =>
             throw new MapDocumentException(reason, message)
             {
-                Child = child, ResourceId = resourceId, EntityId = slot?.Target?.Id ?? occurrence?.Id,
-                ChildKind = slot?.Target?.Kind ?? occurrence?.Kind, ExpectedChildKind = occurrence?.Kind,
-                FieldPath = "$.references", ReferencePath = occurrence?.Path ?? slot?.Path,
-                ReferenceScope = slot?.Target?.Scope, RecordId = occurrence?.Record?.Id, Patch = occurrence?.Patch,
-                ActualAnchor = actualAnchor, ActualCount = actualCount, ExpectedCount = expectedCount,
+                Child = child,
+                ResourceId = resourceId,
+                EntityId = slot?.Target?.Id ?? occurrence?.Id,
+                ChildKind = slot?.Target?.Kind ?? occurrence?.Kind,
+                ExpectedChildKind = occurrence?.Kind,
+                FieldPath = "$.references",
+                ReferencePath = occurrence?.Path ?? slot?.Path,
+                ReferenceScope = slot?.Target?.Scope,
+                RecordId = occurrence?.Record?.Id,
+                Patch = occurrence?.Patch,
+                ActualAnchor = actualAnchor,
+                ActualCount = actualCount,
+                ExpectedCount = expectedCount,
                 EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapPrefabReferenceScope) : null,
                 ActualInteger = reason == MapDocumentRefusal.SchemaEnumUnsupported ? (long?)slot?.Target?.Scope : null,
             };
@@ -289,7 +297,7 @@ public static class MapPrefabReferences
 
     internal static MapPrefabReferenceSlot[] Slots(IEnumerable<MapPrefabOccurrence> occurrences, MapPrefabReferenceScope? scope = null) =>
         occurrences.Select(o => new MapPrefabReferenceSlot(o.Path, new(scope ?? o.Scope ?? throw new MapDocumentException(MapDocumentRefusal.PrefabReferenceScopeMissing, "Unscoped reference occurrence.")
-            { ReferencePath = o.Path, ChildKind = o.Kind, EntityId = o.Id, Patch = o.Patch, RecordId = o.Record?.Id }, o.Kind, o.Id)))
+        { ReferencePath = o.Path, ChildKind = o.Kind, EntityId = o.Id, Patch = o.Patch, RecordId = o.Record?.Id }, o.Kind, o.Id)))
             .OrderBy(s => s.Path, StringComparer.Ordinal).ToArray();
 
     static MapPrefabOverride WorldOverride(MapPrefabOverride value, MapPrefabChildKind kind, string oldId, string newId) => value switch
@@ -319,7 +327,7 @@ public static class MapPrefabReferences
 
     static MapPrefabReferenceSlot SlotAt(Dictionary<string, MapPrefabReferenceSlot> slots, string path, MapPrefabChildKind kind, string id) =>
         slots.TryGetValue(path, out MapPrefabReferenceSlot? slot) ? slot : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Missing reference slot '{path}'.")
-            { ReferencePath = path, ChildKind = kind, EntityId = id };
+        { ReferencePath = path, ChildKind = kind, EntityId = id };
 
     sealed class LocalToWorld(IReadOnlyList<MapPrefabReferenceSlot> slots, Func<MapPrefabChildKind, string, string> world, MapRecordRef? parent)
         : MapPrefabReferenceMap
@@ -331,14 +339,14 @@ public static class MapPrefabReferences
             if (SlotAt(_slots, path, kind, id).Target.Scope == MapPrefabReferenceScope.World) return (id, MapPrefabReferenceScope.World);
             if (id != Parent) return (world(kind, id), MapPrefabReferenceScope.World);
             return ((parent ?? throw new MapDocumentException(MapDocumentRefusal.AuthoredValueRequired, "Local $parent requires a supplied ParentSpace.")
-                { ReferencePath = path, FieldPath = "$.parentSpace", ChildKind = kind, EntityId = id }).Id, MapPrefabReferenceScope.World);
+            { ReferencePath = path, FieldPath = "$.parentSpace", ChildKind = kind, EntityId = id }).Id, MapPrefabReferenceScope.World);
         }
 
         internal override (MapRecordRef Value, MapPrefabReferenceScope? IdScope, MapPrefabReferenceScope? AnchorScope) Record(string path, MapRecordRef value, bool space)
         {
             if (value.Id != Parent || SlotAt(_slots, path + "/id", MapPrefabChildKind.Record, value.Id).Target.Scope != MapPrefabReferenceScope.Local) return base.Record(path, value, space);
             return (parent ?? throw new MapDocumentException(MapDocumentRefusal.AuthoredValueRequired, "Local $parent requires a supplied ParentSpace.")
-                { ReferencePath = path, FieldPath = "$.parentSpace", ChildKind = MapPrefabChildKind.Record, RecordId = value.Id, EntityId = value.Id, Patch = value.Anchor }, MapPrefabReferenceScope.World, MapPrefabReferenceScope.World);
+            { ReferencePath = path, FieldPath = "$.parentSpace", ChildKind = MapPrefabChildKind.Record, RecordId = value.Id, EntityId = value.Id, Patch = value.Anchor }, MapPrefabReferenceScope.World, MapPrefabReferenceScope.World);
         }
     }
 
@@ -427,7 +435,7 @@ internal static class MapPrefabReferenceWalker
         surfaces.Refs.AddRange(refs);
         foreach (MapSurfacePatch patch in patches)
             if (!surfaces.Patches.TryAdd(patch.Key, patch)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Support resource patch keys must stay distinct.")
-                { Patch = patch.Key, SurfaceId = patch.Key.SurfaceId, SubjectKind = "support resource patch" };
+            { Patch = patch.Key, SurfaceId = patch.Key.SurfaceId, SubjectKind = "support resource patch" };
         return (resource with { Surfaces = surfaces, Space = space }, occurrences);
     }
 
@@ -537,7 +545,7 @@ internal static class MapPrefabReferenceWalker
                 Upper = Bound("/upper", f.Upper),
             },
             _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unknown topology record type.")
-                { RecordType = record.GetType(), RecordId = record.Id },
+            { RecordType = record.GetType(), RecordId = record.Id },
         };
         return (result, o);
     }

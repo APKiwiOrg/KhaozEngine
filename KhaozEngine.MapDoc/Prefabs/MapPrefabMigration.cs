@@ -15,7 +15,8 @@ public static class MapPrefabMigration
                     ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.DocumentMigrationSourceVersionInvalid,
                 "Prefab migration requires formatVersion 6 or 7.")
             {
-                FieldPath = "$.formatVersion", ActualVersion = source["formatVersion"] is JsonValue v && v.TryGetValue<int>(out int actual) ? actual : null,
+                FieldPath = "$.formatVersion",
+                ActualVersion = source["formatVersion"] is JsonValue v && v.TryGetValue<int>(out int actual) ? actual : null,
                 SupportedVersions = [6, 7],
             };
         var result = (JsonObject)source.DeepClone();

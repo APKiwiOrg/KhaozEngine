@@ -92,5 +92,6 @@ internal static class SqliteCatalogHostKeys
                 $"The SQLite content catalog cannot be reset: {string.Join(", and ", firing)}. SQLite's DROP TABLE deletes every row of the table first, which would fire that action and delete or rewrite the host's own rows. Nothing was dropped. Remove that foreign key, or declare it ON DELETE NO ACTION and clear the host rows that reference the catalog, then run the reset again."),
             default,
             0,
-            ContentAuthoringException.HostForeignKeyReason) { HostObjects = findings };
+            ContentAuthoringException.HostForeignKeyReason)
+        { HostObjects = findings };
 }

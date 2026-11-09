@@ -182,7 +182,7 @@ internal static partial class FoliageFixtures
         }
     }
 
-    static (IReadOnlyList<MapAssetRef> Roots, NativeMemoryAssetSource Source) ClearanceAssets()
+    internal static (IReadOnlyList<MapAssetRef> Roots, NativeMemoryAssetSource Source) ClearanceAssets()
     {
         var (roots, source) = AssetInputs();
         var root = JsonNode.Parse(source.Read(roots[0]).Span)!.AsObject();

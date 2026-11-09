@@ -212,7 +212,8 @@ public sealed class TopologySpaceRefusalTests
         var world = TopologyRecordFixtures.TwoSpacesSharingOneStrip();
         var original = world.Patches[0].Records.OfType<MapSpaceFootprint>().Single(f => f.Id == "fragment-a");
         TopologyRecordFixtures.Replace<MapSpaceFootprint>(world, "fragment-a", f => f with
-        { Lower = f.Lower with
+        {
+            Lower = f.Lower with
             {
                 Kind = fault == "enum" ? (MapBoundKind)255 : fault == "kind" ? MapBoundKind.Ceiling : f.Lower.Kind,
                 Opening = fault == "opening" ? new("opening", world.Patches[0].Key) : null,

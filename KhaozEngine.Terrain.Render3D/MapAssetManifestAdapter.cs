@@ -52,8 +52,15 @@ public static class MapAssetManifestAdapter
         string digest = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         if (!StringComparer.Ordinal.Equals(digest, reference.Sha256))
             throw new MapDocumentException(MapDocumentRefusal.DigestMismatch, $"Native resource '{resourceId}' at '{path}' no longer matches its verified digest.")
-            { DigestKind = "resource bytes", SubjectKind = "resource", EntityId = resourceId, ResourceId = resourceId,
-                Path = path, ExpectedHash = reference.Sha256, ActualHash = digest };
+            {
+                DigestKind = "resource bytes",
+                SubjectKind = "resource",
+                EntityId = resourceId,
+                ResourceId = resourceId,
+                Path = path,
+                ExpectedHash = reference.Sha256,
+                ActualHash = digest
+            };
         return path;
     }
 }

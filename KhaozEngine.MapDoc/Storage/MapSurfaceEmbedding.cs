@@ -20,7 +20,9 @@ internal static class MapSurfaceEmbedding
         int count = 0;
         foreach (MapSurfacePatch patch in set.Patches.Values)
         {
-            int length = checked(MapSurfacePatchCodec.Encode(patch).Length + (count++ == 0 ? 0 : 1));
+            byte[] encoded = MapSurfacePatchCodec.Encode(patch, out var ownership);
+            using var consumed = ownership;
+            int length = checked(encoded.Length + (count++ == 0 ? 0 : 1));
             if (length > maxEncodedBytes - bytes) throw Limit("MaxEmbeddingBytes", bytes + length, maxEncodedBytes, bytes: true);
             bytes += length;
         }
@@ -36,7 +38,7 @@ internal static class MapSurfaceEmbedding
         JsonArray? patches = node as JsonArray;
         if (patches is null || patches.Count > MaxPatches || maxPatchBytes < 0 || maxEncodedBytes < 2)
             throw patches is null ? new MapDocumentException(MapDocumentRefusal.SchemaArrayRequired, "surface embedding exceeds its limit, use tiled storage")
-                { FieldPath = "$.surfacePatches" }
+            { FieldPath = "$.surfacePatches" }
                 : patches.Count > MaxPatches ? Limit("MaxEmbeddedPatches", patches.Count, MaxPatches)
                 : maxPatchBytes < 0 ? InvalidBudget("maxPatchBytes", maxPatchBytes, 0)
                 : InvalidBudget("maxEncodedBytes", maxEncodedBytes, 2);
@@ -46,7 +48,7 @@ internal static class MapSurfaceEmbedding
         foreach (JsonNode? item in patches)
         {
             if (item is not JsonObject patch) throw new MapDocumentException(MapDocumentRefusal.SchemaObjectRequired, "invalid embedded surface patch")
-                { FieldPath = $"$.surfacePatches[{index}]", Index = index };
+            { FieldPath = $"$.surfacePatches[{index}]", Index = index };
             if (!first)
             {
                 if (remaining < 1) throw Limit("MaxEmbeddingBytes", maxEncodedBytes - remaining + 1, maxEncodedBytes, bytes: true);
@@ -64,8 +66,13 @@ internal static class MapSurfaceEmbedding
     }
     static MapDocumentException Limit(string budget, long actual, long limit, bool bytes = false) =>
         new(MapDocumentRefusal.WorkCapacityExceeded, "surface embedding exceeds its limit, use tiled storage")
-        { FieldPath = "$.surfacePatches", Budget = budget, ActualCount = bytes ? null : actual,
-            ActualByteCount = bytes ? actual : null, Limit = limit };
+        {
+            FieldPath = "$.surfacePatches",
+            Budget = budget,
+            ActualCount = bytes ? null : actual,
+            ActualByteCount = bytes ? actual : null,
+            Limit = limit
+        };
 
     static MapDocumentException InvalidBudget(string field, long actual, long minimum) =>
         new(MapDocumentRefusal.ValueOutsideRange, "surface embedding exceeds its limit, use tiled storage")

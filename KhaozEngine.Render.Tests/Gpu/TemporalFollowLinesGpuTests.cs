@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Gpu
     /// Still lines narrower than a texel on the ground a followed keyed box walks over, under the orthographic follow
     /// walk (<see cref="OrthoFollowLines"/>) and the perspective one (<see cref="PerspectiveFollowLines"/>): one across
     /// the box's trailing path and one along its edge (<see cref="TemporalFollowLinesRuns"/>). Beside the box the band
-    /// of TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 reads its own spot's history, and a line pixel leaving it must
+    /// of TEMPORAL-RESOLVE amendment 23 reads its own spot's history, and a line pixel leaving it must
     /// neither blink out nor take the box's colour away. HDR is off, the sharpen is at its default, and the measured
     /// values in the comments are Metal on Apple silicon.
     /// </summary>
@@ -88,6 +88,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Each line's worst frame's share of its energy without the box, and its trail two or more frames
         /// after the band left it. With <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it prints every walk from
         /// half a display pixel a frame to three and both widths.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_follow_lines_table_prints_every_walk()
         {

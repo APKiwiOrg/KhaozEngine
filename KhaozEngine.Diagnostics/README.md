@@ -254,3 +254,15 @@ Headless, renderer-free building blocks for an in-game diagnostics/telemetry HUD
 - `ClientNetStats` - the connection-health snapshot (`RttMs`, `PacketLoss`, `BytesInPerSec`/`BytesOutPerSec`, `SnapshotsPerSec`, `LastCorrectionMeters`/`AvgCorrectionMeters`, `Connected`) that `KhaozEngine.NetWorld`'s `WorldClient.NetStats` fills and the overlay renders. It lives here (not in NetWorld) so the Gui overlay can name it without depending on the server/netcode stack.
 
 The overlay widget that draws these lives in [`KhaozEngine.Gui`](../KhaozEngine.Gui) (it depends on this leaf, not the reverse): `DiagnosticsOverlay` + `DiagnosticsOverlayTheme` (+ `OverlaySection`/`OverlayRow`) - an F1-toggled corner panel the game assembles each frame via `SetSections`, with `PerformanceSection(FrameStats)` / `PassTimingsSection(PassTimings)` / `NetworkSection(in ClientNetStats)` populators and a headless-testable `Update`. See the `KhaozEngine.Gui` README.
+
+## Evaluated capacity demand
+
+`KhaozEngine.Diagnostics.CapacityDemandDiagnostics.Observe` subscribes to count-only `CapacityDemand`
+records for evaluated gates on success and refusal. Admission identities distinguish independent counters
+and shared allowances. Operation identities distinguish nested acquisitions and windows within one build.
+Checks and operation scopes allocate nothing without a subscriber, including first use. Observer failures
+cannot alter admission. A gate whose allowance is a remainder or minimum names its derived limits object as
+`allowanceSource` and then publishes one event per originating field. Recording that provenance is internal, with
+friend access only for `KhaozEngine.MapDoc`, `KhaozEngine.MapDoc.Render3D` and, for synthetic provenance rows,
+`KhaozEngine.MapDoc.Tests`. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
+derived allowances, profile sizing and the per-limit enforcement-site map.

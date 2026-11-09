@@ -13,6 +13,7 @@ public sealed record MapSurfaceScope(WorldFrame Frame, Vector2 LocalMin, Vector2
 {
     // Composition carries one before-work allowance and a discovery-only ownership filter.
     internal MapPageBudget? SharedBudget { get; init; }
+    internal Scene.MapSceneAdmission? SceneAdmission { get; init; }
     internal IReadOnlySet<string>? DiscoverySurfaces { get; init; }
     public Vector2 LocalMin { get; init; } = ValidateInitial(LocalMin, LocalMax, MinY, MaxY, Roles, SpaceIds, Limits);
     public IReadOnlyList<MapSurfaceRole> Roles { get; init; } = Array.AsReadOnly(Roles.ToArray());
@@ -46,6 +47,9 @@ public sealed record MapSurfaceScope(WorldFrame Frame, Vector2 LocalMin, Vector2
                 else { w.WriteStartArray(); foreach (string id in SpaceIds.Distinct().OrderBy(s => s, StringComparer.Ordinal)) w.WriteStringValue(id); w.WriteEndArray(); }
                 foreach (int limit in new[] { Limits.MaxCandidatePatches, Limits.MaxInspectedFaces, Limits.MaxSupportIntersections,
                     Limits.MaxPageReads, Limits.MaxRecordReads, Limits.MaxRecordDepth }) w.WriteNumberValue(limit);
+                if (Limits.Refinement is { } refinement)
+                    foreach (int limit in new[] { refinement.MaxSourceFacesPerBound, refinement.MaxPairChecks, refinement.MaxRefinementFaces,
+                        refinement.MaxRefinementVertices, refinement.MaxContextPatches, refinement.MaxContextFaces }) w.WriteNumberValue(limit);
                 w.WriteEndArray();
             });
         }

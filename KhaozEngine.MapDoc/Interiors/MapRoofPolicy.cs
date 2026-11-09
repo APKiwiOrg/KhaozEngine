@@ -1,6 +1,6 @@
 using System;
-using System.Linq;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -19,17 +19,21 @@ public static class MapRoofPolicy
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
         resources.RequireView(view);
         var membership = new MapSpaceMembership(view).Query(observer);
-        var intent = resources.BuildingIntent;
-        var groups = intent.RoofGroups.ToDictionary(g => g.Id, g => g.Rooms.Select(r => r.Id).ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
-        var hidden = intent.RoofLinks.Where(link => membership.Status == MapMembershipStatus.Resolved &&
-                membership.SpaceId is { } room && membership.ExactPoint.Y.CompareTo(MapExactValue.FromSingle(link.AboveY)) < 0 &&
-                (link.Rooms.Any(r => r.Id == room) || link.Groups.Any(g => groups[g.Id].Contains(room))))
-            .Select(link => link.Roof.Id).ToHashSet(StringComparer.Ordinal);
-        var roofs = intent.Roofs.Select(roof =>
-        {
-            bool visible = mode != MapRoofMode.AlwaysHidden && (mode == MapRoofMode.AlwaysVisible || !hidden.Contains(roof.Id));
-            return new MapRoofIntent(roof.Id, visible, true, visible, true);
-        }).ToArray();
-        return new(membership.Status, membership.SpaceId, Array.AsReadOnly(roofs), membership.Witness);
+        var intent = new MapRoofIntentRows(resources.BuildingIntent);
+        intent.Evaluate(new(membership.Status, membership.SpaceId, membership.ExactPoint, membership.Witness), mode);
+        return new(membership.Status, membership.SpaceId, intent.Detach(), membership.Witness);
+    }
+
+    public static MapRoofIntentResult Evaluate(MapScopedScene scene, MapFramePoint observer, MapRoofMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        var prepared = MapRoofEvaluationBuffer.Prepare(scene);
+        if (prepared.Buffer is not { } buffer)
+            return new(prepared.Status == MapSceneStatus.CapacityExceeded ? MapMembershipStatus.CapacityExceeded :
+                prepared.Status == MapSceneStatus.NotRepresentable ? MapMembershipStatus.NotRepresentable : MapMembershipStatus.Invalid,
+                null, Array.Empty<MapRoofIntent>(), scene.SurfaceView.ReadWitness);
+        buffer.Evaluate(observer, mode);
+        return buffer.Detach();
     }
 }

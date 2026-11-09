@@ -84,7 +84,11 @@ public static class MapFrameLocal
             throw new MapDocumentException(!float.IsFinite(position.X) || !float.IsFinite(position.Z)
                 ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.FrameRadiusExceeded, "compiled geometry exceeds frame radius")
             {
-                Patch = patch, Operation = nameof(ToFrame), PositionX = x, PositionZ = z, Limit = (long)WorldFrame.MaxLocalRadius,
+                Patch = patch,
+                Operation = nameof(ToFrame),
+                PositionX = x,
+                PositionZ = z,
+                Limit = (long)WorldFrame.MaxLocalRadius,
                 FieldPath = !float.IsFinite(position.X) ? "$.position.x" : !float.IsFinite(position.Z) ? "$.position.z" : null,
                 ActualNumber = !float.IsFinite(position.X) ? x : !float.IsFinite(position.Z) ? z : null,
             };

@@ -13,6 +13,7 @@ namespace KhaozEngine.Render3D
             // Drain in-flight GPU work before destroying anything because uploads or draws may still be queued on
             // the device's async submission thread (Mesa lavapipe can segfault on destroyed resources).
             DisposeShadowReconfiguration();
+            DisposeSceneResources();
             if (_disposalComplete) return;
             DisposalSafeForDependants = false;
             var disposal = new ResourceDisposal();

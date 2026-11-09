@@ -16,7 +16,8 @@ public static class MapSurfaceMigration
                     ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.DocumentMigrationSourceVersionInvalid,
                 "Surface migration requires formatVersion 4 or 5.")
             {
-                FieldPath = "$.formatVersion", ActualVersion = source["formatVersion"] is JsonValue v && v.TryGetValue<int>(out int actual) ? actual : null,
+                FieldPath = "$.formatVersion",
+                ActualVersion = source["formatVersion"] is JsonValue v && v.TryGetValue<int>(out int actual) ? actual : null,
                 SupportedVersions = [4, 5],
             };
 

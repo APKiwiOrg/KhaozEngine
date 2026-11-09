@@ -16,7 +16,9 @@ namespace KhaozEngine.Tests.Gpu
     /// path's twelve gathers, no point fetch and no loop. A pixel on the fast path issues twelve gathers where D
     /// issues 101 loads, or eight where the range skip declines the stored depths. The current mask the first pass
     /// stores replaces this frame's eighteen depth and motion fetches. Metal's selected programs retain the nine
-    /// current loads and eight history gathers, also pinned below. Device-free.
+    /// current loads and eight history gathers, also pinned below. The shimmer score's shadow evidence
+    /// (<see cref="ShaderSources.TemporalShimmerVisibilityGlsl"/>) adds one point fetch to every shipped program and
+    /// one filtered sample, which is not counted, and D's rewrite removes both. Device-free.
     /// </summary>
     public sealed class TemporalVisibilityCompiledFormTests(ITestOutputHelper output)
     {
@@ -57,22 +59,24 @@ void main() {
 
         /// <summary>Program, whether it is rewritten to D, then its OpImageFetch, OpImageGather and OpLoopMerge
         /// counts. The D rows are D's baseline at 583a3ae7b.</summary>
+        // Shipped pins include the still-flicker lock's visibility veto, which adds one point fetch.
+        // The frozen D rows keep their baseline fetches, gathers and loops.
         public static TheoryData<string, bool, int, int, int> Counts => new()
         {
-            { nameof(ShaderSources.TemporalAccumulateFrag), false, 30, 12, 14 },
-            { nameof(ShaderSources.TemporalAccumulateHalfFrag), false, 30, 12, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), false, 30, 12, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag), false, 30, 12, 14 },
+            { nameof(ShaderSources.TemporalAccumulateFrag), false, 32, 12, 14 },
+            { nameof(ShaderSources.TemporalAccumulateHalfFrag), false, 32, 12, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), false, 32, 12, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag), false, 32, 12, 14 },
             { nameof(ShaderSources.TemporalAccumulateFrag), true, 30, 0, 14 },
             { nameof(ShaderSources.TemporalAccumulateHalfFrag), true, 30, 0, 14 },
             { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag), true, 30, 0, 14 },
             { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag), true, 30, 0, 14 },
             { "frozen D helper", false, 7, 0, 4 },
             { "shipped decision helper", false, 7, 12, 4 },
-            { nameof(ShaderSources.TemporalAccumulateFrag) + " (Metal)", false, 39, 8, 14 },
-            { nameof(ShaderSources.TemporalAccumulateHalfFrag) + " (Metal)", false, 39, 8, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) + " (Metal)", false, 39, 8, 14 },
-            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag) + " (Metal)", false, 39, 8, 14 },
+            { nameof(ShaderSources.TemporalAccumulateFrag) + " (Metal)", false, 41, 8, 14 },
+            { nameof(ShaderSources.TemporalAccumulateHalfFrag) + " (Metal)", false, 41, 8, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeFrag) + " (Metal)", false, 41, 8, 14 },
+            { nameof(ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag) + " (Metal)", false, 41, 8, 14 },
             { "shipped decision helper (Metal)", false, 16, 8, 4 },
         };
 

@@ -48,7 +48,9 @@ internal static class ContentTextTargetEligibility
                 0,
                 ContentAuthoringException.UnknownFieldReason)
             {
-                TypeKey = registration.TypeKey, FieldName = target.FieldName, Language = target.Language,
+                TypeKey = registration.TypeKey,
+                FieldName = target.FieldName,
+                Language = target.Language,
             };
         }
 
@@ -64,7 +66,9 @@ internal static class ContentTextTargetEligibility
                 0,
                 ContentAuthoringException.TextTargetIneligibleReason)
             {
-                TypeKey = registration.TypeKey, FieldName = target.FieldName, Language = target.Language,
+                TypeKey = registration.TypeKey,
+                FieldName = target.FieldName,
+                Language = target.Language,
             };
         }
 
@@ -78,8 +82,11 @@ internal static class ContentTextTargetEligibility
                 0,
                 ContentAuthoringException.TextBoundsReason)
             {
-                TypeKey = registration.TypeKey, FieldName = target.FieldName, Language = target.Language,
-                ActualCharacters = target.FieldName.Length, MaximumCharacters = MaxFieldNameLength,
+                TypeKey = registration.TypeKey,
+                FieldName = target.FieldName,
+                Language = target.Language,
+                ActualCharacters = target.FieldName.Length,
+                MaximumCharacters = MaxFieldNameLength,
             };
         }
 
@@ -98,8 +105,10 @@ internal static class ContentTextTargetEligibility
                 0,
                 ContentAuthoringException.TextBoundsReason)
             {
-                FieldName = target.FieldName, Language = target.Language,
-                ActualBytes = keyBytes, MaximumBytes = ContentTextKey.MaxKeyLength,
+                FieldName = target.FieldName,
+                Language = target.Language,
+                ActualBytes = keyBytes,
+                MaximumBytes = ContentTextKey.MaxKeyLength,
             };
         }
 

@@ -11,13 +11,13 @@ public sealed partial class PhysicsNavBake
             const string message = "Physics surfaces must have finite ascending heights and nonnegative headroom.";
             if (!float.IsFinite(height))
                 throw new NavigationBuildException(NavigationBuildRefusal.SurfaceHeightNonfinite, message)
-                    { ColumnX = x, ColumnZ = z, SurfaceIndex = index, ActualHeight = height };
+                { ColumnX = x, ColumnZ = z, SurfaceIndex = index, ActualHeight = height };
             if (height <= previous)
                 throw new NavigationBuildException(NavigationBuildRefusal.SurfaceHeightNotAscending, message)
-                    { ColumnX = x, ColumnZ = z, SurfaceIndex = index, ActualHeight = height, PreviousHeight = previous };
+                { ColumnX = x, ColumnZ = z, SurfaceIndex = index, ActualHeight = height, PreviousHeight = previous };
             throw new NavigationBuildException(float.IsNaN(headroom)
                 ? NavigationBuildRefusal.SurfaceHeadroomNaN : NavigationBuildRefusal.SurfaceHeadroomNegative, message)
-                { ColumnX = x, ColumnZ = z, SurfaceIndex = index, ActualHeadroom = headroom };
+            { ColumnX = x, ColumnZ = z, SurfaceIndex = index, ActualHeadroom = headroom };
         }
     }
 

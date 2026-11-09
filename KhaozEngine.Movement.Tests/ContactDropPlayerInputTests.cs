@@ -23,7 +23,8 @@ public class ContactDropPlayerInputTests
         Assert.Contains(nav.Graph.Links, link => link.Kind == NavLinkKind.Drop);
         var move = new MoveToRange(nav, new PathFollowConfig { AcceptRadius = 1 }, new RouteApproachOptions
         {
-            StraightenRoutes = true, CarryThroughStraightRuns = true,
+            StraightenRoutes = true,
+            CarryThroughStraightRuns = true,
             Stall = new RouteStallOptions(8, 0.01f),
         });
         var body = new MoveState { Position = new(-1.25f, 1.75f, 0), Grounded = true, HorizontalVelocity = new(0.3f, 0) };

@@ -11,6 +11,10 @@ internal sealed class PrivateOracleDataException : MalformedDataException
     /// <summary>Creates a refusal without retaining the supplied private original exception.</summary>
     public PrivateOracleDataException(PrivateOracleDataRefusal reason, string message, Exception inner) : this(reason, message) { }
 
+    /// <summary>Gets the sanitized status of a refused scene replacement.</summary>
+    public KhaozEngine.MapDoc.Scene.MapSceneStatus? SceneStatus { get; init; }
+    /// <summary>Gets the refused budget, count and allowance without source identifiers.</summary>
+    public KhaozEngine.MapDoc.Scene.MapSceneCapacity? Capacity { get; init; }
     /// <summary>Gets the rule that refused the attested comparison data.</summary>
     public PrivateOracleDataRefusal Reason { get; }
 }

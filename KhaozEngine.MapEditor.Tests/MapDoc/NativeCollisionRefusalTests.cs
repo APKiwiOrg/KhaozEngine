@@ -68,8 +68,13 @@ public class NativeCollisionRefusalTests
         var f = NativeEditorAssetFixtures.DataBufferMeshAsset();
         var original = new MapDocumentException(MapDocumentRefusal.SchemaMemberDuplicate, "known refusal")
         {
-            ResourceId = "nested-resource", SourceName = "nested-source", FieldPath = "$.member",
-            ResourceRoot = "nested-root", SupportedVersions = [1, 3], Uri = "nested-uri", ShapeType = typeof(MapDocument),
+            ResourceId = "nested-resource",
+            SourceName = "nested-source",
+            FieldPath = "$.member",
+            ResourceRoot = "nested-root",
+            SupportedVersions = [1, 3],
+            Uri = "nested-uri",
+            ShapeType = typeof(MapDocument),
         };
         var error = NativeMapAssetLoader.MeshLoadFailure(nested ? new InvalidOperationException("loader", original) : original,
             f.Asset, f.Closure.GetResource(f.Asset.MeshResourceId));

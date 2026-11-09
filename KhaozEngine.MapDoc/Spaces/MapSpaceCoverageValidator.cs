@@ -65,8 +65,9 @@ public static class MapSpaceCoverageValidator
                 {
                     if (!contextFinding)
                     {
+                        // The shared context refusal names no record. This copy names the footprint its message names.
                         AddFinding(footprint.Id, -1, prepared.Finding! with
-                        { Message = $"refinement capacity: footprint '{footprint.Id}' ({prepared.Refusal})" });
+                        { Message = $"refinement capacity: footprint '{footprint.Id}' ({prepared.Refusal})", OwnerId = footprint.Id, RecordId = footprint.Id, SpaceId = footprint.Space.Id });
                         contextFinding = true;
                     }
                     continue;
@@ -84,7 +85,16 @@ public static class MapSpaceCoverageValidator
                     };
                     string detail = refinement.Status == MapRefinementStatus.Invalid && refinement.Detail is not null
                         ? $" ({refinement.Detail})" : "";
-                    AddFinding(footprint.Id, cell, refinement.Finding! with { Message = $"{kind}: {label}{detail}" });
+                    // The footprint owns this check. RecordId may still identify a refused bound or opening.
+                    var finding = refinement.Finding!;
+                    AddFinding(footprint.Id, cell, finding with
+                    {
+                        Message = $"{kind}: {label}{detail}",
+                        OwnerId = footprint.Id,
+                        RecordId = finding.RecordId ?? footprint.Id,
+                        SpaceId = finding.SpaceId ?? footprint.Space.Id,
+                        SlotCell = finding.SlotCell ?? cell,
+                    });
                     continue;
                 }
                 if (!refinement.LowerArea.Add(refinement.CompatibilityArea).Equals(refinement.CellArea) ||
@@ -114,8 +124,12 @@ public static class MapSpaceCoverageValidator
                     columns.Add(new(footprint, cell, space, rect[0], rect[1], lower.Faces.Where(f => lowerKeys.Contains(f.Key)).ToArray(),
                         upper?.Faces.Where(f => upperKeys.Contains(f.Key)).ToArray(), refinement, MapEffectiveGeometry.CellPolygon(view, footprint.Lattice, cell).Select(MapWideXz.From).ToArray()));
                 }
-                catch (MapExactOverflowException) { AddFinding(footprint.Id, cell, new(MapDocumentRefusal.GeometryNotRepresentable,
-                    $"not representable: {label}") { RecordId = footprint.Id, SpaceId = footprint.Space.Id, SlotCell = cell }); }
+                catch (MapExactOverflowException)
+                {
+                    AddFinding(footprint.Id, cell, new(MapDocumentRefusal.GeometryNotRepresentable,
+                    $"not representable: {label}")
+                    { RecordId = footprint.Id, SpaceId = footprint.Space.Id, SlotCell = cell });
+                }
                 catch (MapDocumentException error)
                 {
                     string message = $"missing geometry: {label} ({error.Message})";

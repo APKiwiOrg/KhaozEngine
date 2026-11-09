@@ -276,7 +276,7 @@ static class TileObjectEdit
 {
     internal static TileObject Require(TileWorldDocument doc, long id) =>
         doc.FindObject(id) ?? throw new TileWorldException(TileWorldRefusal.ObjectMissing, $"object {id} does not exist")
-            { ObjectId = id };
+        { ObjectId = id };
 
     // An archetype the catalogs do not define is a content error the validator reports, never a reason to fault
     // an edit, so a dangling one falls back to the single tile the object is anchored on. The fallback is not

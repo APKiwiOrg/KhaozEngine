@@ -425,7 +425,7 @@ public class MutationServiceTests
         Action refused = request switch
         {
             "archetype" => () => f.Mutate.FoliageLayerSet(valid with
-                { Archetypes = new[] { new FoliageArchetypeInfo("not-in-catalog", 1f) } }),
+            { Archetypes = new[] { new FoliageArchetypeInfo("not-in-catalog", 1f) } }),
             "underlay" => () => f.Mutate.FoliageLayerSet(valid with { AllowedUnderlays = new[] { 99 } }),
             "density" => () => f.Mutate.FoliageDensitySet("missing", 1, 1, new[] { new[] { 1 } }),
             "paint" => () => f.Mutate.FoliagePaint("missing", 0f, 0f, 1f, 2, 0.5f),

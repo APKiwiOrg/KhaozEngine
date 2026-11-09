@@ -318,7 +318,8 @@ public static partial class TileProtocol
             throw new TileComponentCodecArgumentException(TileComponentCodecRefusal.RouteWriteLimitExceeded,
                 $"A replicated route is capped at {MaxRouteSteps} steps and this one carries {steps.Length}. " +
                 "TileMoveSimulator truncates at TileMoveOptions.MaxRouteSteps, so this route was built elsewhere.",
-                nameof(v)) { ActualCount = steps.Length, MaximumCount = MaxRouteSteps };
+                nameof(v))
+            { ActualCount = steps.Length, MaximumCount = MaxRouteSteps };
         w.Write((ushort)steps.Length);
         for (int i = 0; i < steps.Length; i++) w.Write((byte)steps[i]);
     }

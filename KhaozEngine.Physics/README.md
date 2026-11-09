@@ -7,6 +7,20 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 
 The seam is included in `KhaozEngine.Foundation`, and through it in the game and server umbrellas.
 
+## Shared prop query geometry
+
+`ShapeRayQueries.Cast(in ShapeRay, PhysicsShape, Pose, out ShapeRayHit)` casts a double-precision
+origin and direction against boxes, base-aligned cylinders, convex hulls, meshes and compounds.
+Directions need not be normalized. Distances are metres, compound ties retain the first child, and
+inside hits have distance zero and the reversed ray normal. Invalid rays throw
+`ArgumentOutOfRangeException`, null shapes throw `ArgumentNullException`, and unsupported shapes
+throw `NotSupportedException`.
+
+`PropQueryGeometry.Bounds` returns tight scalar-double bounds, also supporting spheres and capsules.
+`RaiseEnvelope(source, pose, minimumHeight)` returns a separate upward-swept interaction shape, its
+pose and raise distance. It preserves tall shapes and apertures unchanged. Low meshes become hulls,
+and tilted cylinders use circumscribed 32-sided caps. These helpers have no world or movement dependency.
+
 ## Support-query measurement
 
 `SupportQueryCapture`, `SupportQueryMeasurement`, `SupportQueryMetrics`, `SupportQueryCounter`,

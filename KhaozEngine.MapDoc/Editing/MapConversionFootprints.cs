@@ -46,7 +46,7 @@ internal static class MapConversionFootprints
                 if (covered == area) inside.Add(cell);
                 else if (covered.Sign == 0) outside.Add(cell);
                 else throw new MapDocumentException(MapDocumentRefusal.TerrainFootprintStraddlesRegion, $"footprint straddle: footprint '{footprint.Id}' cell {cell} crosses the conversion region boundary. Align the region to whole footprint cells or split the footprint first.")
-                    { RecordId = footprint.Id, SlotCell = cell };
+                { RecordId = footprint.Id, SlotCell = cell };
             }
             if (inside.Count == 0) continue;
             MapSpaceFootprint moved = footprint with
@@ -60,7 +60,7 @@ internal static class MapConversionFootprints
             {
                 string id = footprint.Id + "-" + request.FineSurfaceId;
                 if (!ids.Add(id)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"duplicate footprint id '{id}'")
-                    { RecordId = id, SubjectKind = "footprint" };
+                { RecordId = id, SubjectKind = "footprint" };
                 plans.Add(new(row.Anchor, footprint, footprint with { SlotCells = outside.ToArray() }, moved with { Id = id }));
             }
         }

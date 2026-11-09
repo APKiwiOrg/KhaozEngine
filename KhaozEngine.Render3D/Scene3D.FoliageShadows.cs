@@ -34,8 +34,14 @@ public sealed partial class Scene3D
     {
         if (_foliageShadowDraws.Count == 0) return;
         _foliageShadowRenderer ??= new FoliageShadowRenderer(_gd, _model.ShadowMap, _model.FoliageLayout, _retired);
+        bool ordinary = false, anchored = false;
+        foreach (var draw in _foliageShadowDraws)
+        {
+            if (draw.Batch.AnchorSet is null) ordinary = true;
+            else anchored = true;
+        }
         _foliageShadowRenderer.UploadCascades(cl, _cascadeDepthVps.AsSpan(0, _cascadeCount),
-            _currentFrameView.ViewProjection, _frameOrigin);
+            _currentFrameView.ViewProjection, _frameOrigin, ordinary, anchored ? _model.PreparedAnchorLayout : null);
     }
 
     void DrawFoliageShadowCascade(IGpuCommandList cl, int cascade)
@@ -46,11 +52,17 @@ public sealed partial class Scene3D
         foreach (FoliageDraw draw in _foliageShadowDraws)
         {
             if (!FoliageDrawValid(draw) || draw.Batch.Buffer is null ||
+                _captureShadowDomain is { } domain && !domain.ContainsCaster(draw.Bounds) ||
                 !FoliageShadowSelection.IntersectsCascade(draw.Bounds, frustum, _frameOrigin)) continue;
             Mesh mesh = _meshes[draw.Patch.Mesh.Index]!.Value;
-            _foliageShadowRenderer!.Draw(cl, cascade, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, _model.FoliageSet, (uint)draw.UniformSlot,
-                mesh.CutsOutShadow ? mesh.ShadowCutoutSet : null);
+            if (draw.Batch.AnchorSet is { } anchor)
+                _foliageShadowRenderer!.DrawPrepared(cl, cascade, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, _model.FoliageSet, (uint)draw.UniformSlot,
+                    mesh.CutsOutShadow ? mesh.ShadowCutoutSet : null, anchor, _model.PreparedAnchorLayout);
+            else
+                _foliageShadowRenderer!.Draw(cl, cascade, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, _model.FoliageSet, (uint)draw.UniformSlot,
+                    mesh.CutsOutShadow ? mesh.ShadowCutoutSet : null);
             FoliageShadowDrawCalls++;
             CountMeshDraw(mesh.IndexCount, (uint)draw.Count);
         }

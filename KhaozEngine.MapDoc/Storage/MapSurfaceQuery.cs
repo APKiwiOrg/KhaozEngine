@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,13 +17,13 @@ internal static class MapSurfaceQuery
     {
         ArgumentNullException.ThrowIfNull(scope);
         scope.Validate();
-        var budget = sharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads);
+        var budget = sharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads, source: scope.Limits);
         try { return FindCore(source, index, scope, directory, page, payload, budget, null); }
-        catch (MapSurfaceCapacityException) { return Capacity(source, scope, budget); }
+        catch (MapSurfaceCapacityException error) { return Capacity(source, scope, budget) with { Capacity = error.Capacity, Diagnostic = error.Diagnostic }; }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
         {
             throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "surface scope not representable", ex)
-                { Operation = "FindPatches", FieldPath = nameof(scope) };
+            { Operation = "FindPatches", FieldPath = nameof(scope) };
         }
     }
 
@@ -32,7 +34,18 @@ internal static class MapSurfaceQuery
     {
         int before = budget.Reads;
         try { return FindCore(source, index, scope, directory, page, payload, budget, reserve) with { PagesRead = budget.Reads - before }; }
-        catch (MapSurfaceCapacityException) { return Capacity(source, scope, budget) with { PagesRead = budget.Reads - before }; }
+        catch (MapSurfaceCapacityException error) { return Capacity(source, scope, budget) with { PagesRead = budget.Reads - before, Capacity = error.Capacity, Diagnostic = error.Diagnostic }; }
+    }
+
+    static IEnumerable<MapSurfaceRef> SceneDescriptors(IMapSurfaceSource source, MapSurfaceScope scope)
+    {
+        if (scope.SceneAdmission is null || scope.DiscoverySurfaces is null) return source.Surfaces;
+        return scope.DiscoverySurfaces.Order(StringComparer.Ordinal).Select(id => source switch
+        {
+            MapStoredSurfaceSource stored => stored.SceneSurface(id),
+            MapDocumentSurfaceSource resident => resident.SceneSurface(id),
+            _ => source.Surfaces.FirstOrDefault(s => s.Id == id),
+        }).OfType<MapSurfaceRef>();
     }
 
     static MapPatchFindResult FindCore(IMapSurfaceSource source, MapSurfaceStorageIndex index, MapSurfaceScope scope,
@@ -44,7 +57,7 @@ internal static class MapSurfaceQuery
         var empty = new List<MapCoveredRange>();
         var unavailable = new List<MapPatchRead>();
         MapExactRect world = scope.WorldRectangle();
-        foreach (MapSurfaceRef surface in source.Surfaces)
+        foreach (MapSurfaceRef surface in SceneDescriptors(source, scope))
         {
             budget.BeforeMetadata();
             if ((scope.DiscoverySurfaces is { } ids && !ids.Contains(surface.Id)) || !scope.Roles.Contains(surface.Role)) continue;
@@ -80,7 +93,7 @@ internal static class MapSurfaceQuery
                         Subtract(emptyRects, KeyRange(stored.Key), budget);
                         MapSurfaceIndexEntry entry = index.ByKey[stored.Key];
                         if (!entry.Cells.Overlaps(cells) || !HeightAndSpace(entry, surface, scope)) continue;
-                        if (candidates.Count >= scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+                        if (DemandDiagnostics.Check(candidates, "MapSurfaceQuery.MaxCandidatePatches.1", "MaxCandidatePatches", candidates.Count, 1, scope.Limits.MaxCandidatePatches, candidates.Count >= scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory, allowanceSource: scope.Limits)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)candidates.Count + 1, scope.Limits.MaxCandidatePatches);
                         candidates.Add(entry.Key, entry);
                     }
                 }

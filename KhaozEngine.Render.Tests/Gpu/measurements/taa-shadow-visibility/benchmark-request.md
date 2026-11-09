@@ -282,11 +282,11 @@ again. The text below is kept as written before dispatch, as evidence.
 - B found confidence against frozen D up to 32 half steps on 233,384 texels with and without the mask, so the
   mask never caused it. Production fused and split had no differences, and locks against D were identical.
 - What B's evidence superseded: the withdrawal is reverted and R3-lite is restored
-  ([current gather contract](../../../../docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md#plan-amendments)). The fixed two-half-step NVIDIA allowance is replaced by the
+  ([current gather contract](../../../../docs/design/TEMPORAL-RESOLVE.md#plan-amendments)). The fixed two-half-step NVIDIA allowance is replaced by the
   report-only finite-value rule: on hardware NVIDIA Direct3D 11 stored locks, R8 and depth equal D prime's,
   colour and confidence keep D prime's non-finite classes, and finite differences are reported only. D prime
   (`TemporalVisibilityFrozenD.ToD`) is the A/B reference, and shipped D (`ToShippedD`) is an exact reference on
-  Metal only ([current device comparison rules](../../../../docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md#plan-amendments)). Entry identity is exact except llvmpipe colour,
+  Metal only ([current device comparison rules](../../../../docs/design/TEMPORAL-RESOLVE.md#plan-amendments)). Entry identity is exact except llvmpipe colour,
   which keeps main's amendment 23 bound.
 
 The [withdrawal record](mask-withdrawal.md) lists source changes, every moved shader program and the local

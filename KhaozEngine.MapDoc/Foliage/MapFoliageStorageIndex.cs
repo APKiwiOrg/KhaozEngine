@@ -58,19 +58,26 @@ public sealed class MapFoliageStorageIndex
             if (chunk.Key.X is < 0 or > 32767 || chunk.Key.Z is < 0 or > 32767)
                 throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "foliage: invalid or duplicate chunk reference.")
                 {
-                    LayerId = chunk.LayerId, FoliageChunk = chunk.Key,
+                    LayerId = chunk.LayerId,
+                    FoliageChunk = chunk.Key,
                     FieldPath = chunk.Key.X is < 0 or > 32767 ? "Key.X" : "Key.Z",
                     ActualInteger = chunk.Key.X is < 0 or > 32767 ? chunk.Key.X : chunk.Key.Z,
-                    MinimumInteger = 0, MaximumInteger = 32767,
+                    MinimumInteger = 0,
+                    MaximumInteger = 32767,
                 };
             int regionCount = chunk.Regions.Count;
             if (regionCount is < 1 or > 4096)
                 throw new MapDocumentException(regionCount < 1 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.WorkCapacityExceeded,
                     "foliage: invalid or duplicate chunk reference.")
                 {
-                    LayerId = chunk.LayerId, FoliageChunk = chunk.Key, FieldPath = "Regions", ActualCount = regionCount,
-                    MinimumInteger = 1, MaximumInteger = 4096,
-                    Budget = regionCount > 4096 ? "foliage chunk regions" : null, Limit = regionCount > 4096 ? 4096 : null,
+                    LayerId = chunk.LayerId,
+                    FoliageChunk = chunk.Key,
+                    FieldPath = "Regions",
+                    ActualCount = regionCount,
+                    MinimumInteger = 1,
+                    MaximumInteger = 4096,
+                    Budget = regionCount > 4096 ? "foliage chunk regions" : null,
+                    Limit = regionCount > 4096 ? 4096 : null,
                 };
             if (!_byKey.TryAdd((chunk.LayerId, chunk.Key), chunk))
                 throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "foliage: invalid or duplicate chunk reference.")
@@ -80,8 +87,14 @@ public sealed class MapFoliageStorageIndex
                 { LayerId = chunk.LayerId, FoliageChunk = chunk.Key, Tile = chunk.OwnerRegion, FieldPath = "OwnerRegion", SubjectKind = "foliage pack" };
             if (pack.PayloadSha256 != chunk.PackSha256)
                 throw new MapDocumentException(MapDocumentRefusal.DigestMismatch, "foliage: invalid or duplicate chunk reference.")
-                { LayerId = chunk.LayerId, FoliageChunk = chunk.Key, Tile = chunk.OwnerRegion, FieldPath = "PackSha256",
-                    ExpectedHash = pack.PayloadSha256, ActualHash = chunk.PackSha256 };
+                {
+                    LayerId = chunk.LayerId,
+                    FoliageChunk = chunk.Key,
+                    Tile = chunk.OwnerRegion,
+                    FieldPath = "PackSha256",
+                    ExpectedHash = pack.PayloadSha256,
+                    ActualHash = chunk.PackSha256
+                };
         }
         _packChunks = Chunks.GroupBy(c => (c.LayerId, c.OwnerRegion)).ToDictionary(g => g.Key, g => g.ToArray());
         foreach (MapFoliagePackRef pack in Packs)
@@ -93,8 +106,13 @@ public sealed class MapFoliageStorageIndex
                 if (rows[i].DataOffset != MapFoliageRegionPack.DataOffset(i))
                     throw new MapDocumentException(MapDocumentRefusal.FoliagePackOffsetMismatch, "foliage chunk data offset disagrees with canonical pack order.")
                     {
-                        LayerId = pack.LayerId, FoliageChunk = rows[i].Key, Index = i, FieldPath = "DataOffset",
-                        ActualInteger = rows[i].DataOffset, MinimumInteger = MapFoliageRegionPack.DataOffset(i), MaximumInteger = MapFoliageRegionPack.DataOffset(i),
+                        LayerId = pack.LayerId,
+                        FoliageChunk = rows[i].Key,
+                        Index = i,
+                        FieldPath = "DataOffset",
+                        ActualInteger = rows[i].DataOffset,
+                        MinimumInteger = MapFoliageRegionPack.DataOffset(i),
+                        MaximumInteger = MapFoliageRegionPack.DataOffset(i),
                     };
         }
         if (resident is null) return;
@@ -106,8 +124,11 @@ public sealed class MapFoliageStorageIndex
                     throw new MapDocumentException(row is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.DigestMismatch,
                         "foliage resident chunk disagrees with its advertised digest.")
                     {
-                        LayerId = layer.Id, FoliageChunk = chunk.Key, ExpectedHash = row?.Sha256,
-                        ActualHash = row is null ? null : MapFoliageLayer.Digest(chunk), SubjectKind = "advertised foliage chunk",
+                        LayerId = layer.Id,
+                        FoliageChunk = chunk.Key,
+                        ExpectedHash = row?.Sha256,
+                        ActualHash = row is null ? null : MapFoliageLayer.Digest(chunk),
+                        SubjectKind = "advertised foliage chunk",
                     };
                 _resident.Add((layer.Id, chunk.Key), chunk);
             }

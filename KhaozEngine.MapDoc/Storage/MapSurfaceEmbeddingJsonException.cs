@@ -29,17 +29,30 @@ public sealed class MapSurfaceEmbeddingJsonException : JsonException
 
     internal static MapSurfaceEmbeddingJsonException FromDocument(MapDocumentException error) => new(error.Reason!.Value, error.Message, error)
     {
-        FieldPath = error.FieldPath, Budget = error.Budget, ActualCount = error.ActualCount,
-        ActualByteCount = error.ActualByteCount, Limit = error.Limit, ActualInteger = error.ActualInteger,
+        FieldPath = error.FieldPath,
+        Budget = error.Budget,
+        ActualCount = error.ActualCount,
+        ActualByteCount = error.ActualByteCount,
+        Limit = error.Limit,
+        ActualInteger = error.ActualInteger,
         MinimumInteger = error.MinimumInteger,
     };
 
     internal MapDocumentException ToDocument(string? sourceName, string message, MapTileCoord? tile,
         string? path, string? resourceId) => new(Reason, message, this)
-    {
-        SourceName = sourceName, Tile = tile, Path = path, ResourceId = resourceId,
-        FieldPath = FieldPath ?? Path, LineNumber = LineNumber, BytePositionInLine = BytePositionInLine,
-        Budget = Budget, ActualCount = ActualCount, ActualByteCount = ActualByteCount, Limit = Limit,
-        ActualInteger = ActualInteger, MinimumInteger = MinimumInteger,
-    };
+        {
+            SourceName = sourceName,
+            Tile = tile,
+            Path = path,
+            ResourceId = resourceId,
+            FieldPath = FieldPath ?? Path,
+            LineNumber = LineNumber,
+            BytePositionInLine = BytePositionInLine,
+            Budget = Budget,
+            ActualCount = ActualCount,
+            ActualByteCount = ActualByteCount,
+            Limit = Limit,
+            ActualInteger = ActualInteger,
+            MinimumInteger = MinimumInteger,
+        };
 }

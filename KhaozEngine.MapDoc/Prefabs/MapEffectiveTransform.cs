@@ -30,7 +30,7 @@ public readonly record struct MapEffectiveTransform(double X, double Y, double Z
             bool range = field == "scale" && double.IsFinite(pose.Scale) && pose.Scale <= 0;
             throw new MapDocumentException(range ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
                 "Effective pose must be finite with positive uniform scale.")
-                { FieldPath = "$." + field, ActualNumber = range ? pose.Scale : null, MinimumNumber = range ? 0 : null };
+            { FieldPath = "$." + field, ActualNumber = range ? pose.Scale : null, MinimumNumber = range ? 0 : null };
         }
         return pose with { X = Zero(pose.X), Y = Zero(pose.Y), Z = Zero(pose.Z), YawRadians = Zero(pose.YawRadians) };
     }

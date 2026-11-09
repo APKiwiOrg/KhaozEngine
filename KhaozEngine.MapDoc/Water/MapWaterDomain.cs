@@ -38,7 +38,7 @@ public sealed class MapWaterDomain
     readonly IReadOnlyList<IReadOnlyList<MapWideXz>>?[] _convexParts;
     readonly int _rectCount;
 
-    MapWaterDomain(MapWideXz[][] rings, string[] names, int rectCount)
+    internal MapWaterDomain(MapWideXz[][] rings, string[] names, int rectCount = 0)
     {
         _rings = rings;
         _names = names;
@@ -54,6 +54,7 @@ public sealed class MapWaterDomain
     public IReadOnlyList<MapWaterPiece> Pieces { get; }
     /// <summary>The exact bounds of one piece, which also bound every one of its convex parts.</summary>
     internal MapWaterPolygons.Bounds PieceBounds(int piece) => _bounds[piece];
+    internal bool PieceIsConvex(int piece) => MapWaterPolygons.IsConvex(_rings[piece]);
     public MapExactXz Min { get; }
     public MapExactXz Max { get; }
 
@@ -160,8 +161,12 @@ public sealed class MapWaterDomain
                 {
                     Add(new(vertices is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ValueOutsideRange,
                         $"ring {i} needs at least 3 vertices")
-                    { FieldPath = doc.Rings[i] is null ? currentField : currentField + ".Vertices", Index = i,
-                        ActualCount = vertexCount, MinimumInteger = vertices is null ? null : 3 });
+                    {
+                        FieldPath = doc.Rings[i] is null ? currentField : currentField + ".Vertices",
+                        Index = i,
+                        ActualCount = vertexCount,
+                        MinimumInteger = vertices is null ? null : 3
+                    });
                     continue;
                 }
                 AddRing(rings, names, $"ring {i}", vertices.Select(doc.Frame.WorldXz).ToArray(), rect: false, i, transform,
@@ -247,7 +252,7 @@ public sealed class MapWaterDomain
     internal IReadOnlyList<IReadOnlyList<MapWideXz>> ConvexParts(int piece, MapWaterWorkBudget budget)
     {
         if (_convexParts[piece] is { } cached) return cached;
-        IReadOnlyList<IReadOnlyList<MapWideXz>> parts = MapWaterPolygons.IsConvex(_rings[piece])
+        IReadOnlyList<IReadOnlyList<MapWideXz>> parts = PieceIsConvex(piece)
             ? new IReadOnlyList<MapWideXz>[] { _rings[piece] }
             : RequireTriangulation(MapWaterPolygons.Triangulate(_rings[piece], budget), piece);
         return _convexParts[piece] = parts;
@@ -255,8 +260,11 @@ public sealed class MapWaterDomain
 
     IReadOnlyList<IReadOnlyList<MapWideXz>> RequireTriangulation(IReadOnlyList<IReadOnlyList<MapWideXz>>? parts, int piece) =>
         parts ?? throw new MapDocumentException(MapDocumentRefusal.WaterDomainTriangulationFailed, $"{_names[piece]} cannot be triangulated")
-        { FieldPath = piece < _rectCount ? $"Rects[{piece}]" : $"Rings[{piece - _rectCount}]",
-            SubjectKind = piece < _rectCount ? "rect" : "ring", Index = piece < _rectCount ? piece : piece - _rectCount };
+        {
+            FieldPath = piece < _rectCount ? $"Rects[{piece}]" : $"Rings[{piece - _rectCount}]",
+            SubjectKind = piece < _rectCount ? "rect" : "ring",
+            Index = piece < _rectCount ? piece : piece - _rectCount
+        };
 
     // Injects the failed triangulator result without mutating a compiled domain or weakening ring admission.
     internal void RejectTriangulationForTests(int piece) => _ = RequireTriangulation(null, piece);

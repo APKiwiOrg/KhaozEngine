@@ -246,7 +246,8 @@ public sealed partial class SqlServerContentAuthoringStore
                         $"Draft edit {ordinal} carries operation {(int)operation}, which is not one of the four of spec 3.7."),
                     type,
                     definitionId,
-                    ContentAuthoringException.UnknownEditOperationReason) { ActualOperation = (int)operation, StoredEditOrdinal = ordinal },
+                    ContentAuthoringException.UnknownEditOperationReason)
+                { ActualOperation = (int)operation, StoredEditOrdinal = ordinal },
             });
         }
 
@@ -337,7 +338,8 @@ public sealed partial class SqlServerContentAuthoringStore
                     $"The open draft already holds a {held.Operation} edit for type {edit.Type.Value} row {edit.DefinitionId} ('{edit.Key}'), so a {edit.Operation} of the same row is refused. A draft holds one pending intent per row."),
                 edit.Type,
                 edit.DefinitionId,
-                ContentAuthoringException.EditTargetCollisionReason) { RowKey = edit.Key.ToString(), StandingOperation = held.Operation, RequestedOperation = edit.Operation };
+                ContentAuthoringException.EditTargetCollisionReason)
+            { RowKey = edit.Key.ToString(), StandingOperation = held.Operation, RequestedOperation = edit.Operation };
         }
 
         // One reading per edit, shared by the edit row and its field rows, which are written together.
@@ -502,7 +504,8 @@ public sealed partial class SqlServerContentAuthoringStore
                         $"Content type {registration.Type.Value} '{registration.TypeKey}' declares no field named '{field.Name}', so the edit is refused at the boundary rather than at publish."),
                     edit.Type,
                     edit.DefinitionId,
-                    ContentAuthoringException.UnknownFieldReason) { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
+                    ContentAuthoringException.UnknownFieldReason)
+                { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
             }
 
             if (entry.IsDerivedMarker)
@@ -513,7 +516,8 @@ public sealed partial class SqlServerContentAuthoringStore
                         $"Field '{field.Name}' of content type {registration.Type.Value} '{registration.TypeKey}' is a derived marker, whose key is a function of the row it sits on, so an edit cannot author a value for it."),
                     edit.Type,
                     edit.DefinitionId,
-                    ContentAuthoringException.UnknownFieldReason) { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
+                    ContentAuthoringException.UnknownFieldReason)
+                { TypeKey = registration.TypeKey, FieldName = field.Name, EditOrdinal = editOrdinal };
             }
         }
     }

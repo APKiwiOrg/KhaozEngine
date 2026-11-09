@@ -25,6 +25,6 @@ public sealed class ShippedWaterComparisonTests
             boundaryOwner = water.Differences.Count(d => d.Kind == LegacyWaterDifferenceKind.BoundaryOwner),
             floorAboveSurface = water.Differences.Count(d => d.Kind == LegacyWaterDifferenceKind.FloorAboveSurface),
         }));
-        report.Check("water", water.Failures.Count == 0, JsonSerializer.Serialize(new { failures = water.Failures }));   // only report.Check and report.Record, never Assert on source values
+        ShippedWaterFailures.Report(report, water);
     });
 }

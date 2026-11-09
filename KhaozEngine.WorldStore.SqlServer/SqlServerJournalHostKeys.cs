@@ -77,7 +77,7 @@ internal static class SqlServerJournalHostKeys
                 string referenced = reader.GetString(3);
                 string action = reader.GetString(4).Replace('_', ' ');
                 findings.Add(new(JournalStoreRefusal.HostForeignKeyActionUnsafe, host, referenced, action, null)
-                    { HostSchema = schema, ForeignKeyName = key });
+                { HostSchema = schema, ForeignKeyName = key });
                 firing.Add(FormattableString.Invariant(
                     $"host table '{schema}.{host}' has foreign key '{key}' into journal table '{referenced}' declared ON DELETE {action}"));
             }

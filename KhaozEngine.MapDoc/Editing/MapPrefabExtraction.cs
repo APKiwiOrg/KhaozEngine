@@ -36,7 +36,8 @@ public static class MapPrefabExtraction
             index++;
         }
         if (keys.Count == 0) throw new MapDocumentException(MapDocumentRefusal.PrefabExtractionEmpty,
-            "Cannot extract an empty selection.") { Operation = nameof(Extract) };
+            "Cannot extract an empty selection.")
+        { Operation = nameof(Extract) };
         RequireCompleteSelection(snapshot, keys, resources);
         var rows = resources.Attachments.Where(r => !r.Retired && keys.Contains(new(MapPrefabChildKind.Placement, r.PlacementId))).ToArray();
         foreach (var row in rows)
@@ -147,7 +148,8 @@ public static class MapPrefabExtraction
         void Required(MapPrefabChildKind kind, string id)
         {
             if (!selected.Contains(new(kind, id))) throw new MapDocumentException(MapDocumentRefusal.PrefabExtractionNotLossless,
-                "Partial room, floor or roof selection is not lossless.") { EntityId = id, ChildKind = kind };
+                "Partial room, floor or roof selection is not lossless.")
+            { EntityId = id, ChildKind = kind };
         }
         foreach (var key in selected)
         {
@@ -180,7 +182,7 @@ public static class MapPrefabExtraction
     static void RequireUniqueRoomPrism(string roomId, int count)
     {
         if (count != 1) throw new MapDocumentException(MapDocumentRefusal.SpaceRoomOccupancyInvalid, "A room selection requires its unique prism.")
-            { SpaceId = roomId, ActualCount = count, ExpectedCount = 1 };
+        { SpaceId = roomId, ActualCount = count, ExpectedCount = 1 };
     }
 
     sealed class ExtractReferences(IReadOnlyDictionary<MapPrefabChildKey, string> names) : MapPrefabReferenceMap

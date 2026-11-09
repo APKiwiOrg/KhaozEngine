@@ -35,7 +35,8 @@ public sealed class MapApertureRefusalTests
             var original = (MapBoundaryChain)patch.Records[chain];
             patch.Records[chain] = defect == "chain-invalid" ? original with
             {
-                Kind = MapChainKind.SurfaceEdge, SourcePatch = patch.Key,
+                Kind = MapChainKind.SurfaceEdge,
+                SourcePatch = patch.Key,
                 Vertices = [new(new("floor", MapLatticeAddress.Corner(0, 0)), null), new(new("floor", MapLatticeAddress.Corner(2, 0)), null)],
             } : original with { Vertices = original.Vertices.Select(v => v with { Vertex = new("missing", v.Vertex.Address) }).ToArray() };
         }
@@ -143,8 +144,11 @@ public sealed class MapApertureRefusalTests
         var reference = new MapRecordRef(chain.Id, remote.Key);
         patch.Records[patch.Records.FindIndex(r => r.Id == portal.Id)] = portal with { BandBottom = reference };
         patch.Records.Add(new MapWallStrip("strip", reference, portal.BandTop!, MapStripFacing.Front, 1));
-        remote.Records.Add(chain with { Vertices = chain.Vertices.Select(v =>
-            v with { Vertex = new("missing", v.Vertex.Address) }).ToArray() });
+        remote.Records.Add(chain with
+        {
+            Vertices = chain.Vertices.Select(v =>
+            v with { Vertex = new("missing", v.Vertex.Address) }).ToArray()
+        });
         set.Patches.Add(remote.Key, remote);
         var after = set.Clone();
         after.Patches[patch.Key].Heights[0] = 1;

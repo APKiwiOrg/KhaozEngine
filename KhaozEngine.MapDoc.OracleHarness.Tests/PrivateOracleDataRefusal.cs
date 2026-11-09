@@ -37,4 +37,14 @@ public enum PrivateOracleDataRefusal
     ValueRequired,
     /// <summary>Refuses an unsupported comparison, document, resolver or payload version.</summary>
     VersionUnsupported,
+    /// <summary>Refuses a native scene source capture that did not produce a complete source.</summary>
+    SceneSourceCaptureRefused,
+    /// <summary>Refuses a native scene extent proof that did not produce verified proofs.</summary>
+    SceneExtentProofRefused,
+    /// <summary>Refuses binding verified render extents to a native source.</summary>
+    SceneExtentBindingRefused,
+    /// <summary>Refuses an incomplete or failed native scene replacement.</summary>
+    SceneReplacementRefused,
+    /// <summary>Refuses a native foliage context capture that did not produce complete inputs.</summary>
+    SceneFoliageCaptureRefused,
 }

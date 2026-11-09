@@ -588,5 +588,6 @@ public sealed partial class SqlServerContentAuthoringStore
                 $"Version {versionNumber}'s pack could not be read at object '{hash}': {reason}."),
             default,
             0,
-            ContentAuthoringException.PackUnreadableReason) { VersionNumber = versionNumber, ObjectHash = hash, PackReaderReason = reason };
+            ContentAuthoringException.PackUnreadableReason)
+        { VersionNumber = versionNumber, ObjectHash = hash, PackReaderReason = reason };
 }

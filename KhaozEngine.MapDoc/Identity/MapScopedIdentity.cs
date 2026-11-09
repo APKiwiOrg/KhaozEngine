@@ -43,7 +43,7 @@ public sealed class MapScopedIdentity
     public void RequireComplete()
     {
         if (!Complete) throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, "incomplete scoped identity")
-            { Operation = "RequireCompleteIdentity" };
+        { Operation = "RequireCompleteIdentity" };
     }
     void Write(Utf8JsonWriter w)
     {

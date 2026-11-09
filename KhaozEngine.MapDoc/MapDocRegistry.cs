@@ -66,7 +66,7 @@ public sealed class MapDocRegistry
         if (!_features.TryGetValue(type, out var entry))
             throw new MapDocumentException(MapDocumentRefusal.DocumentTerrainFeatureUnknown,
                 $"Unknown terrain feature type '{type}'. Register it on the MapDocRegistry.")
-                { FieldPath = nameof(feature.Type), ActualText = type };
+            { FieldPath = nameof(feature.Type), ActualText = type };
         return entry.Build(feature);
     }
 }

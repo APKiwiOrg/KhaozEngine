@@ -1224,7 +1224,16 @@ checks remain O(log n). Strided checks visit candidate spans and their search pa
 where k counts overlapping bounding spans. Exact attribute checks preserve writable padding.
 Prefix publication queries each writable lease through the same index. The footprint never scans
 every recorded read per draw or disjoint write, avoiding quadratic frame work in draw-heavy Mac scenes
-(#1692). Warmed node storage is reused without steady-frame allocation.
+(#1692). Warmed node storage is reused without steady-frame allocation. At recording begin, a ring slot
+inherits the previous slot's observed storage capacities without copying its resources or read ranges.
+This keeps repeating scene shapes warm even when their period differs from the ring depth. Protected
+prefix footprints stay slot-owned and immutable until final completion. Vertex coverage puts disconnected
+windows in one recording-owned table keyed by coverage slot and first element, with the maximum last element
+as its value. Begin and footprint-generation changes clear entries while keeping the aggregate capacity.
+Retained window storage is bounded by the peak total disconnected-window count of a recording, plus small
+coverage headers. Reordering the same warmed keys and windows cannot require more table capacity. Reachable
+indexed streams add no window entries. Only slot numbers and element ranges enter the table, so no buffer,
+GPU object or key identity crosses Begin. Exact byte coverage is rebuilt independently for each recording.
 [Frame submission](../docs/METAL-FRAME-SUBMISSION.md) owns the lifetime and write-path details.
 
 ## Three decisions worth knowing before reading the code

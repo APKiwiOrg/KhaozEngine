@@ -269,7 +269,8 @@ public class ProjectionPublicationTests
     public void StagingPreservesMalformedCodecFaultAsItsInnerException(bool unframed)
     {
         var fault = new TileComponentCodecDataException(TileComponentCodecRefusal.RoutePayloadTruncated,
-            "The component payload is truncated.") { DeclaredCount = 3, AvailableByteCount = 1 };
+            "The component payload is truncated.")
+        { DeclaredCount = 3, AvailableByteCount = 1 };
         var registry = new ReplicationRegistry();
         registry.Register<Value>(ValueId, (v, writer) => writer.Write(v.Number), reader =>
         {

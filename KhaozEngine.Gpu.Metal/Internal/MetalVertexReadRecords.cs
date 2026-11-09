@@ -21,12 +21,14 @@ internal sealed class MetalVertexReadRecords
     readonly Dictionary<MetalVertexReadLayout.Stream, int> _shapes = new();
     readonly int[] _shapeIds = new int[MetalVertexStreamRecords.MaxSlot + 1];
     readonly List<MetalVertexReadCoverage> _storage = new();
+    readonly MetalVertexWindowTable _windowTable = new();
     MetalRecordedReads? _target;
     MetalVertexReadLayout? _layout;
     ulong _generation;
     bool _indexed;
     uint _dirty, _windowSlots;
     long _preparations;
+    internal long RetainedWindowCapacityForTests => _windowTable.RetainedCapacityForTests;
 
     internal long CoverageStepsForTests
     {
@@ -50,12 +52,9 @@ internal sealed class MetalVertexReadRecords
     internal void Reset()
     {
         Array.Clear(_bindings);
-        _coverage.Clear();
-        _shapes.Clear();
+        ClearCoverage();
         _target = null;
-        _layout = null;
         _dirty = _windowSlots = 0;
-        _preparations = 0;
     }
 
     internal void RecordReads(MetalRecordedReads reads, MetalVertexReadLayout layout,
@@ -64,12 +63,9 @@ internal sealed class MetalVertexReadRecords
         if (vertexCount == 0 || instanceCount == 0) return;
         if (!ReferenceEquals(_target, reads) || _generation != reads.Generation)
         {
+            if (_target is not null) ClearCoverage();
             _target = reads;
             _generation = reads.Generation;
-            _coverage.Clear();
-            _shapes.Clear();
-            _layout = null;
-            _preparations = 0;
         }
         if (!ReferenceEquals(_layout, layout) || _indexed != indexed)
         {
@@ -99,6 +95,17 @@ internal sealed class MetalVertexReadRecords
             }
             binding.Coverage!.Record(reads, binding.Buffer, binding.Offset, stream, first, last, reachable: false);
         }
+    }
+
+    // Window stores are CPU recording scratch. Published prefixes own the separate exact read index.
+    void ClearCoverage()
+    {
+        _windowTable.Clear();
+        foreach (var coverage in _coverage.Values) coverage.Clear();
+        _coverage.Clear();
+        _shapes.Clear();
+        _layout = null;
+        _preparations = 0;
     }
 
     // Resolve structural equality only when the pipeline layout changes, never on every mesh rebind.
@@ -135,7 +142,7 @@ internal sealed class MetalVertexReadRecords
             if (!_coverage.TryGetValue(key, out var coverage))
             {
                 int index = _coverage.Count;
-                if (index == _storage.Count) _storage.Add(new());
+                if (index == _storage.Count) _storage.Add(new(_windowTable, index));
                 coverage = _storage[index];
                 coverage.Clear();
                 _coverage.Add(key, coverage);

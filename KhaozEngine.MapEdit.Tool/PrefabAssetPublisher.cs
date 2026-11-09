@@ -107,8 +107,13 @@ public sealed class PrefabAssetPublisher(MapEditSession session, IMapPrefabPubli
         if (!exists || !existing!.AsSpan().SequenceEqual(bytes))
             throw new MapDocumentException(MapDocumentRefusal.ToolImmutableResourceConflict,
                 "An immutable prefab address holds different bytes or was not published.")
-            { Path = path, ResourceId = resourceId, ExpectedHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
-                ActualHash = existing is null ? null : Convert.ToHexStringLower(SHA256.HashData(existing)), Operation = nameof(Publish) };
+            {
+                Path = path,
+                ResourceId = resourceId,
+                ExpectedHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
+                ActualHash = existing is null ? null : Convert.ToHexStringLower(SHA256.HashData(existing)),
+                Operation = nameof(Publish)
+            };
     }
     sealed class ImmutableFiles : IMapPrefabPublicationFiles
     {
@@ -125,8 +130,10 @@ public sealed class PrefabAssetPublisher(MapEditSession session, IMapPrefabPubli
                 catch (IOException) when (File.Exists(path)) { }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            { throw new MapDocumentException(MapDocumentRefusal.ToolResourceWriteFailed, "Cannot publish immutable prefab bytes: " + ex.Message, ex)
-                { Path = path, Operation = nameof(Publish) }; }
+            {
+                throw new MapDocumentException(MapDocumentRefusal.ToolResourceWriteFailed, "Cannot publish immutable prefab bytes: " + ex.Message, ex)
+                { Path = path, Operation = nameof(Publish) };
+            }
             finally { if (File.Exists(staging)) File.Delete(staging); }
         }
     }

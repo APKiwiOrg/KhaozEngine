@@ -96,7 +96,8 @@ public sealed partial class MovementQueryLease : IDisposable
             _physics.GeometryGeneration != id.GeometryGeneration || _pin.GeometryGeneration != id.GeometryGeneration ||
             _pin.EnvironmentGeneration != id.EnvironmentGeneration || _pin.Frame != Frame || _physics.Origin != Frame.PhysicsOrigin)
             throw new MovementReadException(MovementReadRefusal.QueryBindingStale,
-                "The movement query binding is stale.") { LeaseId = id, Frame = Frame };
+                "The movement query binding is stale.")
+            { LeaseId = id, Frame = Frame };
     }
 
     public void Dispose()
@@ -117,6 +118,7 @@ public sealed partial class MovementQueryLease : IDisposable
         int caller = Environment.CurrentManagedThreadId;
         if (caller != _thread)
             throw new MovementReadException(MovementReadRefusal.LeaseThreadMismatch,
-                "A movement query lease belongs to its acquiring thread.") { OwnerThreadId = _thread, CallerThreadId = caller };
+                "A movement query lease belongs to its acquiring thread.")
+            { OwnerThreadId = _thread, CallerThreadId = caller };
     }
 }

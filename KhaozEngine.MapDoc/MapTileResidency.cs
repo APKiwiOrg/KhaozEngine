@@ -105,8 +105,11 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
         if (config.LoadRadius < 0 || config.DecorRadius < 0)
             throw new MapResidencyArgumentException(MapDocumentRefusal.ValueOutsideRange,
                 $"LoadRadius ({config.LoadRadius}) and DecorRadius ({config.DecorRadius}) must not be negative.", nameof(config))
-            { FieldPath = config.LoadRadius < 0 ? nameof(config.LoadRadius) : nameof(config.DecorRadius),
-                ActualInteger = config.LoadRadius < 0 ? config.LoadRadius : config.DecorRadius, MinimumInteger = 0 };
+            {
+                FieldPath = config.LoadRadius < 0 ? nameof(config.LoadRadius) : nameof(config.DecorRadius),
+                ActualInteger = config.LoadRadius < 0 ? config.LoadRadius : config.DecorRadius,
+                MinimumInteger = 0
+            };
         if (config.UnloadRadius <= config.OuterRadius)
             throw new MapResidencyArgumentException(MapDocumentRefusal.ValueOutsideRange,
                 $"UnloadRadius ({config.UnloadRadius}) must exceed the outer load radius ({config.OuterRadius}) so the hysteresis band stops churn.",

@@ -76,8 +76,12 @@ public sealed partial class QueryService
                 "placements_in_rect: this native document holds unadopted legacy spawns in the rectangle, and their height comes " +
                 "only from a caller-supplied Surface owner. Reopen with markerOptionsJson legacySpawnSurfaceId, or adopt them as " +
                 "markers with spawns_adopt and author heights with marker_set.")
-            { DocumentId = c.Document.Id, FieldPath = "LegacySpawnSurfaceId", Operation = "placements_in_rect",
-                SourceIds = spawns.Select(s => s.Id).Concat(players.Select(s => s.Id)).ToArray() };
+            {
+                DocumentId = c.Document.Id,
+                FieldPath = "LegacySpawnSurfaceId",
+                Operation = "placements_in_rect",
+                SourceIds = spawns.Select(s => s.Id).Concat(players.Select(s => s.Id)).ToArray()
+            };
         MapResolvedDocument resolved = MapNativeResolution.Resolve(c.Document, c.Assets, NativeDocumentService.SessionOptionsV2);
         MapEffectiveResources resources = RequireEffectiveResources(resolved.EffectiveResources);
         var seated = resources.PlacementSupports.Select(s => s.PlacementId).ToHashSet(StringComparer.Ordinal);
@@ -87,7 +91,8 @@ public sealed partial class QueryService
                 p.Transform.YawRadians, p.Transform.Scale, !seated.Contains(p.PlacementId), p.Tags.ToArray()))
             .ToArray();
         MapSupportResult Sample(float x, float z) =>
-            MapNativePointReadout.SurfaceAt(resources, new MapExactXz(MapExactValue.FromSingle(x), MapExactValue.FromSingle(z)), surfaceId!);
+            MapNativePointReadout.SurfaceAt(resources, new MapExactXz(MapExactValue.FromSingle(x), MapExactValue.FromSingle(z)), surfaceId!,
+                NativeDocumentService.SessionOptionsV2.QueryLimits);
         var npcSupports = spawns.Select(s => Sample(s.X, s.Z)).ToArray();
         var startSupports = players.Select(s => Sample(s.X, s.Z)).ToArray();
         var refusedSources = spawns.Select((s, i) => (Kind: "Spawn", s.Id, Support: npcSupports[i]))
@@ -99,10 +104,14 @@ public sealed partial class QueryService
             throw new MapDocumentException(MapDocumentRefusal.ToolLegacySpawnSupportUnresolved,
                 $"placements_in_rect: legacySpawnSurfaceId '{surfaceId}' does not support every legacy spawn in the rectangle. " +
                 string.Join(" ", refused.Select(r => r + ".")) + " " + Guidance + ", or reopen with a Surface owner that supports them.")
-            { DocumentId = c.Document.Id, SurfaceId = surfaceId, Operation = "placements_in_rect",
+            {
+                DocumentId = c.Document.Id,
+                SurfaceId = surfaceId,
+                Operation = "placements_in_rect",
                 SourceIds = refusedSources.Select(r => r.Id).ToArray(),
                 Findings = refusedSources.Select((r, i) => new MapDocumentFinding(MapDocumentRefusal.ToolLegacySpawnSupportUnresolved, refused[i])
-                { SourceId = r.Id, SubjectKind = r.Kind, SurfaceId = surfaceId, SupportStatus = r.Support.Status }).ToArray() };
+                { SourceId = r.Id, SubjectKind = r.Kind, SurfaceId = surfaceId, SupportStatus = r.Support.Status }).ToArray()
+            };
         SpawnEntry[] npcs = spawns.Select((s, i) => new SpawnEntry(s.Id, s.ArchetypeId, s.X, npcSupports[i].WorldY, s.Z, s.Enabled,
             s.Tags.ToArray())
         { Support = npcSupports[i] }).ToArray();
@@ -114,7 +123,8 @@ public sealed partial class QueryService
 
     static MapEffectiveResources RequireEffectiveResources(MapEffectiveResources? resources) => resources
         ?? throw new MapDocumentException(MapDocumentRefusal.ToolEffectiveResourcesMissing,
-            "placements_in_rect: native resolution published no effective resources.") { Operation = "placements_in_rect" };
+            "placements_in_rect: native resolution published no effective resources.")
+        { Operation = "placements_in_rect" };
 
     // Fault seam for the resolver output, without substituting a resolver or mutating its state machine.
     internal static void RequireMissingEffectiveResourcesForTests(MapEffectiveResources? resources) =>

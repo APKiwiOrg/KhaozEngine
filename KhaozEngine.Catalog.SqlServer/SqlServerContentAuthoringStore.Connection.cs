@@ -116,7 +116,8 @@ public sealed partial class SqlServerContentAuthoringStore
     static ContentAuthoringException Contended(int number, string detail)
         => new(ContentAuthoringRefusal.TransactionContended, FormattableString.Invariant(
             $"The database refused this transaction because another writer held what it needed (SQL error {number}). Nothing was written. Re-read the baseline and prepare the plan again, exactly as for a base version that moved: {detail}"),
-            default, 0, ContentAuthoringException.BaseVersionMovedReason) { SqlErrorNumber = number };
+            default, 0, ContentAuthoringException.BaseVersionMovedReason)
+        { SqlErrorNumber = number };
 
     /// <summary>Exercises contention classification and translation with a provider number, without a live deadlock.</summary>
     internal static void RefuseTransactionContentionForTests(int number)

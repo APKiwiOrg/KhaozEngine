@@ -229,17 +229,24 @@ internal static class MapFoliageStorage
                     bounds ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.WorkCapacityExceeded,
                     "foliage region memberships exceed capacity or are not representable.")
                 {
-                    LayerId = layer.Id, FoliageChunk = key, FieldPath = axis, ActualInteger = actual,
-                    MinimumInteger = coordinate ? int.MinValue : null, MaximumInteger = coordinate ? int.MaxValue : null,
+                    LayerId = layer.Id,
+                    FoliageChunk = key,
+                    FieldPath = axis,
+                    ActualInteger = actual,
+                    MinimumInteger = coordinate ? int.MinValue : null,
+                    MaximumInteger = coordinate ? int.MaxValue : null,
                     Budget = !coordinate && !bounds ? "RegionMemberships" : null,
-                    ActualCount = !coordinate && !bounds ? count : null, Limit = !coordinate && !bounds ? 4096 : null,
+                    ActualCount = !coordinate && !bounds ? count : null,
+                    Limit = !coordinate && !bounds ? 4096 : null,
                 };
             }
             return (minX, minZ, maxX, maxZ, count);
         }
         catch (Exception ex) when (ex is ArithmeticException or ArgumentException)
-        { throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "foliage region memberships are not representable.", ex)
-            { LayerId = layer.Id, FoliageChunk = key, Operation = nameof(RegionRange) }; }
+        {
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "foliage region memberships are not representable.", ex)
+            { LayerId = layer.Id, FoliageChunk = key, Operation = nameof(RegionRange) };
+        }
     }
 
     internal static void RequireComplete(MapFoliageSet? set)
@@ -265,8 +272,12 @@ internal static class MapFoliageStorage
             throw new MapDocumentException(chunk.Key != expected.Key ? MapDocumentRefusal.AuthoredValueMismatch : MapDocumentRefusal.DigestMismatch,
                 "foliage advertised density digest mismatch.")
             {
-                LayerId = layerId, Index = index, FoliageChunk = chunk.Key, ExpectedFoliageChunk = expected.Key,
-                ExpectedHash = expected.Sha256, ActualHash = chunk.Key == expected.Key ? MapFoliageLayer.Digest(chunk) : null,
+                LayerId = layerId,
+                Index = index,
+                FoliageChunk = chunk.Key,
+                ExpectedFoliageChunk = expected.Key,
+                ExpectedHash = expected.Sha256,
+                ActualHash = chunk.Key == expected.Key ? MapFoliageLayer.Digest(chunk) : null,
             };
     }
 

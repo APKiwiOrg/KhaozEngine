@@ -79,6 +79,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             var n = Vector3.Normalize(new Vector3(1, 2, 3));
             var mesh = MeshAssembler.Build(new List<MeshCorner> { C(A, n, Vector2.Zero), C(B, n, Vector2.Zero), C(Cv, n, Vector2.Zero) });
+            Assert.NotEmpty(mesh.Vertices);
             foreach (var v in mesh.Vertices)
             {
                 Assert.Equal(n.X, v.Normal.X, 3);
@@ -91,6 +92,7 @@ namespace KhaozEngine.Tests.Render3D
         public void Indices_Reference_Valid_Vertices()
         {
             var mesh = MeshAssembler.Build(new List<MeshCorner> { C(A, null, Vector2.Zero), C(B, null, Vector2.Zero), C(Cv, null, Vector2.Zero) });
+            Assert.NotEmpty(mesh.Indices);
             foreach (var i in mesh.Indices) Assert.InRange(i, 0, mesh.Vertices.Length - 1);
         }
 
@@ -107,6 +109,8 @@ namespace KhaozEngine.Tests.Render3D
         {
             Assert.Throws<ArgumentException>(() =>
                 MeshAssembler.Build(new List<MeshCorner> { C(A, null, Vector2.Zero), C(B, null, Vector2.Zero) }));
+            Assert.Equal(3, MeshAssembler.Build(new List<MeshCorner>
+                { C(A, null, Vector2.Zero), C(B, null, Vector2.Zero), C(Cv, null, Vector2.Zero) }).Indices.Length);
         }
 
         // Two coplanar triangles sharing the edge B-Cv, no normals and no UVs: the shape a flat-shaded kit piece

@@ -551,7 +551,8 @@ public sealed partial class InMemoryContentAuthoringStore
             FormattableString.Invariant($"This store holds no version {versionNumber}."),
             default,
             0,
-            ContentAuthoringException.UnknownVersionReason) { VersionNumber = versionNumber };
+            ContentAuthoringException.UnknownVersionReason)
+        { VersionNumber = versionNumber };
 
     static ContentAuthoringException NoPackStore(string member)
         => new(ContentAuthoringRefusal.PackStoreMissing,
@@ -559,7 +560,8 @@ public sealed partial class InMemoryContentAuthoringStore
                 $"{nameof(InMemoryContentAuthoringStore)}.{member} needs a pack store and this store was built with none. A publish writes files before it writes rows, so the pack target is not optional for it."),
             default,
             0,
-            ContentAuthoringException.NoPackStoreReason) { MemberName = member };
+            ContentAuthoringException.NoPackStoreReason)
+        { MemberName = member };
 
     static ContentAuthoringException Unreadable(int versionNumber, string? hash, string? reason)
         => new(ContentAuthoringRefusal.PackUnreadable,

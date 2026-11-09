@@ -43,8 +43,11 @@ public static class MapFoliageValidation
         if (documentChunks > MapFoliagePayloadLimits.MaxDocumentChunks)
             Add(new(MapDocumentRefusal.WorkCapacityExceeded, $"foliage: density exceeds {MapFoliagePayloadLimits.MaxDensityBytes} decoded bytes per document.")
             {
-                FieldPath = "Layers", Budget = "decoded density bytes per document", ActualCount = documentChunks,
-                ActualByteCount = documentChunks * MapFoliageChunk.ByteLength, Limit = MapFoliagePayloadLimits.MaxDensityBytes,
+                FieldPath = "Layers",
+                Budget = "decoded density bytes per document",
+                ActualCount = documentChunks,
+                ActualByteCount = documentChunks * MapFoliageChunk.ByteLength,
+                Limit = MapFoliagePayloadLimits.MaxDensityBytes,
             });
         var ids = new HashSet<string>(StringComparer.Ordinal);
         int index = 0;
@@ -115,8 +118,15 @@ public static class MapFoliageValidation
                 if (!assets.TryGetResource(material.ResourceId, out MapResolvedResource? resource) || resource!.Kind != MapResourceKind.Material)
                     AddFinding(new(resource is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch,
                         $"{label}: material {material.Id} resource '{material.ResourceId}' is not a Material resource.")
-                    { LayerId = layer.Id, FieldPath = $"Materials[{i}].ResourceId", Index = i, ResourceId = material.ResourceId,
-                        ActualInteger = material.Id, ExpectedResourceKind = MapResourceKind.Material, ActualResourceKind = resource?.Kind }, errors, findings);
+                    {
+                        LayerId = layer.Id,
+                        FieldPath = $"Materials[{i}].ResourceId",
+                        Index = i,
+                        ResourceId = material.ResourceId,
+                        ActualInteger = material.Id,
+                        ExpectedResourceKind = MapResourceKind.Material,
+                        ActualResourceKind = resource?.Kind
+                    }, errors, findings);
             }
             for (int i = 0; i < layer.ClearanceRules.Count; i++)
             {
@@ -204,9 +214,12 @@ public static class MapFoliageValidation
         { FieldPath = "CellSize", ActualNumber = layer.CellSize, MinimumNumber = 0 });
         if (layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent || layer.Depth is < 1 or > MapFoliagePayloadLimits.MaxExtent)
             Add(new(MapDocumentRefusal.ValueOutsideRange, $"{label}: width and depth must be from 1 to {MapFoliagePayloadLimits.MaxExtent}.")
-            { FieldPath = layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent ? "Width" : "Depth",
+            {
+                FieldPath = layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent ? "Width" : "Depth",
                 ActualInteger = layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent ? layer.Width : layer.Depth,
-                MinimumInteger = 1, MaximumInteger = MapFoliagePayloadLimits.MaxExtent });
+                MinimumInteger = 1,
+                MaximumInteger = MapFoliagePayloadLimits.MaxExtent
+            });
         if (layer.RowDirection != MapRowDirection.PositiveZ) Add(new(MapDocumentRefusal.SchemaEnumUnsupported,
             label + ": density rows must advance positive world Z.")
         { FieldPath = "RowDirection", EnumType = typeof(MapRowDirection), ActualInteger = (long)layer.RowDirection });
@@ -217,8 +230,12 @@ public static class MapFoliageValidation
             Add(new(!float.IsFinite(layer.ScaleMin) ? MapDocumentRefusal.ValueNonfinite : layer.ScaleMin <= 0 ? MapDocumentRefusal.ValueOutsideRange :
                 !float.IsFinite(layer.ScaleMax) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.BoundsInvalid,
                 label + ": scale range must be finite, positive and ordered.")
-            { FieldPath = !Positive(layer.ScaleMin) ? "ScaleMin" : "ScaleMax", ActualNumber = !Positive(layer.ScaleMin) ? layer.ScaleMin : layer.ScaleMax,
-                MinimumNumber = !Positive(layer.ScaleMin) ? 0 : layer.ScaleMin, MaximumNumber = layer.ScaleMax });
+            {
+                FieldPath = !Positive(layer.ScaleMin) ? "ScaleMin" : "ScaleMax",
+                ActualNumber = !Positive(layer.ScaleMin) ? layer.ScaleMin : layer.ScaleMax,
+                MinimumNumber = !Positive(layer.ScaleMin) ? 0 : layer.ScaleMin,
+                MaximumNumber = layer.ScaleMax
+            });
         if (!float.IsFinite(layer.RootOffset)) Add(new(MapDocumentRefusal.ValueNonfinite, label + ": rootOffset must be finite.")
         { FieldPath = "RootOffset", ActualNumber = layer.RootOffset });
         if (!float.IsFinite(layer.DoorClearance) || layer.DoorClearance < 0)
@@ -234,10 +251,13 @@ public static class MapFoliageValidation
                     ? string.IsNullOrEmpty(layer.Policy.Id) ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.FoliagePolicyUnsupported
                     : MapDocumentRefusal.SchemaPayloadVersionUnsupported,
                 $"{label}: only policy {LegacyTilePolicy} version {LegacyTilePolicyVersion} is supported.")
-            { FieldPath = layer.Policy.Id != LegacyTilePolicy ? "Policy.Id" : "Policy.Version",
-                PolicyId = layer.Policy.Id, ExpectedPolicyId = LegacyTilePolicy,
+            {
+                FieldPath = layer.Policy.Id != LegacyTilePolicy ? "Policy.Id" : "Policy.Version",
+                PolicyId = layer.Policy.Id,
+                ExpectedPolicyId = LegacyTilePolicy,
                 ActualVersion = layer.Policy.Id == LegacyTilePolicy ? layer.Policy.Version : null,
-                SupportedVersions = layer.Policy.Id == LegacyTilePolicy ? [LegacyTilePolicyVersion] : null });
+                SupportedVersions = layer.Policy.Id == LegacyTilePolicy ? [LegacyTilePolicyVersion] : null
+            });
         if (!float.IsFinite(layer.Policy.NormalBoundaryHeight)) Add(new(MapDocumentRefusal.ValueNonfinite, label + ": normalBoundaryHeight must be finite.")
         { FieldPath = "Policy.NormalBoundaryHeight", ActualNumber = layer.Policy.NormalBoundaryHeight });
         Models(layer, label, errors, findings);
@@ -254,8 +274,14 @@ public static class MapFoliageValidation
         if (layer.Models.Count is 0 or > MapFoliagePayloadLimits.MaxModels)
             Add(new(layer.Models.Count == 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.WorkCapacityExceeded,
                 $"{label}: models must hold from 1 to {MapFoliagePayloadLimits.MaxModels} entries.")
-            { FieldPath = "Models", ActualCount = layer.Models.Count, MinimumInteger = 1, MaximumInteger = MapFoliagePayloadLimits.MaxModels,
-                Budget = "models", Limit = MapFoliagePayloadLimits.MaxModels });
+            {
+                FieldPath = "Models",
+                ActualCount = layer.Models.Count,
+                MinimumInteger = 1,
+                MaximumInteger = MapFoliagePayloadLimits.MaxModels,
+                Budget = "models",
+                Limit = MapFoliagePayloadLimits.MaxModels
+            });
         var ids = new HashSet<string>(StringComparer.Ordinal);
         float total = 0;
         for (int i = 0; i < layer.Models.Count; i++)
@@ -280,25 +306,39 @@ public static class MapFoliageValidation
     {
         if (layer.Materials.Count > MapFoliagePayloadLimits.MaxMaterials || layer.AllowedVisibleMaterials.Count > MapFoliagePayloadLimits.MaxMaterials)
             Add(new(MapDocumentRefusal.WorkCapacityExceeded, $"{label}: more than {MapFoliagePayloadLimits.MaxMaterials} materials.")
-            { FieldPath = layer.Materials.Count > MapFoliagePayloadLimits.MaxMaterials ? "Materials" : "AllowedVisibleMaterials",
+            {
+                FieldPath = layer.Materials.Count > MapFoliagePayloadLimits.MaxMaterials ? "Materials" : "AllowedVisibleMaterials",
                 Budget = layer.Materials.Count > MapFoliagePayloadLimits.MaxMaterials ? "materials" : "allowed visible materials",
                 ActualCount = layer.Materials.Count > MapFoliagePayloadLimits.MaxMaterials ? layer.Materials.Count : layer.AllowedVisibleMaterials.Count,
-                Limit = MapFoliagePayloadLimits.MaxMaterials });
+                Limit = MapFoliagePayloadLimits.MaxMaterials
+            });
         var declared = new HashSet<ushort>();
         for (int i = 0; i < layer.Materials.Count; i++)
         {
             MapFoliageMaterial material = layer.Materials[i];
             if (material.Id == 0) Add(new(MapDocumentRefusal.ValueOutsideRange, label + ": material id 0 is void and cannot be declared.")
-            { FieldPath = $"Materials[{i}].Id", Index = i, ActualInteger = material.Id, ResourceId = material.ResourceId,
-                MinimumInteger = 1, MaximumInteger = ushort.MaxValue });
+            {
+                FieldPath = $"Materials[{i}].Id",
+                Index = i,
+                ActualInteger = material.Id,
+                ResourceId = material.ResourceId,
+                MinimumInteger = 1,
+                MaximumInteger = ushort.MaxValue
+            });
             else if (!declared.Add(material.Id)) Add(new(MapDocumentRefusal.IdentityDuplicate, $"{label}: material {material.Id} is declared twice.")
             { FieldPath = $"Materials[{i}].Id", Index = i, ActualInteger = material.Id, ResourceId = material.ResourceId, SubjectKind = "foliage material" });
             if (string.IsNullOrEmpty(material.ResourceId)) Add(new(MapDocumentRefusal.SchemaValueRequired, $"{label}: material {material.Id} needs a resourceId.")
             { FieldPath = $"Materials[{i}].ResourceId", Index = i, ActualInteger = material.Id, ResourceId = material.ResourceId });
             if (!Enum.IsDefined(material.Kind)) Add(new(MapDocumentRefusal.SchemaEnumUnsupported,
                 $"{label}: material {material.Id} has an unsupported kind.")
-            { FieldPath = $"Materials[{i}].Kind", Index = i, NumericId = material.Id, ResourceId = material.ResourceId,
-                EnumType = typeof(MapFoliageMaterialKind), ActualInteger = (long)material.Kind });
+            {
+                FieldPath = $"Materials[{i}].Kind",
+                Index = i,
+                NumericId = material.Id,
+                ResourceId = material.ResourceId,
+                EnumType = typeof(MapFoliageMaterialKind),
+                ActualInteger = (long)material.Kind
+            });
         }
         // A sorted distinct nonzero set, each a declared material.
         for (int i = 0; i < layer.AllowedVisibleMaterials.Count; i++)
@@ -380,8 +420,14 @@ public static class MapFoliageValidation
             string at = $"{label} owner support '{owner.Owner?.Id}'";
             Owner(owner.Owner, at, errors, findings, layer.Id, $"OwnerSupports[{i}].Owner", i);
             if (owner.Owner is not null && !owners.Add(owner.Owner)) Add(new(MapDocumentRefusal.IdentityDuplicate, at + " is listed twice.")
-            { FieldPath = $"OwnerSupports[{i}].Owner", Index = i, EntityId = owner.Owner.Id,
-                ChildKind = owner.Owner.Kind, ReferenceScope = owner.Owner.Scope, SubjectKind = "owner support" });
+            {
+                FieldPath = $"OwnerSupports[{i}].Owner",
+                Index = i,
+                EntityId = owner.Owner.Id,
+                ChildKind = owner.Owner.Kind,
+                ReferenceScope = owner.Owner.Scope,
+                SubjectKind = "owner support"
+            });
             Binding(owner.Support, at + " support", errors, findings, layer.Id, $"OwnerSupports[{i}].Support", i, owner.Owner?.Id);
         }
 
@@ -393,8 +439,13 @@ public static class MapFoliageValidation
     {
         if (layer.ChunkDigests.Count > MapFoliagePayloadLimits.MaxChunksPerLayer)
             AddFinding(new(MapDocumentRefusal.WorkCapacityExceeded, $"{label}: more than {MapFoliagePayloadLimits.MaxChunksPerLayer} chunks.")
-            { LayerId = layer.Id, FieldPath = "ChunkDigests", Budget = "chunks per layer", ActualCount = layer.ChunkDigests.Count,
-                Limit = MapFoliagePayloadLimits.MaxChunksPerLayer }, errors, findings);
+            {
+                LayerId = layer.Id,
+                FieldPath = "ChunkDigests",
+                Budget = "chunks per layer",
+                ActualCount = layer.ChunkDigests.Count,
+                Limit = MapFoliagePayloadLimits.MaxChunksPerLayer
+            }, errors, findings);
         if (layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent || layer.Depth is < 1 or > MapFoliagePayloadLimits.MaxExtent) return;
         int columns = (layer.Width + MapFoliageChunk.Size - 1) / MapFoliageChunk.Size;
         int rows = (layer.Depth + MapFoliageChunk.Size - 1) / MapFoliageChunk.Size;
@@ -405,9 +456,17 @@ public static class MapFoliageValidation
             {
                 bool x = advertised.Key.X < 0 || advertised.Key.X >= columns;
                 AddFinding(new(MapDocumentRefusal.FoliageChunkOutOfDomain, $"{label} advertised chunk {advertised.Key} lies outside the density domain.")
-                { LayerId = layer.Id, FieldPath = $"ChunkDigests[{i}].Key.{(x ? "X" : "Z")}", Index = i, FoliageChunk = advertised.Key,
-                    Width = layer.Width, Depth = layer.Depth, ActualInteger = x ? advertised.Key.X : advertised.Key.Z,
-                    MinimumInteger = 0, MaximumInteger = (x ? columns : rows) - 1 }, errors, findings);
+                {
+                    LayerId = layer.Id,
+                    FieldPath = $"ChunkDigests[{i}].Key.{(x ? "X" : "Z")}",
+                    Index = i,
+                    FoliageChunk = advertised.Key,
+                    Width = layer.Width,
+                    Depth = layer.Depth,
+                    ActualInteger = x ? advertised.Key.X : advertised.Key.Z,
+                    MinimumInteger = 0,
+                    MaximumInteger = (x ? columns : rows) - 1
+                }, errors, findings);
             }
         }
         var keys = new HashSet<MapFoliageChunkKey>();
@@ -432,9 +491,16 @@ public static class MapFoliageValidation
         {
             bool x = key.X < 0 || key.X >= columns;
             AddFinding(new(MapDocumentRefusal.FoliageChunkOutOfDomain, at + " lies outside the density domain.")
-            { LayerId = layer.Id, FieldPath = "Chunk.Key." + (x ? "X" : "Z"), FoliageChunk = key,
-                Width = layer.Width, Depth = layer.Depth, ActualInteger = x ? key.X : key.Z,
-                MinimumInteger = 0, MaximumInteger = (x ? columns : rows) - 1 }, errors, findings);
+            {
+                LayerId = layer.Id,
+                FieldPath = "Chunk.Key." + (x ? "X" : "Z"),
+                FoliageChunk = key,
+                Width = layer.Width,
+                Depth = layer.Depth,
+                ActualInteger = x ? key.X : key.Z,
+                MinimumInteger = 0,
+                MaximumInteger = (x ? columns : rows) - 1
+            }, errors, findings);
             return;
         }
         int usedX = Math.Min(MapFoliageChunk.Size, layer.Width - key.X * MapFoliageChunk.Size);
@@ -445,9 +511,17 @@ public static class MapFoliageValidation
             if (density[i] != 0 && (i % MapFoliageChunk.Size >= usedX || i / MapFoliageChunk.Size >= usedZ))
             {
                 AddFinding(new(MapDocumentRefusal.FoliagePaddingNonzero, at + ": padding outside the density domain must be zero.")
-                { LayerId = layer.Id, FieldPath = "Chunk.Density", FoliageChunk = key, Index = i,
-                    CellX = i % MapFoliageChunk.Size, CellZ = i / MapFoliageChunk.Size, ActualInteger = density[i],
-                    Width = layer.Width, Depth = layer.Depth }, errors, findings);
+                {
+                    LayerId = layer.Id,
+                    FieldPath = "Chunk.Density",
+                    FoliageChunk = key,
+                    Index = i,
+                    CellX = i % MapFoliageChunk.Size,
+                    CellZ = i / MapFoliageChunk.Size,
+                    ActualInteger = density[i],
+                    Width = layer.Width,
+                    Depth = layer.Depth
+                }, errors, findings);
                 break;
             }
     }
@@ -466,8 +540,10 @@ public static class MapFoliageValidation
                 foreach (MapDocumentFinding finding in local)
                     findings!.Add(finding with
                     {
-                        LayerId = layerId, FieldPath = field + "." + finding.FieldPath!["$.supportBinding.".Length..],
-                        Index = index, EntityId = entityId,
+                        LayerId = layerId,
+                        FieldPath = field + "." + finding.FieldPath!["$.supportBinding.".Length..],
+                        Index = index,
+                        EntityId = entityId,
                     });
         }
     }
@@ -480,16 +556,30 @@ public static class MapFoliageValidation
                 owner.Scope != MapPrefabReferenceScope.World ? MapDocumentRefusal.AuthoredOwnershipMismatch :
                 !OwnerKinds.Contains(owner.Kind) ? MapDocumentRefusal.AuthoredReferenceKindInvalid : MapDocumentRefusal.SchemaValueRequired,
                 label + ": owner must be a World Placement, Surface, Record or Marker reference with an id.")
-            { LayerId = layerId, FieldPath = field, Index = index, EntityId = owner?.Id, ChildKind = owner?.Kind,
-                ReferenceScope = owner?.Scope, ExpectedReferenceScope = MapPrefabReferenceScope.World, SubjectKind = "foliage owner" }, errors, findings);
+            {
+                LayerId = layerId,
+                FieldPath = field,
+                Index = index,
+                EntityId = owner?.Id,
+                ChildKind = owner?.Kind,
+                ReferenceScope = owner?.Scope,
+                ExpectedReferenceScope = MapPrefabReferenceScope.World,
+                SubjectKind = "foliage owner"
+            }, errors, findings);
     }
 
     static void Kind(MapFoliageClearanceKind kind, string label, List<string> errors, List<MapDocumentFinding>? findings,
         string layerId, string field, int index, string entityId)
     {
         if (!Enum.IsDefined(kind)) AddFinding(new(MapDocumentRefusal.SchemaEnumUnsupported, label + ": unsupported clearance kind.")
-        { LayerId = layerId, FieldPath = field, Index = index, EntityId = entityId,
-            EnumType = typeof(MapFoliageClearanceKind), ActualInteger = (long)kind }, errors, findings);
+        {
+            LayerId = layerId,
+            FieldPath = field,
+            Index = index,
+            EntityId = entityId,
+            EnumType = typeof(MapFoliageClearanceKind),
+            ActualInteger = (long)kind
+        }, errors, findings);
     }
 
     static void Rect(MapFoliageRect rect, string label, List<string> errors, List<MapDocumentFinding>? findings,
@@ -505,9 +595,15 @@ public static class MapFoliageValidation
             bool finite = float.IsFinite(actual);
             AddFinding(new(finite ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueNonfinite,
                 label + ": footprint must be finite with MaxX > MinX and MaxZ > MinZ.")
-            { LayerId = layerId, FieldPath = field + "." + component, Index = index, EntityId = entityId, ActualNumber = actual,
+            {
+                LayerId = layerId,
+                FieldPath = field + "." + component,
+                Index = index,
+                EntityId = entityId,
+                ActualNumber = actual,
                 MinimumNumber = finite ? component == "MaxX" ? rect.MinX : rect.MinZ : null,
-                MaximumNumber = finite ? actual : null }, errors, findings);
+                MaximumNumber = finite ? actual : null
+            }, errors, findings);
         }
     }
 

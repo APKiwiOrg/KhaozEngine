@@ -55,8 +55,13 @@ internal static class MapWaterValidation
         if (!float.IsFinite(medium.WadeSpeedScale) || !(medium.WadeSpeedScale > 0f) || medium.WadeSpeedScale > 1f)
             Add(new(!float.IsFinite(medium.WadeSpeedScale) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
                 $"{label}: wadeSpeedScale must be in (0, 1].")
-            { EntityId = medium.Key, FieldPath = "WadeSpeedScale", ActualNumber = medium.WadeSpeedScale,
-                MinimumNumber = 0, MaximumNumber = 1 }, errors, findings);
+            {
+                EntityId = medium.Key,
+                FieldPath = "WadeSpeedScale",
+                ActualNumber = medium.WadeSpeedScale,
+                MinimumNumber = 0,
+                MaximumNumber = 1
+            }, errors, findings);
     }
 
     /// <summary>Returns the compiled domain when the body's geometry is valid and its id is unique.</summary>
@@ -76,8 +81,13 @@ internal static class MapWaterValidation
         if (!float.IsFinite(body.SurfaceY) || MathF.Abs(body.SurfaceY) > MaxMetres)
             Add(new(!float.IsFinite(body.SurfaceY) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
                 $"{label}: surfaceY must be finite within {MaxMetres} m.")
-            { EntityId = body.Id, FieldPath = "SurfaceY", ActualNumber = body.SurfaceY,
-                MinimumNumber = -MaxMetres, MaximumNumber = MaxMetres }, errors, findings);
+            {
+                EntityId = body.Id,
+                FieldPath = "SurfaceY",
+                ActualNumber = body.SurfaceY,
+                MinimumNumber = -MaxMetres,
+                MaximumNumber = MaxMetres
+            }, errors, findings);
         else
         {
             try { _ = MapExactValue.FromSingle(body.SurfaceY); }
@@ -138,8 +148,13 @@ internal static class MapWaterValidation
             MapWaterRect rect = domain.Rects[i];
             if (rect.MinX >= rect.MaxX || rect.MinZ >= rect.MaxZ)
                 Add(new(MapDocumentRefusal.BoundsInvalid, $"{label}: rect {i} is empty.")
-                { EntityId = bodyId, FieldPath = $"Domain.Rects[{i}]", Index = i, SubjectKind = "rect",
-                    Address = MapLatticeAddress.Corner(rect.MinX, rect.MinZ) }, errors, findings);
+                {
+                    EntityId = bodyId,
+                    FieldPath = $"Domain.Rects[{i}]",
+                    Index = i,
+                    SubjectKind = "rect",
+                    Address = MapLatticeAddress.Corner(rect.MinX, rect.MinZ)
+                }, errors, findings);
             far |= FarAt(MapLatticeAddress.Corner(rect.MinX, rect.MinZ), $"Domain.Rects[{i}]", i) ||
                 FarAt(MapLatticeAddress.Corner(rect.MaxX, rect.MaxZ), $"Domain.Rects[{i}]", i);
         }
@@ -151,8 +166,13 @@ internal static class MapWaterValidation
             {
                 Add(new(vertices is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ValueOutsideRange,
                     $"{label}: ring {i} needs at least 3 vertices.")
-                { EntityId = bodyId, FieldPath = domain.Rings[i] is null ? $"Domain.Rings[{i}]" : $"Domain.Rings[{i}].Vertices",
-                    Index = i, ActualCount = vertexCount, MinimumInteger = vertices is null ? null : 3 }, errors, findings);
+                {
+                    EntityId = bodyId,
+                    FieldPath = domain.Rings[i] is null ? $"Domain.Rings[{i}]" : $"Domain.Rings[{i}].Vertices",
+                    Index = i,
+                    ActualCount = vertexCount,
+                    MinimumInteger = vertices is null ? null : 3
+                }, errors, findings);
                 if (vertices is null) continue;
             }
             for (int v = 0; v < vertices.Count; v++)
@@ -168,9 +188,15 @@ internal static class MapWaterValidation
                     string message = $"{label}: ring {i} vertex {v} is not a valid lattice address.";
                     errors.Add(message);
                     if (MapDocumentFinding.FromException(error) is { } finding)
-                        findings?.Add(finding with { Message = message,
-                            EntityId = bodyId, FieldPath = $"Domain.Rings[{i}].Vertices[{v}].{finding.FieldPath}", Index = i,
-                            OtherIndex = v, Address = vertex ?? finding.Address });
+                        findings?.Add(finding with
+                        {
+                            Message = message,
+                            EntityId = bodyId,
+                            FieldPath = $"Domain.Rings[{i}].Vertices[{v}].{finding.FieldPath}",
+                            Index = i,
+                            OtherIndex = v,
+                            Address = vertex ?? finding.Address
+                        });
                 }
             }
         }
@@ -243,8 +269,11 @@ internal static class MapWaterValidation
             }
             catch (MapDocumentException e)
             {
-                Add(MapDocumentFinding.FromException(e)! with { Message = $"water bodies covering space '{space}': {e.Message}.",
-                    SpaceId = space }, errors, findings);
+                Add(MapDocumentFinding.FromException(e)! with
+                {
+                    Message = $"water bodies covering space '{space}': {e.Message}.",
+                    SpaceId = space
+                }, errors, findings);
                 return;
             }
             var messages = new List<MapDocumentFinding>();
@@ -253,7 +282,8 @@ internal static class MapWaterValidation
                 string[] ids = { compiled[first].Body.Id, compiled[second].Body.Id };
                 Array.Sort(ids, StringComparer.Ordinal);
                 messages.Add(new(MapDocumentRefusal.WaterBodiesOverlap,
-                    $"water bodies '{ids[0]}' and '{ids[1]}' overlap in space '{space}'.") { SourceIds = ids, SpaceId = space });
+                    $"water bodies '{ids[0]}' and '{ids[1]}' overlap in space '{space}'.")
+                { SourceIds = ids, SpaceId = space });
             }
             messages.Sort((a, b) => StringComparer.Ordinal.Compare(a.Message, b.Message));
             foreach (var finding in messages) Add(finding, errors, findings);
@@ -267,7 +297,8 @@ internal static class MapWaterValidation
         if (covers is null || coverCount == 0)
         {
             Add(new(covers is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.WaterNoCoveredSpace,
-                $"{label}: covers no space.") { EntityId = bodyId, FieldPath = "Covers", ActualCount = coverCount }, errors, findings);
+                $"{label}: covers no space.")
+            { EntityId = bodyId, FieldPath = "Covers", ActualCount = coverCount }, errors, findings);
             return false;
         }
         int before = errors.Count;
@@ -277,8 +308,13 @@ internal static class MapWaterValidation
             MapRecordRef cover = covers[i];
             if (cover is null || string.IsNullOrWhiteSpace(cover.Id) || string.IsNullOrWhiteSpace(cover.Anchor.SurfaceId))
                 Add(new(MapDocumentRefusal.SchemaValueRequired, $"{label}: cover {i} needs a space id and an anchor surface.")
-                { EntityId = bodyId, Index = i, RecordId = cover?.Id, Patch = cover?.Anchor,
-                    FieldPath = cover is null ? $"Covers[{i}]" : string.IsNullOrWhiteSpace(cover.Id) ? $"Covers[{i}].Id" : $"Covers[{i}].Anchor.SurfaceId" }, errors, findings);
+                {
+                    EntityId = bodyId,
+                    Index = i,
+                    RecordId = cover?.Id,
+                    Patch = cover?.Anchor,
+                    FieldPath = cover is null ? $"Covers[{i}]" : string.IsNullOrWhiteSpace(cover.Id) ? $"Covers[{i}].Id" : $"Covers[{i}].Anchor.SurfaceId"
+                }, errors, findings);
             else if (!seen.Add(cover.Id)) Add(new(MapDocumentRefusal.IdentityDuplicate, $"{label}: cover '{cover.Id}' is repeated.")
             { EntityId = bodyId, RecordId = cover.Id, Patch = cover.Anchor, Index = i, FieldPath = $"Covers[{i}]" }, errors, findings);
         }

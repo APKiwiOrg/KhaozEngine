@@ -422,7 +422,8 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                     0,
                     ContentAuthoringException.FamilyDeclarationReason)
                 {
-                    FamilyKey = familyKey, ActualBlockSize = blockSize,
+                    FamilyKey = familyKey,
+                    ActualBlockSize = blockSize,
                     MinimumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MinBlockSize : null,
                     MaximumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MaxBlockSize : null,
                 };
@@ -438,7 +439,8 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                             $"Content type {type.Value} already carries a family keyed '{familyKey}', and a family key is unique within its type."),
                         type,
                         0,
-                        ContentAuthoringException.FamilyDeclarationReason) { FamilyKey = familyKey };
+                        ContentAuthoringException.FamilyDeclarationReason)
+                    { FamilyKey = familyKey };
                 }
             }
 
@@ -670,7 +672,8 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 FormattableString.Invariant($"Family {familyId} is not in the store."),
                 default,
                 0,
-                ContentAuthoringException.UnknownFamilyReason) { FamilyId = familyId };
+                ContentAuthoringException.UnknownFamilyReason)
+            { FamilyId = familyId };
 
     ContentTypeRegistration RequireType(ContentTypeId type)
         => _registry.TryGet(type, out ContentTypeRegistration? registration)

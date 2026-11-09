@@ -21,8 +21,12 @@ public sealed class MapPrismCoverageRefusalTests
         var set = MapOccupiedPartitionRefusalTests.Scene(1);
         var patch = set.Patches.Values.Single();
         var prism = patch.Records.OfType<MapPrismDomain>().Single();
-        var refused = prism.Footprint with { Rects = [], Rings = collinear
-            ? [new([MapLatticeAddress.Corner(0, 0), MapLatticeAddress.Corner(1, 0), MapLatticeAddress.Corner(2, 0)])] : [] };
+        var refused = prism.Footprint with
+        {
+            Rects = [],
+            Rings = collinear
+            ? [new([MapLatticeAddress.Corner(0, 0), MapLatticeAddress.Corner(1, 0), MapLatticeAddress.Corner(2, 0)])] : []
+        };
         Replace(patch, prism with { Footprint = refused });
         var finding = Assert.Single(Findings(MapOccupiedPartitionRefusalTests.View(set)));
         Assert.Equal(reason, finding.Reason);
@@ -109,9 +113,15 @@ public sealed class MapPrismCoverageRefusalTests
         var patch = set.Patches.Values.Single();
         var prism = patch.Records.OfType<MapPrismDomain>().Single();
         var storey = new MapStoreyDoc(1, prism.StoreyId, "Storey", null);
-        var document = new MapDocument { Surfaces = set, BuildingIntent = new(1, [], [], [], [])
-        { Storeys = defect == "missing" ? [] : [defect == "version" ? storey with { PayloadVersion = 2 }
-            : defect == "storey-owner" ? storey with { InstanceId = "other" } : storey] } };
+        var document = new MapDocument
+        {
+            Surfaces = set,
+            BuildingIntent = new(1, [], [], [], [])
+            {
+                Storeys = defect == "missing" ? [] : [defect == "version" ? storey with { PayloadVersion = 2 }
+            : defect == "storey-owner" ? storey with { InstanceId = "other" } : storey]
+            }
+        };
         if (defect == "prism-owner") Replace(patch, prism with { InstanceId = "other" });
         var error = Assert.Throws<MapDocumentException>(() => MapPrismCoverage.RequireStandaloneStoreys(document));
         Assert.Equal(reason, error.Reason);
@@ -138,8 +148,12 @@ public sealed class MapPrismCoverageRefusalTests
         var prism = set.AllRecords().OfType<MapPrismDomain>().Single();
         var record = new MapPrefabBindingTransfer("source", new(new(MapPrefabChildKind.Record, "room"), prism.Id, null, false));
         var storey = new MapPrefabBindingTransfer("source", new(new(MapPrefabChildKind.Storey, "storey"), prism.StoreyId, null, false));
-        var document = new MapDocument { Surfaces = set, BuildingIntent = new(1, [], [], [], [])
-        { Storeys = [new(1, prism.StoreyId, "Storey", null)] } };
+        var document = new MapDocument
+        {
+            Surfaces = set,
+            BuildingIntent = new(1, [], [], [], [])
+            { Storeys = [new(1, prism.StoreyId, "Storey", null)] }
+        };
         document.Prefabs = new(1, 1, [], defect == "missing" ? [record] :
             [defect == "record-retired" ? record with { Retired = true } : defect == "record-removed"
                 ? record with { Binding = record.Binding with { Removed = true } } : record,
@@ -206,8 +220,11 @@ public sealed class MapPrismCoverageRefusalTests
         var (set, portal) = MapApertureRefusalTests.Portal();
         var patch = set.Patches.Values.Single();
         var chain = patch.Records.OfType<MapBoundaryChain>().Single(c => c.Id == portal.BandBottom.Id);
-        Replace(patch, chain with { Vertices = chain.Vertices.Select(v => v with
-        { Vertex = new("missing", v.Vertex.Address) }).ToArray() });
+        Replace(patch, chain with
+        {
+            Vertices = chain.Vertices.Select(v => v with
+            { Vertex = new("missing", v.Vertex.Address) }).ToArray()
+        });
         patch.Records.Add(new MapWallStrip("strip", portal.BandBottom, portal.BandTop!, MapStripFacing.Front, 1));
         var findings = new List<MapDocumentFinding>();
         var messages = new List<string>();

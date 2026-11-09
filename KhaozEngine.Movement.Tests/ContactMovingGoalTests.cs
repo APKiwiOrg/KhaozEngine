@@ -17,8 +17,12 @@ public class ContactMovingGoalTests
     {
         MoveTuning tuning = OrdinaryContactScene.DefaultTuning with
         {
-            WalkSpeed = 3f, RunSpeed = 5f, CapsuleRadius = 0.3f, StepHeight = 0.4f,
-            MaxSlopeRadians = MathF.PI / 4f, Gravity = 25f,
+            WalkSpeed = 3f,
+            RunSpeed = 5f,
+            CapsuleRadius = 0.3f,
+            StepHeight = 0.4f,
+            MaxSlopeRadians = MathF.PI / 4f,
+            Gravity = 25f,
         };
         var minimum = new Vector3(16f, -4f, -48f);
         var maximum = new Vector3(25f, 4f, -10f);

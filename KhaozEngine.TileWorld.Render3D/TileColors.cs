@@ -30,7 +30,8 @@ public static class TileColors
                 "a null colour is not a colour: expected #rrggbb or #rrggbbaa");
         if ((hex.Length != 7 && hex.Length != 9) || hex[0] != '#')
             throw new TileWorldException(TileWorldRefusal.ColourShapeInvalid,
-                $"'{hex}' is not a colour: expected #rrggbb or #rrggbbaa") { ColourText = hex };
+                $"'{hex}' is not a colour: expected #rrggbb or #rrggbbaa")
+            { ColourText = hex };
 
         int channels = (hex.Length - 1) / 2;
         Span<float> rgba = stackalloc float[4] { 0f, 0f, 0f, 1f };

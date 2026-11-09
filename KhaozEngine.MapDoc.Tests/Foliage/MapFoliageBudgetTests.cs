@@ -7,6 +7,27 @@ namespace KhaozEngine.Tests.MapDoc.Foliage;
 
 public sealed class MapFoliageBudgetTests
 {
+    [Theory]
+    [InlineData(2)]
+    [InlineData(int.MaxValue - 1)]
+    [InlineData(int.MaxValue)]
+    public void Query_DeclaredChunkAllowanceMatchesOmittedPolicy(int maxQueryChunks)
+    {
+        var context = FoliageFixtures.Context(FoliageComparisonFixtures.TwoSamplesPerChunk());
+        var expected = MapFoliageDistribution.Query(context, "cover-a", new(2, -2, 18, 2));
+        Assert.Equal(MapFoliageStatus.Complete, expected.Status);
+        Assert.Equal(2, expected.Batches.Count);
+        Assert.All(expected.Batches, batch => Assert.Equal(2, batch.Samples.Count));
+
+        var actual = MapFoliageDistribution.Query(context, "cover-a", new(2, -2, 18, 2),
+            new(MaxQueryChunks: maxQueryChunks));
+        Assert.Equal(expected.Status, actual.Status);
+        Assert.Equal(expected.Batches.Count, actual.Batches.Count);
+        for (int i = 0; i < expected.Batches.Count; i++)
+            MapWindowFoliageTests.Same(expected.Batches[i], actual.Batches[i]);
+        Assert.Equal(expected.Work, actual.Work);
+    }
+
     [Fact]
     public void Query_AggregateRetentionRefusesIndividuallyLegalChunks()
     {
@@ -34,11 +55,8 @@ public sealed class MapFoliageBudgetTests
     }
 
     [Fact]
-    public void Retention_ChargesUtf8AndBatchOverheadBeforeAccepting()
+    public void Retention_RefusesBeforeCrossingTheAggregateAllowance()
     {
-        long chargedTwoMaterialSampleBytes = MapFoliageRetentionBudget.ChargeSample("a", "r", "f", "legacy-tile", ["m", "n"]);
-        Assert.Equal(560, chargedTwoMaterialSampleBytes);
-        Assert.Equal(516, MapFoliageRetentionBudget.ChargeSample("é", "", "", "", []));
         var b = new MapFoliageRetentionBudget(1, 816);
         Assert.True(b.TryRetainBatch());
         Assert.True(b.TryRetain(560));

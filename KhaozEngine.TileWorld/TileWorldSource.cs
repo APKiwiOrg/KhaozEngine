@@ -145,7 +145,8 @@ public sealed class TileWorldSource
         if (r is null) return false;
         if (r.Dirty)
             throw new TileWorldException(TileWorldRefusal.RegionDirty,
-                $"region {c} has unsaved changes and cannot be unloaded") { Region = c };
+                $"region {c} has unsaved changes and cannot be unloaded")
+            { Region = c };
         // Hashed from the region, not read out of _known, which is the manifest as it stood at Open. A region
         // that was loaded, edited and saved has new bytes on disk and a new hash in the manifest, while _known
         // still holds the old one. Recording that stale hash here would put it back into the next save's

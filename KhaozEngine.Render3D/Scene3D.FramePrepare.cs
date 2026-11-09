@@ -97,10 +97,10 @@ namespace KhaozEngine.Render3D
             EnsureWaterCausticCapacity();
             BindWaterColumnShadows(_water);
             HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording
-            var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
+            var frame = new FramePrepare(Post.Water, WaterDemandPlanes(), EffectTimeSeconds);
             IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };
             for (int i = 0; i < preparers.Length; i++) preparers[i].PrepareFrame(frame);
-            if (optics) PrepareWaterOptics(frame);
+            if (optics) PrepareWaterOptics(new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds));
         }
 
         // The frame's one device.water.prepare root owns the column colour source and the optics sets that bind it,
@@ -109,7 +109,7 @@ namespace KhaozEngine.Render3D
         {
             using var device = _water.Profiling?.Cpu("device.water.prepare") ?? default;
             PrepareWaterColumnColor();
-            _water.PrepareOpticsFrameCore(_res, frame, CollectionsMarshal.AsSpan(_waterPlanes));
+            _water.PrepareOpticsFrameCore(_res, frame, CollectionsMarshal.AsSpan(_waterPlanes), _boundedWater.Count);
         }
 
         bool _waterViewportPrepared;

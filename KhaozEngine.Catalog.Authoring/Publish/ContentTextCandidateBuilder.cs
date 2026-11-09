@@ -63,7 +63,8 @@ internal static class ContentTextCandidateBuilder
                         $"Text of type {slot.Type} row {slot.DefinitionId} field '{slot.FieldName}' names a row the final row plan does not hold."),
                     new ContentTypeId(slot.Type),
                     slot.DefinitionId,
-                    ContentAuthoringException.UnknownRowReason) { FieldName = slot.FieldName, Language = slot.Language };
+                    ContentAuthoringException.UnknownRowReason)
+                { FieldName = slot.FieldName, Language = slot.Language };
             }
 
             RequireEligible(registry, slot);
@@ -75,7 +76,8 @@ internal static class ContentTextCandidateBuilder
                         $"Text of type {slot.Type} row {slot.DefinitionId} is in language '{slot.Language}', which neither the base version nor the draft declares."),
                     new ContentTypeId(slot.Type),
                     slot.DefinitionId,
-                    ContentAuthoringException.TextLanguageUndeclaredReason) { FieldName = slot.FieldName, Language = slot.Language };
+                    ContentAuthoringException.TextLanguageUndeclaredReason)
+                { FieldName = slot.FieldName, Language = slot.Language };
             }
         }
 

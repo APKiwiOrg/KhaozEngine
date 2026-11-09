@@ -76,6 +76,7 @@ public sealed class AtmosphereSkyGoldenTests : IClassFixture<AtmosphereGoldenSce
     }
 
     [GpuFact]
+    [Trait("Category", "Diagnostic")]
     public void Golden_OneShotFrameMeasurement()
     {
         if (Environment.GetEnvironmentVariable("KE_MEASURE_ATMOSPHERE") != "1") return;

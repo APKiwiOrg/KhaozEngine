@@ -15,5 +15,6 @@ public sealed record MapPaintRegion(MapFaceKey Face, string PaintId, int Priorit
 /// <summary>A canonical immutable partition of paint coverage, with no support geometry.</summary>
 public sealed record MapPaintRegionSet(IReadOnlyList<MapPaintRegion> Regions, string Digest)
 {
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; set; }
     public IReadOnlyList<MapPaintRegion> Regions { get; init; } = Array.AsReadOnly(Regions.ToArray());
 }

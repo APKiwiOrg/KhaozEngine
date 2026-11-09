@@ -26,9 +26,17 @@ public sealed class MapNumericIdJsonException : JsonException
 
     internal MapDocumentException ToDocument(string? sourceName, string message,
         MapTileCoord? tile, string? path, string? resourceId) => new(Reason, message, this)
-    {
-        SourceName = sourceName, Tile = tile, Path = path, ResourceId = resourceId,
-        FieldPath = FieldPath ?? Path, LineNumber = LineNumber, BytePositionInLine = BytePositionInLine,
-        ActualText = ActualText, ActualInteger = ActualInteger, MinimumInteger = MinimumInteger, MaximumInteger = MaximumInteger,
-    };
+        {
+            SourceName = sourceName,
+            Tile = tile,
+            Path = path,
+            ResourceId = resourceId,
+            FieldPath = FieldPath ?? Path,
+            LineNumber = LineNumber,
+            BytePositionInLine = BytePositionInLine,
+            ActualText = ActualText,
+            ActualInteger = ActualInteger,
+            MinimumInteger = MinimumInteger,
+            MaximumInteger = MaximumInteger,
+        };
 }

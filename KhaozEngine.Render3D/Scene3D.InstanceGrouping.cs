@@ -42,7 +42,7 @@ namespace KhaozEngine.Render3D
             Dictionary<(int Index, int Generation), int>? meshRunIndex = null,
             List<ShadowCastKind>? castKinds = null, ReadOnlySpan<bool> retained = default,
             List<uint>? writeCursorScratch = null, List<bool>? shadowOnly = null, List<MotionKey>? motionKeys = null,
-            InteriorCutInstancePartition? interiorCuts = null, List<ShadowCasterMobility>? shadowMobilities = null)
+            InteriorCutInstancePartition? interiorCuts = null, List<ShadowCasterMobility>? shadowMobilities = null, List<AnchoredRigidTransform?>? anchored = null)
         {
             if (!retained.IsEmpty && retained.Length != items.Count)
                 throw new ArgumentException("Retention must cover every queued instance.", nameof(retained));
@@ -53,6 +53,7 @@ namespace KhaozEngine.Render3D
             motionKeys?.Clear();
             shadowMobilities?.Clear();
             interiorCuts?.Clear();
+            anchored?.Clear();
             if (items.Count == 0) return;
 
             meshRunIndex ??= new Dictionary<(int, int), int>();
@@ -106,6 +107,7 @@ namespace KhaozEngine.Render3D
                 if (castKinds != null) for (int i = 0; i < total; i++) castKinds.Add(ShadowCastKind.Opaque);
                 if (shadowOnly != null) for (int i = 0; i < total; i++) shadowOnly.Add(false);
                 if (motionKeys != null) for (int i = 0; i < total; i++) motionKeys.Add(MotionKey.None);
+                if (anchored != null) for (int i = 0; i < total; i++) anchored.Add(null);
                 if (shadowMobilities != null) for (int i = 0; i < total; i++) shadowMobilities.Add(ShadowCasterMobility.Static);
                 for (int i = 0; i < items.Count; i++)
                 {
@@ -117,6 +119,7 @@ namespace KhaozEngine.Render3D
                     if (castKinds != null) castKinds[(int)dst] = ClassifyCaster(inst);
                     if (shadowOnly != null) shadowOnly[(int)dst] = inst.ShadowOnly;
                     if (motionKeys != null) motionKeys[(int)dst] = inst.Motion;
+                    if (anchored != null) anchored[(int)dst] = inst.Anchored;
                     if (shadowMobilities != null) shadowMobilities[(int)dst] = inst.ShadowMobility;
                     instanceData[(int)dst] = new ModelRenderer.InstanceData
                     {

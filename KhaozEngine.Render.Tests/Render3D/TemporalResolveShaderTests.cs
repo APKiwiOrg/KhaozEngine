@@ -45,6 +45,8 @@ namespace KhaozEngine.Tests.Render3D
             },
             { "const float LockReactiveRelease = 2.0;", TemporalResolveTuning.LockReactiveRelease, 2f },
             { "const float LockDecay = 0.125;", TemporalResolveTuning.LockDecay, 0.125f },
+            { "const float LockShimmerGate = 0.5;", TemporalResolveTuning.LockShimmerGate, 0.5f },
+            { "const float LockShimmerChangeBand = 1.0;", TemporalResolveTuning.LockShimmerChangeBand, 1f },
             { "const float LockHoldGain = 2.0;", TemporalResolveTuning.LockHoldGain, 2f },
             { "const float LockEdgeRelease = 1.0;", TemporalResolveTuning.LockEdgeRelease, 1f },
             { "const float LockEdgeMotionFraction = 0.001953125;", TemporalResolveTuning.LockEdgeMotionFraction, 1f / 512f },
@@ -84,6 +86,13 @@ namespace KhaozEngine.Tests.Render3D
             },
             { "const float DisplayKernelMotionPixels = 2.0;", TemporalResolveTuning.DisplayKernelMotionPixels, 2f },
             { "const float DisplayKernelFullWeight = 0.25;", TemporalResolveTuning.DisplayKernelFullWeight, 0.25f },
+            { "const float ChromaPrecisionFloorSteps = 4.0;", TemporalResolveTuning.ChromaPrecisionFloorSteps, 4f },
+            { "const float ShimmerFloor = 0.03125;", TemporalResolveTuning.ShimmerFloor, 1f / 32f },
+            { "const float ShimmerStillPixels = 0.25;", TemporalResolveTuning.ShimmerStillPixels, 0.25f },
+            { "const float ShimmerChangeBand = 3.0;", TemporalResolveTuning.ShimmerChangeBand, 3f },
+            { "const float ShimmerClipGain = 0.35;", TemporalResolveTuning.ShimmerClipGain, 0.35f },
+            { "const float MaxStillAccumulation = 63.0;", TemporalResolveTuning.MaxStillAccumulation, 63f },
+            { "const float VisibilityShimmerGate = 0.1;", TemporalResolveTuning.VisibilityShimmerGate, 0.1f },
         };
 
         [Theory]
@@ -448,10 +457,10 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void The_thin_feature_lock_decays_the_same_at_every_preset_follows_its_history_and_releases_at_moving_edges()
+        public void The_thin_feature_lock_slows_only_for_still_flicker_follows_its_history_and_releases_at_moving_edges()
         {
-            // A lock that decayed by one over the jitter cycle, 72 frames at UltraPerformance, held a moving line's
-            // trail, so the decay is a constant and Params.x is reserved. The lock is the largest of the state texels
+            // A global jitter-cycle decay held a moving line's trail, so only still flicker earns it, with a veto
+            // where visibility changes. Params.x stays reserved. The lock is the largest of the state texels
             // that carry bilinear weight, because a bilinear lock under motion ran out early. The release is the centre
             // texel's motion against the dilated one, which is zero for a surface moving as a whole, not the surface's
             // own travel, which released a swaying blade and an avatar the camera follows. At a moving edge whose four
@@ -460,8 +469,12 @@ namespace KhaozEngine.Tests.Render3D
             // there even where the depth test is skipped, and never drop a lock where nothing moves: an edge must pass an
             // absolute floor as well, above the float rounding of a sky texel's own motion under a still camera.
             string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("float lockLoss = temporalStillLockLoss(historyRecord, lumaChange, motionPixels, reactive);",
+                core, StringComparison.Ordinal);
+            Assert.Contains("if (lockLoss != LockDecay && temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)) "
+                + "lockLoss = LockDecay;", core, StringComparison.Ordinal);
             Assert.Contains("float lockValue = useHistory && !heldFromFarther "
-                + "? max(historyState.y - LockDecay, 0.0) : 0.0;", core, StringComparison.Ordinal);
+                + "? max(historyState.y - lockLoss, 0.0) : 0.0;", core, StringComparison.Ordinal);
             Assert.Contains("bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels,", core,
                 StringComparison.Ordinal);
             Assert.Contains("length(closestMotion * internalSize) * LockEdgeMotionFraction);", core,
@@ -495,7 +508,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("bool ownReprojected = !depthTested", core, StringComparison.Ordinal);
             Assert.DoesNotContain("surfaceTravel", core, StringComparison.Ordinal);
             Assert.Contains("float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);", core, StringComparison.Ordinal);
-            Assert.Contains("excess.x *= 1.0 - hold;", core, StringComparison.Ordinal);
+            Assert.Contains("clipExcess.x *= 1.0 - hold;", core, StringComparison.Ordinal);
             Assert.Contains("clipped.x = mix(clipped.x, historyYcc.x, hold);", core, StringComparison.Ordinal);
         }
 
@@ -571,8 +584,8 @@ namespace KhaozEngine.Tests.Render3D
                 + ShaderSources.TemporalResolveCoreGlsl, frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=0) out vec4 oColor;", frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=1) out vec4 oState;", frag, StringComparison.Ordinal);
-            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), 0.0, 1.0);", frag,
-                StringComparison.Ordinal);
+            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), p.drift, p.swing);",
+                frag, StringComparison.Ordinal);
             Assert.Contains("temporalResolvePixel(ivec2(gl_FragCoord.xy))", frag, StringComparison.Ordinal);
         }
 

@@ -3,21 +3,23 @@ using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.Tests.Locomotion.Contacts;
+using KhaozEngine.Tests.Movement.Fixtures;
 using KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.TileWorld.Physics;
 
-public class TileFlatRangePreviewTests
+public class TileFlatRangePreviewTests(ITestOutputHelper output)
 {
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void FlatCertificateCoversAuthoredSeamsAndDeclinesNonuniformBeds(bool nonuniform)
     {
-        // #1729. This exercises the installed producer, including its captured analytic/static exclusions.
+        // #1729, #1737. Exercise the installed producer with a clamp Contact must never read.
         using var scene = new ContactTerrainScene(0, document: ContactTerrainScene.Document(0,
-            profile: x => nonuniform && x > 1 ? 0.5f : 0.25f));
+            profile: x => nonuniform && x > 1 ? 0.5f : 0.25f), clampXz: ThrowingClamp);
         var source = Assert.IsAssignableFrom<IMovementFlatAnalyticSupportSource>(scene.Source);
         var status = source.CertifyFlatRegion(new(0.5f, -1.75f), new(2.5f, -0.75f), out float height);
         if (nonuniform)
@@ -41,4 +43,46 @@ public class TileFlatRangePreviewTests
         Assert.NotNull(preview);
         LocomotionStateBits.AssertEqual(predicted, preview.Step(Vector2.UnitX), LocomotionStateBits.Policy.IncludeContinuityHandle);
     }
+
+    [Theory]
+    [InlineData("interior")]
+    [InlineData("rebase")]
+    [InlineData("rim")]
+    public void ContactArrivalWithClampMatchesExactSolverAndKeepsBoundaryFallback(string scenario)
+    {
+        // #1737. The boundary still declines swept regions at the rim after the clamp gate is removed.
+        using var scene = new ContactTerrainScene(0, document: ContactTerrainScene.Document(0,
+            profile: _ => 0.25f), clampXz: ThrowingClamp);
+        if (scenario == "rebase") scene.World.Rebase(new(2, 0, -3));
+        MoveTuning tuning = ContactTerrainScene.Tuning;
+        var body = new MoveState
+        {
+            Position = new(scenario == "rim" ? 4.99f : 1, 0.25f + tuning.CapsuleHalfHeight, -1),
+            Grounded = true,
+        };
+        MoveState predicted = scene.Context.Step(body, Vector2.UnitX, false, 0.1f, tuning);
+        Assert.True(predicted.SupportGranted);
+        Assert.True(predicted.Position.X > body.Position.X);
+        if (scenario == "rim") Assert.Equal(5f, predicted.Position.X);
+        var target = ReachTarget.Point(predicted.Position);
+        static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning) => to.Grounded && !to.Swimming;
+        Vector2 expected = ArrivalReference.Stop(body, tuning, target, 0, false, 0.1f, scene.Context,
+            Vector2.UnitX, predicted, Admit, out int count);
+        using var work = new ArrivalPreviewDiagnostics();
+        Vector2 actual = RangeApproachCore.StopAtRange(body, tuning, target, 0, false, 0.1f, scene.Context,
+            Vector2.UnitX, predicted, Admit);
+        LocomotionStateBits.AssertEqual(expected, actual, LocomotionStateBits.Policy.IncludeContinuityHandle);
+        LocomotionStateBits.AssertEqual(scene.Context.Step(body, expected, false, 0.1f, tuning),
+            scene.Context.Step(body, actual, false, 0.1f, tuning), LocomotionStateBits.Policy.IncludeContinuityHandle);
+        Assert.True(count > 0);
+        output.WriteLine($"{scenario}: reference={count}, full={work.FullSteps}, certified={work.CertifiedTrials}");
+        Assert.Equal(count, work.FullSteps + work.CertifiedTrials);
+        Assert.Equal(scenario == "rim" ? count : 0, work.FullSteps);
+        Assert.Equal(scenario == "rim" ? 0 : count, work.CertifiedTrials);
+        using var preview = scene.Context.OpenFlatRangePreview(body, predicted, tuning, false, 0.1f);
+        if (scenario == "rim") Assert.Null(preview);
+        else Assert.NotNull(preview);
+    }
+
+    static Vector2 ThrowingClamp(float x, float z) => throw new InvalidOperationException("Contact read the legacy clamp.");
 }

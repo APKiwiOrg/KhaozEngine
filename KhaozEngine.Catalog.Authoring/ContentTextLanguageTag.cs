@@ -46,7 +46,8 @@ public static class ContentTextLanguageTag
         => new(ContentAuthoringRefusal.BundleLanguageTagInvalid,
             FormattableString.Invariant(
                 $"Language tag '{tag}' is not ASCII letters, digits and hyphens of 1 to {MaxBytes} bytes with no empty segment and a first segment starting with a letter."),
-            nameof(tag)) { LanguageTag = tag };
+            nameof(tag))
+        { LanguageTag = tag };
 
     /// <summary>Whether <paramref name="tag"/> is legal, and its canonical identity when it is.</summary>
     /// <param name="tag">The tag to check.</param>

@@ -23,6 +23,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         int ComputeShadowCascades()
         {
+            if (_captureShadowDomain is { } domain) return FitCaptureShadowDomain(domain);
             var shadows = Post.Quality.Shadows;
             // Unproject before large world coordinates enter the arithmetic. The same render frame
             // supplies the corners, camera eye, slice spheres and light-hold radii.

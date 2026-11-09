@@ -87,8 +87,12 @@ internal static class TileWaterPrismFaces
         var planes = new List<P>(prism.Planes) { prism.Planes[face].Opposite };
         if (face < 3 && (start != 0 || end != 1))
         {
-            (Vector3 a, Vector3 b) = face switch { 0 => (prism.Triangle.A, prism.Triangle.B),
-                1 => (prism.Triangle.B, prism.Triangle.C), _ => (prism.Triangle.C, prism.Triangle.A) };
+            (Vector3 a, Vector3 b) = face switch
+            {
+                0 => (prism.Triangle.A, prism.Triangle.B),
+                1 => (prism.Triangle.B, prism.Triangle.C),
+                _ => (prism.Triangle.C, prism.Triangle.A)
+            };
             V direction = V.Point((double)b.X - a.X, 0, (double)b.Z - a.Z);
             I origin = V.Dot(direction, V.Point(a.X, 0, a.Z)), length = direction.SquaredLength;
             planes.Add(new(direction, origin + length * I.Point(end)));

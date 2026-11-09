@@ -17,17 +17,17 @@ internal static class MapTerrainTopologyEdits
         {
             if (!seen.Add((change.Dependent, change.CornerX, change.CornerZ)))
                 throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "duplicate corner owner change")
-                    { Patch = change.Dependent, CellX = change.CornerX, CellZ = change.CornerZ, SubjectKind = "corner owner change" };
+                { Patch = change.Dependent, CellX = change.CornerX, CellZ = change.CornerZ, SubjectKind = "corner owner change" };
             MapSurfacePatch patch = MapTerrainEdits.Patch(set, change.Dependent);
             MapLatticeAddress address = patch.CornerAddress(change.CornerX, change.CornerZ);
             int index = patch.CornerDependencies.FindIndex(d => d.CornerX == change.CornerX && d.CornerZ == change.CornerZ);
             MapVertexOwner? old = index < 0 ? null : patch.CornerDependencies[index].Owner;
             if (old != change.OldOwner) throw new MapDocumentException(MapDocumentRefusal.TerrainOwnerChangeStale, "corner owner change has a stale old owner")
-                { Patch = change.Dependent, CellX = change.CornerX, CellZ = change.CornerZ, ExpectedPatch = change.OldOwner?.Patch, Address = old?.Address };
+            { Patch = change.Dependent, CellX = change.CornerX, CellZ = change.CornerZ, ExpectedPatch = change.OldOwner?.Patch, Address = old?.Address };
             ArgumentNullException.ThrowIfNull(change.NewOwner);
             bool owns = change.NewOwner.Patch == patch.Key;
             if (owns && change.NewOwner.Address != address) throw new MapDocumentException(MapDocumentRefusal.SurfaceSeamPositionMismatch, "corner owner has the wrong self address")
-                { Patch = patch.Key, CellX = change.CornerX, CellZ = change.CornerZ, Address = change.NewOwner.Address };
+            { Patch = patch.Key, CellX = change.CornerX, CellZ = change.CornerZ, Address = change.NewOwner.Address };
             if (index >= 0) patch.CornerDependencies.RemoveAt(index);
             if (!owns) patch.CornerDependencies.Add(new(change.CornerX, change.CornerZ, change.NewOwner));
         }
@@ -62,12 +62,12 @@ internal static class MapTerrainTopologyEdits
             MapSurfacePatch removed = MapTerrainEdits.Patch(set, key);
             if (removed.Records.OrderBy(r => r.Id, StringComparer.Ordinal).FirstOrDefault() is { } record)
                 throw new MapDocumentException(MapDocumentRefusal.TerrainAnchorStillInUse, $"anchor patch '{key}' still carries record '{record.Id}', reanchor it first")
-                    { Patch = key, RecordId = record.Id };
+                { Patch = key, RecordId = record.Id };
             set.Patches.Remove(key);
         }
         foreach (string id in edit.RemoveSurfaces)
             if (set.Refs.RemoveAll(s => s.Id == id) == 0) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"missing surface '{id}'")
-                { SurfaceId = id };
+            { SurfaceId = id };
         foreach (MapSurfaceRef surface in edit.UpsertSurfaces)
         {
             MapSurfaceRef copy = surface with
@@ -108,7 +108,7 @@ internal static class MapTerrainTopologyEdits
             MapCornerDependency? dependency = incident.CornerDependencies.Find(d => d.CornerX == (int)x && d.CornerZ == (int)z);
             MapVertexOwner current = dependency?.Owner ?? new(incident.Key, address);
             if (owner is not null && owner != current) throw new MapDocumentException(MapDocumentRefusal.TerrainCornerOwnerAmbiguous, "ambiguous existing corner owner")
-                { SurfaceId = surfaceId, Address = address, Patch = current.Patch, ExpectedPatch = owner.Patch };
+            { SurfaceId = surfaceId, Address = address, Patch = current.Patch, ExpectedPatch = owner.Patch };
             owner = current;
         }
         return owner;
@@ -121,14 +121,14 @@ internal static class MapTerrainTopologyEdits
         foreach (MapRecordAnchorMove move in edit.Moves)
         {
             if (!seen.Add(move.RecordId)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "duplicate record anchor move")
-                { RecordId = move.RecordId, Patch = move.From, SubjectKind = "record anchor move" };
+            { RecordId = move.RecordId, Patch = move.From, SubjectKind = "record anchor move" };
             MapSurfacePatch from = MapTerrainEdits.Patch(set, move.From), to = MapTerrainEdits.Patch(set, move.To);
             int index = from.Records.FindIndex(r => r.Id == move.RecordId);
             if (index < 0) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"anchor '{move.From}' does not carry record '{move.RecordId}'")
-                { RecordId = move.RecordId, Patch = move.From };
+            { RecordId = move.RecordId, Patch = move.From };
             if (move.From == move.To) continue;
             if (to.Records.Any(r => r.Id == move.RecordId)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"duplicate anchor for record '{move.RecordId}'")
-                { RecordId = move.RecordId, Patch = move.To, SubjectKind = "record anchor" };
+            { RecordId = move.RecordId, Patch = move.To, SubjectKind = "record anchor" };
             MapTopologyRecord record = from.Records[index];
             from.Records.RemoveAt(index);
             to.Records.Add(record);

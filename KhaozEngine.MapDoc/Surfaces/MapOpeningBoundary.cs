@@ -11,7 +11,10 @@ public readonly record struct MapPortalPlaneTriangle(MapVertexId A, MapVertexId 
 /// <summary>A membership plane only. It supplies no support, drawing, capture or collision faces.</summary>
 public sealed record MapOpeningPlane(string OpeningId, MapSubmissionAnchor Anchor, IReadOnlyList<Vector3> Offsets,
     IReadOnlyList<MapPortalPlaneTriangle> Triangles, IReadOnlyList<MapExactTriangle> ExactTriangles,
-    IReadOnlyList<MapFaceKey> Keys);
+    IReadOnlyList<MapFaceKey> Keys)
+{
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; init; }
+}
 
 /// <summary>Describes the canonical upward plane of absent cells without making them physical.</summary>
 public static class MapOpeningBoundary
@@ -33,10 +36,16 @@ public static class MapOpeningBoundary
             throw new MapDocumentException(opening.Patch != patch.Key ? MapDocumentRefusal.AuthoredOwnershipMismatch
                 : MapDocumentRefusal.ValueOutsideRange, "opening must name absent cells in its patch")
             {
-                RecordId = opening.Id, SurfaceId = surface.Id, Patch = opening.Patch, ActualAnchor = patch.Key,
-                FieldPath = opening.Patch != patch.Key ? "Patch" : "SlotCells", ActualCount = slotCount,
+                RecordId = opening.Id,
+                SurfaceId = surface.Id,
+                Patch = opening.Patch,
+                ActualAnchor = patch.Key,
+                FieldPath = opening.Patch != patch.Key ? "Patch" : "SlotCells",
+                ActualCount = slotCount,
                 MinimumInteger = opening.Patch == patch.Key ? 1 : null,
             };
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveCompilation(checked(4L * opening.SlotCells.Count));
         try
         {
             MapSubmissionAnchor anchor = MapSurfaceCompiler.Anchor(surface, patch);
@@ -61,8 +70,14 @@ public static class MapOpeningBoundary
                         ? MapDocumentRefusal.SurfaceAddressOutOfPatch : duplicate ? MapDocumentRefusal.IdentityDuplicate
                         : MapDocumentRefusal.SpaceOpeningCellsInvalid, "opening must name distinct absent cells in its patch")
                     {
-                        RecordId = opening.Id, SurfaceId = surface.Id, Patch = patch.Key, SlotCell = slot,
-                        FieldPath = "SlotCells", CellX = x, CellZ = z, ActualInteger = slot,
+                        RecordId = opening.Id,
+                        SurfaceId = surface.Id,
+                        Patch = patch.Key,
+                        SlotCell = slot,
+                        FieldPath = "SlotCells",
+                        CellX = x,
+                        CellZ = z,
+                        ActualInteger = slot,
                         MinimumInteger = slot < 0 || slot >= MapPatchKey.SlotCells * MapPatchKey.SlotCells ? 0 : null,
                         MaximumInteger = slot < 0 || slot >= MapPatchKey.SlotCells * MapPatchKey.SlotCells
                             ? MapPatchKey.SlotCells * MapPatchKey.SlotCells - 1 : null,
@@ -85,7 +100,12 @@ public static class MapOpeningBoundary
                     keys.Add(new(opening.Id, patch.Key, slot, parent, 0, MapSide.Front));
                 }
             }
-            return new(opening.Id, anchor, offsets.AsReadOnly(), triangles.AsReadOnly(), exact.AsReadOnly(), keys.AsReadOnly());
+            return new(opening.Id, anchor, offsets.AsReadOnly(), triangles.AsReadOnly(), exact.AsReadOnly(), keys.AsReadOnly())
+            {
+                PreparationOwnership = preparation?.Complete(checked(12L * offsets.Capacity +
+                    (long)System.Runtime.CompilerServices.Unsafe.SizeOf<MapPortalPlaneTriangle>() * triangles.Capacity +
+                    144L * exact.Capacity + (long)System.Runtime.CompilerServices.Unsafe.SizeOf<MapFaceKey>() * keys.Capacity))
+            };
 
             MapVertexId Vertex(MapSurfaceVertex vertex)
             {

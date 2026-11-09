@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 when a followed avatar stops or turns back
+    /// TEMPORAL-RESOLVE amendment 23 when a followed avatar stops or turns back
     /// (<see cref="TemporalFollowStopRuns"/>): under the perspective follow camera and the orthographic one, the box
     /// stops with the camera, stops while a damped camera eases on, or slows and walks back. On the turn frame its
     /// travel in the world is zero. Each row reads the avatar's own pixels, or the ring beside them, their mean luma
@@ -179,6 +179,7 @@ namespace KhaozEngine.Tests.Gpu
         /// added change over those frame steps, and the set's pixels on the turn frame, for every pixel showing the
         /// avatar, for those inside the reconstruction's reach from its outline, and for the ring within that reach
         /// outside it, the ground or wall beside the avatar, whose band history drops when the avatar stops.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_follow_stop_table_prints_the_avatars_own_error_around_the_turn()
         {
@@ -224,6 +225,7 @@ namespace KhaozEngine.Tests.Gpu
         /// for the avatar stopping with the clear colour beside and behind its whole outline, and with a second keyed
         /// box walking past behind it as it stops, at <see cref="TemporalFollowStopRuns.PasserPixels"/> display
         /// pixels a frame, showing beside its outline.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_follow_stop_table_prints_the_avatar_beside_the_clear_colour_and_a_passer()
         {

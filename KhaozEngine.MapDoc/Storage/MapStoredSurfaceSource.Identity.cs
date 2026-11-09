@@ -55,7 +55,7 @@ public sealed partial class MapStoredSurfaceSource
             string message = $"{status} pinned surface {kind} {(patch is { } key ? key.ToString() : digest)}.";
             throw cause is MapDocumentException refusal ? refusal.WithSourceName(null, message, patchStatus: status, expectedHash: digest, patch: patch)
                 : new(MapDocumentRefusal.PinnedContentUnavailable, message, cause!)
-                    { PatchStatus = status, Patch = patch, ExpectedHash = digest, SubjectKind = kind };
+                { PatchStatus = status, Patch = patch, ExpectedHash = digest, SubjectKind = kind };
         }
     }
 }

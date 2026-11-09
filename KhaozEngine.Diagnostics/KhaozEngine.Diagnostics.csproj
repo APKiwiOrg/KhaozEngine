@@ -20,6 +20,12 @@
     <!-- GameApp's arming decision is tested where GameApp lives, and driving the ARMED path (rather than a
          plain Write) is what proves a head's own Install survived. CrashReport.OnCrash is that seam. -->
     <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
+    <!-- Capacity demand provenance stays engine-internal. Only the assemblies that derive limit copies may record origins,
+         so no caller can attach provenance to engine-held records. See docs/DEPENDENCY-SEAMS.md. -->
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc" />
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
+    <!-- Derived-origin rows build their synthetic provenance through MapDoc's internal origin helpers. -->
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.Tests" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />

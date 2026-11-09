@@ -1,10 +1,12 @@
+using KhaozEngine.Diagnostics;
+using KhaozEngine.Primitives;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
-using KhaozEngine.Primitives;
 
 namespace KhaozEngine.MapDoc.Storage;
 
@@ -12,9 +14,15 @@ namespace KhaozEngine.MapDoc.Storage;
 internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, IMapEffectiveSurfaceContext
 {
     readonly IMapSurfaceSource _native;
+    internal bool SupportsSceneAdmission => Scene.MapSceneAdmission.Supports(_native);
     readonly MapEffectiveSurfaceSource _generated;
     readonly string _nativeSnapshot, _nativeRoot;
     readonly IReadOnlyDictionary<string, MapEffectiveTransform?> _nativePoses;
+    internal int PoseCapacityForTests => ((Dictionary<string, MapEffectiveTransform?>)_nativePoses).EnsureCapacity(0);
+    internal IMapSurfaceSource Native => _native;
+    internal MapEffectiveSurfaceSource Generated => _generated;
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; }
+    internal long IndexBytes => checked(128L + MapSurfaceSourcePreparation.DictionaryBytes(_nativePoses));
     public MapEffectiveContext EffectiveContext { get; }
     public string SnapshotId { get; }
     public string RootSha256 => EffectiveContext.Digest;
@@ -22,6 +30,9 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
 
     internal MapComposedSurfaceSource(MapEffectiveContext context, IMapSurfaceSource native)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L + 64L * context.Surfaces.Refs.Count));
+        MapSurfaceSourcePreparation.BeforeDictionary<string, MapEffectiveTransform?>(native.Surfaces.Count);
         EffectiveContext = context;
         _native = native;
         _nativeSnapshot = native.SnapshotId;
@@ -35,6 +46,7 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
             w.WriteStartArray(); w.WriteStringValue(context.Digest); w.WriteStringValue(_nativeSnapshot);
             w.WriteStringValue(_nativeRoot); w.WriteEndArray();
         });
+        PreparationOwnership = preparation?.Complete(checked(IndexBytes + _generated.IndexBytes));
     }
     public MapPatchRead ReadPatch(MapPatchKey key) => _nativePoses.ContainsKey(key.SurfaceId) ? _native.ReadPatch(key) : _generated.ReadPatch(key);
     public MapPatchFindResult FindPatches(MapSurfaceScope scope)
@@ -63,9 +75,9 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
         internal Acquisition(MapComposedSurfaceSource source, MapSurfaceScope scope)
         {
             _source = source; _scope = scope;
-            _workLimit = 1L + 4L * MapSurfacePages.MaxEntries * scope.Limits.MaxPageReads;
+            _workLimit = MapPageBudget.Ceiling(scope.Limits.MaxPageReads);
             var groups = source._nativePoses.GroupBy(p => p.Value).ToArray();
-            var budget = scope.SharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads);
+            var budget = scope.SharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads, source: scope.Limits);
             bool generated = source._generated.Surfaces.Count != 0;
             try
             {
@@ -139,7 +151,7 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
                 foreach (var part in _parts)
                 {
                     var found = part.Session.FindPatches();
-                    if (found.Status == MapFindStatus.CapacityExceeded) throw new MapSurfaceCapacityException();
+                    if (found.Status == MapFindStatus.CapacityExceeded) throw new MapSurfaceCapacityException(found.Diagnostic, found.Capacity);
                     complete &= found.Status == MapFindStatus.Complete;
                     foreach (var key in part.Session.ReservedPatchKeys.Where(k => part.Ids.Contains(k.SurfaceId))) Reserve(key);
                     patches.AddRange(found.Patches.Where(p => part.Ids.Contains(p.Key.SurfaceId)));
@@ -151,12 +163,14 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
             }
             catch (MapSurfaceCapacityException ex)
             {
-                return new(MapFindStatus.CapacityExceeded, _scope, SnapshotId, [], [], [], PagesRead - before) { Diagnostic = ex.Diagnostic };
+                return new(MapFindStatus.CapacityExceeded, _scope, SnapshotId, [], [], [], PagesRead - before)
+                { Diagnostic = ex.Capacity?.Message ?? ex.Diagnostic, Capacity = ex.Capacity };
             }
         }
         void Reserve(MapPatchKey key)
         {
-            if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+            if (!_reserved.Contains(key) && DemandDiagnostics.Check(this, "MapComposedSurfaceSource.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, _scope.Limits.MaxCandidatePatches, _reserved.Count >= _scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory, allowanceSource: _scope.Limits))
+                throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, _scope.Limits.MaxCandidatePatches);
             _reserved.Add(key);
         }
         public MapPatchRead ReadPatch(MapPatchKey key)

@@ -266,8 +266,10 @@ public sealed partial class SqlServerContentAuthoringStore
                     $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s)")),
                 default, 0, ContentAuthoringException.TextUnrepresentedReason)
             {
-                MemberName = nameof(RollbackToAsync), VersionNumber = versionNumber,
-                RecordedLanguageCount = text.Languages.Count, RecordedValueCount = text.Revisions.Count,
+                MemberName = nameof(RollbackToAsync),
+                VersionNumber = versionNumber,
+                RecordedLanguageCount = text.Languages.Count,
+                RecordedValueCount = text.Revisions.Count,
             };
         }
     }

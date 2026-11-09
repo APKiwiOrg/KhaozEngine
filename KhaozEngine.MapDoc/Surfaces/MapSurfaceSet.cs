@@ -13,6 +13,9 @@ public sealed class MapSurfaceSet
 
     public MapSurfaceSet Clone()
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L + Refs.Sum(s => 128L + 8L * (s.IndoorSpan?.DomainTags.Count ?? 0)) +
+            8L * Scene.MapSceneAdmission.CloneCapacity(Refs.Count, true) + 64L * Patches.Count));
         var copy = new MapSurfaceSet();
         foreach (MapSurfaceRef surface in Refs)
             copy.Refs.Add(surface with
@@ -21,6 +24,7 @@ public sealed class MapSurfaceSet
                     ? span with { DomainTags = span.DomainTags.ToArray() } : null,
             });
         foreach (var patch in Patches) copy.Patches.Add(patch.Key, patch.Value.Clone());
+        preparation?.Complete(new Scene.MapSceneInventory().Surfaces(copy));
         return copy;
     }
 

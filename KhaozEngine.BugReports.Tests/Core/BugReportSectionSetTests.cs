@@ -102,7 +102,9 @@ public sealed class BugReportSectionSetTests
         IReadOnlyList<RawSection> raw = set.CaptureAll(Context);
         IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
 
+        Assert.Equal(new[] { "open", "bare", "empty" }, raw.Select(section => section.Key));
         Assert.All(raw, section => Assert.True(section.IsError));
+        Assert.Equal(new[] { "open", "bare", "empty" }, finished.Select(section => section.Key));
         Assert.All(finished, section => Assert.StartsWith(ErrorPrefix, ErrorText(section.Json), StringComparison.Ordinal));
     }
 

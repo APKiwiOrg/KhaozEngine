@@ -140,8 +140,11 @@ public sealed partial class PhysicsNavBake
             throw new NavigationReadCapabilityException(NavigationReadRefusal.ConcurrentReadsRequired,
                 "A parallel contact navigation build needs IPhysicsConcurrentReadSource on " +
                 "the physics source and on the selected query view.")
-                { RequiredCapability = typeof(IPhysicsConcurrentReadSource), SourceRole = context.Physics is not IPhysicsConcurrentReadSource
-                    ? NavigationSourceRole.PhysicsSource : NavigationSourceRole.MovementQueryView };
+            {
+                RequiredCapability = typeof(IPhysicsConcurrentReadSource),
+                SourceRole = context.Physics is not IPhysicsConcurrentReadSource
+                    ? NavigationSourceRole.PhysicsSource : NavigationSourceRole.MovementQueryView
+            };
     }
 
     /// <summary>Admits every captured column on the workers when the layered bake asks for its first column, then

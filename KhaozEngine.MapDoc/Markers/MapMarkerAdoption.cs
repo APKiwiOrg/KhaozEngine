@@ -20,7 +20,8 @@ public static class MapMarkerAdoption
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(choices);
         if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
-            "Cannot adopt spawns from a partial document.") { DocumentId = document.Id, Operation = nameof(ConvertSpawns) };
+            "Cannot adopt spawns from a partial document.")
+        { DocumentId = document.Id, Operation = nameof(ConvertSpawns) };
         MapMarkerEdits.RequireResolver(document, nameof(ConvertSpawns));
         RequireValid(document);
         var sources = document.Spawns.Select(s => (Key: new MapLegacySpawnKey(MapLegacySpawnKind.Spawn, s.Id), s.X, s.Z,
@@ -47,10 +48,10 @@ public static class MapMarkerAdoption
                 { SourceId = source.Key.Id, SubjectKind = source.Key.Kind.ToString() };
             if (!ids.Add(choice.MarkerId)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate,
                 $"Marker ID '{choice.MarkerId}' is live or reserved. Choose a distinct destination ID.")
-                { MarkerId = choice.MarkerId, EntityId = choice.MarkerId, SubjectKind = "marker" };
+            { MarkerId = choice.MarkerId, EntityId = choice.MarkerId, SubjectKind = "marker" };
             if (!names.Add(choice.Name)) throw new MapDocumentException(MapDocumentRefusal.MarkerNameDuplicate,
                 $"Duplicate marker name '{choice.Name}'. Choose a distinct destination name.")
-                { MarkerName = choice.Name, MarkerId = choice.MarkerId };
+            { MarkerName = choice.Name, MarkerId = choice.MarkerId };
             converted.Add(MapMarkerHeights.Apply(new(1, choice.MarkerId, choice.Name, new(source.X, 0, source.Z),
                 choice.YawRadians ?? source.Yaw, choice.Role, source.Enabled, source.Tags.ToArray()), choice.Height) with
             { ArchetypeId = source.Archetype });

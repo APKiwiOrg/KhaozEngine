@@ -1024,8 +1024,9 @@ KhaozEngine.MapDoc.Physics -> KhaozEngine.Locomotion  (the contact shell that ph
 Four forward edges and no backend: the caller picks the `IPhysicsWorld`. It references no renderer, no GPU, no
 TileWorld and no game. `Collider` and `Selection` resources carry `PropCollisionFormat` version 1 bytes, read
 through the existing `Physics` seam, so the package adds no format and no third-party package. The nonpackable test
-project references only `MapDoc.Physics`, `Physics.Bepu`, for proofs against the shipped backend, and `Sharding`,
-for grid equivalence. `ArchitectureTests.MapDocPhysics.cs` pins both project-reference sets, the absence of any
+project references `MapDoc.Physics`, `Physics.Bepu` for proofs against the shipped backend, `Sharding`
+for grid equivalence, and `MapDoc.Render3D` for collider and selection parity against prepared presentation geometry.
+The presentation reference is test-only. The physics package retains its four render-free production edges. `ArchitectureTests.MapDocPhysics.cs` pins both project-reference sets, the absence of any
 package reference and the package's absence from every umbrella closure, and `MapDoc.Physics` is on the
 `OptInBackends` list.
 
@@ -1087,14 +1088,66 @@ MapDoc.Physics edge. MapDoc.Physics never consumes generated foliage for statics
 
 `GroundCoverCandidateEvaluator` and the lazy-channel trace remain Terrain CPU APIs. The frozen released legacy sampler
 is unchanged. The [private oracle harness README](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) is authoritative
-for its seven test-only references and comparison protocol. It is nonpackable, unreferenced, outside the solution and
+for its eight test-only references and comparison protocol. It is nonpackable, unreferenced, outside the solution and
 public CI. Do not copy that dependency into runtime code. Earlier private marker/building scaffolds keep their own
 format policies, they do not become format-9-only requirements.
 
 The [MapDoc foliage handoff](../KhaozEngine.MapDoc/README.md#public-foliage-acceptance-and-deferred-ownership) consolidates
-OA9, both-head/storage proofs, real wire acceptance and hosted foliage-conformance. R8 must add its windowed immutable
-context/completeness contract before streamed native generation. Actual rendering/residency and appearance, R9 input,
-R10 complete verbs and R11 actual import remain separate gates.
+OA9, both-head/storage proofs, real wire acceptance and hosted foliage-conformance. R8a adds
+`MapWindowFoliageContext`, scoped completeness, native drawing and composite residency. R8b appearance,
+R9 input, R10 complete verbs and R11 actual import remain separate gates.
+
+### Optional native map rendering
+
+`KhaozEngine.MapDoc.Render3D` directly references exactly MapDoc, Render3D and Terrain.Render3D.
+It adds no third-party package or direct backend edge, has no editor, TileWorld or MapDoc.Physics edge,
+and belongs to no umbrella. Render3D already carries Metal, D3D11 and Vulkan through Windowing.
+MapDoc grants friend access only, with no renderer reference in the reverse direction.
+Terrain.Render3D also grants MapDoc.Render3D friend access for the shared native prop emitter and
+CPU cluster builder and its binary64 precision kernel. Positive-weld cluster requests expose a frozen,
+member-aligned original binary32 placement inventory, validated and admitted by the upper adapter.
+The upper adapter validates scene routing, the frozen
+native layer inventory and bounded native region-cell domain, excludes effective roofs, and certifies every
+anchor-relative vertex coordinate before calling that internal builder. Native regions span 64 document tiles,
+with equal subdivisions capped at 1024 m. Render.Tests pins the native region constant to TileRegion.Size
+without adding a production TileWorld reference. The lower builder has no building intent and makes no roof promise.
+Accepted native cluster handles remain externally owned and are never uploaded or freed by ApplyNative.
+MapDoc.Render3D and Terrain.Render3D grant the oracle harness test-only friend access to the
+existing CPU completion and emission seams. This adds no runtime dependency. The harness alone directly
+references both native and legacy render adapters and is excluded from the solution and public CI.
+MapDoc.Render3D also grants Render.Tests test-only friend access to observe the guarded adapter boundary.
+MapDoc grants that test assembly access to its canonical JSON text options for linked native fixtures.
+Terrain.Render3D already carries the neutral Physics seam, so this adapter is a deliberate combined
+MapDoc/Physics consumer. Foundation, Server and the GPU-free native builders remain independent.
+
+Verified extent proofs retain metadata in MapDoc. Selected decoded payloads and shared input leases
+live in the adapter. Bounded glTF/image admission and model-bound upload contracts live below it in
+the render packages, without referencing upper-package exceptions or DTOs. The adapter alone maps
+lower refusals to `MapRenderAssetStatus`. CPU recording needs no device or backend. See the
+[package contract](../KhaozEngine.MapDoc.Render3D/README.md) for ownership and policy details.
+`MapDoc`, `MapDoc.Physics`, Foundation and Server acquire no GPU edge. `MapSimulationResidency` has
+independent required-domain leases. Visual windows cannot certify cell collision or navigation coverage.
+R8b consumes bounded water optical inputs, scoped room/roof/mesh inventory for `IInteriorSource`,
+`IMapPresentationCut` and domain-aware sky/camera policy. R9 consumes the viewport and commands,
+R10 adds render findings and R11 consumes the draw-set contract. G3 also requires the separate native
+CPU world-map source [#1370](https://github.com/APKiwiOrg/KhaozEngine/issues/1370).
+The renderer measures borrowed `SceneUploadDescription` inputs before copying retained payloads.
+The source oracle has one keyed consuming submission matcher for its full entry and public guards.
+It independently enumerates scoped source foliage generations and rows, then checks all part material
+maps and required writes. CPU guards do not instantiate a device. Snapshot diagnostics and backend
+evidence use the actual sink, retaining ID-derived static light keys and explicit foliage focus.
+
+## Capacity demand provenance: friend access, not public surface
+
+`KhaozEngine.Diagnostics` publishes evaluated capacity demand through `CapacityDemandDiagnostics.Observe`,
+`Enter`, `Check` and the `CapacityDemand` record. The provenance that turns a remainder or minimum allowance back
+into its originating profile fields, `Derive`, `Inherit`, `Origins` and `CapacityDemandOrigin`, is internal.
+`KhaozEngine.Diagnostics` grants `InternalsVisibleTo` to `KhaozEngine.MapDoc` and `KhaozEngine.MapDoc.Render3D`,
+the only assemblies that derive limit copies, and to `KhaozEngine.MapDoc.Tests`, whose derived-origin rows build
+synthetic provenance through MapDoc's internal helpers. `KhaozEngine.Render3D` and `KhaozEngine.Render2D` pass a derived
+record as the public `allowanceSource` argument and need no grant. Provenance is keyed by object identity and
+changes every subscribed collector's stream, so a public recorder would let any caller re-attribute an
+engine-held record process-wide, and `Origins` would hand out the internal identity objects.
 
 ## Status effect package edges
 

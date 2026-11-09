@@ -14,7 +14,8 @@ public static class MapPrefabAssetEdits
         MapPrefabValidation.RequireAsset(asset);
         bool exists = asset.Children.Any(c => c.Key == child.Key);
         if (remove && !exists) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
-            "Cannot remove an undeclared prefab child.") { AssetId = asset.Id, Child = child.Key };
+            "Cannot remove an undeclared prefab child.")
+        { AssetId = asset.Id, Child = child.Key };
         MapPrefabOverride edit = remove ? new MapPrefabRemoveOverride(child.Key) : exists
             ? new MapPrefabReplaceOverride(child.Key, child) : new MapPrefabAddOverride(child.Key, child);
         var reconciled = MapPrefabMaterializationOverrides.Reconcile(asset, new[] { edit });

@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Text.RegularExpressions;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan.Internal;
+using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
@@ -49,15 +50,18 @@ namespace KhaozEngine.Tests.Gpu
             using (IGpuBuffer dummy = factory.CreateBuffer(new GpuBufferDescription(256, GpuBufferUsage.VertexBuffer | GpuBufferUsage.IndexBuffer)))
                 model.DrawFoliageMesh(commands, dummy, dummy, 0, GpuIndexFormat.UInt16, dummy, 0, 0, 0, null, true);
             CaptureClipmapPipeline(device, framebuffer.Outputs, commands);
+            CaptureBoundedWaterPipeline(scene);
             CaptureTriangleOpticsPipelines(device, framebuffer.Outputs);
             // The point-shadow pass is allocated lazily, so a scene that is never asked for one builds none of its
             // four pipelines and the three caster programs would read here as uncaptured.
             Assert.True(scene.EnsurePointShadowAtlas(PointShadowAtlas.MinFaceResolution, 1));
             CaptureTargetOutlinePipelines(scene, framebuffer, commands);
+            CaptureTemporalPipelines(device, commands, framebuffer.Outputs);
             CaptureTemporalPipelines(device, commands);
             CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(false, true));
             CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(true, true));
             CaptureFoliageShadowPipelines(scene, framebuffer, commands);
+            CapturePreparedFoliagePipelines(device);
             // Built at a scene's first participating body, which this scene never queues.
             using (GpuRetireQueue retired = GpuRetireQueue.CreateFrameCounted(device, 3))
             using (new WaterCausticRenderer(device, retired)) { }
@@ -102,6 +106,74 @@ namespace KhaozEngine.Tests.Gpu
                 problems.Add($"{missing}: no actual renderer pipeline was captured.");
 
             Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+        }
+
+        [Fact]
+        public void R8aResourceCatalogMatchesActualRendererPipelineLayouts()
+        {
+            using var device = new FakeGpuDevice();
+            var factory = (FakeGpuResourceFactory)device.Factory;
+            using IGpuTexture target = factory.CreateTexture(GpuTextureDescription.Texture2D(
+                64, 64, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
+            using IGpuFramebuffer framebuffer = factory.CreateFramebuffer(null, target);
+            using var scene = new Scene3D(device, framebuffer.Outputs);
+            CaptureBoundedWaterPipeline(scene);
+            using IGpuCommandList commands = factory.CreateCommandList();
+            CaptureTemporalPipelines(device, commands, framebuffer.Outputs);
+            CaptureTemporalPipelines(device, commands);
+            CaptureTemporalPipelines(device, commands, KhaozEngine.Tests.Render3D.TemporalVisibilityLayoutTests.Layout(false, true));
+            CapturePreparedFoliagePipelines(device);
+
+            string[] programs = ["BoundedWater", "PreparedFoliage", "PreparedFoliageMotion",
+                "PreparedFoliageDepth", "PreparedFoliageDepthCutout", "PreparedFoliagePoint",
+                "PreparedFoliageVisibility", "PreparedFoliageMotionVisibility",
+                "PreparedFoliageOpaque", "PreparedFoliageOpaqueMotion", "PreparedFoliageOpaqueVisibility", "PreparedFoliageOpaqueMotionVisibility"];
+            var catalog = ShippedShaderPrograms.GraphicsPrograms().ToDictionary(program => program.Name);
+            foreach (string name in programs)
+            {
+                var problems = new List<string>();
+                string[] slots = VulkanShaderBindingTableTests.SlotsOf(name, problems);
+                Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+                var program = catalog[name];
+                var captured = factory.GraphicsPipelines.Where(request => PairOf(request) == PairOf(program)).ToArray();
+                Assert.NotEmpty(captured);
+                foreach (var request in captured)
+                {
+                    Assert.Equal(slots.Length, request.Description.ResourceLayouts.Length);
+                    for (int slot = 0; slot < slots.Length; slot++)
+                    {
+                        var actual = Assert.IsType<FakeResourceLayout>(request.Description.ResourceLayouts[slot]);
+                        Assert.Equal(VulkanDescriptorLimitTests.ShippedLayouts[slots[slot]].Elements,
+                            actual.Description.Elements);
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void PreparedFoliageShadowLayoutsMatchMetalReflectionIncludingTheOpaqueGap()
+        {
+            using var device = new FakeGpuDevice();
+            var factory = (FakeGpuResourceFactory)device.Factory;
+            CapturePreparedFoliagePipelines(device);
+            var programs = ShippedShaderPrograms.GraphicsPrograms()
+                .Where(p => p.Name is "PreparedFoliageDepth" or "PreparedFoliageDepthCutout").ToArray();
+            Assert.Equal(2, programs.Length); // Both shipped cascade variants must be exercised.
+            foreach (var program in programs)
+            {
+                var captured = factory.GraphicsPipelines.Where(r => PairOf(r) == PairOf(program)).ToArray();
+                Assert.NotEmpty(captured);
+                var reflected = MetalShaderBuild.Pair(program.VertexGlsl, program.FragmentGlsl, null, program.Name);
+                foreach (var request in captured)
+                {
+                    var layouts = request.Description.ResourceLayouts
+                        .Select(layout => Assert.IsType<FakeResourceLayout>(layout).Description).ToArray();
+                    // Real pipeline declarations must agree with the shader before any Metal device is created.
+                    reflected.Table.RequireLayoutShape(layouts, program.Name);
+                    Assert.Equal(program.Name == "PreparedFoliageDepth" ? new[] { 1, 1, 0, 1 } : new[] { 1, 1, 2, 1 },
+                        layouts.Select(layout => layout.Elements?.Length ?? 0));
+                }
+            }
         }
 
         [Fact]
@@ -193,6 +265,15 @@ namespace KhaozEngine.Tests.Gpu
             GpuOutputDescription target = outputs ?? ModelTargets.Temporal;
             using var model = new ModelRenderer(device, target, 64, 1);
             model.UploadFoliageUniforms(commands, [default]);
+            using var anchorBuffer = device.Factory.CreateBuffer(new(32, GpuBufferUsage.UniformBuffer));
+            using var anchor = model.CreatePreparedFoliageAnchorSet(anchorBuffer);
+            using var vertices = device.Factory.CreateBuffer(new(3 * ModelVertex.SizeInBytes, GpuBufferUsage.VertexBuffer));
+            using var instances = device.Factory.CreateBuffer(new(ModelRenderer.FoliageInstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
+            using var indices = device.Factory.CreateBuffer(new(6, GpuBufferUsage.IndexBuffer));
+            model.DrawPreparedFoliageMesh(commands, vertices, indices, 3, GpuIndexFormat.UInt16,
+                instances, 0, 1, 0, null, anchor, false);
+            model.DrawPreparedFoliageMesh(commands, vertices, indices, 3, GpuIndexFormat.UInt16,
+                instances, 0, 1, 0, null, anchor, true);
             using (IGpuBuffer dummy = device.Factory.CreateBuffer(new GpuBufferDescription(256,
                 GpuBufferUsage.VertexBuffer | GpuBufferUsage.IndexBuffer)))
                 model.DrawFoliageMesh(commands, dummy, dummy, 0, GpuIndexFormat.UInt16, dummy, 0, 0, 0, null, true);
@@ -223,6 +304,40 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(scene.FoliageShadowDrawCalls > 0);
         }
 
+        // Mapped and opaque foliage materials create different prepared programs, so both material sets are drawn.
+        static void CapturePreparedFoliagePipelines(FakeGpuDevice device)
+        {
+            CapturePreparedFoliagePipelines(device, opaque: false);
+            CapturePreparedFoliagePipelines(device, opaque: true);
+        }
+
+        static void CapturePreparedFoliagePipelines(FakeGpuDevice device, bool opaque)
+        {
+            using var host = new KhaozEngine.Tests.MapDoc.NativeUploadTestScene(device);
+            var scene = host.Scene;
+            KhaozEngine.Tests.MapDoc.NativeResourceUploadTests.LoadParts(scene, opaque);
+            var data = new SceneUploadData(null, null,
+                KhaozEngine.Tests.MapDoc.NativeRenderAssetFixtures.FoliageSource(), default);
+            var handle = KhaozEngine.Tests.MapDoc.NativeResourceUploadTests.Publish(scene, data);
+            scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+            scene.Begin();
+            scene.DrawPreparedFoliage(handle, Vector3.Zero, new() { DrawRadius = 100, DistantDensity = 1 }, default);
+            scene.AddLight(new(1, 2, 1), Color.White, 6, 1, LightShadow.Static(71));
+            host.Render();
+            Assert.True(scene.FoliageShadowDrawCalls > 0);
+            // The first request admits the atlas at the next explicit frame boundary.
+            scene.Begin();
+            scene.DrawPreparedFoliage(handle, Vector3.Zero, new() { DrawRadius = 100, DistantDensity = 1 }, default);
+            scene.AddLight(new(1, 2, 1), Color.White, 6, 1, LightShadow.Static(71));
+            host.Render();
+            Assert.True(scene.FoliagePointShadowDrawCalls > 0);
+            scene.ForceTemporalForTests = true;
+            scene.Begin();
+            scene.DrawPreparedFoliage(handle, Vector3.Zero, new() { DrawRadius = 100, DistantDensity = 1 }, default);
+            host.Render();
+            scene.ReleaseResource(handle);
+        }
+
         static IReadOnlyList<VertexDeclaration> Parse(string glsl)
         {
             var declarations = new List<VertexDeclaration>();
@@ -234,6 +349,14 @@ namespace KhaozEngine.Tests.Gpu
                     match.Groups[3].Value));
             }
             return declarations;
+        }
+
+        static void CaptureBoundedWaterPipeline(Scene3D scene)
+        {
+            var mesh = new GltfMesh(new[] { new ModelVertex(new(0, 0, 0), Vector3.UnitY, Vector4.One),
+                new ModelVertex(new(0, 0, 2), Vector3.UnitY, Vector4.One), new ModelVertex(new(2, 0, 0), Vector3.UnitY, Vector4.One) }, new uint[] { 0, 1, 2 });
+            var handle = scene.LoadWaterMesh(mesh, WaterSurfaceDomain.Encode(new[] { new Vector2(0, 0), new(0, 2), new(2, 0) }));
+            scene.UnloadMesh(handle);
         }
 
         static GpuVertexElementFormat FormatOf(string glslType) => glslType switch

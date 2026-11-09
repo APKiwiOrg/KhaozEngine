@@ -4,8 +4,10 @@ Start a desktop 3D game with one package reference for the 3D renderer, scene in
 `KhaozEngine.Game2D` runtime. This code-free metapackage includes the 2D drawing and UI a 3D game also needs.
 
 Format-9 MapDoc and GPU-free prefab/interior preparation arrive through `Foundation`. Add `MapDoc.Physics`
-and a physics backend explicitly for headless native builds. The editor and `ke-mapedit` are separate
-authoring tools.
+and a physics backend explicitly for headless native builds. Add `MapDoc.Render3D` explicitly for the native view, snapshots and composite residency.
+It belongs to no umbrella. The editor and `ke-mapedit` are separate authoring tools.
+The [native view and snapshot contract](../KhaozEngine.MapDoc.Render3D/README.md#native-view-and-snapshot-contract)
+owns host policy, capture diagnostics and the separate CPU/backend proof boundaries.
 
 Pulls in:
 

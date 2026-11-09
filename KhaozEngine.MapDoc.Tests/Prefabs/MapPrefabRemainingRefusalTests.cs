@@ -132,7 +132,8 @@ public sealed class MapPrefabRemainingRefusalTests
                 [invalid && role == "link-room" ? room with { Id = "missing" } : room],
                 [invalid && role == "group" ? group with { Id = "missing" } : group], 0)],
             [new("group", [invalid && role == "group-room" ? room with { Id = "missing" } : room])],
-            [new(1, "lamp", invalid && role == "light" ? roof with { Id = "missing" } : roof, Vector3.Zero, Vector3.One, 0, 1, false)], []) { Roofs = [roof] };
+            [new(1, "lamp", invalid && role == "light" ? roof with { Id = "missing" } : roof, Vector3.Zero, Vector3.One, 0, 1, false)], [])
+        { Roofs = [roof] };
         var error = Assert.Throws<MapDocumentException>(() => MapPrefabValidation.RequireEffectiveAnnotations(Intent(true), [owner], surfaces));
         Assert.Equal(MapDocumentRefusal.ReferenceMissing, error.Reason);
         Assert.Equal("missing", error.EntityId);

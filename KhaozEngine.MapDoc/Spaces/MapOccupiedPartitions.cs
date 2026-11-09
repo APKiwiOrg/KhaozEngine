@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -67,7 +69,7 @@ internal static class MapOccupiedPartitions
         IReadOnlyList<MapSpaceBoundsPart> canonical, IReadOnlyList<MapPrismDomain> prisms)
     {
         int prismCount = prisms.Count, maxRecordReads = view.Scope.Limits.MaxRecordReads;
-        if (prismCount > maxRecordReads) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism records")
+        if (DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRecordReads.1", "MaxRecordReads", 0, prisms.Count, view.Scope.Limits.MaxRecordReads, prisms.Count > view.Scope.Limits.MaxRecordReads, CapacityDemandLifetime.Cumulative, allowanceSource: view.Scope.Limits)) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism records")
         { Budget = "MaxRecordReads", ActualCount = prismCount, Limit = maxRecordReads };
         var raw = canonical.Select(p => Identify(view, p)).ToList();
         var visiting = new HashSet<string>(StringComparer.Ordinal);
@@ -84,7 +86,7 @@ internal static class MapOccupiedPartitions
         void Add(MapPrismDomain prism, int depth)
         {
             if (done.Contains(prism.Id)) return;
-            if (depth > view.Scope.Limits.MaxRecordDepth) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism parent depth")
+            if (DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRecordDepth.1", "MaxRecordDepth", 0, depth, view.Scope.Limits.MaxRecordDepth, depth > view.Scope.Limits.MaxRecordDepth, CapacityDemandLifetime.Cumulative, allowanceSource: view.Scope.Limits)) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism parent depth")
             { Budget = "MaxRecordDepth", ActualCount = depth, Limit = view.Scope.Limits.MaxRecordDepth, RecordId = prism.Id, SpaceId = prism.Space.Id };
             if (!visiting.Add(prism.Id)) throw new MapDocumentException(MapDocumentRefusal.SpacePrismParentCycle, "invalid prism parent cycle")
             { RecordId = prism.Id, SpaceId = prism.Space.Id, RelatedRecordId = prism.Parent.Id };
@@ -94,10 +96,14 @@ internal static class MapOccupiedPartitions
             if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent) throw new MapDocumentException(
                 space.Kind != MapSpaceKind.Room ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.SpacePrismParentMismatch,
                 "missing geometry: prism parent mismatch")
-            { RecordId = prism.Id, SpaceId = space.Id, RelatedRecordId = prism.Parent.Id,
+            {
+                RecordId = prism.Id,
+                SpaceId = space.Id,
+                RelatedRecordId = prism.Parent.Id,
                 FieldPath = space.Kind != MapSpaceKind.Room ? "Kind" : "Parent",
                 EnumType = space.Kind != MapSpaceKind.Room ? typeof(MapSpaceKind) : null,
-                ActualInteger = space.Kind != MapSpaceKind.Room ? (int)space.Kind : null };
+                ActualInteger = space.Kind != MapSpaceKind.Room ? (int)space.Kind : null
+            };
             foreach (var parent in prisms.Where(p => MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, p.Space)) == parentOwner)) Add(parent, depth + 1);
             var polygon = MapPrismGeometry.Compile(view, prism);
             if (polygon.Contains(xz))
@@ -190,8 +196,10 @@ internal static class MapOccupiedPartitions
                     error is MapDocumentException numeric && MapGeometryRefusals.Representability(numeric)
                     ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.MissingGeometry;
             return new(status, [], error.Message, view.ReadWitness)
-            { Finding = error is MapDocumentException refusal ? MapDocumentFinding.FromException(refusal)
-                : new(MapDocumentRefusal.GeometryNotRepresentable, error.Message) { Operation = nameof(BuildWide) } };
+            {
+                Finding = error is MapDocumentException refusal ? MapDocumentFinding.FromException(refusal)
+                : new(MapDocumentRefusal.GeometryNotRepresentable, error.Message) { Operation = nameof(BuildWide) }
+            };
         }
     }
 
@@ -203,24 +211,35 @@ internal static class MapOccupiedPartitions
         var records = MapSpaceGeometry.Records(view).ToArray();
         var domains = records.OfType<MapPrismDomain>().ToArray();
         long domainVertices = 0;
-        if (domains.Length > view.Scope.Limits.MaxRecordReads || (domainVertices = domains.Sum(MapPrismGeometry.Cost)) > limits.MaxRefinementVertices)
-            throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism records or vertices")
-            { Budget = domains.Length > view.Scope.Limits.MaxRecordReads ? "MaxRecordReads" : "MaxRefinementVertices",
-                ActualCount = domains.Length > view.Scope.Limits.MaxRecordReads ? domains.Length : domainVertices,
-                Limit = domains.Length > view.Scope.Limits.MaxRecordReads ? view.Scope.Limits.MaxRecordReads : limits.MaxRefinementVertices };
+        bool refused = DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRecordReads.2", "MaxRecordReads", 0,
+            domains.Length, view.Scope.Limits.MaxRecordReads, domains.Length > view.Scope.Limits.MaxRecordReads, allowanceSource: view.Scope.Limits);
+        if (!refused)
+        {
+            domainVertices = domains.Sum(MapPrismGeometry.Cost);
+            refused = DemandDiagnostics.Check(view, "MapOccupiedPartitions.PrismVertices.1", "MaxRefinementVertices", 0,
+                domainVertices, limits.MaxRefinementVertices, domainVertices > limits.MaxRefinementVertices, allowanceSource: limits);
+        }
+        if (refused) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism records or vertices")
+        {
+            Budget = domains.Length > view.Scope.Limits.MaxRecordReads ? "MaxRecordReads" : "MaxRefinementVertices",
+            ActualCount = domains.Length > view.Scope.Limits.MaxRecordReads ? domains.Length : domainVertices,
+            Limit = domains.Length > view.Scope.Limits.MaxRecordReads ? view.Scope.Limits.MaxRecordReads : limits.MaxRefinementVertices
+        };
         var footprints = records.OfType<MapSpaceFootprint>().ToArray();
-        var prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, null, meter);
+        using var contextPreparation = MapPrismValidationWorkspace.Admission?.BeginPreparation();
+        var prepared = MapFootprintCoveragePreparation.Prepare(view, footprints, min, max, limits, meter);
         if (prepared.Context is not { } context) throw MapDocumentRefusalFactory.FromFinding(
             prepared.Finding! with { RefinementStatus = MapRefinementStatus.CapacityExceeded, InvalidPrefixSuppressed = true }, "capacity exceeded: " + prepared.Refusal);
         var raw = new List<MapOccupiedPiece>();
-        var parentIndexes = new Dictionary<string, (MapOccupiedPiece[] Parents, MapWaterPolygons.Bounds[] Bounds, MapBoundsIndex Index)>(StringComparer.Ordinal);
+        var parentIndexes = new Dictionary<string, (MapOccupiedPiece[] Parents, MapWaterPolygons.Bounds[] Bounds)>(StringComparer.Ordinal);
         var vertices = new Dictionary<List<MapOccupiedPiece>, long>();
-        var work = new MapWaterWorkBudget(limits.MaxPairChecks, compile: false, meter?.Pairs);
+        var work = new MapWaterWorkBudget(limits.MaxPairChecks, compile: false, meter?.Pairs, limits);
         foreach (var footprint in footprints)
         {
             var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, footprint.Space);
             foreach (int cell in footprint.SlotCells)
             {
+                using var cellWorkspace = MapPrismValidationWorkspace.FootprintCell(view, footprint, cell);
                 var authored = MapEffectiveGeometry.CellPolygon(view, footprint.Lattice, cell);
                 var polygon = MapWideRefinementGeometry.Normalize(authored.Select(MapWideXz.From));
                 var extent = MapEffectiveGeometry.Bounds(authored);
@@ -231,14 +250,22 @@ internal static class MapOccupiedPartitions
                 var upper = footprint.Upper.Kind == MapBoundKind.OpenTop ? null :
                     MapCommonRefinement.BoundFaces(context, footprint, footprint.Upper, new(rect.MinX, rect.MinZ), new(rect.MaxX, rect.MaxZ), limits);
                 Require(lower); if (upper is not null) Require(upper);
+                using var refinementWorkspace = MapPrismValidationWorkspace.Kernel(checked(4L + 3L * (lower.Faces.Count + (upper?.Faces.Count ?? 0))),
+                    Math.Min(limits.MaxRefinementFaces, checked((long)lower.Faces.Count * (upper?.Faces.Count ?? 1))));
                 var refined = MapCommonRefinement.RefineWide(lower.Faces, upper?.Faces, polygon, limits, budget: meter is null ? null : work);
                 if (refined.Status != MapRefinementStatus.Complete) throw Refusal(refined.Status, refined.Detail, refined.Finding!);
                 if (!refined.LowerArea.Equals(refined.CellArea) || upper is not null && !refined.UpperArea!.Value.Equals(refined.CellArea))
                     throw new MapDocumentException(MapDocumentRefusal.PatchUnavailable, "missing geometry: canonical occupied bounds")
-                    { RecordId = footprint.Id, SpaceId = footprint.Space.Id, Patch = footprint.Lattice,
-                        FieldPath = !refined.LowerArea.Equals(refined.CellArea) ? "Lower" : "Upper" };
+                    {
+                        RecordId = footprint.Id,
+                        SpaceId = footprint.Space.Id,
+                        Patch = footprint.Lattice,
+                        FieldPath = !refined.LowerArea.Equals(refined.CellArea) ? "Lower" : "Upper"
+                    };
                 foreach (var face in refined.Faces)
                 {
+                    using var candidate = MapPrismValidationWorkspace.RawCandidate(face.Polygon.Count);
+                    MapPrismValidationWorkspace.PublishRaw(candidate, face.Polygon.Count);
                     var lo = Boundary(view, footprint.Lower.SurfaceId ?? footprint.Lower.Opening!.Id, "canonical-floor");
                     var hi = Boundary(view, footprint.Upper.SurfaceId ?? footprint.Upper.Opening?.Id ?? "open-top",
                         upper is null ? "open-top" : "canonical-ceiling");
@@ -247,6 +274,8 @@ internal static class MapOccupiedPartitions
                 }
             }
         }
+        // Raw pieces own their bound-face arrays. The rooms and later validation no longer consume the context.
+        contextPreparation?.Dispose();
         var prisms = records.OfType<MapPrismDomain>().ToArray();
         var done = new HashSet<string>(StringComparer.Ordinal);
         var visiting = new HashSet<string>(StringComparer.Ordinal);
@@ -322,27 +351,35 @@ internal static class MapOccupiedPartitions
         {
             piece = piece with { Polygon = MapWideRefinementGeometry.Normalize(piece.Polygon) };
             long count = vertices.GetValueOrDefault(target) + piece.Polygon.Count;
-            if (target.Count >= limits.MaxRefinementFaces || count > limits.MaxRefinementVertices)
+            if (DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRefinementFaces.1", "MaxRefinementFaces", target.Count, 1, limits.MaxRefinementFaces, target.Count >= limits.MaxRefinementFaces, CapacityDemandLifetime.Cumulative, allowanceSource: limits) || DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRefinementVertices.1", "MaxRefinementVertices", 0, count, limits.MaxRefinementVertices, count > limits.MaxRefinementVertices, CapacityDemandLifetime.Cumulative, allowanceSource: limits))
                 throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: occupied pieces")
-                { Budget = target.Count >= limits.MaxRefinementFaces ? "MaxRefinementFaces" : "MaxRefinementVertices",
+                {
+                    Budget = target.Count >= limits.MaxRefinementFaces ? "MaxRefinementFaces" : "MaxRefinementVertices",
                     ActualCount = target.Count >= limits.MaxRefinementFaces ? target.Count + 1L : count,
-                    Limit = target.Count >= limits.MaxRefinementFaces ? limits.MaxRefinementFaces : limits.MaxRefinementVertices, SpaceId = piece.SpaceId };
+                    Limit = target.Count >= limits.MaxRefinementFaces ? limits.MaxRefinementFaces : limits.MaxRefinementVertices,
+                    SpaceId = piece.SpaceId
+                };
             vertices[target] = count;
             target.Add(piece);
-            if (ReferenceEquals(target, raw)) parentIndexes.Remove(piece.SpaceId);
+            if (ReferenceEquals(target, raw))
+            {
+                MapPrismValidationWorkspace.AddedRawPiece(piece.Polygon.Count);
+                if (parentIndexes.Remove(piece.SpaceId)) MapPrismValidationWorkspace.InvalidateIndex(piece.SpaceId);
+            }
         }
-        // The owner's pieces in raw order with their bounds and index, rebuilt only after raw gains a piece of that owner.
-        (MapOccupiedPiece[] Parents, MapWaterPolygons.Bounds[] Bounds, MapBoundsIndex Index) ParentIndex(string owner)
+        // The owner's pieces in raw order with their bounds, rebuilt only after raw gains a piece of that owner.
+        (MapOccupiedPiece[] Parents, MapWaterPolygons.Bounds[] Bounds) ParentIndex(string owner)
         {
             if (parentIndexes.TryGetValue(owner, out var cached)) return cached;
+            MapPrismValidationWorkspace.PartitionIndex(owner, raw.Count(p => p.SpaceId == owner));
             var parents = raw.Where(p => p.SpaceId == owner).ToArray();
             var bounds = parents.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
-            return parentIndexes[owner] = (parents, bounds, new MapBoundsIndex(bounds));
+            return parentIndexes[owner] = (parents, bounds);
         }
         void Room(MapPrismDomain prism, int depth)
         {
             if (done.Contains(prism.Id)) return;
-            if (depth > view.Scope.Limits.MaxRecordDepth) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism depth")
+            if (DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRecordDepth.2", "MaxRecordDepth", 0, depth, view.Scope.Limits.MaxRecordDepth, depth > view.Scope.Limits.MaxRecordDepth, CapacityDemandLifetime.Cumulative, allowanceSource: view.Scope.Limits)) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism depth")
             { Budget = "MaxRecordDepth", ActualCount = depth, Limit = view.Scope.Limits.MaxRecordDepth, RecordId = prism.Id, SpaceId = prism.Space.Id };
             if (!visiting.Add(prism.Id)) throw new MapDocumentException(MapDocumentRefusal.SpacePrismParentCycle, "invalid prism parent cycle")
             { RecordId = prism.Id, SpaceId = prism.Space.Id, RelatedRecordId = prism.Parent.Id };
@@ -352,28 +389,41 @@ internal static class MapOccupiedPartitions
             if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent) throw new MapDocumentException(
                 space.Kind != MapSpaceKind.Room ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.SpacePrismParentMismatch,
                 "missing geometry: prism parent mismatch")
-            { RecordId = prism.Id, SpaceId = space.Id, RelatedRecordId = prism.Parent.Id,
+            {
+                RecordId = prism.Id,
+                SpaceId = space.Id,
+                RelatedRecordId = prism.Parent.Id,
                 FieldPath = space.Kind != MapSpaceKind.Room ? "Kind" : "Parent",
                 EnumType = space.Kind != MapSpaceKind.Room ? typeof(MapSpaceKind) : null,
-                ActualInteger = space.Kind != MapSpaceKind.Room ? (int)space.Kind : null };
+                ActualInteger = space.Kind != MapSpaceKind.Room ? (int)space.Kind : null
+            };
             foreach (var parent in prisms.Where(p => MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, p.Space)) == parentOwner)) Room(parent, depth + 1);
-            var domain = MapPrismGeometry.Compile(view, prism);
+            using var roomPreparation = MapPrismValidationWorkspace.Admission?.BeginPreparation();
+            MapPrismValidationWorkspace.ReserveContext(MapPrismPreparationCapacity.DomainBytes(prism));
+            MapWaterDomain domain;
+            using (var compilerWorkspace = MapPrismValidationWorkspace.DomainKernel(view, prism))
+                domain = MapPrismGeometry.Compile(view, prism);
             var (lower, upper) = MapPrismGeometry.Heights(view, prism);
             var lo = Boundary(view, prism.Id, "prism-lower"); var hi = Boundary(view, prism.Id, "prism-upper");
-            var (parents, parentBounds, parentIndex) = ParentIndex(parentOwner);
-            // Every convex part is prepared before the first parent, as released. The owner's cached exact bounds index
-            // then gives, in the released parent, piece and part order, only the parts whose bounds overlap a parent.
+            var (parents, parentBounds) = ParentIndex(parentOwner);
+            // Every convex part is prepared before the first parent, as released. A piece-bounds index
+            // then gives, in the released parent, piece and part order, only the pieces whose bounds overlap a parent.
             // The others share no positive area. Each visited pair is charged once.
-            var parts = parents.Length == 0 ? [] : Enumerable.Range(0, domain.Pieces.Count)
-                .Select(i => domain.ConvexParts(i, work).Select(c => (Polygon: c, Bounds: MapWaterPolygons.Bounds.Of(c))).ToArray()).ToArray();
-            var near = Enumerable.Range(0, parts.Length).SelectMany(i => parentIndex.Overlapping(domain.PieceBounds(i)).Select(k => (Parent: k, Piece: i)))
-                .Order().ToLookup(p => p.Parent, p => p.Piece);
+            (IReadOnlyList<MapWideXz> Polygon, MapWaterPolygons.Bounds Bounds)[][] parts;
+            using (var partsWorkspace = MapPrismValidationWorkspace.Kernel(MapPrismPreparationCapacity.LargestPiece(prism), parents.Length))
+            {
+                if (parents.Length != 0) MapPrismValidationWorkspace.ReserveContext(MapPrismPreparationCapacity.ConvexPartsBytes(domain));
+                parts = parents.Length == 0 ? [] : Enumerable.Range(0, domain.Pieces.Count)
+                    .Select(i => domain.ConvexParts(i, work).Select(c => (Polygon: c, Bounds: MapWaterPolygons.Bounds.Of(c))).ToArray()).ToArray();
+            }
+            using var near = new MapPrismRoomCandidates(domain, parentBounds);
             for (int k = 0; k < parents.Length; k++)
-                foreach (int i in near[k])
+                foreach (int i in near.Pieces(k))
                     foreach (var (convex, extent) in parts[i])
                     {
                         if (!parentBounds[k].OverlapsOpen(extent)) continue;
                         var parent = parents[k];
+                        using var clippingWorkspace = MapPrismValidationWorkspace.Kernel(checked(parent.Polygon.Count + convex.Count + 4L));
                         work.Charge(1);
                         var polygon = Intersect(parent.Polygon, convex);
                         if (!Positive(polygon)) continue;
@@ -389,13 +439,18 @@ internal static class MapOccupiedPartitions
                                 if (open && parentHigh) continue;
                                 var clipped = open ? bottom : Clip(bottom, p => parentHigh ? W(upper).Subtract(Height(parent, p, true)) : Height(parent, p, true).Subtract(W(upper)));
                                 if (!Positive(clipped) || !open && !parentHigh && clipped.All(p => Height(parent, p, true).CompareTo(W(upper)) == 0)) continue;
+                                using var candidate = MapPrismValidationWorkspace.RawCandidate(clipped.Count);
                                 var piece = Make(MapSpaceGeometry.Owner(view, space), parentLow ? parent.LowerBoundary : lo, parentHigh ? parent.UpperBoundary : hi,
                                     clipped, parentLow ? parent.LowerFaces : [], parentHigh ? parent.UpperFaces : null,
                                     parentLow ? parent.LowerPlane : lower, parentHigh ? parent.UpperPlane : upper,
                                     Extend(parent.Path, prism.Parent.Id, parent.LowerBoundary, parent.UpperBoundary)) with
                                 { AuthoredParent = prism.Parent };
                                 clipped = Clip(clipped, p => Height(piece, p, true).Subtract(Height(piece, p, false)));
-                                if (Positive(clipped) && clipped.Any(p => Height(piece, p, true).CompareTo(Height(piece, p, false)) > 0)) Add(raw, piece with { Polygon = clipped });
+                                if (Positive(clipped) && clipped.Any(p => Height(piece, p, true).CompareTo(Height(piece, p, false)) > 0))
+                                {
+                                    MapPrismValidationWorkspace.PublishRaw(candidate, clipped.Count);
+                                    Add(raw, piece with { Polygon = clipped });
+                                }
                             }
                         }
                     }

@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 under the perspective follow camera a game uses: a keyed
+    /// TEMPORAL-RESOLVE amendment 23 under the perspective follow camera a game uses: a keyed
     /// avatar-sized box with ridged pixels walks over the textured ground while <see cref="FollowCamera3D"/> keeps it
     /// at the screen centre (<see cref="TemporalPerspectiveFollowRuns"/>). Unlike the orthographic wall of
     /// <see cref="TemporalFollowCameraGpuTests"/>, the ground's motion changes with its depth, so neighbouring ground
@@ -314,6 +314,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every walk's trail, with the walk in internal pixels a frame. With
         /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it prints both pitches, every heading, speed and preset.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_perspective_follow_table_prints_every_walk()
         {

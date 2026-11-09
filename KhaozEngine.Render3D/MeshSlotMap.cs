@@ -16,21 +16,28 @@ namespace KhaozEngine.Render3D
         readonly List<int> _generations = new();
         readonly List<bool> _free = new();
         readonly Stack<int> _freeList = new();
+        readonly List<long> _allocationOrders = new();
+        long _lastAllocationOrder;
 
         /// <summary>Number of slots ever allocated (live + freed). Indices range [0, <see cref="SlotCount"/>).</summary>
         public int SlotCount => _generations.Count;
+
+        // Reserve before asynchronous upload completion can reorder publication. No slot is retained yet.
+        internal long ReserveAllocationOrder() => checked(++_lastAllocationOrder);
 
         /// <summary>
         /// Allocate a slot: reuse a freed index if one exists (bumping its generation), else append a fresh slot
         /// (generation 1). Returns the slot index; <paramref name="generation"/> is that slot's new generation
         /// (always &gt;= 1, so a <c>default</c> handle with generation 0 is never valid).
         /// </summary>
-        public int Alloc(out int generation)
+        public int Alloc(out int generation, long allocationOrder = 0)
         {
+            if (allocationOrder == 0) allocationOrder = ReserveAllocationOrder();
             if (_freeList.Count > 0)
             {
                 int index = _freeList.Pop();
                 _free[index] = false;
+                _allocationOrders[index] = allocationOrder;
                 generation = _generations[index];   // already bumped on Free
                 return index;
             }
@@ -38,8 +45,16 @@ namespace KhaozEngine.Render3D
             int newIndex = _generations.Count;
             _generations.Add(1);
             _free.Add(false);
+            _allocationOrders.Add(allocationOrder);
             generation = 1;
             return newIndex;
+        }
+
+        /// <summary>The live mesh's preparation order, independent of publication and recycled storage.</summary>
+        internal long AllocationOrder(int index, int generation)
+        {
+            if (!IsValid(index, generation)) throw new ArgumentException("Mesh order requires a live handle.");
+            return _allocationOrders[index];
         }
 
         /// <summary>True if <paramref name="index"/>/<paramref name="generation"/> names a live slot (in range,

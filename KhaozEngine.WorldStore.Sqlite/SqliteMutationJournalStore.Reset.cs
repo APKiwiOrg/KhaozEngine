@@ -90,7 +90,8 @@ public sealed partial class SqliteMutationJournalStore
                 JournalStoreFailureScope.WholeStore,
                 null,
                 "The journal reset could not take the SQLite write lock before its lock timeout, because another journal writer held it. Nothing was deleted. Stop every journal host and retry.",
-                busy) { LockTimeout = busyTimeout };
+                busy)
+            { LockTimeout = busyTimeout };
         }
     }
 

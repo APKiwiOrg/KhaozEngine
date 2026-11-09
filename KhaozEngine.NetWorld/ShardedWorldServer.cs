@@ -89,7 +89,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         if (config.InterestRadius > config.OverlapMargin)
             throw new WorldConfigurationException(WorldConfigurationRefusal.InterestOutsideOverlap,
                 $"InterestRadius {config.InterestRadius} must be <= OverlapMargin {config.OverlapMargin} so the home cell can hold the full AoI as ghosts.",
-                nameof(config)) { InterestRadius = config.InterestRadius, OverlapMargin = config.OverlapMargin };
+                nameof(config))
+            { InterestRadius = config.InterestRadius, OverlapMargin = config.OverlapMargin };
         if (!float.IsFinite(config.CellOrigin.X) || !float.IsFinite(config.CellOrigin.Y))
             throw new WorldConfigurationException(WorldConfigurationRefusal.CellOriginNonfinite,
                 $"CellOrigin {config.CellOrigin} must be finite on both axes.", nameof(config))

@@ -12,10 +12,10 @@ using KhaozEngine.MapDoc.Spaces;
 
 namespace KhaozEngine.MapDoc;
 
-    /// <summary>An immutable validation finding. Message is its prose projection, while Reason and the applicable
-    /// identifiers describe the refused rule. Identifiers not known by the producing guard remain null.</summary>
-    /// <param name="Reason">The rule refused by the validator.</param>
-    /// <param name="Message">The developer-facing explanation, not a classification token.</param>
+/// <summary>An immutable validation finding. Message is its prose projection, while Reason and the applicable
+/// identifiers describe the refused rule. Identifiers not known by the producing guard remain null.</summary>
+/// <param name="Reason">The rule refused by the validator.</param>
+/// <param name="Message">The developer-facing explanation, not a classification token.</param>
 public sealed record MapDocumentFinding(MapDocumentRefusal Reason, string Message)
 {
     IReadOnlyList<int>? _supportedVersions;

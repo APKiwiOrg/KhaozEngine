@@ -49,7 +49,8 @@ internal static partial class MapTiledFile
         if (doc.Tiles is null && File.Exists(manifestPath))
             throw new MapDocumentException(MapDocumentRefusal.DocumentLoadedIndexRequired,
                 $"{directory}: refusing to write a document with no tile index over an existing tiled document. " +
-                "Load it first (MapDocumentFile.LoadTiled) so the write knows which tiles exist.") { Path = root };
+                "Load it first (MapDocumentFile.LoadTiled) so the write knows which tiles exist.")
+            { Path = root };
 
         if (doc.Tiles is { IsPartial: true } partial)
         {

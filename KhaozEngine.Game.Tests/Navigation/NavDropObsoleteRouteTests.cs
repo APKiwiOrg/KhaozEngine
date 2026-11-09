@@ -137,7 +137,8 @@ public class NavDropObsoleteRouteTests
         var (space, planner) = Setup();
         var follower = new PathFollower(planner, new PathFollowConfig
         {
-            AcceptRadius = 0.6f, VerticalAcceptTolerance = float.PositiveInfinity,
+            AcceptRadius = 0.6f,
+            VerticalAcceptTolerance = float.PositiveInfinity,
         }, space);
         Assert.Equal(PathFollowState.Following, follower.Tick(Middle, Landing, 0f, Dt).State);
 

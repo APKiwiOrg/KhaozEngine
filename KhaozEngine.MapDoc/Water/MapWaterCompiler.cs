@@ -29,19 +29,39 @@ public static class MapWaterCompiler
         ArgumentNullException.ThrowIfNull(water);
         limits ??= new MapWaterCompileLimits();
         limits.Validate();
+        var admission = view.Scope.SceneAdmission ?? Scene.MapSceneAdmission.Current;
+        using var admitted = admission?.Enter();
+        using var preparation = admission?.BeginPreparation();
         MapWaterSet snapshot = water.Clone();
         MapWaterConnectivity? graph = null;
-        var bodies = new List<MapCompiledWaterBody>();
+        admission?.ReserveBytes(checked(128L + 32L * snapshot.Bodies.Count));
+        var bodies = new List<MapCompiledWaterBody>(snapshot.Bodies.Count);
         foreach (MapWaterBodyDoc body in snapshot.Bodies.Where(b => b is not null).OrderBy(b => b.Id, StringComparer.Ordinal))
         {
+            using var bodyPreparation = admission?.BeginPreparation();
             var compile = new BodyCompile(view, snapshot, body, limits);
-            bodies.Add(compile.Run(ref graph));
+            var compiled = compile.Run(ref graph);
+            bodyPreparation?.Complete(new MapWaterInventory().Body(compiled));
+            bodies.Add(compiled);
         }
+        var inventory = new MapWaterInventory();
+        preparation?.Complete(checked(128L + 8L * bodies.Capacity + bodies.Sum(inventory.Body)));
         return bodies.AsReadOnly();
     }
 
     /// <summary>The state of one body's compile, kept so a refused body still reports what it read.</summary>
-    sealed class BodyCompile(MapScopedSurfaces view, MapWaterSet water, MapWaterBodyDoc body, MapWaterCompileLimits limits)
+    internal static MapCompiledWaterBody CompileCell(MapScopedSurfaces view, MapWaterSet water, MapWaterBodyDoc body,
+        MapEffectiveWaterBody cell, MapWaterCompileLimits limits)
+    {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        MapWaterConnectivity? graph = null;
+        var compiled = new BodyCompile(view, water, body, limits, cell).Run(ref graph);
+        preparation?.Complete(new MapWaterInventory().Body(compiled));
+        return compiled;
+    }
+
+    sealed class BodyCompile(MapScopedSurfaces view, MapWaterSet water, MapWaterBodyDoc body, MapWaterCompileLimits limits,
+        MapEffectiveWaterBody? cellBody = null)
     {
         readonly MapWaterWorkMeter _meter = new(limits);
         readonly SortedSet<MapPatchKey> _patches = new();
@@ -65,10 +85,11 @@ public static class MapWaterCompiler
         internal MapCompiledWaterBody Run(ref MapWaterConnectivity? graph)
         {
             MapWaterCompileStatus status;
+            Scene.MapSceneCapacity? capacity = null;
             string? detail;
             try { (status, detail) = Compile(ref graph); }
             catch (MapWaterCapacityException limit)
-            { _finding = limit.Finding; (status, detail) = (MapWaterCompileStatus.CapacityExceeded, limit.Message); }
+            { capacity = limit.Capacity; _finding = limit.Finding; (status, detail) = (MapWaterCompileStatus.CapacityExceeded, limit.Message); }
             catch (Exception error) when (error is MapExactOverflowException or OverflowException)
             {
                 (status, detail) = (MapWaterCompileStatus.NotRepresentable, $"{_label}: not representable");
@@ -107,6 +128,7 @@ public static class MapWaterCompiler
             return new MapCompiledWaterBody(body.Id, Level, medium, body.RenderMaterial, _regions, deepest, bounds, status, detail,
                 _meter.Work, digest)
             {
+                Capacity = capacity,
                 Finding = status == MapWaterCompileStatus.Complete ? null : _finding is { } finding
                     ? finding with { Message = detail ?? finding.Message, OwnerId = finding.OwnerId ?? body.Id, InvalidPrefixSuppressed = true } : null,
                 Domain = _domain,
@@ -136,7 +158,13 @@ public static class MapWaterCompiler
             }
             var errors = new List<string>();
             var findings = new List<MapDocumentFinding>();
-            if (view.EffectiveContext?.Transform(MapPrefabChildKind.WaterBody, body.Id) is not null)
+            if (cellBody is not null)
+            {
+                _effective = cellBody;
+                _domain = cellBody.Domain;
+                level = cellBody.SurfaceY;
+            }
+            else if (view.EffectiveContext?.Transform(MapPrefabChildKind.WaterBody, body.Id) is not null)
             {
                 _effective = MapEffectiveWater.Resolve(view, body, _meter.Pairs);
                 _domain = _effective.Domain;
@@ -191,7 +219,7 @@ public static class MapWaterCompiler
                         }
             Absorb(builder);
             _regions = builder.Emit(level);
-            _closedContours = builder.ClosedContours.AsReadOnly();
+            _closedContours = MapWaterInventory.ReadOnly(builder.ClosedContours);
             _deepest = builder.DeepestBed;
             _fragmentBounds = builder.FragmentBounds;
             _finding ??= builder.UnresolvedFinding;

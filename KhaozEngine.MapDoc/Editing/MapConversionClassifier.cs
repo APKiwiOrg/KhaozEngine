@@ -10,7 +10,7 @@ public static class MapConversionClassifier
         long cellX, long cellZ, int subdivision)
     {
         if (subdivision is < 2 or > 64) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "subdivision must be 2 to 64")
-            { SurfaceId = surface.Id, FieldPath = "Subdivision", ActualInteger = subdivision, MinimumInteger = 2, MaximumInteger = 64 };
+        { SurfaceId = surface.Id, FieldPath = "Subdivision", ActualInteger = subdivision, MinimumInteger = 2, MaximumInteger = 64 };
         try
         {
             var geometry = new MapConversionCellGeometry(surface, patch, cellX, cellZ);
@@ -19,7 +19,7 @@ public static class MapConversionClassifier
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
             throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "conversion geometry is not representable", error)
-                { SurfaceId = surface.Id, Patch = patch.Key, Address = MapLatticeAddress.Corner(cellX, cellZ), Operation = nameof(Classify) };
+            { SurfaceId = surface.Id, Patch = patch.Key, Address = MapLatticeAddress.Corner(cellX, cellZ), Operation = nameof(Classify) };
         }
     }
 
@@ -53,9 +53,12 @@ public static class MapConversionClassifier
         {
             Finding = refusal is { } rule ? new(rule, reason ?? "LegacyTileWorld arithmetic policy")
             {
-                SurfaceId = geometry.Surface.Id, Patch = geometry.Patch.Key,
-                Address = MapLatticeAddress.Corner(geometry.CellX, geometry.CellZ), ActualInteger = subdivision,
-                ConversionClass = kind, PresencePolicy = geometry.Surface.PresencePolicy
+                SurfaceId = geometry.Surface.Id,
+                Patch = geometry.Patch.Key,
+                Address = MapLatticeAddress.Corner(geometry.CellX, geometry.CellZ),
+                ActualInteger = subdivision,
+                ConversionClass = kind,
+                PresencePolicy = geometry.Surface.PresencePolicy
             } : null
         };
     }

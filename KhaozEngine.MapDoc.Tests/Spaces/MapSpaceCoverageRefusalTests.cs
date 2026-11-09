@@ -49,6 +49,28 @@ public sealed class MapSpaceCoverageRefusalTests
         Assert.Empty(Findings(set));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RefinementCapacity_NamesItsFootprintAndRetainsTheConcreteBudget(bool context)
+    {
+        var set = MapOccupiedPartitionRefusalTests.Scene(0);
+        var footprint = set.Patches.Values.Single().Records.OfType<MapSpaceFootprint>().Single();
+        var view = MapScopedSurfaces.CompleteView(set);
+        MapRefinementLimits Limits(int limit) => context ? new(MaxContextFaces: limit) : new(MaxRefinementFaces: limit);
+        var finding = Assert.Single(MapSpaceCoverageValidator.ValidateFindings(view, Limits(1)));
+        Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, finding.Reason);
+        Assert.Equal(context ? nameof(MapRefinementLimits.MaxContextFaces) : nameof(MapRefinementLimits.MaxRefinementFaces), finding.Budget);
+        Assert.Equal(2L, finding.ActualCount);
+        Assert.Equal(1L, finding.Limit);
+        Assert.Equal(footprint.Id, finding.OwnerId);
+        Assert.Equal(footprint.Id, finding.RecordId);
+        Assert.Equal(footprint.Space.Id, finding.SpaceId);
+        if (!context) Assert.Equal(0, finding.SlotCell);
+        Assert.Empty(MapSpaceCoverageValidator.ValidateFindings(view, Limits(2)));
+        Assert.Empty(MapSpaceCoverageValidator.ValidateFindings(view, Limits(3)));
+    }
+
     [Fact]
     public void CollapsedCoverage_NamesItsFootprintAndAcceptsPositiveSeparation()
     {
@@ -93,8 +115,12 @@ public sealed class MapSpaceCoverageRefusalTests
         set.Refs.Add(set.Refs.Single() with { Id = "other" });
         set.Patches.Add(other.Key, other);
         var footprint = patch.Records.OfType<MapSpaceFootprint>().Single();
-        patch.Records.Add(footprint with { Id = "other-footprint", Lattice = other.Key,
-            Lower = new(MapBoundKind.SupportFloor, "other", null) });
+        patch.Records.Add(footprint with
+        {
+            Id = "other-footprint",
+            Lattice = other.Key,
+            Lower = new(MapBoundKind.SupportFloor, "other", null)
+        });
         var coincidence = Assert.Single(Findings(set));
         Assert.Equal(MapDocumentRefusal.SpaceSupportCoincident, coincidence.Reason);
         Assert.Equal(footprint.Id, coincidence.RecordId);

@@ -52,16 +52,30 @@ internal static class MapSpaceOverlapValidator
                         }
                     if (coincident) Add(new(MapDocumentRefusal.SpaceSupportCoincident,
                         $"coincident: footprint '{a.Footprint.Id}' cell {a.Cell} with '{b.Footprint.Id}' cell {b.Cell}")
-                    { RecordId = a.Footprint.Id, RelatedRecordId = b.Footprint.Id, SpaceId = a.Space.Id,
-                        SlotCell = a.Cell, RelatedSlotCell = b.Cell });
+                    {
+                        RecordId = a.Footprint.Id,
+                        RelatedRecordId = b.Footprint.Id,
+                        SpaceId = a.Space.Id,
+                        SlotCell = a.Cell,
+                        RelatedSlotCell = b.Cell
+                    });
                     if (ambiguous) Add(new(MapDocumentRefusal.SpaceOccupiedOverlap,
                         $"ambiguous: footprint '{a.Footprint.Id}' cell {a.Cell} with '{b.Footprint.Id}' cell {b.Cell}")
-                    { RecordId = a.Footprint.Id, RelatedRecordId = b.Footprint.Id, SpaceId = a.Space.Id, EntityId = b.Space.Id,
-                        SlotCell = a.Cell, RelatedSlotCell = b.Cell });
+                    {
+                        RecordId = a.Footprint.Id,
+                        RelatedRecordId = b.Footprint.Id,
+                        SpaceId = a.Space.Id,
+                        EntityId = b.Space.Id,
+                        SlotCell = a.Cell,
+                        RelatedSlotCell = b.Cell
+                    });
                 }
-                catch (MapExactOverflowException) { Add(new(MapDocumentRefusal.GeometryNotRepresentable,
+                catch (MapExactOverflowException)
+                {
+                    Add(new(MapDocumentRefusal.GeometryNotRepresentable,
                     $"not representable: footprint '{a.Footprint.Id}' cell {a.Cell}")
-                    { RecordId = a.Footprint.Id, SpaceId = a.Space.Id, SlotCell = a.Cell }); }
+                    { RecordId = a.Footprint.Id, SpaceId = a.Space.Id, SlotCell = a.Cell });
+                }
                 catch (MapDocumentException error)
                 {
                     string message = $"missing geometry: footprint '{a.Footprint.Id}' cell {a.Cell} ({error.Message})";

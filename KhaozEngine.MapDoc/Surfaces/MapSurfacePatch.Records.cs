@@ -11,6 +11,7 @@ public sealed partial class MapSurfacePatch
 
     void CloneRecordsTo(MapSurfacePatch target)
     {
+        target.Records.EnsureCapacity(checked((int)Scene.MapSceneAdmission.CloneCapacity(Records.Count, true)));
         foreach (MapTopologyRecord record in Records)
             target.Records.Add(record switch
             {

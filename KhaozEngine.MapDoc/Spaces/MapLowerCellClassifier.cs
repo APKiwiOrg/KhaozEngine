@@ -23,8 +23,13 @@ public static class MapLowerCellClassifier
             return Failure(MapLowerCellClass.Unavailable, Context(footprint, key, slot,
                 !found ? MapDocumentRefusal.PatchUnavailable : MapDocumentRefusal.ReferenceKindMismatch,
                 $"space '{footprint.Space.Id}' {footprint.Space.Anchor}: {spaceStatus}") with
-                { Patch = footprint.Space.Anchor, PatchStatus = spaceStatus, RelatedRecordId = footprint.Space.Id,
-                    ExpectedRecordType = typeof(MapSpaceDoc), RecordType = record?.GetType() });
+            {
+                Patch = footprint.Space.Anchor,
+                PatchStatus = spaceStatus,
+                RelatedRecordId = footprint.Space.Id,
+                ExpectedRecordType = typeof(MapSpaceDoc),
+                RecordType = record?.GetType()
+            });
         MapSurfaceRef? surface = view.Surfaces.FirstOrDefault(s => s.Id == footprint.Lower.SurfaceId);
         if (MapLegacyExteriorRecipe.CheckFinding(footprint, space, surface) is { } recipe)
             return Failure(MapLowerCellClass.InvalidRecipe, recipe);
@@ -32,10 +37,12 @@ public static class MapLowerCellClassifier
             MapDocumentRefusal.ReferenceMissing, $"surface '{footprint.Lower.SurfaceId}' {key}: missing"));
         if (!view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out MapPatchStatus status))
             return Failure(MapLowerCellClass.Unavailable, Context(footprint, key, slot,
-                MapDocumentRefusal.PatchUnavailable, $"patch {key}: {status}") with { PatchStatus = status });
+                MapDocumentRefusal.PatchUnavailable, $"patch {key}: {status}") with
+            { PatchStatus = status });
         if (status == MapPatchStatus.KnownEmpty) return Result(MapLowerCellClass.KnownHole, $"patch {key}: {status}");
         if (patch is null) return Failure(MapLowerCellClass.Unavailable, Context(footprint, key, slot,
-            MapDocumentRefusal.PatchUnavailable, $"patch {key}: {status} without payload") with { PatchStatus = status });
+            MapDocumentRefusal.PatchUnavailable, $"patch {key}: {status} without payload") with
+        { PatchStatus = status });
         return ClassifyPatch(footprint, surface, patch, key, slot);
 
         MapLowerCellClassification Result(MapLowerCellClass kind, string? detail) => new(kind, key, slot, null, detail);
@@ -69,7 +76,7 @@ public static class MapLowerCellClassifier
                     int height = field == "h00" ? h00 : field == "h10" ? h10 : field == "h01" ? h01 : h11;
                     return Result(MapLowerCellClass.InvalidRecipe, "legacy recipe: height", Context(footprint, key, slot,
                         MapDocumentRefusal.ValueOutsideRange, "legacy recipe: height") with
-                        { FieldPath = field, ActualInteger = height, MinimumInteger = short.MinValue, MaximumInteger = short.MaxValue });
+                    { FieldPath = field, ActualInteger = height, MinimumInteger = short.MinValue, MaximumInteger = short.MaxValue });
                 }
                 return new(MapLowerCellClass.LegacyNonCapture, key, slot,
                     new MapLegacyCellTag(key, slot, MapLegacyExteriorRecipe.PolicyId), null);

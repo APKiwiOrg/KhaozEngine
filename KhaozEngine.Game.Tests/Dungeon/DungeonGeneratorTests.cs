@@ -44,6 +44,7 @@ namespace KhaozEngine.Tests.Dungeon
         public void NoWalkableCell_TouchesEmpty_AfterWallPass()
         {
             var layout = DungeonGenerator.Generate(Config(), 7UL);
+            Assert.Contains(layout.CellsMutable, DungeonLayout.IsWalkable);
             for (int f = 0; f < layout.Floors; f++)
                 for (int x = 0; x < layout.Width; x++)
                     for (int z = 0; z < layout.Depth; z++)

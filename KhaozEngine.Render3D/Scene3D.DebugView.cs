@@ -15,7 +15,7 @@ namespace KhaozEngine.Render3D
         /// A development view that replaces the final image with a view of the temporal machinery.
         /// <see cref="SceneDebugView.None"/>, the default, renders normally. <see cref="SceneDebugView.MotionVectors"/>
         /// turns temporal rendering on for as long as it is set, which jitters the rasterised image by under half an
-        /// internal pixel on each axis each frame. The other three take effect only under
+        /// internal pixel on each axis each frame. The other four take effect only under
         /// <see cref="AntiAliasing.Temporal"/>, and only on the frame's first render, the one the resolve runs on. Not
         /// a player setting.
         /// <para>
@@ -30,7 +30,7 @@ namespace KhaozEngine.Render3D
             get => _debugView;
             set
             {
-                if (value < SceneDebugView.None || value > SceneDebugView.Reactive)
+                if (value < SceneDebugView.None || value > SceneDebugView.Shimmer)
                     throw new ArgumentOutOfRangeException(nameof(value), value, "Not a defined SceneDebugView.");
                 _debugView = value;
             }
@@ -45,7 +45,7 @@ namespace KhaozEngine.Render3D
         /// <summary>Draw the frame's debug view over <paramref name="target"/>, once per render right after the post
         /// chain. <see cref="SceneDebugView.None"/> draws nothing. The view is the one the frame's first render latched
         /// (<see cref="LatchFrameView"/>), so a selection made after that render waits for the next frame, as
-        /// <see cref="DebugView"/> documents. The three resolve views draw only on the render that ran the resolve
+        /// <see cref="DebugView"/> documents. The four resolve views draw only on the render that ran the resolve
         /// (<see cref="DrawTemporalDebugView"/>).</summary>
         void DrawDebugView(IGpuCommandList cl, IGpuFramebuffer target)
         {
@@ -63,6 +63,7 @@ namespace KhaozEngine.Render3D
                 case SceneDebugView.History:
                 case SceneDebugView.Disocclusion:
                 case SceneDebugView.Reactive:
+                case SceneDebugView.Shimmer:
                     RetireMotionVectorsView();
                     DrawTemporalDebugView(cl, target);
                     break;

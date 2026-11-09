@@ -46,7 +46,7 @@ internal sealed class ContactNavigationSnapshot
         PhysicsNavCaptureBasis basis = bake.Basis
             ?? throw new NavigationBuildException(NavigationBuildRefusal.CaptureLeaseRequired,
                     "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.")
-                    { RequiredCapability = typeof(KhaozEngine.Physics.IPhysicsQueryLeaseSource) };
+            { RequiredCapability = typeof(KhaozEngine.Physics.IPhysicsQueryLeaseSource) };
         basis.AssertCurrent();
         var snapshot = new ContactNavigationSnapshot(basis, context.NavigationFrame, context);
         snapshot.AssertCurrent();
@@ -66,13 +66,13 @@ internal sealed class ContactNavigationSnapshot
     {
         if (!ReferenceEquals(id.SourceWorld, Basis.Source))
             throw new NavigationBuildException(NavigationBuildRefusal.SnapshotLeaseSourceChanged, ChangedMessage)
-                { SourceRole = NavigationSourceRole.ReadLease };
+            { SourceRole = NavigationSourceRole.ReadLease };
         if (id.GeometryGeneration != Basis.GeometryGeneration)
             throw new NavigationBuildException(NavigationBuildRefusal.SnapshotLeaseGenerationChanged, ChangedMessage)
-                { ExpectedGeneration = Basis.GeometryGeneration, ActualGeneration = id.GeometryGeneration };
+            { ExpectedGeneration = Basis.GeometryGeneration, ActualGeneration = id.GeometryGeneration };
         if (!Same(frame, Frame))
             throw new NavigationBuildException(NavigationBuildRefusal.SnapshotLeaseFrameChanged, ChangedMessage)
-                { ExpectedFrame = Frame, ActualFrame = frame };
+            { ExpectedFrame = Frame, ActualFrame = frame };
     }
 
     /// <summary>Refuses the build when the physics basis, the view or a producer differs from the snapshot.</summary>
@@ -81,14 +81,14 @@ internal sealed class ContactNavigationSnapshot
         Basis.AssertCurrent();
         if (!ReferenceEquals(_view.SourceWorld, _physics))
             throw new NavigationBuildException(NavigationBuildRefusal.SnapshotViewSourceChanged, ChangedMessage)
-                { SourceRole = NavigationSourceRole.MovementQueryView };
+            { SourceRole = NavigationSourceRole.MovementQueryView };
         // GroundMoveContext rejects a registration from another source at construction. Both references and
         // OrdinaryMovementRegistration.SourceWorld are immutable, so no input can reach this invariant.
         if (!ReferenceEquals(_registration.SourceWorld, _physics)) throw new InvalidOperationException(ChangedMessage);
         Vector3 origin = _view.Origin;
         if (!Same(origin, Frame.PhysicsOrigin))
             throw new NavigationBuildException(NavigationBuildRefusal.SnapshotViewOriginChanged, ChangedMessage)
-                { ExpectedOrigin = Frame.PhysicsOrigin, ActualOrigin = origin };
+            { ExpectedOrigin = Frame.PhysicsOrigin, ActualOrigin = origin };
         AssertBasisOrigin(Frame);
         AssertContextFrame(_context.NavigationFrame);
         AssertProducersCurrent();
@@ -98,27 +98,27 @@ internal sealed class ContactNavigationSnapshot
     {
         if (!Same(frame.PhysicsOrigin, Basis.Origin))
             throw new NavigationBuildException(NavigationBuildRefusal.SnapshotBasisOriginChanged, ChangedMessage)
-                { ExpectedOrigin = Basis.Origin, ActualOrigin = frame.PhysicsOrigin };
+            { ExpectedOrigin = Basis.Origin, ActualOrigin = frame.PhysicsOrigin };
     }
 
     void AssertContextFrame(MovementFrameDescriptor actual)
     {
         if (!Same(actual, Frame))
             throw new NavigationBuildException(NavigationBuildRefusal.SnapshotContextFrameChanged, ChangedMessage)
-                { ExpectedFrame = Frame, ActualFrame = actual };
+            { ExpectedFrame = Frame, ActualFrame = actual };
     }
 
     void AssertRegistrationGeneration(long actual)
     {
         if (actual != _registrationGeneration)
             throw new NavigationBuildException(NavigationBuildRefusal.RegistrationGenerationChanged, ChangedMessage)
-                { ExpectedGeneration = _registrationGeneration, ActualGeneration = actual };
+            { ExpectedGeneration = _registrationGeneration, ActualGeneration = actual };
     }
 
     static void AssertNoRuntimeStatics(bool present)
     {
         if (present) throw new NavigationBuildException(NavigationBuildRefusal.RuntimeStaticsPresent, ChangedMessage)
-            { SourceRole = NavigationSourceRole.MovementRegistration };
+        { SourceRole = NavigationSourceRole.MovementRegistration };
     }
 
     void AssertProducersCurrent()
@@ -129,15 +129,15 @@ internal sealed class ContactNavigationSnapshot
         long generation = _water.Generation;
         if (generation != _waterGeneration)
             throw new NavigationBuildException(NavigationBuildRefusal.WaterGenerationChanged, ChangedMessage)
-                { ExpectedGeneration = _waterGeneration, ActualGeneration = generation };
+            { ExpectedGeneration = _waterGeneration, ActualGeneration = generation };
         string identity = _water.SemanticIdentity;
         if (!string.Equals(identity, _waterIdentity, StringComparison.Ordinal))
             throw new NavigationBuildException(NavigationBuildRefusal.WaterIdentityChanged, ChangedMessage)
-                { ExpectedIdentity = _waterIdentity, ActualIdentity = identity };
+            { ExpectedIdentity = _waterIdentity, ActualIdentity = identity };
         MovementWaterExtent extent = _water.Extent;
         if (!Same(extent, _waterExtent))
             throw new NavigationBuildException(NavigationBuildRefusal.WaterExtentChanged, ChangedMessage)
-                { ExpectedExtent = _waterExtent, ActualExtent = extent };
+            { ExpectedExtent = _waterExtent, ActualExtent = extent };
     }
 
     // Fault values enter only the real identity guards, never the retained snapshot or a live producer.

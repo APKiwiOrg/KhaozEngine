@@ -230,6 +230,6 @@ public sealed class FinePatchConversionTests
         Assert.Equal("west-foot", refusal.RecordId);
         Assert.Equal(digests, Digests(input));
         Assert.NotEmpty(Convert(input, ConversionFixtures.Request(2, false) with
-            { Regions = new[] { new MapCellRect(2, 1, 3, 2) } }).Cells);
+        { Regions = new[] { new MapCellRect(2, 1, 3, 2) } }).Cells);
     }
 }

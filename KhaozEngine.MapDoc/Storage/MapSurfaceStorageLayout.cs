@@ -14,7 +14,7 @@ internal static class MapSurfaceStorageLayout
     {
         if (digest is not { Length: 64 } || digest.Any(c => c is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
             throw new MapDocumentException(MapDocumentRefusal.DigestMalformed, "invalid surface storage SHA-256 name")
-                { ActualHash = digest, FieldPath = "sha256" };
+            { ActualHash = digest, FieldPath = "sha256" };
     }
     internal static string PathOf(string root, char kind, string digest)
     {
@@ -33,6 +33,7 @@ internal static class MapSurfaceStorageLayout
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         long byteCount = stream.Length;
         if (byteCount is < 1 or > MaxPageBytes) throw ByteLimit(byteCount);
+        if (kind == 'p') Scene.MapSceneAdmission.Current?.BeforePayload(byteCount);
         byte[] bytes = new byte[(int)byteCount];
         stream.ReadExactly(bytes);
         RequireUnchangedRead(bytes, digest, stream.ReadByte());
@@ -44,9 +45,13 @@ internal static class MapSurfaceStorageLayout
         if (trailingByte != -1 || actualHash != digest)
             throw new MapDocumentException(trailingByte != -1 ? MapDocumentRefusal.StorageReadChanged : MapDocumentRefusal.DigestMismatch,
                 "surface storage byte digest mismatch")
-            { ExpectedHash = digest, ActualHash = actualHash, ExpectedByteCount = bytes.Length,
+            {
+                ExpectedHash = digest,
+                ActualHash = actualHash,
+                ExpectedByteCount = bytes.Length,
                 ActualByteCount = trailingByte != -1 ? (long)bytes.Length + 1 : bytes.Length,
-                FieldPath = trailingByte != -1 ? "ByteCount" : "sha256" };
+                FieldPath = trailingByte != -1 ? "ByteCount" : "sha256"
+            };
     }
     /// <summary>Injects the captured read values, including a trailing byte, into the production snapshot guard.</summary>
     internal static void RequireUnchangedReadForTests(ReadOnlySpan<byte> bytes, string digest, int trailingByte) =>
@@ -54,8 +59,15 @@ internal static class MapSurfaceStorageLayout
 
     static MapDocumentException ByteLimit(long count) => new(count < 1 ? MapDocumentRefusal.ValueOutsideRange
         : MapDocumentRefusal.WorkCapacityExceeded, "surface storage byte limit")
-    { FieldPath = "ByteCount", ActualByteCount = count, ActualInteger = count,
-        MinimumInteger = 1, MaximumInteger = MaxPageBytes, Budget = "MaxPageBytes", Limit = MaxPageBytes };
+    {
+        FieldPath = "ByteCount",
+        ActualByteCount = count,
+        ActualInteger = count,
+        MinimumInteger = 1,
+        MaximumInteger = MaxPageBytes,
+        Budget = "MaxPageBytes",
+        Limit = MaxPageBytes
+    };
 
     internal static void Write(string root, char kind, byte[] bytes, MapDocumentSaveOptions save)
     {

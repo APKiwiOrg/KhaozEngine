@@ -88,6 +88,8 @@ namespace KhaozEngine.Tests.Render3D.Animation
             var clip = new AnimationClip("empty", 1f, new List<JointTrack>());
             Matrix4x4[] palette = AnimationSampler.SampleToBonePalette(clip, s, 0.5f);
             Matrix4x4[] rest = s.ComposeRestPose();
+            Assert.NotEmpty(rest);
+            Assert.Equal(rest.Length, palette.Length);
             for (int i = 0; i < rest.Length; i++)
                 Assert.True(Vector3.Distance(palette[i].Translation, rest[i].Translation) < 1e-5f);
         }

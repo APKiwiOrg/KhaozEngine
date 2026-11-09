@@ -36,13 +36,13 @@ internal readonly record struct MapPrefabValidationSubject
             MapPrefabChildKey child => new() { Child = child, ChildKind = child.Kind, EntityId = child.Key },
             MapPatchKey patch => new() { Patch = patch, SurfaceId = patch.SurfaceId },
             ValueTuple<string, MapPrefabChildKey> transfer => new()
-                { InstanceId = transfer.Item1, Child = transfer.Item2, ChildKind = transfer.Item2.Kind, EntityId = transfer.Item2.Key },
+            { InstanceId = transfer.Item1, Child = transfer.Item2, ChildKind = transfer.Item2.Kind, EntityId = transfer.Item2.Key },
             ValueTuple<string, MapPrefabAttachmentKind, string> attachment => new()
-                { PlacementId = attachment.Item1, AttachmentKind = attachment.Item2, ResourceId = attachment.Item3 },
+            { PlacementId = attachment.Item1, AttachmentKind = attachment.Item2, ResourceId = attachment.Item3 },
             ValueTuple<MapPrefabReferenceScope, MapPrefabChildKind, string> reference => new()
-                { ReferenceScope = reference.Item1, ChildKind = reference.Item2, EntityId = reference.Item3 },
+            { ReferenceScope = reference.Item1, ChildKind = reference.Item2, EntityId = reference.Item3 },
             ValueTuple<MapPrefabChildKind, string> owner => new()
-                { ChildKind = owner.Item1, WorldId = owner.Item2, EntityId = owner.Item2 },
+            { ChildKind = owner.Item1, WorldId = owner.Item2, EntityId = owner.Item2 },
             // Unique has a closed set of key types. A new key type needs its mapping here.
             _ => throw new InvalidOperationException("Unsupported prefab validation key type."),
         };

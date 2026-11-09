@@ -12,6 +12,7 @@ internal sealed partial class MetalCommandList
     internal long ReadNodeWritesForTests => _recordedReads.NodeWritesForTests;
     internal long ReadInsertsForTests => _recordedReads.InsertsForTests;
     internal long ReadExtendsForTests => _recordedReads.ExtendsForTests;
+    internal long RetainedVertexWindowCapacityForTests => _readStreams.RetainedWindowCapacityForTests;
     internal long ReadCoverageStepsForTests => _readStreams.CoverageStepsForTests;
     internal long ReadRotationsForTests => _recordedReads.RotationsForTests;
     internal long ReadHashLookupsForTests => _recordedReads.HashLookupsForTests;

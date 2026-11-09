@@ -10,8 +10,11 @@ public sealed partial class InMemoryContentAuthoringStore
                 DescribeMismatch("a text close names a revision this store does not hold live"),
                 default, 0, ContentAuthoringException.TextStateMismatchReason)
             {
-                TextRowType = close.Type, TextRowId = close.DefinitionId, FieldName = close.FieldName,
-                Language = close.Language, FromVersion = close.ValidFromVersion,
+                TextRowType = close.Type,
+                TextRowId = close.DefinitionId,
+                FieldName = close.FieldName,
+                Language = close.Language,
+                FromVersion = close.ValidFromVersion,
             };
         }
     }

@@ -26,6 +26,23 @@ public sealed class PrivateOracleGuardTests
         return e;
     }
 
+    [Theory]
+    [InlineData("commit", "commit")]
+    [InlineData("commit", "Commit")]
+    public void SceneProvenance_RejectsDuplicateAndCaseVariantFields(string field, string duplicate) => PrivateOracleFixtures.InSecureTemp(root =>
+    {
+        var env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
+        string provenance = env[Names[1]]!;
+        string text = File.ReadAllText(provenance);
+        using var json = JsonDocument.Parse(text);
+        string value = json.RootElement.GetProperty(field).GetRawText();
+        text = text.Insert(text.IndexOf('{') + 1, "\"" + duplicate + "\":" + value + ",");
+        File.WriteAllText(provenance, text); env[Names[2]] = AssertFixtures.Sha256(provenance);
+        var data = Refuse<PrivateOracleDataException>(() => ShippedSourceProvenance.Parse(System.Text.Encoding.UTF8.GetBytes(text)));
+        Assert.Equal(PrivateOracleDataRefusal.IdentityNotUniqueOrCanonical, data.Reason);
+        Assert.Equal(PrivateOracleInputRefusal.ProvenanceUnreadable, Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Reason);
+    });
+
     [Fact]
     public void Require_FailsOnEveryMissingVariableWithoutEchoingValues() => PrivateOracleFixtures.InSecureTemp(root =>
     {

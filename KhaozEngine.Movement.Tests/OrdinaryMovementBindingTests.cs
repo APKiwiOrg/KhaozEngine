@@ -19,8 +19,11 @@ public class OrdinaryMovementBindingTests
     {
         using var scene = new OrdinaryContactScene();
         var boundary = MovementBoundary.Rectangle(-20, -20, 20, 20);
-        var tuning = MoveTuning.Default with { Controller = controller,
-            Water = kind == EffectiveMovementBindingKind.OrdinaryContact ? new(WaterTraversalMode.WadeOnly) : default };
+        var tuning = MoveTuning.Default with
+        {
+            Controller = controller,
+            Water = kind == EffectiveMovementBindingKind.OrdinaryContact ? new(WaterTraversalMode.WadeOnly) : default
+        };
         var preflight = Assert.Throws<MovementConfigurationException>(() => EffectiveMovementBinding.Preflight(tuning, kind));
         Assert.Equal(reason, preflight.Reason);
         Assert.Equal(controller, preflight.ActualController);
@@ -40,8 +43,11 @@ public class OrdinaryMovementBindingTests
         if (kind != EffectiveMovementBindingKind.PublicExplicit)
             Assert.Equal(kind == EffectiveMovementBindingKind.Legacy ? MovementControllerKind.Legacy
                 : MovementControllerKind.Contact, preflight.ExpectedController);
-        tuning = tuning with { Controller = kind == EffectiveMovementBindingKind.OrdinaryContact
-            ? MovementControllerKind.Contact : MovementControllerKind.Legacy };
+        tuning = tuning with
+        {
+            Controller = kind == EffectiveMovementBindingKind.OrdinaryContact
+            ? MovementControllerKind.Contact : MovementControllerKind.Legacy
+        };
         EffectiveMovementBinding.Preflight(tuning, kind);
         if (kind == EffectiveMovementBindingKind.Legacy) { using var repaired = EffectiveMovementBinding.Legacy(tuning); }
         if (kind == EffectiveMovementBindingKind.OrdinaryContact)

@@ -37,6 +37,7 @@ public sealed partial class ViewportWorld
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(doc);
         if (!_built) return false;
+        if (RefreshNative(doc)) return true;
         if (!RefreshLayerProps(_sink!, _streamer!, BuildSinkLayers(doc), dirty)) return false;
         _doc = doc;
         return true;
@@ -62,6 +63,7 @@ public sealed partial class ViewportWorld
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(doc);
         if (!_built) return false;
+        if (RefreshNative(doc)) return true;
         if (!RefreshLoadedLayerProps(_sink!, _streamer!, BuildSinkLayers(doc))) return false;
         _doc = doc;
         return true;
@@ -128,6 +130,7 @@ public sealed partial class ViewportWorld
     {
         ThrowIfDisposed();
         if (!_built) return false;
+        if (RefreshNative(doc)) return true;
         TerrainField field = MapRuntime.BuildField(doc, registry);
         IReadOnlyList<PropLayer>? layers = refreshLayers ? BuildSinkLayers(doc) : null;
         if (layers is not null && !_sink!.KeepsLayerShape(layers)) return false;
@@ -157,6 +160,7 @@ public sealed partial class ViewportWorld
     {
         ThrowIfDisposed();
         if (!_built) return false;
+        if (RefreshNative(doc)) return true;
         TerrainField field = MapRuntime.BuildField(doc, registry);
         IReadOnlyList<PropLayer>? layers = refreshLayers ? BuildSinkLayers(doc) : null;
         _streamer!.FlushPendingBuilds();

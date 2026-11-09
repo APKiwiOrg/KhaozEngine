@@ -604,8 +604,12 @@ internal static partial class SqlServerJournalSchema
             null,
             $"SQL Server mutation journal schema is {actual}. Apply migration '{RequiredMigration}'.")
         {
-            RequiredMigration = RequiredMigration, ExpectedVersion = expectedVersion, ActualVersion = actualVersion,
-            SupportedVersions = supportedVersions, MetadataType = metadataType,
-            MissingObjects = missingObjects, UnexpectedObjects = unexpectedObjects,
+            RequiredMigration = RequiredMigration,
+            ExpectedVersion = expectedVersion,
+            ActualVersion = actualVersion,
+            SupportedVersions = supportedVersions,
+            MetadataType = metadataType,
+            MissingObjects = missingObjects,
+            UnexpectedObjects = unexpectedObjects,
         };
 }

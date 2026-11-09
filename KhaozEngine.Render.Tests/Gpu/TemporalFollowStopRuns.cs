@@ -34,7 +34,7 @@ namespace KhaozEngine.Tests.Gpu
         double Seconds, int Phases, FollowEnding Ending, StopSurround Surround);
 
     /// <summary>
-    /// A followed avatar that stops, or turns back, after a walk (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). The
+    /// A followed avatar that stops, or turns back, after a walk (TEMPORAL-RESOLVE amendment 23). The
     /// perspective scene is <see cref="TemporalPerspectiveFollowRuns"/>'s: the keyed ridged box walks over the textured
     /// ground while <see cref="FollowCamera3D"/> follows it. The orthographic scene is
     /// <see cref="TemporalFollowCameraRuns"/>'s: the box walks right across the textured wall with the camera. Both

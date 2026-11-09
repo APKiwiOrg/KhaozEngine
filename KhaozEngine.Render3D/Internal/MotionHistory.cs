@@ -15,8 +15,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// calls <see cref="Reset"/> when it is not. The swap counts Begin calls, not rendered frames.
 /// </para>
 /// <para>
-/// Transforms are ABSOLUTE, exactly as submitted, so a render origin step between the two frames adds no error. The
-/// reader reduces both frames against the current origin. Skinned palettes are the composed palettes the renderer
+/// Rigid transforms retain their submitted integer anchor when present, otherwise they remain absolute. The reader
+/// reduces both frames against the current origin. Skinned palettes are the composed palettes the renderer
 /// uploads (bone times inverse-bind), one span per key.
 /// </para>
 /// <para>
@@ -31,10 +31,11 @@ namespace KhaozEngine.Render3D.Internal;
 internal sealed class MotionHistory
 {
     readonly record struct SkinnedEntry(Matrix4x4 World, int Offset, int Length);
+    readonly record struct RigidEntry(Matrix4x4 World, RenderAnchor? Anchor);
 
     sealed class Generation
     {
-        public readonly Dictionary<ulong, Matrix4x4> Rigid = new();
+        public readonly Dictionary<ulong, RigidEntry> Rigid = new();
         public readonly Dictionary<ulong, SkinnedEntry> Skinned = new();
         public Matrix4x4[] Palettes = Array.Empty<Matrix4x4>();
         public int PaletteCount;
@@ -88,21 +89,31 @@ internal sealed class MotionHistory
         KeyedRigid = KeyedSkinned = Collisions = 0;
     }
 
-    /// <summary>Record a keyed rigid draw's absolute world transform for this frame. <see cref="MotionKey.None"/>
+    /// <summary>Record a keyed rigid draw's world transform, local when an anchor is present. <see cref="MotionKey.None"/>
     /// records nothing.</summary>
-    public void RecordRigid(MotionKey key, in Matrix4x4 world)
+    public void RecordRigid(MotionKey key, in Matrix4x4 world, RenderAnchor? anchor = null)
     {
         if (key.IsNone) return;
         KeyedRigid++;
-        ref Matrix4x4 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_current.Rigid, key.Value, out bool exists);
+        ref RigidEntry slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_current.Rigid, key.Value, out bool exists);
         if (exists) Collisions++;
-        slot = world;
+        slot = new(world, anchor);
     }
 
     /// <summary>Last frame's absolute world transform for <paramref name="key"/>, if it was drawn.</summary>
     public bool TryGetPreviousRigid(MotionKey key, out Matrix4x4 world)
     {
-        if (!key.IsNone && _previous.Rigid.TryGetValue(key.Value, out world)) return true;
+        return TryGetPreviousRigidRelative(key, Vector3.Zero, out world);
+    }
+
+    internal bool TryGetPreviousRigidRelative(MotionKey key, Vector3 origin, out Matrix4x4 world)
+    {
+        if (!key.IsNone && _previous.Rigid.TryGetValue(key.Value, out var entry))
+        {
+            world = entry.Anchor is { } anchor ? new AnchoredRigidTransform(entry.World, anchor).RelativeTo(origin) : entry.World;
+            if (entry.Anchor is null) { world.M41 -= origin.X; world.M42 -= origin.Y; world.M43 -= origin.Z; }
+            return true;
+        }
         world = default;
         return false;
     }

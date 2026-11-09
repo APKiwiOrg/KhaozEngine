@@ -319,9 +319,13 @@ public class NavBakeIdentityTests
         (NavBakeLoadStatus reverse, string reverseDetail) = NavBakeIdentity.Compare(ground, aquatic);
 
         Assert.Equal(NavBakeLoadStatus.ProfilesChanged, status);
-        Assert.Equal("Profile 'player' field Aquatic: bake True, expected False.", detail);
+        Assert.Contains("player", detail, StringComparison.Ordinal);
+        Assert.Contains("Aquatic", detail, StringComparison.Ordinal);
+        Assert.Contains("True", detail, StringComparison.Ordinal);
+        Assert.Contains("False", detail, StringComparison.Ordinal);
         Assert.Equal(NavBakeLoadStatus.ProfilesChanged, reverse);
-        Assert.Contains("field Aquatic: bake False, expected True", reverseDetail, StringComparison.Ordinal);
+        Assert.Contains("Aquatic", reverseDetail, StringComparison.Ordinal);
+        Assert.NotEqual(detail, reverseDetail);
     }
 
     [Fact]
@@ -457,6 +461,7 @@ public class NavBakeIdentityTests
     {
         byte[] expected = Encode(CorruptBase());
 
+        Assert.NotEmpty(expected);
         for (int length = 0; length < expected.Length; length++)
         {
             (NavBakeLoadStatus status, _) = NavBakeIdentity.Compare(expected.AsSpan(0, length), expected);

@@ -54,11 +54,22 @@ public class PlayerPublicationPolicyTests
     {
         var state = new MoveState
         {
-            Position = new(1.25f, 4.5f, -8), HorizontalVelocity = new(horizontal, -horizontal),
-            SpeedScale = scale, FacingYaw = yaw, ClimbRate = climb, ClimbRateEwma = 0.123f,
-            VerticalVelocity = -3.123f, Grounded = true, Swimming = true, WaterExcursion = WaterExcursionState.Surface,
-            TimeSinceGrounded = 0.031f, JumpBufferRemaining = 0.123f,
-            StepDeltaY = 0.2f, CommandedVelocity = new(1.123f, 2.456f), LandingImpactSpeed = 7, SupportGranted = true
+            Position = new(1.25f, 4.5f, -8),
+            HorizontalVelocity = new(horizontal, -horizontal),
+            SpeedScale = scale,
+            FacingYaw = yaw,
+            ClimbRate = climb,
+            ClimbRateEwma = 0.123f,
+            VerticalVelocity = -3.123f,
+            Grounded = true,
+            Swimming = true,
+            WaterExcursion = WaterExcursionState.Surface,
+            TimeSinceGrounded = 0.031f,
+            JumpBufferRemaining = 0.123f,
+            StepDeltaY = 0.2f,
+            CommandedVelocity = new(1.123f, 2.456f),
+            LandingImpactSpeed = 7,
+            SupportGranted = true
         };
         var published = PlayerMovementPublication.Canonicalize(state);
         Assert.Equal(published, PlayerMovementPublication.Canonicalize(published));

@@ -567,9 +567,9 @@ internal static class SqlServerCatalogSchemaValidation
     static ContentAuthoringException Mismatch(ContentAuthoringRefusal reason, string actual, Exception? innerException = null)
         => innerException is null
             ? new(reason, DescribeMismatch(actual, null), default, 0, ContentAuthoringException.SchemaMismatchReason)
-                { RequiredMigration = SqlServerCatalogSchema.RequiredMigration }
+            { RequiredMigration = SqlServerCatalogSchema.RequiredMigration }
             : new(reason, DescribeMismatch(actual, innerException), default, 0, ContentAuthoringException.SchemaMismatchReason, innerException)
-                { RequiredMigration = SqlServerCatalogSchema.RequiredMigration };
+            { RequiredMigration = SqlServerCatalogSchema.RequiredMigration };
 
     static string DescribeMismatch(string actual, Exception? innerException)
         => FormattableString.Invariant(

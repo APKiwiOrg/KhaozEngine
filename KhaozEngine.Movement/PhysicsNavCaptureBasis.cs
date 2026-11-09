@@ -25,9 +25,9 @@ internal readonly record struct PhysicsNavCaptureBasis(
             throw generation != GeometryGeneration
                 ? new NavigationBuildException(NavigationBuildRefusal.CaptureGeometryChanged,
                     "The physics geometry or origin changed after capture began.")
-                    { ExpectedGeneration = GeometryGeneration, ActualGeneration = generation }
+                { ExpectedGeneration = GeometryGeneration, ActualGeneration = generation }
                 : new NavigationBuildException(NavigationBuildRefusal.CaptureOriginChanged,
                     "The physics geometry or origin changed after capture began.")
-                    { ExpectedOrigin = Origin, ActualOrigin = origin };
+                { ExpectedOrigin = Origin, ActualOrigin = origin };
     }
 }

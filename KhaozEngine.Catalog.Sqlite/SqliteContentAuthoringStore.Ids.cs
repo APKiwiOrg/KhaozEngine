@@ -78,9 +78,13 @@ public sealed partial class SqliteContentAuthoringStore
                     $"Family '{familyKey}' declares a block size of {blockSize}, and a block size is a power of two between {ContentFamily.MinBlockSize} and {ContentFamily.MaxBlockSize}. It is fixed at creation, because changing it would move every id in the family."),
                 type,
                 0,
-                ContentAuthoringException.FamilyDeclarationReason) { FamilyKey = familyKey, ActualBlockSize = blockSize,
-                    MinimumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MinBlockSize : null,
-                    MaximumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MaxBlockSize : null };
+                ContentAuthoringException.FamilyDeclarationReason)
+            {
+                FamilyKey = familyKey,
+                ActualBlockSize = blockSize,
+                MinimumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MinBlockSize : null,
+                MaximumBlockSize = blockSize < ContentFamily.MinBlockSize || blockSize > ContentFamily.MaxBlockSize ? ContentFamily.MaxBlockSize : null
+            };
         }
 
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
@@ -93,7 +97,8 @@ public sealed partial class SqliteContentAuthoringStore
                     $"Content type {type.Value} already carries a family keyed '{familyKey}', and a family key is unique within its type."),
                 type,
                 0,
-                ContentAuthoringException.FamilyDeclarationReason) { FamilyKey = familyKey };
+                ContentAuthoringException.FamilyDeclarationReason)
+            { FamilyKey = familyKey };
         }
 
         long active = await ReadLongAsync(
@@ -342,7 +347,8 @@ public sealed partial class SqliteContentAuthoringStore
                 FormattableString.Invariant($"Family {familyId} is not in the store."),
                 default,
                 0,
-                ContentAuthoringException.UnknownFamilyReason) { FamilyId = familyId };
+                ContentAuthoringException.UnknownFamilyReason)
+            { FamilyId = familyId };
 
     /// <summary>
     /// Families with their blocks in ordinal order, filtered to one type (id 0 means all) or to one family.

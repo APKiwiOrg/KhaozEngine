@@ -67,6 +67,8 @@ public class NavGridBakerTests
             minX: 0f, minZ: 0f, maxX: 10f, maxZ: 10f,
             cellSize: 1f, maxSlopeRadians: maxSlope);
 
+        Assert.True(grid.Width > 0);
+        Assert.True(grid.Height > 0);
         for (int cz = 0; cz < grid.Height; cz++)
         {
             for (int cx = 0; cx < grid.Width; cx++)

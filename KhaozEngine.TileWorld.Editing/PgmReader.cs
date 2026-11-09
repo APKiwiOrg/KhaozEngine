@@ -57,7 +57,8 @@ public static class PgmReader
             or ArgumentException or SecurityException)
         {
             throw new TileWorldException(TileWorldRefusal.PgmReadFailed,
-                $"{file}: cannot read the heightmap file. {ex.Message}", ex) { SourceName = file };
+                $"{file}: cannot read the heightmap file. {ex.Message}", ex)
+            { SourceName = file };
         }
         return Read(bytes, file);
     }
@@ -114,8 +115,12 @@ public static class PgmReader
             throw new TileWorldException(TileWorldRefusal.PgmRasterTruncated,
                 $"{file}: the header claims a {width} by {height} {bytesPerSample * 8} bit raster, which needs {needed} bytes, and only {available} follow the header.")
             {
-                SourceName = file, Width = width, Height = height, BitsPerSample = bytesPerSample * 8,
-                RequiredByteCount = needed, AvailableByteCount = available,
+                SourceName = file,
+                Width = width,
+                Height = height,
+                BitsPerSample = bytesPerSample * 8,
+                RequiredByteCount = needed,
+                AvailableByteCount = available,
             };
 
         // Safe as an int now: the check above puts width times height times the sample size inside the byte

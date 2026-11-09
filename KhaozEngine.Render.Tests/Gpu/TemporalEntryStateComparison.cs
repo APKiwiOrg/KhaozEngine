@@ -1,0 +1,116 @@
+using System;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace KhaozEngine.Tests.Gpu;
+
+// Only llvmpipe's continuous record takes a software arithmetic bound. Existing stored state never does.
+internal sealed class TemporalEntryStateComparison(bool softwareVulkan)
+{
+    internal RecordChannel Drift { get; } = new();
+    internal RecordChannel Swing { get; } = new();
+
+    internal void Compare(int frame, string pair, float[] a, float[] b)
+    {
+        Assert.Equal(a.Length, b.Length);
+        Assert.Equal(0, a.Length % 4);
+        if (!softwareVulkan)
+        {
+            TemporalHistorySample.Exact(frame, pair, a, b);
+            return;
+        }
+        for (int i = 0; i < a.Length; i += 4)
+        {
+            for (int channel = 0; channel < 2; channel++)
+            {
+                uint left = BitConverter.SingleToUInt32Bits(a[i + channel]);
+                uint right = BitConverter.SingleToUInt32Bits(b[i + channel]);
+                if (left != right)
+                    Assert.Fail($"frame {frame}: {pair} {(channel == 0 ? "confidence" : "stored lock and mark")} "
+                        + $"differs at texel {i / 4}: {a[i + channel]:R} (0x{left:X8}) vs "
+                        + $"{b[i + channel]:R} (0x{right:X8})");
+            }
+            Drift.Add(frame, i / 4, a[i + 2], b[i + 2]);
+            Swing.Add(frame, i / 4, a[i + 3], b[i + 3]);
+        }
+    }
+
+    internal void AssertComplete(ITestOutputHelper output, string pair)
+    {
+        if (!softwareVulkan) return;
+        Report(output, pair);
+        AssertWithinBound(pair);
+    }
+
+    internal void Report(ITestOutputHelper output, string pair)
+    {
+        if (!softwareVulkan) return;
+        Channel("drift", Drift);
+        Channel("swing", Swing);
+
+        void Channel(string channel, RecordChannel difference)
+            => output.WriteLine(FormattableString.Invariant(
+                $"SHIMMER-IDENTITY|{pair}|{channel}|{difference.WorstHalfSteps}|{difference.Differing}|{difference.Compared}|{difference.Share:R}|{difference.WorstLocation}"));
+    }
+
+    internal void AssertWithinBound(string pair)
+    {
+        if (!softwareVulkan) return;
+        Assert.True(Allowed(Drift, TemporalSoftwareRecordDivergenceRule.DriftHalfStepBound,
+                TemporalSoftwareRecordDivergenceRule.DriftDifferingShareBound)
+            && Allowed(Swing, TemporalSoftwareRecordDivergenceRule.SwingHalfStepBound,
+                TemporalSoftwareRecordDivergenceRule.SwingDifferingShareBound),
+            $"{pair}: software Vulkan record left its bound. Drift bound "
+            + $"{TemporalSoftwareRecordDivergenceRule.DriftHalfStepBound} half steps, "
+            + $"{TemporalSoftwareRecordDivergenceRule.DriftDifferingShareBound:P3} of values: {Drift}. Swing bound "
+            + $"{TemporalSoftwareRecordDivergenceRule.SwingHalfStepBound} half steps, "
+            + $"{TemporalSoftwareRecordDivergenceRule.SwingDifferingShareBound:P3} of values: {Swing}");
+
+        static bool Allowed(RecordChannel difference, int stepBound, double shareBound)
+            => TemporalSoftwareRecordDivergenceRule.Allows(difference.WorstHalfSteps, difference.Differing,
+                difference.Compared, stepBound, shareBound);
+    }
+
+    internal sealed class RecordChannel
+    {
+        internal long Compared, Differing;
+        internal int WorstHalfSteps;
+        internal string WorstLocation = "none";
+        internal double Share => Compared > 0 ? TemporalSoftwareCompileDivergenceRule.ShareOf(Differing, Compared) : 0;
+
+        internal void Add(int frame, int texel, float a, float b)
+        {
+            Compared++;
+            if (!float.IsFinite(a) || !float.IsFinite(b))
+            {
+                WorstHalfSteps = int.MaxValue;
+                WorstLocation = FormattableString.Invariant($"non-finite f{frame} texel {texel}: {a:R}/{b:R}");
+            }
+            if (BitConverter.SingleToUInt32Bits(a) == BitConverter.SingleToUInt32Bits(b)) return;
+            Differing++;
+            if (WorstHalfSteps == int.MaxValue) return;
+            int steps = TemporalHistoryDifference.HalfSteps(a, b);
+            if (Differing == 1 || steps > WorstHalfSteps)
+                WorstLocation = FormattableString.Invariant($"f{frame} texel {texel}: {a:R}/{b:R}");
+            WorstHalfSteps = Math.Max(WorstHalfSteps, steps);
+        }
+
+        public override string ToString() => FormattableString.Invariant(
+            $"{Differing}/{Compared} differ, share {Share:R}, worst {WorstHalfSteps} half steps, {WorstLocation}");
+    }
+}
+
+internal static class TemporalSoftwareRecordDivergenceRule
+{
+    // Precision-floor run 40828595987, Native perspective outline False: drift differs on 0.809280960648148%
+    // of samples, swing on 0.4017650462962963%. Task 7's margin adds 25%, then rounds upward to 0.01 percentage
+    // point, giving 1.02% drift and 0.51% swing. Step limits retain run 40681282977's calibration: 7240 and 387
+    // measured steps plus 25%, rounded upward to 100 steps. Drift crosses zero at its worst pair.
+    internal const int DriftHalfStepBound = 9100, SwingHalfStepBound = 500;
+    internal const double DriftDifferingShareBound = 0.0102, SwingDifferingShareBound = 0.0051;
+
+    internal static bool Allows(int worstHalfSteps, long differing, long compared, int stepBound, double shareBound)
+        => worstHalfSteps >= 0 && worstHalfSteps < int.MaxValue && worstHalfSteps <= stepBound
+            && compared > 0 && differing >= 0 && differing <= compared
+            && TemporalSoftwareCompileDivergenceRule.ShareOf(differing, compared) <= shareBound;
+}

@@ -13,7 +13,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// equivalence and resolve-level facts compare against. Never edit the four texts or their pins. <see cref="ToD"/>
 /// finds the production pieces through anchors, which may move with production. It also restores what the current
 /// mask (Task 7f.3) changed in the first pass, the surface and the fused entry, frozen in
-/// <see cref="TemporalVisibilityFrozenDMask"/>.
+/// <see cref="TemporalVisibilityFrozenDMask"/>, and undoes every later production change outside those pieces, listed
+/// in <see cref="TemporalVisibilityFrozenDLaterChanges"/>.
 /// <para><b>TWO D PROGRAMS SINCE 7g.3a.</b> Production's lock release lost <c>precise</c> for an ordered barrier form
 /// (<c>ShaderSources.TemporalLockReleaseGlsl</c>). <see cref="ToShippedD"/> also restores D's precise helper
 /// (<see cref="LockReleaseGlsl"/>), so its program is the whole program D shipped, which the pins hold. It must match
@@ -153,6 +154,14 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
         return d.Replace(ShaderSources.TemporalLockReleaseGlsl, LockReleaseGlsl, StringComparison.Ordinal);
     }
 
+    /// <summary>D prime with only the owner-approved still-pixel precision floor restored (2026-10-29).</summary>
+    internal static string ToDWithPrecisionFloor(string program)
+        => TemporalVisibilityFrozenDLaterChanges.WithPrecisionFloor(ToD(program));
+
+    /// <summary>Shipped D with only the owner-approved still-pixel precision floor restored (2026-10-29).</summary>
+    internal static string ToShippedDWithPrecisionFloor(string program)
+        => TemporalVisibilityFrozenDLaterChanges.WithPrecisionFloor(ToShippedD(program));
+
     /// <summary>As <see cref="ToD"/> with the call site's text transformed first, for mutant controls that prove a
     /// rewrite reaches the compiled program.</summary>
     internal static string ToMutantD(string program, Func<string, string> callSite)
@@ -162,6 +171,8 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
     {
         // Test pipelines compile both members. Restore omitted resources before applying the frozen decision.
         program = TemporalVisibilityFullyLitGpuTests.ForceCheck(program);
+        // Production changes after D outside its frozen pieces come out first, so the anchors below see D's program.
+        program = TemporalVisibilityFrozenDLaterChanges.Restore(program);
         string released = RewriteRelease(program, visibility, callSite, holdRelease);
         string restored = TemporalVisibilityFrozenDMask.Restore(released);
         if (!ReferenceEquals(released, program) && ReferenceEquals(restored, released))

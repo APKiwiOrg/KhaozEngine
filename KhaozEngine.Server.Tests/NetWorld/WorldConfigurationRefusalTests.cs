@@ -73,7 +73,8 @@ public sealed class WorldConfigurationRefusalTests
     {
         string[] source = ["ReceiveServerTick", "RequestUnreliableDeltaReplication"];
         var refusal = new WorldConfigurationException(WorldConfigurationRefusal.ServerTickWithUnreliableReplication,
-            "incompatible", "config") { IncompatibleMembers = source };
+            "incompatible", "config")
+        { IncompatibleMembers = source };
         source[0] = "changed";
 
         Assert.Equal(new[] { "ReceiveServerTick", "RequestUnreliableDeltaReplication" }, refusal.IncompatibleMembers);

@@ -49,6 +49,7 @@ public sealed partial class Scene3D
             MixPointSignature(ref runHash, SignatureWord((uint)mesh.Index, (uint)mesh.Generation));
             MixPointSignature(ref runHash, SignatureWord(PointDissolveWord(data), (uint)PointCasterKind(slot)));
             MixPointSignature(ref runHash, data.Model);
+            if (InstanceAnchor(slot) is { } anchored) MixAnchoredPointSignature(ref runHash, anchored);
         }
         if (previousRun >= 0) combined = unchecked(combined + runHash);
         MixPointSignature(ref hash, combined);

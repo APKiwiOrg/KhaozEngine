@@ -84,7 +84,15 @@ public sealed class WaterVolumeLayoutTests
     {
         ShippedGraphicsProgram[] programs = ShippedShaderPrograms.GraphicsPrograms()
             .Where(p => p.WaterVolumeBinding.HasValue).ToArray();
-        Assert.Equal(34, programs.Length);
+        string[] litPrograms =
+        [
+            "Model", "Foliage", "FoliageOpaque", "FoliageOpaqueMotion", "PreparedFoliageOpaque", "PreparedFoliageOpaqueMotion", "PreparedFoliage", "PreparedFoliageMotion", "ModelDissolve", "SkinnedModel",
+            "SkinnedModelDissolve", "Splat", "TileGround", "ModelMotion", "SkinnedModelMotion",
+            "SkinnedModelDissolveMotion", "ModelCpuSkinnedMotion", "ModelCpuSkinnedDissolveMotion",
+            "FoliageMotion", "SplatMotion", "TileGroundMotion"
+        ];
+        Assert.Equal(litPrograms.SelectMany(name => new[] { name, name + "Visibility" }).Order(StringComparer.Ordinal),
+            programs.Select(program => program.Name).Order(StringComparer.Ordinal));
         foreach (ShippedGraphicsProgram program in programs)
         {
             CrossCompiledPair compiled = SpirvCrossCompile.GlslPairToHlsl(

@@ -1,3 +1,6 @@
+using KhaozEngine.Diagnostics;
+using KhaozEngine.Primitives;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,7 +10,6 @@ using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
-using KhaozEngine.Primitives;
 using Bounds = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.Bounds;
 using SpatialIndex = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.SpatialIndex;
 
@@ -20,13 +22,19 @@ internal sealed class MapFoliageOwners
     internal sealed record MaskOwner(string LayerId, MapFoliageMask Mask, MapEffectiveTransform Pose);
     readonly Dictionary<string, (MaskOwner[] Masks, Bounds[] Proxies, SpatialIndex Index)> _masks = new(StringComparer.Ordinal);
     readonly Dictionary<MapPrefabReference, MapSupportResult> _seats;
-    readonly MapEffectiveResources _resources;
+    readonly Func<string, MapFoliageRect, long>? _maskCandidates;
+    readonly Func<MapSurfaceScope, MapScopedSurfaces> _acquire;
+    readonly MapQueryLimits? _queryLimits;
     readonly Dictionary<string, Dictionary<MapPrefabReference, MapSupportBinding>> _bindings;
     readonly Dictionary<string, Dictionary<string, int>> _ordinals;
 
-    internal MapFoliageOwners(MapFoliageSet? set, MapEffectiveResources resources)
+    internal MapFoliageOwners(MapFoliageSet? set, MapEffectiveResolutionProduct resources,
+        Func<MapSurfaceScope, MapScopedSurfaces> acquire, bool scoped = false, Func<string, MapFoliageRect, long>? maskCandidates = null, MapQueryLimits? queryLimits = null)
     {
-        _resources = resources;
+        _queryLimits = queryLimits;
+        var present = scoped ? PresentOwners(resources) : null;
+        _acquire = acquire;
+        _maskCandidates = maskCandidates;
         _bindings = (set?.Layers ?? []).ToDictionary(l => l.Id, l => l.OwnerSupports.ToDictionary(o => o.Owner, o => o.Support), StringComparer.Ordinal);
         _ordinals = (set?.Layers ?? []).ToDictionary(l => l.Id, l => l.CompatibilityOrdinals.ToDictionary(r => r.SurfaceId, r => r.Ordinal, StringComparer.Ordinal), StringComparer.Ordinal);
         _seats = resources.PlacementSupports.ToDictionary(s => World(MapPrefabChildKind.Placement, s.PlacementId), s => s.Support);
@@ -37,6 +45,7 @@ internal sealed class MapFoliageOwners
             var bounds = new List<Bounds>();
             foreach (var mask in layer.ExceptionMasks)
             {
+                if (present is not null && !present.Contains(mask.Owner)) continue;
                 MapEffectiveTransform pose = Pose(resources, mask.Owner);
                 masks.Add(new(layer.Id, mask, pose));
                 bounds.Add(MapFoliageGenerationContext.Proxy(pose, mask.Footprint,
@@ -46,10 +55,21 @@ internal sealed class MapFoliageOwners
         }
     }
 
+    static HashSet<MapPrefabReference> PresentOwners(MapEffectiveResolutionProduct resources)
+    {
+        var owners = resources.Placements.Select(p => World(MapPrefabChildKind.Placement, p.PlacementId))
+            .Concat(resources.SurfaceSource.Surfaces.Select(s => World(MapPrefabChildKind.Surface, s.Id)))
+            .Concat(resources.EffectiveMarkers.Select(m => World(MapPrefabChildKind.Marker, m.Id))).ToHashSet();
+        if (resources.SurfaceSource is IMapEffectiveSurfaceContext context)
+            foreach (var record in context.EffectiveContext.Surfaces.AllRecords()) owners.Add(World(MapPrefabChildKind.Record, record.Id));
+        return owners;
+    }
+
     internal IReadOnlyList<MaskOwner> Masks(string layerId, MapFoliageRect rect, out long candidates)
     {
         var (masks, _, index) = _masks[layerId];
         var hits = index.Query(new(rect.MinX, rect.MinZ, rect.MaxX, rect.MaxZ), out candidates);
+        if (_maskCandidates is not null) candidates = _maskCandidates(layerId, rect);
         return hits.Select(i => masks[i]).OrderBy(m => m.Mask.Id, StringComparer.Ordinal).ToArray();
     }
 
@@ -69,7 +89,9 @@ internal sealed class MapFoliageOwners
 
     internal static MapPrefabReference World(MapPrefabChildKind kind, string id) => new(MapPrefabReferenceScope.World, kind, id);
 
-    internal static MapEffectiveTransform Pose(MapEffectiveResources resources, MapPrefabReference owner)
+    internal static MapEffectiveTransform Pose(MapEffectiveResources resources, MapPrefabReference owner) => Pose(resources.Product, owner);
+
+    internal static MapEffectiveTransform Pose(MapEffectiveResolutionProduct resources, MapPrefabReference owner)
     {
         MapEffectiveTransform pose = resources.Transforms.GetValueOrDefault(MapEffectiveContext.Key(owner.Kind, owner.Id), new(0, 0, 0, 0, 1));
         if (owner.Kind == MapPrefabChildKind.Marker)
@@ -78,6 +100,15 @@ internal sealed class MapFoliageOwners
             return pose with { X = marker.Position.X.ToDouble(), Y = marker.Position.Y.ToDouble(), Z = marker.Position.Z.ToDouble(), YawRadians = marker.YawRadians };
         }
         return pose;
+    }
+
+    /// <summary>The released exceptional-owner read rectangle, shared with window dependency acquisition.</summary>
+    internal static MapSurfaceScope SeatScope(MapExactPoint point, MapQueryLimits? queryLimits = null)
+    {
+        var frame = WorldFrame.Nearest(point.X.ToSingle(), point.Z.ToSingle());
+        float x = point.X.ToSingle() - frame.Anchor.X, z = point.Z.ToSingle() - frame.Anchor.Z;
+        return new(frame, new(x - SeatReach, z - SeatReach), new(x + SeatReach, z + SeatReach), null, null,
+            Enum.GetValues<MapSurfaceRole>(), null, queryLimits ?? new MapQueryLimits());
     }
 
     internal string Seated(MapFoliageLayer layer, MapPrefabReference owner, MapEffectiveTransform pose,
@@ -96,13 +127,10 @@ internal sealed class MapFoliageOwners
         // One bounded support preparation per exceptional owner, never per foliage candidate. The shared selection
         // kernel retains its own released point budgets and all surface/room semantics.
         work = work with { PrepareScopes = checked(work.PrepareScopes + 1) };
-        if (work.PrepareScopes > limits.MaxPrepareScopes) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "owner support scopes");
+        if (DemandDiagnostics.Check(limits, "MapFoliageOwners.MaxPrepareScopes.1", "MaxPrepareScopes", 0, work.PrepareScopes, limits.MaxPrepareScopes, work.PrepareScopes > limits.MaxPrepareScopes, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "owner support scopes");
         var point = new MapResourceTransform(pose).Point(new(default, default, default));
-        var frame = WorldFrame.Nearest(point.X.ToSingle(), point.Z.ToSingle());
-        float x = point.X.ToSingle() - frame.Anchor.X, z = point.Z.ToSingle() - frame.Anchor.Z;
-        var scope = new MapSurfaceScope(frame, new(x - SeatReach, z - SeatReach), new(x + SeatReach, z + SeatReach), null, null,
-            Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
-        MapScopedSurfaces view = _resources.Acquire(scope);
+        var scope = SeatScope(point, _queryLimits);
+        MapScopedSurfaces view = _acquire(scope);
         var prepared = MapSupportPreparation.PrepareFoliage(view);
         var xz = new MapExactXz(point.X, point.Z);
         MapBoundFaceContext shared;
@@ -113,7 +141,7 @@ internal sealed class MapFoliageOwners
             {
                 limits.ChargePreparation?.Invoke(checked(1280 * count));
                 contextFaces = checked(contextFaces + count);
-            });
+            }, faceOrigin: new("MaxFaces", work.Faces, limits.MaxFaces, limits));
         }
         finally { work = work with { Faces = checked(work.Faces + contextFaces) }; }
         work = work with { SurfaceQueries = checked(work.SurfaceQueries + 1) };

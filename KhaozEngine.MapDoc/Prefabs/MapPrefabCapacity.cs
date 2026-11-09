@@ -8,8 +8,13 @@ internal static class MapPrefabCapacity
         string? documentId = null, string? assetId = null) =>
         new(count is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.WorkCapacityExceeded, message)
         {
-            FieldPath = assetId is null ? "$.prefabs." + field : "$." + field, Operation = nameof(MapPrefabCapacity),
-            Budget = field, ActualCount = count, Limit = count is null ? null : limit, DocumentId = documentId, AssetId = assetId,
+            FieldPath = assetId is null ? "$.prefabs." + field : "$." + field,
+            Operation = nameof(MapPrefabCapacity),
+            Budget = field,
+            ActualCount = count,
+            Limit = count is null ? null : limit,
+            DocumentId = documentId,
+            AssetId = assetId,
         };
 
     internal static MapDocumentException AggregateRefusal(long edges, long patches, long records, long geometry, string path,
@@ -30,8 +35,12 @@ internal static class MapPrefabCapacity
         if (byteCount > limit)
             throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, payloadKind + " payload byte limit exceeded.")
             {
-                Budget = "PayloadBytes", ActualByteCount = byteCount, Limit = limit,
-                FieldPath = "ByteLength", ResourceId = resourceId, Operation = nameof(MapPrefabCapacity),
+                Budget = "PayloadBytes",
+                ActualByteCount = byteCount,
+                Limit = limit,
+                FieldPath = "ByteLength",
+                ResourceId = resourceId,
+                Operation = nameof(MapPrefabCapacity),
             };
     }
 

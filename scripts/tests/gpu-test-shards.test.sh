@@ -72,6 +72,11 @@ The following Tests are available:
     $G.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender
     $G.ShadowCascadeCullPerfGpuTests.A_small_caster_fixture_draws_fewer_instances_with_culling
     $G.ShadowRerecordBenchGpuTests.The_hold_releases_on_a_cadence_the_threshold_predicts
+    KhaozEngine.Tests.MapDoc.NativeMapGoldenGpuTests.NativeMapFamilies_CertifyCompleteAndDetectOmission(variant: paint)
+    KhaozEngine.Tests.MapDoc.NativeMapSnapshotGpuTests.TwoFocuses_ReusePublishedFoliageAndChangeCutoffAndLodPixels
+    KhaozEngine.Tests.MapDoc.NativeResourceUploadGpuTests.PublishedHandles_DrawRigidMidpointAndFoliageWithoutResourceUpload
+    KhaozEngine.Tests.MapDoc.NativeMapReadinessTests.NativeSink_FocusSequenceReusesItsPublishedBatch
+    KhaozEngine.Tests.MapDoc.NativeMapAllocationTests.WarmGpuQueueUpdateDraw_AllocateZero
     $G.WaterGoldenTests.Golden_water
     $G.AtmosphereFogGoldenTests.Golden_fog
     KhaozEngine.Tests.Render3D.WaterFlatPlaneGoldenTests.FlatQuadsMatchTheTessellatedFlatReferenceInEveryGridMode
@@ -79,8 +84,8 @@ The following Tests are available:
 EOF
 for backend in metal-native direct3d11-native vulkan-native; do
   check "$backend partitions the listing" 0 "$(run check-render "$backend" "$TMPROOT/list.txt")"
-  check "$backend reports 18 methods, none unassigned or doubled" 1 \
-    "$(grep -c '^18 Render.Tests methods listed, 0 unassigned, 0 assigned twice$' "$OUTFILE")"
+  check "$backend reports 23 methods, none unassigned or doubled" 1 \
+    "$(grep -c '^23 Render.Tests methods listed, 0 unassigned, 0 assigned twice$' "$OUTFILE")"
 done
 run check-render vulkan-native "$TMPROOT/list.txt" > /dev/null
 check "vulkan render-1 holds the Quality orthographic sweep alone" 1 "$(grep -c '^vulkan-native render-1: 1 listed test methods$' "$OUTFILE")"
@@ -92,14 +97,14 @@ run check-render direct3d11-native "$TMPROOT/list.txt" > /dev/null
 check "d3d11 no longer dedicates render-1 to cascade culling" 0 "$(grep -c '^direct3d11-native render-1:' "$OUTFILE")"
 check "d3d11 render-4 takes every class outside Temporal" 1 "$(grep -c '^direct3d11-native render-4: 6 listed test methods$' "$OUTFILE")"
 run check-render metal-native "$TMPROOT/list.txt" > /dev/null
-check "metal render-1 holds the follow sweeps" 1 "$(grep -c '^metal-native render-1: 9 listed test methods$' "$OUTFILE")"
+check "metal render-1 holds the follow sweeps" 1 "$(grep -c '^metal-native render-1: 14 listed test methods$' "$OUTFILE")"
 check "an empty listing is refused" 1 "$(run check-render metal-native /dev/null)"
 check "an unknown backend is refused" 1 "$(run filter opengl render-1)"
 check "the removed Windows cascade slice is refused" 1 "$(run filter direct3d11-native render-1)"
 check "the removed Vulkan cascade slice is refused" 1 "$(run filter vulkan-native render-2)"
 check "an unknown slice is refused" 1 "$(run filter metal-native render-3)"
 check "the last slice negates every earlier rule" 0 "$(run filter metal-native render-2)"
-check "the last slice filter" "FullyQualifiedName!~$G.TemporalFollow&FullyQualifiedName!~$G.TemporalLongHoldFollowGpuTests.&FullyQualifiedName!=$G.CoverageRecessionCostGpuTests.Real_body_size_carry_and_scene_overhead_for_1_and_32_actors" "$(cat "$OUTFILE")"
+check "the last slice filter" "FullyQualifiedName!~$G.TemporalFollow&FullyQualifiedName!~$G.TemporalLongHoldFollowGpuTests.&FullyQualifiedName!~KhaozEngine.Tests.MapDoc.NativeResourceUploadGpuTests.&FullyQualifiedName!~KhaozEngine.Tests.MapDoc.NativeMapReadinessTests.&FullyQualifiedName!~KhaozEngine.Tests.MapDoc.NativeMapGoldenGpuTests.&FullyQualifiedName!~KhaozEngine.Tests.MapDoc.NativeMapSnapshotGpuTests.&FullyQualifiedName!=KhaozEngine.Tests.MapDoc.NativeMapAllocationTests.WarmGpuQueueUpdateDraw_AllocateZero&FullyQualifiedName!=$G.CoverageRecessionCostGpuTests.Real_body_size_carry_and_scene_overhead_for_1_and_32_actors" "$(cat "$OUTFILE")"
 
 echo "coverage: actual native correctness methods occur once per backend, cost remains explicit"
 _rc=0

@@ -69,8 +69,12 @@ public sealed class MapDocumentExceptionTests
     {
         var original = new MapDocumentFinding(MapDocumentRefusal.AssetDependencyCycle, "cycle")
         {
-            ResourceIds = ["resource"], ExpectedResourceIds = ["root"], SourceIds = ["source"],
-            SpaceIds = ["space"], MarkerIds = ["marker"], SupportedVersions = [1],
+            ResourceIds = ["resource"],
+            ExpectedResourceIds = ["root"],
+            SourceIds = ["source"],
+            SpaceIds = ["space"],
+            MarkerIds = ["marker"],
+            SupportedVersions = [1],
         };
         MapDocumentFinding reassigned = property switch
         {

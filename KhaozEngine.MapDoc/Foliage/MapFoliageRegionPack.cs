@@ -19,9 +19,13 @@ internal static class MapFoliageRegionPack
             throw new MapDocumentException(count < 1 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.WorkCapacityExceeded,
                 "foliage pack chunk count exceeds capacity or is empty.")
             {
-                FieldPath = "Count", ActualCount = count, ActualInteger = count, MinimumInteger = 1,
+                FieldPath = "Count",
+                ActualCount = count,
+                ActualInteger = count,
+                MinimumInteger = 1,
                 MaximumInteger = MapFoliagePayloadLimits.MaxChunksPerLayer,
-                Budget = count < 1 ? null : "foliage pack chunks", Limit = count < 1 ? null : MapFoliagePayloadLimits.MaxChunksPerLayer,
+                Budget = count < 1 ? null : "foliage pack chunks",
+                Limit = count < 1 ? null : MapFoliagePayloadLimits.MaxChunksPerLayer,
             };
         return checked(HeaderLength + count * RecordLength);
     }
@@ -58,7 +62,9 @@ internal static class MapFoliageRegionPack
                 "foliage pack has invalid magic or byte length.")
             {
                 FieldPath = span.Length < HeaderLength || span.Length > MaxByteLength ? "ByteLength" : "Magic",
-                ActualByteCount = span.Length, MinimumInteger = HeaderLength, MaximumInteger = MaxByteLength,
+                ActualByteCount = span.Length,
+                MinimumInteger = HeaderLength,
+                MaximumInteger = MaxByteLength,
                 Budget = span.Length > MaxByteLength ? "foliage pack bytes" : null,
                 Limit = span.Length > MaxByteLength ? MaxByteLength : null,
             };
@@ -98,8 +104,12 @@ internal static class MapFoliageRegionPack
     static MapDocumentException InvalidKey(MapFoliageChunkKey key, int index, string message) =>
         new(MapDocumentRefusal.ValueOutsideRange, message)
         {
-            FoliageChunk = key, Index = index, FieldPath = key.X is < 0 or > 32767 ? "Key.X" : "Key.Z",
-            ActualInteger = key.X is < 0 or > 32767 ? key.X : key.Z, MinimumInteger = 0, MaximumInteger = 32767,
+            FoliageChunk = key,
+            Index = index,
+            FieldPath = key.X is < 0 or > 32767 ? "Key.X" : "Key.Z",
+            ActualInteger = key.X is < 0 or > 32767 ? key.X : key.Z,
+            MinimumInteger = 0,
+            MaximumInteger = 32767,
         };
 
 }

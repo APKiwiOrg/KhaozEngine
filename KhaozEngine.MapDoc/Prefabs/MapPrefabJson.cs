@@ -346,7 +346,7 @@ internal static class MapPrefabJson
                 int index = 0;
                 foreach (JsonElement item in node.EnumerateArray()) Visit(item, name, $"{path}[{index++}]", parent);
             }
-            else if (node.ValueKind == JsonValueKind.Null && !(parent == "supportBinding" && name is ("surfaceId" or "spaceId" or "referenceY" or "searchBelow" or "searchAbove")) && name is not ("numericId" or "parentSpace" or "owner" or "instanceId" or "previous" or "transform" or "assetId" or "tags" or
+            else if (node.ValueKind == JsonValueKind.Null && !(parent == "supportBinding" && name is ("surfaceId" or "spaceId" or "referenceY" or "searchBelow" or "searchAbove")) && name is not ("numericId" or "parentSpace" or "owner" or "shadowExclusion" or "instanceId" or "previous" or "transform" or "assetId" or "tags" or
                 "parent" or "aliasOf" or "sourcePatch" or "heightUnits" or "opening" or "surfaceId" or "bandTop" or "paintTargetSurfaceId" or "indoorSpan" or "anchor"))
                 throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Prefab member '" + name + "' must not be null.") { FieldPath = path };
         }
@@ -425,7 +425,8 @@ internal static class MapPrefabJson
                 case MapPrefabMarkerChild m: Property(w, "value", m.Value); break;
                 case MapPrefabRoofChild r: Property(w, "value", r.Value with { Rooms = Ordered(r.Value.Rooms), Groups = Ordered(r.Value.Groups) }); break;
                 case MapPrefabRoofGroupChild g: Property(w, "value", g.Value with { Rooms = Ordered(g.Value.Rooms) }); break;
-                default: throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unsupported prefab child.")
+                default:
+                    throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unsupported prefab child.")
                     { RecordType = child.GetType(), Child = child.Key };
             }
             Property(w, "localTransform", child.LocalTransform);
@@ -497,7 +498,12 @@ internal static class MapPrefabJson
             using JsonDocument json = JsonDocument.ParseValue(ref reader);
             return MapSurfacePatchCodec.Decode(Encoding.UTF8.GetBytes(json.RootElement.GetRawText()), MapPrefabJson.Read<MapPatchKey>(json.RootElement.GetProperty("key")));
         }
-        public override void Write(Utf8JsonWriter w, MapSurfacePatch value, JsonSerializerOptions options) => w.WriteRawValue(MapSurfacePatchCodec.Encode(value));
+        public override void Write(Utf8JsonWriter w, MapSurfacePatch value, JsonSerializerOptions options)
+        {
+            byte[] bytes = MapSurfacePatchCodec.Encode(value, out var ownership);
+            using var consumed = ownership;
+            w.WriteRawValue(bytes);
+        }
     }
 
     sealed class RecordConverter : JsonConverter<MapTopologyRecord>
@@ -507,14 +513,18 @@ internal static class MapPrefabJson
         {
             using JsonDocument json = JsonDocument.ParseValue(ref reader);
             var patch = Envelope();
-            var root = JsonNode.Parse(MapSurfacePatchCodec.Encode(patch))!.AsObject();
+            byte[] bytes = MapSurfacePatchCodec.Encode(patch, out var ownership);
+            using var consumed = ownership;
+            var root = JsonNode.Parse(bytes)!.AsObject();
             root["records"] = new JsonArray(JsonNode.Parse(json.RootElement.GetRawText()));
             return MapSurfacePatchCodec.Decode(Encoding.UTF8.GetBytes(root.ToJsonString()), patch.Key).Records.Single();
         }
         public override void Write(Utf8JsonWriter w, MapTopologyRecord value, JsonSerializerOptions options)
         {
             var patch = Envelope(); patch.Records.Add(value);
-            using JsonDocument json = JsonDocument.Parse(MapSurfacePatchCodec.Encode(patch));
+            byte[] bytes = MapSurfacePatchCodec.Encode(patch, out var ownership);
+            using var consumed = ownership;
+            using JsonDocument json = JsonDocument.Parse(bytes);
             json.RootElement.GetProperty("records")[0].WriteTo(w);
         }
     }
@@ -554,7 +564,8 @@ internal static class MapPrefabJson
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("kind", out JsonElement kind) || kind.ValueKind != JsonValueKind.String)
                 throw new MapPrefabJsonException(root.ValueKind != JsonValueKind.Object ? MapDocumentRefusal.SchemaObjectRequired
                     : !root.TryGetProperty("kind", out _) ? MapDocumentRefusal.SchemaMemberMissing : MapDocumentRefusal.SchemaValueRequired,
-                    "A marker support binding requires a kind.") { FieldPath = root.ValueKind != JsonValueKind.Object ? "$" : "$.kind" };
+                    "A marker support binding requires a kind.")
+                { FieldPath = root.ValueKind != JsonValueKind.Object ? "$" : "$.kind" };
             bool surface = kind.GetString() switch
             {
                 "Surface" => true,
@@ -569,12 +580,15 @@ internal static class MapPrefabJson
                 if (!members.Contains(p.Name, StringComparer.Ordinal) || !seen.Add(p.Name))
                     throw new MapPrefabJsonException(!members.Contains(p.Name, StringComparer.Ordinal)
                         ? MapDocumentRefusal.SchemaMemberUnknown : MapDocumentRefusal.SchemaMemberDuplicate,
-                        "Unknown or duplicate marker support binding member '" + p.Name + "'.") { FieldPath = MapDocumentJsonPath.AppendProperty("$", p.Name) };
+                        "Unknown or duplicate marker support binding member '" + p.Name + "'.")
+                    { FieldPath = MapDocumentJsonPath.AppendProperty("$", p.Name) };
                 if (p.Value.ValueKind == JsonValueKind.Null) throw new MapPrefabJsonException(MapDocumentRefusal.SchemaMemberNull,
-                    "Marker support binding member '" + p.Name + "' must not be null.") { FieldPath = MapDocumentJsonPath.AppendProperty("$", p.Name) };
+                    "Marker support binding member '" + p.Name + "' must not be null.")
+                { FieldPath = MapDocumentJsonPath.AppendProperty("$", p.Name) };
             }
             if (seen.Count != members.Length) throw new MapPrefabJsonException(MapDocumentRefusal.SchemaMemberMissing,
-                "A marker support binding is missing a member of its kind.") { FieldPath = MapDocumentJsonPath.AppendProperty("$", members.First(m => !seen.Contains(m))) };
+                "A marker support binding is missing a member of its kind.")
+            { FieldPath = MapDocumentJsonPath.AppendProperty("$", members.First(m => !seen.Contains(m))) };
             if (surface) return new(MapSupportBindingKind.Surface, Text(root, "surfaceId"), null, null, null, null);
             return new(MapSupportBindingKind.Space, null, Text(root, "spaceId"), Finite(root, "referenceY"), Finite(root, "searchBelow"), Finite(root, "searchAbove"));
         }
@@ -588,7 +602,8 @@ internal static class MapPrefabJson
 
         static string Text(JsonElement root, string name) => root.GetProperty(name) is { ValueKind: JsonValueKind.String } value
             ? value.GetString()! : throw new MapPrefabJsonException(MapDocumentRefusal.SchemaValueRequired,
-                "Marker support binding member '" + name + "' must be a string.") { FieldPath = MapDocumentJsonPath.AppendProperty("$", name) };
+                "Marker support binding member '" + name + "' must be a string.")
+            { FieldPath = MapDocumentJsonPath.AppendProperty("$", name) };
 
         static float Finite(JsonElement root, string name)
         {
@@ -622,13 +637,15 @@ internal static class MapPrefabJson
             string? text = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
             foreach (T value in Enum.GetValues<T>()) if (value.ToString() == text) return value;
             throw new MapPrefabJsonException(MapDocumentRefusal.SchemaEnumUnsupported, "Unsupported exact enum name.")
-                { EnumType = typeof(T), ActualText = text };
+            { EnumType = typeof(T), ActualText = text };
         }
         public override void Write(Utf8JsonWriter w, T value, JsonSerializerOptions options)
         {
             if (!Enum.IsDefined(value)) throw new MapPrefabJsonException(MapDocumentRefusal.SchemaEnumUnsupported, "Unsupported enum value.")
             {
-                EnumType = typeof(T), FieldPath = "$", ActualText = value.ToString(),
+                EnumType = typeof(T),
+                FieldPath = "$",
+                ActualText = value.ToString(),
                 ActualInteger = Enum.GetUnderlyingType(typeof(T)) == typeof(ulong) && Convert.ToUInt64(value) > long.MaxValue
                     ? null : Convert.ToInt64(value),
             };

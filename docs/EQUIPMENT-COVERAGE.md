@@ -178,6 +178,9 @@ equipment tokens. A refused equipment replacement preserves the active configura
 selects ordinary presentation. Ordinary `IAttachmentScene` adapters remain supported without implementing
 `IAttachmentCoverageScene`, as the example's `QueueOrdinary` demonstrates.
 
+An anchored equipment draw must render the same rebased transform as its frozen absolute descriptor.
+Anchor-local offsets hidden by absolute binary32 rounding are refused as `StaleFrame` before queueing.
+
 At teardown, dispose the submission owner first to drain retained work. Dispose actor bindings before
 attachment caches and scenes, then release the host command list and device. The example owns only its
 binding and borrows all other resources. Follow the host's normal command-list cleanup on recording

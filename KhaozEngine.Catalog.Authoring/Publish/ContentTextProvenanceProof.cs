@@ -128,5 +128,6 @@ internal static class ContentTextProvenanceProof
                 $"Version {versionNumber} has no complete text record, and neither its stored manifests nor manifests rebuilt from its recorded chunks prove it named no language. Its text is unknown rather than empty, so nothing was written."),
             default,
             0,
-            ContentAuthoringException.TextProvenanceUnknownReason) { VersionNumber = versionNumber };
+            ContentAuthoringException.TextProvenanceUnknownReason)
+        { VersionNumber = versionNumber };
 }

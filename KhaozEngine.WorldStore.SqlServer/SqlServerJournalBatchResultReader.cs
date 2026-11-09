@@ -120,20 +120,24 @@ internal static class SqlServerJournalBatchResultReader
             return new JournalStoreException(JournalStoreRefusal.BatchProjectionLimitIncomplete, JournalStoreFailureKind.ConstraintViolation,
                 JournalStoreFailureCertainty.DefinitelyNotCommitted, JournalStoreFailureScope.OperationStreams,
                 batch.LimitStream is string namedStream ? new[] { namedStream } : streamKeys,
-                "Projection replacement would exceed the configured per-stream limits.") { StreamKey = batch.LimitStream };
+                "Projection replacement would exceed the configured per-stream limits.")
+            { StreamKey = batch.LimitStream };
         bool count = batch.LimitReason == JournalStoreRefusal.ProjectionSectionCountExceeded;
         return new JournalStoreException(batch.LimitReason.Value, JournalStoreFailureKind.ConstraintViolation,
             JournalStoreFailureCertainty.DefinitelyNotCommitted, JournalStoreFailureScope.OperationStreams, new[] { stream },
             "Projection replacement would exceed the configured per-stream limits.")
         {
             StreamKey = stream,
-            ActualCount = count ? actual : null, MaximumCount = count ? maximum : null,
-            ActualBytes = count ? null : actual, MaximumBytes = count ? null : maximum,
+            ActualCount = count ? actual : null,
+            MaximumCount = count ? maximum : null,
+            ActualBytes = count ? null : actual,
+            MaximumBytes = count ? null : maximum,
         };
     }
 
     private static JournalStoreException Corrupt(JournalStoreRefusal reason, string[] streams, string message, Guid operationId)
         => new(reason, JournalStoreFailureKind.CorruptData, JournalStoreFailureCertainty.CommittedDataUnreadable,
             streams.Length == 0 ? JournalStoreFailureScope.WholeStore : JournalStoreFailureScope.OperationStreams,
-            streams, message) { OperationId = operationId };
+            streams, message)
+        { OperationId = operationId };
 }

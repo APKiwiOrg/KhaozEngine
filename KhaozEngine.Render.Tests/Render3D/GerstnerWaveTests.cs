@@ -16,11 +16,15 @@ namespace KhaozEngine.Tests.Render3D
     {
         static Span<GerstnerWaves.Component> Scratch(GerstnerWaves.Component[] backing) => backing.AsSpan();
 
-        static int Build(WaterSettings s, GerstnerWaves.Component[] backing) =>
-            GerstnerWaves.BuildComponents(s.SwellAmplitude, s.SwellWavelength,
+        static int Build(WaterSettings s, GerstnerWaves.Component[] backing)
+        {
+            int count = GerstnerWaves.BuildComponents(s.SwellAmplitude, s.SwellWavelength,
                 GerstnerWaves.DegreesToRadians(s.SwellDirectionDegrees),
                 GerstnerWaves.DegreesToRadians(s.SwellSpreadDegrees),
                 s.SwellSteepness, s.SwellSpeed, s.SwellSeed, s.SwellComponents, Scratch(backing));
+            Assert.InRange(count, 1, backing.Length);
+            return count;
+        }
 
         // ---- Component generation ------------------------------------------------------------------------------
 
@@ -120,6 +124,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             var backing = new GerstnerWaves.Component[GerstnerWaves.MaxComponents];
             int n = GerstnerWaves.BuildComponents(0.5f, 40f, 0.75f, 0f, 0.6f, 1f, 0f, 4, Scratch(backing));
+            Assert.Equal(4, n);
             for (int i = 0; i < n; i++)
             {
                 Assert.Equal(MathF.Cos(0.75f), backing[i].DirX, 4);
@@ -134,6 +139,7 @@ namespace KhaozEngine.Tests.Render3D
             // as an ocean rather than a scrolling texture: the long rollers overtake the chop.
             var backing = new GerstnerWaves.Component[GerstnerWaves.MaxComponents];
             int n = GerstnerWaves.BuildComponents(0.5f, 42f, 0f, 0.9f, 0.6f, 1f, 0f, 4, Scratch(backing));
+            Assert.Equal(4, n);
             float previousSpeed = float.MaxValue;
             for (int i = 0; i < n; i++)
             {
@@ -163,7 +169,9 @@ namespace KhaozEngine.Tests.Render3D
             var a = new GerstnerWaves.Component[GerstnerWaves.MaxComponents];
             var b = new GerstnerWaves.Component[GerstnerWaves.MaxComponents];
             int n = GerstnerWaves.BuildComponents(0.5f, 40f, 0.4f, 0.9f, 0.6f, 1f, seed: 0f, 4, Scratch(a));
-            GerstnerWaves.BuildComponents(0.5f, 40f, 0.4f, 0.9f, 0.6f, 1f, seed: 3.7f, 4, Scratch(b));
+            int seededCount = GerstnerWaves.BuildComponents(0.5f, 40f, 0.4f, 0.9f, 0.6f, 1f, seed: 3.7f, 4, Scratch(b));
+            Assert.Equal(4, n);
+            Assert.Equal(n, seededCount);
             for (int i = 0; i < n; i++)
             {
                 // Wind, ladder and shape identical: only the crest positions move, which is what decorrelating two
@@ -216,6 +224,7 @@ namespace KhaozEngine.Tests.Render3D
             // height-field water shader is stuck in. Nothing folds, so nothing whitecaps.
             var backing = new GerstnerWaves.Component[GerstnerWaves.MaxComponents];
             int n = GerstnerWaves.BuildComponents(0.5f, 40f, 0.4f, 0.9f, steepness: 0f, 1f, 0f, 4, Scratch(backing));
+            Assert.Equal(4, n);
             var comps = (ReadOnlySpan<GerstnerWaves.Component>)backing.AsSpan(0, n);
             for (int i = 0; i < 60; i++)
             {
@@ -235,6 +244,7 @@ namespace KhaozEngine.Tests.Render3D
             var backing = new GerstnerWaves.Component[GerstnerWaves.MaxComponents];
             int n = GerstnerWaves.BuildComponents(0.5f, 40f, directionRadians: 0f, spreadRadians: 0f,
                 steepness: 0f, speedScale: 1f, seed: 0f, count: 1, Scratch(backing));
+            Assert.Equal(1, n);
             var comps = (ReadOnlySpan<GerstnerWaves.Component>)backing.AsSpan(0, n);
 
             float k = backing[0].WaveNumber, omega = backing[0].AngularSpeed;
@@ -244,6 +254,9 @@ namespace KhaozEngine.Tests.Render3D
             float atOrigin = GerstnerWaves.Evaluate(0f, 0f, 0f, 0f, comps).Offset.Y;
             float shifted = GerstnerWaves.Evaluate(quarterWavelength, 0f, quarterPeriod, 0f, comps).Offset.Y;
             Assert.Equal(atOrigin, shifted, 4);
+            float crest = GerstnerWaves.Evaluate(quarterWavelength, 0f, 0f, 0f, comps).Offset.Y;
+            Assert.True(crest > 0f, "The initial crest must rise above the still plane.");
+            Assert.Equal(crest, GerstnerWaves.Evaluate(2f * quarterWavelength, 0f, quarterPeriod, 0f, comps).Offset.Y, 4);
         }
 
         [Fact]
@@ -251,10 +264,13 @@ namespace KhaozEngine.Tests.Render3D
         {
             var backing = new GerstnerWaves.Component[GerstnerWaves.MaxComponents];
             int n = GerstnerWaves.BuildComponents(0.5f, 40f, 0.3f, 0f, 0.6f, 1f, 0f, count: 1, Scratch(backing));
+            Assert.Equal(1, n);
             var comps = (ReadOnlySpan<GerstnerWaves.Component>)backing.AsSpan(0, n);
             float period = MathF.Tau / backing[0].AngularSpeed;
             var a = GerstnerWaves.Evaluate(6f, -2f, 1.3f, 0.6f, comps);
             var b = GerstnerWaves.Evaluate(6f, -2f, 1.3f + period, 0.6f, comps);
+            var halfway = GerstnerWaves.Evaluate(6f, -2f, 1.3f + period * 0.5f, 0.6f, comps);
+            Assert.NotEqual(a.Offset, halfway.Offset);
             Assert.Equal(a.Offset.X, b.Offset.X, 3);
             Assert.Equal(a.Offset.Y, b.Offset.Y, 3);
             Assert.Equal(a.Offset.Z, b.Offset.Z, 3);
@@ -269,6 +285,7 @@ namespace KhaozEngine.Tests.Render3D
             // above 1 and permanent foam.
             var backing = new GerstnerWaves.Component[GerstnerWaves.MaxComponents];
             int n = GerstnerWaves.BuildComponents(0.6f, 30f, 0.4f, 0.9f, steepness: 1f, 1f, 0f, 4, Scratch(backing));
+            Assert.Equal(4, n);
             var comps = (ReadOnlySpan<GerstnerWaves.Component>)backing.AsSpan(0, n);
             float maxFold = 0f;
             for (int i = 0; i < 120; i++)

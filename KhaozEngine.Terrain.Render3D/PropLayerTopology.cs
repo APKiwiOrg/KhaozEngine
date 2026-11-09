@@ -25,6 +25,8 @@ namespace KhaozEngine.Terrain
             for (int i = 0; i < layers.Length; i++)
             {
                 PropLayer l = layers[i];
+                if (l.NativePlacements is not null)
+                    throw new ArgumentException("Native placement layers use the native renderer rather than the analytic chunk sink.", paramName);
                 if (l.IsCompanion)
                 {
                     if (l.HostLayerIndex < 0 || l.HostLayerIndex >= layers.Length)

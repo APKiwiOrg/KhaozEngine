@@ -182,6 +182,8 @@ namespace KhaozEngine.Tests.Render3D
             var avatar = FlatAvatar(out _);
             for (int i = 0; i < 10; i++) avatar.Update(Keys(), Dt, 0f, FlatGround);
             avatar.Update(Pressed(Key.Space), Dt, 0f, FlatGround);   // jump
+            Assert.False(avatar.Grounded);
+            Assert.Equal(avatar.Position.Y, avatar.RenderPosition.Y, 4);
             for (int i = 0; i < 40 && !avatar.Grounded; i++)
             {
                 avatar.Update(Keys(), Dt, 0f, FlatGround);
@@ -196,6 +198,7 @@ namespace KhaozEngine.Tests.Render3D
             var controller = new CharacterController3D();
             Assert.Throws<ArgumentNullException>(() => new CharacterAvatar(null!, OneBoneAnim(), default));
             Assert.Throws<ArgumentNullException>(() => new CharacterAvatar(controller, null!, default));
+            _ = new CharacterAvatar(controller, OneBoneAnim(), default);
         }
     }
 #pragma warning restore CS0618

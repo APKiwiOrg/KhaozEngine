@@ -57,7 +57,9 @@ namespace KhaozEngine.Render3D.Rendering
                     $"The post chain targets report {slots} source slots. The chain builds sets for 1 to {MaxSourceSlots}.",
                     nameof(res))
                 {
-                    SourceSlotCount = slots, MinimumSourceSlotCount = 1, MaximumSourceSlotCount = MaxSourceSlots,
+                    SourceSlotCount = slots,
+                    MinimumSourceSlotCount = 1,
+                    MaximumSourceSlotCount = MaxSourceSlots,
                 };
             // Rebuild the ping-output pipelines first if the ping colour format flipped (HDR float16 <-> legacy UNorm),
             // independent of the resource-set guard below (a pure format toggle keeps the same size/bloom state).

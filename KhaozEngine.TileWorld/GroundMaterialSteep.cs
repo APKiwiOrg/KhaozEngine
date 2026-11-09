@@ -100,8 +100,10 @@ public static class GroundMaterialSteepRules
                 $"{at} fromDegrees {GroundMaterialSteep.Degrees(from)}{DefaultNote(steep.FromDegrees)} is not below " +
                 $"toDegrees {GroundMaterialSteep.Degrees(to)}{DefaultNote(steep.ToDegrees)}.")
             {
-                FromDegrees = from, ToDegrees = to,
-                FromIsDefault = steep.FromDegrees is null, ToIsDefault = steep.ToDegrees is null,
+                FromDegrees = from,
+                ToDegrees = to,
+                FromIsDefault = steep.FromDegrees is null,
+                ToIsDefault = steep.ToDegrees is null,
             };
         // The renderer blends on the cosines of the two ends, so a band they cannot tell apart has no blend at all.
         // The expression is the renderer's own (TileGroundSteepShading in Render3D), in plain float maths so this
@@ -131,10 +133,16 @@ public static class GroundMaterialSteepRules
             if (FindProblem(material, catalogs) is { } problem)
                 throw new TileWorldException(problem.Reason, $"{source}: {problem.Message}")
                 {
-                    SourceName = source, MaterialId = material.Id, MaterialName = material.Name,
-                    CompanionMaterialId = problem.CompanionMaterialId, CompanionMaterialName = problem.CompanionMaterialName,
-                    Field = problem.Field, FromDegrees = problem.FromDegrees, ToDegrees = problem.ToDegrees,
-                    FromIsDefault = problem.FromIsDefault, ToIsDefault = problem.ToIsDefault,
+                    SourceName = source,
+                    MaterialId = material.Id,
+                    MaterialName = material.Name,
+                    CompanionMaterialId = problem.CompanionMaterialId,
+                    CompanionMaterialName = problem.CompanionMaterialName,
+                    Field = problem.Field,
+                    FromDegrees = problem.FromDegrees,
+                    ToDegrees = problem.ToDegrees,
+                    FromIsDefault = problem.FromIsDefault,
+                    ToIsDefault = problem.ToIsDefault,
                 };
         }
     }

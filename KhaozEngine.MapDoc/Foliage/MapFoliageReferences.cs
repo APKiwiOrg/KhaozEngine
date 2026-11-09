@@ -53,8 +53,12 @@ internal static class MapFoliageReferences
                 findings.Add(new(surface is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch,
                     $"foliage: missing effective support surface '{id}'.")
                 {
-                    LayerId = layerId, FieldPath = path, SurfaceId = id, SubjectKind = "support surface",
-                    EnumType = surface is null ? null : typeof(MapSurfaceRole), ActualInteger = surface is null ? null : (long)surface.Role,
+                    LayerId = layerId,
+                    FieldPath = path,
+                    SurfaceId = id,
+                    SubjectKind = "support surface",
+                    EnumType = surface is null ? null : typeof(MapSurfaceRole),
+                    ActualInteger = surface is null ? null : (long)surface.Role,
                 });
         }
         void Binding(MapSupportBinding b, string layerId, string path)
@@ -80,8 +84,13 @@ internal static class MapFoliageReferences
                     ? MapDocumentRefusal.AuthoredReferenceKindInvalid : MapDocumentRefusal.ReferenceMissing,
                 $"foliage: missing effective World {o.Kind} owner '{o.Id}'.")
             {
-                LayerId = layerId, FieldPath = path, EntityId = o.Id, ChildKind = o.Kind,
-                ReferenceScope = o.Scope, ExpectedReferenceScope = MapPrefabReferenceScope.World, SubjectKind = "foliage owner",
+                LayerId = layerId,
+                FieldPath = path,
+                EntityId = o.Id,
+                ChildKind = o.Kind,
+                ReferenceScope = o.Scope,
+                ExpectedReferenceScope = MapPrefabReferenceScope.World,
+                SubjectKind = "foliage owner",
             });
         }
         foreach (MapFoliageLayer layer in set.Layers)

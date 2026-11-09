@@ -230,9 +230,13 @@ public sealed class MapPrefabDocumentRefusalTests
         var pose = new MapEffectiveTransform(0, 0, 0, 0, 1);
         var invalid = fault switch
         {
-            "x" => pose with { X = double.NaN }, "y" => pose with { Y = double.NaN },
-            "z" => pose with { Z = double.NaN }, "yaw" => pose with { YawRadians = double.NaN },
-            "scale-nonfinite" => pose with { Scale = double.PositiveInfinity }, "scale-zero" => pose with { Scale = 0 }, _ => pose,
+            "x" => pose with { X = double.NaN },
+            "y" => pose with { Y = double.NaN },
+            "z" => pose with { Z = double.NaN },
+            "yaw" => pose with { YawRadians = double.NaN },
+            "scale-nonfinite" => pose with { Scale = double.PositiveInfinity },
+            "scale-zero" => pose with { Scale = 0 },
+            _ => pose,
         };
         string digest = fault == "digest-length" ? new string('a', 63) : new string(fault == "digest-case" ? 'A' : 'a', 64);
         document.NativeResourceTransforms = [new(MapPrefabChildKind.Placement, "owner", invalid, digest)];
@@ -252,7 +256,9 @@ public sealed class MapPrefabDocumentRefusalTests
 
     internal static MapDocument Empty() => new()
     {
-        ResolverIdentity = new(1, 2), SupportRecipe = MapSupportRecipe.AuthoredBindingsV2, Prefabs = new(1, 1, [], []),
+        ResolverIdentity = new(1, 2),
+        SupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
+        Prefabs = new(1, 1, [], []),
     };
 
     internal static MapDocumentFinding Refused(MapDocument document, MapAssetClosure? assets, MapDocumentRefusal reason)

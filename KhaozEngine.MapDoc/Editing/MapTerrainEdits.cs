@@ -53,7 +53,7 @@ public static class MapTerrainEdits
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
             throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "terrain edit is not representable", error)
-                { Operation = edit.GetType().Name };
+            { Operation = edit.GetType().Name };
         }
     }
 
@@ -105,14 +105,14 @@ public static class MapTerrainEdits
                 return invalidates;
             default:
                 throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "unknown terrain edit type")
-                    { Operation = edit.GetType().Name };
+                { Operation = edit.GetType().Name };
         }
     }
 
     internal static MapSurfacePatch Patch(MapSurfaceSet set, MapPatchKey key) =>
         set.Patches.TryGetValue(key, out MapSurfacePatch? patch) ? patch
             : throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"missing terrain patch '{key}'")
-                { Patch = key, SurfaceId = key.SurfaceId };
+            { Patch = key, SurfaceId = key.SurfaceId };
 
     internal static void RequireValid(IReadOnlyList<MapDocumentFinding> findings)
     {
@@ -123,7 +123,7 @@ public static class MapTerrainEdits
     {
         if (x < 0 || z < 0 || width < 1 || depth < 1 || (long)x + width > limitX || (long)z + depth > limitZ)
             throw new MapDocumentException(MapDocumentRefusal.TerrainEditRegionOutOfBounds, "terrain edit region outside patch rectangle")
-                { Patch = patch.Key, CellX = x, CellZ = z, Width = width, Depth = depth };
+            { Patch = patch.Key, CellX = x, CellZ = z, Width = width, Depth = depth };
     }
 
     static void SetHeights(MapSurfacePatch patch, MapSetCornerHeights edit)
@@ -132,7 +132,7 @@ public static class MapTerrainEdits
         RequireRegion(patch, edit.CornerX, edit.CornerZ, edit.Width, edit.Depth, patch.Width + 1, patch.Depth + 1);
         int valueCount = edit.Values.Count;
         if (valueCount != edit.Width * edit.Depth) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, "terrain height value count differs")
-            { Patch = patch.Key, FieldPath = "Values", ActualCount = valueCount, ExpectedCount = (long)edit.Width * edit.Depth };
+        { Patch = patch.Key, FieldPath = "Values", ActualCount = valueCount, ExpectedCount = (long)edit.Width * edit.Depth };
         for (int z = 0; z < edit.Depth; z++)
             for (int x = 0; x < edit.Width; x++)
                 patch.Heights[(edit.CornerZ + z) * (patch.Width + 1) + edit.CornerX + x] = edit.Values[z * edit.Width + x];
@@ -144,7 +144,7 @@ public static class MapTerrainEdits
         RequireRegion(patch, edit.CellX, edit.CellZ, edit.Width, edit.Depth, patch.Width, patch.Depth);
         int cellCount = edit.Cells.Count;
         if (cellCount != edit.Width * edit.Depth) throw new MapDocumentException(MapDocumentRefusal.SchemaArrayLengthMismatch, "terrain cell value count differs")
-            { Patch = patch.Key, FieldPath = "Cells", ActualCount = cellCount, ExpectedCount = (long)edit.Width * edit.Depth };
+        { Patch = patch.Key, FieldPath = "Cells", ActualCount = cellCount, ExpectedCount = (long)edit.Width * edit.Depth };
         MapNativeInvalidation invalidates = MapNativeInvalidation.None;
         for (int z = 0; z < edit.Depth; z++)
             for (int x = 0; x < edit.Width; x++)
@@ -166,7 +166,7 @@ public static class MapTerrainEdits
         foreach (int cell in edit.SlotCells)
         {
             if (cell is < 0 or >= 4096) throw new MapDocumentException(MapDocumentRefusal.TerrainEditRegionOutOfBounds, "presence slot cell outside patch rectangle")
-                { Patch = patch.Key, ActualInteger = cell, FieldPath = "SlotCells" };
+            { Patch = patch.Key, ActualInteger = cell, FieldPath = "SlotCells" };
             patch.SetPresent(cell % 64 - patch.CellMinX, cell / 64 - patch.CellMinZ, edit.Present);
         }
     }
@@ -213,10 +213,10 @@ public static class MapTerrainEdits
             int value = neighbour.Height((int)nx, (int)nz);
             if (height.HasValue && height.Value != value)
                 throw new MapDocumentException(MapDocumentRefusal.GeometryVertexHeightMismatch, "smoothing halo corner is ambiguous: incident neighbours disagree on its height")
-                    { Patch = patch.Key, Address = MapLatticeAddress.Corner(absoluteX, absoluteZ), Operation = nameof(MapSmoothCorners) };
+                { Patch = patch.Key, Address = MapLatticeAddress.Corner(absoluteX, absoluteZ), Operation = nameof(MapSmoothCorners) };
             height = value;
         }
         return height ?? throw new MapDocumentException(MapDocumentRefusal.TerrainSmoothingHaloUnavailable, "smoothing halo corner is outside the surface or unloaded")
-            { Patch = patch.Key, Address = MapLatticeAddress.Corner(absoluteX, absoluteZ) };
+        { Patch = patch.Key, Address = MapLatticeAddress.Corner(absoluteX, absoluteZ) };
     }
 }

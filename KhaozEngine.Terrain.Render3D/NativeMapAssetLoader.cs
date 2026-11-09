@@ -11,7 +11,7 @@ namespace KhaozEngine.Terrain;
 /// <see cref="PropLoader.LoadProp"/>, which fits a mesh to a declared height, drops its base to zero and recentres X
 /// and Z, this applies <see cref="MapResolvedAsset.SourceUnitsToMetres"/> once and nothing else, so a native asset keeps
 /// its authored origin and proportions and the mesh agrees with its collider.</summary>
-public static class NativeMapAssetLoader
+public static partial class NativeMapAssetLoader
 {
     // "glTF" and "JSON" read as little-endian uint32 words: the GLB magic and the first chunk's type.
     const uint GlbMagic = 0x46546C67;
@@ -27,11 +27,7 @@ public static class NativeMapAssetLoader
     /// or the mesh does not load.</summary>
     public static GltfMesh Load(MapResolvedAsset asset, MapAssetClosure closure)
     {
-        ArgumentNullException.ThrowIfNull(asset);
-        ArgumentNullException.ThrowIfNull(closure);
-        if (!ReferenceEquals(closure.GetAsset(asset.Id), asset))
-            throw new MapDocumentException(MapDocumentRefusal.AssetDescriptorMismatch, $"Native asset '{asset.Id}' is not the descriptor of the supplied closure.")
-            { AssetId = asset.Id };
+        RequireDescriptor(asset, closure);
         MapResolvedResource resource = closure.GetResource(asset.MeshResourceId);
         if (resource.Kind != MapResourceKind.Mesh)
             throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch,
@@ -64,15 +60,16 @@ public static class NativeMapAssetLoader
     }
 
     // Value-taking fault seam for the external loader boundary, without changing the closure's state.
-    internal static MapDocumentException MeshLoadFailure(Exception error, MapResolvedAsset asset, MapResolvedResource resource)
+    internal static MapDocumentException MeshLoadFailure(Exception error, MapResolvedAsset asset, MapResolvedResource resource, string? message = null)
     {
         string what = $"Native asset '{asset.Id}' mesh resource '{asset.MeshResourceId}'";
+        message ??= $"{what} cannot be loaded: {error.Message}";
         for (Exception? cause = error; cause is not null; cause = cause.InnerException)
             if (cause is MapDocumentException known)
-                return known.WithSourceName(null, $"{what} cannot be loaded: {error.Message}",
-                    resourceId: asset.MeshResourceId, assetId: asset.Id);
-        return new MapDocumentException(MapDocumentRefusal.AssetPayloadUnreadable, $"{what} cannot be loaded: {error.Message}", error)
-        { AssetId = asset.Id, ResourceId = asset.MeshResourceId, Path = resource.Reference.Path, ExpectedHash = resource.Reference.Sha256 };
+                return known.WithSourceName(null, message,
+                    resourceId: resource.Reference.Id, assetId: asset.Id);
+        return new MapDocumentException(MapDocumentRefusal.AssetPayloadUnreadable, message, error)
+        { AssetId = asset.Id, ResourceId = resource.Reference.Id, Path = resource.Reference.Path, ExpectedHash = resource.Reference.Sha256 };
     }
 
     // Reads the GLB header and JSON chunk and refuses any buffer or image URI that is not an embedded data URI.

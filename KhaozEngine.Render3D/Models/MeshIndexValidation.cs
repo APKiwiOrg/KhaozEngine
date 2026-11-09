@@ -36,14 +36,26 @@ namespace KhaozEngine.Render3D
             {
                 throw new MeshIndexStateException(MeshIndexRefusal.RebasedIndexOverflow,
                     $"{diagnosticIdentity ?? identity} index {index} overflows while rebasing from vertex {baseIndex}.", ex)
-                { Identity = identity, Index = index, VertexCount = vertexCount, BaseIndex = baseIndex,
-                    EntryId = entryId, PartIndex = partIndex };
+                {
+                    Identity = identity,
+                    Index = index,
+                    VertexCount = vertexCount,
+                    BaseIndex = baseIndex,
+                    EntryId = entryId,
+                    PartIndex = partIndex
+                };
             }
             if ((ulong)rebased > uint.MaxValue)
                 throw new MeshIndexStateException(MeshIndexRefusal.RebasedIndexOverflow,
                     $"{diagnosticIdentity ?? identity} index {index} overflows while rebasing from vertex {baseIndex}.")
-                { Identity = identity, Index = index, VertexCount = vertexCount, BaseIndex = baseIndex,
-                    EntryId = entryId, PartIndex = partIndex };
+                {
+                    Identity = identity,
+                    Index = index,
+                    VertexCount = vertexCount,
+                    BaseIndex = baseIndex,
+                    EntryId = entryId,
+                    PartIndex = partIndex
+                };
             return (uint)rebased;
         }
     }

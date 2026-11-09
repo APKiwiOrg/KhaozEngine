@@ -35,6 +35,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   compilation or cache identities. Coverage requests that policy. A compiled public consumer example
   and the living equipment coverage guide document complete descriptors, fallback and resource lifetime.
 
+- Contact arrival keeps the certified flat fast path when `GroundMoveContext` has a `clampXz` delegate (#1737).
+  Contact never reads that Legacy-only clamp and enforces the world edge through `MovementBoundary`. Swept regions
+  that reach the boundary still use the exact solver, and movement and arrival results are unchanged.
 - Catalog and journal refusals now carry a public reason enum and typed identifiers, filled at every engine throw
   site. `ContentAuthoringException` gains `ContentAuthoringRefusal? Refusal` beside its existing string `Reason`,
   `ContentRegistrationException` gains `ContentRegistrationRefusal? Reason`, and `JournalStoreException` gains
@@ -55,6 +58,68 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Public refusal enums are append-only from this version. New members go at the end and existing numeric values never
   move, so mods and tools built against one engine version keep working on a later one. Before this version, compare
   members by name.
+- Stabilize still sub-pixel detail under TAA with a per-pixel shimmer record and score, longer still history
+  and a wider luma clip. A still-pixel chroma precision floor stops binary16 rounding from turning narrow
+  eave colour intervals into visible brightness flicker. Moving pixels keep their existing clip.
+- Add `SceneDebugView.Shimmer` to show where the resolve retains still detail.
+- Keep still flickering thin features locked at the jitter-cycle rate when the prior record supports flicker and
+  the current change stays within one swing. Growing shading change, motion, reactive content and visibility changes
+  keep ordinary decay. A 1:1 render keeps its existing rate, while capped Native upscaling takes the longer hold.
+- Store shimmer drift and swing in the history state, adding 8 bytes per display pixel across its
+  double-buffered pair, or 28.125 MiB at 2560x1440, with no additional attachment.
+- Initialize the shared neutral water colour texture when publishing a native water domain. The first draw
+  and later frames upload no resource data.
+- Preserve continuous native terrain material across patch and paint joins when a feathered overlay meets
+  matching hard-filled material or an overlay over a different underlay, including validated surface-owner
+  seams. Keep exposed-edge feather widths and cut-overlay boundaries without inventing outlines at diagonal gaps.
+  Isolate stacked patch sheets across owner joins and admit source seam validation within preparation capacity.
+- Compare native scene oracle rigid poses and fixture exclusion boxes in common coordinate frames.
+  Accept equivalent HLOD proxy vertex and index ordering while retaining exact identities, draw counts,
+  channels and declared light clearances.
+- Build native HLOD proxy sources with the loader's whole-scene weld and select proxy weld cells in absolute
+  world space with the released binary32 placement transform for positions and normals, preserving legacy
+  coverage and averaged colours independently of the storage anchor. Welded cluster requests carry their
+  original placements and refuse missing or mismatched ones.
+- Expose count-only evaluated capacity demand across native scene preparation, nested queries, multi-window residency,
+  refinement, foliage and asset decoding through `CapacityDemandDiagnostics`, without changing admission. Remainder
+  and minimum allowances report each originating profile field with its consumed baseline and original ceiling.
+- Resolve native resolver-2 documents under the caller's query and prefab expansion profile. `MapResolveOptions`
+  carries `QueryLimits` and `ExpansionLimits`, defaulting to the engine profile and never entering authored identity,
+  so `MapWorldBuilder`, `MapNativeResolution` and marker support build what scene residency builds under the same
+  profile. `MapNativePointReadout.SurfaceAt`, `MapDocumentEditFinalizer.Finalize` and `MapFoliageGenerationContext.Capture`
+  gain profile overloads, whole-view room coverage refines under the declared profile, and page metadata and range
+  ceilings report their originating `MaxPageReads` in whole page reads (Closes #1632).
+- Bound native scene upload batches with caller limits `MaxInFlightUploadCpuBytes` (256 MiB) and
+  `MaxInFlightUploadStagingGpuBytes` (128 MiB). Release each resource's transient CPU at device completion,
+  before atomic window publication, and refuse windows whose retained uploads and in-flight allowance cannot fit.
+- Settle native scene residency CPU to unique shared membership inventory across windows, including cache and
+  per-window controls, so overlapping windows neither duplicate physical capacity nor omit retained controls.
+- Store roof membership geometry in compact ledger-owned arena columns. Exact coefficients are 16-byte tokens with
+  pooled large magnitudes, and polygons, triangles, cells and bound rows are packed columns. Footprint products are
+  shared across a window's buffers under a full identity key and charged once per borrowing window. Query results,
+  first-match rank and failures are unchanged. `MapRoofPreparationCounts` adds representation row and capacity counts.
+- Settle native scene upload reservations to the inventoried surviving resources once transient inputs are released,
+  and release GPU staging after the device signals transfer completion. Admission still reserves the full upload peak
+  before work. Residency recording maps shrink when their references fall to zero or below half capacity, so an empty
+  residency returns to its source-only baseline.
+- Native foliage batches share immutable instance columns across cache and render views. After batch disposal,
+  `MapNativeFoliageBatch.GeneratedIdentities` and `CoverBatches` throw `ObjectDisposedException`. Capture detached
+  snapshots before requesting an accepted-plan replacement. Public snapshots and foliage payloads from public
+  `Register` and residency frame recording remain usable, without keeping a per-row identity copy in the
+  disposed batch. Cache-index and metadata growth after invalidation admit their allocations in the current
+  preparation's root and binding window, preserving earlier ownership on refusal.
+- Expose membership preparation interval diagnostics for root and window admission, including stage requests,
+  successful peaks and refusals. Label the borrowed-input header separately from complete aggregate predictions.
+  Preserve allocation-free input preflight and avoid product workspace on a header refusal.
+- Size prism validation arithmetic to active pieces, admit room domain copies before construction and settle
+  uncovered polygon replacement capacity after its last overlap.
+- Metal read footprints carry warmed storage capacity between ring slots, so repeating scene shapes allocate
+  no late resource records when their period differs from the ring depth. Vertex coverage also retains warmed
+  disconnected-window capacity across changes in buffer binding order. One shared recording window table
+  retains capacity by peak aggregate demand, so warmed binding-order changes allocate nothing and reachable
+  indexed streams add no window entries.
+- Space coverage refinement refusals identify their footprint through `OwnerId` while retaining underlying
+  bound and opening identifiers.
 
 ## 23.4.0
 

@@ -27,8 +27,13 @@ public sealed class MapNumericIdJsonConverter : JsonConverter<long>
         bool parsed = long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out long value);
         if (!parsed || (!allowZero && value == 0))
             throw new MapNumericIdJsonException(MapDocumentRefusal.ValueOutsideRange, "Numeric identity is outside its permitted int64 range.")
-            { FieldPath = "$", ActualText = text, ActualInteger = parsed ? value : null,
-                MinimumInteger = allowZero ? 0 : 1, MaximumInteger = long.MaxValue };
+            {
+                FieldPath = "$",
+                ActualText = text,
+                ActualInteger = parsed ? value : null,
+                MinimumInteger = allowZero ? 0 : 1,
+                MaximumInteger = long.MaxValue
+            };
         return value;
     }
 

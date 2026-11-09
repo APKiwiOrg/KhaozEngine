@@ -41,8 +41,11 @@ public partial class PlayerColdPlacementTests
             float x = i < 8 ? new[] { 59.75f, MathF.BitDecrement(59.75f), MathF.BitIncrement(59.75f),
                 60.25f, 63.75f, 64f, 64.25f, 69.25f }[i] : random.Next(944, 1120) / 16f;
             float z = -5.5f;
-            var basis = new PlayerMoveState { Move = new MoveState
-            { Position = new(x, colliders.MovementGroundHeight(x, z) + tuning.CapsuleHalfHeight, z), Grounded = true } };
+            var basis = new PlayerMoveState
+            {
+                Move = new MoveState
+                { Position = new(x, colliders.MovementGroundHeight(x, z) + tuning.CapsuleHalfHeight, z), Grounded = true }
+            };
             var command = new MoveCommand(i % 2 == 0 ? Vector2.UnitX : -Vector2.UnitX, false, 0);
             using var read = simulator.BeginExplicitRead(basis);
             var actual = simulator.Step(basis, command, 1f / 30);

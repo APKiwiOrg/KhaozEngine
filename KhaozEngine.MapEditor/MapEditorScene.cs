@@ -319,8 +319,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     /// the built field, and installs the fly camera. Overridden headless in tests to skip all device work.</summary>
     protected virtual void BuildWorld()
     {
-        _viewport.Build(_document.Doc, _document.Registry);
-        _controller.Field = _viewport.Field;
+        BuildViewport();
 
         _translateArrows = _scene.LoadMesh(GizmoGeometry.TranslateArrows());
         _translateArrowsXZ = _scene.LoadMesh(GizmoGeometry.TranslateArrowsXZ());
@@ -448,7 +447,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         if (!_built) return;
         // Ahead of the built guard: the sky, lighting, and ocean look belong to the scene, not to the streamer, so
         // a world that has not finished building still gets the right background rather than the engine default.
-        ApplyEnvironment(scene.Post);
+        ApplyViewportEnvironment(scene);
         if (!_viewport.IsBuilt) return;
         string? selId = _document.Selection.Kind == SelectionKind.Placement ? _document.Selection.Id : null;
         _viewport.Draw(_camera.Position, selId, SelectionHighlight, _visibility);
@@ -809,7 +808,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             Manager?.Pop();
     }
 
-    void OnPlacementsChanged() => _viewport.InvalidatePlacements();
+    void OnPlacementsChanged() => InvalidateViewportPlacements();
 
     void OnDocumentChanged() => RebuildOutline();
 

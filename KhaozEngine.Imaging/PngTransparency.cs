@@ -33,8 +33,11 @@ internal readonly record struct PngTransparency(
             throw new PngDecodeDataException(PngDecodeRefusal.TransparencyAllocationCapExceeded,
                 $"PNG transparency-expanded payload exceeds the {PngReader.MaxDecodedBytes}-byte allocation cap")
             {
-                RequiredBytes = expandedLength, MaximumBytes = PngReader.MaxDecodedBytes,
-                Width = (uint)width, Height = (uint)height, OutputChannels = sourceChannels + 1,
+                RequiredBytes = expandedLength,
+                MaximumBytes = PngReader.MaxDecodedBytes,
+                Width = (uint)width,
+                Height = (uint)height,
+                OutputChannels = sourceChannels + 1,
             };
 
         return sourceChannels == 1

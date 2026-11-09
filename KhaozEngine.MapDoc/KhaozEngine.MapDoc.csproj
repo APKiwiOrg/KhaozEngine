@@ -7,17 +7,20 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
     <InternalsVisibleTo Include="KhaozEngine.Terrain.Render3D" />
     <InternalsVisibleTo Include="KhaozEngine.MapEdit.Tool" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <EmbeddedResource Include="mapdoc.schema.json" />

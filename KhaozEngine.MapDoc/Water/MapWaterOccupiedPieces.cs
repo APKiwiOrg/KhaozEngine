@@ -39,14 +39,21 @@ internal static class MapWaterOccupiedPieces
             throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete,
                 missing is null ? "missing geometry: occupied water acquisition " + view.Detail
                 : $"missing geometry: {missing.What} {missing.Key} ({missing.Status})")
-            { AcquireStatus = status, Patch = missing?.Key, PatchStatus = missing?.Status,
-                SubjectKind = missing?.What, FieldPath = "Witness" };
+            {
+                AcquireStatus = status,
+                Patch = missing?.Key,
+                PatchStatus = missing?.Status,
+                SubjectKind = missing?.What,
+                FieldPath = "Witness"
+            };
         }
         if (!MapWaterFootprints.HoldsEverything(view) || view.Scope.SpaceIds is not null || !MapWaterFootprints.ScopeHolds(view, min, max))
             throw new MapDocumentException(MapDocumentRefusal.AcquisitionIncomplete, "missing geometry: occupied water window is not proven complete in this view")
             { AcquireStatus = status, FieldPath = "Scope" };
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         var result = MapOccupiedPartitions.BuildWide(view, min, max, limits, carve: true, meter);
         if (result.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(result.Status, result.Detail, result.Finding!);
+        preparation?.Complete(new MapWaterInventory().Pieces(result.Pieces));
         return result.Pieces;
     }
 

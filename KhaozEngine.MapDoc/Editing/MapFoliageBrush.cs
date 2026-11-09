@@ -27,8 +27,11 @@ public static class MapFoliageBrush
             { LayerId = layer.Id, FieldPath = "LayerId", ActualText = brush.LayerId };
         if (!float.IsFinite(brush.WorldX) || !float.IsFinite(brush.WorldZ))
             throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "Foliage paint needs a finite world position.")
-            { LayerId = layer.Id, FieldPath = !float.IsFinite(brush.WorldX) ? "WorldX" : "WorldZ",
-                ActualNumber = !float.IsFinite(brush.WorldX) ? brush.WorldX : brush.WorldZ };
+            {
+                LayerId = layer.Id,
+                FieldPath = !float.IsFinite(brush.WorldX) ? "WorldX" : "WorldZ",
+                ActualNumber = !float.IsFinite(brush.WorldX) ? brush.WorldX : brush.WorldZ
+            };
         if (!float.IsFinite(brush.RadiusMetres) || brush.RadiusMetres <= 0f)
             throw new MapDocumentException(!float.IsFinite(brush.RadiusMetres) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
                 "Foliage paint radius must be finite and positive metres.")
@@ -92,9 +95,14 @@ public static class MapFoliageBrush
             throw new MapDocumentException(!double.IsFinite(actual) ? MapDocumentRefusal.ValueNonfinite :
                 dimension ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueOutsideRange,
                 $"Foliage layer '{layer.Id}' has no valid density raster to edit.")
-            { LayerId = layer.Id, FieldPath = field, ActualNumber = dimension ? null : actual,
-                ActualInteger = dimension ? (long)actual : null, MinimumInteger = dimension ? 1 : null,
-                MinimumNumber = field == "CellSize" ? 0 : null };
+            {
+                LayerId = layer.Id,
+                FieldPath = field,
+                ActualNumber = dimension ? null : actual,
+                ActualInteger = dimension ? (long)actual : null,
+                MinimumInteger = dimension ? 1 : null,
+                MinimumNumber = field == "CellSize" ? 0 : null
+            };
         }
     }
 
@@ -105,17 +113,30 @@ public static class MapFoliageBrush
     {
         RequireRaster(layer);
         if (width < 1 || depth < 1) throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "A foliage density rectangle needs a positive width and depth.")
-        { LayerId = layer.Id, FieldPath = width < 1 ? "Width" : "Depth", Width = width, Depth = depth,
-            ActualInteger = width < 1 ? width : depth, MinimumInteger = 1 };
+        {
+            LayerId = layer.Id,
+            FieldPath = width < 1 ? "Width" : "Depth",
+            Width = width,
+            Depth = depth,
+            ActualInteger = width < 1 ? width : depth,
+            MinimumInteger = 1
+        };
         if (x < 0 || z < 0 || (long)x + width > layer.Width || (long)z + depth > layer.Depth)
             throw new MapDocumentException(MapDocumentRefusal.FoliageRectangleOutOfBounds,
                 $"The foliage density rectangle lies outside layer '{layer.Id}' samples {layer.Width} by {layer.Depth}.")
-            { LayerId = layer.Id, CellX = x, CellZ = z, Width = layer.Width, Depth = layer.Depth,
+            {
+                LayerId = layer.Id,
+                CellX = x,
+                CellZ = z,
+                Width = layer.Width,
+                Depth = layer.Depth,
                 FieldPath = x < 0 ? "X" : z < 0 ? "Z" : (long)x + width > layer.Width ? "X+Width" : "Z+Depth",
                 ActualInteger = x < 0 ? x : z < 0 ? z : (long)x + width > layer.Width ? (long)x + width : (long)z + depth,
-                MinimumInteger = 0, MaximumInteger = x < 0 ? (width <= layer.Width ? layer.Width - (long)width : null)
+                MinimumInteger = 0,
+                MaximumInteger = x < 0 ? (width <= layer.Width ? layer.Width - (long)width : null)
                     : z < 0 ? (depth <= layer.Depth ? layer.Depth - (long)depth : null)
-                    : (long)x + width > layer.Width ? layer.Width : layer.Depth };
+                    : (long)x + width > layer.Width ? layer.Width : layer.Depth
+            };
         int hiX = x + width - 1, hiZ = z + depth - 1;
         RequireBudget(layer, x, z, hiX, hiZ);
         return (hiX, hiZ);

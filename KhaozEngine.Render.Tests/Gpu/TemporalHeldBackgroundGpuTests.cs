@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="TemporalFastEdgeGpuTests"/> is, crossing the textured wall at 2 internal pixels a frame
     /// (<see cref="TemporalHeldBackgroundRuns"/>). The wall's texels are independent greys, so its pixels take ridges
     /// and hold their locks. Where a pixel's hold is whole, the moving share's colour of
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 takes only the share the hold does not keep, so over a held
+    /// TEMPORAL-RESOLVE amendment 23 takes only the share the hold does not keep, so over a held
     /// background the line reaches the output through the current sample alone. The line's energy on each frame is its
     /// luma less the same frame's without it, over its supersampled coverage, as a share of the reference's own
     /// difference. The same line over the flat wall, which holds no lock, is the control. Report only. HDR is off, the
@@ -29,6 +29,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The line's worst and mean energy share over the textured wall and over the flat one, at Native and
         /// Quality, with the share of the wall's pixels in its path whose hold was whole before it arrived, and the
         /// share on each frame. A redesign of the held share is read against it.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void A_fast_narrow_line_over_a_held_textured_wall_prints_its_energy()
         {
@@ -147,7 +148,7 @@ namespace KhaozEngine.Tests.Gpu
             int held = 0;
             for (int y = path.Y0; y < path.Y1; y++)
                 for (int x = path.X0; x < path.X1; x++)
-                    if (state[(y * W + x) * 2 + 1] >= 1f / TemporalResolveTuning.LockHoldGain) held++;
+                    if (state[(y * W + x) * 4 + 1] >= 1f / TemporalResolveTuning.LockHoldGain) held++;
             return path.Area == 0 ? double.NaN : (double)held / path.Area;
         }
     }

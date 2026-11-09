@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,6 +19,7 @@ internal sealed class MapBoundPreparation
     readonly Dictionary<MapPatchKey, MapValidatedSurfacePatch> _validated = new();
     readonly MapBoundFaceContext? _context;
     internal MapWaterWorkMeter? WaterMeter { get; }
+    internal MapRefinementLimits Limits => _limits;
 
     internal MapBoundPreparation(MapScopedSurfaces view, MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null)
     {
@@ -64,6 +67,7 @@ internal sealed class MapBoundPreparation
 
     internal Plan Bound(MapSpaceFootprint footprint, MapBoundRef bound, MapExactXz min, MapExactXz max)
     {
+        using var demandScope = DemandDiagnostics.Enter(this, "MapBoundPreparation.Bound");
         if (bound != footprint.Lower && bound != footprint.Upper)
             throw new ArgumentException("bound must belong to footprint", nameof(bound));
         if (bound.Kind == MapBoundKind.OpenTop) throw new ArgumentException("open top has no bound faces", nameof(bound));
@@ -124,7 +128,7 @@ internal sealed class MapBoundPreparation
             if (WaterMeter is not null && ValidatedPatch(surface, patch) is null) return Failure(MapRefinementStatus.CapacityExceeded, Refusal, Finding);
             count = checked(count + faces);
             if (_work is not null) _work.BoundFacesCounted += faces;
-            if (count > _limits.MaxSourceFacesPerBound) return Failure(MapRefinementStatus.CapacityExceeded, "source faces",
+            if (DemandDiagnostics.Check(this, "MapBoundPreparation.MaxSourceFacesPerBound.1", "MaxSourceFacesPerBound", 0, count, _limits.MaxSourceFacesPerBound, count > _limits.MaxSourceFacesPerBound, CapacityDemandLifetime.Cumulative, allowanceSource: _limits)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces",
                 SourceCapacity(footprint, bound, "source faces", count) with { Patch = key, SlotCell = slot });
             if (faces != 0) demands.Add(new(key, slot));
         }
@@ -142,8 +146,13 @@ internal sealed class MapBoundPreparation
             return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}' {reference.Anchor}: {recordStatus}",
                 Context(footprint, bound, !found ? MapDocumentRefusal.PatchUnavailable : MapDocumentRefusal.ReferenceKindMismatch,
                     $"opening '{reference.Id}' {reference.Anchor}: {recordStatus}") with
-                { RelatedRecordId = reference.Id, Patch = reference.Anchor, PatchStatus = recordStatus,
-                    RecordType = record?.GetType(), ExpectedRecordType = typeof(MapHorizontalOpening) });
+                {
+                    RelatedRecordId = reference.Id,
+                    Patch = reference.Anchor,
+                    PatchStatus = recordStatus,
+                    RecordType = record?.GetType(),
+                    ExpectedRecordType = typeof(MapHorizontalOpening)
+                });
         MapSurfaceRef? surface = Surface(opening.Patch.SurfaceId);
         if (surface is null) return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}': missing surface",
             Context(footprint, bound, MapDocumentRefusal.ReferenceMissing, $"opening '{reference.Id}': missing surface") with
@@ -170,7 +179,7 @@ internal sealed class MapBoundPreparation
             WaterMeter?.CountFaces(!lower, faces);
             count = checked(count + faces);
             if (_work is not null) _work.BoundFacesCounted += faces;
-            if (count > _limits.MaxSourceFacesPerBound) return Failure(MapRefinementStatus.CapacityExceeded, "source faces",
+            if (DemandDiagnostics.Check(this, "MapBoundPreparation.MaxSourceFacesPerBound.2", "MaxSourceFacesPerBound", 0, count, _limits.MaxSourceFacesPerBound, count > _limits.MaxSourceFacesPerBound, CapacityDemandLifetime.Cumulative, allowanceSource: _limits)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces",
                 SourceCapacity(footprint, bound, "source faces", count) with
                 { RelatedRecordId = reference.Id, SurfaceId = surface.Id, Patch = opening.Patch, SlotCell = slot });
             demands.Add(new(opening.Patch, slot));
@@ -184,7 +193,7 @@ internal sealed class MapBoundPreparation
         {
             long count = checked(checked(range.MaxXExclusive - range.MinX) * checked(range.MaxZExclusive - range.MinZ));
             measured = count;
-            return count <= _limits.MaxSourceFacesPerBound;
+            return !DemandDiagnostics.Check(this, "MapBoundPreparation.MaxSourceFacesPerBound.3", "MaxSourceFacesPerBound", 0, count, _limits.MaxSourceFacesPerBound, !(count <= _limits.MaxSourceFacesPerBound), CapacityDemandLifetime.Cumulative, allowanceSource: _limits);
         }
         catch (OverflowException) { measured = null; return false; }
     }
@@ -204,15 +213,23 @@ internal sealed class MapBoundPreparation
     {
         if (_context is not null) return _context.ValidatedPatch(patch.Key);
         if (_validated.TryGetValue(patch.Key, out MapValidatedSurfacePatch? validated)) return validated;
-        if (_validated.Count >= _limits.MaxContextPatches)
+        // A query-derived context ceiling publishes its originating query and refinement fields.
+        bool exceeded = DemandDiagnostics.Check(this, "MapBoundPreparation.MaxContextPatches.1", "MaxContextPatches", _validated.Count, 1, _limits.MaxContextPatches, _validated.Count >= _limits.MaxContextPatches, CapacityDemandLifetime.Inventory, allowanceSource: _limits);
+        if (exceeded)
         {
             Refusal = "context patches";
             Finding = new(MapDocumentRefusal.WorkCapacityExceeded, Refusal)
-            { SurfaceId = surface.Id, Patch = patch.Key, Budget = "MaxContextPatches", ActualCount = (long)_validated.Count + 1,
-                Limit = _limits.MaxContextPatches };
+            {
+                SurfaceId = surface.Id,
+                Patch = patch.Key,
+                Budget = "MaxContextPatches",
+                ActualCount = (long)_validated.Count + 1,
+                Limit = _limits.MaxContextPatches
+            };
             ContextFinding ??= Finding;
             return null;
         }
+        MapPrismValidationWorkspace.ReserveContext(128);
         validated = new(surface, patch, _validationWork);
         // Count every validated bound patch before retaining evidence, including face-free bounds.
         _validated.Add(patch.Key, validated);

@@ -32,7 +32,8 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   `InvalidDataException` derives from `MalformedDataException`, and code that handles malformed data catches
   the base. A new refusal in a family adds a reason member at the end of its enum. Public refusal enums are
   append-only from 23.5.0, so existing numeric values never move, because mods and tools built against one engine
-  version must keep working. The message stays developer prose
+  version must keep working. Each family has its own enum with no shared interface. `MapDocumentException` is one
+  family with one `MapDocumentRefusal`, one member per rule and the subject in typed identifiers. The message stays developer prose
   and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
   problem stays a BCL exception. An adapter's status projection remains distinct from the lower refusal
   reason. Classifiers use typed reasons and producer context, never keywords inside user identifiers or
@@ -128,13 +129,13 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   wording or structural-reflection contract uses an owner-approved `exempt <rule> <path>` entry with a
   `#` reason above it, never a suppression. Ratchet down with
   `build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update`.
-  KETEST003 is a report-only review aid, outside the baseline. Only 6 of 20 sampled findings in this
-  repository were real because loops over local tables and test-owned case helpers look possibly
-  empty to a syntactic check. See the [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet)
+  KETEST003 is a report-only review aid, outside the baseline. A review of all 474 findings found about
+  a third real, because loops over local tables and test-owned case helpers look possibly
+  empty to a syntactic check. It needs a precision of at least 18 of 20 before it can be enforced. See the [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet)
   for rule boundaries, baseline grammar, script modes and consumer adoption. Analyzer tests use
   `KhaozEngine.Tests.CodeHealth`.
 - `[Trait("Category", "Diagnostic")]` marks on-demand probes. Default CI excludes their timing and
-  cost workloads, including 19 renderer methods with method-level traits. Run them through the
+  cost workloads, including 39 renderer methods with method-level traits. Run them through the
   `cross-platform-gpu` dispatch input `renderTestFilter` set to `Category=Diagnostic`, or narrow it
   with `Category=Diagnostic&FullyQualifiedName~TemporalResolveCostPerfGpuTests`. Existing GPU
   capability gates and software-adapter refusals still apply. Software runs prove correctness, not
@@ -173,78 +174,26 @@ classification is unclear. The detailed rationale lives in
 
 ## Writing tests
 
-Every test guards something distinct: a contract, a rule, an owner ruling or a past regression. A correct
-change should break few tests, and each failure should point at a real defect. These fifteen rules are the
-fleet standard. Every game repo carries the same text as game-template's managed `docs/WRITING-TESTS.md`, so
-keep the two in step and change the shared wording in both.
+Every test guards something distinct: a contract, a rule, an owner ruling or a past regression. These fifteen
+rules bind this repository and every game repo. The reasons and worked lessons behind them are the owner's
+private standard and are not published here. Agents receive them when they work on tests. The headlines are
+listed so a rule can be cited by number.
 
-1. **Decide the test is needed, then find the existing one.** Before writing a test, name what it guards (a
-   contract, a rule, an owner ruling or a past regression) and search for a test that already fails when that
-   breaks. If one does, add nothing, or strengthen that test. If a similar test covers part of the behaviour,
-   favour it: extend it, usually with a theory row, or combine the two into one theory. Add a new test only
-   for behaviour no test covers. Each theory row covers a distinct branch or boundary, so ten rows that take
-   the same path are one row. Sibling facts that differ only in their inputs are one theory. A test that
-   guards nothing new costs CI time on every run and breaks on correct refactors without catching anything.
-2. **Test the rule, not the value.** Do not copy a tunable constant, palette entry, default or published
-   catalog number into an assertion. Such a test fails only when someone retunes on purpose. Assert the
-   property the value must keep: a bound, an ordering, a monotonic step, a conservation.
-3. **One guard per owner ruling.** An approved look or tuned value gets one test named for its ruling, not one
-   assertion per value. A ruling with several behavioural obligations keeps one test per obligation.
-4. **Assert the contract, not incidental detail.** Exception message wording, call or allocation counts on
-   fakes, log text, internal ordering, private members reached by reflection, exact frame indices and exact
-   intermediate values are not contracts unless a document or ruling makes them one. They break on correct
-   refactors and catch nothing a behavioural assertion would miss. Assert the exception type and a structured
-   member (`ParamName`, an error code, a status) instead, and reach behaviour through the public API or an
-   `InternalsVisibleTo` seam. Removing one incidental check never adds another, so do not require an inner
-   exception type, wrapper or library namespace unless a document promises it.
-5. **Validate every shipped item through one validator.** An invariant over assets, clips, meshes, shaders,
-   goldens or catalog rows is written once as a theory with one case per discovered item, plus a fact that the
-   discovered set equals the shipped set from an independent source, with an explicit policy for any item it
-   exempts. It never loops over items inside one fact, because the first failure hides the rest, and it never
-   checks a representative sample, because a defect in one item is invisible in another.
-6. **Use the shared fixtures.** Fakes, host boot, waits, content reads and comparison helpers live in shared
-   fixtures. Extend one instead of writing a local copy, because copies drift and each needs its own fixes.
-7. **Name the regression.** A test written for a defect names its issue number in a comment.
-8. **Exact values where they are the contract.** Wire and persisted formats, determinism hashes, public
-   constants, documented tuning values and golden images are compared exactly. There the exact value is the
-   behaviour, and a looser check lets a format break ship. Compare a documented limit to its literal, never to
-   the production constant that produced it, which moves with the code under test.
-9. **Absence checks and documented diagnostic values stay.** `Assert.DoesNotContain` or `DoesNotMatch` on a
-   message pins what it must never say (a token, a secret, a retired claim), which is a disclosure contract. A
-   diagnostic value the README, consumer docs or a member's XML docs promise (an entry id, the offending index,
-   a count, a path) is the contract, and only the prose around it is a wording pin. Check those docs before
-   removing any message assertion.
-10. **A test must be able to fail.** Assert the expected count or non-emptiness before asserting inside a loop
-    or `Assert.All`, because an empty result passes silently. Never assert a fake's configured answer, a
-    constant the test itself defined, or a golden generated in the same run it is compared against. When an
-    assertion goes, keep the call it made if it is the only exercise of a production path, and assert a
-    property of its result. A no-write assertion needs a fixture that would leave a write if the rollback were
-    missing, such as a side table a trigger fills before it discards the row.
-11. **Never delete or weaken a test without evidence.** A deletion names, in its commit message, the surviving
-    test that fails for the same defect, or shows why the deleted test could not fail. Removing an
-    over-specific line keeps or strengthens the behavioural assertion beside it. A failing test is fixed or its
-    defect is filed, never loosened until it passes.
-12. **Timing never gates default CI.** A test that measures and reports instead of asserting carries
-    `[Trait("Category", "Diagnostic")]`, and default CI excludes that category. Wall-clock bounds flake on
-    shared runners and say nothing about correctness.
-13. **No sleeps, retries or bigger budgets for flakes.** A test that fails intermittently gets an issue when it
-    is first seen and a deterministic fix: a completion signal, a held clock or a serial collection. A sleep or
-    retry hides the race and slows every run. Hold every clock the code under test reads, because one left on wall
-    time can still decide the outcome, and check a time budget one tick short of its limit as well as at it.
-14. **Tooling tests live with their tooling.** Tests of measurement harnesses, evidence pipelines and research
-    tools sit in their own project outside the main test project, with their own CI trigger, so product changes
-    do not pay for them.
-15. **A refusal test breaks one rule.** A test that expects a refusal feeds an input that breaks only the rule
-    under test, beside a passing control that fixes that one defect. An input that breaks two rules still
-    passes when the wrong check refuses it, because the exception type cannot tell the refusals apart. When no
-    input can break one rule alone, assert the structured member that names the rule. A rule with a limit gets
-    its control at the limit, such as a route of exactly the cap or the last plane the world has, so a check
-    tightened by one fails. The control follows the refusal's no-write assertions, so they still prove the
-    refusal wrote nothing.
-    On a write path, compare content, such as saved bytes or a digest, rather than an object reference or a count.
-    A budget control runs the real operation at the exact limit and one below it, not an isolated guard helper. A
-    tiled save commits at its manifest rename, so a refused save leaves the manifest and loaded content unchanged,
-    and a content-addressed file it wrote first is unreferenced until the next save sweeps it.
+1. **Decide the test is needed, then find the existing one.**
+2. **Test the rule, not the value.**
+3. **One guard per owner ruling.**
+4. **Assert the contract, not incidental detail.**
+5. **Validate every shipped item through one validator.**
+6. **Use the shared fixtures.**
+7. **Name the regression.**
+8. **Exact values where they are the contract.**
+9. **Absence checks and documented diagnostic values stay.**
+10. **A test must be able to fail.**
+11. **Never delete or weaken a test without evidence.**
+12. **Timing never gates default CI.**
+13. **No sleeps, retries or bigger budgets for flakes.**
+14. **Tooling tests live with their tooling.**
+15. **A refusal test breaks one rule.**
 
 In this repository:
 
@@ -259,7 +208,8 @@ In this repository:
   `Category=Diagnostic`. Issue #491 is the precedent: a wall-clock bound that flaked on a loaded shared runner.
 - Rule 14's reference is `tools/Renderer.Perf.Tooling.Tests`, outside `KhaozEngine.slnx`. It runs on the free
   `tooling-validation.yml` workflow when its own inputs change, never in the engine full suite. `tools/Items.Benchmark.Tests` and
-  `tools/NavCapture.Research.Tests` follow the same pattern.
+  `tools/NavCapture.Research.Tests` follow the same pattern. Which project a tooling family lives in is the owner's
+  decision, family by family, and moving one means out of the engine's default CI run, never deletion.
 - Rule 6's shared helpers include `test-shared` (allocation measurement, serialized reporting) and each area
   test project's fixtures. Process-global state still needs a `DisableParallelization` collection (see
   above).
@@ -400,6 +350,8 @@ Manual dispatch supports a task branch. It never uses a self-hosted runner or re
 `Directory.Build.props` contains the one `<KhaozEngineVersion>` for every package. SemVer is additive
 minor, fix patch and breaking major. Tooling, documentation and repository governance do not bump the
 engine version.
+An `InternalsVisibleTo` grant in a packable project is package content, so it is package-bearing work and plans a
+version ride.
 
 For a package-bearing change:
 

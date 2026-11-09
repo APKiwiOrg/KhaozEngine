@@ -18,7 +18,7 @@ public sealed class NonWaterShaderSourceEqualityTests
         var actual = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
         {
-            if (program.Name is "Water" or "WaterClipmap" or "WaterTriangle" or "WaterClipmapTriangle"
+            if (program.Name is "Water" or "WaterClipmap" or "BoundedWater" or "WaterTriangle" or "WaterClipmapTriangle"
                 or "WaterSurfaceField" or "WaterCausticSubtract" or "WaterCausticSheet") continue;
             actual.Add(program.Name + ".vertex", Sha256(program.VertexGlsl));
             actual.Add(program.Name + ".fragment", Sha256(program.FragmentGlsl));
@@ -37,7 +37,7 @@ public sealed class NonWaterShaderSourceEqualityTests
             .Where(line => line.Length > 0 && !line.StartsWith('#'))
             .Select(line => line.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries))
             .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
-        Assert.Equal(256, expected.Count);
+        Assert.Equal(278, expected.Count);
         Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), actual.Keys.Order(StringComparer.Ordinal));
 
         string[] mismatches = actual.OrderBy(row => row.Key, StringComparer.Ordinal)

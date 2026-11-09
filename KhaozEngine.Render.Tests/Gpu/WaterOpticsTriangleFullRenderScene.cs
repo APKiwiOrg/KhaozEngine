@@ -157,7 +157,7 @@ public sealed class WaterOpticsTriangleFullRenderScene : IDisposable
                 _ => default
             };
             var binding = handle.IsValid ? new WaterOpticsBinding(handle, FieldOrigin, FieldSize) : default;
-            if (mixedGrid is null) scene.DrawWater(new(0, 0, 0, 3.75f, 2.75f, optics: binding));
+            if (mixedGrid is null) scene.DrawWater(new WaterPlane(0, 0, 0, 3.75f, 2.75f, optics: binding));
             else
             {
                 // Four adjacent strips exercise legacy, triangle, bilinear, triangle on ONE geometry route.
@@ -172,7 +172,7 @@ public sealed class WaterOpticsTriangleFullRenderScene : IDisposable
                         _ => bilinearControl ? _bilinear : _two
                     };
                     var optics = field.IsValid ? new WaterOpticsBinding(field, FieldOrigin, FieldSize) : default;
-                    scene.DrawWater(new(-2.8125f + i * 1.875f, 0, 0, .9375f, 2.75f,
+                    scene.DrawWater(new WaterPlane(-2.8125f + i * 1.875f, 0, 0, .9375f, 2.75f,
                         look: new WaterLook { SwellAmplitude = .01f, SwellSteepness = 0f }, optics: optics));
                 }
             }

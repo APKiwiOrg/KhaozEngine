@@ -25,49 +25,56 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     internal sealed class D3D11ShaderSet : ID3D11ShaderSet
     {
         readonly DeviceLiveness _liveness;
+        readonly D3D11ShaderCompilation<D3D11PreparedGraphics> _prepared;
+        readonly D3D11DeferredResource<D3D11PreparedGraphics, Native> _resource;
 
         internal D3D11ShaderSet(DeviceLiveness liveness, object vertexShader,
             object pixelShader, byte[] vertexShaderBytecode, D3D11ShaderEvidence? vertexEvidence = null,
             D3D11ShaderEvidence? pixelEvidence = null)
+            : this(liveness, D3D11ShaderCompilation<D3D11PreparedGraphics>.Completed(new(new(vertexShaderBytecode, []), vertexEvidence, pixelEvidence)),
+                _ => new(vertexShader, pixelShader))
         {
-            ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(vertexShader);
             ArgumentNullException.ThrowIfNull(pixelShader);
             ArgumentNullException.ThrowIfNull(vertexShaderBytecode);
-
-            _liveness = liveness;
-            VertexHandle = vertexShader;
-            PixelHandle = pixelShader;
-            VertexEvidence = vertexEvidence;
-            PixelEvidence = pixelEvidence;
-            VertexShaderBytecode = vertexShaderBytecode;
+            _ = _resource.Value;
         }
 
-        internal object VertexHandle { get; }
-        internal object PixelHandle { get; }
-        internal D3D11ShaderEvidence? VertexEvidence { get; }
-        internal D3D11ShaderEvidence? PixelEvidence { get; }
+        internal D3D11ShaderSet(DeviceLiveness liveness, D3D11ShaderCompilation<D3D11PreparedGraphics> prepared,
+            Func<D3D11PreparedGraphics, Native> create)
+        {
+            ArgumentNullException.ThrowIfNull(liveness);
+            _liveness = liveness;
+            _prepared = prepared;
+            _resource = new(liveness, _prepared.Join, create);
+        }
+
+        internal D3D11ShaderCompilation<D3D11PreparedGraphics> Preparation => _prepared;
+
+        internal object VertexHandle => _resource.Value.Vertex;
+        internal object PixelHandle => _resource.Value.Pixel;
+        internal D3D11ShaderEvidence? VertexEvidence => _prepared.Join().Vertex;
+        internal D3D11ShaderEvidence? PixelEvidence => _prepared.Join().Pixel;
         internal bool DeviceIsDead => _liveness.IsDead;
         /// <inheritdoc/>
         public ID3D11VertexShader VertexShader => (ID3D11VertexShader)VertexHandle;
-
         /// <inheritdoc/>
         public ID3D11PixelShader PixelShader => (ID3D11PixelShader)PixelHandle;
-
         /// <inheritdoc/>
-        public ReadOnlyMemory<byte> VertexShaderBytecode { get; }
+        public ReadOnlyMemory<byte> VertexShaderBytecode => _resource.Prepared.Code.VertexDxbc;
+        internal bool IsDisposed => _resource.IsDisposed;
+        internal void EnsureReady() => _ = _resource.Value;
+        public void Dispose() => _resource.Dispose();
 
-        /// <summary>True once disposed, whether or not anything native was released.</summary>
-        internal bool IsDisposed { get; private set; }
-
-        public void Dispose()
+        internal sealed class Native(object vertex, object pixel) : IDisposable
         {
-            if (IsDisposed) return;
-            IsDisposed = true;
-            if (_liveness.IsDead) return;   // the device already freed every child object
-
-            ((IDisposable)VertexHandle).Dispose();
-            ((IDisposable)PixelHandle).Dispose();
+            internal object Vertex { get; } = vertex;
+            internal object Pixel { get; } = pixel;
+            public void Dispose()
+            {
+                ((IDisposable)Vertex).Dispose();
+                ((IDisposable)Pixel).Dispose();
+            }
         }
     }
 }

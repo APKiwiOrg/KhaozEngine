@@ -42,6 +42,7 @@ public sealed partial class MapStoredSurfaceSource
 
         MapPatchRead Payload(MapSurfaceIndexEntry entry)
         {
+            using var admitted = state.Scope.SceneAdmission?.Enter();
             state.Serve(entry.Key, entry.IncidentRecords);
             if (state.Budget.Work is { } work) work.PayloadReads++;
             return source.Payload(entry);

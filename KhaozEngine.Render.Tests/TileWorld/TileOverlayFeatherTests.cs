@@ -18,7 +18,9 @@ public sealed class TileOverlayFeatherTests
         Assert.All(At(vertices, 10, 10.5f), v => Assert.Equal(0f, RoadWeight(v), 5));
         Assert.All(At(vertices, 10.5f, 10.5f), v => Assert.Equal(1f, RoadWeight(v), 5));
         Assert.Contains(vertices, v => v.Position.X > 10 && v.Position.X < 10.2f && RoadWeight(v) is > 0 and < 1);
-        Assert.All(vertices.Where(v => v.Tangent.W > 0), v => Assert.Equal(new Vector2(1, 1), v.Uv));
+        ModelVertex[] feather = vertices.Where(v => v.Tangent.W > 0).ToArray();
+        Assert.NotEmpty(feather);
+        Assert.All(feather, v => Assert.Equal(new Vector2(1, 1), v.Uv));
     }
 
     [Fact]
@@ -93,7 +95,9 @@ public sealed class TileOverlayFeatherTests
         doc.SetCornerHeightCm(10, 10, 0, 23);
         doc.SetCornerHeightCm(11, 11, 0, 74);
         doc.SetCornerHeightCm(11, 10, 0, 12);
-        foreach (ModelVertex v in Build(doc).Vertices.Where(v => v.Tangent.W > 0))
+        ModelVertex[] feather = Build(doc).Vertices.Where(v => v.Tangent.W > 0).ToArray();
+        Assert.NotEmpty(feather);
+        foreach (ModelVertex v in feather)
         {
             TileHit? hit = TileRaycast.Pick(doc, 0, v.Position + Vector3.UnitY * 10, -Vector3.UnitY);
             Assert.NotNull(hit);
@@ -110,8 +114,12 @@ public sealed class TileOverlayFeatherTests
         doc.SetOverlayShape(11, 10, 0, TileOverlayShape.CornerQuarter);
         ModelVertex[] vertices = TileGroundMesher.Build(doc, TileRenderTestData.Catalogs, new RegionCoord(0, 0), 0,
             new TileGroundMesherOptions { OverlayFeatherWidthMetres = 0.1f })!.Vertices;
-        Assert.All(At(vertices, 11, 10.25f).Where(v => v.Tangent.W > 0), v => Assert.Equal(1f, RoadWeight(v), 5));
-        Assert.All(At(vertices, 11, 10.75f).Where(v => v.Tangent.W > 0), v => Assert.Equal(0f, RoadWeight(v), 5));
+        ModelVertex[] covered = At(vertices, 11, 10.25f).Where(v => v.Tangent.W > 0).ToArray();
+        ModelVertex[] exposed = At(vertices, 11, 10.75f).Where(v => v.Tangent.W > 0).ToArray();
+        Assert.NotEmpty(covered);
+        Assert.NotEmpty(exposed);
+        Assert.All(covered, v => Assert.Equal(1f, RoadWeight(v), 5));
+        Assert.All(exposed, v => Assert.Equal(0f, RoadWeight(v), 5));
     }
 
     [Fact]
@@ -129,6 +137,7 @@ public sealed class TileOverlayFeatherTests
             new TileGroundMesherOptions { JitterAmplitude = 0 })!;
         GltfMesh expected = TileGroundMesher.Build(near, TileRenderTestData.Catalogs, new RegionCoord(0, 0), 0,
             new TileGroundMesherOptions { JitterAmplitude = 0 })!;
+        Assert.NotEmpty(expected.Vertices);
         Assert.Equal(expected.Vertices.Select(v => (v.Position, v.Color, v.Tangent)),
             actual.Vertices.Select(v => (v.Position, v.Color, v.Tangent)));
     }

@@ -33,17 +33,19 @@ public static partial class TileWorldFile
     {
         if (dto is null)
             throw new TileFoliageArgumentException(TileWorldRefusal.FoliageLayerNull,
-                TileFoliageLayer.InvalidMessage("layer entry cannot be null"), null) { LayerIndex = layerIndex };
+                TileFoliageLayer.InvalidMessage("layer entry cannot be null"), null)
+            { LayerIndex = layerIndex };
         if (dto.Archetypes is null)
             throw new TileFoliageArgumentException(TileWorldRefusal.FoliageArchetypesNull,
-                TileFoliageLayer.InvalidMessage($"layer '{dto.Id}' archetypes cannot be null"), null) { LayerId = dto.Id };
+                TileFoliageLayer.InvalidMessage($"layer '{dto.Id}' archetypes cannot be null"), null)
+            { LayerId = dto.Id };
         return new TileFoliageLayer(
             dto.Id, dto.Plane, dto.OriginX, dto.OriginZ, dto.CellSize, dto.Width, dto.Height, dto.Density,
             dto.Seed, dto.Spacing, dto.ScaleMin, dto.ScaleMax, dto.RootOffset,
             dto.Archetypes.Select((x, index) => x is null
                 ? throw new TileFoliageArgumentException(TileWorldRefusal.FoliageArchetypeNull,
                     TileFoliageLayer.InvalidMessage($"layer '{dto.Id}' archetype entry cannot be null"), null)
-                    { LayerId = dto.Id, ArchetypeIndex = index }
+                { LayerId = dto.Id, ArchetypeIndex = index }
                 : new TileFoliageArchetype(x.Id, x.Weight)), dto.AllowedUnderlays,
             dto.ExcludeIndoors, dto.ExcludeSolidObjects, dto.DoorClearance, dto.EdgeFade);
     }
@@ -60,7 +62,8 @@ public static partial class TileWorldFile
                 TileFoliageLayer layer = FoliageFromDto(dto, index);
                 if (!ids.Add(layer.Id))
                     throw new TileFoliageArgumentException(TileWorldRefusal.FoliageLayerDuplicate,
-                        TileFoliageLayer.InvalidMessage($"layer '{layer.Id}' is listed twice"), null) { LayerId = layer.Id };
+                        TileFoliageLayer.InvalidMessage($"layer '{layer.Id}' is listed twice"), null)
+                    { LayerId = layer.Id };
                 if ((uint)layer.Plane >= (uint)planeCount)
                     throw new TileFoliageArgumentException(TileWorldRefusal.FoliagePlaneOutsideWorld,
                         TileFoliageLayer.InvalidMessage($"layer '{layer.Id}' uses plane {layer.Plane}, the world has planes 0 through {planeCount - 1}"), null)
@@ -71,15 +74,31 @@ public static partial class TileWorldFile
                 // The sample-limit guard precedes density length, so ExpectedCount fits the existing int property.
                 throw new TileWorldException(ex.Reason, $"{path}: {ex.Message}", ex)
                 {
-                    SourceName = path, LayerId = ex.LayerId, LayerIndex = ex.LayerIndex,
-                    Plane = ex.Plane, PlaneCount = ex.PlaneCount, OriginX = ex.OriginX, OriginZ = ex.OriginZ,
-                    CellSize = ex.CellSize, Width = ex.Width, Height = ex.Height,
-                    SampleCount = ex.SampleCount, MaximumSampleCount = ex.MaximumSampleCount,
-                    ActualCount = ex.ActualCount, ExpectedCount = (int?)ex.ExpectedCount,
-                    Spacing = ex.Spacing, ScaleMin = ex.ScaleMin, ScaleMax = ex.ScaleMax,
-                    RootOffset = ex.RootOffset, DoorClearance = ex.DoorClearance, EdgeFade = ex.EdgeFade,
-                    ArchetypeCount = ex.ArchetypeCount, ArchetypeId = ex.ArchetypeId,
-                    ArchetypeIndex = ex.ArchetypeIndex, Weight = ex.Weight, TotalWeight = ex.TotalWeight,
+                    SourceName = path,
+                    LayerId = ex.LayerId,
+                    LayerIndex = ex.LayerIndex,
+                    Plane = ex.Plane,
+                    PlaneCount = ex.PlaneCount,
+                    OriginX = ex.OriginX,
+                    OriginZ = ex.OriginZ,
+                    CellSize = ex.CellSize,
+                    Width = ex.Width,
+                    Height = ex.Height,
+                    SampleCount = ex.SampleCount,
+                    MaximumSampleCount = ex.MaximumSampleCount,
+                    ActualCount = ex.ActualCount,
+                    ExpectedCount = (int?)ex.ExpectedCount,
+                    Spacing = ex.Spacing,
+                    ScaleMin = ex.ScaleMin,
+                    ScaleMax = ex.ScaleMax,
+                    RootOffset = ex.RootOffset,
+                    DoorClearance = ex.DoorClearance,
+                    EdgeFade = ex.EdgeFade,
+                    ArchetypeCount = ex.ArchetypeCount,
+                    ArchetypeId = ex.ArchetypeId,
+                    ArchetypeIndex = ex.ArchetypeIndex,
+                    Weight = ex.Weight,
+                    TotalWeight = ex.TotalWeight,
                     MaterialId = ex.MaterialId,
                 };
             }

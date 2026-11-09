@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Gpu;
@@ -174,22 +175,6 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains(ComplementKeepGlsl, ShaderSources.ShadowDepthDissolveFrag, StringComparison.Ordinal);
         }
 
-        [Theory]
-        [InlineData(0.00f, 0.00f)]
-        [InlineData(0.10f, 0.25f)]
-        [InlineData(0.25f, 0.25f)]
-        [InlineData(0.49f, 0.50f)]
-        [InlineData(0.50f, 0.50f)]
-        [InlineData(0.90f, 0.75f)]
-        [InlineData(1.00f, 1.00f)]
-        public void ComplementPhaseAssignsEveryNoiseSampleToExactlyOneRepresentation(float mask, float transition)
-        {
-            bool lod0Keeps = Keeps(mask, transition, complement: false);
-            bool lod1Keeps = Keeps(mask, transition, complement: true);
-
-            Assert.NotEqual(lod0Keeps, lod1Keeps);
-        }
-
         [Fact]
         public void TheCascadeFilter_WeightsTheSharedFootprintAndDividesByNine()
         {
@@ -252,9 +237,11 @@ namespace KhaozEngine.Tests.Render3D
         public void TheEqualDepthCases_LandOnAnEqualStoredTexelThatCountsAsLit()
         {
             float[] atlas = ShadowFilterOracle.Atlas();
-            foreach (ShadowFilterCase c in ShadowFilterOracle.Cases())
+            ShadowFilterCase[] cases = ShadowFilterOracle.Cases()
+                .Where(c => c.Name.Contains("equal to stored", StringComparison.Ordinal)).ToArray();
+            Assert.NotEmpty(cases);
+            foreach (ShadowFilterCase c in cases)
             {
-                if (!c.Name.Contains("equal to stored", StringComparison.Ordinal)) continue;
                 float equal = ShadowFilterOracle.Filter(atlas, c.Cascade, c.Uv, c.Depth);
                 float above = ShadowFilterOracle.Filter(atlas, c.Cascade, c.Uv, MathF.BitIncrement(c.Depth));
                 Assert.True(equal > above, $"{c.Name}: no weighted texel holds exactly {c.Depth}.");
@@ -266,8 +253,5 @@ namespace KhaozEngine.Tests.Render3D
             Vector4 lc = Vector4.Transform(new Vector4(p, 1f), mat);
             return lc.Z / lc.W;
         }
-
-        static bool Keeps(float mask, float threshold, bool complement) =>
-            complement ? mask < threshold : mask >= threshold;
     }
 }

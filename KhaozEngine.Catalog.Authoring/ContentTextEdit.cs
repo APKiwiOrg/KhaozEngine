@@ -84,7 +84,7 @@ public sealed record ContentTextEdit
             ? new ContentTextFinding(ContentAuthoringRefusal.TextValueBytesExceeded,
                 FormattableString.Invariant(
                     $"A text value is at most {MaxValueBytes} UTF-8 bytes and this one is {bytes}."), parameterName)
-                { MemberName = "value", ActualBytes = bytes, MaximumBytes = MaxValueBytes }
+            { MemberName = "value", ActualBytes = bytes, MaximumBytes = MaxValueBytes }
             : null);
     }
 
@@ -138,5 +138,6 @@ public sealed record ContentTextEdit
         => new(ContentAuthoringRefusal.TextMalformedUnicode,
             FormattableString.Invariant(
                 $"Text carries an unpaired surrogate at index {index}, which is not valid UTF-8 and is refused rather than replaced."),
-            parameterName) { MemberName = "value", CharacterIndex = index };
+            parameterName)
+        { MemberName = "value", CharacterIndex = index };
 }

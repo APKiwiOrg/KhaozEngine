@@ -44,16 +44,16 @@ internal static class MapEffectiveSupport
         foreach (var surface in children.OfType<MapPrefabSurfaceChild>())
         {
             if (result.Refs.Any(s => s.Id == surface.Surface.Id)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Duplicate effective support surface.")
-                { Child = surface.Key, ChildKind = MapPrefabChildKind.Surface, EntityId = surface.Surface.Id, SurfaceId = surface.Surface.Id };
+            { Child = surface.Key, ChildKind = MapPrefabChildKind.Surface, EntityId = surface.Surface.Id, SurfaceId = surface.Surface.Id };
             result.Refs.Add(surface.Surface);
             foreach (var patch in surface.Patches) result.Patches.Add(patch.Key, patch.Clone());
         }
         foreach (var record in children.OfType<MapPrefabRecordChild>())
         {
             if (!result.Patches.TryGetValue(record.Anchor, out var patch)) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Missing effective record anchor.")
-                { Child = record.Key, ChildKind = MapPrefabChildKind.Record, EntityId = record.Value.Id, RecordId = record.Value.Id, Patch = record.Anchor };
+            { Child = record.Key, ChildKind = MapPrefabChildKind.Record, EntityId = record.Value.Id, RecordId = record.Value.Id, Patch = record.Anchor };
             if (result.AllRecords().Any(r => r.Id == record.Value.Id)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, "Duplicate effective record.")
-                { Child = record.Key, ChildKind = MapPrefabChildKind.Record, EntityId = record.Value.Id, RecordId = record.Value.Id, Patch = record.Anchor };
+            { Child = record.Key, ChildKind = MapPrefabChildKind.Record, EntityId = record.Value.Id, RecordId = record.Value.Id, Patch = record.Anchor };
             patch.Records.Add(record.Value);
         }
         for (int i = 0; i < result.Refs.Count; i++)
@@ -143,7 +143,7 @@ internal static class MapEffectiveSupport
         {
             if (!_slots.TryGetValue(resourcePath(path), out MapPrefabReferenceSlot? slot))
                 throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"Support resource '{resourceId}' has no slot for '{resourcePath(path)}'.")
-                    { ResourceId = resourceId, PlacementId = placementKey, ReferencePath = resourcePath(path), ChildKind = kind, EntityId = id };
+                { ResourceId = resourceId, PlacementId = placementKey, ReferencePath = resourcePath(path), ChildKind = kind, EntityId = id };
             MapPrefabReferenceScope scope = slot.Target.Scope;
             return scope == MapPrefabReferenceScope.Local && id != MapPrefabReferences.Parent ? (Key(placementKey, resourceId, id), scope) : (id, scope);
         }

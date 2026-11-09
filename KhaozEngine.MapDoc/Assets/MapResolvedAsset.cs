@@ -52,6 +52,7 @@ public sealed class MapResolvedResource
     public MapAssetRef Reference { get; }
     public MapResourceKind Kind { get; }
     public IReadOnlyList<string> Dependencies { get; }
+    public int ByteLength => _bytes.Length;
     public ReadOnlyMemory<byte> Bytes => _bytes.ToArray();
 
     public MapResolvedResource(MapAssetRef reference, MapResourceKind kind, IReadOnlyList<string> dependencies, ReadOnlyMemory<byte> bytes)

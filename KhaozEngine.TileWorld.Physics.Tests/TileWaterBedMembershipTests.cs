@@ -88,7 +88,8 @@ public class TileWaterBedMembershipTests
         readonly BepuPhysicsWorld _physics = new(Vector3.Zero);
         readonly TileColliderRegistration _installed;
         internal MoveTuning Tuning { get; } = OrdinaryTileWaterTests.Tuning(WaterTraversalMode.WadeOnly)
-            with { WadeMinSpeedScale = 0.6f };
+            with
+        { WadeMinSpeedScale = 0.6f };
         internal TileWorldColliders Colliders { get; }
         internal EffectiveMovementBinding Binding { get; }
         internal MovementFrameDescriptor Frame { get; } = new(default, Vector3.Zero, 1);

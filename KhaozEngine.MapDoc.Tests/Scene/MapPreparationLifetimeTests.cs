@@ -1,0 +1,192 @@
+using System;
+using KhaozEngine.MapDoc.Scene;
+using Xunit;
+
+namespace KhaozEngine.Tests.MapDoc.Scene;
+
+public sealed class MapPreparationLifetimeTests
+{
+    [Fact]
+    public void WorkspaceHandoff_MovesAdmittedStorageWithoutAnotherDebit()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 60));
+        using var operation = admission.BeginPreparation();
+        using var source = admission.Workspace(); source.Reserve(60);
+        operation.AdoptWorkspace(source, 40);
+        Assert.Equal(20, source.Bytes);
+        Assert.Equal(40, operation.Bytes);
+        Assert.Equal(60, admission.WorkspaceBytes);
+        Assert.Equal(60, admission.PeakBytes);
+        source.Dispose();
+        using var retained = operation.Complete(40);
+        Assert.Equal(0, admission.WorkspaceBytes);
+        Assert.Equal(40, admission.RetainedBytes);
+    }
+    [Fact]
+    public void NestedBorrow_ChargesOnlyTheViewsThatDoNotAlreadyOwnIt()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        using var parent = admission.LimitPreparation(50, "ParentPlan");
+        using var retained = admission.Workspace(); retained.Reserve(40);
+        object origin = admission.WindowIdentity;
+        using var child = admission.LimitPreparation(50, "ChildPlan");
+        using var borrowed = admission.ReferenceWindow(40, origin);
+        using var next = admission.Workspace(); next.Reserve(10);
+        Assert.Equal(50, admission.WorkspaceBytes);
+    }
+
+    [Fact]
+    public void FailedDemandAboveInt64_PreservesLiveCountersAndPeak()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: long.MaxValue));
+        admission.ReserveBytes(1);
+        var error = Assert.Throws<MapSceneCapacityException>(() => admission.ReserveBytes(long.MaxValue));
+        Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 1m + long.MaxValue, long.MaxValue), error.Capacity);
+        Assert.Equal(1, admission.RetainedBytes);
+        Assert.Equal(1, admission.PeakBytes);
+    }
+
+    [Fact]
+    public void PrechargedSuspension_CannotBeReactivatedByANestedView()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 0));
+        using var active = admission.Enter();
+        using (MapSceneAdmission.Suspend())
+        using (admission.Enter()) Assert.Null(MapSceneAdmission.Current);
+        Assert.Same(admission, MapSceneAdmission.Current);
+    }
+
+    [Fact]
+    public void BorrowedInventory_ConstrainsChildWithoutDuplicatingRootOwnership()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        admission.ReserveBytes(40);
+        using var window = admission.LimitPreparation(50, "MaxPlanBytes");
+        using var borrowed = admission.ReferenceWindow(40);
+        Assert.Equal(40, admission.RetainedBytes);
+        using var workspace = admission.Workspace();
+        workspace.Reserve(10);
+        var refused = Assert.Throws<MapSceneCapacityException>(() => workspace.Reserve(1));
+        Assert.Equal(new MapSceneCapacity("MaxPlanBytes", 51, 50), refused.Capacity);
+    }
+
+    [Fact]
+    public void PublishedChild_SurvivesItsPreparationCollector()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        MapPreparationReservation owned;
+        using (var parent = admission.BeginPreparation())
+        {
+            using var child = admission.BeginPreparation();
+            admission.ReserveBytes(60); owned = child.Complete(40);
+            parent.Publish(owned);
+        }
+        Assert.Equal(40, admission.RetainedBytes);
+        owned.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
+    [Fact]
+    public void ParentFailure_ReleasesUnpublishedChildProducts()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        using (admission.BeginPreparation())
+        {
+            using var child = admission.BeginPreparation();
+            admission.ReserveBytes(60);
+            child.Complete(40);
+        }
+        Assert.Equal(0, admission.RetainedBytes);
+        Assert.Equal(0, admission.WorkspaceBytes);
+    }
+
+    [Fact]
+    public void OperationScope_UnwindsFailureAndPublishesOnlyOwnedOutput()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        using (var operation = admission.BeginPreparation())
+        {
+            admission.ReserveBytes(70);
+            using (admission.BeginPreparation()) admission.ReserveBytes(20);
+            Assert.Equal(70, admission.WorkspaceBytes);
+            using var retained = operation.Complete(40);
+            Assert.Equal(40, admission.RetainedBytes);
+        }
+        Assert.Equal(100, admission.RemainingPreparedBytes);
+    }
+
+    [Fact]
+    public void SequentialWorkspace_UsesPeakRatherThanCumulativeDemand()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        admission.ReserveBytes(40);
+        for (int i = 0; i < 3; i++)
+        {
+            using var workspace = admission.Workspace();
+            workspace.Reserve(50);
+            Assert.Equal(50, admission.WorkspaceBytes);
+        }
+        Assert.Equal(0, admission.WorkspaceBytes);
+        Assert.Equal(40, admission.RetainedBytes);
+        Assert.Equal(90, admission.PeakBytes);
+        using var boundary = admission.Workspace();
+        boundary.Reserve(60);
+        var refused = Assert.Throws<MapSceneCapacityException>(() => boundary.Reserve(1));
+        Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 101, 100), refused.Capacity);
+        Assert.Equal(100, admission.PeakBytes);
+        Assert.Equal(60, admission.WorkspaceBytes);
+    }
+
+    [Fact]
+    public void TransferAndDoubleDisposal_PreserveLiveOwnership()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        var workspace = admission.Workspace();
+        workspace.Reserve(70);
+        var retained = workspace.Transfer(40);
+        Assert.Equal(30, admission.WorkspaceBytes);
+        Assert.Equal(40, admission.RetainedBytes);
+        workspace.Dispose(); workspace.Dispose();
+        Assert.Equal(60, admission.RemainingPreparedBytes);
+        using (var growth = admission.Workspace())
+        {
+            growth.Reserve(60);
+            Assert.Throws<MapSceneCapacityException>(() => growth.Reserve(1));
+        }
+        retained.Dispose(); retained.Dispose();
+        Assert.Equal(100, admission.RemainingPreparedBytes);
+    }
+
+    [Fact]
+    public void ChildBudget_ParentReleaseNeverCreatesNegativeDemand()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        var parent = admission.Workspace(); parent.Reserve(40);
+        using var child = admission.LimitPreparation(30, "MaxPlanBytes", 10);
+        parent.Dispose();
+        using var workspace = admission.Workspace(); workspace.Reserve(30);
+        var refused = Assert.Throws<MapSceneCapacityException>(() => workspace.Reserve(1));
+        Assert.Equal(new MapSceneCapacity("MaxPlanBytes", 41, 40), refused.Capacity);
+        Assert.Equal(30, admission.WorkspaceBytes);
+    }
+
+    [Fact]
+    public void ReturnedOwnership_ConstrainsLaterWindowsAfterItsWindowCloses()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));
+        MapPreparationReservation retained;
+        using (admission.LimitPreparation(60, "MaxPlanBytes"))
+        {
+            using var workspace = admission.Workspace(); workspace.Reserve(60);
+            retained = workspace.Transfer(60);
+        }
+        using (retained)
+        using (admission.LimitPreparation(80, "MaxPlanBytes"))
+        using (var workspace = admission.Workspace())
+        {
+            var refused = Assert.Throws<MapSceneCapacityException>(() => workspace.Reserve(41));
+            Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 101, 100), refused.Capacity);
+        }
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+}

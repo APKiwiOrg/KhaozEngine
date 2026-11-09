@@ -69,8 +69,8 @@ public sealed class WaterPipelineIsolationTests
         scene.Post.Water.SwellAmplitude = 0;
         WaterOpticsHandle field = scene.LoadWaterOpticsField(new(2, 2, [1, 1, 1, 1]));
         scene.Begin();
-        scene.DrawWater(new(1, 0, 1, .25f));
-        scene.DrawWater(new(1, 0, 1, .25f, optics: new(field, Vector3.Zero, new Vector2(2))));
+        scene.DrawWater(new WaterPlane(1, 0, 1, .25f));
+        scene.DrawWater(new WaterPlane(1, 0, 1, .25f, optics: new(field, Vector3.Zero, new Vector2(2))));
         scene.PrepareFrame(96, 64);
         using var commands = new NullGpuCommandList();
         using IGpuFramebuffer target = factory.CreateFramebuffer(null, scene.ResolvedDepthTarget);
@@ -87,7 +87,7 @@ public sealed class WaterPipelineIsolationTests
         scene.Post.Hdr.Enabled = false;
         scene.Post.Water.GridMode = WaterGridMode.Clipmap;
         scene.Begin();
-        scene.DrawWater(new(0, 0, 0, 2));
+        scene.DrawWater(new WaterPlane(0, 0, 0, 2));
         scene.PrepareFrame();
         int requests = factory.ShaderRequests.Count;
         using var commands = new NullGpuCommandList();
@@ -264,8 +264,8 @@ public sealed class WaterPipelineIsolationTests
             scene.Post.Water.GridMode = mode;
             scene.Begin();
             var look = new WaterLook { SwellAmplitude = .01f, SwellSteepness = 0f };
-            scene.DrawWater(new(1, 0, 1, .25f, look: look));
-            scene.DrawWater(new(1, 0, 1, .25f, look: look, optics: new(triangle, Vector3.Zero, new Vector2(2))));
+            scene.DrawWater(new WaterPlane(1, 0, 1, .25f, look: look));
+            scene.DrawWater(new WaterPlane(1, 0, 1, .25f, look: look, optics: new(triangle, Vector3.Zero, new Vector2(2))));
             scene.PrepareFrame(96, 64);
         }
         Prepare(WaterGridMode.CameraFocused);

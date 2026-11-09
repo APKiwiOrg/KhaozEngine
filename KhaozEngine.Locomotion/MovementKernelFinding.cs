@@ -19,10 +19,18 @@ internal readonly record struct MovementKernelFinding(MovementConfigurationRefus
 
     internal MovementConfigurationException ToException(string message) => new(Reason, message, "tuning")
     {
-        FieldName = FieldName, ActualNumber = ActualNumber,
-        MinimumNumber = MinimumNumber, MinimumExclusive = MinimumExclusive, MaximumNumber = MaximumNumber,
-        CapsuleRadius = CapsuleRadius, CapsuleHalfHeight = CapsuleHalfHeight,
-        ActualSlope = ActualSlope, MaximumExclusive = MaximumExclusive,
-        StartFraction = StartFraction, EndFraction = EndFraction, ExitFraction = ExitFraction, EnterFraction = EnterFraction
+        FieldName = FieldName,
+        ActualNumber = ActualNumber,
+        MinimumNumber = MinimumNumber,
+        MinimumExclusive = MinimumExclusive,
+        MaximumNumber = MaximumNumber,
+        CapsuleRadius = CapsuleRadius,
+        CapsuleHalfHeight = CapsuleHalfHeight,
+        ActualSlope = ActualSlope,
+        MaximumExclusive = MaximumExclusive,
+        StartFraction = StartFraction,
+        EndFraction = EndFraction,
+        ExitFraction = ExitFraction,
+        EnterFraction = EnterFraction
     };
 }

@@ -155,8 +155,10 @@ public class ContentCatalogResetResultTests
     [Fact]
     public void NoPropertyCanBeSetAfterConstructionSoWithCannotBypassTheRules()
     {
-        foreach (PropertyInfo property in typeof(ContentCatalogResetResult).GetProperties(
-            BindingFlags.Public | BindingFlags.Instance))
+        PropertyInfo[] properties = typeof(ContentCatalogResetResult).GetProperties(
+            BindingFlags.Public | BindingFlags.Instance);
+        Assert.NotEmpty(properties);
+        foreach (PropertyInfo property in properties)
         {
             Assert.True(property.SetMethod is null, property.Name + " must not carry a setter or an init accessor.");
         }

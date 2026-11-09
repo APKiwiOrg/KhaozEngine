@@ -1,21 +1,22 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The temporal resolve's PER-PIXEL ACCUMULATION (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): every rule the
+    /// The temporal resolve's PER-PIXEL ACCUMULATION (TEMPORAL-RESOLVE section 3): every rule the
     /// resolve applies per display pixel, as GLSL functions with no stage inputs or outputs. Both entry points call
     /// them over the same 3x3 statistics (<c>temporalGather</c>) and the same prepared surface
     /// (<c>TemporalSurface</c>, <see cref="TemporalPrepareGlsl"/>): the fused resolve after preparing its 3x3 inline,
     /// the split's second pass (<see cref="TemporalAccumulateFrag"/>) after reading its first pass's targets.
     /// <para>A program that includes it declares <c>SceneColor</c>, <c>SceneDepth</c>, <c>MotionTex</c>,
     /// <c>PrevDepth</c>, <c>HistoryColor</c>, <c>HistoryConfidence</c>, <c>LinearClamp</c> and the <c>Resolve</c>
-    /// block, and includes <see cref="TemporalPrepareGlsl"/> before it.</para>
+    /// block, and includes <see cref="TemporalPrepareGlsl"/> and <see cref="TemporalShimmerGlsl"/> before it.</para>
     /// </summary>
     internal static partial class ShaderSources
     {
         internal const string TemporalAccumulateGlsl = @"
+// drift and swing are the shimmer record (TemporalShimmerGlsl) the history state stores, shimmer the score read from it.
 struct TemporalPixel {
     vec3 color; float confidence; float stability; float moved; float disocclusion; float reactive; float clip;
-    float alpha;
+    float alpha; float drift; float swing; float shimmer;
 };
 
 // sinc(x) * sinc(x / 2) on |x| < 2, mirrored by TemporalResolveMath.Lanczos2.
@@ -305,8 +306,10 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // a moving sub-texel feature lost its hold. At a texel centre only that texel carries weight, so a still lock
     // reads back unchanged and never spreads. carriedMoved is whether any texel that carries weight stored the lock
     // of a moving surface (temporalStoreLock), carriedBand whether any stored that of a band pixel, and
-    // carriedFollowed whether that was the followed surface's own.
+    // carriedFollowed whether that was the followed surface's own. The shimmer record in blue and alpha is blended by
+    // the same weights.
     vec2 fetchedState = vec2(0.0);
+    vec2 fetchedRecord = vec2(0.0);
     bool carriedMoved = false;
     bool carriedBand = false;
     bool carriedFollowed = false;
@@ -315,13 +318,13 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         ivec2 stateBase = ivec2(floor(statePosition));
         vec2 stateFraction = statePosition - vec2(stateBase);
         ivec2 lastState = ivec2(displaySize) - ivec2(1);
-        vec2 s00 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase, ivec2(0), lastState), 0).rg;
-        vec2 s10 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
-            clamp(stateBase + ivec2(1, 0), ivec2(0), lastState), 0).rg;
-        vec2 s01 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
-            clamp(stateBase + ivec2(0, 1), ivec2(0), lastState), 0).rg;
-        vec2 s11 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
-            clamp(stateBase + ivec2(1, 1), ivec2(0), lastState), 0).rg;
+        vec4 s00 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase, ivec2(0), lastState), 0);
+        vec4 s10 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
+            clamp(stateBase + ivec2(1, 0), ivec2(0), lastState), 0);
+        vec4 s01 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
+            clamp(stateBase + ivec2(0, 1), ivec2(0), lastState), 0);
+        vec4 s11 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
+            clamp(stateBase + ivec2(1, 1), ivec2(0), lastState), 0);
         vec2 g = 1.0 - stateFraction;
         vec4 bilinear = vec4(g.x * g.y, stateFraction.x * g.y, g.x * stateFraction.y,
             stateFraction.x * stateFraction.y);
@@ -340,6 +343,8 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         s11.y = temporalStoredLock(s11.y);
         fetchedState = vec2(dot(bilinear, vec4(s00.x, s10.x, s01.x, s11.x)),
             max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));
+        fetchedRecord = vec2(dot(bilinear, vec4(s00.z, s10.z, s01.z, s11.z)),
+            dot(bilinear, vec4(s00.w, s10.w, s01.w, s11.w)));
     }
 
     // Step 3: disocclusion, one-sided. A pixel expects the depth of the surface it reprojected, and a stored depth
@@ -399,6 +404,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         }
         followedElsewhere = apart > FollowedHistoryMotionFraction * length(ownMotion);
     }
+    // At Quality, a slower-decaying lock counts as refreshed for one more frame at this half-LockDecay threshold.
     bool disoccluded = false;
     bool heldFromFarther = false;
     if (historyValid && onScreen && (depthTested || movingEdge)) {
@@ -419,27 +425,32 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     bool useHistory = historyValid && onScreen && !disoccluded;
     vec4 history = vec4(0.0);
     vec2 historyState = vec2(0.0);
+    vec2 historyRecord = vec2(0.0);
     if (useHistory) {
         vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);
         bool finite = all(greaterThan(fetched, vec4(-HalfMax))) && all(lessThan(fetched, vec4(HalfMax)))
-            && all(greaterThan(fetchedState, vec2(-HalfMax))) && all(lessThan(fetchedState, vec2(HalfMax)));
+            && all(greaterThan(fetchedState, vec2(-HalfMax))) && all(lessThan(fetchedState, vec2(HalfMax)))
+            && all(greaterThan(fetchedRecord, vec2(-HalfMax))) && all(lessThan(fetchedRecord, vec2(HalfMax)));
         if (finite) {
             history = max(fetched, vec4(0.0));
-            historyState = clamp(fetchedState, vec2(0.0), vec2(1.0));
+            historyState = clamp(fetchedState, vec2(0.0), vec2(MaxStillAccumulation / MaxAccumulation, 1.0));
+            historyRecord = fetchedRecord;
         } else {
             useHistory = false;
         }
     }
+    // The history in the clip's space, and this frame's luma less it, the change the shimmer record averages.
+    vec3 historyYcc = rgbToYCoCg(toWeighted(history.rgb));
+    float lumaChange = current.x - historyYcc.x;
 
-    // Step 8, first half: the accumulated sample weight, capped lower as motion grows and cut by reactive content.
+    // Step 8, first half: the accumulated sample weight's cap, lower as motion grows. The weight itself waits for the
+    // shimmer score, after the shading release.
     float motionCap = mix(MaxAccumulation, MovingAccumulation,
         clamp(motionPixels / MotionAccumulationPixels, 0.0, 1.0));
-    float accumulated = useHistory
-        ? min(historyState.x * MaxAccumulation, motionCap) * (1.0 - reactive * ReactiveStrength)
-        : 0.0;
 
-    // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays by LockDecay a frame
-    // whatever the preset. Large motion and reactive content release it, and so does motion at an edge, where the pixel
+    // Step 6: thin features. A ridge through the centre texel refreshes the lock. Still flicker loses the jitter-cycle
+    // rate unless visibility changed, and other pixels lose LockDecay. Large motion and reactive content release it,
+    // and so does motion at an edge, where the pixel
     // holds a moving feature's history, not its own. A pixel that reprojected by its own motion and kept its history
     // holds its own, because where a moving surface showed last frame step 3 keeps a history only where no stored depth
     // carrying weight lies nearer than the pixel's own surface. So a still sub-texel feature beside a fast surface
@@ -449,7 +460,11 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // it. A thin feature taking a ridge keeps its own lock, and so does one beside a still nearer surface,
     // which is no moving edge. The hold on the clip stays whole while the lock is at least 1 / LockHoldGain, so a
     // sub-texel feature missed for a few frames keeps its luma, and it lets go over the rest of the lock.
-    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
+    float lockLoss = temporalStillLockLoss(historyRecord, lumaChange, motionPixels, reactive);
+#ifdef TemporalShimmerVisibility
+    if (lockLoss != LockDecay && temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)) lockLoss = LockDecay;
+#endif
+    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - lockLoss, 0.0) : 0.0;
     if (ridge) lockValue = 1.0;
     float releaseEdgeMotion = ownReprojected && useHistory ? 0.0 : edgeMotion;
     // With positive width the ordered barriers preserve bits. Finite arguments cannot make a NaN factor:
@@ -482,11 +497,9 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     float gamma = mix(GammaStill, GammaMoving, clamp(motionPixels / GammaMotionPixels, 0.0, 1.0));
     vec3 boxMin = mean - gamma * deviation;
     vec3 boxMax = mean + gamma * deviation;
-    vec3 historyYcc = rgbToYCoCg(toWeighted(history.rgb));
     vec3 boxCentre = 0.5 * (boxMin + boxMax);
     vec3 boxExtent = 0.5 * (boxMax - boxMin) + vec3(1.0e-5);
     vec3 fromCentre = historyYcc - boxCentre;
-    vec3 excess = abs(fromCentre) / boxExtent;
 
     // Steps 6 and 8 where a pixel's shading changed: a light or a shadow sliding over a surface, still or moving. A
     // ridged texel refreshes its lock every frame and the hold keeps the old luma out of the clip, so only the floor
@@ -542,10 +555,53 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         }
     }
     if (released || visibilityReleased) hold = 0.0;
-    if (released) accumulated = 0.0;
-    excess.x *= 1.0 - hold;
-    float clipScale = max(excess.x, max(excess.y, excess.z));
-    vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;
+    // The shimmer record steps where the pixel kept its history and its shading, and starts empty elsewhere.
+    vec2 shimmerRecord = useHistory && !released ? temporalShimmerStep(historyRecord, lumaChange) : vec2(0.0);
+    // The score from the stepped record and this frame's change (temporalShimmerScore). It is none on a moving pixel,
+    // so a moving pixel keeps its motion cap, and none on a released or fresh one, whose record is empty.
+    float shimmer = temporalShimmerScore(shimmerRecord.x, shimmerRecord.y, lumaChange, motionPixels, reactive);
+#ifdef TemporalShimmerVisibility
+    // Where the exported key-shadow visibility moved since last frame a shadow is passing, which is real however the
+    // luma alternates, so the pixel scores none: where the visibility release fired on its 3x3, or where the centre
+    // texel's own visibility moved (temporalShimmerVisibilityChanged), read only where the score holds and no release
+    // fired. A shadow reaching a neighbour column first releases the lock before the centre texel changes.
+    if (shimmer > 0.0 && (visibilityReleased || temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)))
+        shimmer = 0.0;
+#endif
+
+    // Step 8, first half, done: a still pixel that only shimmers carries up to MaxStillAccumulation, so its current
+    // weight's floor and the sawtooth each jitter hit leaves fall about four times lower. A score of none keeps the
+    // motion cap exactly, so a one-way change accumulates as before. Cut by reactive content, and dropped where the
+    // shading release fired.
+    float cap = mix(motionCap, MaxStillAccumulation, shimmer);
+    float accumulated = useHistory && !released
+        ? min(historyState.x * MaxAccumulation, cap) * (1.0 - reactive * ReactiveStrength)
+        : 0.0;
+
+    // Step 5's final clip: the box's luma extent widened by ShimmerClipGain swings times the score on both sides, so a
+    // still pixel's history inside its own shimmer band survives the frames the jitter misses the feature, and history
+    // past the band clips as before. The shading release above judged the unwidened box.
+    float shimmerReach = ShimmerClipGain * shimmer * shimmerRecord.y;
+    vec3 clipMin = vec3(boxMin.x - shimmerReach, boxMin.yz);
+    vec3 clipMax = vec3(boxMax.x + shimmerReach, boxMax.yz);
+    vec3 clipCentre = 0.5 * (clipMin + clipMax);
+    vec3 clipExtent = 0.5 * (clipMax - clipMin) + vec3(1.0e-5);
+    // Use the shimmer score's still-pixel test. Moving pixels need the coupled clip to discard stale colour.
+    if (motionPixels < ShimmerStillPixels) {
+        // Binary16 spacing at the largest RGB channel bounds every channel's truncation error, including subnormals.
+        float largestHistory = max(history.r, max(history.g, history.b));
+        float halfStep = max(uintBitsToFloat(floatBitsToUint(largestHistory) & 0x7f800000u) / 1024.0,
+            0.000000059604644775390625);
+        // Each chroma row has unit absolute coefficient sum. Include the weighting denominator's rounding change.
+        float weightedStep = halfStep / max(1.0 + temporalLuma(history.rgb) - halfStep, 1.0e-4);
+        vec2 chromaFloor = ChromaPrecisionFloorSteps * weightedStep * (vec2(1.0) + abs(historyYcc.yz));
+        clipExtent.yz = max(clipExtent.yz, chromaFloor);
+    }
+    vec3 clipFrom = historyYcc - clipCentre;
+    vec3 clipExcess = abs(clipFrom) / clipExtent;
+    clipExcess.x *= 1.0 - hold;
+    float clipScale = max(clipExcess.x, max(clipExcess.y, clipExcess.z));
+    vec3 clipped = clipScale > 1.0 ? clipCentre + clipFrom / clipScale : historyYcc;
     clipped.x = mix(clipped.x, historyYcc.x, hold);
     float historyAlpha = clamp(history.a, alphaMin, alphaMax);
 
@@ -593,14 +649,15 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // the shading release dropped the pixel's accumulated weight this frame. A program compiled for the display's own
     // size (TemporalAtDisplaySize), where the share is always none, leaves it out.
 #ifndef TemporalAtDisplaySize
-    float displayShare = temporalDisplayShare(useHistory && !released, historyState.x, motionPixels, reactive);
+    float displayShare = temporalDisplayShare(useHistory && !released, min(historyState.x, 1.0), motionPixels,
+        reactive);
     if (displayShare > 0.0)
         current.xyz = temporalDisplayCurrent(current.xyz, n.display, displayShare, neighbourMin, neighbourMax);
 #endif
 
     // Step 8, second half: blend in the weighted space. The current weight is 1 on a reset and falls to
-    // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, raised wherever reactive content or a
-    // disocclusion removed accumulated weight.
+    // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, or toward one in 64 on a still pixel that
+    // only shimmers, raised wherever reactive content or a disocclusion removed accumulated weight.
     float currentWeight = accumulated > 1.0e-3 ? sampleWeight / (accumulated + sampleWeight) : 1.0;
     vec3 resolvedYcc = mix(clipped, current.xyz, currentWeight);
 
@@ -608,12 +665,15 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     result.color = fromWeighted(max(yCoCgToRgb(resolvedYcc), vec3(0.0)));
     result.alpha = mix(historyAlpha, current.w, currentWeight);
     result.confidence = movingShare > 0.0 ? MovingShareConfidence
-        : min(accumulated + sampleWeight, motionCap) / MaxAccumulation;
+        : min(accumulated + sampleWeight, cap) / MaxAccumulation;
     result.stability = lockValue;
     result.moved = followed ? 3.0 : band ? 2.0 : historyValid && !depthTested ? 1.0 : 0.0;
     result.disocclusion = historyValid && (!onScreen || disoccluded) ? 1.0 : 0.0;
     result.reactive = reactive;
     result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;
+    result.drift = shimmerRecord.x;
+    result.swing = shimmerRecord.y;
+    result.shimmer = shimmer;
     return result;
 }
 ";

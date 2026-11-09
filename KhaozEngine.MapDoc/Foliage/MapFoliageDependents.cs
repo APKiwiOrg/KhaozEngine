@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -191,11 +193,11 @@ internal static class MapFoliageDependents
         internal void Scan(long count = 1)
         {
             _scanned += count;
-            if (_scanned > limits.MaxScannedBatches) throw new BudgetExceeded();
+            if (DemandDiagnostics.Check(this, "MapFoliageDependents.MaxScannedBatches", "MaxScannedBatches", 0, _scanned, limits.MaxScannedBatches, _scanned > limits.MaxScannedBatches, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new BudgetExceeded();
         }
         internal void Prepare()
         {
-            if (++_prepared > limits.MaxPreparedSides) throw new BudgetExceeded();
+            if (DemandDiagnostics.Check(this, "MapFoliageDependents.MaxPreparedSides", "MaxPreparedSides", _prepared, 1, limits.MaxPreparedSides, ++_prepared > limits.MaxPreparedSides, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new BudgetExceeded();
         }
     }
 

@@ -5,6 +5,7 @@ using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Scene;
 
 namespace KhaozEngine.MapDoc.Foliage;
 
@@ -45,14 +46,15 @@ internal sealed class MapFoliageCandidateSupport
     /// Space binding's space is absent from the acquisition, since a scoped absence never proves a known outside.</summary>
     internal static MapFoliageCandidateSupport Create(MapScopedSurfaces view, MapPreparedSupport support, IReadOnlyList<MapFoliageSupportGrid> grids,
         MapSupportBinding binding, MapExactXz min, MapExactXz max, long maxFaces, out long faces,
-        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeFaces = null)
+        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeFaces = null,
+        MapCapacityDemandOrigin? faceOrigin = null)
     {
         MapSpaceDoc? space = null;
         if (binding.Kind == MapSupportBindingKind.Space &&
             (space = support.Records.OfType<MapSpaceDoc>().FirstOrDefault(s => s.Id == binding.SpaceId)) is null)
             throw new MapFoliageRefusal(MapFoliageStatus.Unavailable, MapFoliageSupport.NoWork,
                 $"missing geometry: space '{binding.SpaceId}' is not in the chunk acquisition");
-        MapBoundFaceContext context = Context(view, support, min, max, maxFaces, out faces, compile, chargeFaces);
+        MapBoundFaceContext context = Context(view, support, min, max, maxFaces, out faces, compile, chargeFaces, faceOrigin: faceOrigin);
         return new(view, support, context, grids, binding, space);
     }
 
@@ -60,12 +62,16 @@ internal sealed class MapFoliageCandidateSupport
     // opening cell there, and the source cells of every acquired portal band segment.
     internal static MapBoundFaceContext Context(MapScopedSurfaces view, MapPreparedSupport support, MapExactXz min, MapExactXz max, long maxFaces, out long faces,
         Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeFaces = null,
-        Action? inspectCell = null)
+        Action? inspectCell = null, MapCapacityDemandOrigin? faceOrigin = null)
     {
         // This is aggregate admission over a subset of the acquisition's at most 256 patches. It cannot lower a
         // point's released patch allowance, and the supplied-context query still checks that point's face budget.
         var limits = new MapRefinementLimits(MaxContextPatches: view.Scope.Limits.MaxCandidatePatches);
         var bounds = new MapSpacePointBounds(view, limits, null);
+        // The foliage context's patch ceiling is the acquisition's candidate patch allowance, never a refinement profile.
+        if (KhaozEngine.Diagnostics.CapacityDemandDiagnostics.IsObserved)
+            MapDemandOrigins.Derive(limits, nameof(MapRefinementLimits.MaxContextPatches),
+                MapDemandOrigins.Of(view.Scope.Limits, nameof(MapQueryLimits.MaxCandidatePatches), view.Scope.Limits.MaxCandidatePatches));
         // Stream demands into PrepareBounds. Its face admission precedes retained masks and compiled arrays, and no
         // chunk-wide demand list is allocated before that gate.
         IEnumerable<MapBoundFaceDemand> Demands()
@@ -130,7 +136,8 @@ internal sealed class MapFoliageCandidateSupport
                 return MapSurfaceCompiler.Compile(patch, mask, MapSurfaceCompiler.MaxFacesPerPatch);
             };
         MapBoundFaceContext? context = MapBoundFaceContext.PrepareBounds(view, Demands(), limits.MaxContextPatches, maxFaces, work,
-            out string? refusal, bounds.Preparation, compile, chargeFaces);
+            out string? refusal, bounds.Preparation, compile, chargeFaces,
+            faceOrigin ?? new MapCapacityDemandOrigin("MaxFaces", 0, maxFaces));
         faces = work.CompiledFaces;
         return context ?? throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, MapFoliageSupport.NoWork, refusal ?? "context faces");
     }

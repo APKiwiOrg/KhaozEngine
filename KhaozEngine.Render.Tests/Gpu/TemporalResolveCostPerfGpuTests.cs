@@ -15,7 +15,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 9, the engine half, as a measurement on any real GPU: what the
+    /// TEMPORAL-RESOLVE section 7 item 9, the engine half, as a measurement on any real GPU: what the
     /// resolve and the sharpen cost at a 2560x1440 and a 3456x2234 display, on each of the resolve's entry points
     /// (<c>TemporalResolveEntry</c>), the fused single pass and the split's two, and what each of the split's passes
     /// costs on its own. Every round renders one block of frames in each mode on one scene, anti-aliasing off at the

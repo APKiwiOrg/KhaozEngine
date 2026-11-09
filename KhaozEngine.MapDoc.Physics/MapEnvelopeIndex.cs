@@ -44,8 +44,14 @@ internal sealed class MapEnvelopeIndex
                     "The envelope of placement '{0}' reaches {1:N0} index cells of {2} m, more than the {3:N0} one " +
                     "envelope may reach.",
                     owner, reached, CellMetres, MaxCellsPerEnvelope))
-                { OwnerId = owner, Budget = "interaction envelope index cells", FieldPath = "Bounds",
-                    ActualCount = RepresentableCellCount(xCells, yCells, zCells), ActualNumber = reached, Limit = MaxCellsPerEnvelope };
+                {
+                    OwnerId = owner,
+                    Budget = "interaction envelope index cells",
+                    FieldPath = "Bounds",
+                    ActualCount = RepresentableCellCount(xCells, yCells, zCells),
+                    ActualNumber = reached,
+                    Limit = MaxCellsPerEnvelope
+                };
             }
         }
         var cells = new Dictionary<(int X, int Y, int Z), List<int>>();

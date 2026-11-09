@@ -22,11 +22,8 @@ internal static class RigidMotionSlots
         previous.Clear();
         for (int i = 0; i < keys.Length; i++)
         {
-            if (history is not null && !keys[i].IsNone && history.TryGetPreviousRigid(keys[i], out Matrix4x4 world))
+            if (history is not null && !keys[i].IsNone && history.TryGetPreviousRigidRelative(keys[i], renderOrigin, out Matrix4x4 world))
             {
-                world.M41 -= renderOrigin.X;
-                world.M42 -= renderOrigin.Y;
-                world.M43 -= renderOrigin.Z;
                 slots[i] = previous.Count;
                 previous.Add(world);
             }

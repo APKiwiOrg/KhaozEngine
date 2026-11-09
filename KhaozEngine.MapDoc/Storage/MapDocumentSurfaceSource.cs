@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,9 +12,11 @@ namespace KhaozEngine.MapDoc.Storage;
 public sealed partial class MapDocumentSurfaceSource : IMapSurfaceAcquisitionSource
 {
     readonly MapSurfaceSet _surfaces;
+    internal MapSurfaceStorageIndex SceneMetadataIndex => _index;
     readonly MapSurfaceStorageIndex _index;
     readonly MapSurfaceStorageIndex _residentIndex;
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaceLookup;
+    internal MapSurfaceRef? SceneSurface(string id) => _surfaceLookup.GetValueOrDefault(id);
     MapDocumentSurfaceSource(MapDocument doc)
     {
         _surfaces = doc.Surfaces.Clone();
@@ -50,7 +54,7 @@ public sealed partial class MapDocumentSurfaceSource : IMapSurfaceAcquisitionSou
     {
         ArgumentNullException.ThrowIfNull(scope);
         scope.Validate();
-        var budget = new MapPageBudget(scope.Limits.MaxPageReads);
+        var budget = new MapPageBudget(scope.Limits.MaxPageReads, source: scope.Limits);
         MapPatchFindResult known = Find(_index, scope, budget);
         if (ReferenceEquals(_index, _residentIndex) || known.Status == MapFindStatus.CapacityExceeded) return known;
         MapPatchFindResult resident = Find(_residentIndex, scope, budget);
@@ -61,7 +65,7 @@ public sealed partial class MapDocumentSurfaceSource : IMapSurfaceAcquisitionSou
             foreach (MapPatchRead patch in known.Patches.Concat(resident.Patches))
             {
                 if (patches.ContainsKey(patch.Key)) continue;
-                if (patches.Count >= scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+                if (DemandDiagnostics.Check(patches, "MapDocumentSurfaceSource.MaxCandidatePatches.1", "MaxCandidatePatches", patches.Count, 1, scope.Limits.MaxCandidatePatches, patches.Count >= scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory, allowanceSource: scope.Limits)) throw new MapSurfaceCapacityException();
                 patches.Add(patch.Key, patch);
             }
             var empty = new List<MapCoveredRange>();

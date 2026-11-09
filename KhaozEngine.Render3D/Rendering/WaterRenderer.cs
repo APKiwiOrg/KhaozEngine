@@ -487,23 +487,29 @@ namespace KhaozEngine.Render3D.Rendering
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
             Matrix4x4 viewProj, Matrix4x4 cullViewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos,
             WaterSettings settings, SkySettings sky, float timeSeconds, Vector3 renderOrigin = default,
-            bool atmosphereEnabled = false, uint columnNoisePhase = 0)
+            bool atmosphereEnabled = false, ReadOnlySpan<BoundedWaterDraw> bounded = default, uint columnNoisePhase = 0)
         {
-            if (planes.Length == 0) return;
+            if (planes.Length == 0 && bounded.IsEmpty) return;
             LastClipmapRebuilds = 0;
             LastFocusedGridBuilds = 0;
             // Bound water records only against its prepared bindings. A frame with no bound water keeps the legacy
             // late binding: when its inputs moved after preparation it sizes, uploads, binds and builds programs here.
             bool prepared = _opticsPrepared;
-            if (_preparedBound || AnyBound(planes)) VerifyOpticsFrame(res, planes, settings, timeSeconds);
-            else if (prepared && !OpticsFrameMatches(res, planes, settings, timeSeconds)) _opticsPrepared = prepared = false;
+            int slotCount = checked(planes.Length + bounded.Length);
+            if (_preparedBound || AnyBound(planes))
+            {
+                VerifyOpticsFrame(res, planes, settings, timeSeconds);
+                if (slotCount > _capacity) throw ChangedOpticsInputs(slotCount);
+            }
+            else if (prepared && (slotCount > _capacity || !OpticsFrameMatches(res, planes, settings, timeSeconds)))
+                _opticsPrepared = prepared = false;
             // FrustumPlanes needs the matrix and the boxes tested against its planes in the same frame. The planes
             // arrive reduced by the render origin and so does cullViewProj, so here both are render-relative.
             int drawn;
             using (Profiling?.Cpu("device.water.geometry") ?? default)
             {
-                // A prepared frame sized its slots before creating the sets that range over them.
-                if (!prepared) EnsureUboCapacity(planes.Length);
+                // Prepared bindings already cover every legacy and native slot.
+                if (!prepared) EnsureUboCapacity(slotCount);
                 drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(cullViewProj));
                 if (!prepared)
                     for (int i = 0; i < planes.Length; i++)
@@ -523,7 +529,7 @@ namespace KhaozEngine.Render3D.Rendering
             // its OWN for already ran in PrepareFrame, before this list was opened.
             // The demand is re-derived here and compared: a host that queued a plane AFTER preparing would
             // otherwise render an ocean plane procedurally with nothing to show for it.
-            bool wantOcean = AnyPlaneWantsOcean(planes, settings);
+            bool wantOcean = AnyPlaneWantsOcean(planes, settings) || BoundedWantsOcean(bounded, settings);
             if (wantOcean != _preparedWantOcean)
                 throw new WaterFrameStateException(WaterFrameRefusal.OceanDemandChanged,
                     "The water planes changed between PrepareFrame and Draw. Queue every plane before calling "
@@ -540,8 +546,8 @@ namespace KhaozEngine.Render3D.Rendering
             ShoreMaps shore = _bathymetry.Snapshot();
             // Nothing the view can reach: no slots, no geometry and no pass. The ocean demand compare and its record
             // above still ran over the whole queue, because PrepareFrame planned against the whole queue.
-            using var profile = Profiling?.Pass(cl, "water.surface", executed: drawn > 0) ?? default;
-            if (drawn == 0) return;
+            using var profile = Profiling?.Pass(cl, "water.surface", executed: drawn > 0 || !bounded.IsEmpty) ?? default;
+            if (drawn == 0 && bounded.IsEmpty) return;
             if (!prepared) BindTargets(res);
 
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
@@ -563,8 +569,7 @@ namespace KhaozEngine.Render3D.Rendering
                 PackOptics(ref u, planes[i]);
                 PackSlot(i, in u);
             }
-            // ONE whole-buffer write for every plane's slot, ahead of every draw that binds one. A per-plane write
-            // was a per-plane blocking Map on D3D11 (#408); see WaterRenderer.SlotUpload.cs.
+            PackBounded(planes.Length, bounded, viewProj, lightDirection, lightColor, cameraPos, settings, sky, timeSeconds, renderOrigin, oceanMaps, shore, atmosphereEnabled, columnNoisePhase);
             UploadSlots(cl);
 
             // Every geometry upload happens HERE, before a single draw is recorded, so no plane's geometry can be
@@ -577,6 +582,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             cl.SetFramebuffer(res.ColorDepthFB);
             DrawRoutedPlanes(cl, planes.Length);
+            DrawBounded(cl, planes.Length, bounded);
         }
 
         /// <summary>
@@ -639,6 +645,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            DisposeBounded();
             Optics.Dispose();
             if (_ownsRetired) _retired.Dispose();
             _ocean.Dispose();

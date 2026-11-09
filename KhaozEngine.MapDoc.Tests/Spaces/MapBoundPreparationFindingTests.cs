@@ -61,13 +61,16 @@ public sealed class MapBoundPreparationFindingTests
     {
         var view = LegacyExteriorFixtures.View("untagged");
         var original = LegacyExteriorFixtures.Footprint(view) with { Upper = new(MapBoundKind.Ceiling, "plane-0", null) };
-        var footprint = original with { Upper = fault switch
+        var footprint = original with
         {
-            "legacy" => new(MapBoundKind.LegacyExteriorV1, "plane-0", null),
-            "kind" => new((MapBoundKind)255, "plane-0", null),
-            "surface" => new(MapBoundKind.Ceiling, "missing", null),
-            _ => original.Upper,
-        } };
+            Upper = fault switch
+            {
+                "legacy" => new(MapBoundKind.LegacyExteriorV1, "plane-0", null),
+                "kind" => new((MapBoundKind)255, "plane-0", null),
+                "surface" => new(MapBoundKind.Ceiling, "missing", null),
+                _ => original.Upper,
+            }
+        };
         var preparation = new MapBoundPreparation(view, new(), null);
         var rect = preparation.Rectangle(original, 0);
         var min = rect[0]; var max = rect[1];

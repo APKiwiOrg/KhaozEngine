@@ -27,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 131 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 143 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 94 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 102 of them.</summary>
         static IEnumerable<ShippedGraphicsProgram> BaseGraphicsPrograms()
         {
             // Render2D.
@@ -64,6 +64,14 @@ namespace KhaozEngine.Tests.Gpu
             // Render3D model and terrain.
             yield return new("Model", ShaderSources.ModelVert, ShaderSources.ModelFrag, 15);
             yield return new("Foliage", ShaderSources.FoliageVert, ShaderSources.ModelFrag, 15);
+            yield return new("PreparedFoliage", ShaderSources.PreparedFoliage(ShaderSources.FoliageVert, 2), ShaderSources.ModelFrag, 15);
+            yield return new("PreparedFoliageOpaque", ShaderSources.PreparedFoliage(ShaderSources.FoliageVert, 2), ShaderSources.FoliageOpaqueFrag, 10);
+            yield return new("PreparedFoliageOpaqueMotion", ShaderSources.PreparedFoliage(ShaderSources.FoliageMotionVert, 3), ShaderSources.FoliageOpaqueMotionFrag, 10);
+            yield return new("PreparedFoliageMotion", ShaderSources.PreparedFoliage(ShaderSources.FoliageMotionVert, 3), ShaderSources.ModelMotionFrag, 15);
+            // R-GPU-1 / T8-R1. Both depth programs keep anchor set 3. Opaque has an empty set 2 in the resource catalog.
+            yield return new("PreparedFoliageDepth", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.ShadowDepthFrag);
+            yield return new("PreparedFoliageDepthCutout", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.FoliageDepthCutoutFrag);
+            yield return new("PreparedFoliagePoint", ShaderSources.PreparedPointFoliageVert, ShaderSources.PointShadowRigidFrag);
             yield return new("FoliageOpaque", ShaderSources.FoliageVert, ShaderSources.FoliageOpaqueFrag, 10);
             yield return new("ModelDissolve", ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag, 15);
             yield return new("SkinnedModel", ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag, 7);
@@ -169,6 +177,7 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("Water", ShaderSources.WaterVert, ShaderSources.WaterFrag);
             // Built lazily, only for a scene that asks for the clipmap grid, but it ships and it compiles.
             yield return new("WaterClipmap", ShaderSources.WaterClipmapVert, ShaderSources.WaterFrag);
+            yield return new("BoundedWater", ShaderSources.BoundedWaterVert, ShaderSources.BoundedWaterFrag);
             yield return new("WaterTriangle", ShaderSources.WaterVert, ShaderSources.WaterTriangleFrag);
             yield return new("WaterClipmapTriangle", ShaderSources.WaterClipmapVert, ShaderSources.WaterTriangleFrag);
             // The underwater caustic passes: the surface field, the map subtract and the sun-view sheets.
@@ -201,7 +210,8 @@ namespace KhaozEngine.Tests.Gpu
             // Render3D temporal resolve and its depth store, sharing FullscreenVert.
             yield return new("TemporalResolve", ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag);
             yield return new("TemporalDepthStore", ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag);
-            // The resolve's History, Disocclusion and Reactive debug views, one program over the resolve's own core.
+            // The resolve's History, Disocclusion, Reactive and Shimmer debug views, one program over the resolve's own
+            // core.
             yield return new("TemporalDebugView", ShaderSources.FullscreenVert, ShaderSources.TemporalDebugFrag);
             // The on-request count probe, the same core sampled on a coarse grid.
             yield return new("TemporalCountProbe", ShaderSources.FullscreenVert, ShaderSources.TemporalProbeFrag);

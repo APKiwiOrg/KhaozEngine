@@ -186,11 +186,13 @@ public class ParticleEffectPlayerTests
             b.Update(0.05f);
         }
 
+        Assert.Equal(2, a.PhaseCount);
         Assert.Equal(a.PhaseCount, b.PhaseCount);
         for (int ph = 0; ph < a.PhaseCount; ph++)
         {
             var pa = a.PhaseSystem(ph);
             var pb = b.PhaseSystem(ph);
+            Assert.True(pa.ActiveCount > 0);
             Assert.Equal(pa.ActiveCount, pb.ActiveCount);
             for (int i = 0; i < pa.ActiveCount; i++)
             {
@@ -238,7 +240,9 @@ public class ParticleEffectPlayerTests
         player.Play(Vector3.Zero, Vector3.UnitY);
         player.Update(0.05f);
 
-        foreach (var p in player.PhaseSystem(0).Active)
+        var pool = player.PhaseSystem(0);
+        Assert.False(pool.Active.IsEmpty);
+        foreach (var p in pool.Active)
         {
             Vector3 velDir = Vector3.Normalize(p.Velocity);
             Assert.True((velDir - Vector3.UnitY).Length() < 1e-4f, $"expected +Y velocity, got {velDir}");

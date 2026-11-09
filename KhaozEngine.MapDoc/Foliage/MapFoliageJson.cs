@@ -192,7 +192,8 @@ internal static class MapFoliageJson
                 Closed(e, label, SpaceMembers);
                 return new(MapSupportBindingKind.Space, null, Text(e, "spaceId", label), Finite(e, "referenceY", label),
                     Finite(e, "searchBelow", label), Finite(e, "searchAbove", label));
-            default: throw label.Property("kind").Refuse(MapDocumentRefusal.SchemaEnumUnsupported, label + ": 'kind' must be Surface or Space.",
+            default:
+                throw label.Property("kind").Refuse(MapDocumentRefusal.SchemaEnumUnsupported, label + ": 'kind' must be Surface or Space.",
                 actualText: kind.ValueKind == JsonValueKind.String ? kind.GetString() : null, enumType: typeof(MapSupportBindingKind));
         }
     }
@@ -215,7 +216,10 @@ internal static class MapFoliageJson
             };
             throw new MapDocumentException(reason, label + " carries exactly the members of its kind.")
             {
-                LayerId = layerId, FieldPath = "support." + field, SurfaceId = value.SurfaceId, SpaceId = value.SpaceId,
+                LayerId = layerId,
+                FieldPath = "support." + field,
+                SurfaceId = value.SurfaceId,
+                SpaceId = value.SpaceId,
                 EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapSupportBindingKind) : null,
                 ActualInteger = reason == MapDocumentRefusal.SchemaEnumUnsupported ? (long)value.Kind : null,
             };

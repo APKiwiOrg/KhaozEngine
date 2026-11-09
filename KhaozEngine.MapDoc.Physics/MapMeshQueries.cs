@@ -120,35 +120,6 @@ internal static class MapMeshQueries
     }
 
     internal static bool Cast(MapDouble3 origin, MapDouble3 direction, double tStart, double tEnd, TriangleMeshShape mesh,
-        MapDoublePose pose, out double t, out MapDouble3 normal)
-    {
-        t = 0d;
-        normal = default;
-        MapDouble3[] vertices = Centred(pose, mesh.Vertices);
-        MapDouble3 o = origin.Subtract(pose.Position);
-        int[] indices = mesh.Indices;
-        bool any = false;
-        for (int i = 0; i + 2 < indices.Length; i += 3)
-        {
-            MapDouble3 a = vertices[indices[i]];
-            MapDouble3 e1 = vertices[indices[i + 1]].Subtract(a), e2 = vertices[indices[i + 2]].Subtract(a);
-            MapDouble3 p = MapDouble3.Cross(direction, e2);
-            double determinant = Dot(e1, p);
-            if (determinant == 0d) continue;
-            double inverse = 1d / determinant;
-            MapDouble3 s = o.Subtract(a);
-            double u = Dot(s, p) * inverse;
-            if (u < 0d || u > 1d) continue;
-            MapDouble3 q = MapDouble3.Cross(s, e1);
-            double v = Dot(direction, q) * inverse;
-            if (v < 0d || u + v > 1d) continue;
-            double hit = Dot(e2, q) * inverse;
-            if (hit < tStart || hit > tEnd || (any && hit >= t)) continue;
-            any = true;
-            t = hit;
-            normal = MapDouble3.Cross(e1, e2);
-            if (Dot(normal, direction) > 0d) normal = normal.Scale(-1d);
-        }
-        return any;
-    }
+        MapDoublePose pose, out double t, out MapDouble3 normal) =>
+        ShapeRayQueries.CastMesh(origin, direction, tStart, tEnd, mesh, pose, out t, out normal);
 }

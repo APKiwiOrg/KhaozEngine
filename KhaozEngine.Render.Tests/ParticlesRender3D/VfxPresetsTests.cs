@@ -14,13 +14,8 @@ namespace KhaozEngine.Tests.ParticlesRender3D
     public sealed class VfxPresetsTests
     {
         // The roster is discovered by reflection over VfxPresets' public static VfxPreset properties, instead of
-        // a hand-typed list, so a newly added preset is automatically covered by every theory below with nothing
-        // else to update. As of this write there are 10: FireBurst, FrostShatter, HealMotes, EmberDrift,
-        // SparkShower, Shockwave, SmokePlume, ArcaneSparkle, HeatHaze, EssenceMotes. That count is also the floor
-        // MinimumPresetCount checks in PresetRoster_HasAtLeastTheKnownPresetCount below, so an accidental
-        // emptying of the roster (a broken filter, a renamed type) fails loudly instead of quietly running the
-        // theories below over zero cases.
-        private const int MinimumPresetCount = 10;
+        // a hand-typed list, so a newly added preset is automatically covered by every theory below. The roster
+        // guard rejects empty discovery without pinning how many presets the library must publish.
 
         private static readonly PropertyInfo[] PresetProperties = typeof(VfxPresets)
             .GetProperties(BindingFlags.Public | BindingFlags.Static)
@@ -51,13 +46,17 @@ namespace KhaozEngine.Tests.ParticlesRender3D
             return (VfxPreset)property.GetValue(null)!;
         }
 
+        // Every validator below reads the discovered list, so a preset the discovery missed would lose all of them.
         [Fact]
-        public void PresetRoster_HasAtLeastTheKnownPresetCount()
+        public void PresetRoster_IsEveryShippedPreset()
         {
-            Assert.True(
-                PresetProperties.Length >= MinimumPresetCount,
-                $"expected at least {MinimumPresetCount} VfxPresets properties, found {PresetProperties.Length}. " +
-                "An emptied or misdiscovered preset roster would otherwise run every theory below over zero cases.");
+            string[] shipped =
+            {
+                "ArcaneSparkle", "EmberDrift", "EssenceMotes", "FireBurst", "FrostShatter",
+                "HealMotes", "HeatHaze", "Shockwave", "SmokePlume", "SparkShower",
+            };
+
+            Assert.Equal(shipped, PresetProperties.Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal));
         }
 
         [Theory]
@@ -78,6 +77,7 @@ namespace KhaozEngine.Tests.ParticlesRender3D
             VfxPreset preset = Resolve(name);
             var player = new ParticleEffectPlayer(preset.Effect, maxInstances: 4, seed: 1);
 
+            Assert.True(player.PhaseCount > 0);
             for (int ph = 0; ph < player.PhaseCount; ph++)
             {
                 Assert.True(player.PhaseSystem(ph).Capacity > 0, $"phase {ph} pool capacity must be positive");
@@ -97,22 +97,31 @@ namespace KhaozEngine.Tests.ParticlesRender3D
             var dir = Vector3.Normalize(new Vector3(0.2f, 1f, 0.1f));
             pa.Play(origin, dir);
             pb.Play(origin, dir);
-            for (int i = 0; i < 60; i++)
+            Assert.True(pa.PhaseCount > 0);
+            Assert.Equal(pa.PhaseCount, pb.PhaseCount);
+            float end = 0f;
+            for (int ph = 0; ph < a.Effect.PhaseCount; ph++)
             {
-                pa.Update(1f / 60f);
-                pb.Update(1f / 60f);
+                ParticleEffectPhase phase = a.Effect.GetPhase(ph);
+                end = MathF.Max(end, phase.Delay + phase.Duration);
             }
-
-            for (int ph = 0; ph < pa.PhaseCount; ph++)
+            const float dt = 1f / 60f;
+            int steps = (int)MathF.Ceiling(end / dt) + 1;
+            bool observedParticles = false;
+            for (int i = 0; i < steps; i++)
             {
-                ParticleSystem sa = pa.PhaseSystem(ph);
-                ParticleSystem sb = pb.PhaseSystem(ph);
-                Assert.Equal(sa.ActiveCount, sb.ActiveCount);
-                if (sa.ActiveCount > 0)
+                pa.Update(dt);
+                pb.Update(dt);
+                for (int ph = 0; ph < pa.PhaseCount; ph++)
                 {
-                    Assert.Equal(sa.Active[0].Position, sb.Active[0].Position);
+                    ParticleSystem sa = pa.PhaseSystem(ph);
+                    ParticleSystem sb = pb.PhaseSystem(ph);
+                    observedParticles |= sa.ActiveCount > 0;
+                    Assert.Equal(sa.ActiveCount, sb.ActiveCount);
+                    Assert.Equal(sa.Active.ToArray(), sb.Active.ToArray());
                 }
             }
+            Assert.True(observedParticles);
         }
 
         [Theory]

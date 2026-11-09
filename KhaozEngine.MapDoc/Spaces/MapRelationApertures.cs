@@ -73,8 +73,11 @@ internal static class MapRelationApertures
                 { RecordId = opening.Id, Patch = opening.Patch, PatchStatus = status };
             MapOpeningPlane plane;
             try { plane = MapOpeningBoundary.Compile(MapSpaceGeometry.Surface(view, opening.Patch.SurfaceId), patch, opening); }
-            catch (MapDocumentException error) { throw error.WithSourceName(null, $"invalid aperture: opening '{opening.Id}' ({error.Message})",
-                resolutionStatus: MapResolveStatus.Invalid); }
+            catch (MapDocumentException error)
+            {
+                throw error.WithSourceName(null, $"invalid aperture: opening '{opening.Id}' ({error.Message})",
+                resolutionStatus: MapResolveStatus.Invalid);
+            }
             MapExactPoint[] points = plane.ExactTriangles.SelectMany(t => new[] { t.A, t.B, t.C }).ToArray();
             MapExactValue minX = points.Min(p => p.X), maxX = points.Max(p => p.X);
             MapExactValue minZ = points.Min(p => p.Z), maxZ = points.Max(p => p.Z);

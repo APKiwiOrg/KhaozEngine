@@ -26,6 +26,7 @@ public sealed class MapDocumentRefusalConstructorFenceTests
         {
             typeof(MapDocumentException).Assembly,
             typeof(MapPhysicsRegistration).Assembly,
+            typeof(KhaozEngine.MapDoc.Render3D.NativeMapView).Assembly,
             typeof(EditorDocument).Assembly,
             typeof(MapEditSession).Assembly,
             typeof(MapAssetManifestAdapter).Assembly,

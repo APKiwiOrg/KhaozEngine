@@ -31,7 +31,7 @@ internal sealed partial class ContactNavigationProof : IDisposable
         _reuse = reuse ?? ContactNavigationReusePolicy.Capture();
         _basis = bake.Basis ?? throw new NavigationBuildException(NavigationBuildRefusal.CaptureLeaseRequired,
             "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.")
-            { RequiredCapability = typeof(IPhysicsQueryLeaseSource) };
+        { RequiredCapability = typeof(IPhysicsQueryLeaseSource) };
         _snapshot = _reuse.InitialHolds || maxDropMetres > 0 ? ContactNavigationSnapshot.Capture(bake, context) : null;
         if (_snapshot is null) _basis.AssertCurrent();
         try
@@ -250,7 +250,9 @@ internal sealed partial class ContactNavigationProof : IDisposable
         MovementAvailability? availability = null, MovementFrameDescriptor? actualFrame = null, MovementQueryLeaseId? actualLease = null) =>
         new(reason, $"Contact navigation cell ({CellX(feet)}, {CellZ(feet)}): {message}")
         {
-            CellX = CellX(feet), CellZ = CellZ(feet), Availability = availability,
+            CellX = CellX(feet),
+            CellZ = CellZ(feet),
+            Availability = availability,
             ExpectedFrame = reason is NavigationBuildRefusal.ProofFrameChanged or NavigationBuildRefusal.MovementLeaseFrameMismatch ? _frame : null,
             ActualFrame = reason is NavigationBuildRefusal.ProofFrameChanged or NavigationBuildRefusal.MovementLeaseFrameMismatch ? actualFrame : null,
             ExpectedGeneration = reason == NavigationBuildRefusal.MovementLeaseGenerationMismatch ? _basis.GeometryGeneration : null,

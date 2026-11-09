@@ -18,14 +18,14 @@ public static class MapFinePatchConversion
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
             throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "fine-patch conversion is not representable", error)
-                { SurfaceId = request.SourceSurfaceId, OtherSurfaceId = request.FineSurfaceId, Operation = nameof(Convert) };
+            { SurfaceId = request.SourceSurfaceId, OtherSurfaceId = request.FineSurfaceId, Operation = nameof(Convert) };
         }
     }
 
     static MapConversionResult ConvertCore(MapSurfaceSet surfaces, MapFinePatchRequest request)
     {
         if (request.Subdivision is < 2 or > 64) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, "subdivision must be 2 to 64")
-            { FieldPath = "Subdivision", ActualInteger = request.Subdivision, MinimumInteger = 2, MaximumInteger = 64 };
+        { FieldPath = "Subdivision", ActualInteger = request.Subdivision, MinimumInteger = 2, MaximumInteger = 64 };
         if (string.IsNullOrWhiteSpace(request.SourceSurfaceId) || string.IsNullOrWhiteSpace(request.FineSurfaceId) ||
             request.SourceSurfaceId == request.FineSurfaceId)
         {
@@ -35,22 +35,23 @@ public static class MapFinePatchConversion
                 : MapDocumentRefusal.AuthoredValueMismatch, "distinct surface ids are required")
             {
                 FieldPath = missingSource ? "SourceSurfaceId" : "FineSurfaceId",
-                SurfaceId = request.SourceSurfaceId, OtherSurfaceId = request.FineSurfaceId
+                SurfaceId = request.SourceSurfaceId,
+                OtherSurfaceId = request.FineSurfaceId
             };
         }
         ArgumentNullException.ThrowIfNull(request.Regions);
         int regionCount = request.Regions.Count;
         if (regionCount == 0) throw new MapDocumentException(MapDocumentRefusal.TerrainConversionRegionsMissing, "conversion regions are required")
-            { FieldPath = "Regions", ActualCount = regionCount };
+        { FieldPath = "Regions", ActualCount = regionCount };
         for (int i = 0; i < request.Regions.Count; i++)
         {
             MapCellRect region = request.Regions[i];
             if (region.MinX >= region.MaxXExclusive || region.MinZ >= region.MaxZExclusive)
                 throw new MapDocumentException(MapDocumentRefusal.BoundsInvalid, "conversion regions must be nonempty")
-                    { FieldPath = "Regions", Index = i };
+                { FieldPath = "Regions", Index = i };
             for (int j = 0; j < i; j++)
                 if (region.Overlaps(request.Regions[j])) throw new MapDocumentException(MapDocumentRefusal.TerrainConversionRegionsOverlap, "conversion regions must be disjoint")
-                    { FieldPath = "Regions", Index = i, OtherIndex = j };
+                { FieldPath = "Regions", Index = i, OtherIndex = j };
         }
         MapSurfaceSet candidate = surfaces.Clone();
         RequireReferences(candidate);
@@ -59,12 +60,12 @@ public static class MapFinePatchConversion
             RequireValid(MapSeamValidator.ValidateCornerDependencyFindings(patch, originalView));
         MapSurfaceRef source = candidate.Refs.SingleOrDefault(s => s.Id == request.SourceSurfaceId)
             ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"missing source surface '{request.SourceSurfaceId}'")
-                { SurfaceId = request.SourceSurfaceId, FieldPath = "SourceSurfaceId" };
+            { SurfaceId = request.SourceSurfaceId, FieldPath = "SourceSurfaceId" };
         if (source.Role == MapSurfaceRole.PaintOverride) throw new MapDocumentException(MapDocumentRefusal.SurfacePaintPhysicalCompileUnsupported, "conversion requires a physical surface")
-            { SurfaceId = source.Id, FieldPath = "Role" };
+        { SurfaceId = source.Id, FieldPath = "Role" };
         if (candidate.Refs.Any(s => s.Id == request.FineSurfaceId))
             throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"fine surface '{request.FineSurfaceId}' already exists")
-                { SurfaceId = request.FineSurfaceId, SubjectKind = "surface" };
+            { SurfaceId = request.FineSurfaceId, SubjectKind = "surface" };
         var fine = source with
         {
             Id = request.FineSurfaceId,
@@ -88,7 +89,7 @@ public static class MapFinePatchConversion
                 {
                     if (!TryCell(candidate, source.Id, x, z, out MapSurfacePatch? patch, out _, out _))
                         throw new MapDocumentException(MapDocumentRefusal.TerrainCellMissing, $"missing source cell ({x}, {z})")
-                            { SurfaceId = source.Id, Address = MapLatticeAddress.Corner(x, z) };
+                        { SurfaceId = source.Id, Address = MapLatticeAddress.Corner(x, z) };
                     cells.Add(new(source, patch!, x, z));
                 }
         cells.Sort((a, b) => a.CellZ != b.CellZ ? a.CellZ.CompareTo(b.CellZ) : a.CellX.CompareTo(b.CellX));
@@ -154,8 +155,10 @@ public static class MapFinePatchConversion
             RequireValid(MapSeamValidator.ValidateCornerDependencyFindings(patch, view));
         foreach (MapSurfacePatch patch in patches)
         {
-            _ = MapSurfacePatchCodec.Encode(patch);
-            _ = MapSurfaceCompiler.Compile(fine, patch);
+            _ = MapSurfacePatchCodec.Encode(patch, out var encoding);
+            using var consumedEncoding = encoding;
+            var compiled = MapSurfaceCompiler.Compile(fine, patch);
+            compiled.PreparationOwnership?.Dispose();
         }
         IReadOnlyList<MapAuthoredDifference> differences = MapConversionDifferences.Collect(surfaces, candidate,
             source, fine, cells, classifications, rim, request.Subdivision);
@@ -174,7 +177,7 @@ public static class MapFinePatchConversion
         MapExactValue value = unit.Exact().Divide(new(k, 1));
         if (value.Numerator > int.MaxValue || value.Denominator > int.MaxValue)
             throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "fine lattice unit is not representable")
-                { Numerator = unit.Numerator, Denominator = unit.Denominator, ActualInteger = k, Operation = nameof(DivideUnit) };
+            { Numerator = unit.Numerator, Denominator = unit.Denominator, ActualInteger = k, Operation = nameof(DivideUnit) };
         return new((int)value.Numerator, (int)value.Denominator);
     }
 
@@ -182,7 +185,7 @@ public static class MapFinePatchConversion
     {
         long value = (long)height * k;
         if (value < int.MinValue || value > int.MaxValue) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "fine height offset overflow")
-            { ActualInteger = value, MinimumInteger = int.MinValue, MaximumInteger = int.MaxValue, Operation = nameof(ScaleHeight) };
+        { ActualInteger = value, MinimumInteger = int.MinValue, MaximumInteger = int.MaxValue, Operation = nameof(ScaleHeight) };
         return (int)value;
     }
 
@@ -222,7 +225,7 @@ public static class MapFinePatchConversion
                 _ => false,
             };
             if (intersects) throw new MapDocumentException(MapDocumentRefusal.TerrainBoundaryRecordIntersects, $"conversion region carries boundary record '{record.Id}'")
-                { RecordId = record.Id, SurfaceId = sourceId };
+            { RecordId = record.Id, SurfaceId = sourceId };
         }
 
         bool Segments(IReadOnlyList<MapLatticeVertex> vertices)

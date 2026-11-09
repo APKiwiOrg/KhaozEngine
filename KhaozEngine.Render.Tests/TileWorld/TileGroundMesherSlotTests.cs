@@ -254,6 +254,7 @@ public class TileGroundMesherSlotTests
             for (int rotation = 0; rotation < 4; rotation++)
             {
                 int count = TileTriangulation.Triangulate(shape, rotation, rotation % 2 == 0, triangles);
+                Assert.Equal(shape is TileOverlayShape.CornerQuarter or TileOverlayShape.CornerThreeQuarter ? 4 : 2, count);
                 for (int i = 0; i < count; i++)
                 {
                     AssertIsCornerOrMidEdge(triangles[i].A);
@@ -332,6 +333,15 @@ public class TileGroundMesherSlotTests
         // mesher writes inside (0, 2), which is what the never-zero promise rests on.
         Assert.Throws<ArgumentOutOfRangeException>(() => new TileGroundMesherOptions { JitterAmplitude = amplitude });
         Assert.Throws<ArgumentOutOfRangeException>(() => TileGroundMesher.CornerJitter(GrassRegion(), 40, 40, 0, amplitude));
+    }
+
+    [Fact]
+    public void The_largest_amplitude_below_one_is_accepted_and_stays_inside_the_packable_range()
+    {
+        float largest = MathF.BitDecrement(1f);
+
+        Assert.Equal(largest, new TileGroundMesherOptions { JitterAmplitude = largest }.JitterAmplitude);
+        Assert.InRange(TileGroundMesher.CornerJitter(GrassRegion(), 40, 40, 0, largest), MathF.BitIncrement(0f), MathF.BitDecrement(2f));
     }
 
     [Fact]
@@ -421,7 +431,8 @@ public class TileGroundMesherSlotTests
     {
         GltfMesh? mesh = TileGroundMesher.Build(doc, TileRenderTestData.Catalogs, TileRenderTestData.Region, 0, options);
         Assert.NotNull(mesh);
-        return mesh!;
+        Assert.NotEmpty(mesh.Vertices);
+        return mesh;
     }
 
     // The slot the mesher's default identity map holds this material in.
@@ -464,6 +475,7 @@ public class TileGroundMesherSlotTests
             found.Add(b);
             found.Add(c);
         }
+        Assert.NotEmpty(found);
         return found;
     }
 

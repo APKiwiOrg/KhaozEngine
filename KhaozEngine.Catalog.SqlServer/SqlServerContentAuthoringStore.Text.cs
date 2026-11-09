@@ -238,7 +238,8 @@ public sealed partial class SqlServerContentAuthoringStore : IContentTextAuthori
                     $"Text for type {target.Type.Value} row '{target.Key}' names a row neither the base version nor the open draft holds."),
                 target.Type,
                 0,
-                ContentAuthoringException.UnknownRowReason) { RowKey = target.Key.ToString() };
+                ContentAuthoringException.UnknownRowReason)
+            { RowKey = target.Key.ToString() };
         }
 
         bool isDeclared = context.Declared.Contains(target.Language)
@@ -254,7 +255,8 @@ public sealed partial class SqlServerContentAuthoringStore : IContentTextAuthori
                         $"Language '{target.Language}' is neither declared by version {context.Active} nor introduced by the open draft, so there is nothing to remove in it. A Set is what declares a language."),
                     target.Type,
                     id,
-                    ContentAuthoringException.TextLanguageUndeclaredReason) { FieldName = target.FieldName, Language = target.Language };
+                    ContentAuthoringException.TextLanguageUndeclaredReason)
+                { FieldName = target.FieldName, Language = target.Language };
             }
 
             if (standing is null

@@ -108,7 +108,8 @@ internal static class MapAssetManifestReader
             throw new MapDocumentException(float.IsFinite(asset.SourceUnitsToMetres) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
                 $"Asset '{asset.Id}' sourceUnitsToMetres must be finite and positive.")
             {
-                AssetId = asset.Id, FieldPath = Field(fieldPath, "sourceUnitsToMetres"),
+                AssetId = asset.Id,
+                FieldPath = Field(fieldPath, "sourceUnitsToMetres"),
                 ActualNumber = float.IsFinite(asset.SourceUnitsToMetres) ? asset.SourceUnitsToMetres : null,
                 MinimumNumber = float.IsFinite(asset.SourceUnitsToMetres) ? 0 : null,
             };

@@ -65,7 +65,7 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
 
 ## Writing tests
 
-These are binding here and in every game repo. Reasons and the full list:
+These are binding here and in every game repo. The numbered list:
 [Contributor rules: Writing tests](docs/CONTRIBUTOR-RULES.md#writing-tests).
 
 - EVERY TEST GUARDS SOMETHING DISTINCT: a contract, a rule, an owner ruling or a past regression. Decide a

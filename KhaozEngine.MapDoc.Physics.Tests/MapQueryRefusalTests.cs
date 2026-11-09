@@ -28,8 +28,10 @@ public sealed class MapQueryRefusalTests
         float tolerance = fault == "tolerance" ? -1 : fault == "tolerance-nonfinite" ? float.NaN : 0;
         MapInteractionBand? band = fault switch
         {
-            "band-min" => new(float.NaN, 0), "band-max" => new(0, float.PositiveInfinity),
-            "band-order" => new(1, 0), _ => null,
+            "band-min" => new(float.NaN, 0),
+            "band-max" => new(0, float.PositiveInfinity),
+            "band-order" => new(1, 0),
+            _ => null,
         };
         var error = Assert.Throws<MapQueryRangeException>(() => query.Within(body, "crate", range, tolerance, band));
         Assert.IsAssignableFrom<ArgumentOutOfRangeException>(error);

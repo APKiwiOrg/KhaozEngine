@@ -107,7 +107,7 @@ The additive `Bounds(placement, shapes, out spatialBounds)` overload also return
 envelope union for edit invalidation, from the same geometry resolution. Use that spatial extent for Physics,
 Nav and Residency consequences.
 
-`MapShapeBounds.Of` computes tight world bounds in scalar double under the physics seam's conventions: boxes,
+`MapShapeBounds.Of` delegates to `Physics.PropQueryGeometry.Bounds` and computes tight world bounds in scalar double under the physics seam's conventions: boxes,
 spheres and capsules are centred on their pose, a cylinder stands on its base and spans `Length` along its local Y,
 hull and mesh points are relative to their pose, and compound children compose their local pose.
 
@@ -126,7 +126,7 @@ before indexing any, and reports `WorkCapacityExceeded` with `OwnerId`, `Budget`
 ## Terrain physics
 
 ```csharp
-MapTerrainChunkSet chunks = MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(MaxTrianglesPerChunk: 1024));
+using MapTerrainChunkSet chunks = MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(MaxTrianglesPerChunk: 1024));
 ```
 
 `Compile` groups R2's compiled support floors, ceilings and wall strip sides of a complete view into one-sided
@@ -181,6 +181,13 @@ terrain chunk, its triangle owners. `BuildHash` (domain `kemap/built-world/1`) c
 version, consumer policy, interaction policy, chunk policy, legacy terrain identity and every placement and chunk
 digest. A resolver 1 world also carries its `LegacySculptTiles` (`MapLegacySculptTile`), sculpt cell size, terrain
 block digest and `LegacyTerrainIdentity`, so a consumer covers only the sculpt tiles a region touches.
+A resolver 2 build resolves under `options.Resolve.QueryLimits` and `ExpansionLimits`, the same caller profile scene
+residency takes, so a world whose support needs more than the default `MaxPageReads` builds once the caller declares
+it. Whole-view room coverage refines under `QueryLimits.Refinement`, the engine default when it is null. The profile
+only decides where the build refuses and never enters `AuthoredHash`, `BuildHash` or the annotation digest. The
+terrain and surface witnesses (`Terrain.Witness.ScopedDigest`, `Surfaces.Witness.ScopeDigest`) name the request,
+budgets included, so they differ between profiles and agree for value-equal ones. `MapWorldBuildOptions` equality
+includes the profile.
 
 Prefab and unpacked complete builds validate every effective room coverage finding even without water.
 Diagnostic expansion remains available for inspecting ambiguous membership. Independent coincident support floors
@@ -198,6 +205,19 @@ Positions exactly at the limit on an axis are accepted.
 Options that disagree with the document resolver retain `MapDocumentException` with
 `MapDocumentRefusal.ResolverContractMismatch`, `PayloadVersion`, `ResolverVersion`, `OptionsResolverVersion`
 and `ExpectedResolverVersion`. The identifiers follow the shared [MapDoc refusal contract](../KhaozEngine.MapDoc/README.md#loud-failures).
+
+### Scoped simulation ownership
+
+`MapScopedWorldBuilder.Build` prepares one admitted `MapScopedScene` under its captured byte allowance. Patch,
+strip, water body, bound read, shape decode and per-instance workspace releases after its consumer.
+Independent terrain meshes, placement shapes, water and descriptor containers keep one retained receipt
+on the returned `MapScopedWorld`.
+Dispose a directly built scoped world after its last consumer. `MapSimulationCoverage.Acquire` owns its worlds
+and neutral coverage until `MapSimulationLease.Dispose`, and releases unpublished worlds if a later domain refuses.
+Navigation partitions, seams and links derived from a scoped world share that world's lifetime. Their workspace
+releases on return and their retained descriptor inventory joins the world receipt. Navigation rejects disposed
+worlds. `MapTerrainChunkSet` and `MapAssetShapes` also release their own metered preparation credit on disposal
+when used as standalone products.
 
 ### Feature query diagnostics
 
@@ -313,13 +333,17 @@ to model extents and motion padding. This package consumes no foliage render bat
 | Consumer | Boundary and remaining proof |
 | --- | --- |
 | R7 | Complete CPU ownership and independent-head acceptance, with the [MapDoc evidence table](../KhaozEngine.MapDoc/README.md#public-foliage-acceptance-and-deferred-ownership) |
-| R8 | Cosmetic padded mesh bounds and one owned batch across intersected memberships. Actual residency/upload, windowed context, viewport drawing and interior-cut adapter [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) remain |
+| R8a and R8b | R8a supplies windowed context, one render owner across memberships, upload and viewport drawing. R8b retains the interior-cut adapter [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) |
 | R9 and R10 | Interactive painting/input and complete wire parity, including native placement ID rename |
 | R11/G2 and R8/G3 | Actual importer/source acceptance and appearance acceptance, respectively |
 
 The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) owns full-request support,
 canonical identity, ordinal fallback, typed refusal and atomic observer completion. Sparse storage does not prove
-partial-residency generation. R8 must add its immutable windowed closure/completeness constructor first.
+partial-residency generation by itself. `MapWindowFoliageContext` now supplies the separate scoped closure
+and witness. `MapSimulationResidency` uses independent required-domain leases for statics and navigation.
+Scene-oracle submission checks and native capture/backend evidence do not replace those simulation
+leases. The [render verification contract](../KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification)
+separates source roster, frame and pixel proofs from physical admission.
 
 ## Pick, reach and stances
 
@@ -336,6 +360,9 @@ IReadOnlyList<Vector3> stances = MapStanceCandidates.Find(world, "door-1", actor
 agree. `Pick`, `Distance` and `Within` query interaction envelopes only, clipped to an optional absolute
 `MapInteractionBand`. `PhysicalDistance` queries colliders only. Equal pick distances resolve to the ordinally
 smallest placement id. `MapShapeQueries` holds the same point, capsule and ray tests for one shape at a pose.
+Its ray route delegates to `Physics.ShapeRayQueries`, while movement distances retain their released contract.
+`MapInteractionEnvelope` delegates its upward sweep to `Physics.PropQueryGeometry.RaiseEnvelope` after admission.
+The MapDoc wrappers preserve their exception categories and the 1 m interaction minimum.
 
 Heads agree except for one residual dependency on the platform's double sine and cosine. A placement's world pose
 takes the sine and cosine of half its yaw in double and rounds each to float once, so no float trigonometry enters
@@ -460,7 +487,7 @@ than patch.
 `WorkCapacityExceeded` before any tile is listed. Inspect `Budget` `MaxStorageTiles`, `ActualCount`,
 inclusive `Limit` and the known `OwnerId`.
 
-`MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.
+`MapTileResidency` remains the streaming loader keyed by storage tile. The GPU-free `MapSimulationResidency` consumes this ownership independently of visual windows.
 
 ## Navigation tiles
 
@@ -555,8 +582,8 @@ overreach and edge-only contact. The digest enters its capture identity, while i
 An edit flagged `MapNativeInvalidation.Medium` names bodies in `WaterBodyIds`, and `Affected` maps those ids to water
 owners while `AffectedTiles` invalidates their capture tiles. Body ids alone do not invalidate water residency.
 Each body digest covers only what that body read, so an edit elsewhere leaves its tiles alone.
-R4 supplies data and queries only. Native movement uses the G1b adapter after #438 phase 4. Rendering and optical
-algorithms remain with R8. Format 6 moves native root digests and resolver-2 authored identities once even without
+R4 supplies data and queries only. Native movement uses the G1b adapter after #438 phase 4. R8a supplies current-look native rendering. Optical
+algorithms remain with R8b. Format 6 moves native root digests and resolver-2 authored identities once even without
 water, so navigation captures and caches keyed on them rebuild once.
 
 ## Physical relations

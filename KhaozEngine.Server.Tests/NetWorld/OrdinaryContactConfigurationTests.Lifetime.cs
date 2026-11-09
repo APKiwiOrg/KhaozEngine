@@ -77,13 +77,13 @@ public partial class OrdinaryContactConfigurationTests
             Assert.Equal(before + 1, world.Physics.ViewDisposals);
             Assert.Equal(WorldConfigurationRefusal.ServerTickWithUnreliableReplication,
                 Assert.Throws<WorldConfigurationException>(() => new WorldClient(ct, world.Ground, OrdinaryPlayerWorld.Tuning, new()
-            {
-                FrameAnchoring = false,
-                ReceiveServerTick = true,
-                RequestUnreliableDeltaReplication = true,
-                MovementRegistration = world.Registration,
-                MovementBoundary = world.Boundary
-            }, physics: world.Physics)).Reason);
+                {
+                    FrameAnchoring = false,
+                    ReceiveServerTick = true,
+                    RequestUnreliableDeltaReplication = true,
+                    MovementRegistration = world.Registration,
+                    MovementBoundary = world.Boundary
+                }, physics: world.Physics)).Reason);
             Assert.Equal(before + 2, world.Physics.ViewDisposals);
             Assert.Equal(0, world.Physics.SourceDisposals);
         }

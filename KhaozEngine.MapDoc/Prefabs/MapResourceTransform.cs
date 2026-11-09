@@ -48,7 +48,8 @@ public sealed record MapResourceTransform(MapEffectiveTransform Transform)
             throw new MapDocumentException(!double.IsFinite(value) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
                 "Effective coordinate is not representable within the installed metre limit.")
             {
-                Operation = nameof(Freeze), ActualNumber = value,
+                Operation = nameof(Freeze),
+                ActualNumber = value,
                 MinimumNumber = double.IsFinite(value) ? -MaxCoordinateMetres : null,
                 MaximumNumber = double.IsFinite(value) ? MaxCoordinateMetres : null,
             };
@@ -61,7 +62,7 @@ public sealed record MapResourceTransform(MapEffectiveTransform Transform)
         if (Math.Abs(x) > MaxCoordinateMetres || Math.Abs(y) > MaxCoordinateMetres || Math.Abs(z) > MaxCoordinateMetres)
             throw new MapDocumentException(MapDocumentRefusal.PrefabWorldCoordinateLimitExceeded, FormattableString.Invariant(
                 $"Static '{owner}' at ({x}, {y}, {z}) lies beyond {MaxCoordinateMetres:N0} m from the world origin on an axis."))
-                { OwnerId = owner, PositionX = x, PositionY = y, PositionZ = z, Limit = (long)MaxCoordinateMetres };
+            { OwnerId = owner, PositionX = x, PositionY = y, PositionZ = z, Limit = (long)MaxCoordinateMetres };
     }
 
     public Vector3 ToFrame(MapExactPoint world, WorldFrame frame)
@@ -73,8 +74,12 @@ public sealed record MapResourceTransform(MapEffectiveTransform Transform)
             throw new MapDocumentException(!float.IsFinite(y) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.FrameRadiusExceeded,
                 "Effective coordinate exceeds frame radius.")
             {
-                Operation = nameof(ToFrame), PositionX = x, PositionY = y, PositionZ = z,
-                FieldPath = !float.IsFinite(y) ? "$.position.y" : null, ActualNumber = !float.IsFinite(y) ? y : null,
+                Operation = nameof(ToFrame),
+                PositionX = x,
+                PositionY = y,
+                PositionZ = z,
+                FieldPath = !float.IsFinite(y) ? "$.position.y" : null,
+                ActualNumber = !float.IsFinite(y) ? y : null,
                 Limit = float.IsFinite(y) ? (long)WorldFrame.MaxLocalRadius : null,
             };
         return new(x, y, z);

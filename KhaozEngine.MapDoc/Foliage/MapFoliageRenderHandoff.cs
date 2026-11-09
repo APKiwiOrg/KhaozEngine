@@ -18,19 +18,33 @@ public sealed record MapFoliageModelExtent(string AssetId, MapLocalBounds Bounds
 public sealed record MapFoliageRenderBatch(MapFoliageSampleBatch Samples, MapFoliageStatus Status,
     MapBox3? Bounds, string DependencyDigest);
 
+internal readonly record struct MapFoliageInstanceRenderBatch(MapFoliageStatus Status, MapBox3? Bounds, string DependencyDigest);
+
 /// <summary>Builds conservative render bounds from exact CPU matrices without resampling or reconstructing poses.
 /// Consumers reject stale work using the dependency digest plus generation, retain one batch across every intersected
 /// residency membership and release it only after the last membership leaves. Actual streaming and upload are R8.</summary>
 public static class MapFoliageRenderHandoff
 {
+    internal static MapFoliageInstanceRenderBatch Create(MapFoliageInstanceBatch batch, IReadOnlyList<MapFoliageModelExtent> extents) =>
+        Build(batch.Status, batch.Count, batch.DependencyDigest,
+            i => new(batch.Columns.ModelId(batch.Columns.ModelIndex(i)), batch.Columns[i].Transform), extents);
     /// <summary>Applies source units once to all eight box corners, transforms by each original sample matrix, then
     /// expands XYZ by that model's explicit motion padding. Missing/duplicate/invalid extents refuse with Invalid and
     /// no usable bounds or digest. Incomplete source status propagates. Unused valid extents do not broaden the digest.</summary>
     public static MapFoliageRenderBatch Create(MapFoliageSampleBatch batch, IReadOnlyList<MapFoliageModelExtent> extents)
     {
         ArgumentNullException.ThrowIfNull(batch);
+        var result = Build(batch.Status, batch.Samples.Count, batch.DependencyDigest,
+            i => new(batch.Samples[i].AssetId, batch.Samples[i].Transform), extents);
+        return new(batch, result.Status, result.Bounds, result.DependencyDigest);
+    }
+
+    readonly record struct RenderRow(string AssetId, Matrix4x4 Transform);
+    static MapFoliageInstanceRenderBatch Build(MapFoliageStatus status, int count, string dependency,
+        Func<int, RenderRow> rowAt, IReadOnlyList<MapFoliageModelExtent> extents)
+    {
         ArgumentNullException.ThrowIfNull(extents);
-        if (batch.Status != MapFoliageStatus.Complete) return Refused(batch.Status);
+        if (status != MapFoliageStatus.Complete) return Refused(status);
         var models = new Dictionary<string, MapFoliageModelExtent>(StringComparer.Ordinal);
         foreach (MapFoliageModelExtent extent in extents)
         {
@@ -39,8 +53,9 @@ public static class MapFoliageRenderHandoff
         }
         var used = new HashSet<string>(StringComparer.Ordinal);
         MapBox3? bounds = null;
-        foreach (MapFoliageSample sample in batch.Samples)
+        for (int i = 0; i < count; i++)
         {
+            var sample = rowAt(i);
             if (!models.TryGetValue(sample.AssetId, out MapFoliageModelExtent? extent) || !Finite(sample.Transform) ||
                 sample.Transform.M14 != 0 || sample.Transform.M24 != 0 || sample.Transform.M34 != 0 ||
                 sample.Transform.M44 != 1) return Refused(MapFoliageStatus.Invalid);
@@ -65,7 +80,7 @@ public static class MapFoliageRenderHandoff
         {
             w.WriteStartArray();
             w.WriteStringValue("kemap/foliage-render/1");
-            w.WriteStringValue(batch.DependencyDigest);
+            w.WriteStringValue(dependency);
             foreach (string id in used.OrderBy(id => id, StringComparer.Ordinal))
             {
                 MapFoliageModelExtent extent = models[id];
@@ -79,9 +94,9 @@ public static class MapFoliageRenderHandoff
             }
             w.WriteEndArray();
         });
-        return new(batch, MapFoliageStatus.Complete, bounds, digest);
+        return new(MapFoliageStatus.Complete, bounds, digest);
 
-        MapFoliageRenderBatch Refused(MapFoliageStatus status) => new(batch, status, null, "");
+        MapFoliageInstanceRenderBatch Refused(MapFoliageStatus refused) => new(refused, null, "");
     }
 
     static bool Valid(MapFoliageModelExtent extent)

@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -32,15 +34,19 @@ public static class MapSurfaceCompiler
         if (maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxFaces));
         MapSurfaceRef surface = validated.Surface;
         MapSurfacePatch patch = validated.Patch;
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.BeforeCompile(patch, cells, surface, logical);
         try
         {
             long count = CountFaces(validated, cells, logical);
-            if (count > maxFaces) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, $"compiled patch exceeds face budget {maxFaces}")
-                { Patch = patch.Key, SurfaceId = surface.Id, Budget = "MaxFacesPerPatch", ActualCount = count, Limit = maxFaces };
+            if (DemandDiagnostics.Check(validated, "MapSurfaceCompiler.MaxFacesPerPatch.1", "MaxFacesPerPatch", 0, count, maxFaces, count > maxFaces, CapacityDemandLifetime.Cumulative)) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, $"compiled patch exceeds face budget {maxFaces}")
+            { Patch = patch.Key, SurfaceId = surface.Id, Budget = "MaxFacesPerPatch", ActualCount = count, Limit = maxFaces };
             if (surface.Role == MapSurfaceRole.PaintOverride)
                 throw new MapDocumentException(MapDocumentRefusal.SurfacePaintPhysicalCompileUnsupported, "paint override has no physical faces. Use ApplyPaintOverride.")
                 { Patch = patch.Key, SurfaceId = surface.Id };
-            return CompileCore(surface, patch, cells, (int)count, logical);
+            var result = CompileCore(surface, patch, cells, (int)count, logical);
+            result.PreparationOwnership = preparation?.Complete(result.InventoryBytes);
+            return result;
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
@@ -57,6 +63,8 @@ public static class MapSurfaceCompiler
         ArgumentNullException.ThrowIfNull(cells);
         MapSurfaceRef surface = validated.Surface;
         MapSurfacePatch patch = validated.Patch;
+        using var subdivisionWorkspace = Scene.MapSceneAdmission.Current?.Workspace();
+        subdivisionWorkspace?.Reserve(checked(16L * patch.Width * patch.Depth));
         int[] subdivisions = Subdivisions(patch);
         long count = 0;
         for (int z = 0; z < patch.Depth; z++)
@@ -106,6 +114,8 @@ public static class MapSurfaceCompiler
         var faces = new List<MapCompiledFace>(count);
         var paint = new List<MapPaintCoverage>(count);
         var fallback = new List<MapFallbackCell>();
+        using var subdivisionWorkspace = Scene.MapSceneAdmission.Current?.Workspace();
+        subdivisionWorkspace?.Reserve(checked(16L * patch.Width * patch.Depth));
         int[] subdivisions = Subdivisions(patch);
         Span<MapLatticeTriangle> parents = stackalloc MapLatticeTriangle[4];
         Span<MapSurfaceVertex> boundary = stackalloc MapSurfaceVertex[MaxChildrenPerParent];
@@ -235,7 +245,9 @@ public static class MapSurfaceCompiler
                 : surface.Frame is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaEnumUnsupported,
                 "invalid surface metadata or patch surface id")
             {
-                SurfaceId = surface.Id, Patch = patch.Key, ResolutionStatus = MapResolveStatus.Invalid,
+                SurfaceId = surface.Id,
+                Patch = patch.Key,
+                ResolutionStatus = MapResolveStatus.Invalid,
                 FieldPath = surface.Id != patch.Key.SurfaceId ? "Key.SurfaceId" : surface.Frame is null ? "Frame"
                     : !Enum.IsDefined(surface.Role) ? "Role" : "PresencePolicy",
                 EnumType = surface.Id != patch.Key.SurfaceId || surface.Frame is null ? null

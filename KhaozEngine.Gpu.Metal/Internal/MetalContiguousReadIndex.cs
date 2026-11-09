@@ -17,6 +17,12 @@ internal sealed class MetalContiguousReadIndex
     internal long ExtendsForTests => _earlier.ExtendsForTests;
     internal long RotationsForTests => _earlier.RotationsForTests;
 
+    internal void ReserveLike(MetalContiguousReadIndex other)
+    {
+        if (_run.Length < other._run.Length) Array.Resize(ref _run, other._run.Length);
+        _earlier.ReserveLike(other._earlier);
+    }
+
     internal void Clear()
     {
         // The run holds only byte offsets, so clearing its live length releases all coverage.

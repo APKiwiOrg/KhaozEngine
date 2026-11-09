@@ -13,8 +13,9 @@ namespace KhaozEngine.Terrain
     /// keeps it affordable, and each layer sets its own dissolve fade band (<see cref="FadeBandWidth"/>) and optional
     /// far LOD variants (<see cref="LodMeshes"/> / <see cref="LodPartMeshes"/> at <see cref="LodDistance"/>). Build
     /// one with the scatter, companion or placement factories, in single or multi-part form.</summary>
-    public readonly struct PropLayer
+    public readonly partial struct PropLayer
     {
+        readonly NativeInventory? _native;
         public ScatterConfig? Scatter { get; }
         public CompanionConfig? Companions { get; }
         /// <summary>For a companion layer, the index (into the sink's layer list) of the scatter layer whose
@@ -117,18 +118,13 @@ namespace KhaozEngine.Terrain
 
         static readonly IReadOnlyDictionary<string, MeshHandle> EmptyMeshes = new Dictionary<string, MeshHandle>();
 
-        // Invariant (enforced by the private ctor + ScatterLayer/CompanionLayer/PlacementLayer factories): exactly
-        // one of Scatter, Companions, or (Placements | PlacementSource) is set - a scatter layer has a non-null
-        // Scatter, a companion layer a non-null Companions, and a placement layer (issue #286) either a frozen
-        // Placements list or a live PlacementSource, never both, with the other two null. Exactly one of Meshes
-        // (single-handle) / PartMeshes (multi-part) carries the layer's props. The other is empty/null. LOD
-        // variants (when present) match that representation: LodMeshes for a single-handle layer, LodPartMeshes
-        // for a multi-part one.
+        // Each layer has one source kind: scatter, companion, frozen legacy placements, live legacy placements
+        // or a frozen native inventory. Native layers carry every tier in NativeLods. Released layers retain
+        // their single-handle Meshes or multi-part PartMeshes representation and optional single far tier.
         public bool IsCompanion => Companions != null;
-        /// <summary>True for a placement layer (issue #286): its props come from exact author-supplied placements
-        /// instead of runtime procedural generation, either a frozen <see cref="Placements"/> list or a live
-        /// <see cref="PlacementSource"/>. False for a scatter or companion layer.</summary>
-        public bool IsPlacement => Placements != null || PlacementSource != null;
+        /// <summary>True for a frozen <see cref="Placements"/> list, live <see cref="PlacementSource"/> or frozen
+        /// <see cref="NativePlacements"/> inventory. False for a scatter or companion layer.</summary>
+        public bool IsPlacement => Placements != null || PlacementSource != null || _native != null;
 
         /// <summary>True when this layer bakes and draws an HLOD merged mesh: it has HLOD source meshes AND a positive
         /// <see cref="HlodDistance"/>. When false the layer always draws its individual props (unchanged behaviour).</summary>
@@ -145,7 +141,7 @@ namespace KhaozEngine.Terrain
                   IReadOnlyList<PropPlacement>? placements = null, bool registerColliders = true,
                   IPlacementSource? placementSource = null, bool castsShadows = true,
                   IReadOnlyDictionary<string, float>? blobRadii = null, float lodCrossfadeWidth = 0f,
-                  string? identity = null, bool cutInsideInteriors = false)
+                  string? identity = null, bool cutInsideInteriors = false, NativeInventory? native = null)
         {
             Scatter = scatter;
             Companions = companions;
@@ -169,6 +165,7 @@ namespace KhaozEngine.Terrain
             BlobRadii = blobRadii;
             Identity = identity;
             CutsInsideInteriors = cutInsideInteriors;
+            _native = native;
         }
 
         /// <summary>This layer with HLOD turned on: a copy carrying the per-kit flat <paramref name="sourceMeshes"/> to
@@ -183,7 +180,7 @@ namespace KhaozEngine.Terrain
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth,
-                Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii, LodCrossfadeWidth, Identity, CutsInsideInteriors);
+                Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii, LodCrossfadeWidth, Identity, CutsInsideInteriors, _native);
         }
 
         /// <summary>This layer with an opt-in complementary LOD0 to LOD1 crossfade of
@@ -192,7 +189,7 @@ namespace KhaozEngine.Terrain
             new(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
                 HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
-                crossfadeWidth, Identity, CutsInsideInteriors);
+                crossfadeWidth, Identity, CutsInsideInteriors, _native);
 
         /// <summary>This layer with a stable producer-assigned draw identity.</summary>
         public PropLayer WithIdentity(string identity)
@@ -201,7 +198,7 @@ namespace KhaozEngine.Terrain
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
                 HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
-                LodCrossfadeWidth, identity, CutsInsideInteriors);
+                LodCrossfadeWidth, identity, CutsInsideInteriors, _native);
         }
 
         /// <summary>This layer with only its generation configs replaced and every other field kept, including the
@@ -212,7 +209,7 @@ namespace KhaozEngine.Terrain
             new(scatter, companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
                 HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
-                LodCrossfadeWidth, Identity, CutsInsideInteriors);
+                LodCrossfadeWidth, Identity, CutsInsideInteriors, _native);
 
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).
         /// <paramref name="fadeBandWidth"/> (default 0 = hard cut) is the dissolve fade band just inside

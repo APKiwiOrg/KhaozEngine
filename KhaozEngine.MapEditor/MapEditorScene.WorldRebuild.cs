@@ -40,7 +40,8 @@ public partial class MapEditorScene
         if (!_document.WorldRebuildPending) return;
         try
         {
-            CheckWorldRebuildCore(dt);
+            if (_viewport is not null && _viewport.RefreshNative(_document.Doc, _document.LastNativeEffects)) _document.AcknowledgeWorldRebuild();
+            else CheckWorldRebuildCore(dt);
         }
         catch (MapDocumentException ex)
         {

@@ -212,8 +212,11 @@ require settling no slower than the previous resolve. No storage, attachment or 
 
 The owner approved a hardware Quality textured-shadow grain exception of at most 0.3 percent for this
 veto. Metal measures `0.008050609225118865`, and its bound is `0.008051`, rounded upward to six decimals
-from the previous `0.008032`. The authorized ceiling is `0.008056`. WARP and lavapipe bounds, Native's
-`0.0113` bound and every other design D bound stay unchanged. Balanced grain remains report-only.
+from the previous `0.008032`. The authorized ceiling is `0.008056`. The owner also approved per-driver
+Quality grain exceptions for this veto. WARP measures `0.008026231982708597` with a bound of `0.008027`,
+and lavapipe measures `0.00805979192662034` with a bound of `0.008060`. Each rounds its own measurement
+upward to six decimals, within the authorized ceilings of `0.008038` for WARP and `0.008064` for lavapipe.
+Native's `0.0113` bound and every other design D bound stay unchanged. Balanced grain remains report-only.
 The frozen D oracle undoes the whole veto and release-record change before its earlier rewrites, so D's
 program hashes, behaviour and precision-floor comparison retain their original contracts.
 

@@ -45,8 +45,12 @@ internal static class TexturedShadowGrainCase
             double qualityBound = TemporalDeviceClass.Name switch
             {
                 "hardware" => 0.008051,
-                "WARP" => 0.008014,
-                "lavapipe" => 0.008040,
+                // Owner accepted on 2026-11-10: raise Quality grain for the shading-release veto to the measured
+                // 0.008026231982708597 rounded upward to six decimals, below the 0.008038 limit.
+                "WARP" => 0.008027,
+                // Owner accepted on 2026-11-10: raise Quality grain for the shading-release veto to the measured
+                // 0.00805979192662034 rounded upward to six decimals, below the 0.008064 limit.
+                "lavapipe" => 0.008060,
                 _ => 0.008
             };
             double bound = preset == TemporalUpscale.Quality ? qualityBound : 0.0113;

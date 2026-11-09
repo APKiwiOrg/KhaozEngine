@@ -15,15 +15,6 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   on lavapipe with it. Windowed Vulkan still has no automated proof.
 - Target outline queues reuse warmed group and part storage, and occlusion validation no longer rebuilds enum
   metadata after a collection, so warmed outline submission allocates nothing (#1749).
-
-## 23.5.0
-
-2026-11-09
-
-- Native Vulkan extension loading now leaves Silk's layer filter unset, restoring debug-utils messenger,
-  surface and swapchain lookups. Validation-enabled CI refuses a missing messenger instead of silently
-  passing without message capture. Non-CI sessions retain warn-only behavior. Native proof remains pending
-  an approved Vulkan run, including the new controlled validation-error test.
 - Offline-verified equipment recession tables and consumer-owned state keys. Strict host and equipment
   sidecars, immutable source evidence and the shared canonical configuration identity bind tables to
   complete material slices, including sets with uncommanded skinned garments. Arithmetic compatibility
@@ -46,6 +37,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `GpuShaderCompileOptions` adds an opt-in precise compute/vertex math policy without changing default
   compilation or cache identities. Coverage requests that policy. A compiled public consumer example
   and the living equipment coverage guide document complete descriptors, fallback and resource lifetime.
+
+## 23.5.0
+
+2026-11-09
 
 - Contact arrival keeps the certified flat fast path when `GroundMoveContext` has a `clampXz` delegate (#1737).
   Contact never reads that Legacy-only clamp and enforces the world edge through `MovementBoundary`. Swept regions

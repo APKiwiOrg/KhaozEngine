@@ -31,6 +31,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The wrapped list. Submit THIS to the device.</summary>
         public IGpuCommandList Inner { get; }
+        IGpuComputePipeline? computePipeline;
+        internal Action<IGpuComputePipeline?, bool>? ComputeDispatchObserver { get; set; }
 
         /// <summary>Commands counted since the last <see cref="Clear"/>.</summary>
         public GpuCommandTally Tally { get; } = new();
@@ -40,7 +42,7 @@ namespace KhaozEngine.Tests.Gpu
         public List<IGpuPipeline> PipelineBinds { get; } = new();
 
         /// <summary>Forget everything counted so far (call between frames to assert on ONE frame).</summary>
-        public void Clear() { Tally.Clear(); PipelineBinds.Clear(); }
+        public void Clear() { Tally.Clear(); PipelineBinds.Clear(); computePipeline = null; }
 
         void Count(GpuCommandKind kind) => Tally.Add(kind);
 
@@ -145,7 +147,9 @@ namespace KhaozEngine.Tests.Gpu
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         {
             Count(GpuCommandKind.Dispatch);
+            ComputeDispatchObserver?.Invoke(computePipeline, true);
             Inner.Dispatch(groupCountX, groupCountY, groupCountZ);
+            ComputeDispatchObserver?.Invoke(computePipeline, false);
         }
 
         // Uncounted pass-throughs: recording bookkeeping and the copies no pass issues per draw. They forward
@@ -162,7 +166,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
             => Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer, width, height);
         public void GenerateMipmaps(IGpuTexture texture) => Inner.GenerateMipmaps(texture);
-        public void SetComputePipeline(IGpuComputePipeline p) => Inner.SetComputePipeline(p);
+        public void SetComputePipeline(IGpuComputePipeline p) { computePipeline = p; Inner.SetComputePipeline(p); }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => Inner.SetComputeResourceSet(slot, set);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
             => Inner.SetComputeResourceSet(slot, set, dynamicOffset);

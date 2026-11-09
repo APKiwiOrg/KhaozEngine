@@ -17,6 +17,8 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner) : IGpuDe
     internal readonly Dictionary<IGpuPipeline, GpuPipelineDescription> Pipelines = [];
     readonly Dictionary<IGpuShaderSet, (string Vertex, string Fragment)> shaderPairs = [];
     internal readonly List<(string Source, GpuShaderCompileOptions Options)> ComputeShaders = [];
+    readonly Dictionary<IGpuComputeShader, int> carryShaders = [];
+    internal readonly Dictionary<IGpuComputePipeline, int> CarryStages = [];
     internal readonly List<(string Vertex, GpuShaderCompileOptions Options)> GraphicsShaders = [];
     public GpuBackendKind Backend => inner.Backend;
     public GpuCapabilities Capabilities => inner.Capabilities;
@@ -59,10 +61,21 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner) : IGpuDe
     }
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => CreateComputeShaderFromSpirv(source, default);
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source, GpuShaderCompileOptions options)
-    { ComputeShaders.Add((source, options)); return inner.Factory.CreateComputeShaderFromSpirv(source, options); }
+    {
+        ComputeShaders.Add((source, options));
+        var shader = inner.Factory.CreateComputeShaderFromSpirv(source, options);
+        for (int stage = 0; stage < CoverageCarryShaders.StageCount; stage++)
+            if (source == CoverageCarryShaders.Kernels[stage].Source) carryShaders.Add(shader, stage);
+        return shader;
+    }
     public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
     { var pipeline = inner.Factory.CreateGraphicsPipeline(d); Pipelines.Add(pipeline, d); return pipeline; }
-    public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => inner.Factory.CreateComputePipeline(d);
+    public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
+    {
+        var pipeline = inner.Factory.CreateComputePipeline(d);
+        if (carryShaders.TryGetValue(d.Shader, out int stage)) CarryStages.Add(pipeline, stage);
+        return pipeline;
+    }
     public IGpuCommandList CreateCommandList() => inner.Factory.CreateCommandList();
     public IGpuFence CreateFence() => inner.Factory.CreateFence();
     public IGpuTimestampPool CreateTimestampPool(uint capacity) => inner.Factory.CreateTimestampPool(capacity);

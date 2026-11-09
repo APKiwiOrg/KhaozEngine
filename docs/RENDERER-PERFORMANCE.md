@@ -51,6 +51,11 @@ selection never authorizes it.
 
 The prepared synthetic workload measures carry and paired full-scene baseline/coverage rows separately.
 The graph has five dispatches per active table group, including final atomic per-actor publication.
+Each carry-only and covered sample also reports named `StageGpuMicroseconds` for Skin, Transport,
+Basis, Gather and Publish, with per-stage distributions on its row. These brackets surround only
+the dispatches and share the outer frame's timestamp pool. The outer total includes uniform uploads,
+all stage markers and completed-End finalization. Baseline rows keep only their outer timestamps.
+Timestamp resolution and evidence readback stay outside measured frames.
 The output reservation is `D + 2` slots per actor and is a storage policy, not a measured footprint.
 Carry-only results cannot establish aggregate scene overhead. The free `coverage` tooling CI suite
 checks deterministic fixture/CLI behavior with GPU disabled and supplies no timing evidence. No native,

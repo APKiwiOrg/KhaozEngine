@@ -73,12 +73,15 @@ internal static class CoverageRecessionCostMeasurement
 
     internal sealed record Sample(int Frame, int Sequence, double GpuMicroseconds, double CpuPreparationMicroseconds,
         double CpuEncodingMicroseconds, double CpuSubmissionMicroseconds, long WarmManagedBytes,
-        int DispatchCount, int DrawCount, ulong[] Ticks, double PeriodNanoseconds);
+        int DispatchCount, int DrawCount, ulong[] Ticks, double PeriodNanoseconds,
+        CoverageRecessionStageTiming.StageSample[] StageGpuMicroseconds);
     internal sealed record Row(string Layout, int Actors, int SlotsPerActor, long SurfaceBytes, long CandidateBytes,
         int CarryDispatchCount, Statistics GpuMicroseconds, Statistics CpuPreparationMicroseconds,
         Statistics CpuEncodingMicroseconds, Statistics CpuSubmissionMicroseconds, Statistics WarmManagedBytes, Sample[] Samples)
     {
         public string[] DispatchSchedule => CarryDispatchCount == 0 ? [] : CoverageRecessionCostMeasurement.DispatchSchedule;
+        public object[] StageGpuMicroseconds => DispatchSchedule.Select((stage, i) => (object)new
+        { Stage = stage, GpuMicroseconds = Stats(Samples.Select(s => s.StageGpuMicroseconds[i].GpuMicroseconds)) }).ToArray();
     }
 
     sealed class Driver : IDisposable
@@ -92,6 +95,8 @@ internal static class CoverageRecessionCostMeasurement
         readonly IGpuCommandList[] native;
         readonly CommandTallyGpuCommandList[] commands;
         readonly GpuPerfTimestampRing ring;
+        readonly CoverageRecessionStageTiming stageTiming;
+        readonly uint markerCount;
         readonly Sample?[] samples;
         readonly GpuPerfTimestampResult?[] timestamps;
         readonly double[] cpuPrepare, cpuEncode, cpuSubmit;
@@ -105,7 +110,10 @@ internal static class CoverageRecessionCostMeasurement
 
         internal Driver(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, string layout, int observed)
         {
-            this.device = device; this.layout = layout; this.observed = observed;
+            var observer = new CoverageRecessionObservedDevice(device);
+            this.device = device = observer; this.layout = layout; this.observed = observed;
+            stageTiming = new(observer.CarryStages);
+            markerCount = layout == "baseline-scene" ? 2 : CoverageRecessionStageTiming.MarkerCount;
             carry = layout == "carry-only";
             scene = new(device, fixture, actors, layout != "baseline-scene");
             if (carry)
@@ -122,7 +130,9 @@ internal static class CoverageRecessionCostMeasurement
             lastSurfaces = new CoverageSurfaceRange[actors];
             native = Enumerable.Range(0, BatchFrames).Select(_ => device.Factory.CreateCommandList()).ToArray();
             commands = native.Select(list => new CommandTallyGpuCommandList(list)).ToArray();
-            ring = new(device, capacity, 2, (id, result) => timestamps[id] = result);
+            if (markerCount > 2)
+                foreach (var list in commands) list.ComputeDispatchObserver = stageTiming.Dispatch;
+            ring = new(device, capacity, markerCount, (id, result) => timestamps[id] = result);
         }
 
         internal void Frame(int frame, bool retain)
@@ -160,7 +170,8 @@ internal static class CoverageRecessionCostMeasurement
             {
                 long allocation = GC.GetAllocatedBytesForCurrentThread();
                 commands[slot].Clear(); native[slot].Begin();
-                if (!ring.TryBegin(native[slot], scene.Submission, id, 2, out pool)) throw new InvalidOperationException(ring.Failure);
+                if (!ring.TryBegin(native[slot], scene.Submission, id, markerCount, out pool)) throw new InvalidOperationException(ring.Failure);
+                if (markerCount > 2) stageTiming.Begin(native[slot], pool);
                 if (carry && !scene.Submission.TryRetain(batch!, out completion)) throw new InvalidOperationException("Carry completion retention failed.");
                 openingBytes = GC.GetAllocatedBytesForCurrentThread() - allocation;
             }
@@ -170,7 +181,8 @@ internal static class CoverageRecessionCostMeasurement
                 before = Stopwatch.GetTimestamp();
                 if (carry) batch!.Record(commands[slot]);
                 else scene.Render(commands[slot]);
-                ((IGpuCommandListTimestampEnd)native[slot]).FinishTimestampsOnEnd(pool, 1);
+                if (markerCount > 2) stageTiming.Complete();
+                ((IGpuCommandListTimestampEnd)native[slot]).FinishTimestampsOnEnd(pool, markerCount - 1);
                 native[slot].End();
                 encodeBytes = GC.GetAllocatedBytesForCurrentThread() - allocation;
                 cpuEncode[id] = Stopwatch.GetElapsedTime(before).TotalMicroseconds;
@@ -222,7 +234,8 @@ internal static class CoverageRecessionCostMeasurement
                 var time = timestamps[id] ?? throw new InvalidOperationException("A timestamp sample is missing.");
                 Assert.True(time.Valid); Assert.True(time.Ticks[^1] > 0);
                 samples[i] = new(i, id, time.Ticks[^1] * time.Period!.Value / 1000, cpuPrepare[id], cpuEncode[id], cpuSubmit[id],
-                    allocated[id], dispatches[id], draws[id], time.Ticks.ToArray(), time.Period.Value);
+                    allocated[id], dispatches[id], draws[id], time.Ticks.ToArray(), time.Period.Value,
+                    CoverageRecessionStageTiming.Resolve(time.Ticks, time.Period.Value));
             }
             var final = samples.Select(s => s!).ToArray();
             int k = batch?.SlotsPerActor ?? GpuRetireQueue.FramesInFlightFor(device) + 2;

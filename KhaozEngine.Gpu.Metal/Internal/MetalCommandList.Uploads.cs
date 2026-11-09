@@ -54,7 +54,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, "UpdateBuffer was called on a native Metal command list that is not recording. Call Begin "
                     + "first. A record-time upload lands at the point in the command stream where it was "
                     + "recorded, which is the entire difference from the device-level overload of the same name, "
-                    + "and there is no stream to record it into yet.") { Backend = GpuBackendKind.MetalNative, Command = nameof(UpdateBuffer) };
+                    + "and there is no stream to record it into yet.")
+                { Backend = GpuBackendKind.MetalNative, Command = nameof(UpdateBuffer) };
             }
 
             // THE SEGMENT IS THIS RECORDING'S OWN, captured at Begin (see MetalCommandList.RingSegment). Reading

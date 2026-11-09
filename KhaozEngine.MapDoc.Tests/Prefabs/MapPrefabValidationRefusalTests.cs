@@ -90,12 +90,16 @@ public sealed class MapPrefabValidationRefusalTests
             "scale-zero" => new(Vector3.Zero, 0, 0),
             _ => valid.LocalTransform,
         };
-        var invalid = valid with { LocalTransform = pose, Key = fault switch
+        var invalid = valid with
         {
-            "key-kind" => new((MapPrefabChildKind)999, "level"),
-            "key-text" => new(MapPrefabChildKind.Storey, ""),
-            _ => valid.Key,
-        } };
+            LocalTransform = pose,
+            Key = fault switch
+            {
+                "key-kind" => new((MapPrefabChildKind)999, "level"),
+                "key-text" => new(MapPrefabChildKind.Storey, ""),
+                _ => valid.Key,
+            }
+        };
         var error = Assert.Throws<MapDocumentException>(() => MapPrefabValidation.RequireAsset(new(1, "asset", [invalid])));
         Assert.Equal(reason, error.Reason);
         Assert.Equal(path, error.FieldPath);
@@ -156,16 +160,22 @@ public sealed class MapPrefabValidationRefusalTests
         var reference = new MapPrefabReference(MapPrefabReferenceScope.Local,
             fault == "roof-kind" ? MapPrefabChildKind.Record : MapPrefabChildKind.Placement, fault == "roof-kind" ? "owner" : "missing");
         var asset = new MapPrefabAsset(1, "asset", [placement]);
-        if (fault == "light") asset = asset with { Children = [placement, new MapPrefabLightChild(new(MapPrefabChildKind.Light, "lamp"),
-            new(1, "lamp", reference, Vector3.Zero, Vector3.One, 0, 1, false))] };
+        if (fault == "light") asset = asset with
+        {
+            Children = [placement, new MapPrefabLightChild(new(MapPrefabChildKind.Light, "lamp"),
+            new(1, "lamp", reference, Vector3.Zero, Vector3.One, 0, 1, false))]
+        };
         else asset = asset with { Roofs = [reference] };
         var error = Assert.Throws<MapDocumentException>(() => MapPrefabValidation.RequireAsset(asset));
         Assert.Equal(reason, error.Reason);
         Assert.Equal(reference.Id, error.EntityId);
         Assert.Equal(reference.Kind, error.ChildKind);
         var accepted = reference with { Id = "owner", Kind = MapPrefabChildKind.Placement };
-        if (fault == "light") asset = asset with { Children = [placement,
-            ((MapPrefabLightChild)asset.Children[1]) with { Value = ((MapPrefabLightChild)asset.Children[1]).Value with { Owner = accepted } }] };
+        if (fault == "light") asset = asset with
+        {
+            Children = [placement,
+            ((MapPrefabLightChild)asset.Children[1]) with { Value = ((MapPrefabLightChild)asset.Children[1]).Value with { Owner = accepted } }]
+        };
         else asset = asset with { Roofs = [accepted] };
         MapPrefabValidation.RequireAsset(asset);
     }
@@ -178,8 +188,11 @@ public sealed class MapPrefabValidationRefusalTests
         var record = valid.Children.OfType<MapPrefabRecordChild>().First(c => prismOwnership ? c.Value is MapPrismDomain : c.Value is MapSpaceDoc);
         var invalid = prismOwnership
             ? record with { Value = ((MapPrismDomain)record.Value) with { InstanceId = "owner" } }
-            : record with { References = record.References.Select(s => s.Path == "/anchor/surfaceId"
-                ? s with { Target = s.Target with { Scope = MapPrefabReferenceScope.World } } : s).ToArray() };
+            : record with
+            {
+                References = record.References.Select(s => s.Path == "/anchor/surfaceId"
+                ? s with { Target = s.Target with { Scope = MapPrefabReferenceScope.World } } : s).ToArray()
+            };
         var asset = valid with { Children = valid.Children.Select(c => c == record ? invalid : c).ToArray() };
         var error = Assert.Throws<MapDocumentException>(() => MapPrefabValidation.RequireAsset(asset));
         Assert.Equal(reason, error.Reason);
@@ -207,12 +220,15 @@ public sealed class MapPrefabValidationRefusalTests
         MapPrefabChild invalid = valid switch
         {
             MapPrefabRoofGroupChild g => g with { Value = g.Value with { Rooms = [room with { Kind = MapPrefabChildKind.Placement }] } },
-            MapPrefabRoofChild r => r with { Value = fault switch
+            MapPrefabRoofChild r => r with
             {
-                "room" => r.Value with { Rooms = [room with { Kind = MapPrefabChildKind.Placement }] },
-                "group" => r.Value with { Groups = [group with { Kind = MapPrefabChildKind.Placement }] },
-                _ => r.Value with { AboveY = float.NaN },
-            } },
+                Value = fault switch
+                {
+                    "room" => r.Value with { Rooms = [room with { Kind = MapPrefabChildKind.Placement }] },
+                    "group" => r.Value with { Groups = [group with { Kind = MapPrefabChildKind.Placement }] },
+                    _ => r.Value with { AboveY = float.NaN },
+                }
+            },
             _ => throw new InvalidOperationException(),
         };
         var asset = new MapPrefabAsset(1, "asset", [invalid]);

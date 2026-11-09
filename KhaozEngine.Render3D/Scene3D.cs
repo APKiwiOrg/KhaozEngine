@@ -1335,7 +1335,7 @@ namespace KhaozEngine.Render3D
             using (ProfileCpu("cpu.geometry.grouping"))
             {
                 GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds, CullOptedOutInstances(camFrustum),
-                    _groupWriteCursors, _instanceShadowOnly, _res.MotionAllocated ? _instanceMotionKeys : null, _interiorCutPartition, _instanceShadowMobilities);
+                    _groupWriteCursors, _instanceShadowOnly, _res.MotionAllocated ? _instanceMotionKeys : null, _interiorCutPartition, _instanceShadowMobilities, _instanceAnchors);
                 // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
                 // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
                 // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
@@ -1476,9 +1476,7 @@ namespace KhaozEngine.Render3D
                     // reject skinned pixels so decals stay off characters (#235) - and it reads its OWN UBO slot (#483).
                     _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.Main, _frameOrigin, RelativeDecals(_decals));
 
-            DrawWaterWithColumnInputs(cl, vp, displayVp, eye);
-            // FFT priming ran before recording. Report its Submit+WaitForIdle stall separately from encode cost.
-            if (EnableTiming && _waterPlanes.Count > 0) waterSyncMs = (float)_water.LastOceanCost.StallMs;
+            DrawWaterWithColumnInputs(cl, vp, displayVp, eye, ref waterSyncMs);
 
             // Modern particle sprites: after the sky + decals + water (so effects composite over water surfaces),
             // before the post chain, into ColorDepthFB with the depth test on (no write) so geometry occludes

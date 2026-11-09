@@ -207,7 +207,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (!isSealed)
                 throw new GpuRecordingStateException(GpuRecordingStateRefusal.SubmissionWithoutSeal, "A Direct3D 11 command list was submitted without End. End seals the recording, and "
                     + "replaying an unsealed one replays a half-recorded frame instead of failing, which reads "
-                    + "as a rendering defect somewhere else entirely.") { Backend = GpuBackendKind.Direct3D11Native, Command = "Submit" };
+                    + "as a rendering defect somewhere else entirely.")
+                { Backend = GpuBackendKind.Direct3D11Native, Command = "Submit" };
         }
     }
 }

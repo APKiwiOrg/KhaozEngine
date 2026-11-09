@@ -99,7 +99,8 @@ public sealed partial class MutationService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         return doc.GetFoliageLayer(id) ?? throw new TileWorldException(TileWorldRefusal.FoliageLayerMissing,
-            $"foliage layer '{id}' does not exist") { LayerId = id };
+            $"foliage layer '{id}' does not exist")
+        { LayerId = id };
     }
 
     static void ValidateCatalogs(TileWorldCatalogs catalogs, TileFoliageLayer layer)

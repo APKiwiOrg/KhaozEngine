@@ -36,7 +36,7 @@ internal static class MapEffectiveWater
             if (cause is { Reason: null }) throw cause.WithSourceName(null, message);
             var contextual = findings.Select(f => f with { EntityId = f.EntityId ?? body.Id }).ToArray();
             throw MapDocumentRefusalFactory.FromFinding(contextual[0] with
-                { InvalidPrefixSuppressed = transform is null || contextual[0].InvalidPrefixSuppressed },
+            { InvalidPrefixSuppressed = transform is null || contextual[0].InvalidPrefixSuppressed },
                 message, inner: cause, findings: contextual);
         }
         string digest = transform is null ? "" : MapPrefabJson.Digest("kemap/effective-water/1", new

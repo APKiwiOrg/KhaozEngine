@@ -181,9 +181,11 @@ public class GameTypeCodecTests
     public void EveryRowRoundTrips(ContentDurationUnit unit)
     {
         ContentTypeRegistry registry = Registered(unit);
+        ContentTypeRegistration[] registrations = registry.ByTypeId
+            .Where(r => r.Band == ContentRegistrationBand.Game).ToArray();
 
-        foreach (ContentTypeRegistration registration in
-            registry.ByTypeId.Where(r => r.Band == ContentRegistrationBand.Game))
+        Assert.NotEmpty(registrations);
+        foreach (ContentTypeRegistration registration in registrations)
         {
             ContentRow row = Populated(registration);
             var buffer = new ArrayBufferWriter<byte>();
@@ -207,9 +209,11 @@ public class GameTypeCodecTests
         // either unit. The bytes do not say which unit wrote them: a game moving its unit restates the
         // NUMBERS, ticks into hundredths of a second, and never the format.
         ContentTypeRegistry other = Registered(ContentDurationUnit.Seconds);
+        ContentTypeRegistration[] registrations = Registered(Ticks).ByTypeId
+            .Where(r => r.Band == ContentRegistrationBand.Game).ToArray();
 
-        foreach (ContentTypeRegistration registration in
-            Registered(Ticks).ByTypeId.Where(r => r.Band == ContentRegistrationBand.Game))
+        Assert.NotEmpty(registrations);
+        foreach (ContentTypeRegistration registration in registrations)
         {
             Assert.True(other.TryGetByKey(registration.TypeKey, out ContentTypeRegistration? twin));
 

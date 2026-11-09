@@ -354,6 +354,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            DisposePreparedFoliage();
             DisposeSkinnedResources();
             _clearPipeline.Dispose();
             _dissolveInvertedPipeline.Dispose();

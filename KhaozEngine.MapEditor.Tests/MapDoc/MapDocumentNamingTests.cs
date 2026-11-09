@@ -46,9 +46,13 @@ namespace KhaozEngine.Tests.MapDoc
             string json = MapDocumentFile.SaveText(doc);
 
             JsonNode node = JsonNode.Parse(json)!;
-            foreach (JsonNode? feature in node["terrain"]!["features"]!.AsArray())
+            JsonArray features = node["terrain"]!["features"]!.AsArray();
+            Assert.NotEmpty(features);
+            foreach (JsonNode? feature in features)
                 Assert.False(feature!.AsObject().ContainsKey("name"), "unnamed feature must omit the name key");
-            foreach (JsonNode? exclusion in node["exclusions"]!.AsArray())
+            JsonArray exclusions = node["exclusions"]!.AsArray();
+            Assert.NotEmpty(exclusions);
+            foreach (JsonNode? exclusion in exclusions)
                 Assert.False(exclusion!.AsObject().ContainsKey("name"), "unnamed exclusion must omit the name key");
         }
 
@@ -61,6 +65,8 @@ namespace KhaozEngine.Tests.MapDoc
             doc.Terrain.Features[1].Name = "clearing";
 
             Assert.Contains(MapDocumentValidator.Validate(doc, registry), e => e.Contains("clearing"));
+            doc.Terrain.Features[1].Name = "clearing-south";
+            Assert.Empty(MapDocumentValidator.Validate(doc, registry));
         }
 
         [Fact]
@@ -88,6 +94,8 @@ namespace KhaozEngine.Tests.MapDoc
             });
 
             Assert.Contains(MapDocumentValidator.Validate(doc, registry), e => e.Contains("market"));
+            doc.Exclusions[1].Name = "market-south";
+            Assert.Empty(MapDocumentValidator.Validate(doc, registry));
         }
 
         [Fact]
@@ -121,7 +129,9 @@ namespace KhaozEngine.Tests.MapDoc
             string json = MapDocumentFile.SaveText(doc);
 
             JsonNode node = JsonNode.Parse(json)!;
-            foreach (JsonNode? scatterOverride in node["scatterOverrides"]!.AsArray())
+            JsonArray overrides = node["scatterOverrides"]!.AsArray();
+            Assert.NotEmpty(overrides);
+            foreach (JsonNode? scatterOverride in overrides)
                 Assert.False(scatterOverride!.AsObject().ContainsKey("name"), "unnamed scatter override must omit the name key");
         }
 
@@ -138,6 +148,8 @@ namespace KhaozEngine.Tests.MapDoc
             });
 
             Assert.Contains(MapDocumentValidator.Validate(doc, registry), e => e.Contains("wetland"));
+            doc.ScatterOverrides[1].Name = "wetland-south";
+            Assert.Empty(MapDocumentValidator.Validate(doc, registry));
         }
 
         [Fact]

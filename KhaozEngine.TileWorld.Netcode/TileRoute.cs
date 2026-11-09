@@ -66,7 +66,8 @@ public readonly struct TileRoute : IEquatable<TileRoute>
     /// <see cref="TileRouteRefusal.IdleHasNoNext"/>, the index and tile count.</exception>
     public TileCoord Next => IsIdle
         ? throw new TileRouteStateException(TileRouteRefusal.IdleHasNoNext,
-            "An idle TileRoute has no next tile. Check IsIdle first.") { Index = Index, TileCount = Tiles.Count }
+            "An idle TileRoute has no next tile. Check IsIdle first.")
+        { Index = Index, TileCount = Tiles.Count }
         : Tiles[Index];
 
     /// <summary>The last tile of the walk, whatever progress has been made down it. This is the DESTINATION, so it
@@ -76,7 +77,8 @@ public readonly struct TileRoute : IEquatable<TileRoute>
     public TileCoord End => Tiles.Count > 0
         ? Tiles[Tiles.Count - 1]
         : throw new TileRouteStateException(TileRouteRefusal.EmptyHasNoEnd,
-            "An empty TileRoute has no end tile.") { TileCount = Tiles.Count };
+            "An empty TileRoute has no end tile.")
+        { TileCount = Tiles.Count };
 
     /// <summary>This route with the index moved on by one step, which is how a committed step is recorded. Idle
     /// stays idle, so a simulator that advances one tick too many is a no-op rather than a fault.</summary>
@@ -141,7 +143,8 @@ public readonly struct TileRoute : IEquatable<TileRoute>
             if (ddx == dx && ddz == dz) return d;
         }
         throw new TileRouteArgumentException(TileRouteRefusal.TilesNotAdjacent,
-            $"{a} and {b} are not adjacent, so there is no single step between them.", nameof(b)) { From = a, To = b };
+            $"{a} and {b} are not adjacent, so there is no single step between them.", nameof(b))
+        { From = a, To = b };
     }
 
     /// <summary>Compares the remaining tiles, not the backing array. See the type doc for why.

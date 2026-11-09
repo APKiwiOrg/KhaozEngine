@@ -127,7 +127,7 @@ public static class MapDocumentFile
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw new MapDocumentException(MapDocumentRefusal.DocumentReadFailed, $"{path}: cannot read map document. {ex.Message}", ex)
-                { SourceName = path, Path = path };
+            { SourceName = path, Path = path };
         }
         return LoadText(json, options, path);
     }
@@ -206,17 +206,17 @@ public static class MapDocumentFile
         if (version > CurrentFormatVersion)
             throw new MapDocumentException(MapDocumentRefusal.DocumentVersionUnsupported,
                 $"{where}: formatVersion {version} is newer than this engine supports ({CurrentFormatVersion}). Update the engine.")
-                { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version, SupportedVersions = [CurrentFormatVersion] };
+            { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version, SupportedVersions = [CurrentFormatVersion] };
 
         while (version < CurrentFormatVersion)
         {
             if (!options.Migrations.TryGetValue(version, out Func<JsonObject, JsonObject>? step))
                 throw new MapDocumentException(MapDocumentRefusal.DocumentMigrationMissing,
                     $"{where}: formatVersion {version} needs a migration to {version + 1} and none is registered.")
-                    { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version, TargetVersion = version + 1 };
+                { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version, TargetVersion = version + 1 };
             root = step(root) ?? throw new MapDocumentException(MapDocumentRefusal.DocumentMigrationReturnedNull,
                 $"{where}: migration from formatVersion {version} returned null.")
-                { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version };
+            { SourceName = where, FieldPath = "$.formatVersion", ActualVersion = version };
             version++;
             root["formatVersion"] = version;
         }
@@ -273,20 +273,6 @@ public static class MapDocumentFile
         return JsonSerializer.Serialize(writable, CreateOptions(registry, write: true));
     }
 
-    /// <summary>A detached whole-document copy through the canonical text form that never encodes or decodes foliage.
-    /// The source is validated whole, foliage included, exactly as <see cref="SaveText"/> validates it, and is never
-    /// edited. The copy holds the source's immutable foliage set by reference, so callers that copy a document to expand
-    /// or edit other members pay nothing for its density.</summary>
-    internal static MapDocument CopyWithSharedFoliage(MapDocument doc)
-    {
-        ArgumentNullException.ThrowIfNull(doc);
-        MapDocRegistry registry = MapDocRegistry.CreateDefault();
-        MapDocument writable = PrepareWholeWrite(doc, registry, foliage: false);
-        MapDocument copy = LoadText(JsonSerializer.Serialize(writable, CreateOptions(registry, write: true)));
-        copy.Foliage = doc.Foliage;
-        return copy;
-    }
-
     /// <summary>Writes the tiled form: a directory holding <c>map.json</c> plus content-addressed tile files.
     /// Peak SERIALIZATION buffer is one tile, and a tile whose canonical hash is unchanged is not rewritten
     /// at all, so a windowed save over a huge world touches only what the author actually edited.</summary>
@@ -306,7 +292,7 @@ public static class MapDocumentFile
         if (form == MapDocumentForm.None)
             throw new MapDocumentException(MapDocumentRefusal.DocumentSaveSourceMissing,
                 $"{path}: nothing exists here, so this path has no form to save back into. Name one with SaveAs.")
-                { Path = path, DocumentForm = form };
+            { Path = path, DocumentForm = form };
         SaveAs(doc, path, form, registry, save);
     }
 
@@ -323,7 +309,7 @@ public static class MapDocumentFile
             default:
                 throw new MapDocumentException(MapDocumentRefusal.DocumentSaveFormInvalid,
                     $"{path}: MapDocumentForm.None is not a form a document can be written in.")
-                    { Path = path, DocumentForm = form };
+                { Path = path, DocumentForm = form };
         }
     }
 
@@ -355,7 +341,7 @@ public static class MapDocumentFile
             throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
                 "refusing to write a windowed document as a whole document: it would silently drop every tile the " +
                 "window did not load. Save it back to its own directory with SaveTiled, or load the whole world first.")
-                { DocumentId = doc.Id, Operation = "SaveWholeDocument" };
+            { DocumentId = doc.Id, Operation = "SaveWholeDocument" };
 
         IReadOnlyList<MapDocumentFinding> findings = MapDocumentValidator.ValidateFindings(doc, registry);
         if (findings.Count > 0)

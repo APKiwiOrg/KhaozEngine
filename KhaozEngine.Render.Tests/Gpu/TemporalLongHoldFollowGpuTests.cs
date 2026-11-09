@@ -51,6 +51,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every orthographic follow walk after <see cref="LongHold"/> still frames, every speed and preset
         /// the follow camera fact covers, and the UltraPerformance trail past the reconstruction's reach.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_long_hold_follow_camera_table_prints_every_walk()
         {
@@ -95,6 +96,7 @@ namespace KhaozEngine.Tests.Gpu
         /// trail past the reconstruction's reach. By default the boot pitch walking away at half a display pixel a
         /// frame, 1 and 2 at every preset, and with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> both pitches, every
         /// heading, speed and preset.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_long_hold_perspective_follow_table_prints_every_walk()
         {

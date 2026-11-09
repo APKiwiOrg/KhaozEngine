@@ -30,7 +30,7 @@ public static class MapBoundDocumentValidation
     {
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Native document validation requires every tile to be loaded.")
-            { DocumentId = document.Id, Operation = "ValidateNativeDocument" };
+        { DocumentId = document.Id, Operation = "ValidateNativeDocument" };
         if (document.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 1 or 2 })
             throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch,
                 "Native document requires payload version 1 and resolver version 1 or 2.")
@@ -41,7 +41,7 @@ public static class MapBoundDocumentValidation
                 FieldPath = "resolverIdentity",
             };
         if (document.PlayableBounds is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Native document requires playable bounds.")
-            { DocumentId = document.Id, FieldPath = nameof(document.PlayableBounds) };
+        { DocumentId = document.Id, FieldPath = nameof(document.PlayableBounds) };
         Require(MapDocumentValidator.ValidateFindings(document, registry ?? MapDocRegistry.CreateDefault()));
         if (!float.IsFinite(document.Bounds.MinX) || !float.IsFinite(document.Bounds.MinZ) ||
             !float.IsFinite(document.Bounds.MaxX) || !float.IsFinite(document.Bounds.MaxZ))
@@ -50,9 +50,12 @@ public static class MapBoundDocumentValidation
                 : !float.IsFinite(document.Bounds.MinZ) ? nameof(document.Bounds.MinZ)
                 : !float.IsFinite(document.Bounds.MaxX) ? nameof(document.Bounds.MaxX) : nameof(document.Bounds.MaxZ);
             throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "Native storage bounds must be finite.")
-            { FieldPath = "Bounds." + field, DocumentId = document.Id,
+            {
+                FieldPath = "Bounds." + field,
+                DocumentId = document.Id,
                 ActualNumber = field == nameof(document.Bounds.MinX) ? document.Bounds.MinX : field == nameof(document.Bounds.MinZ) ? document.Bounds.MinZ
-                    : field == nameof(document.Bounds.MaxX) ? document.Bounds.MaxX : document.Bounds.MaxZ };
+                    : field == nameof(document.Bounds.MaxX) ? document.Bounds.MaxX : document.Bounds.MaxZ
+            };
         }
         foreach (MapPlacement p in document.Placements) ValidatePlacement(p);
     }
@@ -63,6 +66,7 @@ public static class MapBoundDocumentValidation
     {
         ArgumentNullException.ThrowIfNull(resources);
         ArgumentNullException.ThrowIfNull(assets);
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         if (resources.Water is not { } water) return;
         RequireWaterMaterials(water, assets);
         foreach (var body in MapWaterCompiler.Compile(resources.CompleteView(), water))
@@ -94,7 +98,7 @@ public static class MapBoundDocumentValidation
         var roots = new HashSet<MapAssetRef>(nativeAssets);
         if (roots.Count != nativeAssets.Count || roots.Count != assets.Roots.Count || !roots.SetEquals(assets.Roots))
             throw new MapDocumentException(MapDocumentRefusal.DocumentAssetRootsMismatch, "Native document roots do not match the verified asset closure.")
-                { ResourceIds = nativeAssets.Select(a => a.Id).ToArray(), ExpectedResourceIds = assets.Roots.Select(a => a.Id).ToArray() };
+            { ResourceIds = nativeAssets.Select(a => a.Id).ToArray(), ExpectedResourceIds = assets.Roots.Select(a => a.Id).ToArray() };
     }
 
     /// <summary>Requires every water body's render material to be a <see cref="MapResourceKind.Material"/> resource in
@@ -112,8 +116,12 @@ public static class MapBoundDocumentValidation
             if (!found || kind != MapResourceKind.Material)
                 findings.Add(new(!found ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.ReferenceKindMismatch,
                     $"water body '{body.Id}': render material '{body.RenderMaterial}' is not a Material resource")
-                { EntityId = body.Id, ResourceId = body.RenderMaterial, ExpectedResourceKind = MapResourceKind.Material,
-                    ActualResourceKind = kind });
+                {
+                    EntityId = body.Id,
+                    ResourceId = body.RenderMaterial,
+                    ExpectedResourceKind = MapResourceKind.Material,
+                    ActualResourceKind = kind
+                });
         }
         if (findings.Count != 0) throw MapDocumentRefusalFactory.FromFinding(findings[0],
             string.Join("\n", findings.Select(f => f.Message)), findings: findings);
@@ -127,7 +135,7 @@ public static class MapBoundDocumentValidation
     static void ValidatePlacement(MapPlacement p)
     {
         if (string.IsNullOrWhiteSpace(p.AssetId)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, $"Placement '{p.Id}' requires a native asset ID.")
-            { PlacementId = p.Id, FieldPath = nameof(p.AssetId) };
+        { PlacementId = p.Id, FieldPath = nameof(p.AssetId) };
         RequirePlacementTransform(p);
     }
 
@@ -144,7 +152,7 @@ public static class MapBoundDocumentValidation
             int? index = field == nameof(p.Tags) && p.Tags is not null ? p.Tags.FindIndex(t => t is null) : null;
             throw new MapDocumentException(number is { } n ? double.IsFinite(n) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite
                 : MapDocumentRefusal.SchemaValueRequired, $"Placement '{p.Id}' has invalid transform or tags.")
-                { PlacementId = p.Id, FieldPath = index is { } i ? $"Tags[{i}]" : field, ActualNumber = number, Index = index };
+            { PlacementId = p.Id, FieldPath = index is { } i ? $"Tags[{i}]" : field, ActualNumber = number, Index = index };
         }
     }
 

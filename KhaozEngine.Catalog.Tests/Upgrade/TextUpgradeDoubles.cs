@@ -77,7 +77,8 @@ internal sealed class TextUpgradeStore(InMemoryContentAuthoringStore inner)
                 FormattableString.Invariant($"Version {versionNumber} has no complete text record."),
                 default,
                 0,
-                ContentAuthoringException.TextProvenanceUnknownReason) { VersionNumber = versionNumber }
+                ContentAuthoringException.TextProvenanceUnknownReason)
+            { VersionNumber = versionNumber }
             : Text.ReadTextSnapshotAsync(versionNumber, cancellationToken);
 
     /// <inheritdoc />

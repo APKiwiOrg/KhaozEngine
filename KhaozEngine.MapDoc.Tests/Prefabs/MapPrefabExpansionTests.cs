@@ -21,7 +21,7 @@ public sealed class MapPrefabExpansionTests
         var f = PrefabFixtures.Create("roomless");
         var asset = f.Assets.GetPrefab("hut");
         var light = new MapPrefabLightChild(new(MapPrefabChildKind.Light, "light"), PrefabFixtures.GlowLight() with
-            { Id = "light", Owner = PrefabFixtures.World(MapPrefabChildKind.Placement, "owner") });
+        { Id = "light", Owner = PrefabFixtures.World(MapPrefabChildKind.Placement, "owner") });
         asset = asset with { Children = [.. asset.Children, light] };
         var assets = PrefabFixtures.PublishPrefab(f.Assets, asset);
         f.Document.NativeAssets = assets.Roots.ToList();

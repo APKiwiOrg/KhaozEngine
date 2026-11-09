@@ -67,7 +67,9 @@ internal static class NativeLegacySpawnAdmission
     static MapDocumentException Refusal(MapDocument document, string operation, Exception? inner = null) =>
         new(MapDocumentRefusal.EditorLegacySpawnEditProtected, Guidance(document), inner)
         {
-            DocumentId = document.Id, ResolverVersion = document.ResolverIdentity?.ResolverVersion, Operation = operation,
+            DocumentId = document.Id,
+            ResolverVersion = document.ResolverIdentity?.ResolverVersion,
+            Operation = operation,
             SourceIds = (document.Spawns ?? []).Where(s => s is not null).Select(s => s.Id)
                 .Concat((document.PlayerSpawns ?? []).Where(s => s is not null).Select(s => s.Id)).ToArray(),
         };

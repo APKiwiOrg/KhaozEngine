@@ -10,7 +10,8 @@ internal static class VulkanBackendCreationChecks
     {
         if (chosen >= 0) return;
         throw new VulkanBackendCreationStateException(VulkanBackendCreationRefusal.PinnedAdapterUnavailable,
-            "The pinned Vulkan UUID is unavailable or ineligible.") { AdapterKey = adapterKey };
+            "The pinned Vulkan UUID is unavailable or ineligible.")
+        { AdapterKey = adapterKey };
     }
 
     internal static void RequirePhysicalDevicesForTests(uint count)
@@ -19,7 +20,8 @@ internal static class VulkanBackendCreationChecks
         throw new VulkanBackendCreationStateException(VulkanBackendCreationRefusal.PhysicalDevicesMissing,
             "The native Vulkan backend found no physical device, on a machine whose support probe "
             + "answered yes. That is a loader with no installed ICD behind it, and it means the machine "
-            + "changed between the probe and this call.") { PhysicalDeviceCount = count };
+            + "changed between the probe and this call.")
+        { PhysicalDeviceCount = count };
     }
 
     internal static void RequireEligibleDeviceForTests(bool eligible, IReadOnlyList<VulkanPhysicalDeviceInfo> candidates)

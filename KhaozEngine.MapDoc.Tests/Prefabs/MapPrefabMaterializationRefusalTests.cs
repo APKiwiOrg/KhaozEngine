@@ -22,8 +22,8 @@ public sealed class MapPrefabMaterializationRefusalTests
         var transforms = new Dictionary<string, MapEffectiveTransform> { ["Surface:paint"] = new(0, 0, 0, 0, 1) };
         if (paint) document.Surfaces.Refs.Add(PrefabFixtures.Surface("paint", MapSurfaceRole.PaintOverride));
         var context = new MapEffectiveContext(document.Surfaces, transforms, new string('b', 64));
-        MapEffectiveResources Resources(MapEffectiveContext value) => new(value, source, [], [], null, new(1, [], [], [], []),
-            new Dictionary<string, MapExactPoint>(), new Dictionary<string, IReadOnlyList<MapExactPoint>>(), [], [], []);
+        MapEffectiveResources Resources(MapEffectiveContext value) => new(new MapEffectiveResolutionProduct(value, source, [], [], null, new(1, [], [], [], []),
+            new Dictionary<string, MapExactPoint>(), new Dictionary<string, IReadOnlyList<MapExactPoint>>(), [], [], [], new()));
         string before = MapPrefabJson.Digest("test/effective-resources", document);
         var error = Assert.Throws<MapDocumentException>(() =>
         {
@@ -105,8 +105,10 @@ public sealed class MapPrefabMaterializationRefusalTests
             new(MapPrefabChildKind.Light, light.Id, pose, new string('a', 64))).ToArray();
         var set = document.Prefabs!;
         document.Prefabs = new(set.PayloadVersion, set.ExpansionVersion, set.Instances, set.Transfers)
-        { Attachments = set.Attachments.Append(new("unpacked-deck", "glow-light", new string('a', 64),
-            MapPrefabAttachmentKind.Light, [new(new(MapPrefabChildKind.Light, "glow"), light.Id, null, pose, new string('a', 64))], false)).ToArray() };
+        {
+            Attachments = set.Attachments.Append(new("unpacked-deck", "glow-light", new string('a', 64),
+            MapPrefabAttachmentKind.Light, [new(new(MapPrefabChildKind.Light, "glow"), light.Id, null, pose, new string('a', 64))], false)).ToArray()
+        };
         MapPrefabAttachmentDescriptors.Refresh(document);
         var original = document.Prefabs.Attachments.Single(a => a.Kind == (fault == "light" ? MapPrefabAttachmentKind.Light : MapPrefabAttachmentKind.Support));
         var child = original.Children.Single(c => c.LocalChild.Kind == (fault is "anchor" or "record" ? MapPrefabChildKind.Record

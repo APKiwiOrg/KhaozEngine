@@ -412,7 +412,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 what + " needs a framebuffer bound on the native Vulkan backend, and this recording has none. "
                 + "A render pass instance is opened from the bound framebuffer's own attachment views, and there "
                 + "is no default target to fall back to: Begin resets the bound framebuffer, because a fresh "
-                + "VkCommandBuffer holds none.") { Command = command };
+                + "VkCommandBuffer holds none.")
+            { Command = command };
         }
 
         static void RequireSingleScissor(uint index)

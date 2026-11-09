@@ -560,7 +560,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 what + " needs a framebuffer bound on the native Metal backend, and this recording has none. A "
                 + "render encoder is opened from a descriptor naming the bound framebuffer's own attachment "
                 + "textures, and there is no default target to fall back to: Begin resets the bound framebuffer, "
-                + "because a fresh MTLCommandBuffer holds none.") { Command = command };
+                + "because a fresh MTLCommandBuffer holds none.")
+            { Command = command };
         }
 
         static void RequireSingleScissor(uint index)

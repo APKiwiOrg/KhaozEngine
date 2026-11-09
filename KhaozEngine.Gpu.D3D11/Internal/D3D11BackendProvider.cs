@@ -94,10 +94,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     $"The native Direct3D 11 backend was handed a {kind} window handle. A Direct3D "
                     + "swapchain presents into a Win32 HWND and nothing else, so this is a wiring error rather "
                     + "than a machine that cannot run the backend.", "request")
-                    {
-                        ActualWindowKind = kind,
-                        RequiredWindowKind = GpuWindowKind.Win32,
-                    };
+                {
+                    ActualWindowKind = kind,
+                    RequiredWindowKind = GpuWindowKind.Win32,
+                };
             }
         }
 

@@ -86,7 +86,8 @@ public static class MapWaterEdits
                 { EntityId = remove.Key, SubjectKind = "water medium" };
                 unused.Media.RemoveAt(unusedIndex);
                 break;
-            default: throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "unknown water edit type")
+            default:
+                throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "unknown water edit type")
                 { Operation = nameof(Prepare), ActualText = edit.GetType().FullName };
         }
         // Upserts can carry caller-owned nested collections. Detach them before validation or returning the set.

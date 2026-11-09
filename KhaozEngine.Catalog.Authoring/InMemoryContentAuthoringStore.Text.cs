@@ -251,7 +251,8 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
             throw new ContentAuthoringException(ContentAuthoringRefusal.TextProvenanceUnknown,
                 ContentTextCompatibility.DescribeUnrepresented(member, FormattableString.Invariant(
                     $"version {versionNumber} has no complete text record, so its text is unknown rather than empty")),
-                default, 0, ContentAuthoringException.TextUnrepresentedReason) { VersionNumber = versionNumber };
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            { VersionNumber = versionNumber };
         }
 
         ContentVersionTextSnapshot text = TextSnapshotAt(versionNumber);
@@ -262,8 +263,10 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
                 $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s)")),
                 default, 0, ContentAuthoringException.TextUnrepresentedReason)
             {
-                MemberName = member, VersionNumber = versionNumber,
-                RecordedLanguageCount = text.Languages.Count, RecordedValueCount = text.Revisions.Count,
+                MemberName = member,
+                VersionNumber = versionNumber,
+                RecordedLanguageCount = text.Languages.Count,
+                RecordedValueCount = text.Revisions.Count,
             };
         }
     }
@@ -284,7 +287,8 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
             throw new ContentAuthoringException(ContentAuthoringRefusal.TextProvenanceUnknown,
                 FormattableString.Invariant(
                     $"Version {versionNumber} has no complete text record, so its text is unknown rather than empty."),
-                default, 0, ContentAuthoringException.TextProvenanceUnknownReason) { VersionNumber = versionNumber };
+                default, 0, ContentAuthoringException.TextProvenanceUnknownReason)
+            { VersionNumber = versionNumber };
         }
 
         return new ContentVersionTextSnapshot(
@@ -314,7 +318,8 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
                     $"Text for type {target.Type.Value} row '{target.Key}' names a row neither the base version nor the open draft holds."),
                 target.Type,
                 0,
-                ContentAuthoringException.UnknownRowReason) { RowKey = target.Key.ToString() };
+                ContentAuthoringException.UnknownRowReason)
+            { RowKey = target.Key.ToString() };
         }
 
         bool isDeclared = declared.Contains(target.Language)

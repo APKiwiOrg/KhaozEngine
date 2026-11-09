@@ -19,8 +19,13 @@ internal static class MapDocumentJsonErrors
         return new MapDocumentException(MapDocumentRefusal.SchemaMalformed, message, error)
         {
             // A message-only inner refusal has no reason to keep, but the context it carries still applies.
-            SourceName = sourceName ?? context?.SourceName, Path = context?.Path ?? path, Tile = context?.Tile ?? tile, ResourceId = context?.ResourceId ?? resourceId,
-            FieldPath = context?.FieldPath ?? json?.Path, LineNumber = json?.LineNumber, BytePositionInLine = json?.BytePositionInLine,
+            SourceName = sourceName ?? context?.SourceName,
+            Path = context?.Path ?? path,
+            Tile = context?.Tile ?? tile,
+            ResourceId = context?.ResourceId ?? resourceId,
+            FieldPath = context?.FieldPath ?? json?.Path,
+            LineNumber = json?.LineNumber,
+            BytePositionInLine = json?.BytePositionInLine,
         };
     }
 

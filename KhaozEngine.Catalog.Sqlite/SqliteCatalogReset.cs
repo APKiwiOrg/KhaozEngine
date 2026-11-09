@@ -323,7 +323,8 @@ public static class SqliteCatalogReset
                 "This catalog carries an OPEN DRAFT, and a reset drops it with everything else. Publish or discard the draft, or pass the reset's force flag to destroy it deliberately.",
                 default,
                 0,
-                ContentAuthoringException.DraftOpenReason) { DraftCount = drafts };
+                ContentAuthoringException.DraftOpenReason)
+            { DraftCount = drafts };
         }
 
         string? server = null;
@@ -539,7 +540,8 @@ public static class SqliteCatalogReset
                 $"The SQLite content catalog schema is at version '{version}', newer than version {SqliteCatalogSchema.CurrentVersion} this build writes, so a reset by this build would move it backwards. Nothing was dropped. Reset it from a build that writes schema version {version} or later."),
             default,
             0,
-            ContentAuthoringException.SchemaMismatchReason) { ActualVersion = version, MaximumVersion = SqliteCatalogSchema.CurrentVersion };
+            ContentAuthoringException.SchemaMismatchReason)
+        { ActualVersion = version, MaximumVersion = SqliteCatalogSchema.CurrentVersion };
 
     /// <summary>
     /// The schema refusal, in the words and under the reason token the provider's own validation uses, so a
@@ -549,9 +551,9 @@ public static class SqliteCatalogReset
     static ContentAuthoringException Mismatch(string actual, Exception? innerException = null)
         => innerException is null
             ? new(ContentAuthoringRefusal.SchemaValidationMetadataMissing, DescribeMismatch(actual, null), default, 0, ContentAuthoringException.SchemaMismatchReason)
-                { RequiredMigration = SqliteCatalogSchema.RequiredMigration }
+            { RequiredMigration = SqliteCatalogSchema.RequiredMigration }
             : new(ContentAuthoringRefusal.SchemaMetadataUnreadable, DescribeMismatch(actual, innerException), default, 0, ContentAuthoringException.SchemaMismatchReason, innerException)
-                { RequiredMigration = SqliteCatalogSchema.RequiredMigration };
+            { RequiredMigration = SqliteCatalogSchema.RequiredMigration };
 
     static string DescribeMismatch(string actual, Exception? innerException)
         => FormattableString.Invariant(

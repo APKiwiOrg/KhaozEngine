@@ -125,7 +125,7 @@ public sealed class MapSpaceRelations
 
     internal static MapRelationStatus RefusalStatus(MapDocumentException error) =>
         MapCommonRefinement.NotRepresentable(error) || error is
-            { Reason: MapDocumentRefusal.ValueNonfinite or MapDocumentRefusal.ValueOutsideRange, Operation: nameof(MapResourceTransform.Freeze) }
+        { Reason: MapDocumentRefusal.ValueNonfinite or MapDocumentRefusal.ValueOutsideRange, Operation: nameof(MapResourceTransform.Freeze) }
             ? MapRelationStatus.NotRepresentable
             : error.ResolutionStatus == MapResolveStatus.Invalid || error.Reason is
                 MapDocumentRefusal.GeometryVertexSequenceInvalid or MapDocumentRefusal.SpacePortalOpenTopInvalid or

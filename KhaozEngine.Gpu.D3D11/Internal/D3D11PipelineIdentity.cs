@@ -7,6 +7,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal;
 /// <summary>Length-delimited content hashes. Native pointers and mutable caller arrays never enter a report.</summary>
 internal static class D3D11PipelineIdentity
 {
+    internal static D3D11ShaderCompilation<D3D11PipelineDiagnostics> Compute(
+        D3D11ShaderCompilation<D3D11PreparedCompute> preparation, D3D11ResourceLayout[] layouts)
+        => preparation.Select(p => Compute(p.Evidence, layouts,
+            p.Code.ThreadGroupSizeX, p.Code.ThreadGroupSizeY, p.Code.ThreadGroupSizeZ));
+
+    internal static D3D11ShaderCompilation<D3D11PipelineDiagnostics> Graphics(
+        D3D11ShaderCompilation<D3D11PreparedGraphics> preparation, D3D11ResourceLayout[] layouts,
+        in GpuPipelineDescription description)
+    {
+        // The worker needs CPU identity inputs, never the shader owner or a native creation delegate.
+        var snapshot = description;
+        snapshot.ShaderSet = null!;
+        snapshot.ResourceLayouts = [];
+        return preparation.Select(p => Graphics(p.Vertex, p.Pixel, layouts, snapshot));
+    }
+
     internal static string Layout(D3D11ResourceLayout[] layouts) => Digest(w =>
     {
         w.Write(layouts.Length);

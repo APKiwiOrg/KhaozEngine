@@ -34,11 +34,11 @@ public partial class ArchitectureTests
     }
 
     [Fact]
-    public void MapDocPhysicsTests_ReferenceOnlyThePackageThePhysicsBackendAndSharding()
+    public void MapDocPhysicsTests_ReferenceThePhysicsAndPresentationParitySeams()
     {
         Project tests = LoadGraph()["KhaozEngine.MapDoc.Physics.Tests"];
         Assert.False(tests.IsPackableLibrary);
-        Assert.Equal(new[] { "MapDoc.Physics", "Physics.Bepu", "Sharding" },
+        Assert.Equal(new[] { "MapDoc.Physics", "MapDoc.Render3D", "Physics.Bepu", "Sharding" },
             tests.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
     }
 }

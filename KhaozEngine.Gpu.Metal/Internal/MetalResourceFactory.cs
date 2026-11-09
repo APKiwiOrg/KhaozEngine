@@ -305,10 +305,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             => new(MetalBackendCreationRefusal.NativeResourceUnavailableOnPlatform, what + " cannot be created on the native Metal backend off macOS. Reaching this means a "
                 + "MetalGpuDevice exists on a machine that has no Metal at all, which the provider's functional "
                 + "probe refuses before creation.")
-                {
-                    ResourceKind = what,
-                    RequiredOperatingSystem = "macOS",
-                };
+            {
+                ResourceKind = what,
+                RequiredOperatingSystem = "macOS",
+            };
 
     }
 }

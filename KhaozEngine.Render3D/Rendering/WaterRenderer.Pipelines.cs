@@ -120,6 +120,7 @@ namespace KhaozEngine.Render3D.Rendering
                     program.Pipeline = replacements[i]!;
                 }
             _outputs = colorOutput;
+            ResetBoundedOutputs();
             _pendingOutputs = null;
         }
 

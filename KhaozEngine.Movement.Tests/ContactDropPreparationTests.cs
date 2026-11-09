@@ -31,7 +31,8 @@ public class ContactDropPreparationTests
             var body = new MoveState
             {
                 Position = new(launchPrefix ? phase : -0.25f, launchPrefix ? 4.75f : phase, 0),
-                Grounded = true, SpeedScale = launchPrefix ? 0.25f : 1f,
+                Grounded = true,
+                SpeedScale = launchPrefix ? 0.25f : 1f,
             };
             var first = move.Tick(body, tuning, Below, 0.01f, false, Dt, fixture.Context);
             Assert.Equal(launchPrefix ? RangeMoveStatus.Dropping : RangeMoveStatus.Following, first.Status);
@@ -180,7 +181,8 @@ public class ContactDropPreparationTests
         var planner = new Recorder(navigation.Planner);
         var move = MoveToRange.CreateForTests(planner, navigation, new PathFollowConfig
         {
-            ReplanCooldownSeconds = 30, GoalRetargetTolerance = 0.1f,
+            ReplanCooldownSeconds = 30,
+            GoalRetargetTolerance = 0.1f,
         });
         return (move, planner);
     }

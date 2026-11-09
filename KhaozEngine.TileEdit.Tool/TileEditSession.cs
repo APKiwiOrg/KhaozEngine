@@ -57,7 +57,8 @@ public sealed class TileEditSession
             catch (Exception ex) when (ex is not TileWorldException)
             {
                 throw new TileWorldException(TileWorldRefusal.SessionOpenFailed,
-                    $"{path}: cannot open world. {ex.Message}", ex) { SourceName = path };
+                    $"{path}: cannot open world. {ex.Message}", ex)
+                { SourceName = path };
             }
             IReadOnlyList<string> resolved = ResolveCatalogPaths(path, doc.CatalogPaths);
             OpenLocked(doc, TileWorldCatalogs.Load(resolved), path, resolved);
@@ -130,7 +131,9 @@ public sealed class TileEditSession
                     $"world '{e.Document.Id}' has {clearance.Count} clearance {(clearance.Count == 1 ? "issue" : "issues")}:\n" +
                     string.Join('\n', clearance.Select(i => $"[{i.Code}] {i.Message}")))
                 {
-                    WorldId = e.Document.Id, IssueCount = clearance.Count, Issues = clearance,
+                    WorldId = e.Document.Id,
+                    IssueCount = clearance.Count,
+                    Issues = clearance,
                     MeshRoot = e.Document.Clearance!.MeshRoot,
                     ResolvedMeshRoot = TileWorldClearance.ResolveMeshRoot(_path!, e.Document.Clearance),
                     Overlaps = clearance.Where(i => i.Overlap.HasValue).Select(i => i.Overlap!.Value).ToArray(),

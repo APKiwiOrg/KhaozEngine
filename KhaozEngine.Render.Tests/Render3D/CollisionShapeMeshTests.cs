@@ -28,6 +28,8 @@ public class CollisionShapeMeshTests
     static void AssertFacesWindOutward(GltfMesh m, Vector3 shapeCentroid)
     {
         var idx = m.Indices32;
+        Assert.NotEmpty(idx);
+        int checkedFaces = 0;
         for (int t = 0; t < idx.Length; t += 3)
         {
             Vector3 a = m.Vertices[idx[t]].Position;
@@ -37,6 +39,7 @@ public class CollisionShapeMeshTests
             Vector3 cross = Vector3.Cross(b - a, c - a);
             float area = cross.Length() * 0.5f;
             if (area < MinTriangleArea) continue; // degenerate (e.g. pole fan), skip.
+            checkedFaces++;
 
             Vector3 faceNormal = cross / (area * 2f);
             Vector3 faceCentroid = (a + b + c) / 3f;
@@ -44,6 +47,7 @@ public class CollisionShapeMeshTests
             Assert.True(dot >= -1e-4f,
                 $"Triangle at index {t} winds inward: dot={dot}, normal={faceNormal}, centroid={faceCentroid}");
         }
+        Assert.True(checkedFaces > 0, "The mesh must contain a non-degenerate face to check winding.");
     }
 
     [Fact]
@@ -113,6 +117,7 @@ public class CollisionShapeMeshTests
     {
         var m = CollisionShapeMesh.Build(new BoxShape(Vector3.One), P);
         Vector4 expected = P.For(CollisionShapeKind.Box).ToVector4();
+        Assert.NotEmpty(m.Vertices);
         Assert.All(m.Vertices, v => Assert.Equal(expected, v.Color));
     }
 

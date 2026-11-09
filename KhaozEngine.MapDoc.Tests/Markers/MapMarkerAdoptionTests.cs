@@ -98,22 +98,27 @@ public sealed class MapMarkerAdoptionTests
         var error = Assert.Throws<MapDocumentException>(() => MapMarkerAdoption.ConvertSpawns(fixture.Document, choices));
         switch (variant)
         {
-            case "missing": case "extra":
+            case "missing":
+            case "extra":
                 Assert.Equal(MapDocumentRefusal.MarkerAdoptionChoiceSetMismatch, error.Reason);
                 Assert.Equal(new[] { "old", "old" }, error.SourceIds);
                 Assert.Equal(2L, error.ExpectedCount);
                 Assert.Equal(variant == "missing" ? 1L : 3L, error.ActualCount);
                 break;
-            case "null-choice": case "missing-height":
+            case "null-choice":
+            case "missing-height":
                 Assert.Equal(MapDocumentRefusal.MarkerAdoptionChoiceMissing, error.Reason);
                 Assert.Equal("old", error.SourceId);
                 Assert.Equal("Spawn", error.SubjectKind);
                 break;
-            case "destination": case "live-id": case "reservation":
+            case "destination":
+            case "live-id":
+            case "reservation":
                 Assert.Equal(MapDocumentRefusal.IdentityDuplicate, error.Reason);
                 Assert.Equal(variant == "reservation" ? "a/entry" : "actor-new", error.MarkerId);
                 break;
-            case "name": case "live-name":
+            case "name":
+            case "live-name":
                 Assert.Equal(MapDocumentRefusal.MarkerNameDuplicate, error.Reason);
                 Assert.Equal("actor-home", error.MarkerName);
                 Assert.Equal(variant == "name" ? "start-new" : "actor-new", error.MarkerId);

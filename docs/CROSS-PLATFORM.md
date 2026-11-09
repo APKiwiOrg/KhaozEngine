@@ -629,7 +629,7 @@ dropped about 63 minutes of runner time from a full dispatch.
   test (golden and behavioral) plus the headless suite, matching `ci.yml`'s exclusions. LiveSocket tests
   need a live network peer. Tests marked `[Trait("Category", "Diagnostic")]` report instead of gating
   and run on demand by setting the dispatch input `renderTestFilter` to `Category=Diagnostic`, optionally
-  narrowed with `&FullyQualifiedName~<probe-class>`. This includes the 19 renderer timing/cost probes.
+  narrowed with `&FullyQualifiedName~<probe-class>`. This includes the 39 renderer report-only probes.
   The four retained atlas, hold cadence, bounded cascade and FFT checks stay in the default filter,
   as described in [the renderer performance reference](RENDERER-PERFORMANCE.md#default-correctness-and-on-demand-probes).
   Capability gates and software-adapter refusals still apply, so software runs establish no hardware

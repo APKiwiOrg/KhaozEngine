@@ -47,7 +47,8 @@ public static class MapSeamValidator
                     Add(new(MapDocumentRefusal.AuthoredValueMismatch, "seam position: pair surface does not match its edge")
                     {
                         SurfaceId = firstMismatch ? pair.First.SurfaceId : pair.Second.SurfaceId,
-                        Patch = firstMismatch ? seam.First.Patch : seam.Second.Patch, Index = index,
+                        Patch = firstMismatch ? seam.First.Patch : seam.Second.Patch,
+                        Index = index,
                         FieldPath = $"Pairs[{index}].{(firstMismatch ? "First" : "Second")}.SurfaceId",
                     });
                     continue;
@@ -60,15 +61,19 @@ public static class MapSeamValidator
                 if ((firstRepeated = !firstPairs.Add(pair.First.Address)) || !secondPairs.Add(pair.Second.Address))
                     Add(new(MapDocumentRefusal.IdentityDuplicate, "seam subdivide: duplicate paired vertex")
                     {
-                        Index = index, Address = firstRepeated ? pair.First.Address : pair.Second.Address,
-                        SurfaceId = firstRepeated ? first.Surface.Id : second.Surface.Id, FieldPath = $"Pairs[{index}]",
+                        Index = index,
+                        Address = firstRepeated ? pair.First.Address : pair.Second.Address,
+                        SurfaceId = firstRepeated ? first.Surface.Id : second.Surface.Id,
+                        FieldPath = $"Pairs[{index}]",
                     });
                 bool hasFirst = firstEdge.TryGetValue(pair.First.Address, out MapExactPoint firstPoint);
                 bool hasSecond = secondEdge.TryGetValue(pair.Second.Address, out MapExactPoint secondPoint);
                 if (!hasFirst || !hasSecond) Add(new(MapDocumentRefusal.SurfaceSeamVertexUndeclared, "seam subdivide: pair is not a declared edge vertex")
                 {
-                    Index = index, Address = !hasFirst ? pair.First.Address : pair.Second.Address,
-                    SurfaceId = !hasFirst ? first.Surface.Id : second.Surface.Id, FieldPath = $"Pairs[{index}]",
+                    Index = index,
+                    Address = !hasFirst ? pair.First.Address : pair.Second.Address,
+                    SurfaceId = !hasFirst ? first.Surface.Id : second.Surface.Id,
+                    FieldPath = $"Pairs[{index}]",
                 });
                 else if (firstPoint.Y != secondPoint.Y) Add(new(MapDocumentRefusal.GeometryVertexHeightMismatch, "seam height: paired vertices disagree")
                 { Index = index, Address = pair.First.Address, SurfaceId = first.Surface.Id, FieldPath = $"Pairs[{index}]" });
@@ -79,7 +84,8 @@ public static class MapSeamValidator
                 {
                     SurfaceId = firstIncomplete ? first.Surface.Id : second.Surface.Id,
                     ActualCount = firstIncomplete ? firstPairs.Count : secondPairs.Count,
-                    ExpectedCount = firstIncomplete ? firstEdge.Count : secondEdge.Count, FieldPath = "Pairs",
+                    ExpectedCount = firstIncomplete ? firstEdge.Count : secondEdge.Count,
+                    FieldPath = "Pairs",
                 });
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
@@ -150,8 +156,12 @@ public static class MapSeamValidator
                 if (dependent.X != ownerPosition.X || dependent.Z != ownerPosition.Z)
                     Add(new(MapDocumentRefusal.SurfaceSeamPositionMismatch, "corner dependency position: dependent and owner disagree in world XZ")
                     {
-                        Patch = patch.Key, ExpectedPatch = dependency.Owner.Patch, Address = dependency.Owner.Address,
-                        Index = index, CellX = dependency.CornerX, CellZ = dependency.CornerZ,
+                        Patch = patch.Key,
+                        ExpectedPatch = dependency.Owner.Patch,
+                        Address = dependency.Owner.Address,
+                        Index = index,
+                        CellX = dependency.CornerX,
+                        CellZ = dependency.CornerZ,
                     });
                 if (!owner.Vertices.TryGetValue(dependency.Owner.Address, out MapExactPoint ownerPoint))
                     Add(new(MapDocumentRefusal.SurfaceSeamVertexUndeclared, "corner dependency owner: address is not a declared surface vertex")
@@ -186,7 +196,8 @@ public static class MapSeamValidator
         if (edge.From.SurfaceId != source.Surface.Id || edge.To.SurfaceId != source.Surface.Id)
             throw new MapDocumentException(MapDocumentRefusal.AuthoredValueMismatch, "seam position: edge surface mismatch")
             {
-                RecordId = seamId, Patch = edge.Patch,
+                RecordId = seamId,
+                Patch = edge.Patch,
                 SurfaceId = edge.From.SurfaceId != source.Surface.Id ? edge.From.SurfaceId : edge.To.SurfaceId,
                 FieldPath = side + (edge.From.SurfaceId != source.Surface.Id ? ".From.SurfaceId" : ".To.SurfaceId"),
             };
@@ -201,8 +212,11 @@ public static class MapSeamValidator
         if (missingFrom || !vertices.ContainsKey(edge.To.Address))
             throw new MapDocumentException(MapDocumentRefusal.SurfaceSeamVertexUndeclared, "seam subdivide: edge endpoints must be declared surface vertices")
             {
-                RecordId = seamId, Patch = edge.Patch, SurfaceId = source.Surface.Id,
-                Address = missingFrom ? edge.From.Address : edge.To.Address, FieldPath = side + (missingFrom ? ".From" : ".To"),
+                RecordId = seamId,
+                Patch = edge.Patch,
+                SurfaceId = source.Surface.Id,
+                Address = missingFrom ? edge.From.Address : edge.To.Address,
+                FieldPath = side + (missingFrom ? ".From" : ".To"),
             };
         return vertices;
     }

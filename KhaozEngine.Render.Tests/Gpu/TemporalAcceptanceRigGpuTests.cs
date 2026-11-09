@@ -151,6 +151,8 @@ namespace KhaozEngine.Tests.Gpu
             foreach (var (name, setup, draw, frame) in Scenes())
             {
                 byte[] a = RunTo(setup, draw, frame), b = RunTo(setup, draw, frame);
+                Assert.Equal(SceneW * SceneH * 4, a.Length);
+                Assert.Equal(a.Length, b.Length);
                 int differing = 0;
                 for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) differing++;
                 output.WriteLine($"{name}, frame {frame}: {differing} bytes differ");

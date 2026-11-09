@@ -33,8 +33,11 @@ public static class MapLegacyExteriorRecipe
 
         MapDocumentFinding Finding(MapDocumentRefusal reason, string message, string field) => new(reason, message)
         {
-            RecordId = footprint.Id, SpaceId = space.Id, SurfaceId = lowerSurface?.Id ?? footprint.Lower.SurfaceId,
-            Patch = footprint.Lattice, FieldPath = field,
+            RecordId = footprint.Id,
+            SpaceId = space.Id,
+            SurfaceId = lowerSurface?.Id ?? footprint.Lower.SurfaceId,
+            Patch = footprint.Lattice,
+            FieldPath = field,
         };
     }
 }

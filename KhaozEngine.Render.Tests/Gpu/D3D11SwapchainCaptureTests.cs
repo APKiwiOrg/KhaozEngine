@@ -117,8 +117,8 @@ namespace KhaozEngine.Tests.Gpu
             GpuSwapchainCopyStateException refused = Assert.Throws<GpuSwapchainCopyStateException>(
                 () => D3D11BackBufferCopySource.RecordCopy(swapchain, recorder, destination));
             Assert.IsAssignableFrom<InvalidOperationException>(refused);
-                Assert.Equal(GpuSwapchainCopyRefusal.SwapchainNotBound, refused.Reason);
-                Assert.Equal("CopySwapchainColor", refused.Command);
+            Assert.Equal(GpuSwapchainCopyRefusal.SwapchainNotBound, refused.Reason);
+            Assert.Equal("CopySwapchainColor", refused.Command);
             Assert.Empty(log.Trace);
 
             var foreign = new RecordingGpuCommandList(new NullGpuCommandList());

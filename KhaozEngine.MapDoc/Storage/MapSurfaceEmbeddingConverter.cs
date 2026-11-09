@@ -39,7 +39,7 @@ internal sealed class MapSurfaceEmbeddingConverter : JsonConverter<List<MapSurfa
             if (result.Count != 0)
             {
                 if (remaining < 1) throw new MapSurfaceEmbeddingJsonException(MapDocumentRefusal.WorkCapacityExceeded, "surface embedding limit, use tiled storage")
-                    { FieldPath = "$.surfacePatches", Budget = "MaxEmbeddingBytes", ActualByteCount = _maxEncodedBytes - remaining + 1, Limit = _maxEncodedBytes };
+                { FieldPath = "$.surfacePatches", Budget = "MaxEmbeddingBytes", ActualByteCount = _maxEncodedBytes - remaining + 1, Limit = _maxEncodedBytes };
                 remaining--;
             }
             byte[] payload;
@@ -75,7 +75,12 @@ internal sealed class MapSurfaceEmbeddingConverter : JsonConverter<List<MapSurfa
     public override void Write(Utf8JsonWriter writer, List<MapSurfacePatch> value, JsonSerializerOptions options)
     {
         writer.WriteStartArray();
-        foreach (MapSurfacePatch patch in value.OrderBy(p => p.Key)) writer.WriteRawValue(MapSurfacePatchCodec.Encode(patch));
+        foreach (MapSurfacePatch patch in value.OrderBy(p => p.Key))
+        {
+            byte[] bytes = MapSurfacePatchCodec.Encode(patch, out var ownership);
+            using var consumed = ownership;
+            writer.WriteRawValue(bytes);
+        }
         writer.WriteEndArray();
     }
 }

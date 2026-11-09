@@ -97,7 +97,8 @@ public static class CatalogWriter
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw new TileWorldException(TileWorldRefusal.CatalogEditReadFailed,
-                $"{path}: cannot read catalog. {ex.Message}", ex) { SourceName = path };
+                $"{path}: cannot read catalog. {ex.Message}", ex)
+            { SourceName = path };
         }
         byte[] after;
         try { after = SetCollisionHeights(before, heights); }
@@ -205,11 +206,13 @@ public static class CatalogWriter
         if (id is null || !heights.TryGetValue(id, out float value)) return;
         if (!found.Add(id))
             throw new TileWorldException(TileWorldRefusal.CatalogEditArchetypeDuplicate,
-                $"the catalog defines archetype '{id}' twice") { ArchetypeId = id };
+                $"the catalog defines archetype '{id}' twice")
+            { ArchetypeId = id };
         // Which of the two a reader keeps is the reader's business, so neither is guessed at.
         if (twoHeights)
             throw new TileWorldException(TileWorldRefusal.CatalogEditHeightDuplicate,
-                $"archetype '{id}' carries collisionHeight twice") { ArchetypeId = id, Field = "collisionHeight" };
+                $"archetype '{id}' carries collisionHeight twice")
+            { ArchetypeId = id, Field = "collisionHeight" };
         byte[] number = Encoding.UTF8.GetBytes(FormatHeight(value));
         if (height is { } existing)
         {

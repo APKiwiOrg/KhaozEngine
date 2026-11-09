@@ -159,12 +159,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "throw is deliberately here and not in the driver callback that saw it, because unwinding a "
                 + "managed exception through native driver frames destroys the stack the diagnostic was about. "
                 + $"Set {VulkanValidation.EnvVarName}=1 to log validation errors and carry on.")
-                {
-                    Site = site,
-                    Diagnostic = latched.Diagnostic,
-                    MessageId = latched.MessageId,
-                    MessageIdName = latched.MessageIdName,
-                };
+            {
+                Site = site,
+                Diagnostic = latched.Diagnostic,
+                MessageId = latched.MessageId,
+                MessageIdName = latched.MessageIdName,
+            };
         }
 
         void ReportCore(in VulkanValidationMessage message)

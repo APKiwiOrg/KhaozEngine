@@ -142,7 +142,8 @@ public sealed partial class TileWorldDocument
         bool unloaded = UnloadedRegionHashes.ContainsKey(c);
         string why = unloaded ? UnloadedMessage(c) : $"region {c} does not exist. Create it first.";
         throw new TileWorldException(unloaded ? TileWorldRefusal.RegionNotLoaded : TileWorldRefusal.RegionMissing,
-            $"tile ({x}, {z}): {why}") { Region = c, TileX = x, TileZ = z };
+            $"tile ({x}, {z}): {why}")
+        { Region = c, TileX = x, TileZ = z };
     }
 
     void RequirePlane(int plane)
@@ -230,7 +231,7 @@ public sealed partial class TileWorldDocument
         TileObject o = from.Objects.Find(candidate => candidate.Id == id)
             ?? throw new TileWorldException(TileWorldRefusal.ObjectIndexStale,
                 $"object {id} is indexed to region {from.Coord} but is not in it, the object index is stale. Call RebuildObjectIndex.")
-                { ObjectId = id, Region = from.Coord };
+            { ObjectId = id, Region = from.Coord };
         o.X = x; o.Z = z; o.Plane = plane;
         from.Dirty = true;
         if (!ReferenceEquals(from, to))
@@ -300,7 +301,7 @@ public sealed partial class TileWorldDocument
         throw new TileWorldException(TileWorldRefusal.MarkerNameInUnloadedRegion,
             $"marker '{name}' already exists at ({carried.X}, {carried.Z}) in region {home}, which is not loaded. " +
             "Marker names are unique across the whole world. Load that region to move it, or pick another name.")
-            { MarkerName = name, Region = home, Tile = new TileCoord(carried.X, carried.Z, carried.Plane) };
+        { MarkerName = name, Region = home, Tile = new TileCoord(carried.X, carried.Z, carried.Plane) };
     }
 
     /// <summary>The marker with this name, or null when there is none. Walks the LOADED regions only, so a

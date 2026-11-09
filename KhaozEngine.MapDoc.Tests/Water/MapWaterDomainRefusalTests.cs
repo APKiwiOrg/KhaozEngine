@@ -131,8 +131,11 @@ public sealed class MapWaterDomainRefusalTests
         Assert.Equal(limit, finding.Limit);
         foreach (bool below in new[] { false, true })
         {
-            var control = vertices ? doc with { Rings = [below ? Ring((0, 2), (1, 2), (0, 3))
-                : Ring((0, 2), (1, 2), (1, 3), (0, 3))] }
+            var control = vertices ? doc with
+            {
+                Rings = [below ? Ring((0, 2), (1, 2), (0, 3))
+                : Ring((0, 2), (1, 2), (1, 3), (0, 3))]
+            }
                 : doc with { Rings = doc.Rings.Take(below ? 3 : 4).ToArray() };
             var compiled = Compile(control);
             if (vertices) Assert.Equal(below ? 15 : 16, compiled.Pieces.Sum(p => p.Ring.Count));
@@ -158,8 +161,11 @@ public sealed class MapWaterDomainRefusalTests
     [Fact]
     public void ExactCornerOverflow_RetainsTheCurrentPiece()
     {
-        var doc = Valid with { Frame = Frame with { CellUnitMetres = new(2, 1) },
-            Rects = [new(long.MaxValue - 1, 0, long.MaxValue, 1)] };
+        var doc = Valid with
+        {
+            Frame = Frame with { CellUnitMetres = new(2, 1) },
+            Rects = [new(long.MaxValue - 1, 0, long.MaxValue, 1)]
+        };
         var finding = Refused(doc);
         Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, finding.Reason);
         Assert.Equal("Rects[0]", finding.FieldPath);

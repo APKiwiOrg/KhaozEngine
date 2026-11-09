@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -66,9 +68,10 @@ internal sealed class MapBoundFaceContext
 
     internal static MapBoundFaceContext? PrepareBounds(MapScopedSurfaces view, IEnumerable<MapBoundFaceDemand> demands,
         int maxPatches, long maxFaces, MapBoundFaceWork? work, out string? refusal, MapBoundPreparation? preparation = null,
-        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeOpeningFaces = null)
+        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeOpeningFaces = null, MapCapacityDemandOrigin? faceOrigin = null)
     {
         ArgumentNullException.ThrowIfNull(view);
+        using var admitted = (Scene.MapSceneAdmission.Current ?? view.Scope.SceneAdmission)?.Enter();
         ArgumentNullException.ThrowIfNull(demands);
         preparation?.RequireView(view);
         if (maxPatches < 0 || maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxPatches));
@@ -96,11 +99,13 @@ internal sealed class MapBoundFaceContext
                     { SurfaceId = demand.Patch.SurfaceId, Patch = demand.Patch, PatchStatus = surface is null ? null : status, Operation = nameof(PrepareBounds) };
                 MapValidatedSurfacePatch? validatedPatch = preparation.ValidatedPatch(surface, patch);
                 if (validatedPatch is null) { refusal = preparation.Refusal; continue; }
+                MapPrismValidationWorkspace.ReserveContext(1024);
                 entry = new(validatedPatch);
                 pending.Add(demand.Patch, entry);
             }
             bool freshCell = !entry.Contains(demand.SlotCell);
             long faces = freshCell ? MapSurfaceCompiler.CountFaces(entry.Surface, entry.Patch, demand.SlotCell) : 0;
+            long physicalFaces = faces;
             entry.PhysicalFaces = checked(entry.PhysicalFaces + faces);
             PendingOpening? requested = null;
             MapHorizontalOpening? opening = null;
@@ -115,8 +120,13 @@ internal sealed class MapBoundFaceContext
                     throw new MapDocumentException(opening is null ? MapDocumentRefusal.ReferenceMissing :
                         opening.Patch != demand.Patch ? MapDocumentRefusal.AuthoredOwnershipMismatch : MapDocumentRefusal.SpaceOpeningOwnershipInvalid,
                         "context demand opening is unavailable or does not own the cell")
-                    { RecordId = reference.Id, Patch = demand.Patch, SlotCell = demand.SlotCell, Operation = nameof(PrepareBounds),
-                        ActualAnchor = opening is not null && opening.Patch != demand.Patch ? opening.Patch : null };
+                    {
+                        RecordId = reference.Id,
+                        Patch = demand.Patch,
+                        SlotCell = demand.SlotCell,
+                        Operation = nameof(PrepareBounds),
+                        ActualAnchor = opening is not null && opening.Patch != demand.Patch ? opening.Patch : null
+                    };
                 freshOpeningCell = requested is null || !requested.Cells.Contains(demand.SlotCell);
                 if (freshOpeningCell) faces = checked(faces + OpeningFaceCount(entry.Patch, demand.SlotCell));
             }
@@ -125,12 +135,18 @@ internal sealed class MapBoundFaceContext
             catch (OverflowException)
             { preparation.RecordContextCapacity("MaxContextFaces", null, maxFaces, demand.Patch); refusal = "context faces"; continue; }
             if (work is not null) work.ContextFacesCounted = count;
-            if (count > maxFaces || entry.PhysicalFaces > MapSurfaceCompiler.MaxFacesPerPatch)
+            bool exceeded = count > maxFaces;
+            if (faceOrigin is { } origin)
+                origin.Report(preparation, "MapBoundFaceContext.MaxContextFaces.1", count, CapacityDemandLifetime.Inventory);
+            else DemandDiagnostics.Check(preparation, "MapBoundFaceContext.MaxContextFaces.1", "MaxContextFaces", 0, count, maxFaces, exceeded, CapacityDemandLifetime.Inventory,
+                allowanceSource: preparation is { } contextPreparation && contextPreparation.Limits.MaxContextFaces == maxFaces ? contextPreparation.Limits : null);
+            if (exceeded || DemandDiagnostics.Check(preparation, "MapBoundFaceContext.MaxFacesPerPatch", "MaxFacesPerPatch", entry.PhysicalFaces - physicalFaces, physicalFaces, MapSurfaceCompiler.MaxFacesPerPatch, entry.PhysicalFaces > MapSurfaceCompiler.MaxFacesPerPatch, CapacityDemandLifetime.Inventory))
             {
                 preparation.RecordContextCapacity(count > maxFaces ? "MaxContextFaces" : "MaxFacesPerPatch",
                     count > maxFaces ? count : entry.PhysicalFaces, count > maxFaces ? maxFaces : MapSurfaceCompiler.MaxFacesPerPatch, demand.Patch);
                 refusal = "context faces"; continue;
             }
+
             entry.Add(demand.SlotCell);
             if (freshOpeningCell)
             {
@@ -160,6 +176,7 @@ internal sealed class MapBoundFaceContext
             MapCompiledPatch local = compiled;
             compiled = MapEffectiveGeometry.TransformPatch(view, compiled);
             if (work is not null) { work.Compiles++; work.CompiledFaces += compiled.Faces.Count; }
+            MapPrismValidationWorkspace.ReserveContext(checked(384L * compiled.Faces.Count));
             var cells = compiled.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key,
                 g => (IReadOnlyList<MapBoundFace>)Array.AsReadOnly(g.OrderBy(f => f.Key)
                     .Select(f => new MapBoundFace(f.Key, compiled.ExactTriangle(f))).ToArray()));
@@ -233,8 +250,15 @@ internal sealed class MapBoundFaceContext
             throw new MapDocumentException(slot is < 0 or >= 4096 ? MapDocumentRefusal.ValueOutsideRange :
                 x < 0 || x >= patch.Width || z < 0 || z >= patch.Depth ? MapDocumentRefusal.SurfaceAddressOutOfPatch :
                 MapDocumentRefusal.SpaceOpeningCellsInvalid, "opening must name absent cells in its patch")
-            { Patch = patch.Key, SlotCell = slot, CellX = x, CellZ = z, ActualInteger = slot,
-                MinimumInteger = slot is < 0 or >= 4096 ? 0 : null, MaximumInteger = slot is < 0 or >= 4096 ? 4095 : null };
+            {
+                Patch = patch.Key,
+                SlotCell = slot,
+                CellX = x,
+                CellZ = z,
+                ActualInteger = slot,
+                MinimumInteger = slot is < 0 or >= 4096 ? 0 : null,
+                MaximumInteger = slot is < 0 or >= 4096 ? 4095 : null
+            };
         Span<MapLatticeTriangle> triangles = stackalloc MapLatticeTriangle[4];
         return MapSurfaceCompiler.Describe(patch, x, z, triangles);
     }

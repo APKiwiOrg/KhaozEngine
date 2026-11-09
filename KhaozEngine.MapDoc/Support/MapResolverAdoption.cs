@@ -16,7 +16,7 @@ public static class MapResolverAdoption
         ArgumentNullException.ThrowIfNull(choices);
         if (document.Tiles is { IsPartial: true }) throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired,
             "Cannot adopt authored support from a partial window.")
-            { DocumentId = document.Id, Operation = nameof(ConvertToAuthoredSupport) };
+        { DocumentId = document.Id, Operation = nameof(ConvertToAuthoredSupport) };
         foreach (MapPlacement placement in document.Placements.Where(p => p.Y is null).OrderBy(p => p.Id, StringComparer.Ordinal))
         {
             if (!choices.TryGetValue(placement.Id, out MapPlacementSupportChoice? choice) || choice is null ||
@@ -25,7 +25,7 @@ public static class MapResolverAdoption
                 throw new MapDocumentException(choice is { ExplicitY: { } invalidHeight, Binding: null } && !float.IsFinite(invalidHeight)
                     ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.SupportAdoptionChoiceMissing,
                     $"Placement '{placement.Id}' requires exactly one explicit Y or authored support choice.")
-                    { PlacementId = placement.Id, FieldPath = choice is { ExplicitY: { }, Binding: null } ? "$.explicitY" : null };
+                { PlacementId = placement.Id, FieldPath = choice is { ExplicitY: { }, Binding: null } ? "$.explicitY" : null };
         }
         var options = MapDocumentFile.CreateOptions(MapDocRegistry.CreateDefault(), write: false);
         // Detach DTOs without routing a complete tiled world's resident patches through monolithic embedding limits.

@@ -29,7 +29,8 @@ namespace KhaozEngine.Render3D
             ArgumentNullException.ThrowIfNull(joints);
             if (joints.Count == 0)
                 throw new SkeletonContractArgumentException(SkeletonContractRefusal.EmptyJointTable,
-                    "A skeleton contract needs at least its root joint.", nameof(joints)) { JointCount = joints.Count };
+                    "A skeleton contract needs at least its root joint.", nameof(joints))
+                { JointCount = joints.Count };
 
             var copy = new ContractJoint[joints.Count];
             for (int index = 0; index < copy.Length; index++)
@@ -37,7 +38,8 @@ namespace KhaozEngine.Render3D
                 ContractJoint joint = joints[index];
                 if (string.IsNullOrEmpty(joint.Name))
                     throw new SkeletonContractArgumentException(SkeletonContractRefusal.JointUnnamed,
-                        $"Contract joint {index} has no name.", nameof(joints)) { JointIndex = index, JointName = joint.Name };
+                        $"Contract joint {index} has no name.", nameof(joints))
+                    { JointIndex = index, JointName = joint.Name };
                 if (index == 0 && joint.Parent is not null)
                     throw new SkeletonContractArgumentException(SkeletonContractRefusal.FirstJointHasParent,
                         $"The first contract joint '{joint.Name}' has parent '{joint.Parent}'."
@@ -51,10 +53,12 @@ namespace KhaozEngine.Render3D
                 if (joint.Parent is not null && !_names.Contains(joint.Parent))
                     throw new SkeletonContractArgumentException(SkeletonContractRefusal.ParentNotDeclaredBeforeChild,
                         $"Contract joint '{joint.Name}' has parent '{joint.Parent}', which is"
-                        + " not declared before it.", nameof(joints)) { JointName = joint.Name, ParentName = joint.Parent };
+                        + " not declared before it.", nameof(joints))
+                    { JointName = joint.Name, ParentName = joint.Parent };
                 if (!_names.Add(joint.Name))
                     throw new SkeletonContractArgumentException(SkeletonContractRefusal.DuplicateJointName,
-                        $"Contract joint '{joint.Name}' is declared twice.", nameof(joints)) { JointName = joint.Name };
+                        $"Contract joint '{joint.Name}' is declared twice.", nameof(joints))
+                    { JointName = joint.Name };
                 copy[index] = joint;
             }
 

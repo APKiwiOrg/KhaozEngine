@@ -95,6 +95,7 @@ public static class MapSupportResourceFile
     /// <summary>Payload, geometry and scope checks. Local references name this resource's own surfaces and records.</summary>
     internal static void Require(MapSupportResource resource, string? resourceId = null, bool versionIsInteger = true)
     {
+        using var validation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         if (resource.PayloadVersion != 1) throw new MapDocumentException(versionIsInteger ? MapDocumentRefusal.SchemaPayloadVersionUnsupported : MapDocumentRefusal.SchemaValueRequired, "Unsupported support resource payload version.")
         { ResourceId = resourceId, FieldPath = "$.payloadVersion", ActualVersion = versionIsInteger ? resource.PayloadVersion : null, SupportedVersions = [1] };
         if (resource.Surfaces is null || resource.References is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Support resource collections must not be null.")
@@ -114,7 +115,9 @@ public static class MapSupportResourceFile
                     ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.SurfaceSupportRoleInvalid,
                     "Support resources declare native support floors only, without analytic terrain.")
                 {
-                    ResourceId = resourceId, SurfaceId = surface.Id, Index = index,
+                    ResourceId = resourceId,
+                    SurfaceId = surface.Id,
+                    Index = index,
                     FieldPath = $"$.surfaces[{index}]." + (surface.Role != MapSurfaceRole.SupportFloor ? "role" : "presencePolicy"),
                     EnumType = surface.Role != MapSurfaceRole.SupportFloor ? typeof(MapSurfaceRole) : typeof(MapPresencePolicy),
                     ActualInteger = surface.Role != MapSurfaceRole.SupportFloor ? (byte)surface.Role : (byte)surface.PresencePolicy,
@@ -129,10 +132,12 @@ public static class MapSupportResourceFile
                     patch.Key != key ? MapDocumentRefusal.AuthoredValueMismatch : MapDocumentRefusal.ReferenceMissing,
                     "Support resource patches must belong to a declared surface.")
                 { ResourceId = resourceId, Patch = patch?.Key, ExpectedPatch = key, SurfaceId = key.SurfaceId, FieldPath = "$.patches" };
-            _ = MapSurfacePatchCodec.Encode(patch);
+            _ = MapSurfacePatchCodec.Encode(patch, out var encoding);
+            using var consumedEncoding = encoding;
             var surface = resource.Surfaces.Refs.Single(s => s.Id == key.SurfaceId);
-            if (MapSurfaceCompiler.Compile(surface, patch).LegacyFallbackCells.Count != 0)
-                // Native support admission above excludes the legacy-only fallback branch.
+            var compiled = MapSurfaceCompiler.Compile(surface, patch);
+            using var consumedGeometry = compiled.PreparationOwnership;
+            if (compiled.LegacyFallbackCells.Count != 0)
                 throw new InvalidOperationException("Support resources cannot declare analytic fallback cells.");
             foreach (MapTopologyRecord record in patch.Records)
                 if (!anchors.TryAdd(record.Id, key)) throw new MapDocumentException(MapDocumentRefusal.IdentityDuplicate, $"Duplicate support resource record '{record.Id}'.")

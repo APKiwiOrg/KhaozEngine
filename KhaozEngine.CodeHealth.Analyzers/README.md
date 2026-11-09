@@ -83,7 +83,7 @@ file-size baseline.
 | KETEST003 | Report-only review aid | Test methods whose every direct assertion runs inside a loop or `Assert.All` over a source that is not provably non-empty. Proven non-empty loops and tests with an assertion outside those loops do not count. Assert the expected count or non-emptiness before iterating. |
 
 KETEST003 appears only with `-p:KhaozTestHealthMode=report`, never gates normal builds and never enters
-the baseline. Only 6 of 20 sampled findings in this repository were real, because loops over local
+the baseline. A review of all 474 findings in this repository found about a third real, because loops over local
 tables and test-owned case helpers look possibly empty to a syntactic check. Review its candidates
 instead of treating them as enforced debt.
 

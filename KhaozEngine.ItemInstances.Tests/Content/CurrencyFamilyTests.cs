@@ -228,12 +228,12 @@ public class CurrencyFamilyTests
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(15)]
-    [InlineData(1023)]
-    [InlineData(-1)]
+    [InlineData(0, 1)]
+    [InlineData(15, 14)]
+    [InlineData(1023, 1024)]
+    [InlineData(-1, 1)]
     public void A_currency_step_operation_in_the_gap_between_the_two_vocabularies_is_refused_on_both_sides(
-        int operation)
+        int operation, int limit)
     {
         // 1 to 14 is a primitive and 1,024 up is a game operation. A step naming 20 is an author reaching
         // for a primitive that does not exist, and a step the evaluator skipped would be a craft that did
@@ -247,13 +247,16 @@ public class CurrencyFamilyTests
         byte[] bytes = Forge(step, "whetstone_1", 1, 1, operation, 0, 0, 0, 0);
         Assert.False(step.Codec.TryDecode(bytes, out _, out string? reason));
         Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
+
+        ContentRow control = Row(step, "whetstone_1", Reference(1), Int(1), Int(limit), Int(0), Int(0), Int(0), Int(0));
+        Assert.Equal(limit, Decode(step, Encode(step, control)).Fields[2].Number);
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(16)]
-    [InlineData(-1)]
-    public void A_currency_guard_kind_outside_the_fifteen_of_spec_10_3_is_refused_on_both_sides(int guardKind)
+    [InlineData(0, 1)]
+    [InlineData(16, 15)]
+    [InlineData(-1, 1)]
+    public void A_currency_guard_kind_outside_the_fifteen_of_spec_10_3_is_refused_on_both_sides(int guardKind, int limit)
     {
         ContentTypeRegistry registry = Registered(Currency);
         ContentTypeRegistration guard = Lookup(registry, InstanceContentTypeIds.CurrencyGuardTypeKey);
@@ -268,12 +271,15 @@ public class CurrencyFamilyTests
         byte[] bytes = Forge(guard, "whetstone_target_1", 1, 0, 1, guardKind, 0, 0);
         Assert.False(guard.Codec.TryDecode(bytes, out _, out string? reason));
         Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
+
+        ContentRow control = Row(guard, "whetstone_target_1", Reference(1), Reference(0), Int(1), Int(limit), Int(0), Int(0));
+        Assert.Equal(limit, Decode(guard, Encode(guard, control)).Fields[3].Number);
     }
 
     [Theory]
-    [InlineData(17)]
-    [InlineData(-1)]
-    public void A_max_steps_outside_0_to_16_is_refused_on_both_sides(int maxSteps)
+    [InlineData(17, 16)]
+    [InlineData(-1, 0)]
+    public void A_max_steps_outside_0_to_16_is_refused_on_both_sides(int maxSteps, int limit)
     {
         ContentTypeRegistry registry = Registered(Currency);
         ContentTypeRegistration currency = Lookup(registry, InstanceContentTypeIds.CraftingCurrencyTypeKey);
@@ -286,6 +292,9 @@ public class CurrencyFamilyTests
         byte[] bytes = Forge(currency, "whetstone", 40, 1, maxSteps);
         Assert.False(currency.Codec.TryDecode(bytes, out _, out string? reason));
         Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
+
+        ContentRow control = Row(currency, "whetstone", Marker(), Marker(), Reference(40), Int(1), Int(limit));
+        Assert.Equal(limit, Decode(currency, Encode(currency, control)).Fields[4].Number);
     }
 
     [Fact]
@@ -391,11 +400,14 @@ public class CurrencyFamilyTests
     {
         foreach (FamilyType type in Currency)
         {
-            foreach (ContentFieldEntry field in type.CreateSchema().Fields)
+            IReadOnlyList<ContentFieldEntry> fields = type.CreateSchema().Fields;
+            Assert.NotEmpty(fields);
+            foreach (ContentFieldEntry field in fields)
             {
                 Assert.False(
                     ContentTextKey.ExceedsBound(type.Key, 64, field.Name),
                     ContentTextKey.Derive(type.Key, ReadOnlySpan<byte>.Empty, field.Name));
+                Assert.NotEmpty(field.Name);
                 foreach (char c in field.Name)
                 {
                     Assert.True(c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_', field.Name);

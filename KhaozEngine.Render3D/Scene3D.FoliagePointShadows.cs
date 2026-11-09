@@ -72,6 +72,21 @@ public sealed partial class Scene3D
         }
     }
 
+    // Cached point runs must not keep a released batch's CPU product alive after its lease retires.
+    void ForgetPreparedFoliagePointSources(FoliageBatch batch)
+    {
+        if (_foliagePointStreams.Remove(batch, out var stream)) stream.Dispose();
+        _foliagePointSources.Clear();
+        _foliagePointRanges.Clear();
+        _foliagePointPending.Clear();
+        _foliagePointSourceOrder.Clear();
+        _foliagePointFaceRuns.Clear();
+        _foliagePointHits.Clear();
+        _foliagePointIndex.Reset();
+        _foliagePointFrame = -1;
+        _foliagePointFaceLight = -1;
+    }
+
     /// <summary>Translate the submitted casting prefixes into per-batch layout ranges, once per point-shadow frame.
     /// A batch submitted more than once keeps the union of its prefixes, so no proxy is drawn twice.</summary>
     void EnsureFoliagePointShadowFrame()
@@ -125,7 +140,7 @@ public sealed partial class Scene3D
             }
             _foliagePointRanges.Add(new FoliagePointShadowRange(start, end - start));
             _foliagePointSources.Add(new FoliagePointSource(FoliagePointStreamFor(first.Batch),
-                rangeStart, _foliagePointRanges.Count - rangeStart));
+                rangeStart, _foliagePointRanges.Count - rangeStart, first.Batch));
         }
         for (int sourceOrdinal = 0; sourceOrdinal < _foliagePointSources.Count; sourceOrdinal++)
         {
@@ -138,7 +153,7 @@ public sealed partial class Scene3D
     FoliagePointShadowStream FoliagePointStreamFor(FoliageBatch batch)
     {
         if (_foliagePointStreams.TryGetValue(batch, out FoliagePointShadowStream? stream)) return stream;
-        stream = FoliagePointShadowStream.Build(batch.Layout.Instances, FoliageBounds);
+        stream = batch.PreparedPointStream ?? FoliagePointShadowStream.Build(batch.Layout.Instances, FoliageBounds);
         _foliagePointStreams.Add(batch, stream);
         return stream;
     }
@@ -158,7 +173,7 @@ public sealed partial class Scene3D
     }
 
     /// <summary>Fold every rest-pose proxy this light's map would draw into a static signature: mesh identity and
-    /// the absolute rest transform, nothing else.</summary>
+    /// its exact authored rest transform, nothing else. Native poses retain their local matrix and anchor.</summary>
     void MixFoliagePointSignature(ref ulong hash, Vector3 lightPosition, float radius, float nearRadius,
         Vector3 exclusionMin, Vector3 exclusionMax)
     {
@@ -167,9 +182,10 @@ public sealed partial class Scene3D
         foreach (FoliagePointCasterRef reference in _foliagePointHits)
         {
             FoliagePointSource source = _foliagePointSources[reference.SourceOrdinal];
-            ref readonly FoliagePointShadowCaster caster = ref source.Stream.Casters[(int)reference.ProxySlot];
+            ref readonly FoliagePointShadowCaster caster = ref source.Stream.CastersIn(new FoliagePointShadowRun(default, reference.ProxySlot, 1))[0];
             MixPointSignature(ref hash, SignatureWord((uint)caster.Mesh.Index, (uint)caster.Mesh.Generation));
-            MixPointSignature(ref hash, caster.Transform);
+            if (source.Stream.AnchoredPose(caster) is { } anchored) MixAnchoredPointSignature(ref hash, anchored);
+            else MixPointSignature(ref hash, caster.Transform);
         }
     }
 
@@ -190,7 +206,7 @@ public sealed partial class Scene3D
             {
                 FoliagePointSource source = _foliagePointSources[reference.SourceOrdinal];
                 if (source.Stream.Buffer is not { } buffer) continue;
-                ref readonly FoliagePointShadowCaster caster = ref source.Stream.Casters[(int)reference.ProxySlot];
+                ref readonly FoliagePointShadowCaster caster = ref source.Stream.CastersIn(new FoliagePointShadowRun(default, reference.ProxySlot, 1))[0];
                 int last = _foliagePointFaceRuns.Count - 1;
                 if (last >= 0 && lastSource == reference.SourceOrdinal)
                 {
@@ -204,7 +220,7 @@ public sealed partial class Scene3D
                     }
                 }
                 _foliagePointFaceRuns.Add(new FoliagePointFaceRun(buffer,
-                    new FoliagePointShadowRun(caster.Mesh, reference.ProxySlot, 1)));
+                    new FoliagePointShadowRun(caster.Mesh, reference.ProxySlot, 1), source.Batch));
                 lastSource = reference.SourceOrdinal;
             }
         }
@@ -216,11 +232,14 @@ public sealed partial class Scene3D
         {
             MeshHandle handle = faceRun.Run.Mesh;
             if (!_slots.IsValid(handle.Index, handle.Generation) || _meshes[handle.Index] is not { } mesh) continue;
-            if (draws == 0)
-                renderer.BeginFace(cl, atlas, packedIndex * PointShadowMath.FaceCount + face, face, row,
+            renderer.BeginFace(cl, atlas, packedIndex * PointShadowMath.FaceCount + face, face, row,
                     ShadowCastKind.Opaque);
-            renderer.DrawCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, faceRun.Buffer,
-                faceRun.Run.Start, faceRun.Run.Count);
+            if (faceRun.Batch.AnchorSet is { } anchor)
+                renderer.DrawPreparedFoliage(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, faceRun.Buffer,
+                    faceRun.Run.Start, faceRun.Run.Count, anchor, _model.PreparedAnchorLayout);
+            else
+                renderer.DrawCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, faceRun.Buffer,
+                    faceRun.Run.Start, faceRun.Run.Count);
             draws++;
         }
         FoliagePointShadowDrawCalls += draws;
@@ -238,7 +257,7 @@ public sealed partial class Scene3D
         disposal.Release("foliagePoint.retirement", _retired.FlushAll);
     }
 
-    readonly record struct FoliagePointSource(FoliagePointShadowStream Stream, int RangeStart, int RangeCount);
+    readonly record struct FoliagePointSource(FoliagePointShadowStream Stream, int RangeStart, int RangeCount, FoliageBatch Batch);
     readonly record struct FoliagePointPending(int Order, FoliageBatch Batch, int Start, int Count);
-    readonly record struct FoliagePointFaceRun(IGpuBuffer Buffer, FoliagePointShadowRun Run);
+    readonly record struct FoliagePointFaceRun(IGpuBuffer Buffer, FoliagePointShadowRun Run, FoliageBatch Batch);
 }

@@ -59,7 +59,8 @@ internal static class MapNativeVectorJson
             string component = reader.GetString()!;
             int bit = component switch { "x" => 1, "y" => 2, "z" when dimensions == 3 => 4, _ => 0 };
             if (bit == 0 || (seen & bit) != 0) throw new MapNativeVectorJsonException(bit == 0 ? MapDocumentRefusal.SchemaMemberUnknown : MapDocumentRefusal.SchemaMemberDuplicate,
-                "Unknown or duplicate native vector component.") { FieldPath = MapDocumentJsonPath.AppendProperty("$", component) };
+                "Unknown or duplicate native vector component.")
+            { FieldPath = MapDocumentJsonPath.AppendProperty("$", component) };
             float value = default;
             bool parsed = reader.Read() && reader.TokenType == JsonTokenType.Number && reader.TryGetSingle(out value);
             if (!parsed || !float.IsFinite(value))
@@ -81,8 +82,10 @@ internal static class MapNativeVectorJson
     {
         if (!float.IsFinite(value.X) || !float.IsFinite(value.Y) || !float.IsFinite(value.Z))
             throw new MapNativeVectorJsonException(MapDocumentRefusal.ValueNonfinite, "Native vector components must be finite numbers.")
-            { FieldPath = !float.IsFinite(value.X) ? "$.x" : !float.IsFinite(value.Y) ? "$.y" : "$.z",
-                ActualNumber = !float.IsFinite(value.X) ? value.X : !float.IsFinite(value.Y) ? value.Y : value.Z };
+            {
+                FieldPath = !float.IsFinite(value.X) ? "$.x" : !float.IsFinite(value.Y) ? "$.y" : "$.z",
+                ActualNumber = !float.IsFinite(value.X) ? value.X : !float.IsFinite(value.Y) ? value.Y : value.Z
+            };
         writer.WriteStartObject();
         writer.WriteNumber("x", value.X);
         writer.WriteNumber("y", value.Y);

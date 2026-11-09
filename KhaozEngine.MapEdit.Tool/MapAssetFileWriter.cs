@@ -101,7 +101,8 @@ public sealed class MapAssetFileWriter
             string message = $"Native manifest '{id}' cannot be serialized: {ex.Message}";
             if (MapDocumentJsonErrors.TryWrapKnown(ex, null, message, out _, resourceId: id) is { } known) throw known;
             throw new MapDocumentException(MapDocumentRefusal.ToolManifestSerializationFailed,
-                message, ex) { ResourceId = id, Operation = nameof(Serialize) };
+                message, ex)
+            { ResourceId = id, Operation = nameof(Serialize) };
         }
         MapAssetManifestReader.Read(bytes, id);
         return bytes;

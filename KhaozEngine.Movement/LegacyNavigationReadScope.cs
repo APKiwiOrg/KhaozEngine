@@ -28,8 +28,11 @@ internal sealed class LegacyNavigationReadScope : IDisposable
             throw new NavigationReadCapabilityException(NavigationReadRefusal.LegacyQueryLeaseRequired,
                 "A stable legacy navigation read scope needs IPhysicsQueryLeaseSource " +
                 "on the complete physics source and any selected movement query view.")
-                { RequiredCapability = typeof(IPhysicsQueryLeaseSource), SourceRole = world is not IPhysicsQueryLeaseSource || captured is null
-                    ? NavigationSourceRole.PhysicsSource : NavigationSourceRole.MovementQueryView };
+            {
+                RequiredCapability = typeof(IPhysicsQueryLeaseSource),
+                SourceRole = world is not IPhysicsQueryLeaseSource || captured is null
+                    ? NavigationSourceRole.PhysicsSource : NavigationSourceRole.MovementQueryView
+            };
         // Internal invariant: the sole caller passes the retained context and Origin from the same capture.
         // Physics is immutable on that context, and capture stores basis.Origin as its own Origin.
         if (!ReferenceEquals(basis.Source, owner) || basis.Origin != origin)
@@ -63,12 +66,12 @@ internal sealed class LegacyNavigationReadScope : IDisposable
             const string message = "The physics lease owner, geometry or origin differs from the capture.";
             if (!ReferenceEquals(source, _context.Physics))
                 throw new NavigationBuildException(NavigationBuildRefusal.LegacyLeaseSourceChanged, message)
-                    { SourceRole = NavigationSourceRole.ReadLease };
+                { SourceRole = NavigationSourceRole.ReadLease };
             if (generation != _basis.GeometryGeneration)
                 throw new NavigationBuildException(NavigationBuildRefusal.LegacyLeaseGenerationChanged, message)
-                    { ExpectedGeneration = _basis.GeometryGeneration, ActualGeneration = generation };
+                { ExpectedGeneration = _basis.GeometryGeneration, ActualGeneration = generation };
             throw new NavigationBuildException(NavigationBuildRefusal.LegacyLeaseOriginChanged, message)
-                { ExpectedOrigin = _basis.Origin, ActualOrigin = origin };
+            { ExpectedOrigin = _basis.Origin, ActualOrigin = origin };
         }
         AssertView(_context, _basis.Origin);
     }
@@ -84,12 +87,12 @@ internal sealed class LegacyNavigationReadScope : IDisposable
             const string message = "The movement query source or origin differs from the capture.";
             if (worldOrigin != origin)
                 throw new NavigationBuildException(NavigationBuildRefusal.LegacyWorldOriginChanged, message)
-                    { ExpectedOrigin = origin, ActualOrigin = worldOrigin };
+                { ExpectedOrigin = origin, ActualOrigin = worldOrigin };
             if (!ReferenceEquals(viewSource, context.Physics))
                 throw new NavigationBuildException(NavigationBuildRefusal.LegacyViewSourceChanged, message)
-                    { SourceRole = NavigationSourceRole.MovementQueryView };
+                { SourceRole = NavigationSourceRole.MovementQueryView };
             throw new NavigationBuildException(NavigationBuildRefusal.LegacyViewOriginChanged, message)
-                { ExpectedOrigin = origin, ActualOrigin = viewOrigin };
+            { ExpectedOrigin = origin, ActualOrigin = viewOrigin };
         }
     }
 

@@ -44,7 +44,10 @@ internal static class MapEffectiveAttachments
         return result.AsReadOnly();
     }
 
-    internal static IReadOnlyList<MapPrefabChild> Reuse(MapDocument document, MapPrefabAttachmentTransfer attachment)
+    internal static IReadOnlyList<MapPrefabChild> Reuse(MapDocument document, MapPrefabAttachmentTransfer attachment) =>
+        Reuse(MapEffectiveResolutionInput.FromDocument(document), attachment);
+
+    internal static IReadOnlyList<MapPrefabChild> Reuse(MapEffectiveResolutionInput document, MapPrefabAttachmentTransfer attachment)
     {
         if (attachment.Retired) return Array.Empty<MapPrefabChild>();
         var result = new List<MapPrefabChild>();
@@ -86,9 +89,16 @@ internal static class MapEffectiveAttachments
     static MapDocumentException Refusal(MapDocumentRefusal reason, string message, MapPrefabAttachmentTransfer attachment,
         MapPrefabAttachedChild child, string? actualHash = null) => new(reason, message)
         {
-            PlacementId = attachment.PlacementId, ResourceId = attachment.ResourceId, AttachmentKind = attachment.Kind,
-            EntityId = child.WorldId, WorldId = child.WorldId, Child = child.LocalChild, ChildKind = child.LocalChild.Kind,
-            Patch = child.Anchor, DigestKind = actualHash is null ? null : "captured descriptor",
-            ExpectedHash = child.SourceDigest, ActualHash = actualHash,
+            PlacementId = attachment.PlacementId,
+            ResourceId = attachment.ResourceId,
+            AttachmentKind = attachment.Kind,
+            EntityId = child.WorldId,
+            WorldId = child.WorldId,
+            Child = child.LocalChild,
+            ChildKind = child.LocalChild.Kind,
+            Patch = child.Anchor,
+            DigestKind = actualHash is null ? null : "captured descriptor",
+            ExpectedHash = child.SourceDigest,
+            ActualHash = actualHash,
         };
 }

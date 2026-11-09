@@ -121,10 +121,15 @@ public sealed class MapPrefabReferenceRefusalTests
         MapPrefabChild child = fault == "parent-record" ? asset.Children.Single(c => c.Key.Key == "room")
             : new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, "item"), new MapPlacement
             {
-                Id = "item", Kind = "item", AssetId = "item", Y = 0, Scale = 1,
+                Id = "item",
+                Kind = "item",
+                AssetId = "item",
+                Y = 0,
+                Scale = 1,
                 SupportBinding = fault is "binding" or "world-id" ? null : new(parentText ? MapSupportBindingKind.Space : MapSupportBindingKind.Surface,
                     parentText ? null : target.Id, parentText ? target.Id : null, null, null, null),
-            }) { References = fault is "binding" or "world-id" ? [] : [new(path, target)] };
+            })
+            { References = fault is "binding" or "world-id" ? [] : [new(path, target)] };
         var bindings = asset.Children.ToDictionary(c => c.Key, c => "world/" + c.Key.Key);
         var supplied = bindings.ToDictionary(pair => pair.Key, pair => pair.Value);
         if (fault == "binding") supplied.Remove(child.Key);

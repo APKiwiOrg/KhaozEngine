@@ -219,6 +219,8 @@ unsaved edits or an inspector or filter field owns keyboard focus. The editor re
 builds a replacement viewport, then swaps it into the scene. A read, validation or viewport-build failure leaves
 the current document and viewport in place and reports the failure in the status strip. Reload uses the same
 whole-document or bounded-window policy as first open. It does not watch the filesystem or poll for changes.
+Native viewport replacements use the same `MapEditorOptions.NativeRenderHost`, `DocumentPath`, `NativeStyleId`,
+`NativeObserver` and `NativeObserverSpaceId` configuration as the initial viewport.
 Reload status text resolves the `mapeditor.reload.done`, `mapeditor.reload.unsaved`,
 `mapeditor.reload.focused`, `mapeditor.reload.missing` and `mapeditor.reload.failed` keys through the ambient
 catalog, with built-in English fallback text when the host does not provide them.
@@ -1005,6 +1007,8 @@ validate every semantic root and publish the captured document with its matching
 without changing the live document or accepting command state. Publication precedes acceptance, closure
 rebinding and prepared history adoption. Partial documents refuse either mode. Complete undo retains
 removed instance inventories and retired transfers without recreating live standalone owners.
+Detached publication snapshots clone mutable roots structurally and share immutable payload members.
+They accept complete tiled worlds beyond the monolithic surface embedding envelope.
 
 `PrefabAssetEditCommand(edit, beforeAssets, afterAssets)` switches an immutable prefab version using
 `MapUpdatePrefabAsset`. Its first preparation receives both captured closures. Accepted undo and redo
@@ -1080,8 +1084,8 @@ snapshot/closure replacement. Returned metadata, bytes and nested pose/material 
 The [MapDoc contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) consolidates payload/storage limits,
 compatibility, full-request support, refusal, effects, immutable padded R8 handoff and platform evidence.
 [ke-mapedit](../KhaozEngine.MapEdit.Tool/README.md#foliage) owns exact parameter/result shapes. Neither proof certifies
-pixels or windowed input. R8 owns the windowed context, immutable closure/completeness, residency/upload, drawing,
-interior-cut adapter [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) and R8/G3 appearance. R9 owns interactive
+pixels or windowed input. R8a supplies the windowed context, immutable closure/completeness, residency/upload
+and native drawing. R8b owns the interior-cut adapter [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) and R8/G3 appearance. R9 owns interactive
 painting and the space-footprint authoring decision after presence removes floor cells
 ([#1516](https://github.com/APKiwiOrg/KhaozEngine/issues/1516)). R10 owns full verb parity and the native placement ID
 rename wire verb. R11/G2 owns actual import/source acceptance.
@@ -1389,6 +1393,24 @@ viewport), remember to unsubscribe any handler you attach to `DocumentChanged`/`
 when you tear the host down. `EditorDocument` outlives nothing on its own: a forgotten unsubscribe keeps
 your handler (and whatever it closes over, such as a disposed `ViewportWorld`) reachable from the document
 for as long as the document itself is referenced.
+
+## Native rendering host
+
+A resolver-2 viewport requires `MapEditorOptions.NativeRenderHost`, `NativeStyleId`, `NativeObserver`
+and optional `NativeObserverSpaceId`. The host implements `IMapNativeRenderHost.Resolve` and returns a
+verified `MapNativeRenderContext`, binding source, closure, extent proofs, render policy and lighting.
+It must return the source's exact closure instance. Missing native host/observer input refuses explicitly.
+`ViewportWorld` uses `NativeMapView` and `MapScene3DSink`. Accepted state remains visible while a
+replacement is pending. A refused replacement retains the accepted witness and draws.
+
+`DriveEnvironment` controls application of host lighting. Native capture requests use the same policy,
+view and snapshot contract documented by [MapDoc.Render3D](../KhaozEngine.MapDoc.Render3D/README.md).
+R9 owns interactive authoring. R10 adds findings and tool parity. R8b retains optical, cave, cut and
+appearance work. Native capture is not R11 importer acceptance or a game cutover gate.
+Capture diagnostics preserve each effective light's ID-derived static key. The optional synchronous
+`NativeMapSnapshot.Capture` callback observes actual submitted state before rendering, including
+warm-up. It borrows the scene for the callback only. Native wire and snapshot GPU facts exercise this
+path and foliage focus. Default CPU skips do not replace the exact-candidate three-backend gate.
 
 ## Command admission refusals
 

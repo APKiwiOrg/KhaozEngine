@@ -45,7 +45,8 @@ public sealed partial class InMemoryContentAuthoringStore : IContentVersionSelec
                         $"Version {held} does not exist, so it cannot be pinned."),
                     default,
                     0,
-                    ContentAuthoringException.UnknownTypeReason) { VersionNumber = held };
+                    ContentAuthoringException.UnknownTypeReason)
+                { VersionNumber = held };
             }
 
             // STAGE, then move the pin, then COMMIT. Everything that can fail is in the staging, so a pin

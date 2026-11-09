@@ -47,14 +47,13 @@ internal sealed partial class ModelRenderer
             throw new ArgumentException("The point-light record destination is shorter than the submitted list.",
                 nameof(records));
 
-        var origin = new Vector4(renderOrigin, 0f);
         for (int i = 0; i < lights.Length; i++)
         {
             float baseRow = i < baseRows.Length ? baseRows[i] : -1f;
             float transientRow = i < transientRows.Length ? transientRows[i] : -1f;
             records[i] = new PointLightGpuData
             {
-                PosRadius = lights[i].PosRadius - origin,
+                PosRadius = lights[i].RelativePosRadius(renderOrigin),
                 ColorIntensity = lights[i].ColorIntensity,
                 ShadowParams = new Vector4(baseRow, bias, slopeBias, transientRow),
             };

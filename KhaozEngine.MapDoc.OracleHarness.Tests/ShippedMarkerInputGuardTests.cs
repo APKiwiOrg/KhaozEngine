@@ -107,7 +107,7 @@ public sealed class ShippedMarkerInputGuardTests
         {
             compared = ShippedMarkerComparison.Compare(ShippedMarkerInputs.Read(i));
             report.Record("markers", compared.DetailJson);
-            report.Check("marker-parity", compared.Failures.Count == 0, compared.DetailJson);
+            report.CheckFailures("marker-parity", compared.ClassifiedFailures);
         }));
         Assert.NotNull(compared);
         Assert.Contains(category, compared.Failures);
@@ -115,7 +115,9 @@ public sealed class ShippedMarkerInputGuardTests
         Assert.DoesNotContain(fixture.PublicSecretMarker, failure.ToString());
         Assert.Equal(PrivateOracleFailureRefusal.ComparisonMismatches, failure.Reason);
         Assert.Equal("marker-parity", failure.Category);
-        Assert.Equal(1, failure.MismatchCount);
+        // Every classified failure is its own report check, so the count is the comparison's failure count.
+        Assert.NotEmpty(compared.ClassifiedFailures);
+        Assert.Equal((long?)compared.ClassifiedFailures.Count, failure.MismatchCount);
         Assert.Equal(AssertFixtures.Sha256(fixture.ReportPath), failure.ReportSha256);
         Assert.Contains("failures", File.ReadAllText(fixture.ReportPath));
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(fixture.ReportPath));
@@ -165,7 +167,7 @@ public sealed class ShippedMarkerInputGuardTests
         {
             var inputs = ShippedMarkerInputs.Read(i);
             var compared = ShippedMarkerComparison.Compare(inputs);
-            report.Check("marker-parity", compared.Failures.Count == 0, compared.DetailJson);
+            report.CheckFailures("marker-parity", compared.ClassifiedFailures);
         }));
         Assert.True(failure is PrivateOracleInputException or PrivateOracleFailure, failure.GetType().Name);
         Assert.Null(failure.InnerException);

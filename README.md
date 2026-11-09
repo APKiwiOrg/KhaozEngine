@@ -24,7 +24,10 @@ reaches all four.
   release land on the same target, so clicks never leak through an overlay. Player-facing text is localized,
   and an analyzer enforces that at compile time.
 - **Worlds.** Streamed terrain, tile worlds, a native map format with an in-engine map editor, navigation,
-  dungeon generation and opt-in physics on BepuPhysics.
+  dungeon generation and opt-in physics on BepuPhysics. Native maps draw and stream directly through
+  [MapDoc.Render3D](KhaozEngine.MapDoc.Render3D/README.md), with snapshots and atomic residency.
+  Add it explicitly beside an umbrella. Its [verification contract](KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification)
+  separates CPU source/submission proof from backend capture acceptance.
 - **Gameplay.** A content catalog with authoring and publishing, items, skills, stats, progression and
   objectives, plus an ECS.
 - **Multiplayer.** Deterministic simulation, replication, sharding, a persistent world store on SQLite or SQL

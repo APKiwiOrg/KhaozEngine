@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,12 +17,23 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
 {
     readonly IReadOnlyDictionary<MapPatchKey, MapExactRect> _bounds;
     readonly IReadOnlyList<(MapRecordRef Record, MapExactRect Bounds)> _records;
+    internal int BoundCapacityForTests => ((Dictionary<MapPatchKey, MapExactRect>)_bounds).EnsureCapacity(0);
+    internal IReadOnlyList<(MapRecordRef Record, MapExactRect Bounds)> RecordsForTests => _records;
+    readonly int _recordCapacity;
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; }
+    internal long IndexBytes => checked(128L + Surfaces.Sum(s => 136L + 8L * (s.IndoorSpan?.DomainTags.Count ?? 0)) +
+        MapSurfaceSourcePreparation.DictionaryBytes(_bounds) +
+        System.Runtime.CompilerServices.Unsafe.SizeOf<(MapRecordRef, MapExactRect)>() * (long)_recordCapacity + 32L * _records.Count);
     public MapEffectiveContext EffectiveContext { get; }
     public string SnapshotId => "effective:" + EffectiveContext.Digest;
     public string RootSha256 => EffectiveContext.Digest;
     public IReadOnlyList<MapSurfaceRef> Surfaces { get; }
     internal MapEffectiveSurfaceSource(MapEffectiveContext context, IReadOnlySet<string>? ownedSurfaces = null)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(1024L + context.Surfaces.Refs.Sum(s => 136L + 8L * (s.IndoorSpan?.DomainTags.Count ?? 0)) +
+            512L * context.Surfaces.Patches.Values.Sum(p => (long)p.Records.Count)));
+        MapSurfaceSourcePreparation.BeforeDictionary<MapPatchKey, MapExactRect>(context.Surfaces.Patches.Count);
         EffectiveContext = context;
         Surfaces = Array.AsReadOnly(context.Surfaces.Refs.Where(s => ownedSurfaces is null || ownedSurfaces.Contains(s.Id)).Select(MapAcquiredFacts.CopySurface).ToArray());
         _bounds = context.Surfaces.Patches.Values.Where(p => ownedSurfaces is null || ownedSurfaces.Contains(p.Key.SurfaceId)).ToDictionary(p => p.Key, Bounds);
@@ -28,6 +41,8 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         foreach (var patch in context.Surfaces.Patches.Values.Where(p => _bounds.ContainsKey(p.Key)))
             foreach (var record in patch.Records)
             {
+                using var recordPreparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+                Scene.MapSceneAdmission.Current?.ReserveBytes(checked(512L + 192L * MapSurfaceSourcePreparation.Vertices(record)));
                 IEnumerable<MapExactXz> vertices = record switch
                 {
                     MapPrismDomain prism => PrismPoints(prism),
@@ -42,6 +57,8 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
                 if (points.Length != 0) records.Add((new(record.Id, patch.Key), MapEffectiveGeometry.Bounds(points)));
             }
         _records = records.AsReadOnly();
+        _recordCapacity = records.Capacity;
+        PreparationOwnership = preparation?.Complete(IndexBytes);
     }
     IEnumerable<MapExactXz> PrismPoints(MapPrismDomain prism)
     {
@@ -102,7 +119,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         public IReadOnlyList<MapPatchKey> ReservedPatchKeys => Array.AsReadOnly(_reserved.ToArray());
         internal Acquisition(MapEffectiveSurfaceSource source, MapSurfaceScope scope)
         {
-            scope.Validate(); _source = source; _scope = scope; _budget = scope.SharedBudget?.Share() ?? new(scope.Limits.MaxPageReads);
+            scope.Validate(); _source = source; _scope = scope; _budget = scope.SharedBudget?.Share() ?? new(scope.Limits.MaxPageReads, source: scope.Limits);
         }
         public bool TryGetSurface(string surfaceId, out MapSurfaceRef? surface)
         {
@@ -132,7 +149,8 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         }
         void Reserve(MapPatchKey key)
         {
-            if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+            if (!_reserved.Contains(key) && DemandDiagnostics.Check(this, "MapEffectiveSurfaceSource.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, _scope.Limits.MaxCandidatePatches, _reserved.Count >= _scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory, allowanceSource: _scope.Limits)) throw new MapSurfaceCapacityException();
+            _scope.SceneAdmission?.BeforeResource(Scene.MapSceneAcquisition.PatchKey(key));
             _reserved.Add(key);
         }
         public MapPatchRead ReadPatch(MapPatchKey key)
@@ -143,12 +161,14 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         }
         MapPatchRead Serve(MapPatchKey key)
         {
+            using var admitted = _scope.SceneAdmission?.Enter();
             if (_served.Add(key) && _source.EffectiveContext.Surfaces.Patches.TryGetValue(key, out var patch))
             {
                 long next = checked(_recordsCharged + patch.Records.Count);
-                if (next > _scope.Limits.MaxRecordReads) throw new MapSurfaceCapacityException();
+                if (DemandDiagnostics.Check(this, "MapEffectiveSurfaceSource.MaxRecordReads.1", "MaxRecordReads", 0, next, _scope.Limits.MaxRecordReads, next > _scope.Limits.MaxRecordReads, CapacityDemandLifetime.Cumulative, allowanceSource: _scope.Limits)) throw new MapSurfaceCapacityException();
                 _recordsCharged = next;
             }
+            Scene.MapSceneAdmission.Current?.BeforePayload(0);
             return _source.ReadPatch(key);
         }
         public bool TryGetIncidentRecords(MapPatchKey acquiredKey, out IReadOnlyList<MapRecordRef>? records)

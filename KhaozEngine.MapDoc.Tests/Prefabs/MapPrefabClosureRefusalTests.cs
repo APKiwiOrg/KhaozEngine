@@ -68,10 +68,10 @@ public sealed class MapPrefabClosureRefusalTests
         {
             "legacy" => new MapDocumentException("Unreadable count"),
             "typed-json" => new MapPrefabJsonException(MapDocumentRefusal.SchemaEnumUnsupported, "Unreadable kind")
-                { FieldPath = "$.kind", EnumType = typeof(MapPrefabChildKind), ActualText = "Future" },
+            { FieldPath = "$.kind", EnumType = typeof(MapPrefabChildKind), ActualText = "Future" },
             "wrapped-aggregate" => new InvalidOperationException("Unreadable count",
                 new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Invalid resources")
-                    { ResourceId = "resource", Findings = aggregate }),
+                { ResourceId = "resource", Findings = aggregate }),
             _ => new InvalidOperationException("Unreadable count"),
         };
         var document = MapPrefabDocumentRefusalTests.Empty();

@@ -92,7 +92,8 @@ public sealed partial class InMemoryContentAuthoringStore
                             $"This store already stands at version {_activeVersion}, and a bundle is imported into an EMPTY store only. A deployed catalog's values change through an edit and a publish and through nothing else."),
                         default,
                         0,
-                        ContentAuthoringException.CatalogNotEmptyReason) { ActiveVersion = _activeVersion };
+                        ContentAuthoringException.CatalogNotEmptyReason)
+                    { ActiveVersion = _activeVersion };
                 }
 
                 if (PackStore is null)
@@ -295,8 +296,10 @@ public sealed partial class InMemoryContentAuthoringStore
                     0,
                     ContentAuthoringException.BundleFormatReason)
                 {
-                    ActualTypeKey = declared.TypeKey, RegisteredTypeKey = registration.TypeKey,
-                    ActualChunkSlots = declared.ChunkSlots, RegisteredChunkSlots = registration.ChunkSlots,
+                    ActualTypeKey = declared.TypeKey,
+                    RegisteredTypeKey = registration.TypeKey,
+                    ActualChunkSlots = declared.ChunkSlots,
+                    RegisteredChunkSlots = registration.ChunkSlots,
                 };
             }
         }

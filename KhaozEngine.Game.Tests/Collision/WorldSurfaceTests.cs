@@ -38,6 +38,7 @@ public class WorldSurfaceTests
         var strip = new PropSurface(3, 3, 1f, -1f, -1f, new[] { n, n, n, n, 3f, 3f, n, n, n }); // covered (1,1),(2,1)
         var ws = new WorldSurface(strip, Vector2.Zero, 1f, yaw: MathF.PI / 2f, baseY: 0f);
         Assert.NotNull(ws.SampleWorld(0f, 1f)); // local +X maps to world +Z under +90deg yaw
+        Assert.Equal(3f, ws.SampleWorld(0f, 1f)!.Value, 3);
     }
 
     [Fact]

@@ -38,13 +38,15 @@ public sealed record ContentTextTarget
         if (key.IsEmpty)
         {
             return new(ContentAuthoringRefusal.BundleTextTargetKeyEmpty,
-                "A text target names a row by its content key, which may not be empty.", nameof(key)) { MemberName = "key" };
+                "A text target names a row by its content key, which may not be empty.", nameof(key))
+            { MemberName = "key" };
         }
 
         if (string.IsNullOrWhiteSpace(fieldName))
         {
             return new(ContentAuthoringRefusal.BundleTextTargetFieldBlank,
-                "A text target names its localized text marker field.", nameof(fieldName)) { MemberName = "field" };
+                "A text target names its localized text marker field.", nameof(fieldName))
+            { MemberName = "field" };
         }
 
         return ContentTextLanguageTag.FindDefect(language) is { } tag ? tag with { MemberName = "language" } : null;

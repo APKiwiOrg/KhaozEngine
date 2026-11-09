@@ -10,7 +10,7 @@ public sealed partial class GroundMoveContext
     internal FlatGroundRangePreview? OpenFlatRangePreview(in MoveState body, in MoveState predicted,
         in MoveTuning tuning, bool run, float dt)
     {
-        if (tuning.Controller != MovementControllerKind.Contact || ClampXz is not null ||
+        if (tuning.Controller != MovementControllerKind.Contact ||
             MovementWaterField is not null and not IMovementDryTracePointProof ||
             MovementRegistration?.AnalyticSupport is not IMovementFlatAnalyticSupportSource ||
             !body.Grounded || body.Swimming || body.WaterExcursion != WaterExcursionState.None ||

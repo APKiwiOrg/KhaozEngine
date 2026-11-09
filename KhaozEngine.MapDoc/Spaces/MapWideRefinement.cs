@@ -25,7 +25,8 @@ internal sealed record MapWideCellRefinement(MapRefinementStatus Status, IReadOn
             f.Polygon.Select(MapWideXz.From).ToArray(), f.MinSeparation is { } gap ? MapWideRational.From(gap) : null)).ToArray(),
         MapWideRational.From(result.CellArea), MapWideRational.From(result.LowerArea), MapWideRational.From(result.CompatibilityArea),
         result.CompatibilityCells, result.UpperArea is { } upper ? MapWideRational.From(upper) : null,
-        result.MinSeparation is { } separation ? MapWideRational.From(separation) : null, result.PairChecks, result.Detail) { Finding = result.Finding };
+        result.MinSeparation is { } separation ? MapWideRational.From(separation) : null, result.PairChecks, result.Detail)
+    { Finding = result.Finding };
 
     /// <summary>Preserves released bounded output semantics. A refusal never exposes a partial refinement.</summary>
     internal MapCellRefinement Narrow()
@@ -38,10 +39,14 @@ internal sealed record MapWideCellRefinement(MapRefinementStatus Status, IReadOn
                 f.Polygon.Select(MapWideRefinementGeometry.Narrow).ToArray(), f.MinSeparation is { } gap ? NarrowValue(gap) : null)).ToArray();
             return new(Status, Array.AsReadOnly(vertices), Array.AsReadOnly(faces), NarrowValue(CellArea), NarrowValue(LowerArea),
                 NarrowValue(CompatibilityArea), CompatibilityCells, UpperArea is { } upper ? NarrowValue(upper) : null,
-                MinSeparation is { } separation ? NarrowValue(separation) : null, PairChecks, null) { Finding = Finding };
+                MinSeparation is { } separation ? NarrowValue(separation) : null, PairChecks, null)
+            { Finding = Finding };
         }
-        catch (MapExactOverflowException) { return MapCommonRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow",
-            new(MapDocumentRefusal.GeometryNotRepresentable, "overflow") { Operation = nameof(Narrow) }); }
+        catch (MapExactOverflowException)
+        {
+            return MapCommonRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow",
+            new(MapDocumentRefusal.GeometryNotRepresentable, "overflow") { Operation = nameof(Narrow) });
+        }
     }
     static MapExactValue NarrowValue(MapWideRational value) => value.TryNarrow(out var exact) ? exact : throw new MapExactOverflowException();
 }

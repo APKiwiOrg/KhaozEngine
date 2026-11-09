@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Primitives;
 using Xunit;
@@ -30,14 +31,27 @@ public sealed class SurfaceScopeRefusalTests
     [InlineData("MaxSupportIntersections", MapDocumentRefusal.ValueOutsideRange)]
     [InlineData("MaxRecordReads", MapDocumentRefusal.ValueOutsideRange)]
     [InlineData("MaxRecordDepth", MapDocumentRefusal.ValueOutsideRange)]
+    [InlineData("Refinement.MaxSourceFacesPerBound", MapDocumentRefusal.ValueOutsideRange)]
+    [InlineData("Refinement.MaxPairChecks", MapDocumentRefusal.ValueOutsideRange)]
+    [InlineData("Refinement.MaxRefinementFaces", MapDocumentRefusal.ValueOutsideRange)]
+    [InlineData("Refinement.MaxRefinementVertices", MapDocumentRefusal.ValueOutsideRange)]
+    [InlineData("Refinement.MaxContextPatches", MapDocumentRefusal.ValueOutsideRange)]
+    [InlineData("Refinement.MaxContextFaces", MapDocumentRefusal.ValueOutsideRange)]
     public void ScopeAdmission_IdentifiesTheFailedBranchAndAcceptsItsBoundary(string field, MapDocumentRefusal reason)
     {
         var error = Assert.Throws<MapSurfaceScopeArgumentException>(() => Scope(field, repaired: false));
         Assert.IsAssignableFrom<ArgumentException>(error);
         Assert.Null(error.ParamName);
         Assert.Equal(reason, error.Reason);
-        string path = field switch { "XOrder" => "LocalMax.X", "ZOrder" => "LocalMax.Y", "YOrder" => "MaxY",
-            "Role" => "Roles", _ when reason == MapDocumentRefusal.ValueOutsideRange => "Limits." + field, _ => field };
+        string path = field switch
+        {
+            "XOrder" => "LocalMax.X",
+            "ZOrder" => "LocalMax.Y",
+            "YOrder" => "MaxY",
+            "Role" => "Roles",
+            _ when reason == MapDocumentRefusal.ValueOutsideRange => "Limits." + field,
+            _ => field
+        };
         Assert.Equal(path, error.FieldPath);
         if (reason == MapDocumentRefusal.ValueNonfinite) Assert.Equal(double.PositiveInfinity, error.ActualNumber);
         if (reason == MapDocumentRefusal.BoundsInvalid)
@@ -102,6 +116,12 @@ public sealed class SurfaceScopeRefusalTests
             case "MaxSupportIntersections": limits = limits with { MaxSupportIntersections = negative }; break;
             case "MaxRecordReads": limits = limits with { MaxRecordReads = negative }; break;
             case "MaxRecordDepth": limits = limits with { MaxRecordDepth = negative }; break;
+            case "Refinement.MaxSourceFacesPerBound": limits = limits with { Refinement = new MapRefinementLimits() with { MaxSourceFacesPerBound = negative } }; break;
+            case "Refinement.MaxPairChecks": limits = limits with { Refinement = new MapRefinementLimits() with { MaxPairChecks = negative } }; break;
+            case "Refinement.MaxRefinementFaces": limits = limits with { Refinement = new MapRefinementLimits() with { MaxRefinementFaces = negative } }; break;
+            case "Refinement.MaxRefinementVertices": limits = limits with { Refinement = new MapRefinementLimits() with { MaxRefinementVertices = negative } }; break;
+            case "Refinement.MaxContextPatches": limits = limits with { Refinement = new MapRefinementLimits() with { MaxContextPatches = negative } }; break;
+            case "Refinement.MaxContextFaces": limits = limits with { Refinement = new MapRefinementLimits() with { MaxContextFaces = negative } }; break;
         }
         return new(WorldFrame.Origin, min, max, low, high, roles, spaces, limits);
     }

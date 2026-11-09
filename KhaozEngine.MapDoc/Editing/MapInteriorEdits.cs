@@ -33,34 +33,49 @@ public static class MapInteriorEdits
                 ArgumentNullException.ThrowIfNull(set.Domain);
                 if (set.Domain.InstanceId != "") throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "Standalone interior edits require standalone ownership.")
                 {
-                    EntityId = set.Domain.Id, RecordId = set.Domain.Id, SpaceId = set.Domain.Space?.Id, Patch = set.Domain.Space?.Anchor,
-                    InstanceId = set.Domain.InstanceId, ChildKind = MapPrefabChildKind.Record, SubjectKind = "interior",
+                    EntityId = set.Domain.Id,
+                    RecordId = set.Domain.Id,
+                    SpaceId = set.Domain.Space?.Id,
+                    Patch = set.Domain.Space?.Anchor,
+                    InstanceId = set.Domain.InstanceId,
+                    ChildKind = MapPrefabChildKind.Record,
+                    SubjectKind = "interior",
                 };
                 if (!after.Surfaces.Patches.TryGetValue(set.Domain.Space.Anchor, out var anchor))
                     throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Interior space anchor must name an authored patch.")
                     {
-                        EntityId = set.Domain.Id, RecordId = set.Domain.Id, SpaceId = set.Domain.Space.Id, Patch = set.Domain.Space.Anchor,
-                        ChildKind = MapPrefabChildKind.Record, SubjectKind = "interior anchor",
+                        EntityId = set.Domain.Id,
+                        RecordId = set.Domain.Id,
+                        SpaceId = set.Domain.Space.Id,
+                        Patch = set.Domain.Space.Anchor,
+                        ChildKind = MapPrefabChildKind.Record,
+                        SubjectKind = "interior anchor",
                     };
                 if (!after.Surfaces.TryGetRecord(set.Domain.Space, out var space))
                 {
                     if (after.Surfaces.AllRecords().Any(r => r.Id == set.Domain.Space.Id))
                         throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "Interior space ID is declared at a different anchor.")
-                            { RecordId = set.Domain.Id, SpaceId = set.Domain.Space.Id, Patch = set.Domain.Space.Anchor };
+                        { RecordId = set.Domain.Id, SpaceId = set.Domain.Space.Id, Patch = set.Domain.Space.Anchor };
                     space = new MapSpaceDoc(set.Domain.Space.Id, MapSpaceKind.Room, set.Domain.Parent, null, [], [], [], []);
                     anchor.Records.Add(space);
                 }
                 if (space is not MapSpaceDoc { Kind: MapSpaceKind.Room } room)
                     throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch, "Interior edits require a Room space.")
-                        { RecordId = set.Domain.Id, SpaceId = set.Domain.Space.Id, RecordType = space?.GetType(), ExpectedRecordType = typeof(MapSpaceDoc),
-                            FieldPath = "Space.Kind", ActualInteger = space is MapSpaceDoc wrongKind ? (int)wrongKind.Kind : null };
+                    {
+                        RecordId = set.Domain.Id,
+                        SpaceId = set.Domain.Space.Id,
+                        RecordType = space?.GetType(),
+                        ExpectedRecordType = typeof(MapSpaceDoc),
+                        FieldPath = "Space.Kind",
+                        ActualInteger = space is MapSpaceDoc wrongKind ? (int)wrongKind.Kind : null
+                    };
                 if (room.AliasOf is not null)
                     throw new MapDocumentException(MapDocumentRefusal.InteriorAliasUnsupported, "Interior edits refuse alias rooms.")
-                        { RecordId = set.Domain.Id, SpaceId = room.Id, RelatedRecordId = room.AliasOf.Id };
+                    { RecordId = set.Domain.Id, SpaceId = room.Id, RelatedRecordId = room.AliasOf.Id };
                 var old = after.Surfaces.Patches.Values.SelectMany(p => p.Records).OfType<MapPrismDomain>()
                     .SingleOrDefault(p => p.Space.Id == set.Domain.Space.Id);
                 if (old is not null && old.Id != set.Domain.Id) throw new MapDocumentException(MapDocumentRefusal.AuthoredValueMismatch, "Interior replacement must retain its record ID.")
-                    { RecordId = set.Domain.Id, RelatedRecordId = old.Id, SpaceId = set.Domain.Space.Id, FieldPath = "Id" };
+                { RecordId = set.Domain.Id, RelatedRecordId = old.Id, SpaceId = set.Domain.Space.Id, FieldPath = "Id" };
                 foreach (var patch in after.Surfaces.Patches.Values) patch.Records.RemoveAll(r => r.Id == set.Domain.Id);
                 after.Surfaces.Patches[set.Domain.Space.Anchor].Records.Add(set.Domain);
                 Record(set.Domain); Record(room);
@@ -69,7 +84,7 @@ public static class MapInteriorEdits
                 var records = after.Surfaces.AllRecords().Where(r => r is MapSpaceDoc s && s.Id == remove.SpaceId ||
                     r is MapPrismDomain p && p.Space.Id == remove.SpaceId).ToArray();
                 if (!records.OfType<MapPrismDomain>().Any()) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "No standalone interior for that space.")
-                    { SpaceId = remove.SpaceId, SubjectKind = "interior" };
+                { SpaceId = remove.SpaceId, SubjectKind = "interior" };
                 foreach (var record in records) Record(record);
                 var ids = records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
                 foreach (var patch in after.Surfaces.Patches.Values) patch.Records.RemoveAll(r => ids.Contains(r.Id));
@@ -94,7 +109,8 @@ public static class MapInteriorEdits
                 { Roofs = groups.Roofs, Storeys = groups.Storeys };
                 affected.Add(new(new(MapPrefabChildKind.RoofGroup, set.Group.Id), set.Group.Id, null, false));
                 break;
-            default: throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unknown interior edit.")
+            default:
+                throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unknown interior edit.")
                 { Operation = edit.GetType().Name };
         }
         return MapDocumentEditFinalizer.Complete(document, MapPrefabEditPreparation.Finish(after, assets, before, [], affected, interiors: true),

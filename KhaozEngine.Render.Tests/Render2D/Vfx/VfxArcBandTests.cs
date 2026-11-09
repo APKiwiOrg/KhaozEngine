@@ -106,6 +106,8 @@ public class VfxArcBandTests
     {
         byte[] forward = Bake(0.3f, 1.1f);
         byte[] backward = Bake(0.3f + 1.1f, -1.1f);
+        Assert.Equal(Size * Size * 4, forward.Length);
+        Assert.Equal(forward.Length, backward.Length);
         // The two calls describe one sector from either end, so the same pixels are lit. The alphas are only
         // near-equal because the caller's own start angle round-trips through a float add and subtract.
         for (int i = 3; i < forward.Length; i += 4)

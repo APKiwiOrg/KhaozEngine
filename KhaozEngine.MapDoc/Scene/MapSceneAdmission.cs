@@ -1,0 +1,276 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using System;
+using KhaozEngine.MapDoc.Foliage;
+using System.Runtime.CompilerServices;
+using System.Collections.Generic;
+using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
+
+namespace KhaozEngine.MapDoc.Scene;
+
+/// <summary>One synchronous acquisition allowance, shared by every nested session, copy and compilation.</summary>
+internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? entering = null, MapFoliageContextLimits? foliageLimits = null,
+    string preparationLimitName = nameof(MapSceneLimits.MaxPreparedBytes))
+{
+    readonly MapFoliageContextLimits? _foliageLimits = foliageLimits ?? limits.Preparation?.FoliageContext;
+    [ThreadStatic] static MapSceneAdmission? t_current;
+    [ThreadStatic] static int t_suspensions;
+    internal static MapSceneAdmission? Current => t_current;
+    readonly MapPreparationLedger _bytes = new(limits.MaxPreparedBytes, preparationLimitName, limits);
+    internal long RemainingPreparedBytes => _bytes.Remaining;
+    // Observed-only provenance of the remaining allowances that native preparation copies into derived limits.
+    internal CapacityDemandOrigin[] PreparedByteOrigins() => _bytes.RemainingOrigins();
+    internal CapacityDemandOrigin[] PreparedFaceOrigins() =>
+        DemandDiagnostics.Origins(limits, nameof(MapSceneLimits.MaxPreparedFaces), limits.MaxPreparedFaces, PreparedFaces);
+    internal CapacityDemandOrigin[] PatchScopeOrigins() =>
+        DemandDiagnostics.Origins(limits, nameof(MapSceneLimits.MaxPatchScopes), limits.MaxPatchScopes, PatchScopes);
+    internal long WorkspaceBytes => _bytes.WorkspaceBytes;
+    internal long RetainedBytes => _bytes.RetainedBytes;
+    internal long PeakBytes => _bytes.PeakBytes;
+    internal void ReportRetained() => _bytes.ReportRetained();
+    internal MapPreparationLedger.PeakObservation ObservePeak(MapPreparationStageCounts? counts = null) => _bytes.ObservePeak(counts);
+    internal Action<decimal>? RequestingBytes { get => _bytes.RequestingBytes; set => _bytes.RequestingBytes = value; }
+    internal Action<long>? AllocationAdmitted { get => _bytes.AllocationAdmitted; set => _bytes.AllocationAdmitted = value; }
+    internal MapAcquisitionDiagnostics? AcquisitionDiagnostics { get; private set; }
+    internal MapAcquisitionDiagnostics ObserveAcquisition()
+    {
+        if (AcquisitionDiagnostics is not null) return AcquisitionDiagnostics;
+        AcquisitionDiagnostics = new(() => (_bytes.RetainedBytes, _bytes.WorkspaceBytes, _bytes.RetainedReceipts));
+        _bytes.Changed = AcquisitionDiagnostics.Sample;
+        return AcquisitionDiagnostics;
+    }
+    internal object WindowIdentity => _bytes.WindowIdentity;
+    internal IDisposable? ReferenceWindow(long bytes, object? origin = null, ICollection<object>? references = null)
+        => _bytes.ReferenceWindow(bytes, origin, references);
+    internal long RemainingPreparedFaces => limits.MaxPreparedFaces - PreparedFaces;
+    internal int RemainingPatchScopes => limits.MaxPatchScopes - PatchScopes;
+    internal MapPreparationReservation Workspace() => _bytes.Workspace(this);
+    internal MapPreparationScope? PreparationScope { get; set; }
+    internal MapPreparationScope BeginPreparation() => new(this);
+    internal PreparationWindow LimitPreparation(long bytes, string limitName = nameof(MapSceneLimits.MaxPreparedBytes), long reused = 0)
+        => new(_bytes.OpenWindow(bytes, limitName, reused));
+    internal MapSceneCapacity PreparedByteCapacity(decimal bytes) => _bytes.Refusal(bytes);
+    internal readonly struct PreparationWindowObservationForTests(MapPreparationLedger.Window window)
+    {
+        internal long Live => window.Live;
+        internal long Total => window.Total;
+    }
+    internal sealed class PreparationWindow(MapPreparationLedger.Window window) : IDisposable
+    {
+        internal PreparationWindowObservationForTests BindingForTests => new(window);
+        internal void ChargeExternal(long bytes) => window.ChargeExternal(bytes);
+        public void Dispose() => window.Dispose();
+    }
+    internal void ReleaseUnusedBytes(long bytes)
+    { if (PreparationScope is { } scope) scope.Release(bytes); else _bytes.ReleaseLegacy(bytes); }
+    internal long PreparedFaces { get; private set; }
+    internal long PayloadReads { get; private set; }
+    internal long FoliageSourceUtf8Bytes { get; private set; }
+    internal long FoliageChunks { get; private set; }
+    internal long FoliagePlacements { get; private set; }
+    internal long FoliagePatches { get; private set; }
+    internal long FoliagePaintTargets { get; private set; }
+    readonly HashSet<string> _paintTargets = new(StringComparer.Ordinal);
+    internal void BeforePaintTarget(string id)
+    {
+        if (!_paintTargets.Add(id)) return;
+        if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPaintTargets.1", "MaxPaintTargets", FoliagePaintTargets, 1, _foliageLimits.MaxPaintTargets, FoliagePaintTargets >= _foliageLimits.MaxPaintTargets, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPaintTargets), (long)FoliagePaintTargets + 1, _foliageLimits.MaxPaintTargets);
+        FoliagePaintTargets++;
+    }
+    readonly HashSet<MapSceneResourceKey> _resources = new();
+    internal void BeforeResource(MapSceneResourceKey key)
+    {
+        if (_resources.Contains(key)) return;
+        if (DemandDiagnostics.Check(this, "MapSceneAdmission.MaxSelectedResources.1", "MaxSelectedResources", _resources.Count, 1, limits.MaxSelectedResources, _resources.Count >= limits.MaxSelectedResources, CapacityDemandLifetime.Inventory, allowanceSource: limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)_resources.Count + 1, limits.MaxSelectedResources);
+        if (key.Kind == "Foliage")
+        {
+            if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxChunkDescriptors.1", "MaxChunkDescriptors", FoliageChunks, 1, _foliageLimits.MaxChunkDescriptors, FoliageChunks >= _foliageLimits.MaxChunkDescriptors, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), (long)FoliageChunks + 1, _foliageLimits.MaxChunkDescriptors);
+            FoliageChunks++;
+        }
+        if (key.Kind == "Placement")
+        {
+            if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPlacements.1", "MaxPlacements", FoliagePlacements, 1, _foliageLimits.MaxPlacements, FoliagePlacements >= _foliageLimits.MaxPlacements, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPlacements), (long)FoliagePlacements + 1, _foliageLimits.MaxPlacements);
+            FoliagePlacements++;
+        }
+        if (key.Kind == "Patch")
+        {
+            if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxSurfacePatches.1", "MaxSurfacePatches", FoliagePatches, 1, _foliageLimits.MaxSurfacePatches, FoliagePatches >= _foliageLimits.MaxSurfacePatches, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSurfacePatches), (long)FoliagePatches + 1, _foliageLimits.MaxSurfacePatches);
+            FoliagePatches++;
+        }
+        _resources.Add(key);
+    }
+    internal int PatchScopes { get; private set; }
+
+    // Lower-level released clone and compile entry points have no scope argument. The synchronous extent of
+    // an acquisition supplies their same allowance, then restores its predecessor even after a refusal.
+    internal IDisposable Enter() => new Activation(this);
+    sealed class Activation : IDisposable
+    {
+        readonly MapSceneAdmission? _previous = t_current;
+        bool _disposed;
+        internal Activation(MapSceneAdmission value) { if (t_suspensions == 0) t_current = value; }
+        public void Dispose() { if (_disposed) return; _disposed = true; t_current = _previous; }
+    }
+
+    // Every scene-admission entry refuses an unsupported surface source through this one guard, so each refusal carries
+    // AcquisitionUnsupported and the source type. Inline copies of the check once refused without either.
+    internal static void RequireSupported(IMapSurfaceSource source)
+    {
+        if (!Supports(source)) throw MapSceneSourceException.Unsupported(source);
+    }
+
+    internal static bool Supports(IMapSurfaceSource source) => source is MapDocumentSurfaceSource or MapStoredSurfaceSource or MapEffectiveSurfaceSource ||
+        source is MapComposedSurfaceSource composed && composed.SupportsSceneAdmission || source is MapSceneSurfaceSource scoped && Supports(scoped.Inner);
+
+    internal void BeforeScope(IMapSurfaceSource source)
+    {
+        RequireSupported(source);
+        if (DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPatchScopes.1", "MaxPatchScopes", PatchScopes, 1, limits.MaxPatchScopes, PatchScopes >= limits.MaxPatchScopes, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPatchScopes), (long)PatchScopes + 1, limits.MaxPatchScopes);
+        PatchScopes++;
+        AcquisitionDiagnostics?.Scope(source.SnapshotId);
+    }
+
+    internal bool CanReservePreparation(long bytes, long faces) => bytes >= 0 && faces >= 0 &&
+        !_bytes.CheckDemand(bytes, bytes > RemainingPreparedBytes) &&
+        !DemandDiagnostics.Check(this, "MapSceneAdmission.CanReservePreparation.Faces", nameof(MapSceneLimits.MaxPreparedFaces), PreparedFaces, faces, limits.MaxPreparedFaces, faces > limits.MaxPreparedFaces - PreparedFaces, allowanceSource: limits);
+    internal MapSceneCapacity? PreparationRefusal(long bytes, long faces)
+    {
+        if (_bytes.CheckDemand(bytes, bytes < 0 || bytes > RemainingPreparedBytes)) return PreparedByteCapacity(bytes);
+        if (!DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPreparedFaces.1", "MaxPreparedFaces", PreparedFaces, faces, limits.MaxPreparedFaces, !(faces >= 0 && faces <= RemainingPreparedFaces), CapacityDemandLifetime.Cumulative, allowanceSource: limits)) return null;
+        _bytes.Refusal(bytes);
+        return new(nameof(MapSceneLimits.MaxPreparedFaces), (decimal)PreparedFaces + faces, limits.MaxPreparedFaces);
+    }
+    internal bool TryReservePreparation(long bytes, long faces) => TryReservePreparation(bytes, faces, out _);
+    internal bool TryReservePreparation(long bytes, long faces, out MapSceneCapacity? capacity)
+    {
+        capacity = PreparationRefusal(bytes, faces);
+        if (capacity is not null) return false;
+        ReserveBytes(bytes);
+        PreparedFaces += faces;
+        return true;
+    }
+
+    // A prepared product already charged its complete demand before creating any payload.
+    internal static Suspension Suspend() => new(t_current);
+    internal sealed class Suspension : IDisposable
+    {
+        readonly MapSceneAdmission? _previous;
+        bool _disposed;
+        internal Suspension(MapSceneAdmission? previous)
+        { _previous = previous; t_current = null; t_suspensions++; }
+        public void Dispose()
+        { if (_disposed) return; _disposed = true; t_suspensions--; t_current = _previous; }
+    }
+
+    internal void ReserveBytes(long bytes)
+    { if (PreparationScope is { } scope) scope.Reserve(bytes); else _bytes.ReserveLegacy(bytes, this); }
+
+    internal void BeforeInputBytes(long bytes)
+    {
+        if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxSourceUtf8Bytes.1", "MaxSourceUtf8Bytes", FoliageSourceUtf8Bytes, bytes, _foliageLimits.MaxSourceUtf8Bytes, bytes > _foliageLimits.MaxSourceUtf8Bytes - FoliageSourceUtf8Bytes, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), (decimal)FoliageSourceUtf8Bytes + bytes, _foliageLimits.MaxSourceUtf8Bytes);
+        ReserveBytes(bytes);
+        FoliageSourceUtf8Bytes = checked(FoliageSourceUtf8Bytes + bytes);
+    }
+
+    internal void BeforePayload(long bytes)
+    {
+        BeforeInputBytes(bytes);
+        PayloadReads = checked(PayloadReads + 1);
+        entering?.Invoke("payload");
+    }
+
+    internal void BeforeGeometry(long bytes, MapPreparationReservation? owner = null)
+    {
+        if (owner is null) ReserveBytes(bytes); else owner.Reserve(bytes);
+        entering?.Invoke("geometry");
+    }
+
+    internal void BeforeClone(MapSurfacePatch patch)
+    {
+        ReserveBytes(PatchBytes(patch, forClone: true));
+        entering?.Invoke("clone");
+    }
+
+    internal void BeforeCompile(MapSurfacePatch patch, MapSlotCellMask cells, MapSurfaceRef surface, bool logical)
+    {
+        long faces = 0;
+        for (int z = 0; z < patch.Depth; z++)
+            for (int x = 0; x < patch.Width; x++)
+            {
+                int slot = (z + patch.CellMinZ) * 64 + x + patch.CellMinX;
+                if (!cells.Contains(slot) || !patch.IsPresent(x, z)) continue;
+                // Count the actual subdivision demand without the compiler's subdivision array allocation.
+                // Logical fallback cells conservatively admit every possible parent child.
+                faces = checked(faces + (logical && MapSurfaceCompiler.Fallback(surface, patch.Cells[z * patch.Width + x])
+                    ? 4L * MapSurfaceCompiler.MaxChildrenPerParent : MapSurfaceCompiler.CountFaces(surface, patch, slot)));
+            }
+        ReserveCompilation(faces);
+    }
+
+    internal void ReserveCompilation(long faces, MapPreparationReservation? workspace = null)
+    {
+        if (faces < 0) throw new ArgumentOutOfRangeException(nameof(faces));
+        decimal demand = (decimal)faces * 1280;
+        if (_bytes.CheckDemand(demand, demand > RemainingPreparedBytes)) throw new MapSceneCapacityException(PreparedByteCapacity(demand));
+        long bytes = (long)demand;
+        if (PreparationRefusal(bytes, faces) is { } capacity) throw new MapSceneCapacityException(capacity);
+        if (workspace is null) ReserveBytes(bytes); else workspace.Reserve(bytes);
+        PreparedFaces = checked(PreparedFaces + faces);
+        entering?.Invoke("compile");
+    }
+
+    /// <summary>Owned payload and collection backing storage, excluding shared immutable strings and CLR object headers.</summary>
+    internal static long PatchBytes(MapSurfacePatch patch, bool forClone = false)
+    {
+        long bytes = checked(4L * patch.Heights.Length + 8L * patch.Cells.Length + 8L * patch.Presence.Length +
+            (long)Unsafe.SizeOf<MapCornerDependency>() * (forClone ? CloneCapacity(patch.CornerDependencies.Count, false) : patch.CornerDependencies.Capacity) +
+            (long)Unsafe.SizeOf<MapEdgeSubdivision>() * (forClone ? CloneCapacity(patch.EdgeSubdivisions.Count, false) : patch.EdgeSubdivisions.Capacity) +
+            IntPtr.Size * (forClone ? CloneCapacity(patch.Records.Count, true) : patch.Records.Capacity));
+        foreach (var record in patch.Records)
+            bytes = checked(bytes + (record switch
+            {
+                MapSurfaceSeam seam => (long)Unsafe.SizeOf<(MapLatticeVertex, MapLatticeVertex)>() * seam.Pairs.Count,
+                MapBoundaryChain chain => IntPtr.Size * (long)chain.Vertices.Count,
+                MapCavePortal portal => (long)Unsafe.SizeOf<MapLatticeVertex>() * portal.Interval.Count,
+                MapHorizontalOpening opening => 4L * opening.SlotCells.Count,
+                MapSpaceFootprint footprint => 4L * footprint.SlotCells.Count,
+                MapVerticalLink link => IntPtr.Size * (long)(link.Openings.Count + link.Portals.Count + link.GeometryOwners.Count),
+                MapSpaceDoc space => IntPtr.Size * (long)(space.DomainTags.Count + space.Walls.Count + space.Portals.Count + space.Links.Count),
+                MapPrismDomain prism => 32L * prism.Footprint.Rects.Count + IntPtr.Size * (long)prism.Footprint.Rings.Count +
+                    RingBytes(prism.Footprint),
+                _ => 0,
+            }));
+        return bytes;
+    }
+
+    internal static long CloneCapacity(int count, bool incremental)
+    {
+        if (count == 0) return 0;
+        if (!incremental) return Math.Max(4L, count);
+        long capacity = 4;
+        while (capacity < count) capacity *= 2;
+        return capacity;
+    }
+
+    static long RingBytes(MapWaterDomainDoc domain)
+    {
+        long bytes = 0;
+        foreach (var ring in domain.Rings) bytes = checked(bytes + (long)Unsafe.SizeOf<MapLatticeAddress>() * ring.Vertices.Count);
+        return bytes;
+    }
+}
+
+internal sealed class MapSceneSourceException(MapSceneStatus status, string message, MapSceneCapacity? capacity = null) : Exception(message)
+{
+    // Reason and SourceType are set only by Unsupported, so an unsupported-source refusal cannot omit them.
+    internal static MapSceneSourceException Unsupported(IMapSurfaceSource source) =>
+        new(MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.")
+        { Reason = MapDocumentRefusal.AcquisitionUnsupported, SourceType = source.GetType() };
+    internal MapDocumentRefusal? Reason { get; private init; }
+    internal Type? SourceType { get; private init; }
+    internal MapSceneStatus Status { get; } = status;
+    internal MapSceneCapacity? Capacity { get; } = capacity;
+}

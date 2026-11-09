@@ -39,6 +39,8 @@ namespace KhaozEngine.Tests.Render3D
             Vector2 focus = WaterClipmap.ClampFocus(plane, fx, fz);
             int vc = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ring, levels, geomorph, verts, indices,
                 out int ic, renderOrigin);
+            Assert.InRange(vc, 1, verts.Length);
+            Assert.InRange(ic, 3, indices.Length);
             return (verts, indices, vc, ic);
         }
 
@@ -597,8 +599,9 @@ namespace KhaozEngine.Tests.Render3D
             // corner from any position on it (2 * 600). Levels come in powers of two, so the last one overshoots;
             // what it overshoots into is clamped onto the plane's edge and costs no fill.
             Assert.Equal(0.5f, WaterClipmap.CellSize(defaults.ClipmapCellSize, 0));
-            Assert.Equal(2048f, ring * 0.5f * WaterClipmap.CellSize(defaults.ClipmapCellSize, levels - 1));
-            Assert.True(2048f >= 2f * plane.HalfExtentX);
+            float outerHalf = ring * 0.5f * WaterClipmap.CellSize(defaults.ClipmapCellSize, levels - 1);
+            Assert.Equal(2048f, outerHalf);
+            Assert.True(outerHalf >= 2f * plane.HalfExtentX);
         }
 
         // ---- Vertex layout -----------------------------------------------------------------------------------

@@ -20,15 +20,15 @@ public static class MapResolverV2
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(surfaces);
         string hash = MapAuthoredIdentityV2.Compute(document, assets, options);
-        var effective = MapPrefabResolver.Expand(document, assets, new(), null, surfaces);
+        var effective = MapPrefabResolver.Expand(document, assets, options.ExpansionLimits, null, surfaces, options.QueryLimits);
         var resolved = new MapResolvedDocument(effective.Placements, assets, MapResolvedBounds.Of(document.PlayableBounds!),
             MapResolvedBounds.Of(document.Bounds), hash, effective);
         return new(resolved, effective.PlacementSupports);
     }
 
-    internal static IReadOnlyList<MapResolvedPlacement> ResolveEffectivePlacements(MapDocument authored, MapAssetClosure assets,
+    internal static IReadOnlyList<MapResolvedPlacement> ResolveEffectivePlacements(MapAssetClosure assets,
         IReadOnlyList<MapPlacement> effective, IReadOnlyDictionary<string, MapEffectiveTransform> transforms,
-        IMapSurfaceSource surfaces, out IReadOnlyList<MapPlacementSupport> supports, IReadOnlyDictionary<string, string>? owners = null)
+        IMapSurfaceSource surfaces, MapQueryLimits limits, out IReadOnlyList<MapPlacementSupport> supports, IReadOnlyDictionary<string, string>? owners = null)
     {
         var result = new List<MapResolvedPlacement>();
         var selected = new List<MapPlacementSupport>();
@@ -43,7 +43,8 @@ public static class MapResolverV2
                 throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable,
                     $"Placement '{placement.Id}' backend pose is NotRepresentable.")
                 {
-                    PlacementId = placement.Id, Operation = nameof(ResolveEffectivePlacements),
+                    PlacementId = placement.Id,
+                    Operation = nameof(ResolveEffectivePlacements),
                     FieldPath = !float.IsFinite(presentationScale) || presentationScale <= 0 ? "$.scale" : "$.yawRadians",
                     ActualNumber = !float.IsFinite(presentationScale) || presentationScale <= 0 ? pose.Scale : pose.YawRadians,
                 };
@@ -52,13 +53,12 @@ public static class MapResolverV2
             {
                 var binding = RequireBinding(placement);
                 var support = SeatSupport(new MapResourceTransform(pose).Point(new(default, default, default)), binding, surfaces,
-                    assets.Roots.Select(a => a.Sha256).ToArray(), new());
-                if (support.Status != MapSupportStatus.Supported) throw new MapDocumentException(MapDocumentRefusal.SupportUnresolved, $"Placement '{placement.Id}' support status {support.Status}: {support.Detail}")
-                    { PlacementId = placement.Id, SupportStatus = support.Status };
+                    assets.Roots.Select(a => a.Sha256).ToArray(), limits);
+                if (support.Status != MapSupportStatus.Supported) throw support.ResolutionRefusal($"Placement '{placement.Id}'", placementId: placement.Id);
                 if (support.Face is { } face && owners is not null &&
                     owners.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Surface, face.OwnerId), out var provider) && missingY.Contains(provider))
                     throw new MapDocumentException(MapDocumentRefusal.SupportProviderHeightMissing, $"Placement '{placement.Id}' with missing Y cannot bind support supplied by placement '{provider}' with missing Y.")
-                        { PlacementId = placement.Id, ProviderPlacementId = provider };
+                    { PlacementId = placement.Id, ProviderPlacementId = provider };
                 y = support.WorldY;
                 selected.Add(new(placement.Id, support));
             }
@@ -75,8 +75,11 @@ public static class MapResolverV2
     /// The per-point scope spans 2 m around the point in its nearest frame, with every role and the given budgets. Callers
     /// own their refusal wording.</summary>
     internal static MapSupportResult SeatSupport(MapExactPoint point, MapSupportBinding binding, IMapSurfaceSource surfaces,
-        IReadOnlyList<string> assetSha256, MapQueryLimits limits)
+        IReadOnlyList<string> assetSha256, MapQueryLimits limits, Scene.MapAcquisitionCaller caller = Scene.MapAcquisitionCaller.Seat)
     {
+        using var diagnostics = Scene.MapSceneAdmission.Current?.AcquisitionDiagnostics?.Enter(Scene.MapAcquisitionStage.Seat, caller);
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(96);
         var world = point with { Y = MapExactValue.FromSingle(binding.ReferenceY ?? 0) };
         var frame = WorldFrame.Nearest(world.X.ToSingle(), world.Z.ToSingle());
         float x = world.X.Subtract(new((long)frame.X * (long)WorldFrame.Grid, 1)).ToSingle();
@@ -84,17 +87,22 @@ public static class MapResolverV2
         var scope = new MapSurfaceScope(frame, new(x - 2, z - 2), new(x + 2, z + 2), null, null, Enum.GetValues<MapSurfaceRole>(), null, limits);
         var view = MapScopedSurfaces.Acquire(surfaces, scope, assetSha256, MapScopedSurfaces.EffectiveQueryPolicyVersion,
             MapScopedSurfaces.EffectiveBuildPolicyVersion);
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(256L + 64L * view.Surfaces.Count + 64L * view.Witness.Records.Count));
         var query = new MapSupportQuery(view);
-        return binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
+        var result = binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
             : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);
+        preparation?.Complete(96, retainDependencies: false);
+        return result;
     }
 
     /// <summary>Resolves <paramref name="placements"/>, which belong to <paramref name="document"/>, in the given order
     /// exactly as <see cref="Resolve"/> resolves them, without the authored hash and without resolving any other
-    /// placement. The document's surfaces are captured only when a placement takes its height from support.</summary>
+    /// placement. The document's surfaces are captured only when a placement takes its height from support, and each
+    /// support scope takes <paramref name="limits"/>.</summary>
     internal static IReadOnlyList<MapResolvedPlacement> ResolvePlacements(MapDocument document, MapAssetClosure assets,
-        IReadOnlyList<MapPlacement> placements)
+        IReadOnlyList<MapPlacement> placements, MapQueryLimits limits)
     {
+        ArgumentNullException.ThrowIfNull(limits);
         IMapSurfaceSource? surfaces = null;
         var resolved = new MapResolvedPlacement[placements.Count];
         for (int i = 0; i < resolved.Length; i++)
@@ -102,7 +110,7 @@ public static class MapResolverV2
             MapPlacement placement = placements[i];
             MapSupportBinding? binding = placement.Y is null ? RequireBinding(placement) : null;
             resolved[i] = MapResolver.ResolveOne(placement, (id, x, z) =>
-                SupportHeight(id, binding!, x, z, surfaces ??= MapDocumentSurfaceSource.Capture(document), assets, null));
+                SupportHeight(id, binding!, x, z, surfaces ??= MapDocumentSurfaceSource.Capture(document), assets, limits, null));
         }
         return Array.AsReadOnly(resolved);
     }
@@ -112,25 +120,27 @@ public static class MapResolverV2
     {
         MapSupportBinding binding = placement.SupportBinding ??
             throw new MapDocumentException(MapDocumentRefusal.SupportBindingMissing, $"Placement '{placement.Id}' support status Invalid: missing authored binding.")
-                { PlacementId = placement.Id };
+            { PlacementId = placement.Id };
         if (binding.Kind == MapSupportBindingKind.Space &&
             (binding.ReferenceY is null || binding.SearchBelow is null || binding.SearchAbove is null))
             throw new MapDocumentException(MapDocumentRefusal.SupportSpaceSearchMissing, $"Placement '{placement.Id}' support status Invalid: space binding requires reference Y and bounded search.")
-                { PlacementId = placement.Id, SpaceId = binding.SpaceId };
+            { PlacementId = placement.Id, SpaceId = binding.SpaceId };
         return binding with { };
     }
 
     static float SupportHeight(string id, MapSupportBinding binding, float x, float z, IMapSurfaceSource surfaces,
-        MapAssetClosure assets, List<MapPlacementSupport>? supports)
+        MapAssetClosure assets, MapQueryLimits limits, List<MapPlacementSupport>? supports)
     {
-        try { return SelectHeight(id, binding, x, z, surfaces, assets, supports); }
+        try { return SelectHeight(id, binding, x, z, surfaces, assets, limits, supports); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
-        { throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, $"Placement '{id}' support status NotRepresentable: overflow.")
-            { PlacementId = id, SupportStatus = MapSupportStatus.NotRepresentable, Operation = nameof(SupportHeight) }; }
+        {
+            throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, $"Placement '{id}' support status NotRepresentable: overflow.")
+            { PlacementId = id, SupportStatus = MapSupportStatus.NotRepresentable, Operation = nameof(SupportHeight) };
+        }
     }
 
     static float SelectHeight(string id, MapSupportBinding binding, float x, float z, IMapSurfaceSource surfaces,
-        MapAssetClosure assets, List<MapPlacementSupport>? supports)
+        MapAssetClosure assets, MapQueryLimits limits, List<MapPlacementSupport>? supports)
     {
         WorldFrame frame = WorldFrame.Nearest(x, z);
         // Subtract integer anchors exactly before the one local float conversion.
@@ -138,15 +148,14 @@ public static class MapResolverV2
         float localZ = MapExactValue.FromSingle(z).Subtract(new((long)frame.Z * (long)WorldFrame.Grid, 1)).ToSingle();
         var point = new MapFramePoint(frame, new(localX, binding.ReferenceY ?? 0, localZ));
         var scope = new MapSurfaceScope(frame, new Vector2(localX - 2, localZ - 2), new Vector2(localX + 2, localZ + 2),
-            null, null, Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
+            null, null, Enum.GetValues<MapSurfaceRole>(), null, limits);
         MapScopedSurfaces scoped = MapScopedSurfaces.Acquire(surfaces, scope, assets.Roots.Select(a => a.Sha256).ToArray());
         var query = new MapSupportQuery(scoped);
         MapSupportResult support = binding.Kind == MapSupportBindingKind.Surface
             ? query.SampleSurface(point, binding.SurfaceId!)
             : query.Select(new(point, null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null));
         if (support.Status != MapSupportStatus.Supported)
-            throw new MapDocumentException(MapDocumentRefusal.SupportUnresolved, $"Placement '{id}' support status {support.Status}: {support.Detail}")
-                { PlacementId = id, SupportStatus = support.Status };
+            throw support.ResolutionRefusal($"Placement '{id}'", placementId: id);
         supports?.Add(new(id, support));
         return support.WorldY;
     }

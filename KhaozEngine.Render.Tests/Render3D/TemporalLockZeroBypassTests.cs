@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using KhaozEngine.Gpu.Internal;
@@ -12,6 +13,24 @@ namespace KhaozEngine.Tests.Render3D;
 /// The production twin deliberately retains the original ordered arithmetic.</summary>
 public sealed class TemporalLockZeroBypassTests
 {
+    public static IEnumerable<object[]> ReleasePrograms() => ShippedShaderPrograms.GraphicsPrograms()
+        .Where(p => p.FragmentGlsl.Contains(ShaderSources.TemporalLockReleaseGlsl, StringComparison.Ordinal))
+        .Select(p => new object[] { p.Name });
+
+    [Fact]
+    public void ReleaseDiscoveryCoversEveryTemporalAccumulationEntry()
+    {
+        string[] expected =
+        [
+            "TemporalResolve", "TemporalResolveHalf", "TemporalAccumulate", "TemporalAccumulateHalf",
+            "TemporalDebugView", "TemporalDebugViewHalf", "TemporalCountProbe", "TemporalCountProbeHalf",
+            "TemporalAccumulateAtDisplaySize", "TemporalAccumulateAtDisplaySizeHalf",
+        ];
+        Assert.Equal(expected.SelectMany(name => new[] { name, name + "FullyLit" })
+                .OrderBy(name => name, StringComparer.Ordinal),
+            ReleasePrograms().Select(row => (string)row[0]).OrderBy(name => name, StringComparer.Ordinal));
+    }
+
     [Fact]
     public void TheReleaseCallIsOnlyInTheQualifiedFallback()
     {
@@ -29,49 +48,45 @@ public sealed class TemporalLockZeroBypassTests
         Assert.Equal(2, Regex.Matches(call, @"\b(?:releaseEdgeMotion|lockValue) = ").Count);
     }
 
-    [Fact]
-    public void EveryCompiledReleaseKeepsAllTwelveBarriersInsideOneFallbackBranch()
+    [Theory]
+    [MemberData(nameof(ReleasePrograms))]
+    public void EveryCompiledReleaseKeepsAllTwelveBarriersInsideOneFallbackBranch(string programName)
     {
-        foreach (var program in ShippedShaderPrograms.GraphicsPrograms()
-            .Where(p => p.FragmentGlsl.Contains(ShaderSources.TemporalLockReleaseGlsl, StringComparison.Ordinal)))
-        {
-            var instructions = TemporalLockReleaseSpirv.Instructions(
-                TemporalLockReleaseSpirv.Fragment(program.FragmentGlsl)).ToArray();
-            var thirtyOne = instructions.Where(i => i.Op == 43 && i.Words.Length == 4 && i.Words[3] == 31)
-                .Select(i => i.Words[2]).ToHashSet();
-            var shifts = instructions.Where(i => i.Op == 194 && thirtyOne.Contains(i.Words[4]))
-                .Select(i => i.Words[2]).ToHashSet();
-            int[] barriers = Enumerable.Range(0, instructions.Length).Where(n => instructions[n].Op == 197
-                && (shifts.Contains(instructions[n].Words[3]) || shifts.Contains(instructions[n].Words[4]))).ToArray();
-            Assert.Equal(12, barriers.Length);
-            int label = Array.FindLastIndex(instructions, barriers[0], i => i.Op == 248);
-            int nextLabel = Array.FindIndex(instructions, label + 1, i => i.Op == 248);
-            Assert.True(barriers.All(n => n > label && n < nextLabel), program.Name + " barriers escaped their block");
-            Assert.Equal(247, instructions[label - 2].Op); // OpSelectionMerge
-            Assert.Equal(2u, instructions[label - 2].Words[2]); // SelectionControl DontFlatten
-            Assert.Equal(250, instructions[label - 1].Op); // OpBranchConditional
-            uint fallback = instructions[label].Words[1], merge = instructions[label - 2].Words[1];
-            uint[] branch = instructions[label - 1].Words;
-            Assert.True(branch[2] == fallback && branch[3] == merge || branch[3] == fallback && branch[2] == merge,
-                program.Name + " does not branch around the entire ordered release");
-        }
+        ShippedGraphicsProgram program = ShippedShaderPrograms.GraphicsPrograms().Single(p => p.Name == programName);
+        var instructions = TemporalLockReleaseSpirv.Instructions(
+            TemporalLockReleaseSpirv.Fragment(program.FragmentGlsl)).ToArray();
+        var thirtyOne = instructions.Where(i => i.Op == 43 && i.Words.Length == 4 && i.Words[3] == 31)
+            .Select(i => i.Words[2]).ToHashSet();
+        var shifts = instructions.Where(i => i.Op == 194 && thirtyOne.Contains(i.Words[4]))
+            .Select(i => i.Words[2]).ToHashSet();
+        int[] barriers = Enumerable.Range(0, instructions.Length).Where(n => instructions[n].Op == 197
+            && (shifts.Contains(instructions[n].Words[3]) || shifts.Contains(instructions[n].Words[4]))).ToArray();
+        Assert.Equal(12, barriers.Length);
+        int label = Array.FindLastIndex(instructions, barriers[0], i => i.Op == 248);
+        int nextLabel = Array.FindIndex(instructions, label + 1, i => i.Op == 248);
+        Assert.True(barriers.All(n => n > label && n < nextLabel), program.Name + " barriers escaped their block");
+        Assert.Equal(247, instructions[label - 2].Op); // OpSelectionMerge
+        Assert.Equal(2u, instructions[label - 2].Words[2]); // SelectionControl DontFlatten
+        Assert.Equal(250, instructions[label - 1].Op); // OpBranchConditional
+        uint fallback = instructions[label].Words[1], merge = instructions[label - 2].Words[1];
+        uint[] branch = instructions[label - 1].Words;
+        Assert.True(branch[2] == fallback && branch[3] == merge || branch[3] == fallback && branch[2] == merge,
+            program.Name + " does not branch around the entire ordered release");
     }
 
-    [Fact]
-    public void EveryReleaseEmitsAnHlslBranchAroundAllTwelveBarriers()
+    [Theory]
+    [MemberData(nameof(ReleasePrograms))]
+    public void EveryReleaseEmitsAnHlslBranchAroundAllTwelveBarriers(string programName)
     {
-        foreach (var program in ShippedShaderPrograms.GraphicsPrograms()
-            .Where(p => p.FragmentGlsl.Contains(ShaderSources.TemporalLockReleaseGlsl, StringComparison.Ordinal)))
-        {
-            Assert.StartsWith("#version 450\n#extension GL_EXT_control_flow_attributes : require\n", program.FragmentGlsl,
-                StringComparison.Ordinal);
-            string hlsl = SpirvCrossCompile.GlslPairToHlsl(program.VertexGlsl, program.FragmentGlsl, program.Name).FragmentSource;
-            Match branch = Assert.Single(Regex.Matches(hlsl, @"\[branch\]\s+if\s*\([^{}]*\)\s*\{(?<release>[^{}]*)\}"));
-            Assert.Equal(12, Regex.Matches(branch.Groups["release"].Value, @"(?<!\|)\|(?!\|)").Count);
-            string unhinted = program.FragmentGlsl.Replace("[[dont_flatten]] ", "", StringComparison.Ordinal);
-            Assert.DoesNotContain("[branch]", SpirvCrossCompile.GlslPairToHlsl(program.VertexGlsl, unhinted,
-                program.Name + " unhinted").FragmentSource, StringComparison.Ordinal);
-        }
+        ShippedGraphicsProgram program = ShippedShaderPrograms.GraphicsPrograms().Single(p => p.Name == programName);
+        Assert.StartsWith("#version 450\n#extension GL_EXT_control_flow_attributes : require\n", program.FragmentGlsl,
+            StringComparison.Ordinal);
+        string hlsl = SpirvCrossCompile.GlslPairToHlsl(program.VertexGlsl, program.FragmentGlsl, program.Name).FragmentSource;
+        Match branch = Assert.Single(Regex.Matches(hlsl, @"\[branch\]\s+if\s*\([^{}]*\)\s*\{(?<release>[^{}]*)\}"));
+        Assert.Equal(12, Regex.Matches(branch.Groups["release"].Value, @"(?<!\|)\|(?!\|)").Count);
+        string unhinted = program.FragmentGlsl.Replace("[[dont_flatten]] ", "", StringComparison.Ordinal);
+        Assert.DoesNotContain("[branch]", SpirvCrossCompile.GlslPairToHlsl(program.VertexGlsl, unhinted,
+            program.Name + " unhinted").FragmentSource, StringComparison.Ordinal);
     }
 
     [Fact]

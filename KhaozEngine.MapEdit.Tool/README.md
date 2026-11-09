@@ -325,8 +325,8 @@ material references. Support bindings use the closed foliage shape of their kind
 
 The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) owns storage limits,
 compatibility/refusal semantics and the padded CPU handoff. The inventory is 101 verbs. R7 supplies CPU preview only.
-Windowed generation/residency and interior cut remain R8, interactive painting R9, complete verb parity and native
-placement ID rename R10, actual import/source acceptance R11/G2 and appearance R8/G3.
+R8a supplies windowed generation, residency and native rendering. Interior cuts and appearance remain R8b,
+interactive painting R9, complete verb parity and native placement ID rename R10, and actual import/source acceptance R11/G2.
 
 ## Mutation and JSON refusals
 
@@ -595,7 +595,9 @@ share the same id string with no collision.
 
 `map_validate(verifyWholeWorld?)` runs the structural checks (`MapDocumentValidator`) first. It then checks
 a whole document against the document schema, or checks each loaded tile of a windowed document against
-`MapDocumentSchema.GetTileJson()`. Tile errors name their tile coordinate. The result reports `SchemaScope`
+`MapDocumentSchema.GetTileJson()`. Complete tiled documents validate their semantic roots and each bounded
+surface payload separately, without embedding the patches into a monolithic document. Monolithic save
+limits still apply to monolithic documents. Tile errors name their tile coordinate. The result reports `SchemaScope`
 as `document`, `loadedTiles`, or `none`, so a partial check is never presented as whole-world coverage.
 Pass `verifyWholeWorld: true` for a tiled document to run `MapDocumentFile.VerifyTiled` against every tile and
 the native surface storage closure without loading cold content into the session. Surface checks include
@@ -688,3 +690,22 @@ Full document format, the runtime builders, and the GUI editor sharing this same
 session model.
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).
+
+## Native snapshot transport
+
+Configure `MapEditSession.NativeRenderHost` or construct `RenderService(session, nativeHost)` with an
+`IMapNativeRenderHost`. Native render routes require `nativeRequestJson`. The existing render verbs
+retain the exact 101-tool inventory. `NativeRenderRequest.Read` accepts closed DTOs and rejects unknown,
+duplicate and case-variant properties. Frame indices are checked signed 16-bit values. Native refusal
+and success results use the same `NativeRenderWire` shape and echo explicit host policy and scope.
+
+`RenderService.RenderNative` calls `NativeMapSnapshot`. View requests default omitted focus to the
+framed eye. Top-down requests use the single `MapCaptureFocus` support rule. Explicit focus is carried
+through registration-independent frame submission. Unresolved refusal returns null focus. The result
+carries required/acquired scopes, completeness, readiness, framing, observer, roofs, time, seed, style,
+lighting and AA. A capped Preview cannot claim `CompleteForScope` or `WholeWorldComplete`.
+See the [snapshot contract](../KhaozEngine.MapDoc.Render3D/README.md#native-view-and-snapshot-contract).
+Native result blocks pair the closed `NativeRenderWire` metadata with SDK-created PNG image blocks.
+Light shadow cache keys remain derived from effective IDs through preparation, submission and capture.
+The actual wire foliage-focus and capture GPU facts require a backend. CPU source-oracle guards
+remain separate and never certify appearance or actual-source import acceptance.

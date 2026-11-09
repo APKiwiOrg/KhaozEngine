@@ -370,7 +370,8 @@ public sealed class ContentIdAllocator
                     $"Family {familyId} is not in the store, so no id can be allocated from it."),
                 default,
                 0,
-                ContentAuthoringException.UnknownFamilyReason) { FamilyId = familyId };
+                ContentAuthoringException.UnknownFamilyReason)
+            { FamilyId = familyId };
 
     async Task<long> ReadCeilingAsync(ContentTypeId type, CancellationToken cancellationToken)
         => await _persistence.ReadMaxDefinitionIdAsync(type, cancellationToken).ConfigureAwait(false)

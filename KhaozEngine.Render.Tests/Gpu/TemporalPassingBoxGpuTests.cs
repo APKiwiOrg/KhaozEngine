@@ -85,6 +85,7 @@ namespace KhaozEngine.Tests.Gpu
         /// with the passer on the right the line flares on the frames after a hit, 1.20 to 1.33 of its energy without
         /// the passer, while its lowest frame stays over 0.9.
         /// </summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void A_quarter_texel_line_missed_five_frames_running_prints_its_worst_frame_beside_a_narrow_passer()
         {

@@ -69,7 +69,7 @@ internal static class MapConversionFinePatches
                             int height = heights[(z + dz) * (k + 1) + x + dx];
                             if (assigned[key][index] && patch.Heights[index] != height)
                                 throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable, "shared fine corner height is not representable")
-                                    { SurfaceId = request.FineSurfaceId, Patch = patch.Key, CellX = px + dx, CellZ = pz + dz };
+                                { SurfaceId = request.FineSurfaceId, Patch = patch.Key, CellX = px + dx, CellZ = pz + dz };
                             patch.Heights[index] = height;
                             assigned[key][index] = true;
                         }

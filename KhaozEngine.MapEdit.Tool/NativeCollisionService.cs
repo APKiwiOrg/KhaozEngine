@@ -90,8 +90,13 @@ public sealed class NativeCollisionService(MapEditSession session)
             throw new MapDocumentException(!float.IsFinite(bottom) || !float.IsFinite(top)
                 ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.BoundsInvalid,
                 $"Collider heights for '{assetId}' need a finite bottom below a finite top.")
-            { AssetId = assetId, FieldPath = !float.IsFinite(bottom) ? nameof(bottom) : nameof(top),
-                ActualNumber = !float.IsFinite(bottom) ? bottom : top, MinimumNumber = bottom, MaximumNumber = top };
+            {
+                AssetId = assetId,
+                FieldPath = !float.IsFinite(bottom) ? nameof(bottom) : nameof(top),
+                ActualNumber = !float.IsFinite(bottom) ? bottom : top,
+                MinimumNumber = bottom,
+                MaximumNumber = top
+            };
         return session.WithNativeAssets(context =>
         {
             HeightPlan plan = PlanHeights(context, assetId, bottom, top);

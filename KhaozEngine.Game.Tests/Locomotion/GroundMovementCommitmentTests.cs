@@ -17,7 +17,8 @@ public class GroundMovementCommitmentTests
     static float Abyss(float x, float z) => -1000;
     static MoveState Standing(float x = 0, float y = 0) => new()
     {
-        Position = new(x, y + Tuning.CapsuleHalfHeight, 0), Grounded = true,
+        Position = new(x, y + Tuning.CapsuleHalfHeight, 0),
+        Grounded = true,
         Commitment = MovementCommitment.ForGroundTravel(1, Vector2.UnitX, 3, 10),
     };
 
@@ -30,7 +31,8 @@ public class GroundMovementCommitmentTests
     {
         var state = Standing() with
         {
-            SpeedScale = scale, JumpBufferRemaining = 1,
+            SpeedScale = scale,
+            JumpBufferRemaining = 1,
             Commitment = MovementCommitment.ForGroundTravel(1, Vector2.UnitX, 3, 0.25f),
         };
         MoveTuning tuning = Tuning with { Controller = controller };
@@ -286,7 +288,9 @@ public class GroundMovementCommitmentTests
         var state = Standing() with { Grounded = false, VerticalVelocity = -2 };
         state.Commitment = state.Commitment with
         {
-            Phase = phase, PreparationRemaining = 1, RecoveryRemaining = 1,
+            Phase = phase,
+            PreparationRemaining = 1,
+            RecoveryRemaining = 1,
             EndReason = phase == MovementCommitmentPhase.Recovering ? MovementCommitmentEndReason.Arrived : default,
         };
         state = CharacterMovement.Step(state, Hostile, Dt, Abyss, Tuning with { Controller = controller });
@@ -325,7 +329,8 @@ public class GroundMovementCommitmentTests
         state.Commitment = ground
             ? MovementCommitment.ForGroundTravel(1, Vector2.UnitX, 3, 10, recoverySeconds: 3 * Dt, timeoutSeconds: 2 * Dt)
             : new MovementCommitment(1, Vector2.UnitX, 3, 5, 7, 0, 3 * Dt, 2 * Dt)
-                with { Phase = MovementCommitmentPhase.Recovering };
+                with
+            { Phase = MovementCommitmentPhase.Recovering };
         state = CharacterMovement.Step(state, MoveCommand.Idle, Dt, Flat, tuning);
         if (ground)
             state.Commitment = GroundTravelCommitment.End(state.Commitment, 1, MovementCommitmentEndReason.Arrived);

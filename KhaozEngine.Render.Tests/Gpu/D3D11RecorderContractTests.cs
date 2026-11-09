@@ -215,7 +215,7 @@ namespace KhaozEngine.Tests.Gpu
 
                 GpuRecordingStateException before = Assert.Throws<GpuRecordingStateException>(() => call(list));
                 Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, before.Reason);
-            Assert.Equal(member, before.Command);
+                Assert.Equal(member, before.Command);
                 Assert.Equal(GpuBackendKind.Direct3D11Native, before.Backend);
 
                 list.Begin();
@@ -223,7 +223,7 @@ namespace KhaozEngine.Tests.Gpu
 
                 GpuRecordingStateException after = Assert.Throws<GpuRecordingStateException>(() => call(list));
                 Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, after.Reason);
-            Assert.Equal(member, after.Command);
+                Assert.Equal(member, after.Command);
                 Assert.Equal(GpuBackendKind.Direct3D11Native, after.Backend);
             }
         }

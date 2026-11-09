@@ -202,7 +202,7 @@ public sealed partial class PhysicsNavBake
             PhysicsNavCaptureBasis basis = Basis
                 ?? throw new NavigationBuildException(NavigationBuildRefusal.CaptureLeaseRequired,
                     "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.")
-                    { RequiredCapability = typeof(KhaozEngine.Physics.IPhysicsQueryLeaseSource) };
+                { RequiredCapability = typeof(KhaozEngine.Physics.IPhysicsQueryLeaseSource) };
             basis.AssertCurrent();
         }
         EffectiveMovementBinding? source = kind == EffectiveMovementBindingKind.OrdinaryContact
@@ -213,7 +213,7 @@ public sealed partial class PhysicsNavBake
             if (tuning.MaxSlopeRadians != Options.MaxSlopeRadians)
                 throw new NavigationProfileException(NavigationProfileRefusal.CaptureSlopeMismatch,
                     "Profile slope must equal the capture slope.", nameof(tuning))
-                    { ExpectedSlope = Options.MaxSlopeRadians, ActualSlope = tuning.MaxSlopeRadians };
+                { ExpectedSlope = Options.MaxSlopeRadians, ActualSlope = tuning.MaxSlopeRadians };
             float height = 2f * tuning.CapsuleHalfHeight;
             if (!float.IsFinite(height))
                 throw new ArgumentOutOfRangeException(nameof(tuning), "Profile height must be finite.");
@@ -225,8 +225,11 @@ public sealed partial class PhysicsNavBake
                 tuning.SwimSurfaceSubmersionFraction <= tuning.SwimEnterDepthFraction))
                 throw new NavigationProfileException(NavigationProfileRefusal.SwimFractionsUnordered,
                     "An aquatic profile needs swim fractions ordered exit, submersion, enter.", nameof(tuning))
-                    { ExitFraction = tuning.SwimExitDepthFraction, SubmersionFraction = tuning.SwimSurfaceSubmersionFraction,
-                        EnterFraction = tuning.SwimEnterDepthFraction };
+                {
+                    ExitFraction = tuning.SwimExitDepthFraction,
+                    SubmersionFraction = tuning.SwimSurfaceSubmersionFraction,
+                    EnterFraction = tuning.SwimEnterDepthFraction
+                };
             PhysicsNavColumns columns = aquatic ? AquaticColumns.Derive(Columns, tuning) : Columns;
             var footprint = new NavAreaFootprint(columns, Options, tuning, areas);
             return new(kind, context, source, height, aquatic, columns, footprint);

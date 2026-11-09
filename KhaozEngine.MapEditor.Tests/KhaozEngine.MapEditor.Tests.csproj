@@ -21,6 +21,7 @@
     <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
     <!-- The MapDocumentException constructor fence scans the complete physics adapter assembly. -->
@@ -44,6 +45,11 @@
     <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.Render.Tests/MapDoc/NativeRenderAssetFixtures.cs" Link="MapDocFixtures/NativeRenderAssetFixtures.cs" />
+    <Compile Include="../KhaozEngine.Render.Tests/MapDoc/NativeRenderAssetFixtures.Placements.cs" Link="MapDocFixtures/NativeRenderAssetFixtures.Placements.cs" />
+    <Compile Include="../KhaozEngine.Render.Tests/Gpu/FakeGpuDevice.cs" Link="MapDocFixtures/FakeGpuDevice.cs" />
+    <Compile Include="../KhaozEngine.Render.Tests/MapDoc/NativeUploadTestScene.cs" Link="MapDocFixtures/NativeUploadTestScene.cs" />
+    <Compile Include="../KhaozEngine.Render.Tests/MapDoc/CaptureDependencyFixtures.cs" Link="MapDocFixtures/CaptureDependencyFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/**/*Fixtures.cs" Link="MapDocFixtures/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../KhaozEngine.MapDoc.Physics.Tests/NativeWorldFixtures.Nested.cs" Link="MapDocFixtures/NativeWorldFixtures.Nested.cs" />
     <None Include="../KhaozEngine.MapDoc.Tests/Fixtures/**" Link="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

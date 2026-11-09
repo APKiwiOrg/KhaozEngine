@@ -356,7 +356,9 @@ namespace KhaozEngine.Tests.Gpu
             swapchain.QueueResize(1600, 900);
             swapchain.Present();
 
-            Assert.All(surface.Calls.Skip(1), call => Assert.True(call.HeldTheSubmitLock,
+            var calls = surface.Calls.Skip(1).ToArray();
+            Assert.NotEmpty(calls);
+            Assert.All(calls, call => Assert.True(call.HeldTheSubmitLock,
                 $"{call} arrived without the submit lock held."));
         }
 
@@ -374,20 +376,29 @@ namespace KhaozEngine.Tests.Gpu
             using var holding = new ManualResetEventSlim(false);
             using var release = new ManualResetEventSlim(false);
 
+            // Set before the lock is released, so a queue that waited for the lock can only return after this is true.
+            bool holderGaveUp = false;
             Task holder = Task.Run(() =>
             {
                 lock (submitLock)
                 {
                     holding.Set();
-                    release.Wait(TimeSpan.FromSeconds(30));
+                    holderGaveUp = !release.Wait(TimeSpan.FromSeconds(30));
                 }
             });
 
             Assert.True(holding.Wait(TimeSpan.FromSeconds(30)), "the holder thread never took the submit lock");
-            swapchain.QueueResize(1600, 900);   // must return with the lock still held elsewhere
-            Assert.True(swapchain.HasPendingResize);
+            try
+            {
+                swapchain.QueueResize(1600, 900);   // must return with the lock still held elsewhere
+                Assert.False(Volatile.Read(ref holderGaveUp), "QueueResize returned only after the holder gave up the submit lock.");
+                Assert.True(swapchain.HasPendingResize);
+            }
+            finally
+            {
+                release.Set();
+            }
 
-            release.Set();
             await holder.WaitAsync(TimeSpan.FromSeconds(30));
         }
 

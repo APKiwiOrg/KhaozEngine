@@ -40,14 +40,12 @@ public static class MapShapeQueries
     /// when the ray starts inside.</summary>
     public static bool Raycast(MapPickRay ray, PhysicsShape shape, Pose pose, out double distance, out Vector3 normal)
     {
-        ArgumentNullException.ThrowIfNull(shape);
-        (MapDouble3 origin, MapDouble3 direction) = Validate(ray);
-        normal = Vector3.Zero;
-        if (!Cast(origin, direction, 0d, ray.MaxDistance, shape, MapDoublePose.From(pose), out distance,
-                out MapDouble3 n, out bool inside))
-            return false;
-        normal = Unit(inside ? direction.Scale(-1d) : n);
-        return true;
+        var shared = new ShapeRay(ray.Origin.X, ray.Origin.Y, ray.Origin.Z,
+            ray.Direction.X, ray.Direction.Y, ray.Direction.Z, ray.MaxDistance);
+        bool found = ShapeRayQueries.Cast(shared, shape, pose, out ShapeRayHit hit);
+        distance = hit.Distance;
+        normal = hit.Normal;
+        return found;
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -58,54 +56,18 @@ public static class MapShapeQueries
     /// direction and a negative or nonfinite maximum distance.</summary>
     internal static (MapDouble3 Origin, MapDouble3 Direction) Validate(MapPickRay ray)
     {
-        Vector3 o = ray.Origin, d = ray.Direction;
-        if (!float.IsFinite(o.X) || !float.IsFinite(o.Y) || !float.IsFinite(o.Z))
-            throw new ArgumentOutOfRangeException(nameof(ray), "Ray origin must be finite.");
-        if (!float.IsFinite(d.X) || !float.IsFinite(d.Y) || !float.IsFinite(d.Z))
-            throw new ArgumentOutOfRangeException(nameof(ray), "Ray direction must be finite.");
-        if (!float.IsFinite(ray.MaxDistance) || ray.MaxDistance < 0f)
-            throw new ArgumentOutOfRangeException(nameof(ray), "Ray maximum distance must be finite and nonnegative.");
-        var direction = MapDouble3.From(d);
-        double length = Math.Sqrt(Dot(direction, direction));
-        if (length == 0d) throw new ArgumentOutOfRangeException(nameof(ray), "Ray direction must not be zero.");
-        return (MapDouble3.From(o), direction.Scale(1d / length));
+        return ShapeRayQueries.Validate(new(ray.Origin.X, ray.Origin.Y, ray.Origin.Z,
+            ray.Direction.X, ray.Direction.Y, ray.Direction.Z, ray.MaxDistance));
     }
 
-    internal static Vector3 Unit(MapDouble3 v)
-    {
-        double length = Math.Sqrt(Dot(v, v));
-        return length == 0d ? Vector3.Zero : new Vector3((float)(v.X / length), (float)(v.Y / length), (float)(v.Z / length));
-    }
-
-    internal static double Dot(MapDouble3 a, MapDouble3 b) => MapConvexQueries.Dot(a, b);
-
-    internal static MapDoublePose Inverse(MapDoublePose pose) => new(default, -pose.Qx, -pose.Qy, -pose.Qz, pose.Qw);
-
-    // Points rotated into the frame that is world-aligned and centred on the pose position, so far-from-origin worlds
-    // keep their precision.
-    internal static MapDouble3[] Centred(MapDoublePose pose, Vector3[] local)
-    {
-        var points = new MapDouble3[local.Length];
-        for (int i = 0; i < local.Length; i++) points[i] = pose.Rotate(MapDouble3.From(local[i]));
-        return points;
-    }
-
-    internal static double Surface(double core, double radius) => Math.Max(core - radius, 0d);
-
-    internal static MapDouble3 Lerp(MapDouble3 a, MapDouble3 b, double s) => a.Add(b.Subtract(a).Scale(s));
-
-    /// <summary>Clips the ray parameter window [<paramref name="tStart"/>, <paramref name="tEnd"/>] to the slab from
-    /// <paramref name="min"/> less <paramref name="padding"/> to <paramref name="max"/> plus it on one axis. False when
-    /// the window empties, or when a ray parallel to the slab lies outside it.</summary>
+    internal static Vector3 Unit(MapDouble3 v) => ShapeQueryMath.Unit(v);
+    internal static double Dot(MapDouble3 a, MapDouble3 b) => ShapeQueryMath.Dot(a, b);
+    internal static MapDoublePose Inverse(MapDoublePose pose) => ShapeQueryMath.Inverse(pose);
+    internal static MapDouble3[] Centred(MapDoublePose pose, Vector3[] local) => ShapeQueryMath.Centred(pose, local);
+    internal static double Surface(double core, double radius) => ShapeQueryMath.Surface(core, radius);
+    internal static MapDouble3 Lerp(MapDouble3 a, MapDouble3 b, double s) => ShapeQueryMath.Lerp(a, b, s);
     internal static bool ClipRay(double origin, double direction, double min, double max, double padding,
-        ref double tStart, ref double tEnd)
-    {
-        if (direction == 0d) return origin >= min - padding && origin <= max + padding;
-        double a = (min - padding - origin) / direction, b = (max + padding - origin) / direction;
-        tStart = Math.Max(tStart, Math.Min(a, b));
-        tEnd = Math.Min(tEnd, Math.Max(a, b));
-        return tStart <= tEnd;
-    }
+        ref double tStart, ref double tEnd) => ShapeQueryMath.ClipRay(origin, direction, min, max, padding, ref tStart, ref tEnd);
 
     static NotSupportedException Unsupported(PhysicsShape shape) => new(
         $"Shape queries measure boxes, cylinders, hulls, meshes and compounds, not {shape.GetType().Name}.");
@@ -195,85 +157,8 @@ public static class MapShapeQueries
     /// solid member at <paramref name="tStart"/> hits it there with <paramref name="inside"/> set. The nearest member
     /// wins, the first on a tie.</summary>
     internal static bool Cast(MapDouble3 origin, MapDouble3 direction, double tStart, double tEnd, PhysicsShape shape,
-        MapDoublePose pose, out double t, out MapDouble3 normal, out bool inside)
-    {
-        t = 0d;
-        normal = default;
-        inside = false;
-        switch (shape)
-        {
-            case CompoundShape compound:
-                {
-                    bool any = false;
-                    foreach (CompoundChild child in compound.Children)
-                    {
-                        if (!Cast(origin, direction, tStart, any ? Math.Min(tEnd, t) : tEnd, child.Shape,
-                                pose.Compose(child.Local), out double ct, out MapDouble3 cn, out bool ci) ||
-                            (any && ct >= t))
-                            continue;
-                        any = true;
-                        t = ct;
-                        normal = cn;
-                        inside = ci;
-                    }
-                    return any;
-                }
-            case BoxShape box:
-                return CastBox(origin, direction, tStart, tEnd, box, pose, out t, out normal, out inside);
-            case CylinderShape cylinder:
-                return MapCylinderQueries.Cast(origin, direction, tStart, tEnd, cylinder, pose, out t, out normal, out inside);
-            case ConvexHullShape hull:
-                {
-                    MapDouble3 start = origin.Subtract(pose.Position).Add(direction.Scale(tStart));
-                    if (!MapConvexQueries.Raycast(Centred(pose, hull.Points), start, direction, tEnd - tStart,
-                            out double lambda, out normal))
-                        return false;
-                    t = tStart + lambda;
-                    inside = Dot(normal, normal) == 0d;
-                    return true;
-                }
-            case TriangleMeshShape mesh:
-                return MapMeshQueries.Cast(origin, direction, tStart, tEnd, mesh, pose, out t, out normal);
-            default:
-                throw Unsupported(shape);
-        }
-    }
-
-    static bool CastBox(MapDouble3 origin, MapDouble3 direction, double tStart, double tEnd, BoxShape box,
-        MapDoublePose pose, out double t, out MapDouble3 normal, out bool inside)
-    {
-        t = 0d;
-        normal = default;
-        inside = false;
-        MapDoublePose inverse = Inverse(pose);
-        MapDouble3 o = inverse.Rotate(origin.Subtract(pose.Position)), d = inverse.Rotate(direction);
-        Vector3 h = box.HalfExtents;
-        double enter = double.NegativeInfinity, exit = double.PositiveInfinity;
-        MapDouble3 face = default;
-        for (int axis = 0; axis < 3; axis++)
-        {
-            double oi = axis == 0 ? o.X : axis == 1 ? o.Y : o.Z;
-            double di = axis == 0 ? d.X : axis == 1 ? d.Y : d.Z;
-            double hi = axis == 0 ? h.X : axis == 1 ? h.Y : h.Z;
-            double before = enter;
-            if (!ClipRay(oi, di, -hi, hi, 0d, ref enter, ref exit)) return false;
-            if (enter > before)
-            {
-                double sign = di > 0d ? -1d : 1d;
-                face = new MapDouble3(axis == 0 ? sign : 0d, axis == 1 ? sign : 0d, axis == 2 ? sign : 0d);
-            }
-        }
-        if (exit < tStart || enter > tEnd) return false;
-        if (enter >= tStart)
-        {
-            t = enter;
-            normal = pose.Rotate(face);
-            return true;
-        }
-        t = tStart;
-        inside = true;
-        return true;
-    }
+        MapDoublePose pose, out double t, out MapDouble3 normal, out bool inside) =>
+        ShapeRayQueries.Cast(origin, direction, tStart, tEnd, shape, pose, out t, out normal, out inside);
 }
 
 /// <summary>An upright probe segment in world metres with the radius around it. A movement body keeps itself so a

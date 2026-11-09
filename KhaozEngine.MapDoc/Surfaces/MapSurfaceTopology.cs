@@ -14,10 +14,12 @@ public static class MapSurfaceTopology
         if (rotation > 3 || cut > MapOverlayCut.CornerThreeQuarter || topology > MapCellTopology.ForceNwSe)
             throw new MapDocumentException(rotation > 3 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.SchemaEnumUnsupported,
                 "invalid cell topology, cut or rotation")
-            { ResolutionStatus = MapResolveStatus.Invalid,
+            {
+                ResolutionStatus = MapResolveStatus.Invalid,
                 FieldPath = rotation > 3 ? "rotation" : cut > MapOverlayCut.CornerThreeQuarter ? "cut" : "topology",
                 ActualInteger = rotation > 3 ? rotation : cut > MapOverlayCut.CornerThreeQuarter ? (byte)cut : (byte)topology,
-                MinimumInteger = rotation > 3 ? 0 : null, MaximumInteger = rotation > 3 ? 3 : null,
+                MinimumInteger = rotation > 3 ? 0 : null,
+                MaximumInteger = rotation > 3 ? 3 : null,
                 EnumType = rotation > 3 ? null : cut > MapOverlayCut.CornerThreeQuarter ? typeof(MapOverlayCut) : typeof(MapCellTopology),
             };
         if (topology != MapCellTopology.Auto)

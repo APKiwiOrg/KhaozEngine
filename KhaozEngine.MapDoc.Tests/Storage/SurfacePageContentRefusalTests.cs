@@ -33,7 +33,11 @@ public sealed class SurfacePageContentRefusalTests
             fault == "empty-count" ? 0 : fault == "over-count" ? 257 : 1);
         IReadOnlyList<MapIndexPageRef>? pages = fault switch
         {
-            "null-list" => null, "empty-list" => [], "null-page" => [null!], "overlap" => [page, page], _ => [page],
+            "null-list" => null,
+            "empty-list" => [],
+            "null-page" => [null!],
+            "overlap" => [page, page],
+            _ => [page],
         };
         var error = Assert.Throws<MapDocumentException>(() => MapSurfacePages.EncodeDirectory("r", covers, pages!));
         Assert.Equal(reason, error.Reason);
@@ -103,32 +107,45 @@ public sealed class SurfacePageContentRefusalTests
         MapSurfaceIndexEntry entry = Entry(0);
         entry = fault switch
         {
-            "surface" => entry with { Key = new("other", 0, 0) }, "outside" => Entry(2),
-            "min-x" => entry with { Cells = new(-1, 0, 1, 1) }, "min-z" => entry with { Cells = new(0, -1, 1, 1) },
-            "max-x" => entry with { Cells = new(0, 0, 65, 1) }, "max-z" => entry with { Cells = new(0, 0, 1, 65) },
-            "empty-x" => entry with { Cells = new(0, 0, 0, 1) }, "empty-z" => entry with { Cells = new(0, 0, 1, 0) },
+            "surface" => entry with { Key = new("other", 0, 0) },
+            "outside" => Entry(2),
+            "min-x" => entry with { Cells = new(-1, 0, 1, 1) },
+            "min-z" => entry with { Cells = new(0, -1, 1, 1) },
+            "max-x" => entry with { Cells = new(0, 0, 65, 1) },
+            "max-z" => entry with { Cells = new(0, 0, 1, 65) },
+            "empty-x" => entry with { Cells = new(0, 0, 0, 1) },
+            "empty-z" => entry with { Cells = new(0, 0, 1, 0) },
             "height" => entry with { MinHeightUnits = 1 },
-            "null-dependencies" => entry with { Dependencies = null! }, "null-records" => entry with { RecordIds = null! },
-            "null-incidents" => entry with { IncidentRecords = null! }, "null-spaces" => entry with { SpaceIds = null! },
+            "null-dependencies" => entry with { Dependencies = null! },
+            "null-records" => entry with { RecordIds = null! },
+            "null-incidents" => entry with { IncidentRecords = null! },
+            "null-spaces" => entry with { SpaceIds = null! },
             "blank-dependency" => entry with { Dependencies = [new("", 0, 0)] },
-            "blank-record" => entry with { RecordIds = [""] }, "blank-space" => entry with { SpaceIds = [""] },
+            "blank-record" => entry with { RecordIds = [""] },
+            "blank-space" => entry with { SpaceIds = [""] },
             "blank-incident" => entry with { IncidentRecords = [new("", entry.Key)] },
             "duplicate-dependency" => entry with { Dependencies = [entry.Key, entry.Key] },
             "duplicate-record" => entry with { RecordIds = ["a", "a"] },
             "duplicate-incident" => entry with { IncidentRecords = [new("a", entry.Key), new("a", entry.Key)] },
-            "duplicate-space" => entry with { SpaceIds = ["a", "a"] }, _ => entry,
+            "duplicate-space" => entry with { SpaceIds = ["a", "a"] },
+            _ => entry,
         };
         IReadOnlyList<MapSurfaceIndexEntry>? entries = fault switch
         {
-            "null-list" => null, "empty-list" => [], "null-entry" => [null!], "order" => [Entry(1), Entry(0)],
-            "duplicate-key" => [entry, entry], _ => [entry],
+            "null-list" => null,
+            "empty-list" => [],
+            "null-entry" => [null!],
+            "order" => [Entry(1), Entry(0)],
+            "duplicate-key" => [entry, entry],
+            _ => [entry],
         };
         var error = Assert.Throws<MapDocumentException>(() => MapSurfacePages.EncodeIndex("r", Covers, entries!));
         Assert.Equal(reason, error.Reason);
         Assert.Equal(field, error.FieldPath);
         MapSurfaceIndexEntry control = fault switch
         {
-            "max-x" => Entry(0) with { Cells = new(0, 0, 64, 1) }, "max-z" => Entry(0) with { Cells = new(0, 0, 1, 64) },
+            "max-x" => Entry(0) with { Cells = new(0, 0, 64, 1) },
+            "max-z" => Entry(0) with { Cells = new(0, 0, 1, 64) },
             "outside" => Entry(1),
             "blank-dependency" or "duplicate-dependency" => Entry(0) with { Dependencies = [new("r", 0, 0)] },
             "blank-record" or "duplicate-record" => Entry(0) with { RecordIds = ["a"] },

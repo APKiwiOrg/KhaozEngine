@@ -188,7 +188,8 @@ public static partial class MapSurfacePatchCodec
                 Members(r, "type", "id", "space", "lattice", "slotCells", "lower", "upper");
                 return new MapSpaceFootprint(id, ReadRef(r.GetProperty("space")), ReadKey(r.GetProperty("lattice")),
                     ReadSlots(r.GetProperty("slotCells")), ReadBound(r.GetProperty("lower")), ReadBound(r.GetProperty("upper")));
-            default: throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "unknown topology record type")
+            default:
+                throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "unknown topology record type")
                 { RecordId = id, FieldPath = "type", ActualText = type };
         }
     }
@@ -270,8 +271,12 @@ public static partial class MapSurfacePatchCodec
                 throw new MapDocumentException(cell is < 0 or >= 4096 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.OrderInvalid,
                     "invalid or duplicate slotCells order")
                 {
-                    FieldPath = "slotCells", Index = index, ActualInteger = cell, PreviousInteger = index > 0 ? previous : null,
-                    MinimumInteger = cell is < 0 or >= 4096 ? 0 : null, MaximumInteger = cell is < 0 or >= 4096 ? 4095 : null,
+                    FieldPath = "slotCells",
+                    Index = index,
+                    ActualInteger = cell,
+                    PreviousInteger = index > 0 ? previous : null,
+                    MinimumInteger = cell is < 0 or >= 4096 ? 0 : null,
+                    MaximumInteger = cell is < 0 or >= 4096 ? 4095 : null,
                 };
             previous = cell;
             index++;

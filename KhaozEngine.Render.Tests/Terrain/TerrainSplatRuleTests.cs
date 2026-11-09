@@ -43,6 +43,7 @@ namespace KhaozEngine.Tests.Terrain
             TerrainChunkRegion region = Region();
             TerrainChunkMesh chunk = TerrainChunkBuilder.Build(field, region, lod: 1);
 
+            Assert.True(chunk.SurfaceVertexCount > 0);
             for (int i = 0; i < chunk.SurfaceVertexCount; i++)
             {
                 Vector3 p = chunk.Mesh.Vertices[i].Position;
@@ -65,6 +66,7 @@ namespace KhaozEngine.Tests.Terrain
             TerrainChunkMesh explicitNull = TerrainChunkBuilder.Build(field, region, lod: 1, splatRule: null);
             TerrainChunkMesh viaLodConfig = TerrainChunkBuilder.Build(field, region, lod: 1, TerrainLodConfig.Default, splatRule: null);
 
+            Assert.NotEmpty(omitted.Mesh.Vertices);
             Assert.Equal(omitted.Mesh.Vertices.Length, explicitNull.Mesh.Vertices.Length);
             Assert.Equal(omitted.Mesh.Vertices.Length, viaLodConfig.Mesh.Vertices.Length);
             for (int i = 0; i < omitted.Mesh.Vertices.Length; i++)
@@ -87,6 +89,7 @@ namespace KhaozEngine.Tests.Terrain
             TerrainChunkMesh chunk = TerrainChunkBuilder.Build(field, region, lod: 1,
                 splatRule: ctx => { seen.Add(ctx); return ctx.Default; });
 
+            Assert.NotEmpty(seen);
             Assert.Equal(chunk.SurfaceVertexCount, seen.Count);
             for (int i = 0; i < seen.Count; i++)
             {
@@ -116,6 +119,9 @@ namespace KhaozEngine.Tests.Terrain
             TerrainChunkMesh plain = TerrainChunkBuilder.Build(field, region, lod: 1);
             TerrainChunkMesh passthrough = TerrainChunkBuilder.Build(field, region, lod: 1, splatRule: ctx => ctx.Default);
 
+            Assert.NotEmpty(plain.Mesh.Vertices);
+            Assert.Equal(plain.Mesh.Vertices.Length, passthrough.Mesh.Vertices.Length);
+            Assert.Equal(plain.Splat.Length, passthrough.Splat.Length);
             for (int i = 0; i < plain.Mesh.Vertices.Length; i++)
             {
                 AssertSameWeights(plain.Splat[i], passthrough.Splat[i], $"vertex {i}");
@@ -130,6 +136,8 @@ namespace KhaozEngine.Tests.Terrain
             TerrainChunkMesh chunk = TerrainChunkBuilder.Build(Field(), Region(), lod: 1, splatRule: _ => allSand);
 
             Vector4 expected = TerrainRamp.Of(allSand);
+            Assert.NotEmpty(chunk.Mesh.Vertices);
+            Assert.Equal(chunk.Mesh.Vertices.Length, chunk.Splat.Length);
             for (int i = 0; i < chunk.Mesh.Vertices.Length; i++)
             {
                 AssertSameWeights(allSand, chunk.Splat[i], $"vertex {i}");
@@ -215,10 +223,12 @@ namespace KhaozEngine.Tests.Terrain
             var ruledCpu = (Scene3DChunkSink.CpuBuild)ruled.BuildCpu(coord, lod: 1);
             var plainCpu = (Scene3DChunkSink.CpuBuild)plain.BuildCpu(coord, lod: 1);
 
+            Assert.NotEmpty(ruledCpu.Mesh.Splat);
             for (int i = 0; i < ruledCpu.Mesh.Splat.Length; i++)
                 AssertSameWeights(allSnow, ruledCpu.Mesh.Splat[i], $"ruled sink, vertex {i}");
             // And the default sink is untouched by the seam existing.
             TerrainChunkMesh direct = TerrainChunkBuilder.Build(field, ChunkGrid.RegionOf(coord, 60f), lod: 1, TerrainLodConfig.Default);
+            Assert.NotEmpty(plainCpu.Mesh.Splat);
             for (int i = 0; i < plainCpu.Mesh.Splat.Length; i++)
                 AssertSameWeights(direct.Splat[i], plainCpu.Mesh.Splat[i], $"plain sink, vertex {i}");
         }
@@ -232,6 +242,7 @@ namespace KhaozEngine.Tests.Terrain
             var sink = new Scene3DChunkSink(scene: null!, field, layers, chunkSize: 60f, splatRule: _ => allRock);
 
             var cpu = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(new ChunkCoord(1, -2), lod: 2);
+            Assert.NotEmpty(cpu.Mesh.Splat);
             for (int i = 0; i < cpu.Mesh.Splat.Length; i++)
                 AssertSameWeights(allRock, cpu.Mesh.Splat[i], $"vertex {i}");
         }
@@ -295,6 +306,7 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(omittedCpu.Mesh.Mesh.Vertices, explicitCpu.Mesh.Mesh.Vertices);
             Assert.Equal(omittedCpu.Mesh.Mesh.Indices32, explicitCpu.Mesh.Mesh.Indices32);
             Assert.Equal(omittedCpu.Mesh.Splat.Length, explicitCpu.Mesh.Splat.Length);
+            Assert.NotEmpty(omittedCpu.Mesh.Splat);
             for (int i = 0; i < omittedCpu.Mesh.Splat.Length; i++)
                 AssertSameWeights(omittedCpu.Mesh.Splat[i], explicitCpu.Mesh.Splat[i], $"vertex {i}");
         }

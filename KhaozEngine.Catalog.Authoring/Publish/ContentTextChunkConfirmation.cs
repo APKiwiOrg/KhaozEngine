@@ -87,7 +87,9 @@ internal static class ContentTextChunkConfirmation
                     ? ContentAuthoringRefusal.TextReusedWireTagMismatch : ContentAuthoringRefusal.TextReusedHashMismatch;
             throw new ContentAuthoringException(refusal, DescribeMismatch(detail), default, 0, ContentAuthoringException.TextChunkMismatchReason)
             {
-                Language = chunk.Recorded.Language, VersionNumber = baseVersion, TextHash = chunk.Hash,
+                Language = chunk.Recorded.Language,
+                VersionNumber = baseVersion,
+                TextHash = chunk.Hash,
                 ExpectedTextHash = refusal == ContentAuthoringRefusal.TextReusedHashMismatch ? held!.Hash : null,
                 WireTag = refusal == ContentAuthoringRefusal.TextReusedWireTagMismatch ? chunk.Recorded.WireTag : null,
                 ExpectedWireTag = refusal == ContentAuthoringRefusal.TextReusedWireTagMismatch ? held!.WireTag : null,

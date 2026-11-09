@@ -61,7 +61,7 @@ public sealed class SurfaceCodecSchemaRefusalTests
             Assert.Equal("cornerDependencies", ex.Budget);
             // Four independently valid corners are the exact array limit.
             json["cornerDependencies"] = new JsonArray(Enumerable.Range(0, 4).Select(i => (JsonNode?)JsonNode.Parse(
-                $"{{\"cornerX\":{i % 2},\"cornerZ\":{i / 2},\"owner\":{{\"patch\":{{\"surfaceId\":\"owner\",\"slotX\":\"0\",\"slotZ\":\"0\"}},\"address\":{{\"x\":\"0\",\"z\":\"0\",\"d\":1}}}}}}" )).ToArray());
+                $"{{\"cornerX\":{i % 2},\"cornerZ\":{i / 2},\"owner\":{{\"patch\":{{\"surfaceId\":\"owner\",\"slotX\":\"0\",\"slotZ\":\"0\"}},\"address\":{{\"x\":\"0\",\"z\":\"0\",\"d\":1}}}}}}")).ToArray());
             Assert.Equal(4, Decode(json, patch.Key).CornerDependencies.Count);
         }
         Assert.Equal(patch.Key, MapSurfacePatchCodec.Decode(valid, patch.Key).Key);

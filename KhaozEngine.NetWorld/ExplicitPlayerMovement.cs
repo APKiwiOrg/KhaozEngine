@@ -23,7 +23,8 @@ public sealed class ExplicitPlayerMovement
             // Internal invariant: the immutable policy is valid by default and every constructor validates it.
             if (!water.IsValid) throw new ArgumentException("An explicit water policy is required.", nameof(water));
             throw new MovementConfigurationException(MovementConfigurationRefusal.ExplicitWaterModeRequired,
-                "An explicit water policy is required.", nameof(water)) { ActualMode = water.Mode };
+                "An explicit water policy is required.", nameof(water))
+            { ActualMode = water.Mode };
         }
         Environment = environment;
         Scope = scope;

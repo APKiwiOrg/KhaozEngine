@@ -28,7 +28,8 @@ public class ContactDropRangeTests
         Assert.Contains(nav.Graph.Links, link => link.Kind == NavLinkKind.Drop);
         var move = new MoveToRange(nav, new PathFollowConfig { AcceptRadius = 1 }, new RouteApproachOptions
         {
-            StraightenRoutes = true, CarryThroughStraightRuns = true,
+            StraightenRoutes = true,
+            CarryThroughStraightRuns = true,
             Stall = new RouteStallOptions(8, 0.01f),
         });
         var body = new MoveState { Position = new(-1.25f, height + tuning.CapsuleHalfHeight, 0), Grounded = true, SpeedScale = speedScale, HorizontalVelocity = new(0.3f, 0) };

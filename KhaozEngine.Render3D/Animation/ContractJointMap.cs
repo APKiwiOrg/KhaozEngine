@@ -68,7 +68,8 @@ namespace KhaozEngine.Render3D
                 (string name, string? expectedParent, _) = contract.Joints[index];
                 if (!_nodes.TryGetValue(name, out int node))
                     throw new ContractJointMapArgumentException(ContractJointMapRefusal.ContractJointMissing,
-                        $"Missing contract joint '{name}'.", nameof(skeleton)) { JointName = name };
+                        $"Missing contract joint '{name}'.", nameof(skeleton))
+                    { JointName = name };
 
                 int parent = skeleton.ParentIndices[node];
                 if (parent < -1 || parent >= skeleton.NodeCount)
@@ -83,7 +84,8 @@ namespace KhaozEngine.Render3D
                     { JointName = name, ActualParentName = actualParent, ExpectedParentName = expectedParent };
                 if (name != contract.Root && skeleton.BoneIndexOfNode(node) < 0)
                     throw new ContractJointMapArgumentException(ContractJointMapRefusal.ContractJointOutsideSkin,
-                        $"Joint '{name}' is not in the skin.", nameof(skeleton)) { JointName = name, NodeIndex = node };
+                        $"Joint '{name}' is not in the skin.", nameof(skeleton))
+                    { JointName = name, NodeIndex = node };
 
                 Matrix4x4 parentWorld = parent < 0 ? Matrix4x4.Identity : _baseWorld[parent];
                 _baseWorld[node] = _baseLocal[node].ToMatrix() * parentWorld;
@@ -110,7 +112,8 @@ namespace KhaozEngine.Render3D
         {
             if (!inversionSucceeded)
                 throw new ContractJointMapArgumentException(ContractJointMapRefusal.BaseFrameSingular,
-                    $"Joint '{name}' has a singular base frame.", "skeleton") { JointName = name, NodeIndex = node };
+                    $"Joint '{name}' has a singular base frame.", "skeleton")
+                { JointName = name, NodeIndex = node };
         }
 
         /// <summary>The skeleton the map was built over.</summary>
@@ -126,7 +129,8 @@ namespace KhaozEngine.Render3D
             _nodes.TryGetValue(name, out int node)
                 ? node
                 : throw new ContractJointMapKeyNotFoundException(ContractJointMapRefusal.NodeNameMissing,
-                    $"No skeleton node named '{name}'.") { JointName = name };
+                    $"No skeleton node named '{name}'.")
+                { JointName = name };
 
         /// <summary>The skin bone of a named joint.</summary>
         /// <exception cref="ContractJointMapKeyNotFoundException">The skeleton has no node of that name,
@@ -139,7 +143,8 @@ namespace KhaozEngine.Render3D
             return bone >= 0
                 ? bone
                 : throw new ContractJointMapStateException(ContractJointMapRefusal.NamedNodeOutsideSkin,
-                    $"Joint '{name}' is not in the skin.") { JointName = name };
+                    $"Joint '{name}' is not in the skin.")
+                { JointName = name };
         }
 
         /// <summary>The zero, one local pose per node: the stance when the skin ships one, the bind rest otherwise.

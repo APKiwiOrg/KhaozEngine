@@ -85,8 +85,10 @@ public sealed partial class TileWorldPropClusters : IDisposable
                 throw new TilePropLayerRangeException(TilePropLayerRefusal.DistanceOrderingInvalid, nameof(definitions), null,
                     $"Prop layer '{definition.Id}' distances must satisfy LOD < HLOD <= draw radius.")
                 {
-                    LayerId = definition.Id, LodDistance = definition.LodDistance,
-                    HlodDistance = definition.HlodDistance, DrawRadius = definition.DrawRadius,
+                    LayerId = definition.Id,
+                    LodDistance = definition.LodDistance,
+                    HlodDistance = definition.HlodDistance,
+                    DrawRadius = definition.DrawRadius,
                 };
             var archetypeIds = new string[definition.ArchetypeIds.Count];
             int archetypeIndex = 0;
@@ -106,7 +108,8 @@ public sealed partial class TileWorldPropClusters : IDisposable
                         $"Archetype '{archetypeId}' is selected by more than one prop layer.",
                         nameof(definitions))
                     {
-                        ArchetypeId = archetypeId, FirstLayerId = definitions[selected[archetypeId]].Id,
+                        ArchetypeId = archetypeId,
+                        FirstLayerId = definitions[selected[archetypeId]].Id,
                         SecondLayerId = definition.Id,
                     };
                 archetypeIds[archetypeIndex++] = archetypeId;

@@ -42,13 +42,13 @@ internal static class MapPrefabMaterializationOverrides
         {
             if (!children.TryGetValue(value.Child, out var child) && value is not MapPrefabAddOverride)
                 throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Override names an undeclared child.")
-                    { AssetId = original.Id, Child = value.Child, ChildKind = value.Child.Kind, EntityId = value.Child.Key };
+                { AssetId = original.Id, Child = value.Child, ChildKind = value.Child.Kind, EntityId = value.Child.Key };
             switch (value)
             {
                 case MapPrefabRemoveOverride: removed.Add(value.Child); break;
                 case MapPrefabReplaceOverride replace:
                     if (replace.Value.Key != value.Child) throw new MapDocumentException(MapDocumentRefusal.AuthoredValueMismatch, "Replacement child key differs from its target.")
-                        { AssetId = original.Id, Child = replace.Value.Key, ExpectedChild = value.Child };
+                    { AssetId = original.Id, Child = replace.Value.Key, ExpectedChild = value.Child };
                     if (replace.Value.LocalTransform != child!.LocalTransform) frames[value.Child] = MapEffectiveTransform.From(replace.Value.LocalTransform);
                     if (replace.Value is MapPrefabPlacementChild p && child is MapPrefabPlacementChild old && Pose(p.Value) != Pose(old.Value))
                         frames[value.Child] = MapEffectiveTransform.From(Pose(p.Value));
@@ -56,7 +56,7 @@ internal static class MapPrefabMaterializationOverrides
                     break;
                 case MapPrefabAddOverride add:
                     if (!children.TryAdd(value.Child, add.Value)) throw new MapDocumentException(MapDocumentRefusal.PrefabAddedChildExists, "Added child already exists.")
-                        { AssetId = original.Id, Child = value.Child };
+                    { AssetId = original.Id, Child = value.Child };
                     break;
                 case MapPrefabTransformOverride transformOverride:
                     frames[value.Child] = MapEffectiveTransform.From(transformOverride.Transform);

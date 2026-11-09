@@ -242,6 +242,8 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   resolved once per batch submission. Live mesh handles are refreshed every submission, including missing
   or replaced models, with no warmed per-frame allocation. Tile-world views build these batches once when
   foliage changes, with no scene or camera work during generation.
+  Internal generated views borrow immutable instance columns through a live owner and retain only range bounds
+  and controls. Public construction still copies its input. Public native cover snapshots use that copying path.
 - **Retained GPU cover** - set `GroundCoverRenderOptions.UseGpuBatches = true` on an immutable
   `GroundCoverBatch`, with `FadeMode = HeightScale`. Casting is supported on this retained path.
   Transforms upload once, patch selection stays on the CPU, and the GPU handles exact rooted fading,
@@ -265,8 +267,35 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   Casting cascade shadows follow motion. Point-light shadows use the authored rest pose and lazily
   allocate a caster-only proxy stream, 128 GPU bytes per casting instance when needed.
   `scene.ReleaseGroundCover(batch)` retires retained data when that source is no longer needed.
+- `PropRenderer.DrawNative` accepts `NativePropInstance` matrices with exact `RenderAnchor`s and every
+  `NativePropLod` part. Caller distances select N tiers through the same boundary and complementary dissolve
+  kernels as the released prop overloads. Empty distances preserve base-only rendering.
+  The additive `PropLayer.PlacementLayer(instances, lods, drawRadius, lodDistances, ...)` overload freezes its
+  `NativePlacements`, `NativeLods` and `LodDistances`. All value-copy methods preserve that inventory.
+  `PropRenderer.DrawNative(scene, layer, focus)` and native typed recording consume the same frozen layer,
+  including its casting policy. These native render-only layers do not enter the legacy analytic chunk sink.
+  `NativePropClusterRequest` carries the same per-cell inventory to the internal CPU builder. The MapDoc adapter
+  preserves the configured native `fadeBandWidth`, composed with the HLOD floor before LOD coverage. It
+  validates routing, the bounded native region-cell domain, homogeneous effective roof roles and every binary64
+  anchor-relative vertex coordinate before the builder enters. Admission and non-welded merging share the
+  binary64 position kernel. Non-welded merges round anchor-local vertices only after certification and keep source
+  topology and attributes. Positive-weld cluster requests freeze original binary32 placements in their
+  member-aligned `WeldPlacements` inventory, independent of the anchor-local native rows. The MapDoc adapter
+  admits this inventory before construction, validates every placement against its canonical source pose and
+  refuses missing or mismatched provenance before merging. Ordinary and zero-weld layers retain their existing
+  native-row charge. The inventory is retained and charged once with its CPU build or owning batch, then released
+  with that owner's receipt. Welded merges construct the same scale, rotation and translation matrix
+  as `PropHlod` and call `Vector3.Transform`, preserving multiplication and cancellation rounding at cell boundaries.
+  Their normals turn by that placement's binary32 yaw, as `PropHlod` does, rather than the anchor-local row's
+  binary64 rotation, which can differ when a composed yaw does not round exactly.
+  Positive weld cells use the same absolute-world binary32 positions, division/floor lattice and
+  centroid accumulation as `PropHlod`. Only final proxy and selected contribution vertices subtract the storage
+  anchor, in binary64. Selected contributions share that lattice and the full cluster's averages.
+  `ApplyNative` retains only publication metadata and an
+  externally owned accepted mesh. Native typed recording consumes the shared HLOD coverage kernel.
+  Native handles are never uploaded or freed by this owner. Legacy `Apply` retains its existing ownership.
 - **`PropClusterRenderer`** - the shared runtime owner for terrain and TileWorld prop clusters.
-  `BuildCpu(PropClusterBuildRequest)` accepts detached placements, a stable `PropClusterKey`, a content
+  `BuildCpu(PropClusterBuildRequest)` accepts detached placements, a stable `PropClusterKey` (including its optional caller-defined `Cohort` partition), a content
   generation, a cluster area and its `PropLayer`. It performs the pure `PropHlod` merge on a worker with no GPU
   access. `Apply(key, build)`, `Draw(focus)`, `Draw(focus, filter)`, `Invalidate(key)` and `Unload(key)` belong on
   the scene thread. Apply
@@ -288,7 +317,7 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   merged handle while adopting the failed request's current individual placements and layer. A successful
   replacement uploads first and retires the old handle after the new generation is accepted. `MergeStats` reports
   cumulative builds, uploads, bytes and malformed corners. `Unload` is idempotent,
-  and `Dispose` frees every retained handle exactly once. `Scene3DChunkSink` delegates this ownership while keeping
+  and `Dispose` frees every legacy-owned handle exactly once. `Scene3DChunkSink` delegates this ownership while keeping
   terrain, physics, water and chunk orchestration itself, so existing `PropLayer.WithHlod` callers need no format
   or game-code migration.
   A filter that hides part of a merged HLOD cluster suppresses the merged mesh and submits only the visible
@@ -359,8 +388,16 @@ the shared context-copy method, keeping its identifiers and original cause. Othe
 `AssetPayloadUnreadable`. Unavailable identifiers remain null.
 
 R5's format-7 effective prefab resources retain this one-way leaf mesh loader. Prefabs have no mesh of their
-own. Partial-face paint drawing, room-based roof colour/shadows, camera policy and local-light presentation
-remain R8 work. Consume the effective MapDoc snapshot rather than re-expanding children in this adapter.
+own. Native partial paint, roof channels, local lights and residency live in the optional
+[MapDoc.Render3D adapter](../KhaozEngine.MapDoc.Render3D/README.md). It shares the N-tier emitter,
+complementary dissolve and cluster coverage. Profiles and casting belong to stable foliage registration,
+while frame submissions carry local focus, wind, time, seed and interactors. Stable edits require replacement.
+Consume the effective snapshot rather than re-expanding children in this leaf adapter. R8b retains interior
+cuts and domain-aware camera/sky policy.
+The native scene oracle checks original material maps for both explicit and generated foliage parts,
+including albedo, normal, roughness and alpha cutoff. Native part references or geometry alone do not
+prove those inputs. [Native verification](../KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification)
+also covers recycled mesh-slot ordering, origin-only precision and complete prepared foliage.
 
 ## Usage
 
@@ -400,6 +437,12 @@ statics). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the wal
 (its foliage scatter uses this multi-part form so the re-baked textured pine/oak/rock kit renders textured).
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).
+
+
+`GroundCoverRenderer.DrawPrepared(scene, foliage, localFocus, settings, anchor, interactors)` submits a previously
+published `SceneResourceHandle`. Stable model expansion, motion profiles, casting, patch layout and instance
+packing belong to the admitted upload. The draw validates the anchor and carries focus and frame policy unchanged.
+Release the handle through `Scene3D.ReleaseResource`. `DrawGroundCover` retains its existing ownership and behavior.
 
 ## Configuration refusals
 

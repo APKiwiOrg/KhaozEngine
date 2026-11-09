@@ -33,7 +33,8 @@ internal static class MapSpaceGeometry
 
     internal static MapSurfaceRef Surface(MapScopedSurfaces view, string id) =>
         view.Surfaces.FirstOrDefault(s => s.Id == id) ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing,
-            $"missing geometry: surface '{id}'") { SurfaceId = id };
+            $"missing geometry: surface '{id}'")
+        { SurfaceId = id };
 
     internal static (long X, long Z) Cell(MapLatticeFrame frame, MapExactXz point)
     {

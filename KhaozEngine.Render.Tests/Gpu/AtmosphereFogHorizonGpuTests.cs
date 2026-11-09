@@ -146,6 +146,8 @@ void main() {
             AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
         var actual = GoldenCompare.Downsample(_fixture.CaptureEffects(scene => Configure(_fixture, scene), Draw),
             AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
+        Assert.NotEmpty(expected);
+        Assert.Equal(expected.Length, actual.Length);
         for (int i = 0; i < expected.Length; i++)
             Assert.InRange(MathF.Abs(expected[i] - actual[i]), 0, GoldenCompare.InSessionTolerance);
     }

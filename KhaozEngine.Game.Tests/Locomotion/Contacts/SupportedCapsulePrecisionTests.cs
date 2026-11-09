@@ -61,7 +61,8 @@ public class SupportedCapsulePrecisionTests
 
     static MoveState Input(float centre) => new()
     {
-        Position = new(0, centre, 0), Grounded = true,
+        Position = new(0, centre, 0),
+        Grounded = true,
         HorizontalVelocity = new(0.125f, -0.25f),
     };
 }

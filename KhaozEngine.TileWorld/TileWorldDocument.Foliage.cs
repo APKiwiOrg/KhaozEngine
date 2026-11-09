@@ -58,7 +58,8 @@ public sealed partial class TileWorldDocument
         {
             if (!ids.Add(layer.Id))
                 throw new TileFoliageArgumentException(TileWorldRefusal.FoliageLayerDuplicate,
-                    TileFoliageLayer.InvalidMessage($"layer '{layer.Id}' is listed twice"), null) { LayerId = layer.Id };
+                    TileFoliageLayer.InvalidMessage($"layer '{layer.Id}' is listed twice"), null)
+                { LayerId = layer.Id };
             if ((uint)layer.Plane >= (uint)PlaneCount)
                 throw new TileFoliageArgumentException(TileWorldRefusal.FoliagePlaneOutsideWorld,
                     TileFoliageLayer.InvalidMessage($"layer '{layer.Id}' uses plane {layer.Plane}, the world has planes 0 through {PlaneCount - 1}"), null)

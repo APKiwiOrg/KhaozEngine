@@ -189,10 +189,21 @@ public class TileFoliageLayerRefusalTests
 
     static TileFoliageLayerDto ValidDto() => new()
     {
-        Id = "meadow", Plane = 0, OriginX = 1.5f, OriginZ = -2.5f, CellSize = 1f,
-        Width = 1, Height = 1, Density = [255], Seed = 1, Spacing = 1f,
-        ScaleMin = 1f, ScaleMax = 1f, RootOffset = 0f,
-        Archetypes = [new() { Id = "bush", Weight = 1f }], AllowedUnderlays = [1],
+        Id = "meadow",
+        Plane = 0,
+        OriginX = 1.5f,
+        OriginZ = -2.5f,
+        CellSize = 1f,
+        Width = 1,
+        Height = 1,
+        Density = [255],
+        Seed = 1,
+        Spacing = 1f,
+        ScaleMin = 1f,
+        ScaleMax = 1f,
+        RootOffset = 0f,
+        Archetypes = [new() { Id = "bush", Weight = 1f }],
+        AllowedUnderlays = [1],
     };
 
     static TileFoliageLayerDto InvalidDto(TileWorldRefusal reason)

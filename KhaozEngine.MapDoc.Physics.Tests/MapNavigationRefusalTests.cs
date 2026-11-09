@@ -54,8 +54,11 @@ public sealed class MapNavigationRefusalTests
         var world = NativeWorldFixtures.BuildLegacyStrip();
         var a = new MapNavTile(new(0, 0), new(0, world.Bounds.MinY, 0, 64, world.Bounds.MaxY, 64), default, "a", "a");
         bool north = fault is "north" or "z-span";
-        var b = a with { Coord = north ? new(0, 1) : new(1, 0),
-            Bounds = north ? a.Bounds with { MinZ = 64, MaxZ = 128 } : a.Bounds with { MinX = 64, MaxX = 128 } };
+        var b = a with
+        {
+            Coord = north ? new(0, 1) : new(1, 0),
+            Bounds = north ? a.Bounds with { MinZ = 64, MaxZ = 128 } : a.Bounds with { MinX = 64, MaxX = 128 }
+        };
         var broken = fault switch
         {
             "min-y" => b with { Bounds = b.Bounds with { MinY = world.Bounds.MinY - 1 } },

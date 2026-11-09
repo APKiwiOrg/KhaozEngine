@@ -23,8 +23,14 @@ public static class MapNumericIds
             if (id <= 0 || !reserved.Add(id))
                 throw new MapDocumentException(id <= 0 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.IdentityDuplicate,
                     "Reserved numeric IDs must be distinct positive int64 values.")
-                { NumericId = id, FieldPath = "ids", SubjectKind = "numeric reservation", Operation = nameof(Reserve),
-                    ActualInteger = id <= 0 ? id : null, MinimumInteger = id <= 0 ? 1 : null };
+                {
+                    NumericId = id,
+                    FieldPath = "ids",
+                    SubjectKind = "numeric reservation",
+                    Operation = nameof(Reserve),
+                    ActualInteger = id <= 0 ? id : null,
+                    MinimumInteger = id <= 0 ? 1 : null
+                };
             maximum = Math.Max(maximum, id);
         }
         document.NumericIdHighWaterMark = maximum;

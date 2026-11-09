@@ -22,7 +22,11 @@ internal sealed class MetalRecordingReads
         lock (_protection.Gate)
         {
             _protection.RequireSlotAvailable(segment);
+            var previous = Current;
             Current = _slots[segment];
+            // Repeating scene shapes need not have the same period as the ring. Carry their high-water
+            // capacities forward so a warmed shape does not allocate when it first reaches another slot.
+            Current.ReserveLike(previous);
             Current.Clear();
         }
     }

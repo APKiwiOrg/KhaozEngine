@@ -17,9 +17,12 @@ internal static class MapGeometryRefusals
     internal static bool Capacity(MapDocumentException error) =>
         error.RefinementStatus == MapRefinementStatus.CapacityExceeded ||
         error is { Reason: MapDocumentRefusal.WorkCapacityExceeded, Budget: "WaterDomainPairChecks" } ||
-        error is { RefinementStatus: null, Reason: MapDocumentRefusal.WorkCapacityExceeded,
+        error is
+        {
+            RefinementStatus: null, Reason: MapDocumentRefusal.WorkCapacityExceeded,
             Budget: "MaxRecordReads" or "MaxRecordDepth" or "MaxInspectedFaces" or "MaxRefinementFaces" or
-                "MaxRefinementVertices" };
+                "MaxRefinementVertices"
+        };
 
     internal static bool MissingGeometry(MapDocumentException error) =>
         error.RefinementStatus is { } status ? status is not (MapRefinementStatus.CapacityExceeded or MapRefinementStatus.NotRepresentable)
@@ -41,8 +44,8 @@ internal static class MapGeometryRefusals
 
     // These support wrappers originally retained neither an arithmetic cause nor a representability phrase.
     internal static bool PreserveNonArithmeticProjection(MapDocumentException error) => error is
-        { Reason: MapDocumentRefusal.GeometryNotRepresentable, MarkerId: not null, Operation: "Sample" } or
-        { Reason: MapDocumentRefusal.GeometryNotRepresentable, PlacementId: not null, Operation: "SupportHeight" };
+    { Reason: MapDocumentRefusal.GeometryNotRepresentable, MarkerId: not null, Operation: "Sample" } or
+    { Reason: MapDocumentRefusal.GeometryNotRepresentable, PlacementId: not null, Operation: "SupportHeight" };
 
     internal static bool FoliageCapacity(MapDocumentException error) =>
         error is { Reason: MapDocumentRefusal.WorkCapacityExceeded, Budget: "MaxFacesPerPatch" };
@@ -52,7 +55,7 @@ internal static class MapGeometryRefusals
         error is { Reason: MapDocumentRefusal.PatchUnavailable, RecordId: null, Operation: not nameof(MapEffectiveGeometry.Patch) } ||
         error.Reason == MapDocumentRefusal.FoliageChunkUnavailable ||
         error is { Reason: MapDocumentRefusal.AcquisitionIncomplete, AcquireStatus: MapAcquireStatus.Incomplete } or
-            { Reason: MapDocumentRefusal.AcquisitionIncomplete, FieldPath: "Scope.Roles" } or
-            { Reason: MapDocumentRefusal.AcquisitionContractMismatch, FieldPath: "Patch" or "Unavailable.Patch" } or
-            { Reason: MapDocumentRefusal.SchemaEnumUnsupported, FieldPath: "Unavailable.Status" };
+        { Reason: MapDocumentRefusal.AcquisitionIncomplete, FieldPath: "Scope.Roles" } or
+        { Reason: MapDocumentRefusal.AcquisitionContractMismatch, FieldPath: "Patch" or "Unavailable.Patch" } or
+        { Reason: MapDocumentRefusal.SchemaEnumUnsupported, FieldPath: "Unavailable.Status" };
 }

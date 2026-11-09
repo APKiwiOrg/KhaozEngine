@@ -54,7 +54,7 @@ public static class MapFoliageEdits
             return Result(document, candidate, assets, null, new(null, expanded, Shared: true));
         }
         if (sequence.Edits is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "A foliage edit sequence requires its edit list.")
-            { DocumentId = document.Id, FieldPath = "Edits" };
+        { DocumentId = document.Id, FieldPath = "Edits" };
         MapFoliageSet? set = document.Foliage;
         int index = 0;
         foreach (MapFoliageEdit step in sequence.Edits)
@@ -213,8 +213,16 @@ public static class MapFoliageEdits
             int value = edit.Density[i];
             if ((uint)value > byte.MaxValue)
                 throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange, $"Foliage density value {value} at row {i / edit.Width}, column {i % edit.Width} must be from 0 to 255.")
-                { LayerId = layer.Id, FieldPath = $"Density[{i}]", Index = i, CellX = i % edit.Width, CellZ = i / edit.Width,
-                    ActualInteger = value, MinimumInteger = 0, MaximumInteger = byte.MaxValue };
+                {
+                    LayerId = layer.Id,
+                    FieldPath = $"Density[{i}]",
+                    Index = i,
+                    CellX = i % edit.Width,
+                    CellZ = i / edit.Width,
+                    ActualInteger = value,
+                    MinimumInteger = 0,
+                    MaximumInteger = byte.MaxValue
+                };
             values[i] = (byte)value;
         }
         return MapFoliageBrush.Rewrite(layer, edit.X, edit.Z, hiX, hiZ, (x, z, _) => values[(z - edit.Z) * edit.Width + (x - edit.X)]);

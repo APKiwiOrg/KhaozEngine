@@ -26,7 +26,8 @@ namespace KhaozEngine.Render3D
             return taken is null
                 ? clip
                 : throw new ClipAdmissionArgumentException(ClipAdmissionRefusal.DuplicateClipName,
-                    $"The skin carries more than one clip named '{clip.Name}'.", paramName) { ClipName = clip.Name };
+                    $"The skin carries more than one clip named '{clip.Name}'.", paramName)
+                { ClipName = clip.Name };
         }
 
         /// <summary>Why a clip lasts no time, or null for a clip that lasts longer than zero. A NaN length is
@@ -149,7 +150,8 @@ namespace KhaozEngine.Render3D
             ArgumentNullException.ThrowIfNull(joint, paramName);
             if (!skeleton.TryIndexOf(joint, out _))
                 throw new ClipAdmissionArgumentException(ClipAdmissionRefusal.RequiredJointMissing,
-                    $"The skeleton has no joint named '{joint}'.", paramName) { JointName = joint };
+                    $"The skeleton has no joint named '{joint}'.", paramName)
+                { JointName = joint };
         }
 
         static bool Names(IReadOnlyList<string> joints, string joint)

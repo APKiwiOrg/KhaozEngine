@@ -23,8 +23,12 @@ public class ContactRebasedTerminalTests
     {
         MoveTuning tuning = OrdinaryContactScene.DefaultTuning with
         {
-            WalkSpeed = 3f, RunSpeed = 5f, CapsuleRadius = 0.3f, StepHeight = 0.4f,
-            MaxSlopeRadians = MathF.PI / 4f, Gravity = 25f,
+            WalkSpeed = 3f,
+            RunSpeed = 5f,
+            CapsuleRadius = 0.3f,
+            StepHeight = 0.4f,
+            MaxSlopeRadians = MathF.PI / 4f,
+            Gravity = 25f,
         };
         var boundary = MovementBoundary.Rectangle(16f, -48f, 32f, -10f);
         using var scene = new OrdinaryContactScene(tuning,
@@ -44,7 +48,9 @@ public class ContactRebasedTerminalTests
         var planner = new Recorder(new GridPathPlanner(space));
         var mover = new MoveToRange(planner, space, (_, _) => true, null, new()
         {
-            CarryThroughStraightRuns = true, StraightenRoutes = true, Stall = new(15, 0.1f),
+            CarryThroughStraightRuns = true,
+            StraightenRoutes = true,
+            Stall = new(15, 0.1f),
         });
         var body = new MoveState { Position = new(startX, 0.75f, -30.125f), Grounded = true, SpeedScale = 1f };
         float leaderX = MathF.BitIncrement(22.625f);

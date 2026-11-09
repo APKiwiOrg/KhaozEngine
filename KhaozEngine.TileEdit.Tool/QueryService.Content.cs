@@ -34,7 +34,8 @@ public sealed partial class QueryService
     /// <see cref="TileWorldException.ObjectId"/> when no object has that id.</exception>
     public ObjectInfo ObjectGet(long id) => session.Read(e =>
         Describe(e, e.Document.FindObject(id) ?? throw new TileWorldException(TileWorldRefusal.ObjectMissing,
-            $"object {id} does not exist") { ObjectId = id }));
+            $"object {id} does not exist")
+        { ObjectId = id }));
 
     /// <summary>Every object matching an archetype id, a tag, or both. Both null lists the whole world, which is
     /// what an author wants after a scatter.</summary>
@@ -97,7 +98,8 @@ public sealed partial class QueryService
         string resolved = session.ResolvePath(directory);
         if (!Directory.Exists(resolved))
             throw new TileWorldException(TileWorldRefusal.PrefabDirectoryMissing,
-                $"{resolved}: no such directory, there are no prefabs to list") { SourceName = resolved };
+                $"{resolved}: no such directory, there are no prefabs to list")
+            { SourceName = resolved };
         return Directory.EnumerateFiles(resolved, "*" + PrefabExtension)
             .OrderBy(p => p, StringComparer.Ordinal)
             .Select(p => new PrefabFileInfo(System.IO.Path.GetFileNameWithoutExtension(p), p, new FileInfo(p).Length))

@@ -23,7 +23,7 @@ public static class MapPrefabFile
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 64 });
             var asset = MapPrefabJson.Read<MapPrefabAsset>(json.RootElement);
             if (!MapAssetVersionIdentity.Matches("prefab", asset.Id, resourceId, bytes.Span)) throw new MapDocumentException(MapDocumentRefusal.PrefabPayloadIdMismatch, "Prefab payload ID does not match its resource ID.")
-                { ResourceId = resourceId, EntityId = asset.Id, FieldPath = "$.id" };
+            { ResourceId = resourceId, EntityId = asset.Id, FieldPath = "$.id" };
             MapPrefabValidation.RequireAsset(asset);
             return asset;
         }

@@ -47,7 +47,8 @@ internal static class ContentBundleTextCompatibility
                     $"{member} is refused because the bundle is format {ContentBundle.TextFormatVersion} and no longer carries its text section. A rebuilt bundle that dropped its text is never read as text free, so nothing was staged."),
                 default,
                 0,
-                ContentAuthoringException.BundleFormatReason) { ActualFormatVersion = bundle.FormatVersion };
+                ContentAuthoringException.BundleFormatReason)
+            { ActualFormatVersion = bundle.FormatVersion };
         }
 
         throw UnsupportedFormat(bundle.FormatVersion);
@@ -73,7 +74,9 @@ internal static class ContentBundleTextCompatibility
                 0,
                 ContentAuthoringException.DraftOpenReason)
             {
-                MemberName = member, RowEditCount = draft.EditCount, TextEditCount = draft.TextEditCount,
+                MemberName = member,
+                RowEditCount = draft.EditCount,
+                TextEditCount = draft.TextEditCount,
                 LanguageIntroductionCount = draft.LanguageIntroductionCount,
             };
         }
@@ -112,7 +115,10 @@ internal static class ContentBundleTextCompatibility
                     0,
                     ContentAuthoringException.UnknownRowReason)
                 {
-                    RowKey = target.Key.ToString(), FieldName = target.FieldName, Language = target.Language, Index = i,
+                    RowKey = target.Key.ToString(),
+                    FieldName = target.FieldName,
+                    Language = target.Language,
+                    Index = i,
                 };
             }
 
@@ -174,9 +180,12 @@ internal static class ContentBundleTextCompatibility
                             $"version {versionNumber} holds text for type {revision.Type.Value} row {revision.DefinitionId}, which it holds no live row of")),
                     default, 0, ContentAuthoringException.TextUnrepresentedReason)
                 {
-                    TextRowType = revision.Type, TextRowId = revision.DefinitionId,
-                    VersionNumber = versionNumber, MemberName = nameof(IContentAuthoringStore.ExportBundleAsync),
-                    FieldName = revision.FieldName, Language = revision.Language,
+                    TextRowType = revision.Type,
+                    TextRowId = revision.DefinitionId,
+                    VersionNumber = versionNumber,
+                    MemberName = nameof(IContentAuthoringStore.ExportBundleAsync),
+                    FieldName = revision.FieldName,
+                    Language = revision.Language,
                 };
             }
 

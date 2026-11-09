@@ -1,7 +1,10 @@
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -39,6 +42,9 @@ internal static class MapWaterBoundReads
     internal static MapWaterBoundRead Read(MapScopedSurfaces view, MapSpaceFootprint footprint, MapBoundRef bound,
         MapExactXz min, MapExactXz max, MapRefinementLimits limits, MapWaterWorkMeter meter, bool upper)
     {
+        var admission = view.Scope.SceneAdmission ?? MapSceneAdmission.Current;
+        using var admitted = admission?.Enter();
+        using var preparation = admission?.BeginPreparation();
         if (bound.Kind == MapBoundKind.OpenTop) throw new ArgumentException("an open top has no faces", nameof(bound));
         MapHorizontalOpening? opening = null;
         if (bound.Kind == MapBoundKind.HorizontalOpening)
@@ -54,6 +60,7 @@ internal static class MapWaterBoundReads
         MapSurfaceRef? surface = view.Surfaces.FirstOrDefault(s => s.Id == surfaceId);
         if (surface is null) return Unread(surfaceId, $"surface '{surfaceId}' is unavailable");
 
+        preparation?.Reserve(128);
         var faces = new List<MapBoundFace>();
         var compatibility = new List<MapLegacyCellTag>();
         var read = new List<MapPatchKey>();
@@ -86,11 +93,15 @@ internal static class MapWaterBoundReads
                     finding ??= new(MapDocumentRefusal.PatchUnavailable, gap) { Patch = key, SurfaceId = surface.Id, PatchStatus = status };
                     continue;
                 }
+                Grow(read, 1, preparation);
                 read.Add(key);
                 long x0 = Math.Max(range.MinX, sx * MapPatchKey.SlotCells), x1 = Math.Min(range.MaxXExclusive, (sx + 1) * MapPatchKey.SlotCells);
                 long z0 = Math.Max(range.MinZ, sz * MapPatchKey.SlotCells), z1 = Math.Min(range.MaxZExclusive, (sz + 1) * MapPatchKey.SlotCells);
                 foreach (Chunk chunk in Chunks(x0, z0, x1, z1, limit, (x, z) => Faces(surface, patch, opening, x, z)))
                 {
+                    // BoundFaces copies value faces out of its local and transformed compiled products.
+                    // Their receipts, and the read/index envelope, end before the next chunk starts.
+                    using var chunkPreparation = admission?.BeginPreparation();
                     if (chunk.Faces < 0) return Failure(MapRefinementStatus.CapacityExceeded, "water bound read: source faces in one cell", surface, read,
                         new(MapDocumentRefusal.WorkCapacityExceeded, "water bound read: source faces in one cell")
                         { Budget = "MaxSourceFacesPerBound", ActualCount = -chunk.Faces, Limit = limit, Patch = key, SurfaceId = surface.Id });
@@ -109,13 +120,30 @@ internal static class MapWaterBoundReads
                         continue;
                     }
                     if (set.Status != MapRefinementStatus.Complete) return Failure(set.Status, set.Detail, surface, read, set.Finding);
+                    Grow(faces, set.Faces.Count, preparation);
                     faces.AddRange(set.Faces);
+                    Grow(compatibility, set.Compatibility.Count, preparation);
                     compatibility.AddRange(set.Compatibility);
                     meter.CountFaces(upper, set.Faces.Count);
                 }
             }
+        preparation?.Complete(checked(128L + (long)faces.Capacity * Unsafe.SizeOf<MapBoundFace>() +
+            (long)compatibility.Capacity * Unsafe.SizeOf<MapLegacyCellTag>() + (long)read.Capacity * Unsafe.SizeOf<MapPatchKey>()));
         return new(gap is null ? MapRefinementStatus.Complete : MapRefinementStatus.MissingGeometry, gap, surface.Frame, faces.AsReadOnly(),
-            compatibility.AsReadOnly(), read.AsReadOnly(), surface.Id, gap) { Finding = finding };
+            compatibility.AsReadOnly(), read.AsReadOnly(), surface.Id, gap)
+        { Finding = finding };
+    }
+
+    static void Grow<T>(List<T> values, int additional, MapPreparationScope? preparation)
+    {
+        int count = checked(values.Count + additional);
+        if (count <= values.Capacity) return;
+        int previous = values.Capacity;
+        int capacity = Math.Max(count, checked(Math.Max(4, previous * 2)));
+        long bytes = checked((long)capacity * Unsafe.SizeOf<T>());
+        preparation?.Reserve(bytes);
+        values.Capacity = capacity;
+        preparation?.Release(checked((long)previous * Unsafe.SizeOf<T>()));
     }
 
     /// <summary>The released face count of one lattice cell of the bound: an opening counts only its own cells.</summary>
@@ -125,6 +153,9 @@ internal static class MapWaterBoundReads
         if (opening is null) return MapSurfaceCompiler.CountFaces(surface, patch, slot);
         return opening.SlotCells.Contains(slot) ? MapBoundFaceContext.OpeningFaceCount(patch, slot) : 0;
     }
+
+    internal static IReadOnlyList<long> ChunkFacesForTests(long x0, long z0, long x1, long z1, int limit, Func<long, long, long> faces) =>
+        Array.AsReadOnly(Chunks(x0, z0, x1, z1, limit, faces).Select(chunk => chunk.Faces).ToArray());
 
     /// <summary>One chunk of cells from (<see cref="X0"/>, <see cref="Z0"/>) to the exclusive (<see cref="X1"/>,
     /// <see cref="Z1"/>) with its counted faces, or a negative count for one cell that alone passes the limit.</summary>
@@ -141,9 +172,11 @@ internal static class MapWaterBoundReads
             long[] row = new long[width];
             long rowFaces = 0;
             for (long x = x0; x < x1; x++) rowFaces += row[x - x0] = faces(x, z);
-            if (width <= limit && rowFaces <= limit)
+            if (!CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.RowCells", "MaxSourceFacesPerBound", 0, width, limit, width > limit, CapacityDemandLifetime.Transient) &&
+                !CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.RowFaces", "MaxSourceFacesPerBound", 0, rowFaces, limit, rowFaces > limit, CapacityDemandLifetime.Transient))
             {
-                if (cells + width > limit || total + rowFaces > limit)
+                if (CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.ChunkCells", "MaxSourceFacesPerBound", cells, width, limit, cells + width > limit, CapacityDemandLifetime.Transient) ||
+                    CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.ChunkFaces", "MaxSourceFacesPerBound", total, rowFaces, limit, total + rowFaces > limit, CapacityDemandLifetime.Transient))
                 {
                     if (cells > 0) yield return new(x0, start, x1, z, total);
                     start = z;
@@ -160,12 +193,13 @@ internal static class MapWaterBoundReads
             for (long x = x0; x < x1; x++)
             {
                 long cellFaces = row[x - x0];
-                if (cellFaces > limit)
+                if (CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.CellFaces", "MaxSourceFacesPerBound", 0, cellFaces, limit, cellFaces > limit, CapacityDemandLifetime.Transient))
                 {
                     yield return new(x, z, x + 1, z + 1, -cellFaces);
                     yield break;
                 }
-                if (x > runStart && (x - runStart + 1 > limit || runFaces + cellFaces > limit))
+                if (x > runStart && (CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.RunCells", "MaxSourceFacesPerBound", x - runStart, 1, limit, x - runStart + 1 > limit, CapacityDemandLifetime.Transient) ||
+                    CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.RunFaces", "MaxSourceFacesPerBound", runFaces, cellFaces, limit, runFaces + cellFaces > limit, CapacityDemandLifetime.Transient)))
                 {
                     yield return new(runStart, z, x, z + 1, runFaces);
                     runStart = x;
@@ -182,7 +216,7 @@ internal static class MapWaterBoundReads
 
     static MapWaterBoundRead Unread(string? surfaceId, string gap) => new(MapRefinementStatus.MissingGeometry, gap, null,
         Array.Empty<MapBoundFace>(), Array.Empty<MapLegacyCellTag>(), Array.Empty<MapPatchKey>(), surfaceId, gap)
-        { Finding = new(MapDocumentRefusal.ReferenceMissing, gap) { SurfaceId = surfaceId } };
+    { Finding = new(MapDocumentRefusal.ReferenceMissing, gap) { SurfaceId = surfaceId } };
 
     static MapWaterBoundRead Failure(MapRefinementStatus status, string? detail, MapSurfaceRef surface, List<MapPatchKey> read,
         MapDocumentFinding? finding) =>

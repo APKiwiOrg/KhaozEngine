@@ -100,10 +100,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     "A native Metal uniform ring needs at least one segment. "
                     + MetalFramesInFlight.EnvVarName + " clamps to "
                     + MetalFramesInFlight.Minimum + " and above before it gets here.")
-                    {
-                        MinimumDepth = 1,
-                        EnvironmentVariable = MetalFramesInFlight.EnvVarName,
-                    };
+                {
+                    MinimumDepth = 1,
+                    EnvironmentVariable = MetalFramesInFlight.EnvVarName,
+                };
             }
 
             return (ulong)SegmentStrideFor(sizeInBytes) * (ulong)framesInFlight;
@@ -162,13 +162,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "logical size and the stride is that size rounded up to " + SegmentAlignment + ", so the "
                 + "headroom is align(size, " + SegmentAlignment + ") - size, which is 0 whenever the size is "
                 + "already aligned and never more than " + (SegmentAlignment - 1) + " bytes.")
-                {
-                    RangeOffset = rangeOffset,
-                    DynamicOffset = callerDynamicOffset,
-                    RangeBytes = range,
-                    SegmentStride = stride,
-                    RecoveryOperation = "GpuBufferRange",
-                };
+            {
+                RangeOffset = rangeOffset,
+                DynamicOffset = callerDynamicOffset,
+                RangeBytes = range,
+                SegmentStride = stride,
+                RecoveryOperation = "GpuBufferRange",
+            };
         }
     }
 }

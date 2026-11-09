@@ -88,6 +88,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Each line's worst frame's share of its energy without the box, and its trail two or more frames
         /// after the band left it. With <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it prints every walk from
         /// half a display pixel a frame to three and both widths.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_follow_lines_table_prints_every_walk()
         {

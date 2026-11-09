@@ -28,7 +28,9 @@ public class SupportedWorldPrecisionTests
         using var view = physics.CreateQueryViewExcludingStatics([]);
         var tuning = MoveTuning.Default with
         {
-            Controller = MovementControllerKind.Contact, CapsuleRadius = 0.25f, CapsuleHalfHeight = half,
+            Controller = MovementControllerKind.Contact,
+            CapsuleRadius = 0.25f,
+            CapsuleHalfHeight = half,
             Water = new(WaterTraversalMode.DryOnly),
         };
         var environment = new OrdinaryMovementEnvironment(view, registration, tuning, (_, _) => height, null,

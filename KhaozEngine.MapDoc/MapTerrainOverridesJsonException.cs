@@ -26,9 +26,17 @@ public sealed class MapTerrainOverridesJsonException : JsonException
 
     internal MapDocumentException ToDocument(string? sourceName, string message,
         MapTileCoord? tile, string? path, string? resourceId) => new(Reason, message, this)
-    {
-        SourceName = sourceName, Tile = tile, Path = path, ResourceId = resourceId,
-        FieldPath = FieldPath ?? Path, LineNumber = LineNumber, BytePositionInLine = BytePositionInLine,
-        Index = Index, SculptTile = SculptTile, ActualCount = ActualCount, ExpectedCount = ExpectedCount,
-    };
+        {
+            SourceName = sourceName,
+            Tile = tile,
+            Path = path,
+            ResourceId = resourceId,
+            FieldPath = FieldPath ?? Path,
+            LineNumber = LineNumber,
+            BytePositionInLine = BytePositionInLine,
+            Index = Index,
+            SculptTile = SculptTile,
+            ActualCount = ActualCount,
+            ExpectedCount = ExpectedCount,
+        };
 }

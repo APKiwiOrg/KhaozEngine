@@ -70,7 +70,7 @@ public sealed partial class MapEditSession
     internal MapNativeEditEffects ExecuteNativeCommand(EditorCommand command) => Mutate((doc, registry) =>
     {
         if (doc.ResolverIdentity is null) throw new MapDocumentException(MapDocumentRefusal.ToolNativeDocumentRequired, "Native commands require a native document.")
-            { DocumentId = doc.Id, CommandType = command.GetType(), Operation = nameof(ExecuteNativeCommand), FieldPath = "ResolverIdentity" };
+        { DocumentId = doc.Id, CommandType = command.GetType(), Operation = nameof(ExecuteNativeCommand), FieldPath = "ResolverIdentity" };
         return ApplyNative(command, doc, registry);
     }, command.AffectsWorld);
 
@@ -195,7 +195,7 @@ public sealed partial class MapEditSession
     {
         if (Path.IsPathRooted(relativePath)) throw new MapDocumentException(MapDocumentRefusal.ToolPublicationPathInvalid,
             "Prefab publication paths must be relative to the resource root.")
-            { Path = relativePath, StoragePath = _storagePath, DocumentForm = _storageForm };
+        { Path = relativePath, StoragePath = _storagePath, DocumentForm = _storageForm };
         string root = MapDocumentStorage.ResourceRoot(_storagePath!, _storageForm);
         string target = Path.GetFullPath(relativePath, root);
         bool inside = ResourcePathContainment.IsInsideRoot(Path.GetRelativePath(root, target));

@@ -219,11 +219,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "with the device, and the pointer a map returns would address memory the driver has already "
                 + "released. " + reason + " There is no recovery path on this backend, so a caller that wants to "
                 + "read back again creates a new device.")
-                {
-                    LossReason = hasLoss ? lossReason : null,
-                    LossSite = hasLoss ? _loss.Site : null,
-                    ResultCode = hasLoss ? (int)_loss.ObservedResult : null,
-                };
+            {
+                LossReason = hasLoss ? lossReason : null,
+                LossSite = hasLoss ? _loss.Site : null,
+                ResultCode = hasLoss ? (int)_loss.ObservedResult : null,
+            };
         }
 
         /// <summary>

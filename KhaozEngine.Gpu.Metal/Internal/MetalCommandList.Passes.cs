@@ -132,7 +132,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             throw new GpuRecordingStateException(GpuRecordingStateRefusal.CommandOutsideRecording, what + " needs a native Metal command list that is recording, and this one is not. Call Begin "
                 + "first. Every pass command is encoder state or a decision about the encoder this recording "
-                + "will open, and a list with no command buffer has nothing to open one on.") { Backend = GpuBackendKind.MetalNative, Command = what };
+                + "will open, and a list with no command buffer has nothing to open one on.")
+            { Backend = GpuBackendKind.MetalNative, Command = what };
         }
     }
 }

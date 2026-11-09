@@ -19,7 +19,8 @@ public static partial class ShippedShaderPrograms
         }
         foreach (ShippedGraphicsProgram program in BaseGraphicsPrograms())
         {
-            bool lit = program.Name is "Model" or "Foliage" or "ModelDissolve" or "SkinnedModel"
+            bool lit = program.Name is "Model" or "Foliage" or "PreparedFoliage" or "PreparedFoliageMotion" or "PreparedFoliageOpaque" or "PreparedFoliageOpaqueMotion"
+                or "ModelDissolve" or "SkinnedModel"
                 or "SkinnedModelDissolve" or "Splat" or "TileGround" or "ModelMotion" or "SkinnedModelMotion"
                 or "SkinnedModelDissolveMotion" or "ModelCpuSkinnedMotion" or "ModelCpuSkinnedDissolveMotion"
                 or "FoliageOpaque" or "FoliageOpaqueMotion" or "FoliageMotion" or "SplatMotion" or "TileGroundMotion";

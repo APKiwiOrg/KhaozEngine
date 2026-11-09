@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using KhaozEngine.MapDoc.Storage;
 
 namespace KhaozEngine.MapDoc;
 
@@ -45,6 +47,14 @@ public sealed class MapDocumentSource : IDisposable
     readonly MapSpatialIndex? _spatial;
     readonly MapDocumentLoadOptions _options;
     float _sculptCellSize;
+    IMapSurfaceSource? _sceneSurfaces;
+    MapDocument? _sceneDocument;
+    internal bool ScenePartial { get; private init; }
+    internal MapDocument? SceneDocument => _sceneDocument;
+    internal string? SceneDirectory => _directory;
+    internal MapDocRegistry SceneRegistry => _options.Registry;
+    internal IMapSurfaceSource SceneSurfaces => _sceneSurfaces ??= MapStoredSurfaceSource.FromManifest(_directory!, Manifest, Tiles);
+    internal IReadOnlyList<MapPlacement> ScenePlacements(MapTileCoord coord) => _spatial!.PlacementsIn(coord);
 
     MapDocumentSource(MapDocument manifest, MapTileIndex tiles, string? directory,
                       MapSpatialIndex? spatial, MapDocumentLoadOptions options)
@@ -88,7 +98,11 @@ public sealed class MapDocumentSource : IDisposable
         MapDocument manifest = MapTiledFile.GlobalsOnly(doc);
         var index = new MapTileIndex(doc.TileSize, MapDocumentHash.SchemeVersion, sourceDirectory: null, entries);
         manifest.Tiles = index;
-        return new MapDocumentSource(manifest, index, directory: null, spatial, options);
+        return new MapDocumentSource(manifest, index, directory: null, spatial, options)
+        {
+            _sceneDocument = doc,
+            ScenePartial = doc.Tiles?.Entries.Any(e => !e.Loaded) == true,
+        };
     }
 
     /// <summary>The globals: bounds, terrain, scatter and companion layers, shapes. Fully populated, with the
@@ -110,7 +124,7 @@ public sealed class MapDocumentSource : IDisposable
         if (!Tiles.TryGet(coord, out MapTileEntry entry))
             throw new MapDocumentException(MapDocumentRefusal.DocumentTileNotIndexed,
                 $"{_directory ?? "(in memory)"}: tile ({coord.X}, {coord.Z}) is not in the occupied-tile index.")
-                { Tile = coord, SourceName = _directory ?? "(in memory)" };
+            { Tile = coord, SourceName = _directory ?? "(in memory)" };
 
         if (_spatial is not null)
         {
@@ -186,6 +200,7 @@ public sealed class MapDocumentSource : IDisposable
         Manifest = manifest;
         Tiles = index;
         _sculptCellSize = MapCanonical.SculptCellSizeOf(manifest);
+        _sceneSurfaces = null;
     }
 
     /// <summary>Nothing is held open between reads, so disposal is a no-op today. It is on the type because a

@@ -16,15 +16,21 @@ public static class MapNativePointReadout
     /// Supported carries a height. The engine never picks a topmost floor or a zero height in its place. An exact overflow
     /// returns a typed NotRepresentable result whose incomplete witness names the effective snapshot and certifies no
     /// acquisition.</summary>
-    public static MapSupportResult SurfaceAt(MapEffectiveResources resources, MapExactXz point, string surfaceId)
+    public static MapSupportResult SurfaceAt(MapEffectiveResources resources, MapExactXz point, string surfaceId) =>
+        SurfaceAt(resources, point, surfaceId, new MapQueryLimits());
+
+    /// <summary>Samples as the default overload does, with the caller's scoped <paramref name="limits"/>, normally the
+    /// query profile <paramref name="resources"/> were resolved under.</summary>
+    public static MapSupportResult SurfaceAt(MapEffectiveResources resources, MapExactXz point, string surfaceId, MapQueryLimits limits)
     {
         ArgumentNullException.ThrowIfNull(resources);
         ArgumentException.ThrowIfNullOrWhiteSpace(surfaceId);
+        ArgumentNullException.ThrowIfNull(limits);
         var binding = new MapSupportBinding(MapSupportBindingKind.Surface, surfaceId, null, null, null, null);
         try
         {
             return MapResolverV2.SeatSupport(new MapExactPoint(point.X, default, point.Z), binding, resources.SurfaceSource,
-                new[] { resources.Digest }, new MapQueryLimits());
+                new[] { resources.Digest }, limits);
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {

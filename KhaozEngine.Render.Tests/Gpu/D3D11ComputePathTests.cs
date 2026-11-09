@@ -576,7 +576,9 @@ namespace KhaozEngine.Tests.Gpu
 
             foreach (Type seam in new[] { typeof(ID3D11Emitter), typeof(IGpuCommandList) })
             {
-                foreach (string name in seam.GetMembers().Select(m => m.Name.ToLowerInvariant()))
+                string[] names = seam.GetMembers().Select(m => m.Name.ToLowerInvariant()).ToArray();
+                Assert.NotEmpty(names);
+                foreach (string name in names)
                 {
                     Assert.DoesNotContain(name, forbidden);
                 }

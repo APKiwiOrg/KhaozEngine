@@ -37,7 +37,8 @@ internal sealed class AnimatedFoliageStyleSnapshot
             if (!_selectedArchetypes.Contains(id))
                 throw new AnimatedFoliageStyleArgumentException(AnimatedFoliageStyleRefusal.StyleOutsideSelection,
                     $"Animated foliage style '{id}' does not exactly name a selected archetype.",
-                    nameof(TileWorldViewOptions.AnimatedFoliageStyles)) { ArchetypeId = id };
+                    nameof(TileWorldViewOptions.AnimatedFoliageStyles))
+                { ArchetypeId = id };
 
         var ids = new List<string>(_selectedArchetypes);
         ids.Sort(StringComparer.Ordinal);

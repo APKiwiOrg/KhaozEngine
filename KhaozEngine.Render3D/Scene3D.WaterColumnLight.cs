@@ -47,7 +47,7 @@ public sealed partial class Scene3D
     void ValidateWaterColumnInputs()
     {
         _waterColumnOptedInPlanes = 0;
-        foreach (WaterPlane plane in _waterPlanes)
+        foreach (WaterPlane plane in WaterDemandPlanes())
         {
             WaterSettings effective = plane.Look?.ResolveInto(_waterColumnScratch, Post.Water) ?? Post.Water;
             // Unbound water retains late-bound authoring, including on planes culled before UBO packing.
@@ -66,21 +66,15 @@ public sealed partial class Scene3D
         _water.ColumnShadows.SetColor(_waterColumnColor.Texture, _waterColumnColor.Generation);
     }
 
-    void DrawWaterWithColumnInputs(IGpuCommandList cl, Matrix4x4 vp, Matrix4x4 displayVp, Vector3 eye)
+    void DrawWaterWithColumnInputs(IGpuCommandList cl, Matrix4x4 vp, Matrix4x4 displayVp, Vector3 eye, ref float waterSyncMs)
     {
         // After sky and ground decals, before every water draw, including legacy planes sharing the queue.
         WaterColumnCopyPath path = _waterColumnColor?.Record(cl, _res, _waterColumnOptedInPlanes > 0)
             ?? WaterColumnCopyPath.None;
         if (_waterColumnColor is { } source) _water.ColumnShadows.SetColor(source.Texture, source.Generation);
         WaterColumnLightDiagnostics = new(_waterColumnOptedInPlanes, path != WaterColumnCopyPath.None, path);
-        using (ProfilePass(cl, "water", executed: _waterPlanes.Count > 0))
-            if (_waterPlanes.Count > 0)
-            {
-                _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
-                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled,
-                    WaterColumnPacking.NoisePhase(_currentFrameView.FrameIndex, _resolveThisRender));
-                _frameStats.DrawCalls++;
-            }
+        using (ProfilePass(cl, "water", executed: _waterPlanes.Count > 0 || _boundedWater.Count > 0))
+            RenderWater(cl, vp, displayVp, eye, ref waterSyncMs);
     }
 
     Rendering.WaterRenderer CreateWaterRenderer(IGpuDevice device) => new(device,

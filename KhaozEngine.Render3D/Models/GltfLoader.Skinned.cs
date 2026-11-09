@@ -122,7 +122,8 @@ namespace KhaozEngine.Render3D
 
             if (skin == null || groups.All(group => group.Vertices.Count == 0))
                 throw new GltfImportStateException(GltfImportRefusal.NoSkinnedMesh,
-                    "glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path) { Identity = path };
+                    "glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path)
+                { Identity = path };
 
             foreach (SkinnedGeometry group in groups)
                 ComputeSkinnedTangents(group.Vertices, group.Indices, group.SourceTangents);

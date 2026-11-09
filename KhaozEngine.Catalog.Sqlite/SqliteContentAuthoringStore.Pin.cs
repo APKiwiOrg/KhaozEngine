@@ -56,7 +56,8 @@ public sealed partial class SqliteContentAuthoringStore : IContentVersionSelecti
                 FormattableString.Invariant($"Version {held} does not exist, so it cannot be pinned."),
                 default,
                 0,
-                ContentAuthoringException.UnknownTypeReason) { VersionNumber = held };
+                ContentAuthoringException.UnknownTypeReason)
+            { VersionNumber = held };
         }
 
         int? before;

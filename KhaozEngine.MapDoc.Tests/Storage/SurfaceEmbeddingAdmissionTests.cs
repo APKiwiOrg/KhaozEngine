@@ -161,7 +161,11 @@ public sealed class SurfaceEmbeddingAdmissionTests
 
     static MapSurfacePatch Patch(int slot) => new()
     {
-        Key = new("r", slot, 0), Width = 1, Depth = 1, Heights = new int[4],
-        Cells = new MapSurfaceCell[1], Presence = [1],
+        Key = new("r", slot, 0),
+        Width = 1,
+        Depth = 1,
+        Heights = new int[4],
+        Cells = new MapSurfaceCell[1],
+        Presence = [1],
     };
 }

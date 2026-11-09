@@ -78,7 +78,8 @@ public static class TilePrefabFile
                 : TileWorldRefusal.PrefabPlaneCountMismatch;
             throw new TileWorldException(reason, $"{path}: prefab dimensions are inconsistent")
             {
-                SourceName = path, PrefabName = dto.Name,
+                SourceName = path,
+                PrefabName = dto.Name,
                 Width = reason == TileWorldRefusal.PrefabSizeNonPositive ? dto.Width : null,
                 Height = reason == TileWorldRefusal.PrefabSizeNonPositive ? dto.Height : null,
                 PlaneCount = reason == TileWorldRefusal.PrefabPlaneCountNonPositive ? dto.PlaneCount : null,

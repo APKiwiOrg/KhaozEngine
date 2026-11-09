@@ -10,32 +10,6 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Terrain
 {
-    // Records every sink op so tests can assert load/unload/relod behaviour with no GPU. Implements IDisposable so
-    // the TerrainStreamer.Dispose() "dispose the sink it owns" path is observable headless (DisposeCount).
-    sealed class FakeChunkSink : IChunkBuildReasonSink, IDisposable
-    {
-        public readonly List<(ChunkCoord coord, int lod, ChunkRing ring)> Loads = new();
-        public readonly List<(ChunkCoord coord, int lod, ChunkRing ring)> ReLods = new();
-        public readonly List<ChunkCoord> Unloads = new();
-        public readonly List<(ChunkCoord coord, ChunkBuildReason reason)> Reasons = new();
-        // Per-Update op counts (load + relod), reset by the test harness between Updates.
-        public int OpsThisFrame;
-        public int DisposeCount;
-
-        public object Load(ChunkCoord coord, int lod, ChunkRing ring) { Loads.Add((coord, lod, ring)); OpsThisFrame++; return new Box(coord); }
-        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring) { ReLods.Add((coord, lod, ring)); OpsThisFrame++; }
-        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring, ChunkBuildReason reason)
-        {
-            Reasons.Add((coord, reason));
-            ReLod(coord, handle, lod, ring);
-        }
-        public void Unload(ChunkCoord coord, object handle) { Unloads.Add(coord); }
-        public void Dispose() => DisposeCount++;
-
-        public void ResetFrame() => OpsThisFrame = 0;
-        sealed class Box { public Box(ChunkCoord c) { Coord = c; } public ChunkCoord Coord; }
-    }
-
     // Forwards every op to a real Scene3DChunkSink but remembers each coord's opaque handle, so a test can inspect
     // the production ChunkLoad after streamer ops. TerrainStreamer itself only tracks coord + LOD internally, never
     // the handle, so there is no other way to reach it from outside the sink.
@@ -152,6 +126,7 @@ namespace KhaozEngine.Tests.Terrain
 
             Pump(s, sink, pos, 3);
 
+            Assert.NotEmpty(s.Loaded);
             foreach (ChunkCoord c in s.Loaded)
             {
                 Vector2 center = ChunkGrid.CenterOf(c, 60f);
@@ -421,6 +396,7 @@ namespace KhaozEngine.Tests.Terrain
             Pump(s, sink, pos, 3);
 
             // A viewer that has not moved sees exactly today's tiers: hysteresis only ever damps a CHANGE.
+            Assert.NotEmpty(s.Loaded);
             foreach (ChunkCoord c in s.Loaded)
             {
                 Vector2 center = ChunkGrid.CenterOf(c, 60f);
@@ -500,6 +476,7 @@ namespace KhaozEngine.Tests.Terrain
 
             TerrainLodConfig lod = TerrainLodConfig.Default;
             bool sawTier3 = false, sawTier4 = false;
+            Assert.NotEmpty(s.Loaded);
             foreach (ChunkCoord c in s.Loaded)
             {
                 Vector2 center = ChunkGrid.CenterOf(c, 60f);
@@ -577,6 +554,7 @@ namespace KhaozEngine.Tests.Terrain
             var expected = PropScatter.Generate(field, scatter, ChunkGrid.AreaOf(coord, size));
             IReadOnlyList<PropPlacement> got = sink.ScatterFor(coord);
 
+            Assert.NotEmpty(expected);
             Assert.Equal(expected.Count, got.Count);
             for (int i = 0; i < expected.Count; i++)
             {
@@ -604,7 +582,7 @@ namespace KhaozEngine.Tests.Terrain
             var freshUnloads = new HashSet<ChunkCoord>(sink.Unloads.Skip(unloadsBefore));
             Assert.Equal(loaded, freshUnloads);
             Assert.Empty(s.Loaded);
-            Assert.Equal(0, sink.DisposeCount);                    // UnloadAll keeps the sink alive (rebuild-same-sink path)
+            Assert.False(sink.IsDisposed);                    // UnloadAll keeps the sink alive (rebuild-same-sink path)
         }
 
         [Fact]
@@ -624,7 +602,7 @@ namespace KhaozEngine.Tests.Terrain
             var second = new TerrainStreamer(cfg, sink);
             Pump(second, sink, pos, 2);
             Assert.Equal(loaded, new HashSet<ChunkCoord>(second.Loaded));
-            Assert.Equal(0, sink.DisposeCount);
+            Assert.False(sink.IsDisposed);
         }
 
         [Fact]
@@ -643,10 +621,10 @@ namespace KhaozEngine.Tests.Terrain
 
             Assert.Equal(loaded, new HashSet<ChunkCoord>(sink.Unloads.Skip(unloadsBefore)));   // ring flushed
             Assert.Empty(s.Loaded);
-            Assert.Equal(1, sink.DisposeCount);                   // owned sink disposed once
+            Assert.True(sink.IsDisposed);                        // owned resource was disposed
 
             s.Dispose();                                          // second dispose is a no-op
-            Assert.Equal(1, sink.DisposeCount);
+            Assert.True(sink.IsDisposed);
             Assert.Equal(loaded.Count, sink.Unloads.Count - unloadsBefore);   // no re-unload
         }
 

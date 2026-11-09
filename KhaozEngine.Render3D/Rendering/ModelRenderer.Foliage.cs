@@ -193,6 +193,7 @@ internal sealed partial class ModelRenderer
 
     void DisposeFoliageResources()
     {
+        DisposePreparedFoliage();
         _foliageOpaquePipeline?.Dispose();
         _foliageOpaqueSet?.Dispose();
         _foliageOpaqueLayout?.Dispose();

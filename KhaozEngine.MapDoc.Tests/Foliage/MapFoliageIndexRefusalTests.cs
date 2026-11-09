@@ -43,7 +43,8 @@ public sealed class MapFoliageIndexRefusalTests
         { Region = new(i, 0), ChunkCount = perPack, ByteLength = MapFoliageRegionPack.ByteLength(perPack) }).ToArray();
         var chunks = Enumerable.Range(0, limit).Select(i => Chunk() with
         {
-            Key = new(i % 32768, i / 32768), OwnerRegion = new(i / perPack, 0),
+            Key = new(i % 32768, i / 32768),
+            OwnerRegion = new(i / perPack, 0),
             DataOffset = MapFoliageRegionPack.DataOffset(i % perPack),
         }).ToArray();
         var error = Assert.Throws<MapDocumentException>(() => new MapFoliageStorageIndex(

@@ -113,7 +113,8 @@ public sealed partial class SqlServerContentAuthoringStore
                                 $"This store already stands at version {active}, and a bundle is imported into an EMPTY store only. A deployed catalog's values change through an edit and a publish and through nothing else."),
                             default,
                             0,
-                            ContentAuthoringException.CatalogNotEmptyReason) { ActiveVersion = active };
+                            ContentAuthoringException.CatalogNotEmptyReason)
+                        { ActiveVersion = active };
                     }
 
                     if (PackStore is null)
@@ -313,7 +314,8 @@ public sealed partial class SqlServerContentAuthoringStore
                         $"The bundle declares content type {declared.Type.Value} as '{declared.TypeKey}' with {declared.ChunkSlots} chunk slots and this process registers it as '{registration.TypeKey}' with {registration.ChunkSlots}. The two declarations disagree about where an id falls, so the import is refused whole."),
                     declared.Type,
                     0,
-                    ContentAuthoringException.BundleFormatReason) { ActualTypeKey = declared.TypeKey, RegisteredTypeKey = registration.TypeKey, ActualChunkSlots = declared.ChunkSlots, RegisteredChunkSlots = registration.ChunkSlots };
+                    ContentAuthoringException.BundleFormatReason)
+                { ActualTypeKey = declared.TypeKey, RegisteredTypeKey = registration.TypeKey, ActualChunkSlots = declared.ChunkSlots, RegisteredChunkSlots = registration.ChunkSlots };
             }
         }
     }
@@ -486,7 +488,8 @@ public sealed partial class SqlServerContentAuthoringStore
                             $"Bundle row '{row.Key}' of content type {row.Type.Value} names family '{familyKey}', which the bundle's own family list does not carry."),
                         row.Type,
                         row.Id ?? 0,
-                        ContentAuthoringException.UnknownFamilyReason) { RowKey = row.Key.ToString(), FamilyKey = familyKey };
+                        ContentAuthoringException.UnknownFamilyReason)
+                    { RowKey = row.Key.ToString(), FamilyKey = familyKey };
                 }
 
                 familyId = held;

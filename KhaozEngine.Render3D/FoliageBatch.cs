@@ -12,6 +12,11 @@ public sealed class FoliageBatch : IDisposable
     internal readonly FoliagePatchLayout Layout;
     internal ModelRenderer.FoliageInstanceData[]? Pending;
     internal IGpuBuffer? Buffer;
+    internal RenderAnchor? PreparedAnchor;
+    internal IGpuBuffer? AnchorBuffer;
+    internal IGpuResourceSet? AnchorSet;
+    internal FoliagePointShadowStream? PreparedPointStream;
+    internal long AnchorFrame = long.MinValue;
     // The temporal variant's last frame (TEMPORAL-FOUNDATIONS-DESIGN section 3). The uniforms this batch was last
     // submitted with and the frame they belong to, and the frame before's, which a submission reads as previous.
     // Written only while temporal rendering is active. The frame starts at a value no frame index takes, so a batch

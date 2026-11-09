@@ -57,7 +57,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// DROPS a vertex input the shader never reads, so a shader that reads locations 0 and 5 to 8 emits a
     /// signature holed at 1 to 4. Building a pipeline against that on WARP corrupted the context so unrelated
     /// passes rendered no colour, and the interpolant twin turned terrain flat white. The enforcement (an FXC leg
-    /// plus a reflected-signature assertion at validation and at pipeline creation) belongs to the shader path.
+    /// plus a reflected-signature assertion at validation and at pipeline realization) belongs to the shader path.
     /// This type's job is to make the CPU side's numbering contiguous from zero by construction, so a hole can
     /// only ever come from the shader.
     /// </para>

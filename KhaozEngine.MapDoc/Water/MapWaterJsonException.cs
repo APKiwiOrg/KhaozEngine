@@ -31,8 +31,12 @@ public sealed class MapWaterJsonException : JsonException
     internal static MapWaterJsonException FromDocument(MapDocumentException inner, string message) =>
         new(inner.Reason!.Value, message, inner)
         {
-            FieldPath = inner.FieldPath, ActualText = inner.ActualText, ActualNumber = inner.ActualNumber,
-            ActualInteger = inner.ActualInteger, MinimumInteger = inner.MinimumInteger, MaximumInteger = inner.MaximumInteger,
+            FieldPath = inner.FieldPath,
+            ActualText = inner.ActualText,
+            ActualNumber = inner.ActualNumber,
+            ActualInteger = inner.ActualInteger,
+            MinimumInteger = inner.MinimumInteger,
+            MaximumInteger = inner.MaximumInteger,
             EnumType = inner.EnumType,
         };
 }

@@ -42,14 +42,21 @@ public sealed class SupportOverflowRefusalTests
         var fixture = MarkerFixtures.Stacked();
         // 2^-80 is a normal binary32 value with an exact denominator larger than signed int64.
         string assetId = fixture.Assets.Assets.First().Id;
-        var placement = new MapPlacement { Id = "seat", Kind = assetId, AssetId = assetId, X = MathF.ScaleB(1, -80), Z = 0.5f,
-            SupportBinding = new(MapSupportBindingKind.Surface, "floor-2", null, null, null, null) };
+        var placement = new MapPlacement
+        {
+            Id = "seat",
+            Kind = assetId,
+            AssetId = assetId,
+            X = MathF.ScaleB(1, -80),
+            Z = 0.5f,
+            SupportBinding = new(MapSupportBindingKind.Surface, "floor-2", null, null, null, null)
+        };
         fixture.Document.Placements.Add(placement);
-        var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.ResolvePlacements(fixture.Document, fixture.Assets, [placement]));
+        var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.ResolvePlacements(fixture.Document, fixture.Assets, [placement], new()));
         Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
         Assert.Equal(placement.Id, error.PlacementId);
         Assert.Equal(MapSupportStatus.NotRepresentable, error.SupportStatus);
         placement.X = 0.5f;
-        Assert.Single(MapResolverV2.ResolvePlacements(fixture.Document, fixture.Assets, [placement]));
+        Assert.Single(MapResolverV2.ResolvePlacements(fixture.Document, fixture.Assets, [placement], new()));
     }
 }

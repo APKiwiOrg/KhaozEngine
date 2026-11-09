@@ -1,15 +1,13 @@
 using System;
-using System.Collections.Generic;
 
 namespace KhaozEngine.Gpu.Metal.Internal;
 
 /// <summary>Exact, recording-local coverage for one buffer, offset and stream shape, across rebinds.</summary>
-internal sealed class MetalVertexReadCoverage
+internal sealed class MetalVertexReadCoverage(MetalVertexWindowTable windowTable, int recordSlot)
 {
     // The primary run only grows. Every skipped window remains covered even after disconnected draws.
     bool _hasRun;
     ulong _first, _last;
-    readonly Dictionary<ulong, ulong> _windows = new();
     MetalRecordedReads.Cursor[] _cursors = [];
     internal bool Reachable { get; private set; }
     internal long StepsForTests { get; private set; }
@@ -17,7 +15,6 @@ internal sealed class MetalVertexReadCoverage
     internal void Clear()
     {
         _hasRun = Reachable = false;
-        _windows.Clear();
         StepsForTests = 0;
     }
 
@@ -60,7 +57,7 @@ internal sealed class MetalVertexReadCoverage
         else
         {
             // A same-start shorter window is covered too. Never claim the space between distinct windows.
-            _windows[first] = _windows.TryGetValue(first, out ulong end) ? Math.Max(end, last) : last;
+            windowTable.Record(recordSlot, first, last);
         }
     }
 
@@ -69,6 +66,6 @@ internal sealed class MetalVertexReadCoverage
         StepsForTests += 2;
         if (_hasRun && first >= _first && last <= _last) return true;
         StepsForTests++;
-        return _windows.TryGetValue(first, out ulong end) && last <= end;
+        return windowTable.Covers(recordSlot, first, last);
     }
 }

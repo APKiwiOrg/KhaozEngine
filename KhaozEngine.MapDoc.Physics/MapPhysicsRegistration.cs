@@ -58,8 +58,13 @@ public sealed class MapPhysicsRegistration : IDisposable
         if (!WholeMetreWithinWorld(origin.X) || !WholeMetreWithinWorld(origin.Y) || !WholeMetreWithinWorld(origin.Z))
             throw new MapDocumentException(MapDocumentRefusal.PhysicsRegistrationOriginInvalid, FormattableString.Invariant(
                 $"Registration needs a whole-metre origin within {MapWorldBuilder.MaxCoordinateMetres:N0} m of the world origin on each axis, and the physics world's origin is ({origin.X}, {origin.Y}, {origin.Z})."))
-            { FieldPath = nameof(Physics.Origin), PositionX = origin.X, PositionY = origin.Y, PositionZ = origin.Z,
-                Limit = (long)MapWorldBuilder.MaxCoordinateMetres };
+            {
+                FieldPath = nameof(Physics.Origin),
+                PositionX = origin.X,
+                PositionY = origin.Y,
+                PositionZ = origin.Z,
+                Limit = (long)MapWorldBuilder.MaxCoordinateMetres
+            };
 
         var handles = new List<StaticHandle>(world.Statics.Count);
         var owners = new Dictionary<StaticHandle, (MapStaticOwner Owner, IReadOnlyList<MapFaceKey> Faces)>(world.Statics.Count);

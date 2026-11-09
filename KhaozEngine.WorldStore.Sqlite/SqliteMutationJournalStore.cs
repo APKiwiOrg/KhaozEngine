@@ -210,7 +210,8 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
             streamKeys.Count == 0 ? JournalStoreFailureScope.WholeStore : JournalStoreFailureScope.OperationStreams,
             streamKeys,
             "SQLite mutation journal commit completed or may have completed before the response failed.",
-            exception) { Stage = JournalOperationStage.AfterCommit };
+            exception)
+        { Stage = JournalOperationStage.AfterCommit };
 
     private static JournalStoreException Corrupt(
         JournalStoreRefusal reason, IReadOnlyList<string> streamKeys, string message,
@@ -224,8 +225,12 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
             streamKeys,
             message)
         {
-            StreamKey = streamKey, StreamVersion = streamVersion, SectionName = sectionName,
-            OperationId = operationId, ExpectedVersion = expectedVersion, ActualVersion = actualVersion,
+            StreamKey = streamKey,
+            StreamVersion = streamVersion,
+            SectionName = sectionName,
+            OperationId = operationId,
+            ExpectedVersion = expectedVersion,
+            ActualVersion = actualVersion,
         };
 
     private static bool FingerprintsMatch(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)

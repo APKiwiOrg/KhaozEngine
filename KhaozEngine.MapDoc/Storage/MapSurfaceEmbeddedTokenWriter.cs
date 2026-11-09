@@ -17,7 +17,7 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
     {
         if (limit < 0) throw new MapDocumentException(MapDocumentRefusal.ValueOutsideRange,
             "surface embedding exceeds its limit, use tiled storage")
-            { FieldPath = "maxBytes", ActualInteger = limit, MinimumInteger = 0 };
+        { FieldPath = "maxBytes", ActualInteger = limit, MinimumInteger = 0 };
         _destination = default;
         _limit = limit;
         _emit = false;
@@ -96,7 +96,8 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
             case Half half when !Half.IsFinite(half):
                 throw new MapDocumentException(MapDocumentRefusal.ValueNonfinite, "non-finite JSON number in embedded surface patch")
                 {
-                    RecordType = value.GetType(), SubjectKind = "embedded scalar",
+                    RecordType = value.GetType(),
+                    SubjectKind = "embedded scalar",
                     ActualNumber = value switch { float f => f, double d => d, Half h => (double)h, _ => null },
                 };
             case IUtf8SpanFormattable number when value is sbyte or byte or short or ushort or int or uint or long or ulong or
@@ -105,7 +106,7 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
                 break;
             default:
                 throw new MapDocumentException(MapDocumentRefusal.SchemaMalformed, "unsupported JSON scalar in embedded surface patch")
-                    { RecordType = value.GetType(), SubjectKind = "embedded scalar" };
+                { RecordType = value.GetType(), SubjectKind = "embedded scalar" };
         }
     }
 
@@ -135,5 +136,5 @@ internal ref struct MapSurfaceEmbeddedTokenWriter
 
     MapDocumentException Limit(long required) => new(MapDocumentRefusal.WorkCapacityExceeded,
         "surface embedding exceeds its limit, use tiled storage")
-        { Budget = "MaxEmbeddingBytes", ActualByteCount = required, Limit = _limit };
+    { Budget = "MaxEmbeddingBytes", ActualByteCount = required, Limit = _limit };
 }

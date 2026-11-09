@@ -153,7 +153,8 @@ public sealed partial class SqliteContentAuthoringStore
                 $"{member} is refused: a publish standing on version {frozenForBaseVersion} holds this draft frozen. The change set that publish read at step 1 is the one it will delete, so an edit arriving now would either be published without review or be deleted unpublished."),
             default,
             0,
-            ContentAuthoringException.PublishInProgressReason) { MemberName = member, FrozenForBaseVersion = frozenForBaseVersion };
+            ContentAuthoringException.PublishInProgressReason)
+        { MemberName = member, FrozenForBaseVersion = frozenForBaseVersion };
     }
 
     /// <summary>

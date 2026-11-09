@@ -17,10 +17,22 @@ public sealed class MapFoliageContextClosureTests
     {
         var fixture = FoliageFixtures.Create();
         var document = fixture.Document;
-        document.Placements.Add(new() { Id = "first", Kind = "item", AssetId = "reed-a", NumericId = 7,
-            Y = 1 });
-        document.Placements.Add(new() { Id = "second", Kind = "item", AssetId = "reed-a", NumericId = 7,
-            Y = 1 });
+        document.Placements.Add(new()
+        {
+            Id = "first",
+            Kind = "item",
+            AssetId = "reed-a",
+            NumericId = 7,
+            Y = 1
+        });
+        document.Placements.Add(new()
+        {
+            Id = "second",
+            Kind = "item",
+            AssetId = "reed-a",
+            NumericId = 7,
+            Y = 1
+        });
         string before = Snapshot(document);
         var error = Assert.Throws<MapDocumentException>(() => MapPrefabResolver.Expand(document, fixture.Assets));
         Assert.Equal(MapDocumentRefusal.NumericIdHighWaterExceeded, error.Reason);

@@ -71,7 +71,8 @@ public static class MapPrefabEdits
         if (edit is MapPlacePrefab place)
         {
             if (instance is not null) throw new MapDocumentException(MapDocumentRefusal.IdentityReserved,
-                $"Prefab instance '{id}' is already reserved.") { InstanceId = id };
+                $"Prefab instance '{id}' is already reserved.")
+            { InstanceId = id };
             var initial = InitialOverrides(place);
             var resource = assets.GetResource(place.ResourceId);
             if (resource.Kind != MapResourceKind.Prefab) throw new MapDocumentException(MapDocumentRefusal.ReferenceKindMismatch,
@@ -85,7 +86,8 @@ public static class MapPrefabEdits
         else
         {
             if (instance is null || instance.Removed) throw new MapDocumentException(MapDocumentRefusal.PrefabInstanceMissing,
-                $"No live prefab instance '{id}'.") { InstanceId = id };
+                $"No live prefab instance '{id}'.")
+            { InstanceId = id };
             switch (edit)
             {
                 case MapMovePrefab move: Set(after, instance with { Transform = move.Transform }); break;
@@ -96,7 +98,8 @@ public static class MapPrefabEdits
                     if (value is MapPrefabRemoveOverride removed)
                     {
                         if (previous is MapPrefabRemoveOverride) throw new MapDocumentException(MapDocumentRefusal.PrefabChildAlreadyRemoved,
-                            "Child is already removed.") { InstanceId = id, Child = value.Child };
+                            "Child is already removed.")
+                        { InstanceId = id, Child = value.Child };
                         value = removed with { Previous = removed.Previous ?? previous };
                     }
                     Set(after, instance with { Overrides = instance.Overrides.Where(o => o.Child != value.Child).Append(value).ToArray() });
@@ -105,7 +108,8 @@ public static class MapPrefabEdits
                 case MapRestorePrefabChild restore:
                     var dormant = instance.Overrides.SingleOrDefault(o => o.Child == restore.Child) as MapPrefabRemoveOverride
                         ?? throw new MapDocumentException(MapDocumentRefusal.AuthoredValueRequired,
-                            "Restore requires a removed child override.") { InstanceId = id, Child = restore.Child };
+                            "Restore requires a removed child override.")
+                        { InstanceId = id, Child = restore.Child };
                     Set(after, instance with
                     {
                         Overrides = instance.Overrides.Where(o => o.Child != restore.Child)
@@ -151,8 +155,11 @@ public static class MapPrefabEdits
             throw new MapDocumentException(oldKind || newKind ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.PrefabAssetPinMismatch,
                 "Asset update does not match its old and new verified prefab pins.")
             {
-                ResourceId = refused.Reference.Id, ExpectedResourceKind = MapResourceKind.Prefab, ActualResourceKind = refused.Kind,
-                ExpectedHash = oldFault ? edit.OldSha256 : edit.NewSha256, ActualHash = refused.Reference.Sha256,
+                ResourceId = refused.Reference.Id,
+                ExpectedResourceKind = MapResourceKind.Prefab,
+                ActualResourceKind = refused.Kind,
+                ExpectedHash = oldFault ? edit.OldSha256 : edit.NewSha256,
+                ActualHash = refused.Reference.Sha256,
                 FieldPath = oldKind ? "$.resourceId" : newKind ? "$.newResourceId" : oldPin ? "$.oldSha256" : "$.newSha256",
             };
         }
@@ -180,14 +187,16 @@ public static class MapPrefabEdits
     static IReadOnlyList<MapPrefabOverride> InitialOverrides(MapPlacePrefab place)
     {
         var values = place.InitialOverrides ?? throw new MapDocumentException(MapDocumentRefusal.AuthoredValueRequired,
-            "Initial overrides must not be null.") { InstanceId = place.InstanceId, FieldPath = "$.initialOverrides" };
+            "Initial overrides must not be null.")
+        { InstanceId = place.InstanceId, FieldPath = "$.initialOverrides" };
         if (values.Count == 0) return [];
         var keys = new HashSet<MapPrefabChildKey>();
         int i = 0;
         foreach (MapPrefabOverride value in values)
         {
             if (value is null) throw new MapDocumentException(MapDocumentRefusal.AuthoredValueRequired,
-                "Initial overrides must not contain null.") { InstanceId = place.InstanceId, FieldPath = $"$.initialOverrides[{i}]", Index = i };
+                "Initial overrides must not contain null.")
+            { InstanceId = place.InstanceId, FieldPath = $"$.initialOverrides[{i}]", Index = i };
             if (!keys.Add(value.Child)) throw new MapDocumentException(MapDocumentRefusal.PrefabOverrideDuplicate,
                 $"Duplicate initial override for {value.Child.Kind} '{value.Child.Key}'.")
             { InstanceId = place.InstanceId, Child = value.Child, FieldPath = $"$.initialOverrides[{i}]", Index = i };
@@ -213,7 +222,8 @@ public static class MapPrefabEdits
         if (children.NeedsParent)
         {
             var parent = instance.ParentSpace ?? throw new MapDocumentException(MapDocumentRefusal.AuthoredValueRequired,
-                $"Prefab instance '{instance.Id}' requires ParentSpace.") { InstanceId = instance.Id, FieldPath = "$.parentSpace" };
+                $"Prefab instance '{instance.Id}' requires ParentSpace.")
+            { InstanceId = instance.Id, FieldPath = "$.parentSpace" };
             if (!before.Surfaces.TryGetRecord(parent, out var record) || record is not MapSpaceDoc)
                 throw new MapDocumentException(MapDocumentRefusal.AuthoredValueMismatch,
                     "ParentSpace must name an authored space at its declared anchor.")

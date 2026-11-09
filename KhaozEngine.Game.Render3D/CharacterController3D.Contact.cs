@@ -45,8 +45,10 @@ public sealed partial class CharacterController3D
                 throw new MovementConfigurationException(physics is null ? MovementConfigurationRefusal.PhysicsRequired
                     : registration is null ? MovementConfigurationRefusal.RegistrationRequired : MovementConfigurationRefusal.BoundaryRequired,
                     "Ordinary contact movement requires physics, a registration and a MovementBoundary.")
-                { RequiredCapability = physics is null ? typeof(IPhysicsWorld)
-                    : registration is null ? typeof(OrdinaryMovementRegistration) : typeof(MovementBoundary) };
+                {
+                    RequiredCapability = physics is null ? typeof(IPhysicsWorld)
+                    : registration is null ? typeof(OrdinaryMovementRegistration) : typeof(MovementBoundary)
+                };
             next = EffectiveMovementBinding.Ordinary(tuning, physics, registration, height, normal, boundary, field, medium);
         }
         else next = EffectiveMovementBinding.Legacy(tuning);

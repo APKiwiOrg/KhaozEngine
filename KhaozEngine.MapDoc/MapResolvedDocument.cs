@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Storage;
 
 namespace KhaozEngine.MapDoc;
 
@@ -48,8 +49,17 @@ public readonly record struct MapResolvedBounds(float MinX, float MinZ, float Ma
     internal static MapResolvedBounds Of(MapBounds bounds) => new(bounds.MinX, bounds.MinZ, bounds.MaxX, bounds.MaxZ);
 }
 
-/// <summary>The consumer's versioned build inputs, included in complete authored identity.</summary>
-public sealed record MapResolveOptions(string BuilderId, int BuilderVersion, string OptionsHash, int ResolverVersion = 1);
+/// <summary>The consumer's versioned build inputs, included in complete authored identity, and the resolver-2 query and
+/// prefab expansion profile. The profile only decides where resolution refuses, so it never enters an authored hash, a
+/// resolver identity check or option matching. Resolver 1 ignores it.</summary>
+public sealed record MapResolveOptions(string BuilderId, int BuilderVersion, string OptionsHash, int ResolverVersion = 1)
+{
+    /// <summary>Support, marker, paint and complete-view query allowances. Defaults to the engine's default profile.</summary>
+    public MapQueryLimits QueryLimits { get; init => field = value ?? throw new ArgumentNullException(nameof(QueryLimits)); } = new();
+
+    /// <summary>Prefab expansion allowances. Defaults to the engine's default profile.</summary>
+    public MapPrefabExpansionLimits ExpansionLimits { get; init => field = value ?? throw new ArgumentNullException(nameof(ExpansionLimits)); } = new();
+}
 
 /// <summary>A complete immutable native world snapshot. No partial document can publish this result.</summary>
 public sealed class MapResolvedDocument

@@ -27,7 +27,8 @@ public sealed partial class SqliteMutationJournalStore
             ? throw new JournalStoreException(
                 JournalStoreRefusal.ProviderClockUnavailable, JournalStoreFailureKind.CorruptData,
                 JournalStoreFailureCertainty.CommittedDataUnreadable, JournalStoreFailureScope.WholeStore,
-                Array.Empty<string>(), "SQLite did not return its UTC clock.") { ProviderName = "SQLite" }
+                Array.Empty<string>(), "SQLite did not return its UTC clock.")
+            { ProviderName = "SQLite" }
             : Timestamp(Convert.ToInt64(value));
 
     // The fixed clock query normally returns a value. Exercise its missing-value guard without replacing the query.

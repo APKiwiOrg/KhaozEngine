@@ -81,10 +81,16 @@ public sealed class MapFoliageLayerRefusalTests
         {
             double actual = field switch
             {
-                "OriginX" => layer.OriginX, "OriginZ" => layer.OriginZ, "CellSize" => layer.CellSize,
-                "Spacing" => layer.Spacing, "ScaleMin" => layer.ScaleMin, "ScaleMax" => layer.ScaleMax,
-                "DoorClearance" => layer.DoorClearance, "EdgeFade" => layer.EdgeFade,
-                "Policy.NormalBoundaryHeight" => layer.Policy.NormalBoundaryHeight, _ => layer.RootOffset,
+                "OriginX" => layer.OriginX,
+                "OriginZ" => layer.OriginZ,
+                "CellSize" => layer.CellSize,
+                "Spacing" => layer.Spacing,
+                "ScaleMin" => layer.ScaleMin,
+                "ScaleMax" => layer.ScaleMax,
+                "DoorClearance" => layer.DoorClearance,
+                "EdgeFade" => layer.EdgeFade,
+                "Policy.NormalBoundaryHeight" => layer.Policy.NormalBoundaryHeight,
+                _ => layer.RootOffset,
             };
             Assert.Equal(actual, finding.ActualNumber);
             if (reason == MapDocumentRefusal.ValueOutsideRange) Assert.Equal(0d, finding.MinimumNumber);

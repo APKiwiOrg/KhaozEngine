@@ -99,7 +99,8 @@ namespace KhaozEngine.Render3D
             {
                 if (name is null || !skel.TryIndexOf(name, out int node))
                     throw new BoneMaskArgumentException(BoneMaskRefusal.JointNameMissing,
-                        $"The skeleton has no joint named '{name}'.", nameof(jointNames)) { JointName = name };
+                        $"The skeleton has no joint named '{name}'.", nameof(jointNames))
+                    { JointName = name };
                 weights[node] = w;
             }
             return new BoneMask(weights);
@@ -123,7 +124,8 @@ namespace KhaozEngine.Render3D
                 if (string.Equals(boneNames[i], rootBoneName, StringComparison.Ordinal)) { node = i; break; }
             if (node < 0)
                 throw new BoneMaskArgumentException(BoneMaskRefusal.SubtreeRootMissing,
-                    $"bone '{rootBoneName}' was not found in the skeleton.", nameof(rootBoneName)) { JointName = rootBoneName };
+                    $"bone '{rootBoneName}' was not found in the skeleton.", nameof(rootBoneName))
+                { JointName = rootBoneName };
             return Subtree(skel, node, weight);
         }
     }

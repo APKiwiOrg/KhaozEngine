@@ -32,12 +32,20 @@ need no synthetic builder options and never resolve relative resource paths impl
 closure passed in, for binding and resource lookup without a second load. `MapNativeResolution.Resolve(document,
 assets, options, legacySupportHeight)` routes a native document to its resolver by identity: `(1, 1)` resolves with
 `MapResolver` over the caller's legacy support height and `(1, 2)` with `MapResolverV2` over the document's own
-surfaces. Options with a different resolver version refuse. A missing legacy callback uses
+surfaces. Options with a different resolver version refuse. Resolver 2 resolves under the options' `QueryLimits` and
+`ExpansionLimits`, which default to the engine's default profile. The profile only decides where resolution refuses,
+so content identity never sees it: the authored hash, the effective and annotation digests, resolver identity checks
+and option matching are the same under every profile that succeeds. Scope and read-witness digests name the request,
+budgets included, as every scene scope digest does, so support witnesses and complete-view witnesses differ between
+two profiles and agree for value-equal ones. Heads that compare witnesses resolve under one profile, as a game ships
+one. Record equality of `MapResolveOptions` includes the profile. Prefab expansion, placement seats, marker support,
+paint and complete views all take it, as does `MapNativeResolution.ResolvePlacements`, so a world whose support needs
+more than the default `MaxPageReads` resolves under the profile scene residency uses. A missing legacy callback uses
 `MapDocumentRefusal.SupportLegacyHeightRequired` with `ResolverVersion` and `FieldPath` `legacySupportHeight`.
 A nonfinite resolved support height uses `ValueNonfinite` with `PlacementId`, leaving `ActualNumber` null.
 Placement lookup failures use `ReferenceMissing` with the requested `PlacementId`, `EntityId` and
-`SubjectKind` `placement`. This package loads no meshes and has no render
-dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter` and `NativeMapAssetLoader`,
+`SubjectKind` `placement`. This package
+loads no meshes and has no render dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter` and `NativeMapAssetLoader`,
 which loads a native mesh with its source units applied once.
 
 `KhaozEngine.MapDoc.Identity.MapLegacyTerrainDigest` identifies a resolver 1 document's analytic terrain in two
@@ -187,7 +195,9 @@ caller edits its root list.
 Every API in this section is new in 20.30.0.
 `MapScopedSurfaces.Acquire(source, scope, assetSha256)` requires `IMapSurfaceAcquisitionSource`, implemented
 by `MapStoredSurfaceSource` and `MapDocumentSurfaceSource.Capture(document)`. A producer implementing only
-`IMapSurfaceSource` refuses with `AcquisitionUnsupported` and `SourceType` before its legacy callbacks run. Custom producers must open one pinned `IMapSurfaceAcquisitionSession` for discovery,
+`IMapSurfaceSource` refuses with `AcquisitionUnsupported` and `SourceType` before its legacy callbacks run.
+Under an active scene admission, a source that cannot participate in admission refuses before any read with status
+`Invalid`, `AcquisitionUnsupported` and its `SourceType`. Every admission entry uses one guard for this. Custom producers must open one pinned `IMapSurfaceAcquisitionSession` for discovery,
 record-anchor expansion and bound reads. Snapshot, root and copied request stay fixed for that session.
 
 `ReservedPatchKeys` is a detached, ordered unique-key snapshot. Every discovery key and explicitly read
@@ -262,6 +272,59 @@ incomplete identity with `AcquisitionIncomplete` and `Operation` `RequireComplet
 whole current-edit identity. `CompleteView(set)` captures all resident patches and records without bound
 enumeration for complete in-memory surface sets.
 
+## Scoped native scenes
+
+`KhaozEngine.MapDoc.Scene.MapSceneSource.Capture(documentSource, assets, limits)` captures one source generation.
+It verifies the placement tile hashes while streaming metadata, including skipped sculpt values, and retains a
+reverse bounds hierarchy beside the pinned native surface and foliage producers. No index sidecar or format field
+is written. Missing or unloaded owner metadata refuses capture rather than certifying an empty window.
+
+`Acquire(new MapSceneScope(surfaceScope, drawBounds, channels, MotionPaddingMetres: 0))` publishes a neutral
+`MapScopedScene` only when every selected resource and dependency is available within the captured allowances.
+`Surfaces` contains detached selected surface payloads and `SurfaceView` carries the acquired physical query witness.
+Placements, exact transforms, paint regions, water, building intent and foliage remain separate channels.
+`MapEffectiveAnnotations.Lights(scene)` and `Markers(scene)` read the captured annotations.
+The complete prefab, world and foliage builders still require complete documents.
+
+Discovery includes each placement's effective origin, descriptor render bounds, every LOD, light reach, KECL collider
+and selection reach, and explicit finite nonnegative motion padding. Shape discovery streams conservative local bounds
+without decoding physics objects. Origin-owned cell queries remain conservative for offset geometry.
+Generated foliage bounds cover source-unit model bounds, maximum scale, root offset and support-aligned orientations.
+Y is unbounded during discovery until support seating. Padding participates in scope identity.
+`RequiredAssetIds` names every placement and foliage model in the source, including off-window owners.
+`WithRenderExtents(proofs)` attaches verified bounds/provenance only after exact closure and complete model coverage
+checks. The original source remains unchanged. Its new witness carries `RenderExtentsDigest`, which native render
+consumers must require before accepting a render plan. Neutral simulation acquisitions leave that digest null.
+
+`MapSceneWitness` distinguishes required, present, known-empty and unavailable resources. A refusal has no usable
+scene, no completeness claim and a finding. Whole-world completeness additionally requires checked source coverage.
+Required-domain and simulation coverage leases preserve the refusal's `Capacity` and `Findings`, including the
+capacity name, aggregate demand and declared allowance when physical preparation refuses.
+`scene.AcquireDependencies(scope)` uses the same immutable source generation and ceilings. It cannot refresh or
+increase the captured query budgets, including all six refinement ceilings. A null refinement policy means the
+default ceilings for this comparison. A manifest replacement is Stale even when the requested payloads still exist.
+
+Source ceilings bound tiles, metadata rows, memberships, scanned bytes and retained metadata before retention.
+Acquisition ceilings separately bound selected resources, patch scopes, prepared faces and peak workspace plus retained inventory.
+The internal admission allowance covers stored reads, resident/generated copies, support queries and paint compilation.
+Native acquisitions retain selected copies and release discarded query facts before the next request. A seat query
+retains its answer and witness after releasing its view and compiled geometry. Resolver construction and final capture
+have separate owners. Final inventory includes each independent patch copy, acquired-facts containers and newly owned
+effective/composed source indexes. Pinned producer indexes stay borrowed. Dependency replacement admits the old and new
+snapshots together, and coverage keeps every distinct snapshot until its lease ends. `MaxPatchScopes` remains cumulative
+logical work even after a query releases its bytes. Internal opt-in diagnostics expose stage byte and receipt high waters
+and caller/repeated-source/key counts without publishing content identifiers. These are modeled bytes, not heap or RSS.
+External surface producers cannot participate in this internal protocol and scene acquisition refuses them before reads.
+Released surface calls without an admission allowance keep their existing behavior and refusal order.
+`MapSceneWork.PayloadReads` counts logical acquisitions, including cache hits. `IndexNodesVisited` counts hierarchy
+nodes tested, including rejected siblings. The stable median tree has leaves of at most eight rows. An isolated
+separated-growth query visits at most `1 + 2 * ceil(log2(ceil(N / 8)))` nodes. Dependency discoveries report their own
+additional visits. Copied/prepared byte charges include intermediate work and are separate from decoded render asset
+retention, which is owned by the optional rendering package's selected input lease.
+Scoped water compilation results are disposable owners. Dispose a `MapScopedWaterResult` after its last
+consumer. Native render batches retain their selected canonical cells independently, sharing each cell's
+allocation receipt with the compiler result until the last owner releases it.
+
 ## Frame-local compiled geometry
 
 `MapFrameLocal.ToFrame` converts a compiled patch or strip into a `MapFrameMesh` in one `WorldFrame` with
@@ -335,7 +398,8 @@ Declared seam and strip vertex sequences stay strict. Refinement never waives a 
 `MapPrismCoverage.ValidateFindings(view, limits)` and
 `MapSpaceCoverageValidator.ValidateFindings(view, limits?)` return complete ordered read-only snapshots.
 Their existing `Validate` APIs retain the same string projection. Their `Require` adapters use the
-first concrete reason and attach every ordered finding as `MapDocumentException.Findings`.
+first concrete reason and attach every ordered finding as `MapDocumentException.Findings`. A shared refinement
+context refusal is copied to each footprint it stops, and each copy names that footprint's `RecordId` and `SpaceId`.
 Prefab edit preparation and the effective physics-world gate use these adapters.
 Occupied partition adapters retain both the concrete finding and their original refinement projection.
 An invalid refinement projected as missing geometry stays distinct from arithmetic overflow or capacity,
@@ -354,8 +418,10 @@ pieces near it. The visiting order is unchanged, so findings and their sorted or
 
 Partial paint refusals carry `MapDocumentRefusal` on `MapDocumentException`. `WorkCapacityExceeded`
 retains the actual `MapRefinementLimits` field in `Budget`, its `Limit` and `ActualCount` when measured.
-A bounded producer that stops before returning its candidate list leaves `ActualCount` null.
-Exact intersection overflow uses `GeometryNotRepresentable`, the target `SurfaceId` and
+A bounded producer that stops before returning its candidate list leaves `ActualCount` null. Its first-exceeding
+demand stays in the cause's `MapSceneCapacity`. An acquisition that did not complete refuses first, before any paint
+demand, with `AcquisitionIncomplete` and its `AcquireStatus`. When the acquisition stopped on capacity, that
+`MapSceneCapacity` is the cause. Exact intersection overflow uses `GeometryNotRepresentable`, the target `SurfaceId` and
 `Operation = "paint intersection"`. Neither failure publishes partial regions.
 
 **Legacy lower coverage.** Only a lower bound of kind `MapBoundKind.LegacyExteriorV1`, in an `Exterior`
@@ -494,9 +560,9 @@ so no later read touches the producer, even one pinned to the same generation.
 **Later rounds.** R3 owns physics sidedness, floor support and headroom, picking, placement supports, movement
 integration and tiled nav capture. R4 owns flooded and dry containment and water bed semantics over R2
 space geometry. R5 provides free prefab transforms, interior domains and roof links over the R2 compiler
-and queries in local space, described below. R8 owns bounded surface and asset residency, lighting, occlusion,
-HLOD, render-origin
-adapters and backend water captures. Each must keep legacy fallback cells non-capture and emit no physics,
+and queries in local space, described below. R8a supplies bounded scene and asset residency, native lighting, HLOD, roof channels and
+render-origin adapters in the optional [MapDoc.Render3D package](../KhaozEngine.MapDoc.Render3D/README.md).
+R8b retains water optics, cave policy, interior cuts and appearance acceptance. Each must keep legacy fallback cells non-capture and emit no physics,
 nav or water faces for them. R2 claims no physics, nav, water or rendering capability.
 
 ## Bounded water
@@ -592,6 +658,13 @@ medium and the patches it read. `MapWaterCompileLimits` bounds pieces, vertices,
 checks and triangles. `MaxBoundCells` caps the cumulative bound-lattice slot and cell candidates before reads and
 sweeps, including absent, empty, skipped and face-free candidates. Negative limits throw at compile entry.
 Incomplete geometry remains explicit, and a capacity refusal keeps its counted work and no regions.
+Under a scene admission, water compilation releases each body's workspace and each consumed bound context
+before advancing. Only the escaping compiled body inventory remains charged. Effective water validation
+releases that inventory after checking the publication gate.
+Scene capacity refusals retain the exact decimal demand in `MapSceneCapacity`. Water compile and foliage
+context results retain this `Capacity` beside the structured `Finding`. The finding names the same budget and
+inclusive limit. `ActualCount` is null when the exact demand cannot fit Int64, without truncating `Capacity`.
+
 The body's additive `Finding` carries the original failed rule and body ownership without changing
 `Status`, `Detail` or its digest. A complete body has no finding. Compile capacity findings name
 `MaxPieces`, `MaxPieceVertices`, `MaxFootprintCells`, `MaxBoundCells`, `MaxBoundFaces`, `MaxPairChecks`
@@ -846,6 +919,8 @@ In 20.40.0, `MapPrefabResolver.Expand` publishes one immutable `MapEffectiveReso
 `kemap/effective-resources/1` and query policy 2. Support, physical geometry, paint, water, membership and
 annotations consume that same captured closure and effective source. Authored, effective, scoped and build
 identities carry the policy, so a consumer cannot reuse a pre-R5 capture as equivalent evidence.
+Expansion and authored edit candidates use validated detached structural snapshots, sharing immutable foliage.
+Complete tiled worlds retain the expansion resource budgets without inheriting monolithic embedding limits.
 
 `MapPrefabSet` payload 1 and expansion version 1 retain instances, typed bindings, overrides and transfers.
 Instance poses use free XYZ, yaw radians and finite positive uniform scale. `ParentSpace` may be absent for a
@@ -894,17 +969,66 @@ also persists placement-attached support and light descriptors, including precis
 Empty attachment, roof and storey collections and false retirement flags are omitted. `Clone` detaches mutable
 collections and `Digest` hashes the same canonical bytes used by persistence.
 
-`MapRoofPolicy.Evaluate(resources, view, observer, mode)` returns one `MapRoofIntent` per inventoried roof,
-including unlinked shelters. `Auto` uses the acquired R2 room membership and world height. A link matches its
-direct rooms and the union of exactly its attached groups. Groups may join rooms in different instances, but
-unrelated groups, portals and parent membership do not widen a link. Any eligible link may conceal its roof.
-Missing or ambiguous membership retains its status and witness and keeps all Auto roofs visible.
-`AlwaysVisible` and `AlwaysHidden` still enumerate the complete inventory.
+`MapRoofPolicy.Evaluate(resources, view, observer, mode)` and `Evaluate(scene, observer, mode)` return detached
+intent per inventoried roof, including unlinked shelters. `Auto` uses acquired room membership and world height.
+A link matches direct rooms and exactly its attached groups, including groups spanning instances. Unrelated groups,
+portals and parents never widen a link. Any eligible link may conceal its roof. Missing or ambiguous membership
+keeps Auto roofs visible. Always modes enumerate the inventory. Roof preparation refusals expose the
+failed byte or face reservation in `Capacity`, including the active plan window and its declared allowance. `MapRoofEvaluationBuffer.Prepare(scene)` returns a
+typed result. Its admitted `Buffer.Evaluate(observer, mode)` reuses exact membership scratch and a live `Roofs` list.
+Preparation selects the union of cells touched by footprint bounds, flagged indoor spans and portal sources.
+Within a buffer, selected cells are compiled once from the union mask, with bound associations only for that coverage.
+Cells required by indoor spans or portals keep eager exact geometry even outside every footprint. Cold validation still checks
+unrelated acquired cells. Planner, validation and compiler workspace have separate lifetimes under the same byte
+allowance. `Counts` exposes only numerical construction and capacity evidence, including on header or later refusal.
+Exact polygons, triangles, face keys and cells live in frozen column pages. Sixteen-byte coefficient tokens cover the
+entire signed Int64 range inline. Larger canonical unsigned magnitudes use ledger-owned pages, with the same
+1,925-bit ceiling and construction-time normalization. Queries retain exact boundary ownership, acquired-cell first-match
+rank and precision refusals. They allocate no geometry and make no admission calls.
+Matching footprint geometry can share physical pages within an admission attempt. Its full key includes source and
+generation, closure, record and lattice versions, effective instance path, exact pose, lattice, ordered slots and
+compilation policy. Equal counts never establish identity. Selected cell products and 32-byte frozen bound rows remain
+private to their view. Bound status, failure detail, compatibility and opening side tables are fully inventoried.
+Each buffer owns its mutable stamps, active rows and fixed-limb registers. Retiring one buffer preserves every other lease.
+The final footprint lease releases its page receipts, window attribution and cache entry together.
+`RetainedBytes` describes a buffer's reachable obligation, including borrowed scene inventory. `SharedCapacityBytes`
+reports footprint leases and `PrivateCapacityBytes` reports private products and query scratch. Root accounting deduplicates
+physical page identities and includes cache controls, so buffer totals must not be summed as root inventory.
+Publication checks private storage against its direct preparation and shared storage against its live product leases.
+Selected-cell stamp arrays and per-surface cell IDs are admitted after their counts are known, before allocation.
+A borrowing window carries a footprint's full obligation once across all buffers in that window and its descendants.
+Nested and sibling borrowers share each ancestor's attribution. Each window releases it only after its last
+borrowing consumer retires, independently of retirement order. Refusal and cancellation preserve earlier leases.
+`GeometryArenaPages`, `GeometryArenaCapacityBytes`, `FrozenBoundRows`, `FrozenBoundCapacityBytes`, coefficient pool
+capacities and side-table counts expose actual layouts, including array headers, directories and unused page capacity.
+Borrowed-input preflight stays allocation free and runs before the interval when the header fits. An input or
+precision refusal there returns only its typed result. A header refusal takes precedence and includes interval
+evidence without creating product workspace or throwing a capacity exception.
+`HeaderBytes` covers borrowed-input controls. `CompleteAggregatePredictionAvailable` is false. Each owner admits
+its next justified capacity before allocation or growth, with old storage charged until its replacement is ready.
+`Membership`, `Header`, `Validation`, `Planner`, `Construction` and `Publication` report interval observations.
+They start before their reservations, and membership ends after publication or unwind. These observed peaks
+describe admitted work and are not before-work aggregate predictions or additional reservations.
+Each stage reports `Root` and `Windows`. Root totals include already live workspace, retained products and external
+obligations. Window totals include that window's reused and referenced obligations, preserving shared attribution.
+`BindingWindow` is the observed window with the least headroom at its largest requested or admitted total.
+`BaselineBytes` records the live starting obligation. `RequestedBytes` is the largest pre-reservation total,
+`AdmittedPeakBytes` excludes rejected increments, and `RefusedBytes` separately records the largest refused total.
+`LargestIncrementBytes` records the largest numerical next-batch envelope. None of these interval values inherits
+an earlier historical ledger peak. Planner, compiler and validation output counts describe the actual built outputs.
+Patch face grouping admits both local and transformed copies plus the active grouping's growth and sort workspace
+before allocation, retaining that owner through the final cell. Validation releases its compiled root context after
+the raw pieces have copied their bound faces. Room candidates retain one sorted piece row per parent consumer.
+Prism compilation admits domain outputs separately from arithmetic sized to its largest input piece. A room's
+second compiled domain and convex descriptors remain charged until room construction ends. Clipping workspace
+covers only its active parent and convex piece. Uncovered replacements admit old and new storage together,
+then settle to the surviving polygons after replacement. Refusal preserves the earlier fragment generation.
+`ValidationPeakBytes` records every successful ledger reservation during validation, including external obligations.
 
 The four intent flags have separate consumers. Hidden roofs have `ColourVisible = false`, `CastShadows = true`,
 `CameraBoomBlocks = false` and `SkyPickingBlocks = true`. Visible roofs set all four true. This policy never
-changes collision, interaction geometry or static registration. R8 owns colour, shadows, camera boom and sky-ray
-integration.
+changes collision, interaction geometry or static registration. `NativeMapRoofs` and `MapPresentationPicker`
+consume those channels in MapDoc.Render3D. R8b adds cut-aware classification.
 
 Typed Light and Support resource payloads begin with the discriminant `"resourceSchema"`, valued
 `kemap/light-resource` or `kemap/support-resource`. Their writers emit it first and their closed decoders require it.
@@ -922,6 +1046,28 @@ radius once in binary64 before rounding to float. Colour, intensity and shadow i
 distinct keys. Materialized transfers reuse the captured descriptor frame without composing the owner again.
 Markers retain exact XYZ, yaw, name, role, enabled state, ordered tags and optional instance provenance. They do
 not become `MapSpawn`. R8 renders lights.
+
+Light payload 1 accepts optional `shadowExclusion` on `MapLocalLightDoc` and retains it on
+`MapEffectiveLight`. It is an additive field in format 9, including monolithic and tiled building intent,
+prefab Light children, typed leaf light resources and materialized attachments. No format or payload
+migration is needed. Omitting it preserves released bytes, identities and the native owner render/LOD-bounds
+box. An unowned light without a declaration has no exclusion.
+
+The declaration is one closed choice:
+
+- `{"kind":"None"}` requests a static shadow with no exclusion.
+- `{"kind":"NearSphere","radius":0.625}` excludes a sphere around the emitter. Radius is finite,
+  nonnegative world metres, independent of owner scale.
+- `{"kind":"FixtureBox","min":{"x":-1,"y":-1,"z":-1},"max":{"x":1,"y":1,"z":1},"margin":0.125}`
+  requires an owner placement and finite corners strictly ordered on every axis. Corners are metres in
+  that owner's local frame, independent of asset source units and of any explicit light frame. Submission
+  transforms all eight corners by the effective owner pose, then grows the world-axis-aligned envelope
+  by the finite nonnegative margin in world metres. The margin does not scale with the owner.
+
+Only the selected kind's fields are accepted. `CastShadows = false` always submits no shadow. Explicit
+exclusions participate in annotation, render replacement and capture-lighting identity. Null declarations
+are omitted and have the same fallback as an absent field. Record edits, prefab expansion and extraction
+retain the declaration without converting its owner-local corners or scaling its world-metre settings.
 
 ### Marker payloads and height modes
 
@@ -1010,7 +1156,8 @@ the caller's `MapMarkerConsumerRoles` and the one Surface owner for unadopted le
 Blank configured roles or legacy Surface owners use `SchemaValueRequired` with the offending `FieldPath`.
 
 `MapNativePointReadout.SurfaceAt(resources, point, surfaceId)` samples the named Surface owner at an exact XZ through
-the shared seat query, with no reference height and the default scoped budgets. Every status stays typed, and only
+the shared seat query, with no reference height and the default scoped budgets. The overload with `MapQueryLimits`
+takes the caller's budgets, normally the profile the resources were resolved under. Every status stays typed, and only
 Supported carries a height. An exact overflow returns a typed NotRepresentable result with an incomplete witness. It
 never falls back to another floor, a zero height or the analytic field.
 
@@ -1284,11 +1431,16 @@ resources once and detaches one complete snapshot. Reuse it across `MapFoliageDi
 65,536 surface patches and 4096 paint targets. Construction is counted before expansion, cloning or index staging,
 alongside the released prefab expansion limits. `MapFoliageContextWork` reports charges and actual expansion and
 snapshot-serialization counts.
-R7 capture requires all terrain, content and foliage resident. Partial snapshots return `PartialResidency` before
-capture. R8 must add a windowed context constructor with an immutable closure and explicit completeness contract
-before claiming streamed native generation. Sparse storage and partial save/verification are not partial-generation
-proof. That constructor must preserve public finalization, full-request support selection, canonical surface identity
-and the observer atomic-completion contract described here.
+Complete capture requires all terrain, content and foliage resident. Partial snapshots return `PartialResidency`.
+`MapFoliageGenerationContext.CaptureWindow(sceneSource, sceneScope, limits?)` instead publishes a distinct
+`MapWindowFoliageContext` with immutable `SnapshotId`, `ClosureHash` and a complete dependency `Witness`. Its
+`MapFoliageDistribution.Generate` and `Query` overloads share the released input and evaluation kernels. Generation
+chunks include adjacent owners whose conservative model reach enters the draw bounds, including motion padding.
+Native foliage preparation consumes that same admitted chunk set. Requests for other chunks refuse `Unavailable`.
+Support scopes use the same derived read reach as complete generation. Actual rounded bilinear density reads include
+advertised absent zero chunks, while unavailable or stale inputs refuse atomically. Off-raster chunks bind raster
+facts alone. Context ceilings apply to selected input bytes and descriptors beside unchanged scene and point-query
+limits. A window context retains its admitted inputs and never reconstructs a partial document for a complete builder.
 
 Only `MapFoliageStatus.Complete` publishes usable samples. MissingSupport, Unavailable, PartialResidency, Ambiguous,
 CapacityExceeded, NotRepresentable and Invalid refuse without truncation, a substituted floor or budget inflation.
@@ -1298,6 +1450,28 @@ at 262,144 and retained bytes at 67,108,864 before retention. `MapFoliageDiffere
 conservative accounting, not measured allocation. Generate, Query and Compare observer rows remain provisional until
 the enclosing result is Complete. A refusal discards all usable output and issues no differential token.
 
+Retained foliage inventory counts shared objects by reference identity. Full diagnostic samples include their
+sample objects, reference arrays, material wrappers, policy and UTF-16 strings once per owned graph. Public sample
+construction copies the material reference array. Native column inventory separates seven aligned instance arrays
+and two ordinal reference tables from batch controls and metadata. Construction inventory additionally includes
+the still-live builder page during freeze, rather than folding that overlap into the settled per-row price.
+
+The internal compact generation product retains original matrix, position and thinning-rank columns, lattice X/Z,
+and 32-bit support/model indexes. IDs receive ordinals on their first accepted occurrence. It shares the full
+generator's candidate scan, support and clearance evaluator, decomposition check and dependency digest. Full
+`Generate`, `Query` and observer APIs continue to expose complete diagnostic samples. A one-shot builder admits
+accepted-row, ordinal-index growth and frozen-array overlap before allocating them, then releases its workspace.
+
+`MapNativeFoliageBatch` owns resident foliage data for its prepared render plan. Residency disposes the old plan
+when a replacement is accepted or its window unloads. After batch disposal, `GeneratedIdentities`, `CoverBatches`,
+`Register` and `Record` throw `ObjectDisposedException`, even if another plan or the cache still owns the same
+columns. Capture any comparison data before requesting replacement, for example
+`var identities = plan.Inventory.Foliage.GeneratedIdentities.ToArray();`. Public identity and cover snapshots,
+and foliage payloads emitted by public `Register`, are detached and remain usable after disposal. Retaining the
+disposed batch does not retain a per-row identity copy or keep its resident columns alive.
+`MapRenderResidency.Record` detaches foliage at the public sink boundary. A normal recording followed by
+`MapDrawRecorder.Snapshot` remains usable after replacement or unload, without pre-registering the plans.
+
 ### Compatibility support and paint
 
 Payload 1 supports `legacy-tile/1` with explicit boundary/material metadata, resolver identity (1, 2) and
@@ -1305,7 +1479,7 @@ Payload 1 supports `legacy-tile/1` with explicit boundary/material metadata, res
 and additive NoDraw triangles. NoDraw and Blocked flags do not veto density under this compatibility policy.
 Full-request prepared support selection is shared with the
 seat query. A later geometric policy needs its own version and differential. Equal-priority world paint chooses the
-ascending ordinal ID winner. R8 must preserve that winner rather than choose paint by draw order.
+ascending ordinal ID winner. The native renderer preserves that winner independently of draw order.
 
 Both binding kinds normalize to the selected support surface owner. Occupied Space is a separate field. Clearance
 rules apply to effective placements after their effective transform once. Their seated support, not a roof's clearing
@@ -1333,7 +1507,9 @@ has zero weight on that boundary. Refusal is atomic and allocates no accepted hi
 Complete document transactions use public `MapDocumentEditFinalizer`, shared by pure consumers, MapEditor commands,
 callbacks and wire paths. `MapNativeInvalidation.Foliage` is 256 and never adds Physics, Nav or Residency.
 `Finalize(before, prepared, assets)` uses one closure. Its four-argument overload takes separate before/after closures
-for an asset switch. Both admit the proposed foliage context against its target closure before expansion or stamp reuse,
+for an asset switch, and the six-argument overload also takes the caller's `MapQueryLimits` and
+`MapPrefabExpansionLimits` for the foliage preflight's prefab count and each side's expansion and foliage context
+capture, so a declared profile can raise as well as tighten them. All admit the proposed foliage context against its target closure before expansion or stamp reuse,
 including whole-layer and chunkless changes, then validate the candidate and preserve every other effect and write.
 `MapFoliageEffects.Describe(before, after, oldContext, newContext, trigger)` returns
 `MapFoliageEffectSet(Chunks, Layers)`, with contexts captured from those exact snapshots and closures.
@@ -1373,8 +1549,9 @@ not broaden invalidation. It is separate from distribution identity and never re
 
 Styling remains caller policy. Preserve live blade/shrub motion profiles and shadow flags. Use dependency digest plus
 generation to reject stale work. Keep one owned batch with every residency membership intersecting its padded bounds
-and release it only after its last membership leaves. Actual residency, upload, viewport drawing, captures and appearance
-remain R8/G3. The bounds are cosmetic and never union into world/nav bounds or static descriptors.
+and release it only after its last membership leaves. R8a supplies windowed generation, residency, upload,
+viewport drawing and snapshots. R8b owns interior cuts and appearance, with G3 acceptance separate.
+The bounds are cosmetic and never union into world/nav bounds or static descriptors.
 
 ### Public foliage acceptance and deferred ownership
 
@@ -1391,15 +1568,16 @@ remain R8/G3. The bounds are cosmetic and never union into world/nav bounds or s
 
 Scale/rank bits, keys, models and decisions compare exactly. Position tolerance is 0.00001 m per component and
 orientation tolerance 0.000001 radians. The workflow does not regenerate literals or run the private harness.
-The private comparison boundary and its seven test-only references are defined only in the
+The private comparison boundary and its eight test-only references are defined only in the
 [oracle harness README](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md). That harness is not an importer or actual
 source acceptance. Public CPU proofs certify no pixels or windowed acceptance.
 
-| Later owner | Remaining contract or proof |
+| Owner | Delivered capability or remaining proof |
 | --- | --- |
-| R8, R7-R1 | Windowed context constructor with immutable closure/completeness and full-request support semantics before streamed native generation |
-| R8 and [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) | MapDoc interior-cut adapter, actual residency/upload and viewport rendering/captures |
-| R8 and G3 | Appearance with live motion profiles, styling and shadow flags |
+| R8a, R7-R1 | Delivered `MapWindowFoliageContext`, immutable scoped closure/completeness and full-request support semantics |
+| R8a | Delivered native residency/upload, viewport drawing, snapshots and independent source roster/submission comparison |
+| R8b and [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) | MapDoc interior-cut adapter |
+| R8b and G3 | Appearance with live motion profiles, styling and shadow flags |
 | R9 | Interactive painting and native GUI input |
 | R9 and [#1516](https://github.com/APKiwiOrg/KhaozEngine/issues/1516) | Authoring decision for space footprints left over removed floor cells by presence edits |
 | R10 | Complete verb parity and native placement ID rename wire verb |
@@ -2617,7 +2795,9 @@ These findings accompany the released string diagnostics. Whole-document and nat
 forward complete typed snapshots with the same first finding and diagnostic order.
 Boundary findings distinguish uncovered intervals, overlapping authored bands, portal sequence
 mismatches and portal air intervals. Missing footprint bounds and nonpositive separation retain
-the footprint `RecordId`, `SpaceId` and `SlotCell`. Forwarded topology and seam findings retain
+the footprint `RecordId`, `SpaceId` and `SlotCell`. Copied per-footprint and per-cell refinement findings
+also carry the footprint's `OwnerId`. Per-cell copies fill absent `RecordId`, `SpaceId` and `SlotCell`
+from the footprint and cell while retaining any producer-owned identifiers. Forwarded topology and seam findings retain
 their producer's identifiers. Boundary source chains that omit an intermediate edge vertex use
 `GeometryVertexSequenceInvalid` with `RecordId`, `Patch`, `FieldPath` `Vertices` and segment `Index`.
 The internal coverage collector keeps known typed findings in diagnostic order while the remaining
@@ -2655,3 +2835,57 @@ and the `ke-mapedit` MCP tool are later frontends over this model, see
 [`docs/design/MAP-EDITOR-DESIGN.md`](../docs/design/MAP-EDITOR-DESIGN.md).
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).
+
+## Scoped native scene consumers
+
+`MapSceneSource.Capture` scans verified metadata with explicit bootstrap ceilings. Defaults are 65,536
+tiles, 65,536 metadata rows, 262,144 memberships, 4096 memberships per owner, 134,217,728 scanned
+UTF-8 bytes and 67,108,864 retained metadata bytes. It streams one tile at a time and retains bounds and
+provenance. `MapRenderExtentValidator` separately streams every mesh tier and light reach, retaining no
+global decoded inventory. `MapPreparedInputLease` owns selected decoded materials and meshes only.
+
+`MapScopedScene` is separate from complete `MapEffectiveResources`. Its witness names required,
+present, known-empty and unavailable resources. `CompleteForScope` certifies the requested acquisition,
+not the whole world. Scope defaults admit 4096 selected resources, 256 patch scopes, 262,144 prepared
+faces and 67,108,864 prepared bytes before work. Point-query limits remain 256 patches, 4096 faces,
+64 intersections, 32 page reads, 64 record reads and depth 8. Explicit `MapQueryLimits` propagate through
+nested native acquisition, dependency closure and retained foliage, water, cluster and membership scopes.
+
+The prepared-byte allowance bounds live workspace, unique retained inventory and applicable borrowed inputs.
+It models owned storage, not cumulative allocation, CLR heap or RSS. Temporaries end at their last consumer.
+Copied native-set metadata retires after merge. Remapping slack ends after enumeration. Scope hashes run sequentially.
+Geometry copies stay charged through context capture. Returned arrays, scene/view filter backing, dependencies,
+mesh copies and reusable scratch stay charged until release. Growth admits both old and replacement storage.
+Failed policy closure preserves its input and releases intermediates. Failed reservations change no counters.
+Peaks remain separate from current bytes. Reads, UTF-8 work, faces, scopes and resources keep cumulative work/count semantics.
+Child windows attribute reused contexts and decoded inputs with one root charge. View leases survive product retirement and aggregation.
+Generic dependencies borrow direct storage separately from shared contexts, keeping one context attribution per child window.
+Foreign transfers adopt missing shared contexts from admitted destination workspace and retain their identities in its registry.
+All destination storage and window obligations are admitted before the source owner retires. Refusal preserves the source.
+Water footprint reads release their consumed bound and index scratch on return. Accumulated region
+polygons and closed contours transfer their admitted storage into the body collector before each append,
+remain charged through region emission, then settle into the compiled body's escaping inventory.
+Published contour, region, triangle and cleaned wide-polygon lists retain their full backing capacity
+in that inventory, including spare slots. Their read-only wrappers expose capacity to the inventory
+without copying or releasing admitted storage during publication. Footprint and occupied-piece rows
+use exact-sized arrays. The full body-list container and consumed bound-read lists charge capacity explicitly.
+Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
+Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
+`Requested` and `Allowance`. Byte demand is current eligible live inventory plus the attempted reservation.
+The declared allowance and decimal demand survive sums beyond int64.
+The same values appear in `Findings`. `MapSceneCapacityException` exposes the same typed values. A bounded scan reports the first
+excess demand rather than continuing work to count the rest.
+
+`MapWindowFoliageContext` uses the shared derived read reach and immutable dependencies. Complete
+constructors still refuse partial documents. No scoped consumer constructs a partial `MapDocument`
+and passes it to a complete builder. Foliage motion and all-LOD/light bounds remain cosmetic and do
+not widen navigation heights. See the [render contract](../KhaozEngine.MapDoc.Render3D/README.md).
+
+## Evaluated capacity demand
+
+`KhaozEngine.Diagnostics.CapacityDemandDiagnostics.Observe` subscribes to count-only `CapacityDemand`
+records for evaluated gates on success and refusal. Admission identities distinguish independent counters
+and shared allowances. Operation identities distinguish nested acquisitions and windows within one build.
+Checks and operation scopes allocate nothing without a subscriber, including first use. Observer failures
+cannot alter admission. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
+profile sizing and the per-limit enforcement-site map.

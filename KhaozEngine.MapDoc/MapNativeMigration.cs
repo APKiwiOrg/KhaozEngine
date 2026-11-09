@@ -17,7 +17,8 @@ public static class MapNativeMigration
                     ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.DocumentMigrationSourceVersionInvalid,
                 "Native migration requires formatVersion 3 or 4.")
             {
-                FieldPath = "$.formatVersion", ActualVersion = source["formatVersion"] is JsonValue v && v.TryGetValue<int>(out int actual) ? actual : null,
+                FieldPath = "$.formatVersion",
+                ActualVersion = source["formatVersion"] is JsonValue v && v.TryGetValue<int>(out int actual) ? actual : null,
                 SupportedVersions = [3, 4],
             };
 

@@ -31,7 +31,8 @@ public static partial class AttachmentGlb
 
     static AttachmentGlbContainerDataException SourceFailure(Exception error, string sourceName) => new(
         error is JsonException ? AttachmentGlbContainerRefusal.JsonMalformed : AttachmentGlbContainerRefusal.ValueShapeInvalid,
-        $"{sourceName}: {error.Message}", error) { SourceName = sourceName };
+        $"{sourceName}: {error.Message}", error)
+    { SourceName = sourceName };
 
     internal sealed class Container : IDisposable
     {

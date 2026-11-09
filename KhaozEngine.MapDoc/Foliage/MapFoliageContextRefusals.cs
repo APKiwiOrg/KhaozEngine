@@ -12,12 +12,17 @@ internal static class MapFoliageContextRefusals
 {
     internal static MapFoliageStatus? Classify(Exception error) => error switch
     {
+        Scene.MapSceneCapacityException => MapFoliageStatus.CapacityExceeded,
+        MapDocumentException when Scene.MapSceneCapacity.From(error) is not null => MapFoliageStatus.CapacityExceeded,
         MapSurfaceCapacityException => MapFoliageStatus.CapacityExceeded,
         MapExactOverflowException or OverflowException => MapFoliageStatus.NotRepresentable,
         MapDocumentException when MapCommonRefinement.NotRepresentable(error) => MapFoliageStatus.NotRepresentable,
         MapDocumentException { Operation: nameof(MapPrefabCapacity) } => MapFoliageStatus.CapacityExceeded,
-        MapDocumentException { Reason: MapDocumentRefusal.WorkCapacityExceeded,
-            Operation: nameof(MapPrefabPreflight.Count), Budget: not "PrefabExpansionCount" } => MapFoliageStatus.CapacityExceeded,
+        MapDocumentException
+        {
+            Reason: MapDocumentRefusal.WorkCapacityExceeded,
+            Operation: nameof(MapPrefabPreflight.Count), Budget: not "PrefabExpansionCount"
+        } => MapFoliageStatus.CapacityExceeded,
         // Consumer callbacks can still throw a message-only refusal. Its released projection remains available.
         MapDocumentException { Reason: null, Message: var message } when message.Contains("limit exceeded", StringComparison.Ordinal) =>
             MapFoliageStatus.CapacityExceeded,
@@ -29,19 +34,22 @@ internal static class MapFoliageContextRefusals
     {
         MapDocumentFinding? finding = error is MapDocumentException document ? MapDocumentFinding.FromException(document)
             : new(status == MapFoliageStatus.CapacityExceeded ? MapDocumentRefusal.WorkCapacityExceeded
-                : MapDocumentRefusal.GeometryNotRepresentable, error.Message) { Operation = "FoliageContext" };
+                : MapDocumentRefusal.GeometryNotRepresentable, error.Message)
+            { Operation = "FoliageContext" };
         return new(status, null, work)
         {
             Finding = finding is null ? null : finding with { FoliageStatus = status },
             Findings = (error as MapDocumentException)?.Findings,
             Cause = error,
+            Capacity = Scene.MapSceneCapacity.From(error),
         };
     }
 
     internal static MapFoliageContextResult FromFindings(IReadOnlyList<MapDocumentFinding> findings, MapFoliageContextWork work) =>
         new(MapFoliageStatus.Invalid, null, work)
         {
-            Finding = findings[0] with { FoliageStatus = MapFoliageStatus.Invalid }, Findings = findings,
+            Finding = findings[0] with { FoliageStatus = MapFoliageStatus.Invalid },
+            Findings = findings,
         };
 
     internal static MapFoliageContextResult SnapshotChanged(MapDocument document, MapFoliageContextWork work,
@@ -49,8 +57,12 @@ internal static class MapFoliageContextRefusals
         {
             Finding = new(MapDocumentRefusal.AcquisitionSnapshotChanged, "the foliage generation context refused this document")
             {
-                DocumentId = document.Id, FieldPath = field, ExpectedSnapshot = expected, ActualSnapshot = actual,
-                FoliageStatus = MapFoliageStatus.Invalid, Operation = "FoliageContext",
+                DocumentId = document.Id,
+                FieldPath = field,
+                ExpectedSnapshot = expected,
+                ActualSnapshot = actual,
+                FoliageStatus = MapFoliageStatus.Invalid,
+                Operation = "FoliageContext",
             },
         };
 }

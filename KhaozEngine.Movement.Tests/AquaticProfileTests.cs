@@ -90,8 +90,11 @@ public class AquaticProfileTests
         Assert.Equal(tuning.SwimExitDepthFraction, failure.ExitFraction);
         Assert.Equal(submersion, failure.SubmersionFraction);
         Assert.Equal(tuning.SwimEnterDepthFraction, failure.EnterFraction);
-        MoveTuning atLimit = tuning with { SwimSurfaceSubmersionFraction = submersion < Duck.SwimExitDepthFraction
-            ? Duck.SwimExitDepthFraction : Duck.SwimEnterDepthFraction };
+        MoveTuning atLimit = tuning with
+        {
+            SwimSurfaceSubmersionFraction = submersion < Duck.SwimExitDepthFraction
+            ? Duck.SwimExitDepthFraction : Duck.SwimEnterDepthFraction
+        };
         Assert.True(capture.BuildProfile(atLimit, default, AquaticOptions).Aquatic);
         Assert.False(capture.BuildProfile(tuning, default).Aquatic);
     }

@@ -371,7 +371,8 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
             Scope(streamKeys),
             streamKeys,
             "SQL Server mutation journal commit completed or may have completed before the response failed.",
-            exception) { Stage = stage };
+            exception)
+        { Stage = stage };
 
     private static JournalStoreException Corrupt(
         JournalStoreRefusal reason, IReadOnlyList<string> streamKeys, string message,
@@ -385,8 +386,12 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
             streamKeys,
             message)
         {
-            StreamKey = streamKey, StreamVersion = streamVersion, SectionName = sectionName,
-            OperationId = operationId, ExpectedVersion = expectedVersion, ActualVersion = actualVersion,
+            StreamKey = streamKey,
+            StreamVersion = streamVersion,
+            SectionName = sectionName,
+            OperationId = operationId,
+            ExpectedVersion = expectedVersion,
+            ActualVersion = actualVersion,
         };
 
     private static JournalStoreFailureScope Scope(IReadOnlyList<string> streamKeys)

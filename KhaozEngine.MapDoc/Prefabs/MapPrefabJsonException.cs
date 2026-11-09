@@ -30,16 +30,30 @@ public sealed class MapPrefabJsonException : JsonException
 
     internal static MapPrefabJsonException FromFinding(MapDocumentFinding finding) => new(finding.Reason, finding.Message)
     {
-        FieldPath = finding.FieldPath, EnumType = finding.EnumType, ActualText = finding.ActualText,
-        ActualInteger = finding.ActualInteger, ActualNumber = finding.ActualNumber, SurfaceId = finding.SurfaceId, SpaceId = finding.SpaceId,
+        FieldPath = finding.FieldPath,
+        EnumType = finding.EnumType,
+        ActualText = finding.ActualText,
+        ActualInteger = finding.ActualInteger,
+        ActualNumber = finding.ActualNumber,
+        SurfaceId = finding.SurfaceId,
+        SpaceId = finding.SpaceId,
     };
 
     internal MapDocumentException ToDocument(string? sourceName, string message, MapTileCoord? tile,
         string? path, string? resourceId) => new(Reason, message, this)
-    {
-        SourceName = sourceName, Tile = tile, Path = path, ResourceId = resourceId,
-        FieldPath = FieldPath ?? Path, LineNumber = LineNumber, BytePositionInLine = BytePositionInLine,
-        EnumType = EnumType, ActualText = ActualText, ActualInteger = ActualInteger, ActualNumber = ActualNumber,
-        SurfaceId = SurfaceId, SpaceId = SpaceId,
-    };
+        {
+            SourceName = sourceName,
+            Tile = tile,
+            Path = path,
+            ResourceId = resourceId,
+            FieldPath = FieldPath ?? Path,
+            LineNumber = LineNumber,
+            BytePositionInLine = BytePositionInLine,
+            EnumType = EnumType,
+            ActualText = ActualText,
+            ActualInteger = ActualInteger,
+            ActualNumber = ActualNumber,
+            SurfaceId = SurfaceId,
+            SpaceId = SpaceId,
+        };
 }

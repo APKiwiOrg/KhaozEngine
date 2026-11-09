@@ -43,8 +43,11 @@ public static class MapDocumentValidator
             bool finite = float.IsFinite(min) && float.IsFinite(max);
             Add(new(finite ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueNonfinite,
                 "bounds must satisfy MaxX > MinX and MaxZ > MinZ.")
-            { FieldPath = "$.bounds." + (!float.IsFinite(min) ? x ? "minX" : "minZ" : x ? "maxX" : "maxZ"),
-                MinimumNumber = finite ? min : null, MaximumNumber = finite ? max : null });
+            {
+                FieldPath = "$.bounds." + (!float.IsFinite(min) ? x ? "minX" : "minZ" : x ? "maxX" : "maxZ"),
+                MinimumNumber = finite ? min : null,
+                MaximumNumber = finite ? max : null
+            });
         }
         MapNativeValidation.Validate(doc, errors, findings);
         MapWaterValidation.Validate(doc, errors, new MapWaterWorkBudget(), findings);
@@ -58,20 +61,23 @@ public static class MapDocumentValidator
         for (int i = 0; i < doc.ScatterLayers.Count; i++)
         {
             MapScatterLayer layer = doc.ScatterLayers[i];
-            if (string.IsNullOrWhiteSpace(layer.Name)) { Add(Item(MapDocumentRefusal.SchemaValueRequired,
-                "every scatter layer needs a non-empty name.", "scatterLayers", i, "name", layer.Name, "scatter layer")); continue; }
+            if (string.IsNullOrWhiteSpace(layer.Name))
+            {
+                Add(Item(MapDocumentRefusal.SchemaValueRequired,
+                "every scatter layer needs a non-empty name.", "scatterLayers", i, "name", layer.Name, "scatter layer")); continue;
+            }
             if (!layerNames.Add(layer.Name)) Add(Item(MapDocumentRefusal.IdentityDuplicate,
                 $"duplicate scatter layer name '{layer.Name}'.", "scatterLayers", i, "name", layer.Name, "scatter layer"));
             if (layer.CellSize <= 0f) Add(Item(float.IsFinite(layer.CellSize) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
                 $"scatter layer '{layer.Name}': cellSize must be positive.", "scatterLayers", i, "cellSize", layer.Name, "scatter layer") with
-                { ActualNumber = float.IsFinite(layer.CellSize) ? layer.CellSize : null, MinimumNumber = 0 });
+            { ActualNumber = float.IsFinite(layer.CellSize) ? layer.CellSize : null, MinimumNumber = 0 });
             if (layer.ScaleMax < layer.ScaleMin)
             {
                 bool finite = float.IsFinite(layer.ScaleMin) && float.IsFinite(layer.ScaleMax);
                 Add(Item(finite ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
                     $"scatter layer '{layer.Name}': scaleMax must be >= scaleMin.", "scatterLayers", i,
                     !float.IsFinite(layer.ScaleMin) ? "scaleMin" : "scaleMax", layer.Name, "scatter layer") with
-                    { ActualNumber = finite ? layer.ScaleMax : null, MinimumNumber = finite ? layer.ScaleMin : null });
+                { ActualNumber = finite ? layer.ScaleMax : null, MinimumNumber = finite ? layer.ScaleMin : null });
             }
         }
 
@@ -79,17 +85,21 @@ public static class MapDocumentValidator
         for (int i = 0; i < doc.CompanionLayers.Count; i++)
         {
             MapCompanionLayer layer = doc.CompanionLayers[i];
-            if (string.IsNullOrWhiteSpace(layer.Name)) { Add(Item(MapDocumentRefusal.SchemaValueRequired,
-                "every companion layer needs a non-empty name.", "companionLayers", i, "name", layer.Name, "companion layer")); continue; }
+            if (string.IsNullOrWhiteSpace(layer.Name))
+            {
+                Add(Item(MapDocumentRefusal.SchemaValueRequired,
+                "every companion layer needs a non-empty name.", "companionLayers", i, "name", layer.Name, "companion layer")); continue;
+            }
             if (!companionNames.Add(layer.Name)) Add(Item(MapDocumentRefusal.IdentityDuplicate,
                 $"duplicate companion layer name '{layer.Name}'.", "companionLayers", i, "name", layer.Name, "companion layer"));
             if (!layerNames.Contains(layer.HostLayer))
                 Add(Item(MapDocumentRefusal.ReferenceMissing,
                     $"companion layer '{layer.Name}': host layer '{layer.HostLayer}' is not a scatter layer in this document.",
-                    "companionLayers", i, "hostLayer", layer.Name, "companion layer") with { LayerId = layer.HostLayer });
+                    "companionLayers", i, "hostLayer", layer.Name, "companion layer") with
+                { LayerId = layer.HostLayer });
             if (layer.CountMax < layer.CountMin) Add(Item(MapDocumentRefusal.ValueOutsideRange,
                 $"companion layer '{layer.Name}': countMax must be >= countMin.", "companionLayers", i, "countMax", layer.Name, "companion layer") with
-                { ActualInteger = layer.CountMax, MinimumInteger = layer.CountMin });
+            { ActualInteger = layer.CountMax, MinimumInteger = layer.CountMin });
         }
 
         var exclusionNames = new HashSet<string>(StringComparer.Ordinal);
@@ -112,7 +122,7 @@ public static class MapDocumentValidator
                 "scatterOverrides", i, "shape", o.Name, "scatter override"));
             if (o.DensityMultiplier < 0f) Add(Item(float.IsFinite(o.DensityMultiplier) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
                 $"scatterOverrides[{i}]: densityMultiplier must be >= 0.", "scatterOverrides", i, "densityMultiplier", o.Name, "scatter override") with
-                { ActualNumber = float.IsFinite(o.DensityMultiplier) ? o.DensityMultiplier : null, MinimumNumber = 0 });
+            { ActualNumber = float.IsFinite(o.DensityMultiplier) ? o.DensityMultiplier : null, MinimumNumber = 0 });
             if (!string.IsNullOrEmpty(o.Name) && !scatterOverrideNames.Add(o.Name))
                 Add(Item(MapDocumentRefusal.IdentityDuplicate, $"duplicate scatter override name '{o.Name}'.",
                     "scatterOverrides", i, "name", o.Name, "scatter override"));
@@ -148,7 +158,8 @@ public static class MapDocumentValidator
             if (!registry.TryGetFeatureDocType(type, out _))
                 Add(Item(MapDocumentRefusal.DocumentTerrainFeatureUnknown,
                     $"terrain feature type '{type}' is not registered on the MapDocRegistry.",
-                    "terrain.features", i, "type", f.Name, "terrain feature") with { ActualText = type });
+                    "terrain.features", i, "type", f.Name, "terrain feature") with
+                { ActualText = type });
             if (!string.IsNullOrEmpty(f.Name) && !featureNames.Add(f.Name))
                 Add(Item(MapDocumentRefusal.IdentityDuplicate, $"duplicate terrain feature name '{f.Name}'.",
                     "terrain.features", i, "name", f.Name, "terrain feature"));
@@ -196,7 +207,8 @@ public static class MapDocumentValidator
         else if (ids is not null && !ids.Add(p.Id)) Add(errors, findings, Placement(MapDocumentRefusal.IdentityDuplicate, $"duplicate placement id '{p.Id}'.", "id"));
         if (string.IsNullOrWhiteSpace(p.Kind)) Add(errors, findings, Placement(MapDocumentRefusal.SchemaValueRequired, $"placement '{p.Id}': kind must be non-empty.", "kind"));
         if (p.Scale <= 0f) Add(errors, findings, Placement(float.IsFinite(p.Scale) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
-            $"placement '{p.Id}': scale must be positive.", "scale") with { ActualNumber = float.IsFinite(p.Scale) ? p.Scale : null, MinimumNumber = 0 });
+            $"placement '{p.Id}': scale must be positive.", "scale") with
+        { ActualNumber = float.IsFinite(p.Scale) ? p.Scale : null, MinimumNumber = 0 });
 
         MapDocumentFinding Placement(MapDocumentRefusal reason, string message, string field) =>
             Item(reason, message, "placements", index, field, p.Id, "placement") with { PlacementId = p.Id };
@@ -275,9 +287,14 @@ public static class MapDocumentValidator
             float actual = field == "minX" ? minX : field == "maxX" ? maxX : field == "minZ" ? minZ : maxZ;
             Add(errors, findings, new(float.IsFinite(actual) ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.ValueNonfinite,
                 $"terrainOverrides tile ({tile.TileX}, {tile.TileZ}) extent [{minX}..{maxX}] x [{minZ}..{maxZ}] leaves the document bounds.")
-            { SculptTile = new(tile.TileX, tile.TileZ), Index = index, FieldPath = $"$.terrainOverrides.tiles[{index}].{field}",
+            {
+                SculptTile = new(tile.TileX, tile.TileZ),
+                Index = index,
+                FieldPath = $"$.terrainOverrides.tiles[{index}].{field}",
                 ActualNumber = float.IsFinite(actual) ? actual : null,
-                MinimumNumber = x ? bounds.MinX : bounds.MinZ, MaximumNumber = x ? bounds.MaxX : bounds.MaxZ });
+                MinimumNumber = x ? bounds.MinX : bounds.MinZ,
+                MaximumNumber = x ? bounds.MaxX : bounds.MaxZ
+            });
         }
     }
 

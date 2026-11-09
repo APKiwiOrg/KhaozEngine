@@ -18,11 +18,11 @@ using Refusal = KhaozEngine.Tests.MapDocOracle.PrivateOracleDataRefusal;
 
 namespace KhaozEngine.Tests.MapDocOracle;
 
-internal sealed record ShippedMarkerReport(IReadOnlyList<string> Failures, string DetailJson);
+internal sealed record ShippedMarkerReport(IReadOnlyList<string> Failures, string DetailJson, IReadOnlyList<OracleComparisonFailure> ClassifiedFailures);
 
 /// <summary>Assertion-free comparison. Its source-derived details belong only in the secure private report.</summary>
 [UnsupportedOSPlatform("windows")]
-internal static class ShippedMarkerComparison
+internal static partial class ShippedMarkerComparison
 {
     internal const double PositionTolerance = 0.00001;
     internal const double YawTolerance = 0.000001;
@@ -33,15 +33,14 @@ internal static class ShippedMarkerComparison
         var evidence = new Evidence();
         // The authoritative server stands bodies on its collider ground and on walk surfaces. The ground sampler reads
         // terrain only, so it is built from a view without objects, which no unrelated archetype can refuse.
-        var ground = TileWorldColliders.Build(ObjectView(inputs.World, null), inputs.Catalogs).Ground;
-        var expected = inputs.SourceMarkers.Select(marker => Expected(inputs, marker, ground)).ToArray();
+        var expected = SourcePoints(inputs);
         var owners = inputs.Supports.Values.Where(s => s.ObjectId is not null).ToDictionary(s => s.Name,
             s => ObjectView(inputs.World, s.ObjectId!.Value), StringComparer.Ordinal);
         foreach (var point in expected)
         {
             var support = inputs.Supports[point.Role.SupportName];
             if (support.SourceKind == "object")
-                evidence.Check("source-support", TileWalkSurfaces.TryHeightAt(owners[support.Name], inputs.Catalogs,
+                evidence.Resource("Marker", "marker", "source-").Check("source-support", TileWalkSurfaces.TryHeightAt(owners[support.Name], inputs.Catalogs,
                     point.Position.X, point.Position.Z, point.Source.Plane, out float top) && Near(top, point.Position.Y),
                     new { sourceName = point.Source.Name, supportName = support.Name, expectedY = point.Position.Y, ownerY = top });
         }
@@ -74,7 +73,7 @@ internal static class ShippedMarkerComparison
                 foreach (var marker in first.Markers)
                 {
                     var other = world.Markers.SingleOrDefault(m => m.Id == marker.Id);
-                    evidence.Check("head-marker", other is not null && SameMarker(marker, other), new { head = i, marker.Id });
+                    evidence.Resource("Marker", "marker").Check("head-marker", other is not null && SameMarker(marker, other), new { head = i, marker.Id });
                 }
             }
             return evidence.Report(heads.Length, inputs.SourceMarkers.Count);
@@ -114,25 +113,26 @@ internal static class ShippedMarkerComparison
         foreach (var point in expected)
         {
             var role = point.Role;
+            var markerChecks = evidence.Resource("Marker", "marker", "marker-");
             var marker = registry.FindById(role.Id);
             if (marker is null) continue;
-            evidence.Check("marker-name", marker.Name == point.Source.Name && registry.FindByName(point.Source.Name)?.Id == role.Id, new { head, marker.Id, expected = point.Source.Name, marker.Name });
-            evidence.Check("marker-tags", marker.Tags.SequenceEqual(point.Source.Tags), new { head, marker.Id, expected = point.Source.Tags, marker.Tags });
-            evidence.Check("marker-role", marker.Role == role.Role, new { head, marker.Id, expected = role.Role, marker.Role });
-            evidence.Check("marker-enabled", marker.Enabled == role.Enabled, new { head, marker.Id, expected = role.Enabled, marker.Enabled });
-            evidence.Check("marker-archetype", marker.ArchetypeId == role.Archetype, new { head, marker.Id, expected = role.Archetype, marker.ArchetypeId });
-            evidence.Check("marker-position", Near(marker.Position.X.ToDouble(), point.Position.X) && Near(marker.Position.Z.ToDouble(), point.Position.Z),
+            markerChecks.Check("marker-name", marker.Name == point.Source.Name && registry.FindByName(point.Source.Name)?.Id == role.Id, new { head, marker.Id, expected = point.Source.Name, marker.Name });
+            markerChecks.Check("marker-tags", marker.Tags.SequenceEqual(point.Source.Tags), new { head, marker.Id, expected = point.Source.Tags, marker.Tags });
+            markerChecks.Check("marker-role", marker.Role == role.Role, new { head, marker.Id, expected = role.Role, marker.Role });
+            markerChecks.Check("marker-enabled", marker.Enabled == role.Enabled, new { head, marker.Id, expected = role.Enabled, marker.Enabled });
+            markerChecks.Check("marker-archetype", marker.ArchetypeId == role.Archetype, new { head, marker.Id, expected = role.Archetype, marker.ArchetypeId });
+            markerChecks.Check("marker-position", Near(marker.Position.X.ToDouble(), point.Position.X) && Near(marker.Position.Z.ToDouble(), point.Position.Z),
                 new { head, marker.Id, expected = new[] { point.Position.X, point.Position.Z }, actual = new[] { marker.Position.X.ToDouble(), marker.Position.Z.ToDouble() }, tolerance = PositionTolerance });
-            evidence.Check("marker-height", Near(marker.Position.Y.ToDouble(), point.Position.Y),
+            markerChecks.Check("marker-height", Near(marker.Position.Y.ToDouble(), point.Position.Y),
                 new { head, marker.Id, role.HeightRule, expected = point.Position.Y, actual = marker.Position.Y.ToDouble(), tolerance = PositionTolerance });
-            evidence.Check("marker-yaw", Math.Abs(Math.IEEERemainder(marker.YawRadians - role.Yaw, 2 * Math.PI)) <= YawTolerance,
+            markerChecks.Check("marker-yaw", Math.Abs(Math.IEEERemainder(marker.YawRadians - role.Yaw, 2 * Math.PI)) <= YawTolerance,
                 new { head, marker.Id, expected = role.Yaw, marker.YawRadians, tolerance = YawTolerance });
-            CompareSupport(inputs, world, marker, role, evidence, head);
+            CompareSupport(inputs, world, marker, role, markerChecks, head);
             var correspondence = inputs.Correspondences[point.Source.Name];
             var membership = MapMarkerSpaces.Query(world.Surfaces, marker);
-            evidence.Check("marker-space", membership.Status == (correspondence.SpaceId is null ? MapMembershipStatus.Outside : MapMembershipStatus.Resolved) && membership.SpaceId == correspondence.SpaceId,
+            markerChecks.Check("marker-space", membership.Status == (correspondence.SpaceId is null ? MapMembershipStatus.Outside : MapMembershipStatus.Resolved) && membership.SpaceId == correspondence.SpaceId,
                 new { head, marker.Id, expected = correspondence.SpaceId, status = membership.Status.ToString(), membership.SpaceId });
-            evidence.Check("marker-parents", membership.ParentSpaceIds.SequenceEqual(correspondence.Parents),
+            markerChecks.Check("marker-parents", membership.ParentSpaceIds.SequenceEqual(correspondence.Parents),
                 new { head, marker.Id, expected = correspondence.Parents, actual = membership.ParentSpaceIds });
             if (role.Projection == "label") evidence.Record("label-point", new
             {
@@ -143,10 +143,10 @@ internal static class ShippedMarkerComparison
                 acceptance = "deferred R11 acceptance",
             });
         }
-        CompareQueries(world, registry, expected, evidence, head);
+        CompareQueries(world, registry, expected, evidence.Resource("Marker", "registry"), head);
     }
 
-    static void CompareSupport(ShippedMarkerInputs inputs, MapBuiltWorld world, MapEffectiveMarker marker, MarkerRoleRule role, Evidence evidence, int head)
+    static void CompareSupport(ShippedMarkerInputs inputs, MapBuiltWorld world, MapEffectiveMarker marker, MarkerRoleRule role, OracleResourceChecks evidence, int head)
     {
         var provenance = marker.HeightProvenance;
         var support = world.Document.EffectiveResources!.MarkerSupports.SingleOrDefault(s => s.MarkerId == marker.Id)?.Support;
@@ -162,7 +162,7 @@ internal static class ShippedMarkerComparison
             : support is null && provenance is { Face: null, SpaceId: null, Via: null, WorldY: null }, new { head, marker.Id, actual = provenance });
     }
 
-    static void CompareQueries(MapBuiltWorld world, MapMarkerRegistry registry, ExpectedPoint[] expected, Evidence evidence, int head)
+    static void CompareQueries(MapBuiltWorld world, MapMarkerRegistry registry, ExpectedPoint[] expected, OracleResourceChecks evidence, int head)
     {
         foreach (var group in expected.GroupBy(p => p.Role.Role, StringComparer.Ordinal))
         {
@@ -250,17 +250,21 @@ internal static class ShippedMarkerComparison
     sealed class Evidence
     {
         readonly List<string> _failures = new();
+        readonly List<OracleComparisonFailure> _classified = new();
         readonly List<object> _details = new();
         readonly List<object> _records = new();
         readonly Dictionary<string, int> _checks = new(StringComparer.Ordinal);
-        internal void Check(string category, bool ok, object detail)
+        internal OracleResourceChecks Resource(string kind, string keyClass, string prefix = "") => new(CheckClassified, kind, keyClass, prefix);
+        internal void Check(string category, bool ok, object detail) => CheckClassified(category, ok, detail, new("Scene", "scene", category));
+        void CheckClassified(string category, bool ok, object detail, SceneFailureClassification classification)
         {
             _checks[category] = _checks.GetValueOrDefault(category) + 1;
             if (ok) return;
             _failures.Add(category); _details.Add(new { category, detail });
+            _classified.Add(new(category, detail, classification));
         }
         internal void Record(string category, object detail) => _records.Add(new { category, detail });
         internal ShippedMarkerReport Report(int heads, int sourceMarkers) => new(_failures.AsReadOnly(), JsonSerializer.Serialize(new
-        { heads, sourceMarkers, checks = _checks, failures = _details, records = _records }));
+        { heads, sourceMarkers, checks = _checks, failures = _details, records = _records }), _classified.AsReadOnly());
     }
 }

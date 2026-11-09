@@ -16,7 +16,12 @@ public static partial class GltfLoader
         if (!SkinningMath.AreBoneIndicesValid(boneIndices, jointCount))
             throw new GltfImportStateException(GltfImportRefusal.SkinJointIndexOutsideRange,
                 $"glTF JOINTS_0 references a bone index outside [0,{jointCount}): {identity}")
-            { Identity = identity, JointCount = jointCount, BoneIndices = boneIndices,
-                VertexIndex = vertexIndex, PartIndex = partIndex };
+            {
+                Identity = identity,
+                JointCount = jointCount,
+                BoneIndices = boneIndices,
+                VertexIndex = vertexIndex,
+                PartIndex = partIndex
+            };
     }
 }

@@ -44,9 +44,14 @@ public sealed class MapMutationException : InvalidOperationException
         MapDocumentFinding first = findings[0];
         return new(first.Reason, message)
         {
-            DocumentId = first.DocumentId, EntityId = first.EntityId, SubjectKind = first.SubjectKind,
-            FieldPath = first.FieldPath, LayerId = first.LayerId, PlacementId = first.PlacementId,
-            Index = first.Index, Findings = findings,
+            DocumentId = first.DocumentId,
+            EntityId = first.EntityId,
+            SubjectKind = first.SubjectKind,
+            FieldPath = first.FieldPath,
+            LayerId = first.LayerId,
+            PlacementId = first.PlacementId,
+            Index = first.Index,
+            Findings = findings,
         };
     }
 }

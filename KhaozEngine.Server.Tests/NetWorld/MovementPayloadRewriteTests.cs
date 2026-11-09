@@ -110,9 +110,16 @@ public class MovementPayloadRewriteTests
 
     private static readonly MovementCommitment LegacyCommitment = new()
     {
-        Sequence = 71, Phase = MovementCommitmentPhase.Airborne, Direction = new Vector2(0.6f, -0.8f),
-        HorizontalSpeed = 7.5f, VerticalSpeed = 8.25f, Gravity = 17f, PreparationRemaining = 0.125f,
-        RecoveryRemaining = 0.25f, TimeoutRemaining = 3.75f, EndReason = MovementCommitmentEndReason.Blocked,
+        Sequence = 71,
+        Phase = MovementCommitmentPhase.Airborne,
+        Direction = new Vector2(0.6f, -0.8f),
+        HorizontalSpeed = 7.5f,
+        VerticalSpeed = 8.25f,
+        Gravity = 17f,
+        PreparationRemaining = 0.125f,
+        RecoveryRemaining = 0.25f,
+        TimeoutRemaining = 3.75f,
+        EndReason = MovementCommitmentEndReason.Blocked,
     };
 
     // Hand-encoded historical fields, independent of both the live codec and production rewriter.

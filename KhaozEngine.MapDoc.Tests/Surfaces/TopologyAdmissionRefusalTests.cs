@@ -256,9 +256,13 @@ public sealed class TopologyAdmissionRefusalTests
         Assert.Equal("plane-0", finding.SurfaceId);
         Assert.Equal(fault switch
         {
-            "space" => "Space.Kind", "upper" => "Upper.Kind", "null" => "Lower.Surface",
-            "role" => "Lower.Surface.Role", "presence" => "Lower.Surface.PresencePolicy",
-            "frame" => "Lower.Surface.Frame", _ => "Lattice.SurfaceId",
+            "space" => "Space.Kind",
+            "upper" => "Upper.Kind",
+            "null" => "Lower.Surface",
+            "role" => "Lower.Surface.Role",
+            "presence" => "Lower.Surface.PresencePolicy",
+            "frame" => "Lower.Surface.Frame",
+            _ => "Lattice.SurfaceId",
         }, finding.FieldPath);
         Assert.Equal(2, patch.Records.Count);
         Assert.Null(MapLegacyExteriorRecipe.CheckFinding(footprint, space, world.Surfaces[0]));

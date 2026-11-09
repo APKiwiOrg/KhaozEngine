@@ -111,6 +111,9 @@ It requires a non-nullable `PrivateOracleDataRefusal` reason. Its reason-taking 
 private original exception. The readers carry no identifier fields because source paths, coordinates,
 identities, tags, content digests and inventory counts belong only in the secure report. The existing
 messages remain developer prose. The entry boundary still sanitizes all failures.
+Scene capture, selection and policy readers use this family too. Undeclared monolithic reloads and
+texture reads use `DependencyUnattested`. Duplicate provenance fields use `IdentityNotUniqueOrCanonical`,
+unsupported light exclusion kinds use `KindUnsupported`, and ambiguous observer floors use `OwnershipMismatch`.
 
 | Reason | Refused data | Identifiers |
 |---|---|---|
@@ -195,9 +198,9 @@ recorder, synthetic guard and private inventory runs.
 `ShippedBuildingInputs.Read` and `ShippedBuildingComparison.Compare` are test-only. The shipped building
 entry runs through the existing private entry boundary. It has no discovery-time reads. Implementers select
 only `ShippedBuildingInputGuardTests` and `PrivateOracleGuardTests`, never the shipped building fact.
-The architecture guard pins exactly seven direct engine references, MapDoc, MapDoc.Physics, Physics.Bepu,
-TileWorld, TileWorld.Netcode, TileWorld.Physics and the test-only TileWorld.Render3D that the
-foliage comparison samples through. The harness remains outside the solution and public CI and is
+The architecture guard pins exactly eight direct engine references, MapDoc, MapDoc.Physics, MapDoc.Render3D,
+Physics.Bepu, TileWorld, TileWorld.Netcode, TileWorld.Physics and TileWorld.Render3D. Both render edges
+are test-only. The source and native recorders create no device, window or provider. The harness remains outside the solution and public CI and is
 not packable.
 
 The controller freezes the source and creates a fresh extraction and its provenance outside git. Nothing here searches a game
@@ -752,3 +755,247 @@ support owners, head matches and failure counts, then each failed category with 
 details. Successes stream as aggregates and the full candidate corpus is never retained. Public output is
 the sanitized category and report digest only. This is a comparison, neither R11 importer acceptance nor
 game adoption.
+
+## Scene extraction contract
+
+`ShippedSceneInputs.Read`, `ShippedSceneManifest.Read`, `LegacySceneRecorder.Record` and
+`ShippedSceneComparison.Compare` are test-only. The private fact is
+`ShippedScene_DrawSetsAndStreamingPreserveEveryResource`. It has no discovery-time reads and enters
+through `PrivateOracleEntry.Run`. Implementers select only `ShippedSceneInputGuardTests` and
+`PrivateOracleGuardTests`, plus the explicitly named building/marker/foliage guard regression filter.
+Never run this project unfiltered or use a broad ShippedScene filter. Only the controller runs the
+private fact, once per fully gated candidate, into a fresh absent report path.
+
+Scope is full resource and typed submission comparison, complete versus streamed union, lifetime and
+replacement. It is comparison scaffolding, not R11 conversion, importer acceptance, appearance or game
+adoption. R8b owns private appearance. Correspondence maps keys only. It cannot contain expected
+geometry, bounds, transforms or draw lists. Original catalogs and source routes supply expected data.
+Native data never supplies the expected inventory. Each head validates its own closure/source/scope/
+policy/generation stamp. Local generation counters need not agree between independent heads.
+
+The full entry and the seam guards share `ShippedSceneComparison.CompareDrawSets` for keyed,
+consuming one-to-one submission matching. Legacy prop emission retains `GroundObjectIds` and
+`RoofObjectIds`, mapped owner/part/LOD keys, original meshes/material maps, transforms and all channels.
+No coincident owner can borrow another owner's draw. Missing, duplicate and unmatched submissions
+fail. Legacy HLOD grouping and transition distances use the original source tile size, independently
+of the native document. Independent source canonical faces and water domains establish required
+batches, with prepared keys and anchors serving only as checked transport correspondences.
+Native Write output never selects the expected frame roster. Every expected terrain, light, water and foliage write is required
+before its complete typed frame values are compared.
+Submitted terrain triangles must cover their independently matched source faces without holes or overlap.
+Their positions and normals bind to the source plane. Decoded material slots and weights bind to source
+underlay, overlay cuts and the released legacy feather boundary, independently of render triangulation order.
+Source-selected interior and feather samples use the released legacy mesher's subdivision lattice.
+At those points, the submitted triangle attributes are interpolated before decoding paint. When tolerant
+membership admits a point just outside a submitted triangle, negative barycentric coordinates are clamped
+to zero and renormalized before interpolation. Payload weights still require finite values in [0, 1].
+Correct boundary vertices alone cannot certify the interior, and removing feather refinement fails acceptance.
+Decoded blend weights compare within 0.000001 after source boundary sampling and material-ID remapping.
+Submitted water meshes cover the source body's cell domains at its source level. Clip payloads cover the
+complete source cells in the source water policy's displacement halo, in the submitted anchor frame.
+Equal XZ area alone cannot certify either domain. Mesh and clip triangulation order may differ.
+Every window receives these payload checks. A window without a policy probe records a real baseline
+frame through residency, then compares that submitted geometry against the same source expectations.
+Terrain submission counts must match the independent source-bound batch roster in every window.
+Every submitted terrain draw is checked, including additional draws of an already registered resource.
+
+`LegacySceneRecorder.RecordFoliage` independently traces the source sampler for every logical
+generation whose source model reach intersects the declared window and motion padding. Owners proven
+outside the legacy sampler's closed raster domain are excluded before generation. Empty generations
+inside that domain are retained regardless of density or eligibility. Selection uses only source
+layer settings and attested source model extents.
+The source raster ownership interval is derived before enumeration using the legacy sampler's closed
+binary32 domain. Only in-raster owners charge the attested `foliageContext.maxChunkDescriptors` allowance
+(the released default when omitted). Empty in-raster owners still charge that allowance and stay required.
+Generation multisets, complete sample key multisets and per-generation row counts are checked in both
+directions. Source matrices, ranks, model bindings
+and padded bounds are checked against observed payloads. Both explicit plants and generated models compare every original part's
+albedo, normal, roughness and alpha cutoff. Hidden roof expectations retain Shadow, Sky and Physical
+while removing Colour, Selection and Camera. Camera and sky flags are checked independently.
+
+Public full-entry guards omit a whole generation or one row, suppress each non-rigid category's Write
+while retaining registration/inventory, remove a coincident owner, add a distinct part, change only a
+roof camera/sky flag, and change each foliage material map. These guards use invented inputs and a
+harness-only observation boundary. They never set process variables or invoke the private fact.
+
+The controller retains generator/helper sources, their build pin and all comparison inputs privately.
+Include exactly one attested source world manifest, every indexed region, catalogs, prefabs, membership,
+roles, foliage correspondence, original meshes and every LOD, texture, collider, selection and light
+input. Include the complete native tiled manifest, every page/patch/record/foliage pack and asset/material graph.
+The tiled store is the required, independently verified bootstrap. A native monolithic document is optional.
+Declare its attested path to require full native authored identity and head parity, or set `nativeDocumentPath` to null.
+Parity covers native roots, authored tile content and surface payload facts without monolithic serialization.
+Include live source render/roof/cluster/foliage/light policy and native policy. Every file participates in the existing ordinal path TAB SHA256 LF aggregate. Verify the
+provenance byte digest before parsing. Reads use captured attested bytes with no ambient dependency
+lookup. The released file readers are followed by a complete source recheck. Missing inputs fail.
+
+### Closed scene manifest, schema 1
+
+Each marker correspondence row in the linked marker manifest requires both membership pairs:
+`spaceId` (string or null) and ordered `parents` describe the standalone R6 document, while
+`sceneSpaceId` (string or null) and ordered `sceneParents` describe the combined scene. The scene
+head and plan checks read the scene pair. The linked scaffold check retains the standalone pair.
+Missing either pair refuses the closed scene input. Scene expectations come independently from
+source topology, including room parents and Outside status. Null is not translated or suppressed.
+Standalone R6 marker manifests retain their existing closed shape.
+
+Every object has exactly the named case-sensitive fields. Unknown, missing, duplicate and case-variant
+members refuse. The root may additionally declare the optional `limits` object below. All lists are required, including empty categories. String IDs are nonempty and ordinal.
+Paths are attested extraction-relative paths, without roots, drives, backslashes, dot segments or links.
+Source and native keys are unique, with complete source coverage checked before draw comparison.
+
+| Row | Exact fields and constraints |
+| --- | --- |
+| Root | `schemaVersion`, `generator`, `nativeDocumentPath`, `nativeTiledManifestPath`, `buildingManifestPath`, `markerManifestPath`, `foliageManifestPath`, `assetSelections`, `materials`, `placements`, `lights`, `roofs`, `water`, `foliage`, `windows`, `sequence`, `policy`, `expectations`. `schemaVersion` is 1. `nativeDocumentPath` is an attested path or null, and `nativeTiledManifestPath` is required and non-null |
+| limits (optional) | Required `scene` and `residency`, with optional `queries`, `decode`, `assets`, `foliage`, `foliageContext`, `water`, `refinement` and `maxProofBytes`. Every declared family object is complete. Null refuses. Every value is a positive JSON integer within its field's range. Unknown, missing, duplicate and case-variant fields refuse |
+| limits.scene | Exactly `maxTiles`, `maxMetadataRows`, `maxMemberships`, `maxMembershipsPerResource`, `maxScannedBytes`, `maxMetadataBytes`, `maxSelectedResources`, `maxPatchScopes`, `maxPreparedFaces`, `maxPreparedBytes`, matching `MapSceneLimits`. Byte fields are int64, all other fields are int32 |
+| limits.queries (optional) | Exactly `maxCandidatePatches`, `maxInspectedFaces`, `maxSupportIntersections`, `maxPageReads`, `maxRecordReads`, `maxRecordDepth`, matching `MapQueryLimits`. All fields are positive int32 values. Omission preserves the existing query defaults |
+| limits.residency | Exactly `maxWorkers`, `maxQueuedPlans`, `maxQueuedBytes`, `maxAppliesPerUpdate`, `maxUploadBytesPerUpdate`, `maxDisposalsPerUpdate`, `maxResidentCpuBytes`, `maxResidentGpuBytes`, `maxPlanBytes`, `maxActiveWindows`, `maxInFlightUploadCpuBytes`, `maxInFlightUploadStagingGpuBytes`, matching `MapRenderBudgets`. Byte fields are int64, all other fields are int32 |
+| limits.decode (optional) | Exactly `maxPeakBytes`, `maxVertices`, `maxIndices`, `maxImagePixels`, `maxImages`, matching `GltfDecodeLimits`. Peak bytes are int64, counts are int32 |
+| limits.assets (optional) | Exactly `maxDecodedBytes`, `maxParts`, `maxLods`, matching `MapRenderAssetLimits`. Decoded bytes are int64, counts are int32. Applies to complete selected sets, including cached pieces |
+| limits.foliage (optional) | Exactly `maxCandidates`, `maxSamples`, `maxPrepareScopes`, `maxFaces`, `maxRuleCandidates`, `maxMaskCandidates`, `maxQueryChunks`, `maxQuerySamples`, `maxQueryRetainedBytes`, `maxDifferentialCandidates`, `maxChangeRows`, `maxComparisonPreparedChunks`, `maxComparisonRetainedBytes`, matching `MapFoliageLimits`. Query sample and byte totals, differential candidates and change rows are int64. Other values are int32 |
+| limits.foliageContext (optional) | Exactly `maxSourceUtf8Bytes`, `maxChunkDescriptors`, `maxPlacements`, `maxSurfacePatches`, `maxPaintTargets`, matching `MapFoliageContextLimits`. Source bytes are int64, other values are int32 |
+| limits.water (optional) | Exactly `maxPieces`, `maxPieceVertices`, `maxFootprintCells`, `maxBoundFaces`, `maxPairChecks`, `maxTriangles`, `maxBoundCells`, matching the scalar members of `MapWaterCompileLimits`. All are int32. Bound reads use `limits.refinement` when declared |
+| limits.refinement (optional) | Exactly `maxSourceFacesPerBound`, `maxPairChecks`, `maxRefinementFaces`, `maxRefinementVertices`, `maxContextPatches`, `maxContextFaces`, matching `MapRefinementLimits`. All are int32. Applies to partial paint, nested support membership and water bound reads |
+| limits.maxProofBytes (optional) | Positive int64 extent-proof metadata allowance. Omission retains the validator's default |
+| generator | `{path,helpers}` with unique attested paths, including every retained helper and pinned helper-build input |
+| assetSelections | `{sourceArchetypeId,nativeAssetIds}`. Unique source catalog IDs, each with nonempty unique native asset catalog IDs. Required for every declared source selection, including unplaced selections and foliage policy model IDs. Observed placement and foliage bindings must be included. Extra catalog mappings are permitted |
+| materials | `{sourceMaterialId,nativeResourceId}`. Source IDs are positive ushort values |
+| placements | `{sourceObjectId,nativePlacementId,lods}`. Object IDs are positive canonical decimal int64 strings |
+| lods | `{sourcePath,nativeResourceId}` in original base/LOD order, checked against the original catalog |
+| lights | `{sourceObjectId,sourceProfileId,nativeLightId}`. Multiple profile instances require independent original source declarations |
+| roofs | `{sourceObjectId,nativePlacementId}`, checked against retained building links/groups and original roof inventory |
+| water | `{sourceBodyKey,nativeBodyId,nativeSpaceIds}` with unique space IDs |
+| foliage | `{sourceLayerId,nativeLayerId}`, checked against the full retained R7 correspondence |
+| windows | `{id,minX,minY,minZ,maxX,maxY,maxZ,spaceIds,motionPaddingMetres}`. Bounds are finite ordered doubles, padding is explicit and nonnegative, space IDs are null or unique |
+| sequence | `{operation,windowId}`. Operation is `Load`, `Unload` or `Recenter`, referring to valid named windows with valid transitions |
+| policy | `{sourcePolicyPath,nativePolicyPath,probes}`, two attested files and nonempty probes |
+| probes | `{id,windowId,observerX,observerY,observerZ,roofMode,timeSeconds,windSeed,focusX,focusY,focusZ}`. Coordinates/time are finite, seed is int32, roof mode is `Auto`, `AlwaysVisible` or `AlwaysHidden` |
+| expectations | Exactly nonnegative integer `terrainFaces`, `placements`, `parts`, `lods`, `lights`, `roofs`, `waterRegions`, `foliageSamples`, `windows`, `sequenceSteps`. Counts are independently derived from source, never copied from native output |
+
+The optional limits profile is part of the comparison object, covered by the provenance file's required
+SHA-256 attestation before parsing. Changing any allowance requires a fresh attestation. Its scene limits
+apply at source capture and every direct or streamed acquisition. Its residency budgets apply to every
+complete window and the streaming sequence. Declared query limits follow every window into native dependency
+closure, foliage support and owner seats, water, cluster cells and roof membership. Query refusals retain
+their limit, demand and allowance through scene and residency results. Refusals include the limit name, requested amount and
+allowance in typed capacity findings and diagnostic messages. Bounded discovery reports the first excess
+demand, without scanning the remainder. No limit truncates a comparison to make it pass. Bounded completion exhaustion reports the final
+transition capacity and findings. Ordinary upload pressure remains pending while the existing completion
+loop can still make progress.
+
+Omitting `limits` preserves existing behavior. Scene limits use the unchanged engine defaults. The harness
+retains its existing 67,108,864-byte per-plan allowance and its 256-active-window streaming allowance,
+with engine defaults for its other residency budgets and for omitted query limits. Each declared family
+supplies its complete set of values. Omitted preparation and decode families preserve existing per-call
+defaults, including allowances derived from remaining scene and residency memory. Explicit ceilings clamp
+those remaining allowances. Shared residency byte admission enforces the declared foliage-context
+policy. Foliage sample retention is aggregate across the captured context cache, with a 64 MiB default
+on omission. Explicit larger allowances remain available through distribution and cache admission.
+A cache retention refusal reports retained bytes plus the next reservation against the declared total.
+The profile covers all 67 scalar limits in the nine registered families,
+plus the extent-proof metadata byte allowance. Full input expansion and foliage correspondence capture
+use the same declared query and context limits as window preparation. Decode limits follow extent
+scratch work and every selected asset, material and composition decode into residency.
+
+Linked building and marker paths retain their existing full comparison objects and their transitive
+manifest dependencies. The foliage path retains the full R7 manifest. A participating category requires
+its linked correspondence, an absent category requires null. Retain accepted earlier scaffold format
+policies in those existing readers. The required scene tiled store and any declared monolithic document use current format 9.
+Marker correspondence also binds every effective marker in each actual scene head and every scoped or
+streamed plan to source standing points, roles, tags, bindings and space membership. A correct linked
+marker scaffold cannot stand in for the scene's own marker inventory. Disabled markers remain required.
+
+Load introduces an inactive named window. Unload removes an active window. Recenter introduces the
+new named window while preserving other active memberships, so load A/load B/unload A/recenter C/
+unload B/unload C ends with zero live resources. The sequence must end empty.
+
+A policy file has exactly `placements`, `animatedAssets`, `foliage`, `water`, `lights`, `modelExtents`. Placements has
+`layers` and `defaultDrawRadius`. Layer rows have exactly the released `MapPlacementLayer` serialized
+properties `id`, `assetIds`, `lodDistances`, `lodCrossfadeWidth`, `drawRadius`, `hlodDistance`,
+`hlodCrossfadeWidth`, `hlodWeldCell`, `castsShadows`. Source selections name original catalog archetypes and
+native selections name mapped catalog assets. Correspondence comes from the attested `assetSelections` rows,
+independently of placements and both policies. Missing mappings refuse, and equal IDs are never assumed.
+Declared selections may have no placements. Their attested
+base/LOD meshes are still resolved from the catalogs, and they emit no draws. Foliage and water are complete closed camel-case serializations
+of the candidate's `GroundCoverRenderOptions` and `WaterLook`, including nullable members and vector
+fields. Stable profiles/casting are model registration inputs. Frame policy excludes stable values.
+`modelExtents` is the explicit list of released `MapFoliageModelExtent` rows with `assetId`,
+`boundsInSourceUnits`, `sourceUnitsToMetres`, `motionPaddingMetres`. Source extents come from original
+meshes and the retained source motion policy, native extents name mapped assets. No padding is inferred.
+Light extractor rows are `{sourceObjectId,sourceProfileId,offset,colour,intensity,radius,castShadows}`,
+with finite vectors, positive radius, nonnegative intensity and unique source object/profile pairs.
+An optional `shadowExclusion` retains the source emitter's declared rule. Its closed shapes are
+`{"kind":"None"}`, `{"kind":"NearSphere","radius":0.625}` or
+`{"kind":"FixtureBox","min":{"x":-1,"y":-1,"z":-1},"max":{"x":1,"y":1,"z":1},"margin":0.125}`.
+Sphere radius and box margin are finite nonnegative world metres. Box corners are finite, strictly
+ordered owner-local metres. Every source light has its mapped owner. The independent source expectation
+uses the declared sphere, no exclusion, or the eight transformed fixture corners padded after world
+transformation. It does not infer a fixture from owner meshes for an explicit rule. An absent or null
+declaration preserves the original owner-mesh envelope fallback. Non-shadow-casting emitters submit no shadow.
+The retained extractor derives them from the original live source policy. Legacy routes independently
+execute the source settings, which are checked against native settings after key mapping.
+Static shadow cache keys are ID-derived transport values. The mapped effective native light ID
+determines its key through the released mapper policy. Capture preparation, the sink and diagnostics
+preserve that key, without a persisted key field or a fixed illustrative numeric literal. Explicit plant
+frame draw radius uses `placements.defaultDrawRadius`, matching the legacy prop route, with both density
+factors fixed to one. Generated cover keeps `foliage.drawRadius`. Both retain the cover fade and wind settings.
+
+Probe focus coordinates are either all explicit or all null. Explicit values become a checked framed
+point and are compared as actual anchor-local submission inputs. Scope probes with omitted focus use the single TopDown
+`MapCaptureFocus` support resolver. View requests retain their real framed-eye default. The comparator cannot infer a separate focus from the observer.
+Midpoint probes must retain complementary 0/1 LOD phases, never two opaque overlapping tiers.
+
+Geometry/translation tolerance is 0.00001 m, normal component and rotation-angle tolerance are
+0.000001. Rigid and light submissions compare poses and focus in a common anchor frame, subtracting
+integer anchors before floating conversion. Equivalent world poses may use different integer anchors.
+Declared fixture corners compare in the mapped owner's local metre frame. Submitted exclusion boxes
+compare in a common anchor frame, including rotated prefab owners. Exclusion kinds, margins, sphere
+radii, shadow modes, cache keys, ownership and photometric values remain exact.
+HLOD proxies compare consuming multisets of oriented triangles in a common frame. Vertex ordering,
+vertex sharing, cyclic index ordering and triangle ordering may differ. Spatial candidates are matched
+one to one through augmenting paths, reassigning earlier matches when tolerance candidates overlap.
+Missing, duplicated, reversed or displaced triangles fail. Positions and normals use the geometric
+tolerances, while vertex colour, UVs, tangents and material maps remain exact. This does not waive
+changed triangulation or coverage.
+For a proxy layer with no weld cell, expected vertices are transformed independently from the source
+placement pose, units and mesh in binary64, then rounded once in the cluster's anchor-local frame.
+This avoids the legacy absolute-world binary32 rounding artifact without changing the 0.00001 m
+tolerance. Welded layers retain the binary32 `PropHlod` replay. Neither expectation reads native
+geometry or invokes native proxy construction. Topology, coverage, normals and exact attributes remain checked.
+Other frame scalar bits remain exact. Streaming duplicates require identical verified payloads.
+Rigid foliage model-part aliases use key plus inspected payload identity, matching residency. Their
+window-specific envelopes each compare exactly with that window's complete single-window baseline.
+Every other resource kind, including foliage instance resources, also requires equal alias bounds.
+Window resource counts, union coverage, instance rows and source sample identities remain checked. Compare
+canonical terrain/material/paint coverage independently of render-only triangulation order, every
+placement part/LOD/pose, selected/HLOD identities, full light owner/descriptors, four roof channels,
+water body/space/free regions/area/level with closed regions excluded, and foliage keys/matrices/ranks/
+padded bounds/model bindings. The complete tiled store loads and verifies independently for each head. It supplies two heads.
+When declared, the monolithic form also loads independently twice, supplying two additional parity heads. Stream successes
+into aggregates and retain bounded private discrepancy examples, never a full sample corpus.
+Every failed check contributes to a per-category `scene-failure-summary` record, even after the first
+16 detailed examples. Classifications carry resource kind, key class, differing field and count.
+Resource checks pass explicit kind, key class and differing-field metadata through `CheckResource`,
+including source comparisons without a render key. This metadata is counted independently of retained
+examples. Native rigid foliage parts use `model-part/<n>` and classify as `rigid-model-part`.
+Only checks covering the scene as a whole use the scene-wide fallback. Totals include every failure
+without retaining every detail.
+Marker and building composite results carry the classification of each failed resource check into
+the report, with one counted entry per failed check. Terrain checks attach their resource identity
+before reporting. Foliage tally groups preserve their full 64-bit counts and differing fields after
+the example bound, and standalone water failures are classified and counted individually.
+
+Before attestation, retain one non-attesting diagnostic draft with every discrepancy kind/count and
+bounded examples. A semantic rule difference needs a controller ruling, never a looser tolerance.
+After correction, produce two fresh byte-identical extractions and audit closure/build pins. Only
+after exact-candidate CI and the full three-backend gate does the controller run the private fact.
+Public evidence is pass/fail and the private record reference. No private paths, names, coordinates,
+counts, hashes, meshes, pixels or detailed reports enter public git, CI or logs.
+
+The consumer [native evidence table](../KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification)
+names per-location frozen generation, precision, warm allocation, prepared foliage and six native
+capture families. Actual wire/capture tests exercise submitted foliage focus and derived light keys.
+The snapshot diagnostic callback borrows the submitted scene synchronously before rendering,
+including warm-up. CPU runs with skipped GPU cases do not replace the exact-candidate complete
+Metal, Direct3D 11 and Vulkan gate or the controller's private acceptance procedure.

@@ -35,6 +35,8 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <!-- The editor tests link FakeGpuDevice, including the shared completion-fence validation. -->
+    <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
     <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />
     <!-- The shared GPU test-support library, for ONE thing: the three uniform-ring adapters build their backend's
          ring, which since #531's counter extraction takes an Internal/WaitAccumulator, and read the stall count

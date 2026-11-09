@@ -141,7 +141,8 @@ public sealed partial class MapEditSession
                 throw new MapDocumentException(MapDocumentRefusal.DocumentStorageFormConflict,
                     $"{path}: a tiled document (a directory) already exists there. Create always writes a " +
                     "monolithic file, so overwrite cannot replace a directory. Delete it first or choose a " +
-                    "different path.") { Path = path, DocumentForm = existingForm, ExpectedDocumentForm = MapDocumentForm.Monolithic, Operation = nameof(Create) };
+                    "different path.")
+                { Path = path, DocumentForm = existingForm, ExpectedDocumentForm = MapDocumentForm.Monolithic, Operation = nameof(Create) };
 
             string? parent = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
@@ -226,8 +227,14 @@ public sealed partial class MapEditSession
                 throw new MapSessionException(MapDocumentRefusal.ToolTiledSessionRequired,
                     "set_window only applies to a tiled document opened from (or converted to) a directory. " +
                     "This document is monolithic or was built in memory.")
-                { DocumentId = _doc.Id, Path = _storagePath, Operation = nameof(SetWindow), FieldPath = "Tiles.SourceDirectory",
-                    DocumentForm = _storageForm, ExpectedDocumentForm = MapDocumentForm.Tiled };
+                {
+                    DocumentId = _doc.Id,
+                    Path = _storagePath,
+                    Operation = nameof(SetWindow),
+                    FieldPath = "Tiles.SourceDirectory",
+                    DocumentForm = _storageForm,
+                    ExpectedDocumentForm = MapDocumentForm.Tiled
+                };
             if (_dirty && !discard)
                 throw new MapSessionException(MapDocumentRefusal.ToolUnsavedChanges,
                     "the open document has unsaved changes. Save first (map_save), then move the window, or " +
@@ -456,8 +463,7 @@ public sealed partial class MapEditSession
             }
             else
             {
-                ValidationReport report = JsonSchemaValidator.Validate(
-                    MapDocumentFile.SaveText(_doc!, _registry), MapDocumentSchema.GetJson());
+                ValidationReport report = MapEditSchemaValidation.ValidateComplete(_doc!, _registry);
                 result = new ValidateResult(true, Array.Empty<string>(), SchemaChecked: true,
                     report.IsValid, report.Errors)
                 {
@@ -623,7 +629,8 @@ public sealed partial class MapEditSession
     {
         if (_doc is null)
             throw new MapSessionException(MapDocumentRefusal.ToolDocumentRequired,
-                "No map document is open. Call map_open or map_create first.") { Operation = operation };
+                "No map document is open. Call map_open or map_create first.")
+            { Operation = operation };
     }
 
     static IReadOnlyList<string> CopyManifests(IReadOnlyList<string>? manifestPaths)

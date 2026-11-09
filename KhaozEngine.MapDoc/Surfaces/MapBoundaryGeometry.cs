@@ -17,8 +17,11 @@ public sealed record MapChainResolution(MapResolveStatus Status, IReadOnlyList<M
         MapDocumentRefusal fallback = MapDocumentRefusal.SpaceChainUnresolved, MapResolveStatus? diagnosticStatus = null) =>
         Cause is MapDocumentException { Reason: not null } refusal ? refusal.WithSourceName(null, message, resolutionStatus: diagnosticStatus ?? DetailStatus) :
         Finding is { } finding ? MapDocumentRefusalFactory.FromFinding(
-            finding with { ResolutionStatus = diagnosticStatus ?? DetailStatus ?? finding.ResolutionStatus,
-                InvalidPrefixSuppressed = diagnosticStatus is null && finding.InvalidPrefixSuppressed }, message, Cause) :
+            finding with
+            {
+                ResolutionStatus = diagnosticStatus ?? DetailStatus ?? finding.ResolutionStatus,
+                InvalidPrefixSuppressed = diagnosticStatus is null && finding.InvalidPrefixSuppressed
+            }, message, Cause) :
         new(fallback, message) { RecordId = reference?.Id, Patch = reference?.Anchor, ResolutionStatus = diagnosticStatus ?? DetailStatus };
 }
 
@@ -70,8 +73,11 @@ public static class MapBoundaryGeometry
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
             return Failure(MapResolveStatus.Invalid, "chain geometry is not representable") with
-            { Finding = new(MapDocumentRefusal.GeometryNotRepresentable, "chain geometry is not representable")
-                { RecordId = chain.Id, Operation = nameof(ResolveChain) }, Cause = error };
+            {
+                Finding = new(MapDocumentRefusal.GeometryNotRepresentable, "chain geometry is not representable")
+                { RecordId = chain.Id, Operation = nameof(ResolveChain) },
+                Cause = error
+            };
         }
         catch (MapDocumentException error)
         {

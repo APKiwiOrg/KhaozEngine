@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Linq;
 using KhaozEngine.MapDoc.Editing;
@@ -11,13 +13,15 @@ namespace KhaozEngine.MapDoc.Spaces;
 /// <summary>Compiles room polygons with the shared R4 world-edge ownership and R5 point-freeze policy.</summary>
 public static class MapPrismGeometry
 {
-    public static MapWaterDomain Compile(MapScopedSurfaces view, MapPrismDomain domain)
+    public static MapWaterDomain Compile(MapScopedSurfaces view, MapPrismDomain domain) => Compile(view, domain, pointBudget: true);
+    internal static MapWaterDomain Prepare(MapScopedSurfaces view, MapPrismDomain domain) => Compile(view, domain, pointBudget: false);
+    static MapWaterDomain Compile(MapScopedSurfaces view, MapPrismDomain domain, bool pointBudget)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(domain);
         RequirePayload(domain);
-        long cost = Cost(domain);
-        if (cost > view.Scope.Limits.MaxInspectedFaces) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism vertices")
+        long cost = pointBudget ? Cost(domain) : 0;
+        if (pointBudget && DemandDiagnostics.Check(domain, "MapPrismGeometry.MaxInspectedFaces.1", "MaxInspectedFaces", 0, cost, view.Scope.Limits.MaxInspectedFaces, cost > view.Scope.Limits.MaxInspectedFaces, CapacityDemandLifetime.Cumulative, allowanceSource: view.Scope.Limits)) throw new MapDocumentException(MapDocumentRefusal.WorkCapacityExceeded, "capacity exceeded: prism vertices")
         { Budget = "MaxInspectedFaces", ActualCount = cost, Limit = view.Scope.Limits.MaxInspectedFaces, RecordId = domain.Id, SpaceId = domain.Space.Id };
         var local = MapWaterDomain.Compile(domain.Footprint);
         var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Record, domain.Id);
@@ -60,13 +64,17 @@ public static class MapPrismGeometry
             domain.LowerY >= domain.UpperY) throw new MapDocumentException(domain.PayloadVersion != 1 ? MapDocumentRefusal.SchemaPayloadVersionUnsupported :
                 !float.IsFinite(domain.LowerY) || !float.IsFinite(domain.UpperY) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.SpacePrismSeparationInvalid,
                 "invalid prism payload or separation")
-            { RecordId = domain.Id, SpaceId = domain.Space.Id, ResolutionStatus = MapResolveStatus.Invalid,
+            {
+                RecordId = domain.Id,
+                SpaceId = domain.Space.Id,
+                ResolutionStatus = MapResolveStatus.Invalid,
                 FieldPath = domain.PayloadVersion != 1 ? "PayloadVersion" : !float.IsFinite(domain.LowerY) ? "LowerY" : "UpperY",
                 ActualVersion = domain.PayloadVersion != 1 ? domain.PayloadVersion : null,
                 SupportedVersions = domain.PayloadVersion != 1 ? new[] { 1 } : null,
                 ActualNumber = domain.PayloadVersion != 1 ? null : !float.IsFinite(domain.LowerY) ? domain.LowerY : domain.UpperY,
                 MinimumNumber = domain.PayloadVersion == 1 && float.IsFinite(domain.LowerY) && float.IsFinite(domain.UpperY) ? domain.LowerY : null,
-                MaximumNumber = domain.PayloadVersion == 1 && float.IsFinite(domain.LowerY) && float.IsFinite(domain.UpperY) ? domain.UpperY : null };
+                MaximumNumber = domain.PayloadVersion == 1 && float.IsFinite(domain.LowerY) && float.IsFinite(domain.UpperY) ? domain.UpperY : null
+            };
     }
     static long Quantum(MapExactValue value) => checked(value.Numerator * (MapResourceTransform.Quantum / value.Denominator));
 }

@@ -28,7 +28,9 @@ public class SupportSelectionPrecisionTests
         using (var read = physics.AcquireQueryReadLease()) registration = builder.Build(read);
         var tuning = MoveTuning.Default with
         {
-            Controller = MovementControllerKind.Contact, CapsuleRadius = 0.25f, CapsuleHalfHeight = 0.75f,
+            Controller = MovementControllerKind.Contact,
+            CapsuleRadius = 0.25f,
+            CapsuleHalfHeight = 0.75f,
             Water = new(WaterTraversalMode.DryOnly),
         };
         var ordinary = new OrdinaryMovementEnvironment(view, registration, tuning, (_, _) => bed, null,

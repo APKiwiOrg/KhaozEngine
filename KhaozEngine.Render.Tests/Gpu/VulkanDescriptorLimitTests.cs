@@ -102,6 +102,10 @@ namespace KhaozEngine.Tests.Gpu
                     Ro("PointLightClusters", F), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"),
                     T("PointShadowTransientMap")), Ro("WaterVolumes", F), T("CausticMap"), S("CausticSampler")]),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
+                // ModelRenderer.PreparedFoliage.cs. Shared by colour, temporal, cascade and point passes.
+                ["SceneAnchor"] = L(U("SceneAnchor", V)),
+                // R-GPU-1 / T8-R1. Opaque prepared cascade depth has zero material bindings before anchor set 3.
+                ["FoliageShadow.emptyCutout"] = L(),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.
                 ["Model.skinnedMain"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F),
@@ -233,12 +237,14 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/MotionVectorsView.cs, the MotionVectors debug view.
                 ["MotionVectorsView"] = L(T("Motion"), S("Samp")),
 
-                // Render3D/Rendering/WaterRenderer.Pipelines.cs, shared by all four water programs.
+                // Render3D/Rendering/WaterRenderer.Pipelines.cs, shared by all five water programs.
                 ["Water"] = L(T("BathyTex", VF), S("BathySamp", VF), T("OceanMap", VF), S("OceanSamp", VF),
                     T("DepthTex"), S("Samp"), U("Water", VF, dynamic: true),
                     U("Atmosphere", F), T("AtmoSkyView"), S("AtmoSkySampler"), T("OpticsTex"), S("OpticsSamp"),
                     T("ColumnShadowAtlas"), S("ColumnShadowSampler"), U("WaterLitFrame", F),
                     T("ColumnSceneColor"), S("ColumnColorSampler")),
+                ["BoundedWater"] = L(U("BoundedWaterTransform", VF, dynamic: true),
+                    new GpuResourceLayoutElement("BoundedWaterDomain", GpuResourceKind.StructuredBufferReadOnly, F)),
 
                 // The three caustic passes, each with its own uniform slot and only the stages that read it.
                 ["WaterCaustics.field"] = L(U("CausticBody", VF, dynamic: true)),
@@ -292,6 +298,10 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer foliage opaque", ["Model.foliageOpaque", "Foliage"]),
             ("ModelRenderer foliage opaque motion", ["Model.foliageOpaque", "Foliage", "Motion.frame"]),
             ("ModelRenderer foliage motion", ["Model", "Foliage", "Motion.frame"]),
+            ("ModelRenderer prepared foliage", ["Model", "Foliage", "SceneAnchor"]),
+            ("ModelRenderer prepared foliage opaque", ["Model.foliageOpaque", "Foliage", "SceneAnchor"]),
+            ("ModelRenderer prepared foliage opaque motion", ["Model.foliageOpaque", "Foliage", "Motion.frame", "SceneAnchor"]),
+            ("ModelRenderer prepared foliage motion", ["Model", "Foliage", "Motion.frame", "SceneAnchor"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
@@ -338,12 +348,16 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalSplitResolve fully lit accumulate", ["Temporal.fullyLitAccumulate"]),
             // Rigid dissolve pipelines add the shared interior image and sampler, with no extra uniform buffer.
             ("PointShadowRenderer", ["PointShadow"]),
+            ("PointShadowRenderer prepared foliage", ["PointShadow", "SceneAnchor"]),
             ("PointShadowRenderer dissolve", ["PointShadow", "InteriorCut"]),
             ("PointShadowRenderer skinned", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve inverted", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("FoliageShadowRenderer depth", ["FoliageShadow", "Foliage"]),
             ("FoliageShadowRenderer cutout depth", ["FoliageShadow", "Foliage", "Shadow.cutout"]),
+            // Both prepared depth variants retain anchor set 3, with an empty material gap for opaque depth.
+            ("FoliageShadowRenderer prepared depth", ["FoliageShadow", "Foliage", "FoliageShadow.emptyCutout", "SceneAnchor"]),
+            ("FoliageShadowRenderer prepared cutout depth", ["FoliageShadow", "Foliage", "Shadow.cutout", "SceneAnchor"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
             ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
             ("ShadowMapRenderer dissolve depth", ["Shadow.interiorFrame", "InteriorCut"]),
@@ -356,6 +370,7 @@ namespace KhaozEngine.Tests.Gpu
             ("TransitionRenderer cross", ["Transition.cross"]),
             ("MotionVectorsView", ["MotionVectorsView"]),
             ("WaterRenderer", ["Water"]),
+            ("WaterRenderer bounded", ["Water", "BoundedWater"]),
             ("WaterCausticRenderer field", ["WaterCaustics.field"]),
             ("WaterCausticRenderer subtract", ["WaterCaustics.subtract"]),
             ("WaterCausticRenderer sheet", ["WaterCaustics.sheet"]),
@@ -369,11 +384,17 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
-            // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            // Certified resolve and accumulation add two compact layouts and four pipeline shapes.
-            Assert.Equal(72, ShippedLayouts.Count);
-            Assert.Equal(80, ShippedPipelines.Count);
+            // Masked SpriteBatch adds one layout and pipeline. Main adds certified temporal resolve and accumulation layouts and four pipeline shapes.
+            // R8a adds bounded water and prepared foliage colour, motion, opaque cascade, cutout cascade
+            // and point shadow, with BoundedWater, SceneAnchor and the empty opaque material gap.
+            // The three caustic programs each add one dense layout and pipeline row.
+            // T8-R1 keeps completeness independent of the catalogs themselves.
+            Assert.Equal(75, ShippedLayouts.Count);
+            Assert.Equal(88, ShippedPipelines.Count);
+            Assert.Equal(ShippedPipelines.Count,
+                ShippedPipelines.Select(p => p.Pipeline).Distinct(StringComparer.Ordinal).Count());
+            Assert.Equal(ShippedLayouts.Keys.Order(StringComparer.Ordinal),
+                ShippedPipelines.SelectMany(p => p.Slots).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {
@@ -455,7 +476,9 @@ namespace KhaozEngine.Tests.Gpu
                         VulkanDescriptorType.Sampler,
                     }));
 
-                Assert.True(bindings.Length > 0, site + " declares no elements, which no shipped layout does.");
+                // R-GPU-1 / T8-R1. Only opaque prepared depth carries an intentionally empty material gap.
+                if (site == "FoliageShadow.emptyCutout") Assert.Empty(bindings);
+                else Assert.NotEmpty(bindings);
             }
         }
 

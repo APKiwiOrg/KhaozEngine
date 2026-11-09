@@ -31,13 +31,13 @@ public static class MapMarkerEdits
         string id = edit switch
         {
             MapSetMarker set => (set.Marker ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Marker set requires a marker.")
-                { FieldPath = "marker", SubjectKind = "marker" }).Id,
+            { FieldPath = "marker", SubjectKind = "marker" }).Id,
             MapRemoveMarker remove => remove.Id,
             _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unknown marker edit.")
             { RecordType = edit.GetType(), Operation = nameof(Prepare) },
         };
         if (string.IsNullOrWhiteSpace(id)) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Marker edits require a nonempty marker ID.")
-            { MarkerId = id, FieldPath = "marker.id", SubjectKind = "marker" };
+        { MarkerId = id, FieldPath = "marker.id", SubjectKind = "marker" };
         if (edit is MapSetMarker { Marker: var input }) MapMarkerValidation.Require(input);
 
         var before = MapPrefabEditPreparation.Begin(document, assets);
@@ -60,7 +60,7 @@ public static class MapMarkerEdits
                 break;
             case MapRemoveMarker:
                 if (index < 0) throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, $"No standalone marker '{id}'.")
-                    { MarkerId = id, SubjectKind = "standalone marker" };
+                { MarkerId = id, SubjectKind = "standalone marker" };
                 markers.RemoveAt(index);
                 // Only the marker's own frame leaves. Its transfer is retired, never deleted, so the reservation stays.
                 if (after.NativeResourceTransforms?.Any(t => Own(t.Kind, t.OwnerId, id)) == true)
@@ -98,7 +98,7 @@ public static class MapMarkerEdits
     internal static void RequireResolver(MapDocument document, string operation = nameof(Prepare))
     {
         if (document.ResolverIdentity is null) throw new MapDocumentException(MapDocumentRefusal.MarkerNativeDocumentRequired, "Marker editing requires a native document.")
-            { Operation = operation };
+        { Operation = operation };
         if (document.ResolverIdentity.ResolverVersion != 2)
             throw new MapDocumentException(MapDocumentRefusal.ResolverContractMismatch,
                 $"Marker editing requires resolver identity (1, 2), but this document has resolver ({document.ResolverIdentity.PayloadVersion}, " +

@@ -20,13 +20,13 @@ public sealed class ResolverV2Tests
         var placement = doc.Placements.Single(p => p.Id == "p-surface");
         var binding = placement.SupportBinding;
         placement.SupportBinding = null;
-        var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.ResolvePlacements(doc, SupportFixtures.Assets(), [placement]));
+        var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.ResolvePlacements(doc, SupportFixtures.Assets(), [placement], new()));
         Assert.Equal(MapDocumentRefusal.SupportBindingMissing, error.Reason);
         Assert.Equal(placement.Id, error.PlacementId);
         Assert.Null(placement.Y);
         Assert.Null(placement.SupportBinding);
         placement.SupportBinding = binding;
-        Assert.Equal(5f, Assert.Single(MapResolverV2.ResolvePlacements(doc, SupportFixtures.Assets(), [placement])).Transform.Position.Y);
+        Assert.Equal(5f, Assert.Single(MapResolverV2.ResolvePlacements(doc, SupportFixtures.Assets(), [placement], new())).Transform.Position.Y);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public sealed class ResolverV2Tests
         Assert.Equal(MapDocumentRefusal.SupportUnresolved, error.Reason);
         Assert.Equal("p-amb", error.PlacementId);
         Assert.Equal(MapSupportStatus.Ambiguous, error.SupportStatus);
-        var detached = Assert.Throws<MapDocumentException>(() => MapResolverV2.ResolvePlacements(doc, SupportFixtures.Assets(), doc.Placements));
+        var detached = Assert.Throws<MapDocumentException>(() => MapResolverV2.ResolvePlacements(doc, SupportFixtures.Assets(), doc.Placements, new()));
         Assert.Equal(error.Reason, detached.Reason);
         Assert.Equal(error.PlacementId, detached.PlacementId);
         Assert.Equal(error.SupportStatus, detached.SupportStatus);
@@ -63,7 +63,7 @@ public sealed class ResolverV2Tests
         Assert.Null(placement.Y);
         placement.SupportBinding = new(MapSupportBindingKind.Surface, "slab-a", null, null, null, null);
         Assert.Equal(MapSupportStatus.Supported, Assert.Single(MapResolverV2.Resolve(doc, SupportFixtures.Assets(), MapDocumentSurfaceSource.Capture(doc), SupportFixtures.V2).Supports).Support.Status);
-        Assert.Equal(0f, Assert.Single(MapResolverV2.ResolvePlacements(doc, SupportFixtures.Assets(), doc.Placements)).Transform.Position.Y);
+        Assert.Equal(0f, Assert.Single(MapResolverV2.ResolvePlacements(doc, SupportFixtures.Assets(), doc.Placements, new())).Transform.Position.Y);
     }
     [Fact]
     public void ResolverV2_SpaceBindingWithoutBoundedSearchRefuses()
@@ -133,7 +133,7 @@ public sealed class ResolverV2Tests
         Pose(refused);
         string before = FoliageStorageFixtures.Snapshot(document);
         var error = Assert.Throws<MapDocumentException>(() =>
-            MapResolverV2.ResolveEffectivePlacements(document, assets, [placement], transforms, source, out _));
+            MapResolverV2.ResolveEffectivePlacements(assets, [placement], transforms, source, new(), out _));
         Assert.Equal(MapDocumentRefusal.GeometryNotRepresentable, error.Reason);
         Assert.Equal(placement.Id, error.PlacementId);
         Assert.Equal("$." + field, error.FieldPath);
@@ -141,7 +141,7 @@ public sealed class ResolverV2Tests
         Assert.Equal(nameof(MapResolverV2.ResolveEffectivePlacements), error.Operation);
         Assert.Equal(before, FoliageStorageFixtures.Snapshot(document));
         Pose(repaired);
-        var control = Assert.Single(MapResolverV2.ResolveEffectivePlacements(document, assets, [placement], transforms, source, out _));
+        var control = Assert.Single(MapResolverV2.ResolveEffectivePlacements(assets, [placement], transforms, source, new(), out _));
         Assert.Equal((float)repaired, field == "scale" ? control.Transform.Scale : control.Transform.YawRadians);
     }
 }

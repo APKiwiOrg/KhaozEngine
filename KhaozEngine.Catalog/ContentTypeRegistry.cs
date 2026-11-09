@@ -232,7 +232,9 @@ public sealed class ContentTypeRegistry
             FormattableString.Invariant(
             $"The {band} band covers type ids {low} to {high}, so it cannot register type {typeId} '{typeKey}'. The band says which ids the caller is entitled to and is not a capability."))
         {
-            Type = id, TypeKey = typeKey, Band = band,
+            Type = id,
+            TypeKey = typeKey,
+            Band = band,
             MinimumTypeId = recognized ? (ushort)low : null,
             MaximumTypeId = recognized ? (ushort)high : null,
         };
@@ -266,8 +268,11 @@ public sealed class ContentTypeRegistry
                 FormattableString.Invariant(
                 $"Type {typeId} '{typeKey}' declares {chunkSlots} chunk slots, which must be a power of two between {MinChunkSlots} and {MaxChunkSlots}."))
             {
-                Type = new ContentTypeId(typeId), TypeKey = typeKey, ActualSlots = chunkSlots,
-                MinimumSlots = MinChunkSlots, MaximumSlots = MaxChunkSlots,
+                Type = new ContentTypeId(typeId),
+                TypeKey = typeKey,
+                ActualSlots = chunkSlots,
+                MinimumSlots = MinChunkSlots,
+                MaximumSlots = MaxChunkSlots,
             };
         }
 
@@ -276,8 +281,11 @@ public sealed class ContentTypeRegistry
             throw new ContentRegistrationException(ContentRegistrationRefusal.RowBytesOutsideRange, FormattableString.Invariant(
                 $"Type {typeId} '{typeKey}' declares a row cap of {maxRowBytes} bytes, which must be between 1 and the absolute ceiling of {ContentPackFormat.MaxContentRowBytes}."))
             {
-                Type = new ContentTypeId(typeId), TypeKey = typeKey, ActualBytes = maxRowBytes,
-                MinimumBytes = 1, MaximumBytes = ContentPackFormat.MaxContentRowBytes,
+                Type = new ContentTypeId(typeId),
+                TypeKey = typeKey,
+                ActualBytes = maxRowBytes,
+                MinimumBytes = 1,
+                MaximumBytes = ContentPackFormat.MaxContentRowBytes,
             };
         }
 
@@ -287,8 +295,11 @@ public sealed class ContentTypeRegistry
             throw new ContentRegistrationException(ContentRegistrationRefusal.ChunkBytesExceeded, FormattableString.Invariant(
                 $"Type {typeId} '{typeKey}' would build a chunk no reader loads: {chunkSlots} slots at a row cap of {maxRowBytes} bytes is {worstCase} uncompressed bytes, over the {ContentPackFormat.MaxChunkUncompressedBytes} byte ceiling. Lower the slot count or the row cap."))
             {
-                Type = new ContentTypeId(typeId), TypeKey = typeKey, ChunkSlots = chunkSlots,
-                RowBytes = maxRowBytes, ActualBytes = worstCase,
+                Type = new ContentTypeId(typeId),
+                TypeKey = typeKey,
+                ChunkSlots = chunkSlots,
+                RowBytes = maxRowBytes,
+                ActualBytes = worstCase,
                 MaximumBytes = ContentPackFormat.MaxChunkUncompressedBytes,
             };
         }

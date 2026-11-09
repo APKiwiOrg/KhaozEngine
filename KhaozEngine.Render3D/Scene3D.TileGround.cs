@@ -22,7 +22,7 @@ namespace KhaozEngine.Render3D
 
         /// <summary>An opaque handle to a tile-ground material (up to
         /// <see cref="TileGroundMaterialConfig.MaxMaterials"/> tileable albedo layers, one per catalog material)
-        /// loaded with <see cref="LoadTileGroundMaterial"/>. Pass it to
+        /// loaded with <see cref="LoadTileGroundMaterial(int,int,IReadOnlyList{TileGroundLayerImage},float,TerrainSamplerConfig?)"/>. Pass it to
         /// <see cref="LoadMesh(GltfMesh,TileGroundMaterialHandle)"/> to draw a mesh through the tile-ground
         /// pipeline. Shared across many meshes (every region-plane mesh of a tile world).</summary>
         public readonly struct TileGroundMaterialHandle
@@ -78,8 +78,11 @@ namespace KhaozEngine.Render3D
                         $"tile-ground layer {i} is {layers[i].AlbedoRgba.Length} bytes, expected {expected} for {width}x{height} RGBA8.",
                         nameof(layers))
                     {
-                        LayerIndex = i, ActualByteLength = layers[i].AlbedoRgba.Length,
-                        ExpectedByteLength = expected, Width = width, Height = height,
+                        LayerIndex = i,
+                        ActualByteLength = layers[i].AlbedoRgba.Length,
+                        ExpectedByteLength = expected,
+                        Width = width,
+                        Height = height,
                     };
 
             // Packed, and so validated, BEFORE any GPU resource exists: a layer whose steep companion is refused
@@ -94,14 +97,7 @@ namespace KhaozEngine.Render3D
             // uniforms are not in it: the pipeline reads those from the renderer's shared block at set 0 (#727).
             IGpuBuffer ubo = _model.CreateTileGroundParamsUbo(tail);
 
-            // A material that overrides the sampler gets its own, owned and disposed with the material. Otherwise
-            // the set binds the renderer's shared default sampler and nothing extra is owned here.
-            IGpuSampler? ownedSampler = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
-            IGpuResourceSet set = ownedSampler is null
-                ? _model.CreateTileGroundMaterialSet(ubo, albedo)
-                : _model.CreateTileGroundMaterialSet(ubo, albedo, ownedSampler);
-            _tileGroundMaterials.Add(new TileGroundMaterialEntry(albedo, ubo, set, ownedSampler));
-            return new TileGroundMaterialHandle(_tileGroundMaterials.Count - 1);
+            return LoadTileGroundMaterial(albedo, ubo, sampler, null);
         }
 
         /// <summary>Upload a mesh and draw it through the tile-ground pipeline with <paramref name="material"/>: its

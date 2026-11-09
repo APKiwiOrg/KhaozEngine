@@ -276,9 +276,15 @@ namespace KhaozEngine.Terrain
 
             GltfMesh merged = MergeMeasured(placements, sourceMeshes, placementIndex,
                 out int indexStart, out int indexCount, out _);
+            return SelectMergedContribution(merged, indexStart, indexCount, weldCellSize);
+        }
+
+        // Both legacy placement outlines and native admitted outline caches use the full transformed merge.
+        // Isolating a source before welding would lose neighbouring vertices' contribution to each average.
+        internal static GltfMesh SelectMergedContribution(GltfMesh merged, int indexStart, int indexCount, float weldCellSize)
+        {
             if (weldCellSize > 0f)
                 return WeldRange(merged, weldCellSize, indexStart, indexCount, compactVertices: true);
-
             var selectedIndices = new uint[indexCount];
             Array.Copy(merged.Indices32, indexStart, selectedIndices, 0, indexCount);
             return Compact(merged.Vertices, selectedIndices);

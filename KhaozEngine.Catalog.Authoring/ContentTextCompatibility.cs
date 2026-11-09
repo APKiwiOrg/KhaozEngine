@@ -37,7 +37,8 @@ internal static class ContentTextCompatibility
                     $"the plan for version {plan.VersionNumber} is the row half of a text plan")),
                 default, 0, ContentAuthoringException.TextUnrepresentedReason)
             {
-                MemberName = member, VersionNumber = plan.VersionNumber,
+                MemberName = member,
+                VersionNumber = plan.VersionNumber,
             };
         }
     }
@@ -55,7 +56,8 @@ internal static class ContentTextCompatibility
         {
             throw new ContentAuthoringException(ContentAuthoringRefusal.TextBundleOnRowOnlyRoute,
                 DescribeUnrepresented(member, "the bundle carries a text section"),
-                default, 0, ContentAuthoringException.TextUnrepresentedReason) { MemberName = member };
+                default, 0, ContentAuthoringException.TextUnrepresentedReason)
+            { MemberName = member };
         }
 
         if (bundle.FormatVersion != RowOnlyBundleFormat)
@@ -65,7 +67,8 @@ internal static class ContentTextCompatibility
                     $"the bundle is format {bundle.FormatVersion}, which carries a text section this one has lost")),
                 default, 0, ContentAuthoringException.TextUnrepresentedReason)
             {
-                MemberName = member, ActualFormatVersion = bundle.FormatVersion,
+                MemberName = member,
+                ActualFormatVersion = bundle.FormatVersion,
             };
         }
     }
@@ -82,7 +85,8 @@ internal static class ContentTextCompatibility
                     $"the open draft holds {draft!.TextEditCount} text intent(s) and {draft.LanguageIntroductionCount} language introduction(s)")),
                 default, 0, ContentAuthoringException.TextUnrepresentedReason)
             {
-                MemberName = member, TextEditCount = draft.TextEditCount,
+                MemberName = member,
+                TextEditCount = draft.TextEditCount,
                 LanguageIntroductionCount = draft.LanguageIntroductionCount,
             };
         }

@@ -66,8 +66,10 @@ sealed class ContentUpgradeTextRoute(IContentAuthoringStore store)
                 ContentAuthoringException.TextUnrepresentedReason)
             {
                 VersionNumber = active,
-                CarriedLanguageCount = carried.Languages.Count, CarriedValueCount = carried.Values.Count,
-                RecordedLanguageCount = recorded.Languages.Count, RecordedValueCount = recorded.Revisions.Count,
+                CarriedLanguageCount = carried.Languages.Count,
+                CarriedValueCount = carried.Values.Count,
+                RecordedLanguageCount = recorded.Languages.Count,
+                RecordedValueCount = recorded.Revisions.Count,
             };
         }
 

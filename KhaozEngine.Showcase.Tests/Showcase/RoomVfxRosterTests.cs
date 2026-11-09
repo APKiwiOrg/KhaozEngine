@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using KhaozEngine.Particles;
@@ -9,9 +10,9 @@ namespace KhaozEngine.Tests.Showcase
 {
     /// <summary>
     /// The showcase's Particles and VFX room is the runnable reference for the preset library, which only holds
-    /// while it actually cycles all of it. It stopped: 14.6.0 added <c>VfxPresets.EssenceMotes</c> and nothing
-    /// added it to the room's array, so the demo under-represented the catalog for releases with no test to say
-    /// so (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/258">#258</see>). This pins the room's
+    /// while it actually cycles all of it. The room once omitted <c>VfxPresets.EssenceMotes</c> and
+    /// under-represented the catalog (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/258">#258</see>).
+    /// This pins the room's
     /// roster against the library BY REFLECTION, the same way <c>VfxPresetsTests</c> discovers it, so the next
     /// preset that lands without a demo entry fails here instead of going unnoticed.
     /// </summary>
@@ -32,7 +33,9 @@ namespace KhaozEngine.Tests.Showcase
                 .OrderBy(n => n, StringComparer.Ordinal)
                 .ToArray();
 
-            Assert.Equal(LibraryPresetNames(), cycled);
+            string[] library = LibraryPresetNames();
+            Assert.NotEmpty(library);
+            Assert.Equal(library, cycled);
         }
 
         [Fact]
@@ -42,19 +45,24 @@ namespace KhaozEngine.Tests.Showcase
             Assert.Equal(names.Length, names.Distinct(StringComparer.Ordinal).Count());
         }
 
-        [Fact]
-        public void Every_roster_entry_realizes_the_preset_it_names()
-        {
-            foreach ((string name, Func<VfxPreset> realize, _) in RoomVfx.Roster)
-            {
-                PropertyInfo? property = typeof(VfxPresets)
-                    .GetProperty(name, BindingFlags.Public | BindingFlags.Static);
-                Assert.NotNull(property);
+        public static IEnumerable<object[]> RosterNames() => RoomVfx.Roster.Select(entry => new object[] { entry.Name });
 
-                var byName = (VfxPreset)property!.GetValue(null)!;
-                VfxPreset byRoster = realize();
-                Assert.Equal(byName.Looks.Count, byRoster.Looks.Count);
-            }
+        [Theory]
+        [MemberData(nameof(RosterNames))]
+        public void Every_roster_entry_realizes_the_preset_it_names(string name)
+        {
+            var entry = Assert.Single(RoomVfx.Roster, entry => entry.Name == name);
+            PropertyInfo? property = typeof(VfxPresets).GetProperty(name, BindingFlags.Public | BindingFlags.Static);
+            Assert.NotNull(property);
+
+            var byName = (VfxPreset)property!.GetValue(null)!;
+            VfxPreset byRoster = entry.Preset();
+            Assert.NotEmpty(byName.Looks);
+            Assert.Equal(byName.Looks, byRoster.Looks);
+            Assert.True(byName.Effect.PhaseCount > 0);
+            Assert.Equal(byName.Effect.PhaseCount, byRoster.Effect.PhaseCount);
+            for (int phase = 0; phase < byName.Effect.PhaseCount; phase++)
+                Assert.Equivalent(byName.Effect.GetPhase(phase), byRoster.Effect.GetPhase(phase), strict: true);
         }
 
         [Fact]

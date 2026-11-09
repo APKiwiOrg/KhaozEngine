@@ -187,7 +187,9 @@ public static class MapTopologyReferenceValidator
                                 : room.Kind != MapSpaceKind.Room ? MapDocumentRefusal.ReferenceKindMismatch : MapDocumentRefusal.SpacePrismParentMismatch,
                                 $"invalid prism parent/room '{prism.Id}'")
                             {
-                                RecordId = prism.Id, SpaceId = prism.Space?.Id, RelatedRecordId = prism.Parent?.Id,
+                                RecordId = prism.Id,
+                                SpaceId = prism.Space?.Id,
+                                RelatedRecordId = prism.Parent?.Id,
                                 FieldPath = prism.PayloadVersion != 1 ? nameof(prism.PayloadVersion)
                                     : room is null ? nameof(prism.Space) : room.Kind != MapSpaceKind.Room ? "Space.Kind" : "Space.Parent",
                                 ActualVersion = prism.PayloadVersion != 1 ? prism.PayloadVersion : null,
@@ -246,8 +248,11 @@ public static class MapTopologyReferenceValidator
             {
                 Add(new(MapDocumentRefusal.SchemaValueRequired, $"missing reference in '{source}'")
                 {
-                    RecordId = surfaceId is null ? source : null, ActualText = reference?.Id,
-                    Patch = reference?.Anchor, SurfaceId = surfaceId, FieldPath = reference is null ? "reference" : "reference.Id",
+                    RecordId = surfaceId is null ? source : null,
+                    ActualText = reference?.Id,
+                    Patch = reference?.Anchor,
+                    SurfaceId = surfaceId,
+                    FieldPath = reference is null ? "reference" : "reference.Id",
                 }, surfaceId ?? source, spanId);
                 return null;
             }
@@ -303,10 +308,13 @@ public static class MapTopologyReferenceValidator
                 Add(new(!supportedKind ? MapDocumentRefusal.SchemaEnumUnsupported : MapDocumentRefusal.ValueOutsideRange,
                     $"invalid chain kind/vertices '{chain.Id}'")
                 {
-                    RecordId = chain.Id, FieldPath = !supportedKind ? nameof(chain.Kind) : nameof(chain.Vertices),
+                    RecordId = chain.Id,
+                    FieldPath = !supportedKind ? nameof(chain.Kind) : nameof(chain.Vertices),
                     EnumType = !supportedKind ? typeof(MapChainKind) : null,
-                    ActualInteger = !supportedKind ? (long)chain.Kind : null, ActualCount = vertexCount,
-                    MinimumInteger = supportedKind ? 2 : null, MaximumInteger = supportedKind ? 4097 : null,
+                    ActualInteger = !supportedKind ? (long)chain.Kind : null,
+                    ActualCount = vertexCount,
+                    MinimumInteger = supportedKind ? 2 : null,
+                    MaximumInteger = supportedKind ? 4097 : null,
                 }, chain.Id);
             if (chain.Kind == MapChainKind.SurfaceEdge && (chain.SourcePatch is null || !_patches.ContainsKey(chain.SourcePatch.Value)))
                 Add(new(chain.SourcePatch is null ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.ReferenceMissing,
@@ -336,8 +344,10 @@ public static class MapTopologyReferenceValidator
             else if (from is not null && to is not null && (from.Kind != MapSpaceKind.Exterior || to.Kind != MapSpaceKind.Exterior))
                 Add(new(MapDocumentRefusal.SpacePortalOpenTopInvalid, $"open top portal requires Exterior spaces '{portal.Id}'")
                 {
-                    RecordId = portal.Id, SpaceId = from.Kind != MapSpaceKind.Exterior ? from.Id : to.Id,
-                    EnumType = typeof(MapSpaceKind), ActualInteger = (long)(from.Kind != MapSpaceKind.Exterior ? from.Kind : to.Kind),
+                    RecordId = portal.Id,
+                    SpaceId = from.Kind != MapSpaceKind.Exterior ? from.Id : to.Id,
+                    EnumType = typeof(MapSpaceKind),
+                    ActualInteger = (long)(from.Kind != MapSpaceKind.Exterior ? from.Kind : to.Kind),
                     FieldPath = nameof(portal.BandTop),
                 }, portal.Id);
             int intervalCount = portal.Interval.Count;
@@ -396,7 +406,9 @@ public static class MapTopologyReferenceValidator
                 if (target is not null && (target.AliasOf is not null || target.Parent != space.Parent || target.Kind != space.Kind))
                     Add(new(MapDocumentRefusal.SpaceAliasPeerInvalid, $"alias must target an alias-free peer '{space.Id}'")
                     {
-                        RecordId = space.Id, SpaceId = space.Id, RelatedRecordId = target.Id,
+                        RecordId = space.Id,
+                        SpaceId = space.Id,
+                        RelatedRecordId = target.Id,
                         FieldPath = target.AliasOf is not null ? "AliasOf.AliasOf" : target.Parent != space.Parent ? "AliasOf.Parent" : "AliasOf.Kind",
                     }, space.Id);
             }
@@ -453,7 +465,10 @@ public static class MapTopologyReferenceValidator
                 if (lower || space?.Kind != MapSpaceKind.Exterior || bound.SurfaceId is not null || bound.Opening is not null)
                     Add(new(MapDocumentRefusal.SpaceOpenTopInvalid, $"invalid open top bound '{source}'")
                     {
-                        RecordId = source, SpaceId = space?.Id, SurfaceId = bound.SurfaceId, RelatedRecordId = bound.Opening?.Id,
+                        RecordId = source,
+                        SpaceId = space?.Id,
+                        SurfaceId = bound.SurfaceId,
+                        RelatedRecordId = bound.Opening?.Id,
                         FieldPath = lower ? "Lower.Kind" : space?.Kind != MapSpaceKind.Exterior ? "Space.Kind"
                             : bound.SurfaceId is not null ? "Upper.SurfaceId" : "Upper.Opening",
                     }, source);
@@ -478,7 +493,10 @@ public static class MapTopologyReferenceValidator
                     : surface is null ? MapDocumentRefusal.ReferenceMissing : MapDocumentRefusal.SpaceBoundRoleMismatch,
                     $"bound surface role mismatch '{source}'")
                 {
-                    RecordId = source, SpaceId = space?.Id, SurfaceId = bound.SurfaceId, RelatedRecordId = bound.Opening?.Id,
+                    RecordId = source,
+                    SpaceId = space?.Id,
+                    SurfaceId = bound.SurfaceId,
+                    RelatedRecordId = bound.Opening?.Id,
                     FieldPath = !kind ? $"{role}.Kind" : bound.Opening is not null ? $"{role}.Opening"
                         : surface is null ? $"{role}.SurfaceId" : $"{role}.Surface.Role",
                     EnumType = !kind ? typeof(MapBoundKind) : surface is not null ? typeof(MapSurfaceRole) : null,
@@ -504,17 +522,32 @@ public static class MapTopologyReferenceValidator
                     Add(new(index == 0 ? MapDocumentRefusal.ValueOutsideRange
                         : cell == previous ? MapDocumentRefusal.IdentityDuplicate : MapDocumentRefusal.OrderInvalid,
                         $"duplicate or unordered slot cell '{source}'")
-                    { RecordId = source, Patch = key, FieldPath = "SlotCells", Index = index, ActualInteger = cell,
-                        PreviousInteger = index == 0 ? null : previous, MinimumInteger = index == 0 ? 0 : null }, source);
+                    {
+                        RecordId = source,
+                        Patch = key,
+                        FieldPath = "SlotCells",
+                        Index = index,
+                        ActualInteger = cell,
+                        PreviousInteger = index == 0 ? null : previous,
+                        MinimumInteger = index == 0 ? 0 : null
+                    }, source);
                 previous = cell;
                 int x = cell % 64 - patch.CellMinX, z = cell / 64 - patch.CellMinZ;
                 if (cell is < 0 or >= 4096 || x < 0 || x >= patch.Width || z < 0 || z >= patch.Depth)
                     Add(new(cell is < 0 or >= 4096 ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.SurfaceAddressOutOfPatch,
                         $"slot cell outside patch '{source}'")
                     {
-                        RecordId = source, Patch = key, FieldPath = "SlotCells", Index = index, ActualInteger = cell,
-                        MinimumInteger = cell is < 0 or >= 4096 ? 0 : null, MaximumInteger = cell is < 0 or >= 4096 ? 4095 : null,
-                        CellX = x, CellZ = z, Width = patch.Width, Depth = patch.Depth,
+                        RecordId = source,
+                        Patch = key,
+                        FieldPath = "SlotCells",
+                        Index = index,
+                        ActualInteger = cell,
+                        MinimumInteger = cell is < 0 or >= 4096 ? 0 : null,
+                        MaximumInteger = cell is < 0 or >= 4096 ? 4095 : null,
+                        CellX = x,
+                        CellZ = z,
+                        Width = patch.Width,
+                        Depth = patch.Depth,
                     }, source);
                 else if (requireAbsent && patch.IsPresent(x, z))
                     Add(new(MapDocumentRefusal.SpaceOpeningCellsInvalid, $"opening over present cell '{source}'")

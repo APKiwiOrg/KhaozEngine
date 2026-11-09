@@ -368,10 +368,16 @@ namespace KhaozEngine.Tests.Render3D.Animation
             int head = Logical[HeadNode];
             float[] times = keyCount == 0 ? [] : [0f, 1f];
             JointTrack track = rotation
-                ? new JointTrack(head) { Rotation = new QuaternionTrack(times,
-                    keyCount == 0 ? [] : [Quaternion.Identity, Quaternion.Identity], InterpolationMode.Linear) }
-                : new JointTrack(head) { Translation = new Vector3Track(times,
-                    [Vector3.Zero, Vector3.UnitY], InterpolationMode.Linear) };
+                ? new JointTrack(head)
+                {
+                    Rotation = new QuaternionTrack(times,
+                    keyCount == 0 ? [] : [Quaternion.Identity, Quaternion.Identity], InterpolationMode.Linear)
+                }
+                : new JointTrack(head)
+                {
+                    Translation = new Vector3Track(times,
+                    [Vector3.Zero, Vector3.UnitY], InterpolationMode.Linear)
+                };
 
             var error = Assert.Throws<ContractJointMapArgumentException>(
                 () => new ContractJointMap(skeleton, Contract, Clip("stance", track)));

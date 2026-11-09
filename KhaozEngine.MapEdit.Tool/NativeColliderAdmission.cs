@@ -28,8 +28,13 @@ internal static class NativeColliderAdmission
             float actual = positionFailed ? position : halfHeight;
             throw new MapDocumentException(!float.IsFinite(actual) ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.ValueOutsideRange,
                 $"Collider heights for '{assetId}' leave a box without a finite positive height.")
-            { AssetId = assetId, Index = index, FieldPath = positionFailed ? "Position.Y" : "HalfExtents.Y",
-                ActualNumber = actual, MinimumNumber = positionFailed ? null : 0 };
+            {
+                AssetId = assetId,
+                Index = index,
+                FieldPath = positionFailed ? "Position.Y" : "HalfExtents.Y",
+                ActualNumber = actual,
+                MinimumNumber = positionFailed ? null : 0
+            };
         }
     }
 

@@ -16,7 +16,10 @@ internal sealed record MapMarkerCandidate(MapLocalMarkerDoc Value, MapEffectiveT
 /// never reads geometry and never allocates an identity.</summary>
 internal static class MapMarkerExpansion
 {
-    internal static IReadOnlyList<MapMarkerCandidate> Capture(MapDocument document, MapAssetClosure assets)
+    internal static IReadOnlyList<MapMarkerCandidate> Capture(MapDocument document, MapAssetClosure assets) =>
+        Capture(MapEffectiveResolutionInput.FromDocument(document), assets);
+
+    internal static IReadOnlyList<MapMarkerCandidate> Capture(MapEffectiveResolutionInput document, MapAssetClosure assets)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
@@ -70,8 +73,12 @@ internal static class MapMarkerExpansion
             MapDocumentFinding first = findings[0];
             throw new MapDocumentException(first.Reason, string.Join("\n", findings.Select(f => f.Message)))
             {
-                MarkerId = first.MarkerId, MarkerName = first.MarkerName, MarkerIds = first.MarkerIds,
-                EntityId = first.EntityId, SubjectKind = first.SubjectKind, Findings = findings,
+                MarkerId = first.MarkerId,
+                MarkerName = first.MarkerName,
+                MarkerIds = first.MarkerIds,
+                EntityId = first.EntityId,
+                SubjectKind = first.SubjectKind,
+                Findings = findings,
             };
         }
     }
@@ -86,7 +93,8 @@ internal static class MapMarkerExpansion
                 MarkerId = reason == MapDocumentRefusal.IdentityDuplicate ? group.Key : null,
                 EntityId = reason == MapDocumentRefusal.IdentityDuplicate ? group.Key : null,
                 MarkerName = reason == MapDocumentRefusal.MarkerNameDuplicate ? group.Key : null,
-                MarkerIds = group.Select(c => c.Value.Id).Order(StringComparer.Ordinal).ToArray(), SubjectKind = "marker",
+                MarkerIds = group.Select(c => c.Value.Id).Order(StringComparer.Ordinal).ToArray(),
+                SubjectKind = "marker",
             });
     }
 }

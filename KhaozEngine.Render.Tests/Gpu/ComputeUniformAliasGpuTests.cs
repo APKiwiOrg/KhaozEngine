@@ -84,6 +84,7 @@ public sealed class ComputeUniformAliasGpuTests(ITestOutputHelper output)
             device.Submit(draw);
         }
         byte[] pixels = GpuReadback.ToRgba(device, target, Size, Size);
+        Assert.Equal(Size * Size * 4, pixels.Length);
         string? configured = Environment.GetEnvironmentVariable("KE_COVERAGE_EVIDENCE_DIR");
         string root = string.IsNullOrWhiteSpace(configured)
             ? "/tmp/grimhollow-equipment-coverage-task11/fix3" : configured;

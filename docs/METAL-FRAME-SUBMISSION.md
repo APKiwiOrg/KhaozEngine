@@ -55,7 +55,20 @@ once the workload has warmed. Each command list preallocates one read-footprint 
 The normal ring gate proves final completion before that slot's footprint is cleared under the submit lock.
 Retirement removes protection without clearing a footprint reclaimed by a later recording. Completion timing
 never chooses a fresh footprint from a shared pool. Frame records are stored by value in ring-sized storage,
-and mapping lease lists return to a pool after the outermost unmap.
+and mapping lease lists return to a pool after the outermost unmap. Before clearing the reclaimed slot,
+it reserves the resource and interval capacities observed by the preceding recording. Only capacity is
+carried forward. Resource identities, byte ranges and protection remain with their original slot. A
+repeating scene shape therefore stays warm when its period differs from the ring depth.
+
+Vertex coverage records all disconnected windows in one list-owned table. Its key is a coverage-header slot
+and the first element, and its value is the maximum last element seen for that pair. The table is cleared at
+Begin and footprint-generation changes, retaining its backing capacity. It grows only when aggregate window
+demand exceeds the warmed recording peak, independently of binding order or per-key demand distribution.
+Reachable indexed streams add no window entries. Total storage is O(N + D), where N is the coverage-header
+high-water count and D is the peak total disconnected-window count of any recording, with normal dictionary
+growth slack. Only integer slots and element ranges enter the table. No buffer, GPU object or key identity
+crosses Begin. Lookup and max-end updates need no per-key enumeration or node chains. Exact byte coverage
+is rebuilt independently in the slot-owned read index and retains the same prefix/completion rules.
 
 Within a footprint, each resource has a reusable sorted append run for contiguous reads and separate AVL
 indexes for earlier contiguous reads and strided reads. Increasing uniform-ring slices append in constant

@@ -29,53 +29,48 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     internal sealed class D3D11ComputeShader : IGpuComputeShader
     {
         readonly DeviceLiveness _liveness;
+        readonly D3D11ShaderCompilation<D3D11PreparedCompute> _prepared;
+        readonly D3D11DeferredResource<D3D11PreparedCompute, Native> _resource;
 
         internal D3D11ComputeShader(DeviceLiveness liveness, object shader, byte[] bytecode,
             uint threadGroupSizeX, uint threadGroupSizeY, uint threadGroupSizeZ, D3D11ShaderEvidence? diagnostics = null)
+            : this(liveness, D3D11ShaderCompilation<D3D11PreparedCompute>.Completed(new(new(bytecode, threadGroupSizeX, threadGroupSizeY, threadGroupSizeZ), diagnostics)),
+                _ => shader)
         {
-            ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(shader);
             ArgumentNullException.ThrowIfNull(bytecode);
-
-            _liveness = liveness;
-            _shader = shader;
-            DiagnosticEvidence = diagnostics;
-            Bytecode = bytecode;
-            ThreadGroupSizeX = threadGroupSizeX;
-            ThreadGroupSizeY = threadGroupSizeY;
-            ThreadGroupSizeZ = threadGroupSizeZ;
+            _ = _resource.Value;
         }
 
-        readonly object _shader;
-        internal D3D11ShaderEvidence? DiagnosticEvidence { get; }
-        internal object ShaderHandle => _shader;
-        internal bool DeviceIsDead => _liveness.IsDead;
-        /// <summary>The compiled compute module, which a native compute pipeline binds.</summary>
-        [SupportedOSPlatform("windows")]
-        internal ID3D11ComputeShader Shader => (ID3D11ComputeShader)_shader;
-
-        /// <summary>The module's DXBC bytes.</summary>
-        internal ReadOnlyMemory<byte> Bytecode { get; }
-
-        /// <inheritdoc/>
-        public uint ThreadGroupSizeX { get; }
-
-        /// <inheritdoc/>
-        public uint ThreadGroupSizeY { get; }
-
-        /// <inheritdoc/>
-        public uint ThreadGroupSizeZ { get; }
-
-        /// <summary>True once disposed, whether or not anything native was released.</summary>
-        internal bool IsDisposed { get; private set; }
-
-        public void Dispose()
+        internal D3D11ComputeShader(DeviceLiveness liveness, D3D11ShaderCompilation<D3D11PreparedCompute> prepared,
+            Func<D3D11PreparedCompute, object> create)
         {
-            if (IsDisposed) return;
-            IsDisposed = true;
-            if (_liveness.IsDead) return;   // the device already freed every child object
+            ArgumentNullException.ThrowIfNull(liveness);
+            _liveness = liveness;
+            _prepared = prepared;
+            _resource = new(liveness, _prepared.Join, p => new(create(p)));
+        }
 
-            ((IDisposable)_shader).Dispose();
+        internal D3D11ShaderCompilation<D3D11PreparedCompute> Preparation => _prepared;
+
+        internal D3D11ShaderEvidence? DiagnosticEvidence => _prepared.Join().Evidence;
+        internal object ShaderHandle => _resource.Value.Shader;
+        internal bool DeviceIsDead => _liveness.IsDead;
+        /// <summary>The compiled compute module, joined and realized at first use.</summary>
+        [SupportedOSPlatform("windows")]
+        internal ID3D11ComputeShader Shader => (ID3D11ComputeShader)ShaderHandle;
+        internal ReadOnlyMemory<byte> Bytecode => _resource.Prepared.Code.Dxbc;
+        public uint ThreadGroupSizeX => _resource.Prepared.Code.ThreadGroupSizeX;
+        public uint ThreadGroupSizeY => _resource.Prepared.Code.ThreadGroupSizeY;
+        public uint ThreadGroupSizeZ => _resource.Prepared.Code.ThreadGroupSizeZ;
+        internal bool IsDisposed => _resource.IsDisposed;
+        internal void EnsureReady() => _ = _resource.Value;
+        public void Dispose() => _resource.Dispose();
+
+        sealed class Native(object shader) : IDisposable
+        {
+            internal object Shader { get; } = shader;
+            public void Dispose() => ((IDisposable)Shader).Dispose();
         }
     }
 }

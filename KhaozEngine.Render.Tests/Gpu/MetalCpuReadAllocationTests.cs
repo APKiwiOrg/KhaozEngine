@@ -85,6 +85,86 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
         Assert.False(reads.Overlaps(new(f.InstanceStreams[2].CpuResource, 628 * 96, 192)));
     }
 
+    // #1696. Reachable vertex keys must not multiply an unrelated instance-window peak.
+    [Fact]
+    public void ReachableVertexBindingsRetainOnlyTheObservedInstanceWindowDemand()
+    {
+        using var f = new MetalReadFootprintDrawFixture(draws: 64);
+        f.Begin();
+        for (uint binding = 0; binding < 32; binding++)
+        {
+            f.List.SetVertexBuffer(0, f.Vertices, binding * 96);
+            f.List.DrawIndexed(3, 1, 0, 0, 0);
+        }
+        for (uint window = 1; window < 64; window++)
+            f.List.DrawIndexed(3, 1, 0, 0, window * 4);
+        Assert.True(f.List.ReadOverlapsForTests(new(f.Instances.CpuResource, 252 * 96, 32)));
+        Assert.False(f.List.ReadOverlapsForTests(new(f.Instances.CpuResource, 251 * 96, 32)));
+        Assert.False(f.List.ReadOverlapsForTests(new(f.Instances.CpuResource, 252 * 96 + 32, 64)));
+        f.List.End();
+
+        f.Begin();
+        long retained = f.List.RetainedVertexWindowCapacityForTests;
+        output.WriteLine($"32 reachable keys and 64 instance windows retain {retained} window entries after Begin");
+        // The peak has 63 disconnected windows total, independent of the 32 reachable keys.
+        Assert.InRange(retained, 1L, 128L);
+        for (uint binding = 32; binding < 64; binding++)
+        {
+            f.List.SetVertexBuffer(0, f.Vertices, binding * 96);
+            f.List.DrawIndexed(3, 1, 0, 0, 0);
+        }
+        f.List.End();
+        f.Begin();
+        Assert.Equal(retained, f.List.RetainedVertexWindowCapacityForTests);
+        for (uint binding = 0; binding < 32; binding++)
+        {
+            f.List.SetVertexBuffer(1, f.Instances, binding * 32);
+            f.List.DrawIndexed(3, 1, 0, 0, 0);
+            f.List.DrawIndexed(3, 1, 0, 0, 4);
+        }
+        f.List.SetVertexBuffer(1, f.Instances, 0);
+        for (uint window = 2; window < 64; window++)
+            f.List.DrawIndexed(3, 1, 0, 0, window * 4);
+        f.List.End();
+        f.Begin();
+        long mixed = f.List.RetainedVertexWindowCapacityForTests;
+        output.WriteLine($"One large and 31 small window keys retain {mixed} window entries after Begin");
+        // The mixed recording peaks at 63 + 31 disconnected windows in the shared table.
+        Assert.InRange(mixed, 1L, 256L);
+        f.List.End();
+    }
+
+    // #1696. A warm scene can revisit the same instance windows in a different buffer-binding order.
+    [Fact]
+    public void WarmedVertexCoverageKeepsWindowCapacityAcrossBindingOrderChanges()
+    {
+        using var f = new MetalReadFootprintDrawFixture(4);
+        var reads = new MetalRecordedReads();
+        var vertices = new MetalVertexReadRecords();
+        void Frame(bool reverse)
+        {
+            reads.Clear();
+            vertices.Reset();
+            for (int binding = 0; binding < 2; binding++)
+            {
+                bool manyWindows = (binding == 0) != reverse;
+                vertices.Record(1, manyWindows ? f.Instances : f.Meshes[0], 0);
+                for (uint window = 0; window < (manyWindows ? 3u : 2u); window++)
+                    vertices.RecordReads(reads, f.Pipeline.Plan.ReadLayout, 0, 1, window * 4, 1, indexed: true);
+            }
+        }
+        Frame(false);
+        Frame(false);
+        long bytes = AllocationMeasurement.Measure("warm vertex windows in reversed binding order", () => Frame(true));
+        output.WriteLine($"Reversing A={{0,4,8}} and B={{0,4}} allocated {bytes} bytes");
+        Assert.Equal(0, bytes);
+        Assert.True(reads.Overlaps(new(f.Instances.CpuResource, 8 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 7 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.Instances.CpuResource, 8 * 96 + 32, 64)));
+        Assert.True(reads.Overlaps(new(f.Meshes[0].CpuResource, 4 * 96, 32)));
+        Assert.False(reads.Overlaps(new(f.Meshes[0].CpuResource, 8 * 96, 32)));
+    }
+
     // #1692. Both interval indexes must reuse large, irregular recordings, not only tiny prefixes.
     [Fact]
     public void ASteadyThreeThousandDrawFootprintReusesItsIndexes()
@@ -149,14 +229,18 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
 
     // #1685. Final completion can lag by the whole ring, rather than retiring each prefix immediately.
     [Theory]
-    [InlineData(1)]
-    [InlineData(3)]
-    public void SteadyPrefixesReuseProtectionStorageUntilFinalCompletion(int depth)
+    [InlineData(1, false)]
+    [InlineData(3, false)]
+    [InlineData(3, true)]
+    public void SteadyPrefixesReuseProtectionStorageUntilFinalCompletion(int depth, bool changingShape)
     {
         ulong completed = 0, submitted = 0;
         var protection = new MetalCpuReadProtection(new(), () => completed, () => submitted);
         var recordings = new MetalRecordingReads(protection, depth);
         var resource = new MetalCpuResource();
+        // Four repeating scene shapes visit three ring slots in different phases. Each shape is warmed,
+        // but a slot must inherit observed capacity rather than wait for every shape/slot combination.
+        var extras = new[] { new MetalCpuResource(), new MetalCpuResource(), new MetalCpuResource() };
         void Frames(int count)
         {
             for (int i = 0; i < count; i++)
@@ -167,6 +251,12 @@ public sealed class MetalCpuReadAllocationTests(ITestOutputHelper output)
                 recordings.Begin(segment);
                 var reads = recordings.Current;
                 reads.Add(resource, (ulong)segment * 64, 16);
+                if (changingShape)
+                    for (int extra = 0; extra < i % 4; extra++)
+                    {
+                        reads.Add(extras[extra], (ulong)segment * 64, 16);
+                        reads.AddStrided(extras[extra], (ulong)segment * 256 + 128, 4, 16, 4);
+                    }
                 ulong id = protection.Protect(segment, reads);
                 protection.Committed(id);
                 protection.RequireWritable(resource, (ulong)depth * 64, 16);

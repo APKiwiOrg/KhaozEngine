@@ -23,18 +23,27 @@ public partial class EditorCommandsTests
         Assert.Equal(kind is "scatter layer" or "companion layer" ? id : null, error.LayerId);
         Assert.Equal(kind switch
         {
-            "placement" => "Placements", "spawn" => "Spawns", "player spawn" => "PlayerSpawns",
-            "region" => "Regions", "terrain feature" => "Terrain.Features", "exclusion" => "Exclusions",
-            "scatter override" => "ScatterOverrides", "scatter layer" => "ScatterLayers", _ => "CompanionLayers",
+            "placement" => "Placements",
+            "spawn" => "Spawns",
+            "player spawn" => "PlayerSpawns",
+            "region" => "Regions",
+            "terrain feature" => "Terrain.Features",
+            "exclusion" => "Exclusions",
+            "scatter override" => "ScatterOverrides",
+            "scatter layer" => "ScatterLayers",
+            _ => "CompanionLayers",
         }, error.FieldPath);
         if (reason == MapDocumentRefusal.IdentityDuplicate && kind is "region" or "terrain feature" or "exclusion" or "scatter override" or "scatter layer" or "companion layer")
         {
             int index = Assert.IsType<int>(error.Index);
             Assert.Equal(id, kind switch
             {
-                "region" => doc.Regions[index].Name, "terrain feature" => doc.Terrain.Features[index].Name,
-                "exclusion" => doc.Exclusions[index].Name, "scatter override" => doc.ScatterOverrides[index].Name,
-                "scatter layer" => doc.ScatterLayers[index].Name, _ => doc.CompanionLayers[index].Name,
+                "region" => doc.Regions[index].Name,
+                "terrain feature" => doc.Terrain.Features[index].Name,
+                "exclusion" => doc.Exclusions[index].Name,
+                "scatter override" => doc.ScatterOverrides[index].Name,
+                "scatter layer" => doc.ScatterLayers[index].Name,
+                _ => doc.CompanionLayers[index].Name,
             });
         }
         Assert.Equal(before, Save(doc));
@@ -71,8 +80,12 @@ public partial class EditorCommandsTests
         Assert.True(editor.History.CanRedo);
         string present = kind switch
         {
-            "placement" => "inn", "spawn" => "wolf-1", "player spawn" => "start",
-            "region" => "previous-town", "scatter layer" => "trees", _ => "understory",
+            "placement" => "inn",
+            "spawn" => "wolf-1",
+            "player spawn" => "start",
+            "region" => "previous-town",
+            "scatter layer" => "trees",
+            _ => "understory",
         };
         IEditorCommand Rename(string source) => kind switch
         {

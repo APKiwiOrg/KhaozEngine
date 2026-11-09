@@ -6,6 +6,7 @@ namespace KhaozEngine.MapDoc.Surfaces;
 /// <summary>A bounded authored rectangle within a signed 64-cell patch slot.</summary>
 public sealed partial class MapSurfacePatch
 {
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; set; }
     public MapPatchKey Key { get; set; }
     public int CellMinX { get; set; }
     public int CellMinZ { get; set; }
@@ -28,7 +29,11 @@ public sealed partial class MapSurfacePatch
             throw new MapDocumentException(!ValidRectangle(CellMinX, CellMinZ, Width, Depth)
                 ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.SurfaceAddressOutOfPatch, "cell outside patch rectangle")
             {
-                Patch = Key, Width = Width, Depth = Depth, CellX = x, CellZ = z,
+                Patch = Key,
+                Width = Width,
+                Depth = Depth,
+                CellX = x,
+                CellZ = z,
                 FieldPath = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? "rectangle" : x < 0 || x >= Width ? "x" : "z",
                 ActualInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : x < 0 || x >= Width ? x : z,
                 MinimumInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : 0,
@@ -59,7 +64,11 @@ public sealed partial class MapSurfacePatch
             throw new MapDocumentException(!ValidRectangle(CellMinX, CellMinZ, Width, Depth)
                 ? MapDocumentRefusal.BoundsInvalid : MapDocumentRefusal.SurfaceAddressOutOfPatch, "corner outside patch rectangle")
             {
-                Patch = Key, Width = Width, Depth = Depth, CellX = x, CellZ = z,
+                Patch = Key,
+                Width = Width,
+                Depth = Depth,
+                CellX = x,
+                CellZ = z,
                 FieldPath = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? "rectangle" : x < 0 || x > Width ? "x" : "z",
                 ActualInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : x < 0 || x > Width ? x : z,
                 MinimumInteger = !ValidRectangle(CellMinX, CellMinZ, Width, Depth) ? null : 0,
@@ -86,6 +95,8 @@ public sealed partial class MapSurfacePatch
     }
     public MapSurfacePatch Clone()
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.BeforeClone(this);
         var copy = new MapSurfacePatch
         {
             Key = Key,
@@ -101,6 +112,7 @@ public sealed partial class MapSurfacePatch
         copy.CornerDependencies.AddRange(CornerDependencies);
         copy.EdgeSubdivisions.AddRange(EdgeSubdivisions);
         CloneRecordsTo(copy);
+        copy.PreparationOwnership = preparation?.Complete(Scene.MapSceneAdmission.PatchBytes(copy));
         return copy;
     }
 
@@ -178,12 +190,17 @@ public sealed partial class MapSurfacePatch
                     : dependency.Owner is null ? ".Owner" : ".Owner.Patch.SurfaceId";
                 Add(new(badX || badZ ? MapDocumentRefusal.SurfaceAddressOutOfPatch : MapDocumentRefusal.SchemaValueRequired,
                     "invalid corner dependency")
-                { ResolutionStatus = MapResolveStatus.Invalid,
-                    FieldPath = $"CornerDependencies[{i}]{field}", Index = i,
-                    CellX = dependency?.CornerX, CellZ = dependency?.CornerZ,
+                {
+                    ResolutionStatus = MapResolveStatus.Invalid,
+                    FieldPath = $"CornerDependencies[{i}]{field}",
+                    Index = i,
+                    CellX = dependency?.CornerX,
+                    CellZ = dependency?.CornerZ,
                     ActualInteger = badX ? dependency!.CornerX : badZ ? dependency!.CornerZ : null,
-                    MinimumInteger = badX || badZ ? 0 : null, MaximumInteger = badX ? Width : badZ ? Depth : null,
-                    Width = Width, Depth = Depth,
+                    MinimumInteger = badX || badZ ? 0 : null,
+                    MaximumInteger = badX ? Width : badZ ? Depth : null,
+                    Width = Width,
+                    Depth = Depth,
                 });
                 continue;
             }
@@ -195,8 +212,12 @@ public sealed partial class MapSurfacePatch
             {
                 Add(MapDocumentFinding.FromException(error)! with
                 {
-                    ResolutionStatus = MapResolveStatus.Invalid, Message = "invalid dependency address denominator", FieldPath = $"CornerDependencies[{i}].Owner.Address.Denominator",
-                    Index = i, CellX = dependency.CornerX, CellZ = dependency.CornerZ,
+                    ResolutionStatus = MapResolveStatus.Invalid,
+                    Message = "invalid dependency address denominator",
+                    FieldPath = $"CornerDependencies[{i}].Owner.Address.Denominator",
+                    Index = i,
+                    CellX = dependency.CornerX,
+                    CellZ = dependency.CornerZ,
                 });
             }
         }
@@ -212,19 +233,33 @@ public sealed partial class MapSurfacePatch
                 string field = edge is null ? "" : badX ? ".CellX" : badZ ? ".CellZ" : ".Edge";
                 Add(new(edge is null ? MapDocumentRefusal.SchemaValueRequired : badX || badZ
                     ? MapDocumentRefusal.SurfaceAddressOutOfPatch : MapDocumentRefusal.SchemaEnumUnsupported, "invalid subdivision edge")
-                { ResolutionStatus = MapResolveStatus.Invalid,
-                    FieldPath = $"EdgeSubdivisions[{i}]{field}", Index = i, CellX = edge?.CellX, CellZ = edge?.CellZ, Edge = edge?.Edge,
+                {
+                    ResolutionStatus = MapResolveStatus.Invalid,
+                    FieldPath = $"EdgeSubdivisions[{i}]{field}",
+                    Index = i,
+                    CellX = edge?.CellX,
+                    CellZ = edge?.CellZ,
+                    Edge = edge?.Edge,
                     ActualInteger = edge is null ? null : badX ? edge.CellX : badZ ? edge.CellZ : (byte)edge.Edge,
-                    MinimumInteger = badX || badZ ? 0 : null, MaximumInteger = badX ? Width - 1 : badZ ? Depth - 1 : null,
-                    EnumType = edge is not null && !badX && !badZ ? typeof(MapCellEdge) : null, Width = Width, Depth = Depth,
+                    MinimumInteger = badX || badZ ? 0 : null,
+                    MaximumInteger = badX ? Width - 1 : badZ ? Depth - 1 : null,
+                    EnumType = edge is not null && !badX && !badZ ? typeof(MapCellEdge) : null,
+                    Width = Width,
+                    Depth = Depth,
                 });
                 continue;
             }
             if (edge.Segments is < 2 or > 64)
                 Add(new(MapDocumentRefusal.ValueOutsideRange, "subdivision segments must be 2 to 64")
                 {
-                    FieldPath = $"EdgeSubdivisions[{i}].Segments", Index = i, CellX = edge.CellX, CellZ = edge.CellZ, Edge = edge.Edge,
-                    ActualInteger = edge.Segments, MinimumInteger = 2, MaximumInteger = 64,
+                    FieldPath = $"EdgeSubdivisions[{i}].Segments",
+                    Index = i,
+                    CellX = edge.CellX,
+                    CellZ = edge.CellZ,
+                    Edge = edge.Edge,
+                    ActualInteger = edge.Segments,
+                    MinimumInteger = 2,
+                    MaximumInteger = 64,
                 });
             if (!edges.Add((edge.CellX, edge.CellZ, edge.Edge)))
                 Add(new(MapDocumentRefusal.IdentityDuplicate, "duplicate edge subdivision")

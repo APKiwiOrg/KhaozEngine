@@ -34,7 +34,7 @@ public sealed partial class MapDocumentSurfaceSource
             MapPatchFindResult known = Find(source._index);
             if (ReferenceEquals(source._index, source._residentIndex) || known.Status == MapFindStatus.CapacityExceeded) return known;
             MapPatchFindResult resident = Find(source._residentIndex);
-            if (resident.Status == MapFindStatus.CapacityExceeded) return Capacity(before);
+            if (resident.Status == MapFindStatus.CapacityExceeded) return resident with { PagesRead = state.Budget.Reads - before };
             try
             {
                 var patches = new SortedDictionary<MapPatchKey, MapPatchRead>();
@@ -55,7 +55,7 @@ public sealed partial class MapDocumentSurfaceSource
                     PagesRead = state.Budget.Reads - before,
                 };
             }
-            catch (MapSurfaceCapacityException) { return Capacity(before); }
+            catch (MapSurfaceCapacityException error) { return Capacity(before) with { Capacity = error.Capacity, Diagnostic = error.Diagnostic }; }
         }
 
         MapPatchFindResult Find(MapSurfaceStorageIndex index) => MapSurfaceQuery.FindAcquisition(source, index, state.Scope,
@@ -99,8 +99,10 @@ public sealed partial class MapDocumentSurfaceSource
 
         MapPatchRead Payload(MapSurfaceIndexEntry entry)
         {
+            using var admitted = state.Scope.SceneAdmission?.Enter();
             IReadOnlyList<MapRecordRef>? incidents = source._index.ByKey.TryGetValue(entry.Key, out MapSurfaceIndexEntry? stored)
                 ? stored.IncidentRecords : null;
+            Scene.MapSceneAdmission.Current?.BeforePayload(0);
             state.Serve(entry.Key, incidents);
             if (state.Budget.Work is { } work) work.PayloadReads++;
             return source._surfaces.Patches.TryGetValue(entry.Key, out MapSurfacePatch? patch)

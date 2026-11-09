@@ -14,7 +14,9 @@ internal static class MapSessionAdmission
                     ? MapDocumentRefusal.AssetClosureRequired : MapDocumentRefusal.SchemaValueRequired,
                 "Native asset editing requires an open native document with a bound asset closure.")
             {
-                DocumentId = document.Id, Operation = "WithNativeAssets", Path = storagePath,
+                DocumentId = document.Id,
+                Operation = "WithNativeAssets",
+                Path = storagePath,
                 FieldPath = !native ? "ResolverIdentity" : assets is null ? "NativeAssets" : "DocumentPath",
             };
     }
@@ -22,9 +24,11 @@ internal static class MapSessionAdmission
     internal static void RequireNativeMutation(MapAssetClosure? assets, bool nested, string? documentId)
     {
         if (assets is null) throw new MapDocumentException(MapDocumentRefusal.AssetClosureRequired,
-            "Native editing requires an explicit asset closure binding.") { DocumentId = documentId, Operation = "MutateNative" };
+            "Native editing requires an explicit asset closure binding.")
+        { DocumentId = documentId, Operation = "MutateNative" };
         if (nested) throw new MapDocumentException(MapDocumentRefusal.ToolNestedMutationUnsupported,
-            "Nested native mutations are not supported.") { DocumentId = documentId, Operation = "MutateNative" };
+            "Nested native mutations are not supported.")
+        { DocumentId = documentId, Operation = "MutateNative" };
     }
 
     /// <summary>Injects missing binding values into the production guard without replacing session state.</summary>

@@ -164,9 +164,12 @@ public sealed class MapWorldQueries
             throw new MapQueryRangeException(!float.IsFinite(b.MinY) || !float.IsFinite(b.MaxY)
                     ? MapDocumentRefusal.ValueNonfinite : MapDocumentRefusal.BoundsInvalid,
                 "A band needs finite heights with MinY at most MaxY.", parameter ?? nameof(band))
-            { FieldPath = !float.IsFinite(b.MinY) ? "Band.MinY" : !float.IsFinite(b.MaxY) ? "Band.MaxY" : "Band",
+            {
+                FieldPath = !float.IsFinite(b.MinY) ? "Band.MinY" : !float.IsFinite(b.MaxY) ? "Band.MaxY" : "Band",
                 ActualNumber = !float.IsFinite(b.MaxY) && float.IsFinite(b.MinY) ? b.MaxY : b.MinY,
-                MinimumNumber = b.MinY, MaximumNumber = b.MaxY };
+                MinimumNumber = b.MinY,
+                MaximumNumber = b.MaxY
+            };
         return new MapSlab(b.MinY, b.MaxY);
     }
 

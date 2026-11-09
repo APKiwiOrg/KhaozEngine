@@ -305,7 +305,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // mipLevel even when the layer was the bad value, which sends a caller reading the wrong argument.
             if (mipLevel >= shape.MipLevels)
             {
-                throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange,nameof(mipLevel), mipLevel,
+                throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(mipLevel), mipLevel,
                     "Mip level "
                     + mipLevel.ToString(CultureInfo.InvariantCulture)
                     + " is outside a native Metal staging texture with "
@@ -321,7 +321,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (arrayLayer >= shape.ArrayLayers)
             {
-                throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange,nameof(arrayLayer), arrayLayer,
+                throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange, nameof(arrayLayer), arrayLayer,
                     "Array layer "
                     + arrayLayer.ToString(CultureInfo.InvariantCulture)
                     + " is outside a native Metal staging texture with "

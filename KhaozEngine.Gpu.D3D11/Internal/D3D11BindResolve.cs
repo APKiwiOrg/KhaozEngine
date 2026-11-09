@@ -71,14 +71,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                             + "usage at creation (decision X1 creates them all eagerly and the emitter creates none), "
                             + "so this is either a layout element of the wrong kind or a resource created without the "
                             + "usage bit its layout asks for.", nameof(resource))
-                            {
-                                ActualType = resource.GetType(),
-                                ExpectedBackend = GpuBackendKind.Direct3D11Native,
-                                ResourceKind = "bindable resource",
-                                Context = "register view",
-                                RegisterLetter = Letter(file)[0],
-                                ExpectedType = typeof(ID3D11BindableViews),
-                            };
+                        {
+                            ActualType = resource.GetType(),
+                            ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                            ResourceKind = "bindable resource",
+                            Context = "register view",
+                            RegisterLetter = Letter(file)[0],
+                            ExpectedType = typeof(ID3D11BindableViews),
+                        };
                     }
 
                 default:
@@ -88,13 +88,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                         + "this backend created answers ID3D11BindableViews, which is where the view a register "
                         + "file wants comes from, and a resource from another backend carries another backend's "
                         + "handles.", nameof(resource))
-                        {
-                            ActualType = resource.GetType(),
-                            ExpectedType = typeof(ID3D11BindableViews),
-                            ExpectedBackend = GpuBackendKind.Direct3D11Native,
-                            ResourceKind = "bindable resource",
-                            Context = "resource bind",
-                        };
+                    {
+                        ActualType = resource.GetType(),
+                        ExpectedType = typeof(ID3D11BindableViews),
+                        ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                        ResourceKind = "bindable resource",
+                        Context = "resource bind",
+                    };
             }
         }
 
@@ -113,13 +113,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 + "this backend's framebuffer types answer ID3D11RenderTargetSurface, which is what carries the "
                 + "render target and depth-stencil views, and a framebuffer from another backend carries another "
                 + "backend's views.", nameof(framebuffer))
-                {
-                    ActualType = framebuffer.GetType(),
-                    ExpectedType = typeof(ID3D11RenderTargetSurface),
-                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
-                    ResourceKind = "framebuffer",
-                    Context = "framebuffer bind",
-                };
+            {
+                ActualType = framebuffer.GetType(),
+                ExpectedType = typeof(ID3D11RenderTargetSurface),
+                ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                ResourceKind = "framebuffer",
+                Context = "framebuffer bind",
+            };
         }
 
         /// <summary>
@@ -139,13 +139,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 + "emitter as a buffer. A buffer this backend created carries the ID3D11Buffer every bind, copy "
                 + "and write names, and a buffer from another backend carries another backend's.",
                 nameof(buffer))
-                {
-                    ActualType = buffer?.GetType(),
-                    ExpectedType = typeof(ID3D11BindableViews),
-                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
-                    ResourceKind = "buffer",
-                    Context = "native buffer",
-                };
+            {
+                ActualType = buffer?.GetType(),
+                ExpectedType = typeof(ID3D11BindableViews),
+                ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                ResourceKind = "buffer",
+                Context = "native buffer",
+            };
 
         /// <summary>
         /// THE FRAMEBUFFER A COMMAND NAMES AN ATTACHMENT OF, refused by name when nothing is bound, in the one
@@ -169,9 +169,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 $"{command} was reached with no framebuffer bound on the native Direct3D 11 backend. "
                 + (why ?? "A command that names an attachment of the bound framebuffer has nothing to name while "
                     + "none is bound. Bind a framebuffer first."))
-                    {
-                        Command = command,
-                    };
+            {
+                Command = command,
+            };
 
         /// <summary>
         /// The bound framebuffer whose extent IS the full scissor, refused by name when none is bound, in the one
@@ -224,9 +224,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 "ClearDepthStencil was reached with a framebuffer that declares no depth attachment on the native "
                 + "Direct3D 11 backend. A pass that clears depth has to render into a framebuffer that declares "
                 + "one.")
-                {
-                    Command = "ClearDepthStencil",
-                };
+            {
+                Command = "ClearDepthStencil",
+            };
         }
 
         /// <summary>
@@ -253,10 +253,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + $"entries and this bind covers {binds.Length} registers. The scratch is grown before the "
                     + "transposition, so a short one here is a defect in the emitter rather than an oversized "
                     + "bind.", nameof(firstConstants))
-                    {
-                        SuppliedCount = Math.Min(firstConstants.Length, constantCounts.Length),
-                        RequiredCount = binds.Length,
-                    };
+                {
+                    SuppliedCount = Math.Min(firstConstants.Length, constantCounts.Length),
+                    RequiredCount = binds.Length,
+                };
             }
 
             for (int i = 0; i < binds.Length; i++)
@@ -274,11 +274,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                         + $"[{firstConstants[i]}, +{constantCounts[i]}). A null entry must carry a first constant "
                         + "and a constant count of zero, and the runtime rejects the whole call otherwise, which "
                         + "loses every other register in the same span.", nameof(binds))
-                        {
-                            RegisterIndex = i,
-                            FirstConstant = binds[i].FirstConstant,
-                            ConstantCount = binds[i].ConstantCount,
-                        };
+                    {
+                        RegisterIndex = i,
+                        FirstConstant = binds[i].FirstConstant,
+                        ConstantCount = binds[i].ConstantCount,
+                    };
                 }
             }
         }

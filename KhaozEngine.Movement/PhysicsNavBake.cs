@@ -70,7 +70,8 @@ public sealed partial class PhysicsNavBake : IDisposable
         Vector3 origin = basis?.Origin ?? world.Origin;
         if (!float.IsFinite(origin.X) || !float.IsFinite(origin.Y) || !float.IsFinite(origin.Z))
             throw new NavigationBuildException(NavigationBuildRefusal.PhysicsOriginNonfinite,
-                "The physics origin must be finite.") { ActualOrigin = origin };
+                "The physics origin must be finite.")
+            { ActualOrigin = origin };
         (int width, int height, int cells, int maxSamples) = options.Validate(origin);
         Func<float, float, float, MovementMedium>? medium = !options.SampleWater ? null
             : context.CaptureMedium ?? throw new ArgumentException("Water sampling requires a medium.", nameof(context));
@@ -106,7 +107,7 @@ public sealed partial class PhysicsNavBake : IDisposable
                 if (count > options.MaxSurfacesPerColumn)
                     throw new NavigationBuildException(NavigationBuildRefusal.ColumnSurfaceCapExceeded,
                         $"Physics column at ({absoluteX}, {absoluteZ}) exceeds the surface cap.")
-                        { AbsoluteX = absoluteX, AbsoluteZ = absoluteZ, MaximumCount = options.MaxSurfacesPerColumn, ActualCount = count };
+                    { AbsoluteX = absoluteX, AbsoluteZ = absoluteZ, MaximumCount = options.MaxSurfacesPerColumn, ActualCount = count };
                 float previous = float.NegativeInfinity;
                 for (int i = 0; i < count; i++)
                 {
@@ -157,7 +158,8 @@ public sealed partial class PhysicsNavBake : IDisposable
         Vector3 actual = world.Origin;
         if (actual != origin)
             throw new NavigationBuildException(NavigationBuildRefusal.CaptureOriginChanged,
-                "The physics origin changed after capture began.") { ExpectedOrigin = origin, ActualOrigin = actual };
+                "The physics origin changed after capture began.")
+            { ExpectedOrigin = origin, ActualOrigin = actual };
     }
 
     private static void RequireAuthoredStatics(GroundMoveContext context)
@@ -166,6 +168,6 @@ public sealed partial class PhysicsNavBake : IDisposable
             throw new NavigationBuildException(NavigationBuildRefusal.RuntimeStaticsPresent,
                 "Authored navigation cannot capture or build profiles with live runtime statics. " +
                 "Use an authored-only installation or bake before admitting runtime changes.")
-                { SourceRole = NavigationSourceRole.MovementRegistration };
+            { SourceRole = NavigationSourceRole.MovementRegistration };
     }
 }

@@ -28,7 +28,8 @@ namespace KhaozEngine.Render3D
         internal static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(string path, string? entryId)
             => BuildParts(LoadModel(path, entryId), path, entryId);
 
-        static IReadOnlyList<GltfMeshPart> BuildParts(ModelRoot root, string path, string? entryId = null)
+        static IReadOnlyList<GltfMeshPart> BuildParts(ModelRoot root, string path, string? entryId = null,
+            Func<GltfMaterial?, GltfMaterialMaps>? readMaps = null, bool admitted = false)
         {
             // Distinct materials in first-use order (a null material - primitives with none - is a valid key). Walk
             // meshes then primitives, the same traversal BuildRigid uses, so the single-material part's corner order
@@ -46,6 +47,7 @@ namespace KhaozEngine.Render3D
             var parts = new List<GltfMeshPart>(order.Count);
             foreach (GltfMaterial? material in order)
             {
+                if (admitted) GltfDecodeAdmission.EnterLargeAllocation();
                 var corners = new List<MeshCorner>();
                 // Same scene-graph walk as BuildRigid (a mesh referenced by several nodes emits one copy per node;
                 // an un-noded mesh loads once at identity), but restricted to this material's primitives.
@@ -60,7 +62,11 @@ namespace KhaozEngine.Render3D
                     }
                     if (!placed) AppendMaterialCorners(corners, mesh, Matrix4x4.Identity, path, material, entryId);
                 }
-                if (corners.Count > 0) parts.Add(new GltfMeshPart(MeshAssembler.Build(corners), ReadMaterialMaps(material)));
+                if (corners.Count > 0)
+                {
+                    if (admitted) GltfDecodeAdmission.EnterLargeAllocation();
+                    parts.Add(new GltfMeshPart(MeshAssembler.Build(corners), readMaps is null ? ReadMaterialMaps(material) : readMaps(material)));
+                }
             }
 
             if (parts.Count == 0) throw new GltfImportStateException(GltfImportRefusal.NoTriangles, "glTF has no triangles: " + path) { Identity = path };

@@ -39,9 +39,11 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void UnloadMesh(MeshHandle h)
         {
+            if (_publishedResourceMeshes.Contains(h))
+                throw new System.InvalidOperationException("A published resource mesh is borrowed. Use ReleaseResource.");
             if (h.Generation == 0) return;          // default handle: no-op
             _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
-            _interiorRelevance.Forget(h);
+            ForgetWaterAndInteriorRelevance(h);
             _silhouetteRelevance.Forget(h);
             // Retire rather than destroy: queued GPU work may still reference these buffers, and draining the whole
             // device per unload stalled the frame thread on the terrain streaming path (every chunk leaving the ring

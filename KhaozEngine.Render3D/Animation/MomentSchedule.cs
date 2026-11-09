@@ -213,8 +213,12 @@ namespace KhaozEngine.Render3D
                         + $" {Text(_slotSeconds)} s leaves between quiet ends of {Text(_quietSeconds)} s.",
                         nameof(families))
                     {
-                        FamilyName = family.Name, FamilyIndex = index, LengthSeconds = family.LengthSeconds,
-                        AvailableSeconds = room, SlotSeconds = _slotSeconds, QuietSeconds = _quietSeconds,
+                        FamilyName = family.Name,
+                        FamilyIndex = index,
+                        LengthSeconds = family.LengthSeconds,
+                        AvailableSeconds = room,
+                        SlotSeconds = _slotSeconds,
+                        QuietSeconds = _quietSeconds,
                     };
                 total += family.Weight;
                 _thresholds[index] = total;

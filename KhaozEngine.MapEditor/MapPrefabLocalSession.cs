@@ -127,7 +127,7 @@ public sealed class MapPrefabLocalSession
     void RequireOpen(string operation)
     {
         if (_cancelled) throw new MapDocumentException(MapDocumentRefusal.EditorPrefabSessionCancelled, "The prefab asset session is cancelled.")
-            { AssetId = _assetId, Operation = operation };
+        { AssetId = _assetId, Operation = operation };
     }
     (MapDocument Document, MapAssetClosure Assets) Detach(MapPrefabAsset asset)
     {
@@ -136,7 +136,7 @@ public sealed class MapPrefabLocalSession
         var reference = new MapAssetRef(MapAssetVersionIdentity.Address("prefab", asset.Id, prefabBytes), "prefab-local/" + sha, sha, 1);
         var roots = _sourceAssets.Roots.ToArray();
         if (roots.Length == 0) throw new MapDocumentException(MapDocumentRefusal.ToolAssetRootRequired, "Prefab editing requires an asset manifest root.")
-            { AssetId = asset.Id, Operation = nameof(Detach) };
+        { AssetId = asset.Id, Operation = nameof(Detach) };
         var root = roots[0];
         var manifest = MapAssetManifestReader.Read(_sourceAssets.GetResource(root.Id).Bytes.ToArray(), root.Id);
         var dependencies = _sourceAssets.CapturedResources.Where(r => r.Kind is not (MapResourceKind.Prefab or MapResourceKind.Manifest)).Select(r => r.Reference.Id).ToList();

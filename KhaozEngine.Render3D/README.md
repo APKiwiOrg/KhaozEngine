@@ -102,6 +102,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `RenderOrigin = Vector3.Zero` opts out exactly.
   The three engine cameras implement `IRenderOriginAware`. A consumer camera that does not falls the WHOLE
   pipeline back to the absolute path (never half an origin) and `RenderOriginActive` reports `false`.
+  `DrawAnchored(in RigidInstanceDraw, RenderAnchor)` additionally accepts a matrix local to an integer world
+  anchor. The renderer retains that anchor through grouping, shadows and previous-frame motion, reducing it
+  against the render origin in binary64 before one binary32 rounding. This avoids an absolute float translation
+  for geometry already authored in local coordinates. CPU culling still uses an approximate absolute matrix.
+  Frozen capture shadow domains keep absolute receiver and caster bounds, with their centres reduced into the
+  render frame before cascade fitting. Finite capture caster eligibility still tests the absolute bounds.
+  `AddLightAnchored(localPosition, anchor, colour, radius, intensity, shadow)` likewise retains a local light
+  through receiver buffers, cluster classification and point-shadow binding. Shadow exclusion box corners use
+  the same anchor-local space. Existing absolute light overloads remain unchanged.
   `Transform3D.ToMatrix(Vector3 renderOrigin)` (in `KhaozEngine.Render3D.Ecs`) builds a reduced matrix for a
   consumer that wants one, which `Scene3D` itself never requires. Terrain chunk vertices, terrain texturing at range and depth precision are
   explicitly NOT fixed by it. See docs/USING-KHAOZENGINE.md.
@@ -979,6 +988,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   The viewport form prepares the colour source inside its one `device.water.prepare` root, before the water
   sets that bind it. The no-argument form prepares it at render after final sizing and opens no device phase.
   Render repeats the preparation without a phase, which does device work only when late-bound targets changed.
+  Bounded native surfaces participate in the same column-light validation, colour copy and temporal noise phase.
 
   `TileWaterLooks.River` supplies the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
   with `WaterColumnLight` left null. See [the TileWorld reference](../KhaozEngine.TileWorld.Render3D/README.md)
@@ -1094,6 +1104,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     `WaterFrameRefusal.OpticsInputsChangedOrUnprepared` on `WaterFrameStateException`, with `Prepared`,
     `PreparedPlaneCount` and `ActualPlaneCount`. Only a frame with bound water freezes those inputs. Preparation revalidates coverage from the absolute queue, the rectangle
     `DrawWater` admitted, so an explicit off-grid `RenderOrigin` cannot refuse an admitted plane.
+    Native bounded surfaces contribute ocean demand and reserve their shared uniform slots before optical sets
+    are created. They remain separate from the optical plane queue and its coverage certificates.
   - **Lifetime**: reuse the handle across frames. `UnloadWaterOpticsField` invalidates either kind at once and
     defers texture destruction through the scene's retirement queue. On a disposed scene, unloading or binding a
     handle throws `ObjectDisposedException`. `WaterOpticsStats` counts live fields,
@@ -1366,11 +1378,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   stays fixed across model size, camera distance, MSAA and render scale. The one-part `DrawMeshOutline(mesh,
   world, color, widthPixels)` overload creates its own group. Mask targets allocate lazily. The older
   `DrawMeshSilhouette` metre-width hull remains available for world-space expansion effects.
-  `DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement)` applies the same world-anchored
-  coverage split as rigid LOD handoffs. Its full union still rejects strokes around individual dissolve holes.
-  The overload with trailing `bool cutInsideInteriors` applies the field to both rigid coverage masks, so the
-  border follows the cut boundary in either occlusion mode. `DrawMeshSilhouette` has the same trailing flag
-  and tests the extruded hull position. Existing overloads forward false, and skinned outlines remain uncut.
+  `DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement)` shares rigid LOD coverage.
+  `DrawMeshOutlineAnchored(group, mesh, local, anchor, dissolve, complement)` retains native anchor precision.
+  Union masks reject strokes around dissolve holes. The trailing `bool cutInsideInteriors` overload applies
+  the field to both coverage masks in either occlusion mode. `DrawMeshSilhouette` tests its extruded hull.
+  Existing overloads forward false. Skinned outlines remain uncut.
 - Posed skinned target outlines use the grouped `DrawSkinnedOutline(MeshOutlineGroup, SkinnedMeshHandle,
   ReadOnlySpan<Matrix4x4>, Matrix4x4)` and `DrawSkinnedOutlineDissolved` methods. The two convenience overloads
   start a group for one part, with the five-argument form using scene-depth occlusion and the six-argument form
@@ -1979,6 +1991,59 @@ foliage pays no point-proxy cost.
 Dispose the batch when placements change or unload. The scene owns GPU buffers and retires them safely.
 Mesh handles remain caller-owned and must belong to that scene. `LastFoliageStats` reports workload and
 upload counts. `CandidateInstances` includes instances the shader rejects, rather than exact visible blades.
+
+
+## Admitted resource publication
+
+`Scene3D.MeasureResourceUpload(SceneUploadData)` measures aligned vertex, outline-normal and index buffers,
+full RGBA8 mip chains, water-domain bytes, expanded 96-byte foliage instances, anchor uniforms and preparation
+and staging peaks. Measurement allocates the returned demand token, with no payload copies or GPU factories.
+`SceneUploadDemand.RetainedCpuBytes` is a before-work upper bound for the independent survivor inventory.
+`MeasureResourceUploadCapacity(description)` returns CPU and GPU capacity only. It can price unresolved foliage
+mesh parts by their declared count, while the claimable `MeasureResourceUpload` path requires live mesh handles.
+Capacity values cannot be used as upload claim tokens.
+Detached inputs compute their digest when constructed. `PrepareResourceUpload(data, reservation)` verifies
+that digest and the complete demand, then calls `ISceneUploadReservation.Claim` before preparing or allocating.
+`Advance(bytes)` copies at most that allowance through bounded buffers and texture rows/mips. A budget smaller
+than the next aligned element makes no progress. Native mip staging samples source texel centres bilinearly.
+`Ready` includes completion of the final GPU fence. Observing completion disposes the transfer-only fence and
+command list, then calls `ISceneUploadReservation.TransferCompleted` to return GPU staging credit. Devices
+without completion fences use the existing idle wait. Publication refuses until ready and succeeds once.
+Completion releases detached inputs and all transfer-row backing storage before publication. `InputsReleased` settles CPU
+to an independent inventory of surviving owner metadata, GPU wrappers, foliage arrays and both retained temporal
+uniform snapshots. Compact value metadata preserves mesh bounds and material settings for publication. The ownership list
+is sized for surviving objects and future publication bindings before returning credit. Preparation inputs, welding, mip workspace and CPU transfer staging do
+not remain in that inventory. The original complete peak is still reserved before any preparation or factory.
+
+`SceneResourceAccess(scene)` resolves published mesh handles through `MeshOf` and submits rigid descriptors
+through `DrawResourceAnchored`. It replaces only the mesh. Water uses the same published mesh and its retained
+original domain. Publishing a native water domain also initializes the renderer's shared neutral colour texture,
+so the first draw and later frames upload no resource data. Frame uniforms remain dynamic.
+`SceneGroundMaterialData` binds terrain through the shared tile-ground material and mesh path.
+An empty light registration owns no mesh bytes and never resolves as a mesh. Unready, released, foreign-scene
+and non-mesh handles refuse. A mesh returned by `MeshOf` is borrowed, so release it through `ReleaseResource`.
+Cancellation before publication retains its unsettled reservation until actual destruction behind the scene's
+retire queue. Published resources retain only their surviving CPU and GPU ownership until destruction.
+Scene disposal also cancels pending uploads and releases published resources.
+Shared material rebinding transfers disposal ownership to the replacement set. Released native terrain
+material slots are reused by later uploads, while legacy material handles retain stable indices.
+
+`SceneFoliageSource` freezes model/part indices, profiles and casting. World transforms subtract their integer
+anchor once during preparation. `SceneFoliageTransformSpace.AnchorLocal` preserves already-local transform bits.
+Absolute patch ownership, source-row correspondence and literal packed parameters survive sorting.
+`SceneResourceUpload.PreparedFoliage` exposes the immutable production layout and packed bytes before publication.
+`DrawPreparedFoliage` and Terrain.Render3D's `GroundCoverRenderer.DrawPrepared` take local focus and interactors
+unchanged. They select existing patches with frame settings, without expansion, profile lookup or resource upload.
+Native colour, motion and shadow shaders adjust their view-projection matrices by anchor minus render origin.
+Point shadows reuse the published 96-byte instance stream at rest, with no lazy proxy upload or origin rebuild.
+Frame uniforms remain dynamic. The legacy `DrawFoliage` and `DrawGroundCover` paths retain lazy upload behavior.
+
+### Strict decoder capacity
+
+`GltfDecodeBudget.TryReserve(ownedBytes, temporaryBytes, out capacity)` preserves a refused peak's
+limit name, aggregate requested amount and allowance without charging the reservation.
+`GltfDecodeAdmission.Capacity` and `GltfDecodeRefusal.Capacity` retain byte, vertex, index and image
+refusals as `GltfDecodeCapacity`. Successful admission and decoding keep their existing limits.
 
 The clustered point-light receiver skips its shadow filter when banded NdotL is exactly zero. Both diffuse
 and specular are already zero there, with specular gated by `step(0.0001, ndl)`. `AddLight` ignores non-finite

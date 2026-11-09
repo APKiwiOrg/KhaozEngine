@@ -236,8 +236,11 @@ public sealed class MapMarkerFormatTests
             Assert.NotNull(writeRefusal);
             var original = MarkerFixtures.PayloadTwoAsset();
             if (variant is "negative-search" or "space-null-search" or "nonfinite-search")
-                original = original with { Children = original.Children.Select(c => c is MapPrefabMarkerChild m && m.Value.Id == typed.Id
-                    ? m with { Value = m.Value with { SupportBinding = variant == "negative-search" ? m.Value.SupportBinding! with { SearchBelow = 0 } : m.Value.SupportBinding! with { SearchAbove = 0 } } } : c).ToArray() };
+                original = original with
+                {
+                    Children = original.Children.Select(c => c is MapPrefabMarkerChild m && m.Value.Id == typed.Id
+                    ? m with { Value = m.Value with { SupportBinding = variant == "negative-search" ? m.Value.SupportBinding! with { SearchBelow = 0 } : m.Value.SupportBinding! with { SearchAbove = 0 } } } : c).ToArray()
+                };
             var bytes = MapPrefabFile.Write(original);
             var invalid = original with
             {

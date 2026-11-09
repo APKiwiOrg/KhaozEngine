@@ -192,6 +192,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every case at every preset, with the crossing's trail by age at Native. It also prints the three
         /// results no test asserts, each labelled with its reason.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void TheGhostingTableCoversEveryPreset()
         {

@@ -140,8 +140,13 @@ internal static partial class MapTiledFile
             throw new MapDocumentException(MapDocumentRefusal.DocumentHashSchemeUnsupported,
                 $"{directory}: manifest hashes were written under hash scheme {index.SchemeVersion}, this engine composes scheme " +
                 $"{MapDocumentHash.SchemeVersion}. Load the whole document and save it to upgrade before windowing.")
-            { SourceName = directory, Path = Path.Combine(directory, ManifestName), ActualVersion = index.SchemeVersion,
-                ExpectedVersion = MapDocumentHash.SchemeVersion, FieldPath = "$.schemeVersion" };
+            {
+                SourceName = directory,
+                Path = Path.Combine(directory, ManifestName),
+                ActualVersion = index.SchemeVersion,
+                ExpectedVersion = MapDocumentHash.SchemeVersion,
+                FieldPath = "$.schemeVersion"
+            };
 
         MapTerrainOverrides overrides = doc.TerrainOverrides!;
         float sculptCellSize = overrides.CellSize;
@@ -318,7 +323,9 @@ internal static partial class MapTiledFile
                 throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired,
                     $"{where}: every tiles[] entry needs integer x, integer z and a non-empty hash.")
                 {
-                    SourceName = where, Path = where, Index = entries.Count,
+                    SourceName = where,
+                    Path = where,
+                    Index = entries.Count,
                     FieldPath = $"$.tiles[{entries.Count}].{(x is null ? "x" : z is null ? "z" : "hash")}",
                 };
             entries.Add(new MapTileEntry(new MapTileCoord(x.Value, z.Value), hash, Loaded: false));

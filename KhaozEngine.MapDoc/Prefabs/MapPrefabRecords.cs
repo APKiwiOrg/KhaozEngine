@@ -53,7 +53,12 @@ public sealed record MapPrefabBindingTransfer(string InstanceId, MapPrefabBindin
 }
 
 public sealed record MapLocalLightDoc(int PayloadVersion, string Id, MapPrefabReference? Owner,
-    Vector3 Position, Vector3 Colour, float Intensity, float Radius, bool CastShadows);
+    Vector3 Position, Vector3 Colour, float Intensity, float Radius, bool CastShadows)
+{
+    /// <summary>Absent retains the native owner-bounds exclusion. An explicit None disables that fallback.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MapLightShadowExclusion? ShadowExclusion { get; init; }
+}
 /// <summary>An authored local marker. Payload 1 and payload-2 Explicit carry the authored height in Position.Y.
 /// Payload-2 Support carries Position.Y exactly +0 with no height meaning. Its resolved height is on
 /// MapEffectiveMarker.Position. The payload-2 members are omitted when null, so payload-1 bytes are unchanged.</summary>
@@ -82,11 +87,21 @@ public sealed class MapBuildingIntent(int PayloadVersion, IReadOnlyList<MapRoofL
     public IReadOnlyList<MapLocalMarkerDoc> Markers { get; init; } = Markers;
     public IReadOnlyList<MapPrefabReference> Roofs { get; init; } = Array.Empty<MapPrefabReference>();
     public IReadOnlyList<MapStoreyDoc> Storeys { get; init; } = Array.Empty<MapStoreyDoc>();
-    public MapBuildingIntent Clone() => MapPrefabJson.Copy(this);
+    public MapBuildingIntent Clone() => MapBuildingIntentPreparation.Clone(this);
     public string Digest() => MapPrefabJson.Digest("kemap/building-intent/1", this);
 }
 
 /// <summary>Finite codec ceilings. Effective per-instance expansion charges are a separate preflight.</summary>
+/// <param name="MaxInstances">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxChildren">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxReferenceEdges">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPatches">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxRecords">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxGeometryElements">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxBindings">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxOverrides">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxTransfers">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPayloadBytes">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
 public sealed record MapPrefabExpansionLimits(int MaxInstances = 65536, int MaxChildren = 1048576,
     int MaxReferenceEdges = 262144, int MaxPatches = 1048576, int MaxRecords = 4194304,
     int MaxGeometryElements = 16777216, int MaxBindings = 2097152, int MaxOverrides = 1048576,

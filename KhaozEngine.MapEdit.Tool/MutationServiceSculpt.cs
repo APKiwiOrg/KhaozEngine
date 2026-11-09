@@ -211,7 +211,11 @@ public sealed partial class MutationService
         throw new MapMutationArgumentException(MapDocumentRefusal.SchemaEnumUnsupported,
             $"brush '{brush}' is not a recognized SculptBrush. Valid values: raise, lower, smooth, flatten, set_height.",
             nameof(brush))
-        { FieldPath = "brush", SubmittedText = brush, EnumType = typeof(SculptBrush),
-            AcceptedValues = ["raise", "lower", "smooth", "flatten", "set_height"] };
+        {
+            FieldPath = "brush",
+            SubmittedText = brush,
+            EnumType = typeof(SculptBrush),
+            AcceptedValues = ["raise", "lower", "smooth", "flatten", "set_height"]
+        };
     }
 }

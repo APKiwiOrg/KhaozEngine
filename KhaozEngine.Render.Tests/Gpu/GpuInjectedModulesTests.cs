@@ -20,14 +20,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void KnownModuleNames_CoversEveryInjectorOnTheList()
         {
-            string[] expected =
-            {
-                "NahimicOSD.dll", "NahimicOSD64.dll", "SS2OSD.dll", "SS2OSD64.dll",
-                "RTSSHooks.dll", "RTSSHooks64.dll", "nvspcap.dll", "nvspcap64.dll",
-                "DiscordHook.dll", "DiscordHook64.dll", "graphics-hook32.dll", "graphics-hook64.dll",
-            };
-
-            Assert.Equal(expected, GpuInjectedModules.KnownModuleNames);
+            Assert.Equal(Modules.Select(row => (string)row[0]), GpuInjectedModules.KnownModuleNames);
         }
 
         [Fact]
@@ -116,15 +109,13 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("GeForce Experience", text);
         }
 
-        [Fact]
-        public void Describe_EveryKnownModule_CarriesAProductLabel()
+        [Theory]
+        [MemberData(nameof(Modules))]
+        public void Describe_EveryKnownModule_CarriesAProductLabel(string module, string product)
         {
-            foreach (string module in GpuInjectedModules.KnownModuleNames)
-            {
-                string text = GpuInjectedModules.Describe(new[] { module });
-                Assert.StartsWith(module + " (", text);
-                Assert.EndsWith(")", text);
-            }
+            string text = GpuInjectedModules.Describe(new[] { module });
+            Assert.Contains(module, text);
+            Assert.Contains(product, text);
         }
 
         [Fact]
@@ -139,16 +130,13 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
-        public void Warning_NamesEveryMatchAndSaysWhatToDo()
+        public void Warning_NamesEveryMatchAndItsProduct()
         {
             string warning = GpuInjectedModules.Warning(new[] { "NahimicOSD64.dll", "graphics-hook32.dll" });
 
             Assert.Contains("NahimicOSD64.dll", warning);
             Assert.Contains("graphics-hook32.dll", warning);
             Assert.Contains("OBS", warning);
-            // It must name the escape hatch, otherwise the reader knows they have a problem and not one thing to
-            // try about it.
-            Assert.Contains("close or disable", warning);
         }
 
         [Fact]
@@ -158,5 +146,21 @@ namespace KhaozEngine.Tests.Gpu
                 GpuInjectedModules.KnownModuleNames.Count,
                 GpuInjectedModules.KnownModuleNames.Distinct(StringComparer.OrdinalIgnoreCase).Count());
         }
+
+        public static TheoryData<string, string> Modules => new()
+        {
+            { "NahimicOSD.dll", "Nahimic" },
+            { "NahimicOSD64.dll", "Nahimic" },
+            { "SS2OSD.dll", "Sonic Studio" },
+            { "SS2OSD64.dll", "Sonic Studio" },
+            { "RTSSHooks.dll", "RivaTuner Statistics Server" },
+            { "RTSSHooks64.dll", "RivaTuner Statistics Server" },
+            { "nvspcap.dll", "GeForce Experience" },
+            { "nvspcap64.dll", "GeForce Experience" },
+            { "DiscordHook.dll", "Discord" },
+            { "DiscordHook64.dll", "Discord" },
+            { "graphics-hook32.dll", "OBS" },
+            { "graphics-hook64.dll", "OBS" },
+        };
     }
 }

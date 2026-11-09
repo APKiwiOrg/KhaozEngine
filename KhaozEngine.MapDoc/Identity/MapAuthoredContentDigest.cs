@@ -60,7 +60,7 @@ internal sealed class MapAuthoredContentDigest
         foreach (MapSculptTile tile in sculpt)
             if (!_sculpt.TryAdd((tile.TileZ, tile.TileX), SculptDigest(tile)))
                 return new(MapDocumentRefusal.IdentityDuplicate, $"sculpt tile ({tile.TileX}, {tile.TileZ})")
-                    { SubjectKind = "sculpt tile", SculptTile = new(tile.TileX, tile.TileZ) };
+                { SubjectKind = "sculpt tile", SculptTile = new(tile.TileX, tile.TileZ) };
         return null;
     }
 

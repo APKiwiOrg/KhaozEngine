@@ -139,16 +139,31 @@ internal sealed class NativeCollisionToolFixture : IDisposable
         var repaired = MapAssetManifestReader.Read(Encoding.UTF8.GetBytes(manifest), "kit");
         if (repairedAsset == "nested-wall")
         {
-            repaired.Assets.Add(new() { Id = "nested-wall", MeshResourceId = "rock.mesh", CollisionResourceId = "nested.collider",
-                SourceUnitsToMetres = 1f, RenderBounds = new(box.Min, box.Max), Source = "fixture", License = "CC0" });
+            repaired.Assets.Add(new()
+            {
+                Id = "nested-wall",
+                MeshResourceId = "rock.mesh",
+                CollisionResourceId = "nested.collider",
+                SourceUnitsToMetres = 1f,
+                RenderBounds = new(box.Min, box.Max),
+                Source = "fixture",
+                License = "CC0"
+            });
         }
         if (repairedAsset == "split-wall")
             repaired.Resources.Add(new() { Reference = splitCollider, Kind = MapResourceKind.Collider });
         var optionalCollider = Write(root, "optional.collider", "kit/optional.coll", Collider(new BoxShape(Vector3.One)));
         repaired.Resources.Add(new() { Reference = optionalCollider, Kind = MapResourceKind.Collider });
-        repaired.Assets.Add(new() { Id = "no-collider", MeshResourceId = "rock.mesh",
+        repaired.Assets.Add(new()
+        {
+            Id = "no-collider",
+            MeshResourceId = "rock.mesh",
             CollisionResourceId = repairedAsset == "no-collider" ? optionalCollider.Id : null,
-            SourceUnitsToMetres = 1f, RenderBounds = new(box.Min, box.Max), Source = "fixture", License = "CC0" });
+            SourceUnitsToMetres = 1f,
+            RenderBounds = new(box.Min, box.Max),
+            Source = "fixture",
+            License = "CC0"
+        });
         MapAssetRef kit = Write(root, "kit", "kit/walls.manifest.json", MapAssetFileWriter.Serialize(repaired, "kit"));
 
         var doc = new MapDocument

@@ -41,6 +41,11 @@ on:
         type: choice
         options: [all, windows-d3d11, windows-vulkan, linux-vulkan]
         default: all
+      coverage-cost-unit:
+        description: Exact separately approved recession cost method, empty keeps cost disabled
+        required: false
+        default: ''
+        type: string
       renderer-perf-unit:
         description: Exact approved renderer performance or software rehearsal unit, empty keeps existing modes
         required: false
@@ -189,6 +194,7 @@ jobs:
       matrix: ${{ fromJSON(needs.legs.outputs.matrix) }}
     env:
       KE_GPU_TESTS: '1'
+      KE_COVERAGE_COST_UNIT: ${{ inputs.coverage-cost-unit }}
       KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
       KE_D3D11_ADAPTER: NVIDIA
       KE_VULKAN_DEVICE: discrete

@@ -166,25 +166,35 @@ public static class MapWaterContainment
                 {
                     unavailable ??= $"cover '{cover.Id}' {cover.Anchor} is {status}";
                     unverifiedFinding ??= new(MapDocumentRefusal.PatchUnavailable, unavailable)
-                        { EntityId = body.Id, RecordId = cover.Id, Patch = cover.Anchor, PatchStatus = status };
+                    { EntityId = body.Id, RecordId = cover.Id, Patch = cover.Anchor, PatchStatus = status };
                 }
                 else if (status is MapPatchStatus.Missing or MapPatchStatus.KnownEmpty ||
                     status == MapPatchStatus.Unloaded && MapWaterFootprints.ProvesAbsent(view, cover.Anchor))
                     Add(new(MapDocumentRefusal.ReferenceMissing, $"{label}: cover '{cover.Id}' is not a space")
-                    { EntityId = body.Id, RecordId = cover.Id, Patch = cover.Anchor, PatchStatus = status,
-                        ExpectedRecordType = typeof(MapSpaceDoc) }, errors, findings);
+                    {
+                        EntityId = body.Id,
+                        RecordId = cover.Id,
+                        Patch = cover.Anchor,
+                        PatchStatus = status,
+                        ExpectedRecordType = typeof(MapSpaceDoc)
+                    }, errors, findings);
                 else
                 {
                     unavailable ??= $"cover '{cover.Id}' is {status}";
                     unverifiedFinding ??= new(MapDocumentRefusal.PatchUnavailable, unavailable)
-                        { EntityId = body.Id, RecordId = cover.Id, Patch = cover.Anchor, PatchStatus = status };
+                    { EntityId = body.Id, RecordId = cover.Id, Patch = cover.Anchor, PatchStatus = status };
                 }
                 continue;
             }
             if (record is not MapSpaceDoc space)
                 Add(new(MapDocumentRefusal.ReferenceKindMismatch, $"{label}: cover '{cover.Id}' is not a space")
-                { EntityId = body.Id, RecordId = cover.Id, Patch = cover.Anchor,
-                    RecordType = record.GetType(), ExpectedRecordType = typeof(MapSpaceDoc) }, errors, findings);
+                {
+                    EntityId = body.Id,
+                    RecordId = cover.Id,
+                    Patch = cover.Anchor,
+                    RecordType = record.GetType(),
+                    ExpectedRecordType = typeof(MapSpaceDoc)
+                }, errors, findings);
             else if (space.AliasOf is not null)
                 Add(new(MapDocumentRefusal.WaterCoversAlias, $"{label}: cover '{cover.Id}' is an alias")
                 { EntityId = body.Id, RecordId = cover.Id, SpaceId = space.AliasOf.Id, Patch = cover.Anchor }, errors, findings);
@@ -204,7 +214,7 @@ public static class MapWaterContainment
                 if (!view.ListsEverySurface)
                 {
                     unverifiedFinding = new(MapDocumentRefusal.AcquisitionIncomplete, "covered spaces not proven connected in this view")
-                        { EntityId = body.Id, SourceIds = covered, FieldPath = "Covers" };
+                    { EntityId = body.Id, SourceIds = covered, FieldPath = "Covers" };
                     return "covered spaces not proven connected in this view";
                 }
                 Add(new(MapDocumentRefusal.WaterSpacesDisconnected, $"{label}: covered spaces are not connected below its surface")
@@ -216,7 +226,7 @@ public static class MapWaterContainment
             if (!footprintsComplete)
             {
                 unverifiedFinding = new(MapDocumentRefusal.AcquisitionIncomplete, "covered footprints are unavailable")
-                    { EntityId = body.Id, SourceIds = covered, FieldPath = "Footprints" };
+                { EntityId = body.Id, SourceIds = covered, FieldPath = "Footprints" };
                 return "covered footprints are unavailable";
             }
             Add(new(MapDocumentRefusal.WaterNoSpaceFootprint, $"{label} covers no space footprint")
@@ -232,7 +242,7 @@ public static class MapWaterContainment
         if (!view.ListsEverySurface)
         {
             unverifiedFinding = new(MapDocumentRefusal.AcquisitionIncomplete, "covered spaces not proven connected in this view")
-                { EntityId = body.Id, SourceIds = covered, FieldPath = "Covers" };
+            { EntityId = body.Id, SourceIds = covered, FieldPath = "Covers" };
             return "covered spaces not proven connected in this view";
         }
         Add(new(MapDocumentRefusal.WaterSpacesDisconnected, $"{label}: covered spaces are not connected below its surface")

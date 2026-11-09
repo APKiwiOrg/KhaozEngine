@@ -91,7 +91,7 @@ public static class MapDocumentHash
             if (!first && !IsAscending(previous, e.Coord))
                 throw new MapDocumentException(MapDocumentRefusal.OrderInvalid,
                     $"world hash composition needs tiles strictly ascending in (Z, X): ({previous.X}, {previous.Z}) then ({e.Coord.X}, {e.Coord.Z}).")
-                    { PreviousTile = previous, Tile = e.Coord };
+                { PreviousTile = previous, Tile = e.Coord };
             first = false;
             previous = e.Coord;
             Append(sink, string.Create(CultureInfo.InvariantCulture, $"{e.Coord.X},{e.Coord.Z}={e.Hash}\n"));

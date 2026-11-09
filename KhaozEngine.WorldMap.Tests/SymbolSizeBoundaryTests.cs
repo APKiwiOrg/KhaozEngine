@@ -42,6 +42,8 @@ public sealed class SymbolSizeBoundaryTests
                 {
                     WorldMapChunkCoord coord = north ? new(0, neighbour, level) : new(neighbour, 0, level);
                     WorldMapChunkImage small = WorldMapRasterizer.Rasterize(source, style, coord);
+                    Assert.True(small.Size > 0);
+                    Assert.Equal(small.Size * 2, large.Size);
                     for (int row = 0; row < small.Size; row++)
                         for (int column = 0; column < small.Size; column++)
                         {

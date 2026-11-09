@@ -22,14 +22,25 @@ internal readonly record struct MapFoliageJsonContext(string Label, string? Fiel
         double? actualNumber = null, long? actualInteger = null, long? minimumInteger = null,
         long? maximumInteger = null, string? actualText = null, System.Type? enumType = null,
         string? budget = null, long? actualCount = null, long? limit = null) => new(reason, message)
-    {
-        FieldPath = FieldPath, LayerId = LayerId, Index = Index, FoliageChunk = FoliageChunk,
-        ActualByteCount = actualByteCount, ExpectedByteCount = expectedByteCount,
-        ActualVersion = actualVersion, SupportedVersions = actualVersion is null ? null : [1],
-        ActualNumber = actualNumber, ActualInteger = actualInteger,
-        MinimumInteger = minimumInteger, MaximumInteger = maximumInteger,
-        ActualText = actualText, EnumType = enumType, Budget = budget, ActualCount = actualCount, Limit = limit,
-    };
+        {
+            FieldPath = FieldPath,
+            LayerId = LayerId,
+            Index = Index,
+            FoliageChunk = FoliageChunk,
+            ActualByteCount = actualByteCount,
+            ExpectedByteCount = expectedByteCount,
+            ActualVersion = actualVersion,
+            SupportedVersions = actualVersion is null ? null : [1],
+            ActualNumber = actualNumber,
+            ActualInteger = actualInteger,
+            MinimumInteger = minimumInteger,
+            MaximumInteger = maximumInteger,
+            ActualText = actualText,
+            EnumType = enumType,
+            Budget = budget,
+            ActualCount = actualCount,
+            Limit = limit,
+        };
 
     public override string ToString() => Label;
 }

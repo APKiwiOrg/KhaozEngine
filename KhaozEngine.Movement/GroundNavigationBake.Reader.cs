@@ -128,19 +128,23 @@ public sealed partial class GroundNavigationBake
             if (profile.Tuning.MaxSlopeRadians != options.MaxSlopeRadians)
                 throw new NavigationProfileException(NavigationProfileRefusal.CaptureSlopeMismatch,
                     $"Profile '{profile.Name}' slope must equal the capture slope.", nameof(expected))
-                    { ProfileName = profile.Name, ExpectedSlope = options.MaxSlopeRadians, ActualSlope = profile.Tuning.MaxSlopeRadians };
+                { ProfileName = profile.Name, ExpectedSlope = options.MaxSlopeRadians, ActualSlope = profile.Tuning.MaxSlopeRadians };
             if (!float.IsFinite(2f * profile.Tuning.CapsuleHalfHeight))
                 throw new ArgumentOutOfRangeException(nameof(expected), $"Profile '{profile.Name}' height must be finite.");
             if (profile.Aquatic && !options.SampleWater)
                 throw new NavigationProfileException(NavigationProfileRefusal.CaptureWaterNotSampled,
-                    $"Aquatic profile '{profile.Name}' needs a capture that sampled water.", nameof(expected)) { ProfileName = profile.Name };
+                    $"Aquatic profile '{profile.Name}' needs a capture that sampled water.", nameof(expected))
+                { ProfileName = profile.Name };
             MoveTuning swim = profile.Tuning;
             if (profile.Aquatic && !(swim.SwimExitDepthFraction <= swim.SwimSurfaceSubmersionFraction &&
                 swim.SwimSurfaceSubmersionFraction <= swim.SwimEnterDepthFraction))
                 throw new NavigationProfileException(NavigationProfileRefusal.SwimFractionsUnordered,
                     $"Aquatic profile '{profile.Name}' needs swim fractions ordered exit, submersion, enter.", nameof(expected))
-                    { ExitFraction = swim.SwimExitDepthFraction, SubmersionFraction = swim.SwimSurfaceSubmersionFraction,
-                        EnterFraction = swim.SwimEnterDepthFraction };
+                {
+                    ExitFraction = swim.SwimExitDepthFraction,
+                    SubmersionFraction = swim.SwimSurfaceSubmersionFraction,
+                    EnterFraction = swim.SwimEnterDepthFraction
+                };
         }
         return new LoadPlan(options, width, height, cells, options.MaxLayerCells / cells, sorted);
     }

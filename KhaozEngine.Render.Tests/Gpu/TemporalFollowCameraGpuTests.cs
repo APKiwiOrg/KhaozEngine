@@ -191,6 +191,7 @@ namespace KhaozEngine.Tests.Gpu
         /// the edge restarts. At UltraPerformance the reconstruction spreads the box's texel over 6 display pixels of
         /// wall, which the bare-wall floor never shows, so it also prints each trail past the reconstruction's reach
         /// (<see cref="TemporalFollowCameraRuns.BeyondSpill"/>).</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_follow_camera_table_prints_every_preset()
         {

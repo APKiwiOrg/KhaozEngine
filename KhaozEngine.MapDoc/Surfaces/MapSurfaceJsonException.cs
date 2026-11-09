@@ -36,16 +36,30 @@ public sealed class MapSurfaceJsonException : JsonException
     // Keep the complete scalar refusal as the cause so document wrappers use its source-copy path.
     internal static MapSurfaceJsonException FromDocument(MapDocumentException inner) => new(inner.Reason!.Value, inner.Message, inner)
     {
-        FieldPath = inner.FieldPath, Numerator = inner.Numerator, Denominator = inner.Denominator,
-        ActualInteger = inner.ActualInteger, MinimumInteger = inner.MinimumInteger,
+        FieldPath = inner.FieldPath,
+        Numerator = inner.Numerator,
+        Denominator = inner.Denominator,
+        ActualInteger = inner.ActualInteger,
+        MinimumInteger = inner.MinimumInteger,
     };
 
     internal MapDocumentException ToDocument(string? sourceName, string message,
         MapTileCoord? tile, string? path, string? resourceId) => new(Reason, message, this)
-    {
-        SourceName = sourceName, Tile = tile, Path = path, ResourceId = resourceId,
-        FieldPath = FieldPath ?? Path, LineNumber = LineNumber, BytePositionInLine = BytePositionInLine,
-        Numerator = Numerator, Denominator = Denominator, ActualInteger = ActualInteger, MinimumInteger = MinimumInteger,
-        SurfaceId = SurfaceId, ActualText = ActualText, Patch = Patch, Index = Index,
-    };
+        {
+            SourceName = sourceName,
+            Tile = tile,
+            Path = path,
+            ResourceId = resourceId,
+            FieldPath = FieldPath ?? Path,
+            LineNumber = LineNumber,
+            BytePositionInLine = BytePositionInLine,
+            Numerator = Numerator,
+            Denominator = Denominator,
+            ActualInteger = ActualInteger,
+            MinimumInteger = MinimumInteger,
+            SurfaceId = SurfaceId,
+            ActualText = ActualText,
+            Patch = Patch,
+            Index = Index,
+        };
 }

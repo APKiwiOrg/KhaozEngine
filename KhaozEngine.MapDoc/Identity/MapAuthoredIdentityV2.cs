@@ -20,7 +20,7 @@ public static class MapAuthoredIdentityV2
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
             throw new MapDocumentException(MapDocumentRefusal.CompleteDocumentRequired, "Whole authored identity cannot hash a partial window.")
-                { DocumentId = document.Id, Operation = "ComputeWholeAuthoredIdentity" };
+            { DocumentId = document.Id, Operation = "ComputeWholeAuthoredIdentity" };
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(options);
         Validate(document.ResolverIdentity, document.SupportRecipe, options);

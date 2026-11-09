@@ -24,6 +24,7 @@ public sealed class MotionTargetCostProbe(ITestOutputHelper output)
     const int Boxes = 400, Bodies = 8, Blades = 2500;
 
     [GpuFact(RequiresRealGpu = true)]
+    [Trait("Category", "Diagnostic")]
     public void TheMotionTargetCostIsMeasuredAt1600x900()
     {
         using var fx = new TemporalFixture(W, H, s =>

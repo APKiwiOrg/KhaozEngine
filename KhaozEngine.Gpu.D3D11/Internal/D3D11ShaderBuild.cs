@@ -62,6 +62,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             byte[]? vertexDxbc = cache?.TryRead(vertexKey);
             byte[]? fragmentDxbc = cache?.TryRead(fragmentKey);
+            if (vertexDxbc is not null) D3D11ShaderCompileDiagnostics.RecordCacheHit(vertexKey, tag, D3D11ShaderStage.Vertex);
+            if (fragmentDxbc is not null) D3D11ShaderCompileDiagnostics.RecordCacheHit(fragmentKey, tag, D3D11ShaderStage.Fragment);
 
             if (vertexDxbc is null || fragmentDxbc is null)
             {
@@ -122,6 +124,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 CrossCompiledCompute hlsl = SpirvCrossCompile.ComputeToHlsl(spirv, tag);
                 dxbc = CompileAndCache(hlsl.ComputeSource, D3D11ShaderStage.Compute, flags, cache, key, tag);
             }
+            else D3D11ShaderCompileDiagnostics.RecordCacheHit(key, tag, D3D11ShaderStage.Compute);
 
             return new D3D11CompiledCompute(dxbc, x, y, z);
         }
@@ -129,7 +132,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         static byte[] CompileAndCache(string hlsl, D3D11ShaderStage stage, uint flags, D3D11DxbcCache? cache,
             string key, string label)
         {
-            byte[] dxbc = D3D11Fxc.Compile(hlsl, D3D11ShaderProfile.For(stage), flags, label);
+            byte[] dxbc;
+            using (D3D11ShaderCompileDiagnostics.MeasureCompile(key, label, stage, hlsl))
+                dxbc = D3D11Fxc.Compile(hlsl, D3D11ShaderProfile.For(stage), flags, label);
             cache?.TryWrite(key, dxbc);   // best effort by contract: a cache that cannot be written is a slower start
             return dxbc;
         }

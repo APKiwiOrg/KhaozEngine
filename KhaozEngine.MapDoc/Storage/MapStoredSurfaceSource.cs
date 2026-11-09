@@ -10,7 +10,9 @@ namespace KhaozEngine.MapDoc.Storage;
 public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSource
 {
     readonly string _directory;
+    internal string SceneDirectory => _directory;
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaceLookup;
+    internal MapSurfaceRef? SceneSurface(string id) => _surfaceLookup.GetValueOrDefault(id);
     readonly IReadOnlyList<MapAssetRef> _nativeAssets;
     readonly MapTileIndex _pinnedTiles;
     readonly float _sculptCellSize;
@@ -91,6 +93,7 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
     }
     internal MapPatchRead Payload(MapSurfaceIndexEntry entry)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         try
         {
             byte[] bytes = MapSurfaceStorageLayout.Read(_directory, 'p', entry.PayloadSha256);
@@ -105,8 +108,14 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
             if (field is not null)
                 throw new MapDocumentException(field == "SemanticSha256" ? MapDocumentRefusal.DigestMismatch
                     : MapDocumentRefusal.AuthoredValueMismatch, "surface semantic or index digest mismatch")
-                { Patch = entry.Key, SurfaceId = entry.Key.SurfaceId, FieldPath = field,
-                    ExpectedHash = entry.SemanticSha256, ActualHash = actualHash };
+                {
+                    Patch = entry.Key,
+                    SurfaceId = entry.Key.SurfaceId,
+                    FieldPath = field,
+                    ExpectedHash = entry.SemanticSha256,
+                    ActualHash = actualHash
+                };
+            patch.PreparationOwnership = preparation?.Complete(Scene.MapSceneAdmission.PatchBytes(patch));
             return new(entry.Key, MapPatchStatus.Present, patch, entry.SemanticSha256, null, 0);
         }
         catch (Exception ex) when (IsStorageFailure(ex))
@@ -115,7 +124,7 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
             MapDocumentException? refusal = ex is MapDocumentException known
                 ? known.WithSourceName(null, known.Message, patch: entry.Key) : null;
             return new(entry.Key, status, null, entry.SemanticSha256, ex.Message, 0)
-                { Finding = refusal is null ? null : MapDocumentFinding.FromException(refusal), Cause = refusal ?? ex };
+            { Finding = refusal is null ? null : MapDocumentFinding.FromException(refusal), Cause = refusal ?? ex };
         }
     }
     internal static bool IsStorageFailure(Exception ex) => ex is IOException or UnauthorizedAccessException or

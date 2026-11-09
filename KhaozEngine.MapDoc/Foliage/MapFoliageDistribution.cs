@@ -1,23 +1,35 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.Terrain;
+using KhaozEngine.MapDoc.Scene;
 
 namespace KhaozEngine.MapDoc.Foliage;
 
 /// <summary>Chunk-owned generation over immutable captured inputs. No expanded instance list precedes retention.
 /// Query shares one sample and byte budget across its entire half-open request, including off-raster chunks.</summary>
-public static class MapFoliageDistribution
+public static partial class MapFoliageDistribution
 {
     public static MapFoliageSampleBatch Generate(MapFoliageGenerationContext context, string layerId, MapFoliageChunkKey chunk,
+        MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
+ => Generate((IMapFoliageInputs)context, layerId, chunk, limits, observe);
+
+    public static MapFoliageSampleBatch Generate(MapWindowFoliageContext context, string layerId, MapFoliageChunkKey chunk,
+        MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
+ => Generate((IMapFoliageInputs)context, layerId, chunk, limits, observe);
+
+    static MapFoliageSampleBatch Generate(IMapFoliageInputs context, string layerId, MapFoliageChunkKey chunk,
         MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         MapFoliageLimits admitted = Limits(limits);
         var meter = new Meter();
         var budget = new MapFoliageRetentionBudget(Math.Min(admitted.MaxSamples, admitted.MaxQuerySamples), admitted.MaxQueryRetainedBytes);
+        if (DemandDiagnostics.IsObserved) DeriveRetention(budget, admitted, samples: true);
         try
         {
             MapFoliageLayer layer = Layer(context, layerId);
@@ -29,11 +41,20 @@ public static class MapFoliageDistribution
 
     public static MapFoliageQueryResult Query(MapFoliageGenerationContext context, string layerId, RectArea area,
         MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
+ => Query((IMapFoliageInputs)context, layerId, area, limits, observe);
+
+    public static MapFoliageQueryResult Query(MapWindowFoliageContext context, string layerId, RectArea area,
+        MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
+ => Query((IMapFoliageInputs)context, layerId, area, limits, observe);
+
+    static MapFoliageQueryResult Query(IMapFoliageInputs context, string layerId, RectArea area,
+        MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         MapFoliageLimits admitted = Limits(limits);
         var meter = new Meter();
         var budget = new MapFoliageRetentionBudget(admitted.MaxQuerySamples, admitted.MaxQueryRetainedBytes);
+        if (DemandDiagnostics.IsObserved) DeriveRetention(budget, admitted, samples: false);
         try
         {
             MapFoliageLayer layer = Layer(context, layerId);
@@ -43,9 +64,9 @@ public static class MapFoliageDistribution
             if (area.MinX == area.MaxX || area.MinZ == area.MaxZ) return new(MapFoliageStatus.Complete, [], meter.Work());
             int x0 = ChunkIndex(layer, area.MinX, true), z0 = ChunkIndex(layer, area.MinZ, false);
             int x1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxX), true), z1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxZ), false);
-            int[] xs = MapFoliageRasterReads.Chunks(layer, x0, x1, true).Take(admitted.MaxQueryChunks + 1).ToArray();
-            int[] zs = MapFoliageRasterReads.Chunks(layer, z0, z1, false).Take(admitted.MaxQueryChunks + 1).ToArray();
-            if ((long)xs.Length * zs.Length > admitted.MaxQueryChunks) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
+            int[] xs = QueryChunks(layer, x0, x1, true, admitted.MaxQueryChunks);
+            int[] zs = QueryChunks(layer, z0, z1, false, admitted.MaxQueryChunks);
+            if (DemandDiagnostics.Check(context, "MapFoliageDistribution.MaxQueryChunks.1", "MaxQueryChunks", 0, (decimal)xs.Length * zs.Length, admitted.MaxQueryChunks, (long)xs.Length * zs.Length > admitted.MaxQueryChunks, CapacityDemandLifetime.Cumulative, allowanceSource: admitted)) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
             var batches = new List<MapFoliageSampleBatch>();
             foreach (int z in zs)
                 foreach (int x in xs)
@@ -62,11 +83,23 @@ public static class MapFoliageDistribution
         catch (MapFoliageRefusal refusal) { return new(refusal.Status, [], meter.Work(budget.Bytes)); }
     }
 
-    static MapFoliageSampleBatch GenerateCore(MapFoliageGenerationContext context, MapFoliageLayer layer, MapFoliageChunkKey chunk,
+    static int[] QueryChunks(MapFoliageLayer layer, int first, int last, bool x, int maxChunks)
+    {
+        var chunks = new List<int>();
+        foreach (int chunk in MapFoliageRasterReads.Chunks(layer, first, last, x))
+        {
+            if (DemandDiagnostics.Check(chunks, "MapFoliageDistribution.MaxQueryChunks.2", "MaxQueryChunks", chunks.Count, 1, maxChunks, chunks.Count >= maxChunks, CapacityDemandLifetime.Inventory)) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
+            chunks.Add(chunk);
+        }
+        return chunks.ToArray();
+    }
+
+    static MapFoliageSampleBatch GenerateCore(IMapFoliageInputs context, MapFoliageLayer layer, MapFoliageChunkKey chunk,
         RectArea area, MapFoliageLimits limits, MapFoliageRetentionBudget budget, Meter meter, Action<MapFoliageDecision>? observe)
     {
+        context.RequireChunk(layer, chunk);
         MapFoliageLatticeRange range = MapFoliageLatticeRange.Of(area.MinX, area.MinZ, area.MaxX, area.MaxZ, layer.Spacing);
-        if (range.Count > limits.MaxCandidates) throw Refuse(MapFoliageStatus.CapacityExceeded, "chunk candidates");
+        if (DemandDiagnostics.Check(budget, "MapFoliageDistribution.MaxCandidates.1", "MaxCandidates", 0, (decimal)range.Count, limits.MaxCandidates, range.Count > limits.MaxCandidates, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw Refuse(MapFoliageStatus.CapacityExceeded, "chunk candidates");
         if (!budget.TryRetainBatch()) throw Refuse(MapFoliageStatus.CapacityExceeded, "retained batch bytes");
         long previousSamples = meter.Samples;
         long initialBytes = budget.Bytes - 256;
@@ -74,17 +107,11 @@ public static class MapFoliageDistribution
         bool offRaster = KnownOffRaster(layer, Rectangle(layer, chunk));
         var evaluation = new Evaluation(context, layer, limits, meter);
         var samples = new List<MapFoliageSample>();
-        for (long z = range.MinZ; z <= range.MaxZ; z++)
-            for (long x = range.MinX; x <= range.MaxX; x++)
-            {
-                MapFoliageDecision row = evaluation.Decide((int)x, (int)z, area, charge =>
-                {
-                    if (meter.Samples - previousSamples >= limits.MaxSamples || !budget.TryRetain(charge)) return false;
-                    return true;
-                });
-                observe?.Invoke(row);
-                if (row.Sample is { } sample) samples.Add(sample);
-            }
+        Scan(evaluation, range, area, charge => !DemandDiagnostics.Check(meter, "MapFoliageDistribution.MaxSamples.1", "MaxSamples", meter.Samples - previousSamples, 1, limits.MaxSamples, !(meter.Samples - previousSamples < limits.MaxSamples), CapacityDemandLifetime.Cumulative, allowanceSource: limits) && budget.TryRetain(charge), row =>
+        {
+            observe?.Invoke(row);
+            if (row.Sample is { } sample) samples.Add(sample);
+        });
         // An empty batch binds its exact prepared dependencies. A known off-raster chunk prepared nothing, so it binds
         // only the raster facts that make it off-raster.
         System.Diagnostics.Debug.Assert(!offRaster || meter.PrepareScopes == initial.PrepareScopes);
@@ -115,7 +142,7 @@ public static class MapFoliageDistribution
             MapFoliageSupport.RasterCoordinate(chunk.MinZ, layer.OriginZ, layer.CellSize) > layer.Depth - 1;
     }
 
-    internal static MapFoliageLayer Layer(MapFoliageGenerationContext context, string id) =>
+    internal static MapFoliageLayer Layer(IMapFoliageInputs context, string id) =>
         context.Foliage?.Layers.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.Ordinal)) ??
         throw Refuse(MapFoliageStatus.Invalid, "unknown foliage layer");
 
@@ -138,22 +165,7 @@ public static class MapFoliageDistribution
             l.MaxMaskCandidates < 0 || l.MaxQueryChunks < 0 || l.MaxQuerySamples < 0 || l.MaxQueryRetainedBytes < 0 ||
             l.MaxDifferentialCandidates < 0 || l.MaxChangeRows < 0 || l.MaxComparisonPreparedChunks < 0 || l.MaxComparisonRetainedBytes < 0)
             throw new ArgumentOutOfRangeException(nameof(requested));
-        return l with
-        {
-            MaxCandidates = Math.Min(l.MaxCandidates, 4_000_000),
-            MaxSamples = Math.Min(l.MaxSamples, 262_144),
-            MaxPrepareScopes = Math.Min(l.MaxPrepareScopes, 256),
-            MaxFaces = Math.Min(l.MaxFaces, 262_144),
-            MaxRuleCandidates = Math.Min(l.MaxRuleCandidates, 4096),
-            MaxMaskCandidates = Math.Min(l.MaxMaskCandidates, 4096),
-            MaxQueryChunks = Math.Min(l.MaxQueryChunks, 64),
-            MaxQuerySamples = Math.Min(l.MaxQuerySamples, 262_144),
-            MaxQueryRetainedBytes = Math.Min(l.MaxQueryRetainedBytes, 67_108_864),
-            MaxDifferentialCandidates = Math.Min(l.MaxDifferentialCandidates, 64_000_000),
-            MaxChangeRows = Math.Min(l.MaxChangeRows, 4_000_000),
-            MaxComparisonPreparedChunks = Math.Min(l.MaxComparisonPreparedChunks, 64),
-            MaxComparisonRetainedBytes = Math.Min(l.MaxComparisonRetainedBytes, 134_217_728),
-        };
+        return l;
     }
 
     internal sealed class Meter
@@ -168,7 +180,7 @@ public static class MapFoliageDistribution
 
     /// <summary>Shared candidate-to-sample sink for generation and reconciliation. Prepared entries have FIFO ownership
     /// and are charged against a shared block budget on both proposals before preparation or retention.</summary>
-    internal sealed class Evaluation(MapFoliageGenerationContext context, MapFoliageLayer layer, MapFoliageLimits limits, Meter meter,
+    internal sealed class Evaluation(IMapFoliageInputs context, MapFoliageLayer layer, MapFoliageLimits limits, Meter meter,
         Reconciliation? reconciliation = null)
     {
         readonly GroundCoverCandidateEvaluator _evaluator = GroundCoverDistribution.Prepare(new()
@@ -184,7 +196,8 @@ public static class MapFoliageDistribution
         readonly Queue<MapFoliageChunkKey> _order = new();
         sealed record Prepared(MapPreparedFoliageClearance Clearance, long Charge);
 
-        internal MapFoliageDecision Decide(int x, int z, RectArea? clip, Func<long, bool> admitSample)
+        internal MapFoliageDecision Decide(int x, int z, RectArea? clip, Func<long, bool> admitSample,
+            MapFoliageInstanceBuilder? instances = null)
         {
             meter.Candidates++;
             MapFoliageSurfacePoint? point = null;
@@ -215,13 +228,16 @@ public static class MapFoliageDistribution
             if (distribution.Instance is { } instance)
             {
                 MapResolvedAsset model = context.Assets.GetAsset(instance.ModelId);
-                long charge = MapFoliageRetentionBudget.ChargeSample(layer.Id, point!.SupportOwnerId!, model.Id, layer.Policy.Id, model.MaterialResourceIds);
-                if (!admitSample(charge)) throw Refuse(MapFoliageStatus.CapacityExceeded, "retained samples or bytes");
+                long charge = instances is null ? MapFoliageRetentionBudget.ChargeSample(layer.Id, point!.SupportOwnerId!, model.Id, layer.Policy.Id, model.MaterialResourceIds) : 0;
+                if (!admitSample(charge) || instances is not null && !instances.TryPrepare(point!.SupportOwnerId, model.Id))
+                    throw Refuse(MapFoliageStatus.CapacityExceeded, "retained samples or bytes");
                 if (!Matrix4x4.Decompose(instance.Transform, out _, out Quaternion rotation, out _))
                     throw Refuse(MapFoliageStatus.NotRepresentable, "candidate matrix decomposition");
                 meter.Samples++;
-                sample = new(new(address, 1, layer.Policy), point.OccupiedSpaceId, point.Face, model.Id, model.MaterialResourceIds,
-                    point.VisibleMaterial, instance.Position, Quaternion.Normalize(rotation), distribution.Scale, instance.Transform, instance.ThinningRank, true);
+                if (instances is null)
+                    sample = new(new(address, 1, layer.Policy), point!.OccupiedSpaceId, point.Face, model.Id, model.MaterialResourceIds,
+                        point.VisibleMaterial, instance.Position, Quaternion.Normalize(rotation), distribution.Scale, instance.Transform, instance.ThinningRank, true);
+                else instances.AppendPrepared(x, z, instance);
             }
             else if (distribution.Kind == GroundCoverDecisionKind.DensityRejected) reason = MapFoliageReason.DensityRejected;
             return new(address, point?.OccupiedSpaceId, reason, distribution, sample) { Surface = point };
@@ -231,8 +247,8 @@ public static class MapFoliageDistribution
         {
             if (_cache.TryGetValue(key, out Prepared? result)) return result;
             int cap = reconciliation is null ? 1 : limits.MaxComparisonPreparedChunks;
-            if (cap == 0) throw Refuse(MapFoliageStatus.CapacityExceeded, "comparison prepared chunks");
-            if (_cache.Count >= cap) Evict();
+            if (DemandDiagnostics.Check(this, "MapFoliageDistribution.MaxComparisonPreparedChunks.1", "MaxComparisonPreparedChunks", 0, 1, cap, cap == 0, CapacityDemandLifetime.Inventory)) throw Refuse(MapFoliageStatus.CapacityExceeded, "comparison prepared chunks");
+            if (DemandDiagnostics.Check(this, "MapFoliageDistribution.MaxComparisonPreparedChunks.2", "MaxComparisonPreparedChunks", _cache.Count, 1, cap, _cache.Count >= cap, CapacityDemandLifetime.Inventory)) Evict();
             MapFoliageLimits scoped = limits;
             long charge = checked(4096 + 512L * layer.ClearanceRules.Count + 128L * layer.Materials.Count +
                 128L * layer.AllowedVisibleMaterials.Count + 256L * layer.Models.Count);
@@ -245,6 +261,12 @@ public static class MapFoliageDistribution
                     MaxFaces = (int)Math.Min(limits.MaxFaces, reconciliation.Available / 1280),
                     ChargePreparation = bytes => { reconciliation.Take(bytes); charge += bytes; },
                 };
+                if (DemandDiagnostics.IsObserved)
+                {
+                    MapDemandOrigins.Derive(scoped, "MaxFaces", MapDemandOrigins.Of(limits, "MaxFaces", limits.MaxFaces),
+                        [new("MaxComparisonRetainedBytes", reconciliation.Current, reconciliation.Limit, reconciliation, 1280)]);
+                    MapDemandOrigins.InheritFoliage(scoped, limits, "MaxFaces");
+                }
             }
             var clearance = MapFoliageClearance.Prepare(context, layer, key, scoped);
             meter.Preparation(clearance.Work);
@@ -269,14 +291,26 @@ public static class MapFoliageDistribution
         }
     }
 
+    // A retention budget shares one sample allowance between the per-chunk and per-query sample ceilings.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static void DeriveRetention(MapFoliageRetentionBudget budget, MapFoliageLimits admitted, bool samples)
+    {
+        if (samples) MapDemandOrigins.Derive(budget, "MaxQuerySamples", MapDemandOrigins.Of(admitted, "MaxSamples", admitted.MaxSamples),
+            MapDemandOrigins.Of(admitted, "MaxQuerySamples", admitted.MaxQuerySamples));
+        else MapDemandOrigins.Keep(budget, "MaxQuerySamples", admitted, admitted.MaxQuerySamples);
+        MapDemandOrigins.Keep(budget, "MaxQueryRetainedBytes", admitted, admitted.MaxQueryRetainedBytes);
+    }
+
     internal sealed class Reconciliation(long limit)
     {
         long _current;
+        internal long Current => _current;
+        internal long Limit => limit;
         internal long Peak { get; private set; }
         internal long Available => limit - _current;
         internal void Take(long bytes)
         {
-            if (bytes > Available) throw Refuse(MapFoliageStatus.CapacityExceeded, "comparison retained bytes");
+            if (DemandDiagnostics.Check(this, "MapFoliageDistribution.MaxComparisonRetainedBytes.1", "MaxComparisonRetainedBytes", _current, bytes, limit, bytes > Available, CapacityDemandLifetime.Transient)) throw Refuse(MapFoliageStatus.CapacityExceeded, "comparison retained bytes");
             _current += bytes; Peak = Math.Max(Peak, _current);
         }
         internal void Release(long bytes) => _current -= bytes;

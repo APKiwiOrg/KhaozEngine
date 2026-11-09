@@ -63,8 +63,8 @@ internal sealed class PointLightClusterRanges
         EnsureCapacity(lights.Length);
         for (int light = 0; light < lights.Length; light++)
         {
-            Vector4 posRadius = lights[light].PosRadius;
-            var center = new Vector3(posRadius.X, posRadius.Y, posRadius.Z) - renderOrigin;
+            Vector4 posRadius = lights[light].RelativePosRadius(renderOrigin);
+            var center = new Vector3(posRadius.X, posRadius.Y, posRadius.Z);
             float radius = posRadius.W;
             // The builder's own rejection. A light it would skip in every cluster never gets a range.
             if (!PointLightClusterBuilder.Finite(center) || !float.IsFinite(radius) || radius < 0f) continue;

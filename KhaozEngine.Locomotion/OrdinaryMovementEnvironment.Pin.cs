@@ -186,7 +186,8 @@ internal sealed partial class OrdinaryMovementEnvironmentPin : IMovementEnvironm
         if (_physics.Origin != Frame.PhysicsOrigin || _tuple != _owner.CaptureTuple(_physics) ||
             !_owner.WaterConfigurationCurrent() || _owner.Registration.Authenticate(_physics) != MovementAvailability.Known)
             throw new MovementReadException(MovementReadRefusal.EnvironmentPinStale,
-                "The ordinary environment pin is stale.") { Frame = Frame };
+                "The ordinary environment pin is stale.")
+            { Frame = Frame };
     }
 
     public void Dispose() { if (_disposed) return; _physics.AssertCurrent(); _disposed = true; }

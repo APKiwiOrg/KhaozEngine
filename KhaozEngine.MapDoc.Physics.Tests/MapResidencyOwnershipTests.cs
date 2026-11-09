@@ -218,7 +218,10 @@ public class MapResidencyOwnershipTests
         var grids = new MapWorldGrids(16, 4, 16, Vector2.Zero);
         MapCompiledWaterBody Body() => original with
         {
-            BodyId = "reservoir", SurfaceY = 0, DeepestBedY = -1, Bounds = new(0, -1, 0, 16400, 0, 16384),
+            BodyId = "reservoir",
+            SurfaceY = 0,
+            DeepestBedY = -1,
+            Bounds = new(0, -1, 0, 16400, 0, 16384),
             Regions = [new("reservoir-space", MapWaterRegionKind.FreeSurface, triangles.ToArray())],
         };
         var error = Assert.Throws<MapDocumentException>(() => MapResidencyOwnership.WaterTiles(Body(), grids));

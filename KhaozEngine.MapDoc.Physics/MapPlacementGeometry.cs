@@ -6,8 +6,10 @@ using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Physics;
 using KhaozEngine.Primitives;
 
@@ -74,15 +76,24 @@ public static class MapPlacementShapes
     public static IReadOnlyList<MapPlacementGeometry> Resolve(MapResolvedDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
+        return Prepare(document.Placements, document.AssetClosure, document.EffectiveResources?.Transforms);
+    }
+
+    internal static IReadOnlyList<MapPlacementGeometry> Prepare(IReadOnlyList<MapResolvedPlacement> placements,
+        MapAssetClosure closure, IReadOnlyDictionary<string, MapEffectiveTransform>? transforms)
+    {
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
+        MapSceneAdmission.Current?.ReserveBytes(checked(256L + placements.Count * 32L));
         var assets = new Dictionary<string, MapAssetShapes>(StringComparer.Ordinal);
-        var result = new List<MapPlacementGeometry>(document.Placements.Count);
-        foreach (MapResolvedPlacement placement in document.Placements.OrderBy(p => p.PlacementId, StringComparer.Ordinal))
+        var result = new List<MapPlacementGeometry>(placements.Count);
+        foreach (MapResolvedPlacement placement in placements.OrderBy(p => p.PlacementId, StringComparer.Ordinal))
         {
             if (!assets.TryGetValue(placement.AssetId, out MapAssetShapes? shapes))
-                assets.Add(placement.AssetId, shapes = MapAssetShapes.Read(document.AssetClosure, placement.AssetId));
-            MapEffectiveTransform? precise = document.EffectiveResources?.Transforms.GetValueOrDefault("Placement:" + placement.PlacementId);
+                assets.Add(placement.AssetId, shapes = MapAssetShapes.Read(closure, placement.AssetId));
+            MapEffectiveTransform? precise = transforms?.GetValueOrDefault("Placement:" + placement.PlacementId);
             result.Add(Build(placement, shapes, precise));
         }
+        if (preparation is not null) preparation.Complete(new MapPhysicsInventory().Placements(result));
         return result.AsReadOnly();
     }
 
@@ -107,6 +118,7 @@ public static class MapPlacementShapes
                 $"Shapes of asset '{shapes.AssetId}' cannot bound placement '{placement.PlacementId}' of asset '{placement.AssetId}'.",
                 nameof(shapes));
         if (shapes.Collider is null && shapes.Selection is null) { spatialBounds = null; return null; }
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
         MapPlacementGeometry geometry = Build(placement, shapes);
         MapBox3 envelope = geometry.Envelope.Bounds;
         spatialBounds = geometry.ColliderBounds is { } conservative ? conservative.Union(envelope) : envelope;
@@ -115,6 +127,7 @@ public static class MapPlacementShapes
 
     static MapPlacementGeometry Build(MapResolvedPlacement placement, MapAssetShapes shapes, MapEffectiveTransform? precise = null)
     {
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
         MapTransform transform = placement.Transform;
         MapEffectiveTransform effective = precise ?? MapEffectiveTransform.From(transform);
         float scale = (float)(shapes.SourceUnitsToMetres * effective.Scale);
@@ -133,6 +146,7 @@ public static class MapPlacementShapes
                     !float.IsFinite(transform.Position.Z) ? transform.Position.Z : transform.YawRadians,
             };
 
+        MapSceneAdmission.Current?.BeforeGeometry(MapPlacementPreparation.InstanceBytes(placement, shapes, scale));
         var worldPose = MapBackendPoseAdapter.Pose(effective, WorldFrame.Origin);
         PhysicsShape? collider = shapes.Collider is null ? null : PhysicsShapeScale.Uniform(shapes.Collider, scale);
         PhysicsShape? selection = shapes.Selection is null ? null : PhysicsShapeScale.Uniform(shapes.Selection, scale);
@@ -145,9 +159,17 @@ public static class MapPlacementShapes
         MapInteractionEnvelope envelope =
             MapInteractionEnvelope.Build(placement.PlacementId, source, selection is null, worldPose);
         string digest = Digest(placement, shapes, scale, envelope.RaiseMetres, precise);
-        return new MapPlacementGeometry(placement.PlacementId, placement.NumericId, shapes.AssetId, collider, worldPose,
+        var result = new MapPlacementGeometry(placement.PlacementId, placement.NumericId, shapes.AssetId, collider, worldPose,
             colliderBounds, envelope, digest)
         { EffectiveTransform = effective, SourceCollider = shapes.Collider, SourceUnitsToMetres = shapes.SourceUnitsToMetres };
+        if (preparation is not null)
+        {
+            var inventory = new MapPhysicsInventory();
+            // The decoded asset owns these shared inputs until the placement collection takes its output.
+            _ = inventory.Shape(shapes.Collider); _ = inventory.Shape(shapes.Selection);
+            preparation.Complete(inventory.Placement(result));
+        }
+        return result;
     }
 
     // A captured precise pose can coexist with faulty authored fields. Exercise that boundary without changing resolution.

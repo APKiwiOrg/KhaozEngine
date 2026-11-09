@@ -493,6 +493,7 @@ public sealed partial class SqliteMutationJournalStore
                 streamKeys.Count == 0 ? JournalStoreFailureScope.WholeStore : JournalStoreFailureScope.OperationStreams,
                 streamKeys,
                 "SQLite mutation journal operation was cancelled.",
-                exception) { Stage = commitStarted ? JournalOperationStage.Commit : JournalOperationStage.Transaction };
+                exception)
+            { Stage = commitStarted ? JournalOperationStage.Commit : JournalOperationStage.Transaction };
     }
 }

@@ -149,8 +149,10 @@ internal static class ContentTextChunkBuilder
                     $"Wire tag '{declarations[i].WireTag}' is over {ContentTextChunkCodec.MaxLanguageTagBytes} bytes."),
                     default, 0, ContentAuthoringException.TextBoundsReason)
                 {
-                    Language = declarations[i].Language, WireTag = declarations[i].WireTag,
-                    ActualBytes = wireTagBytes, MaximumBytes = ContentTextChunkCodec.MaxLanguageTagBytes,
+                    Language = declarations[i].Language,
+                    WireTag = declarations[i].WireTag,
+                    ActualBytes = wireTagBytes,
+                    MaximumBytes = ContentTextChunkCodec.MaxLanguageTagBytes,
                 };
             }
 
@@ -168,7 +170,8 @@ internal static class ContentTextChunkBuilder
                         $"Text of type {value.Type.Value} row {value.DefinitionId} is in language '{value.Language}', which the version does not declare."),
                     value.Type,
                     value.DefinitionId,
-                    ContentAuthoringException.TextLanguageUndeclaredReason) { FieldName = value.FieldName, Language = value.Language };
+                    ContentAuthoringException.TextLanguageUndeclaredReason)
+                { FieldName = value.FieldName, Language = value.Language };
             }
 
             groups[language].Add(Derive(registry, value, keys));
@@ -192,7 +195,8 @@ internal static class ContentTextChunkBuilder
                             $"Two strings derive the key '{entry.Key}' in language '{declarations[i].WireTag}', so neither has a representable identity."),
                         default,
                         0,
-                        ContentAuthoringException.EditTargetCollisionReason) { DerivedKey = entry.Key, Language = declarations[i].Language };
+                        ContentAuthoringException.EditTargetCollisionReason)
+                    { DerivedKey = entry.Key, Language = declarations[i].Language };
                 }
 
                 body = checked(body + 1 + entry.KeyUtf8.Length + ContentVarint.Size((uint)entry.ValueBytes) + entry.ValueBytes);
@@ -229,7 +233,8 @@ internal static class ContentTextChunkBuilder
                     $"Text of type {value.Type.Value} row {value.DefinitionId} names a row the version does not hold."),
                 value.Type,
                 value.DefinitionId,
-                ContentAuthoringException.UnknownRowReason) { FieldName = value.FieldName, Language = value.Language };
+                ContentAuthoringException.UnknownRowReason)
+            { FieldName = value.FieldName, Language = value.Language };
         }
 
         int keyBytes = checked(
@@ -250,7 +255,8 @@ internal static class ContentTextChunkBuilder
                 $"The derived key of type {value.Type.Value} row {value.DefinitionId} field '{value.FieldName}' is {keyBytes} bytes or not valid UTF-8, and a key is 1 to {ContentTextChunkCodec.MaxKeyBytes} strict UTF-8 bytes."),
                 value.Type, value.DefinitionId, ContentAuthoringException.TextBoundsReason)
             {
-                FieldName = value.FieldName, Language = value.Language,
+                FieldName = value.FieldName,
+                Language = value.Language,
                 ActualBytes = invalidUtf8 ? null : keyBytes,
                 MaximumBytes = invalidUtf8 ? null : ContentTextChunkCodec.MaxKeyBytes,
             };
@@ -273,7 +279,8 @@ internal static class ContentTextChunkBuilder
             ? new Entry(key, keyUtf8, value.Value, valueBytes)
             : throw new ContentAuthoringException(ContentAuthoringRefusal.TextDerivedKeyByteCountMismatch,
                 "The derived key does not re-encode to its measured bytes.", value.Type, value.DefinitionId,
-                ContentAuthoringException.TextBoundsReason) { FieldName = value.FieldName, Language = value.Language };
+                ContentAuthoringException.TextBoundsReason)
+            { FieldName = value.FieldName, Language = value.Language };
     }
 
     static int MeasureUtf8(string text, string parameterName, ContentTextRevision value, string member)

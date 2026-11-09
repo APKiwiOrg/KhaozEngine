@@ -22,7 +22,7 @@ public sealed partial class MapStoredSurfaceSource
             throw new MapDocumentException(MapDocumentRefusal.DocumentHashSchemeUnsupported,
                 $"Whole authored identity requires tile hash scheme {MapDocumentHash.SchemeVersion}, " +
                 $"the pinned manifest uses {_pinnedTiles.SchemeVersion}.")
-                { ActualVersion = _pinnedTiles.SchemeVersion, SupportedVersions = [MapDocumentHash.SchemeVersion], FieldPath = "schemeVersion" };
+            { ActualVersion = _pinnedTiles.SchemeVersion, SupportedVersions = [MapDocumentHash.SchemeVersion], FieldPath = "schemeVersion" };
         MapDocRegistry registry = MapDocRegistry.CreateDefault();
         var digest = new MapAuthoredContentDigest();
         var numericIds = new HashSet<long>(MapNativeValidation.PrefabNumericIds(_globals).Select(p => p.Id));
@@ -88,6 +88,6 @@ public sealed partial class MapStoredSurfaceSource
         return inner is MapDocumentException refusal ? refusal.WithSourceName(null, message, tile: entry.Coord,
             patchStatus: status, expectedHash: entry.Hash)
             : new(MapDocumentRefusal.PinnedContentUnavailable, message, inner!)
-                { PatchStatus = status, Tile = entry.Coord, ExpectedHash = entry.Hash, SubjectKind = "tile" };
+            { PatchStatus = status, Tile = entry.Coord, ExpectedHash = entry.Hash, SubjectKind = "tile" };
     }
 }

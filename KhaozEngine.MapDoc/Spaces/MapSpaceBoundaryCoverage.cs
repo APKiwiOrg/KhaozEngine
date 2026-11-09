@@ -43,8 +43,10 @@ internal static class MapSpaceBoundaryCoverage
                 MapWideXz[] interval = portal.Interval.Select(v => MapWideXz.From(MapEffectiveGeometry.Vertex(view, v))).ToArray();
                 if (!interval.SequenceEqual(bottom.Points.Select(p => MapWidePoint.From(p).Xz)) ||
                     (top is not null && !interval.SequenceEqual(top.Points.Select(p => MapWidePoint.From(p).Xz))))
-                { Add(portal.Id, -1, new(MapDocumentRefusal.GeometryVertexSequenceInvalid, $"vertex sequence: portal '{portal.Id}'")
-                    { RecordId = portal.Id, FieldPath = "Interval" }); continue; }
+                {
+                    Add(portal.Id, -1, new(MapDocumentRefusal.GeometryVertexSequenceInvalid, $"vertex sequence: portal '{portal.Id}'")
+                    { RecordId = portal.Id, FieldPath = "Interval" }); continue;
+                }
                 var band = new Band(portal.Id, bottom.Points.Select(MapWidePoint.From).ToArray(), top?.Points.Select(MapWidePoint.From).ToArray());
                 portals.Add(portal.Id, band);
                 foreach (MapRecordRef endpoint in new[] { portal.FromSpace, portal.ToSpace })
@@ -69,8 +71,11 @@ internal static class MapSpaceBoundaryCoverage
                 }
             }
             catch (MapDocumentException error) { Forward(error, portal.Id, -1, $"missing geometry: portal '{portal.Id}' ({error.Message})"); }
-            catch (MapExactOverflowException) { Add(portal.Id, -1, new(MapDocumentRefusal.GeometryNotRepresentable, $"not representable: portal '{portal.Id}'")
-                { RecordId = portal.Id }); }
+            catch (MapExactOverflowException)
+            {
+                Add(portal.Id, -1, new(MapDocumentRefusal.GeometryNotRepresentable, $"not representable: portal '{portal.Id}'")
+                { RecordId = portal.Id });
+            }
         }
         IReadOnlyList<MapSpaceColumn>[] near = Near(columns);
         for (int index = 0; index < columns.Count; index++)
@@ -119,11 +124,17 @@ internal static class MapSpaceBoundaryCoverage
                     }
                 }
             }
-            catch (MapExactOverflowException) { Add(column.Footprint.Id, column.Cell, new(MapDocumentRefusal.GeometryNotRepresentable,
+            catch (MapExactOverflowException)
+            {
+                Add(column.Footprint.Id, column.Cell, new(MapDocumentRefusal.GeometryNotRepresentable,
                 $"not representable: footprint '{column.Footprint.Id}' cell {column.Cell}")
-                { RecordId = column.Footprint.Id, SpaceId = column.Space.Id, SlotCell = column.Cell }); }
-            catch (MapDocumentException error) { Forward(error, column.Footprint.Id, column.Cell,
-                $"missing geometry: footprint '{column.Footprint.Id}' cell {column.Cell} ({error.Message})"); }
+                { RecordId = column.Footprint.Id, SpaceId = column.Space.Id, SlotCell = column.Cell });
+            }
+            catch (MapDocumentException error)
+            {
+                Forward(error, column.Footprint.Id, column.Cell,
+                $"missing geometry: footprint '{column.Footprint.Id}' cell {column.Cell} ({error.Message})");
+            }
         }
 
         MapChainResolution Chain(MapRecordRef reference)

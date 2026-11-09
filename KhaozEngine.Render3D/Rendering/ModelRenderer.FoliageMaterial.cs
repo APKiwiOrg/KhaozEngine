@@ -10,11 +10,8 @@ internal sealed partial class ModelRenderer
     IGpuPipeline? _foliageOpaquePipeline;
     IGpuShaderSet? _foliageOpaqueShaders, _foliageOpaqueMotionShaders;
 
-    IGpuPipeline OpaqueFoliagePipeline()
-    {
-        if (_foliageOpaquePipeline is not null) return _foliageOpaquePipeline;
-        var factory = _gd.Factory;
-        _foliageOpaqueLayout ??= factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+    IGpuResourceLayout FoliageOpaqueLayout() => _foliageOpaqueLayout ??=
+        _gd.Factory.CreateResourceLayout(new GpuResourceLayoutDescription(
             AppendWaterVolumeLayout(AtmosphereBindings.AppendLayout(
                 new("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new("PointLights", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
@@ -23,6 +20,12 @@ internal sealed partial class ModelRenderer
                 new("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)))));
+
+    IGpuPipeline OpaqueFoliagePipeline()
+    {
+        if (_foliageOpaquePipeline is not null) return _foliageOpaquePipeline;
+        var factory = _gd.Factory;
+        IGpuResourceLayout layout = FoliageOpaqueLayout();
         ModelMotionResources? motion = MotionMath.IsTemporal(_foliageOutputs) ? _motion : null;
         string vertex = motion is null ? ShaderSources.FoliageVert : ShaderSources.FoliageMotionVert;
         string fragment = motion is null ? ShaderSources.FoliageOpaqueFrag : ShaderSources.FoliageOpaqueMotionFrag;
@@ -31,7 +34,7 @@ internal sealed partial class ModelRenderer
             : motion is null ? _foliageOpaqueShaders ??= factory.CreateShadersFromSpirv(vertex, fragment)
             : _foliageOpaqueMotionShaders ??= factory.CreateShadersFromSpirv(vertex, fragment);
         return _foliageOpaquePipeline = OpaqueMotionPipeline(factory, _foliageOutputs, shaders,
-            motion is null ? [_foliageOpaqueLayout, _foliageLayout!] : [_foliageOpaqueLayout, _foliageLayout!, motion.FrameLayout],
+            motion is null ? [layout, _foliageLayout!] : [layout, _foliageLayout!, motion.FrameLayout],
             new(FoliageVertexLayouts.Create()));
     }
     IGpuResourceSet OpaqueFoliageSet()

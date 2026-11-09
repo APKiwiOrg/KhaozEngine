@@ -151,16 +151,18 @@ internal sealed partial class WaterRenderer
     /// <summary>The scene form. <paramref name="absolute"/> is the absolute queue behind the render-relative
     /// <see cref="FramePrepare.WaterPlanes"/>, in the same order. Coverage revalidates from it exactly as
     /// <c>DrawWater</c> admitted it, never from separately reduced floats.</summary>
-    internal void PrepareOpticsFrame(RenderResources targets, in FramePrepare frame, ReadOnlySpan<WaterPlane> absolute)
+    internal void PrepareOpticsFrame(RenderResources targets, in FramePrepare frame, ReadOnlySpan<WaterPlane> absolute,
+        int boundedCount = 0)
     {
         using var device = Profiling?.Cpu("device.water.prepare") ?? default;
-        PrepareOpticsFrameCore(targets, frame, absolute);
+        PrepareOpticsFrameCore(targets, frame, absolute, boundedCount);
     }
 
     /// <summary>The optics body with no phase of its own. <see cref="Scene3D"/> calls it inside the one
     /// <c>device.water.prepare</c> root it opens around the column colour source, which the sets created here bind.
     /// A CPU phase id opens at most once per frame, so the body cannot reopen it.</summary>
-    internal void PrepareOpticsFrameCore(RenderResources targets, in FramePrepare frame, ReadOnlySpan<WaterPlane> absolute)
+    internal void PrepareOpticsFrameCore(RenderResources targets, in FramePrepare frame, ReadOnlySpan<WaterPlane> absolute,
+        int boundedCount = 0)
     {
         _opticsPrepared = false;
         _preparedBound = AnyBound(frame.WaterPlanes);
@@ -188,11 +190,13 @@ internal sealed partial class WaterRenderer
             _retired.Retire(_opticsSets[handle]);
             _opticsSets.Remove(handle);
         }
-        if (planes.Length > 0)
+        int slotCount = checked(planes.Length + boundedCount);
+        if (slotCount > 0)
         {
             // The sets below bind the depth field's texture, so its upload precedes them.
             _bathymetry.Update(frame.Water.Bathymetry);
-            EnsureUboCapacity(planes.Length);
+            // Native surfaces share the UBO but are not optical planes or coverage certificates.
+            EnsureUboCapacity(slotCount);
             BindTargets(targets);
             if (_preparedPlanes.Length < planes.Length)
             {
@@ -264,7 +268,9 @@ internal sealed partial class WaterRenderer
         WaterFrameRefusal.OpticsInputsChangedOrUnprepared,
         "Bound water inputs changed or were not prepared. Queue all water and call Scene3D.PrepareFrame(width, height) before recording.")
     {
-        Prepared = _opticsPrepared, PreparedPlaneCount = _preparedPlaneCount, ActualPlaneCount = actualPlaneCount,
+        Prepared = _opticsPrepared,
+        PreparedPlaneCount = _preparedPlaneCount,
+        ActualPlaneCount = actualPlaneCount,
     };
 
     void PackOptics(ref WaterUbo u, in WaterPlane plane)

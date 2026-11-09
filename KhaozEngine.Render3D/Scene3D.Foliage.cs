@@ -54,21 +54,8 @@ public sealed partial class Scene3D
     public FoliageBatch CreateFoliageBatch(ReadOnlySpan<FoliageInstance> instances, float patchSize = 8f)
     {
         ObjectDisposedException.ThrowIf(_foliageDisposed, this);
-        FoliagePatchLayout layout = FoliagePatchLayout.Build(instances, FoliageBounds, patchSize);
-        var data = new ModelRenderer.FoliageInstanceData[layout.Instances.Length];
-        for (int i = 0; i < data.Length; i++)
-        {
-            FoliageInstance item = layout.Instances[i];
-            Mesh mesh = _meshes[item.Mesh.Index]!.Value;
-            float height = mesh.Bounds.Max.Y - mesh.Bounds.Min.Y;
-            data[i] = new ModelRenderer.FoliageInstanceData
-            {
-                Model = item.Transform,
-                Motion = item.Motion.ToVector4(),
-                Parameters = new Vector4(item.ThinningRank, mesh.Bounds.Min.Y,
-                    height > .00001f ? 1f / height : 0f, mesh.AlphaCutoff),
-            };
-        }
+        FoliagePatchLayout layout = FoliagePatchLayout.Build(instances, FoliageBounds, patchSize, meshOrder: FoliageMeshOrder);
+        var data = PackFoliage(layout);
         var batch = new FoliageBatch(this, layout, data);
         _foliageBatches.Add(batch);
         return batch;
@@ -82,6 +69,9 @@ public sealed partial class Scene3D
             throw new ArgumentException("Foliage requires a model mesh, not a terrain material.", nameof(handle));
         return mesh.Bounds;
     }
+
+    // Preparation order survives recycled indices and asynchronous publication of coplanar multipart foliage.
+    long FoliageMeshOrder(MeshHandle handle) => _slots.AllocationOrder(handle.Index, handle.Generation);
 
     /// <summary>Queue conservative patch prefixes. Wind and exact distance fades run on the GPU.
     /// Returns candidate mesh instances, including blades the shader may reject. At most four cosmetic
@@ -111,7 +101,7 @@ public sealed partial class Scene3D
             float radius = legacy
                 ? patch.CullingRadius(settings.WindStrength > 0f || interactors.Length > 0)
                 : bounds.Radius;
-            var draw = new FoliageDraw(batch, patch, count, slot, bounds, radius);
+            var draw = new FoliageDraw(batch, patch, count, slot, FoliageAbsoluteBounds(batch, bounds), radius);
             _foliageDraws.Add(draw);
             if (patch.CastsShadows) _foliageShadowDraws.Add(draw);
             candidates = checked(candidates + count);
@@ -159,9 +149,13 @@ public sealed partial class Scene3D
         }
         _foliageDraws.RemoveRange(kept, _foliageDraws.Count - kept);
         PrepareFoliageShadowDraws();
+        // A mixed retained/anchored batch must queue the anchored program before the first colour bind.
+        foreach (var draw in _foliageDraws)
+            if (draw.Batch.AnchorSet is not null) { _model.EnsurePreparedFoliagePipeline(); break; }
         long uploaded = 0;
         foreach (FoliageDraw draw in _foliageDraws) uploaded += draw.Batch.UploadPending(_gd, cl);
         foreach (FoliageDraw draw in _foliageShadowDraws) uploaded += draw.Batch.UploadPending(_gd, cl);
+        UploadPreparedFoliageAnchors(cl);
         long uniforms = 0;
         if (kept > 0 || _foliageShadowDraws.Count > 0)
         {
@@ -207,8 +201,12 @@ public sealed partial class Scene3D
             if (draw.Batch.IsDisposed || draw.Batch.Buffer is null) continue;
             MeshHandle handle = draw.Patch.Mesh;
             if (!_slots.IsValid(handle.Index, handle.Generation) || _meshes[handle.Index] is not { } mesh) continue;
-            _model.DrawFoliageMesh(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet, mesh.OpaqueFoliage);
+            if (draw.Batch.AnchorSet is { } anchorSet)
+                _model.DrawPreparedFoliageMesh(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet, anchorSet, mesh.OpaqueFoliage);
+            else
+                _model.DrawFoliageMesh(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
+                    draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, (uint)draw.UniformSlot, mesh.MaterialSet, mesh.OpaqueFoliage);
             CountMeshDraw(mesh.IndexCount, (uint)draw.Count);
             candidates += draw.Count;
             patches++;

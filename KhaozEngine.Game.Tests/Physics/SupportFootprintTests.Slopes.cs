@@ -61,6 +61,7 @@ public partial class SupportFootprintTests
                 foreach (var leaf in leaves) SupportNeighborhoodPolyhedra.Polygons(new StaticHandle(owner), leaf, pool, polygons, footprint: true);
             }
         }
+        Assert.NotEmpty(polygons);
         return polygons;
     }
 }

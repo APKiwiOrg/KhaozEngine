@@ -40,7 +40,8 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
                 $"a set of {materialIds.Count} materials needs {materialIds.Count + 1} layers (one each plus the " +
                 $"reserved missing-material layer), got {layers.Count}.", nameof(layers))
             {
-                MaterialCount = materialIds.Count, ActualLayerCount = layers.Count,
+                MaterialCount = materialIds.Count,
+                ActualLayerCount = layers.Count,
                 RequiredLayerCount = materialIds.Count + 1,
             };
         if (layers.Count > TileGroundMaterialConfig.MaxMaterials)
@@ -62,8 +63,11 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
                     $"layer {slot} is {layer.AlbedoRgba.Length} bytes, expected {expected} for {width}x{height} RGBA8.",
                     nameof(layers))
                 {
-                    LayerIndex = slot, ActualByteLength = layer.AlbedoRgba.Length,
-                    ExpectedByteLength = expected, Width = width, Height = height,
+                    LayerIndex = slot,
+                    ActualByteLength = layer.AlbedoRgba.Length,
+                    ExpectedByteLength = expected,
+                    Width = width,
+                    Height = height,
                 };
             copy[slot] = layer;
         }
@@ -79,7 +83,9 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
                     $"material {materialIds[slot]} is in slot {_slots[materialIds[slot]]} already, so slot {slot} would shadow it.",
                     nameof(materialIds))
                 {
-                    MaterialId = materialIds[slot], FirstSlot = _slots[materialIds[slot]], DuplicateSlot = slot,
+                    MaterialId = materialIds[slot],
+                    FirstSlot = _slots[materialIds[slot]],
+                    DuplicateSlot = slot,
                 };
         }
 
@@ -167,9 +173,14 @@ public static class TileGroundMaterials
                     "layer of one set is one slice of the same texture array, so resize the texture: the set never " +
                     "resamples one behind your back.")
                 {
-                    MaterialId = id, MaterialName = material.Name, Width = image.Width, Height = image.Height,
-                    ReferenceMaterialId = sizedBy, ReferenceMaterialName = catalogs.Materials[sizedBy].Name,
-                    ExpectedWidth = width, ExpectedHeight = height,
+                    MaterialId = id,
+                    MaterialName = material.Name,
+                    Width = image.Width,
+                    Height = image.Height,
+                    ReferenceMaterialId = sizedBy,
+                    ReferenceMaterialName = catalogs.Materials[sizedBy].Name,
+                    ExpectedWidth = width,
+                    ExpectedHeight = height,
                 };
             }
             decoded[id] = image;

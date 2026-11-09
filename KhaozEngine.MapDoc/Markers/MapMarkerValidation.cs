@@ -55,7 +55,10 @@ public static class MapMarkerValidation
             errors.Add(at + message);
             findings?.Add(new(reason, at + message)
             {
-                MarkerId = marker.Id, SubjectKind = "marker", FieldPath = field, ActualNumber = actual,
+                MarkerId = marker.Id,
+                SubjectKind = "marker",
+                FieldPath = field,
+                ActualNumber = actual,
                 ActualVersion = reason == MapDocumentRefusal.SchemaPayloadVersionUnsupported ? marker.PayloadVersion : null,
                 SupportedVersions = reason == MapDocumentRefusal.SchemaPayloadVersionUnsupported ? [1, 2] : null,
                 EnumType = reason == MapDocumentRefusal.SchemaEnumUnsupported ? typeof(MapMarkerHeightMode) : null,
@@ -96,11 +99,18 @@ public static class MapMarkerValidation
             MapDocumentFinding first = findings[0];
             throw new MapDocumentException(first.Reason, string.Join("\n", errors))
             {
-                MarkerId = first.MarkerId, SubjectKind = first.SubjectKind, FieldPath = first.FieldPath,
-                ActualNumber = first.ActualNumber, MinimumNumber = first.MinimumNumber,
-                ActualVersion = first.ActualVersion, SupportedVersions = first.SupportedVersions,
-                EnumType = first.EnumType, ActualInteger = first.ActualInteger,
-                SurfaceId = first.SurfaceId, SpaceId = first.SpaceId, Findings = findings,
+                MarkerId = first.MarkerId,
+                SubjectKind = first.SubjectKind,
+                FieldPath = first.FieldPath,
+                ActualNumber = first.ActualNumber,
+                MinimumNumber = first.MinimumNumber,
+                ActualVersion = first.ActualVersion,
+                SupportedVersions = first.SupportedVersions,
+                EnumType = first.EnumType,
+                ActualInteger = first.ActualInteger,
+                SurfaceId = first.SurfaceId,
+                SpaceId = first.SpaceId,
+                Findings = findings,
             };
         }
     }

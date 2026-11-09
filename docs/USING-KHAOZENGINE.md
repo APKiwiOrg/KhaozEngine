@@ -3551,7 +3551,7 @@ file to make the error go away.
 The same package supplies the opt-in KETEST test-health ratchet for xunit compilations. Add a
 `.testhealth-baseline` to adopt it. `KhaozTestHealthBaselineDir` overrides the discovered directory.
 Without that file the KETEST rules stay silent. KETEST001 and KETEST002 enforce exception-message assertion and
-non-public reflection allowances. KETEST003 is report-only because only 6 of 20 sampled findings were
+non-public reflection allowances. KETEST003 is report-only because about a third of its 474 reviewed findings were
 real, as local tables and test-owned case helpers look possibly empty to a syntactic check. The
 [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet) owns rule details,
 report mode, baseline grammar and the owner-approved exemption path.
@@ -4735,7 +4735,49 @@ inside the matrix concatenation leaves a small difference carrying the rounding 
 geometry swims, shadow edges crawl, and thin geometry vibrates as the camera moves. `Scene3D` now subtracts a
 quantized **render origin** from everything on its way to the GPU, so the GPU never sees the large operands.
 
-**Adoption: none.** The whole public surface still takes ABSOLUTE world coordinates and there is nothing to call.
+**Adoption: none.** Existing draw entry points still take ABSOLUTE world coordinates and need no change.
+For precise local geometry, `DrawAnchored(in RigidInstanceDraw, RenderAnchor)` instead takes a matrix local to
+an integer world anchor. The renderer retains it through grouping, shadows and previous-frame motion, subtracting
+the render origin in binary64 before one binary32 rounding. Do not first add the anchor as a float translation.
+CPU culling keeps an approximate absolute matrix. `WorldToScreen` and `ScreenToRay` remain absolute.
+
+`AddLightAnchored(localPosition, anchor, colour, radius, intensity, shadow)` retains a native point light's
+local position through receiver buffers, cluster classification and point-shadow binding. Exclusion box corners
+in `shadow` use the same anchor-local space. Absolute light overloads preserve their existing contract.
+The optional MapDoc.Render3D package records every effective emitter and all placement mesh tiers through its
+[typed native composition contract](../KhaozEngine.MapDoc.Render3D/README.md).
+`MapSceneSource` supplies bounded scoped snapshots with independent required/present/known-empty/
+unavailable witnesses. `CompleteForScope` never implies whole-world or simulation completeness.
+Extent validation streams verified geometry, retaining metadata only. Selected decoded assets/materials
+belong to `MapPreparedInputLease`, with before-work peak decode admission. No global decoded inventory
+is required at bootstrap. Point-query defaults remain unchanged.
+
+Reference the package explicitly. `NativeMapView` and `NativeMapSnapshot` share `MapRenderResidency`,
+`MapScene3DSink` and typed registration/frame inputs. One owner spans all intersecting memberships,
+all LODs, light radius and motion padding. `RequestReplacement` and `Invalidate` preserve accepted draws
+until the entire pending generation is publishable. Retirement retains its upload charge until release.
+Canonical water cells keep identical payloads across windows and separate requested/acquired witnesses.
+Hidden roofs keep shadows and sky blocking while colour and camera blocking are disabled.
+
+A host supplies `IMapNativeRenderHost`, closure/source/proofs, policy and lighting. Native JSON transports
+closed request/result DTOs with checked signed-16-bit frames and explicit focus. Omitted View focus uses
+the eye, TopDown uses the shared support rule. Warm-up starts after readiness, with defaults of 16 frames
+and 1024 settle operations. A capped Preview cannot claim complete scope or whole-world coverage.
+Independent generation expectations are per location. Origin-only comparisons reuse one absolute realization.
+The sparse proof envelope is X/Z +/-32,000 m, Y +/-500 m with 64 m padding, and local submission adds
+at most 0.0001 m error. It is not a content limit, dense allocation mandate, timing or RSS guarantee.
+R8b retains bounded-water optics, caves, interior cuts, domain-aware sky/camera and private appearance.
+R9 owns interactive authoring, R10 findings/tool parity and R11 actual import acceptance. G3 also needs
+[#1370](https://github.com/APKiwiOrg/KhaozEngine/issues/1370), the separate native CPU world-map source.
+Static point-shadow keys are derived from the effective light ID, with no new persisted payload field.
+Capture preparation, typed submissions, the scene sink and diagnostics preserve that derived key.
+`NativeMapSnapshot.Capture(request, afterSubmit)` permits synchronous inspection after submission and
+before rendering, including warm-up. The callback borrows the scene and must not retain or dispose it.
+Upload demand uses `SceneUploadDescription` before the aggregate reservation is claimed. Retained
+mesh/image copies and synthesized terrain images follow that claim. See the
+[native evidence table](../KhaozEngine.MapDoc.Render3D/README.md#native-scene-verification) for location
+pins, precision, warm allocation, complete foliage and omission-sensitive native captures including roof HLOD.
+
 
 ```csharp
 scene.Begin();                       // latches this frame's origin
@@ -9493,6 +9535,7 @@ The `GroundHeight`, `GroundNormal`, `Physics`, `ClampXz`, `Medium` and `Movement
 absolute coordinates where appropriate. `Physics` remains the complete caller-owned world. When
 `MovementQueries` is present, only movement uses that selected view, and its `SourceWorld` must be the exact
 same reference as `Physics`. A missing or different source is rejected even when two worlds have equal origins.
+Legacy tunings read `ClampXz`. Contact does not read it and enforces the world edge through `MovementBoundary`.
 The physics world speaks coordinates local to `IPhysicsWorld.Origin`. During its internal sequential step only
 `MoveState.Position` changes frame and then returns to absolute coordinates. Velocity, facing, effect scale,
 commitment and timers retain their carried values. Medium water surface Y is converted to the local frame.
@@ -10016,6 +10059,11 @@ option does not enter bake identity or change canonical bytes. See the
 [Movement contract](../KhaozEngine.Movement/README.md#stable-legacy-read-scope) for failure details.
 
 ### Range steering, NPC stepping and client path commands
+
+Contact arrival searches can use certified flat, unchanged support even when the context has a `clampXz`
+delegate. Contact and its exact arrival trials do not read that Legacy-only clamp. The certificate still
+requires the whole swept region to lie inside `MovementBoundary`, otherwise the search uses the exact solver.
+See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-steering-and-movement-drivers).
 
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
@@ -12275,8 +12323,11 @@ resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver
 ### Native foliage and the R8 handoff
 
 Format 9 carries optional `MapFoliageSet` payload 1 independently of scatter, companions and explicit placements.
-Capture a complete immutable context once and reuse it across chunk calls. Partial terrain/content/foliage returns
-`PartialResidency`. R8 must add a windowed constructor and closure/completeness contract before streamed generation.
+Capture a complete immutable context once and reuse it across chunk calls. Complete capture rejects partial residency.
+`MapFoliageGenerationContext.CaptureWindow(sceneSource, sceneScope, limits?)` publishes a separate window context with
+`SnapshotId`, `ClosureHash` and an explicit dependency `Witness`. Its `Generate` and `Query` overloads preserve complete
+generation's exact keys, matrices, ranks, dependencies and atomic refusals within the captured generation window.
+The window includes adjacent generation chunks whose conservative model reach enters the requested bounds.
 
 ```csharp
 using KhaozEngine.MapDoc.Foliage;
@@ -12393,6 +12444,15 @@ Motion padding is explicit caller policy in metres. Transform all eight source-u
 sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the
 render dependency digest plus generation to reject stale work. Keep one owned batch across every intersected residency
 membership and release after the last leaves. The R8 handoff does not upload, stream, draw or certify appearance.
+
+Native render residency disposes an accepted plan when its replacement is published or its window unloads.
+Its `MapNativeFoliageBatch.GeneratedIdentities` and `CoverBatches` getters then throw `ObjectDisposedException`,
+as do `Register` and `Record`. Before requesting replacement, capture comparison data with
+`var identities = plan.Inventory.Foliage.GeneratedIdentities.ToArray();`. Public identity and cover snapshots
+and foliage payloads emitted by public `Register` are detached and survive disposal. `MapRenderResidency.Record`
+also detaches foliage at the public sink boundary, so its ordinary `MapDrawRecorder.Snapshot` survives
+replacement or unload. Keeping the old batch reference does not extend its resident data lifetime or retain a
+per-row identity copy.
 
 The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) is the living reference
 for payload/storage ceilings, compatibility owner fallback, paint tie-break, typed refusals, aggregate budgets,
@@ -12646,10 +12706,36 @@ identities and both cells with `RecordId`, `RelatedRecordId`, `SlotCell` and `Re
 The coverage collector forwards known overlap and prism findings without reading identifiers from
 prose. Refinement and water findings retain the concrete producer reason and identifiers.
 
-Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
-Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
-roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras
-and local-light pixels. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
+Doors remain AuthoredOpen. `MapRoofPolicy.Evaluate(scene, observer, mode)` returns detached roof intent.
+`MapRoofEvaluationBuffer.Prepare(scene)` admits reusable exact membership and returns a typed result.
+Its optional `Capacity` identifies a refused byte or face reservation, its demand and allowance. Auto uses room links/groups
+and leaves unlinked shelters visible. Hidden roofs cast shadows and block sky picking without changing statics.
+Membership preparation follows actual footprint, indoor and portal coverage. Stage workspace is released at last use.
+Frozen column pages retain exact geometry, with inline Int64 coefficient tokens and ledger-owned large magnitudes.
+The 1,925-bit coefficient ceiling, normalization, boundary ownership, first-match rank and typed refusals are unchanged.
+Footprint geometry shares only with a complete effective geometry identity, including source generation, versions,
+instance path, exact transform, lattice, ordered slots and compilation policy. Cells and frozen bound rows remain
+private to each view, as do query registers and stamps. Cells outside footprints still prepare eagerly for indoor and
+portal consumers. Queries never grow geometry or request capacity.
+Buffer `RetainedBytes` is reachable inventory, including shared and borrowed obligations. Its sum across buffers can
+exceed unique root storage. Root receipts deduplicate physical page identities, while every borrowing window carries
+the full shared footprint obligation once across its direct and descendant consumers, including sibling borrowers.
+Each window's attribution ends when its last consumer retires. Refusal or cancellation leaves earlier attributions
+intact. The final lease retires the footprint's cache entry and receipts together.
+Private stamp arrays and surface cell IDs reserve their selected-cell capacity before allocation. Publication checks
+private bytes against direct preparation and shared bytes against live product leases. Native cell, placement and
+plan collectors deduplicate shared membership dependencies when combining their buffers' reachable inventories.
+Composite residency CPU settlement unions physical allocation identities across windows, including the membership
+cache control, each distinct window control and canonical water once. Foliage contexts and samples keep their
+separate CPU ownership. Recenter and unload settle the replacement union, and the last window returns to source-only CPU.
+Its optional `Counts` diagnostics contain counts and byte totals without geometry or source identities.
+They include shared/private capacities, polygon corners, every triangle family, frozen bounds, page capacities,
+fallback magnitude pages and side tables. Headers, directory growth and unused capacity are charged before allocation.
+They distinguish the borrowed-input header from root and window interval evidence for every preparation stage,
+including refused requests. Admission is staged, and no complete aggregate prediction is advertised.
+Borrowed-input preflight refusals precede the interval and retain the typed-result-only allocation path.
+The optional MapDoc.Render3D package consumes roof drawing and presentation query channels.
+R8b retains cut-aware sky/camera policy. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
 Native controller walking and layered routes remain gated by G1b and #438. Physical doorway clearance
 is headless R5 evidence. R9 owns the GUI host and real input, and R10 owns the remaining verb-map parity.
 

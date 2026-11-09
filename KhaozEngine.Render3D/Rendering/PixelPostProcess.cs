@@ -353,7 +353,8 @@ namespace KhaozEngine.Render3D.Rendering
                     + "generation. Call BindTargets with the targets this run reads first.")
                 {
                     BoundGeneration = _bound is null ? null : _boundGen,
-                    ActualGeneration = res.Generation, TargetsMatch = ReferenceEquals(res, _bound),
+                    ActualGeneration = res.Generation,
+                    TargetsMatch = ReferenceEquals(res, _bound),
                 };
             // The chain source this frame and the sets built over it (IPostChainTargets explains the slot).
             int slot = res.SourceSlot;
@@ -361,7 +362,8 @@ namespace KhaozEngine.Render3D.Rendering
             SourceSets fromSource = _fromSource[slot] ?? throw new PostChainStateException(PostChainRefusal.SourceSlotNotBuilt,
                 "PixelPostProcess.Run was handed a post chain source slot BindTargets did not build.")
             {
-                SourceSlot = slot, BoundGeneration = _boundGen,
+                SourceSlot = slot,
+                BoundGeneration = _boundGen,
             };
             IGpuTexture src = color;
             bool bloomRuns = s.Bloom.Enabled && res.BloomAllocated;

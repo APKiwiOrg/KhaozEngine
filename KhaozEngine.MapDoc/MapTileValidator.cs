@@ -33,7 +33,7 @@ internal static class MapTileValidator
             if (string.IsNullOrWhiteSpace(p.Kind)) Add(Item(MapDocumentRefusal.SchemaValueRequired, $"placement '{p.Id}': kind must be non-empty.", "placements", i, "kind", p.Id, "placement"));
             if (p.Scale <= 0f) Add(Item(float.IsFinite(p.Scale) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
                 $"placement '{p.Id}': scale must be positive.", "placements", i, "scale", p.Id, "placement") with
-                { ActualNumber = float.IsFinite(p.Scale) ? p.Scale : null, MinimumNumber = 0 });
+            { ActualNumber = float.IsFinite(p.Scale) ? p.Scale : null, MinimumNumber = 0 });
             CheckInTile(p.X, p.Z, $"placement '{p.Id}'", "placements", i, p.Id, "placement");
         }
         var spawnIds = new HashSet<string>(StringComparer.Ordinal);
@@ -66,8 +66,14 @@ internal static class MapTileValidator
             if (owner != content.Coord)
                 Add(new(MapDocumentRefusal.DocumentTileOwnershipMismatch,
                     $"sculpt tile ({t.TileX}, {t.TileZ}) is owned by document tile ({owner.X}, {owner.Z}), not this one.")
-                { SculptTile = new(t.TileX, t.TileZ), SubjectKind = "sculpt tile", Index = i, FieldPath = $"$.sculpt[{i}]",
-                    PositionX = x, PositionZ = z });
+                {
+                    SculptTile = new(t.TileX, t.TileZ),
+                    SubjectKind = "sculpt tile",
+                    Index = i,
+                    FieldPath = $"$.sculpt[{i}]",
+                    PositionX = x,
+                    PositionZ = z
+                });
         }
         if (findings.Count > 0)
             throw MapDocumentRefusalFactory.FromFinding(findings[0],
@@ -80,15 +86,27 @@ internal static class MapTileValidator
             if (actual != content.Coord)
                 Add(new(MapDocumentRefusal.DocumentTileOwnershipMismatch,
                     $"{what} at ({x}, {z}) belongs to document tile ({actual.X}, {actual.Z}), not this one.")
-                { FieldPath = $"$.{collection}[{index}]", EntityId = id, SubjectKind = kind, Index = index, PositionX = x, PositionZ = z,
-                    PlacementId = kind == "placement" ? id : null });
+                {
+                    FieldPath = $"$.{collection}[{index}]",
+                    EntityId = id,
+                    SubjectKind = kind,
+                    Index = index,
+                    PositionX = x,
+                    PositionZ = z,
+                    PlacementId = kind == "placement" ? id : null
+                });
         }
     }
 
     static MapDocumentFinding Item(MapDocumentRefusal reason, string message, string collection, int index,
         string field, string id, string kind) => new(reason, message)
-        { FieldPath = $"$.{collection}[{index}].{field}", EntityId = id, SubjectKind = kind, Index = index,
-            PlacementId = kind == "placement" ? id : null };
+        {
+            FieldPath = $"$.{collection}[{index}].{field}",
+            EntityId = id,
+            SubjectKind = kind,
+            Index = index,
+            PlacementId = kind == "placement" ? id : null
+        };
 
     /// <summary>The world span of one sculpt tile, in meters. A document tile must be at least this wide, or
     /// the origin-corner ownership rule would assign sculpt tiles to document tiles that do not cover

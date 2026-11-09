@@ -33,6 +33,7 @@ namespace KhaozEngine.Tests.Terrain
             var field = Field();
             TerrainChunkRegion region = Region();
             var chunk = TerrainChunkBuilder.Build(field, region, lod: 1);
+            Assert.True(chunk.SurfaceVertexCount > 0);
             for (int i = 0; i < chunk.SurfaceVertexCount; i++)
             {
                 var v = chunk.Mesh.Vertices[i].Position;
@@ -43,7 +44,7 @@ namespace KhaozEngine.Tests.Terrain
         [Fact]
         public void Vertices_are_chunk_local_however_far_out_the_chunk_sits()
         {
-            // The release-2 headline, as an assertion on the buffer: a chunk 100 km out has vertices no larger than
+            // As an assertion on the buffer: a chunk 100 km out has vertices no larger than
             // its own size, so nothing is quantized to that magnitude's float32 lattice at bake time. The old bake
             // wrote 100 km into every vertex, where one ULP is 7.8 mm, and no camera-relative render or physics
             // rebase could recover what the buffer had already lost.
@@ -52,6 +53,7 @@ namespace KhaozEngine.Tests.Terrain
             var region = new TerrainChunkRegion { OriginX = far, OriginZ = far, Size = 60f };
             var chunk = TerrainChunkBuilder.Build(field, region, lod: 1);
 
+            Assert.NotEmpty(chunk.Mesh.Vertices);
             foreach (var v in chunk.Mesh.Vertices)
             {
                 Assert.InRange(v.Position.X, 0f, region.Size);
@@ -66,6 +68,7 @@ namespace KhaozEngine.Tests.Terrain
             // Clearing preset is not translation-invariant, so heights differ), but the planar lattice is identical
             // rather than snapped to a coarser one.
             var atOrigin = TerrainChunkBuilder.Build(field, new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 60f }, lod: 1);
+            Assert.True(chunk.SurfaceVertexCount > 0);
             for (int i = 0; i < chunk.SurfaceVertexCount; i++)
             {
                 Assert.Equal(atOrigin.Mesh.Vertices[i].Position.X, chunk.Mesh.Vertices[i].Position.X);
@@ -101,6 +104,7 @@ namespace KhaozEngine.Tests.Terrain
         public void Bounds_enclose_every_vertex()
         {
             var chunk = TerrainChunkBuilder.Build(Field(), Region(), lod: 1);
+            Assert.NotEmpty(chunk.Mesh.Vertices);
             foreach (var v in chunk.Mesh.Vertices)
                 Assert.True(chunk.Bounds.Contains(v.Position));
         }
@@ -109,6 +113,7 @@ namespace KhaozEngine.Tests.Terrain
         public void Splat_array_parallels_the_vertices()
         {
             var chunk = TerrainChunkBuilder.Build(Field(), Region(), lod: 2);
+            Assert.NotEmpty(chunk.Mesh.Vertices);
             Assert.Equal(chunk.Mesh.Vertices.Length, chunk.Splat.Length);
         }
 
@@ -147,6 +152,7 @@ namespace KhaozEngine.Tests.Terrain
             // dropped copy sits directly under its own top vertex.
             var chunk = TerrainChunkBuilder.Build(Field(), Region(), lod: 1);
             int res = TerrainLod.ResolutionFor(1), cols = res + 1;
+            Assert.True(res > 0);
             int firstSkirt = cols * cols;   // the -Z edge, written first
 
             for (int ix = 0; ix <= res; ix++)
@@ -168,6 +174,7 @@ namespace KhaozEngine.Tests.Terrain
             var a = TerrainChunkBuilder.Build(field, new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 60f }, lod: 1);
             var b = TerrainChunkBuilder.Build(field, new TerrainChunkRegion { OriginX = 60f, OriginZ = 0f, Size = 60f }, lod: 1);
             int res = TerrainLod.ResolutionFor(1), cols = res + 1;
+            Assert.True(res > 0);
             for (int iz = 0; iz <= res; iz++)
             {
                 var pa = a.Mesh.Vertices[iz * cols + res].Position;   // a, ix = res (world x = 60, local 60)

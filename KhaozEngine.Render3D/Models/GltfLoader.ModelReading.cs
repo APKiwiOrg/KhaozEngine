@@ -16,6 +16,7 @@ namespace KhaozEngine.Render3D
         // read-only stream, so the validation fallback can re-read it.
         static ModelRoot LoadModel(ReadOnlyMemory<byte> glb, string identity)
         {
+            GltfDecodeAdmission.EnterModelDecode();
             ArraySegment<byte> bytes = MemoryMarshal.TryGetArray(glb, out ArraySegment<byte> segment)
                 ? segment : new ArraySegment<byte>(glb.ToArray());
             return LoadModel(identity, settings =>
@@ -33,7 +34,8 @@ namespace KhaozEngine.Render3D
             catch (SharpGLTF.Validation.ModelException ex)
             {
                 throw new GltfImportDataException(GltfImportRefusal.MalformedModel,
-                    $"glTF asset '{identity}' is malformed: {ex.Message}", ex) { Identity = identity };
+                    $"glTF asset '{identity}' is malformed: {ex.Message}", ex)
+                { Identity = identity };
             }
         }
 
@@ -57,11 +59,13 @@ namespace KhaozEngine.Render3D
                 {
                     throw new GltfImportStateException(GltfImportRefusal.ValidationFailed,
                         $"glTF asset '{identity}' failed validation: {ex.Message}",
-                        new AggregateException(ex, uncheckedEx)) { Identity = identity };
+                        new AggregateException(ex, uncheckedEx))
+                    { Identity = identity };
                 }
                 ValidatePrimitiveIndices(uncheckedRoot, identity, entryId);
                 throw new GltfImportStateException(GltfImportRefusal.ValidationFailed,
-                    $"glTF asset '{identity}' failed validation: {ex.Message}", ex) { Identity = identity };
+                    $"glTF asset '{identity}' failed validation: {ex.Message}", ex)
+                { Identity = identity };
             }
         }
 

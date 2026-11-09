@@ -34,8 +34,11 @@ internal sealed record MapOccupiedPartitionResult(MapRefinementStatus Status, IR
             }).ToArray();
             return new(Status, Array.AsReadOnly(pieces), null, Witness);
         }
-        catch (MapExactOverflowException) { return new(MapRefinementStatus.NotRepresentable, [], "not representable: occupied geometry", Witness)
-            { Finding = new(MapDocumentRefusal.GeometryNotRepresentable, "not representable: occupied geometry") { Operation = nameof(Narrow) } }; }
+        catch (MapExactOverflowException)
+        {
+            return new(MapRefinementStatus.NotRepresentable, [], "not representable: occupied geometry", Witness)
+            { Finding = new(MapDocumentRefusal.GeometryNotRepresentable, "not representable: occupied geometry") { Operation = nameof(Narrow) } };
+        }
     }
 }
 

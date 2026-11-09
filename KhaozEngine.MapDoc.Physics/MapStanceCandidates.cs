@@ -59,8 +59,11 @@ public static class MapStanceCandidates
             float value = radiusFailed ? radius : halfHeight;
             throw new MapStanceRangeException(float.IsFinite(value) ? MapDocumentRefusal.ValueOutsideRange : MapDocumentRefusal.ValueNonfinite,
                 "The capsule needs a finite positive radius and a finite half height of at least the radius.", nameof(tuning))
-            { FieldPath = radiusFailed ? nameof(tuning.CapsuleRadius) : nameof(tuning.CapsuleHalfHeight), ActualNumber = value,
-                MinimumNumber = radiusFailed ? 0 : radius };
+            {
+                FieldPath = radiusFailed ? nameof(tuning.CapsuleRadius) : nameof(tuning.CapsuleHalfHeight),
+                ActualNumber = value,
+                MinimumNumber = radiusFailed ? 0 : radius
+            };
         }
         Func<float, float, float>? legacyHeight = LegacyHeight(world.IsNative, world.LegacySupportHeight);
 
@@ -76,8 +79,13 @@ public static class MapStanceCandidates
             if (!Outline(Hull(footprint), radius, options.Spacing, proposals, out long? count))
                 throw new MapStanceRangeException(MapDocumentRefusal.WorkCapacityExceeded,
                     $"Spacing proposes more than {MaximumProposals} points around the envelope.", nameof(options))
-                { FieldPath = nameof(options.Spacing), ActualNumber = options.Spacing, Budget = "stance proposals",
-                    Limit = MaximumProposals, ActualCount = count };
+                {
+                    FieldPath = nameof(options.Spacing),
+                    ActualNumber = options.Spacing,
+                    Budget = "stance proposals",
+                    Limit = MaximumProposals,
+                    ActualCount = count
+                };
 
         var seated = new List<Vector3>();
         foreach ((double px, double pz) in proposals)
@@ -91,9 +99,11 @@ public static class MapStanceCandidates
             if (!validate(new Vector3(x, y, z), out Vector3 feet)) continue;
             if (!IsFinite(feet))
                 throw new MapStanceException(MapDocumentRefusal.ValueNonfinite, "The stance validator seated a proposal at a nonfinite position.")
-                { PlacementId = placementId,
+                {
+                    PlacementId = placementId,
                     FieldPath = !float.IsFinite(feet.X) ? "SeatedFeet.X" : !float.IsFinite(feet.Y) ? "SeatedFeet.Y" : "SeatedFeet.Z",
-                    ActualNumber = !float.IsFinite(feet.X) ? feet.X : !float.IsFinite(feet.Y) ? feet.Y : feet.Z };
+                    ActualNumber = !float.IsFinite(feet.X) ? feet.X : !float.IsFinite(feet.Y) ? feet.Y : feet.Z
+                };
             if (!Playable(playable, feet.X, feet.Z)) continue;
             var body = new MovementBody(feet + Vector3.UnitY * halfHeight, radius, halfHeight);
             if (MapWorldQueries.Reaches(envelope, body, options.Range, options.Tolerance, options.Band))

@@ -16,8 +16,12 @@ public class NavDropFollowerTests
         var planner = new FixedPlanner();
         var follower = new PathFollower(planner, new PathFollowConfig
         {
-            AcceptRadius = 20, VerticalAcceptTolerance = 0, ReplanCooldownSeconds = 0,
-            CorridorTolerance = 0, GoalRetargetTolerance = 0, ConsumePassedCollinearWaypoints = true,
+            AcceptRadius = 20,
+            VerticalAcceptTolerance = 0,
+            ReplanCooldownSeconds = 0,
+            CorridorTolerance = 0,
+            GoalRetargetTolerance = 0,
+            ConsumePassedCollinearWaypoints = true,
         }, space);
         Vector3 goal = new(2.5f, 0, 0.5f);
         PathFollowOutput Tick(Vector3 feet, Vector3 target) => region

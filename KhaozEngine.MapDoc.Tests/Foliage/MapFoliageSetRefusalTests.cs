@@ -125,8 +125,10 @@ public sealed class MapFoliageSetRefusalTests
         Assert.Equal(id, finding.SurfaceId);
         Assert.Equal(source switch
         {
-            "support" => "Support.SurfaceId", "owner" => "OwnerSupports[0].Support.SurfaceId",
-            "mask" => "ExceptionMasks[0].Support.SurfaceId", _ => "CompatibilityOrdinals[0].SurfaceId",
+            "support" => "Support.SurfaceId",
+            "owner" => "OwnerSupports[0].Support.SurfaceId",
+            "mask" => "ExceptionMasks[0].Support.SurfaceId",
+            _ => "CompatibilityOrdinals[0].SurfaceId",
         }, finding.FieldPath);
         Assert.Equal(source == "support" ? null : 0, finding.Index);
         if (wrongRole) { Assert.Equal(typeof(MapSurfaceRole), finding.EnumType); Assert.Equal((long)MapSurfaceRole.Ceiling, finding.ActualInteger); }

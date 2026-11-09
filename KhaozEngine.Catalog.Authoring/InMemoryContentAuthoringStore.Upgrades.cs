@@ -156,5 +156,6 @@ public sealed partial class InMemoryContentAuthoringStore : IContentUpgradeLedge
                 $"The content upgrade ledger already holds '{upgradeId}', so this publish was refused whole and nothing was written. Re-read the ledger: another runner applied it."),
             default,
             0,
-            ContentAuthoringException.UpgradeAlreadyRecordedReason) { UpgradeId = upgradeId };
+            ContentAuthoringException.UpgradeAlreadyRecordedReason)
+        { UpgradeId = upgradeId };
 }

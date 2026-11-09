@@ -420,8 +420,8 @@ public partial class SupportFootprintTests
                 warm = scene.Checked($"{row.Name} first warm", out _);
             }
             using (var scene = new WorldFormScene(row)) rebuilt = scene.Checked($"{row.Name} rebuilt", out _);
-            Assert.True(first.ToString() == warm.ToString() && first.ToString() == rebuilt.ToString(),
-                $"{row.Name}: first {first}, warm {warm}, rebuilt {rebuilt}.");
+            SupportFootprintEquivalence.AssertSame(first, warm, row.Name);
+            SupportFootprintEquivalence.AssertSame(first, rebuilt, row.Name);
         }
     }
 
@@ -470,7 +470,7 @@ public partial class SupportFootprintTests
             }))];
             foreach (BoundedThread reader in readers) reader.Join();
         }
-        Assert.All(samples, sample => Assert.Equal(expected.ToString(), sample.ToString()));
+        Assert.All(samples, sample => SupportFootprintEquivalence.AssertSame(expected, sample));
         Assert.All(observedWork, count => Assert.Equal(1, count));
         Assert.All(curvedWork, observation =>
         {
@@ -479,10 +479,11 @@ public partial class SupportFootprintTests
             Assert.Equal(observation.Consumed, SupportCurvedWorkTests.Sum(observation));
         });
         StaticHandle[] owners = scene.Owners();
+        Assert.NotEmpty(owners);
         Assert.Equal(owners.Length, builds.Sum());
         Assert.All(owners, owner => Assert.NotNull(scene.Form(owner)));
         InstalledSupportWorldForm[] forms = [.. owners.Select(owner => scene.Form(owner)!)];
-        Assert.Equal(expected.ToString(), scene.Checked("serial after readers", out long serialBuilds).ToString());
+        SupportFootprintEquivalence.AssertSame(expected, scene.Checked("serial after readers", out long serialBuilds));
         Assert.Equal(0, serialBuilds);
         Assert.All(owners.Zip(forms), pair => Assert.Same(pair.Second, scene.Form(pair.First)));
     }
@@ -532,8 +533,8 @@ public partial class SupportFootprintTests
         long builds = SupportQueryDiagnostics.Snapshot().WorldFormBuilds;
         SupportSample reference;
         using (SupportReferenceEvaluation.Begin()) reference = scene.Find();
-        Assert.Equal(reference.ToString(), nested!.Value.ToString());
-        Assert.Equal(reference.ToString(), outer.ToString());
+        SupportFootprintEquivalence.AssertSame(reference, nested!.Value);
+        SupportFootprintEquivalence.AssertSame(reference, outer);
         Assert.Equal(scene.Owners().Length + 1, builds);
         Assert.NotNull(first);
         Assert.Same(first, scene.Form(owner));
@@ -555,14 +556,14 @@ public partial class SupportFootprintTests
         Assert.True(SupportQueryDiagnostics.Snapshot().WorldFormBuilds > 0);
         // One unmeasured call primes the bind path, as the cost sampler primes every row.
         SupportQueryDiagnostics.Reset();
-        Assert.Equal(cold.ToString(), scene.Find(lease).ToString());
+        SupportFootprintEquivalence.AssertSame(cold, scene.Find(lease));
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().WorldFormBuilds);
         SupportSample warm = default;
         long bytes = AllocationMeasurement.Measure($"{nameof(WarmFindWithWorldFormAllocatesNothing)} {name}", () =>
             warm = scene.Find(lease));
         Assert.Equal(0, bytes);
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().WorldFormBuilds);
-        Assert.Equal(cold.ToString(), warm.ToString());
+        SupportFootprintEquivalence.AssertSame(cold, warm);
     }
 
     static SupportCostRow[] CostRows() => [.. SupportGateCostScenes.Rows().Select(row => (SupportCostRow)row[0])];

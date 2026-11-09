@@ -42,7 +42,8 @@ public class PlayerPublicationIdentityTests
         var reserved = new NavBakeSources().Add(NavBakeIdentity.PlayerPublicationSource, new byte[32]);
         Assert.Throws<ArgumentException>(() => NavBakeIdentity.Encode(expected with
         {
-            Sources = reserved, Profiles = [new("contact", ContactDropFixture.Tuning, default)]
+            Sources = reserved,
+            Profiles = [new("contact", ContactDropFixture.Tuning, default)]
         }, "controlled-engine"));
     }
 

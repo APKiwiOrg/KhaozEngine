@@ -26,7 +26,7 @@ public sealed partial class MapDocument
         set
         {
             if (value is null) throw new MapSurfaceJsonException(MapDocumentRefusal.SchemaMemberNull, "surfaces must not be null.")
-                { FieldPath = "$.surfaces" };
+            { FieldPath = "$.surfaces" };
             Surfaces.Refs.Clear();
             Surfaces.Refs.AddRange(value);
         }
@@ -43,12 +43,12 @@ public sealed partial class MapDocument
         {
             Surfaces.Patches.Clear();
             if (value is null) throw new MapSurfaceJsonException(MapDocumentRefusal.SchemaMemberNull, "surfacePatches must not be null")
-                { FieldPath = "$.surfacePatches" };
+            { FieldPath = "$.surfacePatches" };
             int index = 0;
             foreach (MapSurfacePatch patch in value)
             {
                 if (!Surfaces.Patches.TryAdd(patch.Key, patch)) throw new MapSurfaceJsonException(MapDocumentRefusal.IdentityDuplicate, "duplicate surface patch")
-                    { FieldPath = "$.surfacePatches", Patch = patch.Key, Index = index };
+                { FieldPath = "$.surfacePatches", Patch = patch.Key, Index = index };
                 index++;
             }
         }

@@ -85,8 +85,11 @@ public sealed class ContentBundleTextState
                     FormattableString.Invariant(
                         $"Bundle text value {i} repeats a target or names undeclared language '{value.Target.Language}'."), nameof(values))
                 {
-                    CollectionName = "values", Index = i, MemberName = duplicate ? null : "language",
-                    TextTarget = duplicate ? value.Target : null, Language = duplicate ? null : value.Target.Language,
+                    CollectionName = "values",
+                    Index = i,
+                    MemberName = duplicate ? null : "language",
+                    TextTarget = duplicate ? value.Target : null,
+                    Language = duplicate ? null : value.Target.Language,
                 };
                 return copy;
             }

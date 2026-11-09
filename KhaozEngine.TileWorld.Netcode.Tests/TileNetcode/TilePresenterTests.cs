@@ -66,18 +66,23 @@ public class TilePresenterTests
     // to either hand fails here. YawOf itself is not called because it lives in KhaozEngine.Game.Render3D, and a
     // reference to it would drag the whole 3D renderer into this package's test graph, which is what CI selects
     // test projects by.
-    [Fact]
-    public void Yaw_points_a_forward_facing_mesh_along_the_world_delta_of_every_direction()
+    [Theory]
+    [InlineData(TileDirection.W)]
+    [InlineData(TileDirection.E)]
+    [InlineData(TileDirection.S)]
+    [InlineData(TileDirection.N)]
+    [InlineData(TileDirection.SW)]
+    [InlineData(TileDirection.SE)]
+    [InlineData(TileDirection.NW)]
+    [InlineData(TileDirection.NE)]
+    public void Yaw_points_a_forward_facing_mesh_along_the_world_delta_of_every_direction(TileDirection d)
     {
-        foreach (TileDirection d in TileDirections.All)
-        {
-            (int dx, int dz) = TileDirections.Delta(d);
-            Vector3 expected = Vector3.Normalize(TileWorldSpace.ToWorld(dx, 0f, dz, 1f));
-            Vector3 drawn = Vector3.Transform(Vector3.UnitZ,
-                Matrix4x4.CreateRotationY(TilePresenter.Yaw(d)));
-            Assert.Equal(expected.X, drawn.X, 5);
-            Assert.Equal(expected.Z, drawn.Z, 5);
-        }
+        (int dx, int dz) = TileDirections.Delta(d);
+        Vector3 expected = Vector3.Normalize(TileWorldSpace.ToWorld(dx, 0f, dz, 1f));
+        Vector3 drawn = Vector3.Transform(Vector3.UnitZ,
+            Matrix4x4.CreateRotationY(TilePresenter.Yaw(d)));
+        Assert.Equal(expected.X, drawn.X, 5);
+        Assert.Equal(expected.Z, drawn.Z, 5);
     }
 
     // THE glide, pinned at its three defining points. The body runs from StepFrom INTO Tile, linearly, by the

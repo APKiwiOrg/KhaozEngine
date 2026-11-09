@@ -34,7 +34,8 @@ internal static class MapNativeValidation
                     { ResourceId = asset.Id, Index = i, FieldPath = Field(path, string.IsNullOrEmpty(asset.Id) ? "id" : string.IsNullOrEmpty(asset.Path) ? "path" : "sha256") });
                 if (asset.PayloadVersion <= 0)
                     Add(errors, findings, Version($"native asset '{asset.Id}': payloadVersion must be positive.", Field(path, "payloadVersion"), asset.PayloadVersion, positiveOnly: true)
-                        with { ResourceId = asset.Id, Index = i });
+                        with
+                    { ResourceId = asset.Id, Index = i });
             }
         }
         if (doc.PlayableBounds is not { } bounds) return;
@@ -124,9 +125,13 @@ internal static class MapNativeValidation
                     bool role = !missing && !Enum.IsDefined(surface.Role);
                     Add(errors, findings, new(missing ? MapDocumentRefusal.SchemaValueRequired : MapDocumentRefusal.SchemaEnumUnsupported,
                         $"surface '{surface.Id}': invalid frame, role or presence policy.")
-                    { SurfaceId = surface.Id, Index = i, FieldPath = Field(path, missing ? "frame" : role ? "role" : "presencePolicy"),
+                    {
+                        SurfaceId = surface.Id,
+                        Index = i,
+                        FieldPath = Field(path, missing ? "frame" : role ? "role" : "presencePolicy"),
                         EnumType = missing ? null : role ? typeof(MapSurfaceRole) : typeof(MapPresencePolicy),
-                        ActualInteger = missing ? null : role ? (long)surface.Role : (long)surface.PresencePolicy });
+                        ActualInteger = missing ? null : role ? (long)surface.Role : (long)surface.PresencePolicy
+                    });
                 }
                 else
                 {
@@ -292,7 +297,11 @@ internal static class MapNativeValidation
     static MapDocumentFinding Numeric(MapDocumentRefusal reason, string message, string entityId, string kind,
         long id, long mark, string path) => new(reason, message)
         {
-            EntityId = entityId, SubjectKind = kind, NumericId = id, HighWaterMark = mark, FieldPath = path,
+            EntityId = entityId,
+            SubjectKind = kind,
+            NumericId = id,
+            HighWaterMark = mark,
+            FieldPath = path,
             ActualInteger = reason == MapDocumentRefusal.ValueOutsideRange ? id : null,
             MinimumInteger = reason == MapDocumentRefusal.ValueOutsideRange ? 1 : null,
         };

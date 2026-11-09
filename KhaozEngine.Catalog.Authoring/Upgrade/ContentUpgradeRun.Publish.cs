@@ -221,7 +221,8 @@ sealed partial class ContentUpgradeRun
                 "the draft this run froze for its own publish is no longer open.",
                 default,
                 0,
-                ContentAuthoringException.NoOpenDraftReason) { ExpectedBaseVersion = Active };
+                ContentAuthoringException.NoOpenDraftReason)
+            { ExpectedBaseVersion = Active };
     }
 
     /// <summary>

@@ -12,7 +12,7 @@ internal sealed class PrivateOracleFailure(PrivateOracleFailureRefusal reason, s
     public string? Category { get; init; }
 
     /// <summary>Gets the first comparison category's mismatch count, or null for other refusals.</summary>
-    public int? MismatchCount { get; init; }
+    public long? MismatchCount { get; init; }
 
     /// <summary>Gets the completed secure report's SHA-256, or null when no secure report is available.</summary>
     public string? ReportSha256 { get; init; }

@@ -29,7 +29,8 @@ public class ContactDropRetargetTests
         var nav = capture.BuildProfile(tuning, default, new GroundProfileOptions { MaxDropMetres = 6 });
         var move = new MoveToRange(nav, new PathFollowConfig
         {
-            ReplanCooldownSeconds = cooldown, GoalRetargetTolerance = 0.1f,
+            ReplanCooldownSeconds = cooldown,
+            GoalRetargetTolerance = 0.1f,
         });
         var body = new MoveState { Position = new(-0.25f, 4.75f, 0), Grounded = true };
         var target = ReachTarget.Point(new(1.25f, -3.25f, 0));

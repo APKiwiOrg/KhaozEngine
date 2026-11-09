@@ -51,7 +51,8 @@ namespace KhaozEngine.Render3D
             catch (Exception ex)
             {
                 throw new PropLoadStateException(PropLoadRefusal.AssetLoadFailed,
-                    $"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex) { EntryId = id, Path = file };
+                    $"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex)
+                { EntryId = id, Path = file };
             }
         }
 
@@ -113,7 +114,8 @@ namespace KhaozEngine.Render3D
             catch (Exception ex)
             {
                 throw new PropLoadStateException(PropLoadRefusal.AssetLoadFailed,
-                    $"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex) { EntryId = id, Path = file };
+                    $"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex)
+                { EntryId = id, Path = file };
             }
         }
 
@@ -149,7 +151,8 @@ namespace KhaozEngine.Render3D
         {
             if (parts == null) throw new ArgumentNullException(nameof(parts));
             if (parts.Count == 0) throw new PropLoadArgumentException(PropLoadRefusal.MaterialPartsEmpty,
-                "a prop needs at least one material part.", nameof(parts)) { PartCount = parts.Count };
+                "a prop needs at least one material part.", nameof(parts))
+            { PartCount = parts.Count };
             PropValidation v = validation ?? PropValidation.Default;
             string what = id == null ? "prop" : $"prop '{id}'";
             for (int p = 0; p < parts.Count; p++)
@@ -158,8 +161,12 @@ namespace KhaozEngine.Render3D
             if (heightMeters < v.MinHeightMeters || heightMeters > v.MaxHeightMeters)
                 throw new PropLoadStateException(PropLoadRefusal.DeclaredHeightOutsideRange,
                     $"{what} declares an implausible height {heightMeters} m (outside {v.MinHeightMeters}..{v.MaxHeightMeters} m).")
-                { EntryId = id, HeightMeters = heightMeters, MinimumHeightMeters = v.MinHeightMeters,
-                    MaximumHeightMeters = v.MaxHeightMeters };
+                {
+                    EntryId = id,
+                    HeightMeters = heightMeters,
+                    MinimumHeightMeters = v.MinHeightMeters,
+                    MaximumHeightMeters = v.MaxHeightMeters
+                };
 
             // Combined bounds over EVERY part, so a single shared transform keeps the parts aligned.
             var mn = new Vector3(float.MaxValue);
@@ -173,14 +180,21 @@ namespace KhaozEngine.Render3D
             float rawHeight = mx.Y - mn.Y;
             if (rawHeight <= 1e-6f)
                 throw new PropLoadStateException(PropLoadRefusal.NoMeasurableHeight,
-                    $"{what} mesh has no measurable height (degenerate or non-Y-up).") { EntryId = id, RawHeight = rawHeight };
+                    $"{what} mesh has no measurable height (degenerate or non-Y-up).")
+                { EntryId = id, RawHeight = rawHeight };
             float scale = heightMeters / rawHeight;
             if (scale < v.MinScale || scale > v.MaxScale)
                 throw new PropLoadStateException(PropLoadRefusal.ScaleOutsideRange,
                     $"{what} needs a {scale:G4} scale to reach {heightMeters} m from a {rawHeight:G4}-unit mesh " +
                     $"(outside {v.MinScale:G4}..{v.MaxScale:G4}); the asset is likely in the wrong units (authored ~1u=1m).")
-                { EntryId = id, Scale = scale, HeightMeters = heightMeters, RawHeight = rawHeight,
-                    MinimumScale = v.MinScale, MaximumScale = v.MaxScale };
+                {
+                    EntryId = id,
+                    Scale = scale,
+                    HeightMeters = heightMeters,
+                    RawHeight = rawHeight,
+                    MinimumScale = v.MinScale,
+                    MaximumScale = v.MaxScale
+                };
 
             float cx = (mn.X + mx.X) * 0.5f;
             float cz = (mn.Z + mx.Z) * 0.5f;
@@ -210,8 +224,12 @@ namespace KhaozEngine.Render3D
             if (heightMeters < v.MinHeightMeters || heightMeters > v.MaxHeightMeters)
                 throw new PropLoadStateException(PropLoadRefusal.DeclaredHeightOutsideRange,
                     $"{what} declares an implausible height {heightMeters} m (outside {v.MinHeightMeters}..{v.MaxHeightMeters} m).")
-                { EntryId = id, HeightMeters = heightMeters, MinimumHeightMeters = v.MinHeightMeters,
-                    MaximumHeightMeters = v.MaxHeightMeters };
+                {
+                    EntryId = id,
+                    HeightMeters = heightMeters,
+                    MinimumHeightMeters = v.MinHeightMeters,
+                    MaximumHeightMeters = v.MaxHeightMeters
+                };
 
             // Measure the loaded mesh.
             var mn = new Vector3(float.MaxValue);
@@ -222,15 +240,22 @@ namespace KhaozEngine.Render3D
             float rawHeight = mx.Y - mn.Y;
             if (rawHeight <= 1e-6f)
                 throw new PropLoadStateException(PropLoadRefusal.NoMeasurableHeight,
-                    $"{what} mesh has no measurable height (degenerate or non-Y-up).") { EntryId = id, RawHeight = rawHeight };
+                    $"{what} mesh has no measurable height (degenerate or non-Y-up).")
+                { EntryId = id, RawHeight = rawHeight };
 
             float scale = heightMeters / rawHeight;
             if (scale < v.MinScale || scale > v.MaxScale)
                 throw new PropLoadStateException(PropLoadRefusal.ScaleOutsideRange,
                     $"{what} needs a {scale:G4} scale to reach {heightMeters} m from a {rawHeight:G4}-unit mesh " +
                     $"(outside {v.MinScale:G4}..{v.MaxScale:G4}); the asset is likely in the wrong units (authored ~1u=1m).")
-                { EntryId = id, Scale = scale, HeightMeters = heightMeters, RawHeight = rawHeight,
-                    MinimumScale = v.MinScale, MaximumScale = v.MaxScale };
+                {
+                    EntryId = id,
+                    Scale = scale,
+                    HeightMeters = heightMeters,
+                    RawHeight = rawHeight,
+                    MinimumScale = v.MinScale,
+                    MaximumScale = v.MaxScale
+                };
 
             float cx = (mn.X + mx.X) * 0.5f;
             float cz = (mn.Z + mx.Z) * 0.5f;

@@ -21,6 +21,7 @@ namespace KhaozEngine.Tests.Render3D
         public void AFlatBlockKeepsItsColour()
         {
             byte[] small = LumaWeightedReference.Downsample(Fill(4, 4, 200, 120, 40), 4, 4, 2);
+            Assert.Equal(2 * 2 * 4, small.Length);
             for (int i = 0; i < small.Length; i += 4)
                 Assert.Equal(new byte[] { 200, 120, 40, 255 }, small[i..(i + 4)]);
         }
@@ -37,7 +38,10 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void ASizeThatIsNotAMultipleOfTheFactorIsRefused() =>
+        public void ASizeThatIsNotAMultipleOfTheFactorIsRefused()
+        {
             Assert.Throws<ArgumentException>(() => LumaWeightedReference.Downsample(Fill(5, 4, 0, 0, 0), 5, 4, 2));
+            Assert.Equal(2 * 2 * 4, LumaWeightedReference.Downsample(Fill(4, 4, 0, 0, 0), 4, 4, 2).Length);
+        }
     }
 }

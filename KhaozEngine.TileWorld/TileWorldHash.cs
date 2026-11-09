@@ -168,10 +168,12 @@ public static class TileWorldHash
             // surface as a client/server desync with no way back to the malformed list that caused it.
             if (h is null)
                 throw new TileWorldException(TileWorldRefusal.ManifestRegionHashMissing,
-                    $"region {c}: hash is null") { Region = c };
+                    $"region {c}: hash is null")
+                { Region = c };
             if (!seen.Add(c))
                 throw new TileWorldException(TileWorldRefusal.ManifestRegionDuplicate,
-                    $"region {c} is listed twice") { Region = c };
+                    $"region {c} is listed twice")
+                { Region = c };
             sb.Append(Inv(c.Rx)).Append(' ').Append(Inv(c.Rz)).Append(' ').Append(h.ToLowerInvariant()).Append('\n');
         }
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));

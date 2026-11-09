@@ -1908,13 +1908,16 @@ and consumer state schema. Configuration covers sorted authored part and command
 attachment and companion identities, command values, static local/socket/body-alignment transforms
 and host contract bindings. Actor incarnation IDs, frame IDs, current palettes and world/model poses
 are excluded, allowing actors to share a table. Refinement covers source ordinals and recipes.
-Arithmetic identifies the carry algorithm. Contract version 2 retains exact binary32 position
-skinning, refinement, recession and alias sharing. GPU normal/tangent XYZ use native arithmetic
-without software flush or emulated division/square root, within `2e-5` absolute error per component
-of the exact CPU reference. Other record words, handedness, tangent absence and gather order stay exact.
-The direction magnitude and cancellation rules are documented in the
+Arithmetic identifies the carry algorithm. Contract version 2 retains exact position coordinates,
+all publication failure decisions and every intermediate direction consumed by a later predicate.
+Cancellation-sensitive arithmetic is precise (NoContraction). Only final gathered output normalization
+uses native sqrt/division without output software flush. Raw/unmoved directions, handedness, absence,
+gather order and every other record word stay exact. The `2e-5` component tolerance is conditional on
+exact-accepted inputs and native sqrt/division normal-result relative errors at most `2^-20`, with
+underflow absolute error at most `2^-126`. It is not a universal native-transform bound. The derivation,
+exact zero/cancellation rules and native acceptance boundary are documented in the
 [equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md#assets-and-shared-identity).
-Version-one table identities refuse binding and require rebuilding. None have shipped.
+Version-one and earlier unaccepted version-two descriptor identities require rebuilding. None have shipped.
 The offline constructor and validator remain exact and read no GPU direction words. Whole-skin
 classification continues to compare complete CPU records, including exact CPU directions.
 Native correctness and any GPU saving require new approved acceptance runs.

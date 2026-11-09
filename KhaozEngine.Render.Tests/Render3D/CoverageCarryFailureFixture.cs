@@ -97,7 +97,7 @@ internal sealed class CoverageCarryFailureFixture
         }
     }
 
-    internal void RawHole()
+    internal void RawHole(bool illConditioned = false)
     {
         FailingGather(fail: false);
         Static[8] = 208; Static[10] = 272;
@@ -107,6 +107,22 @@ internal sealed class CoverageCarryFailureFixture
             Static[208 + v * 20 + 16] = Bits(1);
         }
         Frames[6 + 16] = Frames[6 + 21] = Frames[6 + 26] = Frames[6 + 31] = Bits(1);
+        if (illConditioned)
+        {
+            float q = BitConverter.UInt32BitsToSingle(0x3f3504f3);
+            for (int v = 0; v < 3; v++)
+            {
+                Static[208 + v * 20 + 3] = Static[208 + v * 20 + 4] = Bits(q);
+                Static[208 + v * 20 + 5] = 0;
+            }
+            Frames.AsSpan(22, 16).Clear();
+            Frames[22] = Bits(4097); Frames[26] = Bits(-4097); Frames[23] = Frames[32] = Frames[37] = Bits(1);
+            for (int v = 0; v < 2; v++)
+            {
+                Expected[v * 16 + 3] = 0; Expected[v * 16 + 4] = Bits(1);
+            }
+            Expected[16] = Bits(8194); Expected[17] = Bits(2);
+        }
         Frames[6 + 15] = 1;
         Frames[6 + 12] = 0;
         Frames.AsSpan(6 + 64, 32).Fill(uint.MaxValue);

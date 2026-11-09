@@ -6,7 +6,7 @@ namespace KhaozEngine.Render3D;
 
 internal readonly record struct CoverageCarryKernel(string Name, string Source);
 
-/// <summary>Five-stage carry with exact positions and native directions. No runtime constructor or certificate.</summary>
+/// <summary>Five-stage carry with exact position decisions and intermediates, and native final gathered directions.</summary>
 internal static class CoverageCarryShaders
 {
     internal const int StageCount = 5;

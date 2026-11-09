@@ -91,9 +91,12 @@ Configuration file paths, member order and whitespace do not affect the digest. 
 ordinals, refined records, integer recipes, indices and triangle ownership in little-endian order.
 Arithmetic identity hashes the embedded versioned carry-contract descriptor used by both the tool and
 runtime, without reading assembly files or locations. Independent frozen vectors guard its output words
-and refusal boundaries. Contract version 2 keeps positions exact while GPU normal/tangent XYZ use
-native arithmetic within `2e-5` absolute error per component of the exact CPU reference. Version-one
-tables refuse binding and must be rebuilt. The tool keeps exact CPU direction arithmetic. Neither its
+and refusal boundaries. Contract version 2 keeps positions, publication decisions and every direction
+intermediate used by a later predicate exact. Only final gathered output units use native sqrt/division.
+The `2e-5` component tolerance is conditional on exact-accepted inputs and the native operation-error
+envelope derived in the [coverage guide](../../docs/EQUIPMENT-COVERAGE.md#assets-and-shared-identity).
+It is not a universal native-transform guarantee. Version-one and earlier unaccepted version-two
+descriptor identities refuse binding and must be rebuilt. The tool keeps exact CPU direction arithmetic. Neither its
 sample nor dense gates read GPU direction words. Whole-skin classification still compares every byte
 of exact CPU records, while geometry and depth use positions.
 Changes to scalar rounding, skin composition, refinement, representatives,

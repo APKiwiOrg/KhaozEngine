@@ -4,7 +4,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
-/// <summary>Contract v2 permits native XYZ direction error only. Every other record word stays exact.</summary>
+/// <summary>Contract v2 permits bounded final-output unit error under the documented native-operation envelope only.</summary>
 internal static class CoverageDirectionAssertions
 {
     internal const float ComponentTolerance = 2e-5f;

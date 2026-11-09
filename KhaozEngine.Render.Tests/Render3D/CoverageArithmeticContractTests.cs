@@ -14,7 +14,7 @@ public sealed class CoverageArithmeticContractTests
 {
     internal const string V1Digest = "e7a4f4b8e168f7524ab3cdc9c0e2b67e71e477a80e6218e726c2ba593444a9d6";
 
-    internal const string V2Digest = "a86f2217f103956595b14ed5500130d2c3cd0534f951a52ef5e72653801794d5";
+    internal const string V2Digest = "490ef1bde077971ef594afddf336d2220b687e9291a664fd33501d2d8c09957d";
 
     [Fact]
     public void Arithmetic_identity_is_the_frozen_versioned_contract()

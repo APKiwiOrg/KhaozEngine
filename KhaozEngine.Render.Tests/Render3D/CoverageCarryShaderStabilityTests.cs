@@ -11,10 +11,10 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class CoverageCarryShaderStabilityTests(ITestOutputHelper output)
 {
-    // Contract v2 replaces emulated direction arithmetic with native operations. Position vectors remain frozen.
+    // Contract v2 fix restores exact decision intermediates. Only final output units are native. Position vectors remain frozen.
     [Theory]
-    [InlineData("CoverageCarrySkin", "4144fd5b35b546f7ce18841b9f9a7f6408e7337020c1713c57559ff4325c42c0")]
-    [InlineData("CoverageCarryBasis", "df127506e5a1d3ddd88a47d2a84860264daa6f2ec660d3bbe7e17f2b184d1ed0")]
+    [InlineData("CoverageCarrySkin", "c3120e43151087a39cb9e0d8e063a921041190c1782b04c313d9556577a3a83e")]
+    [InlineData("CoverageCarryBasis", "064aa97da725f0965101fc5a827eb5665ae586967678b6a11474f09bd21b4c88")]
     public void Carry_modules_match_pinned_compilation_identities(string name, string expected)
     {
         var kernel = CoverageCarryShaders.Kernels.Single(k => k.Name == name);

@@ -30,11 +30,33 @@ public sealed class CoverageCarryKernelTests
         string msl = SpirvCrossCompile.ComputeToMsl(module, kernel.Name, CoverageCarryShaders.Options).ComputeSource;
         Assert.InRange(Encoding.UTF8.GetByteCount(hlsl), 1, 100_000);
         Assert.InRange(Encoding.UTF8.GetByteCount(msl), 1, 100_000);
-        ValidateCallTree(module, stage == 1);
+        ValidateCallTree(module, stage != 4);
         CoverageSpirvAccessAudit.Validate(module, kernel.Name, constantPrivateArrays: true);
         Assert.DoesNotContain("CovPreviousWords", kernel.Source);
         Assert.DoesNotContain("covPredicateProduct", kernel.Source);
         Assert.DoesNotContain("covExactProduct", kernel.Source);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Cancellation_sensitive_direction_arithmetic_has_NoContraction(int stage)
+    {
+        var kernel = CoverageCarryShaders.Kernels[stage];
+        byte[] module = SpirvFrontEnd.ToSpirv(kernel.Source, GpuShaderStages.Compute, kernel.Name, CoverageCarryShaders.Options);
+        uint[] words = MemoryMarshal.Cast<byte, uint>(module).ToArray();
+        var decorated = new HashSet<uint>();
+        var arithmetic = new List<uint>();
+        for (int at = 5; at < words.Length; at += (int)(words[at] >> 16))
+        {
+            uint opcode = words[at] & 65535;
+            if (opcode == 71 && words[at + 2] == 42) decorated.Add(words[at + 1]);
+            if (opcode is 129 or 131 or 133 or 142 or 148) arithmetic.Add(words[at + 2]);
+        }
+        Assert.NotEmpty(arithmetic);
+        Assert.All(arithmetic, id => Assert.Contains(id, decorated));
     }
 
     [Fact]

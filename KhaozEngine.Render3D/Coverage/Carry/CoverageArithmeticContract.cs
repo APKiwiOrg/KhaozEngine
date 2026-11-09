@@ -14,9 +14,10 @@ internal static class CoverageArithmeticContract
     internal const int Version = 2;
     internal const string Descriptor =
         "KhaozEngine.CoverageCarry/2\n" +
-        "position-scalar=binary32-rne,separate-operations,no-contraction,flush-operands-and-results-inclusive-2^-126,signed-zero\n" +
-        "directions=native-binary32,no-software-flush,sqrt-and-division-native,absolute-component-error<=2e-5,cpu-reference-exact\n" +
-        "direction-unit=finite,length2>2^-126,skin-length>1e-8,generated-survival2^-50\n" +
+        "retained-scalar=binary32-rne,separate-operations,no-contraction,flush-operands-and-results-inclusive-2^-126,signed-zero\n" +
+        "directions=exact-intermediates-and-publication-predicates,native-final-gather-sqrt-and-division-only,no-output-software-flush\n" +
+        "direction-unit=retained-per-product-flush-dot,finite-and-positive,skin-length>1e-8,generated-survival2^-50\n" +
+        "direction-error=conditional-absolute-component<=2e-5,exact-accepted-input,native-sqrt/div-normal-relative-error<=2^-20,underflow-absolute-error<=2^-126,no-universal-native-transform-bound\n" +
         "palette=binary32-no-flush,inverse-bind-times-joint,left-associated-four-products\n" +
         "skin=weighted-four-bones,total<1e-8-identity,normal-linear-unit>1e-8,tangent-length2>1e-12\n" +
         "refinement=denominator12,ordered-source-edges,integer-weight-left-associated-sums,source-before-interpolation,alias-value-equality,direction-survival2^-50\n" +

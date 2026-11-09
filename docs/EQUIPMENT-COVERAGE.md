@@ -48,20 +48,36 @@ transition weighting, current recession direction and normal/tangent gathers. An
 change requires advancing the contract version and its descriptor. Exact tool and Render3D assembly
 hashes remain in the evidence manifest as producer provenance only.
 
-Carry arithmetic contract version 2 keeps position skinning, refinement interpolation, recession and
-alias position sharing exact, including every published position word. Normal and tangent XYZ use
-native GPU binary32 operations, native square root and division, with no software flush. The contract
-allows at most `2e-5` absolute error per component against the exact CPU reference. For unit directions
-this is about 0.002 degrees at small angles, enough for native rounding while still rejecting wrong
-normal/tangent formulas. Handedness, authored tangent absence, corner order and alias rules stay exact.
-Version-one tables refuse binding by arithmetic identity and must be rebuilt. None have shipped.
+Carry arithmetic contract version 2 keeps position skinning, refinement interpolation, recession,
+alias position sharing and every failure decision exact. Exact intermediate directions remain wherever
+later fold, alignment, determinant, scale, cancellation or zero/finite decisions consume them. This
+includes Skin, Transport, Basis and per-corner Gather. Cancellation-sensitive operations are precise
+(NoContraction). Only final gathered output normalization uses native sqrt/division without output
+software flush. Raw and unmoved directions remain exact. Handedness, tangent absence, corner order,
+slot ownership and publication selection are unchanged. Version-one tables refuse binding. Tables
+using an earlier, unaccepted version-two descriptor also require rebuilding. None have shipped.
 
-Strict direction normalization rejects non-finite inputs/results and squared magnitudes at or below
-`2^-126`. This keeps the exact CPU dot product's effective zero-length floor closely, without applying
-software flush to directions. Native rounding and the CPU's per-product flush can differ near this
-floor. Skin retains its `1e-8` length fallback and `1e-12` tangent squared-presence threshold. Generated
-directions retain the relative `2^-50` squared surviving-fraction cancellation check and all-zero absence.
-A cancelled or non-finite direction still reports failure before actor-wide atomic publication.
+The final normalization decision uses the retained dot product, including its per-product flush at
+`2^-126`, and the CPU's finite/positive test. Checking the sum against a magnitude floor is not
+equivalent. Skin keeps the exact `1e-8` fallback and `1e-12` tangent presence rule. Refinement keeps the
+exact relative `2^-50` cancellation test. Correctly rounded sqrt/division remain when their values
+feed a later predicate. No approximate direction feeds position publication selection.
+
+The `2e-5` absolute component bound is conditional, not a universal native-transform guarantee. It
+applies to an exact-accepted, retained preflushed gather sum when native sqrt/division normal-result relative error
+is at most `e = 2^-20`, with underflow absolute error at most `2^-126`. With retained rounding error
+`u = 2^-24`, the conservative error is bounded by
+`2 * (((1+e)*(1+u))/((1-e)*(1-u)) - 1) + 2*2^-126 < 4.1e-6`.
+The exact positive dot bounds each normalized component below 2. This removes cancellation amplification
+from the native step, including ill-conditioned palettes, because their intermediate directions remain
+exact. Backend accuracy within this envelope still needs native acceptance. The tolerance continues
+to reject wrong normal, tangent and stale-direction controls.
+
+A finite positive retained squared length is normal and has a finite, positive normal square root.
+Dividing its input components by that root has magnitude below 2. Consequently the native finite
+check is defensive only and cannot fire for a conforming operation in this envelope. Native zero or
+non-finite predicates never replace a retained failure decision. Any failure still selects the complete
+uncovered pose atomically for the actor.
 
 The offline constructor, exact CPU carry and validator retain their exact direction arithmetic.
 No offline gate reads GPU normal or tangent words. Geometry certification and depth use positions.

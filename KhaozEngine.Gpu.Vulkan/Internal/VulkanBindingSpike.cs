@@ -73,11 +73,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             uint clamped = Math.Min(loaderVersion, (uint)floor);
 
             // Per-INSTANCE function pointers: the surface extension and the debug-utils messenger.
-            bool haveSurface = vk.TryGetInstanceExtension(instance, out KhrSurface _, KhrSurface.ExtensionName);
-            bool haveDebugUtils = vk.TryGetInstanceExtension(instance, out ExtDebugUtils _, ExtDebugUtils.ExtensionName);
+            bool haveSurface = vk.TryGetInstanceExtension(instance, out KhrSurface _);
+            bool haveDebugUtils = vk.TryGetInstanceExtension(instance, out ExtDebugUtils _);
 
             // Per-DEVICE function pointers: the swapchain, windowed path only (V-N6).
-            bool haveSwapchain = vk.TryGetDeviceExtension(instance, device, out KhrSwapchain _, KhrSwapchain.ExtensionName);
+            bool haveSwapchain = vk.TryGetDeviceExtension(instance, device, out KhrSwapchain _);
 
             Consume(versionResult, clamped, haveSurface, haveDebugUtils, haveSwapchain);
         }

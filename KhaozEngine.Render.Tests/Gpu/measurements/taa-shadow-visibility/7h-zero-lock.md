@@ -253,7 +253,8 @@ No oracle, comparison rule, accepted cost or bound was changed for this hint.
 
 The exact vulkan-validation-sync artifact contains one armed VulkanValidationLogHost producer marker,
 explicitly naming KE_VULKAN_VALIDATION='sync', and zero warning or error severity lines. Its 625 tests all pass,
-with no skip. The downloaded artifact was deleted after reading.
+with no skip. The host marker does not establish native messenger delivery, so the zero-message count does not
+prove clean validation (#1539). The downloaded artifact was deleted after reading.
 
 The closeout changes only this record, its manifest hash, the spec and the Task 7h Z plan paragraph. Programs,
 tables, corpus and DXBC remain those tested at `722a2105981e6ed8de0a07f3959e62709934407e`. All downloaded logs and

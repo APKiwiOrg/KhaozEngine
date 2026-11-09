@@ -1650,6 +1650,16 @@ are case-insensitive and trimmed. `false`, `no` and `off` also disable validatio
 enable the `1` level. An unrecognized value warns and leaves validation off. A missing validation layer warns
 and allows creation without it. Install `vulkan-validationlayers` on Linux or the Vulkan SDK elsewhere.
 
+When `CI=true` (case-insensitive) or `CI=1`, every requested validation rung requires a debug-utils
+messenger. A missing messenger refuses instance creation with `VulkanValidationException`, reason
+`MessengerUnavailable`, and `Site=vkCreateDebugUtilsMessengerEXT`. This applies to strict and sync jobs,
+including shards. Validation off is unaffected. Outside CI, missing diagnostics still warn and allow
+rendering. A successful messenger creation is logged before validation is announced as active.
+The native `VulkanValidationComputeGpuTests` positive control deliberately breaks the reserved messenger
+flags rule and checks the engine pump and strict latch. Its isolated recording logger captures the expected
+error without exempting real errors from the CI log scan. Headless tests cannot establish native validation
+coverage. Historical zero-message runs without a messenger remain unproven (#1539).
+
 **`KE_VULKAN_FRAMES_IN_FLIGHT` sets pipeline depth from 2 through 16, default 3.** It sizes each command list's
 command-pool ring and each uniform buffer's segments. An invalid non-blank value warns and retains 3. More
 frames use more memory and can increase latency. The acquire semaphore ring uses
@@ -1965,6 +1975,7 @@ change the captured diagnostics.
 | `VulkanInstanceStateException`, `VulkanInstanceRefusal.FactoryReturnedNull` | Refuses an instance factory that returns no instance. | No additional identifiers |
 | `VulkanResultException`, `VulkanResultRefusal.NativeCallFailed` | Refuses a native Vulkan call returning a negative result code. | `Call`, `ResultCode`, `ResultToken` |
 | `VulkanValidationException`, `VulkanValidationRefusal.StrictErrorLatched` | Refuses continuing a strict Vulkan run after its first validation error. | `Site`, `Diagnostic`, `MessageId`, `MessageIdName` |
+| `VulkanValidationException`, `VulkanValidationRefusal.MessengerUnavailable` | Refuses validation-enabled CI instance creation without a debug-utils messenger. | `Site` |
 | `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.LoaderUnavailable` | Refuses native instance creation when the Vulkan loader cannot be resolved. | `LoaderExceptionType`, `Probe` |
 | `ShaderValidationArgumentException`, `ShaderValidationRefusal.SpirvLengthInvalid` | Refuses an empty or unaligned SPIR-V module at shader-cache admission. | `ParamName`, `ByteLength`, `WordBytes` |
 | `VulkanVertexInputException`, `VulkanVertexInputRefusal.InstanceDivisorUnsupported` | Refuses an instance divisor that the enabled Vulkan core vertex input cannot express. | `ParamName`, `InstanceStepRate`, `Slot`, `MaximumStepRate` |

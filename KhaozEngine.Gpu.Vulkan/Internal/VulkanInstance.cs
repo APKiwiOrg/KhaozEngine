@@ -18,12 +18,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// loader below it is turned away by the probe before this type is reached.
     /// </para>
     /// <para>
-    /// <b>A MISSING LAYER OR EXTENSION IS DROPPED WITH A WARNING, never a refusal.</b>
+    /// <b>A MISSING LAYER OR EXTENSION IS DROPPED WITH A WARNING outside CI.</b>
     /// <c>vkCreateInstance</c> fails outright on a layer or extension that is not installed, so requesting
     /// <c>VK_LAYER_KHRONOS_validation</c> on a machine without the validation layers would stop the app starting
     /// for somebody who is by definition mid-diagnosis. Both lists are checked against what the loader actually
     /// enumerates and the absent entries are dropped, which is the same shape the Direct3D 11 debug layer's
-    /// retry-without takes.
+    /// retry-without takes. Validation-enabled CI additionally requires the messenger before accepting the
+    /// instance, so a missing diagnostics producer cannot silently pass a validation job.
     /// </para>
     /// <para>
     /// <b>THIS IS NOT THE PROBE'S INSTANCE.</b> <see cref="VulkanSupportProbe"/> creates and destroys its own
@@ -163,14 +164,28 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanInstanceValidation configuration = VulkanInstanceValidation.Select(validation, layers);
             Instance handle = Create(vk, apiVersion, extensions, layers, configuration.EnabledFeatures.AsSpan());
 
-            VulkanDebugMessenger? messenger = VulkanValidation.WantsMessenger(validation)
-                && Array.IndexOf(extensions, ExtDebugUtils.ExtensionName) >= 0
-                    ? VulkanDebugMessenger.TryCreate(vk, handle, validation)
-                    : null;
+            VulkanDebugMessenger? messenger = null;
+            try
+            {
+                messenger = VulkanValidation.WantsMessenger(validation)
+                    && Array.IndexOf(extensions, ExtDebugUtils.ExtensionName) >= 0
+                        ? VulkanDebugMessenger.TryCreate(vk, handle, validation)
+                        : null;
+                VulkanValidationRequirements.RequireMessenger(validation, messenger is not null,
+                    Environment.GetEnvironmentVariable("CI"));
 
-            if (validation != VulkanValidationMode.Off) log.Info(VulkanValidation.ActiveDescription(validation));
+                if (messenger is not null) log.Info("Vulkan validation debug-utils messenger created.");
+                if (validation != VulkanValidationMode.Off) log.Info(VulkanValidation.ActiveDescription(validation));
 
-            return new VulkanInstance(vk, handle, apiVersion, configuration, messenger);
+                return new VulkanInstance(vk, handle, apiVersion, configuration, messenger);
+            }
+            catch
+            {
+                messenger?.Dispose();
+                vk.DestroyInstance(handle, null);
+                vk.Dispose();
+                throw;
+            }
         }
 
         // vkCreateInstance itself, with everything it needs pinned. The unmanaged string arrays are freed on every

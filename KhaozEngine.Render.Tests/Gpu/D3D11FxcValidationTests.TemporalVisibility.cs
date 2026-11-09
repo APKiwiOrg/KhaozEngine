@@ -84,11 +84,25 @@ namespace KhaozEngine.Tests.Gpu
             void Log(string line) => _output?.WriteLine(line);
         }
 
-        /// <summary>The decision helper with its decision replaced by one that only calls D.</summary>
-        internal static string DHelperProgram => TemporalVisibilityFrozenDLaterChanges.Restore(
-            TemporalVisibilityCompiledFormTests.DecisionHelperProgram
-                .Replace(ShaderSources.TemporalVisibilityGlsl, TemporalVisibilityFrozenD.VisibilityGlsl + DHelperDecision,
-                    StringComparison.Ordinal), TemporalVisibilityFrozenDLaterChanges.PrecisionFloorTuning);
+        /// <summary>The decision helper with its decision replaced by one that only calls D, without the tuning
+        /// declarations added after D, so its pinned source stays D's.</summary>
+        internal static string DHelperProgram
+        {
+            get
+            {
+                string program = TemporalVisibilityCompiledFormTests.DecisionHelperProgram
+                    .Replace(ShaderSources.TemporalVisibilityGlsl, TemporalVisibilityFrozenD.VisibilityGlsl + DHelperDecision,
+                        StringComparison.Ordinal);
+                foreach (TemporalVisibilityFrozenDLaterChanges.Change tuning in new[]
+                {
+                    TemporalVisibilityFrozenDLaterChanges.ShadingFlickerTuning,
+                    TemporalVisibilityFrozenDLaterChanges.StillLockTuning,
+                    TemporalVisibilityFrozenDLaterChanges.PrecisionFloorTuning,
+                })
+                    program = TemporalVisibilityFrozenDLaterChanges.Restore(program, tuning);
+                return program;
+            }
+        }
 
         // A decision that only calls D, so D's helper compiles with the same main as the shipped one.
         const string DHelperDecision = @"

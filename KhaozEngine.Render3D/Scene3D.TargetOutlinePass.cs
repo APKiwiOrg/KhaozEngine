@@ -43,7 +43,8 @@ public sealed partial class Scene3D
         if (!float.IsFinite(widthPixels) || widthPixels < 0.5f || widthPixels > 8f)
             throw new ArgumentOutOfRangeException(nameof(widthPixels), widthPixels,
                 "outline width must be finite and between 0.5 and 8 pixels.");
-        if (!Enum.IsDefined(occlusion))
+        // Avoid runtime enum-metadata allocation after a collection on this warm queue path.
+        if (occlusion is not (MeshOutlineOcclusion.SceneDepth or MeshOutlineOcclusion.None))
             throw new ArgumentOutOfRangeException(nameof(occlusion), occlusion, "unknown outline occlusion.");
 
         int index = _meshOutlineGroups.Count;

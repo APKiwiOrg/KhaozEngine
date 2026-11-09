@@ -58,4 +58,27 @@ public sealed class CoverageCarryFailureTests
         }.Select(BitConverter.SingleToUInt32Bits).ToArray();
         Assert.Equal(expected, fixture.Current);
     }
+
+    // Regression: Skin's native direction rewrite stopped flushing retained tangent handedness, unlike the CPU reference.
+    [Theory]
+    [InlineData(true, 0x00800000u, 0x00000000u)]
+    [InlineData(true, 0x80800000u, 0x80000000u)]
+    [InlineData(true, 0x80000001u, 0x80000000u)]
+    [InlineData(true, 0x00800001u, 0x00800001u)]
+    [InlineData(true, 0x7fc00000u, 0x3f800000u)]
+    [InlineData(false, 0x00800000u, 0x00000000u)]
+    [InlineData(false, 0x80000001u, 0x80000000u)]
+    public void Source_handedness_keeps_retained_flushing_and_finite_recovery(bool raw, uint source, uint published)
+    {
+        var fixture = new CoverageCarryFailureFixture();
+        if (raw)
+        {
+            fixture.RawHole(handedness: source, publishedHandedness: published);
+            Assert.Equal(fixture.Expected, fixture.Current);
+            return;
+        }
+        fixture.SkinAndCancellingTransport(1, source, published);
+        fixture.Publish();
+        fixture.AssertCoveredDirections();
+    }
 }

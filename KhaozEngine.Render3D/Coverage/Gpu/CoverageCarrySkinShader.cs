@@ -60,7 +60,7 @@ internal static class CoverageCarrySkinShader
             t = covRecoverDirection(t,true,originalTangent,originalTangent,true);
             covDirectionWrite3(target+3u,n); covDirectionWrite3(target+12u,t);
             [[dont_unroll]] for (uint field = 6u; field < 12u; field++) CovWorkWords[target+field] = floatBitsToUint(covRead(CovStaticWords[s+field]));
-            CovWorkWords[target+15u] = hasTangent || absentTangent ? floatBitsToUint(covDirectionHandedness(uintBitsToFloat(CovStaticWords[s+15u]))) : 0u;
+            CovWorkWords[target+15u] = hasTangent || absentTangent ? floatBitsToUint(covDirectionHandedness(covRead(CovStaticWords[s+15u]))) : 0u;
         }
         """;
 }

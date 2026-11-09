@@ -13,7 +13,7 @@ public sealed class CoverageCarryShaderStabilityTests(ITestOutputHelper output)
 {
     // A2 decouples native local direction recovery from exact position publication. Position vectors remain frozen.
     [Theory]
-    [InlineData("CoverageCarrySkin", "0a03daf886e70e3acec36af944ce56088df5e810a966416babb37e13fb98b2c6")]
+    [InlineData("CoverageCarrySkin", "ef65e1b3f604900cbf4870e9cd4be69b385744e4e9cd9bbc1e0354a5bd601536")]
     [InlineData("CoverageCarryBasis", "b7aa298dd67fca2e09ded90ba0e5708ed2f702cf5b01be9ba57f9da69d8ca9d8")]
     public void Carry_modules_match_pinned_compilation_identities(string name, string expected)
     {

@@ -10,6 +10,7 @@ namespace KhaozEngine.Tests.Render3D;
 internal sealed class CoverageCarryFailureFixture
 {
     internal const uint Poison = 0x7fc01234;
+    const uint OneWord = 0x3f800000;
     internal const int Source = 64, Before = 112, After = 144, Candidate = 176, Basis = 208, Moved = 300;
     internal readonly uint[] Static = new uint[384], Frames = new uint[102];
     internal readonly uint[] Work = Enumerable.Repeat(Poison, 512).ToArray();
@@ -61,7 +62,7 @@ internal sealed class CoverageCarryFailureFixture
         if (execute) Run("CoverageCarryTransport");
     }
 
-    internal void SkinAndCancellingTransport(float xScale)
+    internal void SkinAndCancellingTransport(float xScale, uint handedness = OneWord, uint publishedHandedness = OneWord)
     {
         CancellingTransport(execute: false);
         Static[8] = 208; Static[10] = 272;
@@ -70,6 +71,9 @@ internal sealed class CoverageCarryFailureFixture
             Work.AsSpan(Source + vertex * 16, 16).CopyTo(Static.AsSpan(208 + vertex * 20, 16));
             Static[208 + vertex * 20 + 16] = Bits(1);
         }
+        // The first source and its alias carry the word under test. The second keeps the generated row's sign fixed.
+        Static[208 + 15] = Static[248 + 15] = handedness;
+        Expected[15] = publishedHandedness;
         int palette = 6 + 16;
         Frames[palette] = Bits(xScale); Frames[palette + 5] = Frames[palette + 10] = Frames[palette + 15] = Bits(1);
         Work.AsSpan(Source, 48).Fill(Poison);
@@ -99,15 +103,17 @@ internal sealed class CoverageCarryFailureFixture
         }
     }
 
-    internal void RawHole(bool illConditioned = false)
+    internal void RawHole(bool illConditioned = false, uint handedness = 0, uint publishedHandedness = 0)
     {
         FailingGather(fail: false);
         Static[8] = 208; Static[10] = 272;
         for (int v = 0; v < 3; v++)
         {
             Expected.AsSpan(v == 1 ? 16 : 0, 16).CopyTo(Static.AsSpan(208 + v * 20, 16));
+            Static[208 + v * 20 + 15] = handedness;
             Static[208 + v * 20 + 16] = Bits(1);
         }
+        Expected[15] = Expected[31] = publishedHandedness;
         Frames[6 + 16] = Frames[6 + 21] = Frames[6 + 26] = Frames[6 + 31] = Bits(1);
         if (illConditioned)
         {

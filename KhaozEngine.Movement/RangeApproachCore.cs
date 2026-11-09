@@ -80,9 +80,9 @@ internal static class RangeApproachCore
         bool run, float dt, GroundMoveContext context, Vector2 command, in MoveState predicted, StepAdmission admits)
     {
         if (!ReachGeometry.Within(Body(predicted, tuning), target, range)) return command;
-        using var flat = context.OpenFlatRangePreview(body, predicted, tuning, run, dt);
+        using var flat = context.OpenGroundRangePreview(body, predicted, tuning, run, dt);
         float low = 0f, high = 1f;
-        // Preserve the float interval decisions exactly. Certified flat poses solve the command interval
+        // Preserve the float interval decisions exactly. Certified ground poses solve the command interval
         // without movement previews. Every other case resolves each copy through the live shared core.
         for (int iteration = 0; iteration < 32; iteration++)
         {

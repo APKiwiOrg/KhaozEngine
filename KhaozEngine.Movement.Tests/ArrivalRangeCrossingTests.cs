@@ -52,11 +52,15 @@ public class ArrivalRangeCrossingTests(ITestOutputHelper output)
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
-    public void DirectAndRoutedDriversKeepTheOriginalArrivalCommand(bool routed, bool pointRefusal)
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void DirectAndRoutedDriversKeepTheOriginalArrivalCommand(bool routed, bool pointRefusal, bool sloped = false)
     {
         // #1729 F1, #1737. Even with a clamp, a dry trace cannot authorize skipping point-operation refusals.
         using var scene = new FlatArrivalScene(water: pointRefusal ? new ArrivalPointRefusalWater() : null,
-            clampXz: FlatArrivalScene.ThrowingClamp);
+            clampXz: FlatArrivalScene.ThrowingClamp, slope: sloped ? 0.125f : null);
         MoveTuning tuning = scene.Tuning;
         var body = new MoveState { Position = new(0, tuning.CapsuleHalfHeight, 0), Grounded = true };
         var target = ReachTarget.Point(body.Position + new Vector3(0.4f, 0, 0));
@@ -102,11 +106,15 @@ public class ArrivalRangeCrossingTests(ITestOutputHelper output)
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
-    public void EveryCertifiedTrialStateMatchesTheFullGroundCore(bool rebase, bool withClamp)
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void EveryCertifiedTrialStateMatchesTheFullGroundCore(bool rebase, bool withClamp, bool sloped = false)
     {
         // #1737. A supplied clamp cannot disable exact certified states for Contact.
-        using var scene = new FlatArrivalScene(origin: rebase ? new Vector3(2, 0, -3) : null,
-            clampXz: withClamp ? FlatArrivalScene.ThrowingClamp : null);
+        using var scene = new FlatArrivalScene(origin: rebase ? new Vector3(2, 0.125f, -3) : null,
+            clampXz: withClamp ? FlatArrivalScene.ThrowingClamp : null, slope: sloped ? 0.125f : null);
         MoveTuning tuning = scene.Tuning with { FacingTurnSpeed = 2.5f };
         var body = new MoveState
         {
@@ -135,7 +143,7 @@ public class ArrivalRangeCrossingTests(ITestOutputHelper output)
         for (int sample = 0; sample < count; sample++)
             expected[sample] = scene.Context.Step(body, commands[sample], true, 0.1f, tuning);
         MoveState predicted = scene.Context.Step(body, Vector2.UnitX, true, 0.1f, tuning);
-        using var preview = scene.Context.OpenFlatRangePreview(body, predicted, tuning, true, 0.1f);
+        using var preview = scene.Context.OpenGroundRangePreview(body, predicted, tuning, true, 0.1f);
         Assert.NotNull(preview);
         Assert.Equal(count, expected.Length);
         for (int sample = 0; sample < count; sample++)

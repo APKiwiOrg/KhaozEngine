@@ -39,7 +39,7 @@ public class TileFlatRangePreviewTests(ITestOutputHelper output)
         MoveTuning tuning = ContactTerrainScene.Tuning;
         var body = new MoveState { Position = new(1, height + tuning.CapsuleHalfHeight, -1), Grounded = true };
         MoveState predicted = scene.Context.Step(body, Vector2.UnitX, false, 0.1f, tuning);
-        using var preview = scene.Context.OpenFlatRangePreview(body, predicted, tuning, false, 0.1f);
+        using var preview = scene.Context.OpenGroundRangePreview(body, predicted, tuning, false, 0.1f);
         Assert.NotNull(preview);
         LocomotionStateBits.AssertEqual(predicted, preview.Step(Vector2.UnitX), LocomotionStateBits.Policy.IncludeContinuityHandle);
     }
@@ -48,21 +48,29 @@ public class TileFlatRangePreviewTests(ITestOutputHelper output)
     [InlineData("interior")]
     [InlineData("rebase")]
     [InlineData("rim")]
+    [InlineData("slope")]
+    [InlineData("slope-rebase")]
+    [InlineData("slope-seam")]
+    [InlineData("slope-rim")]
     public void ContactArrivalWithClampMatchesExactSolverAndKeepsBoundaryFallback(string scenario)
     {
-        // #1737. The boundary still declines swept regions at the rim after the clamp gate is removed.
+        // #1737, #1754. Slopes retain exact arrival decisions and the boundary still declines the rim.
+        bool slope = scenario.StartsWith("slope", StringComparison.Ordinal);
+        bool rim = scenario.EndsWith("rim", StringComparison.Ordinal);
         using var scene = new ContactTerrainScene(0, document: ContactTerrainScene.Document(0,
-            profile: _ => 0.25f), clampXz: ThrowingClamp);
-        if (scenario == "rebase") scene.World.Rebase(new(2, 0, -3));
+            profile: x => slope ? x * 0.125f : 0.25f), clampXz: ThrowingClamp);
+        if (scenario.EndsWith("rebase", StringComparison.Ordinal)) scene.World.Rebase(new(2, 0.125f, -3));
         MoveTuning tuning = ContactTerrainScene.Tuning;
+        float x = rim ? 4.99f : scenario == "slope-seam" ? 1.99f : 1;
         var body = new MoveState
         {
-            Position = new(scenario == "rim" ? 4.99f : 1, 0.25f + tuning.CapsuleHalfHeight, -1), Grounded = true,
+            Position = new(x, scene.Colliders.MovementGroundHeight(x, -1) + tuning.CapsuleHalfHeight, -1),
+            Grounded = true,
         };
         MoveState predicted = scene.Context.Step(body, Vector2.UnitX, false, 0.1f, tuning);
         Assert.True(predicted.SupportGranted);
         Assert.True(predicted.Position.X > body.Position.X);
-        if (scenario == "rim") Assert.Equal(5f, predicted.Position.X);
+        if (rim) Assert.Equal(5f, predicted.Position.X);
         var target = ReachTarget.Point(predicted.Position);
         static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning) => to.Grounded && !to.Swimming;
         Vector2 expected = ArrivalReference.Stop(body, tuning, target, 0, false, 0.1f, scene.Context,
@@ -76,10 +84,10 @@ public class TileFlatRangePreviewTests(ITestOutputHelper output)
         Assert.True(count > 0);
         output.WriteLine($"{scenario}: reference={count}, full={work.FullSteps}, certified={work.CertifiedTrials}");
         Assert.Equal(count, work.FullSteps + work.CertifiedTrials);
-        Assert.Equal(scenario == "rim" ? count : 0, work.FullSteps);
-        Assert.Equal(scenario == "rim" ? 0 : count, work.CertifiedTrials);
-        using var preview = scene.Context.OpenFlatRangePreview(body, predicted, tuning, false, 0.1f);
-        if (scenario == "rim") Assert.Null(preview);
+        Assert.Equal(rim ? count : 0, work.FullSteps);
+        Assert.Equal(rim ? 0 : count, work.CertifiedTrials);
+        using var preview = scene.Context.OpenGroundRangePreview(body, predicted, tuning, false, 0.1f);
+        if (rim) Assert.Null(preview);
         else Assert.NotNull(preview);
     }
 

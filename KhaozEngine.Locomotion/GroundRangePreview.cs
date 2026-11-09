@@ -1,13 +1,17 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Locomotion.Contacts;
 
 namespace KhaozEngine.Locomotion;
 
-/// <summary>Exact flat-ground algebra under a live whole-region certificate. Only command-dependent fields
-/// vary. The ordinary endpoint supplied by the caller owns the remaining constant state fields.</summary>
-internal sealed class FlatGroundRangePreview(MovementQueryLease queries, MoveState local,
-    MoveState predicted, MoveTuning tuning, bool run, float dt, float travel) : IDisposable
+/// <summary>Exact arrival trials under a live whole-region certificate. Flat regions retain their algebraic
+/// evaluator. Supported slopes run the shared kernel against captured ground and proved empty queries.</summary>
+internal sealed class GroundRangePreview(MovementQueryLease queries, MoveState local,
+    MoveState predicted, MoveTuning tuning, bool run, float dt, float travel,
+    CertifiedGroundRangeQueries? supported = null) : IDisposable
 {
+    readonly ExplicitContactModes? _modes = supported is null ? null : new();
+    Vector3? _supportedPosition;
     internal bool Active { get; private set; } = true;
     internal bool TryStep(Vector2 command, out MoveState state)
     {
@@ -22,6 +26,26 @@ internal sealed class FlatGroundRangePreview(MovementQueryLease queries, MoveSta
     {
         queries.AssertCurrent();
         var (direction, fraction) = CharacterMovement.ResolveWorldDir(command, preserveSmallMagnitude: true);
+        if (supported is not null)
+        {
+            // Retain the ordinary per-tick analytic consistency and capacity checks. Only immutable geometry
+            // and coverage outlive a trial, never its mutable query workspace or medium history.
+            queries.EndContactTick();
+            queries.BeginContactTick();
+            supported.Begin();
+            _modes!.Initialize(supported, local, tuning, tuning.Water, false);
+            MoveState result = ContactController.StepWithQueries(local, direction, fraction, run, false, dt, tuning,
+                supported, out var continuation, settings: new(tuning.FootRadiusFraction), fluid: _modes);
+            if (supported.Failed || !continuation.Completed || !result.Grounded || result.Swimming || !result.SupportGranted)
+                throw new InvalidOperationException("The supported arrival trial left its certificate.");
+            var framed = new FramedMovementState(result, queries.Frame, null);
+            if (!MovementFrameRebinding.TryRebind(framed, framed.Frame, out _))
+                throw new InvalidOperationException("The supported arrival trial left its frame.");
+            queries.AssertCurrent();
+            result.Position += queries.Frame.PhysicsOrigin;
+            _supportedPosition = result.Position;
+            return result;
+        }
         float speedScale = 1f * local.SpeedScale * 1f;
         float speed = fraction > 0f ? (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * fraction : 0f;
         Vector2 velocity = direction * speed;
@@ -48,6 +72,9 @@ internal sealed class FlatGroundRangePreview(MovementQueryLease queries, MoveSta
         try { queries.AssertCurrent(); }
         catch (InvalidOperationException) { Dispose(); return false; }
         catch (ArgumentException) { Dispose(); return false; }
+        // Direct-driver admission asks about the trial just returned. Its slope-dependent height was proved
+        // by that exact kernel execution, including the final frame mapping, rather than the endpoint's Y.
+        if (supported is not null) return _supportedPosition == body.Position;
         Vector3 position = body.Position - queries.Frame.PhysicsOrigin;
         float margin = MathF.BitIncrement(travel + 2 * MovementQueryLease.CoverageSkinMetres);
         return body.Position.Y == predicted.Position.Y && Math.Abs((double)position.X - local.Position.X) <= margin &&

@@ -9,14 +9,16 @@ namespace KhaozEngine.Tests.Movement;
 
 public class ArrivalProofInvalidationTests
 {
-    [Fact]
-    public void RevokedReadFallsBackAtTheSameFloatIntervalDecision()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RevokedReadFallsBackAtTheSameFloatIntervalDecision(bool sloped)
     {
         // #1729. Losing the batch proof must neither throw nor restart the already-decided interval.
         var expectedField = new RevokedField();
         var actualField = new RevokedField();
-        using var expectedScene = new FlatArrivalScene(water: expectedField);
-        using var actualScene = new FlatArrivalScene(water: actualField);
+        using var expectedScene = new FlatArrivalScene(water: expectedField, slope: sloped ? 0.125f : null);
+        using var actualScene = new FlatArrivalScene(water: actualField, slope: sloped ? 0.125f : null);
         MoveTuning tuning = expectedScene.Tuning;
         var body = new MoveState { Position = new(0, tuning.CapsuleHalfHeight, 0), Grounded = true };
         var target = ReachTarget.Point(body.Position + new Vector3(0.4f, 0, 0));

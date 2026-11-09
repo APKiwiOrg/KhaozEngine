@@ -46,7 +46,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _vk = vk;
             _instance = instance;
 
-            if (!vk.TryGetInstanceExtension(instance, out KhrSurface surface, KhrSurface.ExtensionName))
+            if (!vk.TryGetInstanceExtension(instance, out KhrSurface surface))
             {
                 throw new NotSupportedException(
                     "The native Vulkan backend could not load VK_KHR_surface from its instance. The headless path "
@@ -141,7 +141,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         ulong CreateWin32(IntPtr windowHandle, IntPtr moduleHandle)
         {
-            if (!_vk.TryGetInstanceExtension(_instance, out KhrWin32Surface win32, KhrWin32Surface.ExtensionName))
+            if (!_vk.TryGetInstanceExtension(_instance, out KhrWin32Surface win32))
                 throw Missing(KhrWin32Surface.ExtensionName);
 
             // A ZERO HINSTANCE IS THE INCUMBENT'S SHAPE, and the engine's windowing package passes no module
@@ -160,7 +160,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         ulong CreateXlib(IntPtr windowHandle, IntPtr displayHandle)
         {
-            if (!_vk.TryGetInstanceExtension(_instance, out KhrXlibSurface xlib, KhrXlibSurface.ExtensionName))
+            if (!_vk.TryGetInstanceExtension(_instance, out KhrXlibSurface xlib))
                 throw Missing(KhrXlibSurface.ExtensionName);
 
             var info = new XlibSurfaceCreateInfoKHR(
@@ -176,8 +176,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         ulong CreateWayland(IntPtr windowHandle, IntPtr displayHandle)
         {
-            if (!_vk.TryGetInstanceExtension(_instance, out KhrWaylandSurface wayland,
-                KhrWaylandSurface.ExtensionName))
+            if (!_vk.TryGetInstanceExtension(_instance, out KhrWaylandSurface wayland))
             {
                 throw Missing(KhrWaylandSurface.ExtensionName);
             }

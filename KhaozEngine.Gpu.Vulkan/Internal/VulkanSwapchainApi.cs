@@ -59,7 +59,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _loss = loss;
             _liveness = liveness;
 
-            if (!vk.TryGetDeviceExtension(instance, device, out KhrSwapchain swapchain, KhrSwapchain.ExtensionName))
+            if (!vk.TryGetDeviceExtension(instance, device, out KhrSwapchain swapchain))
             {
                 throw new NotSupportedException(
                     "The native Vulkan backend could not load VK_KHR_swapchain from its device. The headless path "

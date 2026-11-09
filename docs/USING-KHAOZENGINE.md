@@ -20931,6 +20931,12 @@ environment variable can conjure one that is not on the machine. On Debian and U
 and a device created without validation, which is the right behaviour on a developer box and a silently vacuous
 gate anywhere that was relying on it.
 
+**CI refuses a missing messenger.** With `CI=true` (case-insensitive) or `CI=1`, requesting any validation
+rung without a debug-utils messenger throws `VulkanValidationException` with reason `MessengerUnavailable`
+and `Site=vkCreateDebugUtilsMessengerEXT`. This covers strict, sync and sharded runs. With validation off,
+creation is unchanged. Outside CI, missing diagnostics remain warn-only. Install the layer and configure a
+log sink as described here. A messenger alone does not install the validation layer.
+
 **The messages go to YOUR logging, so a session with neither an async-flow scope nor a process manager selected sees none.** The pump writes through the ambient `Log` facade, and that facade discards messages when neither an
 async-flow scope nor a process manager is selected. A `Log.Use(manager)` scope can receive entries on its current
 async flow without `Log.Configure`, but a construction-only scope does not guarantee capture of later native
@@ -30496,7 +30502,8 @@ result from incompatible live and requested configurations. `VulkanFeatureRefusa
 carries the feature and device. `VulkanResultRefusal.NativeCallFailed` carries the call, result code and token.
 `VulkanDeviceWiringRefusal.InstanceMissing` identifies the missing native object on a seam-built device.
 `VulkanValidationRefusal.StrictErrorLatched` carries the controlled site and first diagnostic with its message
-identifiers. See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#refusals).
+identifiers. `MessengerUnavailable` refuses a requested validation rung in CI without a native messenger and
+carries the creation site. See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#refusals).
 
 On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable
 `GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,

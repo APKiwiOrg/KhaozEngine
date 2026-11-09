@@ -73,9 +73,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>
         /// Create the messenger on <paramref name="instance"/>, or return null when the loader has no
-        /// <c>VK_EXT_debug_utils</c> entry points. Null is not a failure: it means the extension was requested and
-        /// the loader could not supply it, which the caller reports and carries on from, because a session that
-        /// cannot start because its diagnostics could not start is worse than a session with no diagnostics.
+        /// <c>VK_EXT_debug_utils</c> entry points. A non-CI caller warns and carries on without diagnostics.
+        /// Validation-enabled CI refuses that null result before announcing validation as active.
         /// </summary>
         internal static VulkanDebugMessenger? TryCreate(Vk vk, Instance instance, VulkanValidationMode mode,
             ILogger? logger = null)
@@ -83,7 +82,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ArgumentNullException.ThrowIfNull(vk);
             ILogger sink = logger ?? log;
 
-            if (!vk.TryGetInstanceExtension(instance, out ExtDebugUtils debugUtils, ExtDebugUtils.ExtensionName))
+            // Silk infers the extension from T. Its optional string is a layer filter, not an extension name.
+            if (!vk.TryGetInstanceExtension(instance, out ExtDebugUtils debugUtils))
             {
                 sink.Warn($"{VulkanValidation.EnvVarName} asked for Vulkan validation and this loader offers no "
                     + "VK_EXT_debug_utils entry points, so no messenger was created and this run reports no "

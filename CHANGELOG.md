@@ -8,6 +8,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-09
 
+- Native Vulkan extension loading now leaves Silk's layer filter unset, restoring debug-utils messenger,
+  surface and swapchain lookups. Validation-enabled CI refuses a missing messenger instead of silently
+  passing without message capture. Non-CI sessions retain warn-only behavior. Native proof remains pending
+  an approved Vulkan run, including the new controlled validation-error test.
 - Offline-verified equipment recession tables and consumer-owned state keys. Strict host and equipment
   sidecars, immutable source evidence and the shared canonical configuration identity bind tables to
   complete material slices, including sets with uncommanded skinned garments. Arithmetic compatibility

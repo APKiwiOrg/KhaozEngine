@@ -12,6 +12,8 @@ public sealed class CoverageRawPublicationTests
     {
         var fixture = new CoverageCarryFailureFixture();
         fixture.FailingGather(fail: false);
+        fixture.Publish();
+        Assert.NotEqual(fixture.Expected, fixture.Current);
         fixture.Frames[6 + 15] = 1;
         fixture.Publish();
         Assert.Equal(0u, fixture.Errors[6]);
@@ -25,6 +27,9 @@ public sealed class CoverageRawPublicationTests
         fixture.RawHole();
         Assert.Equal(fixture.Expected, fixture.Current);
         Assert.DoesNotContain(CoverageCarryFailureFixture.Poison, fixture.Current);
+        // Raw publication consumes Before, so Gather must leave unused candidate storage untouched.
+        Assert.All(fixture.Work.AsSpan(CoverageCarryFailureFixture.Candidate, 32).ToArray(),
+            word => Assert.Equal(CoverageCarryFailureFixture.Poison, word));
         using var batch = new CoverageCarryGpuFixture();
         Assert.True(batch.Batch.TryAcquireOutput(batch.Actor, out int slot, out _));
         batch.Actor.Request.Generation = 0; // A refused table key has no accepted host preparation.

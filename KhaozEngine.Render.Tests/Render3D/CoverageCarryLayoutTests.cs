@@ -11,6 +11,17 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class CoverageCarryLayoutTests
 {
+    [Fact]
+    public void Source_and_uncovered_source_rows_alias_before_refinement()
+    {
+        using var fixture = new CoverageCarryGpuFixture();
+        uint[] header = CoverageCarryLayout.WorkHeader(fixture.Actor.Topology);
+        // Skin validates this one source row. Transport consumes it through the uncovered alias.
+        Assert.Equal(header[0], header[2]);
+        Assert.Equal(header[1], header[3]);
+        Assert.NotEqual(header[0], header[4]);
+    }
+
     public static IEnumerable<object[]> Stages() => Enumerable.Range(0, 5).Select(i => new object[] { i });
     [Theory]
     [MemberData(nameof(Stages))]

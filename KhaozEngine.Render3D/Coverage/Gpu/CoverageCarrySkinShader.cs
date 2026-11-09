@@ -21,7 +21,7 @@ internal static class CoverageCarrySkinShader
             uint f = covFrame(), w = CovFrameWords[f+1u], i = carryIndex();
             if (i >= CovFrameWords[f+5u]) return;
             uint h = CovFrameWords[f], s = covTable(h,8u)+i*20u, indices = covTable(h,10u)+i*4u, palette = f+16u;
-            uint target = covRow(w,0u)+i*16u, fallback = covRow(w,2u)+i*16u;
+            uint target = covRow(w,0u)+i*16u;
             vec4 weights = vec4(covRead(CovStaticWords[s+16u]),covRead(CovStaticWords[s+17u]),
                 covRead(CovStaticWords[s+18u]),covRead(CovStaticWords[s+19u]));
             float total = covAdd(covAdd(covAdd(weights.x,weights.y),weights.z),weights.w);
@@ -59,8 +59,9 @@ internal static class CoverageCarrySkinShader
             [[dont_unroll]] for (uint field = 6u; field < 12u; field++) CovWorkWords[target+field] = floatBitsToUint(covRead(CovStaticWords[s+field]));
             CovWorkWords[target+15u] = hasTangent || absentTangent ? floatBitsToUint(covRead(CovStaticWords[s+15u])) : 0u;
             bool valid = true;
+            // WorkHeader aliases source and uncovered source rows. Validate without copying each word onto itself.
             [[dont_unroll]] for (uint field = 0u; field < 16u; field++) {
-                uint value = CovWorkWords[target+field]; CovWorkWords[fallback+field] = value;
+                uint value = CovWorkWords[target+field];
                 if (!covFinite(covRead(value))) valid = false;
             }
             covEvent(w,i,valid ? 0u : 4u);

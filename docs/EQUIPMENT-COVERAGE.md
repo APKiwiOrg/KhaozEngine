@@ -209,6 +209,11 @@ point-shadow or outline consumer remains. That actor contributes no carry unifor
 and its submitted history behaves like a frame with no queued host draw. Outline consumers are retained
 conservatively because they have separate full and visible mask passes.
 
+Skin's source and uncovered source rows share storage, so it validates the completed records without a
+self-copy. A raw table hole still records all five stages, while Gather skips candidate stores because
+Publish selects the complete uncovered Before row. These changes preserve every arithmetic operation
+that contributes to the published surface. They establish no measured GPU saving.
+
 Zero warm managed allocation requires cold reservations for the fixed actor population, topology,
 equipment, descriptors, renderer bindings and output slots, plus an unchanged warm configuration.
 Equipping, loading, growth, shader/pipeline creation and teardown are cold work and can allocate. A

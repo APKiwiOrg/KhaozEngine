@@ -8,6 +8,8 @@ internal static class CoverageCarryGatherShader
             vec3 position = vec3(0.0);
             uint f = covFrame(), w = CovFrameWords[f+1u], vertex = carryIndex();
             if (vertex >= CovFrameWords[f+6u]) return;
+            // Raw publication always selects Before. No candidate word is consumed on a table hole.
+            if (CovFrameWords[f+15u] != 0u) return;
             uint h = CovFrameWords[f], before = covRow(w,4u), record = before+vertex*16u;
             position = covWork3(record);
             uint candidate = covRow(w,10u)+vertex*16u;

@@ -33,16 +33,21 @@ public class TileAimFacingTests
     // continuous yaw that drifted from the direction one would point a large body at north while its cardinal said
     // south. Exact equality rather than a tolerance: the deltas are whole tiles, so the two calls hand atan2 the
     // same pair of floats.
-    [Fact]
-    public void The_continuous_yaw_agrees_with_the_eight_directions()
+    [Theory]
+    [InlineData(TileDirection.W)]
+    [InlineData(TileDirection.E)]
+    [InlineData(TileDirection.S)]
+    [InlineData(TileDirection.N)]
+    [InlineData(TileDirection.SW)]
+    [InlineData(TileDirection.SE)]
+    [InlineData(TileDirection.NW)]
+    [InlineData(TileDirection.NE)]
+    public void The_continuous_yaw_agrees_with_the_eight_directions(TileDirection d)
     {
         Vector2[] origins = { new(0f, 0f), new(10f, 20f), new(-7f, 3f), new(4.5f, 9.5f) };
-        foreach (TileDirection d in TileDirections.All)
-        {
-            (int dx, int dz) = TileDirections.Delta(d);
-            foreach (Vector2 origin in origins)
-                Assert.Equal(TilePresenter.Yaw(d), TilePresenter.Yaw(origin, origin + new Vector2(dx, dz)));
-        }
+        (int dx, int dz) = TileDirections.Delta(d);
+        foreach (Vector2 origin in origins)
+            Assert.Equal(TilePresenter.Yaw(d), TilePresenter.Yaw(origin, origin + new Vector2(dx, dz)));
     }
 
     // The whole reason the feature exists: a 2x2 body beside a one-tile target is nowhere near its cardinal, and the

@@ -62,7 +62,7 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Whether a temporal consumer asks for temporal rendering right now: temporal anti-aliasing
         /// (<see cref="TemporalResolveActive"/>), the main requester, the <see cref="SceneDebugView.MotionVectors"/>
-        /// debug view, or the test seam. The three resolve views take effect only under temporal anti-aliasing, so
+        /// debug view, or the test seam. The four resolve views take effect only under temporal anti-aliasing, so
         /// they request nothing. Read only through <see cref="TemporalActive"/>.</summary>
         bool TemporalRequested => ForceTemporalForTests || _debugView == SceneDebugView.MotionVectors
             || TemporalResolveActive;

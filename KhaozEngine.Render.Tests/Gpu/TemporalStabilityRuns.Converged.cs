@@ -58,7 +58,7 @@ namespace KhaozEngine.Tests.Gpu
             PixelRect r = _fence.Region;
             var confidence = new List<float>();
             for (int y = r.Y0; y < r.Y1; y++)
-                for (int x = r.X0; x < r.X1; x++) confidence.Add(state[(y * W + x) * 2]);
+                for (int x = r.X0; x < r.X1; x++) confidence.Add(state[(y * W + x) * 4]);
             confidence.Sort();
             return confidence[confidence.Count / 2];
         });

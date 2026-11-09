@@ -12,7 +12,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D;
 
 /// <summary>
-/// The History, Disocclusion and Reactive debug views on the scene's frame path, headless on
+/// The History, Disocclusion, Reactive and Shimmer debug views on the scene's frame path, headless on
 /// <see cref="HeadlessSceneRig"/>. A view is drawn only on the render that ran the temporal resolve, over the very set
 /// the resolve bound, after the post chain. A later render of the frame draws none, and a frame without temporal
 /// anti-aliasing builds nothing. The resolve, the sharpen and the material mip bias run as they do without a view.
@@ -26,7 +26,7 @@ public sealed class TemporalDebugViewSceneTests
 
     public static TheoryData<SceneDebugView> ResolveViews => new()
     {
-        SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive,
+        SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive, SceneDebugView.Shimmer,
     };
 
     static HeadlessSceneRig Rig(SceneDebugView view, bool temporal)
@@ -134,9 +134,11 @@ public sealed class TemporalDebugViewSceneTests
     [InlineData(SceneDebugView.History, true)]
     [InlineData(SceneDebugView.Disocclusion, true)]
     [InlineData(SceneDebugView.Reactive, true)]
+    [InlineData(SceneDebugView.Shimmer, true)]
     [InlineData(SceneDebugView.History, false)]
     [InlineData(SceneDebugView.Disocclusion, false)]
     [InlineData(SceneDebugView.Reactive, false)]
+    [InlineData(SceneDebugView.Shimmer, false)]
     public void AViewLeavesTheFrameBlockTheMipBiasAndTheSharpenAsTheyAreWithoutIt(SceneDebugView view, bool temporal)
     {
         using HeadlessSceneRig plain = Rig(SceneDebugView.None, temporal);

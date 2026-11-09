@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 7: a textured checkerboard at Performance keeps the native
+    /// TEMPORAL-RESOLVE section 7 item 7: a textured checkerboard at Performance keeps the native
     /// reference's detail within tolerance, and the bias is what keeps it (the same frame with the bias cancelled
     /// loses detail). The bias applies to every frame here, because each is the first render of a resolving frame.
     /// <para>

@@ -21,7 +21,8 @@ namespace KhaozEngine.Tests.Gpu
         /// Direct3D 11 is not excepted, since both entries of one program take the same inputs. On a software Vulkan
         /// device (<see cref="TemporalDeviceClass.IsLavapipe"/>) each pair's colour is held to
         /// <see cref="TemporalSoftwareCompileDivergenceRule"/> over all frames and printed, as the follow walk's is, and its
-        /// state, R8 and depth stay exact.
+        /// confidence, lock, mark, R8 and depth stay exact. Production drift and swing take the same half-float-step
+        /// and differing-share rule as the follow walk. D prime's complete state remains exact.
         /// </summary>
         [GpuTheory]
         [InlineData(TemporalUpscale.Native)]
@@ -51,6 +52,9 @@ namespace KhaozEngine.Tests.Gpu
             bool softwareVulkan = TemporalDeviceClass.IsLavapipe(fused.Device);
             var productionColour = new EntryDifference("production fused vs split colour");
             var dColour = new EntryDifference("D prime fused vs split colour");
+            var productionState = new TemporalEntryStateComparison(softwareVulkan);
+            // D prime stores no shimmer record, so its zero blue and alpha channels remain exact too.
+            var dState = new TemporalEntryStateComparison(softwareVulkan: false);
             long colourCompared = 0;
             try
             {
@@ -90,8 +94,8 @@ namespace KhaozEngine.Tests.Gpu
                     TemporalHistorySample df = TemporalHistorySample.Read(dFused), ds = TemporalHistorySample.Read(dSplit);
                     if (softwareVulkan)
                     {
-                        SoftwareVulkanPair(frame, "production fused vs split", pf, ps, productionColour);
-                        SoftwareVulkanPair(frame, "D prime fused vs split", df, ds, dColour);
+                        SoftwareVulkanPair(frame, "production fused vs split", pf, ps, productionColour, productionState);
+                        SoftwareVulkanPair(frame, "D prime fused vs split", df, ds, dColour, dState);
                         colourCompared += pf.Colour.Length;
                     }
                     else
@@ -112,8 +116,10 @@ namespace KhaozEngine.Tests.Gpu
                             + $"({TemporalSoftwareCompileDivergenceRule.AbsoluteBound}, "
                             + $"{TemporalSoftwareCompileDivergenceRule.DifferingShareBound:P2} of values): {pair}");
                     }
+                productionState.AssertComplete(output, $"{preset} large production");
+                dState.AssertComplete(output, $"{preset} large D prime");
                 output.WriteLine($"  {frames} frames byte-identical across the entries in "
-                    + (softwareVulkan ? "state, R8 and depth" : "colour, state, R8 and depth")
+                    + (softwareVulkan ? "confidence, locks, marks, R8 and depth" : "colour, state, R8 and depth")
                     + $", production and D prime. Designed tile centres {string.Join(", ", designs)}, of them beside "
                     + $"column 512 or 1024 or row 512 {string.Join(", ", straddling)}");
                 Assert.True(straddling.Sum() >= 100,
@@ -130,13 +136,13 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        // A software Vulkan pair: state, R8 and depth exact this frame, the colour gathered for the bound.
+        // A software Vulkan pair: confidence, lock, mark, R8 and depth exact, colour and record gathered for bounds.
         static void SoftwareVulkanPair(int frame, string what, TemporalHistorySample a, TemporalHistorySample b,
-            EntryDifference colour)
+            EntryDifference colour, TemporalEntryStateComparison state)
         {
             Assert.Equal(a.Colour.Length, b.Colour.Length);
             for (int i = 0; i < a.Colour.Length; i++) colour.Add(frame, a.Colour[i], b.Colour[i]);
-            TemporalHistorySample.Exact(frame, what + " state", a.State, b.State);
+            state.Compare(frame, what + " state", a.State, b.State);
             TemporalHistorySample.Exact(frame, what + " R8", a.Visibility, b.Visibility);
             TemporalHistorySample.Exact(frame, what + " depth", a.Depth, b.Depth);
         }

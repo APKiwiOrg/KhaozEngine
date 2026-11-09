@@ -19,8 +19,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="TemporalVisibilityProductionPaths.RewriteKeepingTheDecision"/>). After every frame the production and
     /// D histories must be byte-identical in colour, state, stored visibility and stored depth, except on hardware
     /// NVIDIA Direct3D 11, whose driver compiles unrelated confidence arithmetic differently whenever the visibility
-    /// code changes, even on frame 0 where the check does not run. There colour and confidence differences against D
-    /// are printed as counts and maximum half steps and not asserted. D's paired entries are diagnostic only. Locks,
+    /// code changes, even on frame 0 where the check does not run. There finite colour, confidence, drift and swing
+    /// differences against D are printed as counts and maximum half steps. Their non-finite classes must match.
+    /// D's paired entries are diagnostic only. Locks,
     /// R8 and depth stay exact on every device. Both exporting rigs
     /// must write production's locks and the same path words less the slow path's reasons. The mutant must differ,
     /// which shows the hook reaches the compiled program and the frames exercise the release. The exported paths must
@@ -66,6 +67,9 @@ namespace KhaozEngine.Tests.Gpu
         // (+, +), so each axis meets both signs where the tiles decide.
         internal static readonly int[] LargePhases = [0, 1, 3, 2, 5, 4];
 
+        /// <summary>D here carries the owner-approved precision floor (2026-10-29). Still receivers otherwise
+        /// reproduce the binary16 precision flash that the approved floor removes, so floorless colour equality
+        /// cannot hold. Every other post-D change is undone, and every visibility assertion stays exact.</summary>
         [GpuTheory]
         [InlineData(0, TemporalUpscale.Native)]
         [InlineData(0, TemporalUpscale.Quality)]
@@ -77,7 +81,7 @@ namespace KhaozEngine.Tests.Gpu
             var random = new Random(entry == TemporalResolveEntry.Fused ? 1709 : 2711);
             TemporalVisibilityProductionPaths paths = Run(entry, preset, Iw, Ih,
                 (frame, dw, dh) => MakeFrame(random, frame, dw, dh, SceneNdc, NdcDepth(Projection, 1.4f), SceneLinear,
-                    TemporalResolveMath.LinearDepth(NdcDepth(Projection, 1.4f), Depth)));
+                    TemporalResolveMath.LinearDepth(NdcDepth(Projection, 1.4f), Depth)), precisionFloor: true);
             // Floors under what the random frames give: a lock in two of three pixels, most centres off the border.
             Assert.True(paths.FastPath >= 50 && paths.RangeSkips >= 10 && paths.FastComputed >= 10,
                 $"frame {Frames - 1} (aggregate): the random frames reached too few production paths: {paths}");
@@ -230,19 +234,23 @@ namespace KhaozEngine.Tests.Gpu
         // tolerance-edge tiles' display pixels to edges.
         TemporalVisibilityProductionPaths Run(TemporalResolveEntry entry, TemporalUpscale preset, int iw, int ih,
             Func<int, int, int, Frame> makeFrame, EdgeOutcomes? edges = null, BinadeOutcomes? binade = null,
-            Func<int, int, Vector2>? jitterOf = null)
+            Func<int, int, Vector2>? jitterOf = null, bool precisionFloor = false)
         {
             int dw = preset == TemporalUpscale.Native ? iw : iw * 3 / 2, dh = preset == TemporalUpscale.Native ? ih : ih * 3 / 2;
+            Func<string, string> rewriteD = precisionFloor
+                ? TemporalVisibilityFrozenD.ToDWithPrecisionFloor : TemporalVisibilityFrozenD.ToD;
+            Func<string, string> rewriteShippedD = precisionFloor
+                ? TemporalVisibilityFrozenD.ToShippedDWithPrecisionFloor : TemporalVisibilityFrozenD.ToShippedD;
             int dRewrites = 0, mutantRewrites = 0;
             bool prepareRewritten = false;
             using var production = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc);
             bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(production.Device);
             var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
             using var otherD = nvidia ? new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
-                fragmentSource: TemporalVisibilityFrozenD.ToD) : null;
+                fragmentSource: rewriteD) : null;
             using var d = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc, fragmentSource: source =>
             {
-                string rewritten = TemporalVisibilityFrozenD.ToD(source);
+                string rewritten = rewriteD(source);
                 if (!ReferenceEquals(rewritten, source)) dRewrites++;
                 if (source == ShaderSources.TemporalPrepareFrag && rewritten != source) prepareRewritten = true;
                 return rewritten;
@@ -251,6 +259,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 string rewritten = TemporalVisibilityFrozenD.ToMutantD(source, callSite => callSite.Replace(
                     "> VisibilityReleaseThreshold", "> 2.0", StringComparison.Ordinal));
+                if (precisionFloor) rewritten = TemporalVisibilityFrozenDLaterChanges.WithPrecisionFloor(rewritten);
                 if (!ReferenceEquals(rewritten, source)) mutantRewrites++;
                 return rewritten;
             });
@@ -259,7 +268,7 @@ namespace KhaozEngine.Tests.Gpu
             using var kept = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
                 fragmentSource: TemporalVisibilityProductionPaths.RewriteKeepingTheDecision);
             using var shippedD = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
-                fragmentSource: TemporalVisibilityFrozenD.ToShippedD);
+                fragmentSource: rewriteShippedD);
             bool metal = production.Device.Backend == GpuBackendKind.MetalNative;
             TemporalResolveRig[] rigs = otherD is null ? [production, d, mutant, exported, kept, shippedD]
                 : [production, d, mutant, exported, kept, shippedD, otherD];
@@ -317,9 +326,12 @@ namespace KhaozEngine.Tests.Gpu
                             entry == TemporalResolveEntry.Fused ? opposite : reference);
                         oracle.Compare(frame, $"production {entry} vs D {entry}", actual, reference);
                     }
-                    else TemporalHistorySample.Exact(frame, "production vs D", actual, reference);
+                    else TemporalHistorySample.Exact(frame, "production vs D", actual.WithoutShimmerRecord(),
+                        reference.WithoutShimmerRecord());
                     TemporalHistorySample shipped = TemporalHistorySample.Read(shippedD);
-                    if (metal) TemporalHistorySample.Exact(frame, "production vs shipped D", actual, shipped);
+                    if (metal)
+                        TemporalHistorySample.Exact(frame, "production vs shipped D", actual.WithoutShimmerRecord(),
+                            shipped.WithoutShimmerRecord());
                     else
                     {
                         TemporalHistoryDifference apart = TemporalHistoryDifference.Measure(actual.Colour, actual.State,
@@ -337,19 +349,21 @@ namespace KhaozEngine.Tests.Gpu
                             storedApart++;
                     float[] productionState = actual.State, mutantState = mutant.ReadState();
                     float[] exportedState = exported.ReadState(), keptState = kept.ReadState();
+                    // The mutant is D, which stores no shimmer record, so only confidence and lock count.
                     for (int i = 0; i < productionState.Length; i++)
-                        if (BitConverter.SingleToInt32Bits(productionState[i]) != BitConverter.SingleToInt32Bits(mutantState[i]))
+                        if (i % 4 < 2
+                            && BitConverter.SingleToInt32Bits(productionState[i]) != BitConverter.SingleToInt32Bits(mutantState[i]))
                             mutantDiffers++;
                     // Both exporting rigs decide as production does: every stored lock is production's.
-                    for (int p = 0; p < productionState.Length / 2; p++)
+                    for (int p = 0; p < productionState.Length / 4; p++)
                     {
-                        int locked = BitConverter.SingleToInt32Bits(productionState[p * 2 + 1]);
-                        if (locked != BitConverter.SingleToInt32Bits(exportedState[p * 2 + 1]))
-                            Assert.Fail($"frame {frame} pixel {p}: the path export stored lock {exportedState[p * 2 + 1]:R}, "
-                                + $"production {productionState[p * 2 + 1]:R}");
-                        if (locked != BitConverter.SingleToInt32Bits(keptState[p * 2 + 1]))
+                        int locked = BitConverter.SingleToInt32Bits(productionState[p * 4 + 1]);
+                        if (locked != BitConverter.SingleToInt32Bits(exportedState[p * 4 + 1]))
+                            Assert.Fail($"frame {frame} pixel {p}: the path export stored lock {exportedState[p * 4 + 1]:R}, "
+                                + $"production {productionState[p * 4 + 1]:R}");
+                        if (locked != BitConverter.SingleToInt32Bits(keptState[p * 4 + 1]))
                             Assert.Fail($"frame {frame} pixel {p}: the export keeping the decision stored lock "
-                                + $"{keptState[p * 2 + 1]:R}, production {productionState[p * 2 + 1]:R}");
+                                + $"{keptState[p * 4 + 1]:R}, production {productionState[p * 4 + 1]:R}");
                     }
                     float[] exportedColour = exported.ReadColor(), keptColour = kept.ReadColor();
                     for (int p = 0; p < exportedColour.Length / 4; p++)
@@ -375,7 +389,7 @@ namespace KhaozEngine.Tests.Gpu
                     foreach (TemporalResolveRig rig in rigs) rig.History.MarkValidAfterFrame();
                 }
                 oracle?.Complete();
-                output.WriteLine($"  {Frames} frames {(nvidia ? "exact in locks, R8 and depth, colour and confidence reported above" : "byte-identical to D in colour, state, R8 and depth")}, "
+                output.WriteLine($"  {Frames} frames {(nvidia ? "exact in locks, R8 and depth, arithmetic channels reported above" : "byte-identical to D in colour, state, R8 and depth")}, "
                     + (metal ? "byte-identical to shipped D in colour, state, R8 and depth, " : "shipped D reported above, ")
                     + $"{zeroLocks} stored locks exactly zero, the never-releasing mutant differs in {mutantDiffers} of "
                     + $"{values} state values, {dRewrites} D and {mutantRewrites} mutant programs rewritten"
@@ -471,7 +485,7 @@ namespace KhaozEngine.Tests.Gpu
                     visibility[i] = random.Next(10) == 0 ? (byte)random.Next(256) : lit ? (byte)255 : (byte)0;
                 }
             var historyColour = new float[dw * dh * 4];
-            var historyState = new float[dw * dh * 2];
+            var historyState = new float[dw * dh * 4];
             int zeroLocks = 0;
             for (int p = 0; p < dw * dh; p++)
             {
@@ -480,9 +494,9 @@ namespace KhaozEngine.Tests.Gpu
                 historyColour[p * 4 + 1] = grey;
                 historyColour[p * 4 + 2] = grey * 0.9f;
                 historyColour[p * 4 + 3] = 1f;
-                historyState[p * 2] = (float)random.NextDouble();
+                historyState[p * 4] = (float)random.NextDouble();
                 int lockKind = random.Next(3);
-                historyState[p * 2 + 1] = lockKind == 0 ? 0f : lockKind == 1 ? 1f : (float)random.NextDouble();
+                historyState[p * 4 + 1] = lockKind == 0 ? 0f : lockKind == 1 ? 1f : (float)random.NextDouble();
                 if (lockKind == 0) zeroLocks++;
             }
             return new Frame(colour, motion, ndc, visibility, historyColour, historyState, previousDepth, zeroLocks);
@@ -566,13 +580,13 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
             var historyColour = new float[dw * dh * 4];
-            var historyState = new float[dw * dh * 2];
+            var historyState = new float[dw * dh * 4];
             for (int p = 0; p < dw * dh; p++)
             {
                 (historyColour[p * 4], historyColour[p * 4 + 1], historyColour[p * 4 + 2], historyColour[p * 4 + 3])
                     = (0.5f, 0.5f, 0.5f, 1f);
-                historyState[p * 2] = 0.5f;
-                historyState[p * 2 + 1] = 1f;
+                historyState[p * 4] = 0.5f;
+                historyState[p * 4 + 1] = 1f;
             }
             return new Frame(colour, new float[w * h * 2], ndc, visibility, historyColour, historyState, previousDepth, 0,
                 edgeSites);

@@ -13,7 +13,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 10: a steady frame with temporal anti-aliasing, the default
+    /// TEMPORAL-RESOLVE section 7 item 10: a steady frame with temporal anti-aliasing, the default
     /// sharpen and a keyed mover allocates nothing, with bloom off and on, and with and without a resolve debug view.
     /// Measured over the fake device, which allocates nothing of its own, and on the real Metal device over the
     /// recording, over the whole headless frame, and over the whole frame presented through a swapchain.
@@ -32,6 +32,10 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(SceneDebugView.History, false, 1)]
         [InlineData(SceneDebugView.History, true, 0)]
         [InlineData(SceneDebugView.History, true, 1)]
+        [InlineData(SceneDebugView.Shimmer, false, 0)]
+        [InlineData(SceneDebugView.Shimmer, false, 1)]
+        [InlineData(SceneDebugView.Shimmer, true, 0)]
+        [InlineData(SceneDebugView.Shimmer, true, 1)]
         public void ASteadyTemporalFrameAllocatesNothing(SceneDebugView view, bool bloom, int choice)
         {
             using var device = new FakeGpuDevice();

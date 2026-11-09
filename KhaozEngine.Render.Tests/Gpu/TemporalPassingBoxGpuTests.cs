@@ -79,7 +79,7 @@ namespace KhaozEngine.Tests.Gpu
         /// texel, so the jitter's samples fall on it on 2 of the 8 phases, 2 frames apart, and miss it for the 5 frames
         /// after. Its lock, refreshed by a ridge on a hit, loses <c>LockDecay</c> a frame, so from the fifth miss its
         /// hold is under whole, and beside a narrow passer that pixel takes the passer's colour in the share its hold
-        /// does not keep and stores no confidence (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), so it restarts.
+        /// does not keep and stores no confidence (TEMPORAL-RESOLVE amendment 23), so it restarts.
         /// Report only: it prints the line's highest and lowest frames beside a passer one and two texels wide on
         /// either side, which a redesign of the held share is read against. A restarted pixel shows its raw sample, so
         /// with the passer on the right the line flares on the frames after a hit, 1.20 to 1.33 of its energy without

@@ -9,7 +9,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// EVERY MATERIAL PROGRAM TAKES THE TEMPORAL MIP BIAS (TEMPORAL-RESOLVE-UPSCALING-DESIGN risk 4). A material
+    /// EVERY MATERIAL PROGRAM TAKES THE TEMPORAL MIP BIAS (TEMPORAL-RESOLVE risk 4). A material
     /// program is a shipped program whose fragment reads the shared frame block and declares a material map
     /// (<c>Albedo</c> or <c>AlbedoArray</c>). Discovered from <see cref="ShippedShaderPrograms"/> rather than listed,
     /// so a new material program, or a motion variant of one, is held to the rule the moment it ships.

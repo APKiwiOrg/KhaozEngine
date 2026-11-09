@@ -4,7 +4,7 @@ using System.Numerics;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The CPU half of the temporal resolve (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): the reprojection matrices and
+    /// The CPU half of the temporal resolve (TEMPORAL-RESOLVE section 3): the reprojection matrices and
     /// the depth parameters the shader reads, and C# mirrors of the kernel, the depth linearisation, the
     /// static reprojection and the luma weighting it applies, kept in sync with
     /// <c>ShaderSources.TemporalResolveCoreGlsl</c> so the tests can compute what the shader must output. Pure and

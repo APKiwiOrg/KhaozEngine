@@ -5,7 +5,7 @@ using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 namespace KhaozEngine.Render3D.Internal;
 
 /// <summary>
-/// THE RESOLVE'S TARGETS ON THE HISTORY OWNER (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, section
+/// THE RESOLVE'S TARGETS ON THE HISTORY OWNER (docs/design/TEMPORAL-RESOLVE.md, section
 /// 3). Two display-resolution colour histories and two confidence and stability targets, which the temporal resolve
 /// reads and writes alternately, and two internal-resolution previous depths for its disocclusion test, alternating
 /// with them. Formats are <see cref="TemporalFormats"/>'s. Created while the resolve

@@ -47,6 +47,7 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
         internal void Add(float a, float b, uint bitsA, uint bitsB, string location, bool half)
         {
             Compared++;
+            if (half && (!float.IsFinite(a) || !float.IsFinite(b))) HalfSteps = int.MaxValue;
             if (bitsA == bitsB) return;
             Count++;
             Worst = float.IsFinite(a) && float.IsFinite(b) ? Math.Max(Worst, Math.Abs(a - b)) : float.PositiveInfinity;
@@ -71,7 +72,7 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
             + (Examples.Count == 0 ? "" : ", first " + string.Join(" | ", Examples));
     }
 
-    enum Rule { Exact, SoftwareBound, NvidiaReport }
+    enum Rule { Exact, SoftwareBound, SoftwareRecordBound, NvidiaReport }
     readonly Dictionary<(string Pair, string Channel, Rule Rule), Difference> _totals = [];
     readonly TemporalNvidiaHistoryOracle? _nvidia = nvidia ? new(output) : null;
 
@@ -80,9 +81,11 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
         Assert.Equal(a.Width, b.Width);
         Assert.Equal(a.InternalWidth, b.InternalWidth);
         Channel("colour", a.Colour, b.Colour, 2, 4);
-        Channel("confidence", a.State, b.State, 2, 2, offset: 0);
-        Channel("lock", a.State, b.State, 2, 2, offset: 1);
-        Channel("mark", a.State, b.State, 2, 2, offset: 1, mark: true);
+        Channel("confidence", a.State, b.State, 2, 4, offset: 0);
+        Channel("lock", a.State, b.State, 2, 4, offset: 1);
+        Channel("mark", a.State, b.State, 2, 4, offset: 1, mark: true);
+        Channel("drift", a.State, b.State, 2, 4, offset: 2);
+        Channel("swing", a.State, b.State, 2, 4, offset: 3);
         Channel("R8", a.Visibility, b.Visibility, 1, 1, width: a.InternalWidth);
         Channel("depth", a.Depth, b.Depth, 4, 1, width: a.InternalWidth);
         if (!entryComparison) _nvidia?.Compare(frame, pair, a.Sample(), b.Sample());
@@ -103,8 +106,10 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
                     bytes == 2 && !mark);
             }
             output.WriteLine($"history-frame {frame} {pair} {name}: {difference}");
-            bool arithmetic = name is "colour" or "confidence";
+            bool record = name is "drift" or "swing";
+            bool arithmetic = name is "colour" or "confidence" || record;
             Rule rule = !entryComparison && nvidia && arithmetic ? Rule.NvidiaReport
+                : entryComparison && softwareVulkan && record ? Rule.SoftwareRecordBound
                 : !entryComparison && warp && arithmetic
                     || softwareVulkan && entryComparison && name == "colour" ? Rule.SoftwareBound : Rule.Exact;
             var key = (pair, name, rule);
@@ -126,6 +131,12 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
                 Rule.NvidiaReport => true,
                 Rule.SoftwareBound => TemporalSoftwareCompileDivergenceRule.Allows(difference.Worst,
                     difference.Count, difference.Compared),
+                Rule.SoftwareRecordBound => TemporalSoftwareRecordDivergenceRule.Allows(difference.HalfSteps,
+                    difference.Count, difference.Compared,
+                    key.Channel == "drift" ? TemporalSoftwareRecordDivergenceRule.DriftHalfStepBound
+                        : TemporalSoftwareRecordDivergenceRule.SwingHalfStepBound,
+                    key.Channel == "drift" ? TemporalSoftwareRecordDivergenceRule.DriftDifferingShareBound
+                        : TemporalSoftwareRecordDivergenceRule.SwingDifferingShareBound),
                 _ => difference.Count == 0,
             };
             if (!allowed) failures.Add(summary);

@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Gpu
     /// well past its own variance box, since one bright texel of nine moves the box's mean little, so a rule that
     /// releases a pixel's lock and accumulated weight on its own history past the box releases every peak every frame
     /// and shows the raw jittered reconstruction. Nothing changed there, so the resolve must keep what it held
-    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 33).
+    /// (TEMPORAL-RESOLVE amendment 33).
     /// <para>
     /// Peaks stand on a grid every <see cref="Spacing"/> display pixels at sub-pixel offsets that vary from peak to
     /// peak, over the flat grey wall and over the textured one, at Quality and Native, under a dim ambient. Each run

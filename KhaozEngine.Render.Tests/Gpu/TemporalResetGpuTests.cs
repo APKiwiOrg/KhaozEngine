@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 5: the frame after <see cref="Scene3D.CameraCut"/>, a resize or
+    /// TEMPORAL-RESOLVE section 7 item 5: the frame after <see cref="Scene3D.CameraCut"/>, a resize or
     /// a preset change matches a from-scratch render, and so does the frame after every other reset.
     /// <para>
     /// A from-scratch render is the first temporal frame of a fresh scene set up with the settings in effect after the

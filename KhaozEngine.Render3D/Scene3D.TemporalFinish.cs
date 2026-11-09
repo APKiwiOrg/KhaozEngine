@@ -7,7 +7,7 @@ using KhaozEngine.Render3D.Rendering;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// The finishing layer over the temporal resolve (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md,
+    /// The finishing layer over the temporal resolve (docs/design/TEMPORAL-RESOLVE.md,
     /// sections 4 to 6, Sharpening, Texture detail under upscaling and Public API): the sharpen's test seams, the
     /// material mip bias, the resolve's debug views, the sizes, preset and ratio the diagnostics report, and the counts
     /// they report on request. The sharpen runs in the display post chain, which only the first render of a resolving

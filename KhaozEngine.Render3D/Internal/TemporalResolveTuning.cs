@@ -4,7 +4,7 @@ namespace KhaozEngine.Render3D.Internal
     /// THE RESOLVE'S TUNING CONSTANTS, one for one with the <c>const float</c> block in
     /// <c>ShaderSources.TemporalResolveTuningGlsl</c> and <c>ShaderSources.TemporalCommonGlsl</c>.
     /// <c>TemporalResolveShaderTests</c> pins the two copies together, and the resolve's acceptance tests tune them. Each
-    /// comment names the design step (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3) the constant belongs to.
+    /// comment names the design step (TEMPORAL-RESOLVE section 3) the constant belongs to.
     /// <para><b>ONE SET OF RULES, TWO ENTRY POINTS.</b> The constants are read by shared shader functions, the
     /// per-texel preparation (<see cref="ShaderSources.TemporalPrepareGlsl"/>) and the per-pixel accumulation
     /// (<see cref="ShaderSources.TemporalAccumulateGlsl"/>), which both entry points call: the fused pass, which
@@ -13,11 +13,12 @@ namespace KhaozEngine.Render3D.Internal
     /// a constant tunes both. Both round the weighted colour and the reactive difference to half float in integer
     /// steps, which the split stores exactly, so the two apply every rule to the same values, and
     /// <c>TemporalEntryIdentityGpuTests</c> shows they write the same history bit for bit on hardware and on WARP. On
-    /// a software Vulkan device (llvmpipe) the state is identical and the colour within a measured bound.
+    /// a software Vulkan device (llvmpipe) colour, drift and swing stay within their measured bounds, while
+    /// confidence, lock, mark, R8 and depth remain exact.
     /// The split's targets hold 24 bytes an internal texel, 82.3 MB at 3456x2234 Quality, and exist only while it runs.
     /// <see cref="TemporalResolvePolicy"/> picks the split on every backend at every size, from the hosted NVIDIA
     /// measurements on Direct3D 11 and Vulkan and the Metal figures, and the design records them
-    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, The resolve), with the Vulkan frame boundary that frees replaced
+    /// (TEMPORAL-RESOLVE section 3, The resolve), with the Vulkan frame boundary that frees replaced
     /// targets (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1199">#1199</see>).</para>
     /// </summary>
     internal static class TemporalResolveTuning
@@ -157,7 +158,7 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>Steps 6 and 8. How far past the variance box, in its half-widths beyond the first, a pixel's
         /// history luma lies before the pixel may read as one whose shading changed, a shadow or a light sliding over a
         /// surface, still or moving, and let go of its hold and its accumulated weight for the frame
-        /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendments 33 and 34). The half-width there is at least a ridge's step. On its own
+        /// (TEMPORAL-RESOLVE amendments 33 and 34). The half-width there is at least a ridge's step. On its own
         /// this test released every isolated stable peak every frame (<c>TemporalStablePeakGpuTests</c>), so it is a
         /// gate, and <see cref="ShadingChangeExtents"/> or <see cref="ShadingRingExtents"/> decides. On Metal at 0.125
         /// the stable peaks' frame-to-frame change at Quality over the textured wall rose 12 percent, and at 0 the
@@ -188,7 +189,7 @@ namespace KhaozEngine.Render3D.Internal
         /// reference and 44 percent more temporal error than before the release, and with both 2 and 7.</summary>
         public const float ShadingRingExtents = 0.25f;
         /// <summary>Steps 6 and 8. <see cref="ShadingRingExtents"/> for a pixel that carries a lock with no ridge this
-        /// frame or moves at <see cref="LockMotionStartPixels"/> or more (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment
+        /// frame or moves at <see cref="LockMotionStartPixels"/> or more (TEMPORAL-RESOLVE amendment
         /// 34). Such a pixel's history lies apart from its reconstruction with nothing changed, a sub-texel feature the
         /// jitter missed by nature and a moving one by its resampled history, so its reconstruction never decides
         /// alone and its ring must lie this far from its eight texels. On Metal, with a carried lock's ring at the
@@ -201,7 +202,7 @@ namespace KhaozEngine.Render3D.Internal
         public const float ShadingStrictRingExtents = 1f;
         /// <summary>Steps 6 and 8. The least share of a carried lock's own shift, its history luma less this frame's
         /// reconstruction, that its ring (<see cref="ShadingStrictRingExtents"/>) must read on the history's side for
-        /// it to release (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 34). A sub-texel feature the jitter missed spills
+        /// it to release (TEMPORAL-RESOLVE amendment 34). A sub-texel feature the jitter missed spills
         /// into the ring by a small share of its contrast, and a shading change that passed moves the ring as far as
         /// the pixel. A missed diagonal blade crosses two opposite ring taps. Taking the whole ring's mean let its
         /// spill plus texture noise release the lock: the still 45 degree line at about ten texture half-widths on
@@ -222,7 +223,7 @@ namespace KhaozEngine.Render3D.Internal
         /// Taking the own-shift share on each pair too raised it to 0.0232.</summary>
         public const float ShadingLockPairExtents = 0.75f;
         /// <summary>Steps 6 and 8. The share of the ridge step below which a carried lock's variance box reads as flat
-        /// and the lock keeps its hold whatever its ring reads (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 34). Its 3x3
+        /// and the lock keeps its hold whatever its ring reads (TEMPORAL-RESOLVE amendment 34). Its 3x3
         /// is then flat ground with the thin feature the jitter missed, and the feature's spill into the ring and a
         /// neighbouring feature in it read as a change. Without it, at a share (<see cref="ShadingLockRingShare"/>) of
         /// 0.5, of three still sub-texel lines side by side the outer one at Quality averaged 18.4 percent of its
@@ -490,5 +491,51 @@ namespace KhaozEngine.Render3D.Internal
         /// pixel takes it only in proportion. Not measured apart: the one variant at 0.1 also started the share at a
         /// quarter of the confidence (<see cref="DisplayKernelConfidenceStart"/>).</summary>
         public const float DisplayKernelFullWeight = 0.25f;
+        /// <summary>Steps 5 and 8, the shimmer score (<see cref="ShaderSources.TemporalShimmerGlsl"/>). A swing below
+        /// this weighted luma scores none, and it floors the swing the drift is read against. At 1/256 a textured
+        /// receiver behind a shadow retreating 8 pixels a frame at Native lagged 0.0072221 against design D's
+        /// 0.0072211, with or without <see cref="VisibilityShimmerGate"/>: the lag sits on frames after the edge has
+        /// passed, where the visibility no longer changes. Before the chroma precision floor it measured D's own value.</summary>
+        public const float ShimmerFloor = 1f / 32f;
+        /// <summary>Step 5. Minimum chroma half-width on a pixel moving less than <see cref="ShimmerStillPixels"/>,
+        /// in binary16 RGB rounding steps, including the weighted-colour
+        /// denominator's change. Nearly flat chroma must tolerate stored RGB precision so radial clipping cannot
+        /// turn a small chroma error into a large correction of already valid luma. The owner approved four steps
+        /// on 2026-10-29 with the three measured Native moving-shadow costs.</summary>
+        public const float ChromaPrecisionFloorSteps = 4f;
+        /// <summary>Steps 5 and 8. A pixel moving this many display pixels a frame or more scores none: its history is
+        /// resampled, so its change is not the jitter's alone.</summary>
+        public const float ShimmerStillPixels = 0.25f;
+        /// <summary>Steps 5 and 8. A frame whose luma change exceeds this many swings scores none on that frame, so
+        /// a change larger than the shimmer the pixel already shows clips and accumulates as before, and any lag the
+        /// score adds is bounded by the pixel's own swing.</summary>
+        public const float ShimmerChangeBand = 3f;
+        /// <summary>Step 5. The clip's luma extent grows by this many swings times the score on both sides, so a still
+        /// pixel's history inside its own shimmer survives the frames the jitter misses the feature, while history past
+        /// that band clips as before. The shading release keeps the unwidened box. A locked pixel's hold already frees
+        /// its luma from the clip in part, and the reach adds to what the hold keeps, so a wider band holds a passing
+        /// line's history too. That trail binds the gain: a line drifting a fifth of a texel a frame at Native left
+        /// 0.107 of its contrast behind at 1.5, 1.0 and 0.5, past its bound of 0.1, against 0.098 here and 0.053 with
+        /// no band. Here a still line the jitter hits once a cycle keeps a mean of 0.104 of its 0.125 coverage at
+        /// Native and 0.106 at Quality, against 0.042 and 0.030 with no band, and its drift averages 0.16 of its
+        /// swing over a cycle. At 0.5 it kept 0.123 and 0.131, and a shadow creeping over it stayed inside its
+        /// guard.</summary>
+        public const float ShimmerClipGain = 0.35f;
+        /// <summary>Step 8. The accumulated weight's cap rises from <see cref="MaxAccumulation"/> toward this with the
+        /// score, so a still shimmering pixel's current weight falls to about one in 64 and its per-cycle sawtooth
+        /// shrinks. Stored confidence stays weight over <see cref="MaxAccumulation"/> and may reach this over it, and
+        /// readers that need a share clamp it to 1. Against 31 it steadies the still step, Native's largest frame
+        /// change 0.0085 of contrast against 0.0156, keeps the still line, record, trail and textured grain facts, and
+        /// before the chroma precision floor it held the Native textured tail behind a shadow retreating 8 pixels a
+        /// frame to 1.8e-8 above design D's. The combined resolve accepts the measured cost documented on
+        /// <see cref="ChromaPrecisionFloorSteps"/>.</summary>
+        public const float MaxStillAccumulation = 63f;
+        /// <summary>Steps 5 and 8. Where the key-shadow visibility the scene exports at the centre texel lies more
+        /// than this from last frame's at the same surface point, the pixel scores none, so a shadow passing over a
+        /// surface that already shimmers clips and accumulates as before. Programs without exported visibility (the
+        /// fully lit ones) skip the read. Texture ridges under a coarse moving shadow at Quality held grain of 0.008035
+        /// against design D's 0.008031 with the luma record alone, and 0.0080306 with this gate. 0.05 left a shadow's
+        /// textured tail as it was at 0.1.</summary>
+        public const float VisibilityShimmerGate = 0.1f;
     }
 }

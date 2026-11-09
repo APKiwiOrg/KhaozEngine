@@ -105,7 +105,7 @@ namespace KhaozEngine.Tests.Gpu
                         int tx = Math.Clamp((int)MathF.Floor((x + 0.5f) / factor + jitter.X), 1, iw - 2);
                         int ty = Math.Clamp((int)MathF.Floor((y + 0.5f) / factor + jitter.Y), 1, ih - 2);
                         if (Distance((tx + 0.5f - jitter.X) * factor + n * pan,
-                            (ty + 0.5f - jitter.Y) * factor) <= width * 0.5f || state[p * 2 + 1] <= 0f) continue;
+                            (ty + 0.5f - jitter.Y) * factor) <= width * 0.5f || state[p * 4 + 1] <= 0f) continue;
                         float centre = Weighted(samples[(ty * iw + tx) * 4]);
                         bool Ridge(int ax, int ay, int bx, int by)
                         {

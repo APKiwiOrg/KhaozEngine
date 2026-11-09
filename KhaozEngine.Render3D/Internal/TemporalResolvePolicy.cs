@@ -33,7 +33,7 @@ namespace KhaozEngine.Render3D.Internal
     /// 2560x1440, the boxes 2.107 against 1.695 and the field 2.640 against 1.959, and at 3456x2234 4.925 against 3.686
     /// and 6.320 against 4.373. Rounding the prepared values in integer steps slowed the fused pass, so the split is
     /// faster or even everywhere. Vulkan on the same GPU, on Windows and on Linux, was already faster or even split at
-    /// every size, and Metal at half precision is faster split at every size (TEMPORAL-RESOLVE-UPSCALING-DESIGN
+    /// every size, and Metal at half precision is faster split at every size (TEMPORAL-RESOLVE
     /// section 3, The resolve). At the display's size the split's targets are display-sized, 24 bytes a pixel, 88.5 MB
     /// at 2560x1440. The measurement prints this pick beside its figures, which is how the table is kept.</para>
     /// <para><b>THE OVERRIDE, FOR DIAGNOSIS.</b> <see cref="EnvironmentVariable"/> set to <c>fused</c> or <c>split</c>

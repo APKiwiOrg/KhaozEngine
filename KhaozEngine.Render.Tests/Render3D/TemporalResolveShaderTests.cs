@@ -84,6 +84,13 @@ namespace KhaozEngine.Tests.Render3D
             },
             { "const float DisplayKernelMotionPixels = 2.0;", TemporalResolveTuning.DisplayKernelMotionPixels, 2f },
             { "const float DisplayKernelFullWeight = 0.25;", TemporalResolveTuning.DisplayKernelFullWeight, 0.25f },
+            { "const float ChromaPrecisionFloorSteps = 4.0;", TemporalResolveTuning.ChromaPrecisionFloorSteps, 4f },
+            { "const float ShimmerFloor = 0.03125;", TemporalResolveTuning.ShimmerFloor, 1f / 32f },
+            { "const float ShimmerStillPixels = 0.25;", TemporalResolveTuning.ShimmerStillPixels, 0.25f },
+            { "const float ShimmerChangeBand = 3.0;", TemporalResolveTuning.ShimmerChangeBand, 3f },
+            { "const float ShimmerClipGain = 0.35;", TemporalResolveTuning.ShimmerClipGain, 0.35f },
+            { "const float MaxStillAccumulation = 63.0;", TemporalResolveTuning.MaxStillAccumulation, 63f },
+            { "const float VisibilityShimmerGate = 0.1;", TemporalResolveTuning.VisibilityShimmerGate, 0.1f },
         };
 
         [Theory]
@@ -495,7 +502,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("bool ownReprojected = !depthTested", core, StringComparison.Ordinal);
             Assert.DoesNotContain("surfaceTravel", core, StringComparison.Ordinal);
             Assert.Contains("float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);", core, StringComparison.Ordinal);
-            Assert.Contains("excess.x *= 1.0 - hold;", core, StringComparison.Ordinal);
+            Assert.Contains("clipExcess.x *= 1.0 - hold;", core, StringComparison.Ordinal);
             Assert.Contains("clipped.x = mix(clipped.x, historyYcc.x, hold);", core, StringComparison.Ordinal);
         }
 
@@ -571,8 +578,8 @@ namespace KhaozEngine.Tests.Render3D
                 + ShaderSources.TemporalResolveCoreGlsl, frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=0) out vec4 oColor;", frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=1) out vec4 oState;", frag, StringComparison.Ordinal);
-            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), 0.0, 1.0);", frag,
-                StringComparison.Ordinal);
+            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), p.drift, p.swing);",
+                frag, StringComparison.Ordinal);
             Assert.Contains("temporalResolvePixel(ivec2(gl_FragCoord.xy))", frag, StringComparison.Ordinal);
         }
 

@@ -57,7 +57,8 @@ public class TileFlatRangePreviewTests(ITestOutputHelper output)
         MoveTuning tuning = ContactTerrainScene.Tuning;
         var body = new MoveState
         {
-            Position = new(scenario == "rim" ? 4.99f : 1, 0.25f + tuning.CapsuleHalfHeight, -1), Grounded = true,
+            Position = new(scenario == "rim" ? 4.99f : 1, 0.25f + tuning.CapsuleHalfHeight, -1),
+            Grounded = true,
         };
         MoveState predicted = scene.Context.Step(body, Vector2.UnitX, false, 0.1f, tuning);
         Assert.True(predicted.SupportGranted);

@@ -7,7 +7,7 @@ using KhaozEngine.Physics.Bepu;
 
 namespace KhaozEngine.Tests.Movement.Fixtures;
 
-internal sealed class FlatArrivalScene : IDisposable, IMovementFlatAnalyticSupportSource
+internal sealed class FlatArrivalScene : IDisposable, IMovementFlatAnalyticSupportSource, IMovementSupportedAnalyticSupportSource
 {
     internal BepuPhysicsWorld World { get; } = new(Vector3.Zero);
     internal GroundMoveContext Context { get; }
@@ -18,16 +18,18 @@ internal sealed class FlatArrivalScene : IDisposable, IMovementFlatAnalyticSuppo
     readonly Func<float, float, Vector3> _normal;
     readonly MovementSurfaceFeature _feature;
     readonly IPhysicsWorldQueryView? _suppliedView;
+    readonly float? _slope;
     internal FlatArrivalScene(Func<float, float, float>? height = null,
         Func<float, float, Vector3>? normal = null, IMovementWaterField? water = null,
         bool provenance = true, MovementSurfaceFeature? feature = null, Vector3? origin = null,
         Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? install = null,
         MovementBoundary? boundary = null, OrdinaryMovementExtent? extent = null,
         Func<BepuPhysicsWorld, IPhysicsWorldQueryView>? movementQueries = null,
-        Func<float, float, Vector2>? clampXz = null)
+        Func<float, float, Vector2>? clampXz = null, float? slope = null)
     {
-        _height = height ?? ((_, _) => 0);
-        _normal = normal ?? ((_, _) => Vector3.UnitY);
+        _slope = slope;
+        _height = height ?? (slope.HasValue ? (x, _) => x * slope.Value : (_, _) => 0);
+        _normal = normal ?? (slope.HasValue ? (_, _) => Vector3.Normalize(new(-slope.Value, 1, 0)) : (_, _) => Vector3.UnitY);
         _feature = feature ?? new(new("flat", 0, 0), new("world", "terrain"), new(-100, 0, -100),
             new(100, 0, -100), new(0, 0, 100), Vector3.UnitY);
         var builder = OrdinaryMovementRegistration.CreateBuilder("world", World,
@@ -57,7 +59,26 @@ internal sealed class FlatArrivalScene : IDisposable, IMovementFlatAnalyticSuppo
     public MovementAvailability CertifyFlatRegion(Vector2 minimum, Vector2 maximum, out float height)
     {
         height = 0;
-        return MovementAvailability.Known;
+        return _slope.HasValue ? MovementAvailability.Unresolved : MovementAvailability.Known;
+    }
+    public MovementAvailability CaptureSupportedRegion(Vector2 minimum, Vector2 maximum, out IMovementSupportedGroundRegion? region)
+    {
+        region = _slope.HasValue ? new SlopeRegion(_height, _normal, minimum, maximum) : null;
+        return region is null ? MovementAvailability.Unresolved : MovementAvailability.Known;
+    }
+    sealed class SlopeRegion(Func<float, float, float> height, Func<float, float, Vector3> normal,
+        Vector2 minimum, Vector2 maximum) : IMovementSupportedGroundRegion
+    {
+        public float MinimumHeight => MathF.Min(height(minimum.X, minimum.Y), height(maximum.X, maximum.Y));
+        public float MaximumHeight => MathF.Max(height(minimum.X, minimum.Y), height(maximum.X, maximum.Y));
+        public float MinimumNormalY => normal(0, 0).Y;
+        public MovementAvailability Sample(Vector2 axis, out float value, out Vector3 n)
+        {
+            value = height(axis.X, axis.Y);
+            n = normal(axis.X, axis.Y);
+            return axis.X >= minimum.X && axis.X <= maximum.X && axis.Y >= minimum.Y && axis.Y <= maximum.Y
+                ? MovementAvailability.Known : MovementAvailability.Unresolved;
+        }
     }
     public void Dispose() { Context.Dispose(); _suppliedView?.Dispose(); World.Dispose(); }
 }

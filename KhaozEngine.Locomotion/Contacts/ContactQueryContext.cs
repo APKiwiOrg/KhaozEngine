@@ -10,10 +10,13 @@ internal readonly struct ContactQueryContext
 {
     readonly DryContactQueryContext _dry;
     readonly LeasedContactQueryContext? _leased;
+    readonly CertifiedGroundRangeQueries? _range;
     ContactQueryContext(DryContactQueryContext dry) => _dry = dry;
     ContactQueryContext(LeasedContactQueryContext leased) => _leased = leased;
+    ContactQueryContext(CertifiedGroundRangeQueries range) => _range = range;
     public static implicit operator ContactQueryContext(DryContactQueryContext dry) => new(dry);
     public static implicit operator ContactQueryContext(LeasedContactQueryContext leased) => new(leased);
+    public static implicit operator ContactQueryContext(CertifiedGroundRangeQueries range) => new(range);
 
     internal ContactDescentEvidence? DescentEvidence => _leased?.DescentEvidence;
     internal MovementAvailability DescribeSelectedAnalytic(Vector3 feet, in SupportSample sample,
@@ -22,40 +25,43 @@ internal readonly struct ContactQueryContext
         feature = default;
         return _leased?.DescribeSelectedAnalytic(feet, sample, out feature) ?? MovementAvailability.Unresolved;
     }
-    internal ContactCapsuleShapes Shapes => _leased?.Shapes ?? ContactCapsuleShapes.ForThread;
-    internal bool HasShell => _leased is not null || _dry.HasShell;
-    internal bool HasMediumProof => _leased is not null;
+    internal ContactCapsuleShapes Shapes => _range?.Shapes ?? _leased?.Shapes ?? ContactCapsuleShapes.ForThread;
+    internal bool HasShell => _range is not null || _leased is not null || _dry.HasShell;
+    internal bool HasMediumProof => _range is not null || _leased is not null;
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning tuning) => _leased is { } leased
-        ? leased.KernelFeet(centre, tuning) : _dry.KernelFeet(centre, tuning);
-    internal Vector3 BodyCentre(Vector3 feet) => _leased is { } leased ? leased.BodyCentre(feet) : _dry.BodyCentre(feet);
+        ? leased.KernelFeet(centre, tuning) : _range?.KernelFeet(centre, tuning) ?? _dry.KernelFeet(centre, tuning);
+    internal Vector3 BodyCentre(Vector3 feet) => _leased is { } leased ? leased.BodyCentre(feet) : _range?.BodyCentre(feet) ?? _dry.BodyCentre(feet);
     internal Vector3 SupportedBodyCentre(Vector3 feet, in SupportSample support) => _leased is { } leased
-        ? leased.SupportedBodyCentre(feet, support) : _dry.SupportedBodyCentre(feet);
+        ? leased.SupportedBodyCentre(feet, support) : _range?.SupportedBodyCentre(feet, support) ?? _dry.SupportedBodyCentre(feet);
     internal void CheckDryMedium(Vector3 feet)
     {
-        if (_leased is null) _dry.CheckMedium(feet);
+        if (_leased is null && _range is null) _dry.CheckMedium(feet);
     }
-    internal float HeightAt(Vector3 feet) => _leased is { } leased ? leased.HeightAt(feet) : _dry.HeightAt(feet);
+    internal float HeightAt(Vector3 feet) => _leased is { } leased ? leased.HeightAt(feet) : _range?.HeightAt(feet) ?? _dry.HeightAt(feet);
     internal bool TryHeightAt(Vector3 feet, out float height)
     {
-        if (_leased is null) return _dry.TryHeightAt(feet, out height);
-        height = _leased.HeightAt(feet);
+        if (_leased is null && _range is null) return _dry.TryHeightAt(feet, out height);
+        height = HeightAt(feet);
         return !float.IsNaN(height);
     }
-    internal Vector3? NormalAt(Vector3 feet) => _leased is { } leased ? leased.NormalAt(feet) : _dry.NormalAt(feet);
+    internal Vector3? NormalAt(Vector3 feet) => _leased is { } leased ? leased.NormalAt(feet) : _range?.NormalAt(feet) ?? _dry.NormalAt(feet);
     internal SupportSample FindSupport(in FootSupportQuery query) => FindSupport(query, out _);
     internal SupportSample FindSupport(in FootSupportQuery query, out MovementContactSupportBinding? binding) =>
-        _leased is { } leased ? leased.FindSupport(query, out binding) : _dry.FindSupport(query, out binding);
+        _leased is { } leased ? leased.FindSupport(query, out binding) : _range is { } range
+            ? range.FindSupport(query, out binding) : _dry.FindSupport(query, out binding);
     internal MovementContactSupportBinding? BindSupport(Vector3 feet, in SupportSample support, float radius, float gate) =>
-        _leased?.BindSupport(feet, support, radius, gate);
+        _leased?.BindSupport(feet, support, radius, gate) ?? _range?.BindSupport(feet, support, radius, gate);
     internal bool SweepShell(CapsuleShape shape, Vector3 centre, Vector3 direction, float distance,
         out SweepHit hit, QueryFilter filter = default) => _leased is { } leased
         ? leased.SweepShell(shape, centre, direction, distance, out hit, filter)
+        : _range is { } range ? range.SweepShell(shape, centre, direction, distance, out hit, filter)
         : _dry.SweepShell(shape, centre, direction, distance, out hit, filter);
     internal bool PenetrationShell(CapsuleShape shape, Vector3 centre, out Vector3 mtv) => _leased is { } leased
-        ? leased.PenetrationShell(shape, centre, out mtv) : _dry.PenetrationShell(shape, centre, out mtv);
+        ? leased.PenetrationShell(shape, centre, out mtv) : _range is { } range
+            ? range.PenetrationShell(shape, centre, out mtv) : _dry.PenetrationShell(shape, centre, out mtv);
     internal CapsuleContactResult QueryShellContacts(CapsuleShape shape, Vector3 centre, Span<CapsuleContact> contacts) =>
         _leased is { } leased ? leased.QueryShellContacts(shape, centre, contacts) : _dry.QueryShellContacts(shape, centre, contacts);
-    internal bool AcceptSegment(Vector3 from, Vector3 to) => _leased?.AcceptSegment(from, to) ?? true;
+    internal bool AcceptSegment(Vector3 from, Vector3 to) => _leased?.AcceptSegment(from, to) ?? _range?.AcceptSegment(from, to) ?? true;
     internal bool AcceptRouteSegment(Vector3 from, Vector3 to) => _leased?.AcceptRouteSegment(from, to) ?? true;
     internal void RecordAcceptedSupport(Vector3 feet) => _leased?.RecordAcceptedSupport(feet);
     internal bool BeginAirRoute(out int prior)
@@ -71,8 +77,16 @@ internal readonly struct ContactQueryContext
         move = default;
         return _leased?.ConstrainGroundDescent(from, to, supportNormal, footRadius, cosMaxSlope, out move) ?? false;
     }
-    internal void ValidatePlacement(Vector3 feet) => _leased?.ValidatePlacement(feet);
-    internal void Refuse(ContactQueryFailure failure) => _leased?.Refuse(failure);
+    internal void ValidatePlacement(Vector3 feet)
+    {
+        _leased?.ValidatePlacement(feet);
+        _range?.AcceptSegment(feet, feet);
+    }
+    internal void Refuse(ContactQueryFailure failure)
+    {
+        _leased?.Refuse(failure);
+        _range?.Refuse();
+    }
     internal void RefuseRecovery() => _leased?.RefuseRecovery();
     internal void AcceptRoute(bool blocked) => _leased?.AcceptRoute(blocked);
     internal void RequireRecoveryAccepted()
@@ -84,11 +98,12 @@ internal readonly struct ContactQueryContext
         Span<Vector3> velocity = default)
     {
         if (_leased is not null) return _leased.ResolveSegment(from, to, path, out written, out blocked, velocity);
+        _range?.AcceptSegment(from, to);
         path[0] = to;
         (written, blocked) = (1, false);
         return true;
     }
-    internal MovementWaterPoint? SampleMedium(Vector3 feet) => _leased?.SampleMedium(feet);
+    internal MovementWaterPoint? SampleMedium(Vector3 feet) => _leased?.SampleMedium(feet) ?? _range?.SampleMedium(feet);
     internal MovementCoverageResult TraceMedium(Vector3 feet, Vector3 delta,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts) => _leased is { } leased
         ? leased.TraceMedium(feet, delta, spans, contacts)

@@ -63,8 +63,11 @@ and exclusions while adding other installed statics. Build that combined registr
 
 A complete ground installation also attaches optional `OrdinaryMovementRegistration.AnalyticSupport`.
 The captured source offers `IMovementFlatAnalyticSupportSource` for exact constant-height regions, including
-flat cell seams. Nonuniform or missing captured triangles decline this optional arrival proof and keep live
-movement previews. [Analytic support provenance](../KhaozEngine.Locomotion/README.md#analytic-support-provenance)
+flat cell seams. `IMovementSupportedAnalyticSupportSource` also captures bounded sets of drawn triangles for
+supported slope arrivals. Its immutable region reuses `DrawnGroundTriangle.Select` and the ordinary barycentric
+height expression and clamp, including cell and triangle boundary ties. It never substitutes a plane equation.
+Missing triangles, steep regions or an unenclosed query keep live movement previews.
+[Analytic support provenance](../KhaozEngine.Locomotion/README.md#analytic-support-provenance)
 defines the certificate contract.
 It recognizes the exact captured `MovementGroundHeight` and `MovementGroundNormal` delegates in world coordinates.
 Wrapping those delegates requires a separately authenticated source, even when their sampled values agree.

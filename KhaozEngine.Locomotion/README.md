@@ -132,10 +132,20 @@ height, `Vector3.UnitY` normal and unchanged analytic ownership. Known promises 
 those facts at every represented axis in the rectangle. Sampled endpoints or matching triangle heights alone
 are insufficient evidence. Ordinary range approaches use this under a current pin, together with complete
 selected-static absence, strictly dry whole-body coverage, successful dry point-operation closure and convex
-boundary/scope containment. The proof
-lives only for the borrowed read interval. Unsupported, wet, obstructed, nonuniform or refused regions retain
-the exact movement solver. The tile producer checks every captured triangle in every covered cell, including
+boundary/scope containment. The proof lives only for the borrowed read interval. Unsupported, wet, obstructed
+or refused regions retain the exact movement solver. The tile producer checks every captured triangle in every covered cell, including
 cell seams, within the existing dependency-visit bound. It declines missing ground and negative-zero heights.
+
+`IMovementSupportedAnalyticSupportSource` additionally captures an immutable `IMovementSupportedGroundRegion`.
+The region retains the producer's exact triangle selection, boundary ties and float evaluation order, with
+height and normal bounds over its complete rectangle. Ordinary arrivals require walkable normals throughout
+and a height span inside the existing legs band. They reuse the same selected-static and dry-medium certificate
+as flat arrivals, with one evidence capture, then run the shared contact kernel against the captured ground.
+Each trial keeps the ordinary rounded substeps, support selection, climb payments, signals and upward capsule
+mapping. Actual support footprints and body/shell paths must remain inside the proved enclosure. An unenclosed
+query, precision refusal or revoked lease retires the preview before continuing through the live solver.
+This includes optional ground-signal look-ahead, even when the kernel consumes its query refusal.
+The certificate does not remove the selected physics receiver's own evidence-capture cost.
 
 The internal Contact descent witness records selected steep support and first walkable support from Air, Slide
 and water handoffs, including support left again inside one tick and recertification after horizontal rounding.

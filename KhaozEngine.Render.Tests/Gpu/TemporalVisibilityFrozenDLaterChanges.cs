@@ -29,7 +29,8 @@ internal static class TemporalVisibilityFrozenDLaterChanges
 
     /// <summary>The shimmer record's and score's GLSL helpers, spliced in before the accumulation.</summary>
     internal static readonly Undo ShimmerHelpers = new(nameof(ShimmerHelpers), ShaderSources.TemporalShimmerGlsl
-        .Replace(ShaderSources.TemporalStillLockLossGlsl, "", StringComparison.Ordinal), "");
+        .Replace(ShaderSources.TemporalStillLockLossGlsl, "", StringComparison.Ordinal)
+        .Replace(ShaderSources.TemporalShadingFlickerVetoGlsl, "", StringComparison.Ordinal), "");
 
     /// <summary>The record and score fields on TemporalPixel.</summary>
     internal static readonly Undo PixelFields = new(nameof(PixelFields),
@@ -357,10 +358,43 @@ const float VisibilityShimmerGate = 0.1;
     internal static readonly Change StillLockLoss = new(nameof(StillLockLoss),
         [StillLockHelper, StillLockRefreshExplanation, StillLockExplanation, StillLockCall], []);
 
+    /// <summary>The colour-release veto's tuning, also carried by the split's preparing pass.</summary>
+    internal static readonly Change ShadingFlickerTuning = new(nameof(ShadingFlickerTuning),
+        [new Undo("ShadingFlickerGate", @"// Prior-record evidence for the colour-release veto.
+const float ShadingFlickerGate = 0.25;
+", "")], []);
+
+    /// <summary>The record step that survives a colour release, restored to the original reset-on-release step.</summary>
+    internal static readonly Undo ContinueReleasedRecord = new(nameof(ContinueReleasedRecord),
+        @"    // The shimmer record steps wherever history remains valid, including through a colour release.
+    vec2 shimmerRecord = useHistory ? temporalShimmerStep(historyRecord, lumaChange) : vec2(0.0);
+", RecordStep.Production);
+
+    /// <summary>The prior-record colour-release veto and the record that survives a release. Restore these before
+    /// the shimmer score and record changes, which expect the original release-frame behaviour.</summary>
+    internal static readonly Change ShadingFlickerEvidence = new(nameof(ShadingFlickerEvidence),
+        [new Undo("ShadingFlickerHelper", ShaderSources.TemporalShadingFlickerVetoGlsl, ""),
+         new Undo("ShadingFlickerCall", @"    bool shadingFlickerVeto = released && temporalShadingFlickerVeto(historyRecord, motionPixels, reactive);
+#ifdef TemporalShimmerVisibility
+    shadingFlickerVeto = shadingFlickerVeto && !visibilityReleased
+        && !temporalShimmerVisibilityChanged(uv, centreTexel, previousUv);
+#endif
+    if (shadingFlickerVeto) released = false;
+", ""),
+         ContinueReleasedRecord,
+         new Undo("SuppressReleasedScore", @"    // The score from the stepped record and this frame's change (temporalShimmerScore). A release scores none even
+    // though its record survives, so it gets neither the wider clip nor the longer history. Moving pixels keep their cap.
+    float shimmer = released ? 0.0 : temporalShimmerScore(shimmerRecord.x, shimmerRecord.y, lumaChange, motionPixels, reactive);
+", @"    // The score from the stepped record and this frame's change (temporalShimmerScore). It is none on a moving pixel,
+    // so a moving pixel keeps its motion cap, and none on a released or fresh one, whose record is empty.
+    float shimmer = temporalShimmerScore(shimmerRecord.x, shimmerRecord.y, lumaChange, motionPixels, reactive);
+")], []);
+
     /// <summary>Every production change after D, undone in this order, the latest first, so each change finds the
     /// production text it was written against.</summary>
     internal static readonly Change[] Changes =
-        [StillLockTuning, StillLockLoss, PrecisionFloorTuning, PrecisionClipChange, ShimmerTuning, ShimmerScore, ShimmerRecord];
+        [ShadingFlickerTuning, ShadingFlickerEvidence, StillLockTuning, StillLockLoss, PrecisionFloorTuning,
+            PrecisionClipChange, ShimmerTuning, ShimmerScore, ShimmerRecord];
 
     /// <summary>Adds only the owner-approved precision floor to an already restored D accumulation. The final
     /// clip is rebuilt independently of D's shading-release excess, which must keep its original extent.</summary>

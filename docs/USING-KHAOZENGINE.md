@@ -4895,7 +4895,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   Depth-qualified current and reprojected previous means use relative tolerance 0.02. Both reference depths must
   be finite, and non-finite samples contribute nothing. A stored-value difference strictly above 0.1 clears the
   thin-feature lock and clip hold for either sign at every preset. It retains accumulated weight and display
-  reconstruction share. The independent colour-based shading release still has its existing reset behavior.
+  reconstruction share. The independent colour-based shading release resets weight and display share when it
+  fires. Prior-record still-flicker evidence can veto it while exported visibility stays steady. A release that
+  fires retains the flicker record but scores no shimmer on that frame. See the
+  [shimmer record and colour-release veto](design/TEMPORAL-RESOLVE.md#shimmer-record).
   The threshold uses stored R8 values. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as
   26/255. A driver that truncates stores 25/255 instead, so the exact boundary case differs because release
   compares stored values. There is no public tuning knob.

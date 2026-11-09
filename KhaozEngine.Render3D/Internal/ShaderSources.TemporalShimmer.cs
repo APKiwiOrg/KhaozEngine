@@ -8,7 +8,8 @@ namespace KhaozEngine.Render3D.Internal
     /// frames and misses on others swings with no drift over a cycle, while a light or a shadow creeping over a
     /// surface keeps the change one-signed, so drift follows swing. <c>temporalAccumulatePixel</c> reads the record
     /// with the confidence's four state texels and bilinear weights, steps it by this frame's change, and stores an
-    /// empty record wherever it used no history or the shading release dropped it. The score
+    /// empty record wherever it used no history. A shading release keeps stepping the record but scores none on that
+    /// frame. The score
     /// (<c>temporalShimmerScore</c>) read from the stepped record widens the final luma clip and raises the
     /// accumulation cap toward <see cref="TemporalResolveTuning.MaxStillAccumulation"/>. The prior record's score
     /// selects the still-flicker lock loss before the record steps. Included in both entry points
@@ -46,7 +47,7 @@ float temporalShimmerScore(float drift, float swing, float lumaChange, float mot
         || !(abs(lumaChange) <= ShimmerChangeBand * swing)) return 0.0;
     return clamp(1.0 - abs(drift) / max(swing, ShimmerFloor), 0.0, 1.0);
 }
-" + TemporalStillLockLossGlsl;
+" + TemporalStillLockLossGlsl + TemporalShadingFlickerVetoGlsl;
 
         /// <summary>The prior record's still-flicker lock loss, before the visibility veto at the call site.</summary>
         internal const string TemporalStillLockLossGlsl = @"
@@ -56,6 +57,14 @@ float temporalStillLockLoss(vec2 record, float lumaChange, float motionPixels, f
     return abs(lumaChange) <= LockShimmerChangeBand * record.y
         && temporalShimmerScore(record.x, record.y, lumaChange, motionPixels, reactive) >= LockShimmerGate
         ? temporalShimmerRate() : LockDecay;
+}
+";
+
+        /// <summary>The prior record's still-flicker veto, before the visibility test at the call site.</summary>
+        internal const string TemporalShadingFlickerVetoGlsl = @"
+// Flicker can make a large colour change, so prior-record evidence deliberately skips this frame's change band.
+bool temporalShadingFlickerVeto(vec2 record, float motionPixels, float reactive) {
+    return temporalShimmerScore(record.x, record.y, 0.0, motionPixels, reactive) >= ShadingFlickerGate;
 }
 ";
 

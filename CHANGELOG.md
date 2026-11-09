@@ -8,6 +8,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-09
 
+- Select static evidence through spatial owner and mesh bounds before expanding selected geometry (#1753).
+  Local arrival certification can skip excluded ground meshes without transforming them. Evidence coordinates,
+  output order, feature limits and refusal outcomes stay unchanged.
 - Contact arrival keeps the certified flat fast path when `GroundMoveContext` has a `clampXz` delegate (#1737).
   Contact never reads that Legacy-only clamp and enforces the world edge through `MovementBoundary`. Swept regions
   that reach the boundary still use the exact solver, and movement and arrival results are unchanged.

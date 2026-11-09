@@ -30,6 +30,7 @@ public sealed partial class BepuPhysicsWorld
         if (!ObserveInstalledSweepBounds(new CollidableReference(entry.Handle), body.Shape, body.Pose, min, max,
             out bool proved)) return false;
         SetSweepBoundStatus(_sweepStaticBounds, _unprovedSweepStatics, id, proved);
+        PublishStaticEvidence(id, _installedSweepStatics[id], body.Pose);
         _sweepSelection.Observe(id, dynamic: false, !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, body.Shape, body.Pose, out _),
             _installedSweepStatics[id]?.PruningMetrics ?? default);
         return true;

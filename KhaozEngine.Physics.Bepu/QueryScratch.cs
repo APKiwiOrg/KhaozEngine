@@ -21,6 +21,7 @@ internal sealed class QueryScratch : IDisposable
 
     internal BufferPool Pool { get; } = new();
     internal Slot<List<CollidableReference>> Overlaps;
+    internal Slot<List<int>> EvidenceTriangles;
     internal Slot<List<CollidableReference>> SweepCandidates;
     internal CapsuleSweepScratchSlot GeneralSweeps;
     internal Slot<ContactSet> Contacts;
@@ -47,6 +48,7 @@ internal sealed class QueryScratch : IDisposable
     internal void Reset()
     {
         Overlaps.Idle?.Clear();
+        EvidenceTriangles.Idle?.Clear();
         SweepCandidates.Idle?.Clear();
         Contacts.Idle?.Candidates.Clear();
     }

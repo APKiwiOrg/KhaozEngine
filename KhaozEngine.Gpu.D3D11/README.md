@@ -1362,7 +1362,10 @@ its boundary W5.
   to unknown on every failure and its silence is not a licence. Factory members that create no native object are ungated:
   framebuffer, resource layout, resource set, command list, and fence (the timeline was created with the device).
   Shader creation queues CPU compiles. Both pipeline creation methods return managed plans. Native shader and
-  graphics pipeline realization at first bind take this gate after joining their CPU work.
+  graphics pipeline realization at first bind take this gate after joining their CPU work. A shader that is never
+  bound is never joined, so its compile finishes in the background and `D3D11ShaderCompileWorkers` counts it. Tests
+  that measure allocation wait on that count, because those workers allocate on other threads. Work placed on a
+  caller's own scheduler is not counted, because that caller decides whether it ever runs.
 - **The two native-device locks nest in one direction only.** The submit lock is OUTER, the creation gate is INNER, and the
   gate is a strict leaf: nothing is acquired while it is held. A creation path that one day needs the immediate
   context takes the submit lock BEFORE entering the gate, never inside it.

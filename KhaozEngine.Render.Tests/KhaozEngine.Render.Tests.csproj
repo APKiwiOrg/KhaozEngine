@@ -128,4 +128,7 @@
     <Compile Include="../test-shared/CapacityDemandProbe.cs" Link="Shared/CapacityDemandProbe.cs" />
   </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
+  <ItemGroup>
+    <Compile Include="../test-shared/D3D11CompileQuiesce.cs" Link="Shared/D3D11CompileQuiesce.cs" />
+  </ItemGroup>
 </Project>

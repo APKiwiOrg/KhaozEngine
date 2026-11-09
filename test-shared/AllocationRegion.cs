@@ -10,6 +10,12 @@ namespace KhaozEngine.Tests;
 internal sealed class AllocationRegion : IDisposable
 {
     internal const long DefaultBudget = 4 * 1024 * 1024;
+
+    /// <summary>Completion wait for process-wide background work, run before the runtime is touched. A worker that
+    /// allocates while the region is being established can lose it with no collection counted, so an assembly
+    /// that owns such work registers a wait here. See README.md.</summary>
+    internal static Action? BeforeWindow { get; set; }
+
     static readonly object StartGate = new();
     readonly string description;
     readonly long budget;
@@ -32,6 +38,7 @@ internal sealed class AllocationRegion : IDisposable
                 $"{description}: allocation measurement must run in a collection defined with " +
                 "DisableParallelization = true, in an assembly that imports test-shared/AllocationMeasurement.props. " +
                 "The no-GC budget is process-wide, so a concurrent test invalidates the window.");
+        BeforeWindow?.Invoke();
         lock (StartGate)
         {
             // A failed nested runtime start can discard the outer region's bookkeeping.

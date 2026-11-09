@@ -128,13 +128,13 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   wording or structural-reflection contract uses an owner-approved `exempt <rule> <path>` entry with a
   `#` reason above it, never a suppression. Ratchet down with
   `build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update`.
-  KETEST003 is a report-only review aid, outside the baseline. Only 6 of 20 sampled findings in this
-  repository were real because loops over local tables and test-owned case helpers look possibly
+  KETEST003 is a report-only review aid, outside the baseline. A review of all 474 findings found about
+  a third real, because loops over local tables and test-owned case helpers look possibly
   empty to a syntactic check. See the [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet)
   for rule boundaries, baseline grammar, script modes and consumer adoption. Analyzer tests use
   `KhaozEngine.Tests.CodeHealth`.
 - `[Trait("Category", "Diagnostic")]` marks on-demand probes. Default CI excludes their timing and
-  cost workloads, including 19 renderer methods with method-level traits. Run them through the
+  cost workloads, including 39 renderer methods with method-level traits. Run them through the
   `cross-platform-gpu` dispatch input `renderTestFilter` set to `Category=Diagnostic`, or narrow it
   with `Category=Diagnostic&FullyQualifiedName~TemporalResolveCostPerfGpuTests`. Existing GPU
   capability gates and software-adapter refusals still apply. Software runs prove correctness, not
@@ -254,6 +254,12 @@ In this repository:
   value from prose, so a rule 9 value moves onto a structured member of the thrown exception (the refusal
   bullet under "Engine code and test contracts") and the test asserts that member. It is never a deleted
   assertion and never an exemption.
+- Weak assertions this repository has found repeatedly. A check that a measured cost or duration is finite and
+  positive gates nothing, so that test reports and takes the category below. A list found by reflection or a
+  directory scan is compared with an independently written roster, because `NotEmpty` lets a partial discovery pass
+  (rule 5). A not-mutated check needs an input the operation would really change. A test that exercises only a helper
+  defined in the test cannot fail for a production change. A test claiming something does not block must fail for an
+  implementation that waits.
 - Rule 12's category is excluded by every default filter (`scripts/ci-selective-test.sh`, `ci.yml`,
   `cross-platform-gpu.yml`). Run it on demand with the cross-platform-gpu `renderTestFilter` input set to
   `Category=Diagnostic`. Issue #491 is the precedent: a wall-clock bound that flaked on a loaded shared runner.

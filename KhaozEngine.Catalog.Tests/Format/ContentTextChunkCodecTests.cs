@@ -345,6 +345,7 @@ public class ContentTextChunkCodecTests
     {
         byte[] file = ContentTextChunkCodec.Encode("en-US", Twelve);
 
+        Assert.NotEmpty(file);
         for (int length = 0; length < file.Length; length++)
         {
             Assert.False(ContentTextChunkCodec.TryDecode(file.AsSpan(0, length), out _, out string? reason));

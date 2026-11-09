@@ -116,6 +116,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every crossing at Native and Quality, by age at Native, and the reason the ridged box misses
         /// acceptance 3.</summary>
+        [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_narrow_crossing_table_prints_every_case()
         {

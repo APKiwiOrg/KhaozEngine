@@ -42,15 +42,17 @@ public class GroundCoverRendererTests
     public void Queue_QualityAndDistanceThinningAreStableNestedSubsets()
     {
         GroundCoverInstance[] cover = Enumerable.Range(0, 100)
-            .Select(i => Instance("grass", 1f, i / 100f)).ToArray();
+            .Select(i => Instance("grass", 1f + i * 0.01f, i / 100f)).ToArray();
         var queue = new SceneInstances();
         IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> meshes = Meshes();
 
         int high = GroundCoverRenderer.Queue(queue, cover, meshes, Vector3.Zero,
             new GroundCoverRenderOptions { DrawRadius = 20f, QualityDensity = 0.8f, DistantDensity = 0.4f });
+        var highTransforms = queue.Items.Select(x => x.World).ToHashSet();
         queue.Begin();
         int low = GroundCoverRenderer.Queue(queue, cover, meshes, Vector3.Zero,
             new GroundCoverRenderOptions { DrawRadius = 20f, QualityDensity = 0.5f, DistantDensity = 0.25f });
+        var lowTransforms = queue.Items.Select(x => x.World).ToHashSet();
         queue.Begin();
         int zero = GroundCoverRenderer.Queue(queue, cover, meshes, Vector3.Zero,
             new GroundCoverRenderOptions { DrawRadius = 20f, QualityDensity = 0f });
@@ -58,6 +60,9 @@ public class GroundCoverRendererTests
         Assert.Equal(80, high);
         Assert.Equal(50, low);
         Assert.Equal(0, zero);
+        Assert.NotEmpty(lowTransforms);
+        Assert.True(lowTransforms.IsProperSubsetOf(highTransforms));
+        Assert.Empty(queue.Items);
     }
 
     [Fact]
@@ -88,11 +93,13 @@ public class GroundCoverRendererTests
         var queue = new SceneInstances();
         GroundCoverInstance cover = Instance("grass", 1f, 0f);
         GroundCoverRenderer.Queue(queue, [cover], Meshes(), Vector3.Zero, new GroundCoverRenderOptions());
+        Assert.NotEmpty(queue.Items);
         Assert.All(queue.Items, x => Assert.False(x.CastsShadows));
 
         queue.Begin();
         GroundCoverRenderer.Queue(queue, [cover], Meshes(), Vector3.Zero,
             new GroundCoverRenderOptions { CastsShadows = true });
+        Assert.NotEmpty(queue.Items);
         Assert.All(queue.Items, x => Assert.True(x.CastsShadows));
     }
 
@@ -108,6 +115,7 @@ public class GroundCoverRendererTests
         drawn = GroundCoverRenderer.Queue(queue, [Instance("grass", 1f, 0f)], Meshes(), Vector3.Zero,
             new GroundCoverRenderOptions());
         Assert.Equal(1, drawn);
+        Assert.NotEmpty(queue.Items);
         Assert.All(queue.Items, x =>
         {
             Assert.Equal(Color.White, x.Tint);
@@ -119,7 +127,7 @@ public class GroundCoverRendererTests
     public void Queue_ResolvesModelsOnlyAfterCheapPlacementCulling()
     {
         var queue = new SceneInstances();
-        var meshes = new CountingMeshes();
+        var meshes = new RejectingMeshes();
         GroundCoverInstance[] cover =
         [
             Instance("grass", 100f, 0f),
@@ -130,7 +138,7 @@ public class GroundCoverRendererTests
             new GroundCoverRenderOptions { DrawRadius = 20f, QualityDensity = 0.5f });
 
         Assert.Equal(0, drawn);
-        Assert.Equal(0, meshes.Lookups);
+        Assert.Empty(queue.Items);
     }
 
     [Fact]
@@ -148,9 +156,8 @@ public class GroundCoverRendererTests
             () => GroundCoverRenderer.Queue(queue, cover, meshes, Vector3.Zero, options));
     }
 
-    sealed class CountingMeshes : IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>
+    sealed class RejectingMeshes : IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>
     {
-        public int Lookups { get; private set; }
         public IReadOnlyList<MeshHandle> this[string key] => throw new KeyNotFoundException(key);
         public IEnumerable<string> Keys => [];
         public IEnumerable<IReadOnlyList<MeshHandle>> Values => [];
@@ -158,12 +165,8 @@ public class GroundCoverRendererTests
         public bool ContainsKey(string key) => false;
         public IEnumerator<KeyValuePair<string, IReadOnlyList<MeshHandle>>> GetEnumerator() =>
             Enumerable.Empty<KeyValuePair<string, IReadOnlyList<MeshHandle>>>().GetEnumerator();
-        public bool TryGetValue(string key, out IReadOnlyList<MeshHandle> value)
-        {
-            Lookups++;
-            value = [];
-            return false;
-        }
+        public bool TryGetValue(string key, out IReadOnlyList<MeshHandle> value) =>
+            throw new InvalidOperationException("Culled placements must not resolve their models.");
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

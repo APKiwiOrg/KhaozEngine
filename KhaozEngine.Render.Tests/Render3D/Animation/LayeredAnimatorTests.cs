@@ -129,6 +129,8 @@ namespace KhaozEngine.Tests.Render3D.Animation
             var anim = new LayeredAnimator(skel);
             Matrix4x4[] got = anim.BonePalette();
             Matrix4x4[] rest = skel.ComposeRestPose();
+            Assert.NotEmpty(rest);
+            Assert.Equal(rest.Length, got.Length);
             for (int b = 0; b < got.Length; b++) Assert.Equal(rest[b], got[b]);
         }
 
@@ -152,6 +154,8 @@ namespace KhaozEngine.Tests.Render3D.Animation
             var reference = new Matrix4x4[skel.BoneCount];
             skel.ComposeInto(local, reference);
 
+            Assert.NotEmpty(layered);
+            Assert.Equal(reference.Length, layered.Length);
             for (int b = 0; b < layered.Length; b++)
                 Assert.Equal(reference[b], layered[b]);   // exact bytes, not approximate
         }
@@ -692,6 +696,8 @@ namespace KhaozEngine.Tests.Render3D.Animation
             }
             Matrix4x4[] a = Run();
             Matrix4x4[] b = Run();
+            Assert.NotEmpty(a);
+            Assert.Equal(a.Length, b.Length);
             for (int i = 0; i < a.Length; i++) Assert.Equal(a[i], b[i]);   // exact
         }
 

@@ -101,6 +101,7 @@ namespace KhaozEngine.Tests.Terrain
             // daylight. Each side's skirt has to reach at least as far down as the other side's surface, everywhere
             // along that edge, or the gap is see-through. Read off the built meshes: no device, no golden.
             var field = new TerrainField(TerrainPresets.Clearing());   // the mountain band, where a 22 m hill amplitude bites
+            Assert.True(Cfg.TierCount > 1);
             for (int lod = 0; lod < Cfg.TierCount - 1; lod++)
             {
                 float fineDepth = Cfg.SkirtDepthFor(lod, Chunk), coarseDepth = Cfg.SkirtDepthFor(lod + 1, Chunk);
@@ -145,6 +146,7 @@ namespace KhaozEngine.Tests.Terrain
             var sink = new Scene3DChunkSink(scene: null!, field, new ScatterConfig(),
                 propMeshes: new Dictionary<string, MeshHandle>(), chunkSize: Chunk, propDrawRadius: 90f);
 
+            Assert.True(Cfg.TierCount > 0);
             for (int lod = 0; lod < Cfg.TierCount; lod++)
             {
                 var cpu = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(new ChunkCoord(2, 5), lod);

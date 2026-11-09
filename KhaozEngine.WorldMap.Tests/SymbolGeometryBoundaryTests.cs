@@ -39,6 +39,8 @@ public sealed class SymbolGeometryBoundaryTests
             for (int x = first; x < first + 2; x++)
             {
                 WorldMapChunkImage small = WorldMapRasterizer.Rasterize(source, style, new(x, y, level));
+                Assert.True(small.Size > 0);
+                Assert.Equal(small.Size * 2, large.Size);
                 for (int row = 0; row < small.Size; row++)
                     for (int column = 0; column < small.Size; column++)
                     {

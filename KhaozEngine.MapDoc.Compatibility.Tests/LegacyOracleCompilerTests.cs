@@ -11,7 +11,9 @@ public sealed class LegacyOracleCompilerTests
     public void LegacyOracle_SyntheticWorldMatchesNativeCompiler()
     {
         LegacyOracleWorld w = LegacyOracleWorld.Create();
-        foreach (var (region, plane) in LegacyOracleConverter.RegionPlanes(w.Document))
+        var regionPlanes = LegacyOracleConverter.RegionPlanes(w.Document).ToArray();
+        Assert.NotEmpty(regionPlanes);
+        foreach (var (region, plane) in regionPlanes)
         {
             var (surface, patch) = LegacyOracleConverter.ToNative(w.Document, region, plane);
             MapCompiledPatch native = MapSurfaceCompiler.Compile(surface, patch);

@@ -149,6 +149,7 @@ public class ItemContainerPageCodecTests
         byte[] page = ItemContainerPageCodec.Encode(0, 0, PageSlots, 1, [Entry(0, 5, 1, 0, Payload(20)), Entry(1, 6, 7, 0)]);
 
         Span<PageEntry> decoded = stackalloc PageEntry[PageSlots];
+        Assert.True(page.Length > 1);
         for (int cut = 1; cut < page.Length; cut++)
         {
             Assert.False(
@@ -189,6 +190,12 @@ public class ItemContainerPageCodecTests
         Span<PageEntry> decoded = stackalloc PageEntry[PageSlots];
         Assert.False(ItemContainerPageCodec.TryDecode(page, PageSlots, decoded, out _, out _, out string? reason));
         Assert.Equal(InstancePayloadReason.PayloadTooLong, reason);
+
+        byte[] control = ItemContainerPageCodec.Encode(
+            0, 0, PageSlots, 1, [Entry(0, 5, 1, 7, Payload(512))]);
+        Assert.True(ItemContainerPageCodec.TryDecode(control, PageSlots, decoded, out _, out int count, out reason), reason);
+        Assert.Equal(1, count);
+        Assert.Equal(512, decoded[0].PayloadLength);
     }
 
     [Fact]
@@ -222,7 +229,6 @@ public class ItemContainerPageCodecTests
         // Spec 3.8's floor row: 500 coins, definition id 1, no payload, instance id 0. Slot 1, flags 1,
         // definition 1, count 2, instance 1, payload length 1.
         Assert.Equal(7, ItemContainerPageCodec.EntrySize(Entry(3, 1, 500, 0), firstSlot: 0));
-        Assert.Equal(10, 2 + 4 + 4);
     }
 
     [Fact]

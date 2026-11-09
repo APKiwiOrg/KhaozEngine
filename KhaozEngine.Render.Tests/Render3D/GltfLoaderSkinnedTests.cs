@@ -70,6 +70,7 @@ namespace KhaozEngine.Tests.Render3D
             try
             {
                 SkinnedGltfMesh m = GltfLoader.LoadSkinned(path);
+                Assert.NotEmpty(m.Vertices);
                 Span<Matrix4x4> composed = stackalloc Matrix4x4[m.BoneCount];
                 for (int i = 0; i < m.BoneCount; i++)
                     composed[i] = SkinningMath.Compose(m.RestPose[i], m.InverseBind[i]);

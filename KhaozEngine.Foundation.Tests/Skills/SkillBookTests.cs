@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using KhaozEngine.Skills;
 using Xunit;
 
@@ -94,10 +95,11 @@ public class SkillBookTests
     public void A_locked_skill_refuses_every_award()
     {
         SkillBook book = TestSkills.Fresh();
+        int[] lockedSkills = Enumerable.Range(0, TestSkills.Count).Where(TestSkills.Roster.IsLocked).ToArray();
 
-        for (int skill = 0; skill < book.Count; skill++)
+        Assert.NotEmpty(lockedSkills);
+        foreach (int skill in lockedSkills)
         {
-            if (!TestSkills.Roster.IsLocked(skill)) continue;
             // Refused, and refused SILENTLY as far as the book is concerned: nothing stored, and false
             // back, which is the same answer a zero award gives, so no caller has to learn a second
             // failure shape.
@@ -173,10 +175,11 @@ public class SkillBookTests
     public void A_locked_skill_refuses_every_removal()
     {
         SkillBook book = TestSkills.Fresh();
+        int[] lockedSkills = Enumerable.Range(0, TestSkills.Count).Where(TestSkills.Roster.IsLocked).ToArray();
 
-        for (int skill = 0; skill < book.Count; skill++)
+        Assert.NotEmpty(lockedSkills);
+        foreach (int skill in lockedSkills)
         {
-            if (!TestSkills.Roster.IsLocked(skill)) continue;
             // A decoded book can hold experience in a locked skill, so the guard is proven against a
             // non-zero total rather than against a floor that could not move anyway.
             book.SetXp(skill, 10_000d);

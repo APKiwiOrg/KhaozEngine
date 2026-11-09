@@ -339,6 +339,7 @@ public class ContentManifestCodecTests
     {
         byte[] file = ContentManifestCodec.Encode(Server());
 
+        Assert.NotEmpty(file);
         for (int length = 0; length < file.Length; length++)
         {
             Assert.False(ContentManifestCodec.TryDecode(file.AsSpan(0, length), ContentManifestSide.Server, out _, out string? reason));

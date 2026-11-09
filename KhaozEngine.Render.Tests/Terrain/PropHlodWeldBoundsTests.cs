@@ -96,6 +96,7 @@ namespace KhaozEngine.Tests.Terrain
             GltfMesh merged = PropHlod.Merge(placements, kit);
 
             Assert.Equal(6, merged.Vertices.Length);
+            Assert.Equal(2, merged.TriangleCount);
             foreach (uint i in merged.Indices32) Assert.True(i < (uint)merged.Vertices.Length);
         }
 
@@ -103,14 +104,16 @@ namespace KhaozEngine.Tests.Terrain
         public void BuildMergedMesh_SurvivesAMalformedSourceMesh_OnBothTheWeldedAndUnweldedPaths()
         {
             var bad = new GltfMesh(
-                new[] { V(0f, 0f, 0f), V(1f, 0f, 0f), V(0f, 0f, 1f) },
-                new uint[] { 0, 1, 7 });
+                new[] { V(0f, 0f, 0f), V(4f, 0f, 0f), V(0f, 0f, 4f) },
+                new uint[] { 0, 1, 7, 0, 1, 2 });
             var kit = new Dictionary<string, GltfMesh> { ["bad"] = bad };
             var placements = new List<PropPlacement> { new("bad", 0f, 0f, 0f, 1f, 0f, 0) };
 
             GltfMesh welded = PropHlod.BuildMergedMesh(placements, kit, 1.5f);
             GltfMesh raw = PropHlod.BuildMergedMesh(placements, kit, 0f);   // non-positive cell skips the weld
 
+            Assert.Equal(1, welded.TriangleCount);
+            Assert.Equal(2, raw.TriangleCount);
             foreach (uint i in welded.Indices32) Assert.True(i < (uint)welded.Vertices.Length);
             foreach (uint i in raw.Indices32) Assert.True(i < (uint)raw.Vertices.Length);
         }
@@ -188,11 +191,13 @@ namespace KhaozEngine.Tests.Terrain
                     V(float.MaxValue, float.MinValue, 0f),
                     V(0f, 0f, 0f),
                     V(1f, 0f, 1f),
+                    V(4f, 0f, 0f),
                 },
-                new uint[] { 0, 1, 2, 3, 4, 5 });
+                new uint[] { 0, 1, 2, 3, 4, 5, 4, 5, 6 });
 
             GltfMesh welded = PropHlod.Weld(mesh, 1f);
 
+            Assert.NotEmpty(welded.Indices32);
             foreach (uint i in welded.Indices32) Assert.True(i < (uint)welded.Vertices.Length);
         }
     }

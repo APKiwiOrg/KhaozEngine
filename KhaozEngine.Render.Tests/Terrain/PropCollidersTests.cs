@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Collision;
 using KhaozEngine.Terrain;
@@ -30,7 +31,9 @@ public class PropCollidersTests
         TerrainField f = Field();
         var area = new RectArea(-60f, -60f, 60f, 60f);
         IReadOnlyList<PropPlacement> placements = PropScatter.Generate(f, Cfg, area);
+        Assert.NotEmpty(placements);
         WorldColliders set = PropColliders.FromScatter(placements, _ => ColliderShape.Cylinder(0.5f));
+        Assert.Equal(placements.Count, set.Count);
 
         var byPos = new Dictionary<(float, float), WorldCollider>();
         foreach (WorldCollider wc in set.Colliders) byPos[(wc.Center.X, wc.Center.Y)] = wc;
@@ -52,7 +55,11 @@ public class PropCollidersTests
         // Two tiles covering the same region (half-open intervals -> each cell once).
         var left = PropScatter.Generate(f, Cfg, new RectArea(-60f, -60f, 0f, 60f));
         var right = PropScatter.Generate(f, Cfg, new RectArea(0f, -60f, 60f, 60f));
-        Assert.Equal(whole.Count, left.Count + right.Count);
+        Assert.NotEmpty(whole.Colliders);
+        WorldColliders tiled = PropColliders.FromScatter(new List<PropPlacement>(left).Concat(right).ToList(),
+            _ => ColliderShape.Cylinder(0.4f));
+        Assert.Equal(whole.Colliders.OrderBy(c => c.Center.X).ThenBy(c => c.Center.Y),
+            tiled.Colliders.OrderBy(c => c.Center.X).ThenBy(c => c.Center.Y));
     }
 
     [Fact]
@@ -60,6 +67,7 @@ public class PropCollidersTests
     {
         TerrainField f = Field();
         var placements = PropScatter.Generate(f, Cfg, new RectArea(-60f, -60f, 60f, 60f));
+        Assert.NotEmpty(placements);
         WorldColliders set = PropColliders.FromScatter(placements, _ => null, defaultShape: ColliderShape.Cylinder(0.3f));
         Assert.Equal(placements.Count, set.Count);
     }
@@ -69,6 +77,7 @@ public class PropCollidersTests
     {
         TerrainField f = Field();
         var placements = PropScatter.Generate(f, Cfg, new RectArea(-60f, -60f, 60f, 60f));
+        Assert.NotEmpty(placements);
         WorldColliders set = PropColliders.FromScatter(placements, _ => null);
         Assert.Equal(0, set.Count);
     }
@@ -79,6 +88,7 @@ public class PropCollidersTests
         TerrainField f = Field();
         var placements = PropScatter.Generate(f, Cfg, new RectArea(-60f, -60f, 60f, 60f));
         var inn = WorldCollider.Box(new Vector2(0f, 10f), new Vector2(3f, 2f), yaw: 0f);
+        Assert.NotEmpty(placements);
         WorldColliders set = PropColliders.FromScatter(placements, _ => ColliderShape.Cylinder(0.4f),
             obstacles: new[] { inn });
         Assert.Equal(placements.Count + 1, set.Count);

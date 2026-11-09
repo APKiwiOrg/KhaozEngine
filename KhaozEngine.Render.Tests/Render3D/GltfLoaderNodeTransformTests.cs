@@ -62,6 +62,7 @@ namespace KhaozEngine.Tests.Render3D
             try
             {
                 var mesh = GltfLoader.Load(path);
+                Assert.NotEmpty(mesh.Vertices);
                 foreach (var v in mesh.Vertices)
                     Assert.True(Vector3.Distance(v.Normal, new Vector3(0, -1, 0)) < 1e-3f,
                         $"expected normal ~ (0,-1,0), got {v.Normal}");
@@ -82,6 +83,7 @@ namespace KhaozEngine.Tests.Render3D
                 var mesh = GltfLoader.Load(path);
                 Vector3 expected = Vector3.Normalize(new Vector3(1, 2, 0)); // (0.4472, 0.8944, 0)
                 Vector3 wrong = Vector3.Normalize(new Vector3(2, 1, 0));    // (0.8944, 0.4472, 0)
+                Assert.NotEmpty(mesh.Vertices);
                 foreach (var v in mesh.Vertices)
                 {
                     Assert.True(Vector3.Distance(v.Normal, expected) < 1e-2f,
@@ -140,6 +142,7 @@ namespace KhaozEngine.Tests.Render3D
             {
                 Vector3[] a = GltfLoader.Load(baked).Vertices.Select(v => v.Position).ToArray();
                 Vector3[] b = GltfLoader.Load(viaNode).Vertices.Select(v => v.Position).ToArray();
+                Assert.NotEmpty(a);
                 Assert.Equal(a.Length, b.Length);
                 foreach (Vector3 pb in b)
                     Assert.True(a.Any(pa => Vector3.Distance(pa, pb) < 1e-5f),

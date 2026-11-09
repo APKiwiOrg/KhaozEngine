@@ -26,6 +26,7 @@ public sealed class MapPrefabAnnotationTests
         Assert.Equal(new[] { "roof-a", "roof-b", "shelter-roof" }, r.BuildingIntent.Roofs.Select(x => x.Id));
         var other = MapRoofPolicy.Evaluate(r, r.CompleteView(), PrefabFixtures.Point(r, 9, 1, -9), MapRoofMode.Auto);
         Assert.Equal("room-c", other.SpaceId);
+        Assert.Equal(new[] { "roof-a", "roof-b", "shelter-roof" }, other.Roofs.Select(x => x.RoofPlacementId).Order());
         Assert.All(other.Roofs, Visible);
     }
 
@@ -34,8 +35,12 @@ public sealed class MapPrefabAnnotationTests
     {
         var r = PrefabFixtures.Effective(PrefabFixtures.LinkedBuildings(true));
         Assert.Equal(2, MapRoofPolicy.Evaluate(r, r.CompleteView(), PrefabFixtures.LinkedRoomPoint(r), MapRoofMode.Auto).Roofs.Count(x => !x.ColourVisible));
-        Assert.All(MapRoofPolicy.Evaluate(r, r.CompleteView(), PrefabFixtures.Point(r, 9, 1, -9), MapRoofMode.Auto).Roofs, Visible);
-        Assert.All(MapRoofPolicy.Evaluate(r, r.CompleteView(), PrefabFixtures.Point(r, 5, 1, -5), MapRoofMode.Auto).Roofs, Visible);
+        foreach (var point in new[] { PrefabFixtures.Point(r, 9, 1, -9), PrefabFixtures.Point(r, 5, 1, -5) })
+        {
+            var roofs = MapRoofPolicy.Evaluate(r, r.CompleteView(), point, MapRoofMode.Auto).Roofs;
+            Assert.Equal(new[] { "roof-a", "roof-b", "shelter-roof" }, roofs.Select(x => x.RoofPlacementId).Order());
+            Assert.All(roofs, Visible);
+        }
     }
 
     [Theory]
@@ -152,6 +157,17 @@ public sealed class MapPrefabAnnotationTests
             what == "group" ? new[] { PrefabFixtures.World(MapPrefabChildKind.RoofGroup, "missing") } : [], 3) }, [],
             what == "light-owner" ? new[] { new MapLocalLightDoc(1, "test-light", PrefabFixtures.World(MapPrefabChildKind.Placement, "missing"), Vector3.Zero, Vector3.One, 1, 2, false) } : [], []);
         Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(f));
+        // Correct only the invalid reference, retaining the same kind of link or light in the control.
+        var validRooms = what is "room" or "non-room" ? new[] { PrefabFixtures.World(MapPrefabChildKind.Record, "a/room") } : Array.Empty<MapPrefabReference>();
+        var validGroups = what == "group" ? new[] { PrefabFixtures.World(MapPrefabChildKind.RoofGroup, "declared-rooms") } : Array.Empty<MapPrefabReference>();
+        var declaredGroups = what == "group"
+            ? new[] { new MapRoofGroupDoc("declared-rooms", new[] { PrefabFixtures.World(MapPrefabChildKind.Record, "a/room") }) }
+            : Array.Empty<MapRoofGroupDoc>();
+        f.Document.BuildingIntent = new(1, new[] { new MapRoofLinkDoc("test",
+            PrefabFixtures.World(MapPrefabChildKind.Placement, "a/roof"), validRooms, validGroups, 3) }, declaredGroups,
+            what == "light-owner" ? new[] { new MapLocalLightDoc(1, "test-light",
+                PrefabFixtures.World(MapPrefabChildKind.Placement, "a/item"), Vector3.Zero, Vector3.One, 1, 2, false) } : [], []);
+        Assert.Contains(PrefabFixtures.Effective(f).BuildingIntent.RoofLinks, link => link.Id == "test");
     }
 
     [Theory]
@@ -264,6 +280,8 @@ public sealed class MapPrefabAnnotationTests
         var roof = PrefabFixtures.World(MapPrefabChildKind.Placement, "a/item");
         f.Document.BuildingIntent = new(1, [], [], [], []) { Roofs = new[] { roof, roof } };
         Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(f));
+        f.Document.BuildingIntent = new(1, [], [], [], []) { Roofs = new[] { roof } };
+        Assert.Single(PrefabFixtures.Effective(f).BuildingIntent.Roofs);
     }
 
     [Fact]
@@ -316,6 +334,7 @@ public sealed class MapPrefabAnnotationTests
         { Roofs = intent.Roofs };
         var r = PrefabFixtures.Effective(f);
         var result = MapRoofPolicy.Evaluate(r, r.CompleteView(), PrefabFixtures.Point(r, 9, 1, -9), MapRoofMode.Auto);
+        Assert.Equal(new[] { "roof-a", "roof-b", "shelter-roof" }, result.Roofs.Select(x => x.RoofPlacementId).Order());
         Hidden(result.Roofs.Single(x => x.RoofPlacementId == "shelter-roof"));
         Assert.All(result.Roofs.Where(x => x.RoofPlacementId != "shelter-roof"), Visible);
     }

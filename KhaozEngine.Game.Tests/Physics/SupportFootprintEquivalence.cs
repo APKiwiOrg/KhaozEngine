@@ -101,7 +101,7 @@ internal static class SupportFootprintEquivalence
         return optimized;
     }
 
-    static void AssertSame(in SupportSample reference, in SupportSample actual, string context)
+    internal static void AssertSame(in SupportSample reference, in SupportSample actual, string context = "")
     {
         string message = $"{context}: sample {actual} differs from reference {reference}.";
         Assert.True(reference.Status == actual.Status && reference.Static == actual.Static &&

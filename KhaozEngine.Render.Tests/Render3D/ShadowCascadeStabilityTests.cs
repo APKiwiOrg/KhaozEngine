@@ -98,6 +98,7 @@ namespace KhaozEngine.Tests.Render3D
             {
                 var cam = Camera(new Vector3(0f, 3f, cameraMoves ? f * WalkSpeedPerFrame : 0f));
                 count = FitCascades(cam, Sun(sunMoves ? f * SunDegreesPerFrame : 0f), cur);
+                Assert.InRange(count, 1, cur.Length);
                 if (f > 0)
                     for (int c = 0; c < count; c++)
                         if (cur[c] == prev[c]) stable[c]++;

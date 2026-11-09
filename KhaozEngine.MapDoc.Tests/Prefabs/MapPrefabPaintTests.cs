@@ -27,7 +27,9 @@ public sealed class MapPrefabPaintTests
         var last = authored.Refs.Single(s => s.Id == "priority-high");
         var whole = MapSurfaceCompiler.ApplyPaintOverride(MapSurfaceCompiler.ApplyPaintOverride(original,
             first, authored.Patches[new(first.Id, 0, 0)]), last, authored.Patches[new(last.Id, 0, 0)]);
-        Assert.All(whole.Paint.Where(p => p.Face.Primitive == 1), p => Assert.Equal((ushort)8, p.Underlay));
+        var paintedFaces = whole.Paint.Where(p => p.Face.Primitive == 1).ToArray();
+        Assert.NotEmpty(paintedFaces);
+        Assert.All(paintedFaces, p => Assert.Equal((ushort)8, p.Underlay));
         Assert.Equal(original.ExactVertices, whole.ExactVertices);
         Assert.Equal(original.Faces, whole.Faces);
         string before = MapDocumentFile.SaveText(f.Document);
@@ -164,6 +166,7 @@ public sealed class MapPrefabPaintTests
         var ground = PrefabFixtures.CanonicalPatch(resources, "ground");
         Assert.Contains(ground.Faces, face => PrefabFixtures.PaintContains(new[]
         { ground.ExactTriangle(face).A, ground.ExactTriangle(face).B, ground.ExactTriangle(face).C }, notch));
+        Assert.NotEmpty(ground.Paint);
         Assert.All(ground.Paint, material => Assert.Equal((ushort)3, material.Underlay));
         Assert.InRange(PrefabFixtures.PaintArea(resources.PaintRegions["ground"]).ToDouble(), 2.999996d, 3.000004d);
     }
@@ -187,9 +190,12 @@ public sealed class MapPrefabPaintTests
     {
         var resources = PrefabFixtures.Effective(PrefabFixtures.Create("uneven-painted"));
         var patch = PrefabFixtures.CanonicalPatch(resources, "ground");
-        foreach (var region in resources.PaintRegions["ground"].Regions)
+        var regions = resources.PaintRegions["ground"].Regions;
+        Assert.NotEmpty(regions);
+        foreach (var region in regions)
         {
             var triangle = patch.ExactTriangle(patch.Faces.Single(f => f.Key == region.Face));
+            Assert.NotEmpty(region.Polygon);
             foreach (var point in region.Polygon)
             {
                 Assert.True(PrefabFixtures.PaintContains(new[] { triangle.A, triangle.B, triangle.C }, point));

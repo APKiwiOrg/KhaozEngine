@@ -114,18 +114,17 @@ public class PatchNotesParserTests
     public void UnbalancedBackticks_DegradeToOnePlainSpanNoThrowNoLostText()
     {
         var unb = PatchNotesParser.Parse("### Build 1.0.0 (X)\n- **Bug**\n  - broke `half open\n");
-        Assert.All(unb.Builds[0].Groups[0].Notes[0].Spans, s => Assert.False(s.IsCode));
+        PatchNoteSpan span = Assert.Single(unb.Builds[0].Groups[0].Notes[0].Spans);
+        Assert.False(span.IsCode);
+        Assert.Equal("broke `half open", span.Text);
     }
 
-    [Fact]
-    public void NullInput_YieldsEmptyDocument() => Assert.True(PatchNotesParser.Parse(null).IsEmpty);
-
-    [Fact]
-    public void EmptyInput_YieldsEmptyDocument() => Assert.True(PatchNotesParser.Parse("").IsEmpty);
-
-    [Fact]
-    public void GarbageProseInput_YieldsEmptyDocument() =>
-        Assert.True(PatchNotesParser.Parse("just some prose\nwith lines").IsEmpty);
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("just some prose\nwith lines")]
+    public void InputWithoutBuilds_YieldsEmptyDocument(string? input) =>
+        Assert.True(PatchNotesParser.Parse(input).IsEmpty);
 
     [Fact]
     public void BuildHeaderBeforeAnyDate_StillParsesWithEmptyDate()

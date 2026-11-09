@@ -25,6 +25,8 @@ public sealed class AtmosphereFogGoldenTests : IClassFixture<AtmosphereGoldenSce
         var a = GoldenCompare.Downsample(_fixture.CaptureFog(), AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
         var b = GoldenCompare.Downsample(_fixture.CaptureFog(new Vector3(100000, 1900, 100000)),
             AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
+        Assert.NotEmpty(a);
+        Assert.Equal(a.Length, b.Length);
         for (int i = 0; i < a.Length; i++) Assert.InRange(MathF.Abs(a[i] - b[i]), 0, .01f);
     }
 
@@ -290,6 +292,8 @@ public sealed class AtmosphereFogGoldenTests : IClassFixture<AtmosphereGoldenSce
         byte[] shared = _fixture.CaptureEffects(Configure, scene => Effects(scene, Color.White), opaqueReceiver: true);
         var expected = GoldenCompare.Downsample(fresh, AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
         var actual = GoldenCompare.Downsample(shared, AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
+        Assert.NotEmpty(expected);
+        Assert.Equal(expected.Length, actual.Length);
         for (int i = 0; i < expected.Length; i++)
             Assert.InRange(MathF.Abs(expected[i] - actual[i]), 0, GoldenCompare.InSessionTolerance);
     }

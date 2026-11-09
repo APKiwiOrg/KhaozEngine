@@ -42,6 +42,7 @@ namespace KhaozEngine.Tests.Render3D
             DebugFillShapes.FilledQuad(tris, Vector3.Zero, Vector3.UnitY, Vector3.UnitX, new Vector2(1f, 1f));
 
             // Each triangle's geometric normal points along +Y (consistent winding, not back-to-back).
+            Assert.NotEmpty(tris);
             for (int i = 0; i < tris.Count; i += 3)
             {
                 Vector3 n = Vector3.Normalize(TriNormal(tris[i], tris[i + 1], tris[i + 2]));
@@ -136,6 +137,7 @@ namespace KhaozEngine.Tests.Render3D
             var tris = new List<Vector3>();
             DebugFillShapes.FilledFan(tris, Vector3.Zero, SquareRim(), closed: true);
 
+            Assert.NotEmpty(tris);
             for (int i = 0; i < tris.Count; i += 3)
             {
                 Vector3 n = Vector3.Normalize(TriNormal(tris[i], tris[i + 1], tris[i + 2]));

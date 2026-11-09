@@ -405,6 +405,7 @@ public class ItemCraftedBodyTests
     {
         byte[] body = new ItemCraftedEvent(7, 7_001, 7, Before, After).ToArray();
 
+        Assert.NotEmpty(body);
         for (int length = 0; length < body.Length; length++)
         {
             Assert.False(

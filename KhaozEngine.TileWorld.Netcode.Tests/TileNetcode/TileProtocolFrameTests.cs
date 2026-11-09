@@ -85,7 +85,10 @@ public class TileProtocolFrameTests
             Assert.Equal(payload, back.ToArray());
         }
         Assert.Throws<ArgumentException>(() =>
-            TileProtocol.EncodeGameMessage(TileProtocol.ClientFrameGameMessage, 1, new byte[TileProtocol.MaxGameMessageBytes + 1]));
+            TileProtocol.EncodeGameMessage(TileProtocol.ClientFrameGameMessage, 1, new byte[1025]));
+        byte[] atCap = TileProtocol.EncodeGameMessage(TileProtocol.ClientFrameGameMessage, 1, new byte[1024]);
+        Assert.True(TileProtocol.TryDecodeGameMessage(atCap, TileProtocol.ClientFrameGameMessage, out _, out ReadOnlySpan<byte> accepted));
+        Assert.Equal(1024, accepted.Length);
     }
 
     // #891. The kind is the one field on this wire that used to be written in the HOST's order, so a big endian head
@@ -113,9 +116,12 @@ public class TileProtocolFrameTests
     [Fact]
     public void A_game_message_over_the_payload_cap_is_refused_by_the_decoder_too()
     {
-        var oversized = new byte[TileProtocol.MaxGameMessageBytes + 8];
+        var oversized = new byte[4 + 1025];
         oversized[0] = TileProtocol.ServerFrameGameMessage;
         Assert.False(TileProtocol.TryDecodeGameMessage(oversized, TileProtocol.ServerFrameGameMessage, out _, out _));
+        byte[] atCap = TileProtocol.EncodeGameMessage(TileProtocol.ServerFrameGameMessage, 0, new byte[1024]);
+        Assert.True(TileProtocol.TryDecodeGameMessage(atCap, TileProtocol.ServerFrameGameMessage, out _, out ReadOnlySpan<byte> accepted));
+        Assert.Equal(1024, accepted.Length);
     }
 
     [Fact]
@@ -129,7 +135,10 @@ public class TileProtocolFrameTests
     [Fact]
     public void A_notice_over_the_token_cap_is_refused_by_the_encoder()
     {
-        Assert.Throws<ArgumentException>(() => TileProtocol.EncodeNotice(new string('x', TileProtocol.MaxNoticeBytes + 1)));
+        Assert.Throws<ArgumentException>(() => TileProtocol.EncodeNotice(new string('x', 129)));
+        string atCap = new('x', 128);
+        Assert.True(TileProtocol.TryDecodeNotice(TileProtocol.EncodeNotice(atCap), out string accepted));
+        Assert.Equal(atCap, accepted);
     }
 
     [Fact]
@@ -162,6 +171,8 @@ public class TileProtocolFrameTests
         lying[1] = (byte)(frame[1] + 1);
         Assert.False(TileProtocol.TryDecodeNotice(lying, out _));
         Assert.False(TileProtocol.TryDecodeNotice(frame.AsSpan(0, frame.Length - 1), out _));
+        Assert.True(TileProtocol.TryDecodeNotice(frame, out string accepted));
+        Assert.Equal("ke:draining", accepted);
     }
 
     [Fact]
@@ -239,6 +250,8 @@ public class TileProtocolFrameTests
         // frame long enough to be cut at 24 bytes is command shaped by construction. A transport that hands a
         // decoder a cut frame has already failed, which is why the rule is written about frames and not prefixes.
         foreach (byte[] f in new[] { command, snapshot, clientMessage, serverMessage, notice })
+        {
+            Assert.NotEmpty(f);
             for (int len = 0; len < f.Length; len++)
             {
                 ReadOnlySpan<byte> cut = f.AsSpan(0, len);
@@ -248,6 +261,7 @@ public class TileProtocolFrameTests
                 TileProtocol.TryDecodeGameMessage(cut, TileProtocol.ServerFrameGameMessage, out _, out _);
                 TileProtocol.TryDecodeNotice(cut, out _);
             }
+        }
 
         // And each frame's OWN decoder refuses every truncation of it. The notice declares its length, so every
         // short read of one is a refusal. The snapshot does not (its body is "the rest"), so what is pinned there
@@ -291,6 +305,9 @@ public class TileProtocolFrameTests
         hostile[0] = TileProtocol.ServerFrameGameMessage;
         hostile[hostile.Length - 1] = 0x01;
         Assert.False(TileProtocol.TryDecodeGameMessage(hostile, TileProtocol.ServerFrameGameMessage, out _, out _));
+        hostile[^1] = 0;
+        Assert.True(TileProtocol.TryDecodeGameMessage(hostile, TileProtocol.ServerFrameGameMessage, out _, out ReadOnlySpan<byte> accepted));
+        Assert.Empty(accepted.ToArray());
     }
 
     [Fact]

@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>The shimmer record the resolve stores in the history state's last two channels: drift, the average of
     /// this frame's luma less its reprojected history, and swing, the average of its size. A still line the jitter
     /// shows on one frame a cycle swings without drifting, a steady ramp drifts as far as it swings, a frame without
-    /// valid history, a pixel the shading release dropped and a disoccluded pixel store an empty record, and the record
+    /// valid history and a disoccluded pixel store an empty record, a shading release keeps stepping it, and the record
     /// moves at one over the jitter phase count. The line scene is <see cref="TemporalStillDetailGpuTests"/>' own.
     /// </summary>
     public sealed class TemporalShimmerRecordGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
@@ -55,7 +55,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void A_pixel_whose_shading_release_fires_writes_an_empty_shimmer_record()
+        public void A_pixel_whose_shading_release_fires_starts_fresh_and_keeps_its_record()
         {
             // A still textured ramp under a history far brighter than its box, with no lock and no ridge, at Native: the
             // shading release fires and drops the accumulated weight, so the stored confidence is one sample's. A history
@@ -64,7 +64,7 @@ namespace KhaozEngine.Tests.Gpu
             for (int p = 0; p < released.Length; p++)
             {
                 Assert.Equal(1f / Max, state[Interior(p) * 4], 1e-3);
-                Assert.Equal(default, released[p]);
+                Assert.True(released[p].Swing > 0f, $"released pixel {Interior(p)}: {released[p]}");
             }
             ShimmerRecord[] kept = ResolveOverRecord(x => Q(Ramp(x) + 0.01f), SceneLinear, out state);
             for (int p = 0; p < kept.Length; p++)

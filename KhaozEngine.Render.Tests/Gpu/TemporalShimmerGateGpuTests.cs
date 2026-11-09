@@ -89,6 +89,54 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void A_shadow_step_keeps_the_colour_release_available()
+        {
+            // A stale bright history over a textured ramp releases. Its prior record shows flicker, but a centre
+            // visibility step beyond the gate must keep that release available, even below the 3x3 release threshold.
+            float stepped = ResolveColourRelease(null);
+            bool resolveRewritten = false;
+            string WithoutGate(string source)
+            {
+                if (!source.Contains(GateCall, StringComparison.Ordinal)) return source;
+                resolveRewritten |= !source.Contains("uniform DebugView", StringComparison.Ordinal);
+                return source.Replace(GateCall, "false", StringComparison.Ordinal);
+            }
+            float ungated = ResolveColourRelease(WithoutGate);
+            output.WriteLine($"shadow step confidence {stepped}, without the visibility gate {ungated}");
+            Assert.True(resolveRewritten, "the control must remove the visibility gate from the resolve program");
+            Assert.Equal(1f / Max, stepped, 1e-3);
+            Assert.True(ungated > stepped + 1f / Max,
+                $"without visibility evidence the flickering record must veto the colour release, confidence {ungated}");
+        }
+
+        static float ResolveColourRelease(Func<string, string>? rewrite)
+        {
+            using var rig = new TemporalResolveRig(W, H, W, H, SceneNdc, fragmentSource: rewrite);
+            using IGpuTexture visibility = rig.Device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8UNorm, GpuTextureUsage.Sampled));
+            byte[] lit = Enumerable.Repeat(Lit, W * H).ToArray();
+            rig.Device.UpdateTexture(visibility, lit, 0, 0, W, H);
+            float[] ramp = Grey(W, H, (x, _) => Ramp(x % N));
+            float[] motion = Pairs(W, H, (_, _) => Vector2.Zero);
+            TemporalResolveUniforms uniforms = TemporalResolveMath.BuildUniforms(Still, Still, Vector2.Zero, W, H, W, H,
+                historyValid: false);
+            rig.BeginFrame();
+            rig.Fill(ramp, ramp, motion);
+            rig.Resolve(uniforms, visibility);
+            rig.History.MarkValidAfterFrame();
+            int column = W / 4;
+            for (int y = 0; y < H; y++) lit[y * W + column] = Stepped;
+            rig.Device.UpdateTexture(visibility, lit, 0, 0, W, H);
+            rig.BeginFrame();
+            rig.Fill(ramp, ramp, motion);
+            rig.FillHistory(Grey(W, H, (_, _) => Q(0.9f)),
+                StateWithRecord(W, H, (_, _) => new Vector4(Q(3f / Max), 0f, 0f, 0.5f)), SceneLinear);
+            uniforms = TemporalResolveMath.BuildUniforms(Still, Still, Vector2.Zero, W, H, W, H, historyValid: true);
+            rig.Resolve(uniforms, visibility);
+            return rig.ReadState()[(H / 2 * W + column) * 4];
+        }
+
+        [GpuFact]
         public void A_history_reset_takes_todays_lock_decay()
         {
             float factor = TemporalSettings.DisplayOverInternal(TemporalUpscale.Quality);

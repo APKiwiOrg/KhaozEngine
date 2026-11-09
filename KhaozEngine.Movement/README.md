@@ -1101,8 +1101,10 @@ input, and treat the other statuses as idle.
 `MoveToRange` copies the supplied `PathFollowConfig` and clamps `AcceptRadius` to at most `0.00001f`,
 including when the supplied value is zero. Its near-ring preflight keeps the same bounded float interval
 search of up to 32 candidates plus endpoint and final checks. A certified flat, unchanged analytic support
-region evaluates the command-dependent state algebra directly under one authenticated read interval, with
-zero full movement previews inside the search. Supported slopes can instead run the shared contact kernel
+region with no water producer evaluates the command-dependent state algebra directly under one authenticated
+read interval, with zero full movement previews inside the search. Supplied water fields retain the shared
+kernel's actual segment traces, including their independent precision and refusal results, even on flat ground.
+Supported slopes run the shared contact kernel
 against a bounded immutable triangle capture, preserving the actual rounded support, seat and capsule mapping
 at each trial. Both paths acquire one clearance and medium certificate. The certificate requires exact field provenance, complete
 selected-static absence across support and shell paths, strictly dry whole-body coverage and the existing
@@ -1110,7 +1112,9 @@ scope and convex `MovementBoundary` bounds. Supplying `clampXz` does not disable
 because neither Contact steps nor their exact arrival trials read that Legacy-only clamp. A swept region
 that reaches the boundary still uses the exact solver. A supplied water field must also opt into `IMovementDryTracePointProof`
 and certify successful dry point classification throughout this particular enclosure. Without that separate
-operation-level guarantee, both drivers retain full previews and the direct driver's ordinary pacing point read. Only grounded bodies without swimming, commitments, buffered jumps or
+operation-level guarantee, both drivers retain full previews and the direct driver's ordinary pacing point read.
+The point guarantee never replaces trace operations. This also corrects the certified flat path released in
+23.4.0, which could previously skip a refused contained trace. Only grounded bodies without swimming, commitments, buffered jumps or
 carried climb signals use certified trials. Steep or missing support and queries outside the captured slope
 region retain the live solver. A conservative roundoff enclosure must fit the unchanged coverage skin,
 otherwise the live solver retains each trial's precision refusal. The direct driver's dry pacing reads share that certificate. If a producer revokes the

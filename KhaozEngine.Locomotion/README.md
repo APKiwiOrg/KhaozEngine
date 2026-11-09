@@ -147,6 +147,15 @@ query, precision refusal or revoked lease retires the preview before continuing 
 This includes optional ground-signal look-ahead, even when the kernel consumes its query refusal.
 The certificate does not remove the selected physics receiver's own evidence-capture cost.
 
+`IMovementDryTracePointProof` authorizes point sampling only. With a supplied water field, both flat and
+sloped trials keep the shared kernel's actual segment traces through `MovementSegmentProof.Medium`, including
+placement and descent checks. A successful enlarged stationary trace cannot authorize a shorter trace's
+success or suppress its precision/refusal outcome. Flat trials use the same constant support and original
+height translation in that kernel. Only intrinsic water-field absence retains the flat algebra. No stronger
+promise is imposed on existing point-proof implementers, including level water and the tile sampler.
+The unchanged initial placement trace is executed once under the captured generation, using the original
+stored centre before the kernel feet conversion. Its success is reused only within that immutable interval.
+
 The internal Contact descent witness records selected steep support and first walkable support from Air, Slide
 and water handoffs, including support left again inside one tick and recertification after horizontal rounding.
 It copies analytic feature identity while the

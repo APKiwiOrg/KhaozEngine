@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
@@ -98,11 +99,20 @@ public class TileSlopedRangeEquivalenceTests(ITestOutputHelper output)
                 _ => ReachTarget.Box(predicted.Position, new(0.03f, 0.1f, 0.07f), 0.7f),
             };
             float range = random.NextSingle() * 0.05f;
+            var trials = new List<MoveState>();
+            int observed = 0;
+            bool Observe(in MoveState from, in MoveState to, in MoveTuning shape)
+            {
+                Assert.True(observed < trials.Count);
+                Same(trials[observed++], to);
+                return Admit(from, to, shape);
+            }
             Vector2 original = ArrivalReference.Stop(body, tuning, target, range, true, dt, scene.Context,
-                command, predicted, Admit, out int count);
+                command, predicted, Admit, out int count, trials.Add);
             using var work = new ArrivalPreviewDiagnostics();
             Vector2 actual = RangeApproachCore.StopAtRange(body, tuning, target, range, true, dt, scene.Context,
-                command, predicted, Admit);
+                command, predicted, Observe);
+            Assert.Equal(count, observed);
             Same(original, actual);
             Same(scene.Context.Step(body, original, true, dt, tuning), scene.Context.Step(body, actual, true, dt, tuning));
             reference += count;

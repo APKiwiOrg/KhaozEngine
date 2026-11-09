@@ -103,7 +103,20 @@ public sealed partial class MovementQueryLease
         // DirectMoveToRange's skipped pacing point reads, not only the copied movement trials.
         if (_pin is not IMovementDryTracePointPin points ||
             !points.CanClassifyDryTracePoints(new(enclosure, Vector3.Zero))) return false;
-        if (region is not null) supported = new(this, region, tuning, selection, binding.Value, min, max, lower, upper);
+        // Every live trial first traces the unchanged stored body, before kernel feet conversion.
+        // Hoist that exact operation once under this generation, not a rounded feet/centre substitute.
+        if (ExplicitCharacterMovement.WaterPlacement(request.Body, tuning, tuning.Water, this, boundary) !=
+            MovementStepOutcome.Advanced) return false;
+        // Point closure never authorizes skipping trace operations. A supplied field keeps the shared
+        // kernel's real traces even on flat ground. Only intrinsic absence retains the flat algebra.
+        if (region is null && !points.HasIntrinsicDryTrace)
+        {
+            if (!Workspace.TryGetAnalytic(selection.Space, query.Axis, out var fact) || fact is not { } ground)
+                return false;
+            region = new(null, Frame.PhysicsOrigin, min, max, feet, feet, ground.HeightTranslation);
+        }
+        if (region is not null) supported = new(this, region, tuning, selection, binding.Value, min, max, lower, upper,
+            transition.StartFeet, boundary);
         return true;
     }
 }

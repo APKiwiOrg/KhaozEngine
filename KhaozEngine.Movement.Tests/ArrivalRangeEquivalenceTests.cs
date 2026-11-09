@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
@@ -72,18 +73,28 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
             };
             float range = sample % 5 == 0 ? 0 : random.NextSingle() * 0.1f;
             StepAdmission admits = sample % 8 == 0 ? RejectMiddle : ArrivalRangeCrossingTests.Admit;
+            var expectedTrials = new List<MoveState>();
+            var actualTrials = new List<MoveState>();
+            bool ObserveActual(in MoveState from, in MoveState to, in MoveTuning shape)
+            {
+                actualTrials.Add(to);
+                return admits(from, to, shape);
+            }
             Vector2 expected = ArrivalReference.Stop(body, tuning, target, range, run, dt, scene.Context,
-                command, predicted, admits, out int count);
+                command, predicted, admits, out int count, expectedTrials.Add);
             referenceSteps += count;
             Vector2 actual;
             using (var work = new ArrivalPreviewDiagnostics())
             {
                 actual = RangeApproachCore.StopAtRange(body, tuning, target, range, run, dt, scene.Context,
-                    command, predicted, admits);
+                    command, predicted, ObserveActual);
                 fullSteps += work.FullSteps;
                 certified += work.CertifiedTrials;
             }
             Same(expected, actual);
+            Assert.Equal(count, expectedTrials.Count);
+            Assert.Equal(count, actualTrials.Count);
+            for (int trialIndex = 0; trialIndex < count; trialIndex++) Same(expectedTrials[trialIndex], actualTrials[trialIndex]);
             Same(scene.Context.Step(body, expected, run, dt, tuning), scene.Context.Step(body, actual, run, dt, tuning));
             MoveState trial = scene.Context.Step(body, command * 0.5f, run, dt, tuning);
             using var preview = scene.Context.OpenGroundRangePreview(body, predicted, tuning, run, dt);

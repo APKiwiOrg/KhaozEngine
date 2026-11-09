@@ -4,8 +4,8 @@ using KhaozEngine.Locomotion.Contacts;
 
 namespace KhaozEngine.Locomotion;
 
-/// <summary>Exact arrival trials under a live whole-region certificate. Flat regions retain their algebraic
-/// evaluator. Supported slopes run the shared kernel against captured ground and proved empty queries.</summary>
+/// <summary>Exact arrival trials under a live whole-region certificate. Intrinsically dry flat regions retain
+/// their algebra. Other regions keep the shared kernel and real medium traces over captured ground.</summary>
 internal sealed class GroundRangePreview(MovementQueryLease queries, MoveState local,
     MoveState predicted, MoveTuning tuning, bool run, float dt, float travel,
     CertifiedGroundRangeQueries? supported = null) : IDisposable

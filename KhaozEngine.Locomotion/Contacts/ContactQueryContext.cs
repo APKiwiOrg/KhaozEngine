@@ -75,7 +75,8 @@ internal readonly struct ContactQueryContext
         float footRadius, float cosMaxSlope, out Vector2 move)
     {
         move = default;
-        return _leased?.ConstrainGroundDescent(from, to, supportNormal, footRadius, cosMaxSlope, out move) ?? false;
+        return _leased?.ConstrainGroundDescent(from, to, supportNormal, footRadius, cosMaxSlope, out move) ??
+            _range?.ConstrainGroundDescent(from, to, supportNormal, footRadius, cosMaxSlope, out move) ?? false;
     }
     internal void ValidatePlacement(Vector3 feet)
     {

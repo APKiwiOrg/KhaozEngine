@@ -114,6 +114,7 @@ namespace KhaozEngine.Tests.Render3D
 
             var flat = MeshOps.RecomputeFlatNormals(box);
 
+            Assert.NotEmpty(flat.Vertices);
             Assert.All(flat.Vertices, v => Assert.NotEqual(stale, v.Normal));
             Assert.All(box.Vertices, v => Assert.Equal(stale, v.Normal));
         }

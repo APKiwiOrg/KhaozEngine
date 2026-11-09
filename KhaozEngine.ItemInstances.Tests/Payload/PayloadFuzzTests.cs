@@ -108,7 +108,7 @@ public class PayloadFuzzTests
             for (int index = 0; index < MutantsPerGolden; index++)
             {
                 total++;
-                if (ItemInstancePayload.Validate(registry, mutator.Next()) is null)
+                if (Answer(mutator.Next(), registry, kind, golden, index) is null)
                     accepted++;
             }
         }

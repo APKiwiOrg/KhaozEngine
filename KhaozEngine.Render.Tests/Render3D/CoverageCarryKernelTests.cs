@@ -30,7 +30,7 @@ public sealed class CoverageCarryKernelTests
         string msl = SpirvCrossCompile.ComputeToMsl(module, kernel.Name, CoverageCarryShaders.Options).ComputeSource;
         Assert.InRange(Encoding.UTF8.GetByteCount(hlsl), 1, 100_000);
         Assert.InRange(Encoding.UTF8.GetByteCount(msl), 1, 100_000);
-        ValidateCallTree(module, stage != 4);
+        ValidateCallTree(module, stage == 1);
         CoverageSpirvAccessAudit.Validate(module, kernel.Name, constantPrivateArrays: true);
         Assert.DoesNotContain("CovPreviousWords", kernel.Source);
         Assert.DoesNotContain("covPredicateProduct", kernel.Source);

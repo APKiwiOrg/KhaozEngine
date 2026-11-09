@@ -5,10 +5,21 @@ internal static class CoverageCarrySkinShader
 {
     internal static string Source => CoverageCarryUnitShader.Source + "\n" + """
         float covSkinLinear(vec3 p, float a, float b, float c) {
-            return covAdd(covAdd(covMul(p.x,a),covMul(p.y,b)),covMul(p.z,c));
+            return (p.x*a+p.y*b)+p.z*c;
         }
         vec3 covSkin3(uint start) {
             return vec3(covRead(CovStaticWords[start]),covRead(CovStaticWords[start+1u]),covRead(CovStaticWords[start+2u]));
+        }
+        vec3 covSkinDirection3(uint start) {
+            return vec3(uintBitsToFloat(CovStaticWords[start]),uintBitsToFloat(CovStaticWords[start+1u]),uintBitsToFloat(CovStaticWords[start+2u]));
+        }
+        bool covSkinUnit(vec3 value, vec3 fallback, out vec3 unit) {
+            float squared = dot(value,value);
+            unit = fallback;
+            if (!covDirectionFinite3(value) || !covDirectionFinite(squared)) return false;
+            float magnitude = sqrt(squared);
+            if (magnitude > 1e-8) unit = value/magnitude;
+            return covDirectionFinite3(unit);
         }
         float covBlend(uint palette, uint indices, vec4 w, uint field) {
             float a = covRead(CovFrameWords[palette+CovStaticWords[indices]*16u+field]);
@@ -25,8 +36,8 @@ internal static class CoverageCarrySkinShader
             vec4 weights = vec4(covRead(CovStaticWords[s+16u]),covRead(CovStaticWords[s+17u]),
                 covRead(CovStaticWords[s+18u]),covRead(CovStaticWords[s+19u]));
             float total = covAdd(covAdd(covAdd(weights.x,weights.y),weights.z),weights.w);
-            vec3 p = covSkin3(s), originalNormal = covSkin3(s+3u), originalTangent = covSkin3(s+12u);
-            bool hasTangent = covGreater(covDot3(originalTangent,originalTangent),1e-12);
+            vec3 p = covSkin3(s), originalNormal = covSkinDirection3(s+3u), originalTangent = covSkinDirection3(s+12u);
+            bool hasTangent = dot(originalTangent,originalTangent) > 1e-12;
             // Dynamic buffer words are invocation-owned. Vector and matrix components remain constant-indexed.
             [[dont_unroll]] for (uint axis = 0u; axis < 3u; axis++) {
                 float m0 = axis == 0u ? 1.0 : 0.0, m1 = axis == 1u ? 1.0 : 0.0, m2 = axis == 2u ? 1.0 : 0.0, m3 = 0.0;
@@ -38,31 +49,20 @@ internal static class CoverageCarrySkinShader
                 CovWorkWords[target+3u+axis] = floatBitsToUint(covSkinLinear(originalNormal,m0,m1,m2));
                 CovWorkWords[target+12u+axis] = floatBitsToUint(covSkinLinear(originalTangent,m0,m1,m2));
             }
-            bool absentTangent = covEqual3(originalTangent,vec3(0.0));
-            vec3 n = covWork3(target+3u), t = absentTangent ? originalTangent : vec3(0.0), transformedTangent = covWork3(target+12u);
-            CovUnit q; covUnitBegin(n,originalNormal,1e-8,q);
-            CovExactResult result = covExactResultZero();
-            int direction = 0;
-            [[dont_unroll]] while (direction < 2) {
-                CovExactJob job;
-                bool request = covUnitStep(q,result,job);
-                if (q.phase == CovUnitDone) {
-                    if (direction == 0) {
-                        n = q.value; direction = 1;
-                        if (!hasTangent) break;
-                        covUnitBegin(transformedTangent,originalTangent,1e-8,q);
-                    } else { t = q.value; direction = 2; }
-                }
-                if (request) result = covExactWorker(job);
+            bool absentTangent = covDirectionZero(originalTangent);
+            vec3 n, t = absentTangent ? originalTangent : vec3(0.0);
+            bool valid = covSkinUnit(covDirectionRead3(target+3u),originalNormal,n);
+            if (hasTangent) {
+                bool tangentValid = covSkinUnit(covDirectionRead3(target+12u),originalTangent,t);
+                valid = valid && tangentValid;
             }
-            covWrite3(target+3u,n); covWrite3(target+12u,t);
+            covDirectionWrite3(target+3u,n); covDirectionWrite3(target+12u,t);
             [[dont_unroll]] for (uint field = 6u; field < 12u; field++) CovWorkWords[target+field] = floatBitsToUint(covRead(CovStaticWords[s+field]));
             CovWorkWords[target+15u] = hasTangent || absentTangent ? floatBitsToUint(covRead(CovStaticWords[s+15u])) : 0u;
-            bool valid = true;
             // WorkHeader aliases source and uncovered source rows. Validate without copying each word onto itself.
             [[dont_unroll]] for (uint field = 0u; field < 16u; field++) {
                 uint value = CovWorkWords[target+field];
-                if (!covFinite(covRead(value))) valid = false;
+                if (!covDirectionFinite(uintBitsToFloat(value))) valid = false;
             }
             covEvent(w,i,valid ? 0u : 4u);
         }

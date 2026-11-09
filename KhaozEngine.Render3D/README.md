@@ -1908,7 +1908,17 @@ and consumer state schema. Configuration covers sorted authored part and command
 attachment and companion identities, command values, static local/socket/body-alignment transforms
 and host contract bindings. Actor incarnation IDs, frame IDs, current palettes and world/model poses
 are excluded, allowing actors to share a table. Refinement covers source ordinals and recipes.
-Arithmetic identifies the carry algorithm. Digest producers hash numeric inputs explicitly in
+Arithmetic identifies the carry algorithm. Contract version 2 retains exact binary32 position
+skinning, refinement, recession and alias sharing. GPU normal/tangent XYZ use native arithmetic
+without software flush or emulated division/square root, within `2e-5` absolute error per component
+of the exact CPU reference. Other record words, handedness, tangent absence and gather order stay exact.
+The direction magnitude and cancellation rules are documented in the
+[equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md#assets-and-shared-identity).
+Version-one table identities refuse binding and require rebuilding. None have shipped.
+The offline constructor and validator remain exact and read no GPU direction words. Whole-skin
+classification continues to compare complete CPU records, including exact CPU directions.
+Native correctness and any GPU saving require new approved acceptance runs.
+Digest producers hash numeric inputs explicitly in
 little-endian order, never as native-layout struct bytes. This asset codec stores digests rather
 than deriving or verifying them against source content.
 
@@ -1937,7 +1947,7 @@ Forward those descriptors with the captured palette and transforms. Altered or s
 [attachment coverage adapter](../KhaozEngine.Attachments.Render3D/README.md#table-coverage-preparation)
 provides complete equipment snapshots and the explicit uncovered-current-pose fallback contract.
 
-The internal `CoverageCarryBatch` records five precise compute dispatches: current-pose skinning,
+The internal `CoverageCarryBatch` records five compute dispatches with the precise position policy: current-pose skinning,
 frozen refinement and scalar transport, face basis construction, ordered attribute gathering,
 then final publication with tight bounds. Uncovered records are complete before refinement reports a
 failure. Gathering writes private complete candidates and actor error flags. The final dispatch reads the

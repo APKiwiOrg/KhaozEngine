@@ -23,6 +23,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   slots and explicitly presents the uncovered current pose on refusal. Participant-capacity refusal
   preserves the last observed history, and graphics refusal keeps ordinary output rebuilds usable.
   Native correctness, Vulkan cross-frame synchronization and aggregate cost remain unproven pending separate acceptance units.
+- Equipment carry arithmetic contract 2 keeps every position word exact and uses native GPU math for
+  normal/tangent directions within `2e-5` per component of the exact CPU reference. Version-one tables
+  must be rebuilt. Offline construction and verification stay exact. Failure publication, handedness,
+  tangent absence, history and the five stages are unchanged. Any saving is unproven until the next
+  approved T4 run, with the existing 15 percent aggregate overhead limit retained.
 - `GpuShaderCompileOptions` adds an opt-in precise compute/vertex math policy without changing default
   compilation or cache identities. Coverage requests that policy. A compiled public consumer example
   and the living equipment coverage guide document complete descriptors, fallback and resource lifetime.

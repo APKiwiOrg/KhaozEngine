@@ -6,20 +6,29 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class CoverageCarryFailureTests
 {
-    [Fact]
-    public void Cancelling_generated_direction_publishes_complete_uncovered_records_from_poisoned_storage()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Cancelling_generated_direction_publishes_complete_uncovered_records_from_poisoned_storage(bool tangent)
     {
         var fixture = new CoverageCarryFailureFixture();
-        fixture.CancellingTransport();
+        fixture.CancellingTransport(tangent: tangent);
         fixture.Publish();
         fixture.AssertUncovered();
     }
 
-    [Fact]
-    public void Late_gather_failure_selects_uncovered_records_for_the_entire_actor()
+    [Theory]
+    [InlineData(0u, false)]
+    [InlineData(0x7fc00000u, false)]
+    [InlineData(0x7f800000u, false)]
+    [InlineData(0u, true)]
+    [InlineData(0x7fc00000u, true)]
+    [InlineData(0x7f800000u, true)]
+    public void Late_gather_failure_selects_uncovered_records_for_the_entire_actor(uint word, bool tangent)
     {
         var fixture = new CoverageCarryFailureFixture();
-        fixture.FailingGather(fail: true);
+        fixture.FailingGather(fail: true, tangent: tangent);
+        fixture.Work[CoverageCarryFailureFixture.Basis + 46 + (tangent ? 22 : 27)] = word;
         fixture.Publish();
         fixture.AssertUncovered();
     }

@@ -37,6 +37,7 @@ internal sealed class CoverageSpirvExecutor
     readonly Dictionary<uint, Function> functions = [];
     readonly Dictionary<uint, (uint Type, uint Storage, uint Initial)> variables = [];
     readonly Dictionary<uint, uint> bindings = [], builtins = [];
+    readonly Dictionary<uint, string> extendedSets = [];
     readonly Dictionary<uint, object> globals = [];
     readonly Dictionary<uint, int> sizes = [];
     readonly IReadOnlyList<uint[]> buffers;
@@ -64,6 +65,7 @@ internal sealed class CoverageSpirvExecutor
             uint[] op = words.AsSpan(at, length).ToArray();
             uint code = op[0] & 65535;
             if (code == 5) names[op[1]] = Encoding.UTF8.GetString(MemoryMarshal.AsBytes(op.AsSpan(2))).TrimEnd('\0').Split('(')[0];
+            if (code == 11) extendedSets.Add(op[1], Encoding.UTF8.GetString(MemoryMarshal.AsBytes(op.AsSpan(2))).TrimEnd('\0'));
             if (code == 15) entry = op[2];
             if (code is >= 19 and <= 33) types.Add(op[1], new(code, op[2..]));
             else if (op.Length > 2 && types.ContainsKey(op[1])) valueTypes[op[2]] = op[1];
@@ -273,7 +275,15 @@ internal sealed class CoverageSpirvExecutor
                 case 139: Set(Binary((a, b) => SignedRemainder(a, b, modulo: true))); break;
                 case 129: Set(Binary((a, b) => Bits(Float(a) + Float(b)))); break;
                 case 131: Set(Binary((a, b) => Bits(Float(a) - Float(b)))); break;
-                case 133: Set(Binary((a, b) => Bits(Float(a) * Float(b)))); break;
+                case 133:
+                case 142: Set(Binary((a, b) => Bits(Float(a) * Float(b)))); break;
+                case 148:
+                    var dotA = Words(frame, op[3]); var dotB = Words(frame, op[4]);
+                    if (dotA.Length != dotB.Length || dotA.Length is < 2 or > 4)
+                        throw new NotSupportedException("Coverage test dot product shape");
+                    float dot = Float(dotA[0]) * Float(dotB[0]);
+                    for (int component = 1; component < dotA.Length; component++) dot += Float(dotA[component]) * Float(dotB[component]);
+                    Set(new uint[] { Bits(dot) }); break;
                 case 136: Set(Binary((a, b) => Bits(Float(a) / Float(b)))); break;
                 case 164: case 170: Set(Binary((a, b) => a == b ? 1u : 0)); break;
                 case 165: case 171: Set(Binary((a, b) => a != b ? 1u : 0)); break;
@@ -329,8 +339,20 @@ internal sealed class CoverageSpirvExecutor
                 case 253: yield break;
                 case 254: frame.Result = Copy(Value(frame, op[1])); yield break;
                 case 12:
+                    if (extendedSets.GetValueOrDefault(op[3]) != "GLSL.std.450")
+                        throw new NotSupportedException("Coverage test extended instruction set");
                     uint[] left = Words(frame, op[5]);
                     uint[] right = op.Length > 6 ? Words(frame, op[6]) : left;
+                    if (op[4] == 68)
+                    {
+                        if (left.Length != 3 || right.Length != 3 || Size(op[1]) != 3)
+                            throw new NotSupportedException("Coverage test cross product shape");
+                        Set(new uint[] {
+                            Bits(Float(left[1])*Float(right[2])-Float(left[2])*Float(right[1])),
+                            Bits(Float(left[2])*Float(right[0])-Float(left[0])*Float(right[2])),
+                            Bits(Float(left[0])*Float(right[1])-Float(left[1])*Float(right[0])) });
+                        break;
+                    }
                     Set(Enumerable.Range(0, Size(op[1])).Select(i =>
                     {
                         uint a = left[i % left.Length], b = right[i % right.Length];

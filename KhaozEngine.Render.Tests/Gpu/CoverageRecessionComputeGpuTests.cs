@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using KhaozEngine.Tests.Render3D;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -93,6 +95,10 @@ public sealed class CoverageRecessionComputeGpuTests(ITestOutputHelper output)
     {
         Assert.True(fixture.Topology.VertexCount > 0);
         Assert.Equal(checked((int)currentBase + fixture.Topology.VertexCount * 16), all.Length);
+        var reference = new ModelVertex[fixture.Topology.VertexCount];
+        Assert.True(CoverageCarryReference.TryCarry(fixture.Topology, [Matrix4x4.CreateTranslation(translation)], fixture.Table, entry,
+            entry < 0 ? [] : [new(0, direction, transition)], new(fixture.Topology, 1), reference, out var failure), failure.ToString());
+        CoverageDirectionAssertions.EqualRecords(MemoryMarshal.Cast<ModelVertex, uint>(reference.AsSpan()), all.AsSpan((int)currentBase));
         int changed = 0, protectedCount = 0;
         int directionWitnesses = 0;
         var ramp = CoverageRecessionBodySizeFixture.LeftRampDirections(entry, direction, transition);
@@ -115,10 +121,8 @@ public sealed class CoverageRecessionComputeGpuTests(ITestOutputHelper output)
             if (fixture.Width >= 4 && fixture.Height >= 4 && fixture.Level >= 2 && rest == fixture.LeftRampWitness)
             {
                 directionWitnesses++;
-                Assert.True(Vector3.Distance(ramp.Normal, normal) < 2e-5f,
-                    $"Left ramp normal at vertex {vertex}, expected {ramp.Normal}, actual {normal}");
-                Assert.True(Vector3.Distance(ramp.Tangent, tangent) < 2e-5f,
-                    $"Left ramp tangent at vertex {vertex}, expected {ramp.Tangent}, actual {tangent}");
+                CoverageDirectionAssertions.Equal(ramp.Normal, normal);
+                CoverageDirectionAssertions.Equal(ramp.Tangent, tangent);
             }
             Assert.InRange(MathF.Abs(rest.X + fixture.Width / 32f - F(10)), 0, 2e-6f);
             Assert.InRange(MathF.Abs(rest.Y + fixture.Height / 32f - F(11)), 0, 2e-6f);
@@ -129,7 +133,7 @@ public sealed class CoverageRecessionComputeGpuTests(ITestOutputHelper output)
                 // covers generated thirds, while source records and dyadic refinement retain exact positions.
                 if (fixture.Topology.Vertices[vertex].SourceVertex >= 0 || fixture.Level is 1 or 2 or 4)
                     Assert.Equal(rest + translation, actual);
-                Assert.Equal(Vector3.UnitZ, normal); Assert.Equal(Vector3.UnitX, tangent);
+                CoverageDirectionAssertions.Equal(Vector3.UnitZ, normal); CoverageDirectionAssertions.Equal(Vector3.UnitX, tangent);
             }
             if (Vector3.Distance(actual, rest + translation) > 2e-6f) changed++;
             float F(int word) => BitConverter.UInt32BitsToSingle(all[first + word]);

@@ -91,7 +91,12 @@ Configuration file paths, member order and whitespace do not affect the digest. 
 ordinals, refined records, integer recipes, indices and triangle ownership in little-endian order.
 Arithmetic identity hashes the embedded versioned carry-contract descriptor used by both the tool and
 runtime, without reading assembly files or locations. Independent frozen vectors guard its output words
-and refusal boundaries. Changes to scalar rounding, skin composition, refinement, representatives,
+and refusal boundaries. Contract version 2 keeps positions exact while GPU normal/tangent XYZ use
+native arithmetic within `2e-5` absolute error per component of the exact CPU reference. Version-one
+tables refuse binding and must be rebuilt. The tool keeps exact CPU direction arithmetic. Neither its
+sample nor dense gates read GPU direction words. Whole-skin classification still compares every byte
+of exact CPU records, while geometry and depth use positions.
+Changes to scalar rounding, skin composition, refinement, representatives,
 transition weighting, recession direction or gathers must advance the contract version and descriptor.
 Unrelated binary changes preserve compatibility. Exact `toolCodeSha256` and `render3DCodeSha256` values
 remain producer provenance in evidence only. State schema identity is supplied by the consumer.

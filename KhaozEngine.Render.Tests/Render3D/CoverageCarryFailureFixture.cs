@@ -49,13 +49,15 @@ internal sealed class CoverageCarryFailureFixture
         void Row(int index, int offset, int count) { Work[index] = (uint)offset; Work[index + 1] = (uint)count; }
     }
 
-    internal void CancellingTransport(bool execute = true)
+    internal void CancellingTransport(bool execute = true, bool tangent = false)
     {
         Static[75] = uint.MaxValue;
         uint[] a = Record(Vector3.Zero, Vector3.UnitX, new(.25f, .5f, .75f, 1), Vector2.Zero, new(0, 1, 0, 1));
-        uint[] b = Record(new(2, 0, 0), -Vector3.UnitX, new(.75f, .5f, .25f, 1), Vector2.UnitX, new(0, 1, 0, 1));
+        uint[] b = Record(new(2, 0, 0), tangent ? Vector3.UnitX : -Vector3.UnitX,
+            new(.75f, .5f, .25f, 1), Vector2.UnitX, new(0, tangent ? -1 : 1, 0, 1));
         a.CopyTo(Work, Source); b.CopyTo(Work, Source + 16); a.CopyTo(Work, Source + 32);
-        Expected = [.. a, .. Record(new(1, 0, 0), Vector3.Zero, new(.5f, .5f, .5f, 1), new(.5f, 0), new(0, 1, 0, 1))];
+        Expected = [.. a, .. Record(new(1, 0, 0), tangent ? Vector3.UnitX : Vector3.Zero,
+            new(.5f, .5f, .5f, 1), new(.5f, 0), tangent ? Vector4.Zero : new(0, 1, 0, 1))];
         if (execute) Run("CoverageCarryTransport");
     }
 
@@ -76,10 +78,11 @@ internal sealed class CoverageCarryFailureFixture
         Run("CoverageCarryTransport");
     }
 
-    internal void FailingGather(bool fail)
+    internal void FailingGather(bool fail, bool tangent = false)
     {
-        uint[] a = Record(Vector3.Zero, Vector3.UnitX, new(.25f, .5f, .75f, 1), Vector2.Zero, Vector4.Zero);
-        uint[] b = Record(new(2, 0, 0), Vector3.UnitX, new(.75f, .5f, .25f, 1), Vector2.UnitX, Vector4.Zero);
+        uint[] a = Record(Vector3.Zero, Vector3.UnitX, new(.25f, .5f, .75f, 1), Vector2.Zero, tangent ? new(0, 1, 0, -1) : Vector4.Zero);
+        uint[] b = Record(new(2, 0, 0), Vector3.UnitX, new(.75f, .5f, .25f, 1), Vector2.UnitX,
+            tangent ? new(0, 1, 0, -1) : Vector4.Zero);
         a.CopyTo(Work, Before); b.CopyTo(Work, Before + 16); Expected = [.. a, .. b];
         Work[After] = Bits(0); Work[After + 1] = Bits(0); Work[After + 2] = Bits(-.25f);
         Work[After + 16] = Bits(2); Work[After + 17] = Bits(0); Work[After + 18] = Bits(-.25f);
@@ -89,7 +92,7 @@ internal sealed class CoverageCarryFailureFixture
         {
             int start = Basis + face * 46;
             for (int row = 0; row < 12; row++)
-                if (!fail || face == 0 || row < 9) Work[start + row * 3 + row % 3] = Bits(1);
+                if (!fail || face == 0 || (tangent ? row is not (6 or 7 or 8) : row < 9)) Work[start + row * 3 + row % 3] = Bits(1);
             Work[start + 45] = 2;
         }
     }

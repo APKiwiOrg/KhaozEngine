@@ -68,6 +68,6 @@ public sealed class CoverageCarryInstructionProfileTests(ITestOutputHelper outpu
         var expected = new ModelVertex[topology.VertexCount];
         Assert.True(CoverageCarryReference.TryCarry(topology, [Matrix4x4.Identity], fixture.Table, entry,
             entry < 0 ? [] : [new(0, Vector3.UnitZ, 1)], new(topology, 1), expected, out var failure), failure.ToString());
-        Assert.Equal(MemoryMarshal.Cast<ModelVertex, uint>(expected.AsSpan()).ToArray(), current);
+        CoverageDirectionAssertions.EqualRecords(MemoryMarshal.Cast<ModelVertex, uint>(expected.AsSpan()), current);
     }
 }

@@ -10,11 +10,13 @@ internal static class CoverageArithmeticContract
 {
     // Advance the version and descriptor before changing any retained output word, refusal boundary,
     // composition, refinement recipe, representative rule, transport or gather order. Add independent
-    // frozen vectors for the new version. Never refresh version-one vectors to bless changed arithmetic.
-    internal const int Version = 1;
+    // frozen vectors for the new version. Keep the version-one position vectors exact when only direction arithmetic changes.
+    internal const int Version = 2;
     internal const string Descriptor =
-        "KhaozEngine.CoverageCarry/1\n" +
-        "scalar=binary32-rne,separate-operations,no-contraction,flush-operands-and-results-inclusive-2^-126,signed-zero\n" +
+        "KhaozEngine.CoverageCarry/2\n" +
+        "position-scalar=binary32-rne,separate-operations,no-contraction,flush-operands-and-results-inclusive-2^-126,signed-zero\n" +
+        "directions=native-binary32,no-software-flush,sqrt-and-division-native,absolute-component-error<=2e-5,cpu-reference-exact\n" +
+        "direction-unit=finite,length2>2^-126,skin-length>1e-8,generated-survival2^-50\n" +
         "palette=binary32-no-flush,inverse-bind-times-joint,left-associated-four-products\n" +
         "skin=weighted-four-bones,total<1e-8-identity,normal-linear-unit>1e-8,tangent-length2>1e-12\n" +
         "refinement=denominator12,ordered-source-edges,integer-weight-left-associated-sums,source-before-interpolation,alias-value-equality,direction-survival2^-50\n" +

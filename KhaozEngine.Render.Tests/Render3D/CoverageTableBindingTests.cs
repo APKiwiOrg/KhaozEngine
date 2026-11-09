@@ -72,6 +72,7 @@ public sealed class CoverageTableBindingTests
     [InlineData("map")]
     [InlineData("refinement")]
     [InlineData("arithmetic")]
+    [InlineData("version-one")]
     public void Stale_table_source_identity_refuses(string field)
     {
         using var f = new CoverageBindingFixture();
@@ -81,6 +82,7 @@ public sealed class CoverageTableBindingTests
             "host" => f.Table.Identity with { HostSha256 = different },
             "map" => f.Table.Identity with { HostMapSha256 = different },
             "refinement" => f.Table.Identity with { RefinementSha256 = different },
+            "version-one" => f.Table.Identity with { ArithmeticSha256 = CoverageArithmeticContractTests.V1Digest },
             _ => f.Table.Identity with { ArithmeticSha256 = different },
         };
         var error = Assert.Throws<CoverageTableDataException>(() => f.Scene.CreateHostCoverage(f.Skeleton, f.Hosts, f.WithIdentity(identity)));

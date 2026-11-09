@@ -8,17 +8,19 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
-/// <summary>Independent version-one words authored from dyadic fixtures and the 3-4-5 triangle.
+/// <summary>Independent position words retained from v1 and v2 direction bounds from dyadic fixtures and the 3-4-5 triangle.
 /// Never refresh these from carry output. Incompatible arithmetic needs a new contract version and vector set.</summary>
 public sealed class CoverageArithmeticContractTests
 {
     internal const string V1Digest = "e7a4f4b8e168f7524ab3cdc9c0e2b67e71e477a80e6218e726c2ba593444a9d6";
 
+    internal const string V2Digest = "a86f2217f103956595b14ed5500130d2c3cd0534f951a52ef5e72653801794d5";
+
     [Fact]
     public void Arithmetic_identity_is_the_frozen_versioned_contract()
     {
-        Assert.Equal(1, CoverageArithmeticContract.Version);
-        Assert.Equal(V1Digest, CoverageTableBinding.ArithmeticSha256);
+        Assert.Equal(2, CoverageArithmeticContract.Version);
+        Assert.Equal(V2Digest, CoverageTableBinding.ArithmeticSha256);
     }
 
     [Fact]
@@ -34,7 +36,7 @@ public sealed class CoverageArithmeticContractTests
     }
 
     [Fact]
-    public void Version_one_noncommuting_palette_composition_and_skin_words_are_frozen()
+    public void Version_two_noncommuting_palette_composition_and_skin_words_are_frozen()
     {
         var bind = Matrix4x4.CreateScale(2, 3, 4) * Matrix4x4.CreateTranslation(-1, 2, -3);
         var joint = Matrix4x4.CreateScale(5, 7, 11) * Matrix4x4.CreateTranslation(13, 17, 19);
@@ -58,7 +60,7 @@ public sealed class CoverageArithmeticContractTests
         Assert.Equal(CoverageFailureCode.None, failure);
         // Weighted scale (13/4,6,47/4), translation (2,31/4,-7/2).
         // First source (-1/8,-1/8,0) becomes (51/32,7,-7/2). Axis directions and attributes stay exact.
-        Assert.Equal(new uint[] { 0x3fcc0000, 0x40e00000, 0xc0600000, 0, 0, 0x3f800000,
+        CoverageDirectionAssertions.EqualRecords(new uint[] { 0x3fcc0000, 0x40e00000, 0xc0600000, 0, 0, 0x3f800000,
             0x3f400000, 0x3f000000, 0x3e800000, 0x3f800000, 0, 0,
             0x3f800000, 0, 0, 0xbf800000 }, Words(posed[0]));
     }
@@ -66,7 +68,7 @@ public sealed class CoverageArithmeticContractTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Version_one_refinement_representatives_transition_direction_and_gathers_are_frozen(bool move)
+    public void Version_two_refinement_representatives_transition_direction_and_gathers_are_frozen(bool move)
     {
         var fixture = new CoverageRecessionBodySizeFixture(4, 4);
         var topology = fixture.Topology;
@@ -85,14 +87,14 @@ public sealed class CoverageArithmeticContractTests
         // Midpoint (-3/32,-1/32) has tent 1/32, scalar 1/128, applied 1/256 and Z recession 3/128.
         // The left ramp derivative is (1,0,-3/4). Ideal normal/tangent are (3/5,0,4/5)/(4/5,0,-3/5).
         // Six rounded normal corner contributions gather to X=0x3f199999. The three tangent corners retain -0x3f19999a.
-        Assert.Equal(new uint[] { 0xbdc00000, 0xbd000000, move ? 0xbcc00000u : 0,
+        CoverageDirectionAssertions.EqualRecords(new uint[] { 0xbdc00000, 0xbd000000, move ? 0xbcc00000u : 0,
             move ? 0x3f199999u : 0, 0, move ? 0x3f4ccccdu : 0x3f800000,
             0x3f400000, 0x3f000000, 0x3e800000, 0x3f800000, 0x3d000000, 0x3dc00000,
             move ? 0x3f4ccccdu : 0x3f800000, 0, move ? 0xbf19999au : 0, 0xbf800000 }, Words(output[witness]));
     }
 
     [Fact]
-    public void Version_one_interior_refinement_recipe_and_attribute_words_are_frozen()
+    public void Version_two_interior_refinement_recipe_and_attribute_words_are_frozen()
     {
         var fixture = new CoverageRecessionBodySizeFixture(4, 4, level: 3);
         var topology = fixture.Topology;
@@ -105,7 +107,7 @@ public sealed class CoverageArithmeticContractTests
             [], new(topology, 1), output, out _));
         // Centroid of (-1/8,-1/16),(-1/16,-1/16),(-1/16,0) is (-1/12,-1/24).
         // UV is (1/24,1/12). Each literal is the independently rounded rational, not captured carry output.
-        Assert.Equal(new uint[] { 0xbdaaaaab, 0xbd2aaaab, 0, 0, 0, 0x3f800000,
+        CoverageDirectionAssertions.EqualRecords(new uint[] { 0xbdaaaaab, 0xbd2aaaab, 0, 0, 0, 0x3f800000,
             0x3f400000, 0x3f000000, 0x3e800000, 0x3f800000, 0x3d2aaaab, 0x3daaaaab,
             0x3f800000, 0, 0, 0xbf800000 }, Words(output[witness]));
     }
@@ -113,7 +115,7 @@ public sealed class CoverageArithmeticContractTests
     [Theory]
     [InlineData(false, CoverageFailureCode.FoldedPatch)]
     [InlineData(true, CoverageFailureCode.UnsupportedTransform)]
-    public void Version_one_refusals_never_publish_partial_output(bool nonfinite, CoverageFailureCode expected)
+    public void Version_two_refusals_never_publish_partial_output(bool nonfinite, CoverageFailureCode expected)
     {
         var fixture = new CoverageRecessionBodySizeFixture(4, 4);
         var matrix = Matrix4x4.Identity;

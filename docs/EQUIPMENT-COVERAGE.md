@@ -48,6 +48,28 @@ transition weighting, current recession direction and normal/tangent gathers. An
 change requires advancing the contract version and its descriptor. Exact tool and Render3D assembly
 hashes remain in the evidence manifest as producer provenance only.
 
+Carry arithmetic contract version 2 keeps position skinning, refinement interpolation, recession and
+alias position sharing exact, including every published position word. Normal and tangent XYZ use
+native GPU binary32 operations, native square root and division, with no software flush. The contract
+allows at most `2e-5` absolute error per component against the exact CPU reference. For unit directions
+this is about 0.002 degrees at small angles, enough for native rounding while still rejecting wrong
+normal/tangent formulas. Handedness, authored tangent absence, corner order and alias rules stay exact.
+Version-one tables refuse binding by arithmetic identity and must be rebuilt. None have shipped.
+
+Strict direction normalization rejects non-finite inputs/results and squared magnitudes at or below
+`2^-126`. This keeps the exact CPU dot product's effective zero-length floor closely, without applying
+software flush to directions. Native rounding and the CPU's per-product flush can differ near this
+floor. Skin retains its `1e-8` length fallback and `1e-12` tangent squared-presence threshold. Generated
+directions retain the relative `2^-50` squared surviving-fraction cancellation check and all-zero absence.
+A cancelled or non-finite direction still reports failure before actor-wide atomic publication.
+
+The offline constructor, exact CPU carry and validator retain their exact direction arithmetic.
+No offline gate reads GPU normal or tangent words. Geometry certification and depth use positions.
+Whole-skin changed-record classification still compares complete exact CPU records, including CPU
+directions, so its conservative attributes-only gate is unchanged. Native direction error cannot change
+an offline acceptance result. Native portability and any saving remain unproven until approved device
+correctness units and the next approved T4 cost run.
+
 The consumer owns phase bins, blend bins, clip semantics and their schema digest. The engine only looks
 up the unsigned key, including key zero. It does not sample animation, infer bins from geometry or pick
 a nearby row. An unknown key and an explicit entry -1 are both `TableHole`.
@@ -211,8 +233,8 @@ conservatively because they have separate full and visible mask passes.
 
 Skin's source and uncovered source rows share storage, so it validates the completed records without a
 self-copy. A raw table hole still records all five stages, while Gather skips candidate stores because
-Publish selects the complete uncovered Before row. These changes preserve every arithmetic operation
-that contributes to the published surface. They establish no measured GPU saving.
+Publish selects the complete uncovered Before row. The exact position graph and all five stages remain. Native direction arithmetic does not establish
+a measured GPU saving.
 
 Zero warm managed allocation requires cold reservations for the fixed actor population, topology,
 equipment, descriptors, renderer bindings and output slots, plus an unchanged warm configuration.
@@ -230,7 +252,8 @@ stages on the synthetic body-size fixture and reports instruction counts by stag
 include labels and control flow, count vector instructions once, and attribute exact-worker descendants
 without double counting. They are a relative guide, not GPU timings. The bounded serial executor does
 not model occupancy, divergence, memory bandwidth or device arithmetic. The published surface is also
-compared word for word with the CPU reference. Default CI excludes this Diagnostic profile.
+compared with the exact CPU reference: positions and other non-direction words match bit for bit,
+normal/tangent XYZ use the same `2e-5` component tolerance. Default CI excludes this Diagnostic profile.
 
 G1, G2 and G3 are separately approved Metal, Direct3D 11 WARP and Vulkan correctness units. G3 also
 requires Vulkan synchronization validation. The cross-frame read of the slot written by the previous

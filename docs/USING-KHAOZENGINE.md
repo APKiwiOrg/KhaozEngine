@@ -10081,7 +10081,7 @@ option does not enter bake identity or change canonical bytes. See the
 
 ### Range steering, NPC stepping and client path commands
 
-Contact arrival searches can use certified flat, unchanged support even when the context has a `clampXz`
+Contact arrival searches can use certified flat or supported sloped analytic ground even when the context has a `clampXz`
 delegate. Contact and its exact arrival trials do not read that Legacy-only clamp. The certificate still
 requires the whole swept region to lie inside `MovementBoundary`, otherwise the search uses the exact solver.
 See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-steering-and-movement-drivers).
@@ -10215,11 +10215,15 @@ var duckFollower = new MoveToRange(duckProfile, null, new RouteApproachOptions
 ```
 
 `MoveToRange` copies its follower controls and caps `AcceptRadius` to `0.00001f`, including a supplied zero.
-The near-ring check retains up to 32 float interval candidates plus endpoint and final checks. Certified flat,
-unchanged analytic support evaluates exact command-dependent states under one read interval without full
-movement previews. Water fields additionally opt into `IMovementDryTracePointProof` and certify successful dry
+The near-ring check retains up to 32 float interval candidates plus endpoint and final checks. Certified flat
+or supported sloped analytic ground evaluates exact command-dependent states under one read interval without full
+movement previews. Slopes retain the shared contact kernel and the drawn producer's exact float expressions
+over captured triangles, with one selected-static evidence capture shared by all trials. Water fields additionally opt into `IMovementDryTracePointProof` and certify successful dry
 point operations over the enclosure. A known dry sweep alone does not authorize skipping point refusals.
-Wet, obstructed, nonuniform, unsupported and refused regions keep the exact live solver and pacing reads.
+Those point proofs do not authorize skipping other trace operations. Supplied fields keep the ordinary
+segment traces for flat and sloped trials, including trace-specific refusals and precision checks. Only
+intrinsic water-field absence retains the flat algebra. This fixes the same gap in the released 23.4.0 flat path.
+Wet, obstructed, steep, unsupported and refused regions keep the exact live solver and pacing reads.
 The certificate and both drivers preserve command bits and admission decisions. See the
 [range approach contract](../KhaozEngine.Movement/README.md). The check does not step the world or publish an entity. The travel cap includes the requested pace,
 the body's `SpeedScale` and medium boosts above one. A slowing medium only shortens core travel. A blocked

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
@@ -22,6 +23,8 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
     [InlineData("unproven")]
     [InlineData("bank")]
     [InlineData("slope")]
+    [InlineData("certified-slope")]
+    [InlineData("certified-slope-rebase")]
     [InlineData("seam")]
     [InlineData("wall")]
     [InlineData("tangent")]
@@ -70,27 +73,38 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
             };
             float range = sample % 5 == 0 ? 0 : random.NextSingle() * 0.1f;
             StepAdmission admits = sample % 8 == 0 ? RejectMiddle : ArrivalRangeCrossingTests.Admit;
+            var expectedTrials = new List<MoveState>();
+            var actualTrials = new List<MoveState>();
+            bool ObserveActual(in MoveState from, in MoveState to, in MoveTuning shape)
+            {
+                actualTrials.Add(to);
+                return admits(from, to, shape);
+            }
             Vector2 expected = ArrivalReference.Stop(body, tuning, target, range, run, dt, scene.Context,
-                command, predicted, admits, out int count);
+                command, predicted, admits, out int count, expectedTrials.Add);
             referenceSteps += count;
             Vector2 actual;
             using (var work = new ArrivalPreviewDiagnostics())
             {
                 actual = RangeApproachCore.StopAtRange(body, tuning, target, range, run, dt, scene.Context,
-                    command, predicted, admits);
+                    command, predicted, ObserveActual);
                 fullSteps += work.FullSteps;
                 certified += work.CertifiedTrials;
             }
             Same(expected, actual);
+            Assert.Equal(count, expectedTrials.Count);
+            Assert.Equal(count, actualTrials.Count);
+            for (int trialIndex = 0; trialIndex < count; trialIndex++) Same(expectedTrials[trialIndex], actualTrials[trialIndex]);
             Same(scene.Context.Step(body, expected, run, dt, tuning), scene.Context.Step(body, actual, run, dt, tuning));
             MoveState trial = scene.Context.Step(body, command * 0.5f, run, dt, tuning);
-            using var preview = scene.Context.OpenFlatRangePreview(body, predicted, tuning, run, dt);
+            using var preview = scene.Context.OpenGroundRangePreview(body, predicted, tuning, run, dt);
             if (preview is not null) Same(trial, preview.Step(command * 0.5f));
         }
         Assert.True(referenceSteps > 0);
         Assert.Equal(referenceSteps, fullSteps + certified);
         output.WriteLine($"{scenario}: samples={samples}, reference={referenceSteps}, full={fullSteps}, certified={certified}");
-        if (scenario is "flat" or "dry-field" or "rebase" or "borrowed-dry" or "clamp" or "clamp-rebase")
+        if (scenario is "flat" or "dry-field" or "rebase" or "borrowed-dry" or "clamp" or "clamp-rebase" or
+            "certified-slope" or "certified-slope-rebase")
         {
             Assert.Equal(0, fullSteps);
             Assert.True(certified > 0);
@@ -102,6 +116,29 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
         }
     }
 
+    [Fact]
+    public void UnenclosedOptionalSignalQueriesRetireTheSupportedTrial()
+    {
+        // #1754. Ground signals may swallow an optional query refusal. Missing capture evidence must still
+        // retire the preview, since the live producer can answer the look-ahead outside the captured interval.
+        using var scene = new FlatArrivalScene(height: (x, _) => MathF.Floor((x + 0.01f) / 0.25f) * 0.125f,
+            normal: (_, _) => Vector3.UnitY, slope: 0);
+        MoveTuning tuning = scene.Tuning with { MaxStepClimbSpeed = 0 };
+        var body = new MoveState { Position = new(0, tuning.CapsuleHalfHeight, 0), Grounded = true };
+        MoveState predicted = scene.Context.Step(body, Vector2.UnitX, false, 0.1f, tuning);
+        Assert.True(predicted.ClimbRate > 0);
+        var target = ReachTarget.Point(predicted.Position);
+        static bool Admit(in MoveState from, in MoveState to, in MoveTuning tuning) => to.Grounded && to.ClimbRate > 0;
+        Vector2 expected = ArrivalReference.Stop(body, tuning, target, 0.1f, false, 0.1f, scene.Context,
+            Vector2.UnitX, predicted, Admit, out int count);
+        using var work = new ArrivalPreviewDiagnostics();
+        Vector2 actual = RangeApproachCore.StopAtRange(body, tuning, target, 0.1f, false, 0.1f, scene.Context,
+            Vector2.UnitX, predicted, Admit);
+        Same(expected, actual);
+        Assert.Equal(count - 1, work.FullSteps);
+        Assert.Equal(1, work.CertifiedTrials);
+    }
+
     static bool RejectMiddle(in MoveState from, in MoveState to, in MoveTuning tuning)
         => ArrivalRangeCrossingTests.Admit(from, to, tuning) &&
             (Vector3.DistanceSquared(from.Position, to.Position) < 0.0004f || to.Position.X >= from.Position.X);
@@ -110,6 +147,8 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
     {
         "dry-field" => new(water: MovementWaterField.Level("world", -3, -4)),
         "rebase" => new(origin: new(2, 0, -3)),
+        "certified-slope" => new(slope: 0.125f),
+        "certified-slope-rebase" => new(slope: 0.125f, origin: new(2, 0.125f, -3)),
         "clamp" or "clamp-rim" => new(clampXz: FlatArrivalScene.ThrowingClamp),
         "clamp-rebase" => new(origin: new(2, 0, -3), clampXz: FlatArrivalScene.ThrowingClamp),
         "unproven" => new(provenance: false),

@@ -10,6 +10,12 @@ namespace KhaozEngine.Physics.Bepu;
 
 public sealed partial class BepuPhysicsWorld
 {
+    /// <summary>Lets static evidence equivalence tests call the original ordered full walk under the same lease.</summary>
+    internal PhysicsEvidenceStatus CaptureStaticEvidenceFullWalkForTests(KhaozEngine.Physics.IPhysicsQueryLease lease,
+        System.Numerics.Vector3 minimum, System.Numerics.Vector3 maximum, int maximumFeatures,
+        KhaozEngine.Physics.PhysicsEvidenceVisitor visitor) =>
+        CaptureStaticEvidenceCore(lease, minimum, maximum, maximumFeatures, visitor, null, indexed: false);
+
     /// <summary>Borrowed world-owned simulation for inspecting installed native buffers and supplying geometry readers
     /// with the exact simulation. Never dispose or mutate this borrowed object. Use named fault controls for mutations.</summary>
     internal BepuSim SimulationForTests => _sim;

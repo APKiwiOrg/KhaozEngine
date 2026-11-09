@@ -26,6 +26,7 @@ public sealed partial class BepuPhysicsWorld
 
     void RemoveSweepGeometry(int id, bool dynamic)
     {
+        if (!dynamic) { _staticEvidence.Remove(id); _unprovedStaticEvidenceBounds.Remove(id); }
         _sweepSelection.Observe(id, dynamic, general: false);
         (dynamic ? _installedSweepDynamics : _installedSweepStatics).Remove(id);
         _sweepInstallationGenerations.Remove(id);
@@ -34,6 +35,7 @@ public sealed partial class BepuPhysicsWorld
     void ClearSweepGeometry()
     {
         _sweepSelection.Clear();
+        _staticEvidence.Clear(); _unprovedStaticEvidenceBounds.Clear();
         _installedSweepStatics.Clear(); _installedSweepDynamics.Clear(); _sweepInstallationGenerations.Clear();
     }
 

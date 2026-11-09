@@ -26,6 +26,8 @@ internal sealed class InstalledMeshSweepGeometry
     readonly Node[] _nodes;
     readonly int[] _order;
     internal int Count => _raw.Length;
+    internal Vector3 EvidenceScale => _scale;
+    internal Node EvidenceNode(int index) => _nodes[index];
 
     InstalledMeshSweepGeometry(Shapes owner, TypedIndex root, in Mesh mesh)
     {

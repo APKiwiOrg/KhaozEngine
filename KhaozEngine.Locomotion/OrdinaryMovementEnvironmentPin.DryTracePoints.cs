@@ -2,6 +2,8 @@ namespace KhaozEngine.Locomotion;
 
 internal sealed partial class OrdinaryMovementEnvironmentPin : IMovementDryTracePointPin
 {
+    public bool HasIntrinsicDryTrace => _owner.WaterField is null;
+
     public bool CanClassifyDryTracePoints(in MovementMediumSweepQuery query)
     {
         AssertCurrent();

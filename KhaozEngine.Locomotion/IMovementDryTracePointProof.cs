@@ -14,5 +14,6 @@ public interface IMovementDryTracePointProof : IMovementWaterField
 
 internal interface IMovementDryTracePointPin
 {
+    bool HasIntrinsicDryTrace { get; }
     bool CanClassifyDryTracePoints(in MovementMediumSweepQuery query);
 }

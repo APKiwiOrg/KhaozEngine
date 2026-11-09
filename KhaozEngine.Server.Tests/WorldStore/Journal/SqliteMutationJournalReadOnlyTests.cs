@@ -211,7 +211,10 @@ internal sealed record SqliteJournalFileState(string Sha256, string Schema, stri
 {
     internal static SqliteJournalFileState Capture(string path)
     {
-        string sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+        string sha256;
+        // #1738: SQLite's held Windows handle permits reads only when the reader shares writes and deletion.
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            sha256 = Convert.ToHexString(SHA256.HashData(stream));
         var builder = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false };
         using var connection = new SqliteConnection(builder.ToString());
         connection.Open();

@@ -24,6 +24,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(SceneDebugView.History)]
         [InlineData(SceneDebugView.Disocclusion)]
         [InlineData(SceneDebugView.Reactive)]
+        [InlineData(SceneDebugView.Shimmer)]
         public void A_steady_resolving_frame_allocates_nothing_whatever_view_is_selected(SceneDebugView view)
         {
             using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();

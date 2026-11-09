@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Render3D;
 
+// States are one texel of the four-channel history state: confidence, stored lock, drift and swing.
 public sealed class TemporalHistoryComparisonRuleTests
 {
     [Theory]
@@ -30,7 +31,7 @@ public sealed class TemporalHistoryComparisonRuleTests
         Assert.Equal(32, far.Confidence.MaxSteps);
         foreach (int channel in new[] { 2, 3 })
         {
-            float[] a = [0.5f, 0.5f, 0.5f, 0.5f], b = (float[])a.Clone(), state = [0.5f, 1f];
+            float[] a = [0.5f, 0.5f, 0.5f, 0.5f], b = (float[])a.Clone(), state = [0.5f, 1f, 0f, 0f];
             b[channel] = Half(0x3900);
             Assert.True(TemporalNvidiaComparisonRule.Allows(TemporalHistoryDifference.Measure(a, state, b, state)));
         }
@@ -59,7 +60,7 @@ public sealed class TemporalHistoryComparisonRuleTests
             Assert.False(TemporalNvidiaComparisonRule.Allows(difference));
             Assert.Contains("non-finite class mismatches", difference.ToString(), StringComparison.Ordinal);
         }
-        float[] colour = [0.5f, 0.5f, 0.5f, 0.5f], state = [0.5f, 1f];
+        float[] colour = [0.5f, 0.5f, 0.5f, 0.5f], state = [0.5f, 1f, 0f, 0f];
         foreach (int channel in new[] { 2, 3 })
         {
             float[] a = (float[])colour.Clone(), b = (float[])colour.Clone();
@@ -103,8 +104,8 @@ public sealed class TemporalHistoryComparisonRuleTests
         Assert.False(TemporalNvidiaComparisonRule.Allows(Difference(locked: Half(0x3c01))));
         Assert.False(TemporalNvidiaComparisonRule.Allows(Difference(locked: -1f)));
         float[] colour = [0f, 0f, 0f, 1f];
-        Assert.False(TemporalNvidiaComparisonRule.Allows(TemporalHistoryDifference.Measure(colour, [0.5f, 0f],
-            colour, [0.5f, -0f])));
+        Assert.False(TemporalNvidiaComparisonRule.Allows(TemporalHistoryDifference.Measure(colour, [0.5f, 0f, 0f, 0f],
+            colour, [0.5f, -0f, 0f, 0f])));
     }
 
     // A software Vulkan device holds the entries' colour within amendment 23's bound, inclusive, and its share. A
@@ -131,11 +132,11 @@ public sealed class TemporalHistoryComparisonRuleTests
 
     static TemporalHistoryDifference Difference(float red = 0.5f, float green = 0.5f,
         float confidence = 0.5f, float locked = 1f, float redD = 0.5f, float greenD = 0.5f, float confidenceD = 0.5f)
-        => TemporalHistoryDifference.Measure([redD, greenD, 0.5f, 1f], [confidenceD, 1f],
-            [red, green, 0.5f, 1f], [confidence, locked]);
+        => TemporalHistoryDifference.Measure([redD, greenD, 0.5f, 1f], [confidenceD, 1f, 0f, 0f],
+            [red, green, 0.5f, 1f], [confidence, locked, 0f, 0f]);
 
     static TemporalHistorySample Sample(float red, float confidence)
-        => new([red, 0.5f, 0.5f, 1f], [confidence, 1f], [7], [0.25f]);
+        => new([red, 0.5f, 0.5f, 1f], [confidence, 1f, 0f, 0f], [7], [0.25f]);
 
     sealed class Lines(List<string> lines) : ITestOutputHelper
     {

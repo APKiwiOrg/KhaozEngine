@@ -9,7 +9,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 from the side where it can cost: surfaces moving more than
+    /// TEMPORAL-RESOLVE amendment 23 from the side where it can cost: surfaces moving more than
     /// <c>TemporalResolveTuning.DilationReachInternalPixels</c> apart, 2 internal pixels a frame here. A keyed line one
     /// internal pixel wide and a keyed box, both tilted so their edges are anti-aliased, cross the flat wall, and a
     /// still wide box stands in front of the textured wall and against the sky while a perspective camera steps
@@ -157,7 +157,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The tilted keyed box's own edges while the camera follows it across the textured wall under the dilation's
-        /// reach, the pixels the band marks (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), keep their anti-aliasing
+        /// reach, the pixels the band marks (TEMPORAL-RESOLVE amendment 23), keep their anti-aliasing
         /// and do not shimmer: the edge error against the 4x reference stays under a regression floor below what the
         /// resolve gave before the band, and the fast flips under the bound the other fast edges take against their
         /// reference.
@@ -205,7 +205,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The tilted keyed box's own edges under the dilation's reach, at 0.25, 0.5 and 1 internal pixel a
         /// frame: crossing the flat wall under a still camera, and followed by the camera across the textured wall, so
-        /// the wall pans past its edges (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). Report only.</summary>
+        /// the wall pans past its edges (TEMPORAL-RESOLVE amendment 23). Report only.</summary>
         [Trait("Category", "Diagnostic")]
         [GpuFact]
         public void The_box_edge_table_prints_the_walks_under_the_reach()

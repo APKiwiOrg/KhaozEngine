@@ -3,7 +3,7 @@ namespace KhaozEngine.Render3D.Internal
     /// <summary>The material texture LOD snippets. Part of the <see cref="ShaderSources"/> partial.</summary>
     internal static partial class ShaderSources
     {
-        // ---- Material texture LOD under temporal upscaling (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 5). Spliced
+        // ---- Material texture LOD under temporal upscaling (TEMPORAL-RESOLVE section 5). Spliced
         //      into every fragment that samples a material, after the shared frame block, whose Params.z carries
         //      log2(internal / display) + Post.Temporal.MipBiasOffset while the temporal resolve runs and whose
         //      Params.w carries exp2(Params.z) - 1 (TemporalMipBias). Both are exact zeros otherwise, so every tap

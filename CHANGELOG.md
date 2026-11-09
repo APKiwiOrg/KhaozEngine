@@ -28,6 +28,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Public refusal enums are append-only from this version. New members go at the end and existing numeric values never
   move, so mods and tools built against one engine version keep working on a later one. Before this version, compare
   members by name.
+- Stabilize still sub-pixel detail under TAA with a per-pixel shimmer record and score, longer still history
+  and a wider luma clip. A still-pixel chroma precision floor stops binary16 rounding from turning narrow
+  eave colour intervals into visible brightness flicker. Moving pixels keep their existing clip.
+- Add `SceneDebugView.Shimmer` to show where the resolve retains still detail.
+- Store shimmer drift and swing in the history state, adding 8 bytes per display pixel across its
+  double-buffered pair, or 28.125 MiB at 2560x1440, with no additional attachment.
 
 ## 23.4.0
 

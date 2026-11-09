@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 2 as amendment 22 measures it, the owner's complaint as a
+    /// TEMPORAL-RESOLVE section 7 item 2 as amendment 22 measures it, the owner's complaint as a
     /// test: a slow camera pan over thin geometry flickers less under temporal anti-aliasing than under MSAA 4x.
     /// Beside it, the engine's default isometric camera zooming does not swim, and a prop mid-fade converges to the
     /// dissolve's true partial coverage, holds it steady and pans calmer than without anti-aliasing.

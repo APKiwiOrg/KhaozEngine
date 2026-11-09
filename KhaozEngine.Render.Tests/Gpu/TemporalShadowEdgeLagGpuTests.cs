@@ -141,7 +141,7 @@ namespace KhaozEngine.Tests.Gpu
     /// error image itself, and per half the signed error profile along the travel.
     /// </para>
     /// <para>
-    /// It asserts the resolve's release of a still pixel whose shading changed (TEMPORAL-RESOLVE-UPSCALING-DESIGN
+    /// It asserts the resolve's release of a still pixel whose shading changed (TEMPORAL-RESOLVE
     /// amendment 33). The textured tail at 1 display pixel a frame is at most <see cref="TravelTailRatio"/> times the
     /// tail at 0.25, each way and at each preset, so the lag no longer grows with travel. At Quality the textured band
     /// at 1 is at most <see cref="QualityBandLimit"/>. With the light still, the textured band and control stay within

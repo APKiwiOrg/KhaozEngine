@@ -9,7 +9,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// Step 6 of TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, thin feature retention, against both sides of risk 1: a
+    /// Step 6 of TEMPORAL-RESOLVE section 3, thin feature retention, against both sides of risk 1: a
     /// moving thin feature must not trail (section 7 acceptance 3) and a still one narrower than a texel must not
     /// shimmer (acceptance 2). A sub-texel feature must keep holding when its surface moves as a whole, against the sky
     /// and beside a nearer still surface, and a nearer surface crossing it must not carry it away. Same rig and camera
@@ -45,9 +45,9 @@ namespace KhaozEngine.Tests.Gpu
             rig.Fill(Grey((x, _) => x == 4 ? line : bg), Grey((x, _) => x == 4 ? line : bg), zero);
             rig.Resolve(Uniforms(historyValid: false));
             float[] state = rig.ReadState();
-            Assert.Equal(1f, state[At(4, 3) * 2 + 1], 1e-3);
-            Assert.Equal(0f, state[At(3, 3) * 2 + 1], 1e-3);
-            Assert.Equal(0f, state[At(5, 3) * 2 + 1], 1e-3);
+            Assert.Equal(1f, state[At(4, 3) * 4 + 1], 1e-3);
+            Assert.Equal(0f, state[At(3, 3) * 4 + 1], 1e-3);
+            Assert.Equal(0f, state[At(5, 3) * 4 + 1], 1e-3);
 
             // Frames two and three: this frame's samples miss the line and the history holds its average. The flat box
             // would clip the history to the background. A lock one decay below a refresh is still at least
@@ -69,7 +69,7 @@ namespace KhaozEngine.Tests.Gpu
                 float expected = Unweighted(kept + (c - kept) / (accumulated + 1f));
                 float[] color = rig.ReadColor();
                 state = rig.ReadState();
-                Assert.Equal(lockAfter, state[At(4, 3) * 2 + 1], 1e-3);
+                Assert.Equal(lockAfter, state[At(4, 3) * 4 + 1], 1e-3);
                 Assert.Equal(expected, color[At(4, 3) * 4], 1e-2);
                 Assert.Equal(bg, color[At(2, 3) * 4], 1e-3);
                 if (stored == 1f)

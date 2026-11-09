@@ -6,7 +6,7 @@ namespace KhaozEngine.Render3D.Internal
     /// <summary>
     /// The CPU mirror of <c>ShaderSources.TemporalSharpenFrag</c>: robust contrast adaptive sharpening (RCAS, after
     /// AMD FidelityFX Super Resolution 1) of one pixel against its north, west, east and south neighbours
-    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 4). Keep the noise term, the limiter and the weighted blend in sync
+    /// (TEMPORAL-RESOLVE section 4). Keep the noise term, the limiter and the weighted blend in sync
     /// with the shader. The input is display-referred colour in 0 to 1, after the tonemap.
     /// <para>
     /// The negative lobe applied to the four neighbours is solved per channel from the ring's minimum and maximum,

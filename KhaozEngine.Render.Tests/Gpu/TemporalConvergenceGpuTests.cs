@@ -9,7 +9,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 1 and amendment 21: a static scene of thin geometry converges
+    /// TEMPORAL-RESOLVE section 7 item 1 and amendment 21: a static scene of thin geometry converges
     /// to within tolerance of an 8x supersampled reference after 32 frames. Every frame from 32 to 48 is checked, two
     /// full jitter cycles, so one lucky phase cannot pass.
     /// <para>

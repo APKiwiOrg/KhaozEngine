@@ -6,7 +6,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 3: a keyed object crossing the view leaves no trail longer
+    /// TEMPORAL-RESOLVE section 7 item 3: a keyed object crossing the view leaves no trail longer
     /// than one display pixel two frames after it passes, and a particle burst over a moving background does the same
     /// through the reactive estimate. Beside it, the same crossing unkeyed, a 10 m keyed teleport inside the 16 m cut
     /// distance, which keeps history and moves by the jump, and an orthographic zoom, which leaves no ghost.

@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 when a followed avatar stops or turns back
+    /// TEMPORAL-RESOLVE amendment 23 when a followed avatar stops or turns back
     /// (<see cref="TemporalFollowStopRuns"/>): under the perspective follow camera and the orthographic one, the box
     /// stops with the camera, stops while a damped camera eases on, or slows and walks back. On the turn frame its
     /// travel in the world is zero. Each row reads the avatar's own pixels, or the ring beside them, their mean luma

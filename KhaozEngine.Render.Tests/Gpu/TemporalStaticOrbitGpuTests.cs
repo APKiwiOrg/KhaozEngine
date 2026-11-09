@@ -7,7 +7,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The band of TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 marks a pixel beside a nearer surface that moved in
+    /// The band of TEMPORAL-RESOLVE amendment 23 marks a pixel beside a nearer surface that moved in
     /// the world. Under the perspective follow camera orbiting or strafing a still field
     /// (<see cref="TemporalStaticOrbitRuns"/>) nothing moved, so no pixel may store the mark, and without a stored mark
     /// no pixel drops a band history. The world-motion test reads the static travel of the dilated texel, which on

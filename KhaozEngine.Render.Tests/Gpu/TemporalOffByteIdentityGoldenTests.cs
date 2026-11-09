@@ -8,7 +8,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 8, the half a test can hold: a frame under every other
+    /// TEMPORAL-RESOLVE section 7 item 8, the half a test can hold: a frame under every other
     /// anti-aliasing mode builds none of the resolve's objects (the renderer, its display targets, the sharpen, the
     /// debug view pass and the count probe), allocates no motion target, and uploads exact zeros in the frame block's
     /// mip bias lanes. The other half is the whole committed golden suite passing unchanged, on this leg locally and

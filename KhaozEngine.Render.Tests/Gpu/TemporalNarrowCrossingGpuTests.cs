@@ -6,7 +6,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 from the side of step 3's exceptions: a mostly covered footprint
+    /// TEMPORAL-RESOLVE amendment 23 from the side of step 3's exceptions: a mostly covered footprint
     /// keeps its history where the nearest stored depth is narrow and no moving surface showed there last frame, or
     /// where the pixel carries a lock a ridge refreshed on the last frame, which a keyed object leaving a pixel could
     /// satisfy. Keyed lines one and two internal texels wide cross the textured wall at 2 internal pixels a frame, and

@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 4: a revealed background shows no history from the object that
+    /// TEMPORAL-RESOLVE section 7 item 4: a revealed background shows no history from the object that
     /// covered it, on the very first frame after the reveal.
     /// <para>
     /// <see cref="RevealScene"/>'s keyed red box covers the wall for 32 frames and then jumps clear, so the revealed

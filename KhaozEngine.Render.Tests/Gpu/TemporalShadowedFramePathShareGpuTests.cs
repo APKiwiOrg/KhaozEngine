@@ -17,8 +17,9 @@ namespace KhaozEngine.Tests.Gpu
     /// display pixels gated off by a lock whose bits are zero (R1), gated otherwise (no history, background or the
     /// first frame), skipped by range (R4), computing a change on the fast path, on the fast path with nothing
     /// accepted, on the slow path by reason, and released.
-    /// <para>The export writes the path word in place of the history colour, and that history is read again the next
-    /// frame. The state output, every input of the decision and every rule that sets a lock stay production's, so a
+    /// <para>The export writes the path word in place of the history colour. Before the next frame, production colour
+    /// replaces that metadata while the export keeps its own state, depth and visibility. Every rule that sets a lock
+    /// still runs over the same colour history as production, so a
     /// production scene rendered beside it in lockstep must store the same locks, and the fact asserts that none
     /// differ (review 7f r3, m-4). It is a readback, not a timing, and asserts besides only that the categories cover
     /// every display pixel and that every slow pixel names its reason. Software devices render a smaller display,
@@ -39,6 +40,8 @@ namespace KhaozEngine.Tests.Gpu
             using var exporting = new TemporalFixture(w, h, s => yard.Setup(s, preset));
             using var production = new TemporalFixture(w, h, s => yard.Setup(s, preset));
             TemporalVisibilityPathShareReadback.UseExportingResolve(exporting);
+            using var historyColour = new TemporalVisibilityExportHistory(production.Device, production.Scene.TemporalHistory,
+                exporting.Device, exporting.Scene.TemporalHistory);
             TemporalResolveRenderer exporter = exporting.Scene.TemporalResolveRendererForTests!;
             output.WriteLine($"{exporting.Device.Backend} on {exporting.Device.Capabilities.DeviceName}, {entry} {preset}, "
                 + $"{w}x{h} display");
@@ -47,6 +50,7 @@ namespace KhaozEngine.Tests.Gpu
             production.Scene.TemporalResolveEntryForTests = entry;
             for (int frame = 0; frame <= TemporalShadowedFrameCostPerfGpuTests.CoverageFrame; frame++)
             {
+                if (frame > 0) historyColour.CopyPreviousColour();
                 exporting.Frames(1, yard.Draw);
                 production.Frames(1, yard.Draw);
             }

@@ -4,6 +4,18 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.6.0
+
+2026-11-10
+
+- Native Vulkan extension loading leaves Silk's layer filter unset, restoring the debug-utils messenger, surface and
+  swapchain lookups (#1539). `VulkanValidationRefusal` gains `MessengerUnavailable`, so validation-enabled CI refuses
+  a missing messenger instead of silently passing without message capture. Non-CI sessions stay warn-only. A native
+  control test proves a deliberate validation error reaches the engine, and the full Vulkan suite passed at `strict`
+  on lavapipe with it. Windowed Vulkan still has no automated proof.
+- Target outline queues reuse warmed group and part storage, and occlusion validation no longer rebuilds enum
+  metadata after a collection, so warmed outline submission allocates nothing (#1749).
+
 ## 23.5.0
 
 2026-11-09

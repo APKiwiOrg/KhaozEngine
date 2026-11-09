@@ -12,6 +12,13 @@ public sealed partial class GroundMoveContext : IDisposable
 {
     private GroundMoveContext? _dryContext;
 
+    /// <summary>Constructs an absolute-coordinate context for Legacy movement.</summary>
+    /// <param name="groundHeight">Absolute ground height at absolute XZ.</param>
+    /// <param name="groundNormal">Ground normal at absolute XZ.</param>
+    /// <param name="physics">Caller-owned physics world.</param>
+    /// <param name="clampXz">Absolute XZ clamp read by Legacy tunings. Contact does not read it and enforces
+    /// the world edge through <see cref="MovementBoundary"/> on an ordinary contact context.</param>
+    /// <param name="medium">Medium at absolute XZ and feet Y.</param>
     public GroundMoveContext(Func<float, float, float> groundHeight,
         Func<float, float, Vector3>? groundNormal = null, IPhysicsWorld? physics = null,
         Func<float, float, Vector2>? clampXz = null,
@@ -20,6 +27,14 @@ public sealed partial class GroundMoveContext : IDisposable
     {
     }
 
+    /// <summary>Constructs an absolute-coordinate Legacy context with a selected movement query view.</summary>
+    /// <param name="groundHeight">Absolute ground height at absolute XZ.</param>
+    /// <param name="groundNormal">Ground normal at absolute XZ.</param>
+    /// <param name="physics">Caller-owned complete physics world.</param>
+    /// <param name="clampXz">Absolute XZ clamp read by Legacy tunings. Contact does not read it and enforces
+    /// the world edge through <see cref="MovementBoundary"/> on an ordinary contact context.</param>
+    /// <param name="medium">Medium at absolute XZ and feet Y.</param>
+    /// <param name="movementQueries">Borrowed query selection belonging to <paramref name="physics"/>.</param>
     public GroundMoveContext(Func<float, float, float> groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? physics,
         Func<float, float, Vector2>? clampXz,
@@ -78,7 +93,8 @@ public sealed partial class GroundMoveContext : IDisposable
     /// supplied view creates one owned by this context.</summary>
     public IPhysicsWorldQueryView? MovementQueries { get; }
 
-    /// <summary>Absolute XZ bounds applied to an absolute XZ candidate.</summary>
+    /// <summary>Absolute XZ clamp read by Legacy tunings. Contact does not read it and enforces the world edge
+    /// through <see cref="MovementBoundary"/>.</summary>
     public Func<float, float, Vector2>? ClampXz { get; }
 
     /// <summary>Medium at absolute XZ and feet Y, including an absolute water surface Y.</summary>

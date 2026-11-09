@@ -24,6 +24,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs" Link="Fixtures/LocomotionStateBits.cs" />
+    <Compile Include="../KhaozEngine.Movement.Tests/Fixtures/ArrivalReference.cs" Link="Fixtures/ArrivalReference.cs" />
   </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

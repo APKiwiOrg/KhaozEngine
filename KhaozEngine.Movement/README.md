@@ -159,6 +159,7 @@ only movement uses that selected view. Its `SourceWorld` must be the exact same 
 missing or different source is rejected even when two worlds have equal origins. Ground height, normal, clamp
 bounds and medium coordinates are absolute. Physics poses and queries are local to `IPhysicsWorld.Origin`. A
 step changes only `MoveState.Position` into that local frame and back.
+Legacy tunings read `ClampXz`. Contact does not read it and enforces the world edge through `MovementBoundary`.
 Velocity, facing, effect scale, commitment and timers keep their carried values. A water surface returned by
 `Medium` is converted from absolute Y to the local frame for the core.
 
@@ -1103,7 +1104,9 @@ search of up to 32 candidates plus endpoint and final checks. A certified flat, 
 region evaluates the command-dependent state algebra directly under one authenticated read interval, with
 zero full movement previews inside the search. The certificate requires exact field provenance, complete
 selected-static absence across support and shell paths, strictly dry whole-body coverage and the existing
-scope and convex play-area bounds. A supplied water field must also opt into `IMovementDryTracePointProof`
+scope and convex `MovementBoundary` bounds. Supplying `clampXz` does not disable this Contact certificate,
+because neither Contact steps nor their exact arrival trials read that Legacy-only clamp. A swept region
+that reaches the boundary still uses the exact solver. A supplied water field must also opt into `IMovementDryTracePointProof`
 and certify successful dry point classification throughout this particular enclosure. Without that separate
 operation-level guarantee, both drivers retain full previews and the direct driver's ordinary pacing point read. Only grounded bodies without swimming, commitments, buffered jumps or
 carried climb signals use the algebra. A conservative roundoff enclosure must fit the unchanged coverage skin,

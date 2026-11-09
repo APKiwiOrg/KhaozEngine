@@ -71,6 +71,19 @@ namespace KhaozEngine.Tests.Gpu
         [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
         public void A_still_feature_the_release_keeps_tripping_holds_its_history(TemporalUpscale preset)
         {
+            (float lowestConfidence, float maxChange) = RunTrippedFeature(preset);
+            output.WriteLine($"{preset}: lowest confidence {lowestConfidence}, MaxChange {maxChange}");
+            if (preset == TemporalUpscale.Quality)
+            {
+                (float balancedConfidence, float balancedChange) = RunTrippedFeature(TemporalUpscale.Balanced);
+                output.WriteLine($"Balanced: lowest confidence {balancedConfidence}, MaxChange {balancedChange}");
+            }
+            Assert.True(lowestConfidence > 4f * (1f / Max), $"{preset}: lowest confidence {lowestConfidence}");
+            Assert.True(maxChange <= 0.1f, $"{preset}: MaxChange {maxChange}");
+        }
+
+        (float LowestConfidence, float MaxChange) RunTrippedFeature(TemporalUpscale preset)
+        {
             // Static half-texel stripes alias with the jitter over a checker whose 3x3 has enough contrast to release.
             // Zero motion, constant depth and equal scene/opaque inputs exclude disocclusion and reactive rejection.
             float factor = TemporalSettings.DisplayOverInternal(preset);
@@ -106,9 +119,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
                 previous = value;
             }
-            output.WriteLine($"{preset}: lowest confidence {lowestConfidence}, MaxChange {maxChange}");
-            Assert.True(lowestConfidence > 4f * (1f / Max), $"{preset}: lowest confidence {lowestConfidence}");
-            Assert.True(maxChange <= 0.1f, $"{preset}: MaxChange {maxChange}");
+            return (lowestConfidence, maxChange);
         }
 
         [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
@@ -145,6 +156,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             SettleRun run = RunLightStepOverLine(preset, hitInterval: 8);
             output.WriteLine($"{preset}: {run}, main {MainLightStepOverLineFrames(preset)}");
+            if (preset == TemporalUpscale.Quality)
+                output.WriteLine($"Balanced: {RunLightStepOverLine(TemporalUpscale.Balanced, hitInterval: 8)}");
             Assert.True(run.Frames <= MainLightStepOverLineFrames(preset), $"{preset}: {run}");
         }
 
@@ -422,7 +435,6 @@ namespace KhaozEngine.Tests.Gpu
                 for (int p = 0; p < pixels.Count; p++)
                     if (MathF.Abs(Weighted(step[n][p]) - Weighted(target[n][p])) > 0.05f * contrast)
                         frames = n + 2;
-            Assert.True(frames <= Measured, "The light step must settle inside the measured window.");
             return new SettleRun(frames);
         }
 

@@ -14,7 +14,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuTexture SceneDepth, IGpuTexture Motion, IGpuTexture? KeyShadowVisibility = null);
 
     /// <summary>
-    /// THE TEMPORAL RESOLVE (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): one fullscreen fragment pass at the display
+    /// THE TEMPORAL RESOLVE (TEMPORAL-RESOLVE section 3): one fullscreen fragment pass at the display
     /// resolution that reconstructs the jittered internal frame, reprojects and clips the history and accumulates into
     /// <see cref="TemporalHistory"/>'s write pair, then one internal-resolution pass that stores this frame's linear view
     /// depth for the next frame's disocclusion test. Fragment rather than compute, because the GPU seam has no compute

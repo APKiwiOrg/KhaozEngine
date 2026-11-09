@@ -1,7 +1,7 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The temporal sharpen (1 of the renderer's shader sources, TEMPORAL-RESOLVE-UPSCALING-DESIGN section 4). Part of
+    /// The temporal sharpen (1 of the renderer's shader sources, TEMPORAL-RESOLVE section 4). Part of
     /// the <see cref="ShaderSources"/> partial: see ShaderSources.cs for the shared contract.
     /// </summary>
     internal static partial class ShaderSources

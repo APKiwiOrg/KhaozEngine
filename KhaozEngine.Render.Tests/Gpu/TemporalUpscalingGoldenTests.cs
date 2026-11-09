@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN section 7 item 6: at Quality a converged still frame is closer to a native
+    /// TEMPORAL-RESOLVE section 7 item 6: at Quality a converged still frame is closer to a native
     /// reference than the same frame bilinearly upscaled, on a resolution chart. The same frame is the chart converged
     /// by temporal anti-aliasing at Native on a display the size of Quality's internal target, through the same stage,
     /// so it frames the same view at the same aspect as Quality's internal target does.

@@ -35,7 +35,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             Assert.Equal(Vortice.DXGI.Format.R16G16B16A16_Float,
                 D3D11Formats.ToDxgiFormat(TemporalFormats.HistoryColor, false));
-            Assert.Equal(Vortice.DXGI.Format.R16G16_Float,
+            Assert.Equal(Vortice.DXGI.Format.R16G16B16A16_Float,
                 D3D11Formats.ToDxgiFormat(TemporalFormats.HistoryConfidence, false));
             Assert.Equal(Vortice.DXGI.Format.R32_Float, D3D11Formats.ToDxgiFormat(TemporalFormats.PreviousDepth, false));
         }
@@ -44,11 +44,11 @@ namespace KhaozEngine.Tests.Gpu
         public void TheMetalAndVulkanMapsMapEveryHistoryFormatAsAColourTarget()
         {
             Assert.Equal(MTLPixelFormat.RGBA16Float, MetalFormats.ToPixelFormat(TemporalFormats.HistoryColor, false));
-            Assert.Equal(MTLPixelFormat.RG16Float, MetalFormats.ToPixelFormat(TemporalFormats.HistoryConfidence, false));
+            Assert.Equal(MTLPixelFormat.RGBA16Float, MetalFormats.ToPixelFormat(TemporalFormats.HistoryConfidence, false));
             Assert.Equal(MTLPixelFormat.R32Float, MetalFormats.ToPixelFormat(TemporalFormats.PreviousDepth, false));
 
             Assert.Equal(VkFormat.R16G16B16A16Sfloat, VulkanFormats.ToVkFormat(TemporalFormats.HistoryColor, false));
-            Assert.Equal(VkFormat.R16G16Sfloat, VulkanFormats.ToVkFormat(TemporalFormats.HistoryConfidence, false));
+            Assert.Equal(VkFormat.R16G16B16A16Sfloat, VulkanFormats.ToVkFormat(TemporalFormats.HistoryConfidence, false));
             Assert.Equal(VkFormat.R32Sfloat, VulkanFormats.ToVkFormat(TemporalFormats.PreviousDepth, false));
         }
 
@@ -64,10 +64,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
-        public void AQualityHistoryAtA3456By2234DisplayHolds213Megabytes()
+        public void AQualityHistoryAtA3456By2234DisplayHolds275Megabytes()
         {
             // Two colour and two confidence targets at 3456x2234, two previous depths at 2304x1489 (Quality, 1 / 1.5).
-            Assert.Equal(212_742_144L, TemporalFormats.HistoryBytes(3456, 2234, 2304, 1489));
+            Assert.Equal(274_507_776L, TemporalFormats.HistoryBytes(3456, 2234, 2304, 1489));
         }
 
         [Fact]

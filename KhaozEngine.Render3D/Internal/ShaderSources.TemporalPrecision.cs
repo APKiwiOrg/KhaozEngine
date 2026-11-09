@@ -1,7 +1,7 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// THE ACCUMULATION'S PRECISION (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, The resolve). Every program that
+    /// THE ACCUMULATION'S PRECISION (TEMPORAL-RESOLVE section 3, The resolve). Every program that
     /// includes <see cref="TemporalAccumulateGlsl"/> starts with one of two headers. They name the types of the 3x3's
     /// Lanczos kernels and their products, its colour and alpha range, its sample weight, its largest reactive
     /// difference and its lumas (<c>afloat</c>, <c>avec3</c>, <c>avec4</c>), and the conversions to and from them.

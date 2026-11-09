@@ -6,7 +6,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// THE DISPLAY-SIZED RECONSTRUCTION AT ULTRAPERFORMANCE ONCE IT RUNS (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment
+    /// THE DISPLAY-SIZED RECONSTRUCTION AT ULTRAPERFORMANCE ONCE IT RUNS (TEMPORAL-RESOLVE amendment
     /// 26). A converged pixel takes it from a carried confidence of <see cref="TemporalResolveTuning"/>'s
     /// DisplayKernelConfidenceStart, which UltraPerformance reaches last, where its kernels see the fewest samples.
     /// The stability facts end at frame 79, so these hold the fence's slow pans and the still fence from frame

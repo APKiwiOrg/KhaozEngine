@@ -2,7 +2,7 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>
     /// A development view of the scene's temporal machinery, selected with <see cref="Scene3D.DebugView"/>.
-    /// <see cref="MotionVectors"/> turns temporal rendering on while it is set. The other three show the temporal
+    /// <see cref="MotionVectors"/> turns temporal rendering on while it is set. The other four show the temporal
     /// resolve's decisions and take effect only under <see cref="AntiAliasing.Temporal"/>. A change takes effect at the
     /// frame's first render, and one made after that render waits for the next frame. Not a player setting.
     /// </summary>
@@ -30,5 +30,10 @@ namespace KhaozEngine.Render3D
         /// <summary>Yellow where the reactive estimate lowered the history weight for transparent content, over the
         /// dimmed scene. Takes effect only under <see cref="AntiAliasing.Temporal"/>.</summary>
         Reactive,
+        /// <summary>Blue where the resolve scored the pixel as shimmering, a still pixel that swings about a steady mean
+        /// under the jitter, over the dimmed scene, deeper as the score rises. Those pixels take a wider luma clip and
+        /// longer history. No pixel reads blue without history, on a moving or reactive pixel, or where its light or
+        /// shadow changed this frame. Takes effect only under <see cref="AntiAliasing.Temporal"/>.</summary>
+        Shimmer,
     }
 }

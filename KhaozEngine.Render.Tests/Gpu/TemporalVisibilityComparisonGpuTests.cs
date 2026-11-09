@@ -69,11 +69,11 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
         rig.Device.UpdateTexture(signal, new byte[N * N], 0, 0, N, N);
         rig.Resolve(Uniforms(true), signal);
         float[] state = rig.ReadState();
-        output.WriteLine($"entry {entry}, ridge {ridge}: stored lock {state[At(3, 3) * 2 + 1]}, confidence {state[At(3, 3) * 2]}");
-        Assert.Equal(0, state[At(3, 3) * 2 + 1]);
+        output.WriteLine($"entry {entry}, ridge {ridge}: stored lock {state[At(3, 3) * 4 + 1]}, confidence {state[At(3, 3) * 4]}");
+        Assert.Equal(0, state[At(3, 3) * 4 + 1]);
         if (!ridge)
         {
-            Assert.Equal(1, state[At(3, 3) * 2]);
+            Assert.Equal(1, state[At(3, 3) * 4]);
             Assert.InRange(rig.ReadColor()[At(3, 3) * 4], 0.19f, 0.21f);
         }
     }
@@ -100,9 +100,9 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
         rig.Resolve(Uniforms(true), signal);
         float[] state = rig.ReadState();
         const float expected = 1;
-        output.WriteLine($"ACCUMULATION|{entry}|{rising}|{expected:R}|{state[At(3, 3) * 2]:R}");
-        Assert.InRange(MathF.Abs(state[At(3, 3) * 2] - expected), 0, 0.0001f);
-        Assert.Equal(0, state[At(3, 3) * 2 + 1]);
+        output.WriteLine($"ACCUMULATION|{entry}|{rising}|{expected:R}|{state[At(3, 3) * 4]:R}");
+        Assert.InRange(MathF.Abs(state[At(3, 3) * 4] - expected), 0, 0.0001f);
+        Assert.Equal(0, state[At(3, 3) * 4 + 1]);
         Assert.InRange(rig.ReadColor()[At(3, 3) * 4], 0.19f, 0.21f);
     }
 
@@ -153,8 +153,8 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
         rig.BeginFrame(); rig.Resolve(cold, signal);
         float[] fresh = rig.ReadColor();
         rig.History.MarkValidAfterFrame(); rig.BeginFrame();
-        float[] state = new float[display * display * 2];
-        for (int i = 0; i < state.Length; i += 2) state[i] = 1;
+        float[] state = new float[display * display * 4];
+        for (int i = 0; i < state.Length; i += 4) state[i] = 1;
         rig.FillHistory(fresh, state, SceneLinear);
         rig.Resolve(warm, signal);
         float[] unchanged = rig.ReadColor();
@@ -192,7 +192,7 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
         rig.FillHistory(color, State((_, _) => new Vector2(1, 1)), SceneLinear);
         if (variation != 1) rig.Fill(color, color, Motion((_, _) => new Vector2(0.25f / N, 0)));
         rig.Resolve(Uniforms(true, variation == 0 ? Vector2.Zero : new(-0.25f, 0.25f)), signal);
-        Assert.True(rig.ReadState()[At(3, 3) * 2 + 1] >= 0.875f);
+        Assert.True(rig.ReadState()[At(3, 3) * 4 + 1] >= 0.875f);
         Assert.True(rig.ReadColor()[At(3, 3) * 4] > 0.6f);
     }
 
@@ -231,7 +231,7 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
         Assert.Equal(changedState, rig.ReadState());
         Assert.Equal(changedColour, rig.ReadColor());
         if (invalid == "unseeded" || invalid == "other surface")
-            Assert.True(changedState[At(3, 3) * 2 + 1] >= 0.875f, invalid);
+            Assert.True(changedState[At(3, 3) * 4 + 1] >= 0.875f, invalid);
     }
 
     [GpuFact]
@@ -271,7 +271,7 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
                 float difference = MathF.Abs(a.Colour[i] - b.Colour[i]);
                 mean += difference / a.Colour.Length; peak = MathF.Max(peak, difference);
             }
-            output.WriteLine($"input {value:R}, R8 byte {converted}, signed {r8.X:R}/{r32.X:R}, release {r8.Z}/{r32.Z}, colour mean {mean:R} max {peak:R}, lock {a.State[At(3, 3) * 2 + 1]}/{b.State[At(3, 3) * 2 + 1]}");
+            output.WriteLine($"input {value:R}, R8 byte {converted}, signed {r8.X:R}/{r32.X:R}, release {r8.Z}/{r32.Z}, colour mean {mean:R} max {peak:R}, lock {a.State[At(3, 3) * 4 + 1]}/{b.State[At(3, 3) * 4 + 1]}");
             // Quantization may cross the strict release threshold. A changed decision must remain observable.
             if (r8.Z != r32.Z)
             {
@@ -322,9 +322,9 @@ public sealed class TemporalVisibilityComparisonGpuTests(GameShadowGrainScene gr
         float[] view = TemporalTextureIo.Read(rig.Device, debug);
         for (int i = 0; i < N * N; i++)
         {
-            Assert.Equal(1, resolved[i * 2]);
-            Assert.Equal(0, resolved[i * 2 + 1]);
-            for (int c = 0; c < 3; c++) Assert.Equal(resolved[i * 2], view[i * 4 + c]);
+            Assert.Equal(1, resolved[i * 4]);
+            Assert.Equal(0, resolved[i * 4 + 1]);
+            for (int c = 0; c < 3; c++) Assert.Equal(resolved[i * 4], view[i * 4 + c]);
         }
         Assert.True(rig.Renderer.TryHarvestCounts(out int disoccluded, out int reactive, out int clipped));
         Assert.Equal((0, 0, TemporalCountProbe.TotalSamples), (disoccluded, reactive, clipped));

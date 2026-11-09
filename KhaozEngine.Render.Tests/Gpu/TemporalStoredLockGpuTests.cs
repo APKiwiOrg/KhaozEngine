@@ -77,8 +77,8 @@ namespace KhaozEngine.Tests.Gpu
 
             float[] color = rig.ReadColor(), state = rig.ReadState();
             Assert.Equal(bg, color[At(4, 3) * 4], 1e-3);
-            Assert.Equal(1f / Max, state[At(4, 3) * 2], 1e-3);
-            Assert.Equal(0f, state[At(4, 3) * 2 + 1], 1e-4);
+            Assert.Equal(1f / Max, state[At(4, 3) * 4], 1e-3);
+            Assert.Equal(0f, state[At(4, 3) * 4 + 1], 1e-4);
         }
 
         // A held line at column 4 over a flat background, its state holding the stored lock and its stored depths at
@@ -99,7 +99,7 @@ namespace KhaozEngine.Tests.Gpu
             float c = Weighted(bg), h = Weighted(held);
             float expected = Unweighted(h + (c - h) / (accumulated + 1f));
             float[] color = rig.ReadColor(), state = rig.ReadState();
-            Assert.Equal(Q(lockAfter), state[At(4, 3) * 2 + 1], 1e-4);
+            Assert.Equal(Q(lockAfter), state[At(4, 3) * 4 + 1], 1e-4);
             Assert.Equal(expected, color[At(4, 3) * 4], 1e-2);
             Assert.Equal(bg, color[At(2, 3) * 4], 1e-3);
         }

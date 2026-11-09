@@ -15,7 +15,7 @@ namespace KhaozEngine.Render3D.Internal
 
     /// <summary>
     /// WHICH PRECISION A DEVICE'S TEMPORAL PROGRAMS TAKE, from measurement. Metal runs half floats natively, and the
-    /// half 3x3 frees registers in the per-pixel pass (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, The resolve). Every
+    /// half 3x3 frees registers in the per-pixel pass (TEMPORAL-RESOLVE section 3, The resolve). Every
     /// other backend keeps full precision. Forced to half on a hosted NVIDIA Tesla T4, the split at 3456x2234 Native
     /// cost more than at full (Direct3D 11 +0.34 ms, Vulkan +0.66 on Windows and +0.97 on Linux) and the two entry
     /// points no longer agreed on any of the three (Windows Vulkan colour by up to 218 half steps), since scalar half

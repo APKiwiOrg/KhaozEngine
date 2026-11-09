@@ -43,7 +43,7 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>
     /// Still lines narrower than a texel on the ground a followed box walks over: one across its trailing path, which
-    /// the box covers and uncovers, and one along its edge, which stays beside it (TEMPORAL-RESOLVE-UPSCALING-DESIGN
+    /// the box covers and uncovers, and one along its edge, which stays beside it (TEMPORAL-RESOLVE
     /// amendment 23, the band). Three runs of the same camera path: with the box and the lines, the lines alone, and
     /// the ground alone. A line's pixels on a frame are those the lines alone lift over the ground alone by more than
     /// <see cref="CoverageStep"/> within <see cref="NearPixels"/> of the box and past the band's reach from it, two

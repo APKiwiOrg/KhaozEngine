@@ -82,18 +82,49 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
         var drawA = TemporalResolveCostPerfGpuTests.FieldScene(a);
         var drawB = TemporalResolveCostPerfGpuTests.FieldScene(b);
         var oracle = Oracle(selected.Device);
-        SceneDebugView[] views = [SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive];
-        for (int frame = 0; frame < 6; frame++)
+        // Frames 0 to 5 cycle History, Disocclusion and Reactive. Shimmer, whose score reads the shadow gate only in
+        // the checked program, takes the rest. The record steps 1 / PhaseCount a frame, 1/18 at Quality, so shadows
+        // stay off for one jitter cycle first and the field shimmers at every preset. Shadows then go on and off over
+        // two frames, where both fixtures run the check and the visibility moves. On the last frame the selected
+        // fixture skips the decision and runs the program without the gate. The visibility is fully lit there and on
+        // the frame before, so the gate finds no change and both images still agree. WARP's separately compiled
+        // Shimmer images use the history oracle's software colour bound. Every other image remains byte-exact.
+        // The warm-up frames skip the decision the same way.
+        int shadowsOn = 6 + TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset));
+        int last = shadowsOn + 2;
+        SceneDebugView[] cycle = [SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive];
+        for (int frame = 0; frame <= last; frame++)
         {
             selected.Scene.Post.Quality.Shadows.Mode = checkedFx.Scene.Post.Quality.Shadows.Mode
-                = frame == 3 ? ShadowMode.ShadowMap : ShadowMode.Off;
-            selected.Scene.DebugView = checkedFx.Scene.DebugView = views[frame % views.Length];
+                = frame == 3 || frame == shadowsOn ? ShadowMode.ShadowMap : ShadowMode.Off;
+            selected.Scene.DebugView = checkedFx.Scene.DebugView = frame < 6 ? cycle[frame % 3] : SceneDebugView.Shimmer;
             selected.Scene.RequestTemporalCounts();
             checkedFx.Scene.RequestTemporalCounts();
-            TemporalHistorySample.Exact(frame, "debug image", selected.Frame(drawA), checkedFx.Frame(drawB));
+            byte[] selectedImage = selected.Frame(drawA), checkedImage = checkedFx.Frame(drawB);
+            if (selected.Scene.DebugView == SceneDebugView.Shimmer && TemporalDeviceClass.IsWarp(selected.Device))
+            {
+                Assert.Equal(selectedImage.Length, checkedImage.Length);
+                var difference = new TemporalFullyLitHistoryOracle.Difference();
+                for (int i = 0; i < selectedImage.Length; i++)
+                    difference.Add(selectedImage[i] / 255f, checkedImage[i] / 255f, selectedImage[i], checkedImage[i],
+                        $"f{frame} ({i / 4 % 160},{i / 4 / 160}) c{i % 4}", half: false);
+                output.WriteLine($"frame {frame} WARP Shimmer debug image: {difference}");
+                Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(difference.Worst, difference.Count,
+                    difference.Compared), $"frame {frame}: Shimmer debug image exceeds the software colour bound: {difference}");
+            }
+            else TemporalHistorySample.Exact(frame, "debug image", selectedImage, checkedImage);
+            if (frame == last)
+            {
+                // Two blank Shimmer images would also agree, so both must mark the field's shimmering texels.
+                int selectedTinted = TintedPixels(selectedImage), checkedTinted = TintedPixels(checkedImage);
+                output.WriteLine($"frame {frame} shimmer tinted pixels: selected {selectedTinted}, checked {checkedTinted}");
+                Assert.True(selectedTinted > 0, "the selected fixture's Shimmer view must tint the field");
+                Assert.True(checkedTinted > 0, "the checked fixture's Shimmer view must tint the field");
+            }
             oracle.Report(frame, "debug and counts", TemporalFullyLitHistoryOracle.Snapshot.Read(selected),
                 TemporalFullyLitHistoryOracle.Snapshot.Read(checkedFx));
-            Assert.Equal(frame is 1 or 2 or 5, selected.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped);
+            Assert.Equal(frame is 1 or 2 or 5 || frame >= 6 && frame != shadowsOn && frame != shadowsOn + 1,
+                selected.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.DisoccludedPixels, checkedFx.Scene.LastTemporalDiagnostics.DisoccludedPixels);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.ReactivePixels, checkedFx.Scene.LastTemporalDiagnostics.ReactivePixels);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.ClippedPixels, checkedFx.Scene.LastTemporalDiagnostics.ClippedPixels);
@@ -101,6 +132,15 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
         oracle.AssertComplete();
         Assert.True(selected.Scene.TemporalCountReadbacksForTests > 0);
         Assert.True(selected.Scene.TemporalDebugViewBuiltForTests);
+
+        static int TintedPixels(byte[] rgba)
+        {
+            int tinted = 0;
+            for (int y = 0; y < 90; y++)
+                for (int x = 0; x < 160; x++)
+                    if (ShimmerViewTint.BlueExcess(rgba, 160, x, y) >= ShimmerViewTint.Tinted) tinted++;
+            return tinted;
+        }
     }
 
     [GpuTheory]

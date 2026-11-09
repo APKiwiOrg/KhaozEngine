@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
@@ -9,7 +10,7 @@ internal static class ArrivalReference
 {
     internal static Vector2 Stop(in MoveState body, in MoveTuning tuning, in ReachTarget target, float range,
         bool run, float dt, GroundMoveContext context, Vector2 command, in MoveState predicted,
-        StepAdmission admits, out int previews)
+        StepAdmission admits, out int previews, Action<MoveState>? observe = null)
     {
         previews = 0;
         if (!ReachGeometry.Within(RangeApproachCore.Body(predicted, tuning), target, range)) return command;
@@ -20,6 +21,7 @@ internal static class ArrivalReference
             if (fraction == low || fraction == high) break;
             previews++;
             MoveState candidate = context.Step(body, command * fraction, run, dt, tuning);
+            observe?.Invoke(candidate);
             if (admits(body, candidate, tuning) && ReachGeometry.Within(RangeApproachCore.Body(candidate, tuning), target, range))
                 high = fraction;
             else

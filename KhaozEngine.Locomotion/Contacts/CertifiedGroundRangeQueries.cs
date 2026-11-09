@@ -4,15 +4,21 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion.Contacts;
 
-/// <summary>One empty selected-geometry and dry-medium certificate. The shared kernel still selects support,
-/// pays climb and maps seats at each rounded trial axis. Unenclosed operations retire the whole shortcut.</summary>
+/// <summary>One empty selected-geometry certificate over dry geometry. The shared kernel still selects support,
+/// traces medium, pays climb and maps seats. Unenclosed or refused operations retire the whole shortcut.</summary>
 internal sealed class CertifiedGroundRangeQueries(MovementQueryLease lease, SupportedGroundRegion region,
     MoveTuning tuning, MovementSelection selection, MovementContactSupportBinding binding,
-    Vector2 minimum, Vector2 maximum, Vector3 lower, Vector3 upper)
+    Vector2 minimum, Vector2 maximum, Vector3 lower, Vector3 upper, Vector3 startFeet, MovementBoundary boundary)
 {
+    readonly LeasedContactQueryContext _medium = lease.Workspace.Queries;
     internal bool Failed { get; private set; }
     internal ContactCapsuleShapes Shapes => lease.Workspace.Shapes;
-    internal void Begin() => Failed = false;
+    internal void Begin()
+    {
+        Failed = false;
+        _medium.Initialize(lease, tuning, selection, new(selection.Space, startFeet),
+            ContactComposition.Ordinary(tuning), tuning.Water.Mode, boundary);
+    }
     internal void Refuse() => Failed = true;
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning knobs) => new(centre.X, centre.Y - knobs.CapsuleHalfHeight, centre.Z);
     internal Vector3 BodyCentre(Vector3 feet) => new(feet.X, feet.Y + tuning.CapsuleHalfHeight, feet.Z);
@@ -98,11 +104,24 @@ internal sealed class CertifiedGroundRangeQueries(MovementQueryLease lease, Supp
     {
         MovementBodyQuery body = Body(from);
         CheckBody(body, BodyCentre(to) - body.Centre, MovementQueryLease.CoverageSkinMetres);
+        // Geometric dryness and point closure do not promise that this trace operation succeeds.
+        // Keep the live operation, including its precision, scope and producer refusal decisions.
+        if (!_medium.AcceptSegment(from, to)) Decline();
         return true;
+    }
+    internal bool ConstrainGroundDescent(Vector3 from, Vector3 to, Vector3 normal,
+        float footRadius, float cosMaxSlope, out Vector2 move)
+    {
+        move = default;
+        if (tuning.Water.Mode is not (WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly) ||
+            to.Y >= from.Y || normal.Y <= 0) return false;
+        CheckBody(Body(from), BodyCentre(to) - BodyCentre(from), MovementQueryLease.CoverageSkinMetres);
+        if (_medium.ConstrainGroundDescent(from, to, normal, footRadius, cosMaxSlope, out move)) Decline();
+        return false;
     }
     internal MovementWaterPoint SampleMedium(Vector3 feet)
     {
-        AcceptSegment(feet, feet);
+        CheckBody(Body(feet), Vector3.Zero, MovementQueryLease.CoverageSkinMetres);
         return new(MovementAvailability.Known, selection.Space, null, false, 1, null);
     }
     MovementBodyQuery Body(Vector3 feet) => new(BodyCentre(feet), tuning.CapsuleRadius,

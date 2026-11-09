@@ -10199,6 +10199,9 @@ or supported sloped analytic ground evaluates exact command-dependent states und
 movement previews. Slopes retain the shared contact kernel and the drawn producer's exact float expressions
 over captured triangles, with one selected-static evidence capture shared by all trials. Water fields additionally opt into `IMovementDryTracePointProof` and certify successful dry
 point operations over the enclosure. A known dry sweep alone does not authorize skipping point refusals.
+Those point proofs do not authorize skipping other trace operations. Supplied fields keep the ordinary
+segment traces for flat and sloped trials, including trace-specific refusals and precision checks. Only
+intrinsic water-field absence retains the flat algebra. This fixes the same gap in the released 23.4.0 flat path.
 Wet, obstructed, steep, unsupported and refused regions keep the exact live solver and pacing reads.
 The certificate and both drivers preserve command bits and admission decisions. See the
 [range approach contract](../KhaozEngine.Movement/README.md). The check does not step the world or publish an entity. The travel cap includes the requested pace,

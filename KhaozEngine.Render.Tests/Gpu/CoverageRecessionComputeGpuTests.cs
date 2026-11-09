@@ -63,6 +63,8 @@ public sealed class CoverageRecessionComputeGpuTests(ITestOutputHelper output)
         gpu.GpuDevice.WaitForIdle();
         scene.Prepare(0); a.Begin(); scene.Render(a); a.End(); scene.Submission.Submit(a);
         var written = scene.Owners[0].Request.Surface;
+        // A refused device has no covered surface, and the dependency below would otherwise fail obscurely.
+        Assert.NotNull(written.Current);
         // Deliberately no wait or readback between submissions. Motion shaders and this copy read N-1 in N.
         scene.Palette[0] = Matrix4x4.CreateTranslation(0, 0, .125f);
         scene.Prepare(1); b.Begin(); scene.Render(b);

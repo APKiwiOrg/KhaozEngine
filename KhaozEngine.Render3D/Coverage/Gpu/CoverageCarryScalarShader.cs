@@ -84,23 +84,27 @@ internal static class CoverageCarryScalarShader
             bisections = 0u;
             // One residual site services the seed bracket, expansion and bisection.
             // phase 0 tests the seed, 1 its predecessor, 2/3 expand, and 4 bisects.
-            uint phase = 0u, probe = candidate, lo = 0u, hi = end, step = 1u;
-            [[dont_unroll]] for (;;) {
+            uint phase = 0u, probe = candidate, lo = 0u, hi = end, step = 1u, result = 0u;
+            bool searching = true;
+            // One exit after the loop, because FXC refuses a function whose only returns are inside an endless loop.
+            [[dont_unroll]] for (; searching;) {
                 bool atOrBelow = covRoundedAtOrBelow(a,b,root,probe);
                 if (phase == 0u) {
                     if (!atOrBelow) { lo = candidate; phase = 2u; probe = min(candidate+step,end); }
-                    else if (candidate == 0u) return 0u;
+                    else if (candidate == 0u) { result = 0u; searching = false; }
                     else { phase = 1u; probe = candidate-1u; }
                 } else if (phase == 1u) {
-                    if (!atOrBelow) return candidate;
-                    hi = candidate-1u; phase = 3u;
-                    probe = candidate > step ? candidate-step : 0u;
+                    if (!atOrBelow) { result = candidate; searching = false; }
+                    else {
+                        hi = candidate-1u; phase = 3u;
+                        probe = candidate > step ? candidate-step : 0u;
+                    }
                 } else if (phase == 2u) {
                     if (atOrBelow) { hi = probe; phase = 4u; }
                     else { lo = probe; step <<= 1; probe = min(candidate+step,end); }
                 } else if (phase == 3u) {
                     if (!atOrBelow) { lo = probe; phase = 4u; }
-                    else if (probe == 0u) return 0u;
+                    else if (probe == 0u) { result = 0u; searching = false; }
                     else { hi = probe; step <<= 1; probe = candidate > step ? candidate-step : 0u; }
                 } else {
                     if (atOrBelow) hi = probe; else lo = probe;
@@ -108,10 +112,11 @@ internal static class CoverageCarryScalarShader
                 }
                 // Whole-domain bracket, fewer than 2^31 ordinal words. At most 31 bisections.
                 if (phase == 4u) {
-                    if (hi-lo <= 1u) return hi;
-                    probe = lo+((hi-lo) >> 1);
+                    if (hi-lo <= 1u) { result = hi; searching = false; }
+                    else probe = lo+((hi-lo) >> 1);
                 }
             }
+            return result;
         }
         // Shared seeded/native entry. Every physical worker calls this once, including
         // mixed division/root graphs. Native results are seeds, never final answers.

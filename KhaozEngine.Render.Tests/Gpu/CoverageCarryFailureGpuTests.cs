@@ -64,6 +64,8 @@ public sealed class CoverageCarryFailureGpuTests
             commands.End(); device.Submit(commands); device.WaitForIdle();
             uint[] actual = GpuReadback.ReadBuffer<uint>(device, buffers[4], 32);
             GpuReadback.ReadBuffer<uint>(device, buffers[3], 8).CopyTo(fixture.Errors, 0);
+            // The dispatches wrote carry storage on the device, and the position assertions compare against it.
+            GpuReadback.ReadBuffer<uint>(device, buffers[2], fixture.Work.Length).CopyTo(fixture.Work, 0);
             actual.CopyTo(fixture.Current, 0);
             if (positionFailure) fixture.AssertUncovered(); else fixture.AssertCoveredDirections();
         }

@@ -14,6 +14,7 @@ public sealed partial class Scene3D
 
     readonly int _outlineOwner = Interlocked.Increment(ref s_nextOutlineOwner);
     readonly List<MeshOutlineDrawGroup> _meshOutlineGroups = new();
+    readonly List<MeshOutlineDrawGroup> _meshOutlineGroupPool = new();
     int _outlineFrame;
     int _meshOutlinePartCount;
 
@@ -42,11 +43,20 @@ public sealed partial class Scene3D
         if (!float.IsFinite(widthPixels) || widthPixels < 0.5f || widthPixels > 8f)
             throw new ArgumentOutOfRangeException(nameof(widthPixels), widthPixels,
                 "outline width must be finite and between 0.5 and 8 pixels.");
-        if (!Enum.IsDefined(occlusion))
+        // Avoid runtime enum-metadata allocation after a collection on this warm queue path.
+        if (occlusion is not (MeshOutlineOcclusion.SceneDepth or MeshOutlineOcclusion.None))
             throw new ArgumentOutOfRangeException(nameof(occlusion), occlusion, "unknown outline occlusion.");
 
         int index = _meshOutlineGroups.Count;
-        _meshOutlineGroups.Add(new MeshOutlineDrawGroup(color, widthPixels, occlusion));
+        MeshOutlineDrawGroup drawGroup;
+        if (_meshOutlineGroupPool.Count == 0) drawGroup = new(color, widthPixels, occlusion);
+        else
+        {
+            drawGroup = _meshOutlineGroupPool[^1];
+            _meshOutlineGroupPool.RemoveAt(_meshOutlineGroupPool.Count - 1);
+            drawGroup.Configure(color, widthPixels, occlusion);
+        }
+        _meshOutlineGroups.Add(drawGroup);
         return new MeshOutlineGroup(_outlineOwner, _outlineFrame, index);
     }
 
@@ -108,6 +118,11 @@ public sealed partial class Scene3D
     {
         _targetOutlines.BeginFrame();
         _outlineFrame = _outlineFrame == int.MaxValue ? 1 : _outlineFrame + 1;
+        foreach (var group in _meshOutlineGroups)
+        {
+            group.Parts.Clear();
+            _meshOutlineGroupPool.Add(group);
+        }
         _meshOutlineGroups.Clear();
         _outlineBoneMatrices.Clear();
         _meshOutlinePartCount = 0;
@@ -124,12 +139,15 @@ public sealed partial class Scene3D
 
     sealed class MeshOutlineDrawGroup
     {
-        public Color Color { get; }
-        public float WidthPixels { get; }
-        public MeshOutlineOcclusion Occlusion { get; }
+        public Color Color { get; private set; }
+        public float WidthPixels { get; private set; }
+        public MeshOutlineOcclusion Occlusion { get; private set; }
         public List<MeshOutlinePart> Parts { get; } = new();
 
         public MeshOutlineDrawGroup(Color color, float widthPixels, MeshOutlineOcclusion occlusion)
+            => Configure(color, widthPixels, occlusion);
+
+        public void Configure(Color color, float widthPixels, MeshOutlineOcclusion occlusion)
         {
             Color = color;
             WidthPixels = widthPixels;

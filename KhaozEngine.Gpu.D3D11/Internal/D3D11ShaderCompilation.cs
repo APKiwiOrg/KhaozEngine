@@ -18,14 +18,14 @@ internal sealed class D3D11ShaderCompilation<T>
     {
         this.scheduler = scheduler;
         // Counted before it is queued, so a wait for idle cannot observe the gap.
-        D3D11ShaderCompileWorkers.Enter();
+        D3D11ShaderCompileWorkers.Enter(scheduler);
         result = Task.Factory.StartNew(() =>
         {
             // A discarded shader may never join. Keep failures as data so abandonment cannot leave an
             // unobserved task exception, and rethrow the original exception and worker stack at first use.
             try { return new Outcome(compile(), null); }
             catch (Exception ex) { return new Outcome(default!, ExceptionDispatchInfo.Capture(ex)); }
-            finally { D3D11ShaderCompileWorkers.Exit(); }
+            finally { D3D11ShaderCompileWorkers.Exit(scheduler); }
         }, CancellationToken.None, TaskCreationOptions.DenyChildAttach, scheduler);
     }
 
@@ -69,11 +69,11 @@ internal sealed class D3D11ShaderCompilation<T>
         }
         if (result.IsCompletedSuccessfully)
             return new(Task.FromResult(Project(result.GetAwaiter().GetResult())), scheduler);
-        D3D11ShaderCompileWorkers.Enter();
+        D3D11ShaderCompileWorkers.Enter(scheduler);
         return new(result.ContinueWith(completed =>
         {
             try { return Project(completed.GetAwaiter().GetResult()); }
-            finally { D3D11ShaderCompileWorkers.Exit(); }
+            finally { D3D11ShaderCompileWorkers.Exit(scheduler); }
         }, CancellationToken.None, TaskContinuationOptions.DenyChildAttach, scheduler), scheduler);
     }
 
@@ -96,13 +96,16 @@ internal static class D3D11ShaderCompileWorkers
     static readonly object activityGate = new();
     static int active;
 
-    internal static void Enter()
+    // Only the shared pool is counted. A caller's own scheduler decides whether its work ever runs.
+    internal static void Enter(TaskScheduler scheduler)
     {
+        if (!ReferenceEquals(scheduler, Scheduler)) return;
         lock (activityGate) active++;
     }
 
-    internal static void Exit()
+    internal static void Exit(TaskScheduler scheduler)
     {
+        if (!ReferenceEquals(scheduler, Scheduler)) return;
         lock (activityGate)
             if (--active == 0) Monitor.PulseAll(activityGate);
     }

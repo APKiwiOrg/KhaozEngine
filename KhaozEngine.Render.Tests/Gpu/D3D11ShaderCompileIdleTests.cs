@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -52,5 +53,21 @@ public sealed class D3D11ShaderCompileIdleTests
         release.Set();
         using AllocationRegion region = await open;
         Assert.Equal(1, compile.Join());
+    }
+
+    [Fact]
+    public void WaitForIdle_LeavesWorkOnACallersOwnSchedulerToThatCaller()
+    {
+        var compile = D3D11ShaderCompilation<int>.Start(() => 1, scheduler: new NeverRunsScheduler());
+        _ = compile.Select(value => value);
+
+        Assert.Null(Record.Exception(() => D3D11ShaderCompileWorkers.WaitForIdleForTests(TimeSpan.FromSeconds(60))));
+    }
+
+    sealed class NeverRunsScheduler : TaskScheduler
+    {
+        protected override IEnumerable<Task> GetScheduledTasks() => [];
+        protected override void QueueTask(Task task) { }
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
     }
 }

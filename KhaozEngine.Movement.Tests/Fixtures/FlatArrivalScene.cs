@@ -23,7 +23,8 @@ internal sealed class FlatArrivalScene : IDisposable, IMovementFlatAnalyticSuppo
         bool provenance = true, MovementSurfaceFeature? feature = null, Vector3? origin = null,
         Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? install = null,
         MovementBoundary? boundary = null, OrdinaryMovementExtent? extent = null,
-        Func<BepuPhysicsWorld, IPhysicsWorldQueryView>? movementQueries = null)
+        Func<BepuPhysicsWorld, IPhysicsWorldQueryView>? movementQueries = null,
+        Func<float, float, Vector2>? clampXz = null)
     {
         _height = height ?? ((_, _) => 0);
         _normal = normal ?? ((_, _) => Vector3.UnitY);
@@ -37,9 +38,11 @@ internal sealed class FlatArrivalScene : IDisposable, IMovementFlatAnalyticSuppo
         OrdinaryMovementRegistration registration;
         using (var lease = World.AcquireQueryReadLease()) registration = builder.Build(lease);
         _suppliedView = movementQueries?.Invoke(World);
-        Context = new(_height, _normal, World, null, null, _suppliedView, water, registration,
+        Context = new(_height, _normal, World, clampXz, null, _suppliedView, water, registration,
             boundary ?? MovementBoundary.Rectangle(-20, -20, 20, 20));
     }
+
+    internal static Vector2 ThrowingClamp(float x, float z) => throw new InvalidOperationException("Contact read the legacy clamp.");
 
     public bool Matches(Func<float, float, float> height, Func<float, float, Vector3>? normal, OrdinaryGroundSpace space)
         => height == _height && normal == _normal && space == OrdinaryGroundSpace.World;

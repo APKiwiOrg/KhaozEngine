@@ -9535,6 +9535,7 @@ The `GroundHeight`, `GroundNormal`, `Physics`, `ClampXz`, `Medium` and `Movement
 absolute coordinates where appropriate. `Physics` remains the complete caller-owned world. When
 `MovementQueries` is present, only movement uses that selected view, and its `SourceWorld` must be the exact
 same reference as `Physics`. A missing or different source is rejected even when two worlds have equal origins.
+Legacy tunings read `ClampXz`. Contact does not read it and enforces the world edge through `MovementBoundary`.
 The physics world speaks coordinates local to `IPhysicsWorld.Origin`. During its internal sequential step only
 `MoveState.Position` changes frame and then returns to absolute coordinates. Velocity, facing, effect scale,
 commitment and timers retain their carried values. Medium water surface Y is converted to the local frame.
@@ -10058,6 +10059,11 @@ option does not enter bake identity or change canonical bytes. See the
 [Movement contract](../KhaozEngine.Movement/README.md#stable-legacy-read-scope) for failure details.
 
 ### Range steering, NPC stepping and client path commands
+
+Contact arrival searches can use certified flat, unchanged support even when the context has a `clampXz`
+delegate. Contact and its exact arrival trials do not read that Legacy-only clamp. The certificate still
+requires the whole swept region to lie inside `MovementBoundary`, otherwise the search uses the exact solver.
+See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-steering-and-movement-drivers).
 
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 

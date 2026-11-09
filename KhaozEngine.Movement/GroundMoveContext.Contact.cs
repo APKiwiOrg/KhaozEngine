@@ -27,6 +27,17 @@ public sealed partial class GroundMoveContext
     /// <paramref name="legacyOnlyContactRefusal"/> is an optional construction-time restriction for producers whose
     /// geometry supports only legacy movement. Every contact use throws GroundContactCapabilityException with
     /// ContactProducerRestricted and this text as Restriction. Null permits contact configuration.</summary>
+    /// <param name="groundHeight">Absolute ground height at absolute XZ.</param>
+    /// <param name="groundNormal">Ground normal at absolute XZ.</param>
+    /// <param name="physics">Caller-owned complete physics world.</param>
+    /// <param name="clampXz">Absolute XZ clamp read by Legacy tunings. Contact does not read it and enforces
+    /// the world edge through <paramref name="movementBoundary"/>.</param>
+    /// <param name="medium">Medium at absolute XZ and feet Y.</param>
+    /// <param name="movementQueries">Borrowed query selection belonging to <paramref name="physics"/>.</param>
+    /// <param name="movementWaterField">Contact water queries, or null for dry movement.</param>
+    /// <param name="movementRegistration">Ordinary movement geometry registration.</param>
+    /// <param name="movementBoundary">Complete-path world boundary used by Contact.</param>
+    /// <param name="legacyOnlyContactRefusal">Optional producer restriction refusing Contact use.</param>
     public GroundMoveContext(Func<float, float, float> groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? physics,
         Func<float, float, Vector2>? clampXz, Func<float, float, float, MovementMedium>? medium,
@@ -40,6 +51,19 @@ public sealed partial class GroundMoveContext
     /// <summary>Constructs an ordinary context with optional producer restriction metadata. The restriction's text
     /// and admission are the same as the string-only overload. Known engine producers additionally name their kind
     /// and required capability, which contact refusals carry without interpreting the restriction text.</summary>
+    /// <param name="groundHeight">Absolute ground height at absolute XZ.</param>
+    /// <param name="groundNormal">Ground normal at absolute XZ.</param>
+    /// <param name="physics">Caller-owned complete physics world.</param>
+    /// <param name="clampXz">Absolute XZ clamp read by Legacy tunings. Contact does not read it and enforces
+    /// the world edge through <paramref name="movementBoundary"/>.</param>
+    /// <param name="medium">Medium at absolute XZ and feet Y.</param>
+    /// <param name="movementQueries">Borrowed query selection belonging to <paramref name="physics"/>.</param>
+    /// <param name="movementWaterField">Contact water queries, or null for dry movement.</param>
+    /// <param name="movementRegistration">Ordinary movement geometry registration.</param>
+    /// <param name="movementBoundary">Complete-path world boundary used by Contact.</param>
+    /// <param name="legacyOnlyContactRefusal">Optional producer restriction refusing Contact use.</param>
+    /// <param name="producerKind">Known engine producer named by Contact refusals.</param>
+    /// <param name="requiredCapability">Producer capability required for Contact.</param>
     public GroundMoveContext(Func<float, float, float> groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? physics,
         Func<float, float, Vector2>? clampXz, Func<float, float, float, MovementMedium>? medium,

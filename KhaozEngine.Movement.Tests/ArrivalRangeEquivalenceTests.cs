@@ -16,6 +16,9 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
     [InlineData("flat")]
     [InlineData("dry-field")]
     [InlineData("rebase")]
+    [InlineData("clamp")]
+    [InlineData("clamp-rebase")]
+    [InlineData("clamp-rim")]
     [InlineData("unproven")]
     [InlineData("bank")]
     [InlineData("slope")]
@@ -31,7 +34,7 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
     [InlineData("borrowed-dry")]
     public void SeededArrivalCommandsAndStatesMatchOriginalSolver(string scenario)
     {
-        // #1729. No tolerance is permitted in the command or any carried/event state field.
+        // #1729, #1737. No tolerance is permitted in the command or any carried/event state field.
         using FlatArrivalScene scene = Scene(scenario);
         var random = new Random(1729);
         int referenceSteps = 0, fullSteps = 0, certified = 0;
@@ -40,6 +43,7 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
         {
             MoveTuning tuning = scene.Tuning with { FacingTurnSpeed = sample % 2 == 0 ? 3f : float.PositiveInfinity };
             float x = scenario == "precision" ? 1048576 : (random.NextSingle() - 0.5f) * 0.125f;
+            if (scenario == "clamp-rim") x = 19.99f;
             if (scenario == "precision-edge") x += MathF.ScaleB(1, 8 + sample % 7);
             float z = (random.NextSingle() - 0.5f) * 0.125f;
             float height = scene.Context.GroundHeight(x, z);
@@ -86,12 +90,16 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
         Assert.True(referenceSteps > 0);
         Assert.Equal(referenceSteps, fullSteps + certified);
         output.WriteLine($"{scenario}: samples={samples}, reference={referenceSteps}, full={fullSteps}, certified={certified}");
-        if (scenario is "flat" or "dry-field" or "rebase" or "borrowed-dry")
+        if (scenario is "flat" or "dry-field" or "rebase" or "borrowed-dry" or "clamp" or "clamp-rebase")
         {
             Assert.Equal(0, fullSteps);
             Assert.True(certified > 0);
         }
-        else if (scenario != "precision-edge") Assert.Equal(referenceSteps, fullSteps);
+        else if (scenario != "precision-edge")
+        {
+            Assert.Equal(referenceSteps, fullSteps);
+            Assert.Equal(0, certified);
+        }
     }
 
     static bool RejectMiddle(in MoveState from, in MoveState to, in MoveTuning tuning)
@@ -102,6 +110,8 @@ public class ArrivalRangeEquivalenceTests(ITestOutputHelper output)
     {
         "dry-field" => new(water: MovementWaterField.Level("world", -3, -4)),
         "rebase" => new(origin: new(2, 0, -3)),
+        "clamp" or "clamp-rim" => new(clampXz: FlatArrivalScene.ThrowingClamp),
+        "clamp-rebase" => new(origin: new(2, 0, -3), clampXz: FlatArrivalScene.ThrowingClamp),
         "unproven" => new(provenance: false),
         "bank" => new((x, _) => x < 0 ? 0 : 0.125f, provenance: false),
         "slope" => new((x, _) => x * 0.125f, (_, _) => Vector3.Normalize(new(-0.125f, 1, 0)), provenance: false),

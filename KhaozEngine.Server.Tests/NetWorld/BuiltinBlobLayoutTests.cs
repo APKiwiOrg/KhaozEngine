@@ -146,9 +146,12 @@ public class BuiltinBlobLayoutTests
     public void EachGenerationsMovementEncoding_IsAPrefixOfTheNext()
     {
         MovementState m = Sample();
-        for (int g = BuiltinBlobLayout.OldestKnownWireGeneration; g < MoveProtocol.WireProtocolVersion; g++)
+        int oldest = BuiltinBlobLayout.OldestKnownWireGeneration;
+        int[] generations = Enumerable.Range(oldest, MoveProtocol.WireProtocolVersion - oldest)
+            .Where(g => g + 1 != BuiltinBlobLayout.MovementOwnerWireGeneration && g + 1 != 15).ToArray();
+        Assert.NotEmpty(generations);
+        foreach (int g in generations)
         {
-            if (g + 1 == BuiltinBlobLayout.MovementOwnerWireGeneration || g + 1 == 15) continue;
             byte[] older = CellBlobFixtures.Movement(g, m, SampleOwner);
             byte[] newer = CellBlobFixtures.Movement(g + 1, m, SampleOwner);
             Assert.True(older.Length <= newer.Length, $"generation {g + 1} shrank the movement payload");
@@ -186,9 +189,11 @@ public class BuiltinBlobLayoutTests
     public void AppendedFieldsAtTheirDefaults_EncodeAsZeroBytes()
     {
         byte[] blank = LivePayload(default(MovementState));
+        Assert.NotEmpty(blank);
         Assert.All(blank, b => Assert.Equal((byte)0, b));
 
         byte[] blankOwner = LivePayload(default(MovementOwnerState));
+        Assert.NotEmpty(blankOwner);
         Assert.All(blankOwner, b => Assert.Equal((byte)0, b));
 
         // And for a state that DOES set the older fields, the newer encoding is the older one plus zeros, up to the

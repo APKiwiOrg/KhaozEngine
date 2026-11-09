@@ -52,6 +52,7 @@ public sealed class TileTriangulationTests
         for (int rotation = 0; rotation < 4; rotation++)
         {
             int count = Cut(shape, rotation, triangles);
+            Assert.True(count > 0);
             for (int i = 0; i < count; i++)
                 Assert.True(SignedArea(triangles[i]) > 0f, $"{shape} rotation {rotation} triangle {i} winds backwards");
         }
@@ -105,6 +106,8 @@ public sealed class TileTriangulationTests
     public void A_span_too_small_for_the_widest_cut_is_rejected()
     {
         Assert.Throws<ArgumentException>(() => Overflowed());
+        Span<TileLatticeTriangle> accepted = stackalloc TileLatticeTriangle[4];
+        Assert.Equal(2, TileTriangulation.Triangulate(TileOverlayShape.Full, 0, true, accepted));
     }
 
     static void Overflowed()

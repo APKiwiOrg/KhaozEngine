@@ -30,6 +30,7 @@ public class ParticleTrailTests
         var sys = new ParticleSystem(16, seed: 1);
         Assert.Equal(0, sys.TrailCapacity);
         sys.Emit(StraightCfg(Vector3.UnitX, 5f, 10f), Vector3.Zero, 1);
+        Assert.Equal(1, sys.ActiveCount);
 
         Span<ParticleTrailPoint> buf = stackalloc ParticleTrailPoint[8];
         Assert.Equal(0, sys.GetTrail(0, buf));
@@ -165,10 +166,13 @@ public class ParticleTrailTests
 
         Span<ParticleTrailPoint> ba = stackalloc ParticleTrailPoint[8];
         Span<ParticleTrailPoint> bb = stackalloc ParticleTrailPoint[8];
+        Assert.True(a.ActiveCount > 0);
+        Assert.Equal(a.ActiveCount, b.ActiveCount);
         for (int i = 0; i < a.ActiveCount; i++)
         {
             int ca = a.GetTrail(i, ba);
             int cb = b.GetTrail(i, bb);
+            Assert.True(ca > 0);
             Assert.Equal(ca, cb);
             for (int j = 0; j < ca; j++)
             {

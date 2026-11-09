@@ -347,6 +347,7 @@ public class RowCodecRoundTripTests
         byte[] whole = Encode(registration, row);
         byte[] shortForm = Encode(registration, WithAppendedAbsent(registration, row));
 
+        Assert.NotEmpty(whole);
         for (int length = 0; length < whole.Length; length++)
         {
             string where = length.ToString(CultureInfo.InvariantCulture);

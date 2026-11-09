@@ -169,6 +169,9 @@ public class MapWaterCompilerTests
         MapCompiledWaterBody lake = Body(doc, "fine-lake");
         Assert.Equal(MapWaterCompileStatus.NotRepresentable, lake.Status);
         Assert.Empty(lake.Regions);
+        doc.Water!.Bodies[0] = doc.Water.Bodies[0] with { SurfaceY = 0 };
+        Assert.True(WaterFixtures.ContourNarrows(doc));
+        Assert.Equal(MapWaterCompileStatus.Complete, Body(doc, "fine-lake").Status);
     }
 
     [Fact]
@@ -230,10 +233,10 @@ public class MapWaterCompilerTests
     }
 
     [Theory]
-    [InlineData("MaxFootprintCells", "water footprint cells")]
-    [InlineData("MaxPieces", "water pieces")]
-    [InlineData("MaxPairChecks", "water pair checks")]
-    public void CompileLimits_RefuseOversizedWork(string budget, string detail)
+    [InlineData("MaxFootprintCells")]
+    [InlineData("MaxPieces")]
+    [InlineData("MaxPairChecks")]
+    public void CompileLimits_RefuseOversizedWork(string budget)
     {
         var doc = WaterFixtures.OceanOverCaves();
         var complete = Body(doc, "ocean");
@@ -241,7 +244,7 @@ public class MapWaterCompilerTests
             : budget == "MaxPieces" ? complete.Work.Pieces : complete.Work.PairChecks;
         var limits = Limit(exact - 1);
         MapCompiledWaterBody ocean = Body(doc, "ocean", limits);
-        Assert.Equal((MapWaterCompileStatus.CapacityExceeded, detail), (ocean.Status, ocean.Detail));
+        Assert.Equal(MapWaterCompileStatus.CapacityExceeded, ocean.Status);
         Assert.Equal(MapDocumentRefusal.WorkCapacityExceeded, ocean.Finding!.Reason);
         Assert.Equal(budget, ocean.Finding.Budget);
         Assert.Equal(exact - 1, ocean.Finding.Limit);
@@ -258,7 +261,11 @@ public class MapWaterCompilerTests
     {
         MapDocument doc = WaterFixtures.Broken("domain-off-footprint");
         MapCompiledWaterBody ocean = Body(doc, "ocean");
-        Assert.Equal((MapWaterCompileStatus.Invalid, "water body 'ocean' covers no space footprint"), (ocean.Status, ocean.Detail));
+        Assert.Equal(MapWaterCompileStatus.Invalid, ocean.Status);
+        Assert.Equal(MapDocumentRefusal.WaterNoSpaceFootprint, ocean.Finding!.Reason);
+        Assert.Equal("ocean", ocean.Finding.EntityId);
+        doc.Water!.Bodies[0] = doc.Water.Bodies[0] with { Domain = WaterFixtures.OceanOverCaves().Water!.Bodies[0].Domain };
+        Assert.Equal(MapWaterCompileStatus.Complete, Body(doc, "ocean").Status);
     }
 
     [Fact]
@@ -268,7 +275,9 @@ public class MapWaterCompilerTests
         string dir = WaterFixtures.TempDirectory();
         MapDocumentFile.SaveTiled(doc, dir);
         MapDocument loaded = MapDocumentFile.LoadTiled(dir);
-        Assert.Equal(MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!).Select(b => b.Digest),
+        var compiled = MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!);
+        Assert.NotEmpty(compiled);
+        Assert.Equal(compiled.Select(b => b.Digest),
             MapWaterCompiler.Compile(CaveFixtures.View(loaded), loaded.Water!).Select(b => b.Digest));
     }
 
@@ -339,7 +348,9 @@ public class MapWaterCompilerTests
     public void FreeSurfaceTriangles_FaceUp()
     {
         MapDocument doc = WaterFixtures.OceanOverCaves();
-        foreach (MapExactTriangle t in MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!).SelectMany(b => b.Regions).SelectMany(r => r.Triangles))
+        var triangles = MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!).SelectMany(b => b.Regions).SelectMany(r => r.Triangles).ToArray();
+        Assert.NotEmpty(triangles);
+        foreach (MapExactTriangle t in triangles)
             Assert.True(WaterFixtures.NormalY(t).Sign > 0);
     }
 }

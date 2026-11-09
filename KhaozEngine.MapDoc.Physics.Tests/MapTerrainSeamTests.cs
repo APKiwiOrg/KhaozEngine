@@ -20,6 +20,7 @@ public class MapTerrainSeamTests
         foreach (var f in new[] { NativeWorldFixtures.LongWallStrip(300f), NativeWorldFixtures.HighLegacyPatch(180f), NativeWorldFixtures.TwoSidedStrip() })
         {
             var set = MapTerrainPhysics.Compile(f.View, new MapTerrainChunkPolicy());
+            Assert.NotEmpty(set.Chunks);
             using var physics = new BepuPhysicsWorld();
             foreach (var c in set.Chunks)
             {

@@ -26,7 +26,9 @@ public sealed class LegacyWaterOracleTests
             Assert.Equal(source.Body.SurfaceY, Native.Document.Water!.Bodies.Single(b => b.Id == source.BodyId).SurfaceY);
         float river = Assert.Single(Native.Sources.Where(LegacyWaterOracleWorld.IsRiver).Select(s => s.Body.SurfaceY).Distinct());
         Assert.Equal(2, Native.Sources.Count(LegacyWaterOracleWorld.IsRiver));
-        Assert.All(Native.Sources.Where(s => !LegacyWaterOracleWorld.IsRiver(s)), s => Assert.NotEqual(river, s.Body.SurfaceY));
+        var nonRiver = Native.Sources.Where(s => !LegacyWaterOracleWorld.IsRiver(s)).ToArray();
+        Assert.NotEmpty(nonRiver);
+        Assert.All(nonRiver, s => Assert.NotEqual(river, s.Body.SurfaceY));
     }
 
     [Fact]
@@ -60,8 +62,8 @@ public sealed class LegacyWaterOracleTests
 
         LegacyWaterReport report = LegacyWaterComparison.Compare(document, new[] { source });
 
-        Assert.Contains(report.Failures, f => f.Contains("far-water: cell centre for cell (8388609, 0) is not representable", StringComparison.Ordinal));
-        Assert.Contains(report.Failures, f => f.Contains("far-water: cell centre for cell (8388610, 0) is not representable", StringComparison.Ordinal));
+        Assert.Contains(report.Failures, f => f.Contains("far-water", StringComparison.Ordinal) && f.Contains("(8388609, 0)", StringComparison.Ordinal));
+        Assert.Contains(report.Failures, f => f.Contains("far-water", StringComparison.Ordinal) && f.Contains("(8388610, 0)", StringComparison.Ordinal));
         Assert.Equal(0, report.Cells);
         Assert.Throws<MapDocumentException>(() => LegacyWaterComparison.CellCentres(source, 0f).ToArray());
     }
@@ -108,9 +110,14 @@ public sealed class LegacyWaterOracleTests
     [Fact]
     public void SurfaceFeet_StayDry()
     {
+        Assert.NotEmpty(Native.Sources);
         foreach (LegacyWaterSource source in Native.Sources)
-            foreach (MapFramePoint p in LegacyWaterComparison.CellCentres(source, y: source.Body.SurfaceY))
+        {
+            var centres = LegacyWaterComparison.CellCentres(source, y: source.Body.SurfaceY).ToArray();
+            Assert.NotEmpty(centres);
+            foreach (MapFramePoint p in centres)
                 Assert.Equal(MapWaterStatus.Dry, Query().Sample(p).Status);
+        }
     }
 
     [Fact]
@@ -120,6 +127,7 @@ public sealed class LegacyWaterOracleTests
         MapWaterContainmentReport containment = MapWaterContainment.Validate(view, Native.Document.Water!);
         Assert.Equal((true, 0), (containment.Complete, containment.Errors.Count));
         IReadOnlyList<MapCompiledWaterBody> compiled = MapWaterCompiler.Compile(view, Native.Document.Water!);
+        Assert.NotEmpty(compiled);
         Assert.All(compiled, b => Assert.Equal(MapWaterCompileStatus.Complete, b.Status));
         Assert.Equal(2 * Native.Sources.Sum(s => s.Body.Rects.Count), compiled.Sum(b => b.Work.Triangles));
         foreach (LegacyWaterSource source in Native.Sources)

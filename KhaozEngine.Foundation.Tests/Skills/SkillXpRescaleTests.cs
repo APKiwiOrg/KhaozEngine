@@ -53,6 +53,7 @@ public class SkillXpRescaleTests
         // A level's worth of grind is a real thing to lose, so the progress bar has to land where it was.
         // The sweep is every level and several points inside each, including the two ends of the band.
         double[] parts = [0d, 0.001d, 0.25d, 0.5d, 0.75d, 0.999d];
+        Assert.True(osrs.MaxLevel > 1);
         for (int level = 1; level < osrs.MaxLevel; level++)
         {
             double floor = osrs.XpForLevel(level);
@@ -118,7 +119,9 @@ public class SkillXpRescaleTests
         // second, so the sweep over every level under both caps has to stay on its own level.
         SkillXpCurve osrs = SkillXpCurve.Osrs;
         SkillXpCurve owner = Owner;
-        for (int level = 1; level < Math.Min(osrs.MaxLevel, owner.MaxLevel); level++)
+        int maxLevel = Math.Min(osrs.MaxLevel, owner.MaxLevel);
+        Assert.True(maxLevel > 1);
+        for (int level = 1; level < maxLevel; level++)
         {
             double justUnder = Math.BitDecrement(osrs.XpForLevel(level + 1));
             Assert.Equal(level, owner.LevelFor(SkillXpRescale.Preserve(osrs, owner, justUnder)));

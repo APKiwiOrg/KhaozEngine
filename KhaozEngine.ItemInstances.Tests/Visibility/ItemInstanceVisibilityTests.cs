@@ -187,7 +187,7 @@ public class ItemInstanceVisibilityTests
     public static TheoryData<ushort, PropertyVisibility, bool> EveryKindAtEveryLevel()
     {
         var data = new TheoryData<ushort, PropertyVisibility, bool>();
-        foreach (ushort kind in VisibilityFixtures.RegisteredKinds())
+        foreach (ushort kind in RegisteredKinds())
         {
             foreach (PropertyVisibility viewer in Levels)
             {
@@ -372,11 +372,18 @@ public class ItemInstanceVisibilityTests
             registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, full);
 
         var tooShort = new byte[written - 1];
+        Assert.NotEmpty(tooShort);
+        Array.Fill(tooShort, (byte)0xA5);
         Assert.Equal(-1, ItemInstanceVisibility.PublicView(
             registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, tooShort));
 
         // Nothing was written, so a caller that ignores the answer cannot ship a truncated view.
-        Assert.All(tooShort, b => Assert.Equal(0, b));
+        Assert.All(tooShort, b => Assert.Equal((byte)0xA5, b));
+
+        var exact = new byte[written];
+        Assert.Equal(written, ItemInstanceVisibility.PublicView(
+            registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, exact));
+        Assert.Equal(full.AsSpan(0, written).ToArray(), exact);
     }
 
     [Fact]
@@ -445,7 +452,7 @@ public class ItemInstanceVisibilityTests
 
         // The two are disjoint and their union is what the owner sees, which is what makes them a
         // complement rather than two overlapping views that happen to add up.
-        foreach (ushort kind in VisibilityFixtures.RegisteredKinds())
+        foreach (ushort kind in RegisteredKinds())
         {
             bool inPublic = VisibilityFixtures.Carries(registry, publicView, kind);
             bool inRemainder = VisibilityFixtures.Carries(registry, ownerView, kind);
@@ -471,7 +478,7 @@ public class ItemInstanceVisibilityTests
         // and it arrives through exactly one of the two projections.
         byte[] publicNested = VisibilityFixtures.SocketNested(registry, publicView);
         byte[] ownerNested = VisibilityFixtures.SocketNested(registry, ownerView);
-        foreach (ushort kind in VisibilityFixtures.RegisteredKinds())
+        foreach (ushort kind in RegisteredKinds())
         {
             bool inPublic = VisibilityFixtures.Carries(registry, publicNested, kind);
             bool inRemainder = VisibilityFixtures.Carries(registry, ownerNested, kind);
@@ -595,6 +602,13 @@ public class ItemInstanceVisibilityTests
     {
         PropertyVisibility.ServerOnly, PropertyVisibility.OwnerOnly, PropertyVisibility.Everyone,
     };
+
+    static ushort[] RegisteredKinds()
+    {
+        ushort[] kinds = VisibilityFixtures.RegisteredKinds();
+        Assert.NotEmpty(kinds);
+        return kinds;
+    }
 
     static bool Sees(InstancePropertyRegistry registry, ushort kind, PropertyVisibility viewer)
         => ItemInstanceVisibility.CanSee(registry, kind, viewer, identified: true, revealedMask: 0);

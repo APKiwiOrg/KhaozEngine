@@ -14,11 +14,19 @@ public class TileCollisionStepTests
         return TileCollisionBaker.Bake(doc, Cat);
     }
 
-    [Fact]
-    public void Open_ground_allows_all_eight_directions()
+    [Theory]
+    [InlineData(TileDirection.W)]
+    [InlineData(TileDirection.E)]
+    [InlineData(TileDirection.S)]
+    [InlineData(TileDirection.N)]
+    [InlineData(TileDirection.SW)]
+    [InlineData(TileDirection.SE)]
+    [InlineData(TileDirection.NW)]
+    [InlineData(TileDirection.NE)]
+    public void Open_ground_allows_all_eight_directions(TileDirection d)
     {
         TileCollisionMap map = Map();
-        foreach (TileDirection d in TileDirections.All) Assert.True(TileCollision.CanStep(map, 10, 10, 0, d));
+        Assert.True(TileCollision.CanStep(map, 10, 10, 0, d));
     }
 
     [Fact]
@@ -59,6 +67,8 @@ public class TileCollisionStepTests
         TileCollisionMap map = Map();
         Assert.False(TileCollision.CanStep(map, 0, 0, 0, TileDirection.W));
         Assert.False(TileCollision.CanStep(map, 63, 63, 0, TileDirection.NE));
+        Assert.True(TileCollision.CanStep(map, 0, 0, 0, TileDirection.N));
+        Assert.True(TileCollision.CanStep(map, 63, 63, 0, TileDirection.SW));
     }
 
     [Fact]
@@ -70,5 +80,6 @@ public class TileCollisionStepTests
         Assert.True(TileCollision.CanStep(map, 10, 8, 0, TileDirection.E, 2));
         Assert.False(TileCollision.CanStep(map, 10, 9, 0, TileDirection.NE, 2));
         Assert.False(TileCollision.CanStep(map, 62, 62, 0, TileDirection.E, 2));
+        Assert.True(TileCollision.CanStep(map, 61, 62, 0, TileDirection.E, 2));
     }
 }

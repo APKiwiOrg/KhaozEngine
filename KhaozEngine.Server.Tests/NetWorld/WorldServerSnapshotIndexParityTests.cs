@@ -79,6 +79,16 @@ public class WorldServerSnapshotIndexParityTests
         return ids;
     }
 
+    private static void AssertJoined(IReadOnlyList<CapturingClient> clients)
+    {
+        Assert.NotEmpty(clients);
+        Assert.All(clients, client =>
+        {
+            Assert.NotNull(client.LastSnapshot);
+            Assert.True(client.LocalNetId >= 0);
+        });
+    }
+
     [Theory]
     [InlineData(1UL, 3)]
     [InlineData(2UL, 5)]
@@ -128,6 +138,7 @@ public class WorldServerSnapshotIndexParityTests
                 Assert.Equal(expected, c.LastSnapshot);
             }
         }
+        AssertJoined(clients);
     }
 
     [Fact]
@@ -173,6 +184,7 @@ public class WorldServerSnapshotIndexParityTests
             b.Poll();
             Verify();
         }
+        AssertJoined(clients);
 
         // A departs. Only B remains in the roster.
         hub.DisconnectClient(aTransport);
@@ -185,6 +197,7 @@ public class WorldServerSnapshotIndexParityTests
             b.Poll();
             Verify();
         }
+        AssertJoined(clients);
 
         // A fresh client C joins the now-smaller roster.
         var c2 = new CapturingClient(hub.CreateClient());
@@ -202,5 +215,6 @@ public class WorldServerSnapshotIndexParityTests
             c2.Poll();
             Verify();
         }
+        AssertJoined(clients);
     }
 }

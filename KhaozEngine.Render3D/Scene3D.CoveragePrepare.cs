@@ -105,7 +105,6 @@ public sealed partial class Scene3D
             p.PreviousSlot = p.History.Corresponds(p, ActiveCamera, _coverageSerial) ? p.History.Committed.Slot : -1;
             p.Surface = _coverageBatch.Surface(host, output, p.PreviousSlot);
             p.PublicationRevision = p.Revision;
-            p.Published = true;
             draws = checked(draws + host.Meshes.Length);
         }
         if (draws == 0) return;
@@ -116,12 +115,18 @@ public sealed partial class Scene3D
             _model.ReserveCoverage(draws);
             _targetOutlines.ReserveCoverage(Math.Max(draws, _meshOutlinePartCount));
             _pointShadows?.ReserveCoverage(draws);
+            // Every graphics program is queued before any owner joins its CPU work. Native realization
+            // stays at bind, and no actor advertises a final surface until this transaction is ready.
+            _model.CompleteCoverageCompilation();
+            _targetOutlines.CompleteCoverageCompilation();
+            _pointShadows?.CompleteCoverageCompilation();
             _pointShadows?.EnsureSkinnedCasterCapacity((uint)(_skinnedInstances.Items.Count + draws));
             _model.EnsureSkinnedMainCapacity((uint)(_skinnedInstances.Items.Count + draws));
             int slot = 0;
             foreach (var host in _coverageHosts)
             {
                 var p = host.Request;
+                p.Published = p.OutputSlot >= 0;
                 if (!p.Published) continue;
                 p.BindingStart = slot;
                 for (int i = 0; i < host.Meshes.Length; i++, slot++)
@@ -133,15 +138,24 @@ public sealed partial class Scene3D
             ReserveCoverageOutlineSurfaces();
         }
         catch (Exception error) when (error is NotSupportedException or ShaderValidationException)
+        { RefuseCoverageDevice(); }
+    }
+
+    void ValidateCoverageDeviceReadiness()
+    {
+        if (_model.CoverageRefused && _coverageBatch is { DeviceRefused: false }) RefuseCoverageDevice();
+    }
+
+    void RefuseCoverageDevice()
+    {
+        _coverageBatch?.RefuseDevice();
+        _model.RefuseCoverage();
+        _targetOutlines.RefuseCoverage(_retired);
+        _pointShadows?.RefuseCoverage(_retired);
+        foreach (var host in _coverageHosts)
         {
-            _coverageBatch.RefuseDevice();
-            _model.RefuseCoverage();
-            _targetOutlines.RefuseCoverage();
-            foreach (var host in _coverageHosts)
-            {
-                host.Request.Published = false;
-                host.Request.Failure = new(CoverageFailureCode.UnsupportedAdapter, host.Topology.HostIdentity, 0, 0, 0, 0);
-            }
+            host.Request.Published = false;
+            host.Request.Failure = new(CoverageFailureCode.UnsupportedAdapter, host.Topology.HostIdentity, 0, 0, 0, 0);
         }
     }
 

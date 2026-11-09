@@ -40,10 +40,10 @@ internal sealed partial class ModelRenderer
         CoveragePullObserverForTests?.Invoke("motion", new(draw));
     }
 
-    void DisposeCoverageMotion()
+    void DisposeCoverageMotion(GpuRetireQueue? retired = null)
     {
-        _coverageMotionPipeline?.Dispose(); _coverageDissolveMotionPipeline?.Dispose();
-        _coverageMotionShaders?.Dispose(); _coverageDissolveMotionShaders?.Dispose();
+        ResourceRetirement.Free(_coverageMotionPipeline, retired); ResourceRetirement.Free(_coverageDissolveMotionPipeline, retired);
+        ResourceRetirement.Free(_coverageMotionShaders, retired); ResourceRetirement.Free(_coverageDissolveMotionShaders, retired);
         _coverageMotionPipeline = _coverageDissolveMotionPipeline = null;
         _coverageMotionShaders = _coverageDissolveMotionShaders = null;
     }

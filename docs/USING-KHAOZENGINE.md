@@ -26307,6 +26307,12 @@ using IGpuComputeShader compute = factory.CreateComputeShaderFromSpirv(computeGl
 using IGpuShaderSet pair = factory.CreateShadersFromSpirv(vertexGlsl, fragmentGlsl, precise);
 ```
 
+Factories may return owners whose CPU compilation is still pending. For an optional feature, queue its
+complete cold batch, then call `EnsureCompilationReady()` on the compute shaders and graphics shader sets
+inside the feature's refusal transaction. The join delivers compiler failures before readiness or publication,
+without realizing native device objects or adding a GPU wait. It is a no-op for synchronously compiled
+backends. Do not repeat it on a ready warm draw or dispatch path.
+
 For example, `precise float p = a * b; precise float q = p + c;` preserves the authored operations. Precise
 mode selects shaderc optimization Zero while retaining Vulkan 1.0, SPIR-V 1.0 and entry point `main`.
 The compiler declares `SignedZeroInfNanPreserve 32` with `SPV_KHR_float_controls` on precise entry points.

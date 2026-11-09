@@ -33,6 +33,11 @@ internal sealed class ModelVisibilityShaders : IDisposable
 
     public void Dispose() => Release(null);
 
+    internal void EnsureCompilationReady()
+    {
+        foreach (var shaders in _sets.Values) shaders.EnsureCompilationReady();
+    }
+
     internal void Release(GpuRetireQueue? retired)
     {
         foreach (IGpuShaderSet shaders in _sets.Values) ResourceRetirement.Free(shaders, retired);

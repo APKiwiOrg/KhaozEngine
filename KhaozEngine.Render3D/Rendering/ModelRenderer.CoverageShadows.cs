@@ -78,11 +78,12 @@ internal sealed partial class ModelRenderer
         CoveragePullObserverForTests?.Invoke("cascade", new(draw));
     }
 
-    void DisposeCoverageShadows()
+    void DisposeCoverageShadows(GpuRetireQueue? retired = null)
     {
-        foreach (var pipeline in _coverageCascadePipelines) pipeline?.Dispose();
-        foreach (var shaders in _coverageCascadeShaders) shaders?.Dispose();
-        _coverageCascadeSet?.Dispose(); _coverageCascadeUniform?.Dispose(); _coverageCascadeLayout?.Dispose();
+        foreach (var pipeline in _coverageCascadePipelines) ResourceRetirement.Free(pipeline, retired);
+        foreach (var shaders in _coverageCascadeShaders) ResourceRetirement.Free(shaders, retired);
+        ResourceRetirement.Free(_coverageCascadeSet, retired); ResourceRetirement.Free(_coverageCascadeUniform, retired);
+        ResourceRetirement.Free(_coverageCascadeLayout, retired);
         _coverageCascadePipelines = []; _coverageCascadeShaders = [];
         _coverageCascadeSet = null; _coverageCascadeUniform = null; _coverageCascadeLayout = null;
         _coverageCascadeImage = [];

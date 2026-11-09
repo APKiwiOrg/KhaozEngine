@@ -210,10 +210,20 @@ Carry and pulling graphics variants request the public `GpuShaderCompileOptions(
 and author GLSL `precise` operations. The option preserves operation order and disables the applicable
 backend fast-math/contraction optimizations. Default shader compilation and cache identity are unchanged.
 Unsupported precise requests refuse through the existing typed shader/capability families. Graphics
-owners publish readiness only after successful construction and release partial resources on failure.
+owners publish readiness only after successful construction and CPU compilation, and release partial resources on failure.
 A sticky graphics refusal also suppresses coverage rebuilds when ordinary temporal, HDR or MSAA outputs change. This is not
 a promise of identical transcendental or denormal behavior on all devices. See the
 [GPU precision contract](USING-KHAOZENGINE.md#precise-compute-and-vertex-arithmetic).
+
+Deferred backends expose the CPU-only join through `IGpuShaderSet.EnsureCompilationReady` and its compute
+sibling. Coverage queues each cold batch first. All graphics owners are constructed before joining their
+programs, and no host surface is published until every required join succeeds. Output variants use the
+same refusal transaction. A compiler failure latches `UnsupportedAdapter` and draws ordinary current skin.
+Legacy parameterless preparation and settings changed after preparation can introduce a variant at render
+target sizing. That refusal is propagated before caster collection and draw classification, cancelling the
+pending surfaces before any coverage command is recorded.
+Native realization remains at the deferred backend's consuming boundary. Ready warm frames never rejoin,
+and the join adds no GPU wait or new compiler work. Cold-frame latency has not been measured here.
 
 Output storage reserves `K = D + 2` equal slots per actor, where `D` is the resolved frames-in-flight
 depth. These cover in-flight surfaces, their predecessor and a pending write. Pending output never

@@ -549,6 +549,12 @@ What it owns today:
   [Equipment coverage](../docs/EQUIPMENT-COVERAGE.md#runtime-carry-refusal-and-history) requests this
   policy for its carry and pulling graphics variants. Its native correctness and cost acceptance remain
   separate from headless compiler and scheduling evidence.
+- **Explicit CPU compilation readiness** - `IGpuShaderSet.EnsureCompilationReady()` and
+  `IGpuComputeShader.EnsureCompilationReady()` finish deferred CPU compiler work and deliver its original
+  failure without creating or binding native device objects. Queue the complete cold shader/pipeline batch
+  first, then join it inside the caller's optional-feature transaction. This moves the first-consumer wait
+  to preparation. It adds no GPU wait and is not a warm draw or dispatch readiness poll. Synchronously
+  compiled backends keep their existing behavior through the default no-op implementation.
 - **Compute** (since 15.2.0) - `IGpuResourceFactory.CreateComputeShaderFromSpirv(computeGlsl)` compiles a GLSL 450
   compute source into an `IGpuComputeShader`, and `CreateComputePipeline(in GpuComputePipelineDescription)` builds an
   `IGpuComputePipeline` over it plus its resource layouts. Both handle types are separate from the graphics

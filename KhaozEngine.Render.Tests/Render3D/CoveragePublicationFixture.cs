@@ -21,9 +21,17 @@ internal sealed class CoveragePublicationFixture : IDisposable
     internal Scene3D Scene => Host.Scene;
     internal readonly List<CoveragePassEvidence> Evidence = [];
 
-    internal CoveragePublicationFixture(int participants = 8, bool compute = true, bool completion = true, bool precise = true)
+    internal CoveragePublicationFixture(int participants = 8, bool compute = true, bool completion = true, bool precise = true,
+        bool deferred = false, Func<string, string?, bool>? deferredFailure = null)
     {
-        Device = new(compute, completion) { RefusePrecise = !precise };
+        Device = new(compute, completion)
+        { RefusePrecise = !precise, DeferCoverageCompilation = deferred, FailDeferredCompilation = deferredFailure };
+        if (deferred)
+        {
+            var sink = (NullGpuCommandList)Commands.Inner;
+            sink.PipelineBinding = static pipeline => (pipeline as ICoverageDeferredPipeline)?.Bind();
+            sink.ComputePipelineBinding = static pipeline => (pipeline as ICoverageDeferredPipeline)?.Bind();
+        }
         Host = new(device: Device);
         Submission = new(Device, consumerCapacity: participants);
         Binding = Host.Binding();
@@ -72,8 +80,12 @@ internal sealed class CoveragePublicationFixture : IDisposable
     }
 
     internal void Record()
+        => Record(false);
+    internal void Record(bool legacyPreparation, Action? beforeRecording = null)
     {
-        Scene.PrepareFrame(128, 96);
+        if (legacyPreparation) Scene.PrepareFrame();
+        else Scene.PrepareFrame(128, 96);
+        beforeRecording?.Invoke();
         Commands.Begin(); Scene.RenderInternal(Commands, 128, 96, Target); Commands.End();
     }
     internal CoverageHistorySnapshot History => Scene.CoverageHistoryForTests(Host.Actor);

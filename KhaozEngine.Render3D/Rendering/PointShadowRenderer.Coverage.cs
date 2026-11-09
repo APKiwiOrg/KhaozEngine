@@ -9,9 +9,15 @@ internal sealed partial class PointShadowRenderer
     CoveragePulledResources? _coveragePull;
     IGpuShaderSet[] _coverageShaders = [];
     IGpuPipeline[] _coveragePipelines = [];
+    bool _coverageCompilationReady;
+    bool _coverageRefused;
+    internal void RefuseCoverage(GpuRetireQueue? retired = null)
+    { _coverageRefused = true; DisposeCoverage(retired); }
 
     internal void ReserveCoverage(int count)
     {
+        if (_coverageRefused)
+            throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Vertex);
         if (_coveragePull is null)
         {
             var pull = new CoveragePulledResources(_gd, resource => _retired.Add(resource));
@@ -49,6 +55,17 @@ internal sealed partial class PointShadowRenderer
         _coveragePull.Reserve(count);
     }
 
+    internal void CompleteCoverageCompilation()
+    {
+        if (_coverageCompilationReady) return;
+        try
+        {
+            foreach (var shaders in _coverageShaders) shaders.EnsureCompilationReady();
+            _coverageCompilationReady = true;
+        }
+        catch { DisposeCoverage(); throw; }
+    }
+
     internal void ReserveCoverageSurface(int slot, in CoverageSurfaceRange surface) => _coveragePull!.ReserveSurface(slot, surface);
     internal Action<string, CoverageDrawEvidence>? CoveragePullObserverForTests { get; set; }
 
@@ -78,10 +95,12 @@ internal sealed partial class PointShadowRenderer
         CoveragePullObserverForTests?.Invoke("point", new(draw));
     }
 
-    void DisposeCoverage()
+    void DisposeCoverage(GpuRetireQueue? retired = null)
     {
-        foreach (var pipeline in _coveragePipelines) pipeline?.Dispose();
-        foreach (var shaders in _coverageShaders) shaders?.Dispose();
-        _coveragePull?.Dispose();
+        foreach (var pipeline in _coveragePipelines) ResourceRetirement.Free(pipeline, retired);
+        foreach (var shaders in _coverageShaders) ResourceRetirement.Free(shaders, retired);
+        ResourceRetirement.Free(_coveragePull, retired);
+        _coveragePipelines = []; _coverageShaders = []; _coveragePull = null;
+        _coverageCompilationReady = false;
     }
 }

@@ -2046,6 +2046,15 @@ the current scene-side typed refusal and its identifiers. Earlier binding-level 
 the binding's returned failure. Actor disposal releases history through retirement, and completed actor
 reservations can be reused by compatible cold replacements without growing surface storage.
 
+Cold coverage preparation queues each complete compiler batch before an explicit CPU-only readiness join.
+The graphics owners are all constructed before their joins, including shadows and outlines. Only then are
+readiness and host publication advertised. New output variants follow the same transaction. Deferred
+compiler refusals latch `UnsupportedAdapter` and preserve ordinary current skin. Failed or replaced owners
+are disposed before use or retired behind completion when an earlier frame may reference them. No native
+realization or GPU wait is added by the join, and ready warm frames do not join again.
+When legacy preparation or later settings defer target changes until rendering, a sizing-time refusal
+cancels coverage before caster collection and skinned classification. Ordinary current skin still draws.
+
 Missing compute, completion fences or precise pipeline support returns `UnsupportedAdapter`. Exhausted
 reservations or output slots return `CapacityExceeded` with counts and limits. Both select ordinary current
 skin at the scene integration boundary. Headless layout and lifetime checks do not establish native device

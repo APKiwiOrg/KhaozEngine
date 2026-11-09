@@ -12,7 +12,9 @@ internal sealed partial class TargetOutlineRenderer
     IGpuPipeline? _coverageFullPipeline, _coverageVisiblePipeline;
     IGpuResourceSet?[] _coverageMaterials = [];
     bool _coverageRefused;
-    internal void RefuseCoverage() => _coverageRefused = true;
+    bool _coverageCompilationReady;
+    internal void RefuseCoverage(GpuRetireQueue? retired = null)
+    { _coverageRefused = true; DisposeCoveragePulling(retired); }
     internal Action<string, CoverageDrawEvidence>? CoveragePullObserverForTests { get; set; }
 
     internal void ReserveCoverage(int count)
@@ -49,6 +51,18 @@ internal sealed partial class TargetOutlineRenderer
         }
         _coveragePull.Reserve(count);
         if (_coverageMaterials.Length < count) Array.Resize(ref _coverageMaterials, count);
+    }
+
+    internal void CompleteCoverageCompilation()
+    {
+        if (_coverageCompilationReady) return;
+        try
+        {
+            _coverageFullShaders.EnsureCompilationReady();
+            _coverageVisibleShaders.EnsureCompilationReady();
+            _coverageCompilationReady = true;
+        }
+        catch { DisposeCoveragePulling(); _coverageRefused = true; throw; }
     }
 
     internal void SetCoverageMaterial(int drawIndex, IGpuResourceSet? material) => _coverageMaterials[drawIndex] = material;
@@ -100,7 +114,15 @@ internal sealed partial class TargetOutlineRenderer
 
     internal void ReserveCoverageSurface(int slot, in CoverageSurfaceRange surface) => _coveragePull.ReserveSurface(slot, surface);
 
-    void DisposeCoveragePulling()
-    { _coverageFullShaders?.Dispose(); _coverageVisibleShaders?.Dispose(); _coveragePull?.Dispose(); }
+    void DisposeCoveragePulling(GpuRetireQueue? retired = null)
+    {
+        ResourceRetirement.Free(_coverageFullPipeline, retired); ResourceRetirement.Free(_coverageVisiblePipeline, retired);
+        ResourceRetirement.Free(_coverageFullShaders, retired); ResourceRetirement.Free(_coverageVisibleShaders, retired);
+        ResourceRetirement.Free(_coveragePull, retired);
+        _coverageFullPipeline = _coverageVisiblePipeline = null;
+        _coverageFullShaders = _coverageVisibleShaders = null!;
+        _coveragePull = null!; _coverageCompilationReady = false;
+        _coverageMaterials = [];
+    }
 
 }

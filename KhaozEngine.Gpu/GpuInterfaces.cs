@@ -107,12 +107,22 @@ namespace KhaozEngine.Gpu
 
     /// <summary>A compiled shader set (vertex + fragment) handle, over whatever a SPIR-V cross-compile produced
     /// for the backend that built it.</summary>
-    public interface IGpuShaderSet : IDisposable { }
+    public interface IGpuShaderSet : IDisposable
+    {
+        /// <summary>Complete CPU compilation without creating or binding native device objects. Queue the
+        /// whole cold batch before joining. Deferred compiler failures are thrown here. Synchronous backends
+        /// need no additional work. This is a preparation operation, not a per-draw readiness poll.</summary>
+        void EnsureCompilationReady() { }
+    }
 
     /// <summary>A compiled compute shader handle (the single-stage sibling of <see cref="IGpuShaderSet"/>),
     /// plus the workgroup size read out of the module itself.</summary>
     public interface IGpuComputeShader : IDisposable
     {
+        /// <summary>Complete CPU compilation without creating or binding native device objects. Queue the
+        /// whole cold batch before joining. Deferred compiler failures are thrown here. Synchronous backends
+        /// need no additional work. This is a preparation operation, not a per-dispatch readiness poll.</summary>
+        void EnsureCompilationReady() { }
         /// <summary>Workgroup size on X, read from the shader's own <c>layout(local_size_x = ...)</c>. Cover N
         /// threads with <c>(N + ThreadGroupSizeX - 1) / ThreadGroupSizeX</c> groups in
         /// <see cref="IGpuCommandList.Dispatch"/>.</summary>

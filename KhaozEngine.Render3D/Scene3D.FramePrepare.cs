@@ -155,6 +155,9 @@ namespace KhaozEngine.Render3D
         {
             if (HasBoundWater()) VerifyPreparedWaterTargets(width, height);
             EnsureSize(width, height);
+            // Legacy preparation and late settings may introduce a new output variant here. Propagate a
+            // compiler refusal before caster collection or skinned classification can retain coverage.
+            ValidateCoverageDeviceReadiness();
             ValidateWaterColumnInputs();
             EnsureWaterCausticCapacity();
             PrepareWaterColumnColor();

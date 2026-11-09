@@ -434,12 +434,14 @@ namespace KhaozEngine.Tests.Gpu
     /// to when there is no real device behind it.</summary>
     internal sealed class NullGpuCommandList : IGpuCommandList
     {
+        internal Action<IGpuPipeline>? PipelineBinding { get; set; }
+        internal Action<IGpuComputePipeline>? ComputePipelineBinding { get; set; }
         public void Begin() { }
         public void End() { }
         public void SetFramebuffer(IGpuFramebuffer fb) { }
         public void ClearColorTarget(uint index, Color rgba) { }
         public void ClearDepthStencil(float depth) { }
-        public void SetPipeline(IGpuPipeline p) { }
+        public void SetPipeline(IGpuPipeline p) => PipelineBinding?.Invoke(p);
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set) { }
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }
         public void SetVertexBuffer(uint slot, IGpuBuffer b) { }
@@ -465,7 +467,7 @@ namespace KhaozEngine.Tests.Gpu
         internal List<IGpuTexture> MipGenerations { get; } = new();
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) { }
-        public void SetComputePipeline(IGpuComputePipeline p) { }
+        public void SetComputePipeline(IGpuComputePipeline p) => ComputePipelineBinding?.Invoke(p);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ) { }

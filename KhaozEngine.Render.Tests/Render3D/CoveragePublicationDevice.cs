@@ -13,11 +13,14 @@ internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactor
     readonly FakeGpuDevice inner;
     readonly Dictionary<IGpuBuffer, byte[]> initialBuffers = [];
     internal ReadOnlySpan<byte> InitialBytes(IGpuBuffer buffer) => initialBuffers[buffer];
-    internal string ComputeSource(IGpuComputePipeline pipeline) => ((ComputePipeline)pipeline).Source;
+    internal string ComputeSource(IGpuComputePipeline pipeline) => ((ComputePipeline)(pipeline is CoverageDeferredComputePipeline deferred ? deferred.Inner : pipeline)).Source;
     readonly List<CoverageCarryTestDevice.Fence> fences = [];
     internal readonly List<(string Vertex, string Fragment, GpuShaderCompileOptions Options)> PrecisePrograms = [];
     internal bool AutoComplete = true, RefusePrecise, FailSubmission;
     internal Func<string, string, bool>? RefuseVertex;
+    internal bool DeferCoverageCompilation;
+    internal Func<string, string?, bool>? FailDeferredCompilation;
+    internal readonly List<CoverageDeferredCompilation> DeferredPrograms = [];
     internal readonly List<FakeResourceLayout> Layouts = [];
     internal FakeGpuResourceFactory Resources => (FakeGpuResourceFactory)inner.Factory;
     internal CoveragePublicationDevice(bool compute = true, bool completion = true)
@@ -72,15 +75,36 @@ internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactor
                 throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Vertex);
             PrecisePrograms.Add((vertex, fragment, options));
         }
-        return CreateShadersFromSpirv(vertex, fragment);
+        var shaders = CreateShadersFromSpirv(vertex, fragment);
+        if (!DeferCoverageCompilation || !options.PreciseMath) return shaders;
+        var deferred = new CoverageDeferredShaderSet(shaders, FailDeferredCompilation?.Invoke(vertex, fragment) == true);
+        DeferredPrograms.Add(deferred);
+        return deferred;
     }
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => new ComputeShader(source);
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source, GpuShaderCompileOptions options)
-    { if (options.PreciseMath) RequirePrecise(GpuShaderStages.Compute); return new ComputeShader(source); }
+    {
+        if (options.PreciseMath) RequirePrecise(GpuShaderStages.Compute);
+        var shader = new ComputeShader(source);
+        if (!DeferCoverageCompilation || !options.PreciseMath) return shader;
+        var deferred = new CoverageDeferredComputeShader(shader, FailDeferredCompilation?.Invoke(source, null) == true);
+        DeferredPrograms.Add(deferred);
+        return deferred;
+    }
     void RequirePrecise(GpuShaderStages stage)
     { if (RefusePrecise) throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, stage); }
-    public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d) => Resources.CreateGraphicsPipeline(d);
-    public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d) => new ComputePipeline(((ComputeShader)d.Shader).Source);
+    public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
+    {
+        if (d.ShaderSet is not CoverageDeferredShaderSet deferred) return Resources.CreateGraphicsPipeline(d);
+        var description = d;
+        description.ShaderSet = deferred.Inner;
+        return new CoverageDeferredGraphicsPipeline(Resources.CreateGraphicsPipeline(description), deferred);
+    }
+    public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
+    {
+        if (d.Shader is not CoverageDeferredComputeShader deferred) return new ComputePipeline(((ComputeShader)d.Shader).Source);
+        return new CoverageDeferredComputePipeline(new ComputePipeline(((ComputeShader)deferred.Inner).Source), deferred);
+    }
     public IGpuCommandList CreateCommandList() => new NullGpuCommandList();
     public IGpuFence CreateFence()
     { var fence = new CoverageCarryTestDevice.Fence(); fences.Add(fence); return fence; }

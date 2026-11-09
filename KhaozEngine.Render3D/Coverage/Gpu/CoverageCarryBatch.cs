@@ -424,6 +424,7 @@ internal sealed class CoverageCarryBatch : IDisposable, IGpuFrameCompletionConsu
                 shaders[stage] = device.Factory.CreateComputeShaderFromSpirv(CoverageCarryShaders.Kernels[stage].Source, CoverageCarryShaders.Options);
                 pipelines[stage] = device.Factory.CreateComputePipeline(new(shaders[stage], layouts[stage]));
             }
+            foreach (var shader in shaders) shader.EnsureCompilationReady();
             pipelinesReady = true; return true;
         }
         catch (Exception error) when (error is NotSupportedException or ShaderValidationException)

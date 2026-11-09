@@ -9,17 +9,42 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>Resolve-only still-detail failures and the lighting and motion behavior they must preserve.
-    /// Geometric inputs use jittered point samples, and the synthetic line uses a fixed eight-frame cadence.
+    /// Geometric inputs use jittered point samples, and synthetic lines use fixed hit cadences.
     /// All measurements use contrast shares in weighted luma.</summary>
     public sealed class TemporalStillDetailGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         internal const int DisplayW = 48, DisplayH = 24, Converge = 64, Measured = 32, RampFrames = 24;
+        internal const int SparseHitInterval = 12;
         internal const float Line = 0.95f, Wall = 0.30f, LineWidth = 1f / 8f;
 
         internal readonly record struct StillRun(float MaxChange, float MaxRange, float Mean, float Expected);
         internal readonly record struct TrackRun(float MeanError);
         internal readonly record struct TrailRun(float MaxTrail);
         internal readonly record struct SettleRun(int Frames);
+
+        [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
+        public void A_still_line_hit_less_often_than_the_lock_lasts_holds_steady(TemporalUpscale preset)
+        {
+            StillRun run = RunSparseHitLine(preset);
+            output.WriteLine($"{preset}: {run}");
+            if (preset == TemporalUpscale.Quality)
+                output.WriteLine($"Balanced: {RunSparseHitLine(TemporalUpscale.Balanced)}");
+            Assert.True(run.MaxChange <= (preset == TemporalUpscale.Native ? MainSparseChange(preset) + 0.02f : 0.1f),
+                $"{preset}: {run}");
+            if (preset == TemporalUpscale.Quality)
+                Assert.True(run.Mean >= 0.75f * run.Expected, $"{preset}: {run}");
+        }
+
+        [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
+        public void A_slow_ramp_under_a_sparsely_hit_line_tracks_no_later_than_its_baseline(TemporalUpscale preset)
+        {
+            TrackRun shimmering = RunRampUnderLine(preset, withLine: true, hitInterval: SparseHitInterval);
+            output.WriteLine($"{preset}: {shimmering}, main {MainSparseCreepingError(preset)}");
+            if (preset == TemporalUpscale.Quality)
+                output.WriteLine($"Balanced: {RunRampUnderLine(TemporalUpscale.Balanced, withLine: true, hitInterval: SparseHitInterval)}");
+            Assert.True(shimmering.MeanError <= MainSparseCreepingError(preset) + 0.02f,
+                $"{preset}: {shimmering}, main {MainSparseCreepingError(preset)}");
+        }
 
         [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
         public void A_still_shallow_diagonal_step_between_strong_contrasts_holds_steady(TemporalUpscale preset)
@@ -88,6 +113,22 @@ namespace KhaozEngine.Tests.Gpu
             _ => throw new ArgumentOutOfRangeException(nameof(preset)),
         };
 
+        // Measured against unchanged engine commit 55256bd3ae6fa75ca2055c9fd348360b8236933c on Metal.
+        internal static float MainSparseChange(TemporalUpscale preset) => preset switch
+        {
+            TemporalUpscale.Native => 0.059092026f,
+            TemporalUpscale.Quality => 0.053124707f,
+            _ => throw new ArgumentOutOfRangeException(nameof(preset)),
+        };
+
+        // Measured against unchanged engine commit 55256bd3ae6fa75ca2055c9fd348360b8236933c on Metal.
+        internal static float MainSparseCreepingError(TemporalUpscale preset) => preset switch
+        {
+            TemporalUpscale.Native => 0.056105882f,
+            TemporalUpscale.Quality => 0.056118146f,
+            _ => throw new ArgumentOutOfRangeException(nameof(preset)),
+        };
+
         internal static StillRun RunStillStep(TemporalUpscale preset, bool trim)
         {
             float factor = TemporalSettings.DisplayOverInternal(preset);
@@ -121,6 +162,16 @@ namespace KhaozEngine.Tests.Gpu
             var pixels = ColumnPixels(factor, column);
             return RunStill(preset, (jitter, frame) => OncePerCycleLineScene(iw, ih, jitter, frame),
                 pixels, Wall, Line, LineWidth, DisplayH / 2 * DisplayW + centre);
+        }
+
+        internal static StillRun RunSparseHitLine(TemporalUpscale preset)
+        {
+            float factor = TemporalSettings.DisplayOverInternal(preset);
+            int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor);
+            int column = iw / 2, centre = (int)MathF.Floor((column + 0.5f) * factor);
+            var pixels = ColumnPixels(factor, column);
+            return RunStill(preset, (jitter, frame) => SparseHitLineScene(iw, ih, jitter, frame),
+                pixels, Wall, Line, 1f / SparseHitInterval, DisplayH / 2 * DisplayW + centre);
         }
 
         static StillRun RunStill(TemporalUpscale preset, Func<Vector2, int, float[]> scene,
@@ -170,7 +221,7 @@ namespace KhaozEngine.Tests.Gpu
             return new StillRun(change, range, sum / samples, expected);
         }
 
-        internal static TrackRun RunRampUnderLine(TemporalUpscale preset, bool withLine)
+        internal static TrackRun RunRampUnderLine(TemporalUpscale preset, bool withLine, int hitInterval = 8)
         {
             float factor = TemporalSettings.DisplayOverInternal(preset);
             int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor), phases = TemporalJitter.PhaseCount(factor);
@@ -185,7 +236,7 @@ namespace KhaozEngine.Tests.Gpu
             for (int n = 0; n < Converge + Measured; n++)
             {
                 Vector2 jitter = TemporalJitter.Offset(n, phases);
-                float[] scene = RampUnderLineScene(iw, ih, jitter, n, withLine);
+                float[] scene = RampUnderLineScene(iw, ih, jitter, n, withLine, hitInterval);
                 rig.BeginFrame();
                 rig.Fill(scene, scene, motion);
                 rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, DisplayW, DisplayH, n > 0));
@@ -285,8 +336,12 @@ namespace KhaozEngine.Tests.Gpu
         internal static float[] OncePerCycleLineScene(int iw, int ih, Vector2 jitter, int frame)
             => Grey(iw, ih, (x, _) => frame % 8 == 0 && x == iw / 2 ? Line : Wall);
 
-        internal static float[] RampUnderLineScene(int iw, int ih, Vector2 jitter, int frame, bool withLine)
-            => Grey(iw, ih, (x, _) => withLine && frame % 8 == 0 && x == iw / 2
+        internal static float[] SparseHitLineScene(int iw, int ih, Vector2 jitter, int frame)
+            => Grey(iw, ih, (x, _) => frame % SparseHitInterval == 0 && x == iw / 2 ? Line : Wall);
+
+        internal static float[] RampUnderLineScene(int iw, int ih, Vector2 jitter, int frame, bool withLine,
+            int hitInterval = 8)
+            => Grey(iw, ih, (x, _) => withLine && frame % hitInterval == 0 && x == iw / 2
                 ? Line : RampWall(frame));
 
         internal static float[] DriftingLineScene(int iw, int ih, Vector2 jitter, int frame, float texelsPerFrame)

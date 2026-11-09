@@ -404,6 +404,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         }
         followedElsewhere = apart > FollowedHistoryMotionFraction * length(ownMotion);
     }
+    // At Quality, a slower-decaying lock counts as refreshed for one more frame at this half-LockDecay threshold.
     bool disoccluded = false;
     bool heldFromFarther = false;
     if (historyValid && onScreen && (depthTested || movingEdge)) {
@@ -447,8 +448,9 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     float motionCap = mix(MaxAccumulation, MovingAccumulation,
         clamp(motionPixels / MotionAccumulationPixels, 0.0, 1.0));
 
-    // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays by LockDecay a frame
-    // whatever the preset. Large motion and reactive content release it, and so does motion at an edge, where the pixel
+    // Step 6: thin features. A ridge through the centre texel refreshes the lock. Still flicker loses the jitter-cycle
+    // rate unless visibility changed, and other pixels lose LockDecay. Large motion and reactive content release it,
+    // and so does motion at an edge, where the pixel
     // holds a moving feature's history, not its own. A pixel that reprojected by its own motion and kept its history
     // holds its own, because where a moving surface showed last frame step 3 keeps a history only where no stored depth
     // carrying weight lies nearer than the pixel's own surface. So a still sub-texel feature beside a fast surface
@@ -458,7 +460,11 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // it. A thin feature taking a ridge keeps its own lock, and so does one beside a still nearer surface,
     // which is no moving edge. The hold on the clip stays whole while the lock is at least 1 / LockHoldGain, so a
     // sub-texel feature missed for a few frames keeps its luma, and it lets go over the rest of the lock.
-    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
+    float lockLoss = temporalStillLockLoss(historyRecord, lumaChange, motionPixels, reactive);
+#ifdef TemporalShimmerVisibility
+    if (lockLoss != LockDecay && temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)) lockLoss = LockDecay;
+#endif
+    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - lockLoss, 0.0) : 0.0;
     if (ridge) lockValue = 1.0;
     float releaseEdgeMotion = ownReprojected && useHistory ? 0.0 : edgeMotion;
     // With positive width the ordered barriers preserve bits. Finite arguments cannot make a NaN factor:

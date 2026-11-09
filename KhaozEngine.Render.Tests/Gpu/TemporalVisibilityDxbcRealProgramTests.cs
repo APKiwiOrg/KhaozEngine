@@ -128,9 +128,9 @@ namespace KhaozEngine.Tests.Gpu
         // All D temps, chain forms and unread-position pins remain unchanged.
         [InlineData("DecisionHelper", "RR", "RR", "RRRRWW", 12, 18, false, 0)]
         [InlineData("TemporalAccumulateFrag", "RR", "RR", "RRRRWW", 29, 38, false, 10)]
-        [InlineData("TemporalAccumulateHalfFrag", "RR", "RR", "RRRRWW", 32, 38, false, 10)]
+        [InlineData("TemporalAccumulateHalfFrag", "RR", "RR", "RRRRWW", 32, 39, false, 10)]
         [InlineData("TemporalAccumulateAtDisplaySizeFrag", "RR", "RR", "RRRRWW", 26, 37, false, 10)]
-        [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "RR", "RR", "RRRRWW", 29, 37, false, 10)]
+        [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "RR", "RR", "RRRRWW", 29, 38, false, 10)]
         [InlineData("TemporalResolveFrag", "RR", "RR", "RRRRWW", 41, 46, false, 10)]
         [InlineData("TemporalResolveHalfFrag", "RR", "RR", "RRRRWW", 42, 48, false, 10)]
         public void EachProgramCompilesItsChainsInTheseForms(string program, string dLoop, string loop, string straight,

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Text;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
 
@@ -17,6 +18,8 @@ internal sealed class CoverageSpirvExecutor
     sealed record Pointer(uint[] Words, int Offset, uint Type);
     sealed class Function
     {
+        internal string Name = "";
+        internal long Calls, Instructions, ExactInstructions;
         internal readonly List<(uint Type, uint Id)> Parameters = [];
         internal readonly List<uint[]> Code = [];
         internal readonly Dictionary<uint, int> Labels = [];
@@ -24,6 +27,7 @@ internal sealed class CoverageSpirvExecutor
     sealed class Frame(Function function)
     {
         internal readonly Function Function = function;
+        internal bool ExactScope;
         internal readonly Dictionary<uint, object> Values = [];
         internal object Result = Array.Empty<uint>();
     }
@@ -39,6 +43,9 @@ internal sealed class CoverageSpirvExecutor
     readonly uint entry;
     int steps;
     const int StepLimit = 10_000_000;
+    internal readonly record struct FunctionCount(string Name, long Calls, long Instructions, long ExactInstructions);
+    internal IEnumerable<FunctionCount> InstructionProfile => functions.Values
+        .Select(f => new FunctionCount(f.Name, f.Calls, f.Instructions, f.ExactInstructions));
 
     internal CoverageSpirvExecutor(string source, string name, IReadOnlyList<uint[]> buffers)
         : this(SpirvFrontEnd.ToSpirv(source, GpuShaderStages.Compute, name,
@@ -50,11 +57,13 @@ internal sealed class CoverageSpirvExecutor
         this.buffers = buffers;
         uint[] words = MemoryMarshal.Cast<byte, uint>(module).ToArray();
         Function? function = null;
+        var names = new Dictionary<uint, string>();
         for (int at = 5; at < words.Length; at += (int)(words[at] >> 16))
         {
             int length = (int)(words[at] >> 16);
             uint[] op = words.AsSpan(at, length).ToArray();
             uint code = op[0] & 65535;
+            if (code == 5) names[op[1]] = Encoding.UTF8.GetString(MemoryMarshal.AsBytes(op.AsSpan(2))).TrimEnd('\0').Split('(')[0];
             if (code == 15) entry = op[2];
             if (code is >= 19 and <= 33) types.Add(op[1], new(code, op[2..]));
             else if (op.Length > 2 && types.ContainsKey(op[1])) valueTypes[op[2]] = op[1];
@@ -69,7 +78,7 @@ internal sealed class CoverageSpirvExecutor
                     44 => op[3..].SelectMany(id => constants[id]).ToArray(),
                     _ => new uint[Size(op[1])],
                 };
-            if (code == 54) { function = new(); functions.Add(op[2], function); }
+            if (code == 54) { function = new() { Name = names.GetValueOrDefault(op[2], op[2].ToString()) }; functions.Add(op[2], function); }
             else if (code == 55) function!.Parameters.Add((op[1], op[2]));
             else if (code == 56) function = null;
             else if (function is not null)
@@ -121,6 +130,18 @@ internal sealed class CoverageSpirvExecutor
     internal void Run(int vertices)
     {
         if (vertices is < 1 or > 64) throw new ArgumentOutOfRangeException(nameof(vertices));
+        RunGroups(1);
+    }
+
+    internal void RunGroups(int groups)
+    {
+        if (groups is < 1 or > 64) throw new ArgumentOutOfRangeException(nameof(groups));
+        for (uint group = 0; group < groups; group++) RunGroup(group, (uint)groups);
+    }
+
+    void RunGroup(uint group, uint groups)
+    {
+        steps = 0;
         foreach (var (id, variable) in variables)
         {
             if (variable.Storage == 4)
@@ -138,9 +159,10 @@ internal sealed class CoverageSpirvExecutor
                 uint[] data = new uint[Size(variable.Type)];
                 if (builtins.TryGetValue(id, out uint builtin))
                 {
-                    if (builtin is 27 or 28) data[0] = lane;
-                    else if (builtin == 29) data[0] = lane;
-                    else if (builtin == 24) { data[0] = 1; data[1] = 1; data[2] = 1; }
+                    if (builtin == 28) data[0] = group * 64 + lane;
+                    else if (builtin is 27 or 29) data[0] = lane;
+                    else if (builtin == 26) data[0] = group;
+                    else if (builtin == 24) { data[0] = groups; data[1] = 1; data[2] = 1; }
                     else throw new NotSupportedException("Coverage test builtin " + builtin);
                 }
                 else if (variable.Initial != 0) constants[variable.Initial].CopyTo(data, 0);
@@ -162,11 +184,14 @@ internal sealed class CoverageSpirvExecutor
 
     IEnumerable<bool> Execute(Frame frame)
     {
+        frame.Function.Calls++;
         var code = frame.Function.Code;
         uint label = 0, previous = 0;
         for (int pc = 0; pc < code.Count; pc++)
         {
             if (++steps > StepLimit) throw new InvalidOperationException("Coverage test instruction bound exceeded.");
+            frame.Function.Instructions++;
+            if (frame.ExactScope) frame.Function.ExactInstructions++;
             uint[] op = code[pc];
             uint instruction = op[0] & 65535;
             void Set(object value) => frame.Values[op[2]] = value;
@@ -207,7 +232,8 @@ internal sealed class CoverageSpirvExecutor
                     }
                     Set(new Pointer(pointer.Words, offset, typeId)); break;
                 case 57:
-                    var child = new Frame(functions[op[3]]);
+                    var child = new Frame(functions[op[3]])
+                    { ExactScope = frame.ExactScope || functions[op[3]].Name == "covExactWorker" };
                     for (int i = 0; i < child.Function.Parameters.Count; i++)
                         child.Values[child.Function.Parameters[i].Id] = Copy(Value(frame, op[4 + i]));
                     // Input globals are invocation-local. Shared and storage variables remain shared.

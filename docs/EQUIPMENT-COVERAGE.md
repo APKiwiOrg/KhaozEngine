@@ -215,6 +215,13 @@ The free tooling CI suite `coverage` explicitly builds the outside-solution exec
 requires a nonempty test inventory, executed CLI process tests and zero skips, and sets `KE_GPU_TESTS=0`.
 Coverage formats, carry and tooling changes select it. It does not authorize native or cost execution.
 
+The headless Diagnostic fact `CoverageCarryInstructionProfileTests` executes the five compiled SPIR-V
+stages on the synthetic body-size fixture and reports instruction counts by stage and helper. Counts
+include labels and control flow, count vector instructions once, and attribute exact-worker descendants
+without double counting. They are a relative guide, not GPU timings. The bounded serial executor does
+not model occupancy, divergence, memory bandwidth or device arithmetic. The published surface is also
+compared word for word with the CPU reference. Default CI excludes this Diagnostic profile.
+
 G1, G2 and G3 are separately approved Metal, Direct3D 11 WARP and Vulkan correctness units. G3 also
 requires Vulkan synchronization validation. The cross-frame read of the slot written by the previous
 submission remains open for G3 because Vulkan hazard tracking resets at Begin. Existing headless

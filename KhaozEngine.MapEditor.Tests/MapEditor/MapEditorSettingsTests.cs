@@ -30,15 +30,15 @@ namespace KhaozEngine.Tests.MapEditor
     {
         // The standard headless scene: no device work, a small valid document, and a flat terrain field on the
         // controller so the tool layer can actually run a gesture (and so the surf depth field has something to
-        // sample). RebuildWorldForVisibility is counted rather than run, since there is no world to rebuild.
+        // sample). Record the profile available to a rebuild without creating GPU resources.
         class SettingsScene : MapEditorScene
         {
-            public int Rebuilds;
+            public RenderDistanceProfile? RebuiltProfile;
             protected override MapDocument CreateDocument(MapDocRegistry registry) => Doc();
             protected override void BuildWorld() =>
                 Controller.Field = new TerrainField(new TerrainConfig { GentleAmplitude = 0f });
             protected override void TeardownWorld() { }
-            protected override void RebuildWorldForVisibility() => Rebuilds++;
+            protected override void RebuildWorldForVisibility() => RebuiltProfile = ViewportRenderDistance;
         }
 
         static MapDocument Doc() => new MapDocument
@@ -53,7 +53,7 @@ namespace KhaozEngine.Tests.MapEditor
             scene.Init(null!, null!, null!, options);
             var manager = new SceneManager();
             manager.Push(scene);
-            scene.Rebuilds = 0;   // drop the enter-time apply so a test counts only what it drove
+            scene.RebuiltProfile = null;   // observe only rebuilds driven after entry
             return (scene, manager);
         }
 
@@ -371,6 +371,7 @@ namespace KhaozEngine.Tests.MapEditor
             // its depth, and the field covers the document rather than some default rectangle.
             Assert.Equal(64f, bathymetry!.HalfExtentX, 3);
             Assert.Equal(64f, bathymetry.HalfExtentZ, 3);
+            Assert.NotEmpty(bathymetry.Depths);
             Assert.All(bathymetry.Depths, d => Assert.Equal(6f, d, 3));
 
             scene.Settings.Surf = false;
@@ -397,7 +398,7 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(expected.FarClip, scene.Camera.FarPlane);
             // ...and the world is actually REBUILT, because ViewportWorld bakes its ring and prop cull at build
             // time: setting the profile alone would widen the frustum over a world that never grew (#363).
-            Assert.Equal(1, scene.Rebuilds);
+            Assert.Equal(expected, scene.RebuiltProfile);
             // The document-residency reach scales too, so a wider horizon loads a wider slice of a tiled world.
             Assert.Equal(options.EditorWindowRadius * 2, scene.EffectiveWindowRadius);
         }
@@ -411,7 +412,7 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(options.RenderDistance, scene.ViewportRenderDistance);
             Assert.Equal(options.RenderDistance.FarClip, scene.Camera.FarPlane);
             Assert.Equal(options.EditorWindowRadius, scene.EffectiveWindowRadius);
-            Assert.Equal(0, scene.Rebuilds);   // nothing changed, so nothing was rebuilt
+            Assert.Null(scene.RebuiltProfile);   // nothing changed, so nothing was rebuilt
         }
 
         [Fact]
@@ -438,6 +439,7 @@ namespace KhaozEngine.Tests.MapEditor
             // The whole point of scaling as a SET: the frustum must never reach past the terrain the viewport
             // streams, at any tier the menu offers.
             var options = new MapEditorOptions();
+            Assert.NotEmpty(EditorSettings.RenderDistanceMultipliers);
             foreach (float multiplier in EditorSettings.RenderDistanceMultipliers)
             {
                 (SettingsScene scene, _) = Push(options);
@@ -578,8 +580,8 @@ namespace KhaozEngine.Tests.MapEditor
         public void SettingsMenu_RowsReadAndWriteTheLiveSettings()
         {
             var settings = new EditorSettings();
-            int changes = 0;
-            var dialog = new MapEditorSettingsDialog(settings, () => changes++);
+            bool notified = false;
+            var dialog = new MapEditorSettingsDialog(settings, () => notified = true);
 
             ChoiceRow distance = ChoiceRowByLabel(dialog.Grid, "Render distance");
             Assert.Equal("Base", distance.Selected);
@@ -588,8 +590,10 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(settings.SwellAmplitude,
                 FloatRowByLabel(dialog.Grid, "Swell amplitude").Field.Value, 4);
 
+            settings.RenderDistanceMultiplier = 4f;
             dialog.ResetButton.OnClick!.Invoke();
-            Assert.Equal(1, changes);   // Reset raises the change hook so the host persists and re-applies
+            Assert.Equal(new EditorSettings().RenderDistanceMultiplier, settings.RenderDistanceMultiplier);
+            Assert.True(notified);   // Reset notifies the host to persist and re-apply the reset settings
         }
 
         [Fact]
@@ -618,7 +622,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.Equal(4f, scene.Settings.RenderDistanceMultiplier);
             Assert.Equal(options.RenderDistance.Scaled(4f), scene.ViewportRenderDistance);
-            Assert.Equal(1, scene.Rebuilds);
+            Assert.Equal(options.RenderDistance.Scaled(4f), scene.RebuiltProfile);
         }
 
         // A press-origin tap driven through the dialog (press and release both at `at`), the PropertyGridTests idiom.

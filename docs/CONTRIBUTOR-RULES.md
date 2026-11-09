@@ -32,7 +32,8 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   `InvalidDataException` derives from `MalformedDataException`, and code that handles malformed data catches
   the base. A new refusal in a family adds a reason member at the end of its enum. Public refusal enums are
   append-only from 23.5.0, so existing numeric values never move, because mods and tools built against one engine
-  version must keep working. The message stays developer prose
+  version must keep working. Each family has its own enum with no shared interface. `MapDocumentException` is one
+  family with one `MapDocumentRefusal`, one member per rule and the subject in typed identifiers. The message stays developer prose
   and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
   problem stays a BCL exception. An adapter's status projection remains distinct from the lower refusal
   reason. Classifiers use typed reasons and producer context, never keywords inside user identifiers or
@@ -130,7 +131,7 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   `build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update`.
   KETEST003 is a report-only review aid, outside the baseline. A review of all 474 findings found about
   a third real, because loops over local tables and test-owned case helpers look possibly
-  empty to a syntactic check. See the [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet)
+  empty to a syntactic check. It needs a precision of at least 18 of 20 before it can be enforced. See the [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet)
   for rule boundaries, baseline grammar, script modes and consumer adoption. Analyzer tests use
   `KhaozEngine.Tests.CodeHealth`.
 - `[Trait("Category", "Diagnostic")]` marks on-demand probes. Default CI excludes their timing and
@@ -254,6 +255,7 @@ In this repository:
   value from prose, so a rule 9 value moves onto a structured member of the thrown exception (the refusal
   bullet under "Engine code and test contracts") and the test asserts that member. It is never a deleted
   assertion and never an exemption.
+- A sweep's script hits are candidates, never verdicts, and a sweep that opens a test file judges every test in it.
 - Weak assertions this repository has found repeatedly. A check that a measured cost or duration is finite and
   positive gates nothing, so that test reports and takes the category below. A list found by reflection or a
   directory scan is compared with an independently written roster, because `NotEmpty` lets a partial discovery pass
@@ -265,7 +267,8 @@ In this repository:
   `Category=Diagnostic`. Issue #491 is the precedent: a wall-clock bound that flaked on a loaded shared runner.
 - Rule 14's reference is `tools/Renderer.Perf.Tooling.Tests`, outside `KhaozEngine.slnx`. It runs on the free
   `tooling-validation.yml` workflow when its own inputs change, never in the engine full suite. `tools/Items.Benchmark.Tests` and
-  `tools/NavCapture.Research.Tests` follow the same pattern.
+  `tools/NavCapture.Research.Tests` follow the same pattern. Which project a tooling family lives in is the owner's
+  decision, family by family, and moving one means out of the engine's default CI run, never deletion.
 - Rule 6's shared helpers include `test-shared` (allocation measurement, serialized reporting) and each area
   test project's fixtures. Process-global state still needs a `DisableParallelization` collection (see
   above).
@@ -395,6 +398,8 @@ Manual dispatch supports a task branch. It never uses a self-hosted runner or re
 `Directory.Build.props` contains the one `<KhaozEngineVersion>` for every package. SemVer is additive
 minor, fix patch and breaking major. Tooling, documentation and repository governance do not bump the
 engine version.
+An `InternalsVisibleTo` grant in a packable project is package content, so it is package-bearing work and plans a
+version ride.
 
 For a package-bearing change:
 

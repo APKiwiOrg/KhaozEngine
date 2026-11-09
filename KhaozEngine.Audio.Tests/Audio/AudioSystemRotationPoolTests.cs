@@ -78,6 +78,7 @@ public sealed class AudioSystemRotationPoolTests
         audio.SetRng(new DeterministicRng(5));
         audio.SetRotationPool(new[] { "a" });
         Spin(audio, backend, 20);
+        Assert.NotEmpty(backend.PlayedIndices);
         Assert.All(backend.PlayedIndices, idx => Assert.Equal(0, idx));
 
         backend.PlayedIndices.Clear();
@@ -165,6 +166,7 @@ public sealed class AudioSystemRotationPoolTests
 
         Spin(audio, backend, 40);
 
+        Assert.NotEmpty(backend.PlayedIndices);
         Assert.All(backend.PlayedIndices, idx => Assert.Equal(2, idx));   // pool ["c"] resolves to index 2
     }
 
@@ -177,6 +179,7 @@ public sealed class AudioSystemRotationPoolTests
 
         Spin(audio, backend, 200);
 
+        Assert.True(backend.PlayedIndices.Count >= 2);
         for (int i = 1; i < backend.PlayedIndices.Count; i++)
         {
             Assert.NotEqual(backend.PlayedIndices[i - 1], backend.PlayedIndices[i]);
@@ -197,6 +200,7 @@ public sealed class AudioSystemRotationPoolTests
         Spin(a1, b1, 50);
         Spin(a2, b2, 50);
 
+        Assert.NotEmpty(b1.PlayedIndices);
         Assert.Equal(b1.PlayedIndices, b2.PlayedIndices);
     }
 }

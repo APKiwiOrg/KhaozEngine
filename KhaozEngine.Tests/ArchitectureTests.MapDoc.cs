@@ -53,7 +53,10 @@ public partial class ArchitectureTests
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
         string[] allowed = { "KhaozEngine.MapDoc.Compatibility.Tests", Harness };
-        foreach (Project p in graph.Values.Where(p => p.Name.StartsWith("KhaozEngine.MapDoc", StringComparison.Ordinal) || p.Name.StartsWith("KhaozEngine.MapEdit", StringComparison.Ordinal)))
-            if (TransitiveClosure(p.Name, graph).Contains("KhaozEngine.TileWorld")) Assert.Contains(p.Name, allowed);
+        var dependants = graph.Values.Where(p =>
+                (p.Name.StartsWith("KhaozEngine.MapDoc", StringComparison.Ordinal) || p.Name.StartsWith("KhaozEngine.MapEdit", StringComparison.Ordinal))
+                && TransitiveClosure(p.Name, graph).Contains("KhaozEngine.TileWorld"))
+            .Select(p => p.Name).Order(StringComparer.Ordinal);
+        Assert.Equal(allowed.Order(StringComparer.Ordinal), dependants);
     }
 }

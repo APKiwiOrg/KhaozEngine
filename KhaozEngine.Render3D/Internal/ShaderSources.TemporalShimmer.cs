@@ -10,7 +10,8 @@ namespace KhaozEngine.Render3D.Internal
     /// with the confidence's four state texels and bilinear weights, steps it by this frame's change, and stores an
     /// empty record wherever it used no history or the shading release dropped it. The score
     /// (<c>temporalShimmerScore</c>) read from the stepped record widens the final luma clip and raises the
-    /// accumulation cap toward <see cref="TemporalResolveTuning.MaxStillAccumulation"/>. Included in both entry points
+    /// accumulation cap toward <see cref="TemporalResolveTuning.MaxStillAccumulation"/>. The prior record's score
+    /// selects the still-flicker lock loss before the record steps. Included in both entry points
     /// beside <see cref="TemporalAccumulateGlsl"/>, after the <c>Resolve</c> block. <see cref="TemporalShimmer"/> is
     /// the C# mirror of the rate, and the jitter constants mirror <see cref="TemporalJitter"/>.
     /// </summary>
@@ -44,6 +45,17 @@ float temporalShimmerScore(float drift, float swing, float lumaChange, float mot
     if (!(swing >= ShimmerFloor) || !(motionPixels < ShimmerStillPixels) || !(reactive <= 0.0)
         || !(abs(lumaChange) <= ShimmerChangeBand * swing)) return 0.0;
     return clamp(1.0 - abs(drift) / max(swing, ShimmerFloor), 0.0, 1.0);
+}
+" + TemporalStillLockLossGlsl;
+
+        /// <summary>The prior record's still-flicker lock loss, before the visibility veto at the call site.</summary>
+        internal const string TemporalStillLockLossGlsl = @"
+// Only still flicker earns a jitter-cycle lock. One-way shading changes and moving or reactive pixels keep LockDecay.
+// A ramp can retain an alternating record while its current change grows, so lock evidence uses a tighter change band.
+float temporalStillLockLoss(vec2 record, float lumaChange, float motionPixels, float reactive) {
+    return abs(lumaChange) <= LockShimmerChangeBand * record.y
+        && temporalShimmerScore(record.x, record.y, lumaChange, motionPixels, reactive) >= LockShimmerGate
+        ? temporalShimmerRate() : LockDecay;
 }
 ";
 

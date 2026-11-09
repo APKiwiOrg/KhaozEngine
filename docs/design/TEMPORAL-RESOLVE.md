@@ -89,7 +89,8 @@ jitter. Outputs: the display-resolution colour and the new history. Missing visi
    reprojected position. Beyond a relative tolerance the pixel was hidden last frame, and its history weight drops to
    zero. A reprojected position off screen does the same. A moving surface skips the test (amendment 17). A mostly
    covered footprint counts as hidden unless a still narrow feature covered it or the pixel carries a lock a ridge
-   refreshed on the last frame, and one a moving surface showed at counts as hidden unless it is whole. A
+   refreshed on the last frame, with one extra frame at Quality for the slower still-flicker lock described below,
+   and one a moving surface showed at counts as hidden unless it is whole. A
    depth-tested pixel whose nearest surface did not move in the world, ground panning under a follow camera included,
    drops a history marked as a followed surface's edge, and one the followed surface's own pixels marked where a
    surface moving otherwise on screen shows around it now (amendment 23).
@@ -116,7 +117,8 @@ jitter. Outputs: the display-resolution colour and the new history. Missing visi
    and its accumulated weight for the frame at Native and Quality (amendment 33). A carried lock and a moving pixel
    release only where the neighbourhood shows it (amendment 34). Independently, a depth-qualified change in stored
    key-shadow visibility strictly above 0.1 clears the stored lock and clip hold at any speed and preset. This
-   signal retains accumulation and display share (amendment 35).
+   signal retains accumulation and display share (amendment 35). Still flicker with sufficient prior-record evidence
+   loses lock at the jitter-cycle rate, as described below. Other pixels keep the ordinary one-eighth decay.
 7. **Reactive estimate.** The luma difference between the opaque-only copy and the final colour marks pixels that
    transparent content changed: particles, billboards, beams, trails, decals and water. Those pixels take a lower
    history weight, so a smoke puff or a splash does not leave a trail. An explicit reactive input can override the
@@ -169,6 +171,8 @@ must not be mistaken for jitter.
 | `ShimmerStillPixels` | 0.25 display pixel | Keep moving pixels on the original response and clip. |
 | `ShimmerChangeBand` | 3 | Reject abrupt real changes larger than three swings. |
 | `VisibilityShimmerGate` | 0.1 | Suppress shimmer retention where key-shadow visibility changes. |
+| `LockShimmerGate` | 0.5 | Require prior-record flicker evidence for slower lock loss. |
+| `LockShimmerChangeBand` | 1 | Keep the current change within one prior swing for slower lock loss. |
 | `ShimmerClipGain` | 0.35 | Extend each luma face by score times swing times this gain. |
 | `MaxStillAccumulation` | 63 | Allow approximately one-in-64 current weight at full score. |
 | `ChromaPrecisionFloorSteps` | 4 | Cover binary16 RGB rounding in nearly degenerate chroma intervals. |
@@ -179,9 +183,29 @@ jitter-missed detail without letting the widened interval hide real shading chan
 the precision floor below, independently of the score. The accumulated-weight cap interpolates from
 the existing motion cap to 63 with the score. Zero score retains the original cap exactly, while full
 score lowers the current sample's sawtooth by roughly four times. Reactive content still reduces
-accumulation, and shading release still clears it. Lock classification and its release gates do not
-change. `SceneDebugView.Shimmer` overlays blue in proportion to the final score against the dimmed
+accumulation, and shading release still clears it. The lock's ridge classification and release gates stay the same.
+`SceneDebugView.Shimmer` overlays blue in proportion to the final score against the dimmed
 scene, under TAA only. Untinted pixels can still receive the chroma floor because it uses the still test.
+
+**Still-flicker lock.** Before lock decay, `temporalStillLockLoss` evaluates the score using the prior
+`historyRecord` and this frame's `lumaChange`. The slower loss requires a score of at least `LockShimmerGate`
+and an absolute change no larger than `LockShimmerChangeBand` times the prior swing. The score already requires
+motion below `ShimmerStillPixels`, no reactive input and swing at least `ShimmerFloor`. The tighter change band
+belongs only to lock evidence. A ramp under a flickering line can retain an alternating record while its current
+change grows beyond one swing, so that frame keeps ordinary decay. The clip and accumulation still use their
+unchanged score and three-swing band.
+
+Where this evidence holds, the lock loses `temporalShimmerRate()`, about 1/18 at Quality. Otherwise it loses
+`LockDecay`, 1/8. In programs that read exported visibility, a centre-texel visibility change vetoes the slower
+loss before decay, including a change that the neighbourhood release misses. This comparison runs only when
+the selected loss differs from `LockDecay`. Ridge refresh and the motion, reactive, edge and visibility releases
+then run as before. No storage, attachment or binding is added.
+
+A global cycle-length decay was rejected because it trails moving unkeyed lines. Restricting it to still flicker
+keeps that motion response. A 1:1 render is numerically unchanged because its eight-phase rate is already 1/8.
+The rule follows the actual display-to-internal ratio, so Native under a render-size cap takes it when upscaling.
+The existing half-`LockDecay` disocclusion threshold stays. At Quality the slower lock counts as refreshed for one
+extra frame, while the narrow-crossing and passing-box facts retain their bounds.
 
 ### Still-pixel chroma precision
 
@@ -420,7 +444,7 @@ Implementation review established the contract amendments below.
     the bilinear weight of its four stored depths, unless the nearest of them is narrow, its run of texels along a row
     or a column at most two long, as sub-texel blades alone or side by side are, and no moving surface showed there last
     frame, or the lock the pixel carries lies within half of `LockDecay` of whole, which a ridge refreshed on the last
-    frame, as a still blade's is on the frame after the jitter showed it. The stored lock records that fact: where the
+    frame, or one frame earlier at Quality under the still-flicker decay. The stored lock records that fact: where the
     surface the pixel reprojected by moved, the dilated nearest or, beside a fast edge, the centre texel's own, the
     confidence and stability target holds minus one minus the lock, and minus three minus the lock where the pixel
     followed a nearer surface's edge (the band, below), and both read back unchanged. Any lock

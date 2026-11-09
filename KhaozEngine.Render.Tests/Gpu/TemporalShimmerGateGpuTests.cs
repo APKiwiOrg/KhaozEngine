@@ -21,7 +21,6 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalShimmerGateGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         const int W = TemporalStillDetailGpuTests.DisplayW, H = TemporalStillDetailGpuTests.DisplayH;
-        const int SteppedColumn = W / 4, ControlColumn = W * 3 / 4;
         // Three frames after a hit, a frame the jitter misses both lines, where each line's score holds.
         const int StepFrame = TemporalStillDetailGpuTests.Converge + 3;
         // 64 of 255 at the centre texel is past the gate. The stepped column puts three of the nine texels of a 3x3 on
@@ -36,7 +35,7 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void A_one_texel_shadow_step_the_visibility_release_misses_clears_the_shimmer_tint()
         {
-            (int[] stepped, int[] control) = RunToTheStep(null, Stepped);
+            (int[] stepped, int[] control) = RunToTheStep(null, Stepped, out _);
             output.WriteLine($"stepped column blue excess [{string.Join(", ", stepped)}]");
             output.WriteLine($"control column blue excess [{string.Join(", ", control)}]");
             Assert.True(control.Min() >= Tinted, $"the unstepped line must keep its shimmer tint, min {control.Min()}");
@@ -53,8 +52,8 @@ namespace KhaozEngine.Tests.Gpu
                 viewRewritten |= source.Contains("uniform DebugView", StringComparison.Ordinal);
                 return source.Replace(GateCall, "false", StringComparison.Ordinal);
             }
-            (int[] ungated, _) = RunToTheStep(WithoutGate, Stepped);
-            (int[] released, _) = RunToTheStep(WithoutGate, Shadowed);
+            (int[] ungated, _) = RunToTheStep(WithoutGate, Stepped, out _);
+            (int[] released, _) = RunToTheStep(WithoutGate, Shadowed, out _);
             output.WriteLine($"stepped column without the gate [{string.Join(", ", ungated)}]");
             output.WriteLine($"shadowed column without the gate [{string.Join(", ", released)}]");
             Assert.True(viewRewritten, "the control must remove the gate from the debug view's program");
@@ -64,47 +63,134 @@ namespace KhaozEngine.Tests.Gpu
                 $"without the gate a full shadow must still clear the tint through the release, max {released.Max()}");
         }
 
+        [GpuFact]
+        public void A_one_texel_shadow_step_the_visibility_release_misses_keeps_the_lock_decay()
+        {
+            float factor = TemporalSettings.DisplayOverInternal(TemporalUpscale.Quality);
+            RunToTheStep(null, Stepped, out LockStep gated, TemporalUpscale.Quality);
+            bool resolveRewritten = false;
+            string WithoutGate(string source)
+            {
+                if (!source.Contains(GateCall, StringComparison.Ordinal)) return source;
+                resolveRewritten |= !source.Contains("uniform DebugView", StringComparison.Ordinal);
+                return source.Replace(GateCall, "false", StringComparison.Ordinal);
+            }
+            RunToTheStep(WithoutGate, Stepped, out LockStep ungated, TemporalUpscale.Quality);
+            output.WriteLine($"gated {gated}, stepped loss {gated.SteppedLoss}, control loss {gated.ControlLoss}");
+            output.WriteLine($"ungated {ungated}, stepped loss {ungated.SteppedLoss}, control loss {ungated.ControlLoss}");
+            Assert.True(resolveRewritten, "the control must remove the visibility gate from the resolve program");
+            Assert.True(gated.SteppedBefore > TemporalResolveTuning.LockDecay, $"{gated}");
+            Assert.True(gated.ControlBefore > TemporalResolveTuning.LockDecay, $"{gated}");
+            Assert.Equal(TemporalResolveTuning.LockDecay, gated.SteppedLoss, 1e-3);
+            Assert.True(MathF.Abs(gated.ControlLoss - TemporalShimmer.Rate(factor)) <= 1e-3,
+                $"control column loss {gated.ControlLoss}, expected rate {TemporalShimmer.Rate(factor)}");
+            Assert.Equal(TemporalShimmer.Rate(factor), ungated.SteppedLoss, 1e-3);
+            Assert.Equal(TemporalShimmer.Rate(factor), ungated.ControlLoss, 1e-3);
+        }
+
+        [GpuFact]
+        public void A_history_reset_takes_todays_lock_decay()
+        {
+            float factor = TemporalSettings.DisplayOverInternal(TemporalUpscale.Quality);
+            int iw = (int)(W / factor), ih = (int)(H / factor), phases = TemporalJitter.PhaseCount(factor);
+            int resetFrame = TemporalStillDetailGpuTests.Converge;
+            int column = (int)MathF.Floor((iw / 2 + 0.5f) * factor), pixel = (H / 2 * W + column) * 4;
+            Matrix4x4 projection = Perspective((float)W / H);
+            TemporalViewInput still = View(Eye, projection);
+            using var rig = new Rig(iw, ih, W, H, NdcDepth(projection, SceneMetres));
+            float[] motion = Pairs(iw, ih, (_, _) => Vector2.Zero);
+            float resetLock = 0f;
+            for (int n = 0; n <= resetFrame + 1; n++)
+            {
+                Vector2 jitter = TemporalJitter.Offset(n, phases);
+                float[] input = TemporalStillDetailGpuTests.OncePerCycleLineScene(iw, ih, jitter, n);
+                rig.BeginFrame();
+                rig.Fill(input, input, motion);
+                rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, W, H,
+                    historyValid: n > 0 && n != resetFrame));
+                if (n < resetFrame - 1) continue;
+                float[] state = rig.ReadState();
+                if (n == resetFrame - 1)
+                    Assert.True(state[pixel + 3] > 0f, "the converged line must have a shimmer record before reset");
+                else if (n == resetFrame)
+                {
+                    resetLock = state[pixel + 1];
+                    Assert.Equal(1f, resetLock);
+                    Assert.Equal(0f, state[pixel + 2]);
+                    Assert.Equal(0f, state[pixel + 3]);
+                }
+                else
+                {
+                    float loss = resetLock - state[pixel + 1];
+                    output.WriteLine($"reset lock {resetLock}, next lock {state[pixel + 1]}, loss {loss}");
+                    Assert.Equal(TemporalResolveTuning.LockDecay, loss, 1e-3);
+                }
+            }
+        }
+
+        readonly record struct LockStep(float SteppedBefore, float SteppedAfter, float ControlBefore, float ControlAfter)
+        {
+            internal float SteppedLoss => SteppedBefore - SteppedAfter;
+            internal float ControlLoss => ControlBefore - ControlAfter;
+        }
+
         // Converge the two lines to the step frame, step the visibility of one line's column to stepTo there, and draw
         // the Shimmer view over the step frame's resolve. Returns the blue excess of each line's column at every
         // interior row.
-        static (int[] Stepped, int[] Control) RunToTheStep(Func<string, string>? rewrite, byte stepTo)
+        static (int[] Stepped, int[] Control) RunToTheStep(Func<string, string>? rewrite, byte stepTo,
+            out LockStep locks, TemporalUpscale preset = TemporalUpscale.Native)
         {
-            int phases = TemporalJitter.PhaseCount(1f);
+            float factor = TemporalSettings.DisplayOverInternal(preset);
+            int iw = (int)(W / factor), ih = (int)(H / factor), phases = TemporalJitter.PhaseCount(factor);
+            int steppedColumn = iw / 4, controlColumn = iw * 3 / 4;
+            int steppedDisplay = (int)MathF.Floor((steppedColumn + 0.5f) * factor);
+            int controlDisplay = (int)MathF.Floor((controlColumn + 0.5f) * factor);
+            int steppedPixel = (H / 2 * W + steppedDisplay) * 4 + 1;
+            int controlPixel = (H / 2 * W + controlDisplay) * 4 + 1;
+            float steppedBefore = 0f, controlBefore = 0f;
             Matrix4x4 projection = Perspective((float)W / H);
             TemporalViewInput still = View(Eye, projection);
-            using var rig = new TemporalResolveRig(W, H, W, H, NdcDepth(projection, SceneMetres),
+            using var rig = new TemporalResolveRig(iw, ih, W, H, NdcDepth(projection, SceneMetres),
                 fragmentSource: rewrite);
             IGpuDevice gd = rig.Device;
             using IGpuTexture visibility = gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(
-                W, H, GpuPixelFormat.R8UNorm, GpuTextureUsage.Sampled));
+                (uint)iw, (uint)ih, GpuPixelFormat.R8UNorm, GpuTextureUsage.Sampled));
             using IGpuTexture view = gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(
                 W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             using IGpuFramebuffer viewTarget = gd.Factory.CreateFramebuffer(null, view);
-            float[] motion = Pairs(W, H, (_, _) => Vector2.Zero);
-            byte[] lit = Enumerable.Repeat(Lit, W * H).ToArray();
-            gd.UpdateTexture(visibility, lit, 0, 0, W, H);
+            float[] motion = Pairs(iw, ih, (_, _) => Vector2.Zero);
+            byte[] lit = Enumerable.Repeat(Lit, iw * ih).ToArray();
+            gd.UpdateTexture(visibility, lit, 0, 0, (uint)iw, (uint)ih);
             for (int n = 0; n <= StepFrame; n++)
             {
                 Vector2 jitter = TemporalJitter.Offset(n, phases);
-                float[] input = Grey(W, H, (x, _) => n % 8 == 0 && (x == SteppedColumn || x == ControlColumn)
+                float[] input = Grey(iw, ih, (x, _) => n % 8 == 0 && (x == steppedColumn || x == controlColumn)
                     ? TemporalStillDetailGpuTests.Line : TemporalStillDetailGpuTests.Wall);
                 if (n == StepFrame)
                 {
                     byte[] step = (byte[])lit.Clone();
-                    for (int y = 0; y < H; y++) step[y * W + SteppedColumn] = stepTo;
-                    gd.UpdateTexture(visibility, step, 0, 0, W, H);
+                    for (int y = 0; y < ih; y++) step[y * iw + steppedColumn] = stepTo;
+                    gd.UpdateTexture(visibility, step, 0, 0, (uint)iw, (uint)ih);
                 }
                 rig.BeginFrame();
                 rig.Fill(input, input, motion);
-                rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, W, H, W, H, n > 0), visibility,
+                rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, W, H, n > 0), visibility,
                     n == StepFrame
                         ? cl => rig.Renderer.DrawDebugView(cl, SceneDebugView.Shimmer, viewTarget, viewTarget.Outputs)
                         : null);
+                if (n == StepFrame - 1)
+                {
+                    float[] state = rig.ReadState();
+                    steppedBefore = state[steppedPixel];
+                    controlBefore = state[controlPixel];
+                }
                 // A completed frame, as the scene marks it, so the next frame reads this one's visibility.
                 rig.History.MarkValidAfterFrame();
             }
             byte[] rgba = GpuReadback.ToRgba(gd, view, W, H);
-            return (BlueExcess(rgba, SteppedColumn), BlueExcess(rgba, ControlColumn));
+            float[] steppedState = rig.ReadState();
+            locks = new LockStep(steppedBefore, steppedState[steppedPixel], controlBefore, steppedState[controlPixel]);
+            return (BlueExcess(rgba, steppedDisplay), BlueExcess(rgba, controlDisplay));
         }
 
         static int[] BlueExcess(byte[] rgba, int column)

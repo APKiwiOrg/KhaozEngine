@@ -99,21 +99,30 @@ namespace KhaozEngine.Render3D.Internal
         public const float LockMotionReleaseScale = 1f / (LockMotionEndPixels - LockMotionStartPixels);
         /// <summary>Step 6. Lock lost per unit of reactive estimate.</summary>
         public const float LockReactiveRelease = 2f;
-        /// <summary>Step 6. Lock lost per frame, the same at every preset. A thin feature shows when a jittered sample
-        /// lands on it, and the Halton x offsets visit every eighth of a texel about once in eight frames at any display
-        /// ratio, so how often it shows follows its internal texel coverage, not the jitter cycle. A decay of one over the
-        /// cycle, 1/72 at UltraPerformance, trails an unkeyed line crossing at 0.3 to 0.9 display pixels a frame by 5 to
-        /// 8 display pixels at up to 50 percent of its contrast. One eighth trails at most 1 at 11 percent.</summary>
+        /// <summary>Step 6. Lock lost per frame, except on a still pixel whose shimmer score reaches
+        /// <see cref="LockShimmerGate"/> without a visibility change, where the jitter-cycle rate applies. A thin feature
+        /// shows when a jittered sample lands on it, and the Halton x offsets visit every eighth of a texel about once
+        /// in eight frames at any display ratio, so how often it shows follows its internal texel coverage, not the
+        /// jitter cycle. A global decay of one over the cycle, 1/72 at UltraPerformance, trails an unkeyed line crossing
+        /// at 0.3 to 0.9 display pixels a frame by 5 to 8 display pixels at up to 50 percent of its contrast.
+        /// One eighth trails at most 1 at 11 percent.</summary>
         public const float LockDecay = 1f / TemporalJitter.NativePhaseCount;
+        /// <summary>Step 6. The prior shimmer record's minimum score for losing lock at the jitter-cycle rate.
+        /// Moving pixels and reactive content keep <see cref="LockDecay"/>. The lock-only change band also rejects
+        /// growing shading change while the prior record still alternates.</summary>
+        public const float LockShimmerGate = 0.5f;
+        /// <summary>Step 6. The largest current luma change, in prior swings, that earns the slower lock loss.
+        /// A change beyond that band can be real shading change despite a still-alternating record.</summary>
+        public const float LockShimmerChangeBand = 1f;
         /// <summary>Step 6. The hold on the luma clip is the lock times this, at most 1. With <see cref="LockDecay"/> of
         /// an eighth it stays whole through four frames without a ridge, then lets go over four more. A still line three
         /// eighths of a texel wide goes up to three frames unseen, and a hold equal to the lock clipped a share of it on
         /// each: it averaged 10.4, 5.4 and 8.3 percent of its contrast at Native, Quality and UltraPerformance. At 2 the
         /// pixel at its centre averages 41.7 percent at Native against a coverage of 37.5, and 36.1 and 81.7 upscaled,
         /// where that pixel is narrower than the texel, and changes by under 4 percent a frame at all three. 3 and 4
-        /// raise the unkeyed trail's peak from 11 to 22 and 31 percent. A line an eighth of a texel wide, seen once in
-        /// eight frames, outlasts the hold: it averages about 4 percent against its coverage of 12.5 and pulses by up to
-        /// 9 percent a frame.</summary>
+        /// raise the unkeyed trail's peak from 11 to 22 and 31 percent. At that decay, a line an eighth of a texel wide,
+        /// seen once in eight frames, outlasts the hold: it averages about 4 percent against its coverage of 12.5
+        /// and pulses by up to 9 percent a frame.</summary>
         public const float LockHoldGain = 2f;
         /// <summary>Step 6. Lock lost per internal pixel of motion between the centre texel and the dilated nearest
         /// surface this frame. Where they differ, a moving feature is passing over a background, and the pixel holds the

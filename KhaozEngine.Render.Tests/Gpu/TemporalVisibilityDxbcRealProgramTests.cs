@@ -124,13 +124,13 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>What FXC made of each program: D's in-loop head forms in D and shipped, the fast path's
         /// straight-line forms, declared temps, precise markings and unread non-chain positions.</summary>
         [Theory]
-        // FXC run 40825887240: the still-pixel gate keeps the precision-floor temp counts unchanged.
-        // All D temps, chain forms and unread-position pins remain unchanged.
+        // FXC run 42568238327: the still lock's visibility check adds one temp to the two half-precision shipped
+        // programs. All D temps, chain forms and unread-position pins remain unchanged.
         [InlineData("DecisionHelper", "RR", "RR", "RRRRWW", 12, 18, false, 0)]
         [InlineData("TemporalAccumulateFrag", "RR", "RR", "RRRRWW", 29, 38, false, 10)]
-        [InlineData("TemporalAccumulateHalfFrag", "RR", "RR", "RRRRWW", 32, 38, false, 10)]
+        [InlineData("TemporalAccumulateHalfFrag", "RR", "RR", "RRRRWW", 32, 39, false, 10)]
         [InlineData("TemporalAccumulateAtDisplaySizeFrag", "RR", "RR", "RRRRWW", 26, 37, false, 10)]
-        [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "RR", "RR", "RRRRWW", 29, 37, false, 10)]
+        [InlineData("TemporalAccumulateAtDisplaySizeHalfFrag", "RR", "RR", "RRRRWW", 29, 38, false, 10)]
         [InlineData("TemporalResolveFrag", "RR", "RR", "RRRRWW", 41, 46, false, 10)]
         [InlineData("TemporalResolveHalfFrag", "RR", "RR", "RRRRWW", 42, 48, false, 10)]
         public void EachProgramCompilesItsChainsInTheseForms(string program, string dLoop, string loop, string straight,

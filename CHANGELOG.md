@@ -35,6 +35,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   and a wider luma clip. A still-pixel chroma precision floor stops binary16 rounding from turning narrow
   eave colour intervals into visible brightness flicker. Moving pixels keep their existing clip.
 - Add `SceneDebugView.Shimmer` to show where the resolve retains still detail.
+- Keep still flickering thin features locked at the jitter-cycle rate when the prior record supports flicker and
+  the current change stays within one swing. Growing shading change, motion, reactive content and visibility changes
+  keep ordinary decay. A 1:1 render keeps its existing rate, while capped Native upscaling takes the longer hold.
 - Store shimmer drift and swing in the history state, adding 8 bytes per display pixel across its
   double-buffered pair, or 28.125 MiB at 2560x1440, with no additional attachment.
 - Initialize the shared neutral water colour texture when publishing a native water domain. The first draw

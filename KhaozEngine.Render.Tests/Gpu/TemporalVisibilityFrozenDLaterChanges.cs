@@ -28,7 +28,8 @@ internal static class TemporalVisibilityFrozenDLaterChanges
     internal sealed record Change(string Name, Undo[] Core, Undo[] Optional);
 
     /// <summary>The shimmer record's and score's GLSL helpers, spliced in before the accumulation.</summary>
-    internal static readonly Undo ShimmerHelpers = new(nameof(ShimmerHelpers), ShaderSources.TemporalShimmerGlsl, "");
+    internal static readonly Undo ShimmerHelpers = new(nameof(ShimmerHelpers), ShaderSources.TemporalShimmerGlsl
+        .Replace(ShaderSources.TemporalStillLockLossGlsl, "", StringComparison.Ordinal), "");
 
     /// <summary>The record and score fields on TemporalPixel.</summary>
     internal static readonly Undo PixelFields = new(nameof(PixelFields),
@@ -326,9 +327,40 @@ const float VisibilityShimmerGate = 0.1;
         "const float ChromaPrecisionFloorSteps = 4.0;\n", "");
     internal static readonly Change PrecisionFloorTuning = new(nameof(PrecisionFloorTuning), [PrecisionFloorConstant], []);
 
+    // The preparing pass carries tuning without the lock, so its undo is an independent whole change.
+    internal static readonly Undo StillLockConstant = new(nameof(StillLockConstant),
+        "const float LockShimmerGate = 0.5;\nconst float LockShimmerChangeBand = 1.0;\n", "");
+    internal static readonly Change StillLockTuning = new(nameof(StillLockTuning), [StillLockConstant], []);
+
+    internal static readonly Undo StillLockHelper = new(nameof(StillLockHelper), ShaderSources.TemporalStillLockLossGlsl, "");
+    internal static readonly Undo StillLockRefreshExplanation = new(nameof(StillLockRefreshExplanation),
+        "    // At Quality, a slower-decaying lock counts as refreshed for one more frame at this half-LockDecay threshold.\n", "");
+    internal static readonly Undo StillLockExplanation = new(nameof(StillLockExplanation),
+        @"    // Step 6: thin features. A ridge through the centre texel refreshes the lock. Still flicker loses the jitter-cycle
+    // rate unless visibility changed, and other pixels lose LockDecay. Large motion and reactive content release it,
+    // and so does motion at an edge, where the pixel
+",
+        @"    // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays by LockDecay a frame
+    // whatever the preset. Large motion and reactive content release it, and so does motion at an edge, where the pixel
+");
+    internal static readonly Undo StillLockCall = new(nameof(StillLockCall),
+        @"    float lockLoss = temporalStillLockLoss(historyRecord, lumaChange, motionPixels, reactive);
+#ifdef TemporalShimmerVisibility
+    if (lockLoss != LockDecay && temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)) lockLoss = LockDecay;
+#endif
+    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - lockLoss, 0.0) : 0.0;
+",
+        @"    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
+");
+
+    /// <summary>The still-flicker lock's helper, explanation and call, restored before the shimmer record's helpers.</summary>
+    internal static readonly Change StillLockLoss = new(nameof(StillLockLoss),
+        [StillLockHelper, StillLockRefreshExplanation, StillLockExplanation, StillLockCall], []);
+
     /// <summary>Every production change after D, undone in this order, the latest first, so each change finds the
     /// production text it was written against.</summary>
-    internal static readonly Change[] Changes = [PrecisionFloorTuning, PrecisionClipChange, ShimmerTuning, ShimmerScore, ShimmerRecord];
+    internal static readonly Change[] Changes =
+        [StillLockTuning, StillLockLoss, PrecisionFloorTuning, PrecisionClipChange, ShimmerTuning, ShimmerScore, ShimmerRecord];
 
     /// <summary>Adds only the owner-approved precision floor to an already restored D accumulation. The final
     /// clip is rebuilt independently of D's shading-release excess, which must keep its original extent.</summary>

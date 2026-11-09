@@ -17,6 +17,10 @@ public sealed class TemporalShimmerTests
         Assert.Equal(1f / TemporalJitter.PhaseCount(ratio), TemporalShimmer.Rate(ratio));
 
     [Fact]
+    public void The_shimmer_rate_at_a_one_to_one_ratio_equals_the_lock_decay() =>
+        Assert.Equal(TemporalResolveTuning.LockDecay, TemporalShimmer.Rate(1f));
+
+    [Fact]
     public void The_shader_rate_names_the_jitter_sequence_constants()
     {
         string glsl = ShaderSources.TemporalShimmerGlsl;

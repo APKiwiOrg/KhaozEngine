@@ -14,7 +14,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>Readback of the cost fixtures' own boxes and thin field, never a timing. Frame 9 is the count request's
 /// render (draw callback 8), after four split and four fused frames. Frame 90 samples later ongoing motion. Entry
 /// switches preserve history. Export and unmodified production scenes advance one frame each in lockstep, with only
-/// coverage, named slow reasons and bit-identical stored locks asserted, as in the shadowed yard.</summary>
+/// production colour restored before the next export frame. Export state stays independent. Coverage, named slow
+/// reasons and bit-identical stored locks are asserted, as in the shadowed yard.</summary>
 public sealed class TemporalResolveCostPathShareGpuTests(ITestOutputHelper output)
 {
     [GpuTheory]
@@ -34,6 +35,8 @@ public sealed class TemporalResolveCostPathShareGpuTests(ITestOutputHelper outpu
         using var exporting = new TemporalFixture(w, h, s => stage.Setup(s, AntiAliasing.Temporal, preset));
         using var production = new TemporalFixture(w, h, s => stage.Setup(s, AntiAliasing.Temporal, preset));
         TemporalVisibilityPathShareReadback.UseExportingResolve(exporting, TemporalVisibilityFootprintExport.Rewrite);
+        using var historyColour = new TemporalVisibilityExportHistory(production.Device, production.Scene.TemporalHistory,
+            exporting.Device, exporting.Scene.TemporalHistory);
         Action<Scene3D, int> draw = field ? TemporalResolveCostPerfGpuTests.FieldScene(stage)
             : TemporalResolveCostPerfGpuTests.BoxesScene(stage);
         output.WriteLine($"{exporting.Device.Backend} on {exporting.Device.Capabilities.DeviceName}, "
@@ -41,6 +44,7 @@ public sealed class TemporalResolveCostPathShareGpuTests(ITestOutputHelper outpu
 
         for (int frame = 1; frame <= 90; frame++)
         {
+            if (frame > 1) historyColour.CopyPreviousColour();
             TemporalResolveEntry active = frame <= 4 ? TemporalResolveEntry.Split
                 : frame <= 8 ? TemporalResolveEntry.Fused : entry;
             exporting.Scene.TemporalResolveEntryForTests = production.Scene.TemporalResolveEntryForTests = active;

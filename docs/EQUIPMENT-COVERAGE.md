@@ -218,7 +218,8 @@ a promise of identical transcendental or denormal behavior on all devices. See t
 Deferred backends expose the CPU-only join through `IGpuShaderSet.EnsureCompilationReady` and its compute
 sibling. Coverage queues each cold batch first. All graphics owners are constructed before joining their
 programs, and no host surface is published until every required join succeeds. Output variants use the
-same refusal transaction. A compiler failure latches `UnsupportedAdapter` and draws ordinary current skin.
+same refusal transaction, and join only after the scene has queued every renderer's programs for that
+output rebuild. A compiler failure latches `UnsupportedAdapter` and draws ordinary current skin.
 Legacy parameterless preparation and settings changed after preparation can introduce a variant at render
 target sizing. That refusal is propagated before caster collection and draw classification, cancelling the
 pending surfaces before any coverage command is recorded.

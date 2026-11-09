@@ -69,4 +69,45 @@ public sealed class CoverageDeferredCompilationTests
         Assert.NotEmpty(fixture.Device.Resources.Pipelines);
         Assert.All(fixture.Device.Resources.Pipelines, pipeline => Assert.True(pipeline.Disposed));
     }
+
+    static int Pipelines(CoveragePublicationFixture fixture, string vertex)
+        => fixture.Device.Resources.Pipelines.Count(pipeline => pipeline.Request?.VertexGlsl == vertex);
+
+    // The join waits for the whole family, so joining mid-rebuild would hold back every renderer still to queue.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Output_rebuild_queues_every_renderer_before_joining_coverage_variants(bool late)
+    {
+        using var fixture = new CoveragePublicationFixture(deferred: true);
+        fixture.Begin(); fixture.Queue(outlines: true); fixture.Record(); fixture.Submit();
+        Assert.NotEmpty(fixture.Evidence);
+        int skinned = Pipelines(fixture, ShaderSources.SkinnedModelMotionVert), lines = Pipelines(fixture, ShaderSources.LineVert);
+        (int Skinned, int Lines)? atJoin = null;
+        fixture.Device.BeforeDeferredGraphicsJoin = () =>
+            atJoin ??= (Pipelines(fixture, ShaderSources.SkinnedModelMotionVert), Pipelines(fixture, ShaderSources.LineVert));
+        if (!late) fixture.Scene.ForceTemporalForTests = true;
+        fixture.Begin(); fixture.Queue(outlines: true);
+        fixture.Record(false, late ? () => fixture.Scene.ForceTemporalForTests = true : null);
+        Assert.NotNull(atJoin);
+        Assert.True(atJoin.Value.Skinned > skinned);
+        Assert.True(atJoin.Value.Lines > lines);
+    }
+
+    // A rebuild waiting for its join must not read as an unready owner that later rebuilds may skip.
+    [Fact]
+    public void Second_output_rebuild_before_the_join_still_rebuilds_coverage_variants()
+    {
+        using var fixture = new CoveragePublicationFixture(deferred: true);
+        fixture.Begin(); fixture.Queue(outlines: true); fixture.Record(); fixture.Submit();
+        Assert.NotEmpty(fixture.Evidence);
+        int before = Pipelines(fixture, ShaderSources.CoverageModelVert);
+        fixture.Scene.ForceTemporalForTests = true;
+        fixture.Begin();
+        fixture.Record(false, () => fixture.Scene.ForceTemporalForTests = false);
+        fixture.Submit();
+        Assert.Equal(before + 4, Pipelines(fixture, ShaderSources.CoverageModelVert));
+        fixture.Begin(); fixture.Queue(outlines: true); fixture.Record(); fixture.Submit();
+        Assert.NotEmpty(fixture.Evidence);
+    }
 }

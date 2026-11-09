@@ -20,6 +20,7 @@ internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactor
     internal Func<string, string, bool>? RefuseVertex;
     internal bool DeferCoverageCompilation;
     internal Func<string, string?, bool>? FailDeferredCompilation;
+    internal Action? BeforeDeferredGraphicsJoin;
     internal readonly List<CoverageDeferredCompilation> DeferredPrograms = [];
     internal readonly List<FakeResourceLayout> Layouts = [];
     internal FakeGpuResourceFactory Resources => (FakeGpuResourceFactory)inner.Factory;
@@ -77,7 +78,8 @@ internal sealed class CoveragePublicationDevice : IGpuDevice, IGpuResourceFactor
         }
         var shaders = CreateShadersFromSpirv(vertex, fragment);
         if (!DeferCoverageCompilation || !options.PreciseMath) return shaders;
-        var deferred = new CoverageDeferredShaderSet(shaders, FailDeferredCompilation?.Invoke(vertex, fragment) == true);
+        var deferred = new CoverageDeferredShaderSet(shaders, FailDeferredCompilation?.Invoke(vertex, fragment) == true,
+            () => BeforeDeferredGraphicsJoin?.Invoke());
         DeferredPrograms.Add(deferred);
         return deferred;
     }

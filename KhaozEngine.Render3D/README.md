@@ -2048,8 +2048,8 @@ reservations can be reused by compatible cold replacements without growing surfa
 
 Cold coverage preparation queues each complete compiler batch before an explicit CPU-only readiness join.
 The graphics owners are all constructed before their joins, including shadows and outlines. Only then are
-readiness and host publication advertised. New output variants follow the same transaction. Deferred
-compiler refusals latch `UnsupportedAdapter` and preserve ordinary current skin. Failed or replaced owners
+readiness and host publication advertised. New output variants follow the same transaction, after the
+scene has queued every renderer for that output rebuild. Deferred compiler refusals latch `UnsupportedAdapter` and preserve ordinary current skin. Failed or replaced owners
 are disposed before use or retired behind completion when an earlier frame may reference them. No native
 realization or GPU wait is added by the join, and ready warm frames do not join again.
 When legacy preparation or later settings defer target changes until rendering, a sizing-time refusal

@@ -3,23 +3,24 @@ using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Tests.Render3D;
 
-internal abstract class CoverageDeferredCompilation(IDisposable inner, bool fail) : IDisposable
+internal abstract class CoverageDeferredCompilation(IDisposable inner, bool fail, Action? beforeJoin = null) : IDisposable
 {
     readonly ShaderValidationException? failure = fail ? new("Synthetic deferred coverage compilation refusal.") : null;
     internal bool Fails => failure is not null;
     internal bool Disposed { get; private set; }
     internal bool NativeConsumed { get; private set; }
-    public void EnsureCompilationReady()
+    public void EnsureCompilationReady() { beforeJoin?.Invoke(); Join(); }
+    void Join()
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
         if (failure is not null) throw failure;
     }
-    internal void Bind() { EnsureCompilationReady(); NativeConsumed = true; }
+    internal void Bind() { Join(); NativeConsumed = true; }
     public void Dispose() { Disposed = true; inner.Dispose(); }
 }
 
-internal sealed class CoverageDeferredShaderSet(IGpuShaderSet inner, bool fail)
-    : CoverageDeferredCompilation(inner, fail), IGpuShaderSet
+internal sealed class CoverageDeferredShaderSet(IGpuShaderSet inner, bool fail, Action? beforeJoin)
+    : CoverageDeferredCompilation(inner, fail, beforeJoin), IGpuShaderSet
 {
     internal IGpuShaderSet Inner => inner;
 }

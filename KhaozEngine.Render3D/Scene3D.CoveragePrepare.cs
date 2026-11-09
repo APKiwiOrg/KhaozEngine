@@ -143,6 +143,7 @@ public sealed partial class Scene3D
 
     void ValidateCoverageDeviceReadiness()
     {
+        _model.CompleteCoverageOutputRebuild();
         if (_model.CoverageRefused && _coverageBatch is { DeviceRefused: false }) RefuseCoverageDevice();
     }
 

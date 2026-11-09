@@ -8,7 +8,7 @@ internal sealed partial class ModelRenderer
 {
     CoveragePulledResources _coveragePull = null!;
     readonly ModelVisibilityShaders _coverageVisibility = new();
-    bool _coverageReady, _coverageRefused;
+    bool _coverageReady, _coverageRefused, _coverageRebuildPending;
     internal bool CoverageRefused => _coverageRefused;
     IGpuShaderSet _coverageShaders = null!, _coverageDissolveShaders = null!;
     IGpuPipeline? _coveragePipeline, _coverageDissolvePipeline;
@@ -64,6 +64,15 @@ internal sealed partial class ModelRenderer
         _coverageVisibility.EnsureCompilationReady();
         foreach (var shaders in _coverageCascadeShaders) shaders.EnsureCompilationReady();
         _coverageReady = true;
+        _coverageRebuildPending = false;
+    }
+
+    /// <summary>Joins output-rebuilt variants once every renderer has queued its programs for that rebuild.</summary>
+    internal void CompleteCoverageOutputRebuild()
+    {
+        if (!_coverageRebuildPending || _coverageRefused) return;
+        try { CompleteCoverageCompilation(); }
+        catch (Exception error) when (error is NotSupportedException or ShaderValidationException) { RefuseCoverage(); }
     }
 
     internal void ReserveCoverageSurface(int slot, in CoverageSurfaceRange surface) => _coveragePull.ReserveSurface(slot, surface);
@@ -94,9 +103,11 @@ internal sealed partial class ModelRenderer
     {
         _coverageOutputs = outputs;
         // Ordinary output rebuilds must never resurrect a refused or incomplete coverage owner.
-        if (!_coverageReady || _coverageRefused) return;
+        if ((!_coverageReady && !_coverageRebuildPending) || _coverageRefused) return;
         _coverageReady = false;
-        try { CreateCoveragePipelines(factory, outputs); CompleteCoverageCompilation(); }
+        _coverageRebuildPending = true;
+        // Compilation joins after the scene finishes this batch, so these variants cannot delay later renderers.
+        try { CreateCoveragePipelines(factory, outputs); }
         catch (Exception error) when (error is NotSupportedException or ShaderValidationException)
         {
             // Earlier frames may still reference shared coverage owners. Retire the whole refused family

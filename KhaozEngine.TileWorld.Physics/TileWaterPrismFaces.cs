@@ -42,7 +42,10 @@ internal static class TileWaterPrismFaces
         var output = new List<TileWaterPrismFace>();
         for (int i = 0; i < prisms.Length; i++)
         {
-            output.Add(new(i, 3, true, true, Face(prisms[i], 3, 0, 1, float.NegativeInfinity)));
+            TileWaterBedSeam? seam = null;
+            int other = i > 0 && prisms[i - 1].ColumnIndex == prisms[i].ColumnIndex ? i - 1 : i + 1;
+            if (other < prisms.Length) seam = TileWaterBedSeam.Create(prisms[i], prisms[other]);
+            output.Add(new(i, 3, true, true, Face(prisms[i], 3, 0, 1, float.NegativeInfinity, seam)));
             output.Add(new(i, 4, true, true, Face(prisms[i], 4, 0, 1, float.NegativeInfinity)));
         }
         foreach (var row in edges.Values)
@@ -82,7 +85,8 @@ internal static class TileWaterPrismFaces
         return new(2L * prism.TileX + (long)(2 * local.X), 2L * prism.TileZ + (long)(2 * local.Y));
     }
 
-    static TileWaterConvexShape Face(TileWaterPrism prism, int face, float start, float end, float lower)
+    static TileWaterConvexShape Face(TileWaterPrism prism, int face, float start, float end, float lower,
+        TileWaterBedSeam? bedSeam = null)
     {
         var planes = new List<P>(prism.Planes) { prism.Planes[face].Opposite };
         if (face < 3 && (start != 0 || end != 1))
@@ -99,6 +103,6 @@ internal static class TileWaterPrismFaces
             planes.Add(new(default(V) - direction, I.Point(0) - origin - length * I.Point(start)));
         }
         if (float.IsFinite(lower)) planes.Add(P.Point(0, -1, 0, -lower));
-        return new(planes.ToArray());
+        return new(planes.ToArray(), bedSeam);
     }
 }

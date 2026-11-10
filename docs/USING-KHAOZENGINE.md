@@ -27276,8 +27276,14 @@ it. It frees a batch only after completion. An abandoned recording unseals its r
 freeing anything, because abandonment proves nothing about earlier submitted readers. A failed submit
 keeps the batch quarantined until completion or a successful host teardown drain. The host must submit
 before the next boundary and outlive the queue, or complete its own teardown before the scene is disposed.
-If no host completion slot is available, the call refuses without a new submission or an unsafe free. Devices without
-completion fences retain the existing drain fallback.
+Missing host completion capacity defers sealing without a new submission or an unsafe free, and increments
+`SharedSealDeferrals`. The next boundary with capacity seals the accumulated tail. Its later fence still
+completes after all earlier readers, so freeing never moves earlier. Sealed batches plus consecutive
+deferred boundaries share the `MaxSealedBatches` bound: a drain-capable queue drains once past the bound,
+counts `ValveDrains` and frees the whole holding, including the unsealed tail, without touching borrowed
+fences. Frame-count-only queues do not drain. A custom host using their shared mode must make completion
+capacity available eventually. Shipping frame-counted queues use standalone boundaries and retain their
+frame-delay bound. Devices without completion fences retain the existing drain fallback.
 
 Retirement increases peak memory by the pending outgoing graphs. After each boundary the existing queue
 cap limits sealed batches to `MaxSealedBatches` (normally eight), plus the current unsealed burst. For one

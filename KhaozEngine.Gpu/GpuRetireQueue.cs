@@ -385,6 +385,9 @@ namespace KhaozEngine.Gpu
         /// ahead the loop gets decides it.</summary>
         public int ValveDrains { get; private set; }
 
+        /// <summary>Shared frame boundaries that could not seal fresh retirements because completion storage was full.</summary>
+        public int SharedSealDeferrals { get; private set; }
+
         /// <summary>Resources retired but not yet destroyed. Counts the whole holding, sealed batches and this
         /// frame's not-yet-sealed tail alike, which is what a scene's retired-resource count surfaces.</summary>
         public int PendingCount => _pending.Count;
@@ -417,6 +420,7 @@ namespace KhaozEngine.Gpu
         /// newly retired touches the device not at all.</summary>
         public void BeginFrame()
         {
+            _sharedDeferredBoundaries = 0;
             _frame++;
             // SEAL FIRST, then sweep. Two reasons, and the second is the one that is easy to get wrong.
             // (a) It keeps the fallback path bit-for-bit identical to the pre-fence per-entry scheme at every
@@ -539,7 +543,7 @@ namespace KhaozEngine.Gpu
             _pending.Clear();
             foreach (Batch b in _batches) if (!b.SharedFence && b.Fence is { } fence) _barrier!.Release(fence);
             _batches.Clear();
-            _batched = 0;
+            _batched = _sharedDeferredBoundaries = 0;
         }
 
         /// <summary>Flush everything pending, then free the barrier's own GPU objects. Renderer teardown, and it

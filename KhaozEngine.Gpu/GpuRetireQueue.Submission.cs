@@ -4,10 +4,14 @@ namespace KhaozEngine.Gpu;
 
 public sealed partial class GpuRetireQueue : IGpuFrameCompletionConsumer
 {
+    int _sharedDeferredBoundaries;
+
     /// <summary>Advance before recording using this host frame's completion fence instead of an empty submission.
     /// The host must submit before the next boundary and outlive this queue, or complete its teardown first.
-    /// No completion capacity refuses without submitting or freeing the unsealed tail. Devices without completion
-    /// fences retain the ordinary frame-count and drain fallback.</summary>
+    /// Missing completion capacity defers sealing and increments <see cref="SharedSealDeferrals"/>.
+    /// Sealed batches plus consecutive deferred boundaries share <see cref="MaxSealedBatches"/>' drain bound.
+    /// A frame-count-only policy never drains here and requires the host to make completion capacity available.
+    /// Devices without completion fences retain the ordinary frame-count and drain fallback.</summary>
     public void BeginFrame(GpuFrameSubmission submission)
     {
         ArgumentNullException.ThrowIfNull(submission);
@@ -28,12 +32,41 @@ public sealed partial class GpuRetireQueue : IGpuFrameCompletionConsumer
         _frame++;
         FreeRipeBatches();
         int fresh = _pending.Count - _batched;
-        if (fresh == 0) return;
+        if (fresh == 0) { _sharedDeferredBoundaries = 0; return; }
         if (!submission.TryRetain(this, out IGpuFence? completion))
-            throw new InvalidOperationException("The frame host has no completion capacity for GPU retirement.");
+        {
+            // A resource retired before boundary M can only have readers recorded before M. A fence at a
+            // later boundary completes after those readers too. Deferring the seal only extends retention.
+            SharedSealDeferrals++;
+            _sharedDeferredBoundaries++;
+            if ((long)_batches.Count + _sharedDeferredBoundaries > MaxSealedBatches
+                && _fallback == GpuRetireFallback.DrainDevice)
+                DrainSharedHolding();
+            FreeRipeBatches();
+            return;
+        }
+        _sharedDeferredBoundaries = 0;
         _batches.Add(new Batch(fresh, completion, _frame - 1, sharedFence: true));
         _batched = _pending.Count;
         FreeRipeBatches();
+    }
+
+    void DrainSharedHolding()
+    {
+        // BeginFrame already proved no list is recording. The drain therefore covers every earlier reader,
+        // including readers of the unsealed tail. Borrowed fences remain owned and reclaimed by the host.
+        _drainDevice();
+        ValveDrains++;
+        for (int i = 0; i < _batches.Count; i++)
+        {
+            var batch = _batches[i];
+            _batches[i] = new(batch.Count, batch.Fence, batch.MaxRetiredAt, batch.SharedFence, completionProved: true);
+        }
+        FreeRipeBatches();
+        // Disposal can retire children. Walk the growing tail just as FlushAll does.
+        for (int i = 0; i < _pending.Count; i++) _pending[i].Dispose();
+        _pending.Clear();
+        _batched = _sharedDeferredBoundaries = 0;
     }
 
     bool IGpuFrameCompletionConsumer.HasPending(IGpuFence completion)

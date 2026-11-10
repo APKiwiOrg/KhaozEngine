@@ -1900,8 +1900,8 @@ keep their original families. Caller parameter checks remain BCL exceptions.
 
 The living [equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md) owns the end-to-end consumer,
 offline verification and acceptance contract, with a directly compiled public example. Verification at
-samples is not a continuous proof. Native correctness and cost remain unproven until separately
-approved device and cost units are accepted.
+samples is not a continuous proof. The native correctness and cost units have accepted evidence, and
+that guide records it with its limits.
 
 `CoverageRecessionTable.Create(identity, representatives, entryMajorRecessions, states)` owns deep
 copies of its spans, sorts the state index by unsigned `CoverageStateKey.Value` and refuses duplicate
@@ -1934,7 +1934,7 @@ CPU non-degenerate arithmetic stays exact and uses the same local recovery polic
 no longer creates holes solely for direction problems. Exact geometry certification, whole-skin depth,
 table layout, five stages, slots and overflow preflight are unchanged. The cost limit is at most 1.3 ms
 added GPU time at 32 actors on a Tesla T4. Earlier descriptor identities require rebuilding. None have
-shipped. Native acceptance remains unproven until separately approved runs.
+shipped.
 Digest producers hash numeric inputs explicitly in
 little-endian order, never as native-layout struct bytes. This asset codec stores digests rather
 than deriving or verifying them against source content.

@@ -36,10 +36,14 @@ Historical timing receipts remain evidence for their original commits and worklo
 ## Equipment coverage cost evidence
 
 The recession-table implementation has headless carry, descriptor, submission-history and allocation
-guards. It has no accepted native cost result. The separately approved G1 to G3 correctness units and
-G4/G5 hardware cost units remain required at the actual code SHA. Publish no cost or measured-memory
-claim from the headless tests. See [equipment coverage](EQUIPMENT-COVERAGE.md) for the runtime and
-verification boundaries, including the open Vulkan previous-slot synchronization item.
+guards. Its accepted native cost results, both at commit `ea7c9d362` and one run each, are G4 on a
+Tesla T4 (1218 microseconds added GPU time at 32 actors against the 1300 limit) and G5 on an Apple
+M2 Max (734 microseconds). They measure the synthetic body-size workload, not a consumer frame rate.
+A change to carry, publication, coverage vertex or precise shader code needs the G1 to G3 correctness
+units and the G4/G5 cost units again at its own SHA. Publish no cost or measured-memory
+claim from the headless tests. See [equipment coverage](EQUIPMENT-COVERAGE.md#verification-boundaries)
+for the acceptance record and the runtime and verification boundaries, including the open Vulkan
+previous-slot synchronization item.
 
 `CoverageRecessionCostGpuTests.Real_body_size_carry_and_scene_overhead_for_1_and_32_actors` is a
 Diagnostic fact with a separate exact opt-in:

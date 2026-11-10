@@ -18,7 +18,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   actor across colour, depth, motion, shadows and outlines. Submission-owned history retains safe output
   slots and explicitly presents the uncovered current pose on refusal. Participant-capacity refusal
   preserves the last observed history, and graphics refusal keeps ordinary output rebuilds usable.
-  Native correctness, Vulkan cross-frame synchronization and aggregate cost remain unproven pending separate acceptance units.
+  The Metal, Direct3D 11 WARP and Vulkan correctness units, Vulkan synchronization validation and both
+  hardware cost units passed at this version's code. The synchronization result is an absence of
+  reported hazards under an active checker, not a deliberate hazard control.
 - Equipment carry contract 2 keeps position arithmetic exact and makes normal/tangent failures local.
   Native direction math uses precise cancellation-sensitive operations and finite recovery from the
   current pose, authored direction or a fixed unit direction. A rare degenerate case shows a locally odd
@@ -27,7 +29,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   and depth gates, tangent rules, five stages, slots and history are unchanged. The cost limit is at most
   1.3 ms added GPU time at 32 actors on a Tesla T4.
   The `2e-5` direction comparison is conditional on a documented non-degenerate error envelope. Earlier
-  unshipped descriptors require rebuilding. Native correctness needs approved runs.
+  unshipped descriptors require rebuilding.
 - `GpuShaderCompileOptions` adds an opt-in precise compute/vertex math policy without changing default
   compilation or cache identities. Coverage requests that policy. A compiled public consumer example
   and the living equipment coverage guide document complete descriptors, fallback and resource lifetime.

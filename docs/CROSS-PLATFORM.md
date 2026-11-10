@@ -19,7 +19,9 @@ correctness or cost result.
 Native carry/publication checks require separately approved Metal, Direct3D 11 WARP and Vulkan units.
 The Vulkan unit also requires synchronization validation of the cross-frame read of the previous output
 slot. That read remains open because hazard tracking resets at Begin. Headless scheduling tests do not
-prove it. Native correctness and cost are unproven until G1 to G5 have accepted evidence at the actual SHA.
+prove it. G1 to G5 have accepted evidence, recorded in
+[equipment coverage](EQUIPMENT-COVERAGE.md#verification-boundaries). A change to carry, publication,
+coverage vertex or precise shader code needs them again at its own SHA.
 Software output or hazard checks do not prove hardware speed.
 
 The Diagnostic body-size cost fact additionally requires the exact

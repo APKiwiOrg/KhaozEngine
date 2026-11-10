@@ -5,9 +5,10 @@ consumer supplies an opaque animation-state key. Runtime selects a row and carri
 fixed refinement. It performs no exact construction, correction, filtered selection, continuous
 certification or runtime membership test. The exact constructor and validator are offline tooling.
 
-Headless reference, binding, publication and tooling tests are implemented. Native correctness and cost
-are unproven until the separately approved G1 to G5 units are accepted at the actual code SHA. No cost
-result or measured memory footprint is claimed here. Verification at samples is not a continuous proof.
+Headless reference, binding, publication and tooling tests are implemented. The separately approved
+native units G1 to G5 have accepted evidence, listed under [verification boundaries](#verification-boundaries).
+Their cost results describe a synthetic workload on two devices, not a consumer frame rate. No measured
+memory footprint is claimed here. Verification at samples is not a continuous proof.
 
 ## Assets and shared identity
 
@@ -75,8 +76,9 @@ most `2^-20`, and underflow absolute errors at most `2^-126`. Normalization cont
 restriction, not a universal palette, mesh or device guarantee. Cancellation or a small determinant can
 violate that envelope even with NoContraction. In the degenerate band CPU/GPU directions may differ.
 Require finite directions and identical position words there. Wrong normal, tangent and stale-direction
-controls still reject under the tight non-degenerate tolerance. Native accuracy remains unproven until
-approved device runs. The cost limit is at most 1.3 ms added GPU time at 32 actors on a Tesla T4.
+controls still reject under the tight non-degenerate tolerance. The approved Metal, Direct3D 11 WARP and
+Vulkan device units pass these checks. That evidence does not cover other devices. The cost limit is at
+most 1.3 ms added GPU time at 32 actors on a Tesla T4.
 
 The CPU reference keeps its exact non-degenerate direction arithmetic and adopts the same local
 recovery policy. Sample verification no longer creates a hole solely because a direction failed.
@@ -418,7 +420,20 @@ or pulled corners multiplied by instances, not distinct vertex shader invocation
 requested handles and dynamic offsets across the recording, not backend encoder state. These counts
 guide a separately approved quiet Metal run. They cannot identify the cause of a GPU cost difference.
 
-Until all five units have accepted evidence at the actual SHA, native correctness, synchronization and
-aggregate cost remain unproven. This implementation alone authorizes no release, package publication or
+All five units have accepted evidence at commit `ea7c9d362`, each run once on 2026-11-10 UTC:
+
+- G1, hosted Metal: 9 of 9 selected tests passed.
+- G2, Direct3D 11 WARP: 9 of 9 passed.
+- G3, lavapipe Vulkan: 10 of 10 passed, including the validation control. The synchronization job
+  reported no error-severity message and no hazard.
+- G4, Tesla T4 Vulkan: 1218 microseconds added GPU time at 32 actors against the 1300 limit, and 110
+  microseconds worst added CPU preparation, over 32 observed frames per row.
+- G5, Apple M2 Max Metal: 734 microseconds added GPU time at 32 actors and 102 microseconds worst added
+  CPU preparation, over nine observed frames per row.
+
+The G3 result is an absence of reported hazards under an active checker. No deliberate cross-submission
+hazard control exists. The G4 margin is small and each cost figure is one run of a synthetic workload,
+so a change to carry, publication, coverage vertex or precise shader code needs all five units again at
+its own SHA. This evidence alone authorizes no release, package publication or
 consumer adoption. CPU runtime carry, different float semantics, collar retuning, private table generation,
 consumer sampler/CI adoption, leather and precise dual-quaternion skinning remain separate follow-up work.

@@ -7487,8 +7487,8 @@ submission without implementing the optional coverage interface.
 See [equipment coverage](EQUIPMENT-COVERAGE.md) and the exact
 [compiled consumer example](examples/EquipmentCoverageConsumer.cs) for configuration identity, the
 three fallback paths, slot ownership, partial-weight and whole-skin checks, allocation conditions and
-the blocking offline `verify` command. Sample verification is not a continuous proof. Native correctness
-and aggregate cost remain unproven until their separately approved units are accepted.
+the blocking offline `verify` command. Sample verification is not a continuous proof. The native
+correctness and cost units have accepted evidence, which that guide records with its limits.
 
 ### Skinned body contracts (any body shape)
 

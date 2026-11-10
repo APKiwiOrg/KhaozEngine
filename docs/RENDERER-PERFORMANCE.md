@@ -55,7 +55,12 @@ Each carry-only and covered sample also reports named `StageGpuMicroseconds` for
 Basis, Gather and Publish, with per-stage distributions on its row. These brackets surround only
 the dispatches and share the outer frame's timestamp pool. The outer total includes uniform uploads,
 all stage markers and completed-End finalization. The primary baseline row keeps only its outer timestamps.
-Schema `khaozengine.coverage-recession-cost/3` adds separate baseline, covered and fast-vertex pass
+The `carry-only-outer` and `covered-scene-outer` rows run the same work as their staged twins with only
+the outer pair, the baseline row's marker count. A Vulkan marker is one timestamp write. A Metal marker
+ends the native encoder and encodes a blit pass between event waits, so ten stage markers add work to
+the staged rows that the baseline row never pays. `addedGpuMicrosecondsEqualMarkers` compares
+`covered-scene-outer` with `baseline-scene`. It is diagnostic and gates nothing.
+Schema `khaozengine.coverage-recession-cost/4` also carries separate baseline, covered and fast-vertex pass
 observations at each actor count. `PassGpuMicroseconds` contains inclusive and exclusive min, median,
 p95, p99 and max, with execution counts and fused-motion counts. Samples retain raw ticks and pass
 metadata and marker indices. Skipped callbacks retain metadata without markers. `UnscopedGpuMicroseconds`
@@ -77,7 +82,7 @@ when they consume them. Buffer copies, dispatches and mip generation leave them 
 The counting wrapper retains its existing default framebuffer-store fallback. These measurements do not
 cover the scene owner's dead-attachment discard optimization, and the new provenance does not alter it.
 The original `baseline-scene` and `covered-scene` pair alone supplies the unchanged GPU and CPU
-criteria. All seven layouts require zero warm allocation. Pass timing changes native encoder boundaries
+criteria. All nine layouts require zero warm allocation. Pass timing changes native encoder boundaries
 and resulting load/store work, so pass-row totals are observational. Do not add parent and child inclusive times.
 The covered fast-vertex rows change only the coverage graphics precise compile option through an internal
 cold test setting. Carry compute stays precise and shader sources stay fixed. Their output is a policy

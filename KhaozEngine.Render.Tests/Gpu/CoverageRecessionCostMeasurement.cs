@@ -17,6 +17,7 @@ internal static class CoverageRecessionCostMeasurement
     internal const int ConditioningFrames = 96;
     internal const int BatchFrames = 3;
     internal static readonly string[] Layouts = ["carry-only", "baseline-scene", "covered-scene", "covered-scene-fast-vertex",
+        "carry-only-outer", "covered-scene-outer",
         "baseline-scene-passes", "covered-scene-passes", "covered-scene-fast-vertex-passes"];
     internal static string[] DispatchSchedule => CoverageCarryShaders.Kernels.Select(kernel => kernel.Name["CoverageCarry".Length..]).ToArray();
 
@@ -100,8 +101,11 @@ internal static class CoverageRecessionCostMeasurement
             InclusiveGpuMicroseconds = Stats(g.Select(p => p.InclusiveGpuMicroseconds)),
             ExclusiveGpuMicroseconds = Stats(g.Select(p => p.ExclusiveGpuMicroseconds)),
         }).ToArray();
+        /// <summary>Only the outer timestamp pair, the same marker count as the baseline scene. A backend whose
+        /// marker ends the native encoder charges every stage bracket to the row that carries it.</summary>
+        public bool OuterMarkersOnly => Layout.EndsWith("-outer", StringComparison.Ordinal);
         public string[] DispatchSchedule => CarryDispatchCount == 0 ? [] : CoverageRecessionCostMeasurement.DispatchSchedule;
-        public object[] StageGpuMicroseconds => DispatchSchedule.Select((stage, i) => (object)new
+        public object[] StageGpuMicroseconds => OuterMarkersOnly ? [] : DispatchSchedule.Select((stage, i) => (object)new
         { Stage = stage, GpuMicroseconds = Stats(Samples.Select(s => s.StageGpuMicroseconds[i].GpuMicroseconds)) }).ToArray();
     }
 
@@ -111,7 +115,7 @@ internal static class CoverageRecessionCostMeasurement
         readonly IGpuDevice device;
         readonly CoverageRecessionNativeScene scene;
         readonly string layout;
-        readonly bool carry, baseline;
+        readonly bool carry, baseline, staged;
         readonly CoverageRecessionPassTiming? passTiming;
         readonly Scene3DPassTimingsMs[] cpuPassRecording;
         readonly CoverageCarryBatch? batch;
@@ -137,8 +141,9 @@ internal static class CoverageRecessionCostMeasurement
             var observer = new CoverageRecessionObservedDevice(device);
             this.device = device = observer; this.layout = layout; this.observed = observed;
             stageTiming = new(observer.CarryStages);
-            carry = layout == "carry-only";
+            carry = layout.StartsWith("carry-only", StringComparison.Ordinal);
             baseline = layout.StartsWith("baseline-scene", StringComparison.Ordinal);
+            staged = !baseline && !layout.EndsWith("-outer", StringComparison.Ordinal) && !layout.EndsWith("-passes", StringComparison.Ordinal);
             scene = new(device, fixture, actors, !baseline, layout.Contains("-fast-vertex", StringComparison.Ordinal));
             if (carry)
             {
@@ -176,8 +181,8 @@ internal static class CoverageRecessionCostMeasurement
             }
             else
             {
-                markerCount = baseline ? 2 : CoverageRecessionStageTiming.MarkerCount;
-                if (!baseline) foreach (var list in commands) list.ComputeDispatchObserver = stageTiming.Dispatch;
+                markerCount = staged ? CoverageRecessionStageTiming.MarkerCount : 2;
+                if (staged) foreach (var list in commands) list.ComputeDispatchObserver = stageTiming.Dispatch;
             }
             ring = new(device, capacity, markerCount, (id, result) => timestamps[id] = result);
         }
@@ -219,7 +224,7 @@ internal static class CoverageRecessionCostMeasurement
                 commands[slot].Clear(); native[slot].Begin();
                 if (!ring.TryBegin(native[slot], scene.Submission, id, markerCount, out pool)) throw new InvalidOperationException(ring.Failure);
                 if (passTiming is not null) passTiming.BeginFrame(native[slot], pool, id);
-                else if (!baseline) stageTiming.Begin(native[slot], pool);
+                else if (staged) stageTiming.Begin(native[slot], pool);
                 if (carry && !scene.Submission.TryRetain(batch!, out completion)) throw new InvalidOperationException("Carry completion retention failed.");
                 openingBytes = GC.GetAllocatedBytesForCurrentThread() - allocation;
             }
@@ -230,7 +235,7 @@ internal static class CoverageRecessionCostMeasurement
                 if (carry) batch!.Record(commands[slot]);
                 else scene.Render(commands[slot]);
                 if (passTiming is not null) passTiming.Complete();
-                else if (!baseline) stageTiming.Complete();
+                else if (staged) stageTiming.Complete();
                 cpuPassRecording[id] = scene.Scene.PassTimingsMs;
                 ((IGpuCommandListTimestampEnd)native[slot]).FinishTimestampsOnEnd(pool, markerCount - 1);
                 native[slot].End();

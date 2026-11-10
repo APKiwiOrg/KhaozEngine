@@ -76,6 +76,10 @@ public sealed class CoverageRecessionWarmAllocationTests(ITestOutputHelper outpu
     [InlineData("covered-scene", 32)]
     [InlineData("covered-scene-fast-vertex", 1)]
     [InlineData("covered-scene-fast-vertex", 32)]
+    [InlineData("carry-only-outer", 1)]
+    [InlineData("carry-only-outer", 32)]
+    [InlineData("covered-scene-outer", 1)]
+    [InlineData("covered-scene-outer", 32)]
     [InlineData("baseline-scene-passes", 1)]
     [InlineData("baseline-scene-passes", 32)]
     [InlineData("covered-scene-passes", 1)]
@@ -86,15 +90,7 @@ public sealed class CoverageRecessionWarmAllocationTests(ITestOutputHelper outpu
     {
         // Inert device and counters exercise the real cost driver, without establishing GPU timing or output.
         using var compute = new CoveragePublicationDevice();
-        using var device = new GpuPerfTimestampTestDevice
-        {
-            ProgramFactory = compute,
-            CaptureCommandTrace = false,
-            Features = new(false, true, "coverage-cost-allocation", supportsCompute: true,
-                supportsCompletionFences: true, supportsShadowMaps: true, maxMsaaSampleCount: 4)
-            { SupportsTimestamps = true },
-            OnSubmittedFence = fence => ((SubmissionTestFence)fence).Signaled = true,
-        };
+        using var device = InertCostDevice(compute);
         using var driver = new CoverageRecessionCostMeasurement.Driver(device, new(4, 4), actors, layout, 1);
         long deadline = Stopwatch.GetTimestamp() + 900 * Stopwatch.Frequency;
         // Use the real unit's conditioning, including both rows and holes on every recording slot.
@@ -110,4 +106,15 @@ public sealed class CoverageRecessionWarmAllocationTests(ITestOutputHelper outpu
         output.WriteLine($"{layout}, actors={actors}, preparation={allocation.Preparation}, opening={allocation.Opening}, encoding={allocation.Encoding}, submission={allocation.Submission}");
         Assert.Equal((0L, 0L, 0L, 0L), allocation);
     }
+
+    /// <summary>An inert device with strict timestamp pools that runs the real cost driver without a GPU.</summary>
+    internal static GpuPerfTimestampTestDevice InertCostDevice(CoveragePublicationDevice compute) => new()
+    {
+        ProgramFactory = compute,
+        CaptureCommandTrace = false,
+        Features = new(false, true, "coverage-cost-allocation", supportsCompute: true,
+            supportsCompletionFences: true, supportsShadowMaps: true, maxMsaaSampleCount: 4)
+        { SupportsTimestamps = true },
+        OnSubmittedFence = fence => ((SubmissionTestFence)fence).Signaled = true,
+    };
 }

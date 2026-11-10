@@ -299,9 +299,12 @@ hardware. Hosted benchmark dispatch forwards its optional `coverage-cost-unit` i
 and ordinary shard filters exclude this fact even without Diagnostic filtering. Do not use a broad
 Diagnostic selection as cost-unit authorization. See [performance evidence](RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).
 
-Cost schema `khaozengine.coverage-recession-cost/3` retains the original carry-only, baseline-scene and
+Cost schema `khaozengine.coverage-recession-cost/4` retains the original carry-only, baseline-scene and
 covered-scene rows at one and 32 actors. Only the original scene pair supplies the 1.3 ms GPU and 2 ms
-CPU preparation checks. All rows retain the zero warm managed allocation check. Additional rows ending
+CPU preparation checks. All rows retain the zero warm managed allocation check. Rows ending in `-outer`
+repeat carry-only and covered-scene with the baseline row's two markers and no stage brackets, so a
+backend whose marker ends the native encoder can be compared at equal marker counts. Those rows report
+no stage times. Additional rows ending
 in `-passes` enable the existing CPU recording buckets with `Scene3D.EnableTiming` and bracket the
 existing `PassObserver` callbacks with `GpuTimestamps`. They report per-sample and per-pass min, median,
 p95, p99 and max GPU microseconds, including exclusive durations, executed status and fused motion.

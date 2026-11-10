@@ -41,6 +41,7 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
         {
             var baseline = rows.Single(r => r.Actors == actors && r.Layout == "baseline-scene");
             var covered = rows.Single(r => r.Actors == actors && r.Layout == "covered-scene");
+            var coveredOuter = rows.Single(r => r.Actors == actors && r.Layout == "covered-scene-outer");
             return new
             {
                 actors,
@@ -48,11 +49,13 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
                     (c, b) => c.CpuPreparationMicroseconds - b.CpuPreparationMicroseconds)),
                 addedGpuMicroseconds = covered.GpuMicroseconds.Median - baseline.GpuMicroseconds.Median,
                 aggregateGpuOverheadPercent = (covered.GpuMicroseconds.Median / baseline.GpuMicroseconds.Median - 1) * 100,
+                // Diagnostic. Both rows carry two markers, so a backend's per-marker cost cancels.
+                addedGpuMicrosecondsEqualMarkers = coveredOuter.GpuMicroseconds.Median - baseline.GpuMicroseconds.Median,
             };
         }).ToArray();
         string json = JsonSerializer.Serialize(new
         {
-            schema = "khaozengine.coverage-recession-cost/3",
+            schema = "khaozengine.coverage-recession-cost/4",
             fixture = fixture.Extents,
             code = new
             {
@@ -79,6 +82,7 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
             carryPreciseMath = true,
             passTiming = "Layouts ending in -passes are separate observations with Scene3D.EnableTiming and PassObserver GPU timestamps. Observer markers split native encoders and change where load/store work runs. The counting wrapper retains default store actions. Primary deltas use only baseline-scene and covered-scene. Pass rows include inclusive and exclusive GPU distributions, skipped status and fused motion. Do not add parent and child intervals.",
             deferredClears = "Metal observations name actual absorbed attachment clears, their source scope and consuming scope. Other backends explicitly mark this provenance unavailable. Native load/store actions and encoder-state re-emission remain in the interval that encodes them. End-only consumption is UnscopedDeferredClears. No early clear flush is inserted.",
+            markerPolicy = "baseline-scene and layouts ending in -outer carry only the outer timestamp pair. carry-only, covered-scene and covered-scene-fast-vertex add ten stage markers. A Metal marker ends the native encoder and encodes its own blit pass between event waits, so its cost lands in the row that carries it. addedGpuMicrosecondsEqualMarkers compares covered-scene-outer with baseline-scene and is diagnostic. The acceptance checks keep the original pair.",
             vertexMathExperiment = "Layouts containing -fast-vertex disable only coverage graphics PreciseMath through an internal cold scene setting. Shader sources and precise carry compute are unchanged. These rows are diagnostic, not arithmetic or image acceptance evidence.",
             rows,
             deltas,

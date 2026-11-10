@@ -507,17 +507,23 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   disc kernels would double the cost in shallow water, where most submerged pixels are.
   Submerged fragments add four slice comparisons to that
   entry kernel. Native timing remains a separate measurement.
-  - The fit also quantizes the LIGHT's rotation, not just its focus translation: `ShadowLightHoldTexels` (default
-  `1`) and `ShadowLightHoldCasterHeight` (default `12`) hold the direction the cascades were last fitted from until
-  the sun has turned far enough to drag a worst-case caster's shadow by that many shadow texels, so a stationary
-  scene under a day/night cycle stops re-recording the whole atlas every frame. The threshold is elevation-corrected
+  - The fit's light-rotation budget comes from `Post.Temporal.ShadowLightHoldTexels` while temporal anti-aliasing
+  resolves the frame. Its default `0` follows the sun every frame, removing held shadow steps under the resolve.
+  Other AA modes keep `Post.Quality.Shadows.ShadowLightHoldTexels` (default `1`). Both use
+  `ShadowLightHoldCasterHeight` (default `12`). A positive budget holds the direction the cascades were last fitted
+  from until the sun has turned far enough to drag a worst-case caster's shadow by that many shadow texels.
+  Following re-records the atlas whenever the sun moves, including a fully static scene that could otherwise reuse
+  it. Set `Post.Temporal.ShadowLightHoldTexels = 1f` to restore that saving under TAA. Fractional holds beat against
+  the jitter cycle and are not recommended. The threshold is elevation-corrected
   and recomputed per frame (`budget * (2r/res) * sin^2(e) / h` on the tightest active cascade), because a low sun
   throws shadows far: it is about 43x tighter at a 5 degree dusk than a 35 degree afternoon, and stands down near
   the horizon. That standdown elevation falls out of the same formula rather than being a constant, so it scales as
   `1/sqrt(r)` with cascade 0's camera-derived radius: about 2.6 degrees on a wide outdoor framing where `r` is
   around 60 m. Only the shadow FIT is held, so `Post.LightDirection` still drives diffuse, specular, sky and
   water live, and a caster that moves under a held sun still re-records via `CasterDataChanged`, so no shadow can
-  ghost. `ShadowLightHoldTexels = 0` disables it and restores the pre-17.36.1 fit byte for byte.
+  ghost. Zero, negative and NaN budgets disable the hold. The motion-vector debug view and forced temporal
+  rendering without the resolve keep the non-temporal budget. The remaining Native jitter-cycle catch-up is a
+  [known resolve limit](../docs/design/TEMPORAL-RESOLVE.md#sun-shadow-following).
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.

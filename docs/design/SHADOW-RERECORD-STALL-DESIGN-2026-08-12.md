@@ -220,8 +220,8 @@ but only once the scope above is understood: the version that hashes bones alone
 
 ### 3.3 Option B: do not re-fit a cascade for sub-texel light movement
 
-The missing half of the texel snap that already exists for translation. Hold the light direction the fit is given
-until the sun has rotated enough to move the recorded shadow by more than a texel, and only then let the new
+The missing half of the texel snap that already exists for translation. With a positive light-hold budget, hold
+the direction the fit is given until the sun has rotated enough to move the recorded shadow by more than a texel, and only then let the new
 direction through. The camera half of the fit keeps running every frame, which is load-bearing and is the last
 paragraph of this section.
 
@@ -231,7 +231,9 @@ elevation) before the fit, for the same reason this option exists: hold the fitt
 steps so the atlas dirty-skip engages under a rotating sun. 14.0.0 removed both as breaking, because no consumer
 fleet-wide ever enabled the knob (it defaulted to `0`) and its `ShadowStepBlendSeconds` companion ghosted a caster
 that moved mid-fade. Three material differences make this option a different bet rather than a repeat of that one.
-It defaults ON, so adoption is not something a consumer has to opt into and then remember. It HOLDS the last
+It defaults ON outside temporal anti-aliasing, so those modes need no opt-in. Temporal anti-aliasing follows the
+sun every frame by default to avoid held shadow steps, as [sun shadow following](TEMPORAL-RESOLVE.md#sun-shadow-following)
+describes. The hold HOLDS the last
 adopted direction rather than snapping to a lattice, so a scene with a static sun fits from a direction
 bit-identical to its live one and its rendered bytes do not move, which a lattice snap cannot promise: a lattice
 pulls a stationary sun onto the nearest cell and changes the image on adoption. And it ships no step-blend
@@ -317,9 +319,11 @@ Five things came out differently from the proposal above, all of them worth carr
 every rigid caster's world bounding sphere in hand (`_shadowCasterSpheres`), so an auto-derived bound looked
 available, and it is wrong: a merged HLOD cluster's sphere is the radius of a whole chunk of terrain-scale
 geometry rather than the height of anything standing on it, so deriving `h_max` from it collapses the threshold to
-nothing in exactly the streamed outdoor scene this feature exists for. So `ShadowLightHoldTexels` (default `1`,
-`0` disables) is the drift budget and `ShadowLightHoldCasterHeight` (default `12`, the tall tree this section
-sizes against) is `h_max`. Both ride the FLAT-GROUND reading of `h * cot(e)`, so the one-texel bound is sub-texel
+nothing in exactly the streamed outdoor scene this feature exists for. So `ShadowSettings.ShadowLightHoldTexels`
+(default `1`, `0` disables) is the drift budget outside temporal anti-aliasing. While the temporal resolve runs,
+`TemporalSettings.ShadowLightHoldTexels` replaces it, defaulting to `0` for per-frame following. Both use
+`ShadowLightHoldCasterHeight` (default `12`, the tall tree this section sizes against) as `h_max`. These budgets
+ride the FLAT-GROUND reading of `h * cot(e)`, so the one-texel bound is sub-texel
 by construction only there: a receiver grazed more shallowly than the sun's elevation (a cliff face, a wall) takes
 `(ray length) * dTheta / sin(grazing angle)` of drift instead, which can pass a texel on the same rotation. It
 stays bounded and small, and `ShadowLightHoldCasterHeight` is where a game full of steep receivers buys the margin
@@ -428,7 +432,10 @@ instrument is worth more than the microseconds.
 
 **Take B first, then A-lite, then C. Leave A-full and D unbuilt until a field capture asks for them.**
 
-B is the largest saving per unit of risk in the doc. It removes the entire re-record from a stationary scene under
+B is the largest saving per unit of risk in the doc when holding is enabled. Outside temporal anti-aliasing it
+remains the default. Under TAA, `Post.Temporal.ShadowLightHoldTexels = 1f` restores the hold when its saving is
+needed, trading the smoother following described in the temporal resolve design for atlas reuse.
+It removes the entire re-record from a stationary scene under
 a moving sun, which is the case the field trace spent about 71 of its 160.91 seconds sitting in (t=0 to 30.25 and
 t=120 to 160.9, the two stationary phases either side of the moving one), and it is not a new mechanism but the
 rotation half of a quantization the fit already applies to translation. Its two real hazards are the receiver-tail
@@ -459,7 +466,9 @@ stationary scene re-recording 400 spans and 1,500 casters every frame for no vis
 ## 5. What the Windows F3 capture must show to confirm it
 
 The reference consumer forwards `ShadowPassDiagnostics` to F3 telemetry, so the confirmation is four readings on the reporting
-machine, same scene, same stationary pose, before and after.
+machine, same scene, same stationary pose, before and after. These are hold-enabled readings. With temporal
+anti-aliasing, set `Post.Temporal.ShadowLightHoldTexels = 1f` for this check, since its default following correctly
+sets `LightMatrixChanged` on every moving-sun frame.
 
 1. **The reason bits change, and in the right direction.** Today every sample reads
    `AnySkinnedCaster=1, LightMatrixChanged=1`. After B plus A-lite, a stationary AFK window must read

@@ -4,11 +4,12 @@ using System.Numerics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// The light-movement epsilon for the shadow cascade fit (issue #410, design section 3.3): the cascade fit keeps
-    /// using the light direction it last fitted with until the sun has turned far enough to move the recorded shadow
-    /// by more than <see cref="ShadowSettings.ShadowLightHoldTexels"/> texels, and only then adopts the new one.
-    /// A stationary scene under a slowly moving sun then stops re-recording the whole atlas every frame for a shadow
-    /// displacement no viewer can see. The arithmetic is <see cref="Internal.ShadowLightHold"/>, which is pure and
+    /// The light-movement budget for the shadow cascade fit (issue #410, design section 3.3). Temporal anti-aliasing
+    /// uses <see cref="TemporalSettings.ShadowLightHoldTexels"/>, default 0, so shadows follow the sun every frame
+    /// instead of moving in held steps. Other modes use <see cref="ShadowSettings.ShadowLightHoldTexels"/>, default 1.
+    /// A positive budget keeps the last fitted light direction until the sun has turned far enough to move the
+    /// recorded shadow by that many texels, saving atlas re-records in a static scene under a slowly moving sun.
+    /// The arithmetic is <see cref="Internal.ShadowLightHold"/>, which is pure and
     /// headless-tested. What lives here is the held direction itself and the two coupling hazards below, which are
     /// the reason this is built as "do not re-fit" rather than the tempting "fit and skip".
     /// </summary>
@@ -23,8 +24,8 @@ namespace KhaozEngine.Render3D
         /// The light direction <see cref="ComputeShadowCascades"/> fits this frame's cascades from: the held one
         /// while the sun's total rotation away from it stays under this frame's threshold, otherwise the live
         /// <c>Post.LightDirection</c>, which is adopted and becomes the new held direction. With
-        /// <see cref="ShadowSettings.ShadowLightHoldTexels"/> at 0 this returns the live direction on every frame and
-        /// the fit is byte-for-byte what it was before the epsilon existed.
+        /// the selected light-hold budget at 0 this returns the live direction on every frame and the fit is
+        /// byte-for-byte what it was before the epsilon existed.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -55,11 +56,19 @@ namespace KhaozEngine.Render3D
         /// terms, the sky sun disc and the water lighting live, so only the cast shadow lags, and it lags by at most
         /// the displacement the threshold bounds.
         /// </para>
+        /// <para>
+        /// Only <see cref="TemporalResolveActive"/> selects the temporal budget. The wider
+        /// <see cref="TemporalActive"/> also includes the motion-vector debug view and the test seam, neither of
+        /// which should change where shadows fall. Switching anti-aliasing mode applies the other budget to the
+        /// same held direction on the next frame, without resetting or freezing the camera half of the fit.
+        /// </para>
         /// </remarks>
         Vector3 HeldLightDirection(ReadOnlySpan<float> splits, int count, float camNear, float camFar, float range, int res)
         {
             Vector3 live = Vector3.Normalize(Post.LightDirection);
-            float budget = Post.Quality.Shadows.ShadowLightHoldTexels;
+            float budget = TemporalResolveActive
+                ? Post.Temporal.ShadowLightHoldTexels
+                : Post.Quality.Shadows.ShadowLightHoldTexels;
             // Disabled, or nothing held yet (the first shadow frame, which must fit from the live sun anyway). The
             // early-out also keeps the disabled path off the radius walk below, so 0 costs nothing as well as
             // changing nothing.

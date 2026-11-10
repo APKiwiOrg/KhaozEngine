@@ -296,6 +296,54 @@ error `0.00352189149420995` stays below its original `0.00359095` maximum, so it
 | lavapipe S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.570065765107464 | 0.004799195509288 at slow tail 0.0030566843860575796 |
 | lavapipe S 8 px retreating absolute textured tail | 0.007246004857927269 | baseline 0.007607362248486 | 0.007607862248486 |
 
+## Sun shadow following
+
+The sun shadow fit uses `Post.Temporal.ShadowLightHoldTexels` while temporal anti-aliasing is active. Its default
+is 0, so a moving sun is followed every frame. Other AA modes retain `ShadowSettings.ShadowLightHoldTexels`,
+default 1. Both budgets use `ShadowSettings.ShadowLightHoldCasterHeight`, default 12. A positive budget holds
+the last fitted direction until the shadow has moved by the budget in shadow-map texels. Negative and NaN
+values behave as zero. The selector is `TemporalResolveActive`, rather than the wider `TemporalActive`, so the
+motion-vector debug view or the temporal test seam alone cannot change where shadows fall. Switching AA mode
+applies the other budget to the existing held state on the next frame.
+
+Holding the light input avoids atlas re-records, but makes a slowly moving shadow jump on each re-fit. The
+resolve must pass those real shading changes through. On the daylight rig at `0.2f / 60f` degrees per frame,
+the one-texel hold re-fits every six frames and moves the edge 0.978 display pixels. Measured on Metal, its
+largest pair change is 2.96 times the factor-4 spatial reference at Native and 1.98 times at Quality. Following
+reduces those ratios to 1.73 and 0.85. Tracking RMS improves from 0.794 to 0.554 display pixels at Native and
+from 1.150 to 0.935 at Quality.
+
+Following adds no measured wobble to the shadow signal. The spatial AA control with hold 0 tracks the reference
+to 0.014 display pixels RMS and has the reference's own spike ratio. A cross-fade is therefore not added. It
+would smooth an already smooth shadow input without addressing the resolve limit below.
+
+The saving matters in fully static scenes. In `ShadowRerecordBenchGpuTests` on Metal, a trace-shaped scene with
+4593 instances, 1525 rigid casters and four 2048 cascades changes from 0 recorded frames out of 200 with hold 1
+to 200 out of 200 with hold 0. Mean shadow recording time changes from 0.087 to 0.230 ms per frame. These are
+wall-clock upper bounds, not GPU timestamps or timing gates. A scene whose animated casters already dirty the
+atlas every frame adds no re-records. Set `scene.Post.Temporal.ShadowLightHoldTexels = 1f` when the static-scene
+saving is needed under TAA. Fractional holds such as 0.5 and 0.25 beat against the jitter cycle, giving
+non-monotonic pulses, and are not recommended.
+
+`TemporalDaylightShadowGpuTests` guards the daylight behavior at Native and Quality, with Balanced printed only.
+The plain following peak is at most 2.0 times the reference at Native and 1.25 times at Quality. The held
+control must exceed that bound, so a fixture that stops stepping cannot pass silently. Following must also
+track the reference no worse in RMS and add no outside-band sparkle. The ridged receiver's peak must be below
+the held control's, with sparkle bounded by the held count plus 2 percent rounded up, at least two pixels.
+The matched still-sun additive peak budget is reported only because its measured Quality headroom is 4.6
+percent, too thin to assume across drivers. `ShadowLightHoldGpuTests` guards budget selection, disabled values,
+debug requesters and mode switching without weakening the existing non-temporal facts.
+
+**Known Native resolve limit.** A creeping shadow still catches up once per eight-frame jitter cycle. The
+variance clip box is gathered over the jittered 3x3 sample lattice while current colour is reconstructed at the
+display site. The box therefore moves with the jitter. On one phase, lagging history falls outside it and the
+clip corrects at once. The colour release amplifies the correction by resetting accumulated weight. Following
+removes the hold-cadence pulse, but leaves this separate resolve response. Quality spreads the decisions over
+18 phases and stays within the reference's peak change on this rig. Centring the clip box on reconstructed
+luma was rejected because it breaks 24 existing behavior facts, including still thin detail, drifting-line
+trails, textured grain and ghosting. Fixing this limit needs its own resolve design. No resolve or shader
+change accompanies shadow following.
+
 ## 4. Sharpening
 
 A robust contrast adaptive sharpen runs after tonemapping at display resolution. It limits each pixel's sharpening

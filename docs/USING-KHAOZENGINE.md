@@ -5366,14 +5366,20 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       tail (light matrix + bias/strength) is
       still applied on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the
       map with the matrix it was baked against.
-    - **Light-movement hold** (`ShadowLightHoldTexels` default `1`, `ShadowLightHoldCasterHeight` default `12`, both
-      on `ShadowSettings`, since 17.36.1): the fit texel-snaps its FOCUS, so a camera sliding by less than a texel
-      does not move it. This is the same quantization for ROTATION. The cascade fit keeps using the light direction it
-      last adopted until the sun has turned far enough to drag a worst-case caster's shadow by
-      `ShadowLightHoldTexels` shadow texels, and only then adopts the new one, so a stationary scene under a day/night
-      cycle stops repainting the whole atlas every frame for a displacement nobody can see. Under the reference consumer's
-      30 minute day (0.00333 deg/frame) a wide outdoor camera re-fits about once every 29 frames instead of every
-      frame. Set `ShadowLightHoldTexels = 0` to disable it, which restores the pre-17.36.1 fit byte for byte.
+    - **Sun shadow following and light-movement hold.** While temporal anti-aliasing resolves the frame,
+      `scene.Post.Temporal.ShadowLightHoldTexels` supplies the budget. Its default `0` follows the sun every frame,
+      removing the held shadow steps the resolve would otherwise have to pass through. Other AA modes keep
+      `scene.Post.Quality.Shadows.ShadowLightHoldTexels` (default `1`). The motion-vector debug view alone and forced
+      temporal rendering without TAA keep that non-temporal budget too. Both budgets use
+      `ShadowSettings.ShadowLightHoldCasterHeight` (default `12`). A positive budget holds the last fitted light
+      direction until the sun has turned far enough to drag a worst-case caster's shadow by that many shadow
+      texels. This is rotation quantization beside the fit's existing focus-translation texel snap.
+      Following re-records whenever the sun moves, including a fully static scene that could otherwise reuse its
+      atlas. Set `scene.Post.Temporal.ShadowLightHoldTexels = 1f` to restore the one-texel hold under TAA when that
+      saving is needed. Fractional budgets beat against the jitter cycle and are not recommended. Zero, negative
+      and NaN budgets disable holding. Mode changes apply the other budget to the same held state on the next frame.
+      The [temporal resolve design](design/TEMPORAL-RESOLVE.md#sun-shadow-following) records the measured cost and
+      remaining Native jitter-cycle catch-up.
       Three things to know. The threshold is elevation-corrected and recomputed every frame
       (`budget * (2r/res) * sin^2(e) / h` against the tightest active cascade), because a low sun throws shadows far
       and the same rotation moves them much further: it is about 43x tighter at a 5 degree dusk than at a 35 degree
@@ -5384,7 +5390,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       Only the SHADOW fit is held, so `Post.LightDirection` still drives diffuse, specular, the sky sun disc and
       the water live, and only the cast shadow lags. And the hold suppresses the LIGHT reason only, so a caster that moves under a held sun still
       re-records via `CasterDataChanged` and cannot leave a ghost. Raise `ShadowLightHoldCasterHeight` for a scene
-      with casters taller than 12 m (the hold then releases sooner), and raise `ShadowLightHoldTexels` above 1 only
+      with casters taller than 12 m (the hold then releases sooner), and raise the active light-hold budget above 1 only
       with the result in front of you, since it is a visible step at the re-fit boundary that it is trading away.
     - **Point light shadows** (issue #1002). Everything above is the KEY light. A point light queued through
       `scene.AddLight(..., LightShadow)` carries its own omnidirectional map out of a second pass with its own

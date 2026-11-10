@@ -208,8 +208,10 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// How far the shadow of a worst-case caster may drift, in shadow-map TEXELS, before the cascade fit adopts a
         /// moved sun. Default <c>1</c> (one texel, the same discontinuity the existing light-space texel snap already
-        /// ships for camera translation). Set <c>0</c> to disable the hold entirely, which restores the pre-17.36.1
-        /// fit byte for byte: every light movement of any size re-fits and re-records.
+        /// ships for camera translation). Temporal anti-aliasing instead uses
+        /// <see cref="TemporalSettings.ShadowLightHoldTexels"/>, default 0, with the same
+        /// <see cref="ShadowLightHoldCasterHeight"/>. For other modes, set this to <c>0</c> to disable the hold entirely,
+        /// which restores the pre-17.36.1 fit byte for byte: every light movement of any size re-fits and re-records.
         /// <para>
         /// While the sun's total rotation away from the last fitted direction stays under the threshold this budget
         /// implies, the cascade fit keeps using the HELD direction, so the fitted matrices compare equal, the depth

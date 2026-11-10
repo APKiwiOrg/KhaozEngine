@@ -275,7 +275,7 @@ public interface ITileWorldScene
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
 /// and its prop-renderer extension, so the seam costs one virtual call and adds no behaviour of its own.</summary>
-public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene, ITileWorldWaterTriangleOpticsScene
+public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverageScene, ITileWorldWaterTriangleOpticsScene
 {
     readonly Scene3D _scene;
     readonly Scene3DAttachmentScene _attachments;
@@ -298,6 +298,27 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene, I
     /// <summary>Upload owned skinned attachment resources through the optional scene capability.</summary>
     public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts) =>
         _attachments.UploadSkinnedAttachment(parts);
+
+    /// <inheritdoc />
+    public object CoverageResourceOwner => _attachments.CoverageResourceOwner;
+
+    /// <inheritdoc />
+    public SkinnedHostCoverage CreateHostCoverage(Skeleton skeleton, IReadOnlyList<SkinnedMeshHandle> meshes,
+        CoverageRecessionTable table) => _attachments.CreateHostCoverage(skeleton, meshes, table);
+
+    /// <inheritdoc />
+    public bool TryStageCoverageEquipment(MotionKey actorKey, ulong equipmentInstanceId,
+        ReadOnlySpan<CoverageEquipmentCommand> commands, ReadOnlySpan<RigidInstanceDraw> draws,
+        Span<RigidInstanceDraw> frozenDraws, out CoverageFailure failure) =>
+        _attachments.TryStageCoverageEquipment(actorKey, equipmentInstanceId, commands, draws, frozenDraws, out failure);
+
+    /// <inheritdoc />
+    public void DrawMeshOutline(MeshOutlineGroup group, in RigidInstanceDraw draw) =>
+        _attachments.DrawMeshOutline(group, draw);
+
+    /// <inheritdoc />
+    public void DrawSkinnedOutline(MeshOutlineGroup group, in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> palette) =>
+        _attachments.DrawSkinnedOutline(group, draw, palette);
 
     /// <inheritdoc />
     public ITileWorldPropClusterOwner CreatePropClusterOwner() => new ScenePropClusterOwner(_scene);

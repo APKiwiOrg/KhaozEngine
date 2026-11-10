@@ -7479,7 +7479,9 @@ returns `TableHole` with no prepared equipment draws. Explicitly draw the uncove
 ordinary equipment on refusal.
 
 `GameApp3D` joins the window frame's existing submission automatically. Queue coverage actors in
-`OnDraw3D` without beginning or submitting another frame.
+`OnDraw3D` without beginning or submitting another frame. `Scene3DTileWorldScene` forwards the optional
+coverage capability through its attachment delegate, so caches and bindings over the wrapper share
+the same underlying scene owner. Equipment from another scene is refused.
 
 Custom hosts join the existing `GpuFrameSubmission` through `Scene3D.BeginFrame(submission)`, queue all actors and
 prepare before opening the host list. The scene registers one aggregate participant for all actors.

@@ -571,7 +571,13 @@ plain dictionary, so load on one thread.
 
 ## The scene seam (`ITileWorldScene`, `Scene3DTileWorldScene`)
 
-`Scene3DTileWorldScene` also implements the optional `IAttachmentScene` capability from
+Coverage creation, equipment staging and full-descriptor outlines forward to the same
+`Scene3DAttachmentScene` delegate used for uploads. `CoverageResourceOwner` is the wrapped `Scene3D`.
+A cache and binding over this wrapper, or two wrappers over that same scene, therefore share one owner.
+Equipment loaded through another scene is refused. Custom tile-world adapters can remain ordinary
+`IAttachmentScene` implementations without the coverage capability.
+
+`Scene3DTileWorldScene` also implements the optional `IAttachmentCoverageScene` capability from
 `KhaozEngine.Attachments.Render3D`. `UploadAttachment(parts)` delegates transactional upload to
 `Scene3DAttachmentScene`, returns an owning `IAttachmentMeshLease`, and retains the full-descriptor
 `DrawMesh` path. `UploadSkinnedAttachment(parts)` returns an owning `ISkinnedAttachmentMeshLease`.

@@ -161,6 +161,11 @@ frames and descriptors without queuing them. Forward every complete rigid or ski
 including borrowed garment palettes, material, tint, dissolve, shadows and coverage tokens. Do not
 reconstruct a reduced draw from mesh and transform. Submit all host slices and commanded equipment.
 
+`Scene3DTileWorldScene` exposes `IAttachmentCoverageScene` through its existing attachment delegate.
+Pass the wrapper to both `AttachmentSetCache` and `HostCoverageBinding`. They retain the same actual
+scene owner, including when separate wrappers refer to that scene. Another scene cannot accept that
+cache's equipment resources.
+
 The example accepts the consumer's key directly as `CoverageStateKey`. `Queue` returns the preparation
 status and `CoverageFailure`. On refusal it explicitly queues each uncovered current host slice with
 the same actor motion key and draws ordinary active equipment. `PreparedEquipmentDraws` is empty on a

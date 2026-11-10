@@ -209,6 +209,8 @@ bindings dispose before their attachment caches and scenes. One scene-owned aggr
 commits every actor's history. Native correctness and cost remain separately gated.
 
 `IAttachmentCoverageScene` is an optional capability beside `IAttachmentScene`.
+`Scene3DTileWorldScene` in `KhaozEngine.TileWorld.Render3D` forwards this capability to its existing
+attachment delegate. Caches and bindings over the wrapper share the underlying Scene3D resource owner.
 `Scene3DAttachmentScene` supplies it through its actual Scene3D resource owner. Ordinary attachment
 adapters remain usable for ordinary equipment and empty coverage configurations.
 

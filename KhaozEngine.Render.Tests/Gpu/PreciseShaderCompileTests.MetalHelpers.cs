@@ -76,6 +76,12 @@ namespace KhaozEngine.Tests.Gpu
                 "[[clang::optnone]]", StringComparison.Ordinal)));
             string mixed = pinned.Replace("template<", "// preserved\r\ntemplate<", StringComparison.Ordinal);
             Assert.Equal(ExpectedPreciseHelper(mixed), MslPreciseMath.Rewrite(mixed));
+            string comment = "\n/*\n" + pinned + "\n*/\n";
+            string unrelated = "\n[[clang::optnone]] float unrelated(float x) { return x; }\n";
+            string source = comment + pinned + unrelated + pinned + comment;
+            string expected = comment + corrected + unrelated + corrected + comment;
+            Assert.Equal(expected, MslPreciseMath.Rewrite(source));
+            Assert.Equal(expected, MslPreciseMath.Rewrite(expected));
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
                 () => MslPreciseMath.Rewrite(pinned.Replace("return ", "return /* changed */ ", StringComparison.Ordinal)));
             Assert.Equal(Regex.Match(pinned, @"spvF\w*").Value, error.Operation);

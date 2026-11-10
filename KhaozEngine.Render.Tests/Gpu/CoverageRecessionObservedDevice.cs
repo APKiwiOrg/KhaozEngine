@@ -161,11 +161,6 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner) : IGpuDe
         catch (Exception error) { Capture(nameof(CreateTimestampPool), error); throw; }
     }
 
-    internal static bool IsCoverageVertex(string vertex) => vertex == ShaderSources.CoverageModelVert || vertex == ShaderSources.CoverageModelMotionVert
-        || vertex == ShaderSources.CoverageCascadeVert || vertex == ShaderSources.CoverageCascadeDissolveVert
-        || vertex == ShaderSources.CoveragePointVert || vertex == ShaderSources.CoveragePointDissolveVert
-        || vertex == ShaderSources.CoverageOutlineVert;
-
     internal (bool Coverage, bool Precise) DrawPolicy(IGpuPipeline pipeline)
     {
         var shaders = Pipelines[pipeline].ShaderSet;

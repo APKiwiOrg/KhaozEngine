@@ -13,7 +13,7 @@ namespace KhaozEngine.Gpu.Internal
 
         internal static string Rewrite(string source, GpuShaderStages? stage = null)
         {
-            var helpers = new List<string>();
+            var helpers = new List<(int Start, int End)>();
             var names = new HashSet<string>(StringComparer.Ordinal);
             var tokens = new List<Match>();
             // Comments and literals do not contain identifiers. Keep every other token for call validation.
@@ -55,12 +55,16 @@ namespace KhaozEngine.Gpu.Internal
                     throw new ShaderValidationException(ShaderValidationRefusal.PreciseMslHelperUnsupported, $"MSL precise helper {identifier.Value} has an unrecognised form. "
                         + "Expected the pinned SPIRV-Cross 2.23.0 helper or its signed-zero/inlining correction. Review issue 1495 before upgrading the toolchain.")
                     { Operation = identifier.Value, Target = "MSL", Stage = stage };
-                helpers.Add(helper);
+                helpers.Add((start, end));
                 names.Add(identifier.Value);
                 acceptedEnd = end;
             }
-            foreach (string helper in helpers)
-                source = source.Replace(helper, Correct(helper), StringComparison.Ordinal);
+            // Replace only validated spans. Identical text in comments must stay untouched.
+            for (int i = helpers.Count - 1; i >= 0; i--)
+            {
+                var (start, end) = helpers[i];
+                source = source[..start] + Correct(source[start..end]) + source[end..];
+            }
             return source;
         }
 

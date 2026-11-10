@@ -1,48 +1,101 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Render3D;
+using KhaozEngine.Tests.Render3D;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
     public sealed partial class PreciseShaderCompileTests
     {
+        public static IEnumerable<object[]> CoverageGraphics() => CoverageGraphicsProgramTests.Programs();
+        public static IEnumerable<object[]> CarryKernels() => CoverageCarryKernelTests.Stages();
+
+        [Fact]
+        public void CoverageHelperGuardCoversEveryProgramAndKernel()
+        {
+            Assert.Equal(new[] { "cascade", "cascade-complement", "cascade-dissolve", "dissolve", "main", "motion",
+                "motion-dissolve", "outline-full", "outline-visible", "point", "point-complement", "point-dissolve" },
+                CoverageGraphics().Select(p => (string)p[0]).Order());
+            Assert.Equal(new[] { "CoverageCarrySkin", "CoverageCarryTransport", "CoverageCarryBasis", "CoverageCarryGather", "CoverageCarryPublish" },
+                CoverageCarryShaders.Kernels.Select(k => k.Name));
+            Assert.Equal(Enumerable.Range(0, CoverageCarryShaders.Kernels.Count), CarryKernels().Select(p => (int)p[0]));
+        }
+
+        [Theory]
+        [MemberData(nameof(CoverageGraphics))]
+        public void CoverageVerticesShipInlinablePreciseMetalHelpers(string name, string vertex, string fragment)
+        {
+            byte[] v = SpirvFrontEnd.ToSpirv(vertex, GpuShaderStages.Vertex, name, Precise);
+            byte[] f = SpirvFrontEnd.ToSpirv(fragment, GpuShaderStages.Fragment, name);
+            var emitted = SpirvCrossCompile.VertexFragmentToMsl(v, f, vertexOptions: Precise);
+            var built = MetalShaderBuild.Pair(vertex, fragment, null, options: Precise);
+            Assert.Equal(emitted.VertexSource, built.StageOf(MetalShaderStage.Vertex).Msl);
+            Assert.Equal(emitted.FragmentSource, built.StageOf(MetalShaderStage.Fragment).Msl);
+            AssertInlinableHelpers(emitted.VertexSource);
+        }
+
+        [Theory]
+        [MemberData(nameof(CarryKernels))]
+        public void CarryKernelsShipInlinablePreciseMetalHelpers(int stage)
+        {
+            var kernel = CoverageCarryShaders.Kernels[stage];
+            byte[] spirv = SpirvFrontEnd.ToSpirv(kernel.Source, GpuShaderStages.Compute, kernel.Name, Precise);
+            string emitted = SpirvCrossCompile.ComputeToMsl(spirv, options: Precise).ComputeSource;
+            var built = MetalShaderBuild.Compute(kernel.Source, null, options: Precise);
+            Assert.Equal(emitted, built.Program.StageOf(MetalShaderStage.Compute).Msl);
+            Assert.Equal(SpirvLocalSize.Parse(spirv, kernel.Name), (built.X, built.Y, built.Z));
+            // Publication copies float words and reduces integer bounds, so it emits no arithmetic helpers.
+            AssertInlinableHelpers(emitted, expectHelpers: kernel.Name != "CoverageCarryPublish");
+        }
+
+        void AssertInlinableHelpers(string msl, bool expectHelpers = true)
+        {
+            _output.WriteLine(msl);
+            if (expectHelpers) Assert.Contains("[[clang::always_inline]]", msl);
+            else Assert.DoesNotContain("[[clang::always_inline]]", msl);
+            Assert.DoesNotContain("[[clang::optnone]]", msl);
+        }
+
         // A changed helper body must be refused rather than silently losing IEEE zero signs.
         [Theory]
-        [MemberData(nameof(PinnedMultiplyHelpers))]
-        public void MetalMultiplyHelpersAcceptOnlyPinnedOrCorrectedForms(string pinned)
+        [MemberData(nameof(PinnedPreciseHelpers))]
+        public void MetalPreciseHelpersAcceptOnlyPinnedOrCorrectedForms(string pinned)
         {
-            string corrected = pinned.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)
-                .Replace("(0)", "(T(-0.0))", StringComparison.Ordinal);
+            string corrected = ExpectedPreciseHelper(pinned);
             Assert.NotEqual(pinned, corrected);
             Assert.Equal(corrected, MslPreciseMath.Rewrite(pinned));
             Assert.Equal(corrected, MslPreciseMath.Rewrite(corrected));
+            Assert.Equal(corrected, MslPreciseMath.Rewrite(corrected.Replace("[[clang::always_inline]]",
+                "[[clang::optnone]]", StringComparison.Ordinal)));
             string mixed = pinned.Replace("template<", "// preserved\r\ntemplate<", StringComparison.Ordinal);
-            Assert.Equal(mixed.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)
-                .Replace("(0)", "(T(-0.0))", StringComparison.Ordinal), MslPreciseMath.Rewrite(mixed));
+            Assert.Equal(ExpectedPreciseHelper(mixed), MslPreciseMath.Rewrite(mixed));
             ShaderValidationException error = Assert.Throws<ShaderValidationException>(
-                () => MslPreciseMath.Rewrite(pinned.Replace("(0)", "(1)", StringComparison.Ordinal)));
-            Assert.Equal(Regex.Match(pinned, @"spvFMul\w*").Value, error.Operation);
+                () => MslPreciseMath.Rewrite(pinned.Replace("return ", "return /* changed */ ", StringComparison.Ordinal)));
+            Assert.Equal(Regex.Match(pinned, @"spvF\w*").Value, error.Operation);
             Assert.Equal(ShaderValidationRefusal.PreciseMslHelperUnsupported, error.Reason);
             Assert.Throws<ShaderValidationException>(() => MslPreciseMath.Rewrite(
                 pinned.Replace(")\n{", ") noexcept\n{", StringComparison.Ordinal)));
         }
 
         [Fact]
-        public void MetalMultiplyHelpersRejectUnknownDefinitions()
+        public void MetalPreciseHelpersRejectUnknownDefinitions()
         {
             Assert.Throws<ShaderValidationException>(() => MslPreciseMath.Rewrite(
                 "template<typename T>\nT spvFMul(T l, T r)\n{\n    return l * r;\n}"));
         }
 
         [Theory]
-        [MemberData(nameof(PinnedMultiplyHelpers))]
-        public void MetalMultiplyHelpersRejectUnrecognisedIdentifiers(string pinned)
+        [MemberData(nameof(PinnedPreciseHelpers))]
+        public void MetalPreciseHelpersRejectUnrecognisedIdentifiers(string pinned)
         {
-            int start = pinned.IndexOf("spvFMul", StringComparison.Ordinal);
+            int start = pinned.IndexOf("spvF", StringComparison.Ordinal);
             string name = pinned[start..pinned.IndexOf('(', start)];
             string[] unfamiliar =
             {
@@ -64,7 +117,7 @@ namespace KhaozEngine.Tests.Gpu
                 foreach (string source in new[] { unknown, pinned + "\n" + unknown })
                 {
                     ShaderValidationException error = Assert.Throws<ShaderValidationException>(() => MslPreciseMath.Rewrite(source));
-                    Assert.Equal(Regex.Match(unknown, @"spvFMul\w*").Value, error.Operation);
+                    Assert.Equal(Regex.Match(unknown, @"spvF\w*").Value, error.Operation);
                     Assert.Equal(ShaderValidationRefusal.PreciseMslHelperUnsupported, error.Reason);
                 }
             }
@@ -77,27 +130,25 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [MemberData(nameof(PinnedMultiplyHelpers))]
-        public void MetalMultiplyHelpersPreserveLineEndings(string pinned)
+        [MemberData(nameof(PinnedPreciseHelpers))]
+        public void MetalPreciseHelpersPreserveLineEndings(string pinned)
         {
             foreach (string newline in new[] { "\n", "\r\n", "\r" })
             {
                 string emitted = pinned.ReplaceLineEndings(newline);
-                string corrected = emitted.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)
-                    .Replace("(0)", "(T(-0.0))", StringComparison.Ordinal);
+                string corrected = ExpectedPreciseHelper(emitted);
                 Assert.Equal(corrected, MslPreciseMath.Rewrite(emitted));
                 Assert.Equal(corrected, MslPreciseMath.Rewrite(corrected));
             }
         }
 
         [Theory]
-        [MemberData(nameof(PinnedMultiplyHelpers))]
-        public void MetalMultiplyHelpersAcceptCallsInExpressions(string pinned)
+        [MemberData(nameof(PinnedPreciseHelpers))]
+        public void MetalPreciseHelpersAcceptCallsInExpressions(string pinned)
         {
-            int start = pinned.IndexOf("spvFMul", StringComparison.Ordinal);
+            int start = pinned.IndexOf("spvF", StringComparison.Ordinal);
             string name = pinned[start..pinned.IndexOf('(', start)];
-            string corrected = pinned.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)
-                .Replace("(0)", "(T(-0.0))", StringComparison.Ordinal);
+            string corrected = ExpectedPreciseHelper(pinned);
             string[] expressions =
             {
                 $"{name}({name}(a, b), c)",
@@ -152,10 +203,28 @@ namespace KhaozEngine.Tests.Gpu
             File.WriteAllBytes(Path.Combine(directory, $"PreciseMath.{stage}.spirv"), spirv);
         }
 
-        public static IEnumerable<object[]> PinnedMultiplyHelpers()
+        static string ExpectedPreciseHelper(string pinned) => pinned.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)
+            .Replace("(0)", "(T(-0.0))", StringComparison.Ordinal)
+            .Replace("[[clang::optnone]]", "[[clang::always_inline]]", StringComparison.Ordinal);
+
+        public static IEnumerable<object[]> PinnedPreciseHelpers()
         {
             string[] helpers =
             {
+                """
+                template<typename T>
+                [[clang::optnone]] T spvFAdd(T l, T r)
+                {
+                    return fma(T(1), l, r);
+                }
+                """,
+                """
+                template<typename T>
+                [[clang::optnone]] T spvFSub(T l, T r)
+                {
+                    return fma(T(-1), r, l);
+                }
+                """,
                 """
                 template<typename T>
                 [[clang::optnone]] T spvFMul(T l, T r)

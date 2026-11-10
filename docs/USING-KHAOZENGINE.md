@@ -26329,6 +26329,9 @@ The resulting `NoContraction` decorations survive into HLSL `precise` and MSL `s
 Metal's guarded SPIRV-Cross 2.23.0 backport uses `T(-0.0)` multiplication-helper seeds so negative-zero
 products keep their sign. An unfamiliar helper fails compilation, tracked for removal in
 [#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495).
+The pinned add, subtract and multiply templates use `[[clang::always_inline]]` instead of
+`[[clang::optnone]]`. Inlining avoids an unoptimized call at each precise operation. Metal's disabled
+fast math preserves the arithmetic policy, while helper bodies and signed-zero corrections stay fixed.
 FXC adds IEEE strictness to compute and vertex compilation. Metal disables fast math for those precise stages
 while retaining MSL language 3.2 and the existing preserve-invariance policy. Graphics fragments still compile
 with their default options. The process memo and SPIR-V, DXBC and MSL disk caches keep the two policies separate,

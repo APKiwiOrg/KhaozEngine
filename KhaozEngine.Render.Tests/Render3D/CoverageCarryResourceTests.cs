@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
+using KhaozEngine.Tests.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
@@ -9,6 +11,36 @@ namespace KhaozEngine.Tests.Render3D;
 [Collection("AllocSensitive")]
 public sealed class CoverageCarryResourceTests
 {
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Surface_disposal_releases_every_buffer_before_rethrowing(int failures)
+    {
+        using var device = new SubmissionTestDevice(3);
+        var surface = new CoverageCarrySurface(device, 1, 1, 1, 1, 1);
+        IGpuBuffer[] buffers = [surface.Results, surface.Work, surface.Surface];
+        var errors = Enumerable.Range(0, failures).Select(_ => new InvalidOperationException()).ToArray();
+        var released = new HashSet<IGpuBuffer>();
+        for (int i = 0; i < buffers.Length; i++)
+        {
+            var buffer = (SubmissionTestBuffer)buffers[i];
+            Exception? error = i < failures ? errors[i] : null;
+            buffer.OnDispose = () => { released.Add(buffer); if (error is not null) throw error; };
+        }
+        Exception? thrown = Record.Exception(surface.Dispose);
+        Assert.All(buffers, buffer => Assert.Contains(buffer, released));
+        Assert.True(surface.IsDisposed);
+        if (failures == 1) Assert.Same(errors[0], thrown);
+        else
+        {
+            var aggregate = Assert.IsType<AggregateException>(thrown);
+            Assert.Equal(failures, aggregate.InnerExceptions.Count);
+            Assert.All(errors, error => Assert.Contains(error, aggregate.InnerExceptions));
+        }
+        Assert.Null(Record.Exception(surface.Dispose));
+    }
+
     [Fact]
     public void Acquire_never_returns_committed_or_retained_and_exhaustion_refuses()
     {

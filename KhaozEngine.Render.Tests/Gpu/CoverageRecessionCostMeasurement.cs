@@ -204,7 +204,7 @@ internal static class CoverageRecessionCostMeasurement
 
         internal Driver(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, string layout, int observed)
         {
-            observer = new CoverageRecessionObservedDevice(device, layout.Contains("-inline-", StringComparison.Ordinal));
+            observer = new CoverageRecessionObservedDevice(device);
             this.device = device = observer; this.layout = layout; this.observed = observed; this.actors = actors;
             try
             {

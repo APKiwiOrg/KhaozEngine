@@ -4,11 +4,13 @@ using System.Text.RegularExpressions;
 
 namespace KhaozEngine.Gpu.Internal
 {
-    /// <summary>Guarded signed-zero backport for the pinned SPIRV-Cross MSL multiplication helpers.</summary>
+    /// <summary>Guarded signed-zero correction and inlining for the pinned SPIRV-Cross precise MSL helpers.</summary>
     internal static class MslPreciseMath
     {
         // Remove with the toolchain upgrade tracked at https://github.com/APKiwiOrg/KhaozEngine/issues/1495.
-        // C4a deliberately preserves the pinned matrix dimensions. Only zero seeds change.
+        // Preserve helper arithmetic and matrix dimensions. Fast math is disabled for precise Metal stages.
+        internal const string Identity = "precise-helpers=zero-seed-1,always-inline-1";
+
         internal static string Rewrite(string source, GpuShaderStages? stage = null)
         {
             var helpers = new List<string>();
@@ -23,7 +25,9 @@ namespace KhaozEngine.Gpu.Internal
             for (int i = 0; i < tokens.Count; i++)
             {
                 Match identifier = tokens[i];
-                if (identifier.Index < acceptedEnd || !identifier.Value.StartsWith("spvFMul", StringComparison.Ordinal)) continue;
+                if (identifier.Index < acceptedEnd || !(identifier.Value.StartsWith("spvFMul", StringComparison.Ordinal)
+                    || identifier.Value.StartsWith("spvFAdd", StringComparison.Ordinal)
+                    || identifier.Value.StartsWith("spvFSub", StringComparison.Ordinal))) continue;
                 if (IsCall(tokens, i, names)) continue;
                 int start = source.LastIndexOf("template<", identifier.Index, StringComparison.Ordinal);
                 int brace = source.IndexOf('{', identifier.Index);
@@ -43,12 +47,13 @@ namespace KhaozEngine.Gpu.Internal
                     foreach (string candidate in Pinned)
                     {
                         string expected = candidate.ReplaceLineEndings("\n");
-                        if (canonical == expected || canonical == Correct(expected)) { pinned = candidate; break; }
+                        if (canonical == expected || canonical == CorrectZero(expected) || canonical == Correct(expected))
+                        { pinned = candidate; break; }
                     }
                 }
                 if (pinned is null)
-                    throw new ShaderValidationException(ShaderValidationRefusal.PreciseMslHelperUnsupported, $"MSL precise multiplication helper {identifier.Value} has an unrecognised form. "
-                        + "Expected the pinned SPIRV-Cross 2.23.0 helper or its signed-zero correction. Review issue 1495 before upgrading the toolchain.")
+                    throw new ShaderValidationException(ShaderValidationRefusal.PreciseMslHelperUnsupported, $"MSL precise helper {identifier.Value} has an unrecognised form. "
+                        + "Expected the pinned SPIRV-Cross 2.23.0 helper or its signed-zero/inlining correction. Review issue 1495 before upgrading the toolchain.")
                     { Operation = identifier.Value, Target = "MSL", Stage = stage };
                 helpers.Add(helper);
                 names.Add(identifier.Value);
@@ -81,11 +86,28 @@ namespace KhaozEngine.Gpu.Internal
             return false;
         }
 
-        static string Correct(string helper) => helper.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)
+        static string Correct(string helper) => CorrectZero(helper)
+            .Replace("[[clang::optnone]]", "[[clang::always_inline]]", StringComparison.Ordinal);
+
+        static string CorrectZero(string helper) => helper.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)
             .Replace("(0)", "(T(-0.0))", StringComparison.Ordinal);
 
         static readonly string[] Pinned =
         {
+            """
+            template<typename T>
+            [[clang::optnone]] T spvFAdd(T l, T r)
+            {
+                return fma(T(1), l, r);
+            }
+            """,
+            """
+            template<typename T>
+            [[clang::optnone]] T spvFSub(T l, T r)
+            {
+                return fma(T(-1), r, l);
+            }
+            """,
             """
             template<typename T>
             [[clang::optnone]] T spvFMul(T l, T r)

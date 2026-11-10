@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
-using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -11,7 +10,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Non-owning native pass-through. Captures public factory inputs without wrapping native handles.</summary>
-internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner, bool inlineHelpers = false) : IGpuDevice, IGpuResourceFactory
+internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner) : IGpuDevice, IGpuResourceFactory
 {
     internal readonly List<CoverageRecessionFactoryFailure> Failures = [];
     internal readonly CoverageRecessionCleanup Cleanup = new();
@@ -113,9 +112,7 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner, bool inl
         IGpuShaderSet shaders;
         try
         {
-            shaders = inlineHelpers && options.PreciseMath && IsCoverageVertex(vertex) && inner.Factory is MetalResourceFactory metal
-                ? metal.CreateShadersFromSpirv(vertex, fragment, options, inlineHelpers: true)
-                : inner.Factory.CreateShadersFromSpirv(vertex, fragment, options);
+            shaders = inner.Factory.CreateShadersFromSpirv(vertex, fragment, options);
         }
         catch (Exception error) { Capture(nameof(CreateShadersFromSpirv), error); throw; }
         Track(shaders); shaderPairs.Add(shaders, (vertex, fragment)); ShaderOptions.Add(shaders, options); return shaders;
@@ -127,10 +124,7 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner, bool inl
         IGpuComputeShader shader;
         try
         {
-            shader = inlineHelpers && options.PreciseMath && CoverageCarryShaders.Kernels.Any(k => k.Source == source)
-                && inner.Factory is MetalResourceFactory metal
-                ? metal.CreateComputeShaderFromSpirv(source, options, inlineHelpers: true)
-                : inner.Factory.CreateComputeShaderFromSpirv(source, options);
+            shader = inner.Factory.CreateComputeShaderFromSpirv(source, options);
         }
         catch (Exception error) { Capture(nameof(CreateComputeShaderFromSpirv), error); throw; }
         Track(shader);

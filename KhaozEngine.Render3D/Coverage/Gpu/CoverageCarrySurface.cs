@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D;
@@ -38,7 +40,17 @@ internal sealed class CoverageCarrySurface : IDisposable
     void TryDispose()
     {
         if (disposed || !disposeRequested || historyRetains != 0) return;
-        disposed = true; Results.Dispose(); Work.Dispose(); Surface.Dispose();
+        disposed = true;
+        List<Exception>? failures = null;
+        Release(Results); Release(Work); Release(Surface);
+        if (failures is { Count: 1 }) ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures is not null) throw new AggregateException(failures);
+
+        void Release(IGpuBuffer buffer)
+        {
+            try { buffer.Dispose(); }
+            catch (Exception error) { (failures ??= []).Add(error); }
+        }
     }
 }
 

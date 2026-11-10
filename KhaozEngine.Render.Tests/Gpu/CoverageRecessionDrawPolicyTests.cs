@@ -9,14 +9,12 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class CoverageRecessionDrawPolicyTests
 {
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void Coverage_vertices_and_carry_keep_precise_policy_including_non_metal_inline_rows(bool inlineHelpers, bool temporal)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Coverage_vertices_and_carry_keep_precise_policy(bool temporal)
     {
         using var inert = new CoveragePublicationDevice();
-        using var device = new CoverageRecessionObservedDevice(inert, inlineHelpers);
+        using var device = new CoverageRecessionObservedDevice(inert);
         using var scene = new CoverageRecessionNativeScene(device, new(4, 4), 1, true);
         scene.Scene.ForceTemporalForTests = temporal;
         using var list = device.Factory.CreateCommandList();

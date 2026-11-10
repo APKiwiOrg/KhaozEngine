@@ -535,6 +535,9 @@ What it owns today:
   compilation stays at its default policy. Precise Metal emission backports the negative-zero seeds in
   SPIRV-Cross 2.23.0 multiplication helpers. It recognises only the pinned and already-corrected bodies,
   and refuses a changed helper. Removal is tracked in [#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495).
+  Pinned add, subtract and multiply templates ship with `[[clang::always_inline]]` rather than
+  `[[clang::optnone]]` to avoid unoptimized calls. Fast math remains disabled for precise stages,
+  preserving their arithmetic policy without changing helper bodies or signed-zero corrections.
   Precise SPIR-V declares `SignedZeroInfNanPreserve 32` with `SPV_KHR_float_controls` on every entry point.
   Vulkan float controls are core below the backend's Vulkan 1.3 floor, with no device enable bit.
   `GpuCapabilities.SupportsShaderFloatControls` reports the Vulkan property

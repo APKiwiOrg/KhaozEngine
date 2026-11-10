@@ -98,6 +98,8 @@ const float ShadingLockRingShare = 0.35;
 const float ShadingLockPairExtents = 0.75;
 const float ShadingLockFlatShare = 0.25;
 const float ShadingMaxUpscale = 1.6;
+// Prior-record evidence for the colour-release veto.
+const float ShadingFlickerGate = 0.25;
 const float ClipFlagMinimumMove = 0.0009765625;
 const float DilationReachInternalPixels = 1.25;
 const float WorldMotionMetres = 0.001;

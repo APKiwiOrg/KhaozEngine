@@ -4895,7 +4895,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   Depth-qualified current and reprojected previous means use relative tolerance 0.02. Both reference depths must
   be finite, and non-finite samples contribute nothing. A stored-value difference strictly above 0.1 clears the
   thin-feature lock and clip hold for either sign at every preset. It retains accumulated weight and display
-  reconstruction share. The independent colour-based shading release still has its existing reset behavior.
+  reconstruction share. The independent colour-based shading release resets weight and display share when it
+  fires. Prior-record still-flicker evidence can veto it while exported visibility stays steady. A release that
+  fires retains the flicker record but scores no shimmer on that frame. See the
+  [shimmer record and colour-release veto](design/TEMPORAL-RESOLVE.md#shimmer-record).
   The threshold uses stored R8 values. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as
   26/255. A driver that truncates stores 25/255 instead, so the exact boundary case differs because release
   compares stored values. There is no public tuning knob.
@@ -9487,7 +9490,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.6.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.6.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10089,7 +10092,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.6.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.6.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10945,7 +10948,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.6.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.6.1" />
 ```
 
 ```csharp
@@ -20861,7 +20864,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.6.1" />
 ```
 
 ```csharp
@@ -20897,7 +20900,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.6.1" />
 ```
 
 ```csharp
@@ -21148,7 +21151,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.6.1" />
 ```
 
 ```csharp
@@ -26037,7 +26040,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.6.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.6.1" />
 </ItemGroup>
 ```
 

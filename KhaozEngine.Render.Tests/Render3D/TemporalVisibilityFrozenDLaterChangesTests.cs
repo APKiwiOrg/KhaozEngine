@@ -55,7 +55,7 @@ public sealed class TemporalVisibilityFrozenDLaterChangesTests
     public void A_later_change_carried_in_part_is_refused()
     {
         string lostStep = ShaderSources.TemporalAccumulateFrag.Replace(
-            TemporalVisibilityFrozenDLaterChanges.RecordStep.Production, "", StringComparison.Ordinal);
+            TemporalVisibilityFrozenDLaterChanges.ContinueReleasedRecord.Production, "", StringComparison.Ordinal);
         Assert.Throws<InvalidOperationException>(() => TemporalVisibilityFrozenD.ToD(lostStep));
         string storeAlone = ShaderSources.TemporalDepthStoreFrag + "\n// "
             + TemporalVisibilityFrozenDLaterChanges.RecordStore.Production;

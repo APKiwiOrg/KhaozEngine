@@ -39,12 +39,18 @@ internal static class TexturedShadowGrainCase
             // Owner accepted per driver on 2026-10-19 after hosted run 39215298727: WARP and lavapipe show the same lock-release costs.
             // Quality was 0.008. Hardware D measures 0.008031049526854536 and lavapipe 0.008039903208144449.
             // WARP measures 0.008013324991270224 in filtered hosted run 39221506634.
+            // Owner accepted on 2026-11-10: relax Quality hardware grain by at most 0.3% for the still-flicker
+            // colour-release veto. Metal measures 0.008050609225118865, rounded upward to 0.008051.
             // Each accepted bound rounds its own measurement upward to the six-decimal reporting place.
             double qualityBound = TemporalDeviceClass.Name switch
             {
-                "hardware" => 0.008032,
-                "WARP" => 0.008014,
-                "lavapipe" => 0.008040,
+                "hardware" => 0.008051,
+                // Owner accepted on 2026-11-10: raise Quality grain for the shading-release veto to the measured
+                // 0.008026231982708597 rounded upward to six decimals, below the 0.008038 limit.
+                "WARP" => 0.008027,
+                // Owner accepted on 2026-11-10: raise Quality grain for the shading-release veto to the measured
+                // 0.00805979192662034 rounded upward to six decimals, below the 0.008064 limit.
+                "lavapipe" => 0.008060,
                 _ => 0.008
             };
             double bound = preset == TemporalUpscale.Quality ? qualityBound : 0.0113;

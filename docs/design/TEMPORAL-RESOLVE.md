@@ -115,7 +115,8 @@ jitter. Outputs: the display-resolution colour and the new history. Missing visi
    shading changed, still or moving, with its history luma past the box, no missed feature to explain it, and its
    reconstruction or its history's neighbourhood showing the change, both where the frame upscales, releases its hold
    and its accumulated weight for the frame at Native and Quality (amendment 33). A carried lock and a moving pixel
-   release only where the neighbourhood shows it (amendment 34). Independently, a depth-qualified change in stored
+   release only where the neighbourhood shows it (amendment 34). Prior-record still-flicker evidence can veto
+   this colour release when exported visibility did not move, as described below. Independently, a depth-qualified change in stored
    key-shadow visibility strictly above 0.1 clears the stored lock and clip hold at any speed and preset. This
    signal retains accumulation and display share (amendment 35). Still flicker with sufficient prior-record evidence
    loses lock at the jitter-cycle rate, as described below. Other pixels keep the ordinary one-eighth decay.
@@ -150,9 +151,12 @@ at 128 and a ratio of 4. A render-size cap can make even the Native preset upsca
 One-way lighting change makes the absolute drift approach swing.
 
 The prior record is bilinearly reprojected with the existing four state texels. Finite state is required.
-The record starts empty when history is unavailable, off screen, disoccluded or dropped by the
-colour-based shading release. Cuts, resizes and other history invalidations therefore cannot seed it
-from uninitialized storage. Drift and swing occupy blue and alpha of the existing state targets.
+The record starts empty when history is unavailable, off screen or disoccluded. Cuts, resizes and other
+history invalidations therefore cannot seed it from uninitialized storage. A colour-based shading release
+keeps stepping the record while discarding accumulated colour and clearing the hold. Its shimmer score is
+forced to zero on that frame, so the wider luma clip and longer history do not apply. Retaining the record
+lets repeated false releases build the evidence that can veto the next one.
+Drift and swing occupy blue and alpha of the existing state targets.
 Growing each state target from RG16F to RGBA16F costs exactly **8 bytes per display pixel** across the
 pair, or 28.125 MiB at 2560x1440. There is no additional attachment. The chroma floor adds no memory.
 
@@ -173,6 +177,7 @@ must not be mistaken for jitter.
 | `VisibilityShimmerGate` | 0.1 | Suppress shimmer retention where key-shadow visibility changes. |
 | `LockShimmerGate` | 0.5 | Require prior-record flicker evidence for slower lock loss. |
 | `LockShimmerChangeBand` | 1 | Keep the current change within one prior swing for slower lock loss. |
+| `ShadingFlickerGate` | 0.25 | Veto a colour release with prior-record still-flicker evidence. |
 | `ShimmerClipGain` | 0.35 | Extend each luma face by score times swing times this gain. |
 | `MaxStillAccumulation` | 63 | Allow approximately one-in-64 current weight at full score. |
 | `ChromaPrecisionFloorSteps` | 4 | Cover binary16 RGB rounding in nearly degenerate chroma intervals. |
@@ -183,9 +188,37 @@ jitter-missed detail without letting the widened interval hide real shading chan
 the precision floor below, independently of the score. The accumulated-weight cap interpolates from
 the existing motion cap to 63 with the score. Zero score retains the original cap exactly, while full
 score lowers the current sample's sawtooth by roughly four times. Reactive content still reduces
-accumulation, and shading release still clears it. The lock's ridge classification and release gates stay the same.
+accumulation, and a shading release that fires still clears it. The lock's ridge classification and its
+motion, reactive, edge and visibility release gates stay the same.
 `SceneDebugView.Shimmer` overlays blue in proportion to the final score against the dimmed
 scene, under TAA only. Untinted pixels can still receive the chroma floor because it uses the still test.
+
+**Still-flicker colour-release veto.** A still feature can alias with jitter far enough from its history
+to trip the colour-based shading release. Before a candidate release takes effect,
+`temporalShadingFlickerVeto` evaluates `temporalShimmerScore` from the prior `historyRecord`, passing zero
+for luma change, and requires at least `ShadingFlickerGate`. Omitting this frame's change band is deliberate,
+because a pixel the release judges usually has a large change. The score still requires motion below
+`ShimmerStillPixels`, no reactive input and swing at least `ShimmerFloor`. In programs that read exported
+visibility, the veto also requires both no neighbourhood visibility release and no centre-texel visibility
+change at the reprojected surface point. A passing shadow therefore keeps the colour release available,
+including a centre change too narrow for the neighbourhood release.
+
+The veto only cancels a colour release that would otherwise fire. The original depth, ridge, variance-box
+and ring tests, `ShadingMaxUpscale` and ordinary accumulation remain unchanged. Native and Quality can take
+the veto. Balanced remains outside the colour release. Lock decay and hold keep their ordinary behaviour
+on a vetoed frame. There is no timeout promising a release on a real light step over an already flickering
+pixel. Ordinary variance-clip convergence protects that case, and the Native and Quality light-step facts
+require settling no slower than the previous resolve. No storage, attachment or binding is added.
+
+The owner approved a hardware Quality textured-shadow grain exception of at most 0.3 percent for this
+veto. Metal measures `0.008050609225118865`, and its bound is `0.008051`, rounded upward to six decimals
+from the previous `0.008032`. The authorized ceiling is `0.008056`. The owner also approved per-driver
+Quality grain exceptions for this veto. WARP measures `0.008026231982708597` with a bound of `0.008027`,
+and lavapipe measures `0.00805979192662034` with a bound of `0.008060`. Each rounds its own measurement
+upward to six decimals, within the authorized ceilings of `0.008038` for WARP and `0.008064` for lavapipe.
+Native's `0.0113` bound and every other design D bound stay unchanged. Balanced grain remains report-only.
+The frozen D oracle undoes the whole veto and release-record change before its earlier rewrites, so D's
+program hashes, behaviour and precision-floor comparison retain their original contracts.
 
 **Still-flicker lock.** Before lock decay, `temporalStillLockLoss` evaluates the score using the prior
 `historyRecord` and this frame's `lumaChange`. The slower loss requires a score of at least `LockShimmerGate`

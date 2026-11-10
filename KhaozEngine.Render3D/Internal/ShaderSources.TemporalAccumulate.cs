@@ -554,12 +554,18 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
                 && (!carriedLock || ringShift.y > ShadingLockPairExtents * releaseExtent);
         }
     }
+    bool shadingFlickerVeto = released && temporalShadingFlickerVeto(historyRecord, motionPixels, reactive);
+#ifdef TemporalShimmerVisibility
+    shadingFlickerVeto = shadingFlickerVeto && !visibilityReleased
+        && !temporalShimmerVisibilityChanged(uv, centreTexel, previousUv);
+#endif
+    if (shadingFlickerVeto) released = false;
     if (released || visibilityReleased) hold = 0.0;
-    // The shimmer record steps where the pixel kept its history and its shading, and starts empty elsewhere.
-    vec2 shimmerRecord = useHistory && !released ? temporalShimmerStep(historyRecord, lumaChange) : vec2(0.0);
-    // The score from the stepped record and this frame's change (temporalShimmerScore). It is none on a moving pixel,
-    // so a moving pixel keeps its motion cap, and none on a released or fresh one, whose record is empty.
-    float shimmer = temporalShimmerScore(shimmerRecord.x, shimmerRecord.y, lumaChange, motionPixels, reactive);
+    // The shimmer record steps wherever history remains valid, including through a colour release.
+    vec2 shimmerRecord = useHistory ? temporalShimmerStep(historyRecord, lumaChange) : vec2(0.0);
+    // The score from the stepped record and this frame's change (temporalShimmerScore). A release scores none even
+    // though its record survives, so it gets neither the wider clip nor the longer history. Moving pixels keep their cap.
+    float shimmer = released ? 0.0 : temporalShimmerScore(shimmerRecord.x, shimmerRecord.y, lumaChange, motionPixels, reactive);
 #ifdef TemporalShimmerVisibility
     // Where the exported key-shadow visibility moved since last frame a shadow is passing, which is real however the
     // luma alternates, so the pixel scores none: where the visibility release fired on its 3x3, or where the centre

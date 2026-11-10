@@ -4,6 +4,17 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.6.1
+
+2026-11-10
+
+- Stop still thin features at steep and grazing angles from repeatedly tripping TAA's colour-based shading release.
+  A still pixel whose prior shimmer record shows flicker, and whose exported key-shadow visibility did not move,
+  keeps its accumulated colour instead of releasing. The shimmer record keeps stepping through a release that does
+  fire, so repeated false releases build the evidence that vetoes the next one. Passing shadows, motion, reactive
+  content and Balanced keep their existing release. A real light step over an already flickering pixel settles no
+  slower than before. Native and Quality both change, with no new storage, attachment or binding.
+
 ## 23.6.0
 
 2026-11-10

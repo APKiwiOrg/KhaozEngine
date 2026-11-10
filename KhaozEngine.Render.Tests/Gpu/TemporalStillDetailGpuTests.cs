@@ -69,6 +69,60 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
+        public void A_still_feature_the_release_keeps_tripping_holds_its_history(TemporalUpscale preset)
+        {
+            (float lowestConfidence, float maxChange) = RunTrippedFeature(preset);
+            output.WriteLine($"{preset}: lowest confidence {lowestConfidence}, MaxChange {maxChange}");
+            if (preset == TemporalUpscale.Quality)
+            {
+                (float balancedConfidence, float balancedChange) = RunTrippedFeature(TemporalUpscale.Balanced);
+                output.WriteLine($"Balanced: lowest confidence {balancedConfidence}, MaxChange {balancedChange}");
+            }
+            Assert.True(lowestConfidence > 4f * (1f / Max), $"{preset}: lowest confidence {lowestConfidence}");
+            Assert.True(maxChange <= 0.1f, $"{preset}: MaxChange {maxChange}");
+        }
+
+        (float LowestConfidence, float MaxChange) RunTrippedFeature(TemporalUpscale preset)
+        {
+            // Static half-texel stripes alias with the jitter over a checker whose 3x3 has enough contrast to release.
+            // Zero motion, constant depth and equal scene/opaque inputs exclude disocclusion and reactive rejection.
+            float factor = TemporalSettings.DisplayOverInternal(preset);
+            int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor), phases = TemporalJitter.PhaseCount(factor);
+            int x = (int)MathF.Floor((iw / 2 + 0.5f) * factor);
+            int y = (int)MathF.Floor((ih / 2 + 0.5f) * factor), pixel = (y * DisplayW + x) * 4;
+            Matrix4x4 projection = Perspective((float)DisplayW / DisplayH);
+            TemporalViewInput still = View(Eye, projection);
+            using var rig = new Rig(iw, ih, DisplayW, DisplayH, NdcDepth(projection, SceneMetres));
+            float[] motion = Pairs(iw, ih, (_, _) => Vector2.Zero);
+            float lowestConfidence = float.PositiveInfinity, maxChange = 0f, previous = 0f;
+            for (int n = 0; n < Converge + Measured; n++)
+            {
+                Vector2 jitter = TemporalJitter.Offset(n, phases);
+                float[] scene = Grey(iw, ih, (sx, sy) =>
+                {
+                    float sampleX = sx + 0.5f - jitter.X;
+                    float stripe = sampleX - MathF.Floor(sampleX) < 0.5f ? 0.80f : 0.15f;
+                    return stripe + ((sx + sy) % 2 == 0 ? 0.10f : -0.10f);
+                });
+                rig.BeginFrame();
+                rig.Fill(scene, scene, motion);
+                rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, DisplayW, DisplayH, n > 0));
+                if (n < Converge + Measured - phases - 1) continue;
+                float value = Share(rig.ReadColor()[pixel], 0.05f, 0.90f);
+                if (n >= Converge + Measured - phases)
+                {
+                    float[] state = rig.ReadState();
+                    lowestConfidence = MathF.Min(lowestConfidence, state[pixel]);
+                    maxChange = MathF.Max(maxChange, MathF.Abs(value - previous));
+                    output.WriteLine($"{preset} frame {n}: confidence {state[pixel]}, lock {state[pixel + 1]}, "
+                        + $"drift {state[pixel + 2]}, swing {state[pixel + 3]}, contrast share {value}");
+                }
+                previous = value;
+            }
+            return (lowestConfidence, maxChange);
+        }
+
+        [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
         public void A_shadow_creeping_over_a_shimmering_line_tracks_no_later_than_its_baseline(TemporalUpscale preset)
         {
             // The wall's luma falls linearly from 0.80 to 0.30 over 24 frames after convergence, a shadow creeping across.
@@ -96,6 +150,24 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine($"{preset}: {run}");
             Assert.True(run.Frames <= MainSettleFrames(preset), $"{preset}: {run}");
         }
+
+        [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
+        public void A_light_step_under_a_flickering_line_settles_no_slower_than_today(TemporalUpscale preset)
+        {
+            SettleRun run = RunLightStepOverLine(preset, hitInterval: 8);
+            output.WriteLine($"{preset}: {run}, main {MainLightStepOverLineFrames(preset)}");
+            if (preset == TemporalUpscale.Quality)
+                output.WriteLine($"Balanced: {RunLightStepOverLine(TemporalUpscale.Balanced, hitInterval: 8)}");
+            Assert.True(run.Frames <= MainLightStepOverLineFrames(preset), $"{preset}: {run}");
+        }
+
+        // Measured against unchanged engine commit 306408694f2e445e3f3b22eec4cbee4c2a3770e9 on Metal.
+        internal static int MainLightStepOverLineFrames(TemporalUpscale preset) => preset switch
+        {
+            TemporalUpscale.Native => 19,
+            TemporalUpscale.Quality => 8,
+            _ => throw new ArgumentOutOfRangeException(nameof(preset)),
+        };
 
         // Measured against unchanged engine commit f099a6a9e6490df0c378b7872610d7bbd7c761bf on Metal.
         internal static int MainSettleFrames(TemporalUpscale preset) => preset switch
@@ -322,6 +394,47 @@ namespace KhaozEngine.Tests.Gpu
                         frames = n - Converge + 2;
             }
             Assert.True(frames <= Measured, "The light step must settle inside the measured window.");
+            return new SettleRun(frames);
+        }
+
+        internal static SettleRun RunLightStepOverLine(TemporalUpscale preset, int hitInterval)
+        {
+            float factor = TemporalSettings.DisplayOverInternal(preset);
+            int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor), phases = TemporalJitter.PhaseCount(factor);
+            Matrix4x4 projection = Perspective((float)DisplayW / DisplayH);
+            TemporalViewInput still = View(Eye, projection);
+            List<int> pixels = ColumnPixels(factor, iw / 2);
+            // The reference has always had the post-step lighting. Match its jitter phases to the stepped run,
+            // because even settled coverage varies through the cycle. Both the wall and line halve at the step.
+            float[][] Trajectory(bool stepped)
+            {
+                using var rig = new Rig(iw, ih, DisplayW, DisplayH, NdcDepth(projection, SceneMetres));
+                float[] motion = Pairs(iw, ih, (_, _) => Vector2.Zero);
+                var values = new float[Measured][];
+                for (int n = 0; n < Converge + Measured; n++)
+                {
+                    Vector2 jitter = TemporalJitter.Offset(n, phases);
+                    float scale = !stepped || n >= Converge ? 0.5f : 1f;
+                    float[] scene = Grey(iw, ih, (x, _) =>
+                        scale * (n % hitInterval == 0 && x == iw / 2 ? Line : Wall));
+                    rig.BeginFrame();
+                    rig.Fill(scene, scene, motion);
+                    rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, DisplayW, DisplayH, n > 0));
+                    if (n < Converge) continue;
+                    float[] color = rig.ReadColor();
+                    var sample = new float[pixels.Count];
+                    for (int p = 0; p < pixels.Count; p++) sample[p] = color[pixels[p] * 4];
+                    values[n - Converge] = sample;
+                }
+                return values;
+            }
+            float[][] step = Trajectory(stepped: true), target = Trajectory(stepped: false);
+            float contrast = Weighted(Wall) - Weighted(Wall * 0.5f);
+            int frames = 1;
+            for (int n = 0; n < Measured; n++)
+                for (int p = 0; p < pixels.Count; p++)
+                    if (MathF.Abs(Weighted(step[n][p]) - Weighted(target[n][p])) > 0.05f * contrast)
+                        frames = n + 2;
             return new SettleRun(frames);
         }
 

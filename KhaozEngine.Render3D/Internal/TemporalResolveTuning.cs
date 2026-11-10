@@ -251,6 +251,8 @@ namespace KhaozEngine.Render3D.Internal
         /// checkerboard at Performance (<c>TemporalMipBiasGoldenTests</c>) up to 0.022 of its golden, so a shadow edge
         /// there still converges at the current weight's floor.</summary>
         public const float ShadingMaxUpscale = 1.6f;
+        /// <summary>Prior-record evidence that vetoes a false colour release on still flickering geometry.</summary>
+        public const float ShadingFlickerGate = 0.25f;
         /// <summary>Step 5. The least move the clip must make to the history, as blended, in the luma-weighted YCoCg
         /// space the clip runs in, for the pixel's clip flag. Passes that re-evaluate the resolve read the flag, such
         /// as the sampled temporal counts, and the resolve's colour never does. On flat content the variance box

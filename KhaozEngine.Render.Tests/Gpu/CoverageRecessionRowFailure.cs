@@ -19,21 +19,56 @@ internal enum CoverageRecessionRowRefusal
 internal sealed record CoverageRecessionFactoryFailure(string Operation, string Type, ShaderValidationRefusal? Reason,
     string? Label, GpuShaderStages? Stage, string Message)
 {
+    /// <summary>Nested levels kept. Each level is one JSON object and one array, so the whole snapshot stays well
+    /// inside the JSON writer's default depth under every record that can enclose it.</summary>
+    internal const int MaxDepth = 12;
+    /// <summary>Siblings kept from one aggregate.</summary>
+    internal const int MaxSiblings = 16;
+
     public string? StackTrace { get; init; }
     public CoverageRecessionAllocationFailure? Allocation { get; init; }
     public IReadOnlyList<CoverageRecessionFactoryFailure> InnerExceptions { get; init; } = ImmutableArray<CoverageRecessionFactoryFailure>.Empty;
+    /// <summary>Nested exceptions directly below this level that the depth or sibling bound left out.</summary>
+    public int OmittedInnerExceptions { get; init; }
+    /// <summary>Exception members whose getter threw while this level was read.</summary>
+    public IReadOnlyList<string> UnreadableMembers { get; init; } = ImmutableArray<string>.Empty;
 
-    internal static CoverageRecessionFactoryFailure Capture(string operation, Exception error)
+    internal static CoverageRecessionFactoryFailure Capture(string operation, Exception error) => Capture(operation, error, 1);
+
+    /// <summary>The message, or an empty string when the exception's own getter throws.</summary>
+    internal static string MessageOf(Exception error) => Read(error, static e => e.Message, string.Empty, nameof(Exception.Message), null);
+
+    // A snapshot is taken while another failure is being reported, so it must never throw itself. A hostile
+    // getter costs only its own member, and a chain past the bounds is counted rather than followed.
+    static CoverageRecessionFactoryFailure Capture(string operation, Exception error, int depth)
     {
-        IEnumerable<Exception> nested = error is AggregateException aggregate ? aggregate.InnerExceptions
-            : error.InnerException is { } inner ? [inner] : [];
-        return new(operation, error.GetType().FullName!, (error as ShaderValidationException)?.Reason,
-            (error as ShaderValidationException)?.Label, (error as ShaderValidationException)?.Stage, error.Message)
+        var unreadable = ImmutableArray.CreateBuilder<string>();
+        var shader = error as ShaderValidationException;
+        IReadOnlyList<Exception> nested = Read<IReadOnlyList<Exception>>(error, Nested, [], nameof(Exception.InnerException), unreadable);
+        int kept = depth >= MaxDepth ? 0 : Math.Min(nested.Count, MaxSiblings);
+        var inners = ImmutableArray.CreateBuilder<CoverageRecessionFactoryFailure>(kept);
+        for (int i = 0; i < kept; i++) inners.Add(Capture(operation, nested[i], depth + 1));
+        return new(operation, error.GetType().FullName!, shader?.Reason, shader?.Label, shader?.Stage,
+            Read(error, static e => e.Message, string.Empty, nameof(Exception.Message), unreadable))
         {
-            StackTrace = error.StackTrace,
+            StackTrace = Read(error, static e => e.StackTrace, null, nameof(Exception.StackTrace), unreadable),
             Allocation = error is AllocationMeasurementException allocation ? CoverageRecessionAllocationFailure.Capture(allocation) : null,
-            InnerExceptions = ImmutableArray.CreateRange(nested.Select(inner => Capture(operation, inner))),
+            InnerExceptions = inners.MoveToImmutable(),
+            OmittedInnerExceptions = nested.Count - kept,
+            UnreadableMembers = unreadable.ToImmutable(),
         };
+    }
+
+    static IReadOnlyList<Exception> Nested(Exception error)
+    {
+        if (error is AggregateException aggregate) return aggregate.InnerExceptions;
+        return error.InnerException is { } inner ? [inner] : [];
+    }
+
+    static T Read<T>(Exception error, Func<Exception, T> read, T fallback, string member, ImmutableArray<string>.Builder? unreadable)
+    {
+        try { return read(error); }
+        catch (Exception) { unreadable?.Add(member); return fallback; }
     }
 }
 
@@ -101,7 +136,7 @@ internal sealed class CoverageRecessionRowException : InvalidOperationException
         : base($"Coverage cost row {layout}, actors={actors}, {phase} frame={frame}, {reason}, "
             + $"brackets={bracketsSeen}/{bracketsExpected}, dispatches={dispatchCount}, coverage=[{string.Join(", ", coverageFailures)}]. "
             + string.Join(" ", factoryFailures.Select(f => $"Factory {f.Operation}: {f.Type}, reason={f.Reason}, label={f.Label}, stage={f.Stage}: {f.Message}"))
-            + (inner is null ? "" : " Row error: " + inner.Message), inner)
+            + (inner is null ? "" : " Row error: " + CoverageRecessionFactoryFailure.MessageOf(inner)), inner)
     {
         Layout = layout; Actors = actors; Phase = phase; Frame = frame; Reason = reason;
         BracketsSeen = bracketsSeen; BracketsExpected = bracketsExpected; DispatchCount = dispatchCount;

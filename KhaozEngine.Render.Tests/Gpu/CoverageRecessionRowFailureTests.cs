@@ -311,5 +311,51 @@ public sealed class CoverageRecessionRowFailureTests(ITestOutputHelper output)
         Assert.Equal("synthetic-point", Assert.Single(failure.FactoryFailures).Label);
     }
 
+    // #1762. A row diagnostic is taken while a failure is being reported, so a deep chain or a getter that
+    // throws must cost only the unreadable part and never the report.
+    [Theory]
+    [InlineData(40, false)]
+    [InlineData(0, true)]
+    [InlineData(1, true)]
+    public void Deep_or_unreadable_failures_still_leave_a_serialisable_row_diagnostic(int wrappers, bool unreadable)
+    {
+        Exception thrown = unreadable ? new UnreadableException() : new NotSupportedException("Synthetic innermost refusal.");
+        for (int i = 0; i < wrappers; i++) thrown = new InvalidOperationException("Synthetic wrapper.", thrown);
+        using var compute = new CoveragePublicationDevice();
+        using var device = CoverageRecessionWarmAllocationTests.InertCostDevice(compute);
+        bool first = true;
+        device.PoolFactory = capacity =>
+        {
+            if (first) { first = false; throw thrown; }
+            var pool = new Performance.GpuPerfTimestampTestPool(capacity) { Owners = device.Fences };
+            device.Pools.Add(pool); return pool;
+        };
+        var measured = CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(),
+            ["baseline-scene-passes", "baseline-scene"]);
+        Assert.Equal("baseline-scene", Assert.Single(measured.Rows).Layout);
+        var row = Assert.Single(measured.UnavailableRows);
+        Assert.Equal(CoverageRecessionRowRefusal.OperationFailed, row.Reason.Reason);
+        var chain = new List<CoverageRecessionFactoryFailure>();
+        for (var level = row.Reason.Error; level is not null; level = level.InnerExceptions.FirstOrDefault()) chain.Add(level);
+        Assert.Equal(Math.Min(wrappers + 1, CoverageRecessionFactoryFailure.MaxDepth), chain.Count);
+        Assert.Equal(wrappers + 1 > CoverageRecessionFactoryFailure.MaxDepth ? 1 : 0, chain[^1].OmittedInnerExceptions);
+        if (unreadable)
+        {
+            Assert.Equal(typeof(UnreadableException).FullName, chain[^1].Type);
+            Assert.Equal(new[] { "Message", "StackTrace" }, chain[^1].UnreadableMembers);
+        }
+        // The cost unit writes unavailable rows with these options before it asserts anything.
+        string json = JsonSerializer.Serialize(new { unavailableRows = measured.UnavailableRows },
+            new JsonSerializerOptions { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
+        using var parsed = JsonDocument.Parse(json);
+        Assert.Equal(1, parsed.RootElement.GetProperty("unavailableRows").GetArrayLength());
+    }
+
+    sealed class UnreadableException : Exception
+    {
+        public override string Message => throw new InvalidOperationException("Synthetic getter failure.");
+        public override string? StackTrace => throw new InvalidOperationException("Synthetic getter failure.");
+    }
+
     static long Deadline() => Stopwatch.GetTimestamp() + 900 * Stopwatch.Frequency;
 }

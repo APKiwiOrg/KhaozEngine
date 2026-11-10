@@ -372,7 +372,10 @@ fails the bracket guard. Failed partial recordings are discarded before submissi
 releases timestamp pools and carry storage.
 
 The row's `Error`, factory failures and cleanup failures retain each exception's type, message and stack,
-with `InnerExceptions` preserving wrappers and every aggregate branch through the innermost error.
+with `InnerExceptions` preserving wrappers and aggregate branches down to twelve levels and sixteen
+siblings per aggregate. `OmittedInnerExceptions` counts what a bound left out, so the snapshot always fits
+the JSON writer. A member whose getter throws is named in `UnreadableMembers` and costs only that member,
+because a snapshot taken while a failure is being reported must never replace it.
 An allocation measurement exception at any level adds `Allocation` with its typed reason, description,
 requested budget, process, thread and other-thread byte counts, reported-message count, generation collection
 counts and runtime reason. Counters stay null when a window never opened. These diagnostics flow into

@@ -92,6 +92,7 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
     internal FakeGpuResourceFactory Resources => (FakeGpuResourceFactory)_inner.Factory;
     internal readonly List<GpuPerfTimestampTestPool> Pools = [];
     internal readonly List<SubmissionTestFence> Fences = [];
+    internal readonly List<GpuPerfTimestampTestCommands> Commands = [];
     internal readonly IGpuFence[] SubmittedFences = new IGpuFence[8];
     internal int Submissions, Waits, CompletionCount;
     internal bool FailSubmit;
@@ -123,6 +124,7 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
         foreach (IGpuFence completion in completions) OnSubmittedFence?.Invoke(completion);
         if (commands is GpuPerfTimestampTestCommands { Pool: { } pool }) pool.SubmittedFence = completions[0];
         if (FailSubmit) throw new InvalidOperationException("submit failure");
+        if (commands is GpuPerfTimestampTestCommands submitted) submitted.Submitted = true;
     }
     public void WaitForIdle() { Trace?.Invoke("drain"); Waits++; foreach (var fence in Fences) fence.Signaled = true; }
     public IGpuTimestampPool CreateTimestampPool(uint capacity)
@@ -131,7 +133,11 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
         var pool = new GpuPerfTimestampTestPool(capacity) { Owners = Fences }; Pools.Add(pool); return pool;
     }
     public IGpuFence CreateFence() { var fence = new SubmissionTestFence(); Fences.Add(fence); return fence; }
-    public IGpuCommandList CreateCommandList() => new GpuPerfTimestampTestCommands { Trace = CaptureCommandTrace ? op => Trace?.Invoke(op) : null };
+    public IGpuCommandList CreateCommandList()
+    {
+        var commands = new GpuPerfTimestampTestCommands { Trace = CaptureCommandTrace ? op => Trace?.Invoke(op) : null };
+        Commands.Add(commands); return commands;
+    }
     public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => BufferFactory?.Invoke(d) ?? new SubmissionTestBuffer(d.SizeInBytes, d.Usage);
     public IGpuTexture CreateTexture(in GpuTextureDescription d) => _inner.Factory.CreateTexture(d);
     public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) => _inner.Factory.CreateFramebuffer(depth, colour);
@@ -172,6 +178,8 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
 
 internal sealed class GpuPerfTimestampTestCommands : IGpuCommandList, IGpuCommandListTimestampEnd
 {
+    internal int Disposals;
+    internal bool Submitted;
     GpuPerfTimestampTestPool? _pool;
     internal GpuPerfTimestampTestPool? Pool => _pool;
     internal Action<string>? Trace { get; set; }
@@ -218,5 +226,5 @@ internal sealed class GpuPerfTimestampTestCommands : IGpuCommandList, IGpuComman
     public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { }
     public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }
     public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ) { }
-    public void Dispose() { }
+    public void Dispose() { Disposals++; }
 }

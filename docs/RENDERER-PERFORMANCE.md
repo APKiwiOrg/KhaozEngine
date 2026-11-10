@@ -96,7 +96,7 @@ program keys and memo labels prevent cross-variant cache reuse, and other backen
 These deltas diagnose helper cost with equal marker counts. They do not approve different arithmetic or
 images. Exact published-word readback still runs for every covered row, including inline rows.
 
-Only carry-only, baseline-scene and covered-scene fail hard. Every other row fails soft at construction,
+Carry-only, baseline-scene and covered-scene fail hard. Other rows fail soft at construction,
 recording, harvest or evidence readback. It is disposed and dropped for that population, then attempted
 again for the next. `unavailableRows` retains layout, actors, conditioning or observed phase, phase-local
 frame and structured reason. Frame `-1` identifies construction before a frame. The reason includes stage
@@ -104,6 +104,11 @@ brackets seen and expected, dispatches, owner coverage failure codes and capture
 identifiers. An inline exact-word mismatch has its own `ArithmeticMismatch` reason. Dependent diagnostic
 deltas become null. JSON and its output line are saved before the existing three assertions and the added
 assertion that no rows were unavailable. Publication refusal is detected before native recording begins.
+Cleanup failures appear in `CleanupFailures` alongside the original refusal, with type and available
+shader refusal identifiers. Safe cleanup continues after a release fails. A failed submission drain is
+fatal for every layout and sets `DrainFailed`. Its GPU dependants remain retained, and the unit ends
+because subsequent timings cannot be trusted. Remaining rows still receive safe teardown. Their
+cleanup failures keep their row context in `AdditionalRowFailures` without replacing an in-flight error.
 Timestamp resolution and evidence readback stay outside measured frames. See the
 [instrumentation contract](EQUIPMENT-COVERAGE.md#verification-boundaries) for row boundaries,
 `COVERAGE_DRAW_INVENTORY_JSON` draw counts and `COVERAGE_PRECISE_HELPER_INVENTORY_JSON` static helper

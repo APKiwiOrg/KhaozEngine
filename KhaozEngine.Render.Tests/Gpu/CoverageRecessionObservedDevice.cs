@@ -14,6 +14,7 @@ namespace KhaozEngine.Tests.Gpu;
 internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner, bool inlineHelpers = false) : IGpuDevice, IGpuResourceFactory
 {
     internal readonly List<CoverageRecessionFactoryFailure> Failures = [];
+    internal readonly CoverageRecessionCleanup Cleanup = new();
     List<IDisposable>? constructing;
     T Track<T>(T resource) where T : IDisposable
     { constructing?.Add(resource); return resource; }
@@ -25,11 +26,13 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner, bool inl
         try { return create(); }
         catch
         {
-            inner.WaitForIdle();
-            for (int i = constructing.Count - 1; i >= 0; i--) constructing[i].Dispose();
+            Cleanup.Active = true;
+            if (Cleanup.Drain("construction.drain", inner.WaitForIdle))
+                for (int i = constructing.Count - 1; i >= 0; i--)
+                    Cleanup.Release("construction.resource." + i, constructing[i].Dispose);
             throw;
         }
-        finally { constructing = null; }
+        finally { if (!Cleanup.DrainFailed) constructing = null; }
     }
     internal void Capture(string operation, Exception error) => Failures.Add(CoverageRecessionFactoryFailure.Capture(operation, error));
     internal readonly Dictionary<IGpuResourceSet, GpuResourceSetDescription> Sets = [];
@@ -52,7 +55,15 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner, bool inl
     public void Submit(IGpuCommandList list) => inner.Submit(list);
     public void Submit(IGpuCommandList list, IGpuFence fence) => inner.Submit(list, fence);
     public void Submit(IGpuCommandList list, ReadOnlySpan<IGpuFence> fences) => inner.Submit(list, fences);
-    public void WaitForIdle() => inner.WaitForIdle();
+    public void WaitForIdle()
+    {
+        try { inner.WaitForIdle(); }
+        catch
+        {
+            if (Cleanup.Active) Cleanup.RefuseDrain();
+            throw;
+        }
+    }
     public void UpdateBuffer<T>(IGpuBuffer b, uint o, ReadOnlySpan<T> data) where T : unmanaged => inner.UpdateBuffer(b, o, data);
     public void UpdateBuffer<T>(IGpuBuffer b, uint o, T[] data) where T : unmanaged => inner.UpdateBuffer(b, o, data);
     public void UpdateBuffer<T>(IGpuBuffer b, uint o, in T data) where T : unmanaged => inner.UpdateBuffer(b, o, in data);

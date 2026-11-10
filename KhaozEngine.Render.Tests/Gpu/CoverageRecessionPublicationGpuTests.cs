@@ -149,7 +149,16 @@ internal sealed class CoverageRecessionNativeScene : IDisposable
                 Owners[i].ReserveEquipment(1);
             }
         }
-        catch { Dispose(); throw; }
+        catch (Exception error)
+        {
+            var cleanup = (device as CoverageRecessionObservedDevice)?.Cleanup ?? new CoverageRecessionCleanup();
+            cleanup.Active = true;
+            DisposeSubmission(cleanup);
+            DisposeAfterDrain(cleanup);
+            if (cleanup.DrainFailed) cleanup.Retain(this);
+            if (cleanup.FirstError is not null) error.Data["coverage.construction.cleanup"] = cleanup.Snapshot();
+            throw;
+        }
     }
 
     internal void Prepare(int frame, float transition = 1, Matrix4x4? coverageWorld = null)
@@ -200,8 +209,25 @@ internal sealed class CoverageRecessionNativeScene : IDisposable
     }
     public void Dispose()
     {
-        Submission?.Dispose();
-        foreach (var owner in Owners) owner?.Dispose();
-        Scene?.Dispose(); target?.Dispose(); color?.Dispose();
+        var cleanup = new CoverageRecessionCleanup();
+        DisposeSubmission(cleanup);
+        DisposeAfterDrain(cleanup);
+        cleanup.ThrowIfFailed();
+    }
+
+    void DisposeSubmission(CoverageRecessionCleanup cleanup)
+    {
+        if (!cleanup.DrainFailed && Submission is not null) cleanup.Release("submission", Submission.Dispose);
+    }
+
+    internal void DisposeAfterDrain(CoverageRecessionCleanup cleanup)
+    {
+        if (cleanup.DrainFailed) return;
+        for (int i = 0; i < Owners.Length; i++)
+            if (Owners[i] is { } owner) cleanup.Release("owner." + i, owner.Dispose);
+        if (Scene is not null) cleanup.Release("scene", Scene.Dispose);
+        if (cleanup.DrainFailed || Scene is { DisposalSafeForDependants: false }) return;
+        if (target is not null) cleanup.Release("target", target.Dispose);
+        if (color is not null) cleanup.Release("color", color.Dispose);
     }
 }

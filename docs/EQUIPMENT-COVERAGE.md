@@ -365,6 +365,15 @@ checked after preparation, before a native list or timestamp pool begins. A late
 fails the bracket guard. Failed partial recordings are discarded before submission teardown drains and
 releases timestamp pools and carry storage.
 
+Cleanup failures retain their type and available shader refusal identifiers in `CleanupFailures`,
+alongside the original row failure. Safe cleanup continues after a non-drain failure. Row cleanup
+snapshots owner coverage codes before disposal, since the disposed scene rejects status queries.
+Construction cleanup attempts every tracked handle in reverse creation order. A failed submission drain sets
+`DrainFailed` and ends the entire unit, including for diagnostic layouts, because later timings cannot
+be trusted. That row retains its timestamp pools, carry storage and programs, and submitted command
+lists. Teardown still attempts every remaining row as far as is safe. Failures from those rows appear
+in `AdditionalRowFailures` with their own row context and never replace the original failure.
+
 The schema's `unavailableRows` array retains each row identity and its structured reason. Diagnostic deltas
 that depend on a missing row are null. JSON and `COVERAGE_RECESSION_COST_JSON` are written before assertions.
 The original zero warm bytes, 2000 microseconds CPU preparation and 1300 microseconds added GPU checks stay

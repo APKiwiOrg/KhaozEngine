@@ -170,5 +170,24 @@ public sealed class CoverageRecessionRowFailureTests
             : false,
     };
 
+    [Fact]
+    public void A_later_discovery_refusal_has_no_dispatches_from_the_preceding_frame()
+    {
+        using var compute = new CoveragePublicationDevice
+        {
+            RefuseVertex = (vertex, _) => vertex == ShaderSources.CoveragePointVert
+                ? throw new ShaderValidationException(ShaderValidationRefusal.MetalLibraryRejected, "Synthetic late discovery refusal.")
+                { Label = "synthetic-point", Stage = GpuShaderStages.Vertex }
+                : false,
+        };
+        using var device = CoverageRecessionWarmAllocationTests.InertCostDevice(compute);
+        var failure = Assert.Throws<CoverageRecessionRowException>(() =>
+            new CoverageRecessionCostMeasurement.Driver(device, new(4, 4), 1, "covered-scene-inline-passes", 3));
+        Assert.Equal(("conditioning", 1), (failure.Phase, failure.Frame));
+        Assert.Equal(CoverageRecessionRowRefusal.CoverageNotPublished, failure.Reason);
+        Assert.Equal(0, failure.DispatchCount);
+        Assert.Equal("synthetic-point", Assert.Single(failure.FactoryFailures).Label);
+    }
+
     static long Deadline() => Stopwatch.GetTimestamp() + 900 * Stopwatch.Frequency;
 }

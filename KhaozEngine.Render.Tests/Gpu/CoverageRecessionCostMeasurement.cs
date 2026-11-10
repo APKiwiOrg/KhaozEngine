@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.ExceptionServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Gpu.Performance;
@@ -35,6 +36,7 @@ internal static class CoverageRecessionCostMeasurement
         var rows = new Driver?[(layouts ?? Layouts).Count];
         var unavailable = new List<CoverageRecessionUnavailableRow>();
         var results = new List<Row>();
+        Exception? pending = null;
         try
         {
             for (int i = 0; i < rows.Length; i++)
@@ -51,19 +53,39 @@ internal static class CoverageRecessionCostMeasurement
                 try { results.Add(row.Result()); }
                 catch (CoverageRecessionRowException error) { Drop(i, error); }
             }
-            return new(results.ToArray(), unavailable.ToArray());
         }
-        finally { foreach (var row in rows) row?.Dispose(); }
+        catch (Exception error) { pending = error; }
+        finally
+        {
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (rows[i] is not { } row) continue;
+                rows[i] = null;
+                if (row.DisposeAfterFailure() is not { } failure) continue;
+                if (pending is CoverageRecessionRowException original) original.AddRowFailure(failure);
+                else if (pending is not null) pending.Data["coverage.cleanup." + i] = CoverageRecessionUnavailableRow.From(failure);
+                else if (failure.DrainFailed || IsAcceptance(failure.Layout)) pending = failure;
+                else
+                {
+                    results.RemoveAll(result => result.Layout == failure.Layout);
+                    unavailable.Add(CoverageRecessionUnavailableRow.From(failure));
+                }
+            }
+        }
+        if (pending is not null) ExceptionDispatchInfo.Capture(pending).Throw();
+        return new(results.ToArray(), unavailable.ToArray());
 
         void Unavailable(CoverageRecessionRowException error)
         {
-            if (IsAcceptance(error.Layout)) throw error;
+            if (error.DrainFailed || IsAcceptance(error.Layout)) throw error;
             unavailable.Add(CoverageRecessionUnavailableRow.From(error));
         }
         void Drop(int index, CoverageRecessionRowException error)
         {
+            var row = rows[index]!;
+            rows[index] = null;
+            row.DisposeAfterFailure(error);
             Unavailable(error);
-            rows[index]!.Dispose(); rows[index] = null;
         }
         void Run(int count, bool retain)
         {
@@ -217,7 +239,7 @@ internal static class CoverageRecessionCostMeasurement
                     // These cold submitted frames precede the unchanged conditioning schedule.
                     for (int frame = 0; frame < BatchFrames; frame++)
                     {
-                        frameNumber = frame; passTiming.Discover(); scene.Prepare(frame); RequirePublished();
+                        frameNumber = frame; currentSlot = -1; passTiming.Discover(); scene.Prepare(frame); RequirePublished();
                         currentSlot = 0; commands[0].Clear(); recordingSlot = 0; native[0].Begin(); scene.Render(commands[0]);
                         passTiming.Complete(); native[0].End(); recordingSlot = -1; passTiming.CompleteNativeEnd(native[0]);
                         scene.Submission.Submit(native[0]); device.WaitForIdle();
@@ -236,8 +258,8 @@ internal static class CoverageRecessionCostMeasurement
             }
             catch (Exception error)
             {
-                var failure = Failure(error);
-                Dispose();
+                var failure = Failure(observer.Cleanup.ConstructionFailure(error));
+                DisposeAfterFailure(failure);
                 throw failure;
             }
         }
@@ -417,27 +439,62 @@ internal static class CoverageRecessionCostMeasurement
                 if (!owner.Request.Published) throw Failure(null, CoverageRecessionRowRefusal.CoverageNotPublished);
         }
 
-        internal CoverageRecessionRowException Failure(Exception? error, CoverageRecessionRowRefusal reason = CoverageRecessionRowRefusal.OperationFailed)
+        CoverageFailureCode[] SnapshotCoverageFailures() => scene is null || carry || baseline ? []
+            : scene.Owners.Select(owner => scene.Scene.CoverageFailureFor(owner.Actor).Code).Distinct().ToArray();
+
+        internal CoverageRecessionRowException Failure(Exception? error, CoverageRecessionRowRefusal reason = CoverageRecessionRowRefusal.OperationFailed,
+            IReadOnlyList<CoverageFailureCode>? coverageFailures = null)
         {
             if (error is CoverageRecessionRowException detailed) return detailed;
             return new(layout, actors, phase, frameNumber, reason,
                 passTiming?.CarryBracketsSeen ?? stageTiming?.BracketsSeen ?? 0, staged || passTiming is not null && !baseline ? 10 : 0,
                 currentSlot < 0 ? 0 : commands[currentSlot]?.Tally[GpuCommandKind.Dispatch] ?? 0,
-                scene is null || carry || baseline ? [] : scene.Owners.Select(owner => scene.Scene.CoverageFailureFor(owner.Actor).Code).Distinct().ToArray(),
+                coverageFailures ?? SnapshotCoverageFailures(),
                 observer.Failures.ToArray(), error);
         }
 
         public void Dispose()
         {
-            if (disposed) return;
+            if (DisposeAfterFailure() is { } error) throw error;
+        }
+
+        internal CoverageRecessionRowException? DisposeAfterFailure(CoverageRecessionRowException? failure = null)
+        {
+            if (disposed) return failure;
+            // Scene3D refuses coverage queries after disposal. Preserve final-row context while it is live.
+            var coverageFailures = failure is null ? SnapshotCoverageFailures() : null;
+            disposed = true;
+            var cleanup = observer.Cleanup;
+            cleanup.Active = true;
             // An unsubmitted native recording must close before the submission's teardown drain.
             // Dispose discards it. Never End or submit a partial timestamp batch.
-            if (recordingSlot >= 0)
-            { native[recordingSlot].Dispose(); native[recordingSlot] = null!; recordingSlot = -1; }
-            scene?.Submission.Dispose();
-            ring?.Dispose(); batch?.Dispose(); retired?.Dispose();
-            foreach (var list in native) list?.Dispose();
-            scene?.Dispose(); disposed = true;
+            if (!cleanup.DrainFailed)
+            {
+                if (recordingSlot >= 0)
+                {
+                    int slot = recordingSlot; recordingSlot = -1;
+                    cleanup.Release("recording.discard", native[slot].Dispose); native[slot] = null!;
+                }
+                if (scene is not null) cleanup.Release("submission", scene.Submission.Dispose);
+            }
+            if (!cleanup.DrainFailed)
+            {
+                if (ring is not null) cleanup.Release("timestamps", ring.Dispose);
+                if (batch is not null) cleanup.Release("carry", batch.Dispose);
+                if (retired is not null) cleanup.Release("retirement", retired.Dispose);
+                if (!cleanup.DrainFailed)
+                {
+                    for (int i = 0; i < native.Length; i++)
+                        if (native[i] is { } list) cleanup.Release("commands." + i, list.Dispose);
+                    scene?.DisposeAfterDrain(cleanup);
+                }
+            }
+            if (cleanup.FirstError is not null)
+            {
+                failure ??= Failure(cleanup.FirstError, CoverageRecessionRowRefusal.CleanupFailed, coverageFailures);
+                failure.AttachCleanup(cleanup, this);
+            }
+            return failure;
         }
     }
 }

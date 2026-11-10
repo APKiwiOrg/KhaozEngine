@@ -19,9 +19,33 @@ internal enum CoverageRecessionRowRefusal
 internal sealed record CoverageRecessionFactoryFailure(string Operation, string Type, ShaderValidationRefusal? Reason,
     string? Label, GpuShaderStages? Stage, string Message)
 {
+    public string? StackTrace { get; init; }
+    public CoverageRecessionAllocationFailure? Allocation { get; init; }
+    public IReadOnlyList<CoverageRecessionFactoryFailure> InnerExceptions { get; init; } = ImmutableArray<CoverageRecessionFactoryFailure>.Empty;
+
     internal static CoverageRecessionFactoryFailure Capture(string operation, Exception error)
-        => new(operation, error.GetType().FullName!, (error as ShaderValidationException)?.Reason,
-            (error as ShaderValidationException)?.Label, (error as ShaderValidationException)?.Stage, error.Message);
+    {
+        IEnumerable<Exception> nested = error is AggregateException aggregate ? aggregate.InnerExceptions
+            : error.InnerException is { } inner ? [inner] : [];
+        return new(operation, error.GetType().FullName!, (error as ShaderValidationException)?.Reason,
+            (error as ShaderValidationException)?.Label, (error as ShaderValidationException)?.Stage, error.Message)
+        {
+            StackTrace = error.StackTrace,
+            Allocation = error is AllocationMeasurementException allocation ? CoverageRecessionAllocationFailure.Capture(allocation) : null,
+            InnerExceptions = ImmutableArray.CreateRange(nested.Select(inner => Capture(operation, inner))),
+        };
+    }
+}
+
+internal sealed record CoverageRecessionCollectionCounts(int Gen0, int Gen1, int Gen2);
+
+internal sealed record CoverageRecessionAllocationFailure(AllocationMeasurementRefusal Reason, string Description,
+    long? Budget, long? ProcessBytes, long? ThreadBytes, long? OtherThreadBytes, long? ReportedMessages,
+    CoverageRecessionCollectionCounts? Collections, string? RuntimeReason)
+{
+    internal static CoverageRecessionAllocationFailure Capture(AllocationMeasurementException error)
+        => new(error.Reason, error.Description, error.Budget, error.ProcessBytes, error.ThreadBytes, error.OtherThreadBytes,
+            error.ReportedMessages, error.Collections is { } counts ? new(counts.Gen0, counts.Gen1, counts.Gen2) : null, error.RuntimeReason);
 }
 
 internal sealed record CoverageRecessionRowDetails(CoverageRecessionRowRefusal Reason, int BracketsSeen, int BracketsExpected,

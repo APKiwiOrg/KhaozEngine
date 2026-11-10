@@ -80,7 +80,12 @@ public sealed class AllocationMeasurementTests
     public void ARegionThatCannotStartDoesNotEndItsOwnersRegion()
     {
         using var owner = AllocationRegion.Start("owner");
-        Assert.Throws<XunitException>(() => AllocationRegion.Start("nested"));
+        var refusal = Assert.Throws<AllocationMeasurementException>(() => AllocationRegion.Start("nested"));
+        Assert.Equal(AllocationMeasurementRefusal.RegionAlreadyActive, refusal.Reason);
+        Assert.Equal("nested", refusal.Description);
+        Assert.Equal(AllocationRegion.DefaultBudget, refusal.Budget);
+        Assert.Null(refusal.ProcessBytes);
+        Assert.Null(refusal.Collections);
         Assert.Equal(System.Runtime.GCLatencyMode.NoGCRegion, System.Runtime.GCSettings.LatencyMode);
         owner.Dispose();
     }

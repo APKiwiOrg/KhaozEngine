@@ -371,6 +371,14 @@ checked after preparation, before a native list or timestamp pool begins. A late
 fails the bracket guard. Failed partial recordings are discarded before submission teardown drains and
 releases timestamp pools and carry storage.
 
+The row's `Error`, factory failures and cleanup failures retain each exception's type, message and stack,
+with `InnerExceptions` preserving wrappers and every aggregate branch through the innermost error.
+An allocation measurement exception at any level adds `Allocation` with its typed reason, description,
+requested budget, process, thread and other-thread byte counts, reported-message count, generation collection
+counts and runtime reason. Counters stay null when a window never opened. These diagnostics flow into
+`unavailableRows` and acceptance exceptions through the same row details. They identify a recurrence's
+failure path without establishing the cause of an earlier failure whose original error was discarded.
+
 Cleanup failures retain their type and available shader refusal identifiers in `CleanupFailures`,
 alongside the original row failure. Safe cleanup continues after a non-drain failure. Row cleanup
 snapshots owner coverage codes before disposal, since the disposed scene rejects status queries.

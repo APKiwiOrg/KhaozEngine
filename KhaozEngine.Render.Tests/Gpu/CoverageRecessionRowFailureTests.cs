@@ -131,6 +131,122 @@ public sealed class CoverageRecessionRowFailureTests(ITestOutputHelper output)
         Assert.All(buffers, buffer => Assert.True(buffer.DisposeCalls > 0));
     }
 
+    // #1762. A lost observed window prevents the oracle, without identifying the historical cause.
+    [Fact]
+    public void An_observed_collection_makes_the_diagnostic_row_unavailable_before_the_oracle()
+    {
+        using var compute = new CoveragePublicationDevice();
+        using var device = CoverageRecessionWarmAllocationTests.InertCostDevice(compute);
+        bool first = true, collected = false;
+        device.PoolFactory = capacity =>
+        {
+            var pool = new Performance.GpuPerfTimestampTestPool(capacity) { Owners = device.Fences };
+            if (first) pool.OnBegin = () =>
+            {
+                if (pool.Begins == CoverageRecessionCostMeasurement.ConditioningFrames / CoverageRecessionCostMeasurement.BatchFrames)
+                {
+                    collected = true;
+                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+                }
+            };
+            first = false;
+            device.Pools.Add(pool); return pool;
+        };
+        var measured = CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(),
+            ["covered-scene-passes", "baseline-scene"]);
+        Assert.True(collected);
+        Assert.Equal("baseline-scene", Assert.Single(measured.Rows).Layout);
+        var row = Assert.Single(measured.UnavailableRows);
+        output.WriteLine(JsonSerializer.Serialize(row));
+        Assert.Equal(("covered-scene-passes", "observed", 0), (row.Layout, row.Phase, row.Frame));
+        Assert.Equal(CoverageRecessionRowRefusal.OperationFailed, row.Reason.Reason);
+        Assert.Equal(typeof(AllocationMeasurementException).FullName, row.Reason.Error!.Type);
+        var allocation = Assert.IsType<CoverageRecessionAllocationFailure>(row.Reason.Error.Allocation);
+        Assert.Equal(AllocationMeasurementRefusal.CollectionInterrupted, allocation.Reason);
+        Assert.Equal("coverage recording begin", allocation.Description);
+        Assert.Equal(AllocationRegion.DefaultBudget, allocation.Budget);
+        Assert.NotNull(allocation.ProcessBytes);
+        Assert.NotNull(allocation.ThreadBytes);
+        Assert.Equal(allocation.ProcessBytes - allocation.ThreadBytes, allocation.OtherThreadBytes);
+        Assert.NotNull(allocation.ReportedMessages);
+        Assert.True(allocation.Collections!.Gen2 > 0);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(row));
+        var recorded = json.RootElement.GetProperty("Reason").GetProperty("Error").GetProperty("Allocation");
+        Assert.Equal((int)allocation.Reason, recorded.GetProperty("Reason").GetInt32());
+        Assert.Equal(allocation.Collections.Gen2, recorded.GetProperty("Collections").GetProperty("Gen2").GetInt32());
+    }
+
+    // #1762. Preserve observer wrappers and every allocation field in both failure policies.
+    [Theory]
+    [InlineData("baseline-scene-passes")]
+    [InlineData("baseline-scene")]
+    public void Nested_operation_failures_keep_their_chain_and_typed_allocation_diagnostics(string layout)
+    {
+        var allocation = new AllocationMeasurementException(AllocationMeasurementRefusal.RuntimeStartFailed,
+            "synthetic window", "Synthetic start refusal.", new InvalidOperationException("Synthetic runtime refusal."))
+        {
+            Budget = 4096,
+            ProcessBytes = 128,
+            ThreadBytes = 96,
+            ReportedMessages = 3,
+            Collections = (1, 2, 3),
+            RuntimeReason = "synthetic-runtime",
+        };
+        using var compute = new CoveragePublicationDevice();
+        using var device = CoverageRecessionWarmAllocationTests.InertCostDevice(compute);
+        bool first = true;
+        device.PoolFactory = capacity =>
+        {
+            if (first)
+            {
+                first = false;
+                throw new InvalidOperationException("Synthetic observer wrapper.",
+                    new AggregateException(allocation, new NotSupportedException("Synthetic sibling refusal.")));
+            }
+            var pool = new Performance.GpuPerfTimestampTestPool(capacity) { Owners = device.Fences };
+            device.Pools.Add(pool); return pool;
+        };
+        CoverageRecessionRowDetails details;
+        if (CoverageRecessionCostMeasurement.IsAcceptance(layout))
+        {
+            var error = Assert.Throws<CoverageRecessionRowException>(() =>
+                CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(), [layout]));
+            details = error.Details;
+        }
+        else
+        {
+            var measured = CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(),
+                [layout, "baseline-scene"]);
+            Assert.Equal("baseline-scene", Assert.Single(measured.Rows).Layout);
+            details = Assert.Single(measured.UnavailableRows).Reason;
+        }
+        output.WriteLine(JsonSerializer.Serialize(details));
+        Assert.Equal(CoverageRecessionRowRefusal.OperationFailed, details.Reason);
+        var outer = Assert.IsType<CoverageRecessionFactoryFailure>(details.Error);
+        Assert.Equal(typeof(InvalidOperationException).FullName, outer.Type);
+        Assert.NotNull(outer.StackTrace);
+        var aggregate = Assert.Single(outer.InnerExceptions);
+        Assert.Equal(typeof(AggregateException).FullName, aggregate.Type);
+        Assert.Equal(new[] { typeof(AllocationMeasurementException).FullName, typeof(NotSupportedException).FullName },
+            aggregate.InnerExceptions.Select(error => error.Type));
+        var refusal = aggregate.InnerExceptions[0];
+        Assert.Equal(typeof(InvalidOperationException).FullName, Assert.Single(refusal.InnerExceptions).Type);
+        var snapshot = Assert.IsType<CoverageRecessionAllocationFailure>(refusal.Allocation);
+        Assert.Equal(allocation.Reason, snapshot.Reason);
+        Assert.Equal(allocation.Description, snapshot.Description);
+        Assert.Equal(allocation.Budget, snapshot.Budget);
+        Assert.Equal(allocation.ProcessBytes, snapshot.ProcessBytes);
+        Assert.Equal(allocation.ThreadBytes, snapshot.ThreadBytes);
+        Assert.Equal(allocation.OtherThreadBytes, snapshot.OtherThreadBytes);
+        Assert.Equal(allocation.ReportedMessages, snapshot.ReportedMessages);
+        Assert.Equal(new CoverageRecessionCollectionCounts(1, 2, 3), snapshot.Collections);
+        Assert.Equal(allocation.RuntimeReason, snapshot.RuntimeReason);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(details));
+        var nested = json.RootElement.GetProperty("Error").GetProperty("InnerExceptions")[0].GetProperty("InnerExceptions");
+        Assert.Equal((int)allocation.Reason, nested[0].GetProperty("Allocation").GetProperty("Reason").GetInt32());
+        Assert.Equal(3, nested[0].GetProperty("Allocation").GetProperty("Collections").GetProperty("Gen2").GetInt32());
+    }
+
     // #1762. Keep the underlying refusal visible if a pass-row mismatch check fails.
     [Theory]
     [InlineData("carry-only")]

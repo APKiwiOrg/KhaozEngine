@@ -261,6 +261,9 @@ Directional or nonzero input refuses construction instead of changing the frozen
 The recipe-local JSON resolver omits `RigidInstanceDraw.ShadowMobility` only for `Static`, preserving the
 existing rigid construction bytes and digests. `Dynamic` and other nondefault values remain authored geometry
 inputs and change geometry and construction identities. Frozen recipe files and strict comparisons stay unchanged.
+The same resolver omits the `Coverage` descriptor of `RigidInstanceDraw` and `SkinnedInstanceDraw` when no
+equipment coverage is staged. A staged descriptor is opaque frame evidence with no public state and would
+encode as an empty object, so it refuses construction instead of entering a recipe identity.
 
 A full unit has 1,200 conditioning frames,
 five scenes, both layouts, three iterations, 192 warm-up and 256 measured frames per block, and twelve

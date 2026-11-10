@@ -20,6 +20,13 @@ internal static class RendererPerfRecipeSettings
                     if (property.Name == nameof(RigidInstanceDraw.ShadowMobility))
                         property.ShouldSerialize = static (_, field) =>
                             field is ShadowCasterMobility mobility && mobility != ShadowCasterMobility.Static;
+                    else if (property.Name == nameof(RigidInstanceDraw.Coverage)) property.ShouldSerialize = NoCoverage;
+                return;
+            }
+            if (info.Type == typeof(SkinnedInstanceDraw))
+            {
+                foreach (var property in info.Properties)
+                    if (property.Name == nameof(SkinnedInstanceDraw.Coverage)) property.ShouldSerialize = NoCoverage;
                 return;
             }
             // New water defaults preserve the frozen encoding. Explicit opt-ins remain authored inputs.
@@ -79,6 +86,16 @@ internal static class RendererPerfRecipeSettings
     }
 
     static bool BoundOptics(object value, object? field) => field is WaterOpticsBinding { IsBound: true };
+
+    static bool NoCoverage(object value, object? field)
+    {
+        // Coverage descriptors did not exist in v1 and are opaque frame evidence with no public state. They would
+        // encode as an empty object, so refuse staged coverage before preserving the original draw encoding.
+        if (field is CoverageEquipmentDraw rigid && !rigid.Equals(default(CoverageEquipmentDraw))
+            || field is SkinnedCoverageFrame skinned && !skinned.Equals(default(SkinnedCoverageFrame)))
+            throw new InvalidOperationException("The frozen renderer profile cannot describe staged equipment coverage.");
+        return false;
+    }
 
     static bool LegacyIndirect(object value, object? field)
     {

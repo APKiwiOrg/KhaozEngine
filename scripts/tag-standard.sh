@@ -227,10 +227,10 @@ tag_nonpackable_test() (
 #
 # tools/ is carved out on evidence rather than by category, and the first use of this guard is what
 # found it: a dependabot bump to tools/kit-bake's npm lockfile would have been refused for not bumping
-# a version that lockfile cannot reach. Every csproj under tools/ carries IsPackable=false, no packable
-# project takes a ProjectReference on one, and the `tools/` path that DOES appear in a nupkg is
+# a version that lockfile cannot reach. Except for the distributed Coverage.Verify tool, tools projects
+# are nonpackable. No packable runtime project takes a ProjectReference on one. Another `tools/` path in a nupkg is
 # KhaozEngine.Content's PackagePath for its own validator output, not this directory. If a packable
-# project ever moves under tools/, this line is the one to revisit.
+# project ever moves under tools/, extend the package-bearing inventory below.
 #
 # Test projects are also non-packable, including the rump KhaozEngine.Tests project. No packable
 # project references them. Check their declaration at both commits before excluding a path. A new
@@ -249,6 +249,8 @@ tag_nonpackable_test() (
 # attributes change the bytes of the files they match. See tag_gitattributes_version_bearing.
 tag_version_bearing() {
   _vb_from=$1; _vb_to=$2
+  # The isolated consumer verifier ships as a dotnet tool. Its sources and project are package inputs.
+  if ! git diff --quiet "$_vb_from" "$_vb_to" -- tools/Coverage.Verify ':(exclude)*.md'; then return 0; fi
   git diff --name-only "$_vb_from" "$_vb_to" -- \
     ':(exclude)docs/**' ':(exclude)*.md' ':(exclude)scripts/**' ':(exclude)tools/**' \
     ':(exclude).github/**' ':(exclude).githooks/**' ':(exclude).claude/**' ':(exclude).codex/**' \

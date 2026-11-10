@@ -201,6 +201,7 @@ Analyzers, test kits, the Debug-only automation endpoint and author-time command
 | [KhaozEngine.PropSurface.Tool](../KhaozEngine.PropSurface.Tool/README.md) | Bakes prop collision shapes and walkable heightmaps from kit manifests. | Render3D, Physics | Opt-in |
 | [KhaozEngine.MapEdit.Tool](../KhaozEngine.MapEdit.Tool/README.md) | Map document authoring over MCP, with queries, undoable edits, prefab workflows and optional GPU captures. | MapDoc, MapDoc.Physics, MapEditor, Imaging (+ ModelContextProtocol, Microsoft.Extensions.Hosting) | Opt-in |
 | [KhaozEngine.TileEdit.Tool](../KhaozEngine.TileEdit.Tool/README.md) | Tile-world authoring over MCP, with undoable edits, heightmaps, foliage, clearance checks and optional GPU captures. | TileWorld.Editing, TileWorld.Render3D, Imaging (+ ModelContextProtocol, Microsoft.Extensions.Hosting) | Opt-in |
+| [KhaozEngine.Coverage.Tool](../tools/Coverage.Verify/README.md) | Offline equipment coverage table construction and blocking sample and whole-skin verification with `ke-coverage`. | Render3D, Attachments | Opt-in |
 
 ## Why some packages are opt-in
 

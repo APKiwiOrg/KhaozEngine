@@ -370,9 +370,13 @@ For a package-bearing change:
 One related batch gets one version bump. Item commits can remain separate, followed by one release
 commit. Commit subjects use `area(scope): summary`. A release commit uses the new version as scope.
 
-Packing is cumulative and occurs on every package-bearing finish. `scripts/pack-local-feed.sh` refuses
-to overwrite a released version unless the tree is exactly that clean tagged commit. It also refuses
-to write the shared feed until HEAD is an ancestor of current `origin/main` and the tree is clean. A
+Packing is cumulative and occurs on every package-bearing finish. The local-feed wrapper and release
+call `scripts/pack-packages.sh`, which packs the solution and the outside-solution `tools/Coverage.Verify`
+dotnet tool. Build that tool explicitly
+before using the inventory's `--no-build` option. The package catalog guard includes its nested project.
+`scripts/pack-local-feed.sh` refuses to overwrite a released version unless the tree is exactly that
+clean tagged commit. It also refuses to write the shared feed until HEAD is an ancestor of current
+`origin/main` and the tree is clean. A
 `KHAOZENGINE_FEED` that resolves outside the shared feed is the private path for a deliberate branch
 build. Once those guards pass, the wrapper packs through a fresh sibling directory and promotes only the
 guarded current version's generated `nupkg` and `snupkg` files, then removes same-version files the fresh

@@ -95,6 +95,20 @@ a nearby row. An unknown key and an explicit entry -1 are both `TableHole`.
 ## Offline construction and blocking verification
 
 [`Coverage.Verify`](../tools/Coverage.Verify/README.md) is outside the engine solution and umbrellas.
+The standard pack and release ship it as `KhaozEngine.Coverage.Tool`, command `ke-coverage`.
+Install the exact engine version from the configured engine feed:
+
+```sh
+dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHAOZENGINE_VERSION"
+.tools/ke-coverage version
+.tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json
+```
+
+Set `KHAOZENGINE_VERSION` to the engine release used by the consumer. The `version` command (also
+`--version`) prints JSON containing `engineVersion` and `carryArithmeticContractVersion` and exits 0.
+Record both with the verification evidence. The installed `build`, `verify-samples` and `verify`
+commands use the same arguments, exit codes and atomic output preservation as the source executable.
+
 Its strict manifest names exact assets, domains, every authored clip frame and the consumer's real
 blend paths. Only authored-clip domains may provide an empty `blendPathIds` array, and the strict reader
 still requires the property. Every declared frame and

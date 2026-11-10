@@ -7495,6 +7495,20 @@ three fallback paths, slot ownership, partial-weight and whole-skin checks, allo
 the blocking offline `verify` command. Sample verification is not a continuous proof. The native
 correctness and cost units have accepted evidence, which that guide records with its limits.
 
+The verifier ships as the `KhaozEngine.Coverage.Tool` dotnet tool, command `ke-coverage`, from the same
+engine feed. Install the exact engine version, then record its engine and carry arithmetic contract
+versions with the verification evidence:
+
+```sh
+dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHAOZENGINE_VERSION"
+.tools/ke-coverage version
+.tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json
+```
+
+Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. See the
+[tool README](../tools/Coverage.Verify/README.md) for all three commands and exit codes.
+
+
 ### Skinned body contracts (any body shape)
 
 A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every

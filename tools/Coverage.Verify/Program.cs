@@ -16,6 +16,7 @@ public static class Program
     {
         try
         {
+            if (args.Length == 1 && args[0] is "version" or "--version") return CoverageToolVersion.Write();
             if (args.Length != 7 || args[0] is not ("build" or "verify-samples" or "verify")) return 2;
             var options = new Dictionary<string, string>(StringComparer.Ordinal);
             for (int i = 1; i < args.Length; i += 2)

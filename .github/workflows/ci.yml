@@ -129,6 +129,7 @@ jobs:
           sh scripts/tests/hooks-file-change-guard.test.sh
           sh scripts/tests/hooks-filesize-guard.test.sh
           sh scripts/tests/pack-local-feed.test.sh
+          sh scripts/tests/pack-packages.test.sh
           sh scripts/tests/release-lock.test.sh
           sh scripts/tests/tag-collision-guard.test.sh
           sh scripts/tests/version-push-guard.test.sh
@@ -182,13 +183,15 @@ jobs:
         run: echo "Full test and determinism pass skipped, both passed in the hosted gate $REUSED_GATE_URL at $GITHUB_SHA"
       - name: Pack (full)
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-        run: dotnet pack -c Release -o ./artifacts --no-build
+        run: |
+          dotnet build tools/Coverage.Verify/Coverage.Verify.csproj -c Release
+          sh scripts/pack-packages.sh -c Release -o ./artifacts --no-build
       - name: Publish to GitHub Packages (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         # Pushes all packed packages. --skip-duplicate means only newly-versioned ones actually publish,
         # and makes each retry below safe to repeat. --timeout 1200 plus 3 attempts (60s apart) ride
         # out GitHub Packages upload slowness during degradations, instead of failing partway through
-        # the ~68 packages on the default 300s per-push timeout.
+        # the complete package set on the default 300s per-push timeout.
         run: |
           for attempt in 1 2 3; do
             if dotnet nuget push "./artifacts/*.nupkg" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate --timeout 1200; then

@@ -1,10 +1,30 @@
 # Offline coverage verification
 
-`Coverage.Verify` is a nonpackable executable outside `KhaozEngine.slnx` and every engine umbrella.
-Runtime code never references it. Public fixtures contain synthetic geometry only.
+`Coverage.Verify` ships as the `KhaozEngine.Coverage.Tool` dotnet tool, command `ke-coverage`.
+Its executable and tests stay outside `KhaozEngine.slnx` and every engine umbrella, keeping offline
+construction and process verification out of ordinary solution builds and test discovery.
+The standard `scripts/pack-packages.sh` inventory packs both the solution and this tool. The guarded
+local-feed wrapper and release publish use that inventory. No runtime package references the tool.
+Public fixtures contain synthetic geometry only.
 The living [equipment coverage guide](../../docs/EQUIPMENT-COVERAGE.md) connects this offline contract
 to runtime selection, fallback and submitted history. Native correctness and cost require separately
 approved evidence. Sample verification is not a continuous proof.
+
+Install from the configured engine package source with the same exact version as the engine. Set
+`KHAOZENGINE_VERSION` to that release before running:
+
+```sh
+dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHAOZENGINE_VERSION"
+.tools/ke-coverage version
+.tools/ke-coverage build --manifest poses.json --table coverage.kert --evidence samples.json
+.tools/ke-coverage verify-samples --manifest poses.json --table coverage.kert --evidence samples.json
+.tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json
+```
+
+`version` and `--version` return exit 0 and one JSON object with `engineVersion` and
+`carryArithmeticContractVersion`. Record both with consumer verification evidence. A malformed invocation
+returns exit 2. The three verification commands retain the same parser, output bytes, refusal codes and
+existing-output preservation as the source-built executable commands below.
 
 `CoverageExactConstructor` owns a copy of the inverse-bind palette and reusable per-pose scratch.
 `TryConstruct` skins the source, applies frozen refinement, conforms and corrects the core, blends

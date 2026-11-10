@@ -82,7 +82,7 @@ fi
 catalog=docs/PACKAGES.md
 catalog_rows=$(awk '
   /<!--/ { in_comment=1 }
-  !in_comment && /^\| \[KhaozEngine\.[A-Za-z0-9.]+\]\(\.\.\/KhaozEngine\.[A-Za-z0-9.]+\/README\.md\) \|/ {
+  !in_comment && /^\| \[KhaozEngine\.[A-Za-z0-9.]+\]\(\.\.\/[A-Za-z0-9.\/]+\/README\.md\) \|/ {
     match($0, /^\| \[[^]]+\]\(\.\.\/[^)]+\)/)
     cell = substr($0, 4, RLENGTH - 3)
     label = cell; sub(/\].*/, "", label)
@@ -92,7 +92,7 @@ catalog_rows=$(awk '
   /-->/ { in_comment=0 }
 ' "$catalog" | sort)
 packable_rows=""
-for csproj in KhaozEngine.*/KhaozEngine.*.csproj; do
+for csproj in KhaozEngine.*/KhaozEngine.*.csproj tools/Coverage.Verify/Coverage.Verify.csproj; do
   dir=$(dirname "$csproj")
   # skip non-packable projects (tests, probes, the bundled validator)
   if grep -q '<IsPackable>false</IsPackable>' "$csproj"; then continue; fi

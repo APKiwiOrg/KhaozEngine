@@ -22,7 +22,7 @@ set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SRC=$here/..
 
-for f in pack-standard.sh tag-standard.sh pack-local-feed.sh check-local-feed.sh hooks/pack-release-guard.sh; do
+for f in pack-standard.sh tag-standard.sh pack-local-feed.sh pack-packages.sh check-local-feed.sh hooks/pack-release-guard.sh; do
   [ -f "$SRC/$f" ] || { echo "pack-local-feed.test: missing script under test: $SRC/$f" >&2; exit 2; }
 done
 
@@ -48,7 +48,7 @@ newfixture() {
   FEED="$REPO/local-feed"
   AT=$REPO
   mkdir -p "$REPO/scripts/hooks" "$FEED"
-  for _f in pack-standard.sh tag-standard.sh pack-local-feed.sh check-local-feed.sh; do
+  for _f in pack-standard.sh tag-standard.sh pack-local-feed.sh pack-packages.sh check-local-feed.sh; do
     cp "$SRC/$_f" "$REPO/scripts/$_f"
   done
   cp "$SRC/hooks/pack-release-guard.sh" "$REPO/scripts/hooks/pack-release-guard.sh"

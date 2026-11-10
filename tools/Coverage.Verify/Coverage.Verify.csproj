@@ -1,11 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <IsPackable>false</IsPackable>
+    <IsPackable>true</IsPackable>
     <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ke-coverage</ToolCommandName>
+    <PackageId>KhaozEngine.Coverage.Tool</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Offline equipment coverage table construction and blocking sample and whole-skin verification.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <ProjectReference Include="../../KhaozEngine.Attachments/KhaozEngine.Attachments.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Coverage.Verify.Tests" />

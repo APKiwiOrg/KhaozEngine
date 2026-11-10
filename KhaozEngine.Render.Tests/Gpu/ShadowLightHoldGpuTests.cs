@@ -5,6 +5,7 @@ using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -22,7 +23,7 @@ namespace KhaozEngine.Tests.Gpu
     /// </list>
     /// Gated on KE_GPU_TESTS.
     /// </summary>
-    public sealed class ShadowLightHoldGpuTests
+    public sealed class ShadowLightHoldGpuTests(ITestOutputHelper output)
     {
         const int W = 320, H = 240;
         const float SunElevationDegrees = 35f;
@@ -98,6 +99,81 @@ namespace KhaozEngine.Tests.Gpu
             }
             Assert.Equal(HeldFrames, skipped);
             Assert.Equal(0, rendered);
+        }
+
+        [GpuTheory]
+        [InlineData(true, null, SceneDebugView.None, false, true)]
+        [InlineData(true, 1f, SceneDebugView.None, false, false)]
+        [InlineData(true, -1f, SceneDebugView.None, false, true)]
+        [InlineData(true, float.NaN, SceneDebugView.None, false, true)]
+        [InlineData(false, null, SceneDebugView.MotionVectors, false, false)]
+        [InlineData(false, null, SceneDebugView.None, true, false)]
+        public void The_resolve_selects_the_shadow_light_hold_budget(bool temporal, float? hold,
+            SceneDebugView debug, bool forceTemporal, bool follows)
+        {
+            using var fx = new TemporalFixture(W, H, scene =>
+            {
+                ConfigureShadowScene(scene);
+                scene.Post.Quality.AntiAliasing = temporal ? AntiAliasing.Temporal : AntiAliasing.Off;
+                if (hold is float budget) scene.Post.Temporal.ShadowLightHoldTexels = budget;
+                scene.DebugView = debug;
+                scene.ForceTemporalForTests = forceTemporal;
+            });
+            var draw = SubThresholdDraw(fx.Scene);
+            fx.Frame(draw);
+            var counts = CountSubThresholdFrames(fx, draw);
+            output.WriteLine($"temporal={temporal}, hold={hold}, debug={debug}, forceTemporal={forceTemporal}: {counts}");
+            Assert.Equal(follows ? HeldFrames : 0, counts.Rendered);
+            Assert.Equal(follows ? 0 : HeldFrames, counts.Skipped);
+        }
+
+        [GpuFact]
+        public void Switching_temporal_anti_aliasing_applies_the_other_hold_on_the_next_frame()
+        {
+            using var fx = new TemporalFixture(W, H, scene =>
+            {
+                ConfigureShadowScene(scene);
+                scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            });
+            var draw = SubThresholdDraw(fx.Scene);
+            fx.Frame(draw);
+            var before = CountSubThresholdFrames(fx, draw);
+            fx.Scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
+            var off = CountSubThresholdFrames(fx, draw);
+            fx.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            var after = CountSubThresholdFrames(fx, draw);
+            output.WriteLine($"temporal before {before}, off {off}, temporal after {after}");
+            Assert.Equal((HeldFrames, 0), before);
+            Assert.Equal((0, HeldFrames), off);
+            Assert.Equal((HeldFrames, 0), after);
+        }
+
+        static Action<Scene3D, int> SubThresholdDraw(Scene3D scene)
+        {
+            MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(40f, 0.1f));
+            MeshHandle post = scene.LoadMesh(MeshPrimitives.Box(1f));
+            return (s, frame) =>
+            {
+                s.Post.LightDirection = SunAt(frame * SubThresholdDegreesPerFrame);
+                s.Draw(floor, Matrix4x4.Identity, new Color(0.60f, 0.61f, 0.63f, 1f));
+                s.Draw(post, Matrix4x4.CreateScale(0.8f, 3f, 0.8f) * Matrix4x4.CreateTranslation(0f, 1.5f, 0f),
+                    new Color(0.20f, 0.75f, 0.25f, 1f));
+            };
+        }
+
+        static (int Rendered, int Skipped) CountSubThresholdFrames(TemporalFixture fx, Action<Scene3D, int> draw)
+        {
+            int rendered = 0, skipped = 0;
+            for (int i = 0; i < HeldFrames; i++)
+            {
+                fx.Frame(draw);
+                var d = fx.Scene.LastShadowPassDiagnostics;
+                Assert.False(d.CasterDataChanged);
+                Assert.False(d.AnySkinnedCaster);
+                if (d.Rendered) rendered++;
+                if (d.Skipped) skipped++;
+            }
+            return (rendered, skipped);
         }
 
         [GpuFact]

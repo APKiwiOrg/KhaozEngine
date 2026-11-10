@@ -6,7 +6,8 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// Settings for temporal rendering, reachable as <see cref="PixelPostProcessSettings.Temporal"/> beside
     /// <see cref="PixelPostProcessSettings.Bloom"/> and <see cref="PixelPostProcessSettings.Water"/>. It carries the
-    /// camera-cut thresholds, the upscale preset or ratio, the sharpness and the mip bias offset. The preset and ratio
+    /// camera-cut thresholds, the upscale preset or ratio, the sharpness, the mip bias offset and the sun-shadow
+    /// light hold. The preset and ratio
     /// size the internal target whenever <see cref="RenderScale.Temporal"/> is in effect, which
     /// <see cref="AntiAliasing.Temporal"/> forces and which a game can also pick directly with no temporal rendering at
     /// all. The thresholds cost nothing until something asks for temporal rendering. They decide when a camera move is
@@ -31,6 +32,17 @@ namespace KhaozEngine.Render3D
         /// continue the previous one. Default 60. A value of 180 or more turns the angle check off. NaN and negative
         /// values are caller errors. They are not validated and their behaviour is unsupported.</summary>
         public float CutAngleDegrees = 60f;
+
+        /// <summary>The shadow-map texel budget that replaces <see cref="ShadowSettings.ShadowLightHoldTexels"/>
+        /// while temporal anti-aliasing resolves the frame. Default 0, so the shadow fit follows the sun every frame
+        /// instead of moving in held steps. Positive values hold exactly as the shadow setting does, using the same
+        /// <see cref="ShadowSettings.ShadowLightHoldCasterHeight"/>. Negative and NaN values behave as zero.
+        /// <para>Following re-records the atlas whenever the sun moves, including fully static scenes that could
+        /// otherwise reuse it. Set 1 to restore the one-texel hold under temporal anti-aliasing when that saving is
+        /// needed. Fractional holds beat against the jitter cycle and are not recommended. Other anti-aliasing modes,
+        /// the motion-vector debug view alone and forced temporal rendering without the resolve keep the shadow
+        /// setting's budget.</para></summary>
+        public float ShadowLightHoldTexels = 0f;
 
         /// <summary>The smallest internal-over-display ratio <see cref="UpscaleRatio"/> accepts, 0.33 per axis, just
         /// under <see cref="TemporalUpscale.UltraPerformance"/>'s third.</summary>

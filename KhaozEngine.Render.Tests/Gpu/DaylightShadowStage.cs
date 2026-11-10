@@ -7,23 +7,45 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>A still receiver and caster from the shadow-edge rig, under a constant angular daylight rate.</summary>
-internal sealed class DaylightShadowStage(bool ridges, bool moving = true)
+internal sealed class DaylightShadowStage(bool ridges)
 {
     internal const int W = 320, H = 180, Warm = 80, Count = 129;
     internal const float DaylightDegreesPerFrame = 0.2f / 60f;
     readonly ShadowEdgeStage _edge = new(W, H, 0f, Warm);
     MeshHandle _receiver;
+    bool _loaded;
     internal static readonly Vector2 Normal = new(-MathF.Sin(Tilt), -MathF.Cos(Tilt));
     internal static readonly Vector2 Along = new(MathF.Cos(Tilt), -MathF.Sin(Tilt));
     const float Tilt = ShadowEdgeStage.TiltDegrees * MathF.PI / 180f;
 
     internal void Setup(Scene3D scene, AntiAliasing aa, TemporalUpscale preset, float hold)
     {
-        _edge.Setup(scene, aa, preset, hold);
+        if (!_loaded)
+        {
+            _edge.Setup(scene, aa, preset, hold);
+            if (ridges)
+                _receiver = scene.LoadMesh(_edge.Stage.PanelMesh(0.8f), scene.LoadTexture(
+                    TexturedShadowGrainCase.RidgeTexture(), FrontStage.TextureSize, FrontStage.TextureSize));
+            _loaded = true;
+        }
+        scene.Post.UseSmoothPreset();
+        scene.Post.RenderScale = RenderScale.MatchViewport;
+        scene.Post.Quality.AntiAliasing = aa;
+        scene.Post.Temporal = new TemporalSettings { Upscale = preset };
+        scene.Post.TransparentBackground = false;
+        scene.Post.BackgroundColor = new Color(0.04f, 0.05f, 0.07f, 1f);
         scene.Post.AmbientColor = new Color(0.03f, 0.03f, 0.03f, 1f);
-        if (ridges)
-            _receiver = scene.LoadMesh(_edge.Stage.PanelMesh(0.8f), scene.LoadTexture(
-                TexturedShadowGrainCase.RidgeTexture(), FrontStage.TextureSize, FrontStage.TextureSize));
+        scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+        scene.Post.Quality.Shadows.ShadowLightHoldTexels = hold;
+        scene.Camera.Azimuth = 0f;
+        scene.Camera.Elevation = 0f;
+        scene.Camera.AspectRatio = (float)W / H;
+        scene.Camera.OrthoSize = ShadowEdgeStage.OrthoSize;
+        scene.Camera.Target = Vector3.Zero;
+        scene.Camera.Zoom = 1f;
+        scene.Camera.Distance = ShadowEdgeStage.CameraDistance;
+        scene.DebugView = SceneDebugView.None;
+        scene.ForceTemporalForTests = false;
     }
 
     internal object Geometry()
@@ -46,7 +68,7 @@ internal sealed class DaylightShadowStage(bool ridges, bool moving = true)
             PredictedInterval = threshold / (DaylightDegreesPerFrame * MathF.PI / 180) };
     }
 
-    internal void Draw(Scene3D scene, int n)
+    internal void Draw(Scene3D scene, int n, bool moving)
     {
         float angle = MathF.PI / 4f + (moving ? n - Warm : 0) * DaylightDegreesPerFrame * MathF.PI / 180f;
         scene.Post.LightDirection = new Vector3(0f, -MathF.Sin(angle), -MathF.Cos(angle));

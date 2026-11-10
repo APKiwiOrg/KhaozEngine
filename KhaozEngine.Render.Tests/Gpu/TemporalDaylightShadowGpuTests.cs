@@ -9,7 +9,8 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Daylight shadow following and its held control against a contemporaneous spatial reference.</summary>
 [Collection("AllocSensitive")]
-public sealed class TemporalDaylightShadowGpuTests(ITestOutputHelper output)
+public sealed class TemporalDaylightShadowGpuTests(DaylightShadowScene scene, ITestOutputHelper output)
+    : IClassFixture<DaylightShadowScene>
 {
     [GpuTheory, InlineData(TemporalUpscale.Native), InlineData(TemporalUpscale.Quality)]
     public void A_daylight_shadow_edge_creeps_without_re_fit_pops(TemporalUpscale preset)
@@ -44,21 +45,18 @@ public sealed class TemporalDaylightShadowGpuTests(ITestOutputHelper output)
     (DaylightShadowMeasure.Result Following, DaylightShadowMeasure.Result Held, DaylightShadowMeasure.Result Reference)
         Measure(TemporalUpscale preset, bool ridges)
     {
-        var stage = new DaylightShadowStage(ridges);
-        byte[][] frames = TemporalAcceptance.ReferenceSequence(DaylightShadowStage.W, DaylightShadowStage.H,
-            s => stage.Setup(s, AntiAliasing.Off, TemporalUpscale.Native, 0f), stage.Draw,
-            DaylightShadowStage.Warm, DaylightShadowStage.Count, factor: 4);
+        byte[][] frames = scene.Run(ridges, TemporalUpscale.Native, reference: true).Frames;
         var reference = DaylightShadowMeasure.Measure(frames, frames, new bool[frames.Length]);
         Print(preset, ridges, "reference", reference);
-        var following = Capture(stage, frames, preset, ridges, "following");
-        var held = Capture(stage, frames, preset, ridges, "held", temporalHold: 1f);
+        var following = Capture(frames, preset, ridges, "following");
+        var held = Capture(frames, preset, ridges, "held", temporalHold: 1f);
         output.WriteLine($"{preset}, ridges={ridges}: largest-change ratios F/R={following.MaxChange / reference.MaxChange:R}, "
             + $"H/R={held.MaxChange / reference.MaxChange:R}, F/H={following.MaxChange / held.MaxChange:R}, "
             + $"RMS F/H={following.RmsPixels / held.RmsPixels:R}");
         if (ridges)
         {
             // S uses the moving reference's band and stable-pixel mask, matching F, H and R exactly.
-            var still = Capture(new DaylightShadowStage(ridges: true, moving: false), frames, preset, ridges, "still");
+            var still = Capture(frames, preset, ridges, "still", moving: false);
             double budget = reference.MaxChange + still.MaxChange;
             output.WriteLine($"{preset}: report-only additive ridged budget max(R)+max(S)={budget:R}, "
                 + $"max(F)/budget={following.MaxChange / budget:R}, "
@@ -67,27 +65,32 @@ public sealed class TemporalDaylightShadowGpuTests(ITestOutputHelper output)
         return (following, held, reference);
     }
 
-    DaylightShadowMeasure.Result Capture(DaylightShadowStage stage, byte[][] reference, TemporalUpscale preset,
-        bool ridges, string name, float? temporalHold = null)
+    [GpuFact]
+    public void An_aged_daylight_scene_matches_a_fresh_scene_after_configuration_changes()
     {
-        using var fx = new TemporalFixture(DaylightShadowStage.W, DaylightShadowStage.H, s =>
-        {
-            stage.Setup(s, AntiAliasing.Temporal, preset, 1f);
-            if (temporalHold is float hold) s.Post.Temporal.ShadowLightHoldTexels = hold;
-        });
-        fx.Frames(DaylightShadowStage.Warm, stage.Draw);
-        var frames = new byte[DaylightShadowStage.Count][];
-        var refits = new bool[frames.Length];
+        scene.Run(false, TemporalUpscale.Native, temporalHold: 1f);
+        scene.Run(true, TemporalUpscale.Native, reference: true);
+        scene.Run(true, TemporalUpscale.Balanced, moving: false);
+        scene.Run(false, TemporalUpscale.Quality, temporalHold: 1f);
+        DaylightShadowScene.Capture aged = scene.Run(true, TemporalUpscale.Quality);
+        using var fresh = new DaylightShadowScene();
+        DaylightShadowScene.Capture expected = fresh.Run(true, TemporalUpscale.Quality);
+        Assert.NotEmpty(expected.Frames);
+        Assert.Equal(expected.Frames.Length, aged.Frames.Length);
+        Assert.Equal(expected.Refits, aged.Refits);
+        for (int i = 0; i < expected.Frames.Length; i++) Assert.Equal(expected.Frames[i], aged.Frames[i]);
+        output.WriteLine($"Aged/fresh parity: {aged.Frames.Length} frames and re-fit flags match byte for byte.");
+    }
+
+    DaylightShadowMeasure.Result Capture(byte[][] reference, TemporalUpscale preset,
+        bool ridges, string name, float? temporalHold = null, bool moving = true)
+    {
+        DaylightShadowScene.Capture capture = scene.Run(ridges, preset, temporalHold, moving);
+        var measured = DaylightShadowMeasure.Measure(capture.Frames, reference, capture.Refits);
         int count = 0;
-        for (int i = 0; i < frames.Length; i++)
-        {
-            frames[i] = fx.Frame(stage.Draw);
-            refits[i] = fx.Scene.LastShadowPassDiagnostics.LightMatrixChanged;
-            if (refits[i]) count++;
-        }
-        var measured = DaylightShadowMeasure.Measure(frames, reference, refits);
-        output.WriteLine($"{preset} {name}, {fx.Device.Backend} on {fx.Device.Capabilities.DeviceName}: "
-            + $"{count}/{frames.Length} re-fits, geometry {JsonSerializer.Serialize(stage.Geometry())}");
+        foreach (bool refit in capture.Refits) if (refit) count++;
+        output.WriteLine($"{preset} {name}, {scene.Backend} on {scene.DeviceName}: "
+            + $"{count}/{capture.Frames.Length} re-fits, geometry {JsonSerializer.Serialize(scene.Geometry(ridges))}");
         Print(preset, ridges, name, measured);
         return measured;
     }

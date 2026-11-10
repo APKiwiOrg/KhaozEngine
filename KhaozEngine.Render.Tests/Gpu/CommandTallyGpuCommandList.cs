@@ -33,6 +33,8 @@ namespace KhaozEngine.Tests.Gpu
         public IGpuCommandList Inner { get; }
         IGpuComputePipeline? computePipeline;
         internal Action<IGpuComputePipeline?, bool>? ComputeDispatchObserver { get; set; }
+        internal Action<uint?>? ClearObserver { get; set; }
+        internal Action? CommandCompletedObserver { get; set; }
 
         /// <summary>Commands counted since the last <see cref="Clear"/>.</summary>
         public GpuCommandTally Tally { get; } = new();
@@ -99,49 +101,57 @@ namespace KhaozEngine.Tests.Gpu
         {
             Count(GpuCommandKind.SetFramebuffer);
             Inner.SetFramebuffer(fb);
+            CommandCompletedObserver?.Invoke();
         }
 
         public void ClearColorTarget(uint index, Color rgba)
         {
             Count(GpuCommandKind.ClearColorTarget);
             Inner.ClearColorTarget(index, rgba);
+            ClearObserver?.Invoke(index);
         }
 
         public void ClearDepthStencil(float depth)
         {
             Count(GpuCommandKind.ClearDepthStencil);
             Inner.ClearDepthStencil(depth);
+            ClearObserver?.Invoke(null);
         }
 
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
             Count(GpuCommandKind.Draw);
             Inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
+            CommandCompletedObserver?.Invoke();
         }
 
-        public void Draw(uint vertexCount) { Count(GpuCommandKind.Draw); Inner.Draw(vertexCount); }
+        public void Draw(uint vertexCount) { Count(GpuCommandKind.Draw); Inner.Draw(vertexCount); CommandCompletedObserver?.Invoke(); }
 
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
         {
             Count(GpuCommandKind.DrawIndexed);
             Inner.DrawIndexed(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
+            CommandCompletedObserver?.Invoke();
         }
 
         public void CopyTexture(IGpuTexture src, IGpuTexture dst)
         {
             Count(GpuCommandKind.CopyTexture);
             Inner.CopyTexture(src, dst);
+            CommandCompletedObserver?.Invoke();
         }
 
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
         {
             Count(GpuCommandKind.ResolveTexture);
             Inner.ResolveTexture(src, dst);
+            CommandCompletedObserver?.Invoke();
         }
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource)
         {
             Count(GpuCommandKind.ResolveTexture);
             Inner.ResolveTexture(src, dst, preserveSource);
+            CommandCompletedObserver?.Invoke();
         }
 
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
@@ -161,10 +171,10 @@ namespace KhaozEngine.Tests.Gpu
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes)
             => Inner.CopyBuffer(src, srcOffsetBytes, dst, dstOffsetBytes, sizeInBytes);
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height)
-            => Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, width, height);
+        { Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, width, height); CommandCompletedObserver?.Invoke(); }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
             IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
-            => Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer, width, height);
+        { Inner.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer, width, height); CommandCompletedObserver?.Invoke(); }
         public void GenerateMipmaps(IGpuTexture texture) => Inner.GenerateMipmaps(texture);
         public void SetComputePipeline(IGpuComputePipeline p) { computePipeline = p; Inner.SetComputePipeline(p); }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => Inner.SetComputeResourceSet(slot, set);

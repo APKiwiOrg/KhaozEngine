@@ -299,7 +299,7 @@ hardware. Hosted benchmark dispatch forwards its optional `coverage-cost-unit` i
 and ordinary shard filters exclude this fact even without Diagnostic filtering. Do not use a broad
 Diagnostic selection as cost-unit authorization. See [performance evidence](RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).
 
-Cost schema `khaozengine.coverage-recession-cost/2` retains the original carry-only, baseline-scene and
+Cost schema `khaozengine.coverage-recession-cost/3` retains the original carry-only, baseline-scene and
 covered-scene rows at one and 32 actors. Only the original scene pair supplies the 1.3 ms GPU and 2 ms
 CPU preparation checks. All rows retain the zero warm managed allocation check. Additional rows ending
 in `-passes` enable the existing CPU recording buckets with `Scene3D.EnableTiming` and bracket the
@@ -311,11 +311,39 @@ Samples retain begin/end marker indices for audit against their raw ticks. `Unsc
 is the outer total minus exclusive pass times, including inter-pass gaps, marker overhead and the End tail.
 Skipped callbacks retain zero-duration metadata without GPU markers.
 
-Pass observations are separate because timestamp markers can split Metal encoders and a registered
-observer preserves cascade working depth/stencil stores. Their aggregate times cannot replace the
+Pass observations are separate because timestamp markers can split Metal encoders and change the
+resulting load/store work. Their aggregate times cannot replace the
 unobserved scene pair. Cold layout discovery precedes the existing conditioning schedule. Layout drift
 refuses the row. Resolution, aggregation, readback and drains remain outside measured frame regions.
 Carry dispatch brackets remain available beside the pass observations.
+
+These are native stream brackets around logical recording scopes, not isolated draw costs. On Metal a
+timestamp closes an open encoder but leaves pending attachment clears untouched. A later draw can
+consume earlier scopes' colour, motion, visibility or depth clears as native load actions. Flushing them
+at their logical closing marker would add a clear-only render pass with its own tile load/store work,
+so the observations preserve the original fusion.
+
+Every interval has `MetalClearAttributionAvailable`. When true, `AbsorbedDeferredClears` names each
+encoded clear's request ordinal, source scope and begin marker, attachment, and consuming scope.
+Provenance comes from recorded clear commands and a read-only query of successful native clear
+consumption, without recognizing scope names. Replaced requests and failed native pass begins do not
+count as executed clears. Inclusive parents repeat their children's records, with `ConsumedBy` naming
+the innermost owner. Do not add those records or durations twice. `UnscopedDeferredClears` retains work
+flushed only by native End or between scopes. False availability means the backend does not supply this
+Metal-specific provenance, rather than proving that no work was deferred.
+
+Framebuffer load/store intent is also declarative. Loads execute when the native render encoder opens
+and stores when it ends. Their cost stays inside those native intervals. A marker can therefore add a
+store and a later load. Pipeline, resource, vertex-stream, viewport and scissor state invalidated at that
+boundary is re-emitted by the next consuming draw or dispatch. Those costs are part of the bracket.
+An explicit MSAA resolve opens and closes its own native pass before returning, so its resolve work is
+bracketed there, while pending clears remain pending. Texture copies flush pending clears first and
+receive their clear annotations. Buffer copies, compute dispatches and mip generation do not perform
+that clear flush. A subsequent draw, framebuffer replacement or End can still consume those clears.
+None of these annotations separates shader execution from native load/store, resolve or state work.
+The existing cost driver's counting wrapper uses the interface's default framebuffer-store fallback,
+so it records default store actions. This instrumentation preserves that recording policy. It does not
+establish the cost of the scene owner's dead-attachment discard optimization.
 
 The diagnostic `covered-scene-fast-vertex` row and its `-passes` counterpart use the init-only internal
 `Scene3D.DisableCoverageVertexPreciseMathForTests` seam. It disables the coverage graphics compile

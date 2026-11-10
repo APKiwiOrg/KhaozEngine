@@ -78,6 +78,7 @@ internal static class CoverageRecessionCostMeasurement
         CoverageRecessionStageTiming.StageSample[] StageGpuMicroseconds,
         CoverageRecessionPassTiming.PassSample[] PassGpuMicroseconds, Scene3DPassTimingsMs CpuPassRecordingMs)
     {
+        public CoverageRecessionPassTiming.ClearAbsorption[] UnscopedDeferredClears { get; init; } = [];
         public double? UnscopedGpuMicroseconds => PassGpuMicroseconds.Length == 0 ? null
             : GpuMicroseconds - PassGpuMicroseconds.Sum(p => p.ExclusiveGpuMicroseconds);
     }
@@ -93,6 +94,9 @@ internal static class CoverageRecessionCostMeasurement
             Pass = g.Key,
             ExecutedFrames = g.Count(p => p.Executed),
             FusedMotionFrames = g.Count(p => p.FusedMotion),
+            MetalClearAttributionAvailable = g.All(p => p.MetalClearAttributionAvailable),
+            AbsorbedDeferredClears = g.SelectMany(p => p.AbsorbedDeferredClears).GroupBy(c => c)
+                .Select(c => new { Clear = c.Key, Frames = c.Count() }).ToArray(),
             InclusiveGpuMicroseconds = Stats(g.Select(p => p.InclusiveGpuMicroseconds)),
             ExclusiveGpuMicroseconds = Stats(g.Select(p => p.ExclusiveGpuMicroseconds)),
         }).ToArray();
@@ -156,14 +160,16 @@ internal static class CoverageRecessionCostMeasurement
                 passTiming = new(observer.CarryStages);
                 scene.Scene.EnableTiming = true;
                 scene.Scene.PassObserver = passTiming;
-                foreach (var list in commands) list.ComputeDispatchObserver = passTiming.Dispatch;
+                foreach (var list in commands)
+                { list.ComputeDispatchObserver = passTiming.Dispatch; passTiming.AttachCommands(list); }
                 // Discover only after native targets and the lazy point owner have been built.
                 // These cold submitted frames precede the unchanged conditioning schedule.
                 for (int frame = 0; frame < BatchFrames; frame++)
                 {
                     passTiming.Discover(); scene.Prepare(frame);
                     commands[0].Clear(); native[0].Begin(); scene.Render(commands[0]);
-                    passTiming.Complete(); native[0].End(); scene.Submission.Submit(native[0]); device.WaitForIdle();
+                    passTiming.Complete(); native[0].End(); passTiming.CompleteNativeEnd(native[0]);
+                    scene.Submission.Submit(native[0]); device.WaitForIdle();
                 }
                 passTiming.Freeze(capacity);
                 markerCount = passTiming.MarkerCount;
@@ -228,6 +234,7 @@ internal static class CoverageRecessionCostMeasurement
                 cpuPassRecording[id] = scene.Scene.PassTimingsMs;
                 ((IGpuCommandListTimestampEnd)native[slot]).FinishTimestampsOnEnd(pool, markerCount - 1);
                 native[slot].End();
+                passTiming?.CompleteNativeEnd(native[slot]);
                 encodeBytes = GC.GetAllocatedBytesForCurrentThread() - allocation;
                 cpuEncode[id] = Stopwatch.GetElapsedTime(before).TotalMicroseconds;
             }
@@ -279,12 +286,15 @@ internal static class CoverageRecessionCostMeasurement
                 var time = timestamps[id] ?? throw new InvalidOperationException("A timestamp sample is missing.");
                 Assert.True(time.Valid); Assert.True(time.Ticks[^1] > 0);
                 var passes = passTiming?.Resolve(id, time.Ticks, time.Period!.Value) ?? [];
+                if (passTiming is not null && device.Backend == GpuBackendKind.MetalNative)
+                    Assert.All(passes, pass => Assert.True(pass.MetalClearAttributionAvailable));
                 samples[i] = new(i, id, time.Ticks[^1] * time.Period!.Value / 1000, cpuPrepare[id], cpuEncode[id], cpuSubmit[id],
                     allocated[id], dispatches[id], draws[id], time.Ticks.ToArray(), time.Period.Value,
                     passTiming is null ? CoverageRecessionStageTiming.Resolve(time.Ticks, time.Period.Value)
                         : passes.Where(p => p.Pass.Id.StartsWith("carry.", StringComparison.Ordinal))
                             .Select(p => new CoverageRecessionStageTiming.StageSample(p.Pass.Id[6..], p.InclusiveGpuMicroseconds)).ToArray(),
-                    passes, cpuPassRecording[id]);
+                    passes, cpuPassRecording[id])
+                { UnscopedDeferredClears = passTiming?.UnscopedDeferredClears(id) ?? [] };
             }
             var final = samples.Select(s => s!).ToArray();
             int k = batch?.SlotsPerActor ?? GpuRetireQueue.FramesInFlightFor(device) + 2;

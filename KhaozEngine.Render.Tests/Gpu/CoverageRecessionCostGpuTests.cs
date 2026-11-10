@@ -52,7 +52,7 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
         }).ToArray();
         string json = JsonSerializer.Serialize(new
         {
-            schema = "khaozengine.coverage-recession-cost/2",
+            schema = "khaozengine.coverage-recession-cost/3",
             fixture = fixture.Extents,
             code = new
             {
@@ -77,7 +77,8 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
             candidateBytesPerVertex = 64,
             dispatchSchedule = CoverageRecessionCostMeasurement.DispatchSchedule,
             carryPreciseMath = true,
-            passTiming = "Layouts ending in -passes are separate observations with Scene3D.EnableTiming and PassObserver GPU timestamps. Observer markers split native encoders and preserve cascade depth/stencil stores. Primary deltas use only baseline-scene and covered-scene. Pass rows include inclusive and exclusive GPU distributions, skipped status and fused motion. Do not add parent and child intervals.",
+            passTiming = "Layouts ending in -passes are separate observations with Scene3D.EnableTiming and PassObserver GPU timestamps. Observer markers split native encoders and change where load/store work runs. The counting wrapper retains default store actions. Primary deltas use only baseline-scene and covered-scene. Pass rows include inclusive and exclusive GPU distributions, skipped status and fused motion. Do not add parent and child intervals.",
+            deferredClears = "Metal observations name actual absorbed attachment clears, their source scope and consuming scope. Other backends explicitly mark this provenance unavailable. Native load/store actions and encoder-state re-emission remain in the interval that encodes them. End-only consumption is UnscopedDeferredClears. No early clear flush is inserted.",
             vertexMathExperiment = "Layouts containing -fast-vertex disable only coverage graphics PreciseMath through an internal cold scene setting. Shader sources and precise carry compute are unchanged. These rows are diagnostic, not arithmetic or image acceptance evidence.",
             rows,
             deltas,

@@ -55,15 +55,30 @@ Each carry-only and covered sample also reports named `StageGpuMicroseconds` for
 Basis, Gather and Publish, with per-stage distributions on its row. These brackets surround only
 the dispatches and share the outer frame's timestamp pool. The outer total includes uniform uploads,
 all stage markers and completed-End finalization. The primary baseline row keeps only its outer timestamps.
-Schema `khaozengine.coverage-recession-cost/2` adds separate baseline, covered and fast-vertex pass
+Schema `khaozengine.coverage-recession-cost/3` adds separate baseline, covered and fast-vertex pass
 observations at each actor count. `PassGpuMicroseconds` contains inclusive and exclusive min, median,
 p95, p99 and max, with execution counts and fused-motion counts. Samples retain raw ticks and pass
 metadata and marker indices. Skipped callbacks retain metadata without markers. `UnscopedGpuMicroseconds`
 reports the outer total less exclusive pass times. `CpuPassRecordingMs` contains the separate
 `Scene3D.EnableTiming` CPU buckets.
+Metal markers close encoders without forcing pending clears. A logical clear scope's closing tick can
+precede its native clear, whose load action then executes with the next draw. The observations preserve
+this fusion instead of inserting an extra clear-only pass. For intervals with
+`MetalClearAttributionAvailable`, `AbsorbedDeferredClears` records the actual clear request, its source
+scope and marker, attachment and consuming scope. Successful native clear consumption supplies the
+evidence, rather than scope-name matching or inferred tick gaps. Parent annotations are inclusive and
+`ConsumedBy` identifies the innermost owner. End-only and between-scope consumption is retained in
+`UnscopedDeferredClears`. False availability identifies absent backend provenance, not zero deferral.
+Read these annotations before calling an interval draw work. Deferred loads, encoder-ending stores and
+state re-emission remain part of the native bracket. Explicit resolves complete their encoder sequence
+within their scope but leave pending clears untouched. Texture copies flush those clears and are labelled
+when they consume them. Buffer copies, dispatches and mip generation leave them pending. The full
+[boundary semantics](EQUIPMENT-COVERAGE.md#verification-boundaries) describe those cases.
+The counting wrapper retains its existing default framebuffer-store fallback. These measurements do not
+cover the scene owner's dead-attachment discard optimization, and the new provenance does not alter it.
 The original `baseline-scene` and `covered-scene` pair alone supplies the unchanged GPU and CPU
 criteria. All seven layouts require zero warm allocation. Pass timing changes native encoder boundaries
-and cascade stores, so pass-row totals are observational. Do not add parent and child inclusive times.
+and resulting load/store work, so pass-row totals are observational. Do not add parent and child inclusive times.
 The covered fast-vertex rows change only the coverage graphics precise compile option through an internal
 cold test setting. Carry compute stays precise and shader sources stay fixed. Their output is a policy
 experiment, not native arithmetic or image approval. Timestamp resolution and evidence readback stay

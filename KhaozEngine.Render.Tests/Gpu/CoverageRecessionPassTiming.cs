@@ -11,7 +11,26 @@ namespace KhaozEngine.Tests.Gpu;
 internal sealed class CoverageRecessionPassTiming(IReadOnlyDictionary<IGpuComputePipeline, int> stages) : IRenderPassObserver
 {
     internal sealed record PassSample(RenderPassKey Pass, bool Executed, bool FusedMotion, uint BeginMarker, uint EndMarker,
-        double InclusiveGpuMicroseconds, double ExclusiveGpuMicroseconds);
+        double InclusiveGpuMicroseconds, double ExclusiveGpuMicroseconds)
+    {
+        public ClearAbsorption[] AbsorbedDeferredClears { get; init; } = [];
+        public bool MetalClearAttributionAvailable { get; init; }
+    }
+    internal sealed record ClearAbsorption(RenderPassKey Source, string Attachment, RenderPassKey ConsumedBy)
+    {
+        public int Request { get; init; }
+        public uint? SourceBeginMarker { get; init; }
+    }
+    readonly Stack<int> active = [];
+    CoverageRecessionDeferredClears? deferred;
+    int CurrentScope() => active.TryPeek(out int index) ? index : -1;
+    internal void AttachCommands(CommandTallyGpuCommandList list)
+    {
+        deferred ??= new(CurrentScope);
+        list.ClearObserver = colour => deferred.Cleared(list.Inner, colour);
+        list.CommandCompletedObserver = () => deferred.Observe(list.Inner);
+    }
+    internal void CompleteNativeEnd(IGpuCommandList list) => deferred?.Observe(list);
     readonly record struct Boundary(RenderPassKey Pass, bool Begin, bool Executed, uint Marker);
     readonly List<Boundary> layout = [];
     readonly RenderPassKey[] carry = CoverageRecessionCostMeasurement.DispatchSchedule.Select(s => new RenderPassKey("carry." + s)).ToArray();
@@ -24,7 +43,7 @@ internal sealed class CoverageRecessionPassTiming(IReadOnlyDictionary<IGpuComput
     internal uint MarkerCount => checked(markers + 2);
 
     internal void Discover()
-    { discovering = true; layout.Clear(); next = 0; markers = 0; }
+    { discovering = true; layout.Clear(); next = 0; markers = 0; active.Clear(); deferred?.Discover(); }
 
     internal void Freeze(int capacity)
     {
@@ -33,26 +52,37 @@ internal sealed class CoverageRecessionPassTiming(IReadOnlyDictionary<IGpuComput
             throw new InvalidOperationException("The coverage pass layout is empty or exceeds the frame pool capacity.");
         executed = Enumerable.Range(0, capacity).Select(_ => new bool[layout.Count]).ToArray();
         fused = Enumerable.Range(0, capacity).Select(_ => new bool[layout.Count]).ToArray();
+        deferred?.Freeze(capacity);
     }
 
     internal void BeginFrame(IGpuCommandList list, IGpuTimestampPool timestamps, int id)
-    { commands = list; pool = timestamps; sample = id; next = 0; }
+    { commands = list; pool = timestamps; sample = id; next = 0; active.Clear(); deferred?.BeginFrame(list, id); }
 
     internal void Complete()
     {
-        if (next != layout.Count) throw new InvalidOperationException("The coverage pass layout changed after cold discovery.");
+        if (next != layout.Count || active.Count != 0) throw new InvalidOperationException("The coverage pass layout changed after cold discovery.");
         commands = null; pool = null;
     }
 
     void Mark(RenderPassKey key, bool begin, bool runs)
     {
-        if (discovering) { layout.Add(new(key, begin, runs, runs ? ++markers : markers)); next++; return; }
+        if (discovering)
+        {
+            layout.Add(new(key, begin, runs, runs ? ++markers : markers));
+            if (runs) { if (begin) active.Push(next); else active.Pop(); }
+            next++; return;
+        }
         if (commands is null || pool is null || next >= layout.Count || layout[next].Pass != key
             || layout[next].Begin != begin || layout[next].Executed != runs)
             throw new InvalidOperationException("The coverage pass layout changed after cold discovery.");
         executed[sample][next] = runs;
         fused[sample][next] = false;
-        if (runs) commands.WriteTimestamp(pool, layout[next].Marker);
+        if (runs)
+        {
+            if (begin) active.Push(next);
+            commands.WriteTimestamp(pool, layout[next].Marker);
+            if (!begin) active.Pop();
+        }
         next++;
     }
 
@@ -86,9 +116,30 @@ internal sealed class CoverageRecessionPassTiming(IReadOnlyDictionary<IGpuComput
             if (stack.TryPeek(out int parent)) children[parent] += inclusive;
             bool runs = executed[id][start];
             result.Add(new(layout[start].Pass, runs, fused[id][start], layout[start].Marker, layout[i].Marker, runs ? inclusive : 0,
-                runs ? inclusive - children[start] : 0));
+                runs ? inclusive - children[start] : 0)
+            {
+                MetalClearAttributionAvailable = deferred?.Available(id) == true,
+                AbsorbedDeferredClears = ClearMetadata(id, start, i),
+            });
         }
         if (stack.Count != 0) throw new InvalidOperationException("Coverage pass scopes are unbalanced.");
+        return result.ToArray();
+    }
+
+    internal ClearAbsorption[] UnscopedDeferredClears(int id) => ClearMetadata(id, -1, -1);
+    ClearAbsorption[] ClearMetadata(int id, int begin, int end)
+    {
+        if (deferred is null) return [];
+        var result = new List<ClearAbsorption>();
+        foreach (var item in deferred.For(id))
+        {
+            if (begin < 0 ? item.Consumer >= 0 : item.Consumer < begin || item.Consumer >= end) continue;
+            var origin = item.Clear;
+            result.Add(new(origin.Scope < 0 ? new("unscoped") : layout[origin.Scope].Pass,
+                origin.Attachment < 0 ? "depth/stencil" : "colour[" + origin.Attachment + "]",
+                item.Consumer < 0 ? new("frame.finalization-or-unscoped") : layout[item.Consumer].Pass)
+            { Request = origin.Request, SourceBeginMarker = origin.Scope < 0 ? null : layout[origin.Scope].Marker });
+        }
         return result.ToArray();
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Gpu.Performance;
@@ -13,6 +14,38 @@ namespace KhaozEngine.Tests.Gpu;
 [Collection("AllocSensitive")]
 public sealed class CoverageRecessionWarmAllocationTests(ITestOutputHelper output)
 {
+    [Fact]
+    public void Warm_metal_clear_provenance_records_without_managed_allocation()
+    {
+        using var harness = new MetalRingHarness();
+        using var native = harness.NewList(new object());
+        using var target = new RecordedFramebuffer();
+        var provenance = new CoverageRecessionDeferredClears(static () => 0);
+        native.Begin(); native.SetFramebuffer(target); provenance.Discover();
+        native.ClearColorTarget(0, Color.Black); provenance.Cleared(native, 0);
+        native.Passes.PrepareDraw(); provenance.Observe(native); native.End(); provenance.Freeze(1);
+        native.Begin(); native.SetFramebuffer(target); provenance.BeginFrame(native, 0);
+        native.ClearColorTarget(0, Color.Black);
+        long cleared, consumed;
+        // The existing native fakes allocate trace strings. Only the actual annotation work is protected.
+        using (AllocationRegion.Start("Metal clear request provenance"))
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            provenance.Cleared(native, 0);
+            cleared = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        native.Passes.PrepareDraw();
+        using (AllocationRegion.Start("Metal clear consumption provenance"))
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            provenance.Observe(native);
+            consumed = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        native.End();
+        Assert.Single(provenance.For(0).ToArray());
+        Assert.Equal((0L, 0L), (cleared, consumed));
+    }
+
     [Fact]
     public void Warm_outline_queue_stays_allocation_free_after_a_collection()
     {

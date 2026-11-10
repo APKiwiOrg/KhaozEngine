@@ -33,6 +33,24 @@ public sealed class CoverageRecessionDrawInventoryTests(ITestOutputHelper output
         Assert.Equal(new(!covered, covered, covered && !disablePrecise), main.Key);
         Assert.Equal(actors, main.Value.DrawCalls);
         Assert.Equal((ulong)actors * (ulong)(covered ? fixture.Topology.TriangleCount * 3 : fixture.Mesh.Indices.Length), main.Value.SubmittedElements);
+        CheckFamily(covered ? "shadow.cascade.coverage" : "shadow.cascade.gpu-skinned",
+            scene.Scene.Post.Quality.Shadows.ResolvedCascadeCount, actors);
+        CheckFamily("shadow.point.dynamic.gpu-skinned", 6, actors);
+        CheckFamily("outline.mask", actors, 1);
+        CheckFamily("outline.visible-mask", actors, 1);
+        void CheckFamily(string id, int occurrences, int drawsPerOccurrence)
+        {
+            var passes = inventory.Passes.Where(p => p.Key.Id == id && p.Value.Draws.Count > 0).ToArray();
+            Assert.Equal(occurrences, passes.Length);
+            Assert.Equal(occurrences, passes.Select(p => p.Key.Occurrence).Distinct().Count());
+            foreach (var pass in passes)
+            {
+                var count = Assert.Single(pass.Value.Draws);
+                Assert.Equal(new(!covered, covered, covered && !disablePrecise), count.Key);
+                Assert.Equal(drawsPerOccurrence, count.Value.DrawCalls);
+                Assert.Equal((ulong)drawsPerOccurrence * (ulong)(covered ? fixture.Topology.TriangleCount * 3 : fixture.Mesh.Indices.Length), count.Value.SubmittedElements);
+            }
+        }
         var hostPasses = inventory.Passes.Where(p => p.Value.Draws.Keys.Any(d => d.Coverage)).ToArray();
         if (covered)
         {

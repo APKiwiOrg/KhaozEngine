@@ -6,7 +6,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 23.6.1
 
-2026-11-10
+2026-11-11
 
 - Stop still thin features at steep and grazing angles from repeatedly tripping TAA's colour-based shading release.
   A still pixel whose prior shimmer record shows flicker, and whose exported key-shadow visibility did not move,
@@ -14,6 +14,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   fire, so repeated false releases build the evidence that vetoes the next one. Passing shadows, motion, reactive
   content and Balanced keep their existing release. A real light step over an already flickering pixel settles no
   slower than before. Native and Quality both change, with no new storage, attachment or binding.
+- Prevent surface swimmers from sticking at an internal diagonal of a continuous sloped tile-water bank, while
+  retaining the one-millimetre coverage budget and conservative refusal at real boundaries (#1761).
 
 ## 23.6.0
 

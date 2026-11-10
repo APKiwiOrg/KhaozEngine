@@ -78,7 +78,7 @@ Most projects need one reference. Each umbrella package carries no code of its o
 | [`KhaozEngine.Foundation`](KhaozEngine.Foundation/README.md) | A gameplay logic library or tool: the GPU-free foundation only |
 
 ```xml
-<PackageReference Include="KhaozEngine.Game3D" Version="23.7.0" />
+<PackageReference Include="KhaozEngine.Game3D" Version="23.8.0" />
 ```
 
 Granular packages can be referenced directly or added beside an umbrella, for example `KhaozEngine.Game2D`

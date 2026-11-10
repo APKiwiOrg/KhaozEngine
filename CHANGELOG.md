@@ -4,6 +4,19 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.8.0
+
+2026-11-11
+
+- Standard `GameApp3D` scenes share the window frame submission, enabling equipment coverage from
+  `OnDraw3D` with history committed only after successful submission.
+- Shared GPU retirement defers sealing when completion storage is full. The existing drain bound
+  releases the complete holding without resetting or disposing borrowed host fences.
+- Tile-world scene adapters expose attachment coverage through the same resource owner used by
+  attachment caches and preserve full equipment and outline descriptors.
+- The offline verifier ships as the `KhaozEngine.Coverage.Tool` dotnet tool, command `ke-coverage`.
+  Its version command reports the engine and carry arithmetic contract versions used by verification.
+
 ## 23.7.0
 
 2026-11-11

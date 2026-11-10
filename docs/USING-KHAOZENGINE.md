@@ -626,7 +626,7 @@ Both callbacks run on a render-suppressed frame, so simulation keeps advancing w
 the same seam: everything through `OnUpdate` and the diagnostics-HUD tick runs in the prepare phase and ends on
 `OnPrepareWorld(Frame)`. `OnRenderWorld(Frame)` and the 2D / UI / overlay passes run in the record phase. The
 order a game sees is unchanged (`OnUpdate` still precedes `OnDraw3D`, which still precedes the 2D passes).
-`GameApp3D` runs `Scene.Begin()` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame(width, height)` with the frame size
+`GameApp3D` runs `Scene.BeginFrame(frame.Submission)` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame(width, height)` with the frame size
 in `OnPrepareWorld`, leaving
 `Surface3D.Render(frame)` in `OnRenderWorld` - so `Render3DSurface.Render`'s own `PrepareFrame` call finds the
 frame already prepared and no-ops, which is exactly what its documented idempotency is for. Override
@@ -783,7 +783,7 @@ no way out but quitting. Two mechanisms, both on by default and neither needing 
 
 `GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam
 `OnDraw3D(Scene3D scene)`. It overrides both world seams to run the 3D pass behind the 2D HUD: `OnPrepareWorld`
-does `Scene.Begin()` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame(width, height)` in the frame's pre-record phase, and
+does `Scene.BeginFrame(frame.Submission)` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame(width, height)` in the frame's pre-record phase, and
 `OnRenderWorld` records it with `Surface3D.Render(frame)` (see "The frame's pre-record phase" above). A scene that
 draws 3D implements `IGameScene3D` (`void OnDraw3D(Scene3D scene)`), and the app's `OnDraw3D` calls the
 `SceneManager.Draw3D(scene)` extension to render the visible scene set.
@@ -7478,7 +7478,10 @@ unchanged, including coverage tokens and borrowed skinned palettes. A missing or
 returns `TableHole` with no prepared equipment draws. Explicitly draw the uncovered current host and
 ordinary equipment on refusal.
 
-Join the existing `GpuFrameSubmission` through `Scene3D.BeginFrame(submission)`, queue all actors and
+`GameApp3D` joins the window frame's existing submission automatically. Queue coverage actors in
+`OnDraw3D` without beginning or submitting another frame.
+
+Custom hosts join the existing `GpuFrameSubmission` through `Scene3D.BeginFrame(submission)`, queue all actors and
 prepare before opening the host list. The scene registers one aggregate participant for all actors.
 Only successful submission commits coverage history. Dispose the submission owner before bindings,
 then dispose bindings before caches and scenes. Legacy attachment adapters retain ordinary equipment

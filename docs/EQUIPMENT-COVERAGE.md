@@ -167,7 +167,14 @@ the same actor motion key and draws ordinary active equipment. `PreparedEquipmen
 hole, so forwarding that span alone would silently drop equipment. `CoverageFailureFor(actor)` reports
 later scene-side publication refusals. Binding failures retain their original returned identifiers.
 
-`SubmitFrame` begins the existing `GpuFrameSubmission`, calls `Scene3D.BeginFrame(submission)`, queues
+`GameApp3D` begins its scene with the window frame's existing `Frame.Submission` before `OnDraw3D`,
+then prepares it before opening that frame's command list. Call the example's `Queue` from `OnDraw3D`.
+The window submits once and commits history only after successful submission. Exceptions abandon the
+recording. Minimized frames skip the scene callbacks. A zero viewport keeps legacy no-argument preparation.
+Shared retirement defers sealing when completion capacity is full. Its later fence only extends retention.
+Sealed batches plus consecutive deferrals share the queue's drain bound, counted by `ValveDrains`.
+
+For a custom host, `SubmitFrame` begins the existing `GpuFrameSubmission`, calls `Scene3D.BeginFrame(submission)`, queues
 all actors, and calls `PrepareFrame` before opening the host command list. The caller supplies its
 existing render callback and the list is submitted once through that same owner. Cache callbacks if a
 frame loop must avoid delegate allocation. Coverage registers one scene-owned aggregate participant
@@ -191,6 +198,10 @@ At teardown, dispose the submission owner first to drain retained work. Dispose 
 attachment caches and scenes, then release the host command list and device. The example owns only its
 binding and borrows all other resources. Follow the host's normal command-list cleanup on recording
 failure. Do not reuse an unsealed recording after an exception.
+
+The standard `GameApp3D` teardown instead disposes its scene before the window. Scene disposal drains
+submitted work before releasing coverage and retirement resources, leaving the window owner to release
+its own fences afterward. Dispose consumer bindings and caches before calling the base scene teardown.
 
 ## Runtime carry, refusal and history
 

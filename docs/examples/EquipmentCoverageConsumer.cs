@@ -38,6 +38,7 @@ public sealed class EquipmentCoverageConsumer : IDisposable
         return true;
     }
 
+    // Under GameApp3D call Queue from OnDraw3D. The host already joined Frame.Submission and prepares on return.
     // The caller supplies its resolved opaque key and every host material descriptor for this pose.
     // The return value describes preparation. Query Scene3D.CoverageFailureFor after scene preparation
     // for later publication refusals. Queue once per actor between BeginFrame and PrepareFrame.
@@ -82,6 +83,7 @@ public sealed class EquipmentCoverageConsumer : IDisposable
             else scene.DrawMesh(draw.Rigid);
     }
 
+    // Custom hosts only. GameApp3D already owns this loop and must not call SubmitFrame from OnDraw3D.
     // Call once for the scene, with cached callbacks for an allocation-sensitive host. recordScene is
     // the host's existing surface/render callback and must not begin, end or submit this list itself.
     public static void SubmitFrame(Scene3D scene, GpuFrameSubmission submission, IGpuCommandList commands,

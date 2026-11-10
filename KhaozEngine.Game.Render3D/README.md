@@ -4,9 +4,11 @@ The 3D integration for `KhaozEngine.Game`, split out so a 2D game pulls **no 3D 
 
 - **`GameApp3D : GameApp`** - a `GameApp` that builds a `Render3DSurface` and drives the 3D pass across the frame's
   two phases, before the 2D HUD. Subclass it and override `OnDraw3D(Scene3D)`.
-  - In `OnPrepareWorld` (the pre-record phase, before the frame's command list opens): `Scene.Begin()` ->
+  - In `OnPrepareWorld` (the pre-record phase, before the frame's command list opens): `Scene.BeginFrame(frame.Submission)` ->
     `OnDraw3D(Scene)` -> `Scene.PrepareFrame(frame.Width, frame.Height)`, the viewport-aware form that also
-    prepares bound optical water. A frame with no size falls back to `Scene.PrepareFrame()`. So `OnDraw3D` runs
+    prepares bound optical water. The existing window owner commits coverage history only after its successful
+    submission and abandons it on failure. No additional command list, submission owner or submit is created.
+    A frame with no size falls back to `Scene.PrepareFrame()`. So `OnDraw3D` runs
     after `OnUpdate` on the same frame, as it always did, but now at a point where a producer may still submit
     GPU work on a command list of its own. That is what the FFT ocean's priming pass needs, and nesting it inside
     the frame's recording is refused by the seam on every backend

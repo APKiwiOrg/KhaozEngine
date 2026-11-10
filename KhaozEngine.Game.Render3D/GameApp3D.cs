@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -8,7 +9,7 @@ namespace KhaozEngine.Game
 {
     /// <summary>
     /// A <see cref="GameApp"/> that also stands up a 3D scene: it builds a <see cref="Render3DSurface"/> bound to
-    /// the window, and drives the 3D pass across the frame's two phases - <c>Scene.Begin()</c> ->
+    /// the window, and drives the 3D pass across the frame's two phases - <c>Scene.BeginFrame(frame.Submission)</c> ->
     /// <see cref="OnDraw3D"/> -> <c>Scene.PrepareFrame(width, height)</c> in <see cref="GameApp.OnPrepareWorld"/>, then the
     /// compose in <see cref="GameApp.OnRenderWorld"/>, before the 2D HUD pass. A 3D game subclasses this instead of
     /// <see cref="GameApp"/> and overrides <see cref="OnDraw3D"/>; a 2D game uses <see cref="GameApp"/> and pulls
@@ -38,7 +39,7 @@ namespace KhaozEngine.Game
         /// <summary>The 3D scene (<see cref="Surface3D"/>.Scene).</summary>
         protected Scene3D Scene => _surface3D.Scene;
 
-        /// <summary>Submit 3D instances. <see cref="Scene"/>'s <c>Begin()</c> is already called when this runs. Runs in
+        /// <summary>Submit 3D instances. The scene has joined the window frame's submission when this runs. Runs in
         /// the frame's PRE-RECORD phase (after <c>OnUpdate</c>, before the frame's command list opens), so it sees this
         /// frame's simulation state and may still open a command list of its own.</summary>
         protected virtual void OnDraw3D(Scene3D scene) { }
@@ -71,11 +72,12 @@ namespace KhaozEngine.Game
             DiagnosticsHud? hud = Diagnostics;
             if (DesiredEnableTiming(hud) is { } enableTiming) _surface3D.Scene.EnableTiming = enableTiming;
 
-            PrepareScene(_surface3D.Scene, _drawWorld, frame.Width, frame.Height);
+            PrepareScene(_surface3D.Scene, _drawWorld, frame.Width, frame.Height, frame.Submission);
         }
 
         /// <summary>
-        /// The frame's scene contract in one place: <see cref="Scene3D.Begin"/>, then the queue fill, then
+        /// The frame's scene contract in one place: <see cref="Scene3D.BeginFrame"/> with the window submission,
+        /// then the queue fill, then
         /// <see cref="Scene3D.PrepareFrame(int, int)"/> for a positive viewport, or the legacy
         /// <see cref="Scene3D.PrepareFrame()"/> when none is given. It runs where no command list is open, so a
         /// producer that must submit and drain a list of its own (the FFT ocean's priming pass) does it here rather
@@ -87,9 +89,11 @@ namespace KhaozEngine.Game
         /// real window.
         /// </para>
         /// </summary>
-        internal static void PrepareScene(Scene3D scene, Action<Scene3D> drawWorld, int viewportWidth = 0, int viewportHeight = 0)
+        internal static void PrepareScene(Scene3D scene, Action<Scene3D> drawWorld, int viewportWidth = 0, int viewportHeight = 0,
+            GpuFrameSubmission? submission = null)
         {
-            scene.Begin();
+            if (submission is null) scene.Begin();
+            else scene.BeginFrame(submission);
             drawWorld(scene);
             if (viewportWidth > 0 && viewportHeight > 0) scene.PrepareFrame(viewportWidth, viewportHeight);
             else scene.PrepareFrame();

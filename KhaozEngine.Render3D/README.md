@@ -147,6 +147,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   bindings and temporal display targets use that queue too. This includes cached depth bindings for decals,
   particles, distortion and water. `BeginFrame(frame.Submission)` shares the host
   completion fence in its prepare phase, avoiding the standalone `Begin()` queue's extra submission.
+  `GameApp3D` uses the window frame's existing owner automatically, so coverage can be queued from
+  `OnDraw3D`. Shared retirement defers when completion capacity is full, with the
+  [queue's drain bound](../KhaozEngine.Gpu/README.md), rather than terminating the host frame.
 - `Scene3D.LoadSurfaceMaps` uploads each present glTF material map transactionally. A later upload failure
   retires the maps already created. `UnloadSurfaceMaps(in maps)` releases each distinct valid map handle
   through the same deferred queue. Unload the meshes that reference a map bundle first. All-absent bundles

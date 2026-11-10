@@ -10,16 +10,15 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class CoverageRecessionDrawInventoryTests(ITestOutputHelper output)
 {
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void Body_size_scene_reports_indexed_baseline_and_pulled_corners_per_pass(bool covered, bool disablePrecise)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Body_size_scene_reports_indexed_baseline_and_pulled_corners_per_pass(bool covered)
     {
         const int actors = 32;
         var fixture = new CoverageRecessionBodySizeFixture(33, 24, 2, 103, true);
         using var inert = new CoveragePublicationDevice();
         using var device = new CoverageRecessionObservedDevice(inert);
-        using var scene = new CoverageRecessionNativeScene(device, fixture, actors, covered, disablePrecise);
+        using var scene = new CoverageRecessionNativeScene(device, fixture, actors, covered);
         using var inventory = new CoverageRecessionDrawInventory(device);
         scene.Scene.PassObserver = inventory;
         for (int frame = 0; frame < 3; frame++)
@@ -30,7 +29,7 @@ public sealed class CoverageRecessionDrawInventoryTests(ITestOutputHelper output
         scene.AssertPublished();
         string mainPass = covered ? "opaque.coverage" : "opaque.gpu-skinned";
         var main = Assert.Single(inventory.Passes[new RenderPassKey(mainPass)].Draws);
-        Assert.Equal(new(!covered, covered, covered && !disablePrecise), main.Key);
+        Assert.Equal(new(!covered, covered, covered), main.Key);
         Assert.Equal(actors, main.Value.DrawCalls);
         Assert.Equal((ulong)actors * (ulong)(covered ? fixture.Topology.TriangleCount * 3 : fixture.Mesh.Indices.Length), main.Value.SubmittedElements);
         CheckFamily(covered ? "shadow.cascade.coverage" : "shadow.cascade.gpu-skinned",
@@ -46,7 +45,7 @@ public sealed class CoverageRecessionDrawInventoryTests(ITestOutputHelper output
             foreach (var pass in passes)
             {
                 var count = Assert.Single(pass.Value.Draws);
-                Assert.Equal(new(!covered, covered, covered && !disablePrecise), count.Key);
+                Assert.Equal(new(!covered, covered, covered), count.Key);
                 Assert.Equal(drawsPerOccurrence, count.Value.DrawCalls);
                 Assert.Equal((ulong)drawsPerOccurrence * (ulong)(covered ? fixture.Topology.TriangleCount * 3 : fixture.Mesh.Indices.Length), count.Value.SubmittedElements);
             }
@@ -62,7 +61,7 @@ public sealed class CoverageRecessionDrawInventoryTests(ITestOutputHelper output
             Assert.All(hostPasses.SelectMany(p => p.Value.Draws).Where(d => d.Key.Coverage), d =>
             {
                 Assert.False(d.Key.Indexed);
-                Assert.Equal(!disablePrecise, d.Key.VertexPreciseMath);
+                Assert.True(d.Key.VertexPreciseMath);
                 Assert.True(d.Value.SubmittedElements > 0);
             });
         }
@@ -72,7 +71,6 @@ public sealed class CoverageRecessionDrawInventoryTests(ITestOutputHelper output
             schema = "khaozengine.coverage-draw-inventory/1",
             actors,
             covered,
-            disableVertexPreciseMath = disablePrecise,
             fixture = fixture.Extents,
             boundary = "Innermost pass only. SubmittedElements counts vertex references for indexed draws and corners for pulled draws, multiplied by instances. It does not count distinct vertex shader invocations. Binding changes compare logical requested handles and offsets, not native encoder invalidations.",
             passes = inventory.Passes.Select(p => new

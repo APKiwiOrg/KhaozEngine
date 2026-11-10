@@ -6,7 +6,6 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class PointShadowRenderer
 {
-    internal GpuShaderCompileOptions CoverageVertexOptions { get; set; } = new(PreciseMath: true);
     CoveragePulledResources? _coveragePull;
     IGpuShaderSet[] _coverageShaders = [];
     IGpuPipeline[] _coveragePipelines = [];
@@ -28,9 +27,9 @@ internal sealed partial class PointShadowRenderer
             var pipelines = new IGpuPipeline[3];
             try
             {
-                shaders[0] = factory.CreateShadersFromSpirv(ShaderSources.CoveragePointVert, ShaderSources.PointShadowRigidFrag, CoverageVertexOptions);
-                shaders[1] = factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveFrag, CoverageVertexOptions);
-                shaders[2] = factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveInvertedFrag, CoverageVertexOptions);
+                shaders[0] = factory.CreateShadersFromSpirv(ShaderSources.CoveragePointVert, ShaderSources.PointShadowRigidFrag, new(PreciseMath: true));
+                shaders[1] = factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveFrag, new(PreciseMath: true));
+                shaders[2] = factory.CreateShadersFromSpirv(ShaderSources.CoveragePointDissolveVert, ShaderSources.PointShadowSkinnedDissolveInvertedFrag, new(PreciseMath: true));
                 for (int i = 0; i < 3; i++) pipelines[i] = factory.CreateGraphicsPipeline(new()
                 {
                     BlendAttachments = [GpuBlendAttachment.OverrideBlend],

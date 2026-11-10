@@ -16,9 +16,9 @@ internal static class CoverageRecessionCostMeasurement
 {
     internal const int ConditioningFrames = 96;
     internal const int BatchFrames = 3;
-    internal static readonly string[] Layouts = ["carry-only", "baseline-scene", "covered-scene", "covered-scene-fast-vertex",
-        "carry-only-outer", "covered-scene-outer",
-        "baseline-scene-passes", "covered-scene-passes", "covered-scene-fast-vertex-passes"];
+    internal static readonly string[] Layouts = ["carry-only", "baseline-scene", "covered-scene",
+        "carry-only-outer", "covered-scene-outer", "carry-only-inline-outer", "covered-scene-inline-outer",
+        "baseline-scene-passes", "covered-scene-passes", "covered-scene-inline-passes"];
     internal static string[] DispatchSchedule => CoverageCarryShaders.Kernels.Select(kernel => kernel.Name["CoverageCarry".Length..]).ToArray();
 
     internal static IEnumerable<(int Start, int Count, bool Reverse)> Schedule(int count)
@@ -27,36 +27,74 @@ internal static class CoverageRecessionCostMeasurement
             yield return (start, Math.Min(BatchFrames, count - start), start / BatchFrames % 2 != 0);
     }
 
-    internal static Row[] Measure(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, int observed, long deadline)
+    internal sealed record Measurement(Row[] Rows, CoverageRecessionUnavailableRow[] UnavailableRows);
+
+    internal static Measurement Measure(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, int observed, long deadline,
+        IReadOnlyList<string>? layouts = null)
     {
-        var rows = Layouts.Select(layout => new Driver(device, fixture, actors, layout, observed)).ToArray();
+        var rows = new Driver?[(layouts ?? Layouts).Count];
+        var unavailable = new List<CoverageRecessionUnavailableRow>();
+        var results = new List<Row>();
         try
         {
+            for (int i = 0; i < rows.Length; i++)
+            {
+                string layout = (layouts ?? Layouts)[i];
+                try { rows[i] = new Driver(device, fixture, actors, layout, observed); }
+                catch (CoverageRecessionRowException error) { Unavailable(error); }
+            }
             Run(ConditioningFrames, retain: false);
             Run(observed, retain: true);
-            return rows.Select(row => row.Result()).ToArray();
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (rows[i] is not { } row) continue;
+                try { results.Add(row.Result()); }
+                catch (CoverageRecessionRowException error) { Drop(i, error); }
+            }
+            return new(results.ToArray(), unavailable.ToArray());
         }
-        finally { foreach (var row in rows) row.Dispose(); }
+        finally { foreach (var row in rows) row?.Dispose(); }
 
+        void Unavailable(CoverageRecessionRowException error)
+        {
+            if (IsAcceptance(error.Layout)) throw error;
+            unavailable.Add(CoverageRecessionUnavailableRow.From(error));
+        }
+        void Drop(int index, CoverageRecessionRowException error)
+        {
+            Unavailable(error);
+            rows[index]!.Dispose(); rows[index] = null;
+        }
         void Run(int count, bool retain)
         {
             foreach (var batch in Schedule(count))
-            {
                 for (int index = 0; index < rows.Length; index++)
                 {
-                    var row = rows[batch.Reverse ? rows.Length - index - 1 : index];
-                    for (int i = 0; i < batch.Count; i++)
+                    int ordinal = batch.Reverse ? rows.Length - index - 1 : index;
+                    if (rows[ordinal] is not { } row) continue;
+                    try
                     {
+                        for (int i = 0; i < batch.Count; i++)
+                        {
+                            row.Frame(batch.Start + i, retain, deadline);
+                        }
+                        // No waits, readbacks, timestamp resolution or oracle work inside measured frames.
+                        device.WaitForIdle();
                         CheckDeadline(deadline);
-                        row.Frame(batch.Start + i, retain);
+                        row.Harvest(deadline);
                     }
-                    // No waits, readbacks, timestamp resolution or oracle work inside measured frames.
-                    device.WaitForIdle();
-                    CheckDeadline(deadline);
-                    row.Harvest(deadline);
+                    catch (Exception error) { Drop(ordinal, row.Failure(error)); }
                 }
-            }
         }
+    }
+
+    internal static bool IsAcceptance(string layout) => layout is "carry-only" or "baseline-scene" or "covered-scene";
+
+    internal static double? DiagnosticDifference(IReadOnlyList<Row> rows, int actors, string plus, string minus)
+    {
+        var a = rows.SingleOrDefault(r => r.Actors == actors && r.Layout == plus);
+        var b = rows.SingleOrDefault(r => r.Actors == actors && r.Layout == minus);
+        return a is null || b is null ? null : a.GpuMicroseconds.Median - b.GpuMicroseconds.Median;
     }
 
     internal static void CheckDeadline(long deadline)
@@ -88,7 +126,7 @@ internal static class CoverageRecessionCostMeasurement
         Statistics CpuEncodingMicroseconds, Statistics CpuSubmissionMicroseconds, Statistics WarmManagedBytes, Sample[] Samples)
     {
         public bool PassTimingEnabled => Layout.EndsWith("-passes", StringComparison.Ordinal);
-        public bool CoverageVertexPreciseMath => !Layout.Contains("-fast-vertex", StringComparison.Ordinal);
+        public bool InlinePreciseHelpers => Layout.Contains("-inline-", StringComparison.Ordinal);
         public Statistics? UnscopedGpuMicroseconds => PassTimingEnabled ? Stats(Samples.Select(s => s.UnscopedGpuMicroseconds!.Value)) : null;
         public object[] PassGpuMicroseconds => Samples.SelectMany(s => s.PassGpuMicroseconds).GroupBy(p => p.Pass).Select(g => (object)new
         {
@@ -111,18 +149,24 @@ internal static class CoverageRecessionCostMeasurement
 
     internal sealed class Driver : IDisposable
     {
+        internal bool OmitCarryRecordingForTests { get; init; }
         internal (long Preparation, long Opening, long Encoding, long Submission) LastAllocation { get; private set; }
         readonly IGpuDevice device;
-        readonly CoverageRecessionNativeScene scene;
+        readonly CoverageRecessionObservedDevice observer;
+        readonly int actors;
+        string phase = "conditioning";
+        int frameNumber = -1, recordingSlot = -1, currentSlot = -1;
+        bool disposed;
+        readonly CoverageRecessionNativeScene scene = null!;
         readonly string layout;
         readonly bool carry, baseline, staged;
         readonly CoverageRecessionPassTiming? passTiming;
         readonly Scene3DPassTimingsMs[] cpuPassRecording;
         readonly CoverageCarryBatch? batch;
         readonly GpuRetireQueue? retired;
-        readonly IGpuCommandList[] native;
-        readonly CommandTallyGpuCommandList[] commands;
-        readonly GpuPerfTimestampRing ring;
+        readonly IGpuCommandList[] native = new IGpuCommandList[BatchFrames];
+        readonly CommandTallyGpuCommandList[] commands = new CommandTallyGpuCommandList[BatchFrames];
+        readonly GpuPerfTimestampRing ring = null!;
         readonly CoverageRecessionStageTiming stageTiming;
         readonly uint markerCount;
         readonly Sample?[] samples;
@@ -138,56 +182,75 @@ internal static class CoverageRecessionCostMeasurement
 
         internal Driver(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, string layout, int observed)
         {
-            var observer = new CoverageRecessionObservedDevice(device);
-            this.device = device = observer; this.layout = layout; this.observed = observed;
-            stageTiming = new(observer.CarryStages);
-            carry = layout.StartsWith("carry-only", StringComparison.Ordinal);
-            baseline = layout.StartsWith("baseline-scene", StringComparison.Ordinal);
-            staged = !baseline && !layout.EndsWith("-outer", StringComparison.Ordinal) && !layout.EndsWith("-passes", StringComparison.Ordinal);
-            scene = new(device, fixture, actors, !baseline, layout.Contains("-fast-vertex", StringComparison.Ordinal));
-            if (carry)
+            observer = new CoverageRecessionObservedDevice(device, layout.Contains("-inline-", StringComparison.Ordinal));
+            this.device = device = observer; this.layout = layout; this.observed = observed; this.actors = actors;
+            try
             {
-                retired = GpuRetireQueue.CreateFrameCounted(device, 3);
-                batch = new(device, retired);
-                batch.Reserve(actors, fixture.Source.Vertices.Count * actors, fixture.Topology.VertexCount * actors, fixture.Topology.TriangleCount * actors);
-            }
-            int capacity = ConditioningFrames + observed;
-            cpuPassRecording = new Scene3DPassTimingsMs[capacity];
-            samples = new Sample[observed]; timestamps = new GpuPerfTimestampResult[capacity];
-            cpuPrepare = new double[capacity]; cpuEncode = new double[capacity]; cpuSubmit = new double[capacity];
-            allocated = new long[capacity]; dispatches = new int[capacity]; draws = new int[capacity];
-            slots = new int[actors];
-            lastSurfaces = new CoverageSurfaceRange[actors];
-            native = Enumerable.Range(0, BatchFrames).Select(_ => device.Factory.CreateCommandList()).ToArray();
-            commands = native.Select(list => new CommandTallyGpuCommandList(list)).ToArray();
-            if (layout.EndsWith("-passes", StringComparison.Ordinal))
-            {
-                passTiming = new(observer.CarryStages);
-                scene.Scene.EnableTiming = true;
-                scene.Scene.PassObserver = passTiming;
-                foreach (var list in commands)
-                { list.ComputeDispatchObserver = passTiming.Dispatch; passTiming.AttachCommands(list); }
-                // Discover only after native targets and the lazy point owner have been built.
-                // These cold submitted frames precede the unchanged conditioning schedule.
-                for (int frame = 0; frame < BatchFrames; frame++)
+                stageTiming = new(observer.CarryStages);
+                carry = layout.StartsWith("carry-only", StringComparison.Ordinal);
+                baseline = layout.StartsWith("baseline-scene", StringComparison.Ordinal);
+                staged = !baseline && !layout.EndsWith("-outer", StringComparison.Ordinal) && !layout.EndsWith("-passes", StringComparison.Ordinal);
+                scene = new(device, fixture, actors, !baseline);
+                if (carry)
                 {
-                    passTiming.Discover(); scene.Prepare(frame);
-                    commands[0].Clear(); native[0].Begin(); scene.Render(commands[0]);
-                    passTiming.Complete(); native[0].End(); passTiming.CompleteNativeEnd(native[0]);
-                    scene.Submission.Submit(native[0]); device.WaitForIdle();
+                    retired = GpuRetireQueue.CreateFrameCounted(device, 3);
+                    batch = new(device, retired);
+                    batch.Reserve(actors, fixture.Source.Vertices.Count * actors, fixture.Topology.VertexCount * actors, fixture.Topology.TriangleCount * actors);
                 }
-                passTiming.Freeze(capacity);
-                markerCount = passTiming.MarkerCount;
+                int capacity = ConditioningFrames + observed;
+                cpuPassRecording = new Scene3DPassTimingsMs[capacity];
+                samples = new Sample[observed]; timestamps = new GpuPerfTimestampResult[capacity];
+                cpuPrepare = new double[capacity]; cpuEncode = new double[capacity]; cpuSubmit = new double[capacity];
+                allocated = new long[capacity]; dispatches = new int[capacity]; draws = new int[capacity];
+                slots = new int[actors];
+                lastSurfaces = new CoverageSurfaceRange[actors];
+                for (int i = 0; i < BatchFrames; i++)
+                { native[i] = device.Factory.CreateCommandList(); commands[i] = new(native[i]); }
+                if (layout.EndsWith("-passes", StringComparison.Ordinal))
+                {
+                    passTiming = new(observer.CarryStages);
+                    scene.Scene.EnableTiming = true;
+                    scene.Scene.PassObserver = passTiming;
+                    foreach (var list in commands)
+                    { list.ComputeDispatchObserver = passTiming.Dispatch; passTiming.AttachCommands(list); }
+                    // Discover only after native targets and the lazy point owner have been built.
+                    // These cold submitted frames precede the unchanged conditioning schedule.
+                    for (int frame = 0; frame < BatchFrames; frame++)
+                    {
+                        frameNumber = frame; passTiming.Discover(); scene.Prepare(frame); RequirePublished();
+                        currentSlot = 0; commands[0].Clear(); recordingSlot = 0; native[0].Begin(); scene.Render(commands[0]);
+                        passTiming.Complete(); native[0].End(); recordingSlot = -1; passTiming.CompleteNativeEnd(native[0]);
+                        scene.Submission.Submit(native[0]); device.WaitForIdle();
+                    }
+                    passTiming.Freeze(capacity);
+                    markerCount = passTiming.MarkerCount;
+                }
+                else
+                {
+                    markerCount = staged ? CoverageRecessionStageTiming.MarkerCount : 2;
+                    if (staged) foreach (var list in commands) list.ComputeDispatchObserver = stageTiming.Dispatch;
+                }
+                frameNumber = -1; currentSlot = -1;
+                stageTiming.Reset(); passTiming?.ResetCarryBrackets();
+                ring = new(device, capacity, markerCount, (id, result) => timestamps[id] = result);
             }
-            else
+            catch (Exception error)
             {
-                markerCount = staged ? CoverageRecessionStageTiming.MarkerCount : 2;
-                if (staged) foreach (var list in commands) list.ComputeDispatchObserver = stageTiming.Dispatch;
+                var failure = Failure(error);
+                Dispose();
+                throw failure;
             }
-            ring = new(device, capacity, markerCount, (id, result) => timestamps[id] = result);
         }
 
-        internal void Frame(int frame, bool retain)
+        internal void Frame(int frame, bool retain, long deadline = long.MaxValue)
+        {
+            frameNumber = frame; phase = retain ? "observed" : "conditioning"; currentSlot = -1;
+            stageTiming.Reset(); passTiming?.ResetCarryBrackets();
+            try { CheckDeadline(deadline); FrameCore(frame, retain); }
+            catch (Exception error) { throw Failure(error); }
+        }
+
+        void FrameCore(int frame, bool retain)
         {
             int id = next++, slot = id % BatchFrames;
             long before;
@@ -212,7 +275,7 @@ internal static class CoverageRecessionCostMeasurement
                         if (!staged) throw new CoverageFrameStateException(failure);
                     }
                 }
-                else scene.Prepare(frame);
+                else { scene.Prepare(frame); RequirePublished(); }
                 prepareBytes = GC.GetAllocatedBytesForCurrentThread() - allocation;
                 cpuPrepare[id] = Stopwatch.GetElapsedTime(before).TotalMicroseconds;
             }
@@ -221,7 +284,7 @@ internal static class CoverageRecessionCostMeasurement
             using (AllocationRegion.Start("coverage recording begin", enabled: retain))
             {
                 long allocation = GC.GetAllocatedBytesForCurrentThread();
-                commands[slot].Clear(); native[slot].Begin();
+                currentSlot = slot; commands[slot].Clear(); recordingSlot = slot; native[slot].Begin();
                 if (!ring.TryBegin(native[slot], scene.Submission, id, markerCount, out pool)) throw new InvalidOperationException(ring.Failure);
                 if (passTiming is not null) passTiming.BeginFrame(native[slot], pool, id);
                 else if (staged) stageTiming.Begin(native[slot], pool);
@@ -232,13 +295,16 @@ internal static class CoverageRecessionCostMeasurement
             {
                 long allocation = GC.GetAllocatedBytesForCurrentThread();
                 before = Stopwatch.GetTimestamp();
-                if (carry) batch!.Record(commands[slot]);
-                else scene.Render(commands[slot]);
+                if (!OmitCarryRecordingForTests)
+                {
+                    if (carry) batch!.Record(commands[slot]);
+                    else scene.Render(commands[slot]);
+                }
                 if (passTiming is not null) passTiming.Complete();
-                else if (staged) stageTiming.Complete();
+                else if (staged && !stageTiming.Complete()) throw Failure(null, CoverageRecessionRowRefusal.CarryBracketsIncomplete);
                 cpuPassRecording[id] = scene.Scene.PassTimingsMs;
                 ((IGpuCommandListTimestampEnd)native[slot]).FinishTimestampsOnEnd(pool, markerCount - 1);
-                native[slot].End();
+                native[slot].End(); recordingSlot = -1;
                 passTiming?.CompleteNativeEnd(native[slot]);
                 encodeBytes = GC.GetAllocatedBytesForCurrentThread() - allocation;
                 cpuEncode[id] = Stopwatch.GetElapsedTime(before).TotalMicroseconds;
@@ -276,6 +342,12 @@ internal static class CoverageRecessionCostMeasurement
 
         internal void Harvest(long deadline)
         {
+            try { HarvestCore(deadline); }
+            catch (Exception error) { throw Failure(error); }
+        }
+
+        void HarvestCore(long deadline)
+        {
             foreach (var wait in ring.AwaitAvailability(Stopwatch.GetTimestamp, deadline))
                 Assert.True(wait.Wait.Ready);
             ring.PollCompleted();
@@ -283,6 +355,12 @@ internal static class CoverageRecessionCostMeasurement
         }
 
         internal Row Result()
+        {
+            try { return ResultCore(); }
+            catch (Exception error) { throw Failure(error); }
+        }
+
+        Row ResultCore()
         {
             Assert.Equal(ConditioningFrames + observed, next); Assert.True(ring.CompleteBlock(), ring.Failure);
             for (int i = 0; i < observed; i++)
@@ -316,8 +394,13 @@ internal static class CoverageRecessionCostMeasurement
                 void Check(uint start, int frame)
                 {
                     int entry = frame % 3 == 2 ? -1 : frame % 2;
-                    CoverageRecessionComputeGpuTests.AssertWords(scene.Fixture,
-                        words.AsSpan((int)start, scene.Fixture.Topology.VertexCount * 16).ToArray(), 0, entry, Vector3.UnitZ, 1, Vector3.Zero);
+                    try
+                    {
+                        CoverageRecessionComputeGpuTests.AssertWords(scene.Fixture,
+                            words.AsSpan((int)start, scene.Fixture.Topology.VertexCount * 16).ToArray(), 0, entry, Vector3.UnitZ, 1, Vector3.Zero);
+                    }
+                    catch (Xunit.Sdk.XunitException error)
+                    { throw Failure(error, CoverageRecessionRowRefusal.ArithmeticMismatch); }
                 }
             }
             return new(layout, scene.ActorCount, k, surfaceBytes,
@@ -327,12 +410,34 @@ internal static class CoverageRecessionCostMeasurement
                 Stats(final.Select(s => s.CpuSubmissionMicroseconds)), Stats(final.Select(s => (double)s.WarmManagedBytes)), final);
         }
 
+        void RequirePublished()
+        {
+            if (baseline || carry) return;
+            foreach (var owner in scene.Owners)
+                if (!owner.Request.Published) throw Failure(null, CoverageRecessionRowRefusal.CoverageNotPublished);
+        }
+
+        internal CoverageRecessionRowException Failure(Exception? error, CoverageRecessionRowRefusal reason = CoverageRecessionRowRefusal.OperationFailed)
+        {
+            if (error is CoverageRecessionRowException detailed) return detailed;
+            return new(layout, actors, phase, frameNumber, reason,
+                passTiming?.CarryBracketsSeen ?? stageTiming?.BracketsSeen ?? 0, staged || passTiming is not null && !baseline ? 10 : 0,
+                currentSlot < 0 ? 0 : commands[currentSlot]?.Tally[GpuCommandKind.Dispatch] ?? 0,
+                scene is null || carry || baseline ? [] : scene.Owners.Select(owner => scene.Scene.CoverageFailureFor(owner.Actor).Code).Distinct().ToArray(),
+                observer.Failures.ToArray(), error);
+        }
+
         public void Dispose()
         {
-            // Submission owns completion. Drain and release it before disposing query pools or surfaces.
-            scene.Submission.Dispose(); ring.Dispose(); batch?.Dispose(); retired?.Dispose();
-            foreach (var list in native) list.Dispose();
-            scene.Dispose();
+            if (disposed) return;
+            // An unsubmitted native recording must close before the submission's teardown drain.
+            // Dispose discards it. Never End or submit a partial timestamp batch.
+            if (recordingSlot >= 0)
+            { native[recordingSlot].Dispose(); native[recordingSlot] = null!; recordingSlot = -1; }
+            scene?.Submission.Dispose();
+            ring?.Dispose(); batch?.Dispose(); retired?.Dispose();
+            foreach (var list in native) list?.Dispose();
+            scene?.Dispose(); disposed = true;
         }
     }
 }

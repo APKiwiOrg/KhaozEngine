@@ -6,7 +6,6 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class ModelRenderer
 {
-    internal GpuShaderCompileOptions CoverageVertexOptions { get; set; } = new(PreciseMath: true);
     CoveragePulledResources _coveragePull = null!;
     readonly ModelVisibilityShaders _coverageVisibility = new();
     bool _coverageReady, _coverageRefused, _coverageRebuildPending;
@@ -36,9 +35,9 @@ internal sealed partial class ModelRenderer
             {
                 _coveragePull = new(_gd, resource => _retired.Retire(resource));
                 _coverageShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.CoverageModelVert,
-                    ShaderSources.SkinnedModelFrag, CoverageVertexOptions);
+                    ShaderSources.SkinnedModelFrag, new(PreciseMath: true));
                 _coverageDissolveShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.CoverageModelVert,
-                    ShaderSources.SkinnedModelDissolveFrag, CoverageVertexOptions);
+                    ShaderSources.SkinnedModelDissolveFrag, new(PreciseMath: true));
                 CreateCoveragePipelines(_gd.Factory, _coverageOutputs);
                 _coveragePull.Reserve(count);
                 ReserveCoverageShadows(count);
@@ -132,7 +131,7 @@ internal sealed partial class ModelRenderer
             ResourceLayouts = [_skinnedMainLayout, _skinnedFragLayout, _coveragePull.Layout],
             ShaderSet = _coverageVisibility.TrySelect(factory, outputs, ShaderSources.CoverageModelVert,
                 ReferenceEquals(shaders, _coverageDissolveShaders) ? ShaderSources.SkinnedModelDissolveFrag : ShaderSources.SkinnedModelFrag,
-                false, out var visibility, CoverageVertexOptions) ? visibility : shaders,
+                false, out var visibility, new(PreciseMath: true)) ? visibility : shaders,
             VertexLayouts = [],
             Outputs = outputs,
         });

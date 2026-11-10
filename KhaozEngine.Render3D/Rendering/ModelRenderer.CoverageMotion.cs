@@ -15,15 +15,15 @@ internal sealed partial class ModelRenderer
         _coverageMotionPipeline = _coverageDissolveMotionPipeline = null;
         if (_motion is null) return;
         _coverageMotionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.CoverageModelMotionVert,
-            ShaderSources.SkinnedModelMotionFrag, CoverageVertexOptions);
+            ShaderSources.SkinnedModelMotionFrag, new(PreciseMath: true));
         _coverageDissolveMotionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.CoverageModelMotionVert,
-            ShaderSources.SkinnedModelDissolveMotionFrag, CoverageVertexOptions);
+            ShaderSources.SkinnedModelDissolveMotionFrag, new(PreciseMath: true));
         _coverageMotionPipeline = Create(_coverageMotionShaders);
         _coverageDissolveMotionPipeline = Create(_coverageDissolveMotionShaders);
         IGpuPipeline Create(IGpuShaderSet shaders) => OpaqueMotionPipeline(factory, outputs,
             _coverageVisibility.TrySelect(factory, outputs, ShaderSources.CoverageModelMotionVert,
                 ReferenceEquals(shaders, _coverageDissolveMotionShaders) ? ShaderSources.SkinnedModelDissolveMotionFrag : ShaderSources.SkinnedModelMotionFrag,
-                false, out var visibility, CoverageVertexOptions) ? visibility : shaders,
+                false, out var visibility, new(PreciseMath: true)) ? visibility : shaders,
             [_skinnedMainLayout, _skinnedFragLayout, _coveragePull.Layout, _motion.FrameLayout], []);
     }
 

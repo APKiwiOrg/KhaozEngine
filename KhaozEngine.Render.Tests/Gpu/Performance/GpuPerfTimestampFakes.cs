@@ -99,6 +99,9 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
     internal IGpuResourceFactory? ProgramFactory;
     internal Action<IGpuFence>? OnSubmittedFence { get; set; }
     internal Func<uint, IGpuTimestampPool>? PoolFactory { get; set; }
+    internal Func<GpuBufferDescription, IGpuBuffer>? BufferFactory { get; set; }
+    internal Func<IGpuBuffer, GpuMapMode, MappedData>? BufferMap { get; set; }
+    internal Action<IGpuBuffer>? BufferUnmap { get; set; }
     internal GpuCapabilities Features { get; set; } = new(false, true, supportsCompletionFences: true) { SupportsTimestamps = true };
     internal bool Software { get; set; }
     internal Action<string>? Trace { get; set; }
@@ -129,7 +132,7 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
     }
     public IGpuFence CreateFence() { var fence = new SubmissionTestFence(); Fences.Add(fence); return fence; }
     public IGpuCommandList CreateCommandList() => new GpuPerfTimestampTestCommands { Trace = CaptureCommandTrace ? op => Trace?.Invoke(op) : null };
-    public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => new SubmissionTestBuffer(d.SizeInBytes, d.Usage);
+    public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => BufferFactory?.Invoke(d) ?? new SubmissionTestBuffer(d.SizeInBytes, d.Usage);
     public IGpuTexture CreateTexture(in GpuTextureDescription d) => _inner.Factory.CreateTexture(d);
     public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) => _inner.Factory.CreateFramebuffer(depth, colour);
     public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => _inner.Factory.CreateResourceSet(d);
@@ -155,9 +158,13 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
     public void UpdateTexture(IGpuTexture t, byte[] d, uint x, uint y, uint w, uint h) => _inner.UpdateTexture(t, d, x, y, w, h);
     public void UpdateTexture(IGpuTexture t, byte[] d, uint x, uint y, uint w, uint h, uint m, uint l) => _inner.UpdateTexture(t, d, x, y, w, h, m, l);
     public MappedData Map(IGpuTexture t, GpuMapMode m) => throw new NotSupportedException();
-    public MappedData Map(IGpuBuffer b, GpuMapMode m) => throw new NotSupportedException();
+    public MappedData Map(IGpuBuffer b, GpuMapMode m) => BufferMap?.Invoke(b, m) ?? throw new NotSupportedException();
     public void Unmap(IGpuTexture t) => throw new NotSupportedException();
-    public void Unmap(IGpuBuffer b) => throw new NotSupportedException();
+    public void Unmap(IGpuBuffer b)
+    {
+        if (BufferUnmap is null) throw new NotSupportedException();
+        BufferUnmap(b);
+    }
     public void ResizeSwapchain(uint w, uint h) => throw new NotSupportedException();
     public void Present() => Trace?.Invoke("present");
     public void Dispose() => _inner.Dispose();

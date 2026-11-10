@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -10,8 +11,27 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Non-owning native pass-through. Captures public factory inputs without wrapping native handles.</summary>
-internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner) : IGpuDevice, IGpuResourceFactory
+internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner, bool inlineHelpers = false) : IGpuDevice, IGpuResourceFactory
 {
+    internal readonly List<CoverageRecessionFactoryFailure> Failures = [];
+    List<IDisposable>? constructing;
+    T Track<T>(T resource) where T : IDisposable
+    { constructing?.Add(resource); return resource; }
+
+    // Scene3D construction has no returned owner on failure. Keep its raw native handles until ownership transfers.
+    internal T Construct<T>(Func<T> create)
+    {
+        constructing = [];
+        try { return create(); }
+        catch
+        {
+            inner.WaitForIdle();
+            for (int i = constructing.Count - 1; i >= 0; i--) constructing[i].Dispose();
+            throw;
+        }
+        finally { constructing = null; }
+    }
+    internal void Capture(string operation, Exception error) => Failures.Add(CoverageRecessionFactoryFailure.Capture(operation, error));
     internal readonly Dictionary<IGpuResourceSet, GpuResourceSetDescription> Sets = [];
     internal readonly Dictionary<IGpuResourceLayout, GpuResourceLayoutDescription> Layouts = [];
     internal readonly Dictionary<IGpuPipeline, GpuPipelineDescription> Pipelines = [];
@@ -45,41 +65,101 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner) : IGpuDe
     public void ResizeSwapchain(uint w, uint h) => inner.ResizeSwapchain(w, h);
     public void Present() => inner.Present();
     public void Dispose() { }
-    public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => inner.Factory.CreateBuffer(d);
-    public IGpuTexture CreateTexture(in GpuTextureDescription d) => inner.Factory.CreateTexture(d);
-    public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] color) => inner.Factory.CreateFramebuffer(depth, color);
-    public IGpuSampler CreateSampler(in GpuSamplerDescription d) => inner.Factory.CreateSampler(d);
+    public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
+    {
+        try { return Track(inner.Factory.CreateBuffer(d)); }
+        catch (Exception error) { Capture(nameof(CreateBuffer), error); throw; }
+    }
+    public IGpuTexture CreateTexture(in GpuTextureDescription d)
+    {
+        try { return Track(inner.Factory.CreateTexture(d)); }
+        catch (Exception error) { Capture(nameof(CreateTexture), error); throw; }
+    }
+    public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] color)
+    {
+        try { return Track(inner.Factory.CreateFramebuffer(depth, color)); }
+        catch (Exception error) { Capture(nameof(CreateFramebuffer), error); throw; }
+    }
+    public IGpuSampler CreateSampler(in GpuSamplerDescription d)
+    {
+        try { return Track(inner.Factory.CreateSampler(d)); }
+        catch (Exception error) { Capture(nameof(CreateSampler), error); throw; }
+    }
     public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
-    { var layout = inner.Factory.CreateResourceLayout(d); Layouts.Add(layout, d); return layout; }
+    {
+        try { var layout = Track(inner.Factory.CreateResourceLayout(d)); Layouts.Add(layout, d); return layout; }
+        catch (Exception error) { Capture(nameof(CreateResourceLayout), error); throw; }
+    }
     public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
-    { var set = inner.Factory.CreateResourceSet(d); Sets.Add(set, d); return set; }
+    {
+        try { var set = Track(inner.Factory.CreateResourceSet(d)); Sets.Add(set, d); return set; }
+        catch (Exception error) { Capture(nameof(CreateResourceSet), error); throw; }
+    }
     public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment) => CreateShadersFromSpirv(vertex, fragment, default);
     public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment, GpuShaderCompileOptions options)
     {
         GraphicsShaders.Add((vertex, options));
-        var shaders = inner.Factory.CreateShadersFromSpirv(vertex, fragment, options);
-        shaderPairs.Add(shaders, (vertex, fragment)); ShaderOptions.Add(shaders, options); return shaders;
+        IGpuShaderSet shaders;
+        try
+        {
+            shaders = inlineHelpers && options.PreciseMath && IsCoverageVertex(vertex) && inner.Factory is MetalResourceFactory metal
+                ? metal.CreateShadersFromSpirv(vertex, fragment, options, inlineHelpers: true)
+                : inner.Factory.CreateShadersFromSpirv(vertex, fragment, options);
+        }
+        catch (Exception error) { Capture(nameof(CreateShadersFromSpirv), error); throw; }
+        Track(shaders); shaderPairs.Add(shaders, (vertex, fragment)); ShaderOptions.Add(shaders, options); return shaders;
     }
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => CreateComputeShaderFromSpirv(source, default);
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source, GpuShaderCompileOptions options)
     {
         ComputeShaders.Add((source, options));
-        var shader = inner.Factory.CreateComputeShaderFromSpirv(source, options);
+        IGpuComputeShader shader;
+        try
+        {
+            shader = inlineHelpers && options.PreciseMath && CoverageCarryShaders.Kernels.Any(k => k.Source == source)
+                && inner.Factory is MetalResourceFactory metal
+                ? metal.CreateComputeShaderFromSpirv(source, options, inlineHelpers: true)
+                : inner.Factory.CreateComputeShaderFromSpirv(source, options);
+        }
+        catch (Exception error) { Capture(nameof(CreateComputeShaderFromSpirv), error); throw; }
+        Track(shader);
         for (int stage = 0; stage < CoverageCarryShaders.StageCount; stage++)
             if (source == CoverageCarryShaders.Kernels[stage].Source) carryShaders.Add(shader, stage);
         return shader;
     }
     public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
-    { var pipeline = inner.Factory.CreateGraphicsPipeline(d); Pipelines.Add(pipeline, d); return pipeline; }
+    {
+        try { var pipeline = Track(inner.Factory.CreateGraphicsPipeline(d)); Pipelines.Add(pipeline, d); return pipeline; }
+        catch (Exception error) { Capture(nameof(CreateGraphicsPipeline), error); throw; }
+    }
     public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
     {
-        var pipeline = inner.Factory.CreateComputePipeline(d);
+        IGpuComputePipeline pipeline;
+        try { pipeline = Track(inner.Factory.CreateComputePipeline(d)); }
+        catch (Exception error) { Capture(nameof(CreateComputePipeline), error); throw; }
         if (carryShaders.TryGetValue(d.Shader, out int stage)) CarryStages.Add(pipeline, stage);
         return pipeline;
     }
-    public IGpuCommandList CreateCommandList() => inner.Factory.CreateCommandList();
-    public IGpuFence CreateFence() => inner.Factory.CreateFence();
-    public IGpuTimestampPool CreateTimestampPool(uint capacity) => inner.Factory.CreateTimestampPool(capacity);
+    public IGpuCommandList CreateCommandList()
+    {
+        try { return Track(inner.Factory.CreateCommandList()); }
+        catch (Exception error) { Capture(nameof(CreateCommandList), error); throw; }
+    }
+    public IGpuFence CreateFence()
+    {
+        try { return Track(inner.Factory.CreateFence()); }
+        catch (Exception error) { Capture(nameof(CreateFence), error); throw; }
+    }
+    public IGpuTimestampPool CreateTimestampPool(uint capacity)
+    {
+        try { return Track(inner.Factory.CreateTimestampPool(capacity)); }
+        catch (Exception error) { Capture(nameof(CreateTimestampPool), error); throw; }
+    }
+
+    internal static bool IsCoverageVertex(string vertex) => vertex == ShaderSources.CoverageModelVert || vertex == ShaderSources.CoverageModelMotionVert
+        || vertex == ShaderSources.CoverageCascadeVert || vertex == ShaderSources.CoverageCascadeDissolveVert
+        || vertex == ShaderSources.CoveragePointVert || vertex == ShaderSources.CoveragePointDissolveVert
+        || vertex == ShaderSources.CoverageOutlineVert;
 
     internal (bool Coverage, bool Precise) DrawPolicy(IGpuPipeline pipeline)
     {

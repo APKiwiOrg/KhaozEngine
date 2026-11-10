@@ -112,10 +112,6 @@ public sealed partial class Scene3D
         // Sets and dynamic windows are cold-reserved before the host opens its list.
         try
         {
-            var vertexOptions = new GpuShaderCompileOptions(PreciseMath: !DisableCoverageVertexPreciseMathForTests);
-            _model.CoverageVertexOptions = vertexOptions;
-            _targetOutlines.CoverageVertexOptions = vertexOptions;
-            if (_pointShadows is not null) _pointShadows.CoverageVertexOptions = vertexOptions;
             _model.ReserveCoverage(draws);
             _targetOutlines.ReserveCoverage(Math.Max(draws, _meshOutlinePartCount));
             _pointShadows?.ReserveCoverage(draws);

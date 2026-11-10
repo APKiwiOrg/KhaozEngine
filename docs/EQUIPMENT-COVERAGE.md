@@ -299,7 +299,7 @@ hardware. Hosted benchmark dispatch forwards its optional `coverage-cost-unit` i
 and ordinary shard filters exclude this fact even without Diagnostic filtering. Do not use a broad
 Diagnostic selection as cost-unit authorization. See [performance evidence](RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).
 
-Cost schema `khaozengine.coverage-recession-cost/4` retains the original carry-only, baseline-scene and
+Cost schema `khaozengine.coverage-recession-cost/5` retains the original carry-only, baseline-scene and
 covered-scene rows at one and 32 actors. Only the original scene pair supplies the 1.3 ms GPU and 2 ms
 CPU preparation checks. All rows retain the zero warm managed allocation check. Rows ending in `-outer`
 repeat carry-only and covered-scene with the baseline row's two markers and no stage brackets, so a
@@ -348,12 +348,43 @@ The existing cost driver's counting wrapper uses the interface's default framebu
 so it records default store actions. This instrumentation preserves that recording policy. It does not
 establish the cost of the scene owner's dead-attachment discard optimization.
 
-The diagnostic `covered-scene-fast-vertex` row and its `-passes` counterpart use the init-only internal
-`Scene3D.DisableCoverageVertexPreciseMathForTests` seam. It disables the coverage graphics compile
-option for main, motion, visibility variants, cascades, point shadows and outlines. Compute remains
-precise. GLSL sources, their explicit `precise` operations, arithmetic contract version 2 and pinned
-hashes are unchanged. This A/B tests the graphics compilation policy only. It establishes no arithmetic
-or visual acceptance for a different policy, and shipped scenes keep precise coverage graphics.
+The ten layouts at each population are `carry-only`, `baseline-scene`, `covered-scene`,
+`carry-only-outer`, `covered-scene-outer`, `carry-only-inline-outer`, `covered-scene-inline-outer`,
+`baseline-scene-passes`, `covered-scene-passes` and `covered-scene-inline-passes`. Both populations
+therefore attempt 20 rows. Only `carry-only`, `baseline-scene` and `covered-scene` are acceptance rows.
+An acceptance failure ends the unit with a structured `CoverageRecessionRowException`. Diagnostic failures
+at construction, recording, harvest or evidence readback make that row unavailable for the rest of its
+population. The next population attempts the layout again. Remaining rows keep their original schedule.
+
+Every row failure names layout, actors, phase, phase-local frame, stage brackets seen and expected,
+dispatch count, distinct owner coverage failure codes and captured factory failures. Phase is
+`conditioning` or `observed`. Frame `-1` means construction before a frame, and discovery frames use
+conditioning frame numbers. Shader, pipeline and resource factory exceptions keep their type and message,
+plus shader refusal reason, label and stage. The observer rethrows the original exception. Publication is
+checked after preparation, before a native list or timestamp pool begins. A later incomplete carry still
+fails the bracket guard. Failed partial recordings are discarded before submission teardown drains and
+releases timestamp pools and carry storage.
+
+The schema's `unavailableRows` array retains each row identity and its structured reason. Diagnostic deltas
+that depend on a missing row are null. JSON and `COVERAGE_RECESSION_COST_JSON` are written before assertions.
+The original zero warm bytes, 2000 microseconds CPU preparation and 1300 microseconds added GPU checks stay
+in force. An additional assertion requires no unavailable rows.
+
+The inline rows retain precise compilation and replace the emitted Metal helper templates' `optnone`
+attribute with `always_inline`, after the pinned signed-zero correction. Helper bodies, signed-zero seeds,
+GLSL sources and shipped pins stay identical. An internal per-row factory route reaches both scene coverage
+vertices and all five carry kernels, including the standalone carry batch. Program keys, disk cache entries
+and frontend memo identities distinguish the two variants in one device. Non-Metal backends ignore the
+route, and ordinary Metal creation never enables it.
+
+`addedGpuMicrosecondsInlineEqualMarkers` subtracts baseline-scene from covered-scene-inline-outer.
+`carryInlineMinusShippedGpuMicroseconds` subtracts carry-only-outer from carry-only-inline-outer.
+Both outer comparisons use two markers per row. They are cost experiments, not arithmetic or image
+acceptance. Every covered row still reads back its published carry words against the exact oracle.
+An inline mismatch is retained as the distinct `ArithmeticMismatch` unavailable reason. Shipped acceptance
+rows keep the same oracle and fail hard. Headless `CoverageRecessionHelperInventoryTests` reports counts
+of precise helper call sites in each coverage vertex program and carry kernel for both emissions.
+Call sites are static counts, not invocation counts, timings or proof of native compiler acceptance.
 
 `CoverageRecessionDrawInventoryTests` records the same synthetic 32-actor body-size scene without a GPU.
 Its `COVERAGE_DRAW_INVENTORY_JSON` output groups submitted draw calls and element counts by innermost

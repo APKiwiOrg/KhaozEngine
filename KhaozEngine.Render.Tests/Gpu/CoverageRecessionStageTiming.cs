@@ -12,6 +12,8 @@ internal sealed class CoverageRecessionStageTiming(IReadOnlyDictionary<IGpuCompu
     IGpuCommandList? commands;
     IGpuTimestampPool? pool;
     int next;
+    internal int BracketsSeen => next;
+    internal void Reset() { next = 0; commands = null; pool = null; }
     internal void Begin(IGpuCommandList list, IGpuTimestampPool timestamps)
     { commands = list; pool = timestamps; next = 0; }
     internal void Dispatch(IGpuComputePipeline? pipeline, bool before)
@@ -21,10 +23,10 @@ internal sealed class CoverageRecessionStageTiming(IReadOnlyDictionary<IGpuCompu
             throw new InvalidOperationException("The cost unit requires one ordered five-stage carry group.");
         commands.WriteTimestamp(pool, (uint)++next);
     }
-    internal void Complete()
+    internal bool Complete()
     {
-        if (next != 10) throw new InvalidOperationException("The cost unit did not bracket every carry stage.");
         commands = null; pool = null;
+        return next == 10;
     }
     internal sealed record StageSample(string Stage, double GpuMicroseconds);
     internal static StageSample[] Resolve(IReadOnlyList<ulong> ticks, double period)

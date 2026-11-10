@@ -127,6 +127,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal static string For(GpuShaderCompileOptions options, params string[] programSources)
             => For(MetalModuleId, GpuModuleId, SpirvToolchainVersion.Identity, programSources, options);
 
+        internal static string ForInlineHelpers(GpuShaderCompileOptions options, params string[] programSources)
+            => For(MetalModuleId, GpuModuleId, SpirvToolchainVersion.Identity, programSources, options, inlineHelpers: true);
+
         /// <summary>
         /// The same key with every producer identity passed in, so each one's contribution is testable without
         /// building two engines against two packages. Nothing in the shipped path calls this overload.
@@ -140,10 +143,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="metalModuleId">Stands in for <see cref="MetalModuleId"/>.</param>
         /// <param name="gpuModuleId">Stands in for <see cref="GpuModuleId"/>.</param>
         /// <param name="spirvToolchain">Stands in for <see cref="SpirvToolchainVersion.Identity"/>.</param>
+        /// <param name="inlineHelpers">Internal opt-in helper inlining experiment. Default emission is unchanged.</param>
         /// <param name="options">Per-shader arithmetic policy. For graphics pairs it applies to the vertex stage.</param>
         /// <param name="programSources">Every GLSL source of the program, in declared order.</param>
         internal static string For(Guid metalModuleId, Guid gpuModuleId, string spirvToolchain,
-            string[] programSources, GpuShaderCompileOptions options = default)
+            string[] programSources, GpuShaderCompileOptions options = default, bool inlineHelpers = false)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(spirvToolchain);
             ArgumentNullException.ThrowIfNull(programSources);
@@ -166,6 +170,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 .Append(programSources.Length.ToString(CultureInfo.InvariantCulture)).Append('\n');
 
             if (options.PreciseMath) text.Append("precise=1\n");
+            if (inlineHelpers) text.Append("diagnostic-inline-precise-helpers=1\n");
 
             // Each source is LENGTH-PREFIXED, so two sources cannot be confused for one longer one by moving the
             // boundary between them. A plain separator would be forgeable by a source containing the separator.

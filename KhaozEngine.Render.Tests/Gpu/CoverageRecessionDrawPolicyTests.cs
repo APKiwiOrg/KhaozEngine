@@ -13,11 +13,11 @@ public sealed class CoverageRecessionDrawPolicyTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public void Diagnostic_vertex_policy_reaches_every_coverage_draw_family_but_never_compute(bool disablePrecise, bool temporal)
+    public void Coverage_vertices_and_carry_keep_precise_policy_including_non_metal_inline_rows(bool inlineHelpers, bool temporal)
     {
         using var inert = new CoveragePublicationDevice();
-        using var device = new CoverageRecessionObservedDevice(inert);
-        using var scene = new CoverageRecessionNativeScene(device, new(4, 4), 1, true, disablePrecise);
+        using var device = new CoverageRecessionObservedDevice(inert, inlineHelpers);
+        using var scene = new CoverageRecessionNativeScene(device, new(4, 4), 1, true);
         scene.Scene.ForceTemporalForTests = temporal;
         using var list = device.Factory.CreateCommandList();
         for (int frame = 0; frame < 2; frame++)
@@ -33,7 +33,7 @@ public sealed class CoverageRecessionDrawPolicyTests
         {
             var programs = device.GraphicsShaders.Where(p => p.Vertex == vertex).ToArray();
             Assert.True(programs.Length > 0, vertex);
-            Assert.All(programs, p => Assert.Equal(!disablePrecise, p.Options.PreciseMath));
+            Assert.All(programs, p => Assert.True(p.Options.PreciseMath));
         }
         Assert.Equal(5, device.ComputeShaders.Count);
         Assert.All(device.ComputeShaders, p => Assert.True(p.Options.PreciseMath));

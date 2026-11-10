@@ -84,15 +84,15 @@ public sealed class CoverageRecessionPublicationGpuTests(ITestOutputHelper outpu
 internal sealed class CoverageRecessionNativeScene : IDisposable
 {
     internal const int Width = 320, Height = 240;
-    internal readonly Scene3D Scene;
-    internal readonly GpuFrameSubmission Submission;
-    internal readonly SkinnedHostCoverage[] Owners;
+    internal readonly Scene3D Scene = null!;
+    internal readonly GpuFrameSubmission Submission = null!;
+    internal readonly SkinnedHostCoverage[] Owners = [];
     internal readonly int ActorCount;
     internal readonly SkinnedMeshHandle Host;
     internal readonly Matrix4x4[] Palette = [Matrix4x4.Identity];
     internal readonly CoverageRecessionBodySizeFixture Fixture;
-    readonly IGpuTexture color;
-    readonly IGpuFramebuffer target;
+    readonly IGpuTexture color = null!;
+    readonly IGpuFramebuffer target = null!;
     readonly CoverageSupportSurface support;
     readonly MeshHandle equipment;
     readonly bool covered;
@@ -100,52 +100,56 @@ internal sealed class CoverageRecessionNativeScene : IDisposable
     readonly CoverageEquipmentCommand[] memberships;
     readonly CoverageCommandPose[] commands = new CoverageCommandPose[1];
 
-    internal CoverageRecessionNativeScene(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, bool covered,
-        bool disableVertexPreciseMath = false)
+    internal CoverageRecessionNativeScene(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, bool covered)
     {
         Fixture = fixture; this.covered = covered; ActorCount = actors;
-        color = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(Width, Height,
-            GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-        target = device.Factory.CreateFramebuffer(null, color);
-        Scene = new(device, target.Outputs) { DisableCoverageVertexPreciseMathForTests = disableVertexPreciseMath };
-        Submission = new(device); // F03. Default capacity, one scene-owned aggregate participant for all actors.
-        Scene.Post.Starfield = false;
-        Scene.Post.RenderScale = RenderScale.MatchViewport;
-        Scene.FrustumCulling = false;
-        Scene.UseGpuSkinning = true;
-        Scene.ForceTemporalForTests = true;
-        Scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
-        Scene.Post.Quality.Shadows.PointShadows.MaxDynamicLightsPerFrame = 1;
-        Host = Scene.LoadSkinnedMesh(fixture.Mesh, Scene.LoadTexture([240, 160, 80, 255], 1, 1));
-        var glb = new SkinnedAttachmentGlbFixture();
-        glb.Root.Remove("skins"); glb.MeshNode.Remove("skin");
-        glb.Primitives[0]!["attributes"]!.AsObject().Remove("JOINTS_0");
-        glb.Primitives[0]!["attributes"]!.AsObject().Remove("WEIGHTS_0");
-        var panel = CoverageFixture.CurvedPanel(false);
-        glb.Accessors[0]!["bufferView"] = glb.AddView(MemoryMarshal.AsBytes(panel.RigidPositions.AsSpan()).ToArray());
-        glb.Accessors[0]!["count"] = panel.RigidPositions.Length;
-        glb.Accessors[0]!["min"] = new JsonArray(-1, -1, .02f);
-        glb.Accessors[0]!["max"] = new JsonArray(1, 1, .2f);
-        glb.Primitives[0]!["indices"] = glb.Accessors.Count;
-        glb.Accessors.Add(new JsonObject
+        try
         {
-            ["bufferView"] = glb.AddView(MemoryMarshal.AsBytes(panel.RigidIndices.AsSpan()).ToArray()),
-            ["componentType"] = 5125,
-            ["count"] = panel.RigidIndices.Length,
-            ["type"] = "SCALAR"
-        });
-        byte[] bytes = glb.Build();
-        var source = GltfLoader.LoadCoverageSource(bytes, "synthetic-support");
-        support = CoverageSupportSurface.Compile(source, [new(0, 0, 0, 4)], Matrix4x4.Identity);
-        equipment = Scene.LoadMesh(GltfLoader.LoadPartsWithMaterials(bytes, "synthetic-support")[0].Mesh);
-        memberships = [new(1, support)];
-        Owners = new SkinnedHostCoverage[covered ? actors : 0];
-        for (int i = 0; i < Owners.Length; i++)
-        {
-            Owners[i] = Scene.CreateHostCoverage(fixture.Skeleton, [Host], fixture.Table);
-            Owners[i].BindActor(MotionKey.From((ulong)i + 1));
-            Owners[i].ReserveEquipment(1);
+            color = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(Width, Height,
+                GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            target = device.Factory.CreateFramebuffer(null, color);
+            Scene = device is CoverageRecessionObservedDevice observer
+                ? observer.Construct(() => new Scene3D(device, target.Outputs)) : new(device, target.Outputs);
+            Submission = new(device); // F03. Default capacity, one scene-owned aggregate participant for all actors.
+            Scene.Post.Starfield = false;
+            Scene.Post.RenderScale = RenderScale.MatchViewport;
+            Scene.FrustumCulling = false;
+            Scene.UseGpuSkinning = true;
+            Scene.ForceTemporalForTests = true;
+            Scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+            Scene.Post.Quality.Shadows.PointShadows.MaxDynamicLightsPerFrame = 1;
+            Host = Scene.LoadSkinnedMesh(fixture.Mesh, Scene.LoadTexture([240, 160, 80, 255], 1, 1));
+            var glb = new SkinnedAttachmentGlbFixture();
+            glb.Root.Remove("skins"); glb.MeshNode.Remove("skin");
+            glb.Primitives[0]!["attributes"]!.AsObject().Remove("JOINTS_0");
+            glb.Primitives[0]!["attributes"]!.AsObject().Remove("WEIGHTS_0");
+            var panel = CoverageFixture.CurvedPanel(false);
+            glb.Accessors[0]!["bufferView"] = glb.AddView(MemoryMarshal.AsBytes(panel.RigidPositions.AsSpan()).ToArray());
+            glb.Accessors[0]!["count"] = panel.RigidPositions.Length;
+            glb.Accessors[0]!["min"] = new JsonArray(-1, -1, .02f);
+            glb.Accessors[0]!["max"] = new JsonArray(1, 1, .2f);
+            glb.Primitives[0]!["indices"] = glb.Accessors.Count;
+            glb.Accessors.Add(new JsonObject
+            {
+                ["bufferView"] = glb.AddView(MemoryMarshal.AsBytes(panel.RigidIndices.AsSpan()).ToArray()),
+                ["componentType"] = 5125,
+                ["count"] = panel.RigidIndices.Length,
+                ["type"] = "SCALAR"
+            });
+            byte[] bytes = glb.Build();
+            var source = GltfLoader.LoadCoverageSource(bytes, "synthetic-support");
+            support = CoverageSupportSurface.Compile(source, [new(0, 0, 0, 4)], Matrix4x4.Identity);
+            equipment = Scene.LoadMesh(GltfLoader.LoadPartsWithMaterials(bytes, "synthetic-support")[0].Mesh);
+            memberships = [new(1, support)];
+            Owners = new SkinnedHostCoverage[covered ? actors : 0];
+            for (int i = 0; i < Owners.Length; i++)
+            {
+                Owners[i] = Scene.CreateHostCoverage(fixture.Skeleton, [Host], fixture.Table);
+                Owners[i].BindActor(MotionKey.From((ulong)i + 1));
+                Owners[i].ReserveEquipment(1);
+            }
         }
+        catch { Dispose(); throw; }
     }
 
     internal void Prepare(int frame, float transition = 1, Matrix4x4? coverageWorld = null)
@@ -196,8 +200,8 @@ internal sealed class CoverageRecessionNativeScene : IDisposable
     }
     public void Dispose()
     {
-        Submission.Dispose();
-        foreach (var owner in Owners) owner.Dispose();
-        Scene.Dispose(); target.Dispose(); color.Dispose();
+        Submission?.Dispose();
+        foreach (var owner in Owners) owner?.Dispose();
+        Scene?.Dispose(); target?.Dispose(); color?.Dispose();
     }
 }

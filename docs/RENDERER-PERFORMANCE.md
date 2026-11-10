@@ -60,7 +60,7 @@ the outer pair, the baseline row's marker count. A Vulkan marker is one timestam
 ends the native encoder and encodes a blit pass between event waits, so ten stage markers add work to
 the staged rows that the baseline row never pays. `addedGpuMicrosecondsEqualMarkers` compares
 `covered-scene-outer` with `baseline-scene`. It is diagnostic and gates nothing.
-Schema `khaozengine.coverage-recession-cost/4` also carries separate baseline, covered and fast-vertex pass
+Schema `khaozengine.coverage-recession-cost/5` also carries separate baseline, covered and inline-helper pass
 observations at each actor count. `PassGpuMicroseconds` contains inclusive and exclusive min, median,
 p95, p99 and max, with execution counts and fused-motion counts. Samples retain raw ticks and pass
 metadata and marker indices. Skipped callbacks retain metadata without markers. `UnscopedGpuMicroseconds`
@@ -82,13 +82,32 @@ when they consume them. Buffer copies, dispatches and mip generation leave them 
 The counting wrapper retains its existing default framebuffer-store fallback. These measurements do not
 cover the scene owner's dead-attachment discard optimization, and the new provenance does not alter it.
 The original `baseline-scene` and `covered-scene` pair alone supplies the unchanged GPU and CPU
-criteria. All nine layouts require zero warm allocation. Pass timing changes native encoder boundaries
+criteria. All ten layouts require zero warm allocation. Pass timing changes native encoder boundaries
 and resulting load/store work, so pass-row totals are observational. Do not add parent and child inclusive times.
-The covered fast-vertex rows change only the coverage graphics precise compile option through an internal
-cold test setting. Carry compute stays precise and shader sources stay fixed. Their output is a policy
-experiment, not native arithmetic or image approval. Timestamp resolution and evidence readback stay
-outside measured frames. See the [instrumentation contract](EQUIPMENT-COVERAGE.md#verification-boundaries)
-for row boundaries and the headless `COVERAGE_DRAW_INVENTORY_JSON` counts.
+The ten layouts are `carry-only`, `baseline-scene`, `covered-scene`, `carry-only-outer`,
+`covered-scene-outer`, `carry-only-inline-outer`, `covered-scene-inline-outer`, `baseline-scene-passes`,
+`covered-scene-passes` and `covered-scene-inline-passes`, for 20 attempted rows over both populations.
+The inline rows keep precise Metal vertex and carry compilation and change only emitted helper attributes
+from `optnone` to `always_inline`, after the signed-zero rewrite. Their helper bodies and shader sources
+stay fixed. The internal route belongs to the row's observed factory, never a process flag. Distinct
+program keys and memo labels prevent cross-variant cache reuse, and other backends ignore the route.
+`addedGpuMicrosecondsInlineEqualMarkers` compares covered-scene-inline-outer against baseline-scene.
+`carryInlineMinusShippedGpuMicroseconds` compares carry-only-inline-outer against carry-only-outer.
+These deltas diagnose helper cost with equal marker counts. They do not approve different arithmetic or
+images. Exact published-word readback still runs for every covered row, including inline rows.
+
+Only carry-only, baseline-scene and covered-scene fail hard. Every other row fails soft at construction,
+recording, harvest or evidence readback. It is disposed and dropped for that population, then attempted
+again for the next. `unavailableRows` retains layout, actors, conditioning or observed phase, phase-local
+frame and structured reason. Frame `-1` identifies construction before a frame. The reason includes stage
+brackets seen and expected, dispatches, owner coverage failure codes and captured factory exception
+identifiers. An inline exact-word mismatch has its own `ArithmeticMismatch` reason. Dependent diagnostic
+deltas become null. JSON and its output line are saved before the existing three assertions and the added
+assertion that no rows were unavailable. Publication refusal is detected before native recording begins.
+Timestamp resolution and evidence readback stay outside measured frames. See the
+[instrumentation contract](EQUIPMENT-COVERAGE.md#verification-boundaries) for row boundaries,
+`COVERAGE_DRAW_INVENTORY_JSON` draw counts and `COVERAGE_PRECISE_HELPER_INVENTORY_JSON` static helper
+call-site counts. Static counts cannot predict native acceptance or dynamic shader invocations.
 The output reservation is `D + 2` slots per actor and is a storage policy, not a measured footprint.
 Carry-only results cannot establish aggregate scene overhead. The free `coverage` tooling CI suite
 checks deterministic fixture/CLI behavior with GPU disabled and supplies no timing evidence. No native,

@@ -60,15 +60,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// cross-compile, or the emission could not be read (any of 2.2b pin 1's classes). Reason distinguishes
         /// FrontEndCompileFailed, CrossCompileFailed and the Metal entry-point or binding-table refusals. Label
         /// identifies the program, with Stage when known.</exception>
+        /// <param name="inlineHelpers">Internal opt-in helper inlining experiment. Default emission is unchanged.</param>
         /// <param name="options">Requested per-stage arithmetic policy or float-control capability.</param>
         internal static MetalMslProgram Pair(string vertexGlsl, string fragmentGlsl, MetalMslCache? cache,
-            string? label = null, SpirvCompileCache? memo = null, GpuShaderCompileOptions options = default)
+            string? label = null, SpirvCompileCache? memo = null, GpuShaderCompileOptions options = default, bool inlineHelpers = false)
         {
             ArgumentNullException.ThrowIfNull(vertexGlsl);
             ArgumentNullException.ThrowIfNull(fragmentGlsl);
 
-            string key = MetalShaderKey.For(options, vertexGlsl, fragmentGlsl);
+            string key = inlineHelpers ? MetalShaderKey.ForInlineHelpers(options, vertexGlsl, fragmentGlsl)
+                : MetalShaderKey.For(options, vertexGlsl, fragmentGlsl);
             string tag = label ?? "metal program " + MetalShaderKey.ShortTag(key);
+            if (inlineHelpers) tag += " diagnostic-inline-precise-helpers";
 
             if (cache?.TryLoad(key, tag) is { } hit) return hit.Program;
 
@@ -77,7 +80,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertexSpirv, fragmentSpirv, tag, options);
 
             MetalMslProgram program = Assemble(msl.Reflection, msl.MslUse, tag,
-                (MetalShaderStage.Vertex, msl.VertexSource),
+                (MetalShaderStage.Vertex, inlineHelpers ? MetalPreciseHelperInlining.Rewrite(msl.VertexSource) : msl.VertexSource),
                 (MetalShaderStage.Fragment, msl.FragmentSource));
 
             // AFTER the assemble rather than beside it, so a program whose emission cannot be READ is never
@@ -100,14 +103,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// identifies the shader, with Stage when known. Reason distinguishes FrontEndCompileFailed,
         /// CrossCompileFailed, ComputeLocalSizeMissing / ComputeLocalSizeSpecialized and the Metal entry-point
         /// or binding-table refusals.</exception>
+        /// <param name="inlineHelpers">Internal opt-in helper inlining experiment. Default emission is unchanged.</param>
         /// <param name="options">Requested per-stage arithmetic policy or float-control capability.</param>
         internal static (MetalMslProgram Program, uint X, uint Y, uint Z) Compute(string computeGlsl,
-            MetalMslCache? cache, string? label = null, SpirvCompileCache? memo = null, GpuShaderCompileOptions options = default)
+            MetalMslCache? cache, string? label = null, SpirvCompileCache? memo = null, GpuShaderCompileOptions options = default, bool inlineHelpers = false)
         {
             ArgumentNullException.ThrowIfNull(computeGlsl);
 
-            string key = MetalShaderKey.For(options, computeGlsl);
+            string key = inlineHelpers ? MetalShaderKey.ForInlineHelpers(options, computeGlsl) : MetalShaderKey.For(options, computeGlsl);
             string tag = label ?? "metal compute " + MetalShaderKey.ShortTag(key);
+            if (inlineHelpers) tag += " diagnostic-inline-precise-helpers";
 
             if (cache?.TryLoad(key, tag) is { } hit)
                 return (hit.Program, hit.ThreadGroupSizeX, hit.ThreadGroupSizeY, hit.ThreadGroupSizeZ);
@@ -117,7 +122,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, tag, options);
 
             MetalMslProgram program = Assemble(msl.Reflection, msl.MslUse, tag,
-                (MetalShaderStage.Compute, msl.ComputeSource));
+                (MetalShaderStage.Compute, inlineHelpers ? MetalPreciseHelperInlining.Rewrite(msl.ComputeSource) : msl.ComputeSource));
 
             cache?.TryStore(key, new MetalMslCacheEntry(program, x, y, z));
             return (program, x, y, z);

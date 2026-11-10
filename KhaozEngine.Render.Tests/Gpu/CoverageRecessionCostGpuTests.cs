@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -35,13 +36,18 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
             Extent("REFINED_TRIANGLES", 103), Extent("SHARED_QUAD_CORNERS", 1) != 0);
         CoverageRecessionBodySizeFixture.AssertCoversConsumerExtents(fixture);
         var rows = new List<CoverageRecessionCostMeasurement.Row>();
+        var unavailableRows = new List<CoverageRecessionUnavailableRow>();
         foreach (int actors in new[] { 1, 32 })
-            rows.AddRange(CoverageRecessionCostMeasurement.Measure(device, fixture, actors, observed, deadline));
+        {
+            var measured = CoverageRecessionCostMeasurement.Measure(device, fixture, actors, observed, deadline);
+            rows.AddRange(measured.Rows); unavailableRows.AddRange(measured.UnavailableRows);
+        }
         var deltas = new[] { 1, 32 }.Select(actors =>
         {
             var baseline = rows.Single(r => r.Actors == actors && r.Layout == "baseline-scene");
             var covered = rows.Single(r => r.Actors == actors && r.Layout == "covered-scene");
-            var coveredOuter = rows.Single(r => r.Actors == actors && r.Layout == "covered-scene-outer");
+            double? Difference(string plus, string minus)
+                => CoverageRecessionCostMeasurement.DiagnosticDifference(rows, actors, plus, minus);
             return new
             {
                 actors,
@@ -50,12 +56,14 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
                 addedGpuMicroseconds = covered.GpuMicroseconds.Median - baseline.GpuMicroseconds.Median,
                 aggregateGpuOverheadPercent = (covered.GpuMicroseconds.Median / baseline.GpuMicroseconds.Median - 1) * 100,
                 // Diagnostic. Both rows carry two markers, so a backend's per-marker cost cancels.
-                addedGpuMicrosecondsEqualMarkers = coveredOuter.GpuMicroseconds.Median - baseline.GpuMicroseconds.Median,
+                addedGpuMicrosecondsEqualMarkers = Difference("covered-scene-outer", "baseline-scene"),
+                addedGpuMicrosecondsInlineEqualMarkers = Difference("covered-scene-inline-outer", "baseline-scene"),
+                carryInlineMinusShippedGpuMicroseconds = Difference("carry-only-inline-outer", "carry-only-outer"),
             };
         }).ToArray();
         string json = JsonSerializer.Serialize(new
         {
-            schema = "khaozengine.coverage-recession-cost/4",
+            schema = "khaozengine.coverage-recession-cost/5",
             fixture = fixture.Extents,
             code = new
             {
@@ -82,11 +90,13 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
             carryPreciseMath = true,
             passTiming = "Layouts ending in -passes are separate observations with Scene3D.EnableTiming and PassObserver GPU timestamps. Observer markers split native encoders and change where load/store work runs. The counting wrapper retains default store actions. Primary deltas use only baseline-scene and covered-scene. Pass rows include inclusive and exclusive GPU distributions, skipped status and fused motion. Do not add parent and child intervals.",
             deferredClears = "Metal observations name actual absorbed attachment clears, their source scope and consuming scope. Other backends explicitly mark this provenance unavailable. Native load/store actions and encoder-state re-emission remain in the interval that encodes them. End-only consumption is UnscopedDeferredClears. No early clear flush is inserted.",
-            markerPolicy = "baseline-scene and layouts ending in -outer carry only the outer timestamp pair. carry-only, covered-scene and covered-scene-fast-vertex add ten stage markers. A Metal marker ends the native encoder and encodes its own blit pass between event waits, so its cost lands in the row that carries it. addedGpuMicrosecondsEqualMarkers compares covered-scene-outer with baseline-scene and is diagnostic. The acceptance checks keep the original pair.",
-            vertexMathExperiment = "Layouts containing -fast-vertex disable only coverage graphics PreciseMath through an internal cold scene setting. Shader sources and precise carry compute are unchanged. These rows are diagnostic, not arithmetic or image acceptance evidence.",
+            markerPolicy = "baseline-scene and layouts ending in -outer carry only the outer timestamp pair. carry-only and covered-scene add ten stage markers. A Metal marker ends the native encoder and encodes its own blit pass between event waits, so its cost lands in the row that carries it. addedGpuMicrosecondsEqualMarkers compares covered-scene-outer with baseline-scene and is diagnostic. The acceptance checks keep the original pair.",
+            helperInliningExperiment = "Inline rows replace optnone with always_inline in precise Metal vertex and carry MSL after the signed-zero rewrite. Sources and helper bodies stay identical. Non-Metal ignores the setting. Distinct program and memo identities isolate the variants. This is a cost experiment, not arithmetic or image acceptance. Published words still face the exact oracle, and mismatches make diagnostic rows unavailable.",
+            unavailableRowPolicy = "Only carry-only, baseline-scene and covered-scene fail hard. Other rows are disposed and dropped for this population on construction, frame, harvest or evidence failure. Phase is conditioning or observed, frame is phase-local, and -1 means construction before a frame. Missing diagnostic deltas are null. Any unavailable row fails the unit after this JSON is saved.",
+            unavailableRows,
             rows,
             deltas,
-        });
+        }, new JsonSerializerOptions { Converters = { new JsonStringEnumConverter() } });
         string directory = Environment.GetEnvironmentVariable("KE_COVERAGE_PROFILE_RESULTS") ?? Path.Combine(Path.GetTempPath(), "khaozengine-coverage-recession");
         if (OperatingSystem.IsWindows()) Directory.CreateDirectory(directory);
         else Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
@@ -97,6 +107,7 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
         Assert.True(full.addedCpuPreparationMicroseconds.Max <= 2000);
         // An absolute budget. The fixture's baseline scene is light, so a share of it would not describe a real frame.
         Assert.True(full.addedGpuMicroseconds <= 1300);
+        Assert.Empty(unavailableRows);
     }
 
     static int Extent(string name, int fallback)

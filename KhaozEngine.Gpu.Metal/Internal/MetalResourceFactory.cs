@@ -170,9 +170,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions)
+            => CreateShadersFromSpirv(vertGlsl, fragGlsl, vertexOptions, inlineHelpers: false);
+
+        // Per-call diagnostic policy. It never changes this device's ordinary factories.
+        internal IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions, bool inlineHelpers)
         {
             if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A GPU shader set");
-            return CreateShaderSetOnMacOs(vertGlsl, fragGlsl, vertexOptions);
+            return CreateShaderSetOnMacOs(vertGlsl, fragGlsl, vertexOptions, inlineHelpers);
         }
 
         /// <inheritdoc/>
@@ -183,9 +187,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
+            => CreateComputeShaderFromSpirv(computeGlsl, options, inlineHelpers: false);
+
+        internal IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options, bool inlineHelpers)
         {
             if (!KhaozEngineMetal.IsPlatformSupported) throw PlatformRefusalForTests("A GPU compute shader");
-            return CreateComputeShaderOnMacOs(computeGlsl, options);
+            return CreateComputeShaderOnMacOs(computeGlsl, options, inlineHelpers);
         }
 
         /// <inheritdoc/>
@@ -260,13 +267,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // part and holding a pool across four seconds of glslang and SPIRV-Cross would be holding it for nothing.
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        IGpuShaderSet CreateShaderSetOnMacOs(string vertGlsl, string fragGlsl, GpuShaderCompileOptions options)
-            => Shaders.CreateShaderSet(vertGlsl, fragGlsl, options);
+        IGpuShaderSet CreateShaderSetOnMacOs(string vertGlsl, string fragGlsl, GpuShaderCompileOptions options, bool inlineHelpers)
+            => Shaders.CreateShaderSet(vertGlsl, fragGlsl, options, inlineHelpers);
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        IGpuComputeShader CreateComputeShaderOnMacOs(string computeGlsl, GpuShaderCompileOptions options)
-            => Shaders.CreateComputeShader(computeGlsl, options);
+        IGpuComputeShader CreateComputeShaderOnMacOs(string computeGlsl, GpuShaderCompileOptions options, bool inlineHelpers)
+            => Shaders.CreateComputeShader(computeGlsl, options, inlineHelpers);
 
         // NO POOL AT EITHER OF THESE TWO, for the same reason the shader pair above has none: the pipeline opens
         // one around its own native half, and the device-free resolution in front of it (the ownership checks,

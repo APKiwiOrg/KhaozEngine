@@ -29,7 +29,7 @@ public sealed class CoverageRecessionStageTimingTests
             stages.Add(pipeline, stage);
             tally.SetComputePipeline(pipeline); tally.Dispatch(1, 1, 1);
         }
-        timer.Complete();
+        Assert.True(timer.Complete());
         Assert.Equal(new uint[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, commands.Markers);
         var resolved = CoverageRecessionStageTiming.Resolve(new ulong[] { 0, 10, 20, 40, 60, 80, 110, 140, 180, 200, 250, 300 }, 1000);
         Assert.Equal(new[] { "Skin", "Transport", "Basis", "Gather", "Publish" }, resolved.Select(s => s.Stage));
@@ -38,13 +38,16 @@ public sealed class CoverageRecessionStageTimingTests
 
     // An outer row exists to cancel a backend's per-marker cost against the baseline scene it is compared with.
     [Theory]
-    [InlineData("carry-only-outer", "carry-only")]
-    [InlineData("covered-scene-outer", "covered-scene")]
-    public void Outer_layouts_write_the_baseline_marker_count_and_fewer_than_their_staged_twin(string outer, string staged)
+    [InlineData("carry-only-outer", "baseline-scene", "carry-only")]
+    [InlineData("covered-scene-outer", "baseline-scene", "covered-scene")]
+    [InlineData("carry-only-inline-outer", "baseline-scene", "carry-only")]
+    [InlineData("covered-scene-inline-outer", "baseline-scene", "covered-scene")]
+    [InlineData("covered-scene-inline-passes", "covered-scene-passes", null)]
+    public void Diagnostic_layouts_keep_the_reference_marker_count(string layout, string reference, string? staged)
     {
-        uint baseline = MarkersWrittenInOneFrame("baseline-scene");
-        Assert.Equal(baseline, MarkersWrittenInOneFrame(outer));
-        Assert.True(MarkersWrittenInOneFrame(staged) > baseline);
+        uint expected = MarkersWrittenInOneFrame(reference);
+        Assert.Equal(expected, MarkersWrittenInOneFrame(layout));
+        if (staged is not null) Assert.True(MarkersWrittenInOneFrame(staged) > expected);
     }
 
     static uint MarkersWrittenInOneFrame(string layout)

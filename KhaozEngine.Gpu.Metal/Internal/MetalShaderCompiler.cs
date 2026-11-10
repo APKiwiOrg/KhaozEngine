@@ -95,9 +95,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
         /// cross-compile, its emission could not be read, or Metal rejected the emitted MSL.</exception>
         [SupportedOSPlatform("macos")]
-        internal MetalShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl, GpuShaderCompileOptions options = default)
+        internal MetalShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl, GpuShaderCompileOptions options = default, bool inlineHelpers = false)
         {
-            MetalMslProgram program = MetalShaderBuild.Pair(vertexGlsl, fragmentGlsl, _cache, memo: _memo, options: options);
+            MetalMslProgram program = MetalShaderBuild.Pair(vertexGlsl, fragmentGlsl, _cache, memo: _memo, options: options, inlineHelpers: inlineHelpers);
 
             // THE TABLE IS CANONICALISED AFTER THE COMPILE RATHER THAN BEFORE IT, so a program Metal rejects
             // leaves nothing in the cache. The cache is never evicted, so an entry made for a shader set that was
@@ -113,9 +113,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// cross-compile, declares no resolvable workgroup size, its emission could not be read, or Metal
         /// rejected the emitted MSL.</exception>
         [SupportedOSPlatform("macos")]
-        internal MetalComputeShader CreateComputeShader(string computeGlsl, GpuShaderCompileOptions options = default)
+        internal MetalComputeShader CreateComputeShader(string computeGlsl, GpuShaderCompileOptions options = default, bool inlineHelpers = false)
         {
-            (MetalMslProgram program, uint x, uint y, uint z) = MetalShaderBuild.Compute(computeGlsl, _cache, memo: _memo, options: options);
+            (MetalMslProgram program, uint x, uint y, uint z) = MetalShaderBuild.Compute(computeGlsl, _cache, memo: _memo, options: options, inlineHelpers: inlineHelpers);
             var evidence = MetalShaderEvidence.Capture(program.StageOf(MetalShaderStage.Compute), computeGlsl, _effective, options);
             MetalCompiledStage[] stages = CompileOnMacOs(program, options);
             return new MetalComputeShader(_liveness, stages[0], _tables.Canonical(program.Table), x, y, z, evidence);

@@ -40,10 +40,12 @@ internal sealed class CoverageRecessionPassTiming(IReadOnlyDictionary<IGpuComput
     int next, sample;
     uint markers;
     bool discovering;
+    internal int CarryBracketsSeen { get; private set; }
+    internal void ResetCarryBrackets() => CarryBracketsSeen = 0;
     internal uint MarkerCount => checked(markers + 2);
 
     internal void Discover()
-    { discovering = true; layout.Clear(); next = 0; markers = 0; active.Clear(); deferred?.Discover(); }
+    { discovering = true; layout.Clear(); next = 0; markers = 0; CarryBracketsSeen = 0; active.Clear(); deferred?.Discover(); }
 
     internal void Freeze(int capacity)
     {
@@ -56,7 +58,7 @@ internal sealed class CoverageRecessionPassTiming(IReadOnlyDictionary<IGpuComput
     }
 
     internal void BeginFrame(IGpuCommandList list, IGpuTimestampPool timestamps, int id)
-    { commands = list; pool = timestamps; sample = id; next = 0; active.Clear(); deferred?.BeginFrame(list, id); }
+    { commands = list; pool = timestamps; sample = id; next = 0; CarryBracketsSeen = 0; active.Clear(); deferred?.BeginFrame(list, id); }
 
     internal void Complete()
     {
@@ -88,7 +90,8 @@ internal sealed class CoverageRecessionPassTiming(IReadOnlyDictionary<IGpuComput
 
     internal void Dispatch(IGpuComputePipeline? pipeline, bool before)
     {
-        if (pipeline is not null && stages.TryGetValue(pipeline, out int stage)) Mark(carry[stage], before, true);
+        if (pipeline is not null && stages.TryGetValue(pipeline, out int stage))
+        { Mark(carry[stage], before, true); CarryBracketsSeen++; }
     }
     public void BeginPass(IGpuCommandList list, RenderPassKey key) => Mark(key, true, true);
     public void EndPass(IGpuCommandList list, RenderPassKey key) => Mark(key, false, true);

@@ -16,6 +16,7 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner) : IGpuDe
     internal readonly Dictionary<IGpuResourceLayout, GpuResourceLayoutDescription> Layouts = [];
     internal readonly Dictionary<IGpuPipeline, GpuPipelineDescription> Pipelines = [];
     readonly Dictionary<IGpuShaderSet, (string Vertex, string Fragment)> shaderPairs = [];
+    internal readonly Dictionary<IGpuShaderSet, GpuShaderCompileOptions> ShaderOptions = [];
     internal readonly List<(string Source, GpuShaderCompileOptions Options)> ComputeShaders = [];
     readonly Dictionary<IGpuComputeShader, int> carryShaders = [];
     internal readonly Dictionary<IGpuComputePipeline, int> CarryStages = [];
@@ -57,7 +58,7 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner) : IGpuDe
     {
         GraphicsShaders.Add((vertex, options));
         var shaders = inner.Factory.CreateShadersFromSpirv(vertex, fragment, options);
-        shaderPairs.Add(shaders, (vertex, fragment)); return shaders;
+        shaderPairs.Add(shaders, (vertex, fragment)); ShaderOptions.Add(shaders, options); return shaders;
     }
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => CreateComputeShaderFromSpirv(source, default);
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source, GpuShaderCompileOptions options)
@@ -79,6 +80,16 @@ internal sealed class CoverageRecessionObservedDevice(IGpuDevice inner) : IGpuDe
     public IGpuCommandList CreateCommandList() => inner.Factory.CreateCommandList();
     public IGpuFence CreateFence() => inner.Factory.CreateFence();
     public IGpuTimestampPool CreateTimestampPool(uint capacity) => inner.Factory.CreateTimestampPool(capacity);
+
+    internal (bool Coverage, bool Precise) DrawPolicy(IGpuPipeline pipeline)
+    {
+        var shaders = Pipelines[pipeline].ShaderSet;
+        string vertex = shaderPairs[shaders].Vertex;
+        return (vertex == ShaderSources.CoverageModelVert || vertex == ShaderSources.CoverageModelMotionVert
+            || vertex == ShaderSources.CoverageCascadeVert || vertex == ShaderSources.CoverageCascadeDissolveVert
+            || vertex == ShaderSources.CoveragePointVert || vertex == ShaderSources.CoveragePointDissolveVert
+            || vertex == ShaderSources.CoverageOutlineVert, ShaderOptions[shaders].PreciseMath);
+    }
 
     internal string? Pass(RecordingGpuCommandList.DrawBindings draw)
     {

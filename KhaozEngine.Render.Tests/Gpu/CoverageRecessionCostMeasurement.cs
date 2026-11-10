@@ -16,7 +16,8 @@ internal static class CoverageRecessionCostMeasurement
 {
     internal const int ConditioningFrames = 96;
     internal const int BatchFrames = 3;
-    internal static readonly string[] Layouts = ["carry-only", "baseline-scene", "covered-scene"];
+    internal static readonly string[] Layouts = ["carry-only", "baseline-scene", "covered-scene", "covered-scene-fast-vertex",
+        "baseline-scene-passes", "covered-scene-passes", "covered-scene-fast-vertex-passes"];
     internal static string[] DispatchSchedule => CoverageCarryShaders.Kernels.Select(kernel => kernel.Name["CoverageCarry".Length..]).ToArray();
 
     internal static IEnumerable<(int Start, int Count, bool Reverse)> Schedule(int count)
@@ -74,11 +75,27 @@ internal static class CoverageRecessionCostMeasurement
     internal sealed record Sample(int Frame, int Sequence, double GpuMicroseconds, double CpuPreparationMicroseconds,
         double CpuEncodingMicroseconds, double CpuSubmissionMicroseconds, long WarmManagedBytes,
         int DispatchCount, int DrawCount, ulong[] Ticks, double PeriodNanoseconds,
-        CoverageRecessionStageTiming.StageSample[] StageGpuMicroseconds);
+        CoverageRecessionStageTiming.StageSample[] StageGpuMicroseconds,
+        CoverageRecessionPassTiming.PassSample[] PassGpuMicroseconds, Scene3DPassTimingsMs CpuPassRecordingMs)
+    {
+        public double? UnscopedGpuMicroseconds => PassGpuMicroseconds.Length == 0 ? null
+            : GpuMicroseconds - PassGpuMicroseconds.Sum(p => p.ExclusiveGpuMicroseconds);
+    }
     internal sealed record Row(string Layout, int Actors, int SlotsPerActor, long SurfaceBytes, long CandidateBytes,
         int CarryDispatchCount, Statistics GpuMicroseconds, Statistics CpuPreparationMicroseconds,
         Statistics CpuEncodingMicroseconds, Statistics CpuSubmissionMicroseconds, Statistics WarmManagedBytes, Sample[] Samples)
     {
+        public bool PassTimingEnabled => Layout.EndsWith("-passes", StringComparison.Ordinal);
+        public bool CoverageVertexPreciseMath => !Layout.Contains("-fast-vertex", StringComparison.Ordinal);
+        public Statistics? UnscopedGpuMicroseconds => PassTimingEnabled ? Stats(Samples.Select(s => s.UnscopedGpuMicroseconds!.Value)) : null;
+        public object[] PassGpuMicroseconds => Samples.SelectMany(s => s.PassGpuMicroseconds).GroupBy(p => p.Pass).Select(g => (object)new
+        {
+            Pass = g.Key,
+            ExecutedFrames = g.Count(p => p.Executed),
+            FusedMotionFrames = g.Count(p => p.FusedMotion),
+            InclusiveGpuMicroseconds = Stats(g.Select(p => p.InclusiveGpuMicroseconds)),
+            ExclusiveGpuMicroseconds = Stats(g.Select(p => p.ExclusiveGpuMicroseconds)),
+        }).ToArray();
         public string[] DispatchSchedule => CarryDispatchCount == 0 ? [] : CoverageRecessionCostMeasurement.DispatchSchedule;
         public object[] StageGpuMicroseconds => DispatchSchedule.Select((stage, i) => (object)new
         { Stage = stage, GpuMicroseconds = Stats(Samples.Select(s => s.StageGpuMicroseconds[i].GpuMicroseconds)) }).ToArray();
@@ -90,7 +107,9 @@ internal static class CoverageRecessionCostMeasurement
         readonly IGpuDevice device;
         readonly CoverageRecessionNativeScene scene;
         readonly string layout;
-        readonly bool carry;
+        readonly bool carry, baseline;
+        readonly CoverageRecessionPassTiming? passTiming;
+        readonly Scene3DPassTimingsMs[] cpuPassRecording;
         readonly CoverageCarryBatch? batch;
         readonly GpuRetireQueue? retired;
         readonly IGpuCommandList[] native;
@@ -114,9 +133,9 @@ internal static class CoverageRecessionCostMeasurement
             var observer = new CoverageRecessionObservedDevice(device);
             this.device = device = observer; this.layout = layout; this.observed = observed;
             stageTiming = new(observer.CarryStages);
-            markerCount = layout == "baseline-scene" ? 2 : CoverageRecessionStageTiming.MarkerCount;
             carry = layout == "carry-only";
-            scene = new(device, fixture, actors, layout != "baseline-scene");
+            baseline = layout.StartsWith("baseline-scene", StringComparison.Ordinal);
+            scene = new(device, fixture, actors, !baseline, layout.Contains("-fast-vertex", StringComparison.Ordinal));
             if (carry)
             {
                 retired = GpuRetireQueue.CreateFrameCounted(device, 3);
@@ -124,6 +143,7 @@ internal static class CoverageRecessionCostMeasurement
                 batch.Reserve(actors, fixture.Source.Vertices.Count * actors, fixture.Topology.VertexCount * actors, fixture.Topology.TriangleCount * actors);
             }
             int capacity = ConditioningFrames + observed;
+            cpuPassRecording = new Scene3DPassTimingsMs[capacity];
             samples = new Sample[observed]; timestamps = new GpuPerfTimestampResult[capacity];
             cpuPrepare = new double[capacity]; cpuEncode = new double[capacity]; cpuSubmit = new double[capacity];
             allocated = new long[capacity]; dispatches = new int[capacity]; draws = new int[capacity];
@@ -131,8 +151,28 @@ internal static class CoverageRecessionCostMeasurement
             lastSurfaces = new CoverageSurfaceRange[actors];
             native = Enumerable.Range(0, BatchFrames).Select(_ => device.Factory.CreateCommandList()).ToArray();
             commands = native.Select(list => new CommandTallyGpuCommandList(list)).ToArray();
-            if (markerCount > 2)
-                foreach (var list in commands) list.ComputeDispatchObserver = stageTiming.Dispatch;
+            if (layout.EndsWith("-passes", StringComparison.Ordinal))
+            {
+                passTiming = new(observer.CarryStages);
+                scene.Scene.EnableTiming = true;
+                scene.Scene.PassObserver = passTiming;
+                foreach (var list in commands) list.ComputeDispatchObserver = passTiming.Dispatch;
+                // Discover only after native targets and the lazy point owner have been built.
+                // These cold submitted frames precede the unchanged conditioning schedule.
+                for (int frame = 0; frame < BatchFrames; frame++)
+                {
+                    passTiming.Discover(); scene.Prepare(frame);
+                    commands[0].Clear(); native[0].Begin(); scene.Render(commands[0]);
+                    passTiming.Complete(); native[0].End(); scene.Submission.Submit(native[0]); device.WaitForIdle();
+                }
+                passTiming.Freeze(capacity);
+                markerCount = passTiming.MarkerCount;
+            }
+            else
+            {
+                markerCount = baseline ? 2 : CoverageRecessionStageTiming.MarkerCount;
+                if (!baseline) foreach (var list in commands) list.ComputeDispatchObserver = stageTiming.Dispatch;
+            }
             ring = new(device, capacity, markerCount, (id, result) => timestamps[id] = result);
         }
 
@@ -172,7 +212,8 @@ internal static class CoverageRecessionCostMeasurement
                 long allocation = GC.GetAllocatedBytesForCurrentThread();
                 commands[slot].Clear(); native[slot].Begin();
                 if (!ring.TryBegin(native[slot], scene.Submission, id, markerCount, out pool)) throw new InvalidOperationException(ring.Failure);
-                if (markerCount > 2) stageTiming.Begin(native[slot], pool);
+                if (passTiming is not null) passTiming.BeginFrame(native[slot], pool, id);
+                else if (!baseline) stageTiming.Begin(native[slot], pool);
                 if (carry && !scene.Submission.TryRetain(batch!, out completion)) throw new InvalidOperationException("Carry completion retention failed.");
                 openingBytes = GC.GetAllocatedBytesForCurrentThread() - allocation;
             }
@@ -182,7 +223,9 @@ internal static class CoverageRecessionCostMeasurement
                 before = Stopwatch.GetTimestamp();
                 if (carry) batch!.Record(commands[slot]);
                 else scene.Render(commands[slot]);
-                if (markerCount > 2) stageTiming.Complete();
+                if (passTiming is not null) passTiming.Complete();
+                else if (!baseline) stageTiming.Complete();
+                cpuPassRecording[id] = scene.Scene.PassTimingsMs;
                 ((IGpuCommandListTimestampEnd)native[slot]).FinishTimestampsOnEnd(pool, markerCount - 1);
                 native[slot].End();
                 encodeBytes = GC.GetAllocatedBytesForCurrentThread() - allocation;
@@ -195,7 +238,7 @@ internal static class CoverageRecessionCostMeasurement
                 if (carry)
                     for (int actor = 0; actor < scene.Owners.Length; actor++)
                         lastSurfaces[actor] = batch!.Surface(scene.Owners[actor], slots[actor], batch.CommittedSlot(scene.Owners[actor]));
-                else if (layout == "covered-scene")
+                else if (!baseline)
                     for (int actor = 0; actor < scene.Owners.Length; actor++) lastSurfaces[actor] = scene.Owners[actor].Request.Surface;
                 if (carry) batch!.CommitSubmitted(completion);
                 cpuSubmit[id] = Stopwatch.GetElapsedTime(before).TotalMicroseconds;
@@ -210,7 +253,7 @@ internal static class CoverageRecessionCostMeasurement
                 Assert.Equal(5, dispatches[id]);
                 surfaceBytes = batch!.Surface(scene.Owners[0], slots[0], -1).Current.SizeInBytes;
             }
-            else if (layout == "covered-scene")
+            else if (!baseline)
             {
                 scene.AssertPublished();
                 surfaceBytes = scene.Owners[0].Request.Surface.Current.SizeInBytes;
@@ -235,13 +278,17 @@ internal static class CoverageRecessionCostMeasurement
                 int id = ConditioningFrames + i;
                 var time = timestamps[id] ?? throw new InvalidOperationException("A timestamp sample is missing.");
                 Assert.True(time.Valid); Assert.True(time.Ticks[^1] > 0);
+                var passes = passTiming?.Resolve(id, time.Ticks, time.Period!.Value) ?? [];
                 samples[i] = new(i, id, time.Ticks[^1] * time.Period!.Value / 1000, cpuPrepare[id], cpuEncode[id], cpuSubmit[id],
                     allocated[id], dispatches[id], draws[id], time.Ticks.ToArray(), time.Period.Value,
-                    CoverageRecessionStageTiming.Resolve(time.Ticks, time.Period.Value));
+                    passTiming is null ? CoverageRecessionStageTiming.Resolve(time.Ticks, time.Period.Value)
+                        : passes.Where(p => p.Pass.Id.StartsWith("carry.", StringComparison.Ordinal))
+                            .Select(p => new CoverageRecessionStageTiming.StageSample(p.Pass.Id[6..], p.InclusiveGpuMicroseconds)).ToArray(),
+                    passes, cpuPassRecording[id]);
             }
             var final = samples.Select(s => s!).ToArray();
             int k = batch?.SlotsPerActor ?? GpuRetireQueue.FramesInFlightFor(device) + 2;
-            if (layout != "baseline-scene")
+            if (!baseline)
             {
                 Assert.Equal((long)k * scene.Owners.Length * scene.Fixture.Topology.VertexCount * 64, surfaceBytes);
                 // Evidence readback happens once after all observed frames, outside every timing bracket.
@@ -259,8 +306,8 @@ internal static class CoverageRecessionCostMeasurement
                 }
             }
             return new(layout, scene.ActorCount, k, surfaceBytes,
-                layout == "baseline-scene" ? 0 : (long)scene.ActorCount * scene.Fixture.Topology.VertexCount * 64,
-                layout == "baseline-scene" ? 0 : 5, Stats(final.Select(s => s.GpuMicroseconds)),
+                baseline ? 0 : (long)scene.ActorCount * scene.Fixture.Topology.VertexCount * 64,
+                baseline ? 0 : 5, Stats(final.Select(s => s.GpuMicroseconds)),
                 Stats(final.Select(s => s.CpuPreparationMicroseconds)), Stats(final.Select(s => s.CpuEncodingMicroseconds)),
                 Stats(final.Select(s => s.CpuSubmissionMicroseconds)), Stats(final.Select(s => (double)s.WarmManagedBytes)), final);
         }

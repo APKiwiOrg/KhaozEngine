@@ -43,7 +43,7 @@ public sealed partial class Scene3D
             p.PreviousSlot = p.History.Corresponds(p, p.View, _coverageSerial) ? p.History.Committed.Slot : -1;
             p.Surface = _coverageBatch!.Surface(host, p.OutputSlot, p.PreviousSlot);
         }
-        _coverageBatch!.Record(commands);
+        using (ProfilePass(commands, "coverage.carry")) _coverageBatch!.Record(commands);
         foreach (var host in _coverageHosts)
         {
             var p = host.Request;
@@ -86,7 +86,8 @@ public sealed partial class Scene3D
                 _coverageMaterials.Add(entry.SkinnedMaterialSet);
             }
         }
-        PrepareCoverageDraws(commands, shadows);
+        using (ProfilePass(commands, "geometry.coverage-uploads", executed: _coverageDraws.Count > 0))
+            PrepareCoverageDraws(commands, shadows);
         _coverageEncoded = true;
     }
 
@@ -119,6 +120,7 @@ public sealed partial class Scene3D
     void DrawCoverageMain(IGpuCommandList commands)
     {
         if (_coverageDraws.Count == 0) return;
+        using var pass = ProfilePass(commands, "opaque.coverage", fusedMotion: _res.MotionAllocated);
         // Ordinary and coverage casters share the header buffer, but never a window in one recording.
         _model.SetCoverageMainSlotOffset(UseGpuSkinning ? (uint)_gpuSkinnedDraws.Count : 0);
         foreach (var draw in _coverageDraws) _model.PackCoverage(draw, _coverageInstances[(int)draw.InstanceSlot]);

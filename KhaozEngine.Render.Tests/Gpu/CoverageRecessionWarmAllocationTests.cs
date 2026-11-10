@@ -41,6 +41,14 @@ public sealed class CoverageRecessionWarmAllocationTests(ITestOutputHelper outpu
     [InlineData("carry-only", 32)]
     [InlineData("baseline-scene", 32)]
     [InlineData("covered-scene", 32)]
+    [InlineData("covered-scene-fast-vertex", 1)]
+    [InlineData("covered-scene-fast-vertex", 32)]
+    [InlineData("baseline-scene-passes", 1)]
+    [InlineData("baseline-scene-passes", 32)]
+    [InlineData("covered-scene-passes", 1)]
+    [InlineData("covered-scene-passes", 32)]
+    [InlineData("covered-scene-fast-vertex-passes", 1)]
+    [InlineData("covered-scene-fast-vertex-passes", 32)]
     public void Warm_cost_frame_regions_allocate_zero_for_each_actor_population(string layout, int actors)
     {
         // Inert device and counters exercise the real cost driver, without establishing GPU timing or output.

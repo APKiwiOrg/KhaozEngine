@@ -54,8 +54,21 @@ The graph has five dispatches per active table group, including final atomic per
 Each carry-only and covered sample also reports named `StageGpuMicroseconds` for Skin, Transport,
 Basis, Gather and Publish, with per-stage distributions on its row. These brackets surround only
 the dispatches and share the outer frame's timestamp pool. The outer total includes uniform uploads,
-all stage markers and completed-End finalization. Baseline rows keep only their outer timestamps.
-Timestamp resolution and evidence readback stay outside measured frames.
+all stage markers and completed-End finalization. The primary baseline row keeps only its outer timestamps.
+Schema `khaozengine.coverage-recession-cost/2` adds separate baseline, covered and fast-vertex pass
+observations at each actor count. `PassGpuMicroseconds` contains inclusive and exclusive min, median,
+p95, p99 and max, with execution counts and fused-motion counts. Samples retain raw ticks and pass
+metadata and marker indices. Skipped callbacks retain metadata without markers. `UnscopedGpuMicroseconds`
+reports the outer total less exclusive pass times. `CpuPassRecordingMs` contains the separate
+`Scene3D.EnableTiming` CPU buckets.
+The original `baseline-scene` and `covered-scene` pair alone supplies the unchanged GPU and CPU
+criteria. All seven layouts require zero warm allocation. Pass timing changes native encoder boundaries
+and cascade stores, so pass-row totals are observational. Do not add parent and child inclusive times.
+The covered fast-vertex rows change only the coverage graphics precise compile option through an internal
+cold test setting. Carry compute stays precise and shader sources stay fixed. Their output is a policy
+experiment, not native arithmetic or image approval. Timestamp resolution and evidence readback stay
+outside measured frames. See the [instrumentation contract](EQUIPMENT-COVERAGE.md#verification-boundaries)
+for row boundaries and the headless `COVERAGE_DRAW_INVENTORY_JSON` counts.
 The output reservation is `D + 2` slots per actor and is a storage policy, not a measured footprint.
 Carry-only results cannot establish aggregate scene overhead. The free `coverage` tooling CI suite
 checks deterministic fixture/CLI behavior with GPU disabled and supplies no timing evidence. No native,

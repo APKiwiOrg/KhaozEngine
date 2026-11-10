@@ -26804,6 +26804,10 @@ Group intervals contain children and their durations must not be added as extra 
 | --- | --- |
 | `device.scene.begin` | CPU-only leaf for the existing `Scene3D.Begin` operations, including pending-layout changes, retirement sealing/freeing and any fallback wait, before command-list begin/acquire. No GPU markers or duration |
 | `geometry.uploads`, `geometry.skinned-uploads` | Shared rigid, foliage, motion and palette/deformed-stream uploads |
+| `coverage.carry` | Admitted final-surface compute recording |
+| `geometry.coverage-uploads` | Final-surface bindings and cascade headers for admitted coverage |
+| `opaque.coverage` | Pulled final-surface colour/depth draw, with fused motion metadata when the MRT is active |
+| `shadow.cascade.coverage` | Pulled final-surface cascade draws, occurrence is cascade index |
 | `shadow.directional` | Whole executed cascade recording, or one skipped subtree when cached or inactive |
 | `shadow.directional.setup`, `.skinned-uploads`, `.finish` | Atlas clear, cascade uniforms and foliage uploads, GPU-skinned shadow slots, final scissor restoration |
 | `shadow.cascade.rigid` | Rigid and CPU-skinned segment, occurrence is cascade index |

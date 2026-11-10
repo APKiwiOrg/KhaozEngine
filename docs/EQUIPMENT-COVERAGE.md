@@ -299,6 +299,39 @@ hardware. Hosted benchmark dispatch forwards its optional `coverage-cost-unit` i
 and ordinary shard filters exclude this fact even without Diagnostic filtering. Do not use a broad
 Diagnostic selection as cost-unit authorization. See [performance evidence](RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).
 
+Cost schema `khaozengine.coverage-recession-cost/2` retains the original carry-only, baseline-scene and
+covered-scene rows at one and 32 actors. Only the original scene pair supplies the 1.3 ms GPU and 2 ms
+CPU preparation checks. All rows retain the zero warm managed allocation check. Additional rows ending
+in `-passes` enable the existing CPU recording buckets with `Scene3D.EnableTiming` and bracket the
+existing `PassObserver` callbacks with `GpuTimestamps`. They report per-sample and per-pass min, median,
+p95, p99 and max GPU microseconds, including exclusive durations, executed status and fused motion.
+Colour, depth and motion share the opaque MRT draw here. Fused motion is metadata, not another interval.
+Group intervals contain children, so adding all inclusive times would count work twice.
+Samples retain begin/end marker indices for audit against their raw ticks. `UnscopedGpuMicroseconds`
+is the outer total minus exclusive pass times, including inter-pass gaps, marker overhead and the End tail.
+Skipped callbacks retain zero-duration metadata without GPU markers.
+
+Pass observations are separate because timestamp markers can split Metal encoders and a registered
+observer preserves cascade working depth/stencil stores. Their aggregate times cannot replace the
+unobserved scene pair. Cold layout discovery precedes the existing conditioning schedule. Layout drift
+refuses the row. Resolution, aggregation, readback and drains remain outside measured frame regions.
+Carry dispatch brackets remain available beside the pass observations.
+
+The diagnostic `covered-scene-fast-vertex` row and its `-passes` counterpart use the init-only internal
+`Scene3D.DisableCoverageVertexPreciseMathForTests` seam. It disables the coverage graphics compile
+option for main, motion, visibility variants, cascades, point shadows and outlines. Compute remains
+precise. GLSL sources, their explicit `precise` operations, arithmetic contract version 2 and pinned
+hashes are unchanged. This A/B tests the graphics compilation policy only. It establishes no arithmetic
+or visual acceptance for a different policy, and shipped scenes keep precise coverage graphics.
+
+`CoverageRecessionDrawInventoryTests` records the same synthetic 32-actor body-size scene without a GPU.
+Its `COVERAGE_DRAW_INVENTORY_JSON` output groups submitted draw calls and element counts by innermost
+pass, indexed flag, coverage route and vertex compile policy. It also reports pipeline sets and changes,
+resource-set binds and changes, vertex-buffer binds and index-buffer binds. Elements are index references
+or pulled corners multiplied by instances, not distinct vertex shader invocations. Changes compare
+requested handles and dynamic offsets across the recording, not backend encoder state. These counts
+guide a separately approved quiet Metal run. They cannot identify the cause of a GPU cost difference.
+
 Until all five units have accepted evidence at the actual SHA, native correctness, synchronization and
 aggregate cost remain unproven. This implementation alone authorizes no release, package publication or
 consumer adoption. CPU runtime carry, different float semantics, collar retuning, private table generation,

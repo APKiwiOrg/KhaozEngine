@@ -7,6 +7,7 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class TargetOutlineRenderer
 {
+    internal GpuShaderCompileOptions CoverageVertexOptions { get; set; } = new(PreciseMath: true);
     CoveragePulledResources _coveragePull = null!;
     IGpuShaderSet _coverageFullShaders = null!, _coverageVisibleShaders = null!;
     IGpuPipeline? _coverageFullPipeline, _coverageVisiblePipeline;
@@ -30,9 +31,9 @@ internal sealed partial class TargetOutlineRenderer
             {
                 var factory = _gd.Factory;
                 full = factory.CreateShadersFromSpirv(ShaderSources.CoverageOutlineVert,
-                    ShaderSources.TargetOutlineFullMaskFrag, new(PreciseMath: true));
+                    ShaderSources.TargetOutlineFullMaskFrag, CoverageVertexOptions);
                 visible = factory.CreateShadersFromSpirv(ShaderSources.CoverageOutlineVert,
-                    ShaderSources.TargetOutlineVisibleMaskFrag, new(PreciseMath: true));
+                    ShaderSources.TargetOutlineVisibleMaskFrag, CoverageVertexOptions);
                 if (_fullFramebuffer is not null && _visibleFramebuffer is not null)
                 {
                     fullPipeline = BuildCoverageMaskPipeline(factory, full, _fullFramebuffer.Outputs, true, resources.Layout);

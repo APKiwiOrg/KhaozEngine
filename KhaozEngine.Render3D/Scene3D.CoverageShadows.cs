@@ -24,7 +24,10 @@ public sealed partial class Scene3D
 
     void DrawCoverageCascades(IGpuCommandList commands, int count)
     {
+        if (_coverageDraws.Count == 0) return;
         for (int c = 0; c < count; c++)
+        {
+            using var pass = ProfilePass(commands, "shadow.cascade.coverage", c);
             foreach (var draw in _coverageDraws)
             {
                 if (draw.ShadowKind == ShadowCastKind.None) continue;
@@ -32,6 +35,7 @@ public sealed partial class Scene3D
                     draw.ShadowKind == ShadowCastKind.DissolvingInverted);
                 _shadowPassSkinnedDraws++; CountSkinnedDraw(draw.CornerCount);
             }
+        }
     }
 
     bool PointRequestTouchesCoverage(in PointShadowRequest request)

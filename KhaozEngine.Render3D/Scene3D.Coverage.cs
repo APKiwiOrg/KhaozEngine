@@ -8,6 +8,8 @@ namespace KhaozEngine.Render3D;
 
 public sealed partial class Scene3D
 {
+    // Cold diagnostic setting. Init-only so cached programs cannot mix policies within a scene.
+    internal bool DisableCoverageVertexPreciseMathForTests { get; init; }
     static int nextCoverageSceneStamp;
     readonly int _coverageSceneStamp = AllocateCoverageSceneStamp();
     readonly int _coverageThread = Environment.CurrentManagedThreadId;

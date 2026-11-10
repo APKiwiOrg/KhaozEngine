@@ -2352,6 +2352,13 @@ A registered pass observer keeps cascade working depth and stencil stored becaus
 end native encoders between caster families. This preserves capture output. Per-pass timing campaigns
 include those stores, while unobserved rendering receives the discard.
 
+Coverage cost schema 2 therefore keeps pass-timed observations separate from its primary scene pair.
+The observer adds `coverage.carry`, `geometry.coverage-uploads`, `opaque.coverage` and
+`shadow.cascade.coverage` scopes for admitted final surfaces. Point and outline draws use their existing
+scopes. The cost unit reports GPU distributions from timestamp pools separately from `EnableTiming` CPU
+recording buckets. See [coverage cost evidence](../docs/RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence)
+for the diagnostic vertex math A/B and the headless draw inventory.
+
 ## Draw admission refusals
 
 `DrawAdmissionArgumentException` derives from `ArgumentException` and carries `DrawAdmissionRefusal`.

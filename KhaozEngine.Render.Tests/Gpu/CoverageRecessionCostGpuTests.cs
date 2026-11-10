@@ -52,7 +52,7 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
         }).ToArray();
         string json = JsonSerializer.Serialize(new
         {
-            schema = "khaozengine.coverage-recession-cost/1",
+            schema = "khaozengine.coverage-recession-cost/2",
             fixture = fixture.Extents,
             code = new
             {
@@ -76,7 +76,9 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
             exclusions = "Cold topology and table construction, shader compilation, resource growth, conditioning, evidence readback and batch drains. No construction or certification kernels. Synthetic geometry does not prove consumer frame rate.",
             candidateBytesPerVertex = 64,
             dispatchSchedule = CoverageRecessionCostMeasurement.DispatchSchedule,
-            preciseMath = true,
+            carryPreciseMath = true,
+            passTiming = "Layouts ending in -passes are separate observations with Scene3D.EnableTiming and PassObserver GPU timestamps. Observer markers split native encoders and preserve cascade depth/stencil stores. Primary deltas use only baseline-scene and covered-scene. Pass rows include inclusive and exclusive GPU distributions, skipped status and fused motion. Do not add parent and child intervals.",
+            vertexMathExperiment = "Layouts containing -fast-vertex disable only coverage graphics PreciseMath through an internal cold scene setting. Shader sources and precise carry compute are unchanged. These rows are diagnostic, not arithmetic or image acceptance evidence.",
             rows,
             deltas,
         });

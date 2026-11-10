@@ -100,13 +100,14 @@ internal sealed class CoverageRecessionNativeScene : IDisposable
     readonly CoverageEquipmentCommand[] memberships;
     readonly CoverageCommandPose[] commands = new CoverageCommandPose[1];
 
-    internal CoverageRecessionNativeScene(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, bool covered)
+    internal CoverageRecessionNativeScene(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, bool covered,
+        bool disableVertexPreciseMath = false)
     {
         Fixture = fixture; this.covered = covered; ActorCount = actors;
         color = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(Width, Height,
             GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
         target = device.Factory.CreateFramebuffer(null, color);
-        Scene = new(device, target.Outputs);
+        Scene = new(device, target.Outputs) { DisableCoverageVertexPreciseMathForTests = disableVertexPreciseMath };
         Submission = new(device); // F03. Default capacity, one scene-owned aggregate participant for all actors.
         Scene.Post.Starfield = false;
         Scene.Post.RenderScale = RenderScale.MatchViewport;

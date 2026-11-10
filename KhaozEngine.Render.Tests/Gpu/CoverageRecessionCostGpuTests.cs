@@ -79,7 +79,7 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
             conditioningFramesPerLayout = CoverageRecessionCostMeasurement.ConditioningFrames,
             observedFramesPerRow = observed,
             batchFrames = CoverageRecessionCostMeasurement.BatchFrames,
-            conditioning = "Adjacent three-frame batches, alternating layout order. All observations retained. One attempt, 15 minute deadline.",
+            conditioning = "Adjacent three-frame batches, alternating layout order. A blocking collection and finalizer drain separate conditioning from observation. All observations retained. One attempt, 15 minute deadline.",
             stateSchedule = "Frame modulo three equal to two is raw hole. Other even frames select row zero and odd frames select row one. The same sequence runs on every layout.",
             timingBoundary = "Carry-only outer timestamps include uniforms, five dispatches, candidate publication and bounds. Scene pairs include actual colour/depth/motion/cascade/point-shadow/full-outline/visible-outline drawing with identical pass settings. Final timestamp follows native End finalization.",
             exclusions = "Cold topology and table construction, shader compilation, resource growth, conditioning, evidence readback and batch drains. No construction or certification kernels. Synthetic geometry does not prove consumer frame rate.",

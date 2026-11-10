@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -349,6 +351,42 @@ public sealed class CoverageRecessionRowFailureTests(ITestOutputHelper output)
             new JsonSerializerOptions { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
         using var parsed = JsonDocument.Parse(json);
         Assert.Equal(1, parsed.RootElement.GetProperty("unavailableRows").GetArrayLength());
+    }
+
+    // #1762. Finalizer work left by conditioning must be finished before the first measured window opens,
+    // because a finalizer allocating inside a window loses its no-GC region.
+    [Fact]
+    public void Finalizers_left_by_conditioning_complete_before_the_first_observed_frame()
+    {
+        using var compute = new CoveragePublicationDevice();
+        using var device = CoverageRecessionWarmAllocationTests.InertCostDevice(compute);
+        var finalized = new StrongBox<bool>();
+        bool first = true, dropped = false;
+        bool? finishedBeforeObservation = null;
+        int batches = CoverageRecessionCostMeasurement.ConditioningFrames / CoverageRecessionCostMeasurement.BatchFrames;
+        device.PoolFactory = capacity =>
+        {
+            var pool = new Performance.GpuPerfTimestampTestPool(capacity) { Owners = device.Fences };
+            if (first) pool.OnBegin = () =>
+            {
+                if (pool.Begins == batches - 1) { DropFinalizable(finalized); dropped = true; }
+                else if (pool.Begins == batches) finishedBeforeObservation ??= Volatile.Read(ref finalized.Value);
+            };
+            first = false;
+            device.Pools.Add(pool); return pool;
+        };
+        var measured = CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(), ["baseline-scene"]);
+        Assert.Equal("baseline-scene", Assert.Single(measured.Rows).Layout);
+        Assert.True(dropped);
+        Assert.True(finishedBeforeObservation);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static void DropFinalizable(StrongBox<bool> finalized) => _ = new Finalizable(finalized);
+
+    sealed class Finalizable(StrongBox<bool> finalized)
+    {
+        ~Finalizable() => Volatile.Write(ref finalized.Value, true);
     }
 
     sealed class UnreadableException : Exception

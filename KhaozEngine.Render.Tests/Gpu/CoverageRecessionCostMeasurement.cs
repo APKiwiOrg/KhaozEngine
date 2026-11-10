@@ -29,6 +29,16 @@ internal static class CoverageRecessionCostMeasurement
 
     internal sealed record Measurement(Row[] Rows, CoverageRecessionUnavailableRow[] UnavailableRows);
 
+    // #1762. Construction and conditioning leave garbage and pending finalizers. A finalizer or a background
+    // collection that runs while a measured window is being established loses that window's no-GC region with
+    // no collection counted. Both are completed here, once, before the first measured frame.
+    static void SettleCollector()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+    }
+
     internal static Measurement Measure(IGpuDevice device, CoverageRecessionBodySizeFixture fixture, int actors, int observed, long deadline,
         IReadOnlyList<string>? layouts = null)
     {
@@ -45,6 +55,7 @@ internal static class CoverageRecessionCostMeasurement
                 catch (CoverageRecessionRowException error) { Unavailable(error); }
             }
             Run(ConditioningFrames, retain: false);
+            SettleCollector();
             Run(observed, retain: true);
             for (int i = 0; i < rows.Length; i++)
             {

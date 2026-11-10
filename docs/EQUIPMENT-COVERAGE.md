@@ -324,6 +324,10 @@ Pass observations are separate because timestamp markers can split Metal encoder
 resulting load/store work. Their aggregate times are not frame costs on Metal and cannot replace the
 equal-marker scene pair. Cold layout discovery precedes the existing conditioning schedule. Layout drift
 refuses the row. Resolution, aggregation, readback and drains remain outside measured frame regions.
+Between conditioning and the observed frames the unit runs a blocking collection, waits for pending
+finalizers and collects again. A finalizer or background collection that runs while a measured window is
+being established loses that window's no-GC region with no collection counted, which would report the
+row as an operation failure before its evidence is read.
 Carry dispatch brackets remain available beside the pass observations.
 
 These are native stream brackets around logical recording scopes, not isolated draw costs. On Metal a

@@ -109,7 +109,10 @@ Trace coverage uses water prisms bounded by those triangles and clipped at the b
 exposed patches and dry volume. Internal triangle and same-body tile edges contribute no dry wall.
 For the canonical coplanar triangle pair in one raw column, a grazing bed-diagonal root can partition an
 already continuously intersected boundary. Its path-width error is redundant only after directed bounds prove
-a represented, strictly wet bed point inside the actual capsule at every fraction of the query interval.
+a represented, strictly wet bed point inside the actual capsule throughout that root's clamped uncertainty window.
+The affine normal displacement retains dependence on the path fraction. Entry and exit windows are checked
+independently, including overlaps and query endpoints. Each unproved window keeps its own charge, so a later
+real bed departure retains its original roots and contacts without requiring bed contact for the whole query.
 The proof pays column rounding in XYZ, proves its ground lookup still selects the same tile, and retains the
 original ranges, cuts, witnesses, overlap tags and contact order. Exact plane, normal and owner equality are
 required. Creases, other columns, free surfaces and

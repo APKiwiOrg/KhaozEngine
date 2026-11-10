@@ -25,14 +25,17 @@ internal static class GrazingWaterBank
         Water = new(WaterTraversalMode.SurfaceSwimmer),
     };
 
-    internal static TileWorldDocument Document()
+    internal static TileWorldDocument Document(int firstX = 110, int columns = 1)
     {
         var doc = TileWorldPhysicsTestData.FlatWorld(new RegionCoord(1, 3));
         for (int z = 236; z <= 238; z++)
-            for (int x = 110; x <= 111; x++)
+            for (int x = firstX; x <= firstX + columns; x++)
                 doc.SetCornerHeightCm(x, z, 0, (short)(z == 236 ? -35 : -130));
-        doc.SetUnderlay(110, 236, 0, TileWorldPhysicsTestData.Water);
-        doc.SetUnderlay(110, 237, 0, TileWorldPhysicsTestData.Water);
+        for (int x = firstX; x < firstX + columns; x++)
+        {
+            doc.SetUnderlay(x, 236, 0, TileWorldPhysicsTestData.Water);
+            doc.SetUnderlay(x, 237, 0, TileWorldPhysicsTestData.Water);
+        }
         return doc;
     }
 

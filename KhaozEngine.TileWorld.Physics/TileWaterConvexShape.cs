@@ -130,14 +130,13 @@ internal sealed class TileWaterConvexShape
                 I reach = (remaining / a).Sqrt();
                 I lower = vertex - reach, upper = vertex + reach;
                 double length = Math.Sqrt(Vector.Dot(drive, drive).High);
-                double uncertainty = Math.Max(Math.Clamp(lower.High, low, high) - Math.Clamp(lower.Low, low, high),
-                    Math.Clamp(upper.High, low, high) - Math.Clamp(upper.Low, low, high));
+                var roots = TileWaterRootUncertainty.Clip(lower, upper, low, high);
                 low = Math.Max(low, lower.Low);
                 high = Math.Min(high, upper.High);
-                double rootError = uncertainty * length;
-                if (!(rootError > MovementQueryLease.CoverageSkinMetres && _bedSeam is not null &&
-                    _bedSeam.Covers(basis.A, basis.B, basis.C, start, drive, core, radius, enter, exit)))
-                    error = Math.Max(error, rootError);
+                double rootError = roots.Error(length);
+                if (rootError > MovementQueryLease.CoverageSkinMetres && _bedSeam is not null)
+                    rootError = roots.CertifiedError(_bedSeam, basis.A, basis.B, basis.C, start, drive, core, radius, length);
+                error = Math.Max(error, rootError);
                 if (low > high) continue;
             }
             if (low < first) { first = low; witnessStart = q; witnessDrive = v; }

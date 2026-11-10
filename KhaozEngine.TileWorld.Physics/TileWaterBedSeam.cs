@@ -58,13 +58,19 @@ internal sealed class TileWaterBedSeam
     {
         if (c >= 0 || !(a == _diagonal && b is 3 or 6)) return false;
         if (TileWaterQueryWork.Enabled) TileWaterQueryWork.BedSeamProofs++;
-        V centre = start + drive * new I(enter, exit) - new V(I.Point(0), core, I.Point(0));
-        I distance = V.Dot(_bed.Normal, centre) - _bed.Offset;
-        V projected = centre - _bed.Normal * (distance / _bed.Normal.SquaredLength);
+        I time = new(enter, exit), squaredNormal = _bed.Normal.SquaredLength;
+        V centreStart = start - new V(I.Point(0), core, I.Point(0));
+        I offset = V.Dot(_bed.Normal, centreStart) - _bed.Offset;
+        I speed = V.Dot(_bed.Normal, drive);
+        V projectedStart = centreStart - _bed.Normal * (offset / squaredNormal);
+        V projectedDrive = drive - _bed.Normal * (speed / squaredNormal);
+        V projected = projectedStart + projectedDrive * time;
         if (!(projected.X.Low > _minX.High && projected.X.High < _maxX.Low &&
             projected.Z.Low > _minZ.High && projected.Z.High < _maxZ.Low &&
             (projected.Y + I.Point(_heightError)).High < _surface && SelectsOwnTile(projected))) return false;
-        I separation = (centre - projected).SquaredLength.Sqrt() + I.Point(_pointError);
+        // Centre and projection share t. Bound their normal displacement directly,
+        // rather than subtracting two independent whole-interval enclosures.
+        I separation = ((offset + speed * time).Square() / squaredNormal).Sqrt() + I.Point(_pointError);
         if (!(separation.High < radius)) return false;
         // Rounding the projected column to binary32 stays inside this same wet patch.
         // Its full XYZ error is paid before proving it inside a sphere on the actual core.

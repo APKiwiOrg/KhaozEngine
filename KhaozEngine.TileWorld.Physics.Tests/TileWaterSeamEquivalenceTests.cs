@@ -20,12 +20,14 @@ public class TileWaterSeamEquivalenceTests(ITestOutputHelper output)
     [InlineData("islands", 1763)]
     [InlineData("two-surfaces", 1764)]
     [InlineData("tangency", 1765)]
+    [InlineData("wide-bank", 1766)]
     public void SeededGeometryKeepsEveryLegacyKnownRecordAndRefusal(string scene, int seed)
     {
         var doc = scene == "islands" ? TileWaterIslands.Create() : GrazingWaterBank.Document();
         if (scene == "crease") doc.SetCornerHeightCm(110, 237, 0, -125);
         if (scene == "two-surfaces") doc = TwoSurfaces();
         if (scene == "tangency") doc = MovementWaterFieldTests.WaterWorld();
+        if (scene == "wide-bank") doc = GrazingWaterBank.Document(109, 3);
         var field = MovementWaterFieldTests.Field(doc);
         var legacy = field.CaptureLegacyTraceForTests();
         var random = new Random(seed);
@@ -51,6 +53,14 @@ public class TileWaterSeamEquivalenceTests(ITestOutputHelper output)
                 query = new(new(lift.Body.Centre + new Vector3(0, (i / 2 - 3) * 0.00001f, 0),
                     lift.Body.Radius, lift.Body.HalfHeight, lift.Body.CurrentSpace, null), lift.Delta);
             }
+            if (scene == "wide-bank" && i < 16)
+            {
+                float x = (i % 4) switch { 0 => 110.275390625f, 1 => 110.375f, 2 => 111.275390625f, _ => 111.375f };
+                float y = i % 2 == 0 ? -0.36105501651763916f : -0.4560607671737671f;
+                float z = i % 2 == 0 ? -236.69903564453125f : -236.79904174804688f;
+                query = new(new(new(x, y + i / 8 * 0.00001f, z), 0.3f, 0.75f,
+                    MovementWaterFieldTests.Space, null), new(0, i / 4 % 2 == 0 ? 0.2f : 0.4f, 0));
+            }
             var result = WaterSeamComparison.Check(field, legacy, query,
                 spanCapacity: i % 29 == 28 ? 0 : 64, contactCapacity: i % 31 == 30 ? 0 : 256);
             counts[result.Before.Availability] = counts.GetValueOrDefault(result.Before.Availability) + 1;
@@ -65,8 +75,8 @@ public class TileWaterSeamEquivalenceTests(ITestOutputHelper output)
         }
         output.WriteLine($"scene={scene}, seed={seed}, cases=128, changed={changed}, before={JsonSerializer.Serialize(counts)}");
         Assert.True(counts.GetValueOrDefault(MovementAvailability.Known) > 0);
-        if (scene == "bank") Assert.True(changed > 0);
-        if (scene != "bank") Assert.Equal(0, changed);
+        if (scene is "bank" or "wide-bank") Assert.True(changed > 0);
+        else Assert.Equal(0, changed);
         float Next(float min, float max) => min + (max - min) * random.NextSingle();
     }
 

@@ -34,6 +34,11 @@ HasSubmission and FramePhases.Run. These remain internal and keep the production
 The tooling assembly grants its internal implementation access only to Renderer.Perf.Verify and
 Renderer.Perf.Tests.
 
+Recipe settings pin `TemporalSettings.ShadowLightHoldTexels` to the historical one texel, so an engine default
+change cannot silently change the frozen shadow workload. The existing recipe-local resolver omits that
+legacy value only. Zero and other finite values stay in the serialized identity. The frozen recipe files and
+their strict identity comparisons are unchanged.
+
 [RendererPerfShared.props](../../test-shared/RendererPerfShared.props) is the explicit 53-file helper
 source-link inventory. Sources retain canonical physical paths and existing ratchet allowances.
 Helpers remain owned by their source test project or `test-shared`. UI recipes also copy the unchanged

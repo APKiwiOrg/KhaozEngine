@@ -5,8 +5,7 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
-/// <summary>Keeps the frozen v1 uniform-lighting profile and unbound water planes exact as the renderer gains
-/// opt-in settings and draw metadata.</summary>
+/// <summary>Keeps frozen workloads and their encoding exact as renderer defaults and draw metadata evolve.</summary>
 internal static class RendererPerfRecipeSettings
 {
     internal static DefaultJsonTypeInfoResolver Resolver()
@@ -14,6 +13,14 @@ internal static class RendererPerfRecipeSettings
         var resolver = new DefaultJsonTypeInfoResolver();
         resolver.Modifiers.Add(static info =>
         {
+            // The recipe pins the historical one-texel workload. Other holds remain authored settings.
+            if (info.Type == typeof(TemporalSettings))
+            {
+                foreach (var property in info.Properties)
+                    if (property.Name == nameof(TemporalSettings.ShadowLightHoldTexels))
+                        property.ShouldSerialize = static (_, field) => field is float hold && hold != 1f;
+                return;
+            }
             if (info.Type == typeof(RigidInstanceDraw))
             {
                 foreach (var property in info.Properties)

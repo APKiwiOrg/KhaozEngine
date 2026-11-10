@@ -161,6 +161,13 @@ use fixed simulation sequences and no consumer assets. The v1 settings encoding 
 lighting and zero irradiance coefficients. The harness explicitly selects and validates both values.
 Directional or nonzero input refuses construction instead of changing the frozen recipe identity.
 
+Frozen recipes explicitly set `TemporalSettings.ShadowLightHoldTexels` to the historical one texel, preserving
+their shadow work when the engine's temporal default follows the sun every frame. The recipe-local JSON
+resolver omits only that legacy value from the settings encoding. Other finite hold values, including zero,
+remain serialized and change settings, authored and construction identities. Omitting the new engine default
+without pinning the workload would silently change shadow work behind an unchanged identity. Frozen recipe
+files, digests and strict comparisons remain unchanged.
+
 The recipe-local JSON resolver omits `RigidInstanceDraw.ShadowMobility` only for `Static`, preserving the
 existing rigid construction bytes and digests. `Dynamic` and other nondefault values remain authored geometry
 inputs and change geometry and construction identities. Frozen recipe files and strict comparisons stay unchanged.

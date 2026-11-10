@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Tests.Render3D;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
@@ -32,14 +33,31 @@ public sealed class RendererPerfRecipeSettingsTests
         Assert.Equal(legacy.ToJsonString(), JsonSerializer.Serialize(settings, RendererPerfRecipe.Json));
     }
 
-    [Fact]
-    public void Default_aerial_shadow_samples_keep_the_legacy_atmosphere_encoding()
+    [Theory, InlineData(false), InlineData(true)]
+    public void Legacy_settings_keep_the_frozen_field_encoding(bool temporal)
     {
-        var settings = new AtmosphereSettings();
+        object settings = temporal ? new TemporalSettings { ShadowLightHoldTexels = 1f } : new AtmosphereSettings();
         var legacy = JsonSerializer.SerializeToNode(settings, LegacyOptions)!.AsObject();
-        legacy.Remove(nameof(AtmosphereSettings.AerialShadowSamples));
+        legacy.Remove(temporal ? nameof(TemporalSettings.ShadowLightHoldTexels) : nameof(AtmosphereSettings.AerialShadowSamples));
 
         Assert.Equal(legacy.ToJsonString(), JsonSerializer.Serialize(settings, RendererPerfRecipe.Json));
+    }
+
+    [Theory, InlineData(1f, true), InlineData(0f, false)]
+    public void The_historical_temporal_hold_preserves_frozen_work_and_other_values_change_identity(float hold, bool matchesFrozen)
+    {
+        using var frozen = RendererPerfRecipe.Create("empty");
+        using var changed = new ChangedTemporalRecipe(hold);
+        changed.Freeze();
+        using var control = new HeadlessSceneRig();
+        frozen.ResetBlock(control.Scene);
+        Assert.Equal(1f, control.Scene.Post.Temporal.ShadowLightHoldTexels);
+        using var actual = new HeadlessSceneRig();
+        changed.ResetBlock(actual.Scene);
+        Assert.Equal(hold, actual.Scene.Post.Temporal.ShadowLightHoldTexels);
+        Assert.Equal(matchesFrozen, frozen.Facts.SettingsSha256 == changed.Facts.SettingsSha256);
+        Assert.Equal(matchesFrozen, frozen.Facts.RecipeSha256 == changed.Facts.RecipeSha256);
+        Assert.Equal(matchesFrozen, frozen.Facts.Derived.ConstructionSha256 == changed.Facts.Derived.ConstructionSha256);
     }
 
     [Theory]
@@ -221,6 +239,11 @@ public sealed class RendererPerfRecipeSettingsTests
         control.Freeze();
         using var recipe = new ChangedIndirectRecipe(mode, irradiance);
         Assert.Throws<InvalidOperationException>(recipe.Freeze);
+    }
+
+    sealed class ChangedTemporalRecipe(float hold) : RendererPerfRecipe("empty")
+    {
+        protected override void ConfigureSettings(PixelPostProcessSettings post) => post.Temporal.ShadowLightHoldTexels = hold;
     }
 
     sealed class ChangedIndirectRecipe(IndirectDiffuseMode mode, bool irradiance) : RendererPerfRecipe("empty")

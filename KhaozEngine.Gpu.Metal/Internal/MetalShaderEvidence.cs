@@ -7,10 +7,11 @@ internal sealed record MetalShaderEvidence(MetalShaderStage Stage, string EntryP
     string Msl, string Configuration)
 {
     internal GpuEffectiveDiagnosticConfiguration? Effective { get; init; }
-    internal static MetalShaderEvidence Capture(MetalMslStage stage, string glsl, GpuEffectiveDiagnosticConfiguration? effective = null)
+    internal static MetalShaderEvidence Capture(MetalMslStage stage, string glsl, GpuEffectiveDiagnosticConfiguration? effective = null,
+        GpuShaderCompileOptions options = default)
     {
         var validation = effective is null ? MetalValidationReader.Current() : default;
-        string configuration = MslCompilePin.Identity + ";" + SpirvFrontEndPin.Identity + ";"
+        string configuration = MslCompilePin.IdentityFor(stage.Stage, options) + ";" + SpirvFrontEndPin.IdentityFor(options) + ";"
             + MslCrossCompilePin.Identity + ";" + SpirvToolchainVersion.Identity
             + ";capture=none;reflection=none;nativeCompilerVersion=unavailable;debugLayer="
             + (effective?.DebugLayerEnabled ?? validation.DebugLayerArmed) + ";shaderValidation=" + (effective?.ValidationEnabled ?? validation.ShaderValidationArmed)

@@ -80,9 +80,10 @@ namespace KhaozEngine.Gpu.Internal
         /// something the engine's own description mirrors do not model. Reason is
         /// <see cref="ShaderValidationRefusal.CrossCompileFailed"/>, with Label, Target, Stage when known, and the
         /// underlying refusal in InnerException.</exception>
+        /// <param name="vertexOptions">Requested per-stage arithmetic policy or float-control capability.</param>
         internal static CrossCompiledPair VertexFragmentToHlsl(byte[] vertexSpirv, byte[] fragmentSpirv,
-            string? label = null)
-            => Pair(vertexSpirv, fragmentSpirv, Backend.Hlsl, "HLSL", label ?? "shader pair");
+            string? label = null, GpuShaderCompileOptions vertexOptions = default)
+            => Pair(vertexSpirv, fragmentSpirv, Backend.Hlsl, "HLSL", label ?? "shader pair", vertexOptions);
 
         /// <summary>
         /// Cross-compile a compute SPIR-V module to HLSL, with its reflection. The compute sibling of
@@ -94,26 +95,27 @@ namespace KhaozEngine.Gpu.Internal
         /// the engine's own description mirrors do not model. Reason is
         /// <see cref="ShaderValidationRefusal.CrossCompileFailed"/>, with Label, Stage = Compute, Target and the
         /// underlying refusal in InnerException.</exception>
-        internal static CrossCompiledCompute ComputeToHlsl(byte[] computeSpirv, string? label = null)
-            => Compute(computeSpirv, Backend.Hlsl, "HLSL", label ?? "compute shader");
+        /// <param name="options">Requested per-stage arithmetic policy or float-control capability.</param>
+        internal static CrossCompiledCompute ComputeToHlsl(byte[] computeSpirv, string? label = null, GpuShaderCompileOptions options = default)
+            => Compute(computeSpirv, Backend.Hlsl, "HLSL", label ?? "compute shader", options);
 
-        /// <summary>The GLSL-source convenience over <see cref="SpirvFrontEnd.ToSpirv"/> plus
+        /// <summary>The GLSL-source convenience over <see cref="SpirvFrontEnd.ToSpirv(string, GpuShaderStages, string?, SpirvCompileCache?)"/> plus
         /// <see cref="VertexFragmentToHlsl"/>, which is the shape every call site actually has: the engine's
         /// shaders are GLSL constants, not SPIR-V blobs. It runs BOTH halves of the toolchain, which is why it
         /// stays on this side of the split rather than moving with the front end.</summary>
-        internal static CrossCompiledPair GlslPairToHlsl(string vertexGlsl, string fragmentGlsl, string? label = null, SpirvCompileCache? memo = null)
+        internal static CrossCompiledPair GlslPairToHlsl(string vertexGlsl, string fragmentGlsl, string? label = null, SpirvCompileCache? memo = null, GpuShaderCompileOptions vertexOptions = default)
         {
             string tag = label ?? "shader pair";
-            byte[] vertexSpirv = SpirvFrontEnd.ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag, memo);
+            byte[] vertexSpirv = SpirvFrontEnd.ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag, vertexOptions, memo);
             byte[] fragmentSpirv = SpirvFrontEnd.ToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag, memo);
-            return VertexFragmentToHlsl(vertexSpirv, fragmentSpirv, tag);
+            return VertexFragmentToHlsl(vertexSpirv, fragmentSpirv, tag, vertexOptions);
         }
 
         /// <summary>The compute twin of <see cref="GlslPairToHlsl"/>.</summary>
-        internal static CrossCompiledCompute GlslComputeToHlsl(string computeGlsl, string? label = null)
+        internal static CrossCompiledCompute GlslComputeToHlsl(string computeGlsl, string? label = null, GpuShaderCompileOptions options = default)
         {
             string tag = label ?? "compute shader";
-            return ComputeToHlsl(SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag), tag);
+            return ComputeToHlsl(SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, options), tag, options);
         }
 
         /// <summary>
@@ -135,9 +137,10 @@ namespace KhaozEngine.Gpu.Internal
         /// something the engine's own description mirrors do not model. Reason is
         /// <see cref="ShaderValidationRefusal.CrossCompileFailed"/>, with Label, Target, Stage when known, and the
         /// underlying refusal in InnerException.</exception>
+        /// <param name="vertexOptions">Requested per-stage arithmetic policy or float-control capability.</param>
         internal static CrossCompiledPair VertexFragmentToMsl(byte[] vertexSpirv, byte[] fragmentSpirv,
-            string? label = null)
-            => Pair(vertexSpirv, fragmentSpirv, Backend.Msl, "MSL", label ?? "shader pair");
+            string? label = null, GpuShaderCompileOptions vertexOptions = default)
+            => Pair(vertexSpirv, fragmentSpirv, Backend.Msl, "MSL", label ?? "shader pair", vertexOptions);
 
         /// <summary>
         /// Cross-compile a compute SPIR-V module to MSL, with its reflection. The compute sibling of
@@ -149,8 +152,16 @@ namespace KhaozEngine.Gpu.Internal
         /// the engine's own description mirrors do not model. Reason is
         /// <see cref="ShaderValidationRefusal.CrossCompileFailed"/>, with Label, Stage = Compute, Target and the
         /// underlying refusal in InnerException.</exception>
-        internal static CrossCompiledCompute ComputeToMsl(byte[] computeSpirv, string? label = null)
-            => Compute(computeSpirv, Backend.Msl, "MSL", label ?? "compute shader");
+        /// <param name="options">Requested per-stage arithmetic policy or float-control capability.</param>
+        internal static CrossCompiledCompute ComputeToMsl(byte[] computeSpirv, string? label = null, GpuShaderCompileOptions options = default)
+            => Compute(computeSpirv, Backend.Msl, "MSL", label ?? "compute shader", options);
+
+        // Fault values cross the same native emission, precision validation and context wrappers as production.
+        internal static CrossCompiledCompute ComputeToMslWithEmissionForTests(byte[] spirv, string emission, string label)
+            => Compute(spirv, Backend.Msl, "MSL", label, new(PreciseMath: true), emission);
+
+        internal static CrossCompiledPair PairToMslWithEmissionForTests(byte[] vertex, byte[] fragment, string emission, string label)
+            => Pair(vertex, fragment, Backend.Msl, "MSL", label, new(PreciseMath: true), emission);
 
         // ---- the SPIRV-Cross session ---------------------------------------------------------------------
 
@@ -158,7 +169,7 @@ namespace KhaozEngine.Gpu.Internal
         // under one allocation owner and freed together. spvc_context_destroy releases every compiler and every
         // string it handed out, which is why the emitted text is copied to managed strings before it returns.
         static unsafe CrossCompiledPair Pair(byte[] vertexSpirv, byte[] fragmentSpirv, Backend backend,
-            string target, string tag)
+            string target, string tag, GpuShaderCompileOptions options, string? emittedMslForTests = null)
         {
             if (vertexSpirv is null) throw new ArgumentNullException(nameof(vertexSpirv));
             if (fragmentSpirv is null) throw new ArgumentNullException(nameof(fragmentSpirv));
@@ -167,7 +178,7 @@ namespace KhaozEngine.Gpu.Internal
             try
             {
                 context = CreateContext(tag);
-                Compiler* vertex = CreateCompiler(context, vertexSpirv, backend, tag);
+                Compiler* vertex = CreateCompiler(context, vertexSpirv, backend, tag, options);
                 Compiler* fragment = CreateCompiler(context, fragmentSpirv, backend, tag);
                 MslIndexAssignment[] msl = RemapResourceBindings(context, backend, tag, vertex, fragment);
 
@@ -175,6 +186,8 @@ namespace KhaozEngine.Gpu.Internal
                 // A resource binding is marked used as the emitter consumes it, so asking first answers false for
                 // everything and every element would read as unreferenced by both stages.
                 string vertexSource = Emit(context, vertex, tag);
+                vertexSource = emittedMslForTests ?? vertexSource;
+                if (backend == Backend.Msl && options.PreciseMath) vertexSource = MslPreciseMath.Rewrite(vertexSource, GpuShaderStages.Vertex);
                 string fragmentSource = Emit(context, fragment, tag);
                 if (backend == Backend.Msl) fragmentSource = MslDiscardTermination.Apply(fragmentSource);
                 RequireNoHelperBuffers(backend, vertex, "vertex", tag);
@@ -186,12 +199,8 @@ namespace KhaozEngine.Gpu.Internal
             }
             catch (ShaderValidationException ex)
             {
-                throw new ShaderValidationException(ShaderValidationRefusal.CrossCompileFailed, $"{tag}: cross-compile to {target} failed: {ex.Message}", ex)
-                {
-                    Label = tag,
-                    Target = target,
-                    Stage = ex.Stage,
-                };
+                throw ex.WithContext($"{tag}: cross-compile to {target} failed: {ex.Message}",
+                    tag, ex.Stage, target);
             }
             finally
             {
@@ -199,7 +208,7 @@ namespace KhaozEngine.Gpu.Internal
             }
         }
 
-        static unsafe CrossCompiledCompute Compute(byte[] computeSpirv, Backend backend, string target, string tag)
+        static unsafe CrossCompiledCompute Compute(byte[] computeSpirv, Backend backend, string target, string tag, GpuShaderCompileOptions options, string? emittedMslForTests = null)
         {
             if (computeSpirv is null) throw new ArgumentNullException(nameof(computeSpirv));
 
@@ -207,9 +216,11 @@ namespace KhaozEngine.Gpu.Internal
             try
             {
                 context = CreateContext(tag);
-                Compiler* compute = CreateCompiler(context, computeSpirv, backend, tag);
+                Compiler* compute = CreateCompiler(context, computeSpirv, backend, tag, options);
                 MslIndexAssignment[] msl = RemapResourceBindings(context, backend, tag, compute);
                 string computeSource = Emit(context, compute, tag);
+                computeSource = emittedMslForTests ?? computeSource;
+                if (backend == Backend.Msl && options.PreciseMath) computeSource = MslPreciseMath.Rewrite(computeSource, GpuShaderStages.Compute);
                 RequireNoHelperBuffers(backend, compute, "compute", tag);
 
                 return new CrossCompiledCompute(computeSource,
@@ -218,13 +229,8 @@ namespace KhaozEngine.Gpu.Internal
             }
             catch (ShaderValidationException ex)
             {
-                throw new ShaderValidationException(ShaderValidationRefusal.CrossCompileFailed,
-                    $"{tag}: compute cross-compile to {target} failed: {ex.Message}", ex)
-                {
-                    Label = tag,
-                    Target = target,
-                    Stage = GpuShaderStages.Compute,
-                };
+                throw ex.WithContext($"{tag}: compute cross-compile to {target} failed: {ex.Message}",
+                    tag, GpuShaderStages.Compute, target);
             }
             finally
             {
@@ -350,7 +356,7 @@ namespace KhaozEngine.Gpu.Internal
         // hands the parsed IR to the compiler, which the context then owns: the alternative, Copy, would keep a
         // second copy of every module alive for the length of the call and buy nothing, since nothing here reads
         // the IR again afterwards.
-        static unsafe Compiler* CreateCompiler(Context* context, byte[] spirv, Backend backend, string tag)
+        static unsafe Compiler* CreateCompiler(Context* context, byte[] spirv, Backend backend, string tag, GpuShaderCompileOptions compileOptions = default)
         {
             if (spirv.Length % 4 != 0)
                 throw new ShaderValidationException(ShaderValidationRefusal.SpirvLengthInvalid,
@@ -375,6 +381,9 @@ namespace KhaozEngine.Gpu.Internal
             CompilerOptions* options;
             Check(context, _cross.CompilerCreateCompilerOptions(compiler, &options), tag, "create the options");
             Configure(options, backend);
+            if (backend == Backend.Msl && compileOptions.PreciseMath)
+                Check(context, _cross.CompilerOptionsSetBool(options, CompilerOption.MslInvariantFPMath, 1),
+                    tag, "preserve precise MSL arithmetic");
             Check(context, _cross.CompilerInstallCompilerOptions(compiler, options), tag, "install the options");
             return compiler;
         }

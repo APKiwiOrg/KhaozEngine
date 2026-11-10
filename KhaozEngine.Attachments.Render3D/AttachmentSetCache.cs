@@ -9,7 +9,7 @@ namespace KhaozEngine.Attachments.Render3D;
 
 /// <summary>Owns verified source snapshots and shared uploads for one scene.</summary>
 /// <remarks>Use on the owning render thread. Dispose before the scene, after stopping use of its views.</remarks>
-public sealed class AttachmentSetCache : IDisposable
+public sealed partial class AttachmentSetCache : IDisposable
 {
     readonly IAttachmentAssetSource _source;
     readonly Dictionary<AttachmentMeshRef, CachedDefinition> _definitions = [];
@@ -171,6 +171,8 @@ public sealed class AttachmentSetCache : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        foreach (var host in _coverageLifetimes.Keys) host.Invalidate();
+        _coverageLifetimes.Clear(); _coverage.Clear(); _coverageSources.Clear();
         Release(_meshes.Values);
         _meshes.Clear();
         _definitions.Clear();

@@ -1,6 +1,10 @@
 using System;
 using System.Reflection;
+using System.Globalization;
+using System.Text;
+using System.Security.Cryptography;
 using System.Reflection.Emit;
+using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
@@ -143,6 +147,22 @@ namespace KhaozEngine.Tests.Gpu
                 () => D3D11ShaderKey.For(D3D11ShaderStage.Vertex, 0u, " ", Program));
         }
 
+        [Fact]
+        public void DefaultCacheEncodingRetainsItsPrePrecisionBytes()
+        {
+            const string front = "shaderc/spirv;debug=0;opt=Performance;env=Vulkan.4194304;spirv=Shaderc10;macros=0;entryPoint=main";
+            Assert.Equal(front, SpirvFrontEndPin.IdentityFor(default));
+            string Sources() => string.Concat(Array.ConvertAll(Program, source => source.Length.ToString(CultureInfo.InvariantCulture) + "\n" + source));
+            string Hash(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+            string metal = string.Join("\n", MetalShaderKey.Schema, MetalShaderKey.EngineVersion,
+                Guid.Empty.ToString("N"), Guid.Empty.ToString("N"), "synthetic-toolchain", front,
+                MslCrossCompilePin.Identity, MslCompilePin.Identity, "2") + "\n" + Sources();
+            Assert.Equal(Hash(metal), MetalShaderKey.For(Guid.Empty, Guid.Empty, "synthetic-toolchain", Program));
+            string d3d = string.Join("\n", D3D11ShaderKey.Schema, D3D11ShaderKey.EngineVersion,
+                "synthetic-toolchain", front, HlslCrossCompilePin.Identity, "vs_5_0", "00000000", "main", "2") + "\n" + Sources();
+            Assert.Equal(Hash(d3d), D3D11ShaderKey.For(D3D11ShaderStage.Vertex, 0u, "synthetic-toolchain", Program));
+        }
+
         // ---- the schema tags -----------------------------------------------------------------------------
 
         /// <summary>
@@ -154,6 +174,27 @@ namespace KhaozEngine.Tests.Gpu
         {
             Assert.Equal("khaozengine-metal-program-v3", MetalShaderKey.Schema);
             Assert.Equal("khaozengine-d3d11-dxbc-v3", D3D11ShaderKey.Schema);
+        }
+
+        [Fact]
+        public void PrecisionPartitionsEveryProgramKeyAndKeepsDefaultIdentities()
+        {
+            var precise = new GpuShaderCompileOptions(true);
+            string defaultKey = MetalShaderKey.For(Program);
+            string preciseKey = MetalShaderKey.For(precise, Program);
+            Assert.Equal(defaultKey, MetalShaderKey.For(default(GpuShaderCompileOptions), Program));
+            Assert.NotEqual(defaultKey, preciseKey);
+            Assert.Equal(preciseKey, MetalShaderKey.For(precise, Program));
+            Assert.NotEqual(MetalShaderKey.For(PreciseMathShaders.Compute), MetalShaderKey.For(precise, PreciseMathShaders.Compute));
+
+            foreach (D3D11ShaderStage stage in new[] { D3D11ShaderStage.Vertex, D3D11ShaderStage.Fragment, D3D11ShaderStage.Compute })
+            {
+                defaultKey = D3D11ShaderKey.For(stage, 0u, Program);
+                preciseKey = D3D11ShaderKey.For(stage, 0u, precise, Program);
+                Assert.Equal(defaultKey, D3D11ShaderKey.For(stage, 0u, default(GpuShaderCompileOptions), Program));
+                Assert.NotEqual(defaultKey, preciseKey);
+                Assert.Equal(preciseKey, D3D11ShaderKey.For(stage, 0u, precise, Program));
+            }
         }
     }
 }

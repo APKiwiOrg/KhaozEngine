@@ -152,6 +152,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         using (Profiling?.Pass(cl, "outline.uploads", styleIndex) ?? default)
         {
             PrepareGpuPalette(cl);
+            UploadCoverageMasks(cl);
             BindTargets(resources);
             cl.UpdateBuffer(_drawUbo!, 0, (ReadOnlySpan<byte>)_drawImage);
         }
@@ -221,6 +222,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
     {
         foreach (QueuedDraw draw in _queue)
         {
+            if (draw.Geometry == QueuedGeometry.Coverage) { DrawCoverageMask(cl, draw, full); continue; }
             IGpuPipeline pipeline = draw.Geometry == QueuedGeometry.GpuSkinned
                 ? full ? _skinnedFullPipeline! : _skinnedVisiblePipeline!
                 : full ? _fullPipeline! : _visiblePipeline!;
@@ -235,6 +237,8 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
                 "outline draw has no prepared vertex buffer."));
             cl.SetIndexBuffer(draw.IndexBuffer, draw.IndexFormat);
             cl.DrawIndexed((uint)draw.IndexCount, 1, 0, draw.BaseVertex, 0);
+            if (draw.Geometry is QueuedGeometry.GpuSkinned or QueuedGeometry.CpuSkinned)
+                OrdinarySkinnedDrawn?.Invoke(draw.Actor, draw.SkinnedMesh);
         }
     }
 
@@ -293,6 +297,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         _fullFramebuffer = f.CreateFramebuffer(_privateDepth, fullCoverageTarget);
         _visibleFramebuffer = f.CreateFramebuffer(resources.DepthStencil, visibleTarget, visibleDepthTarget);
         _boundSceneDepth = resources.DepthColorTex;
+        BuildCoverageMaskPipelines(f);
         _fullPipeline = BuildMaskPipeline(f, _fullShaders, _fullFramebuffer.Outputs, full: true);
         _visiblePipeline = BuildMaskPipeline(f, _visibleShaders, _visibleFramebuffer.Outputs, full: false);
         _skinnedFullPipeline = BuildSkinnedMaskPipeline(f, _skinnedFullShaders,
@@ -363,6 +368,8 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         if (_fullFramebuffer != null) _gd.WaitForIdle();
         foreach (IGpuResourceSet set in _compositeSets) set.Dispose();
         _compositeSets.Clear();
+        _coverageFullPipeline?.Dispose(); _coverageFullPipeline = null;
+        _coverageVisiblePipeline?.Dispose(); _coverageVisiblePipeline = null;
         _fullPipeline?.Dispose();
         _visiblePipeline?.Dispose();
         _skinnedFullPipeline?.Dispose();
@@ -404,6 +411,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         Rigid,
         GpuSkinned,
         CpuSkinned,
+        Coverage,
     }
 
     readonly record struct QueuedDraw(
@@ -417,11 +425,14 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         int PaletteSlot,
         int BaseVertex,
         int PoseStart,
-        int PoseCount);
+        int PoseCount,
+        CoveragePulledDraw Coverage = default,
+        MotionKey Actor = default, SkinnedMeshHandle SkinnedMesh = default);
 
     public void Dispose()
     {
         DisposeTargets();
+        DisposeCoveragePulling();
         _defaultMaterialSet.Dispose();
         _white.Dispose();
         _drawSet?.Dispose();

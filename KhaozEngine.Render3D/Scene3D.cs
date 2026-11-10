@@ -1430,8 +1430,7 @@ namespace KhaozEngine.Render3D
             // Skinned draws: an entry with VisibleMain false is retained for a key or point shadow only, so it
             // must not draw here. The GPU path's loop
             // lives in Scene3D.GpuSkinning.cs, beside the palette upload it depends on.
-            if (UseGpuSkinning) DrawGpuSkinnedMain(cl);
-            else DrawCpuSkinnedMain(cl);
+            DrawSkinnedGeometry(cl);
 
             if (EnableTiming) modelMs = ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;

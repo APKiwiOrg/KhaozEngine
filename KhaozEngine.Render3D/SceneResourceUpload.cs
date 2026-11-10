@@ -16,7 +16,7 @@ public sealed class SceneResourceUpload : IDisposable
     readonly ISceneUploadReservation _reservation;
     readonly long _meshOrder;
     SceneUploadData? _data;
-    readonly SceneUploadPublication? _publication;
+    SceneUploadPublication? _publication;
     readonly List<Transfer> _transfers = new();
     readonly List<IDisposable> _owned = new();
     IGpuBuffer? _vertices, _normals, _indices, _clip, _foliage, _groundParams, _anchor;
@@ -213,6 +213,7 @@ public sealed class SceneResourceUpload : IDisposable
         // Mesh and foliage entries borrow this upload's buffers. Remove their visibility before retiring the
         // complete ownership group, whose final callback releases admission after every object is destroyed.
         _scene.DetachUploadedResource(PublishedMesh, PublishedFoliage);
+        _publication = null;
         PublishedFoliage = null; PreparedFoliage = null;
         _scene.RetireUpload(this, new Retirement(_owned, _reservation));
         ReleaseInputs();

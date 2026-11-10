@@ -60,6 +60,7 @@ public sealed partial class Scene3D
                 dissolveBound = dr.Dissolve;
             }
             _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
+            MarkOrdinaryCoverage(dr.Motion, dr.Mesh);
             CountSkinnedDraw(dr.IndexCount);
         }
     }

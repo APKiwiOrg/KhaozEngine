@@ -13,6 +13,8 @@ public sealed class AttachmentSetBinding
     readonly ResolvedPart[] _parts;
     readonly Dictionary<uint, int> _partIndices = [];
     readonly Matrix4x4[] _worlds;
+    readonly IReadOnlyList<CoverageConfigurationPart> _configurationParts;
+    readonly Matrix4x4[]? _hostInverseBind;
 
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map)
         : this(definition, map, null, null, null) { }
@@ -43,6 +45,8 @@ public sealed class AttachmentSetBinding
                     { PartId = part.Id };
         }
         else SkinnedAttachmentBinding.ValidateHost(map, hostMesh);
+        _hostInverseBind = hostMesh?.InverseBind.AsSpan().ToArray();
+        var configurationParts = new CoverageConfigurationPart[definition.Parts.Count];
         _parts = new ResolvedPart[definition.Parts.Count];
         for (int i = 0; i < _parts.Length; i++)
         {
@@ -54,6 +58,7 @@ public sealed class AttachmentSetBinding
                     ? SkinnedAttachmentBinding.FromMesh(skinned, map, hostMesh!, skinnedMeshes!)
                     : SkinnedAttachmentBinding.FromResources(skinned, map, hostMesh!, resources[i]);
                 _parts[i] = new ResolvedPart(skinned.Id, string.Empty, -1, Matrix4x4.Identity, skin);
+                configurationParts[i] = new(skinned.Id, string.Empty, Matrix4x4.Identity, Matrix4x4.Identity);
                 continue;
             }
             var part = (RigidAttachmentPartDefinition)definition.Parts[i];
@@ -62,6 +67,7 @@ public sealed class AttachmentSetBinding
                 int node = map.Node(part.Joint);
                 int bone = map.Bone(part.Joint);
                 Matrix4x4 alignment = map.BodyAlignment(node);
+                configurationParts[i] = new(part.Id, part.Joint, part.Local, alignment);
                 _parts[i] = new ResolvedPart(part.Id, part.Joint, bone, part.Local * alignment);
             }
             catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or ArgumentException)
@@ -72,7 +78,11 @@ public sealed class AttachmentSetBinding
             }
         }
         _worlds = new Matrix4x4[_parts.Length];
+        _configurationParts = Array.AsReadOnly(configurationParts);
     }
+
+    internal IReadOnlyList<CoverageConfigurationPart> ConfigurationParts => _configurationParts;
+    internal bool MatchesHostSkin(SkinnedHostCoverage host) => _hostInverseBind is null || host.MatchesHostSkin(_hostInverseBind);
 
     public Skeleton Skeleton { get; }
     public int PartCount => _parts.Length;

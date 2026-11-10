@@ -242,7 +242,7 @@ namespace KhaozEngine.Render3D
         // attributes by name; a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
         static void AppendPrimitiveCorners(List<MeshCorner> corners, MeshPrimitive prim, Matrix4x4 world,
                                            Matrix4x4 normalMatrix, bool identity, string path,
-                                           Func<GltfMaterial?, Vector4>? baseColorFor = null, string? entryId = null)
+                                           Func<GltfMaterial?, Vector4>? baseColorFor = null, string? entryId = null, Action<int, int, int>? triangleRead = null)
         {
             var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
             if (pos == null) return;
@@ -295,6 +295,7 @@ namespace KhaozEngine.Render3D
                 corners.Add(new MeshCorner(Pos(ai), Norm(ai), Color(ai), Uv(ai), Tan(ai), perVertexColor));
                 corners.Add(new MeshCorner(Pos(bi), Norm(bi), Color(bi), Uv(bi), Tan(bi), perVertexColor));
                 corners.Add(new MeshCorner(Pos(ci), Norm(ci), Color(ci), Uv(ci), Tan(ci), perVertexColor));
+                triangleRead?.Invoke(ai, bi, ci);
             }
         }
 

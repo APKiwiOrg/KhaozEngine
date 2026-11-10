@@ -72,7 +72,7 @@ public sealed class ShaderValidationStructuredTests
     public void CrossCompileLengthRefusalRetainsTheInnerModuleFailure()
     {
         var error = Assert.Throws<ShaderValidationException>(() => SpirvCrossCompile.ComputeToHlsl(new byte[3], "unaligned"));
-        Assert.Equal(ShaderValidationRefusal.CrossCompileFailed, error.Reason);
+        Assert.Equal(ShaderValidationRefusal.SpirvLengthInvalid, error.Reason);
         Assert.Equal("unaligned", error.Label);
         Assert.Equal("HLSL", error.Target);
         Assert.Equal(GpuShaderStages.Compute, error.Stage);

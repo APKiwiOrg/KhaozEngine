@@ -173,6 +173,8 @@ public sealed partial class Scene3D
         int BoneCount)
     {
         public bool InteriorCutRequested { get; init; }
+        public MotionKey Motion { get; init; }
+        public int CoverageBindingSlot { get; init; } = -1;
         public RenderAnchor? Anchor { get; init; }
 
         public static MeshOutlinePart Rigid(
@@ -216,20 +218,21 @@ public sealed partial class Scene3D
                 }
                 if (!_skinnedSlots.IsValid(part.SkinnedMesh.Index, part.SkinnedMesh.Generation)) continue;
                 if (_skinnedMeshes[part.SkinnedMesh.Index] is not { } skinned) continue;
+                if (EnqueueCoverageOutline(part, skinned, drawIndex)) { drawIndex++; groupDraws++; continue; }
                 ReadOnlySpan<Matrix4x4> pose = CollectionsMarshal.AsSpan(_outlineBoneMatrices)
                     .Slice(part.BoneStart, part.BoneCount);
                 if (UseGpuSkinning)
                 {
                     _targetOutlines.EnqueueSkinnedGpu(skinned.Vb, skinned.Ib, skinned.IndexCount,
                         skinned.IndexFormat, skinned.OutlineMaterialSet, pose, drawIndex++, ToRender(part.World),
-                        skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
+                        skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin, part.Motion, part.SkinnedMesh);
                 }
                 else
                 {
                     if (_skinnedCpuVerts[part.SkinnedMesh.Index] is not { } source) continue;
                     _targetOutlines.EnqueueSkinnedCpu(source, skinned.Ib, skinned.IndexCount,
                         skinned.IndexFormat, skinned.OutlineMaterialSet, pose, drawIndex++, ToRender(part.World),
-                        skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
+                        skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin, part.Motion, part.SkinnedMesh);
                 }
                 groupDraws++;
             }

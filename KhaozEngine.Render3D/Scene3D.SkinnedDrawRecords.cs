@@ -16,6 +16,7 @@ public sealed partial class Scene3D
     readonly struct GpuSkinnedDraw
     {
         public readonly IGpuBuffer RestVb, Ib;
+        public readonly SkinnedMeshHandle Mesh;
         public readonly int IndexCount;
         public readonly GpuIndexFormat IndexFormat;
         public readonly IGpuResourceSet? SkinnedMaterialSet;
@@ -35,8 +36,9 @@ public sealed partial class Scene3D
             IGpuResourceSet? skinnedMaterialSet, int boneSpanStart, int boneCount, uint slot,
             in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, Vector2 dissolveParams,
             float dissolveComplement, bool visibleMain, bool dissolve,
-            ShadowCastKind shadowKind, PointShadowCasterSphere pointSphere, MotionKey motion)
+            ShadowCastKind shadowKind, PointShadowCasterSphere pointSphere, MotionKey motion, SkinnedMeshHandle mesh)
         {
+            Mesh = mesh;
             RestVb = restVb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
             SkinnedMaterialSet = skinnedMaterialSet; BoneSpanStart = boneSpanStart; BoneCount = boneCount; Slot = slot;
             World = world; Tint = tint; Emissive = emissive; SpecParams = specParams;
@@ -57,6 +59,7 @@ public sealed partial class Scene3D
     readonly struct CpuSkinnedDraw
     {
         public readonly IGpuBuffer Ib;
+        public readonly SkinnedMeshHandle Mesh;
         public readonly int IndexCount;
         public readonly GpuIndexFormat IndexFormat;
         public readonly int BaseVertex;
@@ -70,8 +73,9 @@ public sealed partial class Scene3D
         public readonly int VertexCount;       // how many deformed vertices start at BaseVertex
         public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex,
             IGpuResourceSet? materialSet, bool dissolve, bool visibleMain, ShadowCastKind shadowKind,
-            PointShadowCasterSphere pointSphere, MotionKey motion, int meshIndex, int vertexCount)
+            PointShadowCasterSphere pointSphere, MotionKey motion, int meshIndex, int vertexCount, SkinnedMeshHandle mesh)
         {
+            Mesh = mesh;
             Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet; Dissolve = dissolve; VisibleMain = visibleMain;
             ShadowKind = shadowKind;
             PointSphere = pointSphere;

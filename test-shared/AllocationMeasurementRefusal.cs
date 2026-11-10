@@ -11,4 +11,10 @@ public enum AllocationMeasurementRefusal
     CollectionInterrupted,
     /// <summary>The no-GC region ended before the measurement window completed.</summary>
     RegionEnded,
+    /// <summary>Another no-GC region is already active before the runtime start.</summary>
+    RegionAlreadyActive,
+    /// <summary>The runtime threw while starting the no-GC region.</summary>
+    RuntimeStartFailed,
+    /// <summary>The runtime refused to reserve the requested process-wide budget.</summary>
+    BudgetReservationFailed,
 }

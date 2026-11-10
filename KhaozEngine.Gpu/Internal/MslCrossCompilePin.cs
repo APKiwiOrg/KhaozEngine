@@ -119,6 +119,10 @@ namespace KhaozEngine.Gpu.Internal
             + ";indices=" + IndexNumbering
             + ";discard=" + DiscardHandling;
 
+        // Only precise MSL changes. Keep the front-end and other targets' identities intact.
+        internal static string IdentityFor(GpuShaderCompileOptions options)
+            => options.PreciseMath ? Identity + ";" + MslPreciseMath.Identity : Identity;
+
         // 1 / 0 rather than true / false, matching the sibling pins: nothing but a hash reads this token.
         static string Bit(bool value) => value ? "1" : "0";
     }

@@ -94,6 +94,39 @@ views and sparse overrides are supported. Accessor and sparse ranges are checked
 embedded buffer before reading. Optional inverse-bind accessors must contain one finite MAT4 per
 joint. Host joint-name mapping and bind-pose compatibility are renderer-level checks.
 
+## Equipment coverage companions
+
+These sidecars describe offline table inputs. Runtime selection and the blocking verification contract
+are documented in the living [equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md). The consumer
+owns state-key semantics and sampled evidence does not provide a continuous proof.
+
+`EquipmentCoverageJson.Read(utf8, identity)` reads strict equipment coverage format 1, separate
+from attachment JSON v1/v2. `EquipmentCoverageDefinition` binds an exact attachment-file SHA-256
+to a host-map semantic SHA-256. It owns 1 to 4 commands with unique positive IDs. Each command
+names a rigid part and host region, a finite affine frame with positive determinant, disjoint
+source support ranges totaling at most 1024 triangles, and finite coverage bounds and distances.
+Part, region and support resolution against actual assets belongs to their binding layer.
+
+`Write(definition)` emits canonical UTF-8 without whitespace, with commands sorted by ID, support
+ranges sorted by source ordinal and signed zero normalized. `SemanticSha256(definition)` hashes
+`KhaozEngine.EquipmentCoverage/1\n` followed by those canonical bytes. This domain-separated
+identity differs from a fetched file's byte hash. Attachment JSON canonical bytes are unchanged.
+
+Malformed data throws `EquipmentCoverageDataException`, derived from `MalformedDataException`.
+Its public `EquipmentCoverageRefusal Reason`, caller `Identity` and rooted JSON `Path` identify
+the refusal without parsing messages. Count refusals expose `Count` and inclusive `Limit`.
+Identifier refusals carry `CommandId`, `PartId` or source ordinals where representable.
+`IdentifierValue` also retains unsigned authored IDs above UInt32. Wrappers preserve all fields
+and the typed inner refusal. Null arguments and a blank caller identity retain BCL exceptions.
+Streaming preflight refuses duplicate and unknown members and excess array entries before DOM
+allocation or reading their values. Numeric overflow, malformed digests and unsupported versions
+have distinct reasons.
+
+Unknown names of at most 64 decoded UTF-16 code units retain their complete `MemberName` and
+member `Path`, independent of UTF-8 or Unicode-escaped spelling. Longer names have null `MemberName`,
+`MemberNameOmitted = true` and the actual containing-object `Path`. Diagnostic decoding uses a fixed
+buffer and never publishes a fabricated name or a partial name.
+
 ## Set refusals
 
 `AttachmentSetArgumentException` derives from `ArgumentException` for constructor admission.

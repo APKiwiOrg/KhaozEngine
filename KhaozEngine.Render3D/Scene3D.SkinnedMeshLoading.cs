@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
@@ -43,6 +44,7 @@ public sealed partial class Scene3D
         IGpuTexture? roughness,
         float alphaCutoff)
     {
+        if (mesh.Coverage is not null) mesh = RetainSkinningSource(mesh);
         IGpuBuffer? vertexBuffer = null;
         IGpuBuffer? indexBuffer = null;
         IGpuResourceSet? material = null;
@@ -63,7 +65,7 @@ public sealed partial class Scene3D
             MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
             var entry = new SkinnedMeshEntry(
                 vertexBuffer, indexBuffer, mesh.Indices32.Length, mesh.IndexFormat,
-                material, skinnedMaterial, outlineMaterial, alphaCutoff, mesh.InverseBind, in bounds);
+                material, skinnedMaterial, outlineMaterial, alphaCutoff, mesh, in bounds);
             int index = _skinnedSlots.Alloc(out int generation);
             if (index < _skinnedMeshes.Count)
             {
@@ -75,7 +77,7 @@ public sealed partial class Scene3D
                 _skinnedMeshes.Add(entry);
                 _skinnedCpuVerts.Add(mesh.Vertices);
             }
-            return new SkinnedMeshHandle(index, generation);
+            return new SkinnedMeshHandle(index, generation, _coverageSceneStamp);
         }
         catch
         {
@@ -87,6 +89,24 @@ public sealed partial class Scene3D
             throw;
         }
     }
+
+    static SkinnedGltfMesh RetainSkinningSource(SkinnedGltfMesh mesh)
+    {
+        ArgumentNullException.ThrowIfNull(mesh);
+        if (mesh.Coverage is { } coverage && !coverage.Matches(mesh))
+            throw coverage.Source.Error(HostCoverageRefusal.MeshChanged, "Annotated mesh changed before upload.");
+        Skeleton? skeleton = mesh.Skeleton;
+        if (skeleton is not null)
+            skeleton = new Skeleton((int[])skeleton.ParentIndices.Clone(), (JointPose[])skeleton.RestLocal.Clone(),
+                (int[])skeleton.NodeLogicalIndex.Clone(), (int[])skeleton.JointToNode.Clone(), skeleton.NodeNames);
+        return new SkinnedGltfMesh((SkinnedVertex[])mesh.Vertices.Clone(), (uint[])mesh.Indices32.Clone(),
+            (Matrix4x4[])mesh.InverseBind.Clone(), (Matrix4x4[])mesh.RestPose.Clone(), skeleton)
+        { Coverage = mesh.Coverage, CoverageSkeletonOwner = mesh.CoverageSkeletonOwner ?? mesh.Skeleton };
+    }
+
+    /// <summary>Detached copy of the upload source. Never returns the live entry's arrays.</summary>
+    internal SkinnedGltfMesh SkinnedSourceSnapshotForTests(SkinnedMeshHandle handle) =>
+        RetainSkinningSource(_skinnedMeshes[handle.Index]!.Source);
 
     /// <summary>Number of skinned mesh slots still holding a live GPU mesh. For lifetime diagnostics.</summary>
     internal int LiveSkinnedMeshCount
@@ -113,6 +133,7 @@ public sealed partial class Scene3D
         public readonly IGpuResourceSet? OutlineMaterialSet;
         public readonly float AlphaCutoff;
         public readonly Matrix4x4[] InverseBind;
+        public readonly SkinnedGltfMesh Source;
         public readonly MeshBounds Bounds;
 
         public SkinnedMeshEntry(
@@ -124,7 +145,7 @@ public sealed partial class Scene3D
             IGpuResourceSet? skinnedMaterialSet,
             IGpuResourceSet? outlineMaterialSet,
             float alphaCutoff,
-            Matrix4x4[] inverseBind,
+            SkinnedGltfMesh source,
             in MeshBounds bounds)
         {
             Vb = vb;
@@ -135,7 +156,8 @@ public sealed partial class Scene3D
             SkinnedMaterialSet = skinnedMaterialSet;
             OutlineMaterialSet = outlineMaterialSet;
             AlphaCutoff = alphaCutoff;
-            InverseBind = inverseBind;
+            Source = source;
+            InverseBind = source.InverseBind;
             Bounds = bounds;
         }
     }

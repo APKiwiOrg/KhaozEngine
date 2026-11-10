@@ -34,8 +34,8 @@ public sealed partial class Scene3D
         }
         var published = PublishMesh(source, vertices, normals, indices, material, outline, alphaCutoff: alphaCutoff,
             tileGroundMaterial: tileGround, shadowCutout: cutout, meshOrder: meshOrder);
-        _publishedResourceMeshes.Add(published);
-        return published;
+        try { _publishedResourceMeshes.Add(published); return published; }
+        catch { DetachUploadedResource(published, null); throw; }
     }
     MeshHandle PublishMesh(GltfMesh source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
         IGpuResourceSet? material, IGpuResourceSet? outline, int splatMaterial = -1, float alphaCutoff = 0,
@@ -47,13 +47,25 @@ public sealed partial class Scene3D
         IGpuResourceSet? material, IGpuResourceSet? outline, int splatMaterial = -1, float alphaCutoff = 0,
         int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0)
     {
+        ArgumentNullException.ThrowIfNull(source.Coverage);
         int index = _slots.Alloc(out int generation, meshOrder);
         var mesh = new Mesh(vertices, normals, indices, source.IndexCount, source.IndexFormat, source.Bounds,
             material, outline, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout,
             source.OpaqueFoliage && material is null && alphaCutoff == 0f);
-        if (index < _meshes.Count) _meshes[index] = mesh;
-        else _meshes.Add(mesh);
-        return new(index, generation);
+        try
+        {
+            _coverageUploads.Add((index, generation), source.Coverage);
+            if (index < _meshes.Count) _meshes[index] = mesh;
+            else _meshes.Add(mesh);
+            return new(index, generation);
+        }
+        catch
+        {
+            _coverageUploads.Remove((index, generation));
+            if (index < _meshes.Count) _meshes[index] = null;
+            _slots.Free(index, generation);
+            throw;
+        }
     }
     internal void PublishWaterDomain(MeshHandle mesh, IGpuBuffer clip) => _water.RegisterPublishedDomain(mesh, clip);
     internal void DetachUploadedResource(MeshHandle mesh, FoliageBatch? foliage)
@@ -63,6 +75,7 @@ public sealed partial class Scene3D
             var value = _meshes[mesh.Index]!.Value;
             _publishedResourceMeshes.Remove(mesh);
             _slots.Free(mesh.Index, mesh.Generation);
+            _coverageUploads.Remove((mesh.Index, mesh.Generation));
             ForgetWaterAndInteriorRelevance(mesh); _silhouetteRelevance.Forget(mesh);
             if (value.TileGroundMaterial >= 0)
             {

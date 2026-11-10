@@ -74,11 +74,13 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
         {
+            var coverage = ValidateCoverageDraw(draw, boneMatrices, false);
             if (draw.ShadowOnly && !draw.CastsShadows)
                 throw new DrawAdmissionArgumentException(DrawAdmissionRefusal.ShadowOnlyWithoutCasting,
                     "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
                     nameof(draw))
                 { ShadowOnly = draw.ShadowOnly, CastsShadows = draw.CastsShadows };
+            TryQueueCoverageFallback(draw, boneMatrices);
             SkinnedMeshHandle h = draw.Mesh;
             if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
             var entry = _skinnedMeshes[h.Index];
@@ -90,6 +92,7 @@ namespace KhaozEngine.Render3D
             ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
             _skinnedInstances.Add(in draw);
             RecordSkinnedMotion(in draw, slot, boneMatrices.Length);
+            RecordCoverageDraw(coverage, draw, false);
         }
 
         /// <summary>Queue one skinned draw. <paramref name="boneMatrices"/> are this frame's joint world

@@ -5,6 +5,19 @@ on:
   push:
     branches: [main]
     paths:
+      - 'tools/Coverage.Verify/**'
+      - 'tools/Coverage.Verify.Tests/**'
+      - 'KhaozEngine.Render3D/Coverage/**'
+      - 'KhaozEngine.Render3D/Models/GltfLoader*.cs'
+      - 'KhaozEngine.Render3D/Scene3D.Coverage*.cs'
+      - 'KhaozEngine.Attachments/EquipmentCoverage*.cs'
+      - 'KhaozEngine.Attachments.Render3D/HostCoverageBinding*.cs'
+      - 'KhaozEngine.Render.Tests/Render3D/CoverageFixture.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/CoverageRecession*.cs'
+      - 'test-shared/SkinnedAttachmentGlbFixture.cs'
+      - 'scripts/gpu-test-shards.py'
+      - 'scripts/tests/gpu-test-shards.test.sh'
+      - '.github/workflows/cross-platform-gpu.yml'
       - 'tools/NavCapture.Research.Tests/**'
       - 'KhaozEngine.Movement/AssemblyInfo.cs'
       - 'KhaozEngine.Movement/PhysicsNav*.cs'
@@ -99,6 +112,19 @@ on:
       - 'KhaozEngine.Render.Tests/Gpu/GpuBackendProvidersCollection.cs'
   pull_request:
     paths:
+      - 'tools/Coverage.Verify/**'
+      - 'tools/Coverage.Verify.Tests/**'
+      - 'KhaozEngine.Render3D/Coverage/**'
+      - 'KhaozEngine.Render3D/Models/GltfLoader*.cs'
+      - 'KhaozEngine.Render3D/Scene3D.Coverage*.cs'
+      - 'KhaozEngine.Attachments/EquipmentCoverage*.cs'
+      - 'KhaozEngine.Attachments.Render3D/HostCoverageBinding*.cs'
+      - 'KhaozEngine.Render.Tests/Render3D/CoverageFixture.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/CoverageRecession*.cs'
+      - 'test-shared/SkinnedAttachmentGlbFixture.cs'
+      - 'scripts/gpu-test-shards.py'
+      - 'scripts/tests/gpu-test-shards.test.sh'
+      - '.github/workflows/cross-platform-gpu.yml'
       - 'tools/NavCapture.Research.Tests/**'
       - 'KhaozEngine.Movement/AssemblyInfo.cs'
       - 'KhaozEngine.Movement/PhysicsNav*.cs'
@@ -196,7 +222,7 @@ on:
       suite:
         description: Explicit tooling suite
         type: choice
-        options: [renderer, items, nav]
+        options: [renderer, items, nav, coverage]
         default: renderer
   workflow_call:
     inputs:
@@ -225,6 +251,8 @@ jobs:
       items: ${{ steps.select.outputs.items }}
       nav-matrix: ${{ steps.select.outputs.nav-matrix }}
       nav: ${{ steps.select.outputs.nav }}
+      coverage-matrix: ${{ steps.select.outputs.coverage-matrix }}
+      coverage: ${{ steps.select.outputs.coverage }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -242,7 +270,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -euo pipefail
-          case "$SUITE" in renderer|items|nav) ;; *) echo 'Unknown tooling suite' >&2; exit 1 ;; esac
+          case "$SUITE" in renderer|items|nav|coverage) ;; *) echo 'Unknown tooling suite' >&2; exit 1 ;; esac
           if [[ "$SELECTION_EVENT" == workflow_call ]]; then REQUESTED_SHA=$CALL_SHA; fi
           args=(--event "$SELECTION_EVENT" --ref "$REQUESTED_SHA" --trusted-ref "$TRUSTED_SHA")
           if [[ "$SELECTION_EVENT" == push || "$SELECTION_EVENT" == pull_request ]]; then
@@ -253,7 +281,7 @@ jobs:
               args+=(--changed-file "$RUNNER_TEMP/tooling-changed.txt")
             fi
           fi
-          for suite in renderer items nav; do
+          for suite in renderer items nav coverage; do
             matrix='{"include":[]}'
             if [[ "$SELECTION_EVENT" == push || "$SELECTION_EVENT" == pull_request || "$SUITE" == "$suite" ]]; then
               matrix=$(python3 scripts/renderer-tooling-selection.py "${args[@]}" --suite "$suite")
@@ -430,6 +458,63 @@ jobs:
           name: nav-capture-research-${{ matrix.ref }}
           path: TestResults/nav.trx
           if-no-files-found: warn
+
+  coverage:
+    needs: select
+    if: needs.select.outputs.coverage == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.coverage-matrix) }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      KE_GPU_TESTS: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build synthetic coverage tooling outside the engine solution
+        shell: bash
+        run: |
+          mkdir -p local-feed
+          dotnet build tools/Coverage.Verify/Coverage.Verify.csproj -c Release
+          dotnet build tools/Coverage.Verify.Tests/Coverage.Verify.Tests.csproj -c Release
+      - name: Require nonempty coverage inventory including CLI process tests
+        shell: pwsh
+        run: |
+          $inventory = & dotnet test tools/Coverage.Verify.Tests/Coverage.Verify.Tests.csproj -c Release --no-build --list-tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $names = @($inventory | Where-Object { $_ -match '^\s+KhaozEngine\.Tests\.' })
+          if ($names.Count -eq 0 -or -not ($names -match 'CoverageVerifyProcessTests')) { throw 'Coverage inventory must include synthetic CLI process tests' }
+          $inventory | Set-Content coverage-inventory.txt
+      - name: Run every headless synthetic coverage tool and process test
+        shell: pwsh
+        run: |
+          & dotnet test tools/Coverage.Verify.Tests/Coverage.Verify.Tests.csproj -c Release --no-build --logger 'trx;LogFileName=coverage.trx' --results-directory TestResults
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Require nonempty coverage passes without skips
+        shell: pwsh
+        run: |
+          [xml]$trx = Get-Content -Raw TestResults/coverage.trx
+          $counts = @($trx.SelectNodes('//*[local-name()="Counters"]'))
+          $results = @($trx.SelectNodes('//*[local-name()="UnitTestResult"]'))
+          if ($counts.Count -ne 1 -or [int]$counts[0].total -le 0 -or $counts[0].total -ne $counts[0].passed -or $counts[0].notExecuted -ne '0' -or $counts[0].failed -ne '0') { throw 'Coverage tooling requires nonempty passes and zero skips' }
+          if ($results.Count -ne [int]$counts[0].total -or @($results | Where-Object { $_.outcome -ne 'Passed' }).Count -ne 0) { throw 'Every selected coverage fact must pass' }
+          if (@($results | Where-Object { $_.testName -match 'CoverageVerifyProcessTests' }).Count -eq 0) { throw 'Coverage CLI process tests must execute' }
+      - name: Upload headless coverage tooling results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-tooling-${{ matrix.ref }}
+          path: |
+            coverage-inventory.txt
+            TestResults/coverage.trx
+          if-no-files-found: error
 
   renderer-result:
     needs: [select, renderer]

@@ -5,6 +5,10 @@ internal interface ID3D11ShaderBuildApi
 {
     D3D11CompiledPair Pair(string vertex, string pixel, uint flags, D3D11DxbcCache? cache);
     D3D11CompiledCompute Compute(string source, uint flags, D3D11DxbcCache? cache);
+    D3D11CompiledPair Pair(string vertex, string pixel, uint flags, D3D11DxbcCache? cache, GpuShaderCompileOptions options)
+        => options.PreciseMath ? throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Vertex) : Pair(vertex, pixel, flags, cache);
+    D3D11CompiledCompute Compute(string source, uint flags, D3D11DxbcCache? cache, GpuShaderCompileOptions options)
+        => options.PreciseMath ? throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Compute) : Compute(source, flags, cache);
 }
 
 /// <summary>Native compile/create operations. Production workers retain only the separate CPU compiler.</summary>

@@ -50,6 +50,7 @@ namespace KhaozEngine.Render3D
         int CountSkinnedCasters()
         {
             int n = 0;
+            foreach (var draw in _coverageDraws) if (draw.ShadowKind != ShadowCastKind.None) n++;
             if (UseGpuSkinning)
             {
                 foreach (GpuSkinnedDraw dr in _gpuSkinnedDraws)

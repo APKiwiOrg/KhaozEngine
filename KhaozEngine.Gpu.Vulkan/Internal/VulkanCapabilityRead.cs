@@ -126,13 +126,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="timestamps">The selected queue's valid bits and the device's timestamp period.</param>
         /// <param name="maxFragmentStorageBuffers">The selected device's per-stage storage buffer limit.</param>
         /// <param name="maxStorageBufferRangeBytes">The selected physical device's maxStorageBufferRange.</param>
+        /// <param name="signedZeroInfNanPreserveFloat32">Requested per-stage arithmetic policy or float-control capability.</param>
         internal static GpuCapabilities Assemble(
             string? deviceName,
             bool samplerAnisotropy,
             bool supportsShadowMaps,
             GpuSampleCounts supportedMsaaSampleCounts,
             int maxColorAttachments, VulkanTimestampSupport timestamps = default, int maxFragmentStorageBuffers = 4,
-            uint maxStorageBufferRangeBytes = 0)
+            uint maxStorageBufferRangeBytes = 0, bool signedZeroInfNanPreserveFloat32 = false)
             => GpuCapabilities.FromSupportedMsaaSampleCounts(
                 clipSpaceYInverted: ClipSpaceYInverted,
                 depthRangeZeroToOne: DepthRangeZeroToOne,
@@ -145,6 +146,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 supportsCompletionFences: SupportsCompletionFences) with
             {
                 MaxColorAttachments = maxColorAttachments,
+                SupportsShaderFloatControls = signedZeroInfNanPreserveFloat32,
                 MaxFragmentStorageBuffers = maxFragmentStorageBuffers,
                 SupportsTimestamps = timestamps.IsSupported,
                 MaxStorageBufferRangeBytes = maxStorageBufferRangeBytes,

@@ -30,6 +30,8 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="Coverage.Verify.Tests" />
+    <InternalsVisibleTo Include="Coverage.Verify" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
     <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />

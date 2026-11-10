@@ -4,9 +4,43 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 23.6.1
+## 23.7.0
 
 2026-11-11
+
+- Offline-verified equipment recession tables and consumer-owned state keys. Strict host and equipment
+  sidecars, immutable source evidence and the shared canonical configuration identity bind tables to
+  complete material slices, including sets with uncommanded skinned garments. Arithmetic compatibility
+  uses an embedded versioned contract, independent of producer assembly bytes. The outside-solution
+  verifier builds deterministic rows and blocks invalid selected samples, dense replay and whole-skin
+  changed-record depth. Sampled evidence is not continuous proof.
+- Runtime table carry records five dispatches per active table group and publishes one final surface per
+  actor across colour, depth, motion, shadows and outlines. Submission-owned history retains safe output
+  slots and explicitly presents the uncovered current pose on refusal. Participant-capacity refusal
+  preserves the last observed history, and graphics refusal keeps ordinary output rebuilds usable.
+  The Metal, Direct3D 11 WARP and Vulkan correctness units, Vulkan synchronization validation and both
+  hardware cost units passed at this version's code. The synchronization result is an absence of
+  reported hazards under an active checker, not a deliberate hazard control.
+- Equipment carry contract 2 keeps position arithmetic exact and makes normal/tangent failures local.
+  Native direction math uses precise cancellation-sensitive operations and finite recovery from the
+  current pose, authored direction or a fixed unit direction. A rare degenerate case shows a locally odd
+  shaded spot instead of the whole character changing pose. Only position failures publish the whole
+  uncovered actor. CPU sample verification no longer rejects solely for direction problems. Exact geometry
+  and depth gates, tangent rules, five stages, slots and history are unchanged. The cost limit is at most
+  1.3 ms added GPU time at 32 actors on a Tesla T4.
+  The `2e-5` direction comparison is conditional on a documented non-degenerate error envelope. Earlier
+  unshipped descriptors require rebuilding.
+- `GpuShaderCompileOptions` adds an opt-in precise compute/vertex math policy without changing default
+  compilation or cache identities. Coverage requests that policy. A compiled public consumer example
+  and the living equipment coverage guide document complete descriptors, fallback and resource lifetime.
+- Metal precise helpers inline without changing their arithmetic, carry disposal releases every buffer
+  after a failure, and coverage cost checks compare scenes with equal timestamp counts.
+- Prevent surface swimmers from sticking at an internal diagonal of a continuous sloped tile-water bank, while
+  retaining the one-millimetre coverage budget and conservative refusal at real boundaries (#1761).
+
+## 23.6.1
+
+2026-11-10
 
 - Stop still thin features at steep and grazing angles from repeatedly tripping TAA's colour-based shading release.
   A still pixel whose prior shimmer record shows flicker, and whose exported key-shadow visibility did not move,
@@ -14,8 +48,6 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   fire, so repeated false releases build the evidence that vetoes the next one. Passing shadows, motion, reactive
   content and Balanced keep their existing release. A real light step over an already flickering pixel settles no
   slower than before. Native and Quality both change, with no new storage, attachment or binding.
-- Prevent surface swimmers from sticking at an internal diagonal of a continuous sloped tile-water bank, while
-  retaining the one-millimetre coverage budget and conservative refusal at real boundaries (#1761).
 
 ## 23.6.0
 

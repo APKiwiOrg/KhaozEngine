@@ -15,6 +15,22 @@ public sealed class CopyBufferAlignmentProofTests
         => Assert.True(Proves("GpuCopyAlignment.RequireAlignedOffset(offset, nameof(offset), \"copy\", \"source\");"));
 
     [Theory]
+    [InlineData("checked((uint)words * 4u)", true)]
+    [InlineData("(uint)words * 8u", true)]
+    [InlineData("((uint)words) * 64u", true)]
+    [InlineData("checked((uint)words * 3u)", false)]
+    [InlineData("(uint)(words * 4.0f)", false)]
+    [InlineData("words * 4u", false)]
+    [InlineData("(uint)words + 4u", false)]
+    public void Explicit_unsigned_word_conversion_has_a_narrow_alignment_proof(string expression, bool accepted)
+    {
+        string source = "using KhaozEngine.Gpu; class Copy { void Run(IGpuCommandList commands, IGpuBuffer source, IGpuBuffer target, uint words) { "
+            + "commands.CopyBuffer(source, " + expression + ", target, 0, 4); } }";
+        Assert.Equal(accepted, CopyBufferAlignmentProof.Accepts(expression, source,
+            source.IndexOf("commands.CopyBuffer", StringComparison.Ordinal)));
+    }
+
+    [Theory]
     [InlineData("void Copy(uint value) { uint offset = value;", "")]
     [InlineData("void Copy(ref uint value) { uint offset = value;", "value = 1;")]
     [InlineData("void Copy(uint[] offsets) { uint offset = offsets[0];", "offsets[0] = 1;")]

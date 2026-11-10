@@ -1,6 +1,5 @@
 using System;
 using System.Runtime;
-using Xunit.Sdk;
 
 namespace KhaozEngine.Tests;
 
@@ -43,15 +42,21 @@ internal sealed class AllocationRegion : IDisposable
         {
             // A failed nested runtime start can discard the outer region's bookkeeping.
             if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
-                throw new XunitException($"{description}: allocation measurement could not start because another no-GC region is active.");
+                throw new AllocationMeasurementException(AllocationMeasurementRefusal.RegionAlreadyActive, description,
+                    $"{description}: allocation measurement could not start because another no-GC region is active.")
+                { Budget = totalSize };
             bool started;
             try { started = GC.TryStartNoGCRegion(totalSize, disallowFullBlockingGC: false); }
             catch (InvalidOperationException error)
             {
-                throw new XunitException($"{description}: allocation measurement could not start its no-GC region. {error.Message}");
+                throw new AllocationMeasurementException(AllocationMeasurementRefusal.RuntimeStartFailed, description,
+                    $"{description}: allocation measurement could not start its no-GC region. {error.Message}", error)
+                { Budget = totalSize, RuntimeReason = error.Message };
             }
             if (!started)
-                throw new XunitException($"{description}: allocation measurement could not reserve its {totalSize}-byte process-wide no-GC budget.");
+                throw new AllocationMeasurementException(AllocationMeasurementRefusal.BudgetReservationFailed, description,
+                    $"{description}: allocation measurement could not reserve its {totalSize}-byte process-wide no-GC budget.")
+                { Budget = totalSize };
         }
         region.active = true;
         region.gen0 = GC.CollectionCount(0);

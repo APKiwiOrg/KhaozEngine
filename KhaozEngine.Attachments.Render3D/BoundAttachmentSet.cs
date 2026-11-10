@@ -20,6 +20,11 @@ public sealed class BoundAttachmentSet
     readonly uint _revisionLow, _revisionHigh;
     readonly int _drawCount;
     readonly int _skinnedPartCount;
+    internal AttachmentSetCache Owner => _owner;
+    internal AttachmentSetDefinition Definition => _definition;
+    internal IReadOnlyList<AttachmentPartResources> Resources => _resources;
+    internal IReadOnlyList<CoverageConfigurationPart> ConfigurationParts => _binding.ConfigurationParts;
+    internal bool MatchesHostSkin(SkinnedHostCoverage host) => _binding.MatchesHostSkin(host);
 
     internal BoundAttachmentSet(AttachmentSetCache owner, AttachmentSetDefinition definition,
         IReadOnlyList<AttachmentPartResources> resources, AttachmentSetBinding binding)

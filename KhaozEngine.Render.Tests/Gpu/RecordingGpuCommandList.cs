@@ -194,7 +194,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             TraceCommand("draw", _currentPipeline, instanceStart, instanceCount);
             NoteGraphicsReads();
-            if (CaptureInstancedBindings) NoteDrawBindings();
+            if (CaptureInstancedBindings) NoteDrawBindings(vertexCount);
             _draws++;
             Inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
         }
@@ -243,7 +243,7 @@ namespace KhaozEngine.Tests.Gpu
             _resolves.Add(new Resolve(src, dst, preserveSource));
             Inner.ResolveTexture(src, dst, preserveSource);
         }
-        public void SetComputePipeline(IGpuComputePipeline p) => Inner.SetComputePipeline(p);
+        public void SetComputePipeline(IGpuComputePipeline p) { _currentComputePipeline = p; Inner.SetComputePipeline(p); }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
         {
             NoteComputeSet(slot, set, 0);
@@ -257,6 +257,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         {
             NoteComputeReads();
+            NoteComputeDispatch();
             _draws++;
             Inner.Dispatch(groupCountX, groupCountY, groupCountZ);
         }

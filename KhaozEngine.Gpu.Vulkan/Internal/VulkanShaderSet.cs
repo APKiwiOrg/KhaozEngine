@@ -41,8 +41,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="bytesCache">Optional disk cache checked before the front end.</param>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V.
         /// Reason is FrontEndCompileFailed, with Label, Stage, Target and Diagnostic.</exception>
+        /// <param name="options">Requested per-stage arithmetic policy or float-control capability.</param>
         internal VulkanShaderSet(VulkanShaderModuleCache modules, string vertexGlsl, string fragmentGlsl,
-            string? label = null, SpirvBytesCache? bytesCache = null, SpirvCompileCache? compileCache = null)
+            string? label = null, SpirvBytesCache? bytesCache = null, SpirvCompileCache? compileCache = null, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(modules);
             ArgumentNullException.ThrowIfNull(vertexGlsl);
@@ -52,7 +53,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             // BOTH STAGES COMPILE BEFORE EITHER MODULE IS CREATED, so a fragment source that does not compile
             // leaves no orphaned vertex module in the cache under a program that was never built.
-            byte[] vertexSpirv = Compile(vertexGlsl, GpuShaderStages.Vertex, tag, bytesCache, compileCache);
+            byte[] vertexSpirv = Compile(vertexGlsl, GpuShaderStages.Vertex, tag, bytesCache, compileCache, options);
             byte[] fragmentSpirv = Compile(fragmentGlsl, GpuShaderStages.Fragment, tag, bytesCache, compileCache);
 
             DiagnosticIdentity = VulkanShaderIdentity.Graphics(vertexGlsl, fragmentGlsl, vertexSpirv, fragmentSpirv, tag);
@@ -62,10 +63,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         internal VulkanShaderIdentity DiagnosticIdentity { get; }
 
-        static byte[] Compile(string glsl, GpuShaderStages stage, string tag, SpirvBytesCache? cache, SpirvCompileCache? compileCache)
-            => cache?.GetOrCompile(SpirvFrontEnd.OptionsIdentity(tag), stage, glsl,
-                   () => SpirvFrontEnd.ToSpirv(glsl, stage, tag, compileCache))
-                ?? SpirvFrontEnd.ToSpirv(glsl, stage, tag, compileCache);
+        static byte[] Compile(string glsl, GpuShaderStages stage, string tag, SpirvBytesCache? cache, SpirvCompileCache? compileCache, GpuShaderCompileOptions options = default)
+            => cache?.GetOrCompile(SpirvFrontEnd.OptionsIdentity(tag, options), stage, glsl,
+                   () => SpirvFrontEnd.ToSpirv(glsl, stage, tag, options, compileCache))
+                ?? SpirvFrontEnd.ToSpirv(glsl, stage, tag, options, compileCache);
 
         /// <summary>The vertex stage's SHARED <c>VkShaderModule</c>, which a graphics pipeline names.</summary>
         internal ulong VertexModule { get; }

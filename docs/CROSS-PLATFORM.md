@@ -9,6 +9,28 @@ is gone. The toolchain is `Silk.NET.Shaderc` (glslang, the GLSL to SPIR-V front 
 `Silk.NET.SPIRV.Cross` (the MSL and HLSL back end), still confined to `KhaozEngine.Gpu` and still the only
 place in the engine that compiles a shader.
 
+## Equipment coverage verification boundary
+
+[Equipment coverage](EQUIPMENT-COVERAGE.md#verification-boundaries) separates headless/table evidence
+from native acceptance. The free tooling suite `coverage` builds the outside-solution verifier and
+process tests with `KE_GPU_TESTS=0`, a nonempty executed inventory and zero skips. It supplies no native
+correctness or cost result.
+
+Native carry/publication checks require separately approved Metal, Direct3D 11 WARP and Vulkan units.
+The Vulkan unit also requires synchronization validation of the cross-frame read of the previous output
+slot. That read remains open because hazard tracking resets at Begin. Headless scheduling tests do not
+prove it. G1 to G5 have accepted evidence, recorded in
+[equipment coverage](EQUIPMENT-COVERAGE.md#verification-boundaries). A change to carry, publication,
+coverage vertex or precise shader code needs them again at its own SHA.
+Software output or hazard checks do not prove hardware speed.
+
+The Diagnostic body-size cost fact additionally requires the exact
+`KE_COVERAGE_COST_UNIT=Real_body_size_carry_and_scene_overhead_for_1_and_32_actors` opt-in. The optional
+hosted benchmark input `coverage-cost-unit` forwards that value. Missing or different values skip before
+hardware probing, and default shard selection excludes the fact. Each hardware cost invocation needs
+its own approval and frozen workload, as described in
+[performance evidence](RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).
+
 ## Platform → backend (desktop scope)
 
 | OS      | Backend the OS probe picks            | `GpuBackendKind`   | golden file suffix       | retired member (18.0.0)                            | software rasterizer (CI) |

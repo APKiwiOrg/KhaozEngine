@@ -248,6 +248,15 @@ namespace KhaozEngine.Gpu
                     ResolveFramesInFlight(Environment.GetEnvironmentVariable(envVar)));
         }
 
+        /// <summary>The backend's configured frames-in-flight depth, using the same resolver and fallback as
+        /// <see cref="SealedBatchCapFor(IGpuDevice)"/>. Read during cold reservation, before recording.</summary>
+        public static int FramesInFlightFor(IGpuDevice device)
+        {
+            ArgumentNullException.ThrowIfNull(device);
+            string? name = FramesInFlightEnvVarFor(device.Backend);
+            return ResolveFramesInFlight(name is null ? null : Environment.GetEnvironmentVariable(name));
+        }
+
         /// <summary>
         /// The cap for a pipeline <paramref name="framesInFlight"/> deep: ONE MORE SEALED BATCH PER EXTRA FRAME OF
         /// DEPTH, never below <see cref="DefaultMaxSealedBatches"/>.

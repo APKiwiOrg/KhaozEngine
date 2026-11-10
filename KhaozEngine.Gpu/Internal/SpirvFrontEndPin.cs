@@ -132,14 +132,20 @@ namespace KhaozEngine.Gpu.Internal
         /// the SPIR-V itself, and the bytes already embody every option that produced them.
         /// </para>
         /// </summary>
-        internal static readonly string Identity =
+        internal static readonly string Identity = IdentityFor(default);
+
+        internal static OptimizationLevel OptimizationFor(GpuShaderCompileOptions options)
+            => options.PreciseMath ? OptimizationLevel.Zero : Optimization;
+
+        internal static string IdentityFor(GpuShaderCompileOptions options) =>
             "shaderc/spirv"
             + ";debug=" + Bit(Debug)
-            + ";opt=" + Optimization.ToString()
+            + ";opt=" + OptimizationFor(options).ToString()
             + ";env=" + TargetEnvironment.ToString() + "." + TargetEnvironmentVersion.ToString(CultureInfo.InvariantCulture)
             + ";spirv=" + SpirvTarget.ToString()
             + ";macros=" + MacroCount.ToString(CultureInfo.InvariantCulture)
-            + ";entryPoint=" + EntryPoint;
+            + ";entryPoint=" + EntryPoint
+            + (options.PreciseMath ? ";ieee32=1;msl-zero-seed=1" : "");
 
         // 1 / 0 rather than true / false, matching the shape HlslCrossCompilePin's token already uses.
         static string Bit(bool value) => value ? "1" : "0";

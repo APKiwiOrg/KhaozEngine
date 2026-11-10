@@ -1,6 +1,6 @@
 # KhaozEngine.Primitives
 
-The zero-dependency leaf at the bottom of the KhaozEngine dependency graph (`System.Numerics` only,
+The zero-dependency leaf at the bottom of the KhaozEngine dependency graph (BCL only,
 no renderer, no window). Shared value types and pure helpers every other package builds on. An RGBA
 color anywhere in the engine's public API is the `Color` from here.
 

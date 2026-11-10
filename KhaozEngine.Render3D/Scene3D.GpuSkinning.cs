@@ -86,6 +86,7 @@ namespace KhaozEngine.Render3D
                 // (both are the caster's compacted index), which is exactly what the depth pass cannot say.
                 _model.DrawGpuSkinned(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot, dr.Slot,
                     dr.SkinnedMaterialSet);
+                MarkOrdinaryCoverage(dr.Motion, dr.Mesh);
                 CountSkinnedDraw(dr.IndexCount);
             }
         }

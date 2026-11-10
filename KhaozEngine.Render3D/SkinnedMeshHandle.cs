@@ -5,14 +5,19 @@ namespace KhaozEngine.Render3D
     /// a slot <see cref="Index"/> plus a <see cref="Generation"/> so a handle held after
     /// <see cref="Scene3D.UnloadSkinnedMesh"/> (a stale handle) is detectably invalid even if its slot index gets
     /// reused. A <c>default</c> handle has <see cref="Generation"/> 0 and is never valid; live handles start at
-    /// generation 1.
+    /// generation 1. Scene-issued handles also carry an internal scene stamp. Default value equality includes
+    /// that stamp, so equal slot/generation pairs from different scenes are unequal. Public constructors create
+    /// unowned handles. Ordinary draws ignore ownership, while coverage requires an exact issuing scene.
     /// </summary>
     public readonly struct SkinnedMeshHandle
     {
         public int Index { get; }
         public int Generation { get; }
+        internal int SceneStamp { get; }
 
         public SkinnedMeshHandle(int index, int generation) { Index = index; Generation = generation; }
+        internal SkinnedMeshHandle(int index, int generation, int sceneStamp)
+        { Index = index; Generation = generation; SceneStamp = sceneStamp; }
 
         /// <summary>Index-only ctor (generation 1). Retained for opaque/test construction; prefer the two-arg
         /// form from <see cref="Scene3D.LoadSkinnedMesh(KhaozEngine.Render3D.SkinnedGltfMesh, KhaozEngine.Render3D.GltfMaterialMaps)"/>.</summary>

@@ -1,3 +1,5 @@
+using System;
+using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -25,6 +27,37 @@ namespace KhaozEngine.Tests.Render3D
     /// </summary>
     public sealed class WindowedFramePrepareTests
     {
+        [Fact]
+        public void Coverage_and_bound_water_share_the_once_only_preparation_latch()
+        {
+            using var fixture = new CoveragePublicationFixture();
+            var scene = fixture.Scene;
+            scene.Post.Water.SwellAmplitude = 0;
+            var handle = scene.LoadWaterOpticsField(new WaterOpticsField(2, 2, [2f, 2f, 2f, 2f]));
+            var plane = new WaterPlane(0, 0, 0, 5, optics: new WaterOpticsBinding(handle,
+                new Vector3(-5, 0, -5), new Vector2(10)));
+            fixture.Begin();
+            var token = fixture.Queue();
+            scene.DrawWater(plane);
+            scene.PrepareFrame(W, H);
+            var target = scene.ResolvedDepthTarget;
+            scene.PrepareFrame(W, H); scene.PrepareFrame();
+            Assert.Same(target, scene.ResolvedDepthTarget);
+            Assert.Null(fixture.History.SurfaceToken);
+            Assert.Throws<CoverageFrameStateException>(() => scene.DrawSkinned(fixture.Host.Host(token), fixture.Host.Palette));
+            var aa = scene.Post.Quality.AntiAliasing;
+            scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            Assert.Throws<InvalidOperationException>(() => scene.PrepareFrame(W, H));
+            Assert.Same(target, scene.ResolvedDepthTarget);
+            scene.Post.Quality.AntiAliasing = aa;
+            using (GpuRecording.Open(fixture.Device, fixture.Commands, "coverage and water frame"))
+            {
+                scene.PrepareFrame(W, H);
+                scene.RenderInternal(fixture.Commands, W, H, fixture.Target);
+            }
+            fixture.Submit(); Assert.NotNull(fixture.History.SurfaceToken);
+        }
+
         const int W = 128, H = 96;
 
         static IGpuFramebuffer NewTarget(IGpuResourceFactory f)

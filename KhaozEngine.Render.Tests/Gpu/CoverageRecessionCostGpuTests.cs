@@ -45,7 +45,7 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
         var deltas = new[] { 1, 32 }.Select(actors =>
         {
             var baseline = rows.Single(r => r.Actors == actors && r.Layout == "baseline-scene");
-            var covered = rows.Single(r => r.Actors == actors && r.Layout == "covered-scene");
+            var covered = rows.Single(r => r.Actors == actors && r.Layout == "covered-scene-outer");
             double? Difference(string plus, string minus)
                 => CoverageRecessionCostMeasurement.DiagnosticDifference(rows, actors, plus, minus);
             return new
@@ -55,15 +55,13 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
                     (c, b) => c.CpuPreparationMicroseconds - b.CpuPreparationMicroseconds)),
                 addedGpuMicroseconds = covered.GpuMicroseconds.Median - baseline.GpuMicroseconds.Median,
                 aggregateGpuOverheadPercent = (covered.GpuMicroseconds.Median / baseline.GpuMicroseconds.Median - 1) * 100,
-                // Diagnostic. Both rows carry two markers, so a backend's per-marker cost cancels.
-                addedGpuMicrosecondsEqualMarkers = Difference("covered-scene-outer", "baseline-scene"),
-                addedGpuMicrosecondsInlineEqualMarkers = Difference("covered-scene-inline-outer", "baseline-scene"),
-                carryInlineMinusShippedGpuMicroseconds = Difference("carry-only-inline-outer", "carry-only-outer"),
+                // Diagnostic. The extra stage markers cost real time on encoder-ending backends.
+                addedGpuMicrosecondsStageMarkers = Difference("covered-scene", "baseline-scene"),
             };
         }).ToArray();
         string json = JsonSerializer.Serialize(new
         {
-            schema = "khaozengine.coverage-recession-cost/5",
+            schema = "khaozengine.coverage-recession-cost/6",
             fixture = fixture.Extents,
             code = new
             {
@@ -88,11 +86,11 @@ public sealed class CoverageRecessionCostGpuTests(ITestOutputHelper output)
             candidateBytesPerVertex = 64,
             dispatchSchedule = CoverageRecessionCostMeasurement.DispatchSchedule,
             carryPreciseMath = true,
-            passTiming = "Layouts ending in -passes are separate observations with Scene3D.EnableTiming and PassObserver GPU timestamps. Observer markers split native encoders and change where load/store work runs. The counting wrapper retains default store actions. Primary deltas use only baseline-scene and covered-scene. Pass rows include inclusive and exclusive GPU distributions, skipped status and fused motion. Do not add parent and child intervals.",
+            passTiming = "Layouts ending in -passes are separate diagnostic observations with Scene3D.EnableTiming and PassObserver GPU timestamps. Observer markers split native encoders and change where load/store work runs. Metal pass-row totals are not frame costs. The counting wrapper retains default store actions. Primary deltas use baseline-scene and covered-scene-outer. Pass rows include inclusive and exclusive GPU distributions, skipped status and fused motion. Do not add parent and child intervals.",
             deferredClears = "Metal observations name actual absorbed attachment clears, their source scope and consuming scope. Other backends explicitly mark this provenance unavailable. Native load/store actions and encoder-state re-emission remain in the interval that encodes them. End-only consumption is UnscopedDeferredClears. No early clear flush is inserted.",
-            markerPolicy = "baseline-scene and layouts ending in -outer carry only the outer timestamp pair. carry-only and covered-scene add ten stage markers. A Metal marker ends the native encoder and encodes its own blit pass between event waits, so its cost lands in the row that carries it. addedGpuMicrosecondsEqualMarkers compares covered-scene-outer with baseline-scene and is diagnostic. The acceptance checks keep the original pair.",
-            helperInliningExperiment = "Inline rows replace optnone with always_inline in precise Metal vertex and carry MSL after the signed-zero rewrite. Sources and helper bodies stay identical. Non-Metal ignores the setting. Distinct program and memo identities isolate the variants. This is a cost experiment, not arithmetic or image acceptance. Published words still face the exact oracle, and mismatches make diagnostic rows unavailable.",
-            unavailableRowPolicy = "Only carry-only, baseline-scene and covered-scene fail hard. Other rows are disposed and dropped for this population on construction, frame, harvest or evidence failure. Phase is conditioning or observed, frame is phase-local, and -1 means construction before a frame. Missing diagnostic deltas are null. Any unavailable row fails the unit after this JSON is saved.",
+            markerPolicy = "baseline-scene and layouts ending in -outer carry only the outer timestamp pair. carry-only and covered-scene add ten stage markers. A Metal marker ends the native encoder and encodes its own blit pass between event waits, so its cost lands in the row that carries it. Acceptance GPU and CPU deltas compare the adjacent equal-marker pair covered-scene-outer against baseline-scene. addedGpuMicrosecondsStageMarkers retains the diagnostic staged comparison, or null when unavailable.",
+            preciseHelpers = "Precise Metal vertex and carry MSL ships pinned helpers marked always_inline after the signed-zero correction. Helper bodies stay fixed and fast math stays disabled. Published words face the exact oracle on every covered row.",
+            unavailableRowPolicy = "Only baseline-scene, covered-scene-outer and carry-only-outer fail hard. Stage-bracketed carry-only and covered-scene and both pass rows are diagnostic, disposed and dropped for this population on construction, frame, harvest or evidence failure. Phase is conditioning or observed, frame is phase-local, and -1 means construction before a frame. Missing diagnostic deltas are null. Any unavailable row fails the unit after this JSON is saved.",
             unavailableRows,
             rows,
             deltas,

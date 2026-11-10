@@ -200,7 +200,7 @@ public sealed class CoverageRecessionCleanupTests
     }
 
     [Theory]
-    [InlineData("baseline-scene-inline-passes")]
+    [InlineData("baseline-scene-passes")]
     [InlineData("baseline-scene")]
     public void Final_disposal_reports_its_row_and_still_disposes_later_rows(string layout)
     {
@@ -209,14 +209,14 @@ public sealed class CoverageRecessionCleanupTests
         device.PoolFactory = capacity =>
         {
             var pool = new GpuPerfTimestampTestPool(capacity) { Owners = device.Fences };
-            if (device.Pools.Count == 3) pool.OnDispose = () => throw new NotSupportedException("Synthetic final cleanup refusal.");
+            if (device.Pools.Count == 0) pool.OnDispose = () => throw new NotSupportedException("Synthetic final cleanup refusal.");
             device.Pools.Add(pool); return pool;
         };
         if (layout == "baseline-scene")
         {
             var error = Assert.Throws<CoverageRecessionRowException>(() =>
                 CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(),
-                    ["baseline-scene-passes", layout, "baseline-scene-outer"]));
+                    [layout, "baseline-scene"]));
             Assert.Equal((layout, 1, "observed", 2), (error.Layout, error.Actors, error.Phase, error.Frame));
             Assert.Equal(CoverageRecessionRowRefusal.CleanupFailed, error.Reason);
             Assert.Equal(typeof(NotSupportedException).FullName, Assert.Single(error.CleanupFailures).Type);
@@ -224,14 +224,14 @@ public sealed class CoverageRecessionCleanupTests
         else
         {
             var measured = CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(),
-                ["baseline-scene-passes", layout, "baseline-scene-outer"]);
-            Assert.Equal(new[] { "baseline-scene-passes", "baseline-scene-outer" }, measured.Rows.Select(row => row.Layout));
+                [layout, "baseline-scene"]);
+            Assert.Equal("baseline-scene", Assert.Single(measured.Rows).Layout);
             var unavailable = Assert.Single(measured.UnavailableRows);
             Assert.Equal((layout, "observed", 2), (unavailable.Layout, unavailable.Phase, unavailable.Frame));
             Assert.Equal(CoverageRecessionRowRefusal.CleanupFailed, unavailable.Reason.Reason);
             Assert.Equal(typeof(NotSupportedException).FullName, Assert.Single(unavailable.Reason.CleanupFailures).Type);
         }
-        Assert.Equal(9, device.Pools.Count);
+        Assert.Equal(6, device.Pools.Count);
         Assert.All(device.Pools, pool => Assert.Equal(1, pool.Disposals));
         Assert.NotEmpty(device.Commands);
         Assert.All(device.Commands, commands => Assert.Equal(1, commands.Disposals));

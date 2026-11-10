@@ -47,6 +47,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `GpuShaderCompileOptions` adds an opt-in precise compute/vertex math policy without changing default
   compilation or cache identities. Coverage requests that policy. A compiled public consumer example
   and the living equipment coverage guide document complete descriptors, fallback and resource lifetime.
+- Metal precise helpers inline without changing their arithmetic, carry disposal releases every buffer after a failure, and coverage cost checks compare scenes with equal timestamp counts.
 
 ## 23.5.0
 

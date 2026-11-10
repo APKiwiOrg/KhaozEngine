@@ -17,9 +17,8 @@ internal static class CoverageRecessionCostMeasurement
 {
     internal const int ConditioningFrames = 96;
     internal const int BatchFrames = 3;
-    internal static readonly string[] Layouts = ["carry-only", "baseline-scene", "covered-scene",
-        "carry-only-outer", "covered-scene-outer", "carry-only-inline-outer", "covered-scene-inline-outer",
-        "baseline-scene-passes", "covered-scene-passes", "covered-scene-inline-passes"];
+    internal static readonly string[] Layouts = ["baseline-scene", "covered-scene-outer", "carry-only-outer",
+        "carry-only", "covered-scene", "baseline-scene-passes", "covered-scene-passes"];
     internal static string[] DispatchSchedule => CoverageCarryShaders.Kernels.Select(kernel => kernel.Name["CoverageCarry".Length..]).ToArray();
 
     internal static IEnumerable<(int Start, int Count, bool Reverse)> Schedule(int count)
@@ -110,7 +109,7 @@ internal static class CoverageRecessionCostMeasurement
         }
     }
 
-    internal static bool IsAcceptance(string layout) => layout is "carry-only" or "baseline-scene" or "covered-scene";
+    internal static bool IsAcceptance(string layout) => layout is "baseline-scene" or "covered-scene-outer" or "carry-only-outer";
 
     internal static double? DiagnosticDifference(IReadOnlyList<Row> rows, int actors, string plus, string minus)
     {
@@ -148,7 +147,6 @@ internal static class CoverageRecessionCostMeasurement
         Statistics CpuEncodingMicroseconds, Statistics CpuSubmissionMicroseconds, Statistics WarmManagedBytes, Sample[] Samples)
     {
         public bool PassTimingEnabled => Layout.EndsWith("-passes", StringComparison.Ordinal);
-        public bool InlinePreciseHelpers => Layout.Contains("-inline-", StringComparison.Ordinal);
         public Statistics? UnscopedGpuMicroseconds => PassTimingEnabled ? Stats(Samples.Select(s => s.UnscopedGpuMicroseconds!.Value)) : null;
         public object[] PassGpuMicroseconds => Samples.SelectMany(s => s.PassGpuMicroseconds).GroupBy(p => p.Pass).Select(g => (object)new
         {

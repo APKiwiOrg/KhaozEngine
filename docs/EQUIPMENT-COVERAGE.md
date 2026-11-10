@@ -209,6 +209,9 @@ a finite reference result. It neither clamps the pose nor fabricates a GPU raw r
 Carry and pulling graphics variants request the public `GpuShaderCompileOptions(PreciseMath: true)`
 and author GLSL `precise` operations. The option preserves operation order and disables the applicable
 backend fast-math/contraction optimizations. Default shader compilation and cache identity are unchanged.
+Metal's pinned precise add, subtract and multiply helpers use `[[clang::always_inline]]` instead of
+`[[clang::optnone]]` to avoid unoptimized per-operation calls. Fast math remains disabled, and the
+signed-zero corrections and helper bodies stay fixed. Unknown helper forms still refuse compilation.
 Unsupported precise requests refuse through the existing typed shader/capability families. Graphics
 owners publish readiness only after successful construction and CPU compilation, and release partial resources on failure.
 A sticky graphics refusal also suppresses coverage rebuilds when ordinary temporal, HDR or MSAA outputs change. This is not
@@ -232,6 +235,8 @@ overwrites committed or retained output. Completion polls do not wait. A full ri
 logical history, retaining its slots until a later fence proves earlier work complete. Exhausted output
 slots refuse without waiting. Cold growth uses a history lease and the existing retire queue to keep
 old storage alive. Slot counts describe reservation policy, not a measured memory footprint.
+Once history retains are gone, storage disposal attempts all three buffer releases before rethrowing
+a single release error or an `AggregateException` for multiple errors. Later disposal is idempotent.
 
 The final indexed surface is shared by colour/depth, temporal motion, cascaded and point shadows and
 full/visible outlines. Per-material descriptors stay paired with that actor. Both ordinary CPU and GPU
@@ -299,9 +304,10 @@ hardware. Hosted benchmark dispatch forwards its optional `coverage-cost-unit` i
 and ordinary shard filters exclude this fact even without Diagnostic filtering. Do not use a broad
 Diagnostic selection as cost-unit authorization. See [performance evidence](RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).
 
-Cost schema `khaozengine.coverage-recession-cost/5` retains the original carry-only, baseline-scene and
-covered-scene rows at one and 32 actors. Only the original scene pair supplies the 1.3 ms GPU and 2 ms
-CPU preparation checks. All rows retain the zero warm managed allocation check. Rows ending in `-outer`
+Cost schema `khaozengine.coverage-recession-cost/6` measures carry-only and baseline/covered scenes for
+one and 32 actors. The adjacent `baseline-scene` and `covered-scene-outer` rows supply the 1.3 ms added GPU
+and 2 ms added CPU preparation checks at 32 actors. Both carry only two timestamp markers, so the
+comparison cancels per-marker cost. All rows retain the zero warm managed allocation check. Rows ending in `-outer`
 repeat carry-only and covered-scene with the baseline row's two markers and no stage brackets, so a
 backend whose marker ends the native encoder can be compared at equal marker counts. Those rows report
 no stage times. Additional rows ending
@@ -315,8 +321,8 @@ is the outer total minus exclusive pass times, including inter-pass gaps, marker
 Skipped callbacks retain zero-duration metadata without GPU markers.
 
 Pass observations are separate because timestamp markers can split Metal encoders and change the
-resulting load/store work. Their aggregate times cannot replace the
-unobserved scene pair. Cold layout discovery precedes the existing conditioning schedule. Layout drift
+resulting load/store work. Their aggregate times are not frame costs on Metal and cannot replace the
+equal-marker scene pair. Cold layout discovery precedes the existing conditioning schedule. Layout drift
 refuses the row. Resolution, aggregation, readback and drains remain outside measured frame regions.
 Carry dispatch brackets remain available beside the pass observations.
 
@@ -348,10 +354,10 @@ The existing cost driver's counting wrapper uses the interface's default framebu
 so it records default store actions. This instrumentation preserves that recording policy. It does not
 establish the cost of the scene owner's dead-attachment discard optimization.
 
-The ten layouts at each population are `carry-only`, `baseline-scene`, `covered-scene`,
-`carry-only-outer`, `covered-scene-outer`, `carry-only-inline-outer`, `covered-scene-inline-outer`,
-`baseline-scene-passes`, `covered-scene-passes` and `covered-scene-inline-passes`. Both populations
-therefore attempt 20 rows. Only `carry-only`, `baseline-scene` and `covered-scene` are acceptance rows.
+The seven layouts at each population, in order, are `baseline-scene`, `covered-scene-outer`,
+`carry-only-outer`, `carry-only`, `covered-scene`, `baseline-scene-passes` and `covered-scene-passes`.
+Both populations therefore attempt 14 rows. Only `baseline-scene`, `covered-scene-outer` and
+`carry-only-outer` are acceptance rows. The stage-bracketed and pass rows are diagnostic.
 An acceptance failure ends the unit with a structured `CoverageRecessionRowException`. Diagnostic failures
 at construction, recording, harvest or evidence readback make that row unavailable for the rest of its
 population. The next population attempts the layout again. Remaining rows keep their original schedule.
@@ -379,21 +385,15 @@ that depend on a missing row are null. JSON and `COVERAGE_RECESSION_COST_JSON` a
 The original zero warm bytes, 2000 microseconds CPU preparation and 1300 microseconds added GPU checks stay
 in force. An additional assertion requires no unavailable rows.
 
-The inline rows retain precise compilation and replace the emitted Metal helper templates' `optnone`
-attribute with `always_inline`, after the pinned signed-zero correction. Helper bodies, signed-zero seeds,
-GLSL sources and shipped pins stay identical. An internal per-row factory route reaches both scene coverage
-vertices and all five carry kernels, including the standalone carry batch. Program keys, disk cache entries
-and frontend memo identities distinguish the two variants in one device. Non-Metal backends ignore the
-route, and ordinary Metal creation never enables it.
-
-`addedGpuMicrosecondsInlineEqualMarkers` subtracts baseline-scene from covered-scene-inline-outer.
-`carryInlineMinusShippedGpuMicroseconds` subtracts carry-only-outer from carry-only-inline-outer.
-Both outer comparisons use two markers per row. They are cost experiments, not arithmetic or image
-acceptance. Every covered row still reads back its published carry words against the exact oracle.
-An inline mismatch is retained as the distinct `ArithmeticMismatch` unavailable reason. Shipped acceptance
-rows keep the same oracle and fail hard. Headless `CoverageRecessionHelperInventoryTests` reports counts
-of precise helper call sites in each coverage vertex program and carry kernel for both emissions.
-Call sites are static counts, not invocation counts, timings or proof of native compiler acceptance.
+`addedGpuMicroseconds`, `aggregateGpuOverheadPercent` and `addedCpuPreparationMicroseconds` compare
+`covered-scene-outer` against `baseline-scene`. The diagnostic `addedGpuMicrosecondsStageMarkers`
+subtracts baseline-scene from covered-scene and is null if that staged row is unavailable. Metal markers
+end the encoder and encode a separate blit pass between event waits, so the ten extra stage markers
+cost real GPU time. They must not inflate the acceptance delta. Vulkan markers are timestamp writes.
+Every covered row reads back published carry words against the exact oracle. An exact-word mismatch
+uses the distinct `ArithmeticMismatch` reason, unavailable for diagnostic rows and fatal for acceptance.
+Headless `PreciseShaderCompileTests` guards the shipped inlinable helpers across every coverage vertex
+program and all five carry kernels. It establishes emission, not native arithmetic or image acceptance.
 
 `CoverageRecessionDrawInventoryTests` records the same synthetic 32-actor body-size scene without a GPU.
 Its `COVERAGE_DRAW_INVENTORY_JSON` output groups submitted draw calls and element counts by innermost

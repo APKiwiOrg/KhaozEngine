@@ -36,18 +36,26 @@ public sealed class CoverageRecessionStageTimingTests
         Assert.Equal(new double[] { 10, 20, 30, 40, 50 }, resolved.Select(s => s.GpuMicroseconds));
     }
 
-    // An outer row exists to cancel a backend's per-marker cost against the baseline scene it is compared with.
+    [Fact]
+    public void Final_schedule_keeps_the_equal_marker_acceptance_pair_adjacent()
+        => Assert.Equal(new[] { "baseline-scene", "covered-scene-outer", "carry-only-outer", "carry-only", "covered-scene",
+            "baseline-scene-passes", "covered-scene-passes" }, CoverageRecessionCostMeasurement.Layouts);
+
+    // Equal marker counts cancel the backend's per-marker cost in the acceptance comparison.
     [Theory]
-    [InlineData("carry-only-outer", "baseline-scene", "carry-only")]
-    [InlineData("covered-scene-outer", "baseline-scene", "covered-scene")]
-    [InlineData("carry-only-inline-outer", "baseline-scene", "carry-only")]
-    [InlineData("covered-scene-inline-outer", "baseline-scene", "covered-scene")]
-    [InlineData("covered-scene-inline-passes", "covered-scene-passes", null)]
-    public void Diagnostic_layouts_keep_the_reference_marker_count(string layout, string reference, string? staged)
+    [InlineData("baseline-scene", 2, true)]
+    [InlineData("covered-scene-outer", 2, true)]
+    [InlineData("carry-only-outer", 2, true)]
+    [InlineData("carry-only", 12, false)]
+    [InlineData("covered-scene", 12, false)]
+    [InlineData("baseline-scene-passes", null, false)]
+    [InlineData("covered-scene-passes", null, false)]
+    public void Layouts_keep_their_marker_count_and_acceptance_policy(string layout, int? markers, bool acceptance)
     {
-        uint expected = MarkersWrittenInOneFrame(reference);
-        Assert.Equal(expected, MarkersWrittenInOneFrame(layout));
-        if (staged is not null) Assert.True(MarkersWrittenInOneFrame(staged) > expected);
+        uint written = MarkersWrittenInOneFrame(layout);
+        if (markers is { } expected) Assert.Equal((uint)expected, written);
+        else Assert.True(written > 12);
+        Assert.Equal(acceptance, CoverageRecessionCostMeasurement.IsAcceptance(layout));
     }
 
     static uint MarkersWrittenInOneFrame(string layout)

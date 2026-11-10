@@ -3,21 +3,23 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Render3D;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu;
 
 [Collection("AllocSensitive")]
-public sealed class CoverageRecessionRowFailureTests
+public sealed class CoverageRecessionRowFailureTests(ITestOutputHelper output)
 {
     [Theory]
-    [InlineData(1, "covered-scene-outer")]
-    [InlineData(32, "covered-scene-outer")]
-    [InlineData(1, "covered-scene-inline-passes")]
+    [InlineData(1, "covered-scene")]
+    [InlineData(32, "covered-scene")]
+    [InlineData(1, "covered-scene-passes")]
     public void A_diagnostic_shader_refusal_keeps_the_baseline_result_and_names_the_unavailable_row(int actors, string layout)
     {
         using var compute = RefusingGraphics();
@@ -47,13 +49,13 @@ public sealed class CoverageRecessionRowFailureTests
         using var compute = RefusingGraphics();
         using var device = CoverageRecessionWarmAllocationTests.InertCostDevice(compute);
         var error = Assert.Throws<CoverageRecessionRowException>(() =>
-            CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(), ["covered-scene"]));
-        Assert.Equal("covered-scene", error.Layout);
+            CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(), ["covered-scene-outer"]));
+        Assert.Equal("covered-scene-outer", error.Layout);
         Assert.Equal(1, error.Actors);
         Assert.Equal("conditioning", error.Phase);
         Assert.Equal(0, error.Frame);
         Assert.Equal(CoverageRecessionRowRefusal.CoverageNotPublished, error.Reason);
-        Assert.Equal((0, 10, 0), (error.BracketsSeen, error.BracketsExpected, error.DispatchCount));
+        Assert.Equal((0, 0, 0), (error.BracketsSeen, error.BracketsExpected, error.DispatchCount));
         Assert.Equal(new[] { CoverageFailureCode.UnsupportedAdapter }, error.CoverageFailures);
         var failure = Assert.Single(error.FactoryFailures);
         Assert.Equal(typeof(ShaderValidationException).FullName, failure.Type);
@@ -129,12 +131,14 @@ public sealed class CoverageRecessionRowFailureTests
         Assert.All(buffers, buffer => Assert.True(buffer.DisposeCalls > 0));
     }
 
+    // #1762. Keep the underlying refusal visible if a pass-row mismatch check fails.
     [Theory]
-    [InlineData("carry-only-inline-outer")]
-    [InlineData("covered-scene-inline-outer")]
-    [InlineData("covered-scene-inline-passes")]
     [InlineData("carry-only")]
-    public void Evidence_mismatch_is_unavailable_for_inline_rows_and_fatal_for_acceptance(string layout)
+    [InlineData("covered-scene")]
+    [InlineData("covered-scene-passes")]
+    [InlineData("carry-only-outer")]
+    [InlineData("covered-scene-outer")]
+    public void Evidence_mismatch_is_unavailable_for_diagnostic_rows_and_fatal_for_acceptance(string layout)
     {
         using var compute = new CoveragePublicationDevice();
         using var device = CoverageRecessionWarmAllocationTests.InertCostDevice(compute);
@@ -146,10 +150,11 @@ public sealed class CoverageRecessionRowFailureTests
         };
         device.BufferUnmap = _ => pinned.Free();
         // Inert dispatch leaves zero words. The real evidence readback and exact oracle must reject them.
-        if (layout == "carry-only")
+        if (CoverageRecessionCostMeasurement.IsAcceptance(layout))
         {
             var failure = Assert.Throws<CoverageRecessionRowException>(() =>
                 CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(), [layout]));
+            output.WriteLine(JsonSerializer.Serialize(failure.Details));
             Assert.Equal(CoverageRecessionRowRefusal.ArithmeticMismatch, failure.Reason);
         }
         else
@@ -157,6 +162,7 @@ public sealed class CoverageRecessionRowFailureTests
             var result = CoverageRecessionCostMeasurement.Measure(device, new(4, 4), 1, 3, Deadline(), [layout, "baseline-scene"]);
             Assert.Equal("baseline-scene", Assert.Single(result.Rows).Layout);
             var unavailable = Assert.Single(result.UnavailableRows);
+            output.WriteLine(JsonSerializer.Serialize(unavailable));
             Assert.Equal(CoverageRecessionRowRefusal.ArithmeticMismatch, unavailable.Reason.Reason);
             Assert.Equal(("observed", 2), (unavailable.Phase, unavailable.Frame));
         }
@@ -182,7 +188,7 @@ public sealed class CoverageRecessionRowFailureTests
         };
         using var device = CoverageRecessionWarmAllocationTests.InertCostDevice(compute);
         var failure = Assert.Throws<CoverageRecessionRowException>(() =>
-            new CoverageRecessionCostMeasurement.Driver(device, new(4, 4), 1, "covered-scene-inline-passes", 3));
+            new CoverageRecessionCostMeasurement.Driver(device, new(4, 4), 1, "covered-scene-passes", 3));
         Assert.Equal(("conditioning", 1), (failure.Phase, failure.Frame));
         Assert.Equal(CoverageRecessionRowRefusal.CoverageNotPublished, failure.Reason);
         Assert.Equal(0, failure.DispatchCount);

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Primitives;
@@ -67,27 +69,11 @@ public sealed class CoverageRecessionWarmAllocationTests(ITestOutputHelper outpu
         Assert.Equal(0, allocated);
     }
 
+    public static IEnumerable<object[]> CostPopulations() => CoverageRecessionCostMeasurement.Layouts
+        .SelectMany(layout => new[] { 1, 32 }.Select(actors => new object[] { layout, actors }));
+
     [Theory]
-    [InlineData("carry-only", 1)]
-    [InlineData("baseline-scene", 1)]
-    [InlineData("covered-scene", 1)]
-    [InlineData("carry-only", 32)]
-    [InlineData("baseline-scene", 32)]
-    [InlineData("covered-scene", 32)]
-    [InlineData("carry-only-outer", 1)]
-    [InlineData("carry-only-outer", 32)]
-    [InlineData("covered-scene-outer", 1)]
-    [InlineData("covered-scene-outer", 32)]
-    [InlineData("carry-only-inline-outer", 1)]
-    [InlineData("carry-only-inline-outer", 32)]
-    [InlineData("covered-scene-inline-outer", 1)]
-    [InlineData("covered-scene-inline-outer", 32)]
-    [InlineData("baseline-scene-passes", 1)]
-    [InlineData("baseline-scene-passes", 32)]
-    [InlineData("covered-scene-passes", 1)]
-    [InlineData("covered-scene-passes", 32)]
-    [InlineData("covered-scene-inline-passes", 1)]
-    [InlineData("covered-scene-inline-passes", 32)]
+    [MemberData(nameof(CostPopulations))]
     public void Warm_cost_frame_regions_allocate_zero_for_each_actor_population(string layout, int actors)
     {
         // Inert device and counters exercise the real cost driver, without establishing GPU timing or output.

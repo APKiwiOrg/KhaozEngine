@@ -37,6 +37,8 @@ namespace KhaozEngine.Render3D
         /// while temporal anti-aliasing resolves the frame. Default 0, so the shadow fit follows the sun every frame
         /// instead of moving in held steps. Positive values hold exactly as the shadow setting does, using the same
         /// <see cref="ShadowSettings.ShadowLightHoldCasterHeight"/>. Negative and NaN values behave as zero.
+        /// The first render fixes which budget the frame uses. An AA mode change between renders takes effect on
+        /// the next frame, so every render of the current frame keeps the same budget selection.
         /// <para>Following re-records the atlas whenever the sun moves, including fully static scenes that could
         /// otherwise reuse it. Set 1 to restore the one-texel hold under temporal anti-aliasing when that saving is
         /// needed. Fractional holds beat against the jitter cycle and are not recommended. Other anti-aliasing modes,

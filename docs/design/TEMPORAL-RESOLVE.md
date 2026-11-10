@@ -302,9 +302,11 @@ The sun shadow fit uses `Post.Temporal.ShadowLightHoldTexels` while temporal ant
 is 0, so a moving sun is followed every frame. Other AA modes retain `ShadowSettings.ShadowLightHoldTexels`,
 default 1. Both budgets use `ShadowSettings.ShadowLightHoldCasterHeight`, default 12. A positive budget holds
 the last fitted direction until the shadow has moved by the budget in shadow-map texels. Negative and NaN
-values behave as zero. The selector is `TemporalResolveActive`, rather than the wider `TemporalActive`, so the
-motion-vector debug view or the temporal test seam alone cannot change where shadows fall. Switching AA mode
-applies the other budget to the existing held state on the next frame.
+values behave as zero. The first render latches the frame's resolve decision before its cascade fit, and every
+render of that frame selects the budget from that decision. A live settings read could change the budget on
+a later render that never resolves. The wider `TemporalActive` also includes the motion-vector debug view and
+the temporal test seam, so it cannot select the budget either. Switching AA mode between renders applies the
+other budget to the existing held state on the next frame.
 
 Holding the light input avoids atlas re-records, but makes a slowly moving shadow jump on each re-fit. The
 resolve must pass those real shading changes through. On the daylight rig at `0.2f / 60f` degrees per frame,

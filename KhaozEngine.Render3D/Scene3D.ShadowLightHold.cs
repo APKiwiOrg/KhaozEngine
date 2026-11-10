@@ -57,7 +57,9 @@ namespace KhaozEngine.Render3D
         /// the displacement the threshold bounds.
         /// </para>
         /// <para>
-        /// Only <see cref="TemporalResolveActive"/> selects the temporal budget. The wider
+        /// The frame's first render fixes <c>_frameResolves</c> in <c>EnsureSize</c>, before the cascade fit.
+        /// That decision selects the temporal budget on every render of this frame. The live
+        /// <see cref="TemporalResolveActive"/> getter can change between renders and must not select it. The wider
         /// <see cref="TemporalActive"/> also includes the motion-vector debug view and the test seam, neither of
         /// which should change where shadows fall. Switching anti-aliasing mode applies the other budget to the
         /// same held direction on the next frame, without resetting or freezing the camera half of the fit.
@@ -66,7 +68,7 @@ namespace KhaozEngine.Render3D
         Vector3 HeldLightDirection(ReadOnlySpan<float> splits, int count, float camNear, float camFar, float range, int res)
         {
             Vector3 live = Vector3.Normalize(Post.LightDirection);
-            float budget = TemporalResolveActive
+            float budget = _frameResolves
                 ? Post.Temporal.ShadowLightHoldTexels
                 : Post.Quality.Shadows.ShadowLightHoldTexels;
             // Disabled, or nothing held yet (the first shadow frame, which must fit from the live sun anyway). The

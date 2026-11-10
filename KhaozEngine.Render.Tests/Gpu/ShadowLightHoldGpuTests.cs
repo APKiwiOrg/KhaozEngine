@@ -148,6 +148,31 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal((HeldFrames, 0), after);
         }
 
+        [GpuTheory, InlineData(false), InlineData(true)]
+        public void A_mode_change_between_renders_keeps_the_frames_latched_shadow_budget(bool firstTemporal)
+        {
+            using var fx = new TemporalFixture(W, H, scene =>
+            {
+                ConfigureShadowScene(scene);
+                scene.Post.Quality.AntiAliasing = firstTemporal ? AntiAliasing.Temporal : AntiAliasing.Off;
+            });
+            var draw = SubThresholdDraw(fx.Scene);
+            fx.Frame(draw);
+            fx.Frame(draw);
+            fx.Scene.Post.Quality.AntiAliasing = firstTemporal ? AntiAliasing.Off : AntiAliasing.Temporal;
+            fx.Scene.Post.LightDirection = SunAt(2f * SubThresholdDegreesPerFrame);
+            fx.RenderSecond(W, H);
+            ShadowPassDiagnostics second = fx.Scene.LastShadowPassDiagnostics;
+            fx.Frame(draw);
+            ShadowPassDiagnostics next = fx.Scene.LastShadowPassDiagnostics;
+            output.WriteLine($"first temporal={firstTemporal}: second render recorded={second.Rendered}, "
+                + $"light changed={second.LightMatrixChanged}, next frame recorded={next.Rendered}");
+            Assert.False(second.CasterDataChanged);
+            Assert.Equal(firstTemporal, second.Rendered);
+            Assert.Equal(firstTemporal, second.LightMatrixChanged);
+            Assert.Equal(!firstTemporal, next.Rendered);
+        }
+
         static Action<Scene3D, int> SubThresholdDraw(Scene3D scene)
         {
             MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(40f, 0.1f));

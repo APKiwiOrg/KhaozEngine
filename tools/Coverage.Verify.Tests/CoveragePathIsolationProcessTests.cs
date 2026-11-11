@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using KhaozEngine.Tools.Coverage;
 using Xunit;
@@ -111,12 +112,56 @@ public sealed class CoveragePathIsolationProcessTests
             {
                 var result = await Execute(files, evidence: Path.Combine(alias, "table.bin"));
                 Assert.Equal(0, result.ExitCode);
-                Assert.Equal((byte)'{', File.ReadAllBytes(physical)[0]);
+                using var evidence = JsonDocument.Parse(File.ReadAllBytes(physical));
+                Assert.Equal(64, evidence.RootElement.GetProperty("toolCodeSha256").GetString()!.Length);
                 Assert.NotEqual(File.ReadAllBytes(physical), File.ReadAllBytes(files.TablePath));
             }
         }
         finally { Directory.Delete(alias); Directory.Delete(hop); }
     }
+
+    // The run may read a file through a differently named link. Diagnostics naming the real file would replace
+    // the bytes the run reads, so the final target's name is protected too.
+    [DirectoryLinkTheory]
+    [InlineData("manifest.json", false)]
+    [InlineData("manifest.json", true)]
+    [InlineData("host.glb", false)]
+    [InlineData("host.glb", true)]
+    public async Task Diagnostic_naming_the_target_of_a_linked_run_file_is_refused(string name, bool refused)
+    {
+        using var files = new CoverageBuildFiles("path-isolation");
+        if (refused) files.Manifest["samples"]![1]!["stateKey"] = 1;
+        string linkedName = "linked-" + name, manifest = files.ManifestPath;
+        File.CreateSymbolicLink(Path.Combine(files.Folder, linkedName), name);
+        if (name == "host.glb") files.Manifest["host"]!["path"] = linkedName;
+        else manifest = Path.Combine(files.Folder, linkedName);
+        files.Write();
+        // The linked spelling is a working input on its own, so only the diagnostic name can cause the refusal.
+        Assert.Equal(refused ? 1 : 0, (await Execute(files, manifest: manifest)).ExitCode);
+        var before = Snapshot(files);
+
+        Assert.Equal(2, (await Execute(files, diagnostic: Path.Combine(files.Folder, name), manifest: manifest)).ExitCode);
+
+        AssertPreserved(files, before);
+    }
+
+    [Theory]
+    [InlineData(@"\\?\C:\run\MANIFE~1.JSO", true, true)]
+    [InlineData(@"\\.\C:\run\diagnostics.json", true, true)]
+    [InlineData(@"C:\run\container:poses.json", true, true)]
+    [InlineData(@"C:\run\diagnostics.json", true, false)]
+    [InlineData(@"\\server\share\run\diagnostics.json", true, false)]
+    [InlineData("/run/odd:name.json", false, false)]
+    public void Windows_device_prefixes_and_stream_suffixes_cannot_be_identified_by_name(string path, bool windows, bool unsupported)
+        => Assert.Equal(unsupported, CoverageDiagnosticName.Unsupported(path, windows));
+
+    [Theory]
+    [InlineData("/out/caf\u00e9.json", "/in/cafe\u0301.json", true)]
+    [InlineData("/out/Table.BIN", "/in/table.bin", true)]
+    [InlineData("/out/table.bin/", "/in/table.bin", true)]
+    [InlineData("/out/table.json", "/in/table.bin", false)]
+    public void Diagnostic_names_fold_case_and_composition_before_comparison(string diagnostic, string runFile, bool collides)
+        => Assert.Equal(collides, CoverageDiagnosticName.Collides(diagnostic, [runFile]));
 
     // The accepted-output checks still compare spellings, exactly as they did before diagnostics existed.
     [Theory]
@@ -150,10 +195,10 @@ public sealed class CoveragePathIsolationProcessTests
     }
 
     static async Task<(int ExitCode, string Error)> Execute(CoverageBuildFiles files, string? diagnostic = null,
-        string? table = null, string? evidence = null)
+        string? table = null, string? evidence = null, string? manifest = null)
     {
         var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        foreach (string arg in new[] { typeof(Program).Assembly.Location, "build", "--manifest", files.ManifestPath,
+        foreach (string arg in new[] { typeof(Program).Assembly.Location, "build", "--manifest", manifest ?? files.ManifestPath,
             "--table", table ?? files.TablePath, "--evidence", evidence ?? files.EvidencePath }) start.ArgumentList.Add(arg);
         if (diagnostic != null) { start.ArgumentList.Add("--diagnostics"); start.ArgumentList.Add(diagnostic); }
         start.Environment["KE_GPU_TESTS"] = "0";

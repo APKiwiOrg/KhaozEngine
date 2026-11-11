@@ -39,11 +39,14 @@ public static class Program
             string manifest = options["--manifest"], tablePath = options["--table"], evidencePath = options["--evidence"];
             var comparer = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
             diagnostic.Path = options.GetValueOrDefault("--diagnostics");
-            if (diagnostic.Path != null && CoverageDiagnosticName.Collides(diagnostic.Path, [manifest, tablePath, evidencePath])) return 2;
+            bool windows = OperatingSystem.IsWindows();
+            if (diagnostic.Path != null && (new[] { diagnostic.Path, manifest, tablePath, evidencePath }.Any(p => CoverageDiagnosticName.Unsupported(p, windows))
+                || CoverageDiagnosticName.Collides(diagnostic.Path, [manifest, tablePath, evidencePath]))) return 2;
             if (comparer.Equals(manifest, tablePath) || comparer.Equals(manifest, evidencePath) || comparer.Equals(tablePath, evidencePath))
                 throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputAlias, "Output paths must be distinct from inputs and each other.");
             var input = CoverageBuildInput.Read(manifest);
-            if (diagnostic.Path != null && CoverageDiagnosticName.Collides(diagnostic.Path, input.SourcePaths)) return 2;
+            if (diagnostic.Path != null && (input.SourcePaths.Any(p => CoverageDiagnosticName.Unsupported(p, windows))
+                || CoverageDiagnosticName.Collides(diagnostic.Path, input.SourcePaths))) return 2;
             diagnostic.Input = input;
             if (input.SourcePaths.Any(p => comparer.Equals(p, tablePath) || comparer.Equals(p, evidencePath)))
                 throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputAlias, "Outputs cannot overwrite checked inputs.");

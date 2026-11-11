@@ -145,9 +145,33 @@ public sealed class CoveragePathIsolationProcessTests
         AssertPreserved(files, before);
     }
 
+    // An unresolvable link is not the same as no link. Its target name is unknown, so the name rule cannot
+    // vouch for the destination and diagnostics must be refused instead of published.
+    [DirectoryLinkTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unresolvable_link_among_the_run_files_refuses_diagnostics(bool diagnosticsRequested)
+    {
+        using var files = new CoverageBuildFiles("path-isolation");
+        string loopA = Path.Combine(files.Folder, "loop-a.bin"), loopB = Path.Combine(files.Folder, "loop-b.bin");
+        File.CreateSymbolicLink(loopA, "loop-b.bin");
+        File.CreateSymbolicLink(loopB, "loop-a.bin");
+        string diagnostic = Path.Combine(files.Folder, "diagnostics.json");
+
+        var result = await Execute(files, diagnostic: diagnosticsRequested ? diagnostic : null, table: loopA);
+
+        // Without the option the run still reaches publication and fails there, as it did before diagnostics
+        // existed. With it the invocation is malformed and stops before any work.
+        Assert.Equal(diagnosticsRequested ? 2 : 1, result.ExitCode);
+        Assert.False(File.Exists(diagnostic));
+        Assert.False(File.Exists(files.EvidencePath));
+        Assert.Equal("loop-b.bin", new FileInfo(loopA).LinkTarget);
+    }
+
     [Theory]
     [InlineData(@"\\?\C:\run\MANIFE~1.JSO", true, true)]
     [InlineData(@"\\.\C:\run\diagnostics.json", true, true)]
+    [InlineData(@"\??\C:\run\diagnostics.json", true, true)]
     [InlineData(@"C:\run\container:poses.json", true, true)]
     [InlineData(@"C:\run\diagnostics.json", true, false)]
     [InlineData(@"\\server\share\run\diagnostics.json", true, false)]

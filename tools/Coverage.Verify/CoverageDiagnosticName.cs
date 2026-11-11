@@ -30,8 +30,9 @@ internal static class CoverageDiagnosticName
 
     static string? FinalTarget(string path)
     {
-        // A missing or unreadable entry has no target to protect. Reading it reports that failure on its own.
+        // Only an entry that does not exist yet has no target. Any other lookup failure leaves the target name
+        // unknown, so it propagates and the invocation is refused instead of passing an unchecked destination.
         try { return File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return null; }
     }
 }

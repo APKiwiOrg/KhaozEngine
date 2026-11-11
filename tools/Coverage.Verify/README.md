@@ -171,8 +171,9 @@ manifest, the table, the evidence or any checked source, in any directory, ignor
 composition. When one of those files is read through a link, the name of the file it finally points at
 is protected as well. Linked directories and mounts can spell one directory in ways no path comparison
 can enumerate, but they keep the file name, so the rule does not depend on resolving them. On Windows a
-device prefix (`\\?\`, `\\.\`) or a stream suffix on any path of the run cannot be identified by name,
-so diagnostics are refused for those forms. Each such invocation exits 2 before publication and leaves
+device prefix (`\\?\`, `\\.\`, `\??\`) or a stream suffix on any path of the run cannot be identified by
+name, so diagnostics are refused for those forms. A link whose target cannot be resolved is refused the
+same way, because its target name is unknown. Each such invocation exits 2 before publication and leaves
 existing files untouched. This guards against accidental aliases. It is not a security boundary against
 a caller who constructs one, for example with a second hard link under another name. The
 accepted-output checks are unchanged: they compare normalized path spellings and refuse with

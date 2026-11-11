@@ -4,6 +4,17 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.9.0
+
+2026-11-11
+
+- Sun shadows follow a moving light every frame under temporal anti-aliasing by default, removing held re-fit
+  steps through the new `TemporalSettings.ShadowLightHoldTexels` field, default `0f`. The first render fixes the
+  frame's budget selection, so an AA mode change between renders takes effect on the next frame. Other
+  anti-aliasing modes retain `ShadowSettings.ShadowLightHoldTexels` and its existing behavior. Fully static scenes
+  re-record the atlas whenever the sun moves, while scenes already dirtied by animation add no re-records. Set
+  `scene.Post.Temporal.ShadowLightHoldTexels = 1f` to restore the one-texel hold and its static-scene saving.
+
 ## 23.8.0
 
 2026-11-11

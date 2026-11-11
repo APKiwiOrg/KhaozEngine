@@ -11,6 +11,7 @@ public static partial class NameplateRenderer
     /// <remarks>
     /// Does not project, distance-cull, clamp, deflect or resize components. Keep the panel dimensions from
     /// <see cref="NameplateTemplateLayout.Measure"/> and use a framebuffer-space sprite batch pass.
+    /// A framebuffer pass does not snap, so the plate draws exactly where the rectangle says.
     /// </remarks>
     /// <param name="batch">An in-progress sprite batch to draw into.</param>
     /// <param name="font">The font used to measure and draw text.</param>
@@ -36,6 +37,10 @@ public static partial class NameplateRenderer
     /// Uses the sprite batch pass's existing design transform without remapping the supplied rectangle.
     /// Does not project, distance-cull, clamp, deflect or resize components. Keep the panel dimensions from
     /// <see cref="NameplateTemplateLayout.Measure"/> in the same design units.
+    /// In a point-space UI pass (<see cref="IDesignViewport.SnapsToDevicePixels"/>) the panel origin, every panel,
+    /// badge and bar edge and every border thickness land on whole device pixels, so a plate that follows a moving
+    /// anchor keeps a steady border. Decoration drawn around the panel lines up with it when it starts from
+    /// <see cref="SpriteBatch.SnapRect"/> of the same rectangle.
     /// </remarks>
     /// <param name="batch">An in-progress sprite batch drawing through the design viewport.</param>
     /// <param name="font">The font used to measure and draw text.</param>
@@ -86,10 +91,16 @@ public static partial class NameplateRenderer
         where TCanvas : INameplateCanvas
     {
         float opacity = float.IsFinite(content.Opacity) ? Math.Clamp(content.Opacity, 0f, 1f) : 1f;
+        // The origin snaps first, so every component keeps one constant offset from it and the whole plate moves
+        // a device pixel at a time as its anchor drifts.
+        NameplateDeviceGrid grid = NameplateDeviceGrid.Of(ref canvas);
+        panelRect = grid.AtSnappedOrigin(panelRect);
+        Vector4 panel = grid.SnapRect(panelRect);
         if (colors.PanelFill.A > 0f)
-            canvas.FillRounded(panelRect, WithOpacity(colors.PanelFill, opacity), template.CornerRadius);
+            canvas.FillRounded(panel, WithOpacity(colors.PanelFill, opacity), template.CornerRadius);
         if (template.PanelBorderThickness > 0f && colors.PanelBorder.A > 0f)
-            canvas.StrokeRounded(panelRect, WithOpacity(colors.PanelBorder, opacity), template.CornerRadius, template.PanelBorderThickness);
+            canvas.StrokeRounded(panel, WithOpacity(colors.PanelBorder, opacity), template.CornerRadius,
+                grid.SnapThickness(template.PanelBorderThickness));
 
         Vector2 screenOffset = new(panelRect.X + template.PadX - resolution.Bounds.X,
             panelRect.Y + template.PadY - resolution.Bounds.Y);
@@ -106,10 +117,10 @@ public static partial class NameplateRenderer
                     DrawTemplateText(ref canvas, rect, resolved.Text, text, colors.ShadowFor(text), value, opacity);
                     break;
                 case NameplateBadgeComponent badge when content.TryGetText(badge.Slot, out var value):
-                    DrawTemplateBadge(ref canvas, rect, resolved.Text, badge, value, opacity);
+                    DrawTemplateBadge(ref canvas, grid, rect, resolved.Text, badge, value, opacity);
                     break;
                 case NameplateBarComponent bar when content.TryGetBar(bar.Slot, out var value):
-                    DrawTemplateBar(ref canvas, rect, bar, value, opacity);
+                    DrawTemplateBar(ref canvas, grid, rect, bar, value, opacity);
                     break;
             }
         }

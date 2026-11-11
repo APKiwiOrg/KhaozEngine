@@ -181,6 +181,54 @@ public sealed class NameplateRectDrawTests
         Assert.True(designProjection.IsStatic);
     }
 
+    /// <summary>Regression for #1768: in a point-space UI pass a plate's geometry sits on whole device pixels,
+    /// so a border keeps one coverage while the anchor drifts through sub-pixel phases.</summary>
+    /// <param name="deviceScale">Device pixels per point: a whole scale, a fractional one where a one point
+    /// border is not a whole pixel count, and one small enough that a border would round away.</param>
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(1.5f)]
+    [InlineData(0.4f)]
+    public void APointSpacePassKeepsPlateGeometryOnWholeDevicePixels(float deviceScale)
+    {
+        var template = PanelAndShadowTemplate();
+        var content = FullHeader();
+        // Two origins a fiftieth of a point apart, which round to the same device pixel at every scale here.
+        var first = SnappingCanvas(deviceScale);
+        var drifted = SnappingCanvas(deviceScale);
+        Assert.True(NameplateRenderer.DrawTemplateAtRect(ref first, new Vector4(438.2f, 469.3f, 124f, 31f),
+            template, content, 1000, 1000));
+        Assert.True(NameplateRenderer.DrawTemplateAtRect(ref drifted, new Vector4(438.22f, 469.28f, 124f, 31f),
+            template, content, 1000, 1000));
+
+        Assert.Equal(first.Calls, drifted.Calls);
+        Assert.NotEmpty(first.Strokes);
+        Assert.NotEmpty(first.Fills);
+        Assert.All(first.Fills, fill =>
+        {
+            AssertWholeDevicePixels(fill.X, deviceScale);
+            AssertWholeDevicePixels(fill.Y, deviceScale);
+        });
+        Assert.All(first.Strokes, stroke =>
+        {
+            AssertWholeDevicePixels(stroke.Rect.X, deviceScale);
+            AssertWholeDevicePixels(stroke.Rect.Y, deviceScale);
+            AssertWholeDevicePixels(stroke.Rect.X + stroke.Rect.Z, deviceScale);
+            AssertWholeDevicePixels(stroke.Rect.Y + stroke.Rect.W, deviceScale);
+            AssertWholeDevicePixels(stroke.Thickness, deviceScale);
+            Assert.True(stroke.Thickness * deviceScale >= 1f - 1e-3f, "a border is at least one device pixel");
+        });
+    }
+
+    private static void AssertWholeDevicePixels(float points, float deviceScale)
+    {
+        float device = points * deviceScale;
+        Assert.InRange(MathF.Abs(device - MathF.Round(device)), 0f, 1e-2f);
+    }
+
+    private static RecordingNameplateCanvas SnappingCanvas(float deviceScale) =>
+        new(new FixedGlyphFont(6f, 10f)) { DeviceScale = new Vector2(deviceScale) };
+
     [Fact]
     public void AWarmRectDrawAllocatesNothing()
     {

@@ -17093,6 +17093,16 @@ panel size, or empty content. It does not project, distance-cull, clamp, deflect
 in design space and uses the SpriteBatch pass's existing transform without another screen-to-design
 conversion.
 
+Every nameplate draw, `Draw` and `DrawAtRect` alike, snaps to device pixels in a point-space `UiViewport`
+pass. The panel origin lands on a whole device pixel first, so the components move as one block, then each
+panel, badge and bar edge and each border thickness snaps, with a border never thinner than one device pixel.
+A plate's anchor is a projected world point that drifts through sub-pixel phases as the camera or the entity
+moves, and an anti-aliased border drawn at a fractional position changes coverage with the phase, which showed
+as a border pulsing or dropping out in motion. A bar fill's leading edge is not snapped, because it moves with
+the value and not with the anchor. Framebuffer and letterboxed design passes do not snap and draw exactly where
+the rect says. `NameplatePlacement.Place` still returns the unrounded rect. Decoration drawn around a plate
+lines up with it when it starts from `SpriteBatch.SnapRect` of the same rect.
+
 This design-space example reuses `hostilePlate` from above. Each id retains its own template, content and
 placement state. The game supplies cached `levelText`, `healthFraction`, `fadeFor` and the combat pin signal.
 Keep content unchanged between measuring and drawing. Remove the caller's retained entries when an entity

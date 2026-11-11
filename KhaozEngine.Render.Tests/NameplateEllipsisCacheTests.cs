@@ -140,6 +140,8 @@ public sealed class NameplateEllipsisCacheTests
     private struct TextCapturingCanvas(ITextMeasurer font) : INameplateCanvas
     {
         public ITextMeasurer Font => font;
+        public Vector2 DeviceScale => default;
+        public Vector2 DeviceOffset => default;
         public string? LastText { get; private set; }
 
         public void FillRounded(Vector4 rect, Color color, float cornerRadius) { }

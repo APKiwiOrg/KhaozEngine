@@ -87,16 +87,18 @@ public static partial class NameplateRenderer
             canvas.Text(text, position, WithOpacity(value.Color, opacity), component.FontScale);
     }
 
-    private static void DrawTemplateBadge<TCanvas>(ref TCanvas canvas, Vector4 rect, string text,
-        NameplateBadgeComponent component, NameplateTextValue value, float opacity)
+    private static void DrawTemplateBadge<TCanvas>(ref TCanvas canvas, NameplateDeviceGrid grid, Vector4 rect,
+        string text, NameplateBadgeComponent component, NameplateTextValue value, float opacity)
         where TCanvas : INameplateCanvas
     {
+        rect = grid.SnapRect(rect);
         Color wash = value.Tint is Color tint
             ? Color.Lerp(component.BaseFill, tint.WithAlpha(component.BaseFill.A), component.TintAlpha)
             : component.BaseFill;
         canvas.FillRounded(rect, WithOpacity(wash, opacity), component.CornerRadius);
         if (component.BorderThickness > 0f)
-            canvas.StrokeRounded(rect, WithOpacity(component.BorderColor, opacity), component.CornerRadius, component.BorderThickness);
+            canvas.StrokeRounded(rect, WithOpacity(component.BorderColor, opacity), component.CornerRadius,
+                grid.SnapThickness(component.BorderThickness));
 
         Vector2 glyph = canvas.Font.Measure(text) * component.FontScale;
         Vector2 position = new(rect.X + (rect.Z - glyph.X) * 0.5f, rect.Y + (rect.W - glyph.Y) * 0.5f);
@@ -107,12 +109,16 @@ public static partial class NameplateRenderer
             canvas.Text(text, position, WithOpacity(value.Color, opacity), component.FontScale);
     }
 
-    private static void DrawTemplateBar<TCanvas>(ref TCanvas canvas, Vector4 rect,
+    private static void DrawTemplateBar<TCanvas>(ref TCanvas canvas, NameplateDeviceGrid grid, Vector4 rect,
         NameplateBarComponent component, NameplateBarValue value, float opacity)
         where TCanvas : INameplateCanvas
     {
-        Vector4 inner = new(rect.X + component.BorderThickness, rect.Y + component.BorderThickness,
-            rect.Z - 2f * component.BorderThickness, rect.W - 2f * component.BorderThickness);
+        // The track is inset by the snapped border, so the border and the track meet on one device pixel edge.
+        // The fill's leading edge is left where the fraction puts it, which moves with health and not with the
+        // anchor.
+        rect = grid.SnapRect(rect);
+        float border = grid.SnapThickness(component.BorderThickness);
+        Vector4 inner = new(rect.X + border, rect.Y + border, rect.Z - 2f * border, rect.W - 2f * border);
         canvas.FillRounded(inner, WithOpacity(value.Track, opacity), component.CornerRadius);
         float fraction = Math.Clamp(value.Fraction, 0f, 1f);
         if (!float.IsNaN(value.Fraction) && (!component.SkipEmptyFill || fraction > 0f))
@@ -120,9 +126,9 @@ public static partial class NameplateRenderer
             Vector4 fill = inner with { Z = inner.Z * fraction };
             canvas.FillRounded(fill, WithOpacity(value.Fill, opacity), component.CornerRadius);
         }
-        if (component.BorderThickness > 0f)
+        if (border > 0f)
             canvas.StrokeRounded(rect, WithOpacity(value.Border ?? component.BorderColor, opacity),
-                component.CornerRadius, component.BorderThickness);
+                component.CornerRadius, border);
     }
 
     private static Color WithOpacity(Color color, float opacity) => color.WithAlpha(color.A * opacity);

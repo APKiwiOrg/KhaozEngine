@@ -6,7 +6,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 23.9.0
 
-2026-11-11
+2026-11-12
 
 - Sun shadows follow a moving light every frame under temporal anti-aliasing by default, removing held re-fit
   steps through the new `TemporalSettings.ShadowLightHoldTexels` field, default `0f`. The first render fixes the
@@ -14,6 +14,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   anti-aliasing modes retain `ShadowSettings.ShadowLightHoldTexels` and its existing behavior. Fully static scenes
   re-record the atlas whenever the sun moves, while scenes already dirtied by animation add no re-records. Set
   `scene.Post.Temporal.ShadowLightHoldTexels = 1f` to restore the one-texel hold and its static-scene saving.
+- Nameplates snap to whole device pixels in a point-space `UiViewport` pass. `NameplateRenderer.Draw` and
+  `DrawAtRect` place the panel origin, every panel, badge and bar edge and every border thickness on the device
+  grid, so a bar border no longer pulses or drops out while its plate follows a moving anchor. Framebuffer and
+  design-space passes are unchanged, and `NameplatePlacement.Place` still returns unrounded rects
+  ([#1768](https://github.com/APKiwiOrg/KhaozEngine/issues/1768)).
 
 ## 23.8.0
 

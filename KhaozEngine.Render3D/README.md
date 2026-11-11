@@ -1588,6 +1588,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     `NameplateLayout.Measure` is the pure, GPU-free panel-size math (headless-testable); `NameplateBar.Fraction` is
     clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. Warmed styles with up to four
     bars draw without heap allocation. Larger plates build an uncached template.
+    In a point-space `UiViewport` pass the panel origin, every panel, badge and bar edge and every border
+    thickness snap to whole device pixels, so a border stays steady while its plate follows a moving anchor.
     Opt-in edge-aware placement via `NameplateStyle.EdgeBehavior` (a `NameplateEdgeBehavior`: `None` is the
     default, byte-identical to before):
     `Clamp` insets the plate into the viewport by `EdgeMargin` on both axes, `Deflect` also moves it beside the

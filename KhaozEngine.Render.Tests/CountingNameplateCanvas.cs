@@ -9,6 +9,8 @@ namespace KhaozEngine.Tests;
 internal struct CountingNameplateCanvas(ITextMeasurer font) : INameplateCanvas
 {
     public readonly ITextMeasurer Font => font;
+    public readonly Vector2 DeviceScale => default;
+    public readonly Vector2 DeviceOffset => default;
     public int Calls { get; private set; }
 
     public void FillRounded(Vector4 rect, Color color, float cornerRadius) => Calls++;

@@ -161,6 +161,18 @@ state, entry and applicable command/equipment identifiers. Output publication is
 and refusal preserves existing output files. The consumer owns sampler integration and the CI call.
 Sampled evidence cannot establish safety between the poses that were checked.
 
+All three commands accept optional `--diagnostics <path>` for a separate refusal report. Schema
+`khaozengine.coverage-diagnostics/1` and scope `diagnostic-not-acceptance` explicitly exclude this file
+from acceptance evidence. It records candidate construction outcomes and witnesses, complete validity
+pairs, claims and holes. Blocking verification adds dense row reasons, missing domains and separate
+changed-record and inherited depth findings. A successful run replaces stale diagnostics with an
+accepted outcome and zero blocking findings, while retaining inherited fit information. Malformed
+invocations or inputs leave diagnostics untouched. The path must differ from all inputs and accepted
+outputs. Exact category totals and omitted counts survive deterministic truncation at the existing
+64 MiB artifact limit. Acceptance gates, exit codes and refused-run table/evidence preservation stay
+unchanged. See the [diagnostic schema](../tools/Coverage.Verify/README.md#optional-refusal-diagnostics)
+for field names and publication details.
+
 ## Consumer example and lifetime
 
 The complete [compiling example](examples/EquipmentCoverageConsumer.cs) is linked directly into

@@ -16,6 +16,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   attachment caches and preserve full equipment and outline descriptors.
 - The offline verifier ships as the `KhaozEngine.Coverage.Tool` dotnet tool, command `ke-coverage`.
   Its version command reports the engine and carry arithmetic contract versions used by verification.
+- Coverage build and verification commands accept an optional diagnostic export with candidate refusals,
+  hole witnesses, dense replay failures and separate changed-record and inherited depth findings.
+  The bounded deterministic report is never acceptance evidence and preserves the existing gates.
 
 ## 23.7.0
 

@@ -82,50 +82,11 @@ public static class CoverageReplay
         if (input.Identity != table.Identity)
             throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.ProvenanceMismatch, "Table provenance differs from replay inputs.");
         ValidateRows(input);
-        var topology = input.Topology;
-        var uniforms = new CoverageCarryUniforms(topology, input.InverseBind.Length);
-        var carry = new CoverageCarryScratch(topology, input.InverseBind.Length);
-        var certification = new CoverageScratch(topology);
-        var raw = new ModelVertex[topology.VertexCount];
-        var final = new ModelVertex[topology.VertexCount];
+        var measurement = new CoverageReplayMeasurement(input, table);
         var results = new List<CoverageReplayPose>();
         foreach (var domain in input.Domains)
             foreach (var row in domain.DenseRows)
-            {
-                var sample = row.Sample;
-                CoverageSampleVerifier.CheckRepresentatives(CoverageSampleVerifier.Representatives(topology, sample), table.Representatives, sample.Id);
-                bool selected = table.TrySelect(new(row.ResolvedStateKey), out int entry);
-                bool prepared = uniforms.TryPrepare(sample.Palette, input.InverseBind, sample.ActorModel, sample.Commands, out var failure)
-                    && CoverageCarryReference.TryCarry(topology, uniforms.ComposedPalette, table, -1, uniforms.Commands, carry, raw, out failure);
-                // A missing raw pose cannot be measured. Refuse instead of reusing the preceding row's buffers.
-                if (!prepared)
-                    throw new CoverageVerificationException(CoverageVerificationRefusal.SelectedReplayFailure, "Current raw pose could not be prepared.") { Failure = failure }
-                        .At(domain.Id, row, entry);
-                raw.CopyTo(final, 0);
-                bool carried = !selected || CoverageCarryReference.TryCarry(topology, uniforms.ComposedPalette, table, entry, uniforms.Commands, carry, final, out failure);
-                bool valid = selected && carried
-                    && CoverageCertification.ValidateGeometry(topology, raw, final, sample.ActorModel, sample.Commands, certification, out failure);
-                var classes = new CoverageSkinClasses(topology.Indices, raw, final);
-                var changed = Zero; var inherited = Zero; var rawChanged = Zero;
-                var equipmentDepths = new List<CoverageEquipmentDepth>();
-                foreach (var command in sample.Commands)
-                {
-                    try
-                    {
-                        var depth = new CoverageWholeSkinDepth(command.Support);
-                        var currentChanged = depth.Measure(topology.Indices, final, sample.ActorModel, command.EquipmentWorld, classes.ChangedRecords, queryBudget);
-                        var currentRaw = depth.Measure(topology.Indices, raw, sample.ActorModel, command.EquipmentWorld, classes.ChangedRecords, queryBudget);
-                        var currentInherited = depth.Measure(topology.Indices, final, sample.ActorModel, command.EquipmentWorld, classes.Inherited, queryBudget);
-                        equipmentDepths.Add(new(command.Id, command.EquipmentInstanceId, currentChanged, currentRaw, currentInherited));
-                        changed = Combine(changed, currentChanged);
-                        rawChanged = Combine(rawChanged, currentRaw);
-                        inherited = Combine(inherited, currentInherited);
-                    }
-                    catch (CoverageVerificationException error) { throw error.At(domain.Id, row, entry, command.Id, command.EquipmentInstanceId); }
-                }
-                results.Add(new(domain.Id, row, entry, valid, failure, classes.ChangedTriangleCount, classes.InheritedTriangleCount,
-                    Count(classes.PositionsChanged), Count(classes.AttributesOnly), equipmentDepths.AsReadOnly(), changed, rawChanged, inherited));
-            }
+                results.Add(measurement.Measure(domain, row, queryBudget));
         return new(results, queryBudget);
     }
 
@@ -149,14 +110,5 @@ public static class CoverageReplay
                 if (reason.HasValue) throw new CoverageVerificationException(reason.Value, "Dense replay declaration was refused.").At(domain.Id, row);
             }
         }
-    }
-    static CoverageDepthResult Zero => new(0, 0, 0, true);
-    static CoverageDepthResult Combine(CoverageDepthResult a, CoverageDepthResult b) =>
-        new(Math.Max(a.ObservedMm, b.ObservedMm), Math.Max(a.UpperEstimateMm, b.UpperEstimateMm), checked(a.Queries + b.Queries), a.Resolved && b.Resolved);
-    static int Count(ReadOnlySpan<bool> mask)
-    {
-        int count = 0;
-        foreach (bool value in mask) if (value) count++;
-        return count;
     }
 }

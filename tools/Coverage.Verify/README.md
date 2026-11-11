@@ -147,6 +147,64 @@ no whole-skin acceptance. `verify` has scope `declared-samples-and-dense-whole-s
 consumer-CI command. These are sampled checks, never continuous proof.
 
 
+## Optional refusal diagnostics
+
+Append `--diagnostics <path>` to `build`, `verify-samples` or `verify` to export a separate
+non-acceptance JSON document. For example:
+
+```sh
+.tools/ke-coverage build --manifest poses.json --table coverage.kert --evidence samples.json --diagnostics diagnostics.json
+.tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json --diagnostics diagnostics.json
+```
+
+The schema is `khaozengine.coverage-diagnostics/1`, with scope `diagnostic-not-acceptance`. This file
+is never accepted evidence and cannot replace either evidence scope. It changes no selection,
+certification, depth gate or exit code. Without the option the existing output bytes and stderr are
+unchanged. Diagnostics cannot share the manifest, table, evidence or any checked source path. Such
+an invocation exits 2 without writing. Malformed input or resumed evidence also leaves existing
+diagnostics untouched.
+
+For parsed work, exit 0 writes `outcome: "accepted"` and zero blocking findings, replacing stale
+refusal diagnostics. Exit 1 writes `outcome: "refused"`. Accepted artifacts and diagnostics stage
+atomically. A refusal publishes only diagnostics and preserves existing table and evidence bytes.
+Output I/O failure retains exit 1 and may prevent the diagnostic file itself from being published.
+No timestamps, machine names or file paths enter the document.
+
+Top-level fields are `schema`, `scope`, `command`, `outcome`, `inputSha256`, the six-digest `identity`,
+`tableSha256` when computed, `reason`, `findingCount` and the following category objects. Each category
+has exact `total` and `omitted` counts and an `items` array, including when empty.
+
+| Category | Items |
+|---|---|
+| `domains`, `samples` | Domain and sample inventories, including dense row counts and opaque sample keys |
+| `candidates` | Every declared candidate's witness `sampleId`, `outcome` (`constructed` or `refused`), public `reason`, exact `failure` and scalar hash when constructed |
+| `candidateEntries`, `candidatePairs` | Deduplicated constructed rows and their complete entry/sample validity matrix |
+| `entries`, `pairResults` | Rows and validity pairs for the table actually checked, or the diagnostic build after refused constructions |
+| `selectedClaims`, `selectedFailures` | Selected state keys, entry indices, sample witnesses, validity and exact failure codes |
+| `holes` | Every uncovered state key with all sample ids sharing it |
+| `replayFailures` | Dense row failures with domain, dense index, resolved state key, sample, reason and applicable entry, command, equipment and exact failure identifiers |
+| `missingDenseWork` | Every domain without dense rows |
+| `changedRecordDepth`, `inheritedDepth` | Nonzero or unresolved per-pose, per-command class depth, with domain, dense index, resolved key, sample, entry, command, equipment, triangle count, observed millimetres, upper estimate, query count and resolved flag |
+| `analysisRefusals`, `runRefusals` | Typed diagnostic analysis and original run refusal reasons |
+
+Changed-record depth includes the raw-pose depth of the same triangle class. Inherited depth remains
+fit information even in an accepted document. Invalid unselected candidate pairs also remain visible
+without becoming blocking findings. `findingCount` is zero on acceptance. On refusal it sums candidate
+construction refusals, holes, selected failures, replay failures, missing work and analysis/run refusal
+records. One pose can have several such observations.
+
+Candidate construction continues for diagnostic purposes after a refusal. Successfully constructed
+candidates are checked through the existing builder without publishing its result. Sample verification
+still checks the supplied table and never replaces it. Dense diagnostics continue through missing
+work, declaration failures and unpreparable poses to report later rows. They reuse the same replay
+measurement and keep changed-record and inherited depth separate.
+
+The inclusive artifact limit remains 64 MiB. Metadata and exact totals are reserved first, then items
+are retained in the listed category order and the tool's deterministic order within each category.
+The first item that does not fit and all following items are counted as omitted. Truncation never
+changes acceptance or fails the run. Identical inputs and outcomes produce identical diagnostic bytes.
+
+
 ## Blocking dense replay and whole-skin evidence
 
 Build the tool in Release, then run this portable command in consumer CI against the exact checked

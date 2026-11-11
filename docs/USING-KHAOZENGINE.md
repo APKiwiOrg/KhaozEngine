@@ -7505,8 +7505,12 @@ dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHA
 .tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json
 ```
 
-Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. See the
-[tool README](../tools/Coverage.Verify/README.md) for all three commands and exit codes.
+Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. All three
+commands accept optional `--diagnostics <path>` for schema `khaozengine.coverage-diagnostics/1`, scope
+`diagnostic-not-acceptance`. This separate bounded report retains exact finding and omission counts,
+including holes, candidate refusals, dense failures and changed-record versus inherited depth. It is
+never acceptance evidence and changes no acceptance gate or exit code. See the
+[tool README](../tools/Coverage.Verify/README.md) for the schema, commands and publication rules.
 
 
 ### Skinned body contracts (any body shape)

@@ -267,6 +267,17 @@ workflow selects suite `nav` on hosted Ubuntu and requires all three named Relea
 with zero skips before a separately approved research campaign. The seven SupportQueryCapture methods
 remain in Movement.Tests and default engine CI. Fixture validation authorizes no capture campaign.
 
+The outside-solution `Coverage.Verify` executable and `Coverage.Verify.Tests` project own synthetic
+recession-table construction, replay, depth and CLI process verification. The free tooling workflow selects
+suite `coverage` on hosted Ubuntu, explicitly builds both projects and requires a nonempty inventory,
+executed process tests and zero skips. Coverage formats, carry code and the tooling itself trigger this
+suite. `KE_GPU_TESTS=0` stays explicit. Native correctness and the Diagnostic body-size cost fact remain
+separately approved units, outside this headless validation.
+The cost fact also requires `KE_COVERAGE_COST_UNIT` equal to its exact method name. The hosted bench
+forwards the optional `coverage-cost-unit` dispatch input to that variable. A local approved invocation
+sets it inline. Missing or different values skip before a hardware probe, and default shard filters
+exclude this cost method even when Diagnostic filtering is absent.
+
 The ratchet report build is a separate maintenance inventory. `check-test-health.sh` sequentially
 builds the engine solution, then every tracked project with an xunit package reference that the solution
 does not list, before lowering any allowance. It finds those projects itself because the analyzer reaches
@@ -359,9 +370,13 @@ For a package-bearing change:
 One related batch gets one version bump. Item commits can remain separate, followed by one release
 commit. Commit subjects use `area(scope): summary`. A release commit uses the new version as scope.
 
-Packing is cumulative and occurs on every package-bearing finish. `scripts/pack-local-feed.sh` refuses
-to overwrite a released version unless the tree is exactly that clean tagged commit. It also refuses
-to write the shared feed until HEAD is an ancestor of current `origin/main` and the tree is clean. A
+Packing is cumulative and occurs on every package-bearing finish. The local-feed wrapper and release
+call `scripts/pack-packages.sh`, which packs the solution and the outside-solution `tools/Coverage.Verify`
+dotnet tool. Build that tool explicitly
+before using the inventory's `--no-build` option. The package catalog guard includes its nested project.
+`scripts/pack-local-feed.sh` refuses to overwrite a released version unless the tree is exactly that
+clean tagged commit. It also refuses to write the shared feed until HEAD is an ancestor of current
+`origin/main` and the tree is clean. A
 `KHAOZENGINE_FEED` that resolves outside the shared feed is the private path for a deliberate branch
 build. Once those guards pass, the wrapper packs through a fresh sibling directory and promotes only the
 guarded current version's generated `nupkg` and `snupkg` files, then removes same-version files the fresh

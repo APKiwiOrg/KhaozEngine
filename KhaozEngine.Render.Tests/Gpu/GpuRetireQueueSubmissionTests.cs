@@ -71,7 +71,7 @@ public sealed class GpuRetireQueueSubmissionTests
     }
 
     [Fact]
-    public void Capacity_refusal_preserves_both_sealed_and_unsealed_resources()
+    public void Capacity_deferral_preserves_both_sealed_and_unsealed_resources()
     {
         using var device = new GpuPerfTimestampTestDevice();
         var first = new Resource(); var second = new Resource();
@@ -81,7 +81,7 @@ public sealed class GpuRetireQueueSubmissionTests
             using var commands = device.Factory.CreateCommandList();
             host.Begin(); queue.Retire(first); queue.BeginFrame(host); host.Submit(commands);
             host.Begin(); queue.Retire(second);
-            Assert.Throws<InvalidOperationException>(() => queue.BeginFrame(host));
+            queue.BeginFrame(host);
             Assert.False(first.Disposed); Assert.False(second.Disposed);
             Assert.Equal(1, device.Submissions); Assert.Equal(0, device.Waits);
             host.Abandon(); host.Dispose();

@@ -86,4 +86,6 @@ public readonly struct RigidInstanceDraw
     /// <summary>Request a cut inside the scene's interior spans. The scene keeps the flag only where the drawn
     /// bounds may reach an interior. False by default.</summary>
     public bool CutInsideInteriors { get; init; }
+    /// <summary>Optional evidence for one frozen equipment material slice. Forward the complete descriptor unchanged.</summary>
+    public CoverageEquipmentDraw Coverage { get; init; }
 }

@@ -167,6 +167,20 @@ namespace KhaozEngine.Tests.Gpu
             foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
                 emitted[kernel.Name + ".compute"] = Sha256(ComputeMsl(kernel).ComputeSource);
 
+            // These sources carry authored precise qualifiers. Default options must still preserve the base emission.
+            foreach (object[] row in KhaozEngine.Tests.Render3D.CoverageGraphicsProgramTests.Programs())
+            {
+                string name = "Coverage." + (string)row[0];
+                CrossCompiledPair pair = SpirvCrossCompile.VertexFragmentToMsl(
+                    SpirvFrontEnd.ToSpirv((string)row[1], GpuShaderStages.Vertex, name),
+                    SpirvFrontEnd.ToSpirv((string)row[2], GpuShaderStages.Fragment, name));
+                emitted[name + ".vertex"] = Sha256(pair.VertexSource);
+                emitted[name + ".fragment"] = Sha256(pair.FragmentSource);
+            }
+            foreach (var kernel in KhaozEngine.Render3D.CoverageCarryShaders.Kernels)
+                emitted[kernel.Name + ".compute"] = Sha256(SpirvCrossCompile.ComputeToMsl(
+                    SpirvFrontEnd.ToSpirv(kernel.Source, GpuShaderStages.Compute, kernel.Name)).ComputeSource);
+
             return emitted;
         }
 

@@ -8,6 +8,7 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class TargetOutlineRenderer
 {
+    internal Action<MotionKey, SkinnedMeshHandle>? OrdinarySkinnedDrawn { get; set; }
     readonly IGpuShaderSet _skinnedFullShaders;
     readonly IGpuShaderSet _skinnedVisibleShaders;
     readonly TargetOutlineSkinningStore _skinning;
@@ -28,7 +29,7 @@ internal sealed partial class TargetOutlineRenderer
         float alphaCutoff,
         float dissolve,
         bool dissolveComplement,
-        Vector3 renderOrigin)
+        Vector3 renderOrigin, MotionKey actor = default, SkinnedMeshHandle mesh = default)
     {
         int poseStart = _gpuPaletteBones.Count;
         for (int i = 0; i < composedBones.Length; i++) _gpuPaletteBones.Add(composedBones[i]);
@@ -36,7 +37,7 @@ internal sealed partial class TargetOutlineRenderer
         WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin, false);
         _queue.Add(new QueuedDraw(QueuedGeometry.GpuSkinned, restVertexBuffer, indexBuffer, indexCount,
             indexFormat, materialSet ?? _defaultMaterialSet, drawIndex, paletteSlot, 0,
-            poseStart, composedBones.Length));
+            poseStart, composedBones.Length, Actor: actor, SkinnedMesh: mesh));
     }
 
     public void EnqueueSkinnedCpu(
@@ -51,14 +52,14 @@ internal sealed partial class TargetOutlineRenderer
         float alphaCutoff,
         float dissolve,
         bool dissolveComplement,
-        Vector3 renderOrigin)
+        Vector3 renderOrigin, MotionKey actor = default, SkinnedMeshHandle mesh = default)
     {
         int baseVertex = _cpuVertices.Count;
         for (int i = 0; i < sourceVertices.Length; i++)
             _cpuVertices.Add(SkinningMath.SkinVertex(sourceVertices[i], composedBones));
         WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin, false);
         _queue.Add(new QueuedDraw(QueuedGeometry.CpuSkinned, null, indexBuffer, indexCount,
-            indexFormat, materialSet ?? _defaultMaterialSet, drawIndex, -1, baseVertex, 0, 0));
+            indexFormat, materialSet ?? _defaultMaterialSet, drawIndex, -1, baseVertex, 0, 0, Actor: actor, SkinnedMesh: mesh));
     }
 
     void BeginSkinnedFrame()

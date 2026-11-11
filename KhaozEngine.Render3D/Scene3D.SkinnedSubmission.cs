@@ -13,6 +13,7 @@ public sealed partial class Scene3D
     void PrepareSkinnedDraws(IGpuCommandList cl, FrustumPlanes camFrustum, bool shadowMapActive,
         int shadowCascadeCount, bool hasPointShadowRequests)
     {
+        ValidateCoverageSurfaces();
         var skinnedItems = _skinnedInstances.Items;
         _cpuSkinnedVerts.Clear();
         _cpuSkinnedInstances.Clear();
@@ -27,6 +28,7 @@ public sealed partial class Scene3D
             for (int i = 0; i < skinnedItems.Count; i++)
             {
                 var it = skinnedItems[i];
+                if (PublishedCoverage(it.Motion, it.Mesh) is not null) continue;
                 if (!_skinnedSlots.IsValid(it.Mesh.Index, it.Mesh.Generation)) continue;
                 var entry = _skinnedMeshes[it.Mesh.Index];
                 if (entry is null) continue;
@@ -65,7 +67,7 @@ public sealed partial class Scene3D
                     _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                         entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
                         ToRender(it.World), it.Tint, emissive, specParams, dissolveParams, it.DissolveComplement,
-                        visibleMain, dissolving, shadowKind, pointSphere, it.Motion));   // reduced after visibility classification
+                        visibleMain, dissolving, shadowKind, pointSphere, it.Motion, it.Mesh));   // reduced after visibility classification
                 }
                 else
                 {
@@ -85,7 +87,7 @@ public sealed partial class Scene3D
                         DissolveComplement = it.DissolveComplement,
                     });
                     _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex,
-                        entry.MaterialSet, dissolving, visibleMain, shadowKind, pointSphere, it.Motion, it.Mesh.Index, src.Length));
+                        entry.MaterialSet, dissolving, visibleMain, shadowKind, pointSphere, it.Motion, it.Mesh.Index, src.Length, it.Mesh));
                 }
             }
             // Sizes the frame's three skinned destinations and uploads the ONE shared bone palette both passes
@@ -98,5 +100,6 @@ public sealed partial class Scene3D
             }
         }
         else SkipProfilePass(cl, "geometry.skinned-uploads");
+        RecordCoverageSurfaces(cl, camFrustum, shadowMapActive, shadowCascadeCount, hasPointShadowRequests);
     }
 }

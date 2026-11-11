@@ -15,7 +15,17 @@ namespace KhaozEngine.Tests.Gpu
         /// slot, and each bound vertex buffer by slot.</summary>
         internal sealed record DrawBindings(IGpuPipeline? Pipeline,
             IReadOnlyDictionary<uint, (IGpuResourceSet Set, uint DynamicOffset)> Sets,
-            IReadOnlyDictionary<uint, IGpuBuffer> VertexBuffers);
+            IReadOnlyDictionary<uint, IGpuBuffer> VertexBuffers)
+        {
+            internal int DrawOrdinal { get; init; }
+            internal uint ElementCount { get; init; }
+        }
+
+        internal sealed record ComputeDispatchBindings(IGpuComputePipeline Pipeline,
+            IReadOnlyDictionary<uint, (IGpuResourceSet Set, uint DynamicOffset)> Sets, int DrawOrdinal);
+        internal readonly List<ComputeDispatchBindings> ComputeBindings = new();
+        internal bool CaptureComputeBindings { get; set; }
+        IGpuComputePipeline? _currentComputePipeline;
 
         readonly List<DrawBindings> _drawBindings = new();
         readonly Dictionary<uint, IGpuBuffer> _vertexBuffers = new();
@@ -33,18 +43,28 @@ namespace KhaozEngine.Tests.Gpu
 
         void NoteVertexSlot(uint slot, IGpuBuffer buffer) => _vertexBuffers[slot] = buffer;
 
-        void NoteDrawBindings()
+        void NoteDrawBindings(uint elementCount = 0)
         {
             if (!CaptureBindings) return;
             var sets = new Dictionary<uint, (IGpuResourceSet Set, uint DynamicOffset)>();
             foreach (KeyValuePair<uint, Binding> bound in _graphicsSets)
                 sets[bound.Key] = (bound.Value.Set, bound.Value.DynamicOffset);
-            _drawBindings.Add(new DrawBindings(_currentPipeline, sets, new Dictionary<uint, IGpuBuffer>(_vertexBuffers)));
+            _drawBindings.Add(new DrawBindings(_currentPipeline, sets, new Dictionary<uint, IGpuBuffer>(_vertexBuffers))
+            { DrawOrdinal = _draws, ElementCount = elementCount });
+        }
+
+        void NoteComputeDispatch()
+        {
+            if (!CaptureComputeBindings || _currentComputePipeline is null) return;
+            var sets = new Dictionary<uint, (IGpuResourceSet Set, uint DynamicOffset)>();
+            foreach (var bound in _computeSets) sets[bound.Key] = (bound.Value.Set, bound.Value.DynamicOffset);
+            ComputeBindings.Add(new(_currentComputePipeline, sets, _draws));
         }
 
         void ClearBindings()
         {
             _drawBindings.Clear();
+            ComputeBindings.Clear(); _currentComputePipeline = null;
             _vertexBuffers.Clear();   // ClearReads forgets the bound sets, so the vertex streams go with them
         }
     }

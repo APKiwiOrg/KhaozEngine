@@ -63,6 +63,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc/>
         public ReadOnlyMemory<byte> VertexShaderBytecode => _resource.Prepared.Code.VertexDxbc;
         internal bool IsDisposed => _resource.IsDisposed;
+        /// <inheritdoc/>
+        public void EnsureCompilationReady() => _ = _resource.Prepared;
         internal void EnsureReady() => _ = _resource.Value;
         public void Dispose() => _resource.Dispose();
 

@@ -23,10 +23,12 @@ For several counters in one window, or a workload that uses stack spans a delega
 capture, use `AllocationRegion.Start` and dispose the region before asserting on the counters.
 A lost region invalidates the measurement and reports process allocation, thread allocation,
 allocation by other threads, the test messages reported during the window, collection counts and the
-runtime reason. Isolation and invalid-window refusals throw `AllocationMeasurementException`, which remains an
+runtime reason. Isolation, start and invalid-window refusals throw `AllocationMeasurementException`, which remains an
 xUnit assertion failure. Its `Reason` names the refusal and `Description` identifies the measurement.
 Window failures carry `Budget`, `ProcessBytes`, `ThreadBytes`, `OtherThreadBytes`, `ReportedMessages`,
-`Collections` (gen0, gen1, gen2) and `RuntimeReason`. Those window fields are absent for an isolation refusal.
+`Collections` (gen0, gen1, gen2) and `RuntimeReason`. Start refusals carry the requested `Budget`, with
+`RuntimeReason` and the original inner exception when the runtime throws. Counters are absent when no window
+opened. All window fields are absent for an isolation refusal.
 
 | Reason | Refused condition |
 |---|---|
@@ -34,6 +36,9 @@ Window failures carry `Budget`, `ProcessBytes`, `ThreadBytes`, `OtherThreadBytes
 | `BudgetExhausted` | Process allocation exhausted the reserved budget |
 | `CollectionInterrupted` | A collection interrupted the window |
 | `RegionEnded` | The no-GC region ended before the window completed |
+| `RegionAlreadyActive` | Another no-GC region is active before the runtime start |
+| `RuntimeStartFailed` | The runtime threw while starting the no-GC region |
+| `BudgetReservationFailed` | The runtime refused the requested process-wide budget |
 
 Nested starts are rejected before calling the runtime so they cannot invalidate an existing region.
 

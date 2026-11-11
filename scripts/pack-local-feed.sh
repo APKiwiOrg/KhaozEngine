@@ -113,7 +113,7 @@ trap cleanup_pack_stage EXIT
 trap 'exit 1' HUP INT TERM
 
 echo "pack-local-feed: building through fresh output $pack_stage"
-dotnet pack -c Release "$@" -o "$pack_stage"
+sh scripts/pack-packages.sh -c Release "$@" -o "$pack_stage"
 
 pack_count=0
 pack_manifest="$pack_stage/.package-names"

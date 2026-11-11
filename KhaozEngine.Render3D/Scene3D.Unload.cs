@@ -43,6 +43,7 @@ namespace KhaozEngine.Render3D
                 throw new System.InvalidOperationException("A published resource mesh is borrowed. Use ReleaseResource.");
             if (h.Generation == 0) return;          // default handle: no-op
             _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
+            _coverageUploads.Remove((h.Index, h.Generation));
             ForgetWaterAndInteriorRelevance(h);
             _silhouetteRelevance.Forget(h);
             // Retire rather than destroy: queued GPU work may still reference these buffers, and draining the whole

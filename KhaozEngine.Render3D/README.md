@@ -147,6 +147,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   bindings and temporal display targets use that queue too. This includes cached depth bindings for decals,
   particles, distortion and water. `BeginFrame(frame.Submission)` shares the host
   completion fence in its prepare phase, avoiding the standalone `Begin()` queue's extra submission.
+  `GameApp3D` uses the window frame's existing owner automatically, so coverage can be queued from
+  `OnDraw3D`. Shared retirement defers when completion capacity is full, with the
+  [queue's drain bound](../KhaozEngine.Gpu/README.md), rather than terminating the host frame.
 - `Scene3D.LoadSurfaceMaps` uploads each present glTF material map transactionally. A later upload failure
   retires the maps already created. `UnloadSurfaceMaps(in maps)` releases each distinct valid map handle
   through the same deferred queue. Unload the meshes that reference a map bundle first. All-absent bundles
@@ -1800,6 +1803,298 @@ SharpGLTF) are confined to this package via
 `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md`.
 
+## Host coverage sidecars
+
+`HostCoverageMapJson.Read(utf8, identity)` reads strict host coverage format 1. `HostCoverageMap`
+owns the exact host GLB SHA-256, welded surface topology, region triangle roles and strengths,
+fixed refinement levels from 1 to 4, and authoring labels. It snapshots and canonically sorts its
+collections. Limits are 32 regions, 65536 source render vertices and 65536 referenced triangles.
+Regions are disjoint, and a surface may have positive strength in only one region. Source-dependent
+checks, including core and collar strength requirements, belong to the binding layer with the GLB.
+
+`Write(map)` emits canonical UTF-8 with fixed member order and normalized signed zero.
+`SemanticSha256(map)` hashes `KhaozEngine.HostCoverageMap/1\n` followed by the canonical bytes,
+independently of source whitespace, member order or array order.
+
+`HostCoverageDataException` derives from `MalformedDataException` and exposes the public
+`HostCoverageRefusal Reason`, caller `Identity` and rooted JSON `Path`. Count refusals include
+`Count` and inclusive `Limit`. Region, surface and source-ordinal identifiers accompany the
+relevant refusal, and wrappers preserve those fields and their typed inner reason. Paths name
+source JSON positions even when the model sorts its entries. Streaming preflight bounds arrays
+before DOM allocation and refuses duplicate or unknown members before reading their values.
+Core strength, collar strength, refinement level, overlap and each capacity rule have distinct
+reasons. Null arguments and a blank caller identity retain BCL exceptions.
+
+Unknown names of at most 64 decoded UTF-16 code units retain their complete `MemberName` and
+member `Path`, independent of UTF-8 or Unicode-escaped spelling. Longer names have null `MemberName`,
+`MemberNameOmitted = true` and the actual containing-object `Path`. Diagnostic decoding uses a fixed
+buffer and never publishes a fabricated name or a partial name.
+
+
+`GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity, hostCoverageMap)` authenticates the exact
+host bytes and binds the map to immutable `CoverageSourceTopology`. Source mesh, primitive, vertex
+and triangle ordinals survive material grouping. Each mesh's optional `Coverage` is a
+`HostCoveragePart` with its source material slice, source triangles and a fingerprint of decoded
+vertices, indices, inverse binds, rest transforms and skeleton data. `Matches(mesh)` detects changed
+source data and a different skeleton owner. Programmatic sources bind through `HostCoveragePart.Create`,
+which requires a bijection from source vertices to decoded material-slice vertices.
+The coverage importer supports linear-blend skinning and requires one compatible skin.
+
+Annotated `Scene3D.LoadSkinnedMesh` uploads retain independent copies of vertex, index, bind,
+rest-pose and skeleton arrays. Later caller mutations cannot change the uploaded CPU skinning
+source, bounds or coverage identity. Individual upload overloads remain available. Complete-host
+binding uses the internal `GltfSkinnedMeshPart.ValidateCoverageParts` admission helper and must
+include all material slices from one source/map owner and one skeleton owner. Its
+`MissingMaterialSlices` refusal carries an owned, ascending slice inventory plus `Count` and
+inclusive required `Limit`. Duplicate and mixed-source slices, changed meshes and incompatible
+skeletons have separate host refusal reasons. Empty submissions require the expected host evidence
+so the same helper can name every missing slice.
+
+`CoverageRefinement.Build(source, map)` compiles a fixed conforming surface. It validates affected
+source topology, full core strengths and zero region-boundary strengths, then unions canonical
+rational edge splits across material seams. Refinement levels are 1 through 4. Both predicted final
+totals must be at most 65536 before final render arrays are allocated. Immutable vertex, triangle,
+material-range and position-recipe views retain source ownership. Skin original vertices first,
+then use `Interpolate` or `TryInterpolate` on that posed source. Original attributes copy exactly,
+including protected vertices. Shared position groups use one canonical recipe. A refused
+`TryInterpolate` leaves its destination untouched and returns `CoverageFailure`. The checked
+`Interpolate` wrapper throws `CoverageInterpolationStateException` with the same `Failure` and
+public `Reason`, preserving its `InvalidOperationException` base.
+
+The internal headless `CoverageCarryReference.TryCarry` applies a selected recession table row to
+the current source-skinned, fixed-refinement surface. `CoverageCarryUniforms` composes inverse
+binds with the current palette and derives each current command's model-space recession direction
+from the coverage frame and inverse actor frame. This preparation evaluates no posed geometry.
+Commands retain their structured host, equipment and command refusal context. No exact
+conformation, face correction, runtime membership check or certificate workspace is involved.
+
+Carry uses the retained scalar binary32 graph. Every operand and result at or below the smallest
+normal magnitude is flushed to signed zero, including the smallest normal itself (inclusive B38).
+Scalar multiplication and subtraction round separately. At full transition weight the stored
+scalar is applied directly. Other nonzero weights multiply the stored scalar once. Active aliases
+use the selected representative's current position. Protected vertices, inactive regions, zero
+recessions and either zero weight sign retain their own current before records. Numeric position
+equality also preserves the entire before record. Moved records regather current normals and
+tangents in frozen corner order, preserving absent authored directions and tangent W.
+
+`CoverageCarryScratch` reserves all source, refined and gather storage cold. Warm palette
+preparation, carry and holes allocate no managed storage. Entry `-1` successfully publishes the
+current uncovered pose. Other application refusals leave caller output untouched. `TableHole` is
+the preparation refusal for a missing state row, allowing explicit submission of the ordinary host.
+`TableIdentityMismatch` distinguishes an incompatible table layout. The internal carry entry point
+checks group counts and representative ownership. Complete digest authentication belongs to host
+binding before application, including the configuration, refinement, arithmetic and state schema.
+
+`GltfLoader.LoadCoverageSource(glb, identity)` records the rigid importer's displayed, welded
+positions for every node occurrence. Rigid triangle-corner records are distinct from final refined
+host vertices and may outnumber them. Their snapshot is bounded by the supplied position count,
+while the 65536 output limits belong to fixed host refinement.
+`CoverageSupportSurface.Compile(source, inwardFaces,
+coverageLocal)` validates a single-valued convex support sheet with at most 1024 inward triangles
+and 256 boundary edges. Its immutable source and bounds trees support cold height and boundary
+queries. Offline construction and certification live in [Coverage.Verify](../tools/Coverage.Verify/README.md),
+distributed as the `KhaozEngine.Coverage.Tool` dotnet tool with command `ke-coverage`.
+Its `version` command records the engine and carry arithmetic contract versions used by verification.
+A queryable open sheet is distinguished from an inward sheet of a closed displayed solid.
+Approximate compatibility queries do not certify clearance. An uncertifiable finite
+`NearestBoundary` query throws `CoverageGeometryArgumentException` with `Reason`, source `Identity`
+and query `X` and `Y`, preserving its `ArgumentException` base.
+
+`CoverageGeometryDataException` derives from `MalformedDataException`. Its public
+`CoverageGeometryRefusal` distinguishes invalid source provenance, source ownership, triangle
+ranges, final refinement capacities and support validation rules. `Identity` names the caller's
+source. Capacity reasons carry observed `Count` and inclusive `Limit`. Source-vertex and triangle
+checks carry the relevant ordinals. Binding refusals use `HostCoverageDataException`, with region,
+surface, source ordinals or `MaterialSlice` where relevant. Existing typed glTF and index refusals
+keep their original families. Caller parameter checks remain BCL exceptions.
+
+## Recession table assets
+
+The living [equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md) owns the end-to-end consumer,
+offline verification and acceptance contract, with a directly compiled public example. Verification at
+samples is not a continuous proof. The native correctness and cost units have accepted evidence, and
+that guide records it with its limits.
+
+`CoverageRecessionTable.Create(identity, representatives, entryMajorRecessions, states)` owns deep
+copies of its spans, sorts the state index by unsigned `CoverageStateKey.Value` and refuses duplicate
+keys. `Entry(index)` borrows one immutable binary32 row. Every row shares the same representative
+array. Scalar storage is four bytes per group per entry, before other table and runtime storage.
+Representatives may be -1, and host binding
+validates their upper bounds and group ownership against actual topology. At least one group is
+required. Zero entries and an empty state index are valid.
+
+`TrySelect(key, out entryIndex)` performs an allocation-free binary search. Key zero is valid.
+Both a missing key and an explicit entry -1 return false with output -1. The consumer owns the
+state schema. The engine does not evaluate geometry or infer animation bins during lookup.
+
+`CoverageRecessionIdentity` carries six lowercase SHA-256 digests in this order: exact host bytes,
+semantic host map, complete authored equipment configuration, fixed refinement, carry arithmetic
+and consumer state schema. Configuration covers sorted authored part and command IDs, exact
+attachment and companion identities, command values, static local/socket/body-alignment transforms
+and host contract bindings. Actor incarnation IDs, frame IDs, current palettes and world/model poses
+are excluded, allowing actors to share a table. Refinement covers source ordinals and recipes.
+Arithmetic identifies the carry algorithm. Contract version 2 keeps position arithmetic and its actor
+failure decisions exact. Direction operations are native with precise cancellation-sensitive math.
+Bad normals and tangents recover per vertex from the finite uncovered current-pose direction, then
+the authored direction, then unit Z (normal) or unit X (tangent). Generated vertices use the first source
+corner for recovery inputs. Handedness and tangent absence retain their rules. A rare degenerate case
+shows a locally odd shaded spot instead of changing the whole character. Covered positions remain.
+The `2e-5` direction tolerance is conditional on the well-conditioned forward-error envelope in the
+[equipment coverage guide](../docs/EQUIPMENT-COVERAGE.md#assets-and-shared-identity), not universal.
+Degenerate-band CPU/GPU directions need only be finite, with identical positions.
+CPU non-degenerate arithmetic stays exact and uses the same local recovery policy. Sample verification
+no longer creates holes solely for direction problems. Exact geometry certification, whole-skin depth,
+table layout, five stages, slots and overflow preflight are unchanged. The cost limit is at most 1.3 ms
+added GPU time at 32 actors on a Tesla T4. Earlier descriptor identities require rebuilding. None have
+shipped.
+Digest producers hash numeric inputs explicitly in
+little-endian order, never as native-layout struct bytes. This asset codec stores digests rather
+than deriving or verifying them against source content.
+
+`CoverageConfigurationIdentity.Compute(items, inverseBind)` is the shared cold producer for runtime
+and offline tooling. Each `CoverageConfigurationItem` carries exact attachment and companion digests
+and `CoverageConfigurationPart` values. It sorts items by those ordinal digests and parts by unsigned
+ID. The versioned domain, length-prefixed UTF-8 strings, explicit little-endian counts and IDs, and
+row-major binary32 matrix words preserve authored socket, body alignment and inverse-bind values.
+Paths, configuration JSON formatting, current poses, incarnations and transition weights are excluded.
+
+`Scene3D.CreateHostCoverage` admits a complete uploaded annotated host before returning an actor-owned
+`SkinnedHostCoverage`. It calls the shared complete-material validator against immutable upload evidence
+and checks the table digests, group count, representative upper bounds and group ownership. Equipment
+binding also checks the representative activity vector against the complete configured command regions.
+Host admission uses `HostCoverageDataException`, including missing-slice inventories and
+`HostHandleOwnershipMismatch` with `HandleIndex` and `HandleGeneration`. Table admission uses
+`CoverageTableDataException` with `HostIdentityMismatch`, `GroupCountMismatch`,
+`RepresentativeOutsideTopology` or `RepresentativeGroupMismatch` and the applicable group/value.
+
+Scene-issued `SkinnedMeshHandle` values carry an opaque process-unique scene stamp. Default value
+equality includes it. The two public constructors produce unowned handles. Ordinary draw paths keep
+their existing slot/generation behavior, while coverage admission requires the exact issuing stamp.
+`SkinnedInstanceDraw.Coverage` and `RigidInstanceDraw.Coverage` carry opaque borrowed preparation tokens.
+Forward those descriptors with the captured palette and transforms. Altered or stale tokens throw
+`CoverageFrameStateException` with `StaleFrame` before any queue or palette write. The optional
+[attachment coverage adapter](../KhaozEngine.Attachments.Render3D/README.md#table-coverage-preparation)
+provides complete equipment snapshots and the explicit uncovered-current-pose fallback contract.
+
+The internal `CoverageCarryBatch` records five compute dispatches with the precise position policy: current-pose skinning,
+frozen refinement and scalar transport, face basis construction, ordered attribute gathering,
+then final publication with tight bounds. Uncovered records are complete before refinement reports a
+failure. Gathering writes private complete candidates and actor error flags. The final dispatch reads the
+completed actor-wide position decision, so a position failure selects uncovered records for every vertex.
+Normal/tangent failures remain local and cannot write that flag.
+It cannot mix moved and uncovered output or publish stale scratch words. Actors sharing a table share one immutable topology,
+representative vector and entry-major scalar upload. Warm recordings upload current frame uniforms,
+selected row offsets and reset bounds/error words. No runtime recession constructor, exact correction,
+filtered policy, certificate, membership check or synchronous readback participates.
+
+CPU preparation first applies a conservative overflow preflight to the composed palette. A cold source envelope
+and the actual maximum absolute weight sum bound each bone's skinned coordinates in double precision, with
+rounding headroom and a fixed `2^20` ceiling. It does not assume the four weights sum to exactly one. Raw
+directions and unchanged attributes also remain bounded, so normalization and generated-record intermediates
+stay finite. Nonnegative barycentric coefficients sum to twelve before division and cannot expand the exact
+coordinate envelope. `UnsupportedTransform` refuses an unsafe palette before carry dispatch and takes the
+existing ordinary-current-skin route. This can conservatively refuse a finite CPU-reference result. No clamp
+or substitute pose is applied. GPU error publication is a defence over admitted finite uncovered records.
+
+Output storage reserves `D + 2` equal slots per actor, where `D` comes from
+`GpuRetireQueue.FramesInFlightFor(device)` at the first cold reservation. Pending output cannot alias
+committed or retained output. Successful submission commits the pending slot and retains its predecessor
+through the reader's completion. Abandonment releases only pending output. A later queue fence can prove
+earlier submissions whose completion retention was unavailable. Polling never waits and never frees the
+committed slot. Cold growth preserves the old buffer through a history lease and records a migration copy,
+without changing submitted history when that recording is abandoned. The batch is one aggregate
+`IGpuFrameCompletionConsumer`. `Scene3D.BeginFrame(submission)` joins the host recording.
+Queue all descriptors, then call either existing `PrepareFrame` overload before opening the host list.
+Coverage uses one scene-owned submission participant for every actor, so the default participant capacity
+of eight admits 32 actor histories alongside other participants. Full participant storage selects ordinary
+current skin and commits no actor history. Because that recording cannot report its outcome to the scene,
+subsequent coverage conservatively seeds correspondence again. A full completion ring does not prevent
+registration or logical history commit. Coverage polls completions at scene begin without waiting.
+`Begin()` without a host submission retains the ordinary route.
+
+Every material slice of an admitted actor reads one final indexed surface in colour/depth, temporal motion,
+directional cascades, point shadows and full/visible outlines. `UseGpuSkinning` continues to select the
+ordinary route, while admitted coverage uses the common surface on either setting. Per-draw model, tint,
+material, dissolve and complement stay with that actor and material slice. Ordinary GPU skinning and
+coverage use disjoint header windows within one recording, so a later actor cannot replace an earlier
+draw's model or material. Pulling bindings keep the slot assigned during preparation separately from
+compacted instance data. Removing an earlier actor, material or outline part after preparation cannot
+move a surviving draw onto another table group's index binding. Point shadows retain their
+existing first-request frame without an atlas. `DrawSkinnedOutline(group, draw, palette)` forwards the frozen
+coverage descriptor with its model and dissolve state. Preparation shares the existing once-per-frame latch
+and bound-water target validation. Matching coverage draws after preparation refuse with `StaleFrame`. Expiring a borrowed token does
+not rewrite or discard the snapshot already admitted for that frame. A removed host or equipment mesh is detected before
+ordinary draw classification, so surviving ordinary slices can still render. Cascade culling reduces
+coverage bounds by the render origin, while camera and point-light culling stay in absolute space.
+
+An explicit or missing table key returns `TableHole` from preparation. Submit each ordinary current host
+slice with the same actor motion key and exact scene-issued host handles. Only this frame's registered
+actor/handle pairs enter the fallback publisher. The actual submitted palette and model are frozen and
+preflighted again. Once a fallback draw is captured, later host preparations refuse `StaleFrame`
+instead of replacing that pose. With a usable pipeline and safe slot, entry `-1` runs the same five kernels, with no CPU
+skinned upload and no recession. Publication chooses every word of the uncovered current record, even if
+the candidate path succeeds. Merely refusing preparation without subsequently drawing records no surface.
+
+Actor history stores the selected entry or explicit raw entry, final slot, absolute model, view identity
+and configuration correspondence together. Only successful host submission commits it. Abandonment and
+submission failure discard pending history. A submission exception can follow partial device submission,
+so its output slot remains quarantined until completion or a later queue proof. Explicit abandonment
+releases it through the completion consumer's unsubmitted-discard callback. Without a retained fence,
+that candidate is conservatively held for a later proof. Motion reads the previously submitted final surface across
+entry changes and covered/raw transitions, never a surface reconstructed with the current entry. Missing
+submitted frames, actor incarnation changes, configuration changes and view changes seed previous from
+current. Origin rebasing keeps the absolute model and surface correspondence.
+
+No compute, completion fences or precise pipeline support is a sticky device refusal. Such a batch never
+publishes coverage, and ordinary drawing and ordinary motion history remain active. A transient or per-actor
+refusal, including unsafe raw palettes or exhausted slots, draws ordinary current skin without waiting.
+Only an actual ordinary main, cascade, point or outline draw records a discontinuity on successful
+submission. Visibility retention by itself does not count. In particular, a shadow-only candidate for a
+static point row whose rebuild budget schedules no row preserves its submitted history. After a submitted
+discontinuity, the former slot
+stays retained until completion is proven, and the next covered draw seeds previous from current for one
+frame of camera-only motion. Abandonment preserves the former history. `CoverageFailureFor(actor)` exposes
+the current scene-side typed refusal and its identifiers. Earlier binding-level refusal details remain on
+the binding's returned failure. Actor disposal releases history through retirement, and completed actor
+reservations can be reused by compatible cold replacements without growing surface storage.
+
+Cold coverage preparation queues each complete compiler batch before an explicit CPU-only readiness join.
+The graphics owners are all constructed before their joins, including shadows and outlines. Only then are
+readiness and host publication advertised. New output variants follow the same transaction, after the
+scene has queued every renderer for that output rebuild. Deferred compiler refusals latch `UnsupportedAdapter` and preserve ordinary current skin. Failed or replaced owners
+are disposed before use or retired behind completion when an earlier frame may reference them. No native
+realization or GPU wait is added by the join, and ready warm frames do not join again.
+When legacy preparation or later settings defer target changes until rendering, a sizing-time refusal
+cancels coverage before caster collection and skinned classification. Ordinary current skin still draws.
+
+Missing compute, completion fences or precise pipeline support returns `UnsupportedAdapter`. Exhausted
+reservations or output slots return `CapacityExceeded` with counts and limits. Both select ordinary current
+skin at the scene integration boundary. Headless layout and lifetime checks do not establish native device
+output, synchronization or performance. In particular, reading the previous surface across submissions
+still requires the separate Vulkan synchronization-validation proof.
+
+`CoverageRecessionTableBinary.Read(bytes, identity)` and `Write(table)` use KERT format 1. The
+212-byte header contains ASCII `KERT`, uint32 version 1, six raw 32-byte digests and uint32 group,
+entry and state counts. The payload contains int32 representatives once, entry-major float32 words,
+then sorted `(uint64 key, int32 entry)` records without padding. All numeric words are little-endian.
+Either zero sign and positive subnormals roundtrip bit-for-bit. Nonfinite or negative nonzero
+recessions refuse, including negative subnormals regardless of the CPU's denormal mode.
+
+The reader checks managed count capacity and the complete checked byte length before allocating
+table arrays, then validates all records before taking ownership. It rejects zero groups,
+truncation, trailing data, invalid representatives, duplicate or unsorted keys and entry indices
+outside `[-1, EntryCount)`. Programmatic creation additionally refuses incomplete scalar rows and
+malformed identity digests. No partially validated table is published.
+
+`CoverageTableDataException` derives from `MalformedDataException` and carries a public
+`CoverageTableRefusal Reason`. Binary refusals include caller `Identity` and `ByteOffset`, which
+names the offending field, first missing byte or first trailing byte. Applicable records carry
+`GroupIndex`, `EntryIndex`, `Key`, `StateIndex`, `Representative` and exact `ScalarWord`.
+Unbound table creation refusals have null `Identity` and `ByteOffset`. `MemberName` identifies malformed
+digest or count fields, `FormatVersion` preserves an unsupported unsigned version, and capacity
+refusals include `Count` when representable plus the inclusive managed `Limit`. State indices
+from creation refer to canonical sorted order. Messages are developer prose, never the contract.
+
 ## Mesh import and prop refusals
 
 Messages remain developer prose. Branch on `Reason` and read the structured identifiers below.
@@ -2023,6 +2318,12 @@ uniform snapshots. Compact value metadata preserves mesh bounds and material set
 is sized for surviving objects and future publication bindings before returning credit. Preparation inputs, welding, mip workspace and CPU transfer staging do
 not remain in that inventory. The original complete peak is still reserved before any preparation or factory.
 
+Mesh publication also retains an immutable geometry authentication witness for equipment coverage. Legacy and
+incremental uploads register it in the same transaction, keyed by mesh slot and generation. Publication failure,
+resource detachment and legacy unload remove that entry. The resource inventory reserves a conservative 384-byte
+CPU allowance per mesh for the witness, digest and index metadata. No source geometry arrays survive for it.
+Its earlier position-copy hash workspace fits within the non-overlapping per-vertex preparation allowance.
+
 `SceneResourceAccess(scene)` resolves published mesh handles through `MeshOf` and submits rigid descriptors
 through `DrawResourceAnchored`. It replaces only the mesh. Water uses the same published mesh and its retained
 original domain. Publishing a native water domain also initializes the renderer's shared neutral colour texture,
@@ -2062,6 +2363,17 @@ and never sampled, captured or read back. See [attachment lifetime](../docs/META
 A registered pass observer keeps cascade working depth and stencil stored because timestamp markers can
 end native encoders between caster families. This preserves capture output. Per-pass timing campaigns
 include those stores, while unobserved rendering receives the discard.
+
+Coverage cost schema 5 therefore keeps pass-timed observations separate from its primary scene pair.
+The observer adds `coverage.carry`, `geometry.coverage-uploads`, `opaque.coverage` and
+`shadow.cascade.coverage` scopes for admitted final surfaces. Point and outline draws use their existing
+scopes. The cost unit reports GPU distributions from timestamp pools separately from `EnableTiming` CPU
+recording buckets. See [coverage cost evidence](../docs/RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence)
+for the internal Metal helper-inlining cost experiment, unavailable rows and the headless draw inventory.
+
+Metal clear load actions can stay pending across scope markers and execute with a later draw. Schema 5
+reports actual clear source and consuming scopes without forcing another render pass. Those annotations
+qualify the native intervals, which also include load/store and encoder-state re-emission work.
 
 ## Draw admission refusals
 

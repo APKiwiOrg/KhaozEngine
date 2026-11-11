@@ -107,12 +107,22 @@ namespace KhaozEngine.Gpu
 
     /// <summary>A compiled shader set (vertex + fragment) handle, over whatever a SPIR-V cross-compile produced
     /// for the backend that built it.</summary>
-    public interface IGpuShaderSet : IDisposable { }
+    public interface IGpuShaderSet : IDisposable
+    {
+        /// <summary>Complete CPU compilation without creating or binding native device objects. Queue the
+        /// whole cold batch before joining. Deferred compiler failures are thrown here. Synchronous backends
+        /// need no additional work. This is a preparation operation, not a per-draw readiness poll.</summary>
+        void EnsureCompilationReady() { }
+    }
 
     /// <summary>A compiled compute shader handle (the single-stage sibling of <see cref="IGpuShaderSet"/>),
     /// plus the workgroup size read out of the module itself.</summary>
     public interface IGpuComputeShader : IDisposable
     {
+        /// <summary>Complete CPU compilation without creating or binding native device objects. Queue the
+        /// whole cold batch before joining. Deferred compiler failures are thrown here. Synchronous backends
+        /// need no additional work. This is a preparation operation, not a per-dispatch readiness poll.</summary>
+        void EnsureCompilationReady() { }
         /// <summary>Workgroup size on X, read from the shader's own <c>layout(local_size_x = ...)</c>. Cover N
         /// threads with <c>(N + ThreadGroupSizeX - 1) / ThreadGroupSizeX</c> groups in
         /// <see cref="IGpuCommandList.Dispatch"/>.</summary>
@@ -143,6 +153,12 @@ namespace KhaozEngine.Gpu
         /// <c>SpirvCrossCompile</c> where its API wants HLSL or MSL (until 18.0.0 the incumbent wrapped
         /// <c>Veldrid.SPIRV.CreateFromSpirv</c> instead).</summary>
         IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl);
+        /// <summary>Compile a graphics pair with per-vertex arithmetic policy. Fragment compilation stays at
+        /// its default policy. Implementations without precision support refuse a precise request.</summary>
+        IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions)
+            => vertexOptions.PreciseMath
+                ? throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Vertex)
+                : CreateShadersFromSpirv(vertGlsl, fragGlsl);
         /// <summary>Cross-compile a GLSL 450 SPIR-V COMPUTE source (entry point <c>main</c>) into a backend compute
         /// shader, by the same front end and cross-compile path as the graphics pair. The workgroup size is read
         /// back off the compiled module and surfaced on <see cref="IGpuComputeShader.ThreadGroupSizeX"/>, which is
@@ -151,11 +167,17 @@ namespace KhaozEngine.Gpu
         /// default workgroup size is 1x1x1 and that is what gets compiled in, so a dispatch runs ONE invocation per
         /// group and the shader is silently a few hundred times slower than intended rather than broken. Nothing
         /// can catch that for you, because a deliberate 1x1x1 is legal.</para>
-        /// Validate the source device-free first with <see cref="ShaderValidation.ValidateCompute"/>. Throws
+        /// Validate the source device-free first with <see cref="ShaderValidation.ValidateCompute(string, string?)"/>. Throws
         /// <see cref="NotSupportedException"/> on a device whose <see cref="GpuCapabilities.SupportsCompute"/> is
         /// false, so a caller that forgot to gate fails loudly instead of at dispatch, and
         /// <see cref="ShaderValidationException"/> when the source does not compile.</summary>
         IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl);
+        /// <summary>Compile a compute shader with per-shader arithmetic policy. Implementations without
+        /// precision support refuse a precise request.</summary>
+        IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
+            => options.PreciseMath
+                ? throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.PreciseMathUnavailable, GpuShaderStages.Compute)
+                : CreateComputeShaderFromSpirv(computeGlsl);
         /// <summary>Create a graphics pipeline.</summary>
         IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d);
         /// <summary>Create a compute pipeline. Throws <see cref="NotSupportedException"/> when the device does not

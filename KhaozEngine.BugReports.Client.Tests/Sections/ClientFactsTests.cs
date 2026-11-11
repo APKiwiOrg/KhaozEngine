@@ -133,7 +133,7 @@ public sealed class ClientFactsTests
     {
         var capabilities = new GpuCapabilities(clipSpaceYInverted: true, depthRangeZeroToOne: true, deviceName: "Apple M3",
             maxMsaaSampleCount: 4, supportsCompute: true)
-        { MaxFragmentStorageBuffers = 7 };
+        { MaxFragmentStorageBuffers = 7, SupportsShaderFloatControls = true };
 
         IReadOnlyDictionary<string, string> described = ClientFacts.DescribeCapabilities(capabilities);
 
@@ -143,7 +143,7 @@ public sealed class ClientFactsTests
                 "ClipSpaceYInverted", "DepthRangeZeroToOne", "DeviceName", "MaxColorAttachments", "MaxFragmentStorageBuffers",
                 "MaxMsaaSampleCount",
                 "SamplerAnisotropy", "SamplerLodBias", "SupportsCompletionFences", "SupportsCompute",
-                "SupportsShadowMaps", "SupportsTimestamps",
+                "SupportsShaderFloatControls", "SupportsShadowMaps", "SupportsTimestamps",
             },
             described.Keys);
         Assert.Equal("true", described["ClipSpaceYInverted"]);
@@ -151,6 +151,7 @@ public sealed class ClientFactsTests
         Assert.Equal("Apple M3", described["DeviceName"]);
         Assert.Equal("4", described["MaxMsaaSampleCount"]);
         Assert.Equal("7", described["MaxFragmentStorageBuffers"]);
+        Assert.Equal("true", described["SupportsShaderFloatControls"]);
     }
 
     [Fact]

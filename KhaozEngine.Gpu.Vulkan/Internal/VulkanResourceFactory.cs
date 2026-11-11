@@ -274,7 +274,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </remarks>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V.</exception>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
-            => new VulkanShaderSet(_modules, vertGlsl, fragGlsl, bytesCache: _spirvBytes, compileCache: _compileCache);
+            => CreateShadersFromSpirv(vertGlsl, fragGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions)
+        {
+            RequirePrecise(vertexOptions, GpuShaderStages.Vertex);
+            return new VulkanShaderSet(_modules, vertGlsl, fragGlsl, bytesCache: _spirvBytes, compileCache: _compileCache, options: vertexOptions);
+        }
 
         /// <inheritdoc/>
         /// <remarks>The compute twin, with the workgroup size read out of the module itself rather than taken
@@ -284,7 +291,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or declares no
         /// resolvable workgroup size.</exception>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
-            => new VulkanComputeShader(_modules, computeGlsl, bytesCache: _spirvBytes, compileCache: _compileCache);
+            => CreateComputeShaderFromSpirv(computeGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
+        {
+            RequirePrecise(options, GpuShaderStages.Compute);
+            return new VulkanComputeShader(_modules, computeGlsl, bytesCache: _spirvBytes, compileCache: _compileCache, options: options);
+        }
+
+        void RequirePrecise(GpuShaderCompileOptions options, GpuShaderStages stage)
+        {
+            if (options.PreciseMath && !_capabilities.SupportsShaderFloatControls)
+                throw new GpuShaderPolicyUnsupportedException(GpuShaderPolicyRefusal.FloatControlsUnavailable, stage);
+        }
 
         /// <inheritdoc/>
         /// <remarks>

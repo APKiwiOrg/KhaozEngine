@@ -124,6 +124,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         float _depthClear;
         bool _depthClearPending;
         bool _scissorTestEnabled;
+        ulong _encodedClearBatches;
+
+        // Read-only diagnostics. A successful native pass begin consumes all pending attachments together.
+        internal ulong EncodedClearBatchesForTests => _encodedClearBatches;
+        internal (int Attachment, bool Pending) PendingClearForTests(uint? colour)
+        {
+            int attachment = colour is { } index ? (int)MetalClearPolicy.TargetIndex(_clearMode, index) : -1;
+            return (attachment, attachment < 0 ? _depthClearPending : _colourClears[attachment].Pending);
+        }
 
         /// <param name="encoders">The list's encoder scope, which owns every transition and is the ONLY place
         /// this type reads "is a pass open" from. See the type remarks.</param>
@@ -420,6 +429,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         internal void Reset()
         {
+            _encodedClearBatches = 0;
             _framebuffer = default;
             _depthClearPending = false;
             _depthClear = 0f;
@@ -519,6 +529,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             // CONSUMED, which is what makes a pending clear at the end of a pass mean "no draw came" with no flag
             // to keep in step.
+            if (HasPendingClears) unchecked { _encodedClearBatches++; }
             Array.Clear(_colourClears, 0, _colourClears.Length);
             _depthClearPending = false;
 

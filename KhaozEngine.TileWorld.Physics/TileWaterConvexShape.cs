@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Locomotion;
 using I = KhaozEngine.TileWorld.Physics.TileWaterArithmetic;
 
 namespace KhaozEngine.TileWorld.Physics;
@@ -42,10 +43,12 @@ internal sealed class TileWaterConvexShape
 
     readonly Plane[] _planes;
     readonly Basis[] _bases;
+    readonly TileWaterBedSeam? _bedSeam;
 
-    internal TileWaterConvexShape(Plane[] planes)
+    internal TileWaterConvexShape(Plane[] planes, TileWaterBedSeam? bedSeam = null)
     {
         _planes = planes;
+        _bedSeam = bedSeam;
         var bases = new List<Basis> { new(-1) };
         for (int a = 0; a < planes.Length; a++)
         {
@@ -62,6 +65,8 @@ internal sealed class TileWaterConvexShape
         _bases = bases.ToArray();
     }
 
+    internal TileWaterConvexShape WithoutBedSeamForTests() => new(_planes);
+
     internal bool Contains(Vector point)
     {
         foreach (Plane plane in _planes)
@@ -72,6 +77,7 @@ internal sealed class TileWaterConvexShape
     internal Range Intersect(Vector start, Vector drive, I core, float radius, double enter = 0, double exit = 1,
         double heightError = 0, double horizontalError = 0)
     {
+        if (TileWaterQueryWork.Enabled) TileWaterQueryWork.ConvexIntersections++;
         double first = double.PositiveInfinity, last = double.NegativeInfinity, nearest = double.PositiveInfinity;
         double error = start.Width + drive.Width;
         Vector witnessStart = default, witnessDrive = default;
@@ -124,11 +130,13 @@ internal sealed class TileWaterConvexShape
                 I reach = (remaining / a).Sqrt();
                 I lower = vertex - reach, upper = vertex + reach;
                 double length = Math.Sqrt(Vector.Dot(drive, drive).High);
-                double uncertainty = Math.Max(Math.Clamp(lower.High, low, high) - Math.Clamp(lower.Low, low, high),
-                    Math.Clamp(upper.High, low, high) - Math.Clamp(upper.Low, low, high));
+                var roots = TileWaterRootUncertainty.Clip(lower, upper, low, high);
                 low = Math.Max(low, lower.Low);
                 high = Math.Min(high, upper.High);
-                error = Math.Max(error, uncertainty * length);
+                double rootError = roots.Error(length);
+                if (rootError > MovementQueryLease.CoverageSkinMetres && _bedSeam is not null)
+                    rootError = roots.CertifiedError(_bedSeam, basis.A, basis.B, basis.C, start, drive, core, radius, length);
+                error = Math.Max(error, rootError);
                 if (low > high) continue;
             }
             if (low < first) { first = low; witnessStart = q; witnessDrive = v; }

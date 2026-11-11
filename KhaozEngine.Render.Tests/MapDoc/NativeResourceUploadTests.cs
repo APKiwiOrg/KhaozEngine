@@ -395,6 +395,7 @@ internal sealed class NativeUploadReservation(SceneUploadDemand demand) : IScene
 {
     public SceneUploadDemand Demand { get; } = demand;
     internal bool Deny;
+    internal bool FailPublication;
     internal long ReservedBytes;
     internal int ReleaseCount, DisposeCount;
     public void Claim(SceneUploadDemand value)
@@ -403,7 +404,11 @@ internal sealed class NativeUploadReservation(SceneUploadDemand demand) : IScene
         if (Deny) throw new InvalidOperationException("Admission denied.");
         ReservedBytes = value.OwnedGpuBytes + value.PeakStagingGpuBytes + value.PeakCpuBytes;
     }
-    public void Published(SceneResourceHandle handle) => Assert.True(handle.Value > 0);
+    public void Published(SceneResourceHandle handle)
+    {
+        Assert.True(handle.Value > 0);
+        if (FailPublication) throw new InvalidOperationException("Synthetic publication refusal.");
+    }
     public void TransferCompleted() => ReservedBytes -= Demand.PeakStagingGpuBytes;
     public void InputsReleased(long retainedCpuBytes) => ReservedBytes -= Demand.PeakCpuBytes - retainedCpuBytes;
     public void Retiring() { }

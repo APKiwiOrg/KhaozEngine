@@ -30,8 +30,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// declares no resolvable workgroup size. Reason is FrontEndCompileFailed with Label, Stage, Target and
         /// Diagnostic, or ComputeLocalSizeMissing / ComputeLocalSizeSpecialized with Label and, for
         /// specialization, ExecutionMode.</exception>
+        /// <param name="options">Requested per-stage arithmetic policy or float-control capability.</param>
         internal VulkanComputeShader(VulkanShaderModuleCache modules, string computeGlsl, string? label = null,
-            SpirvBytesCache? bytesCache = null, SpirvCompileCache? compileCache = null)
+            SpirvBytesCache? bytesCache = null, SpirvCompileCache? compileCache = null, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(modules);
             ArgumentNullException.ThrowIfNull(computeGlsl);
@@ -39,9 +40,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             string tag = label ?? "compute shader";
 
             byte[] spirv = bytesCache?.GetOrCompile(
-                    SpirvFrontEnd.OptionsIdentity(tag), GpuShaderStages.Compute, computeGlsl,
-                    () => SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, compileCache))
-                ?? SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, compileCache);
+                    SpirvFrontEnd.OptionsIdentity(tag, options), GpuShaderStages.Compute, computeGlsl,
+                    () => SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, options, compileCache))
+                ?? SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, options, compileCache);
             (uint x, uint y, uint z) = SpirvLocalSize.Parse(spirv, tag);
 
             ThreadGroupSizeX = x;

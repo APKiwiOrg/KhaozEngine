@@ -35,7 +35,7 @@
 4431 KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs
 2948 KhaozEngine.MapEditor/MapEditorScene.cs
 2109 KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
-2024 KhaozEngine.Render3D/Scene3D.cs
+2023 KhaozEngine.Render3D/Scene3D.cs
 1896 KhaozEngine.MapEditor/EditorCommands.cs
 1808 KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
 1632 KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs

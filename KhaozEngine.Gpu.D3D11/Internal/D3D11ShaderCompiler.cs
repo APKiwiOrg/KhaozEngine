@@ -71,43 +71,43 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Queue a GLSL pair. Its first bytecode, diagnostic or native consumer joins compilation.</summary>
         /// <exception cref="ShaderValidationException">A source failed to compile, FXC rejected the emitted HLSL,
         /// or the vertex input signature is holed (decision S5).</exception>
-        internal ID3D11ShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl)
+        internal ID3D11ShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(vertexGlsl);
             ArgumentNullException.ThrowIfNull(fragmentGlsl);
             var build = _native.Compilation;
             var cache = _cache;
             uint flags = _flags;
-            var options = _diagnostics;
+            var diagnostics = _diagnostics;
             var reflection = _reflection;
             string? key = cache is null ? null : cache.Directory + "\0"
-                + D3D11ShaderKey.For(D3D11ShaderStage.Vertex, flags, vertexGlsl, fragmentGlsl);
+                + D3D11ShaderKey.For(D3D11ShaderStage.Vertex, flags, options, vertexGlsl, fragmentGlsl);
             var compilation = D3D11ShaderCompilation<D3D11CompiledPair>.Start(
-                () => build.Pair(vertexGlsl, fragmentGlsl, flags, cache), key);
+                () => build.Pair(vertexGlsl, fragmentGlsl, flags, cache, options), key);
             var prepared = compilation.Select(compiled =>
             {
                 return new D3D11PreparedGraphics(compiled,
-                    D3D11ShaderEvidence.Capture(vertexGlsl, compiled.VertexDxbc, "vertex", flags, options, reflection),
-                    D3D11ShaderEvidence.Capture(fragmentGlsl, compiled.FragmentDxbc, "pixel", flags, options, reflection));
+                    D3D11ShaderEvidence.Capture(vertexGlsl, compiled.VertexDxbc, "vertex", D3D11ShaderCompileFlags.For(D3D11ShaderStage.Vertex, flags, options), diagnostics, reflection),
+                    D3D11ShaderEvidence.Capture(fragmentGlsl, compiled.FragmentDxbc, "pixel", flags, diagnostics, reflection));
             });
             return new D3D11ShaderSet(_liveness, prepared, CreateNativeGraphics);
         }
 
         /// <summary>Queue a compute source. Its first bytecode, metadata or native consumer joins it.</summary>
-        internal IGpuComputeShader CreateComputeShader(string computeGlsl)
+        internal IGpuComputeShader CreateComputeShader(string computeGlsl, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(computeGlsl);
             var build = _native.Compilation;
             var cache = _cache;
             uint flags = _flags;
-            var options = _diagnostics;
+            var diagnostics = _diagnostics;
             var reflection = _reflection;
             string? key = cache is null ? null : cache.Directory + "\0"
-                + D3D11ShaderKey.For(D3D11ShaderStage.Compute, flags, computeGlsl);
+                + D3D11ShaderKey.For(D3D11ShaderStage.Compute, flags, options, computeGlsl);
             var compilation = D3D11ShaderCompilation<D3D11CompiledCompute>.Start(
-                () => build.Compute(computeGlsl, flags, cache), key);
+                () => build.Compute(computeGlsl, flags, cache, options), key);
             var prepared = compilation.Select(compiled => new D3D11PreparedCompute(compiled,
-                D3D11ShaderEvidence.Capture(computeGlsl, compiled.Dxbc, "compute", flags, options, reflection)));
+                D3D11ShaderEvidence.Capture(computeGlsl, compiled.Dxbc, "compute", D3D11ShaderCompileFlags.For(D3D11ShaderStage.Compute, flags, options), diagnostics, reflection)));
             return new D3D11ComputeShader(_liveness, prepared, CreateNativeCompute);
         }
 

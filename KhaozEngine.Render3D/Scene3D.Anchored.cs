@@ -74,11 +74,17 @@ public sealed partial class Scene3D
     {
         AnchoredRigidTransform? anchored = anchor is { } a ? new(draw.World, a) : null;
         var absolute = anchored is { } pose ? draw with { World = pose.Absolute } : draw;
+        ValidateCoverageEquipment(absolute, false);
+        // Absolute rounding must not hide a local offset from the frozen coverage command's rendered pose.
+        if (absolute.Coverage.Stage is { } stage && anchored is { } anchoredPose
+            && anchoredPose.RelativeTo(_frameOrigin) != ToRender(absolute.World))
+            throw StaleCoverage(stage.Owner.Request);
         bool cut = absolute.CutInsideInteriors && RelevantInteriorCut(absolute.Mesh, absolute.World);
         _instances.Add(in absolute, cut, anchored);
         if (anchored is { } local && !draw.Motion.IsNone && !draw.ShadowOnly && TemporalActive)
             (_motionHistory ??= new MotionHistory()).RecordRigid(draw.Motion, local.Local, local.Anchor);
         else RecordRigidMotion(in absolute);
+        RecordCoverageEquipment(absolute, false);
     }
 
     // Colour and both rigid shadow passes consume this same uploaded stream. Legacy zero-origin uploads still

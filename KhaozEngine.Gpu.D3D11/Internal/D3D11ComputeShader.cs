@@ -64,6 +64,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public uint ThreadGroupSizeY => _resource.Prepared.Code.ThreadGroupSizeY;
         public uint ThreadGroupSizeZ => _resource.Prepared.Code.ThreadGroupSizeZ;
         internal bool IsDisposed => _resource.IsDisposed;
+        /// <inheritdoc/>
+        public void EnsureCompilationReady() => _ = _resource.Prepared;
         internal void EnsureReady() => _ = _resource.Value;
         public void Dispose() => _resource.Dispose();
 

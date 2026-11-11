@@ -21,10 +21,11 @@ public class TileWaterWitnessTests
         Assert.Equal(MovementAvailability.Known, point.Availability);
         Assert.False(point.InWater);
     }
-    [Fact]
-    public void ALocatedWitnessThatCannotMeetTheMillimetreBudgetRefusesWithoutPublishing()
+    [Theory]
+    [InlineData(0, MovementAvailability.Known)]
+    [InlineData(1000000, MovementAvailability.PrecisionExceeded)]
+    public void ALocatedWitnessThatCannotMeetTheMillimetreBudgetRefusesWithoutPublishing(int tileX, MovementAvailability expected)
     {
-        const int tileX = 1000000;
         var doc = TileWorldPhysicsTestData.FlatWorld(RegionCoord.Of(tileX, -1));
         doc.SetUnderlay(tileX, -1, 0, TileWorldPhysicsTestData.Water);
         doc.SetCornerHeightCm(tileX, -1, 0, -200);
@@ -34,7 +35,18 @@ public class TileWaterWitnessTests
         var spans = new MovementCoverageSpan[64];
         var contacts = new MovementDomainContact[256];
         var result = field.TraceWater(query, Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
-        Assert.Equal(MovementAvailability.PrecisionExceeded, result.Availability);
+        // At free-surface entry the lower capsule cap reaches Y=0 after 3/16 of the path.
+        // Its column X must round to binary32. At the large address that actual displacement
+        // exceeds the budget, independent of the producer's own error calculation.
+        double exactX = query.Body.Centre.X + (double)query.Delta.X * (3d / 16);
+        double rounding = System.Math.Abs(exactX - (float)exactX);
+        Assert.Equal(expected == MovementAvailability.Known, rounding <= MovementQueryLease.CoverageSkinMetres);
+        Assert.Equal(expected, result.Availability);
+        if (expected == MovementAvailability.Known)
+        {
+            Assert.True(result.ContactsWritten > 0);
+            return;
+        }
         Assert.Equal(0, result.SpansWritten);
         Assert.Equal(0, result.ContactsWritten);
         Assert.All(spans, s => Assert.Equal(default, s));

@@ -134,6 +134,19 @@ echo '{"sharp":"0.35.4"}' > tools/kit/package-lock.json
 git commit --quiet -am "deps: patch a dev tool's dependency"
 check "a dev-tool dependency bump rides a release" allowed "$(try_push main)"
 
+# #1765. The distributed verifier is package content even though it stays outside the engine solution.
+w=$(new_repo 1.0.0); cd "$w"
+mkdir -p tools/Coverage.Verify
+printf '<Project><PropertyGroup><PackAsTool>true</PackAsTool></PropertyGroup></Project>\n' > tools/Coverage.Verify/Coverage.Verify.csproj
+printf 'initial\n' > tools/Coverage.Verify/Program.cs
+git add tools/Coverage.Verify
+git commit --quiet -m "tool(coverage): add verifier fixture"
+git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+git push --quiet origin v1.0.0 2>/dev/null
+printf 'changed\n' >> tools/Coverage.Verify/Program.cs
+git commit --quiet -am "fix(coverage): update verifier fixture"
+check "distributed coverage tool changes need a version" refused "$(try_push main)"
+
 # --- 2c. main past the tag with a .gitignore edit: ALLOWED ------------------------------------------
 # .gitignore decides what is TRACKED, never what a package contains. This case exists because the
 # guard refused its own author pushing exactly this, one commit after the tools/ carve-out.

@@ -33,6 +33,103 @@ capability gates and software-adapter refusals. A software result cannot certify
 Paid `gpu-hosted-bench.yml` measurement mode keeps its explicit filter and separate owner authorization.
 Historical timing receipts remain evidence for their original commits and workloads.
 
+## Equipment coverage cost evidence
+
+The recession-table implementation has headless carry, descriptor, submission-history and allocation
+guards. Its accepted native cost results, both at commit `ea7c9d362` and one run each, are G4 on a
+Tesla T4 (1218 microseconds added GPU time at 32 actors against the 1300 limit) and G5 on an Apple
+M2 Max (734 microseconds). They measure the synthetic body-size workload, not a consumer frame rate.
+A change to carry, publication, coverage vertex or precise shader code needs the G1 to G3 correctness
+units and the G4/G5 cost units again at its own SHA. Publish no cost or measured-memory
+claim from the headless tests. See [equipment coverage](EQUIPMENT-COVERAGE.md#verification-boundaries)
+for the acceptance record and the runtime and verification boundaries, including the open Vulkan
+previous-slot synchronization item.
+
+`CoverageRecessionCostGpuTests.Real_body_size_carry_and_scene_overhead_for_1_and_32_actors` is a
+Diagnostic fact with a separate exact opt-in:
+`KE_COVERAGE_COST_UNIT=Real_body_size_carry_and_scene_overhead_for_1_and_32_actors`. GPU enablement,
+an approved backend and selecting the fact are also required. A missing or different opt-in skips before
+any hardware probe. The hosted benchmark's optional `coverage-cost-unit` input forwards the same token.
+Ordinary shard filters exclude this fact even when Diagnostic filtering is absent. Broad Diagnostic
+selection never authorizes it.
+
+The prepared synthetic workload measures carry and paired full-scene baseline/coverage rows separately.
+The graph has five dispatches per active table group, including final atomic per-actor publication.
+Each carry-only and covered sample also reports named `StageGpuMicroseconds` for Skin, Transport,
+Basis, Gather and Publish, with per-stage distributions on its row. These brackets surround only
+the dispatches and share the outer frame's timestamp pool. The outer total includes uniform uploads,
+all stage markers and completed-End finalization. The primary baseline row keeps only its outer timestamps.
+The `carry-only-outer` and `covered-scene-outer` rows run the same work as their staged twins with only
+the outer pair, the baseline row's marker count. A Vulkan marker is one timestamp write. A Metal marker
+ends the native encoder and encodes a blit pass between event waits, so ten stage markers add work to
+the staged rows that the baseline row never pays. The acceptance fields `addedGpuMicroseconds`,
+`aggregateGpuOverheadPercent` and `addedCpuPreparationMicroseconds` compare the adjacent
+`covered-scene-outer` and `baseline-scene` rows, which both carry two markers. The diagnostic
+`addedGpuMicrosecondsStageMarkers` compares `covered-scene` against `baseline-scene`, or is null if
+the staged row is unavailable.
+Schema `khaozengine.coverage-recession-cost/6` also carries separate baseline and covered pass
+observations at each actor count. `PassGpuMicroseconds` contains inclusive and exclusive min, median,
+p95, p99 and max, with execution counts and fused-motion counts. Samples retain raw ticks and pass
+metadata and marker indices. Skipped callbacks retain metadata without markers. `UnscopedGpuMicroseconds`
+reports the outer total less exclusive pass times. `CpuPassRecordingMs` contains the separate
+`Scene3D.EnableTiming` CPU buckets.
+Metal markers close encoders without forcing pending clears. A logical clear scope's closing tick can
+precede its native clear, whose load action then executes with the next draw. The observations preserve
+this fusion instead of inserting an extra clear-only pass. For intervals with
+`MetalClearAttributionAvailable`, `AbsorbedDeferredClears` records the actual clear request, its source
+scope and marker, attachment and consuming scope. Successful native clear consumption supplies the
+evidence, rather than scope-name matching or inferred tick gaps. Parent annotations are inclusive and
+`ConsumedBy` identifies the innermost owner. End-only and between-scope consumption is retained in
+`UnscopedDeferredClears`. False availability identifies absent backend provenance, not zero deferral.
+Read these annotations before calling an interval draw work. Deferred loads, encoder-ending stores and
+state re-emission remain part of the native bracket. Explicit resolves complete their encoder sequence
+within their scope but leave pending clears untouched. Texture copies flush those clears and are labelled
+when they consume them. Buffer copies, dispatches and mip generation leave them pending. The full
+[boundary semantics](EQUIPMENT-COVERAGE.md#verification-boundaries) describe those cases.
+The counting wrapper retains its existing default framebuffer-store fallback. These measurements do not
+cover the scene owner's dead-attachment discard optimization, and the new provenance does not alter it.
+The equal-marker `baseline-scene` and `covered-scene-outer` pair supplies the unchanged GPU and CPU
+criteria. All seven layouts require zero warm allocation. Pass timing changes native encoder boundaries
+and resulting load/store work. Metal pass-row totals are not frame costs. Do not add parent and child inclusive times.
+The seven layouts, in order, are `baseline-scene`, `covered-scene-outer`, `carry-only-outer`,
+`carry-only`, `covered-scene`, `baseline-scene-passes` and `covered-scene-passes`, for 14 attempted rows
+over both populations. The stage-bracketed and pass rows are diagnostic.
+Precise Metal vertex and carry emission now ships the pinned helper templates with `[[clang::always_inline]]`
+instead of `[[clang::optnone]]`, after the signed-zero correction. Helper arithmetic and shader sources
+stay fixed. Fast math remains disabled for precise stages, preventing contraction and reassociation
+without forcing an unoptimized helper call per operation. Unrecognized helper forms still refuse.
+The MSL emission identity changes only for precise programs. Default emission, Vulkan and Direct3D 11
+keep their existing policies. Exact published-word readback still runs for every covered row.
+
+An earlier synthetic-fixture Metal run on Apple M2 Max at commit `96174f0ad` retained nine observed
+frames per row after 96 conditioning frames. At 32 actors, the median added GPU time at equal markers
+was 4.25 ms with the then-shipped `optnone` helpers and 0.17 ms with the same helpers marked
+`always_inline`. The extra ten stage markers added about 3.9 ms. All inlined carry rows passed exact
+published-word comparison. This evidence predates the shipped change. It does not establish vertex
+invariance across passes or behavior on other Apple GPUs. Hosted proof at the new commit is pending.
+
+Baseline-scene, covered-scene-outer and carry-only-outer fail hard. Other rows fail soft at construction,
+recording, harvest or evidence readback. It is disposed and dropped for that population, then attempted
+again for the next. `unavailableRows` retains layout, actors, conditioning or observed phase, phase-local
+frame and structured reason. Frame `-1` identifies construction before a frame. The reason includes stage
+brackets seen and expected, dispatches, owner coverage failure codes and captured factory exception
+identifiers. An exact-word mismatch has its own `ArithmeticMismatch` reason. Dependent diagnostic
+deltas become null. JSON and its output line are saved before the existing three assertions and the added
+assertion that no rows were unavailable. Publication refusal is detected before native recording begins.
+Cleanup failures appear in `CleanupFailures` alongside the original refusal, with type and available
+shader refusal identifiers. Safe cleanup continues after a release fails. A failed submission drain is
+fatal for every layout and sets `DrainFailed`. Its GPU dependants remain retained, and the unit ends
+because subsequent timings cannot be trusted. Remaining rows still receive safe teardown. Their
+cleanup failures keep their row context in `AdditionalRowFailures` without replacing an in-flight error.
+Timestamp resolution and evidence readback stay outside measured frames. See the
+[instrumentation contract](EQUIPMENT-COVERAGE.md#verification-boundaries) for row boundaries,
+`COVERAGE_DRAW_INVENTORY_JSON` draw counts. Headless `PreciseShaderCompileTests` guards the shipped
+helper form across every coverage vertex program and carry kernel, without proving native acceptance.
+The output reservation is `D + 2` slots per actor and is a storage policy, not a measured footprint.
+Carry-only results cannot establish aggregate scene overhead. The free `coverage` tooling CI suite
+checks deterministic fixture/CLI behavior with GPU disabled and supplies no timing evidence. No native,
+local, hosted, paid or stress invocation follows automatically from passing headless checks.
+
 ## Hosted physics rebase diagnostic
 
 The separate `physics-rebase-perf.yml` CPU lane runs on `main` every Monday at 04:37 UTC and on
@@ -171,6 +268,9 @@ files, digests and strict comparisons remain unchanged.
 The recipe-local JSON resolver omits `RigidInstanceDraw.ShadowMobility` only for `Static`, preserving the
 existing rigid construction bytes and digests. `Dynamic` and other nondefault values remain authored geometry
 inputs and change geometry and construction identities. Frozen recipe files and strict comparisons stay unchanged.
+The same resolver omits the `Coverage` descriptor of `RigidInstanceDraw` and `SkinnedInstanceDraw` when no
+equipment coverage is staged. A staged descriptor is opaque frame evidence with no public state and would
+encode as an empty object, so it refuses construction instead of entering a recipe identity.
 
 A full unit has 1,200 conditioning frames,
 five scenes, both layouts, three iterations, 192 warm-up and 256 measured frames per block, and twelve

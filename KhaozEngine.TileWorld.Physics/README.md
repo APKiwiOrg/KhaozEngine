@@ -107,6 +107,16 @@ evaluation. The lower boundary follows the selected triangle at the queried axis
 level triangle beside a lower corner. A triangle at or above the free surface contributes no positive water volume.
 Trace coverage uses water prisms bounded by those triangles and clipped at the body's free surface, including
 exposed patches and dry volume. Internal triangle and same-body tile edges contribute no dry wall.
+For the canonical coplanar triangle pair in one raw column, a grazing bed-diagonal root can partition an
+already continuously intersected boundary. Its path-width error is redundant only after directed bounds prove
+a represented, strictly wet bed point inside the actual capsule throughout that root's clamped uncertainty window.
+The affine normal displacement retains dependence on the path fraction. Entry and exit windows are checked
+independently, including overlaps and query endpoints. Each unproved window keeps its own charge, so a later
+real bed departure retains its original roots and contacts without requiring bed contact for the whole query.
+The proof pays column rounding in XYZ, proves its ground lookup still selects the same tile, and retains the
+original ranges, cuts, witnesses, overlap tags and contact order. Exact plane, normal and owner equality are
+required. Creases, other columns, free surfaces and
+real side or corner roots keep their original error charges. An unproved interval still refuses at the same budget.
 Point and trace queries receive the physics-local body plus its frame origin. Exact predicates select the
 lateral column, then the bed uses the same world-axis mapping as ordinary support. An immutable column index
 searches the actual rounded XZ bounds,

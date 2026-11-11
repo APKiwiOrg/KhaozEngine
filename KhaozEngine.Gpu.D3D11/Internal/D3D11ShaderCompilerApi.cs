@@ -12,12 +12,21 @@ internal sealed class D3D11ShaderCompilerApi(ID3D11Device device, KhaozEngine.Gp
     public D3D11CompiledCompute Compute(string source, uint flags, D3D11DxbcCache? cache)
         => Compilation.Compute(source, flags, cache);
 
+    public D3D11CompiledPair Pair(string vertex, string pixel, uint flags, D3D11DxbcCache? cache, GpuShaderCompileOptions options)
+        => Compilation.Pair(vertex, pixel, flags, cache, options);
+    public D3D11CompiledCompute Compute(string source, uint flags, D3D11DxbcCache? cache, GpuShaderCompileOptions options)
+        => Compilation.Compute(source, flags, cache, options);
+
     sealed class BuildApi(KhaozEngine.Gpu.Internal.SpirvCompileCache? cache) : ID3D11ShaderBuildApi
     {
         public D3D11CompiledPair Pair(string vertex, string pixel, uint flags, D3D11DxbcCache? dxbc)
             => D3D11ShaderBuild.Pair(vertex, pixel, flags, dxbc, memo: cache);
         public D3D11CompiledCompute Compute(string source, uint flags, D3D11DxbcCache? dxbc)
             => D3D11ShaderBuild.Compute(source, flags, dxbc, memo: cache);
+        public D3D11CompiledPair Pair(string vertex, string pixel, uint flags, D3D11DxbcCache? dxbc, GpuShaderCompileOptions options)
+            => D3D11ShaderBuild.Pair(vertex, pixel, flags, dxbc, memo: cache, options: options);
+        public D3D11CompiledCompute Compute(string source, uint flags, D3D11DxbcCache? dxbc, GpuShaderCompileOptions options)
+            => D3D11ShaderBuild.Compute(source, flags, dxbc, memo: cache, options: options);
     }
     public object CreateShader(byte[] dxbc, D3D11ShaderStage stage) => stage switch
     {

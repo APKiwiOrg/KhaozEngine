@@ -90,7 +90,7 @@ class SelectionTests(unittest.TestCase):
                                          '--changed', path), {'include': []})
 
     def test_cpu_dispatch_and_shared_inputs_select_explicit_projects(self):
-        for suite in ['items', 'nav']:
+        for suite in ['items', 'nav', 'coverage']:
             self.assertEqual(self.select('--event', 'workflow_dispatch', '--suite', suite, '--ref', A)['include'],
                              [dict(ref=A, os='ubuntu-26.04')])
             for path in ['Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props',
@@ -134,6 +134,7 @@ class SelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory) / 'output'
             for event, suite in [('workflow_dispatch', 'items'), ('workflow_dispatch', 'nav'),
+                                 ('workflow_dispatch', 'coverage'), ('workflow_call', 'coverage'),
                                  ('workflow_dispatch', 'renderer'), ('workflow_call', 'renderer')]:
                 output.write_text('')
                 result = subprocess.run(['bash', '-c', commands], cwd=ROOT, capture_output=True, text=True,
@@ -144,7 +145,7 @@ class SelectionTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 fields = dict(line.split('=', 1) for line in output.read_text().splitlines())
                 self.assertEqual(fields[suite], 'true')
-                for other in {'renderer', 'items', 'nav'} - {suite}:
+                for other in {'renderer', 'items', 'nav', 'coverage'} - {suite}:
                     self.assertEqual(fields[other], 'false')
                     other_matrix = 'matrix' if other == 'renderer' else other + '-matrix'
                     self.assertEqual(json.loads(fields[other_matrix]), {'include': []})
@@ -190,10 +191,51 @@ class SelectionTests(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/tooling-validation.yml').read_text()
         push = workflow.split('  push:\n', 1)[1].split('  pull_request:\n', 1)[0]
         pr = workflow.split('  pull_request:\n', 1)[1].split('  workflow_dispatch:\n', 1)[0]
-        for suite in ['items', 'nav']:
+        for suite in ['items', 'nav', 'coverage']:
             for pattern in selector.watched_paths(suite):
                 self.assertIn(f"      - '{pattern}'", push)
                 self.assertIn(f"      - '{pattern}'", pr)
+
+    def test_coverage_selects_headless_tools_and_runtime_dependencies_only(self):
+        for path in ['tools/Coverage.Verify/Program.cs', 'tools/Coverage.Verify.Tests/CoverageVerifyProcessTests.cs',
+                     'KhaozEngine.Render3D/Coverage/Table/CoverageRecessionTableBinary.cs',
+                     'KhaozEngine.Render3D/Coverage/Gpu/CoverageCarryBatch.cs',
+                     'KhaozEngine.Render3D/Models/GltfLoader.Coverage.cs',
+                     'KhaozEngine.Render3D/Scene3D.CoveragePrepare.cs',
+                     'KhaozEngine.Attachments/EquipmentCoverageJson.cs',
+                     'KhaozEngine.Attachments.Render3D/HostCoverageBinding.cs']:
+            self.assertEqual(self.select('--event', 'push', '--suite', 'coverage', '--ref', A,
+                                         '--changed', path)['include'], [dict(ref=A, os='ubuntu-26.04')])
+            for other in ['renderer', 'items', 'nav']:
+                self.assertEqual(self.select('--event', 'push', '--suite', other, '--ref', A,
+                                             '--changed', path), {'include': []})
+        self.assertEqual(self.select('--event', 'push', '--suite', 'coverage', '--ref', A,
+                                     '--changed', 'KhaozEngine.Audio/AudioBus.cs'), {'include': []})
+        self.assertEqual(self.select('--event', 'push', '--suite', 'coverage', '--ref', A,
+                                     '--changed', '.github/workflows/gpu-hosted-bench.yml')['include'],
+                         [dict(ref=A, os='ubuntu-26.04')])
+
+    def test_coverage_trx_gate_requires_nonempty_process_evidence_without_skips(self):
+        workflow = (ROOT / '.github/workflows/tooling-validation.yml').read_text()
+        body = workflow.split('      - name: Require nonempty coverage passes without skips\n', 1)[1]
+        body = body.split('        run: |\n', 1)[1].split('\n      - ', 1)[0]
+        commands = '\n'.join(line[10:] for line in body.splitlines() if line.startswith('          '))
+        name = 'KhaozEngine.Tests.CoverageTooling.CoverageVerifyProcessTests.Process_fact'
+        cases = [([name], ['Passed'], True), ([], [], False),
+                 ([name], ['NotExecuted'], False), ([name], ['Failed'], False),
+                 (['Wrong.fact'], ['Passed'], False)]
+        with tempfile.TemporaryDirectory() as directory:
+            results = pathlib.Path(directory) / 'TestResults'
+            results.mkdir()
+            for names, outcomes, success in cases:
+                counts = (f'total="{len(outcomes)}" passed="{outcomes.count("Passed")}" '
+                          f'notExecuted="{outcomes.count("NotExecuted")}" failed="{outcomes.count("Failed")}"')
+                rows = ''.join(f'<UnitTestResult testName="{n}" outcome="{o}" />' for n, o in zip(names, outcomes))
+                (results / 'coverage.trx').write_text(
+                    f'<TestRun><ResultSummary><Counters {counts} /></ResultSummary><Results>{rows}</Results></TestRun>')
+                result = subprocess.run(['pwsh', '-NoProfile', '-NonInteractive', '-Command', commands],
+                                        cwd=directory, capture_output=True, text=True, check=False)
+                self.assertEqual(result.returncode == 0, success, result.stderr)
 
 
 if __name__ == '__main__':

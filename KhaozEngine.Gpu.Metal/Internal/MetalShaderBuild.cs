@@ -60,20 +60,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// cross-compile, or the emission could not be read (any of 2.2b pin 1's classes). Reason distinguishes
         /// FrontEndCompileFailed, CrossCompileFailed and the Metal entry-point or binding-table refusals. Label
         /// identifies the program, with Stage when known.</exception>
+        /// <param name="options">Requested per-stage arithmetic policy or float-control capability.</param>
         internal static MetalMslProgram Pair(string vertexGlsl, string fragmentGlsl, MetalMslCache? cache,
-            string? label = null, SpirvCompileCache? memo = null)
+            string? label = null, SpirvCompileCache? memo = null, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(vertexGlsl);
             ArgumentNullException.ThrowIfNull(fragmentGlsl);
 
-            string key = MetalShaderKey.For(vertexGlsl, fragmentGlsl);
+            string key = MetalShaderKey.For(options, vertexGlsl, fragmentGlsl);
             string tag = label ?? "metal program " + MetalShaderKey.ShortTag(key);
 
             if (cache?.TryLoad(key, tag) is { } hit) return hit.Program;
 
-            byte[] vertexSpirv = SpirvFrontEnd.ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag, memo);
+            byte[] vertexSpirv = SpirvFrontEnd.ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag, options, memo);
             byte[] fragmentSpirv = SpirvFrontEnd.ToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag, memo);
-            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertexSpirv, fragmentSpirv, tag);
+            CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertexSpirv, fragmentSpirv, tag, options);
 
             MetalMslProgram program = Assemble(msl.Reflection, msl.MslUse, tag,
                 (MetalShaderStage.Vertex, msl.VertexSource),
@@ -99,20 +100,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// identifies the shader, with Stage when known. Reason distinguishes FrontEndCompileFailed,
         /// CrossCompileFailed, ComputeLocalSizeMissing / ComputeLocalSizeSpecialized and the Metal entry-point
         /// or binding-table refusals.</exception>
+        /// <param name="options">Requested per-stage arithmetic policy or float-control capability.</param>
         internal static (MetalMslProgram Program, uint X, uint Y, uint Z) Compute(string computeGlsl,
-            MetalMslCache? cache, string? label = null, SpirvCompileCache? memo = null)
+            MetalMslCache? cache, string? label = null, SpirvCompileCache? memo = null, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(computeGlsl);
 
-            string key = MetalShaderKey.For(computeGlsl);
+            string key = MetalShaderKey.For(options, computeGlsl);
             string tag = label ?? "metal compute " + MetalShaderKey.ShortTag(key);
 
             if (cache?.TryLoad(key, tag) is { } hit)
                 return (hit.Program, hit.ThreadGroupSizeX, hit.ThreadGroupSizeY, hit.ThreadGroupSizeZ);
 
-            byte[] spirv = SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, memo);
+            byte[] spirv = SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, options, memo);
             (uint x, uint y, uint z) = SpirvLocalSize.Parse(spirv, tag);
-            CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, tag);
+            CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, tag, options);
 
             MetalMslProgram program = Assemble(msl.Reflection, msl.MslUse, tag,
                 (MetalShaderStage.Compute, msl.ComputeSource));

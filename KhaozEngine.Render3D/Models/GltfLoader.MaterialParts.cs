@@ -29,7 +29,7 @@ namespace KhaozEngine.Render3D
             => BuildParts(LoadModel(path, entryId), path, entryId);
 
         static IReadOnlyList<GltfMeshPart> BuildParts(ModelRoot root, string path, string? entryId = null,
-            Func<GltfMaterial?, GltfMaterialMaps>? readMaps = null, bool admitted = false)
+            CoverageImportCollector? coverage = null, Func<GltfMaterial?, GltfMaterialMaps>? readMaps = null, bool admitted = false)
         {
             // Distinct materials in first-use order (a null material - primitives with none - is a valid key). Walk
             // meshes then primitives, the same traversal BuildRigid uses, so the single-material part's corner order
@@ -58,14 +58,16 @@ namespace KhaozEngine.Render3D
                     {
                         if (node.Mesh != mesh) continue;
                         placed = true;
-                        AppendMaterialCorners(corners, mesh, node.WorldMatrix, path, material, entryId);
+                        AppendMaterialCorners(corners, mesh, node.WorldMatrix, path, material, entryId, coverage, node.LogicalIndex, parts.Count);
                     }
-                    if (!placed) AppendMaterialCorners(corners, mesh, Matrix4x4.Identity, path, material, entryId);
+                    if (!placed) AppendMaterialCorners(corners, mesh, Matrix4x4.Identity, path, material, entryId, coverage, -1, parts.Count);
                 }
                 if (corners.Count > 0)
                 {
                     if (admitted) GltfDecodeAdmission.EnterLargeAllocation();
-                    parts.Add(new GltfMeshPart(MeshAssembler.Build(corners), readMaps is null ? ReadMaterialMaps(material) : readMaps(material)));
+                    var decoded = MeshAssembler.Build(corners);
+                    coverage?.CompleteRigidSlice(parts.Count, decoded);
+                    parts.Add(new GltfMeshPart(decoded, readMaps is null ? ReadMaterialMaps(material) : readMaps(material)));
                 }
             }
 
@@ -92,12 +94,16 @@ namespace KhaozEngine.Render3D
         // reusing the identical transform + corner-emit math, so a single-material part is byte-identical to the
         // flattened Load path.
         static void AppendMaterialCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world, string path,
-                                          GltfMaterial? material, string? entryId)
+                                          GltfMaterial? material, string? entryId, CoverageImportCollector? coverage = null, int node = -1, int slice = 0)
         {
             (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
             foreach (var prim in mesh.Primitives)
                 if (ReferenceEquals(prim.Material, material))
-                    AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path, entryId: entryId);
+                {
+                    int triangle = 0;
+                    AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path, entryId: entryId,
+                        triangleRead: coverage is null ? null : (a, b, c) => coverage.AddRigid(mesh, prim, node, slice, triangle++, a, b, c, corners, world));
+                }
         }
 
     }

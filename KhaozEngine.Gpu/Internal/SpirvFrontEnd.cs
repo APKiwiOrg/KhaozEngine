@@ -61,6 +61,9 @@ namespace KhaozEngine.Gpu.Internal
         /// Reason is <see cref="ShaderValidationRefusal.FrontEndCompileFailed"/>. Label, Stage, Target and
         /// Diagnostic identify the failure.</exception>
         internal static byte[] ToSpirv(string glsl, GpuShaderStages stage, string? label = null, SpirvCompileCache? cache = null)
+            => ToSpirv(glsl, stage, label, default, cache);
+
+        internal static byte[] ToSpirv(string glsl, GpuShaderStages stage, string? label, GpuShaderCompileOptions options, SpirvCompileCache? cache = null)
         {
             if (glsl is null) throw new ArgumentNullException(nameof(glsl));
 
@@ -83,8 +86,8 @@ namespace KhaozEngine.Gpu.Internal
                 // flipped, which is the run where a reader most needs the names to be right. Every call site names
                 // one source, so carrying it costs no entries.
                 return (cache ?? SpirvCompileCache.Shared).GetOrCompile(
-                    OptionsIdentity(tag), stage, glsl,
-                    () => Compile(glsl, kind, $"{tag}.{stage}"));
+                    OptionsIdentity(tag, options), stage, glsl,
+                    () => Compile(glsl, kind, $"{tag}.{stage}", options));
             }
             catch (Exception ex)
             {
@@ -99,10 +102,10 @@ namespace KhaozEngine.Gpu.Internal
         }
 
         /// <summary>The complete front-end option identity for one labelled compile.</summary>
-        internal static string OptionsIdentity(string label)
+        internal static string OptionsIdentity(string label, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(label);
-            return SpirvFrontEndPin.Identity + ";label=" + label;
+            return SpirvFrontEndPin.IdentityFor(options) + ";label=" + label + (options.PreciseMath ? ";precise=1" : string.Empty);
         }
 
         // Value-taking fault seams keep native allocation failure coverage device-free.
@@ -150,7 +153,7 @@ namespace KhaozEngine.Gpu.Internal
         /// would have moved every shipped module for a reason no pin recorded.
         /// </para>
         /// </summary>
-        static unsafe byte[] Compile(string glsl, ShaderKind kind, string fileName)
+        static unsafe byte[] Compile(string glsl, ShaderKind kind, string fileName, GpuShaderCompileOptions compileOptions)
         {
             Compiler* compiler = _shaderc.CompilerInitialize();
             RequireCompilerInitialized(compiler is not null);
@@ -165,7 +168,7 @@ namespace KhaozEngine.Gpu.Internal
                 _shaderc.CompileOptionsSetTargetEnv(options, SpirvFrontEndPin.TargetEnvironment,
                     SpirvFrontEndPin.TargetEnvironmentVersion);
                 _shaderc.CompileOptionsSetTargetSpirv(options, SpirvFrontEndPin.SpirvTarget);
-                _shaderc.CompileOptionsSetOptimizationLevel(options, SpirvFrontEndPin.Optimization);
+                _shaderc.CompileOptionsSetOptimizationLevel(options, SpirvFrontEndPin.OptimizationFor(compileOptions));
                 if (SpirvFrontEndPin.Debug) _shaderc.CompileOptionsSetGenerateDebugInfo(options);
 
                 byte[] source = Encoding.UTF8.GetBytes(glsl);
@@ -194,7 +197,7 @@ namespace KhaozEngine.Gpu.Internal
                 nuint length = _shaderc.ResultGetLength(result);
                 var spirv = new byte[(int)length];
                 new ReadOnlySpan<byte>(_shaderc.ResultGetBytes(result), spirv.Length).CopyTo(spirv);
-                return spirv;
+                return compileOptions.PreciseMath ? SpirvPreciseMath.Declare(spirv) : spirv;
             }
             finally
             {

@@ -626,7 +626,7 @@ Both callbacks run on a render-suppressed frame, so simulation keeps advancing w
 the same seam: everything through `OnUpdate` and the diagnostics-HUD tick runs in the prepare phase and ends on
 `OnPrepareWorld(Frame)`. `OnRenderWorld(Frame)` and the 2D / UI / overlay passes run in the record phase. The
 order a game sees is unchanged (`OnUpdate` still precedes `OnDraw3D`, which still precedes the 2D passes).
-`GameApp3D` runs `Scene.Begin()` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame(width, height)` with the frame size
+`GameApp3D` runs `Scene.BeginFrame(frame.Submission)` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame(width, height)` with the frame size
 in `OnPrepareWorld`, leaving
 `Surface3D.Render(frame)` in `OnRenderWorld` - so `Render3DSurface.Render`'s own `PrepareFrame` call finds the
 frame already prepared and no-ops, which is exactly what its documented idempotency is for. Override
@@ -783,7 +783,7 @@ no way out but quitting. Two mechanisms, both on by default and neither needing 
 
 `GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam
 `OnDraw3D(Scene3D scene)`. It overrides both world seams to run the 3D pass behind the 2D HUD: `OnPrepareWorld`
-does `Scene.Begin()` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame(width, height)` in the frame's pre-record phase, and
+does `Scene.BeginFrame(frame.Submission)` -> `OnDraw3D(Scene)` -> `Scene.PrepareFrame(width, height)` in the frame's pre-record phase, and
 `OnRenderWorld` records it with `Surface3D.Render(frame)` (see "The frame's pre-record phase" above). A scene that
 draws 3D implements `IGameScene3D` (`void OnDraw3D(Scene3D scene)`), and the app's `OnDraw3D` calls the
 `SceneManager.Draw3D(scene)` extension to render the visible scene set.
@@ -7475,6 +7475,50 @@ Besides the set type renames in the design record table:
   `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
   Callers never need a SharpGLTF exception type.
 
+### Offline table equipment coverage
+
+Use `HostCoverageBinding` from `KhaozEngine.Attachments.Render3D` for a complete annotated host and
+an immutable `CoverageRecessionTable`. Supply a consumer-owned `CoverageStateKey` every frame.
+Preparation freezes complete equipment descriptors without queuing them. Forward every descriptor
+unchanged, including coverage tokens and borrowed skinned palettes. A missing or explicit-hole key
+returns `TableHole` with no prepared equipment draws. Explicitly draw the uncovered current host and
+ordinary equipment on refusal.
+
+`GameApp3D` joins the window frame's existing submission automatically. Queue coverage actors in
+`OnDraw3D` without beginning or submitting another frame. `Scene3DTileWorldScene` forwards the optional
+coverage capability through its attachment delegate, so caches and bindings over the wrapper share
+the same underlying scene owner. Equipment from another scene is refused.
+
+Custom hosts join the existing `GpuFrameSubmission` through `Scene3D.BeginFrame(submission)`, queue all actors and
+prepare before opening the host list. The scene registers one aggregate participant for all actors.
+Only successful submission commits coverage history. Dispose the submission owner before bindings,
+then dispose bindings before caches and scenes. Legacy attachment adapters retain ordinary equipment
+submission without implementing the optional coverage interface.
+
+See [equipment coverage](EQUIPMENT-COVERAGE.md) and the exact
+[compiled consumer example](examples/EquipmentCoverageConsumer.cs) for configuration identity, the
+three fallback paths, slot ownership, partial-weight and whole-skin checks, allocation conditions and
+the blocking offline `verify` command. Sample verification is not a continuous proof. The native
+correctness and cost units have accepted evidence, which that guide records with its limits.
+
+The verifier ships as the `KhaozEngine.Coverage.Tool` dotnet tool, command `ke-coverage`, from the same
+engine feed. Install the exact engine version, then record its engine and carry arithmetic contract
+versions with the verification evidence:
+
+```sh
+dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHAOZENGINE_VERSION"
+.tools/ke-coverage version
+.tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json
+```
+
+Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. All three
+commands accept optional `--diagnostics <path>` for schema `khaozengine.coverage-diagnostics/1`, scope
+`diagnostic-not-acceptance`. This separate bounded report retains exact finding and omission counts,
+including holes, candidate refusals, dense failures and changed-record versus inherited depth. It is
+never acceptance evidence and changes no acceptance gate or exit code. See the
+[tool README](../tools/Coverage.Verify/README.md) for the schema, commands and publication rules.
+
+
 ### Skinned body contracts (any body shape)
 
 A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every
@@ -9475,7 +9519,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.6.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.8.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10077,7 +10121,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.6.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.8.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10933,7 +10977,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.6.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.8.0" />
 ```
 
 ```csharp
@@ -20849,7 +20893,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.6.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.8.0" />
 ```
 
 ```csharp
@@ -20885,7 +20929,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.6.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.8.0" />
 ```
 
 ```csharp
@@ -21136,7 +21180,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.6.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.8.0" />
 ```
 
 ```csharp
@@ -26025,7 +26069,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.6.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.8.0" />
 </ItemGroup>
 ```
 
@@ -26285,6 +26329,50 @@ shader fails CI instead of surfacing only when a player on that backend loads th
 
 `ShaderValidation.ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a compute shader
 (see the next section).
+
+### Precise compute and vertex arithmetic
+
+Use both authored GLSL `precise` qualifiers and the per-shader compile option when an algorithm depends on
+separate multiply and add operations:
+
+```csharp
+var precise = new GpuShaderCompileOptions(PreciseMath: true);
+ShaderValidation.ValidateCompute(computeGlsl, precise, "coverage kernel");
+ShaderValidation.ValidatePair(vertexGlsl, fragmentGlsl, precise, "coverage pair");
+using IGpuComputeShader compute = factory.CreateComputeShaderFromSpirv(computeGlsl, precise);
+using IGpuShaderSet pair = factory.CreateShadersFromSpirv(vertexGlsl, fragmentGlsl, precise);
+```
+
+Factories may return owners whose CPU compilation is still pending. For an optional feature, queue its
+complete cold batch, then call `EnsureCompilationReady()` on the compute shaders and graphics shader sets
+inside the feature's refusal transaction. The join delivers compiler failures before readiness or publication,
+without realizing native device objects or adding a GPU wait. It is a no-op for synchronously compiled
+backends. Do not repeat it on a ready warm draw or dispatch path.
+
+For example, `precise float p = a * b; precise float q = p + c;` preserves the authored operations. Precise
+mode selects shaderc optimization Zero while retaining Vulkan 1.0, SPIR-V 1.0 and entry point `main`.
+The compiler declares `SignedZeroInfNanPreserve 32` with `SPV_KHR_float_controls` on precise entry points.
+Vulkan requires `shaderSignedZeroInfNanPreserveFloat32` and reports it through the Vulkan-specific
+`GpuCapabilities.SupportsShaderFloatControls`. A precise shader request without support fails with
+`GpuShaderPolicyUnsupportedException`, derived from `NotSupportedException`, with reason
+`FloatControlsUnavailable` and `Stage` naming the requested compute or vertex stage. Float controls are core
+below the backend's Vulkan 1.3 floor, with no device enable bit. Other APIs leave that capability false.
+The resulting `NoContraction` decorations survive into HLSL `precise` and MSL `spvFMul` and `spvFAdd` helpers.
+Metal's guarded SPIRV-Cross 2.23.0 backport uses `T(-0.0)` multiplication-helper seeds so negative-zero
+products keep their sign. An unfamiliar helper fails compilation, tracked for removal in
+[#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495).
+The pinned add, subtract and multiply templates use `[[clang::always_inline]]` instead of
+`[[clang::optnone]]`. Inlining avoids an unoptimized call at each precise operation. Metal's disabled
+fast math preserves the arithmetic policy, while helper bodies and signed-zero corrections stay fixed.
+FXC adds IEEE strictness to compute and vertex compilation. Metal disables fast math for those precise stages
+while retaining MSL language 3.2 and the existing preserve-invariance policy. Graphics fragments still compile
+with their default options. The process memo and SPIR-V, DXBC and MSL disk caches keep the two policies separate,
+including the whole paired-program identity where stages are emitted together.
+
+The default overloads retain optimized compilation. The option does not insert GLSL qualifiers or establish
+identical transcendental or denormal behavior across devices. Coverage kernels must opt in and author their
+position arithmetic as `precise`. External factories that have not implemented precision reject a precise
+request with `NotSupportedException` rather than silently ignoring it.
 
 ### A shader source is compiled to SPIR-V once per process (17.37.0)
 
@@ -26751,6 +26839,10 @@ Group intervals contain children and their durations must not be added as extra 
 | --- | --- |
 | `device.scene.begin` | CPU-only leaf for the existing `Scene3D.Begin` operations, including pending-layout changes, retirement sealing/freeing and any fallback wait, before command-list begin/acquire. No GPU markers or duration |
 | `geometry.uploads`, `geometry.skinned-uploads` | Shared rigid, foliage, motion and palette/deformed-stream uploads |
+| `coverage.carry` | Admitted final-surface compute recording |
+| `geometry.coverage-uploads` | Final-surface bindings and cascade headers for admitted coverage |
+| `opaque.coverage` | Pulled final-surface colour/depth draw, with fused motion metadata when the MRT is active |
+| `shadow.cascade.coverage` | Pulled final-surface cascade draws, occurrence is cascade index |
 | `shadow.directional` | Whole executed cascade recording, or one skipped subtree when cached or inactive |
 | `shadow.directional.setup`, `.skinned-uploads`, `.finish` | Atlas clear, cascade uniforms and foliage uploads, GPU-skinned shadow slots, final scissor restoration |
 | `shadow.cascade.rigid` | Rigid and CPU-skinned segment, occurrence is cascade index |
@@ -27213,8 +27305,14 @@ it. It frees a batch only after completion. An abandoned recording unseals its r
 freeing anything, because abandonment proves nothing about earlier submitted readers. A failed submit
 keeps the batch quarantined until completion or a successful host teardown drain. The host must submit
 before the next boundary and outlive the queue, or complete its own teardown before the scene is disposed.
-If no host completion slot is available, the call refuses without a new submission or an unsafe free. Devices without
-completion fences retain the existing drain fallback.
+Missing host completion capacity defers sealing without a new submission or an unsafe free, and increments
+`SharedSealDeferrals`. The next boundary with capacity seals the accumulated tail. Its later fence still
+completes after all earlier readers, so freeing never moves earlier. Sealed batches plus consecutive
+deferred boundaries share the `MaxSealedBatches` bound: a drain-capable queue drains once past the bound,
+counts `ValveDrains` and frees the whole holding, including the unsealed tail, without touching borrowed
+fences. Frame-count-only queues do not drain. A custom host using their shared mode must make completion
+capacity available eventually. Shipping frame-counted queues use standalone boundaries and retain their
+frame-delay bound. Devices without completion fences retain the existing drain fallback.
 
 Retirement increases peak memory by the pending outgoing graphs. After each boundary the existing queue
 cap limits sealed batches to `MaxSealedBatches` (normally eight), plus the current unsealed burst. For one

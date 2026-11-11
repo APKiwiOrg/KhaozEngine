@@ -65,6 +65,12 @@ namespace KhaozEngine.Render3D
         /// <see cref="AnimationClip"/>s on the mesh.</summary>
         public Skeleton? Skeleton { get; }
 
+        /// <summary>Optional immutable source coverage evidence, bound before upload.</summary>
+        public HostCoveragePart? Coverage { get; init; }
+
+        // Upload snapshots keep the original skeleton owner while copying its mutable pose arrays.
+        internal object? CoverageSkeletonOwner { get; init; }
+
         public int BoneCount => InverseBind.Length;
         public int TriangleCount => Indices32.Length / 3;
 

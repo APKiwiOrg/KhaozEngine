@@ -35,6 +35,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="Coverage.Verify.Tests" />
     <!-- The editor tests link FakeGpuDevice, including the shared completion-fence validation. -->
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
     <InternalsVisibleTo Include="Renderer.Perf.Tooling.Tests" />

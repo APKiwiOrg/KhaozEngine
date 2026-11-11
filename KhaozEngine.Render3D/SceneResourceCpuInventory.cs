@@ -16,7 +16,7 @@ internal static class SceneResourceCpuInventory
     {
         // Bounded metadata for the upload, reservation, demand/digests, tracking entries and list headers.
         // Each remaining GPU object has a separate wrapper/binding allowance. GPU payload is charged separately.
-        long cpu = checked(OwnerMetadataBytes + (long)owned.Capacity * IntPtr.Size + (owned.Count + pendingBindings) * GpuObjectMetadataBytes + (mesh ? MeshMetadataBytes : 0));
+        long cpu = checked(OwnerMetadataBytes + (long)owned.Capacity * IntPtr.Size + (owned.Count + pendingBindings) * GpuObjectMetadataBytes + (mesh ? MeshMetadataBytes + CoverageUploadEvidence.RetainedCpuBytes : 0));
         if (foliage is null) return cpu;
         var layout = foliage.Layout!;
         var points = foliage.PointStream!;
@@ -47,7 +47,7 @@ internal static class SceneResourceCpuInventory
                 (albedo || normal || roughness ? 1 : 0) + (albedo ? 1 : 0) + (albedo && maps.AlphaCutoff > 0 ? 1 : 0);
         }
         if (foliage) objects += 2 + (expanded > 0 ? 1 : 0);
-        long cpu = checked(OwnerMetadataBytes + objects * (IntPtr.Size + GpuObjectMetadataBytes) + (mesh ? MeshMetadataBytes : 0));
+        long cpu = checked(OwnerMetadataBytes + objects * (IntPtr.Size + GpuObjectMetadataBytes) + (mesh ? MeshMetadataBytes + CoverageUploadEvidence.RetainedCpuBytes : 0));
         if (!foliage) return cpu;
         // Every expanded instance may occupy a separate patch and cast a point shadow. This bound needs no
         // live mesh lookup, sorting or expansion, and keeps the original complete preparation peak unchanged.

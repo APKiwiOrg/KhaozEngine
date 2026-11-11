@@ -1026,8 +1026,16 @@ Native shaders are created on the consuming caller before pipeline state enters 
 still rejects null sources immediately. Compiler failures rethrow their original type and message at the
 first-use join, without an `AggregateException` wrapper.
 
-Concurrent requests for the same program and cache directory share an active compile, including its cache
-writes. Completed flights are removed and subsequent requests use the existing disk cache. Disabling the
+Optional features can call `EnsureCompilationReady` on each shader owner after queueing their complete
+batch. This explicit CPU-only join reads the prepared compiler result and its diagnostics, without running
+native shader or pipeline creation. Coverage uses it before committing cold readiness or publishing a host
+surface, so a worker refusal reaches ordinary-skin fallback before recording. Pipeline factories still
+never join. Native realization stays at the consuming boundary, and worker closures remain device-free.
+
+Concurrent requests for the same program, per-shader arithmetic policy and cache directory share an active
+compile, including its cache writes. `GpuShaderCompileOptions(PreciseMath: true)` travels with the worker
+build and partitions both active flights and disk entries. Precise vertex and compute stages use FXC IEEE
+strictness on fresh builds and after a failed flight is retried. Pixel compilation keeps its ordinary policy. Completed flights are removed and subsequent requests use the existing disk cache. Disabling the
 cache also disables this sharing. Disposing a pending shader abandons only managed CPU work, whose failures
 are captured even if nobody joins it. No worker creates native objects, and first use after shader disposal
 or device loss refuses before native creation. A pipeline disposed during its first shader join also refuses

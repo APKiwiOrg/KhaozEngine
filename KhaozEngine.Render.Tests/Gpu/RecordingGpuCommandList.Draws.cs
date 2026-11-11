@@ -27,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             _indexedDraws.Add(new IndexedDraw(indexCount, _currentPipeline, _currentVertexBuffer,
                 _currentIndexBuffer, indexStart, vertexOffset));
-            NoteDrawBindings();
+            NoteDrawBindings(indexCount);
         }
         void ClearDraws()
         {

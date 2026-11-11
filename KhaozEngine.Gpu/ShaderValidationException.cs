@@ -6,7 +6,7 @@ using System.Linq;
 namespace KhaozEngine.Gpu;
 
 /// <summary>A structured ShaderValidation refusal.</summary>
-public sealed class ShaderValidationException : Exception
+public sealed partial class ShaderValidationException : Exception
 {
     readonly IReadOnlyList<string>? _repairSourcePaths;
 

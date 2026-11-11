@@ -16,7 +16,7 @@ public sealed class ShaderReflectionRefusalTests
             + "layout(location=0) out vec4 o; void main() { o = texture(t,vec2(0)); }";
         SpirvCrossCompile.GlslPairToHlsl(Vertex, Fragment, "reflection");
         var wrapper = Assert.Throws<ShaderValidationException>(() => SpirvCrossCompile.GlslPairToHlsl(Vertex, source, "reflection"));
-        Assert.Equal(ShaderValidationRefusal.CrossCompileFailed, wrapper.Reason);
+        Assert.Equal(ShaderValidationRefusal.ReflectionResourceKindUnsupported, wrapper.Reason);
         var error = Assert.IsType<ShaderValidationException>(wrapper.InnerException);
         Assert.Equal(ShaderValidationRefusal.ReflectionResourceKindUnsupported, error.Reason);
         Assert.Equal("reflection", error.Label);
@@ -30,7 +30,7 @@ public sealed class ShaderReflectionRefusalTests
         const string source = "#version 450\nlayout(location=0) in ivec2 p; void main() { gl_Position = vec4(p,0,1); }";
         SpirvCrossCompile.GlslPairToHlsl(Vertex, Fragment, "reflection");
         var wrapper = Assert.Throws<ShaderValidationException>(() => SpirvCrossCompile.GlslPairToHlsl(source, Fragment, "reflection"));
-        Assert.Equal(ShaderValidationRefusal.CrossCompileFailed, wrapper.Reason);
+        Assert.Equal(ShaderValidationRefusal.ReflectionVertexFormatUnsupported, wrapper.Reason);
         var error = Assert.IsType<ShaderValidationException>(wrapper.InnerException);
         Assert.Equal(ShaderValidationRefusal.ReflectionVertexFormatUnsupported, error.Reason);
         Assert.Equal("reflection", error.Label);

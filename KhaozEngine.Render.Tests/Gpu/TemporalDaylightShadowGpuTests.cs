@@ -18,6 +18,8 @@ public sealed class TemporalDaylightShadowGpuTests(DaylightShadowScene scene, IT
         var (following, held, reference) = Measure(preset, ridges: false);
         if (preset == TemporalUpscale.Quality) Measure(TemporalUpscale.Balanced, ridges: false);
         AssertReceiver(reference);
+        // Native's 2.0 states the resolve's remaining catch-up once per jitter cycle (issue 1764) and tightens
+        // when that resolve work lands.
         float k = preset == TemporalUpscale.Native ? 2.0f : 1.25f;
         Assert.True(following.MaxChange <= k * reference.MaxChange);
         Assert.True(held.MaxChange > k * reference.MaxChange);

@@ -343,8 +343,9 @@ clip corrects at once. The colour release amplifies the correction by resetting 
 removes the hold-cadence pulse, but leaves this separate resolve response. Quality spreads the decisions over
 18 phases and stays within the reference's peak change on this rig. Centring the clip box on reconstructed
 luma was rejected because it breaks 24 existing behavior facts, including still thin detail, drifting-line
-trails, textured grain and ghosting. Fixing this limit needs its own resolve design. No resolve or shader
-change accompanies shadow following.
+trails, textured grain and ghosting. Fixing this limit needs its own resolve design, tracked in
+[#1764](https://github.com/APKiwiOrg/KhaozEngine/issues/1764). No resolve or shader change accompanies shadow
+following.
 
 ## 4. Sharpening
 

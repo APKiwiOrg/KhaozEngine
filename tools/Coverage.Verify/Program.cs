@@ -38,18 +38,14 @@ public static class Program
             if (args.Length == 7 && options.ContainsKey("--diagnostics")) return 2;
             string manifest = options["--manifest"], tablePath = options["--table"], evidencePath = options["--evidence"];
             var comparer = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-            var identities = options.ToDictionary(p => p.Key, p => CoveragePathIdentity.Resolve(p.Value), StringComparer.Ordinal);
-            string manifestIdentity = identities["--manifest"], tableIdentity = identities["--table"], evidenceIdentity = identities["--evidence"];
             diagnostic.Path = options.GetValueOrDefault("--diagnostics");
-            string? diagnosticIdentity = identities.GetValueOrDefault("--diagnostics");
-            if (diagnosticIdentity != null && new[] { manifestIdentity, tableIdentity, evidenceIdentity }.Any(p => comparer.Equals(p, diagnosticIdentity))) return 2;
-            if (comparer.Equals(manifestIdentity, tableIdentity) || comparer.Equals(manifestIdentity, evidenceIdentity) || comparer.Equals(tableIdentity, evidenceIdentity))
+            if (diagnostic.Path != null && CoverageDiagnosticName.Collides(diagnostic.Path, [manifest, tablePath, evidencePath])) return 2;
+            if (comparer.Equals(manifest, tablePath) || comparer.Equals(manifest, evidencePath) || comparer.Equals(tablePath, evidencePath))
                 throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputAlias, "Output paths must be distinct from inputs and each other.");
             var input = CoverageBuildInput.Read(manifest);
-            string[] sourceIdentities = input.SourcePaths.Select(CoveragePathIdentity.Resolve).ToArray();
-            if (diagnosticIdentity != null && sourceIdentities.Any(p => comparer.Equals(p, diagnosticIdentity))) return 2;
+            if (diagnostic.Path != null && CoverageDiagnosticName.Collides(diagnostic.Path, input.SourcePaths)) return 2;
             diagnostic.Input = input;
-            if (sourceIdentities.Any(p => comparer.Equals(p, tableIdentity) || comparer.Equals(p, evidenceIdentity)))
+            if (input.SourcePaths.Any(p => comparer.Equals(p, tablePath) || comparer.Equals(p, evidencePath)))
                 throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputAlias, "Outputs cannot overwrite checked inputs.");
             CoverageEvidenceManifest evidence;
             byte[]? tableBytes = null;

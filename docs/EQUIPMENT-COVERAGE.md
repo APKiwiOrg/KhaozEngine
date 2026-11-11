@@ -167,8 +167,8 @@ from acceptance evidence. It records candidate construction outcomes and witness
 pairs, claims and holes. Blocking verification adds dense row reasons, missing domains and separate
 changed-record and inherited depth findings. A successful run replaces stale diagnostics with an
 accepted outcome and zero blocking findings, while retaining inherited fit information. Malformed
-invocations or inputs leave diagnostics untouched. The path must differ from all inputs and accepted
-outputs after resolving symbolic links and junctions, including existing ancestors of new destinations.
+invocations or inputs leave diagnostics untouched. Its file name must differ from the file name of every
+input and accepted output of the run, in any directory, so no linked or alternate spelling can alias one.
 Exact category totals and omitted counts survive deterministic truncation at the existing
 64 MiB artifact limit. Acceptance gates, exit codes and refused-run table/evidence preservation stay
 unchanged within one tool build. Evidence binds the producing tool and Render3D hashes, so another build

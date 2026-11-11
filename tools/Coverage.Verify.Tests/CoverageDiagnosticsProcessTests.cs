@@ -46,7 +46,7 @@ public sealed class CoverageDiagnosticsProcessTests
     [Theory]
     [InlineData("build")]
     [InlineData("verify-samples")]
-    public async Task Accepted_sample_commands_replace_stale_diagnostics_and_preserve_legacy_output_bytes(string command)
+    public async Task Accepted_sample_commands_replace_stale_diagnostics_and_preserve_same_build_output_bytes(string command)
     {
         using var files = new CoverageBuildFiles("diagnostics");
         Assert.Equal(0, (await Execute(files, "build", diagnostics: false)).ExitCode);
@@ -176,15 +176,67 @@ public sealed class CoverageDiagnosticsProcessTests
         Assert.Equal(original, File.ReadAllBytes(path));
     }
 
-    [Fact]
-    public async Task Failed_diagnostic_staging_cannot_partially_publish_accepted_artifacts()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Failed_diagnostic_publication_rolls_back_accepted_artifacts(bool existing)
     {
         using var files = new CoverageBuildFiles("diagnostics");
+        if (existing)
+        {
+            Assert.Equal(0, (await Execute(files, "build", diagnostics: false)).ExitCode);
+            // Valid noncanonical whitespace makes a missed evidence rollback observable.
+            File.WriteAllText(files.EvidencePath, JsonNode.Parse(File.ReadAllBytes(files.EvidencePath))!
+                .ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }
+        byte[]? table = existing ? File.ReadAllBytes(files.TablePath) : null;
+        byte[]? evidence = existing ? File.ReadAllBytes(files.EvidencePath) : null;
         string directory = Path.Combine(files.Folder, "directory");
         Directory.CreateDirectory(directory);
         Assert.Equal(1, (await Execute(files, "build", path: directory)).ExitCode);
-        Assert.False(File.Exists(files.TablePath));
-        Assert.False(File.Exists(files.EvidencePath));
+        if (existing)
+        {
+            Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+            Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
+        }
+        else
+        {
+            Assert.False(File.Exists(files.TablePath));
+            Assert.False(File.Exists(files.EvidencePath));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Missing_diagnostic_parent_refuses_staging_before_accepted_publication(bool existing)
+    {
+        using var files = new CoverageBuildFiles("diagnostics");
+        if (existing)
+        {
+            Assert.Equal(0, (await Execute(files, "build", diagnostics: false)).ExitCode);
+            // Valid noncanonical whitespace makes a missed evidence rollback observable.
+            File.WriteAllText(files.EvidencePath, JsonNode.Parse(File.ReadAllBytes(files.EvidencePath))!
+                .ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }
+        byte[]? table = existing ? File.ReadAllBytes(files.TablePath) : null;
+        byte[]? evidence = existing ? File.ReadAllBytes(files.EvidencePath) : null;
+        string path = Path.Combine(files.Folder, "missing", "diagnostics.json");
+        Assert.Equal(1, (await Execute(files, "build", path: path)).ExitCode);
+        Assert.False(File.Exists(path));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(path)));
+        Assert.Empty(Directory.GetFiles(files.Folder, "*.tmp"));
+        Assert.Empty(Directory.GetFiles(files.Folder, "*.bak"));
+        if (existing)
+        {
+            Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+            Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
+        }
+        else
+        {
+            Assert.False(File.Exists(files.TablePath));
+            Assert.False(File.Exists(files.EvidencePath));
+        }
     }
 
     [Theory]

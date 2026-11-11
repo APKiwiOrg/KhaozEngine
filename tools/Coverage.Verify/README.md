@@ -23,8 +23,9 @@ dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHA
 
 `version` and `--version` return exit 0 and one JSON object with `engineVersion` and
 `carryArithmeticContractVersion`. Record both with consumer verification evidence. A malformed invocation
-returns exit 2. The three verification commands retain the same parser, output bytes, refusal codes and
-existing-output preservation as the source-built executable commands below.
+returns exit 2. The packaged executable exposes the same parser, refusal codes and existing-output
+preservation contract as the source-built commands below. Evidence byte identity requires the same
+tool and Render3D producer builds.
 
 `CoverageExactConstructor` owns a copy of the inverse-bind palette and reusable per-pose scratch.
 `TryConstruct` skins the source, applies frozen refinement, conforms and corrects the core, blends
@@ -159,9 +160,17 @@ non-acceptance JSON document. For example:
 
 The schema is `khaozengine.coverage-diagnostics/1`, with scope `diagnostic-not-acceptance`. This file
 is never accepted evidence and cannot replace either evidence scope. It changes no selection,
-certification, depth gate or exit code. Without the option the existing output bytes and stderr are
-unchanged. Diagnostics cannot share the manifest, table, evidence or any checked source path. Such
-an invocation exits 2 without writing. Malformed input or resumed evidence also leaves existing
+certification or depth gate. Within one tool build, enabling or omitting the option produces identical
+table and evidence bytes, refusal rules, existing-output preservation, stderr and exit codes for distinct
+writable destinations. Build, replay and depth arithmetic, ordering and refusal order are unchanged.
+Evidence includes the producing tool and Render3D assembly hashes, so evidence from another build is refused on
+resume with `ProvenanceMismatch`, as before. Cross-build evidence bytes are not identical.
+
+Diagnostics cannot share the manifest, table, evidence or any checked source identity. The check
+resolves symbolic links and junctions in every existing ancestor and the final component, including
+for destinations that do not exist yet, using case-insensitive comparison on Windows and macOS. Such
+an invocation exits 2 before publication and leaves existing files untouched. Accepted-output aliases
+still refuse with `OutputAlias` and exit 1. Malformed input or resumed evidence also leaves existing
 diagnostics untouched.
 
 For parsed work, exit 0 writes `outcome: "accepted"` and zero blocking findings, replacing stale

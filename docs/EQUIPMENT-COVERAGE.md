@@ -168,9 +168,13 @@ pairs, claims and holes. Blocking verification adds dense row reasons, missing d
 changed-record and inherited depth findings. A successful run replaces stale diagnostics with an
 accepted outcome and zero blocking findings, while retaining inherited fit information. Malformed
 invocations or inputs leave diagnostics untouched. The path must differ from all inputs and accepted
-outputs. Exact category totals and omitted counts survive deterministic truncation at the existing
+outputs after resolving symbolic links and junctions, including existing ancestors of new destinations.
+Exact category totals and omitted counts survive deterministic truncation at the existing
 64 MiB artifact limit. Acceptance gates, exit codes and refused-run table/evidence preservation stay
-unchanged. See the [diagnostic schema](../tools/Coverage.Verify/README.md#optional-refusal-diagnostics)
+unchanged within one tool build. Evidence binds the producing tool and Render3D hashes, so another build
+produces different provenance bytes and its evidence is refused on resume. Build, replay and depth
+arithmetic, ordering and refusal order are unchanged. See the
+[diagnostic schema](../tools/Coverage.Verify/README.md#optional-refusal-diagnostics)
 for field names and publication details.
 
 ## Consumer example and lifetime

@@ -34,6 +34,11 @@ internal ref struct TileWaterPreparedQuery
             return enter <= exit;
         }
     }
+    internal struct PlaneState
+    {
+        internal byte Mask;
+        internal I Expansion, Start, Drive;
+    }
     internal struct Header
     {
         internal V Start, Drive;
@@ -47,16 +52,19 @@ internal ref struct TileWaterPreparedQuery
     readonly TileWaterConvexShape _shape;
     readonly Span<BasisState> _states;
     readonly Span<ClipTerm> _clips;
+    readonly Span<PlaneState> _planeTerms;
     Header _header;
     int Stride => _shape.Planes.Length + 3;
 
-    internal TileWaterPreparedQuery(TileWaterConvexShape shape, Span<BasisState> states, Span<ClipTerm> clips,
+    internal TileWaterPreparedQuery(TileWaterConvexShape shape, Span<BasisState> states, Span<ClipTerm> clips, Span<PlaneState> planeTerms,
         V start, V drive, I core, float radius, double heightError = 0, double horizontalError = 0)
     {
         _shape = shape;
         _states = states[..shape.Bases.Length];
         _clips = clips[..(shape.Bases.Length * (shape.Planes.Length + 3))];
         _states.Clear();
+        _planeTerms = planeTerms[..shape.Planes.Length];
+        _planeTerms.Clear();
         _header = new()
         {
             Start = start, Drive = drive, Core = core, Radius = radius,
@@ -104,7 +112,7 @@ internal ref struct TileWaterPreparedQuery
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Projecting = true;
 #endif
-                state.Projected = _shape.Project(basis, start, drive, core, heightError, horizontalError,
+                state.Projected = Project(basis, start, drive, core, heightError, horizontalError,
                     state.Lambda, state.Velocity, out state.Q, out state.V);
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Projecting = false;
@@ -211,7 +219,8 @@ internal ref struct TileWaterPreparedQuery
 
     internal bool CanRetain => _header.HasControlToken;
     internal int StorageBytes => Unsafe.SizeOf<Header>() +
-        _states.Length * Unsafe.SizeOf<BasisState>() + _clips.Length * Unsafe.SizeOf<ClipTerm>();
+        _states.Length * Unsafe.SizeOf<BasisState>() + _clips.Length * Unsafe.SizeOf<ClipTerm>() +
+        _planeTerms.Length * Unsafe.SizeOf<PlaneState>();
 
     internal void CopyTo(Span<byte> target)
     {
@@ -219,7 +228,9 @@ internal ref struct TileWaterPreparedQuery
         MemoryMarshal.Write(target, in _header);
         Span<byte> states = MemoryMarshal.AsBytes(_states);
         states.CopyTo(target[headerBytes..]);
-        MemoryMarshal.AsBytes(_clips).CopyTo(target[(headerBytes + states.Length)..]);
+        Span<byte> clips = MemoryMarshal.AsBytes(_clips);
+        clips.CopyTo(target[(headerBytes + states.Length)..]);
+        MemoryMarshal.AsBytes(_planeTerms).CopyTo(target[(headerBytes + states.Length + clips.Length)..]);
     }
 
     internal static TileWaterPreparedQuery Restore(TileWaterConvexShape shape, Span<byte> source)
@@ -230,15 +241,108 @@ internal ref struct TileWaterPreparedQuery
         int clipBytes = shape.Bases.Length * (shape.Planes.Length + 3) * Unsafe.SizeOf<ClipTerm>();
         return new(shape, header,
             MemoryMarshal.Cast<byte, BasisState>(source.Slice(headerBytes, stateBytes)),
-            MemoryMarshal.Cast<byte, ClipTerm>(source.Slice(headerBytes + stateBytes, clipBytes)));
+            MemoryMarshal.Cast<byte, ClipTerm>(source.Slice(headerBytes + stateBytes, clipBytes)),
+            MemoryMarshal.Cast<byte, PlaneState>(source.Slice(headerBytes + stateBytes + clipBytes, shape.Planes.Length * Unsafe.SizeOf<PlaneState>())));
     }
 
-    TileWaterPreparedQuery(TileWaterConvexShape shape, Header header, Span<BasisState> states, Span<ClipTerm> clips)
+    TileWaterPreparedQuery(TileWaterConvexShape shape, Header header, Span<BasisState> states, Span<ClipTerm> clips, Span<PlaneState> planeTerms)
     {
         _shape = shape;
         _header = header;
         _states = states;
         _clips = clips;
+        _planeTerms = planeTerms;
+    }
+
+    bool Project(B basis, V start, V drive, I core, double heightError, double horizontalError,
+        Span<I> lambda, Span<I> velocity,
+        out V q, out V v)
+    {
+        q = start;
+        v = drive;
+        if (basis.A < 0) return true;
+        TileWaterConvexShape.Plane a = _shape.Planes[basis.A];
+        I rhsA = StartDot(basis.A) - Expanded(basis.A), speedA = DriveDot(basis.A);
+        I aa = V.Dot(a.Normal, a.Normal);
+        if (basis.B < 0)
+        {
+            lambda[0] = rhsA / aa;
+            velocity[0] = speedA / aa;
+        }
+        else
+        {
+            TileWaterConvexShape.Plane b = _shape.Planes[basis.B];
+            I rhsB = StartDot(basis.B) - Expanded(basis.B), speedB = DriveDot(basis.B);
+            V cross = V.Cross(a.Normal, b.Normal);
+            if (basis.C < 0)
+            {
+                I bb = V.Dot(b.Normal, b.Normal), ab = V.Dot(a.Normal, b.Normal), determinant = V.Dot(cross, cross);
+                if (!(determinant.Low > 0)) return false;
+                lambda[0] = (bb * rhsA - ab * rhsB) / determinant;
+                lambda[1] = (aa * rhsB - ab * rhsA) / determinant;
+                velocity[0] = (bb * speedA - ab * speedB) / determinant;
+                velocity[1] = (aa * speedB - ab * speedA) / determinant;
+            }
+            else
+            {
+                TileWaterConvexShape.Plane c = _shape.Planes[basis.C];
+                V bc = V.Cross(b.Normal, c.Normal), ca = V.Cross(c.Normal, a.Normal);
+                I determinant = V.Dot(a.Normal, bc);
+                if (determinant.Low <= 0 && determinant.High >= 0) return false;
+                q = (bc * Expanded(basis.A) + ca * Expanded(basis.B) + cross * Expanded(basis.C)) * (I.Point(1) / determinant);
+                v = default;
+                V difference = start - q;
+                lambda[0] = V.Dot(difference, bc) / determinant;
+                lambda[1] = V.Dot(difference, ca) / determinant;
+                lambda[2] = V.Dot(difference, cross) / determinant;
+                velocity[0] = V.Dot(drive, bc) / determinant;
+                velocity[1] = V.Dot(drive, ca) / determinant;
+                velocity[2] = V.Dot(drive, cross) / determinant;
+                return true;
+            }
+            q -= b.Normal * lambda[1];
+            v -= b.Normal * velocity[1];
+        }
+        q -= a.Normal * lambda[0];
+        v -= a.Normal * velocity[0];
+        return double.IsFinite(q.X.Low) && double.IsFinite(q.Y.Low) && double.IsFinite(q.Z.Low) &&
+            double.IsFinite(v.X.Low) && double.IsFinite(v.Y.Low) && double.IsFinite(v.Z.Low);
+    }
+
+    I Expanded(int i)
+    {
+        ref PlaneState state = ref _planeTerms[i];
+        if ((state.Mask & 1) == 0)
+        {
+            state.Expansion = _shape.Planes[i].Expanded(_header.Core, _header.HeightError, _header.HorizontalError);
+            state.Mask |= 1;
+            Filled();
+        }
+        return state.Expansion;
+    }
+
+    I StartDot(int i)
+    {
+        ref PlaneState state = ref _planeTerms[i];
+        if ((state.Mask & 2) == 0)
+        {
+            state.Start = V.Dot(_shape.Planes[i].Normal, _header.Start);
+            state.Mask |= 2;
+            Filled();
+        }
+        return state.Start;
+    }
+
+    I DriveDot(int i)
+    {
+        ref PlaneState state = ref _planeTerms[i];
+        if ((state.Mask & 4) == 0)
+        {
+            state.Drive = V.Dot(_shape.Planes[i].Normal, _header.Drive);
+            state.Mask |= 4;
+            Filled();
+        }
+        return state.Drive;
     }
 
     bool ActiveClip(int ordinal, int i, ref BasisState state, ref double enter, ref double exit)
@@ -259,7 +363,7 @@ internal ref struct TileWaterPreparedQuery
         if ((state.ClipMask & (1 << slot)) == 0)
         {
             var plane = _shape.Planes[i];
-            Fill(ref term, V.Dot(plane.Normal, state.Q) - plane.Expanded(_header.Core, _header.HeightError, _header.HorizontalError),
+            Fill(ref term, V.Dot(plane.Normal, state.Q) - Expanded(i),
                 V.Dot(plane.Normal, state.V));
             state.ClipMask |= (ushort)(1 << slot);
         }
@@ -287,10 +391,13 @@ internal sealed class TileWaterPreparationWorkspace
     readonly TileWaterPreparedQuery.ClipTerm[] _clips = new TileWaterPreparedQuery.ClipTerm[
         TileWaterPreparedQuery.MaxBases * (TileWaterPreparedQuery.MaxPlanes + 3)];
 
+    readonly TileWaterPreparedQuery.PlaneState[] _planeTerms = new TileWaterPreparedQuery.PlaneState[TileWaterPreparedQuery.MaxPlanes];
+
     internal int PayloadBytes => _states.Length * Unsafe.SizeOf<TileWaterPreparedQuery.BasisState>() +
-        _clips.Length * Unsafe.SizeOf<TileWaterPreparedQuery.ClipTerm>();
+        _clips.Length * Unsafe.SizeOf<TileWaterPreparedQuery.ClipTerm>() +
+        _planeTerms.Length * Unsafe.SizeOf<TileWaterPreparedQuery.PlaneState>();
 
     internal TileWaterPreparedQuery Prepare(TileWaterConvexShape shape, V start, V drive, I core, float radius,
         double heightError = 0, double horizontalError = 0) =>
-        new(shape, _states, _clips, start, drive, core, radius, heightError, horizontalError);
+        new(shape, _states, _clips, _planeTerms, start, drive, core, radius, heightError, horizontalError);
 }

@@ -27,9 +27,9 @@ internal static class FrozenWaterComparison
         var token = identity ?? MovementWaterFieldTests.Identity;
         var expected = frozen.Trace(query, origin, token, expectedSpans.AsSpan(0, spanCapacity), expectedContacts.AsSpan(0, contactCapacity));
         var result = actual.TraceWater(query, origin, token, actualSpans.AsSpan(0, spanCapacity), actualContacts.AsSpan(0, contactCapacity));
-        WaterCoverageComparison.Equal(expected, result, expectedSpans, actualSpans, expectedContacts, actualContacts);
-        Assert.All(actualSpans.Skip(result.SpansWritten), value => Assert.Equal(SpanSentinel, value));
-        Assert.All(actualContacts.Skip(result.ContactsWritten), value => Assert.Equal(ContactSentinel, value));
+        Equal(expected, result, expectedSpans, actualSpans, expectedContacts, actualContacts);
+        Assert.All(actualSpans.Skip(result.SpansWritten), value => WaterCoverageComparison.Span(SpanSentinel, value));
+        Assert.All(actualContacts.Skip(result.ContactsWritten), value => WaterCoverageComparison.Contact(ContactSentinel, value));
         return result;
     }
 
@@ -47,11 +47,16 @@ internal static class FrozenWaterComparison
         var actual = TileWaterPrismCoverage.Trace(geometry.Prisms, geometry.Faces, geometry.Ground, geometry.PointIndex,
             geometry.PrismStarts, geometry.FaceStarts, query, Vector3.Zero, identity,
             actualSpans.AsSpan(0, spanCapacity), actualContacts.AsSpan(0, contactCapacity));
-        WaterCoverageComparison.Equal(expected, actual, expectedSpans, actualSpans, expectedContacts, actualContacts);
-        Assert.All(actualSpans.Skip(actual.SpansWritten), value => Assert.Equal(SpanSentinel, value));
-        Assert.All(actualContacts.Skip(actual.ContactsWritten), value => Assert.Equal(ContactSentinel, value));
+        Equal(expected, actual, expectedSpans, actualSpans, expectedContacts, actualContacts);
+        Assert.All(actualSpans.Skip(actual.SpansWritten), value => WaterCoverageComparison.Span(SpanSentinel, value));
+        Assert.All(actualContacts.Skip(actual.ContactsWritten), value => WaterCoverageComparison.Contact(ContactSentinel, value));
         return actual;
     }
+
+    internal static void Equal(MovementCoverageResult expected, MovementCoverageResult actual,
+        MovementCoverageSpan[] expectedSpans, MovementCoverageSpan[] actualSpans,
+        MovementDomainContact[] expectedContacts, MovementDomainContact[] actualContacts) =>
+        WaterCoverageComparison.Equal(expected, actual, expectedSpans, actualSpans, expectedContacts, actualContacts);
 
     internal static void Range(FrozenTileWaterConvexShape.Range expected, R actual)
     {

@@ -1,7 +1,7 @@
 # Water prism coverage census
 
-Issue [#1755](https://github.com/APKiwiOrg/KhaozEngine/issues/1755) needs a reproducible baseline before a faster
-nonuniform water kernel is designed. These authored fixtures are shared by `TileWaterPrismCensusTests` and the
+Issue [#1755](https://github.com/APKiwiOrg/KhaozEngine/issues/1755) tracks exact output and executed work in the prepared
+nonuniform water kernel and sampler memo. These authored fixtures are shared by `TileWaterPrismCensusTests` and the
 benchmark's `--water-prism` mode. They use the actual `PlayerMoveSimulator`, ordinary Contact binding, tile
 colliders and Bepu query source. A measured authority operation includes `BeginExplicitRead`, `Step` and read
 disposal. Replay starts from the same basis under a fresh read. The next tick starts from the preceding result.
@@ -50,25 +50,31 @@ arbitrary file writes from custom build targets. Use a normal build for timing a
 build-slot --label water-prism-census -- dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release -p:WaterPrismCensus=true --filter FullyQualifiedName~TileWaterPrismCensusTests
 ```
 
-The test records authority tick 0, its independent authority replay and authority tick 1. Integer work snapshots
+The sampler memo is reset after the four settling steps. The test records cold authority tick 0, its
+independent authority replay and authority tick 1 against the resulting warm table. Geometry caches are already
+warm from settling. A moving next tick can introduce new keys and candidate geometry. Integer work snapshots
 pin each trace's selected prisms and faces, intersections at selection, span reassembly, Append overlap and dry
 classification, attempted projection bases by rank, projection dot products, other dot products, retained pieces
 and faces, spans, contacts, witness fallbacks and seam proof activity. Construction of immutable prism faces and
-projection basis lists happens before a step and is excluded. `bases` counts per-intersection projection attempts,
-not list construction. `projection-dots` includes repeated normal-normal coefficients as well as path terms.
+projection basis lists happens before a step and is excluded. `bases` counts visited basis/window pairs,
+excluding retained full-window clip rejections skipped by valid subwindows. It does not count list construction.
+`projection-dots` counts executed query and geometry dots,
+excluding values reused from preparations or compatible shape entries.
 `other-dots` includes clipping, containment, witness lookup and seam proof dot products.
 
 `TileWaterQueryWork.ConvexIntersections` counts actual fraction-window evaluations. `ShapePreparations` counts
-preparations and `LazyCoefficientFills` counts first-use coefficient computation. The latter two remain zero
-until the prepared evaluator is introduced. Their census keys are `shape-preparations` and
-`lazy-coefficient-fills`. Logical prism traces, memo hits and memo misses are separate diagnostics owned by
-the sampler memo. A memo hit must not fabricate evaluation, preparation or coefficient work. Frozen-reference
+preparations and `LazyCoefficientFills` counts first-use clip, post-feasibility, root and plane-value groups.
+Their census keys are `shape-preparations` and `lazy-coefficient-fills`. `PrismTraces`, `MemoHits` and `MemoMisses`
+are logical sampler work, recorded as `prism-traces`, `memo-hits` and `memo-misses`. The explicit
+`convex-intersections` count equals the number of observed window inputs. A memo hit must not fabricate
+evaluation, preparation or coefficient work. Frozen-reference
 execution suppresses production diagnostic counters and is excluded from the census.
 
 SHA-256 input hashes use shape identity, every interval endpoint of start, drive and core, radius, the closed
 fraction window and representation errors. The shape identity binds immutable planes and seam certificates.
 BinaryWriter preserves signed zero bits. Different objects with equal geometry are deliberately treated as
-different inputs, making repeat counts conservative. No result is cached. Repeated whole queries are reported
+different inputs, making repeat counts conservative. Memo hits retain their logical query row but have no
+kernel input hashes. Repeated whole queries are reported
 separately from repeated exact intersection calls. Caller stacks are explanatory data rather than golden values.
 
 The height culling census expands every bound by representation error and coverage skin. A prism occupies its
@@ -82,12 +88,30 @@ submerged under this bound.
 
 Every counted local rejection is checked against the actual solve. It must be a resolved miss, with no earlier
 refusal. This validates the reported removals for the recorded inputs. It is not a proof for other fixtures.
-Both moving-bank cases contain a fully dry motion-resolve trace inside an otherwise wet gameplay step. Each can
-remove that trace's eight solves, or 8 of 202 solves in the step. No recorded trace qualifies as fully submerged.
+Both moving-bank cases contain a fully dry motion-resolve trace inside an otherwise wet gameplay step.
+No recorded trace qualifies as fully submerged. These bounds remain observations and are not applied as culling.
 
 Coverage output compares bitwise with the frozen prism evaluator through `WaterCoverageComparison` and
 `WaterCoverageDigest`. Its shared helpers and snapshot boundary are listed below. Independent box and seam
 tests remain necessary. No timing assertion is installed.
+
+## Cold and warm memo work
+
+| Case | Cold prep / eval | Cold hits / misses | Next-tick prep / eval | Next-tick hits / misses |
+| --- | --- | --- | --- | --- |
+| bank-across | 32 / 148 | 3 / 4 | 32 / 148 | 3 / 4 |
+| bank-along | 32 / 148 | 3 / 4 | 32 / 129 | 3 / 4 |
+| bank-stand | 8 / 18 | 3 / 1 | 0 / 0 | 4 / 0 |
+| deep-swim | 18 / 39 | 3 / 3 | 24 / 61 | 4 / 2 |
+| deep-tread | 6 / 13 | 3 / 1 | 0 / 0 | 4 / 0 |
+| dry-control | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| flat-control | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| flat-neighbour | 36 / 57 | 3 / 3 | 24 / 61 | 4 / 2 |
+| swim-entry | 48 / 137 | 3 / 4 | 30 / 100 | 3 / 3 |
+
+The table is the committed census baseline, not a timing estimate. All nine coverage digests and published
+span/contact counts retain their pre-optimization values. Moving bodies can miss on the next tick even with a
+warm table. Idle standing and treading reuse all four calls in this fixture.
 
 ## Frozen differential kernel contract
 
@@ -101,7 +125,10 @@ behavior, including numerical behavior that might later receive a separately rev
 `Category=WaterKernelContract` selects the differential corpus and shape/trace matrix, including Diagnostic
 storage boundaries, the 252-sample patch sweeps and all 510 existing bank-lift inputs. These include every trace
 over four consecutive authority ticks, stratified samples, translated origins and adjacent floats, with
-sentinel-filled caller buffers. The normal CI filter skips Diagnostic cases. Its small corpus instead adds
+sentinel-filled caller buffers compared by bits through the entire supplied arrays. Sampler and synthetic
+trace-matrix cases run bypassed, cold and repeated warm reads. The seeded corpus also replays in shuffled order,
+and memo tests retain their bypassed-sampler oracle plus frozen census checks. Shape windows exercise the kernel
+directly below the sampler boundary. The normal CI filter skips Diagnostic cases. Its small corpus instead adds
 frozen comparisons to the existing census observations, avoiding another construction of all nine worlds.
 
 ```bash

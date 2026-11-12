@@ -12,6 +12,10 @@ namespace KhaozEngine.TileWorld.Physics;
 /// <para>Every water tile's surface is collected once into a per-tile table, so a call is one lookup with no search
 /// and no allocation. The table is a snapshot of the document it was built from, so a document edited after
 /// <see cref="TileWorldColliders.Build(TileWorldDocument, TileWorldCatalogs, TileColliderOptions?)"/> needs a rebuild.</para>
+/// <para>A computed nonuniform trace prepares each selected prism and face once. Hit preparations occupy an
+/// optional 4 MiB per-thread slab, with one temporary workspace for 176 bases and ten planes. Exhaustion uses
+/// direct evaluation. Geometry-only terms are cached under matching floating point controls. Every miss resets
+/// query headers and lazy masks, and no preparation survives its trace.</para>
 /// <para>The table and the water field are read-only after construction, so several threads may call the sampler at
 /// once. The field's columns, boundaries and index are immutable. Prism traces use bounded per-thread scratch and
 /// an instance-owned exact-query memo with four thread tables of 128 entries each, retaining at most eight spans

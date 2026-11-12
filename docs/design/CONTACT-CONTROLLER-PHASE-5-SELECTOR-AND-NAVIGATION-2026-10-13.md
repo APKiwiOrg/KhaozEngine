@@ -93,10 +93,10 @@ Facts at `ec20a2b61`, from code.
   (`MoveToRange.cs:131-139`, `SwimPace.cs:16`, `DirectMoveToRange.cs:117`).
 - The current movement transport (`MoveProtocol.WireProtocolVersion`) carries the `MovementState` fields the explicit heads use to replicate the
   contact controller. Neither tuning nor any profile identity crosses the wire.
-- The first adopter, Grimhollow, runs ordinary heads with `TileMediumSampler` water, which keeps one surface per water
-  tile and discards body identity and bed data (`TileMediumSampler.cs:21-47`). `TileWorldColliders` installs every
-  collider itself with a known kind (`TileWorldColliders.cs:135-143`). Bed corners are in
-  `TileGroundTriangles.cs:91-98`.
+- The initial provider audit found a surface-only `TileMediumSampler`. The current captured water field keeps
+  body identity and finite drawn-triangle beds, with exact prepared prism coverage and a bounded query memo.
+  The [package water contract](../../KhaozEngine.TileWorld.Physics/README.md) owns its current limits.
+  `TileWorldColliders` installs colliders with their known kind and captured bed triangles.
 
 ## Inherited obligations for 5a
 

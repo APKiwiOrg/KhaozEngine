@@ -10711,6 +10711,21 @@ and contact columns for local conversion. TileWorld indexes captured rounded col
 addresses do not rely on a fixed neighbouring-tile radius. Analytic residency holes refuse only queries
 needing their missing ground data. See [TileWorld setup](../KhaozEngine.TileWorld.Physics/README.md#use).
 
+`TileMediumSampler` captures finite drawn-triangle water beds with the installation. Nonuniform path traces
+prepare each selected prism and face once per computed trace, retaining hit preparations in a bounded 4 MiB
+per-thread slab. Exhaustion uses the direct evaluator without changing capacity or precision policy. Geometry
+terms are reused only under the floating point controls that produced them. Rebuild the sampler after authored
+water or bed changes.
+
+The prism path also owns four claimed thread tables of at most 128 exact results each, retaining up to eight
+spans and 48 contacts per entry. Query float bits, uncombined physics origin, space identifiers, caller buffer
+lengths and current FP controls must match. Validation still runs on every call, and replay uses the current
+caller's identity and space references. Entries survive ticks until FIFO eviction but do not guarantee a hit
+after worker changes or for oversized results. Unsupported control readers run uncached. Every coverage value,
+error bit and refusal is preserved. Sticky FP status and the reference identity of a boundary string freshly
+allocated by recomputation are excluded. See the [TileWorld water contract](../KhaozEngine.TileWorld.Physics/README.md)
+for bounds and ownership.
+
 The separate explicit environment values use `MovementAvailability.Unresolved` by default.
 `MovementWaterPoint` requires world-qualified space/domain identity and actual vertical containment
 before a wet result can be Known. `MovementWaterInterval.UpperY` may be a flooded cave ceiling below

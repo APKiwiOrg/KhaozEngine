@@ -20,6 +20,17 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   owners must advance their supplied live world once per receive boundary before applying its batch
   ([#1771](https://github.com/APKiwiOrg/KhaozEngine/issues/1771)).
 
+- Nonuniform tile-water coverage reuses exact shape preparations within each trace and geometry terms under
+  matching floating point controls. The fixed Contact census reduces wading from 202 convex evaluations to
+  148 evaluations and 32 shape preparations, and standing from 72 to 18 evaluations and eight preparations.
+  An instance-owned exact-query memo retains at most 128 results on each of four claimed thread tables,
+  with eight spans and 48 contacts per result. It preserves query bits, caller capacities, identities and
+  floating point controls, and survives ticks only while entries and thread affinity survive. Unsupported
+  control readers, oversized results and exhausted storage run uncached. Span/contact values, certified error
+  bits and refusal policy are unchanged. Sticky FP status and freshly allocated boundary-string reference
+  identity are outside the memo equivalence contract
+  ([#1755](https://github.com/APKiwiOrg/KhaozEngine/issues/1755)).
+
 ## 23.9.1
 
 2026-11-12

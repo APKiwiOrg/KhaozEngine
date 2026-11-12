@@ -329,17 +329,19 @@ Four thread tables are claimed without waiting. Each holds 128 entries and repla
 retaining at most 8 spans and 48 contacts per result. Caller space identifiers over 256 characters are not
 retained. Hits allocate nothing and a warm table adds no allocation on a miss. The key preserves every query
 float bit, including signed zero, the uncombined physics origin, both space identifiers, the received buffer
-lengths and the calling thread's floating point controls. Identity and input validation still run per call.
-Replayed contacts carry the current caller's space string references, as recomputation would.
+lengths and the calling thread's floating point controls. A hit reproduces every output bit, caller-owned
+references, caller buffer contents, refusal kinds and capacities, and all validation outside the kernel.
+Identity and input validation still run per call. Replayed contacts carry the current caller's space string
+references, as recomputation would. A joined-triangle boundary id that recomputation allocates fresh is replayed
+by string value, without a new allocation or a reference-identity guarantee for that string.
 Refusals retain their reported capacities and leave caller buffers untouched. Known results copy only their
 written prefixes from owned storage. Native control reads cover rounding and denormal input/output handling
-without changing the environment. The same native read captures sticky exception status, including ARM's
-cumulative saturation flag or the distinct x87 and SSE exception flags. Each entry stores outgoing status
-captured after recomputation. A hit requires the incoming status to contain every stored flag. Otherwise the
-kernel recomputes and raises the real flags. Stored status can include unrelated incoming flags, so this rule
-can cause extra misses. Status is not part of the key and replay never raises flags artificially.
-An unavailable control/status reader bypasses the memo. Windows currently bypasses it because the existing
-reader exposes controls only, and the separate CRT status API checks pending unmasked exceptions.
+without changing the environment. Sticky floating point status flags are outside this equivalence contract.
+The unchanged kernel itself can leave different sticky status for the same inputs across compiled tiers, and
+validation around the sampler also performs arithmetic. Executed-work counters deliberately measure actual
+work, so a hit does not count skipped kernel work. Controls remain part of the key because rounding and denormal
+handling affect numeric results. Windows x64 uses its control-only reader and can memoize. Platforms without a
+supported control reader bypass the memo.
 Entries survive ticks, but thread changes, eviction, large results and exhausted thread slots can prevent reuse.
 A hit is an optimization, never a guarantee. The flat specialization and point queries do not use the memo.
 

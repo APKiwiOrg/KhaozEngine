@@ -66,11 +66,11 @@ internal sealed class TileWaterTraceMemo
 
     // Identity is deliberately absent. A validated caller receives its own identity on replay.
     readonly record struct Value(MovementAvailability Availability, int Spans, int RequiredSpans,
-        int Contacts, int RequiredContacts, float Error, ulong Status)
+        int Contacts, int RequiredContacts, float Error)
     {
-        internal Value(in MovementCoverageResult result, ulong status) : this(result.Availability, result.SpansWritten,
+        internal Value(in MovementCoverageResult result) : this(result.Availability, result.SpansWritten,
             result.RequiredSpanCapacity, result.ContactsWritten, result.RequiredContactCapacity,
-            result.CertifiedErrorMetres, status) { }
+            result.CertifiedErrorMetres) { }
         internal MovementCoverageResult Stamp(in MovementQueryIdentity identity) =>
             new(Availability, Spans, RequiredSpans, Contacts, RequiredContacts, Error, identity);
     }
@@ -84,24 +84,20 @@ internal sealed class TileWaterTraceMemo
         int _count, _next;
         internal int CountForTests => _count;
 
-        internal bool TryRead(in Key key, in MovementSpaceKey space, in MovementQueryIdentity identity, ulong status,
+        internal bool TryRead(in Key key, in MovementSpaceKey space, in MovementQueryIdentity identity,
             Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts, out MovementCoverageResult result)
         {
             for (int i = 0; i < _count; i++)
                 if (_keys[i] == key)
                 {
                     Value value = _values[i];
-                    // Stored outgoing status is a superset of what the kernel raised, including
-                    // any incoming sticky flags. Requiring all of it can only cause extra misses,
-                    // never a wrong hit. No flags are raised artificially and status is not a key.
-                    if ((status & value.Status) != value.Status) continue;
                     _spans.AsSpan(i * SpanLimit, value.Spans).CopyTo(spans);
                     for (int c = 0; c < value.Contacts; c++)
                     {
                         MovementDomainContact contact = _contacts[i * ContactLimit + c];
                         // Space strings belong to this caller. Domain and interval ids belong to
                         // the captured sampler. Boundary ids do too, except the freshly allocated
-                        // joined-triangle id, whose immutable value has no promised stable identity.
+                        // joined-triangle id. Its immutable value is replayed without a new string allocation.
                         contacts[c] = new(contact.Domain, space, contact.Interval, contact.IntervalColumnXZ,
                             contact.Normal, contact.Fraction, contact.BoundaryId, contact.CoverageRegionHandle,
                             contact.Overlap, contact.SpanOverlap);
@@ -114,13 +110,13 @@ internal sealed class TileWaterTraceMemo
         }
 
         internal void Store(in Key key, in MovementCoverageResult result,
-            ReadOnlySpan<MovementCoverageSpan> spans, ReadOnlySpan<MovementDomainContact> contacts, ulong status)
+            ReadOnlySpan<MovementCoverageSpan> spans, ReadOnlySpan<MovementDomainContact> contacts)
         {
             if (result.SpansWritten > SpanLimit || result.ContactsWritten > ContactLimit ||
                 key.Space.WorldId.Length > SpaceIdCharacterLimit || key.Space.LocalId.Length > SpaceIdCharacterLimit) return;
             int at = _next;
             _keys[at] = key;
-            _values[at] = new(result, status);
+            _values[at] = new(result);
             // Clear replaced references as well as owning every written prefix ourselves.
             var destination = _contacts.AsSpan(at * ContactLimit, ContactLimit);
             destination.Clear();

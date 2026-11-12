@@ -20,9 +20,9 @@ public class TileWaterTraceMemoEnvironmentTests(ITestOutputHelper output)
     public void ChangingFloatingPointControlsMissesThenMatchesRecomputation(string mode)
     {
         using var environment = WaterFloatingPointEnvironment.Capture();
-        if (environment is null || !TileWaterFloatingPointState.TryRead(out _, out _))
+        if (environment is null || !TileWaterFloatingPointState.TryRead(out _))
         {
-            output.WriteLine("No supported native control/status reader. Memo execution is bypassed on this platform.");
+            output.WriteLine("No supported native control reader. Memo execution is bypassed on this platform.");
             return;
         }
         Assert.True(environment.Set("nearest"));

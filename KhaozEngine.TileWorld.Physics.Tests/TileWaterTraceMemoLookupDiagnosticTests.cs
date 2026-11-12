@@ -18,7 +18,7 @@ public class TileWaterTraceMemoLookupDiagnosticTests(ITestOutputHelper output)
     public void ReportOneFullTableLookupWorkload()
     {
         using var original = WaterFloatingPointEnvironment.Capture();
-        if (!TileWaterFloatingPointState.TryRead(out _, out _))
+        if (!TileWaterFloatingPointState.TryRead(out _))
         {
             output.WriteLine("Memo unavailable on this runtime. No lookup price measured.");
             return;
@@ -41,9 +41,9 @@ public class TileWaterTraceMemoLookupDiagnosticTests(ITestOutputHelper output)
                 Assert.Equal(MovementAvailability.Known, result.Availability);
                 Assert.InRange(result.SpansWritten, 1, TileWaterTraceMemo.SpanLimit);
                 Assert.InRange(result.ContactsWritten, 1, TileWaterTraceMemo.ContactLimit);
-                Assert.True(TileWaterFloatingPointState.TryRead(out ulong controls, out ulong status));
+                Assert.True(TileWaterFloatingPointState.TryRead(out ulong controls));
                 var key = new TileWaterTraceMemo.Key(query, Vector3.Zero, spans.Length, contacts.Length, controls);
-                table.Store(key, result, spans, contacts, status);
+                table.Store(key, result, spans, contacts);
             }
             Assert.Equal(TileWaterTraceMemo.EntryLimit, table.CountForTests);
             var hitQuery = Query(TileWaterTraceMemo.EntryLimit - 1);
@@ -72,9 +72,9 @@ public class TileWaterTraceMemoLookupDiagnosticTests(ITestOutputHelper output)
 
             bool Lookup(in MovementMediumSweepQuery query)
             {
-                if (!TileWaterFloatingPointState.TryRead(out ulong controls, out ulong status)) return false;
+                if (!TileWaterFloatingPointState.TryRead(out ulong controls)) return false;
                 var key = new TileWaterTraceMemo.Key(query, Vector3.Zero, spans.Length, contacts.Length, controls);
-                return table.TryRead(key, query.Body.CurrentSpace, identity, status, spans, contacts, out _);
+                return table.TryRead(key, query.Body.CurrentSpace, identity, spans, contacts, out _);
             }
 
             long TraceTicks(in MovementMediumSweepQuery query)

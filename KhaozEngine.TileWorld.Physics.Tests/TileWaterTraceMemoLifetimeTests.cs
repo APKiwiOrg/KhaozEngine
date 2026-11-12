@@ -91,15 +91,15 @@ public class TileWaterTraceMemoLifetimeTests
         var outputContacts = Enumerable.Repeat(actual.Contacts[0], contactCount + 1).ToArray();
         var result = new MovementCoverageResult(MovementAvailability.Known, spanCount, spanCount,
             contactCount, contactCount, actual.Result.CertifiedErrorMetres, MovementWaterFieldTests.Identity);
-        table.Store(key, result, outputSpans, outputContacts, 0);
-        Assert.True(table.TryRead(key, key.Space, MovementWaterFieldTests.Identity, 0, outputSpans, outputContacts, out _));
+        table.Store(key, result, outputSpans, outputContacts);
+        Assert.True(table.TryRead(key, key.Space, MovementWaterFieldTests.Identity, outputSpans, outputContacts, out _));
         table.Clear();
         spanCount += spans ? 1 : 0;
         contactCount += spans ? 0 : 1;
         result = new(MovementAvailability.Known, spanCount, spanCount, contactCount, contactCount,
             actual.Result.CertifiedErrorMetres, MovementWaterFieldTests.Identity);
-        table.Store(key, result, outputSpans, outputContacts, 0);
-        Assert.False(table.TryRead(key, key.Space, MovementWaterFieldTests.Identity, 0, outputSpans, outputContacts, out _));
+        table.Store(key, result, outputSpans, outputContacts);
+        Assert.False(table.TryRead(key, key.Space, MovementWaterFieldTests.Identity, outputSpans, outputContacts, out _));
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class TileWaterTraceMemoLifetimeTests
         foreach (var thread in threads) thread.Join();
         Assert.All(errors, error => Assert.Null(error));
         Assert.All(results, result => Assert.NotNull(result));
-        int retained = TileWaterFloatingPointState.TryRead(out _, out _) ? TileWaterTraceMemo.ThreadLimit : 0;
+        int retained = TileWaterFloatingPointState.TryRead(out _) ? TileWaterTraceMemo.ThreadLimit : 0;
         Assert.Equal(retained, results.Sum(r => r!.Hits));
         Assert.Equal(count - retained, results.Sum(r => r!.Misses));
     }

@@ -15,12 +15,14 @@ namespace KhaozEngine.TileWorld.Physics;
 /// <para>The table and the water field are read-only after construction, so several threads may call the sampler at
 /// once. The field's columns, boundaries and index are immutable. Prism traces use bounded per-thread scratch and
 /// an instance-owned exact-query memo with four thread tables of 128 entries each, retaining at most eight spans
-/// and 48 contacts per entry. Query bits, buffer lengths, space and floating point controls must match. Entries
-/// also require current sticky status to contain every flag recorded after recomputation. Otherwise the kernel
-/// recomputes and raises its real flags. Replayed contacts retain the current caller's space string references.
-/// survive ticks until oldest-insertion eviction. A hit is an optimization, never a guarantee. Readers without
-/// a table or a supported floating point control/status reader run uncached (including Windows), as do oversized
-/// results or space identifiers over 256 characters. Point queries and the proved flat-bed trace path do not use this memo.
+/// and 48 contacts per entry. Query bits, buffer lengths, space and floating point controls must match.
+/// A hit reproduces every output bit, caller-owned references, caller buffer contents, refusals and validation
+/// outside the kernel. A freshly allocated boundary id string is replayed by value. Sticky floating point status
+/// is excluded because the kernel itself can leave different status across compiled tiers for the same inputs.
+/// Work counters report executed work rather than replayed work. Entries survive ticks until oldest-insertion
+/// eviction. A hit is an optimization, never a guarantee. Readers without a table or a supported control reader
+/// run uncached, as do oversized results or space identifiers over 256 characters. Point queries and the proved
+/// flat-bed trace path do not use this memo.
 /// <see cref="SampleCentreWater"/>, <see cref="TraceWater"/>, <see cref="SemanticIdentity"/>, <see cref="Generation"/>,
 /// <see cref="Extent"/>, <see cref="MediumAt"/> and <see cref="MediumDelegate"/> are endorsed providers for a parallel
 /// contact navigation bake.</para>

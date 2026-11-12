@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Locomotion;
@@ -43,35 +44,20 @@ public class TileWaterTraceMemoObservationTests
         }
     }
 
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void ReplayPreservesOutgoingFlagsForWetAndZeroContactKnownResults(bool dry, bool preset)
+    [Fact]
+    public void KnownZeroContactReplayPreservesItsSpanBitsAndCallerBuffers()
     {
-        // #1755. The expected computation must not pre-set flags for the measured cache lookup.
-        using var original = WaterFloatingPointEnvironment.Capture();
-        if (original is null) return;
         var field = MovementWaterFieldTests.Field(GrazingWaterBank.Document());
-        var query = Query(MovementWaterFieldTests.Space, dry);
-        var prime = WaterTraceMemoComparison.Read(field, query);
-        Assert.Equal(MovementAvailability.Known, prime.Result.Availability);
-        Assert.Equal(dry, prime.Result.ContactsWritten == 0);
-        if (!preset) Assert.True(original.ClearStatus());
-        var start = WaterFloatingPointEnvironment.Capture();
-        Assert.NotNull(start);
-        Assert.True(WaterFloatingPointEnvironment.TryReadStatus(out ulong incoming));
-        var expected = WaterTraceMemoComparison.Read(field, query, bypass: true, environment: start);
-        var actual = WaterTraceMemoComparison.Read(field, query, environment: start);
-        WaterCoverageComparison.Equal(expected.Result, actual.Result, expected.Spans, actual.Spans,
-            expected.Contacts, actual.Contacts);
-        Assert.True(expected.HasStatus && actual.HasStatus);
-        if (!preset) Assert.NotEqual(incoming, expected.Status);
-        else Assert.Equal(incoming, expected.Status);
-        Assert.Equal(expected.Status, actual.Status);
-        WaterTraceMemoComparison.Memo(actual, hit: preset);
-        Assert.Equal(dry, actual.Result.ContactsWritten == 0);
+        var query = Query(MovementWaterFieldTests.Space, dry: true);
+        var cold = WaterTraceMemoComparison.Check(field, query);
+        Assert.Equal(MovementAvailability.Known, cold.Result.Availability);
+        Assert.True(cold.Result.SpansWritten > 0);
+        Assert.Equal(0, cold.Result.ContactsWritten);
+        WaterTraceMemoComparison.Memo(cold, hit: false);
+        var warm = WaterTraceMemoComparison.Check(field, query);
+        WaterTraceMemoComparison.Memo(warm, hit: true);
+        Assert.Equal(MovementAvailability.Known, warm.Result.Availability);
+        Assert.Equal(0, warm.Result.ContactsWritten);
     }
 
     internal static MovementMediumSweepQuery Query(MovementSpaceKey space, bool dry = false) =>
@@ -93,9 +79,62 @@ public class TileWaterTraceMemoObservationTests
         var result = WaterTraceMemoComparison.Read(field, Query(MovementWaterFieldTests.Space));
         Assert.Equal(MovementAvailability.Known, result.Result.Availability);
         var table = field.CaptureTraceMemoTableForTests();
-        if (TileWaterFloatingPointState.TryRead(out _, out _)) Assert.NotNull(table);
+        if (TileMediumSampler.TryReadTraceControls(out _)) Assert.NotNull(table);
         return (new(field), table);
     }
 
     static string Copy(string value) => new(value.ToCharArray());
+
+    [Fact]
+    public void AnExposedJoinedTriangleBoundaryReplaysItsStringValue()
+    {
+        // #1755. One triangle is wet, while its neighbour is entirely at or above the surface.
+        // Their shared diagonal is a zero-height water boundary and has a freshly allocated id.
+        var document = TileWorldPhysicsTestData.FlatWorld();
+        document.SetUnderlay(0, 0, 0, TileWorldPhysicsTestData.Water);
+        document.SetCornerHeightCm(0, 0, 0, -100);
+        document.SetCornerHeightCm(1, 0, 0, 0);
+        document.SetCornerHeightCm(0, 1, 0, 0);
+        document.SetCornerHeightCm(1, 1, 0, 2);
+        var field = MovementWaterFieldTests.Field(document);
+        Assert.Single(field.CaptureTraceForTests().Prisms);
+        var query = new MovementMediumSweepQuery(new(new(.5f, -.5f, -.5f), .125f, .75f,
+            MovementWaterFieldTests.Space, null), Vector3.Zero);
+        var expected = WaterTraceMemoComparison.Read(field, query, bypass: true);
+        var cold = WaterTraceMemoComparison.Read(field, query);
+        Assert.Equal(MovementAvailability.Known, cold.Result.Availability);
+        var boundaries = cold.Contacts.Take(cold.Result.ContactsWritten)
+            .Where(c => c.BoundaryId.EndsWith("/joined-triangle", StringComparison.Ordinal)).ToArray();
+        Assert.NotEmpty(boundaries);
+        var warm = WaterTraceMemoComparison.Read(field, query);
+        WaterTraceMemoComparison.Memo(warm, hit: true);
+        WaterCoverageComparison.Equal(expected.Result, warm.Result, expected.Spans, warm.Spans,
+            expected.Contacts, warm.Contacts);
+        Assert.Equal(boundaries.Select(c => c.BoundaryId), warm.Contacts.Take(warm.Result.ContactsWritten)
+            .Where(c => c.BoundaryId.EndsWith("/joined-triangle", StringComparison.Ordinal)).Select(c => c.BoundaryId));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AControlsOnlyReaderEnablesTheMemoAndAnUnavailableReaderBypassesIt(bool available)
+    {
+        var previous = TileMediumSampler.ControlReaderForTests;
+        TileMediumSampler.ControlReaderForTests = (out ulong token) => { token = 0x1234; return available; };
+        try
+        {
+            var field = MovementWaterFieldTests.Field(GrazingWaterBank.Document());
+            var query = Query(MovementWaterFieldTests.Space);
+            var cold = WaterTraceMemoComparison.Check(field, query);
+            Assert.Equal(MovementAvailability.Known, cold.Result.Availability);
+            Assert.Equal(0, cold.Hits);
+            Assert.Equal(1, cold.Misses);
+            var warm = WaterTraceMemoComparison.Check(field, query);
+            Assert.Equal(available ? 1 : 0, warm.Hits);
+            Assert.Equal(available ? 0 : 1, warm.Misses);
+            if (available) Assert.Equal(0, warm.Solves);
+            else Assert.True(warm.Solves > 0);
+        }
+        finally { TileMediumSampler.ControlReaderForTests = previous; }
+    }
 }

@@ -45,7 +45,7 @@ public class TileWaterTraceMemoSweepTests(ITestOutputHelper output)
                     cold.Result.ContactsWritten <= TileWaterTraceMemo.ContactLimit);
         }
         Assert.True(logical > 0);
-        if (TileWaterFloatingPointState.TryRead(out _, out _)) Assert.True(hits > 0);
+        if (TileWaterFloatingPointState.TryRead(out _)) Assert.True(hits > 0);
         Assert.Equal(first.Digest(), second.Digest());
         output.WriteLine($"scene={scene}, cases={queries.Length}, cold-and-warm-digest={first.Digest()}");
         random.Shuffle(queries);

@@ -138,6 +138,8 @@ internal sealed class WaterPrismMeasurement : IDisposable
         _row.Spans = result.SpansWritten;
         _row.Contacts = result.ContactsWritten;
         _row.Availability = result.Availability.ToString();
+        _row.Work["shape-preparations"] = TileWaterQueryWork.ShapePreparations;
+        _row.Work["lazy-coefficient-fills"] = TileWaterQueryWork.LazyCoefficientFills;
         _row.Work["bed-seam-proofs"] = TileWaterQueryWork.BedSeamProofs;
         _row.Work["bed-seam-certificates"] = TileWaterQueryWork.BedSeamCertificates;
         _row.Work["index-nodes"] = TileWaterQueryWork.IndexNodes;

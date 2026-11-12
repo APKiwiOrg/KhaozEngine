@@ -58,6 +58,13 @@ projection basis lists happens before a step and is excluded. `bases` counts per
 not list construction. `projection-dots` includes repeated normal-normal coefficients as well as path terms.
 `other-dots` includes clipping, containment, witness lookup and seam proof dot products.
 
+`TileWaterQueryWork.ConvexIntersections` counts actual fraction-window evaluations. `ShapePreparations` counts
+preparations and `LazyCoefficientFills` counts first-use coefficient computation. The latter two remain zero
+until the prepared evaluator is introduced. Their census keys are `shape-preparations` and
+`lazy-coefficient-fills`. Logical prism traces, memo hits and memo misses are separate diagnostics owned by
+the sampler memo. A memo hit must not fabricate evaluation, preparation or coefficient work. Frozen-reference
+execution suppresses production diagnostic counters and is excluded from the census.
+
 SHA-256 input hashes use shape identity, every interval endpoint of start, drive and core, radius, the closed
 fraction window and representation errors. The shape identity binds immutable planes and seam certificates.
 BinaryWriter preserves signed zero bits. Different objects with equal geometry are deliberately treated as

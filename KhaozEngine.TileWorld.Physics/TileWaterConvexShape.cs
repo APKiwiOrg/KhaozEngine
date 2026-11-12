@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using KhaozEngine.Locomotion;
 using I = KhaozEngine.TileWorld.Physics.TileWaterArithmetic;
 
@@ -40,7 +41,7 @@ internal sealed class TileWaterConvexShape
         internal Plane Opposite => new(default(Vector) - Normal, I.Point(0) - Offset, HeightSensitive);
     }
 
-    readonly record struct Basis(int A, int B = -1, int C = -1);
+    internal readonly record struct Basis(int A, int B = -1, int C = -1);
     internal readonly record struct Range(bool Resolved, bool Hit, double Enter, double Exit, double MinimumSquared,
         double Error, Vector WitnessStart, Vector WitnessDrive)
     {
@@ -72,6 +73,28 @@ internal sealed class TileWaterConvexShape
     }
 
     internal TileWaterConvexShape WithoutBedSeamForTests() => new(_planes);
+
+    // Copies are made only by explicit test reads. The seam is immutable and borrowed.
+    internal TileWaterShapeGeometry CaptureGeometryForTests() => new(
+        ImmutableArray.CreateRange(_planes), ImmutableArray.CreateRange(_bases), _bedSeam);
+
+    // Defensive-path fixture. Production construction always uses the complete ordered basis list.
+    internal TileWaterConvexShape KeepOnlyBasisForTests(int ordinal)
+    {
+        if ((uint)ordinal >= (uint)_bases.Length) throw new ArgumentOutOfRangeException(nameof(ordinal));
+        return new((Plane[])_planes.Clone(), [_bases[ordinal]], _bedSeam);
+    }
+
+    TileWaterConvexShape(Plane[] planes, Basis[] bases, TileWaterBedSeam? bedSeam)
+    {
+        _planes = planes;
+        _bases = bases;
+        _bedSeam = bedSeam;
+    }
+
+    internal static bool ClipForTests(I constant, I slope, ref double enter, ref double exit) =>
+        Clip(constant, slope, ref enter, ref exit);
+
 
     internal bool Contains(Vector point)
     {

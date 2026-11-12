@@ -215,6 +215,12 @@ internal static class TileWaterPrismCoverage
         return false;
     }
 
+    internal static bool AddRangeForTests(double enter, double exit, Span<float> cuts, ref int count,
+        Vector3 delta, ref double error) => AddRange(new R(true, true, enter, exit, 0, 0, default, default),
+            cuts, ref count, delta, ref error);
+
+    internal static bool InsertForTests(float at, Span<float> cuts, ref int count) => Insert(at, cuts, ref count);
+
     static bool Overlaps(R range, double enter, double exit) => range.Hit && range.Exit >= enter && range.Enter <= exit;
 
     static bool AddRange(R range, Span<float> cuts, ref int count, Vector3 delta, ref double error)

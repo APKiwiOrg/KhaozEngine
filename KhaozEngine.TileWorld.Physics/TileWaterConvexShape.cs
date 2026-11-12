@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Threading;
 using KhaozEngine.Locomotion;
 using I = KhaozEngine.TileWorld.Physics.TileWaterArithmetic;
 
 namespace KhaozEngine.TileWorld.Physics;
 
-/// <summary>Certified centre-sphere paths with direct evaluation and reusable query preparations.</summary>
+/// <summary>Certified centre-sphere paths with per-trace preparations and immutable geometry terms
+/// cached only under the same floating point controls. Direct evaluation remains the fallback.</summary>
 internal sealed class TileWaterConvexShape
 {
     internal readonly record struct Vector(I X, I Y, I Z)
@@ -51,6 +53,7 @@ internal sealed class TileWaterConvexShape
     readonly Plane[] _planes;
     readonly Basis[] _bases;
     readonly TileWaterBedSeam? _bedSeam;
+    TileWaterGeometryTerms.Entry?[]? _geometryTerms;
 
     internal ReadOnlySpan<Plane> Planes => _planes;
     internal ReadOnlySpan<Basis> Bases => _bases;
@@ -59,6 +62,31 @@ internal sealed class TileWaterConvexShape
     internal TileWaterPreparedQuery Prepare(TileWaterPreparationWorkspace workspace, Vector start, Vector drive,
         I core, float radius, double heightError = 0, double horizontalError = 0) =>
         workspace.Prepare(this, start, drive, core, radius, heightError, horizontalError);
+
+    internal TileWaterGeometryTerms.Value GeometryForPreparation(int ordinal, bool hasToken, ulong token)
+    {
+        if (!hasToken) return TileWaterGeometryTerms.Compute(this, _bases[ordinal]);
+        var entries = Volatile.Read(ref _geometryTerms);
+        if (entries is null)
+        {
+            var created = new TileWaterGeometryTerms.Entry?[_bases.Length];
+            entries = Interlocked.CompareExchange(ref _geometryTerms, created, null) ?? created;
+        }
+        var cached = Volatile.Read(ref entries[ordinal]);
+        if (cached is not null && cached.Token == token) return cached.Geometry;
+        var value = TileWaterGeometryTerms.Compute(this, _bases[ordinal]);
+        // A mismatch computes directly and never replaces the first control domain. A racing
+        // publisher can only install a complete immutable entry. No lock is needed on a hit.
+        if (cached is null)
+            Interlocked.CompareExchange(ref entries[ordinal], new TileWaterGeometryTerms.Entry(token, value), null);
+        return value;
+    }
+
+    internal ulong? GeometryControlTokenForTests(int ordinal)
+    {
+        var entries = Volatile.Read(ref _geometryTerms);
+        return entries is null ? null : Volatile.Read(ref entries[ordinal])?.Token;
+    }
 
     internal TileWaterConvexShape(Plane[] planes, TileWaterBedSeam? bedSeam = null)
     {

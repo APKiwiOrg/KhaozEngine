@@ -122,6 +122,10 @@ by its clip chain is skipped for later valid subwindows of [0,1]. Other window o
 out-of-range windows replay the original clip chain. Feasible distance misses still contribute their error
 and nearest distance. Each plane expansion and each normal/start or normal/drive interval dot is filled
 once per preparation on first use. Normal/q and normal/v dots retain their original per-basis expressions.
+Geometry-only basis terms are filled on first use and cached on the shape under their floating point control
+token. A different control domain computes them directly and never replaces the original entry. Unsupported
+control domains use direct evaluation. Immutable entries are published atomically, so parallel readers cannot
+see a partially initialized entry. Determinant failures retain their original basis ordinal and predicate.
 Trace coverage uses water prisms bounded by those triangles and clipped at the body's free surface, including
 exposed patches and dry volume. Internal triangle and same-body tile edges contribute no dry wall.
 For the canonical coplanar triangle pair in one raw column, a grazing bed-diagonal root can partition an

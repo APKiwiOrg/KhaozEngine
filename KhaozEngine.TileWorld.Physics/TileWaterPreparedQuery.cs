@@ -112,7 +112,7 @@ internal ref struct TileWaterPreparedQuery
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Projecting = true;
 #endif
-                state.Projected = Project(basis, start, drive, core, heightError, horizontalError,
+                state.Projected = Project(ordinal, basis, start, drive, core, heightError, horizontalError,
                     state.Lambda, state.Velocity, out state.Q, out state.V);
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Projecting = false;
@@ -254,7 +254,7 @@ internal ref struct TileWaterPreparedQuery
         _planeTerms = planeTerms;
     }
 
-    bool Project(B basis, V start, V drive, I core, double heightError, double horizontalError,
+    bool Project(int ordinal, B basis, V start, V drive, I core, double heightError, double horizontalError,
         Span<I> lambda, Span<I> velocity,
         out V q, out V v)
     {
@@ -263,7 +263,8 @@ internal ref struct TileWaterPreparedQuery
         if (basis.A < 0) return true;
         TileWaterConvexShape.Plane a = _shape.Planes[basis.A];
         I rhsA = StartDot(basis.A) - Expanded(basis.A), speedA = DriveDot(basis.A);
-        I aa = V.Dot(a.Normal, a.Normal);
+        var geometry = _shape.GeometryForPreparation(ordinal, _header.HasControlToken, _header.ControlToken);
+        I aa = geometry.Aa;
         if (basis.B < 0)
         {
             lambda[0] = rhsA / aa;
@@ -273,10 +274,10 @@ internal ref struct TileWaterPreparedQuery
         {
             TileWaterConvexShape.Plane b = _shape.Planes[basis.B];
             I rhsB = StartDot(basis.B) - Expanded(basis.B), speedB = DriveDot(basis.B);
-            V cross = V.Cross(a.Normal, b.Normal);
+            V cross = geometry.Cross;
             if (basis.C < 0)
             {
-                I bb = V.Dot(b.Normal, b.Normal), ab = V.Dot(a.Normal, b.Normal), determinant = V.Dot(cross, cross);
+                I bb = geometry.Bb, ab = geometry.Ab, determinant = geometry.Determinant;
                 if (!(determinant.Low > 0)) return false;
                 lambda[0] = (bb * rhsA - ab * rhsB) / determinant;
                 lambda[1] = (aa * rhsB - ab * rhsA) / determinant;
@@ -285,9 +286,8 @@ internal ref struct TileWaterPreparedQuery
             }
             else
             {
-                TileWaterConvexShape.Plane c = _shape.Planes[basis.C];
-                V bc = V.Cross(b.Normal, c.Normal), ca = V.Cross(c.Normal, a.Normal);
-                I determinant = V.Dot(a.Normal, bc);
+                V bc = geometry.Bc, ca = geometry.Ca;
+                I determinant = geometry.Determinant;
                 if (determinant.Low <= 0 && determinant.High >= 0) return false;
                 q = (bc * Expanded(basis.A) + ca * Expanded(basis.B) + cross * Expanded(basis.C)) * (I.Point(1) / determinant);
                 v = default;

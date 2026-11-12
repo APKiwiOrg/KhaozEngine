@@ -24,6 +24,8 @@
     <EmbeddedResource Include="Fixtures/TileInstallationBaseline.navbake" />
     <EmbeddedResource Include="Fixtures/ContactTerrainFormatFour.navbake" />
     <EmbeddedResource Include="Fixtures/WaterPrismCensusBaseline.json" />
+    <EmbeddedResource Include="Fixtures/FrozenWater/FrozenTileWaterConvexShape.cs" />
+    <EmbeddedResource Include="Fixtures/FrozenWater/FrozenTileWaterPrismCoverage.cs" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs" Link="Fixtures/LocomotionStateBits.cs" />

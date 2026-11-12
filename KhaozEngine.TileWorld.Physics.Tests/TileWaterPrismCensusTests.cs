@@ -11,6 +11,7 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.TileWorld.Physics;
 
+[Trait("Category", "WaterKernelContract")]
 public sealed class TileWaterPrismCensusTests(ITestOutputHelper output)
 {
     [Theory]
@@ -35,6 +36,7 @@ public sealed class TileWaterPrismCensusTests(ITestOutputHelper output)
             WaterPrismScenario.Names.Order(StringComparer.Ordinal));
         using var scene = new WaterPrismScenario(name);
         var snapshot = scene.Colliders.Medium.CaptureTraceForTests();
+        var frozen = new FrozenWaterReference(snapshot);
         var records = new List<(MovementMediumSweepQuery Query, MovementCoverageResult Result,
             MovementCoverageSpan[] Spans, MovementDomainContact[] Contacts)>();
         scene.Field.Recorded = (q, r, s, c) => records.Add((q, r, s, c));
@@ -80,7 +82,7 @@ public sealed class TileWaterPrismCensusTests(ITestOutputHelper output)
         {
             var spans = new MovementCoverageSpan[64];
             var contacts = new MovementDomainContact[256];
-            var expected = WaterTraceReference.Trace(snapshot, record.Query, Vector3.Zero, record.Result.Identity, spans, contacts);
+            var expected = frozen.Trace(record.Query, Vector3.Zero, record.Result.Identity, spans, contacts);
             WaterCoverageComparison.Equal(expected, record.Result, spans[..expected.SpansWritten], record.Spans,
                 contacts[..expected.ContactsWritten], record.Contacts);
             digest.Add(record.Query, record.Result, record.Spans, record.Contacts);
@@ -90,6 +92,7 @@ public sealed class TileWaterPrismCensusTests(ITestOutputHelper output)
         Assert.Equal(JsonSerializer.Serialize(expectedCase.GetProperty("Census")), Snapshot(rows));
 #endif
         Assert.Equal(expectedCase.GetProperty("Digest").GetString(), digest.Digest());
+        output.WriteLine($"CORPUS case={name}, recorded={records.Count}");
     }
 
 #if WATER_PRISM_CENSUS

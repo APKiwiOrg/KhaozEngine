@@ -89,6 +89,31 @@ Coverage output compares bitwise with the frozen `WaterTraceReference` through `
 `WaterCoverageDigest`. This reference shares the prism solver. Independent box and seam tests remain necessary.
 No timing assertion is installed.
 
+## Frozen differential kernel contract
+
+`Fixtures/FrozenWater` in the physics test project holds the evaluator and complete prism trace frozen from
+`85e484e87`. They read copied ordered shape geometry, recompute the original expressions and suppress production
+diagnostic counters. Source hashes pin the deliberate snapshot. A helper changed by a later optimisation must
+also be frozen in that change. The reference shares interval arithmetic, root uncertainty, immutable bed seams,
+witness lookup, candidate indexes, prism/face geometry and captured ground. It preserves the old evaluator's
+behavior, including numerical behavior that might later receive a separately reviewed correction.
+
+`Category=WaterKernelContract` selects the differential corpus and shape/trace matrix, including Diagnostic
+storage boundaries, the 252-sample patch sweeps and all 510 existing bank-lift inputs. These include every trace
+over four consecutive authority ticks, stratified samples, translated origins and adjacent floats, with
+sentinel-filled caller buffers. The normal CI filter skips Diagnostic cases. Its small corpus instead adds
+frozen comparisons to the existing census observations, avoiding another construction of all nine worlds.
+
+```bash
+build-slot --label water-kernel-contract -- dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --filter 'Category=WaterKernelContract'
+```
+
+The independent `water-kernel-contract` CI job builds only this headless test project on hosted ubuntu-26.04
+x64 and macos-26 arm64. Each job runs the entire contract with `DOTNET_TieredCompilation=0` and `1` and retains
+both TRX files. It runs separately from the selective runner's Foundation/Server pass, so an affected-project
+selection cannot omit this matrix. Each execution compares frozen against production on the same runtime.
+There is no single numeric digest asserted across architectures.
+
 ## Regenerate the work-count baseline
 
 Set `CENSUS_RESULTS` to an absolute capture directory outside the checkout, then record a census test run:

@@ -26,6 +26,50 @@ on:
   workflow_dispatch:   # manual re-trigger (e.g. to check a hosted runner image update) without a dummy commit
 
 jobs:
+  # Independent of ci-selective-test.sh's affected slice and its Foundation/Server tiering pass.
+  # Differential execution on each runtime, with no shared numeric digest across architectures.
+  water-kernel-contract:
+    name: Water kernel differential (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-26.04
+            arch: X64
+          - os: macos-26
+            arch: ARM64
+    env:
+      GITHUB_PACKAGES_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify architecture and build the headless water project
+        shell: bash
+        run: |
+          test '${{ runner.arch }}' = '${{ matrix.arch }}'
+          mkdir -p local-feed
+          dotnet build KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release
+      - name: Frozen differential corpus under JIT tiering 0 and 1
+        shell: bash
+        run: |
+          for tc in 0 1; do
+            DOTNET_TieredCompilation=$tc dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --no-build --no-restore \
+              --filter 'Category=WaterKernelContract' --logger "trx;LogFileName=water-kernel-tier-$tc.trx" \
+              --results-directory '${{ runner.temp }}/water-kernel-${{ matrix.arch }}'
+          done
+      - name: Collect water kernel differential results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: water-kernel-${{ matrix.arch }}
+          path: ${{ runner.temp }}/water-kernel-${{ matrix.arch }}
+          if-no-files-found: ignore
+
   # The tag run's reuse decision, made once so every job below reads the same answer. Only tags and
   # dispatches run it. On a dispatch it is report-only (--report-only always outputs reuse=false), which
   # proves the real API query without changing what the gate runs. Its own job, so actions: read lands

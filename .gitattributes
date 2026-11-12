@@ -1,3 +1,6 @@
+# Frozen water references are guarded by their exact source bytes.
+KhaozEngine.TileWorld.Physics.Tests/Fixtures/FrozenWater/FrozenTileWater*.cs text eol=lf
+
 # Golden grids are machine-generated LF text; a CRLF checkout (Windows autocrlf) breaks the
 # byte-identity contract between the committed files and GoldenGrid.Serialize output.
 KhaozEngine.Render.Tests/Gpu/goldens/*.txt text eol=lf

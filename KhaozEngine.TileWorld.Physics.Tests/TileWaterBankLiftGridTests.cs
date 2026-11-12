@@ -51,7 +51,7 @@ public class TileWaterBankLiftGridTests(ITestOutputHelper output)
         Assert.Equal(0, refusedNow);
     }
 
-    static IEnumerable<float> Laterals(float z)
+    internal static IEnumerable<float> Laterals(float z)
     {
         var values = new SortedSet<float> { 110.275390625f, 110.375f, 111.275390625f, 111.375f };
         for (int tile = 109; tile <= 111; tile++)

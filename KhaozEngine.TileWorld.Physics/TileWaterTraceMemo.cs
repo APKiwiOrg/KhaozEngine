@@ -60,7 +60,8 @@ internal sealed class TileWaterTraceMemo
             : this(Bits(query.Body.Centre.X), Bits(query.Body.Centre.Y), Bits(query.Body.Centre.Z),
                 Bits(query.Delta.X), Bits(query.Delta.Y), Bits(query.Delta.Z), Bits(query.Body.Radius),
                 Bits(query.Body.HalfHeight), Bits(origin.X), Bits(origin.Y), Bits(origin.Z),
-                query.Body.CurrentSpace, spans, contacts, fp) { }
+                query.Body.CurrentSpace, spans, contacts, fp)
+        { }
         static int Bits(float value) => BitConverter.SingleToInt32Bits(value);
     }
 
@@ -70,7 +71,8 @@ internal sealed class TileWaterTraceMemo
     {
         internal Value(in MovementCoverageResult result) : this(result.Availability, result.SpansWritten,
             result.RequiredSpanCapacity, result.ContactsWritten, result.RequiredContactCapacity,
-            result.CertifiedErrorMetres) { }
+            result.CertifiedErrorMetres)
+        { }
         internal MovementCoverageResult Stamp(in MovementQueryIdentity identity) =>
             new(Availability, Spans, RequiredSpans, Contacts, RequiredContacts, Error, identity);
     }

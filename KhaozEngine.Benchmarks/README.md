@@ -443,4 +443,6 @@ on the engine version line, and CI never invokes its timing loop.
 
 `--water-prism` runs the fixed Contact water workloads described by the
 [water prism census](../test-shared/WaterPrismCensus/README.md). It reports indicative microsecond timings and
-has no timing assertions. Use a normal Release build, without `WaterPrismCensus=true`.
+has no timing assertions. Use a normal Release build, without `WaterPrismCensus=true`, and run it with
+`DOTNET_TieredCompilation=0`. The mode refuses to run otherwise: with tiering on, a case whose kernel first
+runs during measurement is timed in unoptimized code and can read several times slower than steady state.

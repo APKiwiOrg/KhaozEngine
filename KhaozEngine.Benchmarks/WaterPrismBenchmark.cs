@@ -14,12 +14,18 @@ internal static class WaterPrismBenchmark
 #if WATER_PRISM_CENSUS
         throw new InvalidOperationException("Build without WaterPrismCensus to time the uninstrumented kernel.");
 #else
+        // Tiered compilation starts every method in unoptimized code. A case whose kernel first runs
+        // during measurement (for example after cases served from the sampler memo) is then timed several
+        // times slower than steady state, which eight warm-up steps cannot prevent.
+        if (!TieredCompilationIsOff())
+            throw new InvalidOperationException("Run --water-prism with DOTNET_TieredCompilation=0.");
         const int warmup = 8, measured = 96;
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             mode = "water-prism",
             warmup,
             measured,
+            tieredCompilation = false,
             timestamp = DateTimeOffset.UtcNow,
             framework = RuntimeInformation.FrameworkDescription,
             os = RuntimeInformation.OSDescription,
@@ -71,6 +77,10 @@ internal static class WaterPrismBenchmark
         }
 #endif
     }
+
+    static bool TieredCompilationIsOff() =>
+        Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") == "0" ||
+        (AppContext.TryGetSwitch("System.Runtime.TieredCompilation", out bool enabled) && !enabled);
 
     static double Median(List<double> values)
     {

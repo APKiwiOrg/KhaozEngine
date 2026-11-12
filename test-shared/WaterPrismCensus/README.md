@@ -165,11 +165,14 @@ as the evidence of an optimisation. A new golden is not permission to accept cha
 
 ```bash
 build-slot --label water-prism-build -- dotnet build KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj -c Release
-build-slot --heavy --label water-prism-timing -- dotnet KhaozEngine.Benchmarks/bin/Release/net10.0/KhaozEngine.Benchmarks.dll --water-prism
+build-slot --heavy --label water-prism-timing -- env DOTNET_TieredCompilation=0 dotnet KhaozEngine.Benchmarks/bin/Release/net10.0/KhaozEngine.Benchmarks.dll --water-prism
 ```
 
 One invocation uses 8 warm-up and 96 measured authority operations per fixture, each from the same fixed basis.
-This keeps moving cases on their named grade. It is not a trajectory or a load test. It prints median microseconds
+This keeps moving cases on their named grade. It is not a trajectory or a load test. Every repeat of a fixed
+basis after the first is served by the sampler memo where the result fits it, so a memo-eligible case reads
+far faster here than a body that actually moves. The mode requires `DOTNET_TieredCompilation=0` and refuses to
+run without it, because unoptimized first-run code otherwise lands inside the measured window. It prints median microseconds
 per authority operation and per individual trace, cold-read and Step phases, the sum of water time per operation
 and the residual. Phase medians are not additive. Per-trace stopwatches are coarse enough for the millisecond
 kernel, but trace and residual measurements include clock overhead. Inner projection phases have no clocks.

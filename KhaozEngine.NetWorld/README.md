@@ -1850,7 +1850,7 @@ and changes nothing for a host or client that does not opt in.
   time, independent of render frames, extra `Tick` calls and whether a sharded sub-tick ran: one routine send per
   viewer per cadence tick, keeping only the newest unsent projection. An opted-in client must pass elapsed seconds to
   `WorldClient.Poll(dt)`. Its ack and repair scheduling and its recovery deadline run on that time. Zero-time drain
-  calls between scheduled ones are allowed and consume no replication cadence. Each still starts a new ECS
+  calls between scheduled ones are allowed and consume no replication cadence. Each still starts a new
   private ECS tracking and world-event window. This internal clearing is unconditional.
 - **Valid-state liveness.** Once a mode 1 offer was accepted, only an accepted projection counts as a server frame for
   `DisconnectTimeoutSeconds`. Stale, ignored and missing-baseline traffic never refreshes it. While negotiation or a

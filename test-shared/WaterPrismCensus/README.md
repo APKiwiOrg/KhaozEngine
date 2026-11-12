@@ -39,8 +39,12 @@ opt-in stays unchanged. Build with `-p:WaterPrismCensus=true` to include the res
 Census builds write binaries under each project's `bin/water-prism-census/` and all intermediates, including
 restore assets, under `obj/water-prism-census/`. Normal output paths stay separate, including for later
 `--no-build` operations. Every census project is nonpackable. Pack and publish fail with `KECENSUS001`, including
-solution and standard pack-script calls. Overrides escaping the isolated paths fail with `KECENSUS002` before
-restore or build. Use a normal build for timing and distribution.
+solution and standard pack-script calls. Before restore or compilation, the guard checks effective `OutDir`,
+`TargetDir`, `TargetPath`, intermediate and reference assembly destinations, restore output, assets and project
+extensions paths against the census-only roots. An escaping destination fails with `KECENSUS002`, including
+overrides from properties, environment variables and response files. Layout switches are allowed when the
+computed destinations remain isolated. This enforces assembly and restore isolation for the SDK paths, not
+arbitrary file writes from custom build targets. Use a normal build for timing and distribution.
 
 ```bash
 build-slot --label water-prism-census -- dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release -p:WaterPrismCensus=true --filter FullyQualifiedName~TileWaterPrismCensusTests

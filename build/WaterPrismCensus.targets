@@ -4,17 +4,49 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <Target Name="ValidateWaterPrismCensusOutputPaths" Condition="'$(WaterPrismCensus)' == 'true'">
+  <Target Name="ValidateWaterPrismCensusOutputPaths" Condition="'$(WaterPrismCensus)' == 'true'"
+          BeforeTargets="PrepareForBuild;CoreCompile;_GenerateRestoreProjectSpec">
     <PropertyGroup>
       <_CensusOutputRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', 'bin/water-prism-census'))</_CensusOutputRoot>
       <_CensusIntermediateRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', 'obj/water-prism-census'))</_CensusIntermediateRoot>
-      <_CensusOutput>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(OutputPath)'))</_CensusOutput>
+      <!-- Outer restore evaluations have no binary destination. Inner builds compute these before execution. -->
+      <_CensusOutDir Condition="'$(OutDir)' != ''">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(OutDir)'))</_CensusOutDir>
+      <_CensusTargetDir Condition="'$(TargetDir)' != ''">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(TargetDir)'))</_CensusTargetDir>
+      <_CensusTargetPath Condition="'$(TargetPath)' != ''">$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(TargetPath)'))</_CensusTargetPath>
       <_CensusIntermediate>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)'))</_CensusIntermediate>
       <_CensusExtensions>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(MSBuildProjectExtensionsPath)'))</_CensusExtensions>
+      <_CensusRestore Condition="'$(RestoreOutputPath)' == ''">$(_CensusExtensions)</_CensusRestore>
+      <_CensusRestore Condition="'$(RestoreOutputPath)' != ''">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(RestoreOutputPath)'))</_CensusRestore>
+      <_CensusAssets Condition="'$(ProjectAssetsFile)' == ''">$(_CensusExtensions)project.assets.json</_CensusAssets>
+      <_CensusAssets Condition="'$(ProjectAssetsFile)' != ''">$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(ProjectAssetsFile)'))</_CensusAssets>
+      <_CensusRestoreAbsolute Condition="'$(RestoreOutputAbsolutePath)' != ''">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(RestoreOutputAbsolutePath)'))</_CensusRestoreAbsolute>
     </PropertyGroup>
+    <ItemGroup>
+      <_CensusBinaryDestination Include="$(_CensusOutDir);$(_CensusTargetDir);$(_CensusTargetPath)" />
+      <_CensusIntermediateDestination Include="$(_CensusIntermediate);$(_CensusExtensions);$(_CensusRestore);$(_CensusAssets);$(_CensusRestoreAbsolute);@(IntermediateAssembly->'%(FullPath)');@(IntermediateRefAssembly->'%(FullPath)')" />
+      <_CensusReferenceDestination Include="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(TargetRefPath)'))" Condition="'$(TargetRefPath)' != ''" />
+    </ItemGroup>
+    <FindUnderPath Path="$(_CensusOutputRoot)" Files="@(_CensusBinaryDestination)">
+      <Output TaskParameter="OutOfPath" ItemName="_CensusUnsafeBinary" />
+    </FindUnderPath>
+    <FindUnderPath Path="$(_CensusIntermediateRoot)" Files="@(_CensusIntermediateDestination)">
+      <Output TaskParameter="OutOfPath" ItemName="_CensusUnsafeIntermediate" />
+    </FindUnderPath>
+    <FindUnderPath Path="$(_CensusOutputRoot)" Files="@(_CensusReferenceDestination)">
+      <Output TaskParameter="OutOfPath" ItemName="_CensusReferenceOutsideBinary" />
+    </FindUnderPath>
+    <FindUnderPath Path="$(_CensusIntermediateRoot)" Files="@(_CensusReferenceOutsideBinary)">
+      <Output TaskParameter="OutOfPath" ItemName="_CensusUnsafeReference" />
+    </FindUnderPath>
     <Error Code="KECENSUS002"
-           Condition="!$(_CensusOutput.StartsWith('$(_CensusOutputRoot)')) or !$(_CensusIntermediate.StartsWith('$(_CensusIntermediateRoot)')) or '$(_CensusExtensions)' != '$(_CensusIntermediateRoot)'"
-           Text="WaterPrismCensus requires isolated bin/water-prism-census and obj/water-prism-census paths. Remove output or intermediate path overrides." />
+           Condition="'@(_CensusUnsafeBinary)' != '' or '@(_CensusUnsafeIntermediate)' != '' or '@(_CensusUnsafeReference)' != ''"
+           Text="WaterPrismCensus requires effective assembly, intermediate and restore destinations under bin/water-prism-census and obj/water-prism-census. Unsafe destinations: @(_CensusUnsafeBinary);@(_CensusUnsafeIntermediate);@(_CensusUnsafeReference). Remove output or intermediate path overrides." />
+  </Target>
+
+  <Target Name="RequireWaterPrismCensusCompilationDestinations" BeforeTargets="PrepareForBuild;CoreCompile"
+          Condition="'$(WaterPrismCensus)' == 'true'">
+    <Error Code="KECENSUS002" Condition="'$(TargetDir)' == '' or '$(TargetPath)' == '' or '@(IntermediateAssembly)' == ''"
+           Text="WaterPrismCensus compilation requires computed final and intermediate assembly destinations." />
   </Target>
 
   <!-- dotnet publish sets this before SDK dependency resolution, including build-free calls. -->

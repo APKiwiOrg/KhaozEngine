@@ -70,6 +70,12 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step
   per ingest; `AdvancePresentation(dt)` drives it, opt out with `WorldClientConfig.InterpolateRemotes = false`).
+  Every `Poll` advances its private ECS world before ingest, after any reconnect has replaced it, clearing
+  earlier tracking and world events even on empty or zero-time polls and backoff waits. This is internal
+  bookkeeping with no opt-out. The private world and its change sets are not exposed, and public snapshot and
+  component reads still return current values. Remote presentation writes components without advancing this
+  boundary. Format-2 reconstruction separately clears its private staging world after each reset, including failed
+  decoding, so neither world retains old entity generations for the connection lifetime.
   `AdvancePresentation` treats a frame time that is not a finite positive number of seconds (negative, zero,
   infinite, or not a number) as zero, so a broken frame clock advances neither the local avatar nor the remote
   render timeline instead of pinning both for the session.
@@ -1844,7 +1850,8 @@ and changes nothing for a host or client that does not opt in.
   time, independent of render frames, extra `Tick` calls and whether a sharded sub-tick ran: one routine send per
   viewer per cadence tick, keeping only the newest unsent projection. An opted-in client must pass elapsed seconds to
   `WorldClient.Poll(dt)`. Its ack and repair scheduling and its recovery deadline run on that time. Zero-time drain
-  calls between scheduled ones are allowed and consume nothing.
+  calls between scheduled ones are allowed and consume no replication cadence. Each still starts a new
+  private ECS tracking and world-event window. This internal clearing is unconditional.
 - **Valid-state liveness.** Once a mode 1 offer was accepted, only an accepted projection counts as a server frame for
   `DisconnectTimeoutSeconds`. Stale, ignored and missing-baseline traffic never refreshes it. While negotiation or a
   repair runs, the typed recovery deadline replaces that timeout.

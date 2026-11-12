@@ -16,6 +16,13 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed record TileWorldClientConfig
 {
+    /// <summary>Advance <see cref="TileWorldClient.World"/>'s change-tracking tick once per
+    /// <see cref="TileWorldClient.Poll"/>. Default true. Each poll clears earlier Added, Changed, Removed and
+    /// world events before ingest, even without incoming data. Read them after polling and before the next poll.
+    /// Set false only when the caller owns the boundary and calls
+    /// <see cref="KhaozEngine.Ecs.World.AdvanceTick"/> itself.</summary>
+    public bool AdvanceWorldTick { get; init; } = true;
+
     /// <summary>Opt in to authoritative preparation frames and callbacks. Both session peers must select this mode.</summary>
     public bool CombatPreparationEnabled { get; init; }
 

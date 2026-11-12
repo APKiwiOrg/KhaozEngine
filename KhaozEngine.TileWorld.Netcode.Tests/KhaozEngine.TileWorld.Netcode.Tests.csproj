@@ -5,6 +5,7 @@
     <RootNamespace>KhaozEngine.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../test-shared/ClientWorldTickContract.cs" Link="Shared/ClientWorldTickContract.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />

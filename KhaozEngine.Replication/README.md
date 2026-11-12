@@ -88,7 +88,12 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
 - **`InterestGrid`** - a spatial-hash area-of-interest query (`Insert` / `Query(center, radius)`) used to compute a
   client's interest set for `WriteFiltered` / `AoiDeltaReplicator.WriteFor`.
 - **`ClientReplicationView`** - apply a snapshot to a client `World`: spawn new entities, despawn gone ones,
-  update the rest. Two render-smoothing paths: `Interpolate(world, alpha)` lerps registered components between the
+  update the rest. The adapter never advances the supplied world. A direct owner calling `Apply`, `ApplyDelta`
+  or driving `ClientDeltaRebuild` must call `world.AdvanceTick()` once per receive boundary before applying that
+  boundary's batch, then read changes and events before the next boundary. `WorldClient` does this internally for
+  its private world. `TileWorldClient` does it by default for its public world, with an explicit caller-owned opt-out.
+  Format-2 reconstruction clears its separate private staging world on every reset, including failed decoding.
+  Two render-smoothing paths: `Interpolate(world, alpha)` lerps registered components between the
   last two snapshots (the legacy estimate-and-ramp path), and the preferred **fixed-delay buffer** (since 9.23.0):
   `RecordInterpolationSample(t, excludeNetId?)` stamps each applied snapshot's interpolatable bytes into a per-component
   timestamped history, and `InterpolateAt(world, renderTime, excludeNetId?)` renders every component at `renderTime` by

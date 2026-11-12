@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../test-shared/RefusalConstructorFence.cs" Link="Shared/RefusalConstructorFence.cs" />
+    <Compile Include="../test-shared/ClientWorldTickContract.cs" Link="Shared/ClientWorldTickContract.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs" Link="NetWorld/Fixtures/LocomotionStateBits.cs" />
     <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/TileWorldPhysicsTestData.cs" Link="NetWorld/Fixtures/TileWorldPhysicsTestData.cs" />
     <Compile Include="../test-shared/ItemsBenchmarkFields.cs" Link="Benchmarks/ItemsBenchmarkFields.cs" />

@@ -55,13 +55,15 @@ internal sealed class ProjectionStaging
         StagedFor = projection;
     }
 
-    /// <summary>Despawns every staged entity, so staging holds nothing from an earlier packet.</summary>
+    /// <summary>Despawns every staged entity and clears its tracking and events, including after failed decoding.</summary>
     internal void Reset()
     {
         foreach (Entity e in entityByNetId.Values)
             if (world.IsAlive(e)) world.Despawn(e);
         entityByNetId.Clear();
         StagedFor = null;
+        // Clear after despawning so this reset's own removal records cannot survive into the next packet.
+        world.AdvanceTick();
     }
 
     internal bool TryGetEntity(long netId, out Entity entity) => entityByNetId.TryGetValue(netId, out entity);

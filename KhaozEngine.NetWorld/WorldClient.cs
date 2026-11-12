@@ -283,7 +283,11 @@ public sealed partial class WorldClient : IDisposable
     /// the state transitions to <see cref="WorldConnectionState.Reconnecting"/> (factory ctor) or
     /// <see cref="WorldConnectionState.Disconnected"/> (instance ctor), with the appropriate
     /// <see cref="DisconnectReason"/>. The detector only advances when dt &gt; 0; callers that pass 0 (the default)
-    /// disable it for that call.</summary>
+    /// disable it for that call.
+    /// <para>Each call advances the private ECS world before ingest, after any reconnect replaces it, clearing
+    /// earlier tracking and world events even on empty calls, zero-time drains and backoff waits. This is internal
+    /// bookkeeping. The world and its change sets are not exposed, and public component and snapshot reads still
+    /// return current values.</para></summary>
     public void Poll(float dt = 0f)
     {
         remoteTeleports.Clear();   // reflects only THIS poll's remote teleports; refilled by FlushTeleportedRemotes below
@@ -292,10 +296,16 @@ public sealed partial class WorldClient : IDisposable
         if (awaitingBackoff)
         {
             retryWaitRemaining -= dt;
-            if (retryWaitRemaining > 0f) return;
+            if (retryWaitRemaining > 0f)
+            {
+                world.AdvanceTick();
+                return;
+            }
             StartAttempt();
         }
 
+        // Clear the current world, including a replacement just created by StartAttempt, before any ingest.
+        world.AdvanceTick();
         net.Poll();
         bool gotFrame = false;
         while (net.TryDequeueEvent(out ClientSessionEvent ev))

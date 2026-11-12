@@ -9519,7 +9519,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.9.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.10.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10121,7 +10121,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.9.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.10.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10977,7 +10977,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.9.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.10.0" />
 ```
 
 ```csharp
@@ -16613,8 +16613,14 @@ resolves when it applies. Nothing crosses the wire, so the game also gates its o
 held, or a predicting client is corrected back to the held position on each snapshot.
 
 - **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
-  ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative
-  basis; `SendInput(cmd)` predicts one tick forward and transmits it (a no-op returning `-1`
+  ingests AoI snapshots, applies remote entities and reconciles the local avatar against the authoritative basis.
+  Before ingest, after any reconnect replaces the private ECS world, it advances that world's tick and clears
+  earlier tracking and world events. Empty polls, zero-time drains and reconnect backoff waits do this too.
+  This is unconditional internal bookkeeping: the world and its change sets are not public, and component and
+  snapshot reads still return current values. Local prediction keeps separate state, remote interpolation writes
+  ECS components without advancing the boundary, and format-2 reconstruction clears its own private staging world
+  on every reset, including failed decoding.
+  `SendInput(cmd)` predicts one tick forward and transmits it (a no-op returning `-1`
   unless `ConnectionState == Connected`, so a per-frame loop builds no stale-input backlog during a reconnect
   outage); `RequestSelfRescue()` asks the
   server to teleport the local player to a server-decided safe spot (an "unstuck" - see below); `Snapshot()` returns
@@ -18014,6 +18020,14 @@ The client owns three clocks and they are not the same clock. `Tick` is the COMM
 and sent per whole `TickSeconds`. `Poll` is the RECEIVE path, once per frame. `AdvancePresentation` is the RENDER
 clock, which eases the local player between command ticks and carries the delayed remote timeline. A head calls
 all three every frame and the accumulators sort out the rest.
+
+`Poll` also advances `client.World` before ingest. Earlier `Added<T>()`, `Changed<T>()`, `Removed<T>()` and
+`Events<T>()` are cleared, even when no packets arrived. Read them after polling and before the next poll.
+Changes and events produced between polls, including remote presentation writes, share that window. Multiple
+polls in one render frame create multiple boundaries, while skipping polls leaves the window open. If you
+already call `client.World.AdvanceTick()`, remove that call or set `TileWorldClientConfig.AdvanceWorldTick = false`
+and own the boundary yourself. Two advances can clear observations before their readers run. The tile client
+creates its own ECS world and a reconnect builds a new client.
 
 ```csharp
 var client = new TileWorldClient(
@@ -20906,7 +20920,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.9.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.10.0" />
 ```
 
 ```csharp
@@ -20942,7 +20956,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.9.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.10.0" />
 ```
 
 ```csharp
@@ -21193,7 +21207,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.9.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.10.0" />
 ```
 
 ```csharp
@@ -26082,7 +26096,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.9.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.10.0" />
 </ItemGroup>
 ```
 
@@ -28017,7 +28031,12 @@ int limit = server.MaxUnfragmentedPayloadBytes(slot, NetChannelReliability.Unrel
 ### Entity replication (`KhaozEngine.Replication`)
 
 Replicate the authoritative ECS `World` to clients. Register each replicated component once (server and client
-must agree on type ids), then snapshot on the server and apply on the client:
+must agree on type ids), then snapshot on the server and apply on the client.
+
+The adapter never advances `clientWorld`. Direct `Apply`, `ApplyDelta` and `ClientDeltaRebuild` owners call
+`clientWorld.AdvanceTick()` once per receive boundary before applying its batch, then read change tracking and
+world events before the next boundary. `WorldClient` does this internally for its private world, while
+`TileWorldClient` does it by default for its public world and supports a caller-owned opt-out.
 
 ```csharp
 var registry = new ReplicationRegistry();
@@ -28031,6 +28050,7 @@ byte[] full = SnapshotWriter.Write(serverWorld, registry);
 
 // Client:
 var view = new ClientReplicationView(registry);
+clientWorld.AdvanceTick();                            // once before the receive batch, not once per packet
 view.Apply(clientWorld, full);                        // spawn new, despawn gone, update existing
 view.Interpolate(clientWorld, renderAlpha);           // smooth interpolatable components between snapshots
 ```
@@ -28183,7 +28203,8 @@ ReplicationSelection mode = client.ReplicationSelection;    // Mode, Reason, Epo
 What an opted-in consumer owes:
 
 - **Elapsed `Poll(dt)`.** Acknowledgements, repair requests and the recovery deadline run on the elapsed time passed
-  to `WorldClient.Poll`. Zero-time drain calls between scheduled ones are fine.
+  to `WorldClient.Poll`. Zero-time drain calls between scheduled ones are fine for replication cadence, but each
+  clears earlier private ECS change tracking and world events unconditionally as internal bookkeeping.
 - **Typed failures.** `DisconnectReason.ReplicationPolicyRefused` (the offer exceeded this client's limits),
   `ReplicationRecoveryFailed` (negotiation or a repair missed its 90-tick deadline) and `ReplicationCapacityExceeded`
   (a projection can never fit the limits) are terminal. The game decides how to present them and whether to sign in

@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using I = KhaozEngine.TileWorld.Physics.TileWaterArithmetic;
 using V = KhaozEngine.TileWorld.Physics.TileWaterConvexShape.Vector;
 using R = KhaozEngine.TileWorld.Physics.TileWaterConvexShape.Range;
@@ -196,6 +197,38 @@ internal ref struct TileWaterPreparedQuery
         return result;
     }
 
+    internal bool CanRetain => _header.HasControlToken;
+    internal int StorageBytes => Unsafe.SizeOf<Header>() +
+        _states.Length * Unsafe.SizeOf<BasisState>() + _clips.Length * Unsafe.SizeOf<ClipTerm>();
+
+    internal void CopyTo(Span<byte> target)
+    {
+        int headerBytes = Unsafe.SizeOf<Header>();
+        MemoryMarshal.Write(target, in _header);
+        Span<byte> states = MemoryMarshal.AsBytes(_states);
+        states.CopyTo(target[headerBytes..]);
+        MemoryMarshal.AsBytes(_clips).CopyTo(target[(headerBytes + states.Length)..]);
+    }
+
+    internal static TileWaterPreparedQuery Restore(TileWaterConvexShape shape, Span<byte> source)
+    {
+        Header header = MemoryMarshal.Read<Header>(source);
+        int headerBytes = Unsafe.SizeOf<Header>();
+        int stateBytes = shape.Bases.Length * Unsafe.SizeOf<BasisState>();
+        int clipBytes = shape.Bases.Length * (shape.Planes.Length + 3) * Unsafe.SizeOf<ClipTerm>();
+        return new(shape, header,
+            MemoryMarshal.Cast<byte, BasisState>(source.Slice(headerBytes, stateBytes)),
+            MemoryMarshal.Cast<byte, ClipTerm>(source.Slice(headerBytes + stateBytes, clipBytes)));
+    }
+
+    TileWaterPreparedQuery(TileWaterConvexShape shape, Header header, Span<BasisState> states, Span<ClipTerm> clips)
+    {
+        _shape = shape;
+        _header = header;
+        _states = states;
+        _clips = clips;
+    }
+
     bool ActiveClip(int ordinal, int i, ref BasisState state, ref double enter, ref double exit)
     {
         ref ClipTerm term = ref _clips[ordinal * Stride + i];
@@ -241,6 +274,9 @@ internal sealed class TileWaterPreparationWorkspace
     readonly TileWaterPreparedQuery.BasisState[] _states = new TileWaterPreparedQuery.BasisState[TileWaterPreparedQuery.MaxBases];
     readonly TileWaterPreparedQuery.ClipTerm[] _clips = new TileWaterPreparedQuery.ClipTerm[
         TileWaterPreparedQuery.MaxBases * (TileWaterPreparedQuery.MaxPlanes + 3)];
+
+    internal int PayloadBytes => _states.Length * Unsafe.SizeOf<TileWaterPreparedQuery.BasisState>() +
+        _clips.Length * Unsafe.SizeOf<TileWaterPreparedQuery.ClipTerm>();
 
     internal TileWaterPreparedQuery Prepare(TileWaterConvexShape shape, V start, V drive, I core, float radius,
         double heightError = 0, double horizontalError = 0) =>

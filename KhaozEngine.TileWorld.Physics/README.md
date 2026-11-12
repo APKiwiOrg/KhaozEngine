@@ -112,7 +112,12 @@ The internal shape evaluator supports a query preparation with ordered, first-us
 post-feasibility terms. Each stored term is the original interval expression, with its operand order unchanged.
 Window clipping, minima, root clamping, seam certification and first-witness selection remain per evaluation.
 An unavailable or changed floating point control token takes the direct evaluator. Sticky status is outside
-the coverage contract. Coverage assembly currently uses the direct evaluator.
+the coverage contract. Coverage prepares each selected prism and face separately once per trace, and reuses
+that preparation for span, point and dry evaluations. One per-thread temporary workspace supports up to 176
+bases and ten planes. Full-window hits alone are retained, at their actual basis and plane sizes, in an
+optional 4 MiB per-thread slab. Misses consume no retained storage. Exhaustion takes the direct evaluator,
+without adding a refusal or consuming output capacity. Every offset expires at trace end. Repeated traces
+allocate no preparation storage after warm-up.
 Trace coverage uses water prisms bounded by those triangles and clipped at the body's free surface, including
 exposed patches and dry volume. Internal triangle and same-body tile edges contribute no dry wall.
 For the canonical coplanar triangle pair in one raw column, a grazing bed-diagonal root can partition an

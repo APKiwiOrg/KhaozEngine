@@ -7,11 +7,12 @@ using R = KhaozEngine.TileWorld.Physics.TileWaterConvexShape.Range;
 
 namespace KhaozEngine.TileWorld.Physics;
 
-/// <summary>Full capsule coverage over the captured triangle-water union, with bounded private output.</summary>
+/// <summary>Full capsule coverage with one preparation per selected shape and trace, bounded hit retention,
+/// and direct evaluation when the optional 4 MiB per-thread preparation slab is exhausted.</summary>
 internal static class TileWaterPrismCoverage
 {
     const int SpanLimit = MovementQueryLease.MaxCoverageSpans, ContactLimit = MovementQueryLease.MaxDomainContacts;
-    readonly record struct Hit(int Index, R Range);
+    readonly record struct Hit(int Index, R Range, int Preparation);
     [ThreadStatic] static Scratch? t_scratch;
     sealed class Scratch
     {
@@ -20,6 +21,7 @@ internal static class TileWaterPrismCoverage
         internal readonly Hit[] Faces = new Hit[ContactLimit * 8];
         internal readonly MovementCoverageSpan[] Spans = new MovementCoverageSpan[SpanLimit];
         internal readonly MovementDomainContact[] Contacts = new MovementDomainContact[ContactLimit];
+        internal readonly TileWaterPreparationStorage Preparations = new();
     }
 
     internal static MovementCoverageResult Trace(TileWaterPrism[] pieces, TileWaterPrismFace[] faces, CapturedTileGround ground, TileWaterColumnIndex index, int[] prismStarts, int[] faceStarts,
@@ -30,6 +32,23 @@ internal static class TileWaterPrismCoverage
         TileWaterCensus.Add("prism-traces");
 #endif
         Scratch scratch = t_scratch ??= new();
+        scratch.Preparations.BeginTrace();
+        try
+        {
+            return TracePrepared(scratch, pieces, faces, ground, index, prismStarts, faceStarts,
+                query, origin, identity, spans, contacts);
+        }
+        finally { scratch.Preparations.EndTrace(); }
+    }
+
+    internal static TileWaterPreparationStorage.Snapshot CapturePreparationForTests() =>
+        t_scratch?.Preparations.Last ?? default;
+
+    static MovementCoverageResult TracePrepared(Scratch scratch, TileWaterPrism[] pieces, TileWaterPrismFace[] faces,
+        CapturedTileGround ground, TileWaterColumnIndex index, int[] prismStarts, int[] faceStarts,
+        in MovementMediumSweepQuery query, Vector3 origin, in MovementQueryIdentity identity,
+        Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
+    {
         int cuts = 2, pieceCount = 0, faceCount = 0, contactCount = 0;
         scratch.Cuts[0] = 0;
         scratch.Cuts[1] = 1;
@@ -48,9 +67,11 @@ internal static class TileWaterPrismCoverage
                 TileWaterCensus.Phase = "select-prism";
                 TileWaterCensus.Selected?.Invoke(piece, piece.Shape, -1);
 #endif
-                R range = piece.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
+                var prepared = piece.Shape.Prepare(scratch.Preparations.Workspace, piece.Start(query, origin), drive,
+                    core, query.Body.Radius, piece.HeightError, piece.HorizontalError);
+                R range = prepared.Evaluate();
                 if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
-                if (!range.Hit) continue;
+                if (!range.Hit) { scratch.Preparations.DiscardMiss(); continue; }
                 // A certified rejection has no reported contact location. Only intersected pieces charge
                 // their projection and representation uncertainty to the published trace certificate.
                 error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));
@@ -59,7 +80,7 @@ internal static class TileWaterPrismCoverage
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Add("pieces-retained");
 #endif
-                scratch.Pieces[pieceCount++] = new(i, range);
+                scratch.Pieces[pieceCount++] = new(i, range, scratch.Preparations.Retain(ref prepared));
             }
         for (int c = 0; c < candidateCount; c++)
             for (int i = faceStarts[candidates[c]]; i < faceStarts[candidates[c] + 1]; i++)
@@ -71,9 +92,11 @@ internal static class TileWaterPrismCoverage
                 TileWaterCensus.Phase = "select-face";
                 TileWaterCensus.Selected?.Invoke(piece, face.Shape, face.Plane);
 #endif
-                R range = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
+                var prepared = face.Shape.Prepare(scratch.Preparations.Workspace, piece.Start(query, origin), drive,
+                    core, query.Body.Radius, piece.HeightError, piece.HorizontalError);
+                R range = prepared.Evaluate();
                 if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
-                if (!range.Hit) continue;
+                if (!range.Hit) { scratch.Preparations.DiscardMiss(); continue; }
                 // A certified rejection has no reported contact location. Only intersected pieces charge
                 // their projection and representation uncertainty to the published trace certificate.
                 error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));
@@ -82,7 +105,7 @@ internal static class TileWaterPrismCoverage
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Add("faces-retained");
 #endif
-                scratch.Faces[faceCount++] = new(i, range);
+                scratch.Faces[faceCount++] = new(i, range, scratch.Preparations.Retain(ref prepared));
             }
         int spanCount = cuts - 1;
         if (spanCount > SpanLimit) return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount);
@@ -100,7 +123,7 @@ internal static class TileWaterPrismCoverage
 #if WATER_PRISM_CENSUS
                     TileWaterCensus.Phase = "assemble-prism";
 #endif
-                    R covered = piece.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius,
+                    R covered = scratch.Preparations.Evaluate(hit.Preparation, piece.Shape, piece.Start(query, origin), drive, core, query.Body.Radius,
                         enter, exit, piece.HeightError, piece.HorizontalError);
                     if (!covered.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
                     if (!covered.Hit) continue;
@@ -114,23 +137,23 @@ internal static class TileWaterPrismCoverage
 #if WATER_PRISM_CENSUS
                         TileWaterCensus.Phase = "assemble-face";
 #endif
-                        R located = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius,
+                        R located = scratch.Preparations.Evaluate(faceHit.Preparation, face.Shape, piece.Start(query, origin), drive, core, query.Body.Radius,
                             enter, exit, piece.HeightError, piece.HorizontalError);
                         if (!located.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
                         if (!located.Hit) continue;
                         error = Math.Max(error, located.Error);
                         boundary = true;
-                        if (!Append(piece, face.Plane, located, covered, enter, exit, ground, query, origin,
+                        if (!Append(scratch, hit.Preparation, piece, face.Plane, located, covered, enter, exit, ground, query, origin,
                                 scratch.Contacts, ref contactCount, ref error))
                             return Refuse(contactCount == ContactLimit ? MovementAvailability.CapacityExceeded : MovementAvailability.Unresolved,
                                 identity, spanCount, ContactLimit + 1);
                     }
-                    if (!boundary && !Append(piece, 4, covered, covered, enter, exit, ground, query, origin,
+                    if (!boundary && !Append(scratch, hit.Preparation, piece, 4, covered, covered, enter, exit, ground, query, origin,
                             scratch.Contacts, ref contactCount, ref error))
                         return Refuse(contactCount == ContactLimit ? MovementAvailability.CapacityExceeded : MovementAvailability.Unresolved,
                             identity, spanCount, ContactLimit + 1);
                 }
-                bool dry = Dry(pieces, faces, candidates[..candidateCount], prismStarts, scratch.Faces.AsSpan(0, faceCount), query, origin, enter, exit);
+                bool dry = Dry(scratch, pieces, faces, candidates[..candidateCount], prismStarts, scratch.Faces.AsSpan(0, faceCount), query, origin, enter, exit);
                 scratch.Spans[s] = new(enter, exit, first, contactCount - first, dry || first == contactCount);
             }
             float certificate = TileWaterColumnCoverage.Upper(error);
@@ -146,7 +169,7 @@ internal static class TileWaterPrismCoverage
         finally { scratch.Contacts.AsSpan(0, contactCount).Clear(); }
     }
 
-    static bool Append(TileWaterPrism piece, int face, R contact, R covered, float enter, float exit,
+    static bool Append(Scratch scratch, int preparation, TileWaterPrism piece, int face, R contact, R covered, float enter, float exit,
         CapturedTileGround ground, in MovementMediumSweepQuery query, Vector3 origin,
         Span<MovementDomainContact> output, ref int count, ref double error)
     {
@@ -170,7 +193,7 @@ internal static class TileWaterPrismCoverage
 #if WATER_PRISM_CENSUS
         TileWaterCensus.Phase = "append-overlap";
 #endif
-        R point = piece.Shape.Intersect(piece.Start(query, origin), V.Point(query.Delta.X, query.Delta.Y, query.Delta.Z),
+        R point = scratch.Preparations.Evaluate(preparation, piece.Shape, piece.Start(query, origin), V.Point(query.Delta.X, query.Delta.Y, query.Delta.Z),
             core, query.Body.Radius, fraction, fraction, piece.HeightError, piece.HorizontalError);
         if (!point.Resolved) return false;
         error = Math.Max(error, point.Error);
@@ -184,7 +207,7 @@ internal static class TileWaterPrismCoverage
         return true;
     }
 
-    static bool Dry(TileWaterPrism[] pieces, TileWaterPrismFace[] faces, ReadOnlySpan<int> candidates, int[] prismStarts,
+    static bool Dry(Scratch scratch, TileWaterPrism[] pieces, TileWaterPrismFace[] faces, ReadOnlySpan<int> candidates, int[] prismStarts,
         ReadOnlySpan<Hit> hits,
         in MovementMediumSweepQuery query, Vector3 origin, float enter, float exit)
     {
@@ -209,7 +232,7 @@ internal static class TileWaterPrismCoverage
 #if WATER_PRISM_CENSUS
             TileWaterCensus.Phase = "dry-face";
 #endif
-            R range = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, enter, exit, piece.HeightError, piece.HorizontalError);
+            R range = scratch.Preparations.Evaluate(hit.Preparation, face.Shape, piece.Start(query, origin), drive, core, query.Body.Radius, enter, exit, piece.HeightError, piece.HorizontalError);
             if (!range.Resolved || range.MinimumSquared < squared) return true;
         }
         return false;

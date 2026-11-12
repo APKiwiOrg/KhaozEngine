@@ -10,6 +10,7 @@ using Xunit;
 namespace KhaozEngine.Tests.TileWorld.Physics;
 
 [Collection("AllocSensitive")]
+[Trait("Category", "WaterKernelContract")]
 public class TileWaterTraceMemoObservationTests
 {
     [Fact]

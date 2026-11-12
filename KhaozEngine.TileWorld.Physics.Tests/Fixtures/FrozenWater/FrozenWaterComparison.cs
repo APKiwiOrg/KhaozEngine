@@ -18,7 +18,7 @@ internal static class FrozenWaterComparison
 
     internal static MovementCoverageResult Check(TileMediumSampler actual, FrozenWaterReference frozen,
         MovementMediumSweepQuery query, Vector3 origin = default, int spanCapacity = 64, int contactCapacity = 256,
-        MovementQueryIdentity? identity = null)
+        MovementQueryIdentity? identity = null, bool warmOnly = false)
     {
         var expectedSpans = Enumerable.Repeat(SpanSentinel, 66).ToArray();
         var actualSpans = expectedSpans.ToArray();
@@ -30,6 +30,7 @@ internal static class FrozenWaterComparison
         Equal(expected, result, expectedSpans, actualSpans, expectedContacts, actualContacts);
         Assert.All(actualSpans.Skip(result.SpansWritten), value => WaterCoverageComparison.Span(SpanSentinel, value));
         Assert.All(actualContacts.Skip(result.ContactsWritten), value => WaterCoverageComparison.Contact(ContactSentinel, value));
+        CheckMemoStates(actual, query, origin, token, expected, expectedSpans, expectedContacts, spanCapacity, contactCapacity, warmOnly);
         return result;
     }
 
@@ -50,7 +51,38 @@ internal static class FrozenWaterComparison
         Equal(expected, actual, expectedSpans, actualSpans, expectedContacts, actualContacts);
         Assert.All(actualSpans.Skip(actual.SpansWritten), value => WaterCoverageComparison.Span(SpanSentinel, value));
         Assert.All(actualContacts.Skip(actual.ContactsWritten), value => WaterCoverageComparison.Contact(ContactSentinel, value));
+        var sampler = TileMediumSampler.FromTraceForTests(geometry, query.Body.CurrentSpace.WorldId);
+        CheckMemoStates(sampler, query, Vector3.Zero, identity, expected, expectedSpans, expectedContacts, spanCapacity, contactCapacity);
         return actual;
+    }
+
+    static void CheckMemoStates(TileMediumSampler sampler, MovementMediumSweepQuery query, Vector3 origin,
+        MovementQueryIdentity identity, MovementCoverageResult expected, MovementCoverageSpan[] expectedSpans,
+        MovementDomainContact[] expectedContacts, int spanCapacity, int contactCapacity, bool warmOnly = false)
+    {
+        bool bypass = TileMediumSampler.BypassTraceMemoForTests;
+        try
+        {
+            if (!warmOnly)
+            {
+                TileMediumSampler.BypassTraceMemoForTests = true;
+                Read();
+                sampler.ResetTraceMemoForTests();
+            }
+            TileMediumSampler.BypassTraceMemoForTests = false;
+            Read(); // Cold table.
+            Read(); // First repeated warm read, including cached refusals.
+            Read(); // A hit must not corrupt the stored prefixes or caller suffixes.
+        }
+        finally { TileMediumSampler.BypassTraceMemoForTests = bypass; }
+
+        void Read()
+        {
+            var spans = Enumerable.Repeat(SpanSentinel, expectedSpans.Length).ToArray();
+            var contacts = Enumerable.Repeat(ContactSentinel, expectedContacts.Length).ToArray();
+            var result = sampler.TraceWater(query, origin, identity, spans.AsSpan(0, spanCapacity), contacts.AsSpan(0, contactCapacity));
+            Equal(expected, result, expectedSpans, spans, expectedContacts, contacts);
+        }
     }
 
     internal static void Equal(MovementCoverageResult expected, MovementCoverageResult actual,

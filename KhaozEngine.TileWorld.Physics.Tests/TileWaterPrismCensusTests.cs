@@ -35,6 +35,7 @@ public sealed class TileWaterPrismCensusTests(ITestOutputHelper output)
         Assert.Equal(baseline.RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal),
             WaterPrismScenario.Names.Order(StringComparer.Ordinal));
         using var scene = new WaterPrismScenario(name);
+        scene.Colliders.Medium.ResetTraceMemoForTests();
         var snapshot = scene.Colliders.Medium.CaptureTraceForTests();
         var frozen = new FrozenWaterReference(snapshot);
         var records = new List<(MovementMediumSweepQuery Query, MovementCoverageResult Result,

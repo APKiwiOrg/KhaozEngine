@@ -38,7 +38,7 @@ public sealed partial class TileMediumSampler
         return new(MovementAvailability.Known, body.CurrentSpace, null, false, 1, null);
     }
 
-    sealed class FieldSnapshot
+    sealed partial class FieldSnapshot
     {
         internal string WorldId { get; }
         internal string SemanticIdentity { get; }

@@ -44,7 +44,7 @@ internal sealed class WaterPrismMeasurement : IDisposable
         public string Availability { get; set; } = "";
         public bool FullyDry { get; set; }
         public bool FullySubmerged { get; set; }
-        public bool PrismKernel => Work.ContainsKey("prism-traces");
+        public bool PrismKernel => Work.GetValueOrDefault("prism-traces") > 0;
     }
 
     bool _rejecting;
@@ -140,6 +140,10 @@ internal sealed class WaterPrismMeasurement : IDisposable
         _row.Availability = result.Availability.ToString();
         _row.Work["shape-preparations"] = TileWaterQueryWork.ShapePreparations;
         _row.Work["lazy-coefficient-fills"] = TileWaterQueryWork.LazyCoefficientFills;
+        _row.Work["prism-traces"] = TileWaterQueryWork.PrismTraces;
+        _row.Work["memo-hits"] = TileWaterQueryWork.MemoHits;
+        _row.Work["memo-misses"] = TileWaterQueryWork.MemoMisses;
+        _row.Work["convex-intersections"] = TileWaterQueryWork.ConvexIntersections;
         _row.Work["bed-seam-proofs"] = TileWaterQueryWork.BedSeamProofs;
         _row.Work["bed-seam-certificates"] = TileWaterQueryWork.BedSeamCertificates;
         _row.Work["index-nodes"] = TileWaterQueryWork.IndexNodes;

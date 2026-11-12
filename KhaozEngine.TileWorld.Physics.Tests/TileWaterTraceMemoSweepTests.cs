@@ -8,6 +8,7 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.TileWorld.Physics;
 
+[Trait("Category", "WaterKernelContract")]
 public class TileWaterTraceMemoSweepTests(ITestOutputHelper output)
 {
     [Theory]

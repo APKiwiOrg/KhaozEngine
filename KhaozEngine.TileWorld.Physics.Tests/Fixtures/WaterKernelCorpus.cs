@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Linq;
 using KhaozEngine.Locomotion;
@@ -14,6 +15,7 @@ internal static class WaterKernelCorpus
         var columns = snapshot.Columns.Concat(snapshot.Nonuniform).Distinct().ToArray();
         if (columns.Length == 0) throw new InvalidOperationException("A water corpus fixture must contain captured water columns.");
         var random = new Random(seed);
+        var recorded = new List<(MovementMediumSweepQuery Query, Vector3 Origin)>();
         int count = 0;
         for (int i = 0; i < samples; i++)
         {
@@ -50,6 +52,7 @@ internal static class WaterKernelCorpus
                 MovementWaterFieldTests.Space, null);
             var query = new MovementMediumSweepQuery(body, direction * length);
             _ = FrozenWaterComparison.Check(field, frozen, query, origin);
+            recorded.Add((query, origin));
             count++;
             if (i == 1)
             {
@@ -77,12 +80,17 @@ internal static class WaterKernelCorpus
                             case 4: delta.Y = value; break;
                             default: delta.Z = value; break;
                         }
-                        _ = FrozenWaterComparison.Check(field, frozen, new(new(start, body.Radius, body.HalfHeight,
-                            body.CurrentSpace, null), delta), origin);
+                        var adjacent = new MovementMediumSweepQuery(new(start, body.Radius, body.HalfHeight, body.CurrentSpace, null), delta);
+                        _ = FrozenWaterComparison.Check(field, frozen, adjacent, origin);
+                        recorded.Add((adjacent, origin));
                         count++;
                     }
             }
         }
+        var shuffled = recorded.ToArray();
+        random.Shuffle(shuffled);
+        foreach (var item in shuffled)
+            _ = FrozenWaterComparison.Check(field, frozen, item.Query, item.Origin, warmOnly: true);
         return count;
         float Lerp(float low, float high) => low + (high - low) * (float)random.NextDouble();
     }

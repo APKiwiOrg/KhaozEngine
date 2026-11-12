@@ -4,6 +4,16 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.9.1
+
+2026-11-12
+
+- Nameplates keep their shape as they move in a point-space `UiViewport` pass. Each component is placed from its
+  offset to the snapped panel origin with a whole device pixel size, so a plate moved by whole device pixels
+  moves every edge by exactly that much. The 23.9.0 snapping rounded absolute edges, which let a bar under a
+  scaled name change height from one row to the next
+  ([#1770](https://github.com/APKiwiOrg/KhaozEngine/issues/1770)).
+
 ## 23.9.0
 
 2026-11-12

@@ -85,9 +85,9 @@ refusal. This validates the reported removals for the recorded inputs. It is not
 Both moving-bank cases contain a fully dry motion-resolve trace inside an otherwise wet gameplay step. Each can
 remove that trace's eight solves, or 8 of 202 solves in the step. No recorded trace qualifies as fully submerged.
 
-Coverage output compares bitwise with the frozen `WaterTraceReference` through `WaterCoverageComparison` and
-`WaterCoverageDigest`. This reference shares the prism solver. Independent box and seam tests remain necessary.
-No timing assertion is installed.
+Coverage output compares bitwise with the frozen prism evaluator through `WaterCoverageComparison` and
+`WaterCoverageDigest`. Its shared helpers and snapshot boundary are listed below. Independent box and seam
+tests remain necessary. No timing assertion is installed.
 
 ## Frozen differential kernel contract
 
@@ -109,10 +109,12 @@ build-slot --label water-kernel-contract -- dotnet test KhaozEngine.TileWorld.Ph
 ```
 
 The independent `water-kernel-contract` CI job builds only this headless test project on hosted ubuntu-26.04
-x64 and macos-26 arm64. Each job runs the entire contract with `DOTNET_TieredCompilation=0` and `1` and retains
-both TRX files. It runs separately from the selective runner's Foundation/Server pass, so an affected-project
-selection cannot omit this matrix. Each execution compares frozen against production on the same runtime.
-There is no single numeric digest asserted across architectures.
+x64 and macos-26 arm64. Each job runs the contract with `DOTNET_TieredCompilation=0` and `1` and retains both
+TRX files. Its filter excludes `TileWaterPrismCensusTests`, whose pre-existing census digests remain in the
+ordinary test slice. The extended corpus still records all nine fixtures over four ticks on each runtime.
+It runs separately from the selective runner's Foundation/Server pass, so an affected-project selection
+cannot omit this matrix. Each execution compares frozen against production on the same runtime. The runtime
+gate asserts no single numeric digest across architectures.
 
 ## Regenerate the work-count baseline
 

@@ -6,6 +6,8 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Netcode.Tests" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <!-- Parallel ForEach (7.42.0) fans archetype row ranges across the shared IJobScheduler worker-pool seam,

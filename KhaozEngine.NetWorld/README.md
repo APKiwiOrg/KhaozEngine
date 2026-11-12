@@ -70,6 +70,14 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step
   per ingest; `AdvancePresentation(dt)` drives it, opt out with `WorldClientConfig.InterpolateRemotes = false`).
+  Every `Poll` starts a new ECS observation window before ingest, after any reconnect has replaced the world.
+  Earlier `Added<T>()`, `Changed<T>()`, `Removed<T>()` and `Events<T>()` are cleared, including on empty or
+  zero-time polls and backoff waits. Changes from this poll and between polls remain until the next poll.
+  Read change tracking after polling. Multiple polls in a render frame create multiple boundaries, and skipping
+  polls leaves the current window open. Set `WorldClientConfig.AdvanceWorldTick = false` only when managing
+  the boundary yourself with `World.AdvanceTick()`. Remove any extra advance or opt out, since a second advance
+  can clear changes or events before their readers run. Prediction owns separate local state, while remote
+  presentation writes into the current ECS window without advancing it.
   `AdvancePresentation` treats a frame time that is not a finite positive number of seconds (negative, zero,
   infinite, or not a number) as zero, so a broken frame clock advances neither the local avatar nor the remote
   render timeline instead of pinning both for the session.
@@ -1844,7 +1852,8 @@ and changes nothing for a host or client that does not opt in.
   time, independent of render frames, extra `Tick` calls and whether a sharded sub-tick ran: one routine send per
   viewer per cadence tick, keeping only the newest unsent projection. An opted-in client must pass elapsed seconds to
   `WorldClient.Poll(dt)`. Its ack and repair scheduling and its recovery deadline run on that time. Zero-time drain
-  calls between scheduled ones are allowed and consume nothing.
+  calls between scheduled ones are allowed and consume no replication cadence. Each still starts a new ECS
+  change-tracking and world-event window unless `AdvanceWorldTick` is false.
 - **Valid-state liveness.** Once a mode 1 offer was accepted, only an accepted projection counts as a server frame for
   `DisconnectTimeoutSeconds`. Stale, ignored and missing-baseline traffic never refreshes it. While negotiation or a
   repair runs, the typed recovery deadline replaces that timeout.

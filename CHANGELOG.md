@@ -4,6 +4,19 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.9.2
+
+2026-11-12
+
+- `WorldClient.Poll` and `TileWorldClient.Poll` now advance their ECS world's tick before applying incoming
+  mutations, clearing retained change tracking and world events so area-of-interest turnover cannot accumulate
+  obsolete entity generations for the session. Each poll is an observation boundary, even an empty or zero-time
+  drain and a reconnect backoff wait. Read `Added<T>()`, `Changed<T>()`, `Removed<T>()` and `Events<T>()` after
+  polling and before the next poll. Changes and events produced between polls share that window. Consumers that
+  already advance a client world themselves must set the matching client config's `AdvanceWorldTick = false`
+  or remove their own advance, because advancing twice can clear observations before their readers run
+  ([#1771](https://github.com/APKiwiOrg/KhaozEngine/issues/1771)).
+
 ## 23.9.1
 
 2026-11-12

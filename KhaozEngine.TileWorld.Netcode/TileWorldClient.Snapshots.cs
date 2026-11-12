@@ -52,8 +52,13 @@ public sealed partial class TileWorldClient
     /// already stale by the time it is read, and that a queue nothing evicts grows without bound the moment a head
     /// stops keeping up with it.</para>
     /// </summary>
+    /// <remarks>By default each call advances <see cref="World"/> before ingest, clearing earlier Added,
+    /// Changed, Removed and world events, even with no incoming packets. Read them after polling and before
+    /// the next poll. Changes between polls share the current window. Set
+    /// <see cref="TileWorldClientConfig.AdvanceWorldTick"/> false for a caller-owned boundary.</remarks>
     public void Poll()
     {
+        if (config.AdvanceWorldTick) World.AdvanceTick();
         net.Poll();
         while (net.TryDequeueEvent(out ClientSessionEvent ev))
         {

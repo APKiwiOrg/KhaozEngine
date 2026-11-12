@@ -6,6 +6,12 @@ namespace KhaozEngine.NetWorld;
 /// <summary>Tunables for <see cref="WorldClient"/>.</summary>
 public sealed partial class WorldClientConfig
 {
+    /// <summary>Advance the client world's change-tracking tick once per <see cref="WorldClient.Poll"/>.
+    /// Default true. Each poll clears earlier Added, Changed, Removed and world events before ingest, even
+    /// without incoming data. Read them after polling and before the next poll. Set false only when the caller
+    /// owns the boundary and calls <see cref="KhaozEngine.Ecs.World.AdvanceTick"/> itself.</summary>
+    public bool AdvanceWorldTick { get; init; } = true;
+
     /// <summary>Fixed client prediction tick, seconds. Must match the server tick for clean reconciliation.</summary>
     public float TickSeconds { get; init; } = 1f / 30f;
     /// <summary>Override prediction settings; defaults to <see cref="PredictionSettings.Default"/> at <see cref="TickSeconds"/>.</summary>

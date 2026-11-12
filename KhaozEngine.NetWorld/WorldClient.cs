@@ -45,6 +45,7 @@ public sealed partial class WorldClient : IDisposable
     // both the tick cadence and the render fps - no phase drift, no per-tick holds/catch-up snaps - replacing the old
     // estimate-the-interval-and-ramp-alpha scheme (which pinned alpha at 1 and held/snapped at a non-integer ratio).
     private readonly bool interpolateRemotes;
+    private readonly bool advanceWorldTick;
     private readonly bool requestDeltaReplication;    // advertise DeltaCapable on join + ack applied delta seqs
     private readonly float tickSeconds;
     private readonly float interpolationDelaySeconds; // fixed remote render delay (InterpolationDelayTicks * tick)
@@ -145,6 +146,7 @@ public sealed partial class WorldClient : IDisposable
             PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
             prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
             interpolateRemotes = config.InterpolateRemotes;
+            advanceWorldTick = config.AdvanceWorldTick;
             requestDeltaReplication = config.RequestDeltaReplication;
             tickSeconds = config.TickSeconds;
             serverTicks = StartServerTickTimeline(config);   // refuses the format 2 combination, null without the opt-in
@@ -283,7 +285,11 @@ public sealed partial class WorldClient : IDisposable
     /// the state transitions to <see cref="WorldConnectionState.Reconnecting"/> (factory ctor) or
     /// <see cref="WorldConnectionState.Disconnected"/> (instance ctor), with the appropriate
     /// <see cref="DisconnectReason"/>. The detector only advances when dt &gt; 0; callers that pass 0 (the default)
-    /// disable it for that call.</summary>
+    /// disable it for that call.
+    /// <para>By default each call advances the client world before ingest, after any reconnect replaces it,
+    /// clearing earlier Added, Changed, Removed and world events. Read them after polling and before the next
+    /// poll. Empty calls, zero-time drains and backoff waits are boundaries too. Changes between polls share
+    /// the current window. Set <see cref="WorldClientConfig.AdvanceWorldTick"/> false for a caller-owned boundary.</para></summary>
     public void Poll(float dt = 0f)
     {
         remoteTeleports.Clear();   // reflects only THIS poll's remote teleports; refilled by FlushTeleportedRemotes below
@@ -292,10 +298,16 @@ public sealed partial class WorldClient : IDisposable
         if (awaitingBackoff)
         {
             retryWaitRemaining -= dt;
-            if (retryWaitRemaining > 0f) return;
+            if (retryWaitRemaining > 0f)
+            {
+                if (advanceWorldTick) world.AdvanceTick();
+                return;
+            }
             StartAttempt();
         }
 
+        // Clear the current world, including a replacement just created by StartAttempt, before any ingest.
+        if (advanceWorldTick) world.AdvanceTick();
         net.Poll();
         bool gotFrame = false;
         while (net.TryDequeueEvent(out ClientSessionEvent ev))

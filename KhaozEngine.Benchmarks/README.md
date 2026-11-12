@@ -439,3 +439,8 @@ The term is derived during load and does not change the published pack shape use
 Always `-c Release`. Debug numbers are not representative, and the P7 and P9 figures in particular are
 timed loops whose Debug values say nothing. Like every mode here the project is `IsPackable=false`, is not
 on the engine version line, and CI never invokes its timing loop.
+## Water prism mode
+
+`--water-prism` runs the fixed Contact water workloads described by the
+[water prism census](../test-shared/WaterPrismCensus/README.md). It reports indicative microsecond timings and
+has no timing assertions. Use a normal Release build, without `WaterPrismCensus=true`.

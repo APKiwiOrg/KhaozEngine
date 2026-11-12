@@ -14,7 +14,13 @@ internal sealed class TileWaterConvexShape
         public static Vector operator +(Vector a, Vector b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
         public static Vector operator -(Vector a, Vector b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
         public static Vector operator *(Vector a, I scale) => new(a.X * scale, a.Y * scale, a.Z * scale);
-        internal static I Dot(Vector a, Vector b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+        internal static I Dot(Vector a, Vector b)
+        {
+#if WATER_PRISM_CENSUS
+            TileWaterCensus.Add(TileWaterCensus.Projecting ? "projection-dots" : "other-dots");
+#endif
+            return a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+        }
         internal I SquaredLength => X.Square() + Y.Square() + Z.Square();
         internal static Vector Cross(Vector a, Vector b) => new(a.Y * b.Z - a.Z * b.Y,
             a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X);
@@ -69,6 +75,9 @@ internal sealed class TileWaterConvexShape
 
     internal bool Contains(Vector point)
     {
+#if WATER_PRISM_CENSUS
+        TileWaterCensus.Add("contains");
+#endif
         foreach (Plane plane in _planes)
             if (Vector.Dot(plane.Normal, point).High > plane.Offset.Low) return false;
         return true;
@@ -77,6 +86,9 @@ internal sealed class TileWaterConvexShape
     internal Range Intersect(Vector start, Vector drive, I core, float radius, double enter = 0, double exit = 1,
         double heightError = 0, double horizontalError = 0)
     {
+#if WATER_PRISM_CENSUS
+        using var measurement = TileWaterCensus.Observe(this, start, drive, core, radius, enter, exit, heightError, horizontalError);
+#endif
         if (TileWaterQueryWork.Enabled) TileWaterQueryWork.ConvexIntersections++;
         double first = double.PositiveInfinity, last = double.NegativeInfinity, nearest = double.PositiveInfinity;
         double error = start.Width + drive.Width;
@@ -86,7 +98,16 @@ internal sealed class TileWaterConvexShape
         Span<I> velocity = stackalloc I[3];
         foreach (Basis basis in _bases)
         {
+#if WATER_PRISM_CENSUS
+            TileWaterCensus.Add("bases");
+            TileWaterCensus.Add(basis.A < 0 ? "basis/0" : basis.B < 0 ? "basis/1" : basis.C < 0 ? "basis/2" : "basis/3");
+            TileWaterCensus.Projecting = true;
+            bool projected = Project(basis, start, drive, core, heightError, horizontalError, lambda, velocity, out Vector q, out Vector v);
+            TileWaterCensus.Projecting = false;
+            if (!projected)
+#else
             if (!Project(basis, start, drive, core, heightError, horizontalError, lambda, velocity, out Vector q, out Vector v))
+#endif
                 return new(false, false, 0, 0, 0, double.PositiveInfinity, default, default);
             double low = enter, high = exit;
             int active = basis.A < 0 ? 0 : basis.B < 0 ? 1 : basis.C < 0 ? 2 : 3;
@@ -142,7 +163,13 @@ internal sealed class TileWaterConvexShape
             if (low < first) { first = low; witnessStart = q; witnessDrive = v; }
             last = Math.Max(last, high);
         }
+#if WATER_PRISM_CENSUS
+        var result = new Range(double.IsFinite(error), first <= last, first, last, nearest, error, witnessStart, witnessDrive);
+        TileWaterCensus.IntersectionResult?.Invoke(result);
+        return result;
+#else
         return new(double.IsFinite(error), first <= last, first, last, nearest, error, witnessStart, witnessDrive);
+#endif
     }
 
     bool Project(Basis basis, Vector start, Vector drive, I core, double heightError, double horizontalError,

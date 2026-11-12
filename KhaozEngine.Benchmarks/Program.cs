@@ -24,6 +24,12 @@ using KhaozEngine.Simulation;
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --jpeg         (one 960x540 JpegWriter encode)
 // See KhaozEngine.Benchmarks/README.md for how to read the output.
 
+if (Array.IndexOf(args, "--water-prism") >= 0)
+{
+    KhaozEngine.Benchmarks.WaterPrismBenchmark.Run();
+    return;
+}
+
 // content-catalog stage 5: the --catalog mode measures every budget of section 14 of the content catalog
 // design against a synthetic catalog it publishes first. It runs alone, like --journal, and prints one JSON
 // result. See KhaozEngine.Benchmarks/README.md for the command lines and the checked-in baselines.

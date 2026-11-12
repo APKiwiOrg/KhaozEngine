@@ -28,8 +28,12 @@
     <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
     <!-- The jpeg mode times the shipped JpegWriter on one bug report clip frame. -->
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <ProjectReference Include="../KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+    <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../test-shared/WaterPrismCensus/*.cs" Link="WaterPrismCensus/%(Filename)%(Extension)" />
     <!-- ResidentMemory is the instrument every memory budget is read through, so its own accuracy is a fact
          the CI suite pins rather than something only a hand-run benchmark would notice. See
          KhaozEngine.Server.Tests/Benchmarks/ResidentMemoryTests.cs. -->

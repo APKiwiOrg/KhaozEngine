@@ -16,11 +16,14 @@
     <!-- The shipped backend, so the colliders are proven against a real IPhysicsWorld rather than a test double. -->
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
     <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
+    <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../test-shared/WaterPrismCensus/*.cs" Link="Fixtures/WaterPrismCensus/%(Filename)%(Extension)" />
     <EmbeddedResource Include="Fixtures/TileInstallationBaseline.json" />
     <EmbeddedResource Include="Fixtures/TileInstallationBaseline.navbake" />
     <EmbeddedResource Include="Fixtures/ContactTerrainFormatFour.navbake" />
+    <EmbeddedResource Include="Fixtures/WaterPrismCensusBaseline.json" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/LocomotionStateBits.cs" Link="Fixtures/LocomotionStateBits.cs" />

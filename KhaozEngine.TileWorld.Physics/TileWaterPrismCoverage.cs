@@ -26,6 +26,9 @@ internal static class TileWaterPrismCoverage
         in MovementMediumSweepQuery query, Vector3 origin, in MovementQueryIdentity identity,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
     {
+#if WATER_PRISM_CENSUS
+        TileWaterCensus.Add("prism-traces");
+#endif
         Scratch scratch = t_scratch ??= new();
         int cuts = 2, pieceCount = 0, faceCount = 0, contactCount = 0;
         scratch.Cuts[0] = 0;
@@ -41,6 +44,10 @@ internal static class TileWaterPrismCoverage
             {
                 TileWaterPrism piece = pieces[i];
                 if (!piece.Candidate(query, origin)) continue;
+#if WATER_PRISM_CENSUS
+                TileWaterCensus.Phase = "select-prism";
+                TileWaterCensus.Selected?.Invoke(piece, piece.Shape, -1);
+#endif
                 R range = piece.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
                 if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
                 if (!range.Hit) continue;
@@ -49,6 +56,9 @@ internal static class TileWaterPrismCoverage
                 error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));
                 if (pieceCount == scratch.Pieces.Length || !AddRange(range, scratch.Cuts, ref cuts, query.Delta, ref error))
                     return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1, ContactLimit + 1);
+#if WATER_PRISM_CENSUS
+                TileWaterCensus.Add("pieces-retained");
+#endif
                 scratch.Pieces[pieceCount++] = new(i, range);
             }
         for (int c = 0; c < candidateCount; c++)
@@ -57,6 +67,10 @@ internal static class TileWaterPrismCoverage
                 TileWaterPrismFace face = faces[i];
                 TileWaterPrism piece = pieces[face.Prism];
                 if (!piece.Candidate(query, origin)) continue;
+#if WATER_PRISM_CENSUS
+                TileWaterCensus.Phase = "select-face";
+                TileWaterCensus.Selected?.Invoke(piece, face.Shape, face.Plane);
+#endif
                 R range = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
                 if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
                 if (!range.Hit) continue;
@@ -65,6 +79,9 @@ internal static class TileWaterPrismCoverage
                 error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));
                 if (faceCount == scratch.Faces.Length || !AddRange(range, scratch.Cuts, ref cuts, query.Delta, ref error))
                     return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1, ContactLimit + 1);
+#if WATER_PRISM_CENSUS
+                TileWaterCensus.Add("faces-retained");
+#endif
                 scratch.Faces[faceCount++] = new(i, range);
             }
         int spanCount = cuts - 1;
@@ -80,6 +97,9 @@ internal static class TileWaterPrismCoverage
                     Hit hit = scratch.Pieces[p];
                     if (!Overlaps(hit.Range, enter, exit)) continue;
                     TileWaterPrism piece = pieces[hit.Index];
+#if WATER_PRISM_CENSUS
+                    TileWaterCensus.Phase = "assemble-prism";
+#endif
                     R covered = piece.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius,
                         enter, exit, piece.HeightError, piece.HorizontalError);
                     if (!covered.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
@@ -91,6 +111,9 @@ internal static class TileWaterPrismCoverage
                         Hit faceHit = scratch.Faces[f];
                         TileWaterPrismFace face = faces[faceHit.Index];
                         if (face.Prism != hit.Index || !face.Wet || !Overlaps(faceHit.Range, enter, exit)) continue;
+#if WATER_PRISM_CENSUS
+                        TileWaterCensus.Phase = "assemble-face";
+#endif
                         R located = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius,
                             enter, exit, piece.HeightError, piece.HorizontalError);
                         if (!located.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
@@ -127,6 +150,9 @@ internal static class TileWaterPrismCoverage
         CapturedTileGround ground, in MovementMediumSweepQuery query, Vector3 origin,
         Span<MovementDomainContact> output, ref int count, ref double error)
     {
+#if WATER_PRISM_CENSUS
+        TileWaterCensus.Add("append");
+#endif
         if (count == output.Length) return false;
         float fraction = Math.Clamp((float)Math.Max(enter, contact.Enter), enter, exit);
         V located = contact.Witness(fraction) + piece.Reference;
@@ -141,6 +167,9 @@ internal static class TileWaterPrismCoverage
         double dx = column.X - x, dz = column.Y - z;
         error = Math.Max(error, located.Width + Math.Sqrt(dx * dx + dz * dz));
         I core = I.Point(query.Body.HalfHeight) - I.Point(query.Body.Radius);
+#if WATER_PRISM_CENSUS
+        TileWaterCensus.Phase = "append-overlap";
+#endif
         R point = piece.Shape.Intersect(piece.Start(query, origin), V.Point(query.Delta.X, query.Delta.Y, query.Delta.Z),
             core, query.Body.Radius, fraction, fraction, piece.HeightError, piece.HorizontalError);
         if (!point.Resolved) return false;
@@ -177,6 +206,9 @@ internal static class TileWaterPrismCoverage
             TileWaterPrismFace face = faces[hit.Index];
             if (!face.Dry || !Overlaps(hit.Range, enter, exit)) continue;
             TileWaterPrism piece = pieces[face.Prism];
+#if WATER_PRISM_CENSUS
+            TileWaterCensus.Phase = "dry-face";
+#endif
             R range = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, enter, exit, piece.HeightError, piece.HorizontalError);
             if (!range.Resolved || range.MinimumSquared < squared) return true;
         }

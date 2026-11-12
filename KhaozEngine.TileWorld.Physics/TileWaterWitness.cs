@@ -45,6 +45,9 @@ internal sealed class TileWaterWitness
 
     internal bool TryLocate(double worldX, double worldZ, out Vector2 column)
     {
+#if WATER_PRISM_CENSUS
+        TileWaterCensus.Add("witness-locate");
+#endif
         column = default;
         if (_minX > _maxX || _minZ > _maxZ) return false;
         V point = new V(I.Point(worldX), I.Point(0), I.Point(worldZ)) - _reference;

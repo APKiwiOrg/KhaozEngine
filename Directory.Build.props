@@ -4,6 +4,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Research instrumentation is absent from normal engine binaries. -->
+    <DefineConstants Condition="'$(WaterPrismCensus)' == 'true'">$(DefineConstants);WATER_PRISM_CENSUS</DefineConstants>
 
     <!-- Build quality: warnings are errors in every config (the build rule shared across every
          KhaozEngine repo). Any compiler/analyzer warning fails the build, the tests, and CI, so the

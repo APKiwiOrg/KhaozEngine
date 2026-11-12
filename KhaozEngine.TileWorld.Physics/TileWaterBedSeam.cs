@@ -56,6 +56,9 @@ internal sealed class TileWaterBedSeam
 
     internal bool Covers(int a, int b, int c, V start, V drive, I core, float radius, double enter, double exit)
     {
+#if WATER_PRISM_CENSUS
+        TileWaterCensus.Add("seam-attempts");
+#endif
         if (c >= 0 || !(a == _diagonal && b is 3 or 6)) return false;
         if (TileWaterQueryWork.Enabled) TileWaterQueryWork.BedSeamProofs++;
         I time = new(enter, exit), squaredNormal = _bed.Normal.SquaredLength;

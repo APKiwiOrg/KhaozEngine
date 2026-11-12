@@ -10,6 +10,9 @@ It references exactly those three packages. It carries no renderer and no physic
 The package is opt-in and in no umbrella. A tile world needs no physics to walk, render or serve.
 Add it explicitly when a game needs physics under its tile world, together with its chosen backend.
 
+The [water prism census](../test-shared/WaterPrismCensus/README.md) supplies fixed Contact workloads,
+opt-in exact-work counters and an indicative timing command for nonuniform beds.
+
 ## Use
 
 ```csharp

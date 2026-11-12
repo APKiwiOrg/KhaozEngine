@@ -144,6 +144,22 @@ public sealed class WaterKernelShapeMatrixTests
             shape.Intersect(from, delta, I.Point(0), radius, enter, exit));
     }
 
+    [Fact]
+    public void WindowsOutsideTheFullDomainReplayClipRejectedBases()
+    {
+        var shape = new TileWaterConvexShape([P.Point(1, 0, 0, 0)]);
+        var frozen = new FrozenTileWaterConvexShape(shape);
+        V start = V.Point(1, 0, 0), drive = V.Point(1, 0, 0);
+        var workspace = new TileWaterPreparationWorkspace();
+        var prepared = shape.Prepare(workspace, start, drive, I.Point(0), 0.25f);
+        Assert.False(prepared.Evaluate().Hit);
+        // The zero basis is clip-rejected by [0,1], but is the only feasible basis on [-2,-1.5].
+        Assert.True(frozen.Intersect(start, drive, I.Point(0), 0.25f, -2, -1.5).Hit);
+        foreach (var window in new (double Enter, double Exit)[] { (-2, -1.5), (-0.5, 0.5), (1.25, 1.5), (0.75, 0.25), (double.NaN, 1) })
+            FrozenWaterComparison.Range(frozen.Intersect(start, drive, I.Point(0), 0.25f, window.Enter, window.Exit),
+                prepared.Evaluate(window.Enter, window.Exit));
+    }
+
     [Theory]
     [InlineData(-0.5, 1, false, 0.1, 0.9)]
     [InlineData(0.5, -1, false, 0.1, 0.9)]

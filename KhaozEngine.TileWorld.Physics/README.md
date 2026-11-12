@@ -117,7 +117,10 @@ that preparation for span, point and dry evaluations. One per-thread temporary w
 bases and ten planes. Full-window hits alone are retained, at their actual basis and plane sizes, in an
 optional 4 MiB per-thread slab. Misses consume no retained storage. Exhaustion takes the direct evaluator,
 without adding a refusal or consuming output capacity. Every offset expires at trace end. Repeated traces
-allocate no preparation storage after warm-up.
+allocate no preparation storage after warm-up. After a complete full-window evaluation, a basis rejected
+by its clip chain is skipped for later valid subwindows of [0,1]. Other window orders and invalid or
+out-of-range windows replay the original clip chain. Feasible distance misses still contribute their error
+and nearest distance.
 Trace coverage uses water prisms bounded by those triangles and clipped at the body's free surface, including
 exposed patches and dry volume. Internal triangle and same-body tile edges contribute no dry wall.
 For the canonical coplanar triangle pair in one raw column, a grazing bed-diagonal root can partition an

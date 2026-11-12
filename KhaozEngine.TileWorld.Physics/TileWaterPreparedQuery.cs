@@ -17,7 +17,7 @@ internal ref struct TileWaterPreparedQuery
     {
         internal uint Mask;
         internal ushort ClipMask;
-        internal bool Projected;
+        internal bool Projected, RejectedFullWindow;
         internal Multipliers Lambda, Velocity;
         internal V Q, V, Offset, Motion;
         internal I A, B, Vertex, Lower, Upper;
@@ -41,13 +41,13 @@ internal ref struct TileWaterPreparedQuery
         internal float Radius;
         internal double HeightError, HorizontalError, InitialError;
         internal ulong ControlToken;
-        internal bool HasControlToken;
+        internal bool HasControlToken, FullWindowCompleted;
     }
 
     readonly TileWaterConvexShape _shape;
     readonly Span<BasisState> _states;
     readonly Span<ClipTerm> _clips;
-    readonly Header _header;
+    Header _header;
     int Stride => _shape.Planes.Length + 3;
 
     internal TileWaterPreparedQuery(TileWaterConvexShape shape, Span<BasisState> states, Span<ClipTerm> clips,
@@ -84,10 +84,17 @@ internal ref struct TileWaterPreparedQuery
         double error = _header.InitialError;
         V witnessStart = default, witnessDrive = default;
         I radiusSquared = _header.RadiusSquared;
+        bool fullWindow = enter == 0 && exit == 1;
+        bool skipFullRejections = _header.FullWindowCompleted && enter >= 0 && enter <= exit && exit <= 1;
         for (int ordinal = 0; ordinal < _shape.Bases.Length; ordinal++)
         {
             B basis = _shape.Bases[ordinal];
             ref BasisState state = ref _states[ordinal];
+            // Proof obligation: this projection resolved before its full-window clip rejection. The
+            // same ordered clips only narrow low/high through window-independent crossings. Starting
+            // in a valid subset of [0,1] rejects at or before that clip and contributes no later error
+            // or minimum. Invalid, unordered, NaN and out-of-range windows must replay every basis.
+            if (skipFullRejections && state.RejectedFullWindow) continue;
 #if WATER_PRISM_CENSUS
             TileWaterCensus.Add("bases");
             TileWaterCensus.Add(basis.A < 0 ? "basis/0" : basis.B < 0 ? "basis/1" : basis.C < 0 ? "basis/2" : "basis/3");
@@ -113,7 +120,11 @@ internal ref struct TileWaterPreparedQuery
                 feasible = ActiveClip(ordinal, i, ref state, ref low, ref high);
             for (int i = 0; i < _shape.Planes.Length && feasible; i++)
                 feasible = PlaneClip(ordinal, i, ref state, ref low, ref high);
-            if (!feasible) continue;
+            if (!feasible)
+            {
+                if (fullWindow) state.RejectedFullWindow = true;
+                continue;
+            }
             if ((state.Mask & 2) == 0)
             {
                 state.Width = q.Width + v.Width;
@@ -190,6 +201,7 @@ internal ref struct TileWaterPreparedQuery
             if (low < first) { first = low; witnessStart = q; witnessDrive = v; }
             last = Math.Max(last, high);
         }
+        if (fullWindow) _header.FullWindowCompleted = true;
         var result = new R(double.IsFinite(error), first <= last, first, last, nearest, error, witnessStart, witnessDrive);
 #if WATER_PRISM_CENSUS
         TileWaterCensus.IntersectionResult?.Invoke(result);

@@ -16,6 +16,7 @@ namespace KhaozEngine.TileWorld.Physics;
 /// once. The field's columns, boundaries and index are immutable. Prism traces use bounded per-thread scratch and
 /// an instance-owned exact-query memo with four thread tables of 128 entries each, retaining at most eight spans
 /// and 48 contacts per entry. Query bits, buffer lengths, space and floating point controls must match.
+/// A fixed hash index locates the FIFO slot and always checks the complete key for equality.
 /// A hit reproduces every output bit, caller-owned references, caller buffer contents, refusals and validation
 /// outside the kernel. A freshly allocated boundary id string is replayed by value. Sticky floating point status
 /// is excluded because the kernel itself can leave different status across compiled tiers for the same inputs.

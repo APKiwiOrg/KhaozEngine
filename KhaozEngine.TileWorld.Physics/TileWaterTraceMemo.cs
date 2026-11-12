@@ -77,17 +77,31 @@ internal sealed class TileWaterTraceMemo
 
     internal sealed class Table
     {
+        const int BucketCount = EntryLimit * 2;
         readonly Key[] _keys = new Key[EntryLimit];
         readonly Value[] _values = new Value[EntryLimit];
         readonly MovementCoverageSpan[] _spans = new MovementCoverageSpan[EntryLimit * SpanLimit];
         readonly MovementDomainContact[] _contacts = new MovementDomainContact[EntryLimit * ContactLimit];
+        // Encoded slot+1 links leave zero as empty without per-call initialization. FIFO arrays
+        // still own storage and insertion age. Full equality, never the hash, decides a match.
+        readonly int[] _buckets = new int[BucketCount];
+        readonly int[] _links = new int[EntryLimit];
         int _count, _next;
         internal int CountForTests => _count;
+        internal static int BucketForTests(in Key key) => Bucket(key);
+        static int Bucket(in Key key) => (int)((uint)key.GetHashCode() & (BucketCount - 1));
 
         internal bool TryRead(in Key key, in MovementSpaceKey space, in MovementQueryIdentity identity,
             Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts, out MovementCoverageResult result)
         {
-            for (int i = 0; i < _count; i++)
+            if (key.Space.WorldId.Length > SpaceIdCharacterLimit || key.Space.LocalId.Length > SpaceIdCharacterLimit)
+            {
+                result = default;
+                return false;
+            }
+            for (int link = _buckets[Bucket(key)]; link != 0; link = _links[link - 1])
+            {
+                int i = link - 1;
                 if (_keys[i] == key)
                 {
                     Value value = _values[i];
@@ -105,6 +119,7 @@ internal sealed class TileWaterTraceMemo
                     result = value.Stamp(identity);
                     return true;
                 }
+            }
             result = default;
             return false;
         }
@@ -115,6 +130,7 @@ internal sealed class TileWaterTraceMemo
             if (result.SpansWritten > SpanLimit || result.ContactsWritten > ContactLimit ||
                 key.Space.WorldId.Length > SpaceIdCharacterLimit || key.Space.LocalId.Length > SpaceIdCharacterLimit) return;
             int at = _next;
+            if (_count == EntryLimit) Remove(at);
             _keys[at] = key;
             _values[at] = new(result);
             // Clear replaced references as well as owning every written prefix ourselves.
@@ -122,6 +138,7 @@ internal sealed class TileWaterTraceMemo
             destination.Clear();
             spans[..result.SpansWritten].CopyTo(_spans.AsSpan(at * SpanLimit));
             contacts[..result.ContactsWritten].CopyTo(destination);
+            Insert(at);
             _next = (at + 1) % EntryLimit;
             _count = Math.Min(_count + 1, EntryLimit);
         }
@@ -131,7 +148,40 @@ internal sealed class TileWaterTraceMemo
             Array.Clear(_keys);
             Array.Clear(_values);
             Array.Clear(_contacts);
+            Array.Clear(_buckets);
+            Array.Clear(_links);
             _count = _next = 0;
+        }
+
+        void Remove(int at)
+        {
+            int bucket = Bucket(_keys[at]), previous = 0;
+            for (int link = _buckets[bucket]; link != 0; link = _links[link - 1])
+            {
+                int slot = link - 1;
+                if (slot == at)
+                {
+                    if (previous == 0) _buckets[bucket] = _links[slot];
+                    else _links[previous - 1] = _links[slot];
+                    _links[slot] = 0;
+                    return;
+                }
+                previous = link;
+            }
+        }
+
+        void Insert(int at)
+        {
+            int bucket = Bucket(_keys[at]), previous = 0, link = _buckets[bucket];
+            // Preserve the old physical-slot search order even for duplicate internal Store calls.
+            while (link != 0 && link - 1 < at)
+            {
+                previous = link;
+                link = _links[link - 1];
+            }
+            _links[at] = link;
+            if (previous == 0) _buckets[bucket] = at + 1;
+            else _links[previous - 1] = at + 1;
         }
     }
 }

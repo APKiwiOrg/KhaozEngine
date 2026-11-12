@@ -346,8 +346,9 @@ publishing spans or contacts. Unresolved geometry and unavailable evidence keep 
 Independent readers do not share mutable scratch.
 
 Prism traces also retain exact query results in the sampler instance, collected with its captured world.
-Four thread tables are claimed without waiting. Each holds 128 entries and replaces the oldest insertion,
-retaining at most 8 spans and 48 contacts per result. Caller space identifiers over 256 characters are not
+Four thread tables are claimed without waiting. Each holds 128 entries and replaces the oldest insertion.
+A fixed 256-bucket hash index uses the same FIFO slots and full-key equality after a hash match.
+Each result retains at most 8 spans and 48 contacts. Caller space identifiers over 256 characters are not
 retained. Hits allocate nothing and a warm table adds no allocation on a miss. The key preserves every query
 float bit, including signed zero, the uncombined physics origin, both space identifiers, the received buffer
 lengths and the calling thread's floating point controls. A hit reproduces every output bit, caller-owned

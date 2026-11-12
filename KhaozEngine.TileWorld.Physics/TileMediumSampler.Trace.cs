@@ -15,8 +15,6 @@ public sealed partial class TileMediumSampler
         if (_field.CanTraceFlat(query, physicsOrigin))
             return TileWaterColumnCoverage.Trace(_field.FlatColumns, _field.FlatBoundaries, _field.FlatExterior, query,
                 physicsOrigin, identity, spans, contacts, _field.FlatIndex);
-        return TileWaterPrismCoverage.Trace(_field.Prisms, _field.Faces, _field.Ground, _field.PointIndex,
-            _field.PrismStarts, _field.FaceStarts, query, physicsOrigin,
-            identity, spans, contacts);
+        return TracePrisms(query, physicsOrigin, identity, spans, contacts);
     }
 }

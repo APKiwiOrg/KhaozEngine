@@ -323,6 +323,19 @@ Point membership retains exact half-open comparisons, and an error beyond the ex
 the whole trace. A finite over-budget certificate reports `MovementAvailability.PrecisionExceeded` without
 publishing spans or contacts. Unresolved geometry and unavailable evidence keep their existing refusal kinds.
 Independent readers do not share mutable scratch.
+
+Prism traces also retain exact query results in the sampler instance, collected with its captured world.
+Four thread tables are claimed without waiting. Each holds 128 entries and replaces the oldest insertion,
+retaining at most 8 spans and 48 contacts per result. Caller space identifiers over 256 characters are not
+retained. Hits allocate nothing and a warm table adds no allocation on a miss. The key preserves every query
+float bit, including signed zero, the uncombined physics origin, both space identifiers, the received buffer
+lengths and the calling thread's floating point controls. Identity and input validation still run per call.
+Refusals retain their reported capacities and leave caller buffers untouched. Known results copy only their
+written prefixes from owned storage. Native control reads cover rounding and denormal input/output handling
+without changing the environment. An unavailable reader bypasses the memo.
+Entries survive ticks, but thread changes, eviction, large results and exhausted thread slots can prevent reuse.
+A hit is an optimization, never a guarantee. The flat specialization and point queries do not use the memo.
+
 An owned lateral column with no reachable captured bed answers unresolved. Represented loaded rectangles use
 directed lower and upper bounds, retaining a coordinate even when the nominal region is narrower than one float step.
 

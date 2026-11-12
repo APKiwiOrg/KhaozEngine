@@ -21,6 +21,8 @@ public sealed class WaterKernelShapeMatrixTests
     [InlineData("zero-motion-threshold")]
     [InlineData("nonfinite-triple-defensive")]
     [InlineData("nonfinite-project-defensive")]
+    [InlineData("negative-two-axis-motion-defensive")]
+    [InlineData("nonfinite-triple-q-defensive")]
     public void OrderedWindowEvaluationMatchesTheUnpreparedSnapshot(string kind)
     {
         // #1755. The named rows target preparation state, rather than relying on a random trace sweep.
@@ -74,6 +76,20 @@ public sealed class WaterKernelShapeMatrixTests
             shape = new([new(V.Point(1, 0, 0), I.Point(double.NaN))]);
             start = V.Point(1, 0, 0);
         }
+        if (kind == "negative-two-axis-motion-defensive")
+        {
+            // Two finite components overflow squared interval motion and reach a.Low < 0.
+            shape = new([P.Point(1, 0, 0, 0), P.Point(0, 1, 0, 0)]);
+            drive = V.Point(1e200, 1e200, 0);
+        }
+        if (kind == "nonfinite-triple-q-defensive")
+        {
+            // The triple Project returns true for non-finite q and retains that witness in an unresolved hit.
+            shape = new([P.Point(1, 0, 0, double.PositiveInfinity), P.Point(0, 1, 0, 0), P.Point(0, 0, 1, 0)]);
+            int ordinal = shape.CaptureGeometryForTests().Bases.Select((basis, i) => (basis, i)).Single(p => p.basis.C >= 0).i;
+            shape = shape.KeepOnlyBasisForTests(ordinal);
+            drive = V.Point(0, 0, 0);
+        }
         var frozen = new FrozenTileWaterConvexShape(shape);
         var full = frozen.Intersect(start, drive, I.Point(0), radius);
         if (kind == "tied-affine-witnesses")
@@ -89,6 +105,13 @@ public sealed class WaterKernelShapeMatrixTests
             Assert.True(double.IsFinite(full.MinimumSquared));
         }
         if (kind is "determinant-unresolved-defensive" or "nonfinite-project-defensive") Assert.False(full.Resolved);
+        if (kind == "negative-two-axis-motion-defensive") Assert.False(full.Resolved);
+        if (kind == "nonfinite-triple-q-defensive")
+        {
+            Assert.False(full.Resolved);
+            Assert.True(full.Hit);
+            Assert.False(double.IsFinite(full.WitnessStart.X.Low));
+        }
         (double Enter, double Exit)[] windows = [(0, 1), (0, 0), (1, 1), (0.125, 0.25), (0.5, 0.5), (0.25, 0.875)];
         if (full.Resolved && full.Hit && full.Enter > 0 && full.Exit < 1)
             windows = [.. windows, (full.Enter, full.Enter), (full.Exit, full.Exit),

@@ -6,7 +6,7 @@ using I = KhaozEngine.TileWorld.Physics.TileWaterArithmetic;
 
 namespace KhaozEngine.TileWorld.Physics;
 
-/// <summary>Certified centre-sphere paths against a vertical-core-expanded convex water piece or face.</summary>
+/// <summary>Certified centre-sphere paths with direct evaluation and reusable query preparations.</summary>
 internal sealed class TileWaterConvexShape
 {
     internal readonly record struct Vector(I X, I Y, I Z)
@@ -51,6 +51,14 @@ internal sealed class TileWaterConvexShape
     readonly Plane[] _planes;
     readonly Basis[] _bases;
     readonly TileWaterBedSeam? _bedSeam;
+
+    internal ReadOnlySpan<Plane> Planes => _planes;
+    internal ReadOnlySpan<Basis> Bases => _bases;
+    internal TileWaterBedSeam? BedSeam => _bedSeam;
+
+    internal TileWaterPreparedQuery Prepare(TileWaterPreparationWorkspace workspace, Vector start, Vector drive,
+        I core, float radius, double heightError = 0, double horizontalError = 0) =>
+        workspace.Prepare(this, start, drive, core, radius, heightError, horizontalError);
 
     internal TileWaterConvexShape(Plane[] planes, TileWaterBedSeam? bedSeam = null)
     {
@@ -195,7 +203,7 @@ internal sealed class TileWaterConvexShape
 #endif
     }
 
-    bool Project(Basis basis, Vector start, Vector drive, I core, double heightError, double horizontalError,
+    internal bool Project(Basis basis, Vector start, Vector drive, I core, double heightError, double horizontalError,
         Span<I> lambda, Span<I> velocity,
         out Vector q, out Vector v)
     {

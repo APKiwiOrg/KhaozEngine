@@ -29,7 +29,7 @@ public sealed class WaterKernelAccessTests
     }
 
     [Fact]
-    public void PreparationCountersAreZeroBeforePreparationExistsAndWindowCallsKeepTheirMeaning()
+    public void DirectWindowCallsAndPreparedWindowCallsReportOnlyTheirExecutedWork()
     {
         var shape = new TileWaterConvexShape([P.Point(1, 0, 0, 0)]);
         TileWaterQueryWork.Reset();
@@ -45,6 +45,16 @@ public sealed class WaterKernelAccessTests
             Assert.Equal(2, TileWaterQueryWork.ConvexIntersections);
             Assert.Equal(0, TileWaterQueryWork.ShapePreparations);
             Assert.Equal(0, TileWaterQueryWork.LazyCoefficientFills);
+            var workspace = new TileWaterPreparationWorkspace();
+            TileWaterQueryWork.Reset();
+            var prepared = shape.Prepare(workspace, V.Point(0, 0, 0), V.Point(1, 0, 0), I.Point(0), 0.25f);
+            _ = prepared.Evaluate();
+            int fills = TileWaterQueryWork.LazyCoefficientFills;
+            _ = prepared.Evaluate();
+            Assert.Equal(1, TileWaterQueryWork.ShapePreparations);
+            Assert.Equal(2, TileWaterQueryWork.ConvexIntersections);
+            Assert.Equal(fills, TileWaterQueryWork.LazyCoefficientFills);
+            if (TileWaterFloatingPointState.TryRead(out _)) Assert.True(fills > 0);
         }
         finally { TileWaterQueryWork.Enabled = false; }
     }

@@ -126,6 +126,19 @@ public sealed class WaterKernelShapeMatrixTests
         foreach (var window in windows.Reverse())
             Compare(start, drive, window.Enter, window.Exit);
 
+        var workspace = new TileWaterPreparationWorkspace();
+        foreach (bool reverse in new[] { false, true })
+        {
+            var prepared = workspace.Prepare(shape, start, drive, I.Point(0), radius);
+            foreach (var window in reverse ? windows.Reverse() : windows)
+                FrozenWaterComparison.Range(frozen.Intersect(start, drive, I.Point(0), radius, window.Enter, window.Exit),
+                    prepared.Evaluate(window.Enter, window.Exit));
+            // The workspace belongs to one preparation at a time. Its masks must reset for the next query.
+            V otherStart = V.Point(-0.375, 0.5, 0.125), otherDrive = V.Point(-2, 0.25, -0d);
+            var other = workspace.Prepare(shape, otherStart, otherDrive, I.Point(0), radius);
+            FrozenWaterComparison.Range(frozen.Intersect(otherStart, otherDrive, I.Point(0), radius), other.Evaluate());
+        }
+
         void Compare(V from, V delta, double enter, double exit) => FrozenWaterComparison.Range(
             frozen.Intersect(from, delta, I.Point(0), radius, enter, exit),
             shape.Intersect(from, delta, I.Point(0), radius, enter, exit));

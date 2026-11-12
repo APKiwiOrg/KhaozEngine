@@ -11,7 +11,7 @@ internal static class TileWaterQueryWork
     [ThreadStatic] internal static int IndexNodes;
     // One executed fraction-window evaluation, not a logical sampler request.
     [ThreadStatic] internal static int ConvexIntersections;
-    // Preparation and first-use coefficient work start at zero until the prepared evaluator lands.
+    // Actual preparations and first-use clip or post-feasibility coefficient groups.
     [ThreadStatic] internal static int ShapePreparations;
     [ThreadStatic] internal static int LazyCoefficientFills;
     [ThreadStatic] internal static int BedSeamProofs;

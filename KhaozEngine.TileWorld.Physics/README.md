@@ -108,6 +108,11 @@ A point is in a column when the exact framed centre lies in X [minimum, maximum)
 feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height
 evaluation. The lower boundary follows the selected triangle at the queried axis, including sloped beds and a
 level triangle beside a lower corner. A triangle at or above the free surface contributes no positive water volume.
+The internal shape evaluator supports a query preparation with ordered, first-use projection, clip and
+post-feasibility terms. Each stored term is the original interval expression, with its operand order unchanged.
+Window clipping, minima, root clamping, seam certification and first-witness selection remain per evaluation.
+An unavailable or changed floating point control token takes the direct evaluator. Sticky status is outside
+the coverage contract. Coverage assembly currently uses the direct evaluator.
 Trace coverage uses water prisms bounded by those triangles and clipped at the body's free surface, including
 exposed patches and dry volume. Internal triangle and same-body tile edges contribute no dry wall.
 For the canonical coplanar triangle pair in one raw column, a grazing bed-diagonal root can partition an

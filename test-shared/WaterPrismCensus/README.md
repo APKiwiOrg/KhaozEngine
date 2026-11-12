@@ -36,7 +36,11 @@ local bowl grade with a plane rather than the bowl's changing two-dimensional gr
 
 Normal binaries compile out `TileWaterCensus` and all its observation sites. The existing `TileWaterQueryWork`
 opt-in stays unchanged. Build with `-p:WaterPrismCensus=true` to include the research-only thread-local callbacks.
-Do not pack that build or use it for timings.
+Census builds write binaries under each project's `bin/water-prism-census/` and all intermediates, including
+restore assets, under `obj/water-prism-census/`. Normal output paths stay separate, including for later
+`--no-build` operations. Every census project is nonpackable. Pack and publish fail with `KECENSUS001`, including
+solution and standard pack-script calls. Overrides escaping the isolated paths fail with `KECENSUS002` before
+restore or build. Use a normal build for timing and distribution.
 
 ```bash
 build-slot --label water-prism-census -- dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release -p:WaterPrismCensus=true --filter FullyQualifiedName~TileWaterPrismCensusTests
@@ -67,10 +71,29 @@ submerged under this bound.
 
 Every counted local rejection is checked against the actual solve. It must be a resolved miss, with no earlier
 refusal. This validates the reported removals for the recorded inputs. It is not a proof for other fixtures.
+Both moving-bank cases contain a fully dry motion-resolve trace inside an otherwise wet gameplay step. Each can
+remove that trace's eight solves, or 8 of 202 solves in the step. No recorded trace qualifies as fully submerged.
 
 Coverage output compares bitwise with the frozen `WaterTraceReference` through `WaterCoverageComparison` and
 `WaterCoverageDigest`. This reference shares the prism solver. Independent box and seam tests remain necessary.
 No timing assertion is installed.
+
+## Regenerate the work-count baseline
+
+Set `CENSUS_RESULTS` to an absolute capture directory outside the checkout, then record a census test run:
+
+```bash
+build-slot --label water-prism-census -- dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release -p:WaterPrismCensus=true --filter FullyQualifiedName~TileWaterPrismCensusTests --logger 'trx;LogFileName=census.trx' --results-directory "$CENSUS_RESULTS"
+python3 scripts/regenerate-water-prism-census.py "$CENSUS_RESULTS/census.trx"
+git diff -- KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterPrismCensusBaseline.json
+```
+
+Regeneration is an explicit tool invocation. Ordinary tests only read the golden. The formatter writes
+`KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterPrismCensusBaseline.json`, preserving one JSON line per trace.
+Use `--output "$CENSUS_RESULTS/candidate.json"` to write a candidate separately. It requires complete observations
+for all nine cases and refuses changed coverage digests. A count change makes the census test fail after emitting
+its observations. Check the reference comparisons and failure first, then regenerate and review the golden diff
+as the evidence of an optimisation. A new golden is not permission to accept changed results or tolerances.
 
 ## Indicative timing
 

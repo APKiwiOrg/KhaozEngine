@@ -136,6 +136,10 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
+      - name: Check water census build isolation and golden tooling
+        run: |
+          python3 scripts/tests/water-prism-census-build.test.py
+          python3 scripts/tests/regenerate-water-prism-census.test.py
       # local-feed is git-ignored (dev inner-loop); create it so the nuget.config 'local' source resolves.
       - run: mkdir -p local-feed
 

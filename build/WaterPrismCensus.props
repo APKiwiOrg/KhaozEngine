@@ -1,0 +1,11 @@
+<Project>
+  <!-- Imported before Microsoft.Common.props chooses the restore extensions directory. -->
+  <PropertyGroup Condition="'$(WaterPrismCensus)' == 'true'">
+    <DefineConstants>$(DefineConstants);WATER_PRISM_CENSUS</DefineConstants>
+    <BaseOutputPath>bin/water-prism-census/</BaseOutputPath>
+    <BaseIntermediateOutputPath>obj/water-prism-census/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(MSBuildProjectDirectory)/obj/water-prism-census/</MSBuildProjectExtensionsPath>
+    <!-- Exclude both modes' generated sources when the intermediate base changes. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

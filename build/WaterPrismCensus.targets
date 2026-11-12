@@ -1,0 +1,28 @@
+<Project InitialTargets="ValidateWaterPrismCensusOutputPaths;ValidateWaterPrismCensusPublish">
+  <!-- Late evaluation wins over project-local packability. Pack still fails rather than silently skipping. -->
+  <PropertyGroup Condition="'$(WaterPrismCensus)' == 'true'">
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <Target Name="ValidateWaterPrismCensusOutputPaths" Condition="'$(WaterPrismCensus)' == 'true'">
+    <PropertyGroup>
+      <_CensusOutputRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', 'bin/water-prism-census'))</_CensusOutputRoot>
+      <_CensusIntermediateRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', 'obj/water-prism-census'))</_CensusIntermediateRoot>
+      <_CensusOutput>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(OutputPath)'))</_CensusOutput>
+      <_CensusIntermediate>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)'))</_CensusIntermediate>
+      <_CensusExtensions>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(MSBuildProjectExtensionsPath)'))</_CensusExtensions>
+    </PropertyGroup>
+    <Error Code="KECENSUS002"
+           Condition="!$(_CensusOutput.StartsWith('$(_CensusOutputRoot)')) or !$(_CensusIntermediate.StartsWith('$(_CensusIntermediateRoot)')) or '$(_CensusExtensions)' != '$(_CensusIntermediateRoot)'"
+           Text="WaterPrismCensus requires isolated bin/water-prism-census and obj/water-prism-census paths. Remove output or intermediate path overrides." />
+  </Target>
+
+  <!-- dotnet publish sets this before SDK dependency resolution, including build-free calls. -->
+  <Target Name="ValidateWaterPrismCensusPublish" Condition="'$(WaterPrismCensus)' == 'true' and '$(_IsPublishing)' == 'true'"
+          DependsOnTargets="RefuseWaterPrismCensusDistribution" />
+
+  <Target Name="RefuseWaterPrismCensusDistribution" BeforeTargets="Pack;_IntermediatePack;GenerateNuspec;PrepareForPublish;Publish;PublishOnly"
+          Condition="'$(WaterPrismCensus)' == 'true'">
+    <Error Code="KECENSUS001" Text="WaterPrismCensus is research-only. Packing and publishing census builds is disabled for every project. Use a normal build." />
+  </Target>
+</Project>

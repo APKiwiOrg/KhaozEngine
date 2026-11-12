@@ -112,7 +112,7 @@ The internal shape evaluator supports a query preparation with ordered, first-us
 post-feasibility terms. Each stored term is the original interval expression, with its operand order unchanged.
 Window clipping, minima, root clamping, seam certification and first-witness selection remain per evaluation.
 An unavailable or changed floating point control token takes the direct evaluator. Sticky status is outside
-the coverage contract. Coverage prepares each selected prism and face separately once per trace, and reuses
+the coverage contract. On a memo miss, coverage prepares each selected prism and face separately once per trace, and reuses
 that preparation for span, point and dry evaluations. One per-thread temporary workspace supports up to 176
 bases and ten planes. Full-window hits alone are retained, at their actual basis and plane sizes, in an
 optional 4 MiB per-thread slab. Misses consume no retained storage. Exhaustion takes the direct evaluator,
@@ -344,6 +344,28 @@ Point membership retains exact half-open comparisons, and an error beyond the ex
 the whole trace. A finite over-budget certificate reports `MovementAvailability.PrecisionExceeded` without
 publishing spans or contacts. Unresolved geometry and unavailable evidence keep their existing refusal kinds.
 Independent readers do not share mutable scratch.
+
+Prism traces also retain exact query results in the sampler instance, collected with its captured world.
+Four thread tables are claimed without waiting. Each holds 128 entries and replaces the oldest insertion,
+retaining at most 8 spans and 48 contacts per result. Caller space identifiers over 256 characters are not
+retained. Hits allocate nothing and a warm table adds no allocation on a miss. The key preserves every query
+float bit, including signed zero, the uncombined physics origin, both space identifiers, the received buffer
+lengths and the calling thread's floating point controls. A hit reproduces every output bit, caller-owned
+references, caller buffer contents, refusal kinds and capacities, and all validation outside the kernel.
+Identity and input validation still run per call. Replayed contacts carry the current caller's space string
+references, as recomputation would. A joined-triangle boundary id that recomputation allocates fresh is replayed
+by string value, without a new allocation or a reference-identity guarantee for that string.
+Refusals retain their reported capacities and leave caller buffers untouched. Known results copy only their
+written prefixes from owned storage. Native control reads cover rounding and denormal input/output handling
+without changing the environment. Sticky floating point status flags are outside this equivalence contract.
+Direct kernel evaluation can leave different sticky status for the same inputs across compiled tiers, and
+validation around the sampler also performs arithmetic. Executed-work counters deliberately measure actual
+work, so a hit does not count skipped kernel work. Controls remain part of the key because rounding and denormal
+handling affect numeric results. Windows x64 uses its control-only reader and can memoize. Platforms without a
+supported control reader bypass the memo.
+Entries survive ticks, but thread changes, eviction, large results and exhausted thread slots can prevent reuse.
+A hit is an optimization, never a guarantee. The flat specialization and point queries do not use the memo.
+
 An owned lateral column with no reachable captured bed answers unresolved. Represented loaded rectangles use
 directed lower and upper bounds, retaining a coordinate even when the nominal region is narrower than one float step.
 

@@ -12,6 +12,7 @@ namespace KhaozEngine.TileWorld.Physics;
 public sealed partial class TileMediumSampler
 {
     readonly FieldSnapshot _field;
+    readonly TileWaterTraceMemo _traceMemo = new();
     public string SemanticIdentity => _field.SemanticIdentity;
     public long Generation => 0;
     public MovementWaterExtent Extent => _field.Extent;

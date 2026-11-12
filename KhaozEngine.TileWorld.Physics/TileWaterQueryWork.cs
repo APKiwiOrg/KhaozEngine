@@ -16,11 +16,15 @@ internal static class TileWaterQueryWork
     [ThreadStatic] internal static int LazyCoefficientFills;
     [ThreadStatic] internal static int BedSeamProofs;
     [ThreadStatic] internal static int BedSeamCertificates;
+    [ThreadStatic] internal static int PrismTraces;
+    [ThreadStatic] internal static int MemoHits;
+    [ThreadStatic] internal static int MemoMisses;
 
     internal static void Reset()
     {
         Intersections = NonuniformVisits = IndexNodes = ConvexIntersections = BedSeamProofs = BedSeamCertificates = 0;
         ShapePreparations = LazyCoefficientFills = 0;
+        PrismTraces = MemoHits = MemoMisses = 0;
         Enabled = true;
     }
 }

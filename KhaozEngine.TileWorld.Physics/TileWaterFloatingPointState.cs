@@ -3,13 +3,15 @@ using System.Runtime.InteropServices;
 
 namespace KhaozEngine.TileWorld.Physics;
 
-// Control-only read through the platform fenv facility, without establishing a canonical scope.
-// Sticky status is not an input or output of the water coverage contract.
+// The same platform fenv facility used by DeterministicFp, without a package dependency or a
+// canonical scope. Reading native controls avoids arithmetic probes changing sticky FP flags.
 internal static class TileWaterFloatingPointState
 {
     enum Platform { None, MacArm, MacX64, LinuxArm, LinuxX64, WindowsX64 }
     static readonly Platform s_platform = Probe();
 
+    // Inline storage accommodates the known fenv_t ABIs without native allocation. Only control
+    // fields are read. Status flags are excluded because ordinary kernel work changes them.
     [StructLayout(LayoutKind.Explicit, Size = 128)]
     struct EnvironmentBuffer
     {
@@ -27,6 +29,8 @@ internal static class TileWaterFloatingPointState
         if (platform == Platform.None) return false;
         if (platform == Platform.WindowsX64)
         {
+            // With a zero mask this only reads. The CRT control word distinguishes all four
+            // denormal operand/result combinations and all four rounding directions.
             if (ControlFp(out uint controls, 0, 0) != 0) return false;
             token = controls;
             return true;
@@ -37,8 +41,11 @@ internal static class TileWaterFloatingPointState
         if (result != 0) return false;
         token = platform switch
         {
+            // Retain all FPCR controls, including RMode, FZ and the newer independent FIZ flag.
             Platform.MacArm => buffer.MacFpcr,
             Platform.LinuxArm => buffer.First,
+            // SSE rounding, DAZ and FTZ are distinct bits. Preserve x87 controls too, since
+            // platform math implementations may use them. Drop only SSE sticky status bits.
             Platform.MacX64 => ((ulong)(buffer.First & 0xffff) << 32) | (buffer.MacMxcsr & ~0x3fu),
             _ => ((ulong)(buffer.First & 0xffff) << 32) | (buffer.LinuxMxcsr & ~0x3fu),
         };

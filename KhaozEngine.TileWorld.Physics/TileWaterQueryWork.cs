@@ -15,11 +15,15 @@ internal static class TileWaterQueryWork
     [ThreadStatic] internal static int PrismTraces;
     [ThreadStatic] internal static int MemoHits;
     [ThreadStatic] internal static int MemoMisses;
+    [ThreadStatic] internal static ulong KernelStatusForTests;
+    [ThreadStatic] internal static bool KernelStatusCapturedForTests;
 
     internal static void Reset()
     {
         Intersections = NonuniformVisits = IndexNodes = ConvexIntersections = BedSeamProofs = BedSeamCertificates = 0;
         PrismTraces = MemoHits = MemoMisses = 0;
+        KernelStatusForTests = 0;
+        KernelStatusCapturedForTests = false;
         Enabled = true;
     }
 }

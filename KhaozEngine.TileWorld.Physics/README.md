@@ -330,9 +330,16 @@ retaining at most 8 spans and 48 contacts per result. Caller space identifiers o
 retained. Hits allocate nothing and a warm table adds no allocation on a miss. The key preserves every query
 float bit, including signed zero, the uncombined physics origin, both space identifiers, the received buffer
 lengths and the calling thread's floating point controls. Identity and input validation still run per call.
+Replayed contacts carry the current caller's space string references, as recomputation would.
 Refusals retain their reported capacities and leave caller buffers untouched. Known results copy only their
 written prefixes from owned storage. Native control reads cover rounding and denormal input/output handling
-without changing the environment. An unavailable reader bypasses the memo.
+without changing the environment. The same native read captures sticky exception status, including ARM's
+cumulative saturation flag or the distinct x87 and SSE exception flags. Each entry stores outgoing status
+captured after recomputation. A hit requires the incoming status to contain every stored flag. Otherwise the
+kernel recomputes and raises the real flags. Stored status can include unrelated incoming flags, so this rule
+can cause extra misses. Status is not part of the key and replay never raises flags artificially.
+An unavailable control/status reader bypasses the memo. Windows currently bypasses it because the existing
+reader exposes controls only, and the separate CRT status API checks pending unmasked exceptions.
 Entries survive ticks, but thread changes, eviction, large results and exhausted thread slots can prevent reuse.
 A hit is an optimization, never a guarantee. The flat specialization and point queries do not use the memo.
 

@@ -16,9 +16,11 @@ namespace KhaozEngine.TileWorld.Physics;
 /// once. The field's columns, boundaries and index are immutable. Prism traces use bounded per-thread scratch and
 /// an instance-owned exact-query memo with four thread tables of 128 entries each, retaining at most eight spans
 /// and 48 contacts per entry. Query bits, buffer lengths, space and floating point controls must match. Entries
+/// also require current sticky status to contain every flag recorded after recomputation. Otherwise the kernel
+/// recomputes and raises its real flags. Replayed contacts retain the current caller's space string references.
 /// survive ticks until oldest-insertion eviction. A hit is an optimization, never a guarantee. Readers without
-/// a table or a supported floating point control reader run uncached, as do oversized results or space identifiers
-/// over 256 characters. Point queries and the proved flat-bed trace path do not use this memo.
+/// a table or a supported floating point control/status reader run uncached (including Windows), as do oversized
+/// results or space identifiers over 256 characters. Point queries and the proved flat-bed trace path do not use this memo.
 /// <see cref="SampleCentreWater"/>, <see cref="TraceWater"/>, <see cref="SemanticIdentity"/>, <see cref="Generation"/>,
 /// <see cref="Extent"/>, <see cref="MediumAt"/> and <see cref="MediumDelegate"/> are endorsed providers for a parallel
 /// contact navigation bake.</para>

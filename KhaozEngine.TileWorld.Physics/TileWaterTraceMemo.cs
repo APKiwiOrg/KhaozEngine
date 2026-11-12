@@ -43,6 +43,15 @@ internal sealed class TileWaterTraceMemo
                 slot.Table?.Clear();
     }
 
+    // A weak lifetime token only. Its target is borrowed, never mutated by the test.
+    internal WeakReference? CaptureCurrentTableForTests()
+    {
+        foreach (var slot in _slots)
+            if (Volatile.Read(ref slot.ThreadId) == Environment.CurrentManagedThreadId && slot.Table is { } table)
+                return new(table);
+        return null;
+    }
+
     // Integer representations preserve signed zero. Space strings compare ordinally by value.
     internal readonly record struct Key(int X, int Y, int Z, int Dx, int Dy, int Dz, int Radius,
         int HalfHeight, int Ox, int Oy, int Oz, MovementSpaceKey Space, int Spans, int Contacts, ulong Fp)
@@ -57,11 +66,11 @@ internal sealed class TileWaterTraceMemo
 
     // Identity is deliberately absent. A validated caller receives its own identity on replay.
     readonly record struct Value(MovementAvailability Availability, int Spans, int RequiredSpans,
-        int Contacts, int RequiredContacts, float Error)
+        int Contacts, int RequiredContacts, float Error, ulong Status)
     {
-        internal Value(in MovementCoverageResult result) : this(result.Availability, result.SpansWritten,
+        internal Value(in MovementCoverageResult result, ulong status) : this(result.Availability, result.SpansWritten,
             result.RequiredSpanCapacity, result.ContactsWritten, result.RequiredContactCapacity,
-            result.CertifiedErrorMetres) { }
+            result.CertifiedErrorMetres, status) { }
         internal MovementCoverageResult Stamp(in MovementQueryIdentity identity) =>
             new(Availability, Spans, RequiredSpans, Contacts, RequiredContacts, Error, identity);
     }
@@ -73,16 +82,30 @@ internal sealed class TileWaterTraceMemo
         readonly MovementCoverageSpan[] _spans = new MovementCoverageSpan[EntryLimit * SpanLimit];
         readonly MovementDomainContact[] _contacts = new MovementDomainContact[EntryLimit * ContactLimit];
         int _count, _next;
+        internal int CountForTests => _count;
 
-        internal bool TryRead(in Key key, in MovementQueryIdentity identity,
+        internal bool TryRead(in Key key, in MovementSpaceKey space, in MovementQueryIdentity identity, ulong status,
             Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts, out MovementCoverageResult result)
         {
             for (int i = 0; i < _count; i++)
                 if (_keys[i] == key)
                 {
                     Value value = _values[i];
+                    // Stored outgoing status is a superset of what the kernel raised, including
+                    // any incoming sticky flags. Requiring all of it can only cause extra misses,
+                    // never a wrong hit. No flags are raised artificially and status is not a key.
+                    if ((status & value.Status) != value.Status) continue;
                     _spans.AsSpan(i * SpanLimit, value.Spans).CopyTo(spans);
-                    _contacts.AsSpan(i * ContactLimit, value.Contacts).CopyTo(contacts);
+                    for (int c = 0; c < value.Contacts; c++)
+                    {
+                        MovementDomainContact contact = _contacts[i * ContactLimit + c];
+                        // Space strings belong to this caller. Domain and interval ids belong to
+                        // the captured sampler. Boundary ids do too, except the freshly allocated
+                        // joined-triangle id, whose immutable value has no promised stable identity.
+                        contacts[c] = new(contact.Domain, space, contact.Interval, contact.IntervalColumnXZ,
+                            contact.Normal, contact.Fraction, contact.BoundaryId, contact.CoverageRegionHandle,
+                            contact.Overlap, contact.SpanOverlap);
+                    }
                     result = value.Stamp(identity);
                     return true;
                 }
@@ -91,13 +114,13 @@ internal sealed class TileWaterTraceMemo
         }
 
         internal void Store(in Key key, in MovementCoverageResult result,
-            ReadOnlySpan<MovementCoverageSpan> spans, ReadOnlySpan<MovementDomainContact> contacts)
+            ReadOnlySpan<MovementCoverageSpan> spans, ReadOnlySpan<MovementDomainContact> contacts, ulong status)
         {
             if (result.SpansWritten > SpanLimit || result.ContactsWritten > ContactLimit ||
                 key.Space.WorldId.Length > SpaceIdCharacterLimit || key.Space.LocalId.Length > SpaceIdCharacterLimit) return;
             int at = _next;
             _keys[at] = key;
-            _values[at] = new(result);
+            _values[at] = new(result, status);
             // Clear replaced references as well as owning every written prefix ourselves.
             var destination = _contacts.AsSpan(at * ContactLimit, ContactLimit);
             destination.Clear();

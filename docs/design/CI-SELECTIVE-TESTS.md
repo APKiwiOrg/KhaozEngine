@@ -137,15 +137,23 @@ encapsulated in `scripts/ci-selective-test.sh` so it is runnable and testable lo
    `*.csproj`, add the architecture-test rump (`KhaozEngine.Tests`) to that set: it has zero
    `ProjectReference`s so dotnet-affected never reaches it, yet its rules validate csproj XML, so a
    csproj-only violation would otherwise slip to the next full run (#212, see Decision 3).
-4. Empty set (docs-only push): doc guard only, no restore/build/test/pack. The job goes green in
-   under a minute, and this is the common case the change exists for (docs, governance, changelog
-   pushes).
+4. Empty affected set (including docs-only pushes): the selective script skips its restore, build,
+   test and pack slice. Whole-workflow water gates still run as described below.
 5. Non-empty: restore + build the affected test projects (their references pull in exactly the needed
    slice), then `dotnet test --no-build` each, with the `Category!=LiveSocket&Category!=Diagnostic` filter. The
    determinism step runs only when `KhaozEngine.Foundation.Tests` (owner of the `DeterministicFp`
    tests) is affected, scoped to that project instead of the whole solution.
-6. No pack on selective runs. Pack requires a full build, and its regression window is bounded by the
+6. No distribution pack in the selective slice. Pack requires a full build, and its regression window is bounded by the
    next tag run, which in this repo is hours. Tag runs still pack and publish exactly as today.
+
+The water-kernel differential matrix and census build-isolation proof are unconditional exceptions.
+Keeping them independent of affected-project selection prevents a kernel or category change from silently
+omitting the oracle. The matrix adds one headless physics-test build on hosted x64 and one on hosted arm64,
+with the differential corpus under tiering 0 and 1 on each. Every TRX must contain a positive executed count
+equal to its total, with zero failures. The isolation proof adds normal and census physics builds and one
+private normal no-build package inspection before selective testing starts. These jobs therefore run even
+on docs-only changes, with no publishing. Their hosted durations are not measured here, so there is no
+whole-workflow completion-time promise for that path.
 
 Known and accepted: release pushes carry the version bump in `Directory.Build.props`, so they run
 FULL by rule 2. Correct (a shared-props change genuinely affects everything), and the tag run that

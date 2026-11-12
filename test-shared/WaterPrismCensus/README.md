@@ -112,6 +112,7 @@ The independent `water-kernel-contract` CI job builds only this headless test pr
 x64 and macos-26 arm64. Each job runs the contract with `DOTNET_TieredCompilation=0` and `1` and retains both
 TRX files. Its filter excludes `TileWaterPrismCensusTests`, whose pre-existing census digests remain in the
 ordinary test slice. The extended corpus still records all nine fixtures over four ticks on each runtime.
+Each TRX must execute a positive number of tests, execute its entire selected total and report zero failures.
 It runs separately from the selective runner's Foundation/Server pass, so an affected-project selection
 cannot omit this matrix. Each execution compares frozen against production on the same runtime. The runtime
 gate asserts no single numeric digest across architectures.

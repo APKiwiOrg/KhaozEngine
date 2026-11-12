@@ -10,7 +10,8 @@ name: ci
 #     response outside the query): the full sequence plus publish, as a dispatch runs it. Reuse cannot
 #     chain, because only workflow_dispatch runs qualify and a dispatch always runs everything.
 #   * Push (main) and pull_request run scripts/ci-selective-test.sh, which builds and tests only the
-#     slice the diff affects (empty on a docs-only push). No pack or publish on this path.
+#     slice the diff affects (empty on a docs-only push). The unconditional water gates below
+#     still build, test and create a private census-proof package. This path never publishes.
 # Cancel a superseded in-flight run on the SAME ref (rapid push series stop stacking). Grouped by ref so
 # a tag run (refs/tags/v*) gets its own group and is never cancelled by a branch push - the publish leg
 # (tags only) is safe.
@@ -57,10 +58,12 @@ jobs:
       - name: Frozen differential corpus under JIT tiering 0 and 1
         shell: bash
         run: |
+          results='${{ runner.temp }}/water-kernel-${{ matrix.arch }}'
           for tc in 0 1; do
             DOTNET_TieredCompilation=$tc dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --no-build --no-restore \
               --filter 'Category=WaterKernelContract&FullyQualifiedName!~TileWaterPrismCensusTests' --logger "trx;LogFileName=water-kernel-tier-$tc.trx" \
-              --results-directory '${{ runner.temp }}/water-kernel-${{ matrix.arch }}'
+              --results-directory "$results"
+            python3 scripts/check-water-kernel-trx.py "$results/water-kernel-tier-$tc.trx"
           done
       - name: Collect water kernel differential results
         if: always()
@@ -184,6 +187,7 @@ jobs:
         run: |
           python3 scripts/tests/water-prism-census-build.test.py --artifact-proof
           python3 scripts/tests/regenerate-water-prism-census.test.py
+          python3 -B scripts/tests/check-water-kernel-trx.test.py
       # local-feed is git-ignored (dev inner-loop); create it so the nuget.config 'local' source resolves.
       - run: mkdir -p local-feed
 

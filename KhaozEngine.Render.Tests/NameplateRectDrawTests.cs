@@ -220,14 +220,77 @@ public sealed class NameplateRectDrawTests
         });
     }
 
+    /// <summary>Regression for #1770: a plate moved by whole device pixels draws the same geometry, moved by
+    /// exactly that much, so a bar keeps its height on every row.</summary>
+    /// <param name="deviceScale">Device pixels per point. At 1 the bar's top sits 17.5 points below the panel
+    /// origin (an 18 point line at 0.75 scale is 13.5, plus a 2 point outline and a 2 point gap), an exact
+    /// rounding tie whose result must not depend on which pixel the origin lands on.</param>
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(1.5f)]
+    [InlineData(0.4f)]
+    public void APlateMovedByWholeDevicePixelsKeepsItsShape(float deviceScale)
+    {
+        var template = NamedBarTemplate();
+        var content = FullHeader();
+        var first = SnappingCanvas(deviceScale, lineHeight: 18f);
+        Assert.True(NameplateRenderer.DrawTemplateAtRect(ref first, new Vector4(438.2f, 469.3f, 114f, 28.5f),
+            template, content, 1000, 1000));
+        Assert.NotEmpty(first.Strokes);
+        Assert.NotEmpty(first.Fills);
+
+        for (int step = 1; step <= 3; step++)
+        {
+            float moved = step / deviceScale;
+            var canvas = SnappingCanvas(deviceScale, lineHeight: 18f);
+            Assert.True(NameplateRenderer.DrawTemplateAtRect(ref canvas,
+                new Vector4(438.2f + moved, 469.3f + moved, 114f, 28.5f), template, content, 1000, 1000));
+
+            Assert.Equal(first.Fills.Count, canvas.Fills.Count);
+            Assert.Equal(first.Strokes.Count, canvas.Strokes.Count);
+            for (int i = 0; i < first.Fills.Count; i++) AssertMovedBy(first.Fills[i], canvas.Fills[i], moved);
+            for (int i = 0; i < first.Strokes.Count; i++)
+            {
+                AssertMovedBy(first.Strokes[i].Rect, canvas.Strokes[i].Rect, moved);
+                Assert.Equal(first.Strokes[i].Thickness, canvas.Strokes[i].Thickness, 3);
+            }
+        }
+    }
+
+    private static void AssertMovedBy(Vector4 from, Vector4 to, float points)
+    {
+        Assert.Equal(from.X + points, to.X, 3);
+        Assert.Equal(from.Y + points, to.Y, 3);
+        Assert.Equal(from.Z, to.Z, 3);
+        Assert.Equal(from.W, to.W, 3);
+    }
+
+    // A bordered bar under a scaled, outlined name, whose height puts the bar at a half point offset.
+    private static NameplateTemplate NamedBarTemplate() => new(new NameplateComponent[]
+    {
+        new NameplateBarComponent("health", NameplateSlot.Health)
+        {
+            Width = 112f,
+            Height = 9f,
+            BorderThickness = 1f,
+        },
+        new NameplateTextComponent("name", NameplateSlot.Name)
+        {
+            FontScale = 0.75f,
+            OutlineThickness = 1f,
+            OutlineColor = Color.Black,
+            Attach = new NameplateAttach(AttachPoint.BottomLeft, "health", AttachPoint.TopLeft, new Vector2(0f, -2f)),
+        },
+    });
+
     private static void AssertWholeDevicePixels(float points, float deviceScale)
     {
         float device = points * deviceScale;
         Assert.InRange(MathF.Abs(device - MathF.Round(device)), 0f, 1e-2f);
     }
 
-    private static RecordingNameplateCanvas SnappingCanvas(float deviceScale) =>
-        new(new FixedGlyphFont(6f, 10f)) { DeviceScale = new Vector2(deviceScale) };
+    private static RecordingNameplateCanvas SnappingCanvas(float deviceScale, float lineHeight = 10f) =>
+        new(new FixedGlyphFont(6f, lineHeight)) { DeviceScale = new Vector2(deviceScale) };
 
     [Fact]
     public void AWarmRectDrawAllocatesNothing()

@@ -91,7 +91,6 @@ public static partial class NameplateRenderer
         string text, NameplateBadgeComponent component, NameplateTextValue value, float opacity)
         where TCanvas : INameplateCanvas
     {
-        rect = grid.SnapRect(rect);
         Color wash = value.Tint is Color tint
             ? Color.Lerp(component.BaseFill, tint.WithAlpha(component.BaseFill.A), component.TintAlpha)
             : component.BaseFill;
@@ -116,7 +115,6 @@ public static partial class NameplateRenderer
         // The track is inset by the snapped border, so the border and the track meet on one device pixel edge.
         // The fill's leading edge is left where the fraction puts it, which moves with health and not with the
         // anchor.
-        rect = grid.SnapRect(rect);
         float border = grid.SnapThickness(component.BorderThickness);
         Vector4 inner = new(rect.X + border, rect.Y + border, rect.Z - 2f * border, rect.W - 2f * border);
         canvas.FillRounded(inner, WithOpacity(value.Track, opacity), component.CornerRadius);

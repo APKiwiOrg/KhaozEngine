@@ -37,10 +37,10 @@ public static partial class NameplateRenderer
     /// Uses the sprite batch pass's existing design transform without remapping the supplied rectangle.
     /// Does not project, distance-cull, clamp, deflect or resize components. Keep the panel dimensions from
     /// <see cref="NameplateTemplateLayout.Measure"/> in the same design units.
-    /// In a point-space UI pass (<see cref="IDesignViewport.SnapsToDevicePixels"/>) the panel origin, every panel,
-    /// badge and bar edge and every border thickness land on whole device pixels, so a plate that follows a moving
-    /// anchor keeps a steady border. Decoration drawn around the panel lines up with it when it starts from
-    /// <see cref="SpriteBatch.SnapRect"/> of the same rectangle.
+    /// In a point-space UI pass (<see cref="IDesignViewport.SnapsToDevicePixels"/>) the panel origin lands on a
+    /// whole device pixel and every component is placed from its offset to that origin with a whole device pixel
+    /// size and border, so a plate that follows a moving anchor keeps its shape and a steady border. Decoration
+    /// drawn around the panel lines up with it when it starts from the same snapped origin.
     /// </remarks>
     /// <param name="batch">An in-progress sprite batch drawing through the design viewport.</param>
     /// <param name="font">The font used to measure and draw text.</param>
@@ -91,17 +91,17 @@ public static partial class NameplateRenderer
         where TCanvas : INameplateCanvas
     {
         float opacity = float.IsFinite(content.Opacity) ? Math.Clamp(content.Opacity, 0f, 1f) : 1f;
-        // The origin snaps first, so every component keeps one constant offset from it and the whole plate moves
-        // a device pixel at a time as its anchor drifts.
-        NameplateDeviceGrid grid = NameplateDeviceGrid.Of(ref canvas);
-        panelRect = grid.AtSnappedOrigin(panelRect);
-        Vector4 panel = grid.SnapRect(panelRect);
+        // The origin snaps first, and every component is placed from its constant offset to that origin, so the
+        // whole plate moves a device pixel at a time as its anchor drifts and keeps its shape on every row.
+        NameplateDeviceGrid grid = NameplateDeviceGrid.At(ref canvas, panelRect);
+        Vector4 panel = grid.Panel(panelRect);
         if (colors.PanelFill.A > 0f)
             canvas.FillRounded(panel, WithOpacity(colors.PanelFill, opacity), template.CornerRadius);
         if (template.PanelBorderThickness > 0f && colors.PanelBorder.A > 0f)
             canvas.StrokeRounded(panel, WithOpacity(colors.PanelBorder, opacity), template.CornerRadius,
                 grid.SnapThickness(template.PanelBorderThickness));
 
+        Vector2 local = new(template.PadX - resolution.Bounds.X, template.PadY - resolution.Bounds.Y);
         Vector2 screenOffset = new(panelRect.X + template.PadX - resolution.Bounds.X,
             panelRect.Y + template.PadY - resolution.Bounds.Y);
         for (int i = 0; i < template.Components.Count; i++)
@@ -109,8 +109,7 @@ public static partial class NameplateRenderer
             ref NameplateResolvedComponent resolved = ref resolution[i];
             if (!resolved.Drawn) continue;
 
-            Vector4 rect = new(resolved.Rect.X + screenOffset.X, resolved.Rect.Y + screenOffset.Y,
-                resolved.Rect.Width, resolved.Rect.Height);
+            Vector4 rect = grid.Place(resolved.Rect, local, screenOffset);
             switch (template.Components[i])
             {
                 case NameplateTextComponent text when content.TryGetText(text.Slot, out var value):

@@ -17094,8 +17094,11 @@ in design space and uses the SpriteBatch pass's existing transform without anoth
 conversion.
 
 Every nameplate draw, `Draw` and `DrawAtRect` alike, snaps to device pixels in a point-space `UiViewport`
-pass. The panel origin lands on a whole device pixel first, so the components move as one block, then each
-panel, badge and bar edge and each border thickness snaps, with a border never thinner than one device pixel.
+pass. The panel origin lands on a whole device pixel first. Each component is then placed from its offset to
+that origin, rounded once in device pixels, with its size and border thickness snapped as lengths and a border
+never thinner than one device pixel. The plate is therefore one rigid block: moving it by whole device pixels
+moves every edge by exactly that much, so a bar keeps its height on every row. Rounding each absolute edge
+instead let a half pixel offset round up on one row and down on the next.
 A plate's anchor is a projected world point that drifts through sub-pixel phases as the camera or the entity
 moves, and an anti-aliased border drawn at a fractional position changes coverage with the phase, which showed
 as a border pulsing or dropping out in motion. A bar fill's leading edge is not snapped, because it moves with

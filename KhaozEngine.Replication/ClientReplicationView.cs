@@ -11,6 +11,10 @@ namespace KhaozEngine.Replication;
 /// a lerp, it double-buffers the last two snapshots so <see cref="Interpolate"/> can smooth them at render time,
 /// and (the preferred path) keeps a timestamped sample history so <see cref="InterpolateAt"/> can render on a
 /// fixed delay by lerping the two bracketing snapshots by their true timestamps.
+/// <para>This adapter never advances the supplied world's tick. A direct owner calling Apply, ApplyDelta or
+/// driving ClientDeltaRebuild must call World.AdvanceTick once per receive boundary before applying the batch.
+/// Read changes and events before the next boundary. WorldClient owns this for its private world, and
+/// TileWorldClient does so by default for its public world.</para>
 /// </summary>
 public sealed partial class ClientReplicationView
 {

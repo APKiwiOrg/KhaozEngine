@@ -4,17 +4,20 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 23.9.2
+## 23.10.0
 
 2026-11-12
 
 - `WorldClient.Poll` and `TileWorldClient.Poll` now advance their ECS world's tick before applying incoming
   mutations, clearing retained change tracking and world events so area-of-interest turnover cannot accumulate
-  obsolete entity generations for the session. Each poll is an observation boundary, even an empty or zero-time
-  drain and a reconnect backoff wait. Read `Added<T>()`, `Changed<T>()`, `Removed<T>()` and `Events<T>()` after
-  polling and before the next poll. Changes and events produced between polls share that window. Consumers that
-  already advance a client world themselves must set the matching client config's `AdvanceWorldTick = false`
-  or remove their own advance, because advancing twice can clear observations before their readers run
+  obsolete entity generations for the session. `WorldClient` owns its private world's boundary unconditionally
+  as internal bookkeeping. `TileWorldClient.World` is public: read its `Added<T>()`, `Changed<T>()`, `Removed<T>()`
+  and `Events<T>()` after polling and before the next poll, even an empty poll. Changes between polls share that
+  window. The new `TileWorldClientConfig.AdvanceWorldTick` defaults to true. Consumers that already advance that
+  world must remove their own advance or set it false and own the boundary, because advancing twice can clear
+  observations before their readers run. Format-2 reconstruction also clears its separate private staging world's
+  records after each reset, including failed decoding. Direct `ClientReplicationView` and `ClientDeltaRebuild`
+  owners must advance their supplied live world once per receive boundary before applying its batch
   ([#1771](https://github.com/APKiwiOrg/KhaozEngine/issues/1771)).
 
 ## 23.9.1

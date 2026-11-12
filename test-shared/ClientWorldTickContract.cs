@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests;
 // #1771: both client heads must bound retained entity generations at their receive boundary.
 public abstract class ClientWorldTickContract
 {
-    protected abstract ClientHead CreateClient(INetTransport transport, ReplicationRegistry registry, bool? advance);
+    protected abstract ClientHead CreateClient(INetTransport transport, ReplicationRegistry registry);
     protected abstract byte[] Frame(byte[] snapshot);
 
     protected sealed record ClientHead(World World, Action Poll, Func<bool> Joined, IDisposable Lifetime) : IDisposable
@@ -18,7 +18,7 @@ public abstract class ClientWorldTickContract
         public void Dispose() => Lifetime.Dispose();
     }
 
-    private readonly record struct Tracked(int Value) : IComponent;
+    protected readonly record struct Tracked(int Value) : IComponent;
 
     [Fact]
     public void Area_of_interest_turnover_retains_only_the_latest_poll_including_dead_versions()
@@ -83,34 +83,7 @@ public abstract class ClientWorldTickContract
         Assert.Equal(before + 3, session.World.Tick);
     }
 
-    [Fact]
-    public void Caller_owned_tick_opt_out_preserves_tracking_while_the_default_clears_it()
-    {
-        using var automatic = new Session(this);
-        using var manual = new Session(this, advance: false);
-        automatic.Send(present: true, 3);
-        manual.Send(present: true, 3);
-        automatic.Head.Poll();
-        manual.Head.Poll();
-        Assert.Single(automatic.World.Added<Tracked>());
-        Assert.Single(manual.World.Added<Tracked>());
-        ulong automaticTick = automatic.World.Tick;
-        ulong manualTick = manual.World.Tick;
-
-        automatic.Head.Poll();
-        manual.Head.Poll();
-        Assert.Empty(automatic.World.Added<Tracked>());
-        Assert.Empty(automatic.World.Events<int>());
-        Assert.Equal(automaticTick + 1, automatic.World.Tick);
-        Assert.Single(manual.World.Added<Tracked>());
-        Assert.Equal(new[] { 3 }, manual.World.Events<int>().ToArray());
-        Assert.Equal(manualTick, manual.World.Tick);
-        manual.World.AdvanceTick();
-        Assert.Empty(manual.World.Added<Tracked>());
-        Assert.Empty(manual.World.Events<int>());
-    }
-
-    private sealed class Session : IDisposable
+    protected sealed class Session : IDisposable
     {
         readonly ClientWorldTickContract contract;
         readonly LoopbackTransport serverTransport;
@@ -122,7 +95,8 @@ public abstract class ClientWorldTickContract
         public ClientHead Head { get; }
         public World World => Head.World;
 
-        public Session(ClientWorldTickContract contract, bool? advance = null)
+        public Session(ClientWorldTickContract contract,
+            Func<INetTransport, ReplicationRegistry, ClientHead>? createClient = null)
         {
             this.contract = contract;
             (serverTransport, clientTransport) = LoopbackTransport.CreatePair();
@@ -136,7 +110,7 @@ public abstract class ClientWorldTickContract
                     receivingWorld?.Emit(value);
                     return new Tracked(value);
                 });
-            Head = contract.CreateClient(clientTransport, registry, advance);
+            Head = (createClient ?? contract.CreateClient)(clientTransport, registry);
             receivingWorld = World;
             Head.Poll();
             server.Poll();

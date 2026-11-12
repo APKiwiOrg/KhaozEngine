@@ -21,6 +21,8 @@ namespace KhaozEngine.Replication;
 /// <see cref="DeltaRebuildOptions.Validate"/> requires.</para>
 /// <para>Publication shifts the presentation buffers once and records no interpolation sample. The caller stamps one
 /// sample after <see cref="DeltaRebuildResult.Accepted"/>, on its existing ingest path.</para>
+/// <para>The caller owns the live world's receive boundary and calls <see cref="World.AdvanceTick"/> once before
+/// applying a batch. This receiver clears its separate private staging world on every reset, not the live world.</para>
 /// </remarks>
 public sealed class ClientDeltaRebuild
 {
@@ -230,6 +232,9 @@ public sealed class ClientDeltaRebuild
     internal int RetainedBytesForTest => retention.PayloadBytes;
 
     internal int PublicationCountForTest { get; private set; }
+
+    internal (ulong Tick, (int Added, int AddedOrder, int Changed, int ChangedOrder, int Removed) Counts)
+        StagingTrackingForTests => (staging.World.Tick, staging.World.ChangeTrackingCountsForTests);
 
     internal IReadOnlySet<ReplicationPacketId> PinnedIdsForTest => retention.Pins;
 

@@ -112,8 +112,9 @@ namespace KhaozEngine.Render3D
             RetireTexture(h);
         }
 
-        // Free one texture slot through the retire queue, whoever owned it.
-        void RetireTexture(TextureHandle h)
+        // Free one texture slot through the retire queue, whoever owned it. A resident texture an admitted upload
+        // created settles that upload's lease once it is actually destroyed.
+        void RetireTexture(TextureHandle h, SceneUploadLease? lease = null)
         {
             if (!h.IsValid || h.ListIndex >= _textures.Count) return;
             int i = h.ListIndex;
@@ -123,7 +124,9 @@ namespace KhaozEngine.Render3D
             // async queue thread segfaults executing the stale copy). That copy is SUBMITTED by the time this
             // returns, so the retire queue's fence, submitted at a later frame boundary, sits behind it in the
             // submission stream and proves it finished - the same proof the drain here gave, without the stall.
-            _retired.Retire(_textures[i], i < _texBillboardSets.Count ? _texBillboardSets[i] : null, null);
+            IGpuTexture? texture = _textures[i];
+            _retired.Retire(lease is not null && texture is not null ? new LeasedTexture(texture, lease) : texture,
+                i < _texBillboardSets.Count ? _texBillboardSets[i] : null, null);
             _textures[i] = null;
             if (i < _texBillboardSets.Count) _texBillboardSets[i] = null;
             // The particle renderer caches per-atlas resource sets keyed by this list index, so drop them too. A

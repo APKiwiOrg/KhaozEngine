@@ -61,5 +61,20 @@ namespace KhaozEngine.Render3D
         internal long DecodedBytes => Bytes(Albedo) + Bytes(Normal) + Bytes(Roughness) + Bytes(Emissive);
 
         static long Bytes(DecodedImage? image) => image is { } value ? 4L * value.Width * value.Height : 0L;
+
+        /// <summary>A copy for an input an upload retains, with every map, the cutoff and the emissive, immune to later
+        /// edits by its caller. An image that owns a pixel array is copied, and a copy keeps the image's identity,
+        /// which its unchanged content still names, so a scene still shares its texture with every other part, glb
+        /// and upload path naming that image (issue #1776). A caller-built image has no identity and stays
+        /// independent. A shared loader image is kept as it is: its one decode is read-only for every user, and
+        /// copying it would defeat the sharing.</summary>
+        internal GltfMaterialMaps Snapshot() =>
+            new(Snapshot(Albedo), Snapshot(Normal), Snapshot(Roughness), AlphaCutoff, Snapshot(Emissive), EmissiveFactor);
+
+        static DecodedImage? Snapshot(DecodedImage? image) =>
+            image is not { } value ? null
+            : value.Source is not null ? value
+            : value.Identity is { } identity ? new DecodedImage((byte[])value.Rgba.Clone(), value.Width, value.Height, identity)
+            : new DecodedImage((byte[])value.Rgba.Clone(), value.Width, value.Height);
     }
 }

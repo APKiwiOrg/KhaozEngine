@@ -31,14 +31,7 @@ public sealed class MaterialSamplerBindingTests
     // Albedo and roughness maps are real, normal and emissive fall back to their defaults, and the material glows.
     static GltfMaterialMaps HalfTextured() => new(Image(), null, Image(), 0f, null, new Vector3(1f, 0.5f, 0f));
 
-    static IGpuSampler Slot(IGpuResourceSet set, string name)
-    {
-        var fake = (FakeResourceSet)set;
-        GpuResourceLayoutElement[] elements = ((FakeResourceLayout)fake.Layout!).Description.Elements;
-        int index = Array.FindIndex(elements, element => element.Name == name);
-        Assert.True(index >= 0, $"layout has no {name} binding");
-        return (IGpuSampler)fake.Resources[index];
-    }
+    static IGpuSampler Slot(IGpuResourceSet set, string name) => (IGpuSampler)((FakeResourceSet)set).Bound(name);
 
     [Theory]
     [InlineData(16, 16u)]

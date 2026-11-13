@@ -189,7 +189,9 @@ and overflow diagnostics remain authoritative.
 renderer confirms release. Render3D now supplies admitted upload, publication and `SceneResourceAccess`.
 `MapScene3DSink` measures a borrowed `SceneUploadDescription`. Mesh/image copies, synthesized white
 terrain images and detached `SceneUploadData` are created only after the aggregate reservation is
-claimed. Measurement does not perform those retained allocations.
+claimed. Measurement does not perform those retained allocations. Image copies keep each loader image's identity and
+the material's emissive, so rigid props share the scene's material textures, one per image, with each other and with
+convenience uploads, and glow as authored (see the Render3D README, "Admitted resource publication").
 The composite residency owner is `MapRenderResidency`. `MapScene3DSink` consumes the same typed registrations and frames in viewport and capture. Explicit plant resources convert to
 `SceneFoliageSource` with `SceneFoliageTransformSpace.AnchorLocal`. Generated world rows use `World`.
 `ScenePreparedFoliage` declares the immutable 96-byte packed product. It is produced by `Scene3D.PrepareResourceUpload`.

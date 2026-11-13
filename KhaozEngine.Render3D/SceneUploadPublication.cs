@@ -14,6 +14,13 @@ internal readonly record struct SceneUploadPublication(MeshBounds Bounds, int In
             OpaqueFoliage: FoliageMaterial.IsOpaque(false, 0, mesh.Vertices));
     }
 
-    internal int BindingCount(bool albedo, bool normal, bool roughness) => Ground ? 1 + (Sampler.HasValue ? 1 : 0) :
-        (albedo || normal || roughness ? 1 : 0) + (albedo ? 1 : 0) + (albedo && AlphaCutoff > 0 ? 1 : 0);
+    /// <summary>The sets publication creates. <paramref name="material"/> is whether the mesh has a material set:
+    /// any map, or a glow, which binds its own parameter block.</summary>
+    internal int BindingCount(bool albedo, bool material) =>
+        Ground ? 1 + (Sampler.HasValue ? 1 : 0) : MaterialBindings(albedo, material, AlphaCutoff);
+
+    /// <summary>The model material set, the outline set an albedo map needs, and the shadow cutout set an albedo map
+    /// with an alpha cutoff needs.</summary>
+    internal static int MaterialBindings(bool albedo, bool material, float alphaCutoff) =>
+        (material ? 1 : 0) + (albedo ? 1 : 0) + (albedo && alphaCutoff > 0 ? 1 : 0);
 }

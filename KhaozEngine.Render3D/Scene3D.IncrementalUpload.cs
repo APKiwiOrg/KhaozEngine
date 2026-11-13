@@ -60,13 +60,16 @@ public sealed partial class Scene3D
                 if (w == 1 && h == 1) break;
             }
         }
+        // Every map is priced as a texture this upload creates, whether or not the scene already holds its identity,
+        // so the demand never depends on what else is resident. A loader image's dimensions stand for its read-only
+        // pixels, so measuring never decodes a shared image again.
         void Image(DecodedImage? image)
         {
             if (image is not { } i) return;
-            if (i.Rgba is null || i.Rgba.LongLength != checked((long)i.Width * i.Height * 4))
+            if (i.Identity is null && (i.Rgba is null || i.Rgba.LongLength != checked((long)i.Width * i.Height * 4)))
                 throw new ArgumentException("Texture data must match its RGBA8 dimensions.", nameof(data));
             Texture(i.Width, i.Height, 1);
-            cpu = checked(cpu + i.Rgba.LongLength); // Detached base image remains live beside mip preparation.
+            cpu = checked(cpu + (long)i.Width * i.Height * 4); // Detached base image remains live beside its writes.
         }
         if (data.Mesh is { } m)
         {
@@ -81,7 +84,11 @@ public sealed partial class Scene3D
             // Outline normal welding retains positions, groups, dictionary capacity and output streams.
             // This per-vertex workspace also bounds the earlier, non-overlapping coverage hash position copy.
             cpu = checked(cpu + m.Vertices.LongLength * 512 + m.Indices32.LongLength * 4);
-            if (data.Maps is { } maps) { Image(maps.Albedo); Image(maps.Normal); Image(maps.Roughness); }
+            if (data.Maps is { } maps)
+            {
+                Image(maps.Albedo); Image(maps.Normal); Image(maps.Roughness); Image(maps.Emissive);
+                if (maps.EmissiveFactor != Vector3.Zero) Buffer(Rendering.ModelRenderer.MaterialParamsUbo.SizeInBytes);
+            }
             if (!data.ClipData.IsEmpty)
             {
                 WaterSurfaceDomain.Validate(data.ClipData.Span);

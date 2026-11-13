@@ -13,18 +13,25 @@ internal static class SceneUploadFingerprint
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         void Value<T>(T value) where T : unmanaged => hash.AppendData(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref value, 1)));
         void Bytes(ReadOnlySpan<byte> bytes) { Value(bytes.Length); hash.AppendData(bytes); }
+        // A loader image is named by its identity and its pixels are read-only, so the identity stands for them and
+        // fingerprinting never decodes a shared image again. A caller-built image is hashed by its pixels.
         void Image(DecodedImage? image)
         {
             Value(image.HasValue);
             if (image is not { } i) return;
-            Value(i.Width); Value(i.Height); Bytes(i.Rgba);
+            Value(i.Width); Value(i.Height); Value(i.Identity is not null);
+            if (i.Identity is { } identity) Bytes(Encoding.UTF8.GetBytes(identity));
+            else Bytes(i.Rgba);
         }
         Value(data.Mesh is not null);
         if (data.Mesh is { } mesh)
         { Bytes(MemoryMarshal.AsBytes(mesh.Vertices.AsSpan())); Bytes(MemoryMarshal.AsBytes(mesh.Indices32.AsSpan())); }
         Value(data.Maps.HasValue);
         if (data.Maps is { } maps)
-        { Image(maps.Albedo); Image(maps.Normal); Image(maps.Roughness); Value(maps.AlphaCutoff); }
+        {
+            Image(maps.Albedo); Image(maps.Normal); Image(maps.Roughness); Value(maps.AlphaCutoff);
+            Image(maps.Emissive); Value(maps.EmissiveFactor);
+        }
         Bytes(data.ClipData.Span);
         Value(data.Foliage is not null);
         if (data.Foliage is { } f)

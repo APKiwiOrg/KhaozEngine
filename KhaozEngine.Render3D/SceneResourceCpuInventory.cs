@@ -12,11 +12,15 @@ internal static class SceneResourceCpuInventory
 {
     const long OwnerMetadataBytes = 1024, GpuObjectMetadataBytes = 256, MeshMetadataBytes = 256, FoliageMetadataBytes = 512;
 
-    internal static long Measure(List<IDisposable> owned, bool mesh, ScenePreparedFoliage? foliage, int pendingBindings = 0)
+    internal static long Measure(List<IDisposable> owned, bool mesh, ScenePreparedFoliage? foliage, int pendingBindings = 0,
+        int createdTextures = 0)
     {
         // Bounded metadata for the upload, reservation, demand/digests, tracking entries and list headers.
-        // Each remaining GPU object has a separate wrapper/binding allowance. GPU payload is charged separately.
-        long cpu = checked(OwnerMetadataBytes + (long)owned.Capacity * IntPtr.Size + (owned.Count + pendingBindings) * GpuObjectMetadataBytes + (mesh ? MeshMetadataBytes + CoverageUploadEvidence.RetainedCpuBytes : 0));
+        // Each remaining GPU object has a separate wrapper/binding allowance. GPU payload is charged separately. A
+        // resident material texture the upload created survives under its reservation until destroyed, so it counts
+        // as an owned object does. One it only shares is another owner's.
+        long objects = checked(owned.Count + pendingBindings + createdTextures);
+        long cpu = checked(OwnerMetadataBytes + ((long)owned.Capacity + createdTextures) * IntPtr.Size + objects * GpuObjectMetadataBytes + (mesh ? MeshMetadataBytes + CoverageUploadEvidence.RetainedCpuBytes : 0));
         if (foliage is null) return cpu;
         var layout = foliage.Layout!;
         var points = foliage.PointStream!;
@@ -42,9 +46,12 @@ internal static class SceneResourceCpuInventory
         if (data.GroundMaterial is { } ground) objects += 3 + (ground.Sampler.HasValue ? 1 : 0);
         if (data.Maps is { } maps)
         {
-            bool albedo = maps.Albedo.HasValue, normal = maps.Normal.HasValue, roughness = maps.Roughness.HasValue;
-            objects += (albedo ? 1 : 0) + (normal ? 1 : 0) + (roughness ? 1 : 0) +
-                (albedo || normal || roughness ? 1 : 0) + (albedo ? 1 : 0) + (albedo && maps.AlphaCutoff > 0 ? 1 : 0);
+            bool albedo = maps.Albedo.HasValue, normal = maps.Normal.HasValue, roughness = maps.Roughness.HasValue,
+                emissive = maps.Emissive.HasValue, glows = maps.EmissiveFactor != Vector3.Zero;
+            // Each map's texture counts as this upload's even when the scene shares it, so the bound never depends on
+            // what else is resident. A glow owns its parameter block.
+            objects += (albedo ? 1 : 0) + (normal ? 1 : 0) + (roughness ? 1 : 0) + (emissive ? 1 : 0) + (glows ? 1 : 0) +
+                SceneUploadPublication.MaterialBindings(albedo, albedo || normal || roughness || emissive || glows, maps.AlphaCutoff);
         }
         if (foliage) objects += 2 + (expanded > 0 ? 1 : 0);
         long cpu = checked(OwnerMetadataBytes + objects * (IntPtr.Size + GpuObjectMetadataBytes) + (mesh ? MeshMetadataBytes + CoverageUploadEvidence.RetainedCpuBytes : 0));

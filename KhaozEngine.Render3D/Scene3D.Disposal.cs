@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D
@@ -79,9 +80,12 @@ namespace KhaozEngine.Render3D
             // their maps separately.
             if (shadowReceiversReleased)
             {
-                DisposeMaterialResidency(disposal);
+                List<SceneUploadLease> leases = DisposeMaterialResidency(disposal);
                 foreach (var texture in _textures) Release("texture", () => texture?.Dispose());
                 _textures.Clear();
+                // A resident texture an admitted upload created was destroyed with the list just now, which is the
+                // destruction its upload's reservation waits for.
+                foreach (SceneUploadLease lease in leases) Release("materialLease", lease.Settle);
             }
             shadowReceiversReleased &= DisposeSplatMaterials(disposal);
             shadowReceiversReleased &= DisposeTileGroundMaterials(disposal);

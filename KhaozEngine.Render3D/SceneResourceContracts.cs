@@ -63,6 +63,5 @@ public sealed class SceneUploadData
         InputDigest = SceneUploadFingerprint.Compute(Description);
     }
     internal static GltfMesh Copy(GltfMesh mesh) => new(mesh.Vertices.ToArray(), mesh.Indices32.ToArray());
-    internal static GltfMaterialMaps Copy(GltfMaterialMaps maps) => new(Copy(maps.Albedo), Copy(maps.Normal), Copy(maps.Roughness), maps.AlphaCutoff);
-    static DecodedImage? Copy(DecodedImage? image) => image is { } i ? new(i.Rgba.ToArray(), i.Width, i.Height) : null;
+    internal static GltfMaterialMaps Copy(GltfMaterialMaps maps) => maps.Snapshot();
 }

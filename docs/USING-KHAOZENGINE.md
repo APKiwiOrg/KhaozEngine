@@ -4448,14 +4448,24 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
 - Shared material textures: every image the glTF loader reads carries `DecodedImage.Identity`, `file:` plus the
   absolute path for an external image URI (resolved against its glb's folder) or `sha256:` plus the hex SHA-256 of
   the encoded bytes for an embedded one. The loader decodes each identity once while any loaded part list still
-  references it, and a scene uploads it once: `LoadSurfaceMaps` takes a reference to the resident texture instead
-  of uploading again, so a kit that stores its tileable sets as shared files, or embeds the same PNG in every glb,
-  holds one texture per image. References belong to a bundle until `UnloadSurfaceMaps` releases one per slot, or
-  to the mesh of a turn-key upload (`LoadProp`, `LoadPropMeshes`, `LoadMesh(mesh, maps)`,
-  `LoadSkinnedMesh(mesh, maps)`) until `UnloadMesh`, `UnloadProp` or `UnloadSkinnedMesh` releases them. The last
-  release retires the texture through the scene's retire queue. `UnloadTexture` on a resident handle releases one
-  reference. A failed upload releases everything it took and retires what it created, and scene defaults are
-  never released. An image the caller built has no identity and uploads on its own. Read the residency with
+  references it, even when several worker threads load glbs naming it at once, and a scene uploads it once:
+  `LoadSurfaceMaps` takes a reference to the resident texture instead of uploading again, so a kit that stores its
+  tileable sets as shared files, or embeds the same PNG in every glb, holds one texture per image. References
+  belong to a bundle until `UnloadSurfaceMaps` releases one per slot, to the mesh of a turn-key upload
+  (`LoadProp`, `LoadPropMeshes`, `LoadMesh(mesh, maps)`, `LoadSkinnedMesh(mesh, maps)`) until `UnloadMesh`,
+  `UnloadProp` or `UnloadSkinnedMesh` releases them, or to an admitted upload (`PrepareResourceUpload`, the path
+  `MapScene3DSink` takes for MapDoc props) from preparation until it is cancelled or `ReleaseResource` releases
+  it. The last release retires the texture through the scene's retire queue. `UnloadTexture` on a resident handle
+  releases one reference. A failed upload releases everything it took and retires what it created, and scene
+  defaults are never released. An image the caller built has no identity and uploads on its own. Admitted uploads
+  in flight share an image too: the first to name it creates the texture, every upload naming it writes its
+  level-0 rows within its own byte allowance, and the chain is generated on the GPU exactly as `LoadTexture`
+  generates it, so a texture is the same whichever path built it, and a convenience load that meets one still
+  being written finishes it first. A texture an admitted upload created keeps that upload's reservation charged
+  until the texture is destroyed, even after another owner outlives the upload. The retained copies of
+  `SceneUploadData.Maps`, `MapRigidResource.Maps` and `MapRenderLod.Parts` keep every map, the emissive and each
+  image's identity: an image that owns its pixel array is copied and keeps its identity, a shared loader image is
+  kept as it is, and a caller-built image is copied without one. Read the residency with
   `scene.ResidentMaterialTextureCount` and `scene.ResidentMaterialTextureBytes` (RGBA8 bytes of every mip level),
   for example in a headless test that loads a kit and asserts one texture per distinct image. Decoded pixels are
   transient: they are held from decode until a scene has uploaded them, then only the image's encoded bytes are

@@ -156,11 +156,14 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   parts, glbs or archetypes name it. A later upload failure releases what the call took and retires what it
   created. `UnloadSurfaceMaps(in maps)` releases one reference per slot, and the last reference retires the texture
   through the same deferred queue. The turn-key glTF uploads (`LoadProp`, `LoadPropMeshes`, `LoadMesh(mesh, maps)`,
-  `LoadSkinnedMesh(mesh, maps)`) hand the references to their mesh, which releases them on unload. Unload the meshes
-  that reference a map bundle first. All-absent bundles neither upload textures nor release scene defaults.
-  `ResidentMaterialTextureCount` and `ResidentMaterialTextureBytes` report the residency. The loader decodes each
-  identity once while its parts are referenced, holds the pixels until the first upload, and keeps the encoded bytes
-  after that (`Scene3D.MaterialTextureResidency.cs`, `Models/MaterialImageCache.cs`).
+  `LoadSkinnedMesh(mesh, maps)`) hand the references to their mesh, which releases them on unload. An admitted
+  upload holds one reference per map from preparation until it is cancelled or its resource is released, so MapDoc
+  props share the same textures (see "Admitted resource publication"). Unload the meshes that reference a map bundle
+  first. All-absent bundles neither upload textures nor release scene defaults. `ResidentMaterialTextureCount` and
+  `ResidentMaterialTextureBytes` report the residency. The loader decodes each identity once while its parts are
+  referenced, and a concurrent miss on the same identity joins the decode in flight instead of decoding again. It
+  holds the pixels until the first upload and keeps the encoded bytes after that
+  (`Scene3D.MaterialTextureResidency.cs`, `Models/MaterialImageCache.cs`).
 - Material sampling and emissive: real material maps sample through a wrap anisotropic sampler at
   `Post.Quality.MaterialAnisotropy` (16 by default, 1 is the device's linear sampler), while each absent map's 1x1
   default keeps the linear sampler so untextured meshes never change. glTF `emissiveFactor`, `emissiveTexture` and
@@ -2323,8 +2326,17 @@ mesh parts by their declared count, while the claimable `MeasureResourceUpload` 
 Capacity values cannot be used as upload claim tokens.
 Detached inputs compute their digest when constructed. `PrepareResourceUpload(data, reservation)` verifies
 that digest and the complete demand, then calls `ISceneUploadReservation.Claim` before preparing or allocating.
-`Advance(bytes)` copies at most that allowance through bounded buffers and texture rows/mips. A budget smaller
-than the next aligned element makes no progress. Native mip staging samples source texel centres bilinearly.
+`Advance(bytes)` copies at most that allowance through bounded buffers and texture rows. A budget smaller
+than the next aligned element makes no progress. A ground array writes every level of its chain, and its native mip
+staging samples source texel centres bilinearly. Model material maps are the scene's resident textures (issue
+#1776): the upload takes a reference per map at preparation, the first upload naming an image creates its texture,
+and every upload naming it writes its level-0 rows after its own buffers, so an image a batch in flight shares is
+written once. The first to finish generates the chain on the GPU in the recording its completion fence proves,
+exactly as `LoadTexture` builds one. Measurement still prices every map as a full chain the upload creates, so a
+demand never depends on what else is resident. A texture an upload created keeps its reservation charged until the
+texture is destroyed (`SceneUploadLease`), and counts in its retained inventory. A glow
+(`GltfMaterialMaps.EmissiveFactor`) owns a parameter block written with the buffers, and the material set binds the
+emissive map and that block, so an admitted prop glows as the convenience upload of the same parts does.
 `Ready` includes completion of the final GPU fence. Observing completion disposes the transfer-only fence and
 command list, then calls `ISceneUploadReservation.TransferCompleted` to return GPU staging credit. Devices
 without completion fences use the existing idle wait. Publication refuses until ready and succeeds once.

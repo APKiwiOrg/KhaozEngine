@@ -276,22 +276,34 @@ public sealed class NativeResourceUploadTests
         ShaderValidation.ValidatePair(pair.Item1, pair.Item2, "prepared-foliage-" + pass);
     }
 
-    [Fact]
-    public void TextureMips_ProgressByBoundedRowsWithinTheAllowance()
+    /// <summary>Texture writes progress within bounded rows. A model material texture writes level 0 and has its
+    /// chain generated once those writes complete, the way every texture in the scene's material residency is built,
+    /// so a texture the convenience path and an admitted upload share is the same whichever path built it (#1776). A
+    /// ground array is never shared and writes every level.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TextureWrites_ProgressByBoundedRowsWithinTheAllowance(bool ground)
     {
         using var host = new NativeUploadTestScene();
+        var factory = (FakeGpuResourceFactory)host.Device.Inner.Factory;
+        int generations = factory.CommandLists.Sum(cl => cl.MipGenerations.Count);
         byte[] pixels = Enumerable.Range(0, 16).SelectMany(_ => new byte[] { 200, 100, 50, 255 }).ToArray();
-        var data = new SceneUploadData(Triangle(), new(new(pixels, 4, 4), null, null, 0), null, default);
+        var data = ground
+            ? new SceneUploadData(Triangle(), null, null, default,
+                new SceneGroundMaterialData(4, 4, new[] { new TileGroundLayerImage { AlbedoRgba = pixels } }))
+            : new SceneUploadData(Triangle(), new(new(pixels, 4, 4), null, null, 0), null, default);
         using var upload = host.Scene.PrepareResourceUpload(data, new NativeUploadReservation(host.Scene.MeasureResourceUpload(data)));
         Assert.Equal(234, upload.Advance(234));
         Assert.Empty(host.Device.TextureCopies);
         Assert.Equal(0, upload.Advance(3));
         Assert.Equal(20, upload.Advance(20));
         Assert.False(upload.Ready);
-        Assert.Equal(64, upload.Advance(long.MaxValue));
+        upload.Advance(long.MaxValue);
         Assert.True(upload.Ready);
-        Assert.Equal(84, host.Device.TextureCopies.Sum(t => t.Bytes.Length));
-        Assert.Equal(new uint[] { 0, 1, 2 }, host.Device.TextureCopies.Select(t => t.Mip).Distinct());
+        Assert.Equal(ground ? 84 : 64, host.Device.TextureCopies.Sum(t => t.Bytes.Length));
+        Assert.Equal(ground ? new uint[] { 0, 1, 2 } : new uint[] { 0 }, host.Device.TextureCopies.Select(t => t.Mip).Distinct());
+        Assert.Equal(ground ? 0 : 1, factory.CommandLists.Sum(cl => cl.MipGenerations.Count) - generations);
         foreach (var copy in host.Device.TextureCopies)
         {
             Assert.Equal(copy.Width * 4, (uint)copy.Bytes.Length);

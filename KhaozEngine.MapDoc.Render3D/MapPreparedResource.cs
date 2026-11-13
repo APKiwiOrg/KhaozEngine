@@ -118,7 +118,6 @@ public sealed partial class MapFoliageResource : MapResourcePayload
 internal static class MapRenderCopies
 {
     internal static GltfMesh Mesh(GltfMesh mesh) => new(mesh.Vertices.ToArray(), mesh.Indices32.ToArray());
-    internal static GltfMaterialMaps Maps(GltfMaterialMaps maps) => new(Image(maps.Albedo), Image(maps.Normal), Image(maps.Roughness), maps.AlphaCutoff);
-    static DecodedImage? Image(DecodedImage? image) => image is { } i ? new(i.Rgba.ToArray(), i.Width, i.Height) : null;
+    internal static GltfMaterialMaps Maps(GltfMaterialMaps maps) => maps.Snapshot();
     internal static GltfMeshPart Part(GltfMeshPart part) => new(Mesh(part.Mesh), Maps(part.Maps));
 }

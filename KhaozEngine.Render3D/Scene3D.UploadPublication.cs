@@ -10,8 +10,10 @@ public sealed partial class Scene3D
 
     internal long ReserveMeshOrder() => _slots.ReserveAllocationOrder();
 
+    // The textures are the scene's resident ones, borrowed for the sets, and the upload holds their references. A
+    // glow's parameter block is the upload's own.
     internal MeshHandle PublishUploadedMesh(SceneUploadPublication source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
-        IGpuTexture? albedo, IGpuTexture? normal, IGpuTexture? roughness,
+        IGpuTexture? albedo, IGpuTexture? normal, IGpuTexture? roughness, IGpuTexture? emissive, IGpuBuffer? materialParams,
         IGpuTexture? groundAlbedo, IGpuBuffer? groundParams,
         List<IDisposable> owned, long meshOrder)
     {
@@ -25,8 +27,8 @@ public sealed partial class Scene3D
         }
         else
         {
-            if (albedo is not null || normal is not null || roughness is not null)
-            { material = _model.CreateMaterialSet(albedo, normal, roughness); owned.Add(material); }
+            if (albedo is not null || normal is not null || roughness is not null || emissive is not null || materialParams is not null)
+            { material = _model.CreateMaterialSet(albedo, normal, roughness, emissive, materialParams); owned.Add(material); }
             if (albedo is not null)
             { outline = _targetOutlines.CreateMaterialSet(albedo); owned.Add(outline); }
             if (albedo is not null && alphaCutoff > 0)

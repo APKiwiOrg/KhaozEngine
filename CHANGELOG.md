@@ -11,18 +11,25 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Material textures are shared per image ([#1776](https://github.com/APKiwiOrg/KhaozEngine/issues/1776)). Every
   material image the glTF loader reads carries `DecodedImage.Identity`, `file:` plus the absolute path for an
   external image URI or `sha256:` plus the hash of the encoded bytes for an embedded one, and is decoded once while
-  any loaded part list references it. `Scene3D.LoadSurfaceMaps` takes a reference to the texture already resident
-  for an identity, so a kit that shares tileable sets across many pieces, as separate image files or as the same PNG
-  embedded in every glb, uploads one texture per image per scene. A bundle releases one reference per slot through
-  `UnloadSurfaceMaps`. The meshes of `LoadProp`, `LoadPropMeshes`, `LoadMesh(GltfMesh, GltfMaterialMaps)` and
+  any loaded part list references it, also when several threads load glbs naming it at once.
+  `Scene3D.LoadSurfaceMaps` takes a reference to the texture already resident for an identity, so a kit that shares
+  tileable sets across many pieces, as separate image files or as the same PNG embedded in every glb, uploads one
+  texture per image per scene. A bundle releases one reference per slot through `UnloadSurfaceMaps`. The meshes of
+  `LoadProp`, `LoadPropMeshes`, `LoadMesh(GltfMesh, GltfMaterialMaps)` and
   `LoadSkinnedMesh(SkinnedGltfMesh, GltfMaterialMaps)` own their references and release them on unload, which also
-  stops those uploads keeping their textures until scene disposal. `UnloadTexture` on a resident handle releases one
-  reference. `Scene3D.ResidentMaterialTextureCount` and `ResidentMaterialTextureBytes` report the residency. Decoded
-  pixels are held only until a scene uploads them, then each image keeps its encoded bytes, so `GltfMeshResolver`
-  no longer holds RGBA8 per part. A shared image's pixels are read-only.
+  stops those uploads keeping their textures until scene disposal. Admitted uploads (`PrepareResourceUpload`, which
+  `MapScene3DSink` uses for MapDoc props) share the same residency: an upload holds a reference per map until it is
+  cancelled or released, uploads in flight write a shared image once, and the copies `SceneUploadData`,
+  `MapRigidResource` and `MapRenderLod` retain keep each image's identity. Their material maps write level 0 and
+  generate the chain on the GPU as `LoadTexture` does, where they wrote a CPU chain before, and an upload that created
+  a texture keeps its reservation charged until that texture is destroyed. `UnloadTexture` on a resident handle
+  releases one reference. `Scene3D.ResidentMaterialTextureCount` and `ResidentMaterialTextureBytes` report the
+  residency. Decoded pixels are held only until a scene uploads them, then each image keeps its encoded bytes, so
+  `GltfMeshResolver` no longer holds RGBA8 per part. A shared image's pixels are read-only.
 - Model material maps sample anisotropically ([#1776](https://github.com/APKiwiOrg/KhaozEngine/issues/1776)).
   `RenderQuality.MaterialAnisotropy` (16 by default, 1 is the previous trilinear sampler, clamped to 1 to 16) applies
-  at the next `Begin`. Each map slot has its own sampler: a real map samples through the wrap anisotropic material
+  at the next `Begin`. A change that fails to apply keeps the active sampler and is retried once the setting moves
+  to any other value, the active one included. Each map slot has its own sampler: a real map samples through the wrap anisotropic material
   sampler and an absent map's 1x1 default keeps the device's linear sampler, so untextured meshes render
   byte-identically. Model material taps carry the temporal mip bias as a scale on their UV gradients rather than a
   shader bias argument, because on Apple GPUs that argument through an anisotropic sampler does not shift the LOD as
@@ -33,10 +40,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Metal and Direct3D 11, and added the `scene3d_gltf_emissive` and `scene3d_material_anisotropy` goldens.
 - glTF emissive ([#1776](https://github.com/APKiwiOrg/KhaozEngine/issues/1776)): `emissiveFactor` times
   `KHR_materials_emissive_strength` arrives as `GltfMaterialMaps.EmissiveFactor` and `emissiveTexture` as
-  `GltfMaterialMaps.Emissive`, carried by `SurfaceMaps.Emissive` and `SurfaceMaps.EmissiveFactor`. The rigid,
-  CPU-skinned and GPU-skinned model fragments add it after lighting as HDR light that lights and shadows never
-  scale, on top of the per-instance `Material.Emissive`, so it feeds bloom. A material without emissive renders
-  byte-identically. The strict attachment decode reads `emissiveFactor` and still refuses `emissiveTexture`.
+  `GltfMaterialMaps.Emissive`, carried by `SurfaceMaps.Emissive` and `SurfaceMaps.EmissiveFactor`, and by admitted
+  uploads, whose measured demand, input fingerprint and published material include both. The rigid, CPU-skinned and
+  GPU-skinned model fragments add it after lighting as HDR light that lights and shadows never scale, on top of the
+  per-instance `Material.Emissive`, so it feeds bloom. A material without emissive renders byte-identically. The
+  strict attachment decode reads `emissiveFactor` and still refuses `emissiveTexture`.
 
 ## 23.10.0
 

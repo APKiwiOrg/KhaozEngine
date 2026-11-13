@@ -4,23 +4,39 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D;
 
 /// <summary>One admitted upload. Publication transfers ownership to the scene. Cancellation retires behind its
-/// completion barrier and releases its remaining lease only after destruction.</summary>
+/// completion barrier and releases its remaining lease only after destruction.
+/// <para>
+/// Its material maps are the scene's resident textures (issue #1776): one per image identity, shared with every other
+/// upload and convenience load that names the image, and held by reference from preparation until the upload is
+/// cancelled or its resource is released. The first upload to name an image creates the texture and its claim pays
+/// for it. Every upload naming the image writes its level-0 rows after its own buffers, so an image a batch shares is
+/// written once, and the first to finish generates its chain in the recording its completion fence proves. A glow
+/// owns a parameter block written with the upload's buffers.
+/// </para></summary>
 public sealed class SceneResourceUpload : IDisposable
 {
     readonly Scene3D _scene;
     readonly IGpuDevice _device;
     readonly ISceneUploadReservation _reservation;
+    readonly SceneUploadLease _lease;
     readonly long _meshOrder;
     SceneUploadData? _data;
     SceneUploadPublication? _publication;
-    readonly List<Transfer> _transfers = new();
+    readonly List<SceneUploadTransfer> _transfers = new();
     readonly List<IDisposable> _owned = new();
-    IGpuBuffer? _vertices, _normals, _indices, _clip, _foliage, _groundParams, _anchor;
-    IGpuTexture? _albedo, _normal, _roughness, _groundAlbedo;
+    // The resident textures this upload holds a reference to, and the fills of those still owed writes. The ones it
+    // created survive under its reservation until destroyed, so they count in its retained inventory.
+    readonly List<Scene3D.TextureHandle> _resident = new();
+    readonly List<MaterialTextureFill> _fills = new();
+    int _created;
+    IGpuBuffer? _vertices, _normals, _indices, _clip, _foliage, _groundParams, _anchor, _materialParams;
+    Scene3D.TextureHandle _albedo, _normal, _roughness, _emissive;
+    IGpuTexture? _groundAlbedo;
     IGpuFence? _completion;
     IGpuCommandList? _barrier;
     int _nextTransfer;
@@ -38,6 +54,7 @@ public sealed class SceneResourceUpload : IDisposable
         SceneUploadDemand demand, ISceneUploadReservation reservation)
     {
         _scene = scene; _device = device; _data = data; Demand = demand; _reservation = reservation;
+        _lease = new SceneUploadLease(reservation);
         _meshOrder = data.BorrowMesh is null ? 0 : scene.ReserveMeshOrder();
         if (data.BorrowMesh is { } mesh)
             _publication = SceneUploadPublication.From(mesh) with
@@ -45,10 +62,17 @@ public sealed class SceneResourceUpload : IDisposable
                 AlphaCutoff = data.BorrowMaps?.AlphaCutoff ?? 0,
                 Ground = data.GroundMaterial is not null,
                 Sampler = data.GroundMaterial?.Sampler,
-                OpaqueFoliage = FoliageMaterial.IsOpaque(data.BorrowMaps is { } maps &&
-                    (maps.Albedo is not null || maps.Normal is not null || maps.Roughness is not null), data.BorrowMaps?.AlphaCutoff ?? 0, mesh.Vertices)
+                OpaqueFoliage = FoliageMaterial.IsOpaque(data.BorrowMaps is { } maps && HasMaterial(maps),
+                    data.BorrowMaps?.AlphaCutoff ?? 0, mesh.Vertices)
             };
     }
+
+    // Whether the maps bind a model material set: any map, or a glow, which binds its own parameter block.
+    static bool HasMaterial(in GltfMaterialMaps maps) =>
+        maps.Albedo is not null || maps.Normal is not null || maps.Roughness is not null || maps.Emissive is not null ||
+        maps.EmissiveFactor != Vector3.Zero;
+
+    bool BindsMaterial => _albedo.IsValid || _normal.IsValid || _roughness.IsValid || _emissive.IsValid || _materialParams is not null;
 
     internal void Prepare()
     {
@@ -61,7 +85,12 @@ public sealed class SceneResourceUpload : IDisposable
                 ? Buffer(MemoryMarshal.AsBytes(mesh.Indices32.AsSpan()).ToArray(), GpuBufferUsage.IndexBuffer)
                 : Buffer(MemoryMarshal.AsBytes(MeshIndices.Narrow(mesh.Indices32).AsSpan()).ToArray(), GpuBufferUsage.IndexBuffer);
             if (data.BorrowMaps is { } maps)
-            { _albedo = Image(maps.Albedo); _normal = Image(maps.Normal); _roughness = Image(maps.Roughness); }
+            {
+                _albedo = Resident(maps.Albedo); _normal = Resident(maps.Normal);
+                _roughness = Resident(maps.Roughness); _emissive = Resident(maps.Emissive);
+                if (maps.EmissiveFactor != Vector3.Zero)
+                    _materialParams = Buffer(MaterialParams(maps.EmissiveFactor), GpuBufferUsage.UniformBuffer);
+            }
             if (!data.BorrowClipData.IsEmpty) _clip = Buffer(data.BorrowClipData.ToArray(), GpuBufferUsage.StructuredBufferReadOnly, 16);
             if (data.GroundMaterial is { } ground)
             {
@@ -86,30 +115,41 @@ public sealed class SceneResourceUpload : IDisposable
             _completion = Own(_device.Factory.CreateFence());
             _barrier = Own(_device.Factory.CreateCommandList());
         }
-        if (_transfers.Count == 0) CompleteTransfer();
+        if (_transfers.Count == 0 && _fills.TrueForAll(fill => fill.Written)) CompleteTransfer();
     }
 
     T Own<T>(T resource) where T : IDisposable { _owned.Add(resource); return resource; }
     IGpuBuffer Buffer(byte[] bytes, GpuBufferUsage usage, uint stride = 0)
     {
         var buffer = Own(_device.Factory.CreateBuffer(new(checked((uint)Scene3D.Align(bytes.Length, 4)), usage, stride)));
-        _transfers.Add(new(buffer, bytes));
+        _transfers.Add(new SceneUploadTransfer(buffer, bytes));
         return buffer;
     }
-    IGpuTexture? Image(DecodedImage? image)
+
+    // A reference to the scene's texture for a map, created by this upload when the scene does not hold its identity.
+    Scene3D.TextureHandle Resident(DecodedImage? image)
     {
-        if (image is not { } i) return null;
-        var texture = Own(_device.Factory.CreateTexture(new((uint)i.Width, (uint)i.Height, GpuPixelFormat.R8G8B8A8UNorm,
-            GpuTextureUsage.Sampled, TileGroundMaterialConfig.MipLevelCount(i.Width, i.Height))));
-        Mips(texture, i.Rgba, i.Width, i.Height, 0);
-        return texture;
+        if (image is not { } i) return default;
+        (Scene3D.TextureHandle handle, MaterialTextureFill? fill, bool created) = _scene.AcquireAdmittedTexture(i, _lease);
+        _resident.Add(handle);
+        if (created) _created++;
+        if (fill is not null && !_fills.Contains(fill)) _fills.Add(fill);
+        return handle;
     }
+
+    static byte[] MaterialParams(Vector3 emissive)
+    {
+        var block = new ModelRenderer.MaterialParamsUbo { Emissive = new Vector4(emissive, 0f) };
+        return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref block, 1)).ToArray();
+    }
+
+    // A ground array is never shared, so it writes every level of its chain by bounded rows.
     void Mips(IGpuTexture texture, byte[] pixels, int width, int height, uint layer)
     {
         uint mip = 0;
         while (true)
         {
-            _transfers.Add(new(texture, pixels, width, height, mip++, layer));
+            _transfers.Add(new SceneUploadTransfer(texture, pixels, width, mip++, layer));
             if (width == 1 && height == 1) break;
             int w = Math.Max(1, width / 2), h = Math.Max(1, height / 2);
             pixels = SceneUploadMips.Downsample(pixels, width, height, w, h);
@@ -129,19 +169,21 @@ public sealed class SceneResourceUpload : IDisposable
                 if (_barrier is not null) { _barrier.Dispose(); _owned.Remove(_barrier); _barrier = null; }
                 if (_completion is not null) { _completion.Dispose(); _owned.Remove(_completion); _completion = null; }
                 ReleaseInputs();
-                int bindings = (_publication?.BindingCount(_albedo is not null, _normal is not null, _roughness is not null) ?? 0) +
+                int bindings = (_publication?.BindingCount(_albedo.IsValid, BindsMaterial) ?? 0) +
                     (PreparedFoliage is not null ? 1 : 0);
                 _owned.Capacity = checked(_owned.Count + bindings);
                 _reservation.TransferCompleted();
-                _reservation.InputsReleased(SceneResourceCpuInventory.Measure(_owned, _publication.HasValue, PreparedFoliage, bindings));
+                _reservation.InputsReleased(SceneResourceCpuInventory.Measure(_owned, _publication.HasValue, PreparedFoliage,
+                    bindings, _created));
                 _transferSettled = true;
             }
             return true;
         }
     }
 
-    /// <summary>Copy at most allowance bytes. Texture writes progress within bounded rows and every mip.
-    /// An allowance too small for one RGBA texel makes no progress. Admission is independent of this budget.</summary>
+    /// <summary>Copy at most allowance bytes. Writes progress within bounded rows: this upload's buffers and ground
+    /// array first, then the level-0 rows its shared material textures still owe. An allowance too small for one
+    /// RGBA texel makes no progress. Admission is independent of this budget.</summary>
     public long Advance(long allowance)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -158,21 +200,54 @@ public sealed class SceneResourceUpload : IDisposable
                 if (transfer.Finished) _nextTransfer++;
                 else if (written == 0) break;
             }
-            if (_nextTransfer == _transfers.Count) CompleteTransfer();
+            // A fill another upload began, or was cancelled out of, finishes here as readily as one this upload began.
+            if (_nextTransfer == _transfers.Count)
+                foreach (MaterialTextureFill fill in _fills)
+                {
+                    while (!fill.Written && copied < allowance)
+                    {
+                        long written = fill.Advance(_device, allowance - copied);
+                        if (written == 0) break;
+                        copied += written;
+                    }
+                    if (!fill.Written) break;
+                }
+            if (_nextTransfer == _transfers.Count && _fills.TrueForAll(fill => fill.Written)) CompleteTransfer();
             return copied;
         }
         catch { Dispose(); throw; }
     }
+
     void CompleteTransfer()
     {
         if (_submitted) return;
         if (_completion is not null)
         {
-            using (GpuRecording.Open(_device, _barrier!, "Scene3D.ResourceUpload")) { }
+            using (GpuRecording.Open(_device, _barrier!, "Scene3D.ResourceUpload")) GenerateChains(_barrier!);
             _device.Submit(_barrier!, _completion);
         }
-        else if (Demand.TransferBytes > 0) _device.WaitForIdle();
+        else
+        {
+            // Without a completion fence a chain still needs a list of its own, and the drain proves it.
+            IGpuCommandList? chains = null;
+            try
+            {
+                if (!_fills.TrueForAll(fill => fill.ChainGenerated))
+                {
+                    chains = _device.Factory.CreateCommandList();
+                    using (GpuRecording.Open(_device, chains, "Scene3D.ResourceUpload")) GenerateChains(chains);
+                    _device.Submit(chains);
+                }
+                if (Demand.TransferBytes > 0 || chains is not null) _device.WaitForIdle();
+            }
+            finally { chains?.Dispose(); }
+        }
         _submitted = true;
+    }
+
+    void GenerateChains(IGpuCommandList list)
+    {
+        foreach (MaterialTextureFill fill in _fills) fill.Generate(list);
     }
 
     /// <summary>Publish once, after readiness. Draw submissions can only resolve this accepted handle.</summary>
@@ -184,8 +259,9 @@ public sealed class SceneResourceUpload : IDisposable
         try
         {
             if (_publication is { } mesh)
-                PublishedMesh = _scene.PublishUploadedMesh(mesh, _vertices!, _normals!, _indices!, _albedo, _normal, _roughness,
-                    _groundAlbedo, _groundParams, _owned, _meshOrder);
+                PublishedMesh = _scene.PublishUploadedMesh(mesh, _vertices!, _normals!, _indices!,
+                    _scene.MaterialTextureOf(_albedo), _scene.MaterialTextureOf(_normal), _scene.MaterialTextureOf(_roughness),
+                    _scene.MaterialTextureOf(_emissive), _materialParams, _groundAlbedo, _groundParams, _owned, _meshOrder);
             if (_clip is not null) _scene.PublishWaterDomain(PublishedMesh, _clip);
             if (PreparedFoliage is { } prepared) PublishedFoliage = _scene.PublishPreparedFoliage(prepared, _foliage, _anchor!, _owned);
             handle = _scene.PublishResource(this);
@@ -215,10 +291,15 @@ public sealed class SceneResourceUpload : IDisposable
         _scene.DetachUploadedResource(PublishedMesh, PublishedFoliage);
         _publication = null;
         PublishedFoliage = null; PreparedFoliage = null;
-        _scene.RetireUpload(this, new Retirement(_owned, _reservation));
+        _scene.RetireUpload(this, new Retirement(_owned, _lease));
+        // The sets naming the resident textures are queued above. A texture whose last reference this was retires
+        // behind them, and one this upload created settles its lease only once destroyed.
+        foreach (Scene3D.TextureHandle texture in _resident) _scene.ReleaseMaterialTexture(texture);
+        _resident.Clear(); _fills.Clear();
         ReleaseInputs();
-        _vertices = _normals = _indices = _clip = _foliage = _groundParams = _anchor = null;
-        _albedo = _normal = _roughness = _groundAlbedo = null;
+        _vertices = _normals = _indices = _clip = _foliage = _groundParams = _anchor = _materialParams = null;
+        _albedo = _normal = _roughness = _emissive = default;
+        _groundAlbedo = null;
         _completion = null; _barrier = null;
     }
     void ReleaseInputs() { _transfers.Clear(); _transfers.Capacity = 0; _data = null; }
@@ -227,7 +308,7 @@ public sealed class SceneResourceUpload : IDisposable
         for (int i = 0; i < _owned.Count; i++)
             if (_owned[i] is IGpuResourceSet set) _owned[i] = replacementFor(set);
     }
-    sealed class Retirement(List<IDisposable> owned, ISceneUploadReservation reservation) : IDisposable
+    sealed class Retirement(List<IDisposable> owned, SceneUploadLease lease) : IDisposable
     {
         bool _disposed;
         public void Dispose()
@@ -235,41 +316,7 @@ public sealed class SceneResourceUpload : IDisposable
             if (_disposed) return;
             _disposed = true;
             try { for (int i = owned.Count - 1; i >= 0; i--) owned[i].Dispose(); }
-            finally { owned.Clear(); owned.Capacity = 0; reservation.Released(); reservation.Dispose(); }
-        }
-    }
-    sealed class Transfer
-    {
-        readonly IGpuBuffer? _buffer;
-        readonly IGpuTexture? _texture;
-        readonly byte[] _bytes;
-        readonly int _width;
-        readonly uint _mip, _layer;
-        int _offset;
-        internal bool Finished => _offset == _bytes.Length;
-        internal Transfer(IGpuBuffer buffer, byte[] bytes) { _buffer = buffer; _bytes = bytes; }
-        internal Transfer(IGpuTexture texture, byte[] bytes, int width, int height, uint mip, uint layer)
-        { _texture = texture; _bytes = bytes; _width = width; _mip = mip; _layer = layer; }
-        internal long Advance(IGpuDevice device, long allowance)
-        {
-            int count = (int)Math.Min(_bytes.Length - _offset, Math.Min(allowance, int.MaxValue));
-            if (_buffer is not null)
-            {
-                // All production buffer formats and destination offsets have a two-byte minimum alignment.
-                if (count < _bytes.Length - _offset) count -= count % 4;
-                if (count == 0) return 0;
-                device.UpdateBuffer(_buffer, (uint)_offset, (ReadOnlySpan<byte>)_bytes.AsSpan(_offset, count));
-            }
-            else
-            {
-                int rowBytes = checked(_width * 4), x = _offset % rowBytes;
-                count = Math.Min(count, rowBytes - x); count -= count % 4;
-                if (count == 0) return 0;
-                byte[] row = _bytes.AsSpan(_offset, count).ToArray();
-                device.UpdateTexture(_texture!, row, (uint)(x / 4), (uint)(_offset / rowBytes), (uint)(count / 4), 1, _mip, _layer);
-            }
-            _offset += count;
-            return count;
+            finally { owned.Clear(); owned.Capacity = 0; lease.Settle(); }
         }
     }
 }

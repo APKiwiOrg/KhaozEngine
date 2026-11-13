@@ -115,6 +115,13 @@ namespace KhaozEngine.Render3D.Internal
             return albedo;
         }
 
+        /// <summary>Generate the chain of a texture whose level 0 is already written, the way
+        /// <see cref="CreateMipped"/> generates it, submitted and drained before this returns.</summary>
+        internal static void GenerateChain(IGpuDevice gd, IGpuTexture texture, string owner)
+        {
+            if (texture.MipLevels > 1) GenerateMips(gd, owner, texture, null);
+        }
+
         // One transient list for the whole generate, opened through the seam's register so a mid-frame call
         // refuses by name instead of resetting the frame's device state (#424). Submitted and drained here: the
         // chain has to exist before the first draw that samples it.

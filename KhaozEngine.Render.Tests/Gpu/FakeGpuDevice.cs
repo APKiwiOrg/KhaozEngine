@@ -392,6 +392,15 @@ namespace KhaozEngine.Tests.Gpu
         /// it: see <see cref="FakeGpuResourceFactory.LiveSetsNamingAFreedTexture"/>.</summary>
         internal IGpuBindableResource[] Resources { get; }
 
+        /// <summary>The resource bound at the layout element named <paramref name="name"/>.</summary>
+        internal IGpuBindableResource Bound(string name)
+        {
+            GpuResourceLayoutElement[] elements = ((FakeResourceLayout)Layout!).Description.Elements;
+            int index = Array.FindIndex(elements, element => element.Name == name);
+            if (index < 0) throw new ArgumentException($"The layout has no {name} binding.", nameof(name));
+            return Resources[index];
+        }
+
         /// <summary>Whether the owner freed this binding. Paired with
         /// <see cref="FakeGpuResourceFactory.ResourceSets"/> to pin the frame a retired set is destroyed on.</summary>
         internal bool Disposed { get; private set; }

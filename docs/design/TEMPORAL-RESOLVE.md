@@ -357,7 +357,9 @@ by its neighbourhood's local contrast, so it cannot ring or reintroduce the shim
 
 A texture sampled at the internal resolution picks a blurrier mip level than the display needs. Every material
 sampling site applies a mip bias of `log2(internal / display) + Post.Temporal.MipBiasOffset` through a frame uniform,
-using the shader's own `bias` argument, because Metal samplers have no LOD bias. The offset defaults to minus 0.5,
+by scaling both texture gradients by `exp2(bias)`. Metal samplers have no LOD bias, and on Apple GPUs the shader's own
+`bias` argument through an anisotropic sampler does not shift the LOD as it does through a trilinear one, while a
+gradient scale moves the isotropic and the anisotropic LOD alike on every backend. The offset defaults to minus 0.5,
 tuned against a checkerboard golden, and the bias is zero when temporal is off, so today's output is
 unchanged.
 
@@ -454,8 +456,9 @@ Implementation review established the contract amendments below.
    the order is unchanged, and its existing sky-over-transparents bug is
    [#1153](https://github.com/APKiwiOrg/KhaozEngine/issues/1153).
 6. History targets survive `Invalidate` and are released only when the resolve stops.
-7. The mip bias rides the free `Params.z` and `Params.w` lanes of the frame block, and the explicit-gradient ground taps
-   scale their gradients by the bias instead of taking a bias argument.
+7. The mip bias rides the free `Params.z` and `Params.w` lanes of the frame block, and every material tap scales its
+   gradients by the bias instead of taking a bias argument: the model taps from the UV inside `materialSample`, the
+   ground taps from hoisted world-space derivatives.
 8. Temporal counts are sampled on request through `Scene3D.RequestTemporalCounts()`, because every backend's readback
    drains the device.
 9. A screen-fixed starfield background takes zero motion instead of the sky's rotation reprojection.

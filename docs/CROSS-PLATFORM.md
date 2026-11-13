@@ -1247,14 +1247,20 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   the loader could not create a `VK_EXT_debug_utils` messenger, even if a historical status line says ACTIVE
   and STRICT. CI now refuses that state. The lookup fix and native positive control still need an approved
   hosted Vulkan run before they establish new native validation evidence.
-- **A texture LOD bias that must hold on every backend is a shader argument, never sampler state.** Metal samplers
-  carry no LOD bias (`GpuCapabilities.SamplerLodBias` is false there), so a sampler's `mipLodBias` applies on
-  Direct3D 11 and Vulkan and is dropped on Metal (`SamplerLodBiasGpuTests` builds one on every backend).
-  `texture(s, uv, bias)` cross-compiles to an MSL `bias()` argument, to HLSL `SampleBias` and to the SPIR-V `Bias`
-  operand, so it holds everywhere. `textureGrad` has no bias argument, so an explicit-gradient tap scales both
-  gradients by `exp2(bias)` instead (`ShaderSources.MaterialLodGradGlsl`). A bias of exactly 0.0 and a gradient scale
-  of exactly 1.0 leave the tap unchanged on all three backends, which is what keeps every golden byte-identical with
-  temporal anti-aliasing off. `MaterialMipBiasShaderContractTests` fails a material program that samples around it.
+- **A texture LOD bias that must hold on every backend scales the tap's gradients, never sampler state and never a
+  `bias` argument.** Metal samplers carry no LOD bias (`GpuCapabilities.SamplerLodBias` is false there), so a
+  sampler's `mipLodBias` applies on Direct3D 11 and Vulkan and is dropped on Metal (`SamplerLodBiasGpuTests` builds
+  one on every backend). `texture(s, uv, bias)` cross-compiles to an MSL `bias()` argument, to HLSL `SampleBias` and
+  to the SPIR-V `Bias` operand, but on Apple GPUs that argument through an anisotropic sampler does not shift the LOD
+  as it does through a trilinear one: a dark model texture at Quality measured 18 percent over its error baseline
+  through it at 16x and exactly on it through scaled gradients
+  ([#1776](https://github.com/APKiwiOrg/KhaozEngine/issues/1776)). A `textureGrad` tap with both gradients scaled by
+  `exp2(bias)` moves the isotropic and the anisotropic LOD by exactly the bias everywhere, whatever rule a backend uses
+  for a bias argument, so every material tap takes
+  that form, the model maps through `materialSample` (`ShaderSources.MaterialLodSampleGlsl`) and the ground through its
+  hoisted derivatives (`MaterialLodGradGlsl`). A gradient scale of exactly 1.0 leaves the tap unchanged on all three
+  backends, which is what keeps every golden byte-identical with temporal anti-aliasing off.
+  `MaterialMipBiasShaderContractTests` fails a material program that samples around it.
 - **A 1x1 default material texture keeps the device's linear sampler, never an anisotropic one.** Real model
   material maps sample through the anisotropic material sampler, but each slot that falls back to its 1x1 default
   (white albedo, flat normal, zero roughness, white emissive) binds `IGpuDevice.LinearSampler`, because every map

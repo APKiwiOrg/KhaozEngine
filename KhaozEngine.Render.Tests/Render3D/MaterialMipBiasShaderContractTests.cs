@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.Render3D
     {
         const string FrameBlockMarker = "vec4 PointPosRadius[16];";
         static readonly Regex UnbiasedMapTap =
-            new(@"texture\(\s*sampler2D\(\s*(Albedo|NormalMap|RoughnessMap)\s*,", RegexOptions.CultureInvariant);
+            new(@"texture\(\s*sampler2D\(\s*(Albedo|NormalMap|RoughnessMap|EmissiveMap)\s*,", RegexOptions.CultureInvariant);
         static readonly Regex Hoist = new(@"vec3\s+(dWx|dWy)\s*=\s*([^;]+);", RegexOptions.CultureInvariant);
 
         static bool IsMaterialProgram(ShippedGraphicsProgram p) =>
@@ -31,7 +31,10 @@ namespace KhaozEngine.Tests.Render3D
             var problems = new List<string>();
             string frag = p.FragmentGlsl;
             bool mapTaps = frag.Contains("uniform texture2D Albedo;", StringComparison.Ordinal);
-            bool gradTaps = frag.Contains("textureGrad(", StringComparison.Ordinal);
+            // materialSample scales its own UV gradients. A textureGrad anywhere else is a ground tap, whose world-space
+            // derivatives are hoisted and scaled.
+            bool gradTaps = frag.Replace(ShaderSources.MaterialLodSampleGlsl, "", StringComparison.Ordinal)
+                .Contains("textureGrad(", StringComparison.Ordinal);
             if (mapTaps)
             {
                 if (!frag.Contains(ShaderSources.MaterialLodSampleGlsl, StringComparison.Ordinal))
@@ -88,8 +91,10 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void TheBiasReadsTheFrameBlocksFreeParamsLanes()
         {
-            Assert.Contains("texture(sampler2D(map, samp), uv, Params.z)", ShaderSources.MaterialLodSampleGlsl,
-                StringComparison.Ordinal);
+            // The model taps carry the bias as a gradient scale, never a bias() argument (#1776).
+            Assert.Contains("float g = 1.0 + Params.w;", ShaderSources.MaterialLodSampleGlsl, StringComparison.Ordinal);
+            Assert.Contains("textureGrad(sampler2D(map, samp), uv, dFdx(uv) * g, dFdy(uv) * g)",
+                ShaderSources.MaterialLodSampleGlsl, StringComparison.Ordinal);
             Assert.Contains("1.0 + Params.w", ShaderSources.MaterialLodGradGlsl, StringComparison.Ordinal);
         }
     }

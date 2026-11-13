@@ -152,8 +152,10 @@ and emissive slot samplers, the emissive map and the `MaterialParams` block. Eac
 set is built (`ModelRenderer.MaterialSampling.cs`). A real map binds the material sampler, wrap-addressed and
 anisotropic at `RenderQuality.MaterialAnisotropy`. A slot on its 1x1 default binds the device's built-in linear
 sampler, which is what keeps the defaults exact on every backend and the default set (every untextured mesh)
-byte-identical. A change of anisotropy is applied at `Begin` by rebuilding every live textured set through the same
-replacement transaction the shadow atlas uses. Appending the tail moved no existing binding number. It raised the
+byte-identical. Every map tap goes through `materialSample`, which carries the temporal mip bias as a scale on the
+UV gradients, because a `bias` argument through the anisotropic sampler does not shift the LOD as it does through a
+trilinear one on Apple GPUs (see `docs/CROSS-PLATFORM.md`). A change of anisotropy is applied at `Begin` by rebuilding every live textured set through
+the same replacement transaction the shadow atlas uses. Appending the tail moved no existing binding number. It raised the
 heaviest pipeline's Vulkan dynamic uniform count to 7 of the floor of 8, and later material factors join the same
 block.
 

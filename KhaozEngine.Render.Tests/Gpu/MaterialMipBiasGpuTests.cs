@@ -14,10 +14,11 @@ namespace KhaozEngine.Tests.Gpu
     /// (<see cref="ShaderSources.MaterialLodSampleGlsl"/> and <see cref="ShaderSources.MaterialLodGradGlsl"/>) spliced
     /// behind a <c>Params</c> lane exactly as the material programs splice them behind the frame block. The texture is
     /// mip-banded: every level has its own hue, so the hue of a tap names the level it read. A negative bias reads a
-    /// finer level and a positive one a coarser level, on the implicit-LOD tap and on the explicit-gradient tap the
-    /// ground passes take. A zero bias is the unbiased tap to the byte, against a program that samples with the plain
-    /// call, over a field that crosses every level with fractional LODs, magnification and minification, under the
-    /// point sampler, the trilinear sampler the model programs use and the anisotropic sampler the ground passes use.
+    /// finer level and a positive one a coarser level, on the model tap, which scales its UV gradients inside
+    /// <c>materialSample</c>, and on the ground tap, which scales hoisted world-space derivatives, under the point and
+    /// trilinear samplers and the model's anisotropic material sampler. A zero bias is the unbiased tap to the byte,
+    /// against a program that takes the same gradients unscaled, over a field that crosses every level with fractional
+    /// LODs, magnification and minification, under every sampler including the ground's anisotropic one.
     /// </summary>
     public sealed class MaterialMipBiasGpuTests
     {
@@ -40,7 +41,7 @@ namespace KhaozEngine.Tests.Gpu
         const uint FieldTarget = 64;
         const string FieldUv = "vec2(vUv.x, vUv.y * 0.37) * exp2(vUv.y * 9.0 - 3.0)";
 
-        public enum Path { Implicit, Gradient }
+        public enum Path { Model, Ground }
 
         public enum SamplerKind { Point, Trilinear, Anisotropic }
 
@@ -49,10 +50,11 @@ namespace KhaozEngine.Tests.Gpu
         public MaterialMipBiasGpuTests(ITestOutputHelper output) => _out = output;
 
         [GpuTheory]
-        [InlineData(Path.Implicit, SamplerKind.Point)]
-        [InlineData(Path.Implicit, SamplerKind.Trilinear)]
-        [InlineData(Path.Gradient, SamplerKind.Point)]
-        [InlineData(Path.Gradient, SamplerKind.Trilinear)]
+        [InlineData(Path.Model, SamplerKind.Point)]
+        [InlineData(Path.Model, SamplerKind.Trilinear)]
+        [InlineData(Path.Model, SamplerKind.Anisotropic)]
+        [InlineData(Path.Ground, SamplerKind.Point)]
+        [InlineData(Path.Ground, SamplerKind.Trilinear)]
         public void ABiasMovesTheTapByExactlyThatManyLevels(Path path, SamplerKind kind)
         {
             using var rig = new Rig();
@@ -67,12 +69,12 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(Path.Implicit, SamplerKind.Point)]
-        [InlineData(Path.Implicit, SamplerKind.Trilinear)]
-        [InlineData(Path.Implicit, SamplerKind.Anisotropic)]
-        [InlineData(Path.Gradient, SamplerKind.Point)]
-        [InlineData(Path.Gradient, SamplerKind.Trilinear)]
-        [InlineData(Path.Gradient, SamplerKind.Anisotropic)]
+        [InlineData(Path.Model, SamplerKind.Point)]
+        [InlineData(Path.Model, SamplerKind.Trilinear)]
+        [InlineData(Path.Model, SamplerKind.Anisotropic)]
+        [InlineData(Path.Ground, SamplerKind.Point)]
+        [InlineData(Path.Ground, SamplerKind.Trilinear)]
+        [InlineData(Path.Ground, SamplerKind.Anisotropic)]
         public void AZeroBiasIsTheUnbiasedTapToTheByte(Path path, SamplerKind kind)
         {
             using var rig = new Rig();
@@ -121,28 +123,31 @@ namespace KhaozEngine.Tests.Gpu
                   + "layout(set=0, binding=2) uniform sampler Samp;\n"
                 : "layout(set=0, binding=0) uniform texture2D Albedo;\n"
                   + "layout(set=0, binding=1) uniform sampler Samp;\n";
-            string body = path == Path.Implicit
+            string body = path == Path.Model
                 ? (biased ? "    oColor = materialSample(Albedo, Samp, uv);\n"
-                          : "    oColor = texture(sampler2D(Albedo, Samp), uv);\n")
+                          : "    oColor = textureGrad(sampler2D(Albedo, Samp), uv, dFdx(uv), dFdy(uv));\n")
                 : "    vec3 w = vec3(uv.x, 0.0, uv.y);\n"
                   + (biased
                       ? "    vec3 dWx = dFdx(w) * materialGradScale();\n    vec3 dWy = dFdy(w) * materialGradScale();\n"
                       : "    vec3 dWx = dFdx(w);\n    vec3 dWy = dFdy(w);\n")
                   + "    oColor = textureGrad(sampler2D(Albedo, Samp), w.xz, dWx.xz, dWy.xz);\n";
-            string snippet = !biased ? "" : path == Path.Implicit
+            string snippet = !biased ? "" : path == Path.Model
                 ? ShaderSources.MaterialLodSampleGlsl
                 : ShaderSources.MaterialLodGradGlsl;
             return "#version 450\n" + decl + "layout(location=0) in vec2 vUv;\nlayout(location=0) out vec4 oColor;\n"
                 + snippet + "void main() {\n    vec2 uv = " + uv + ";\n" + body + "}\n";
         }
 
-        /// <summary>The device, the mip-banded texture, the <c>Params</c> buffer and the three samplers.</summary>
+        /// <summary>The device, the mip-banded texture, the <c>Params</c> buffer and the samplers. Each path's
+        /// anisotropic sampler is the one its passes bind: the model material sampler carries no sampler bias, the
+        /// ground's carries +1 where the backend has one, so only the model path can expect an exact level.</summary>
         sealed class Rig : IDisposable
         {
             readonly GpuDeviceContext _gpu = GpuDeviceContext.CreateHeadless();
             readonly IGpuTexture _texture;
             readonly IGpuBuffer _params;
             readonly IGpuSampler _anisotropic;
+            readonly IGpuSampler _materialAnisotropic;
 
             public Rig()
             {
@@ -160,6 +165,9 @@ namespace KhaozEngine.Tests.Gpu
                 _anisotropic = f.CreateSampler(new GpuSamplerDescription(GpuSamplerFilter.Anisotropic,
                     GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap,
                     maximumAnisotropy: 16, mipLodBias: 1));
+                // The model material sampler at the default anisotropy (ModelRenderer.MaterialSampling).
+                _materialAnisotropic = f.CreateSampler(new GpuSamplerDescription(GpuSamplerFilter.Anisotropic,
+                    GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 16));
                 device.WaitForIdle();
             }
 
@@ -182,11 +190,11 @@ namespace KhaozEngine.Tests.Gpu
                 return px;
             }
 
-            IGpuSampler Sampler(SamplerKind kind) => kind switch
+            IGpuSampler Sampler(Path path, SamplerKind kind) => kind switch
             {
                 SamplerKind.Point => _gpu.GpuDevice.PointSampler,
                 SamplerKind.Trilinear => _gpu.GpuDevice.LinearSampler,
-                _ => _anisotropic,
+                _ => path == Path.Model ? _materialAnisotropic : _anisotropic,
             };
 
             /// <summary>One fullscreen draw into a fresh <paramref name="size"/> square target, read back as RGBA8.
@@ -208,7 +216,7 @@ namespace KhaozEngine.Tests.Gpu
                 var resources = new List<IGpuBindableResource>();
                 if (biased) resources.Add(_params);
                 resources.Add(_texture);
-                resources.Add(Sampler(kind));
+                resources.Add(Sampler(path, kind));
 
                 using IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D(
                     size, size, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
@@ -252,6 +260,7 @@ namespace KhaozEngine.Tests.Gpu
             public void Dispose()
             {
                 _gpu.GpuDevice.WaitForIdle();
+                _materialAnisotropic.Dispose();
                 _anisotropic.Dispose();
                 _params.Dispose();
                 _texture.Dispose();

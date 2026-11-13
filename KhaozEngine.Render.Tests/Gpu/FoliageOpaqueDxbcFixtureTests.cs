@@ -9,7 +9,9 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Frozen hosted FXC listings and source pins for every opaque foliage fragment variant.
 /// Hosted run 42442873750, job 128615660172, captured FXC 10.1 on windows-2025-vs2026 20261103.298.1.
-/// Each listing retains the complete numbered dump, including its terminal newline.</summary>
+/// Each listing retains the complete numbered dump, including its terminal newline. A source pin may move without a
+/// recapture only when the change is dead code to FXC, such as the model sample helper the shared header carries
+/// (#1776). The Windows leg proves it by disassembling the current source against the frozen listing.</summary>
 public sealed class FoliageOpaqueDxbcFixtureTests
 {
     internal static ShippedGraphicsProgram[] Programs => ShippedShaderPrograms.GraphicsPrograms()

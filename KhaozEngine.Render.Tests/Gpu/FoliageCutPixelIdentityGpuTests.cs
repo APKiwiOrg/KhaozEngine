@@ -15,6 +15,10 @@ public sealed class FoliageCutPixelIdentityGpuTests
 {
     const int Width = 128, Height = 96;
 
+    // The rigid model layout: 18 bindings, then the material tail (#1776) the no-map foliage material strips. The
+    // generic baseline binds the default set's tail, so its sampled normal, roughness and emissive stay the defaults.
+    const int RigidLayoutLength = 23, MaterialTailStart = 18;
+
     public static IEnumerable<object[]> Cases()
     {
         for (int kind = 0; kind < 4; kind++) yield return [kind, null!];
@@ -33,6 +37,7 @@ public sealed class FoliageCutPixelIdentityGpuTests
         int restored = 0;
         GpuResourceLayoutDescription? genericLayout = null;
         IGpuBindableResource[]? defaults = null;
+        var foliageLayouts = new HashSet<IGpuResourceLayout>(ReferenceEqualityComparer.Instance);
         using var baseline = new ShaderOverrideGpuDevice(context.GpuDevice, source =>
         {
             if (!source.Contains("// Opaque no-map foliage material.", StringComparison.Ordinal)) return source;
@@ -43,16 +48,20 @@ public sealed class FoliageCutPixelIdentityGpuTests
                 ? ShadowVisibilityTargets.Fragment(generic, motion) : generic;
         }, layout =>
         {
-            if (layout.Elements.Length == 18 && layout.Elements[0].Name == "U") genericLayout = layout;
-            return layout.Elements.Length == 13 && layout.Elements[3].Name == "ShadowMap"
-                ? genericLayout!.Value : layout;
+            if (layout.Elements.Length == RigidLayoutLength && layout.Elements[0].Name == "U") genericLayout = layout;
+            return IsFoliageLayout(layout) ? genericLayout!.Value : layout;
         }, set =>
         {
-            if (set.Resources.Length == 18) defaults = set.Resources;
-            return set.Resources.Length == 13 && defaults is not null
+            if (set.Resources.Length == RigidLayoutLength) defaults = set.Resources;
+            // By layout, not by count: the skinned fragment set has as many resources as a no-map foliage set.
+            return foliageLayouts.Contains(set.Layout) && defaults is not null
                 ? new GpuResourceSetDescription(set.Layout,
-                    [.. set.Resources[..3], .. defaults[3..7], .. set.Resources[3..10], defaults[14], .. set.Resources[10..]])
+                    [.. set.Resources[..3], .. defaults[3..7], .. set.Resources[3..10], defaults[14], .. set.Resources[10..],
+                        .. defaults[MaterialTailStart..]])
                 : set;
+        }, layoutCreated: (requested, created) =>
+        {
+            if (IsFoliageLayout(requested)) foliageLayouts.Add(created);
         });
         byte[][] expected = Render(baseline, materialKind: materialKind, model: model);
         byte[][] actual = Render(context.GpuDevice, materialKind: materialKind, model: model);
@@ -62,6 +71,9 @@ public sealed class FoliageCutPixelIdentityGpuTests
         GBufferByteIdentity.AssertAll(expected, actual, imagesPerFrame: 11);
         Assert.False(actual[11].SequenceEqual(control[11]), "Foliage must contribute HDR pixels.");
     }
+
+    static bool IsFoliageLayout(GpuResourceLayoutDescription layout) =>
+        layout.Elements.Length == 13 && layout.Elements[3].Name == "ShadowMap";
 
     internal static byte[][] Render(IGpuDevice device, bool changeColor = false, int materialKind = 0, string? model = null)
     {

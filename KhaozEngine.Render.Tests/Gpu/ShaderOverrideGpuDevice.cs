@@ -9,7 +9,8 @@ internal sealed class ShaderOverrideGpuDevice(IGpuDevice inner, Func<string, str
     Func<GpuResourceLayoutDescription, GpuResourceLayoutDescription>? layoutRewrite = null,
     Func<GpuResourceSetDescription, GpuResourceSetDescription>? setRewrite = null,
     Func<GpuBufferDescription, GpuBufferDescription>? bufferRewrite = null,
-    Func<Type, byte[], byte[]>? uploadRewrite = null) : IGpuDevice, IGpuResourceFactory
+    Func<Type, byte[], byte[]>? uploadRewrite = null,
+    Action<GpuResourceLayoutDescription, IGpuResourceLayout>? layoutCreated = null) : IGpuDevice, IGpuResourceFactory
 {
     public GpuBackendKind Backend => inner.Backend;
     public GpuCapabilities Capabilities => inner.Capabilities;
@@ -47,7 +48,14 @@ internal sealed class ShaderOverrideGpuDevice(IGpuDevice inner, Func<string, str
     public IGpuTexture CreateTexture(in GpuTextureDescription d) => inner.Factory.CreateTexture(d);
     public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) => inner.Factory.CreateFramebuffer(depth, colour);
     public IGpuSampler CreateSampler(in GpuSamplerDescription d) => inner.Factory.CreateSampler(d);
-    public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => inner.Factory.CreateResourceLayout(layoutRewrite?.Invoke(d) ?? d);
+    // layoutCreated sees the description the engine asked for and the layout it got, so a set rewrite can tell a
+    // rewritten layout's sets apart by reference rather than by resource count.
+    public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
+    {
+        IGpuResourceLayout layout = inner.Factory.CreateResourceLayout(layoutRewrite?.Invoke(d) ?? d);
+        layoutCreated?.Invoke(d, layout);
+        return layout;
+    }
     public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => inner.Factory.CreateResourceSet(setRewrite?.Invoke(d) ?? d);
     public IGpuShaderSet CreateShadersFromSpirv(string vertex, string fragment) => inner.Factory.CreateShadersFromSpirv(rewrite(vertex), rewrite(fragment));
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source) => inner.Factory.CreateComputeShaderFromSpirv(rewrite(source));

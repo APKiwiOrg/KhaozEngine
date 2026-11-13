@@ -4,6 +4,28 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.12.0
+
+2026-11-14
+
+- Tile-world props can carry authored collision boxes, so a bench is a seat a body stands on and a back it bumps
+  into instead of one box over its whole footprint. `TileObjectArchetype.CollisionBoxes` (`collisionBoxes` in a
+  catalog) lists `TileCollisionBox` values `{ minX, maxX, minY, maxY, minZ, maxZ, yawDegrees }` in the mesh's local
+  metres, `minY` and `yawDegrees` defaulting to 0. For a `Solid` or `Diagonal` archetype that lists them,
+  `TileWorldColliders.Build` builds one `Object` box per authored box in place of the box over the footprint or anchor
+  tile, turned with the object and by each box's own yaw about its centre, from the placed standing height to each
+  box's top. A box resting on the base reaches down to the lowest ground corner under it on a slope, and a raised box
+  keeps its bottom. A boxed archetype needs no `collisionHeight`. The tile collision map and pathing are unchanged, so
+  a boxed object still blocks its footprint or anchor tile. The loader refuses boxes on `None`, `Wall` and
+  `WallCorner` archetypes and null, non-finite, inverted or empty boxes with the new `TileWorldRefusal` members
+  `CatalogCollisionBoxKindUnsupported`, `CatalogCollisionBoxNull`, `CatalogCollisionBoxNonFinite` and
+  `CatalogCollisionBoxBoundsUnordered`, which carry the new `TileWorldException.CollisionBoxIndex`.
+  `TileWorldColliders.Hash` and `TileWorldHash.OfCatalogs` cover every box value, so a navigation bake keyed on the
+  collider hash reports `SourcesChanged` after a box edit, and a catalog without boxes builds the same colliders and
+  digests as before. ke-tileedit reports authored boxes in `catalog_list` and each object's placed boxes in world
+  metres in `ObjectInfo.CollisionBoxes`, and its `collision` overlay fills them. `TopDownOverlayPainter.Paint` takes
+  the catalogs ([#1782](https://github.com/APKiwiOrg/KhaozEngine/issues/1782)).
+
 ## 23.11.0
 
 2026-11-13

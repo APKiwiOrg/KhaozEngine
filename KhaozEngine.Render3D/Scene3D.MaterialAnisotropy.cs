@@ -7,7 +7,9 @@ namespace KhaozEngine.Render3D;
 /// <summary>Applies <see cref="RenderQuality.MaterialAnisotropy"/> at the frame boundary.</summary>
 public sealed partial class Scene3D
 {
-    // A request that failed to apply. It is not retried every frame, only once the setting changes again.
+    // A request that failed to apply. It is held back while it stays the request, not retried every frame, and any
+    // other request clears it, the active value included, so going back to the active value and then to the failed
+    // one again retries it.
     int _failedMaterialAnisotropy;
 
     // Called by Begin, beside the shadow layout requests, so a menu change rebuilds the material bindings before
@@ -15,6 +17,7 @@ public sealed partial class Scene3D
     void ApplyMaterialAnisotropy()
     {
         int requested = ModelRenderer.ClampMaterialAnisotropy(Post.Quality.MaterialAnisotropy);
+        if (requested != _failedMaterialAnisotropy) _failedMaterialAnisotropy = 0;
         if (requested == _model.MaterialAnisotropy || requested == _failedMaterialAnisotropy) return;
 
         var liveSets = new List<IGpuResourceSet>();

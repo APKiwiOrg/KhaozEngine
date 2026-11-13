@@ -113,4 +113,51 @@ public sealed class MaterialSamplerBindingTests
         for (int frame = 0; frame <= GpuRetireQueue.DefaultFrameDelay; frame++) scene.Begin();
         Assert.True(oldSampler.Disposed);
     }
+
+    /// <summary>A change that fails is held back only while it stays the request. Moving the request anywhere
+    /// else, the active value included, clears that, so 16, a failed 4, 16 and 4 again applies 4.</summary>
+    [Fact]
+    public void A_failed_anisotropy_change_rolls_back_and_is_retried_once_the_request_moves_through_the_active_value()
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var scene = NewScene(device);
+        MeshHandle rigid = scene.LoadMesh(Quad(), HalfTextured());
+        scene.LoadMesh(Quad(), HalfTextured());   // a second textured set, so the rebuild fails part-way through
+        scene.Begin();
+        IGpuResourceSet active = scene.MeshMaterialSetForTests(rigid)!;
+        var activeSampler = (FakeSampler)Slot(active, "Sampler");
+        Assert.Equal(16u, activeSampler.Description.MaximumAnisotropy);
+
+        // 4 fails on its second rebuilt set: the scene keeps 16 and frees what it built for 4 at once.
+        int sets = factory.ResourceSets.Count;
+        factory.ThrowOnResourceSetCreate = sets + 2;
+        scene.Post.Quality.MaterialAnisotropy = 4;
+        scene.Begin();
+        factory.ThrowOnResourceSetCreate = 0;
+        Assert.Same(active, scene.MeshMaterialSetForTests(rigid));
+        Assert.False(activeSampler.Disposed);
+        FakeResourceSet provisionalSet = factory.ResourceSets[sets];
+        var provisionalSampler = (FakeSampler)Slot(provisionalSet, "Sampler");
+        Assert.Equal(4u, provisionalSampler.Description.MaximumAnisotropy);
+        Assert.True(provisionalSet.Disposed);
+        Assert.True(provisionalSampler.Disposed);
+
+        // Held back while it stays the request, although it would now succeed.
+        scene.Begin();
+        Assert.Same(active, scene.MeshMaterialSetForTests(rigid));
+
+        // Through the active value and back to 4: retried, applied, and the replaced sampler and set retire.
+        scene.Post.Quality.MaterialAnisotropy = 16;
+        scene.Begin();
+        scene.Post.Quality.MaterialAnisotropy = 4;
+        scene.Begin();
+        IGpuResourceSet applied = scene.MeshMaterialSetForTests(rigid)!;
+        Assert.NotSame(active, applied);
+        Assert.Equal(4u, ((FakeSampler)Slot(applied, "Sampler")).Description.MaximumAnisotropy);
+        Assert.False(activeSampler.Disposed);
+        for (int frame = 0; frame <= GpuRetireQueue.DefaultFrameDelay; frame++) scene.Begin();
+        Assert.True(activeSampler.Disposed);
+        Assert.True(((FakeResourceSet)active).Disposed);
+    }
 }

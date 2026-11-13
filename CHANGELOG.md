@@ -4,6 +4,40 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.11.0
+
+2026-11-13
+
+- Material textures are shared per image ([#1776](https://github.com/APKiwiOrg/KhaozEngine/issues/1776)). Every
+  material image the glTF loader reads carries `DecodedImage.Identity`, `file:` plus the absolute path for an
+  external image URI or `sha256:` plus the hash of the encoded bytes for an embedded one, and is decoded once while
+  any loaded part list references it. `Scene3D.LoadSurfaceMaps` takes a reference to the texture already resident
+  for an identity, so a kit that shares tileable sets across many pieces, as separate image files or as the same PNG
+  embedded in every glb, uploads one texture per image per scene. A bundle releases one reference per slot through
+  `UnloadSurfaceMaps`. The meshes of `LoadProp`, `LoadPropMeshes`, `LoadMesh(GltfMesh, GltfMaterialMaps)` and
+  `LoadSkinnedMesh(SkinnedGltfMesh, GltfMaterialMaps)` own their references and release them on unload, which also
+  stops those uploads keeping their textures until scene disposal. `UnloadTexture` on a resident handle releases one
+  reference. `Scene3D.ResidentMaterialTextureCount` and `ResidentMaterialTextureBytes` report the residency. Decoded
+  pixels are held only until a scene uploads them, then each image keeps its encoded bytes, so `GltfMeshResolver`
+  no longer holds RGBA8 per part. A shared image's pixels are read-only.
+- Model material maps sample anisotropically ([#1776](https://github.com/APKiwiOrg/KhaozEngine/issues/1776)).
+  `RenderQuality.MaterialAnisotropy` (16 by default, 1 is the previous trilinear sampler, clamped to 1 to 16) applies
+  at the next `Begin`. Each map slot has its own sampler: a real map samples through the wrap anisotropic material
+  sampler and an absent map's 1x1 default keeps the device's linear sampler, so untextured meshes render
+  byte-identically. Model material taps carry the temporal mip bias as a scale on their UV gradients rather than a
+  shader bias argument, because on Apple GPUs that argument through an anisotropic sampler does not shift the LOD as
+  it does through a trilinear one. A consumer's own goldens will move where they draw a textured model minified or
+  at a grazing angle, and `MaterialAnisotropy = 1` restores the previous sampling filter. lavapipe reports
+  anisotropic filtering but samples the model tap trilinearly, so goldens taken on it keep the trilinear look. The
+  engine re-baked `temporal_mipbias_checker_performance` on all three backends and `scene3d_skinned_normalmap` on
+  Metal and Direct3D 11, and added the `scene3d_gltf_emissive` and `scene3d_material_anisotropy` goldens.
+- glTF emissive ([#1776](https://github.com/APKiwiOrg/KhaozEngine/issues/1776)): `emissiveFactor` times
+  `KHR_materials_emissive_strength` arrives as `GltfMaterialMaps.EmissiveFactor` and `emissiveTexture` as
+  `GltfMaterialMaps.Emissive`, carried by `SurfaceMaps.Emissive` and `SurfaceMaps.EmissiveFactor`. The rigid,
+  CPU-skinned and GPU-skinned model fragments add it after lighting as HDR light that lights and shadows never
+  scale, on top of the per-instance `Material.Emissive`, so it feeds bloom. A material without emissive renders
+  byte-identically. The strict attachment decode reads `emissiveFactor` and still refuses `emissiveTexture`.
+
 ## 23.10.0
 
 2026-11-12

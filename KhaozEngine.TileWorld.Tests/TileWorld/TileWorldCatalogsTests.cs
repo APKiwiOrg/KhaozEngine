@@ -112,7 +112,8 @@ public class TileWorldCatalogsTests
             TileWorldCatalogs.LoadJson(written, "round-trip.json").Archetype("tree")!.LodMeshRef);
     }
 
-    static JsonSerializerOptions CatalogWriteOptions()
+    // The shape a tool writes a catalog back in, shared with the other catalog field tests.
+    internal static JsonSerializerOptions CatalogWriteOptions()
     {
         var options = new JsonSerializerOptions
         {
@@ -377,12 +378,15 @@ public class TileWorldCatalogsTests
     [InlineData(TileWorldRefusal.CatalogMaterialIdReserved)]
     [InlineData(TileWorldRefusal.CatalogArchetypeIdMissing)]
     [InlineData(TileWorldRefusal.CatalogWalkSurfaceNull)]
+    [InlineData(TileWorldRefusal.CatalogCollisionBoxNull)]
     public void Merge_rechecks_mutable_catalog_identifiers_and_surfaces(TileWorldRefusal reason)
     {
         TileWorldCatalogs part = TileWorldCatalogs.LoadJson(
             """
             { "materials": [ { "id": 1, "name": "grass", "color": "#ffffff" } ],
-              "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ { "height": 1 } ] } ] }
+              "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "collisionKind": "Solid",
+                                "walkSurfaces": [ { "height": 1 } ],
+                                "collisionBoxes": [ { "minX": -1, "maxX": 1, "minZ": -1, "maxZ": 1, "maxY": 1 } ] } ] }
             """,
             "edited.json");
         Assert.NotNull(TileWorldCatalogs.Merge(part).Archetype("deck"));
@@ -392,15 +396,18 @@ public class TileWorldCatalogsTests
             case TileWorldRefusal.CatalogMaterialIdReserved: part.Material(1)!.Id = 0; break;
             case TileWorldRefusal.CatalogArchetypeIdMissing: archetype.Id = " "; break;
             case TileWorldRefusal.CatalogWalkSurfaceNull: archetype.WalkSurfaces![0] = null!; break;
+            case TileWorldRefusal.CatalogCollisionBoxNull: archetype.CollisionBoxes![0] = null!; break;
         }
 
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Merge(part));
         Assert.Equal(reason, ex.Reason);
         // Changing an id loses its origin lookup, so these two guards truthfully know the merge label only.
-        Assert.Equal(reason == TileWorldRefusal.CatalogWalkSurfaceNull ? "edited.json" : "catalog #0", ex.SourceName);
+        bool idKept = reason is TileWorldRefusal.CatalogWalkSurfaceNull or TileWorldRefusal.CatalogCollisionBoxNull;
+        Assert.Equal(idKept ? "edited.json" : "catalog #0", ex.SourceName);
         if (reason == TileWorldRefusal.CatalogMaterialIdReserved) Assert.Equal((ushort)0, ex.MaterialId);
         else Assert.Equal(reason == TileWorldRefusal.CatalogArchetypeIdMissing ? " " : "deck", ex.ArchetypeId);
         if (reason == TileWorldRefusal.CatalogWalkSurfaceNull) Assert.Equal(0, ex.SurfaceIndex);
+        if (reason == TileWorldRefusal.CatalogCollisionBoxNull) Assert.Equal(0, ex.CollisionBoxIndex);
     }
 
     [Fact]

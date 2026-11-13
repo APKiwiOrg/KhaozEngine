@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
+using KhaozEngine.Physics;
 using KhaozEngine.TileEdit;
 using KhaozEngine.TileWorld;
+using KhaozEngine.TileWorld.Physics;
 using Xunit;
 
 namespace KhaozEngine.Tests.TileEdit;
@@ -234,8 +237,52 @@ public class QueryServiceTests
         Assert.Equal(1, bench.SizeX);
         Assert.Equal(2, bench.SizeZ);
         Assert.Equal("Solid", bench.CollisionKind);
+        Assert.Empty(bench.CollisionBoxes);
+        // The authored boxes as the catalog carries them, defaults filled in.
+        Assert.Equal(new[]
+            {
+                new CollisionBoxInfo(-0.8f, 0.8f, 0f, 0.45f, -0.2f, 0.3f, 0f),
+                new CollisionBoxInfo(-0.8f, 0.8f, 0.45f, 0.94f, -0.3f, -0.2f, 0f),
+            },
+            archetypes.Archetypes.Single(a => a.Id == "bench_boxed").CollisionBoxes);
 
         Assert.Throws<ArgumentException>(() => f.Query.CatalogList("props"));
+    }
+
+    // An object's report carries its collision boxes exactly where tile world physics builds them, so an author can
+    // read a seat's height without a physics run. The physics oracle gets heights for the fixture's unboxed archetypes,
+    // which it needs and the editor does not. Issue https://github.com/APKiwiOrg/KhaozEngine/issues/1782.
+    [Fact]
+    public void ObjectQueries_ReportEachCollisionBoxWherePhysicsBuildsIt()
+    {
+        using var f = new Fixture();
+        long bench = f.Mutate.ObjectPlace("bench_boxed", 20, 20, 0, rotation: 1).ObjectId;
+        TileWorldCatalogs oracle = TileWorldCatalogs.LoadJson(TileEditTestWorld.CatalogJson, "oracle");
+        foreach (TileObjectArchetype archetype in oracle.Archetypes.Values) archetype.CollisionHeight ??= 1f;
+        // The bench turned once covers tiles x 20 and z 20 to 21, so its anchor is world (20.5, -21).
+        TileCollider[] built = f.Session.Read(e => TileWorldColliders.Build(e.Document, oracle).Colliders
+            .Where(c => c.Kind == TileColliderKind.Object && Vector2.Distance(
+                new Vector2(c.Pose.Position.X, c.Pose.Position.Z), new Vector2(20.5f, -21f)) < 1.5f)
+            .ToArray());
+
+        IReadOnlyList<PlacedCollisionBoxInfo> reported = f.Query.ObjectGet(bench).CollisionBoxes;
+
+        Assert.Equal(2, built.Length);
+        Assert.Equal(built.Length, reported.Count);
+        for (int i = 0; i < built.Length; i++)
+        {
+            BoxShape box = Assert.IsType<BoxShape>(built[i].Shape);
+            Vector3 at = built[i].Pose.Position;
+            Assert.Equal(Quaternion.Identity, built[i].Pose.Orientation);
+            Assert.Equal(0f, reported[i].YawDegrees);
+            Assert.Equal(at.X, reported[i].CentreX, 1e-5f);
+            Assert.Equal(at.Z, reported[i].CentreZ, 1e-5f);
+            Assert.Equal(box.HalfExtents.X, reported[i].HalfX, 1e-5f);
+            Assert.Equal(box.HalfExtents.Z, reported[i].HalfZ, 1e-5f);
+            Assert.Equal(at.Y - box.HalfExtents.Y, reported[i].Bottom, 1e-5f);
+            Assert.Equal(at.Y + box.HalfExtents.Y, reported[i].Top, 1e-5f);
+        }
+        Assert.Empty(f.Query.ObjectGet(f.TreeId).CollisionBoxes);
     }
 
     [Fact]

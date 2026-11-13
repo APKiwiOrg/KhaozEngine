@@ -42,7 +42,8 @@ public sealed class RenderService(TileEditSession session)
         {
             byte[] captured = TileWorldSnapshot.CaptureTopDown(e.Document, e.Catalogs,
                 new GreyboxMeshResolver(e.Document.TileSize, e.Document.PlaneHeight), rect, plane, pxPerTile);
-            TopDownOverlayPainter.Paint(captured, width, height, rect, plane, pxPerTile, e.Document, e.Collision, names);
+            TopDownOverlayPainter.Paint(captured, width, height, rect, plane, pxPerTile, e.Document, e.Catalogs,
+                e.Collision, names);
             return captured;
         });
 

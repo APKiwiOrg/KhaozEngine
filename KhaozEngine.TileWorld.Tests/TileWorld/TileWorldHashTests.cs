@@ -142,7 +142,8 @@ public class TileWorldHashTests
     // already compares. The literal is the greybox digest from before walk surfaces landed. Collision height
     // joined the digest the same way later: a null height writes nothing, so this literal did not move then either.
     // A material's steep companion joined the same way again: the greybox materials carry none, so this pinned
-    // literal is also the proof that a catalog without companions keeps its digest.
+    // literal is also the proof that a catalog without companions keeps its digest. Collision boxes joined the same
+    // way after that, and the greybox archetypes list none.
     [Fact]
     public void Catalog_hash_of_a_catalog_without_walk_surfaces_did_not_move_when_the_field_landed()
     {
@@ -172,6 +173,36 @@ public class TileWorldHashTests
         Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "maxZ");
         bench.WalkSurfaces.Add(new TileWalkSurface { Height = 0.75f, MinX = -1f, MaxX = 1f, MinZ = -1f, MaxZ = 1f });
         Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "a second surface");
+    }
+
+    // Every authored box value is physics input, defaults included, so each one moves the catalog identity a connect
+    // gate compares. Issue https://github.com/APKiwiOrg/KhaozEngine/issues/1782.
+    [Fact]
+    public void Catalog_hash_moves_with_every_collision_box_value()
+    {
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox();
+        TileObjectArchetype bench = catalogs.Archetype("bench")!;
+        var seen = new HashSet<string> { TileWorldHash.OfCatalogs(catalogs) };
+
+        var seat = new TileCollisionBox { MinX = -0.4f, MaxX = 0.4f, MinZ = -0.8f, MaxZ = 0.8f, MaxY = 0.45f };
+        bench.CollisionBoxes = new List<TileCollisionBox> { seat };
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "adding a box");
+        seat.MinX = -0.3f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "minX");
+        seat.MaxX = 0.3f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "maxX");
+        seat.MinY = 0.1f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "minY");
+        seat.MaxY = 0.5f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "maxY");
+        seat.MinZ = -0.7f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "minZ");
+        seat.MaxZ = 0.7f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "maxZ");
+        seat.YawDegrees = 45f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "yawDegrees");
+        bench.CollisionBoxes.Add(new TileCollisionBox { MinX = -0.4f, MaxX = 0.4f, MinZ = -0.8f, MaxZ = 0.8f, MaxY = 0.45f });
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "a second box");
     }
 
     [Fact]

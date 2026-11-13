@@ -7,7 +7,8 @@ namespace KhaozEngine.TileEdit.Tools;
 /// the heights into the catalog files. Every method delegates to <see cref="ArchetypeHeightService"/> through
 /// <see cref="ToolGuard.Guard{T}"/>.
 ///
-/// <para>A physics consumer needs a height on every Solid, Diagonal, Wall and WallCorner archetype. Neither verb
+/// <para>A physics consumer needs a height on every Wall and WallCorner archetype and on every Solid and Diagonal one
+/// that lists no collision boxes. Neither verb
 /// touches the world or its undo history: measuring reads, and writing changes catalog FILES, each height in the one
 /// file that defines its archetype, keeping every byte it does not change. Only <c>collisionHeight</c> is refreshed
 /// in the open session afterwards. Other catalog edits made outside the tool need <c>world_open</c>.</para></summary>

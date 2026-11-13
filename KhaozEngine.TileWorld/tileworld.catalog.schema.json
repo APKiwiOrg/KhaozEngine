@@ -63,7 +63,24 @@
               "additionalProperties": false
             }
           },
-          "collisionHeight": { "type": "number", "exclusiveMinimum": 0 }
+          "collisionHeight": { "type": "number", "exclusiveMinimum": 0 },
+          "collisionBoxes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["minX", "maxX", "maxY", "minZ", "maxZ"],
+              "properties": {
+                "minX": { "type": "number" },
+                "maxX": { "type": "number" },
+                "minY": { "type": "number" },
+                "maxY": { "type": "number" },
+                "minZ": { "type": "number" },
+                "maxZ": { "type": "number" },
+                "yawDegrees": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          }
         },
         "additionalProperties": false
       }

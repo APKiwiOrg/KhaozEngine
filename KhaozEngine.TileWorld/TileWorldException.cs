@@ -61,7 +61,7 @@ public sealed class TileWorldException : Exception
         ReferenceMaterialName = inner.ReferenceMaterialName; ExpectedWidth = inner.ExpectedWidth;
         ExpectedHeight = inner.ExpectedHeight; TexturePath = inner.TexturePath; ColourText = inner.ColourText;
         CharacterIndex = inner.CharacterIndex; Character = inner.Character; SurfaceIndex = inner.SurfaceIndex;
-        Value = inner.Value; MinField = inner.MinField; MaxField = inner.MaxField; Minimum = inner.Minimum;
+        CollisionBoxIndex = inner.CollisionBoxIndex; Value = inner.Value; MinField = inner.MinField; MaxField = inner.MaxField; Minimum = inner.Minimum;
         Maximum = inner.Maximum; CompanionMaterialId = inner.CompanionMaterialId;
         CompanionMaterialName = inner.CompanionMaterialName; FromDegrees = inner.FromDegrees;
         ToDegrees = inner.ToDegrees; FromIsDefault = inner.FromIsDefault; ToIsDefault = inner.ToIsDefault;
@@ -117,7 +117,8 @@ public sealed class TileWorldException : Exception
     /// <summary>The refused or required catalog or foliage archetype id, as supplied.</summary>
     public string? ArchetypeId { get; init; }
 
-    /// <summary>The placed archetype's collision kind refused because it has no collision height.</summary>
+    /// <summary>The placed archetype's collision kind refused because it has no collision height, or the archetype's
+    /// collision kind refused because it builds no object collider for its collision boxes.</summary>
     public TileCollisionKind? CollisionKind { get; init; }
 
     /// <summary>The requested archetype ids absent from an edited catalog, in ordinal order. Setting this
@@ -249,21 +250,24 @@ public sealed class TileWorldException : Exception
     /// <summary>The zero-based index of the refused walk surface.</summary>
     public int? SurfaceIndex { get; init; }
 
-    /// <summary>The refused collision height or non-finite walk-surface value.</summary>
+    /// <summary>The zero-based index of the refused collision box in its archetype's list.</summary>
+    public int? CollisionBoxIndex { get; init; }
+
+    /// <summary>The refused collision height, or the non-finite walk-surface or collision-box value.</summary>
     public float? Value { get; init; }
 
-    /// <summary>The lower-bound field of an unordered walk-surface extent.</summary>
+    /// <summary>The lower-bound field of an unordered walk-surface extent or collision-box axis.</summary>
     public string? MinField { get; init; }
 
-    /// <summary>The upper-bound field of an unordered walk-surface extent.</summary>
+    /// <summary>The upper-bound field of an unordered walk-surface extent or collision-box axis.</summary>
     public string? MaxField { get; init; }
 
-    /// <summary>The lower-bound value of an unordered walk-surface extent, the minimum permitted PGM maxval
-    /// or the minimum clearance cell size.</summary>
+    /// <summary>The lower-bound value of an unordered walk-surface extent or collision-box axis, the minimum
+    /// permitted PGM maxval or the minimum clearance cell size.</summary>
     public float? Minimum { get; init; }
 
-    /// <summary>The upper-bound value of an unordered walk-surface extent, the maximum permitted PGM maxval
-    /// or the maximum clearance cell size.</summary>
+    /// <summary>The upper-bound value of an unordered walk-surface extent or collision-box axis, the maximum
+    /// permitted PGM maxval or the maximum clearance cell size.</summary>
     public float? Maximum { get; init; }
 
     /// <summary>The failing instance locations as JSON Pointers for a catalog schema mismatch.

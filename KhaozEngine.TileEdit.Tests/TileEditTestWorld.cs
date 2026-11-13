@@ -40,8 +40,9 @@ public static class TileEditTestWorld
     /// <summary>The catalog file's name inside the world directory.</summary>
     public const string CatalogFileName = "greybox.json";
 
-    /// <summary>A cut-down greybox catalog: three materials and four archetypes covering solid, wall and
-    /// nothing, plus one non-square footprint.</summary>
+    /// <summary>A cut-down greybox catalog: three materials and five archetypes covering solid, wall and
+    /// nothing, plus one non-square footprint and a 2x1 <c>bench_boxed</c> whose collision is a seat 0.45 m high from
+    /// local z -0.2 to 0.3 and a back raised from 0.45 m to 0.94 m behind it, from z -0.3 to -0.2.</summary>
     public const string CatalogJson = """
         {
           "materials": [
@@ -53,7 +54,10 @@ public static class TileEditTestWorld
             { "id": "wall", "name": "wall", "meshRef": "greybox/wall.glb", "collisionKind": "Wall" },
             { "id": "tree", "name": "tree", "meshRef": "greybox/tree.glb", "collisionKind": "Solid" },
             { "id": "bush", "name": "bush", "meshRef": "greybox/bush.glb", "collisionKind": "None" },
-            { "id": "bench", "name": "bench", "meshRef": "greybox/bench.glb", "sizeX": 1, "sizeZ": 2, "collisionKind": "Solid" }
+            { "id": "bench", "name": "bench", "meshRef": "greybox/bench.glb", "sizeX": 1, "sizeZ": 2, "collisionKind": "Solid" },
+            { "id": "bench_boxed", "name": "bench_boxed", "meshRef": "greybox/bench.glb", "sizeX": 2, "sizeZ": 1, "collisionKind": "Solid",
+              "collisionBoxes": [ { "minX": -0.8, "maxX": 0.8, "minZ": -0.2, "maxZ": 0.3, "maxY": 0.45 },
+                                  { "minX": -0.8, "maxX": 0.8, "minY": 0.45, "maxY": 0.94, "minZ": -0.3, "maxZ": -0.2 } ] }
           ]
         }
         """;

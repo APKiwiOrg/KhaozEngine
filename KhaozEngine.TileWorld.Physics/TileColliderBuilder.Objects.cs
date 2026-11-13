@@ -9,7 +9,8 @@ namespace KhaozEngine.TileWorld.Physics;
 
 // The colliders read from placed objects: wall edges, solid and diagonal boxes, and walk surface tops. Which tiles and
 // edges an object blocks mirrors TileCollisionBaker, so the boxes stand where the tile collision the editor and the
-// server read says they do.
+// server read says they do. An archetype's authored collision boxes are the one exception: they refine the physics
+// shape inside what the tile map still blocks, and stand where TileCollisionBoxes places them.
 static partial class TileColliderBuilder
 {
     // Every plane-0 object of the loaded regions, by region in the given order, then anchor z, x and id.
@@ -51,9 +52,15 @@ static partial class TileColliderBuilder
         List<TileCollider> into, List<TileColliderProvenance>? provenance)
     {
         float tileSize = document.TileSize;
+        TileLoadedCorners corners = TileLoadedCorners.Of(document);
         foreach (TileObject o in placed)
         {
             if (Collidable(catalogs, o) is not { } archetype) continue;
+            if (TileCollisionBoxes.Describes(archetype))
+            {
+                AddBoxes(document, corners, archetype, o, into, provenance);
+                continue;
+            }
             TileRect tiles;
             switch (archetype.CollisionKind)
             {
@@ -73,6 +80,23 @@ static partial class TileColliderBuilder
                 TileWorldSpace.WorldZ(tiles.Z + tiles.Height * 0.5f, tileSize),
                 tiles.Width * tileSize * 0.5f, tiles.Height * tileSize * 0.5f,
                 bottom, top));
+            provenance?.Add(TileColliderProvenance.Capture(FormattableString.Invariant($"placed/{o.Id}"), into[^1]));
+        }
+    }
+
+    // One Object collider per authored box, in catalog order, in place of the footprint or anchor-tile box. Placed by
+    // the rule the tile editor draws and reports with, so a seat stands where the editor shows it. The collision
+    // height is not read, since every box carries its own top. A box edited after load into one that cannot place
+    // gets no collider.
+    static void AddBoxes(TileWorldDocument document, TileLoadedCorners corners, TileObjectArchetype archetype,
+        TileObject o, List<TileCollider> into, List<TileColliderProvenance>? provenance)
+    {
+        foreach (TileCollisionBox? box in archetype.CollisionBoxes!)
+        {
+            if (!TileCollisionBoxes.TryPlace(document, corners, archetype, o, box, out TilePlacedCollisionBox placed))
+                continue;
+            into.Add(new TileCollider(TileColliderKind.Object, new BoxShape(placed.HalfExtents),
+                new Pose(placed.Centre, placed.Orientation)));
             provenance?.Add(TileColliderProvenance.Capture(FormattableString.Invariant($"placed/{o.Id}"), into[^1]));
         }
     }
@@ -151,9 +175,9 @@ static partial class TileColliderBuilder
     static TileObjectArchetype? Collidable(TileWorldCatalogs catalogs, TileObject o) =>
         catalogs.Archetype(o.ArchetypeId) is { IsRoof: false } archetype ? archetype : null;
 
-    // The vertical span of a wall or object box. The top is the height the model stands at plus its collision
-    // height. The bottom is the lower of the ground under the box and that standing height, so the box is never
-    // shorter than the collision height and never inverts on a slope that falls away from the edge it sits on.
+    // The vertical span of a wall or footprint object box. The top is the height the model stands at plus its
+    // collision height. The bottom is the lower of the ground under the box and that standing height, so the box is
+    // never shorter than the collision height and never inverts on a slope that falls away from the edge it sits on.
     static (float Bottom, float Top) Span(TileWorldDocument document, TileObjectArchetype archetype, TileObject o,
                                          float lowestCorner)
     {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.TileWorld;
 
 namespace KhaozEngine.TileEdit;
@@ -38,6 +39,13 @@ public static class TopDownOverlayPainter
 
     /// <summary>Colour of a walled tile edge, drawn solid.</summary>
     public static (byte R, byte G, byte B) WallColor => (220, 40, 40);
+
+    /// <summary>How strongly a placed collision box is filled over the tile tint.</summary>
+    public const float CollisionBoxAlpha = 0.6f;
+
+    /// <summary>Colour an authored collision box is filled with, blended at <see cref="CollisionBoxAlpha"/>, so a boxed
+    /// prop shows the shape physics collides with inside the tiles the map blocks.</summary>
+    public static (byte R, byte G, byte B) CollisionBoxColor => (250, 200, 40);
 
     /// <summary>Colour of a region border, drawn solid.</summary>
     public static (byte R, byte G, byte B) RegionColor => (255, 255, 255);
@@ -79,14 +87,17 @@ public static class TopDownOverlayPainter
 
     /// <summary>Paints the requested overlays into <paramref name="rgba"/> in a fixed order (grid, collision,
     /// regions, objects) whatever order they were asked for, so the anchors stay on top and two renders of the
-    /// same world with the same overlays are byte identical.</summary>
+    /// same world with the same overlays are byte identical. The collision overlay tints the tiles the map blocks,
+    /// lines its walls, and fills every authored collision box of an object on the queried plane where tile world
+    /// physics places it, read from <paramref name="catalogs"/>.</summary>
     /// <exception cref="ArgumentException">The buffer, the rect and the pixels per tile do not describe the same
     /// image.</exception>
     public static void Paint(byte[] rgba, int width, int height, TileRect rect, int plane, int pxPerTile,
-        TileWorldDocument doc, TileCollisionMap collision, IReadOnlyList<string> overlays)
+        TileWorldDocument doc, TileWorldCatalogs catalogs, TileCollisionMap collision, IReadOnlyList<string> overlays)
     {
         ArgumentNullException.ThrowIfNull(rgba);
         ArgumentNullException.ThrowIfNull(doc);
+        ArgumentNullException.ThrowIfNull(catalogs);
         ArgumentNullException.ThrowIfNull(collision);
         ArgumentNullException.ThrowIfNull(overlays);
         ArgumentOutOfRangeException.ThrowIfLessThan(pxPerTile, 1);
@@ -104,7 +115,10 @@ public static class TopDownOverlayPainter
 
         if (overlays.Contains("grid", StringComparer.Ordinal)) PaintGrid(rgba, width, height, pxPerTile, rect);
         if (overlays.Contains("collision", StringComparer.Ordinal))
+        {
             PaintCollision(rgba, width, height, rect, plane, pxPerTile, collision);
+            PaintCollisionBoxes(rgba, width, height, rect, plane, pxPerTile, doc, catalogs);
+        }
         if (overlays.Contains("regions", StringComparer.Ordinal)) PaintRegions(rgba, width, height, rect, pxPerTile);
         if (overlays.Contains("objects", StringComparer.Ordinal))
             PaintObjects(rgba, width, height, rect, plane, pxPerTile, doc);
@@ -139,6 +153,57 @@ public static class TopDownOverlayPainter
                 if ((f & TileCollisionFlags.WallE) != 0) Fill(rgba, width, height, left + pxPerTile - 1, top, 1, pxPerTile, WallColor, 1f);
             }
     }
+
+    // Every authored collision box of an object on the queried plane, through the placement physics builds it with,
+    // filled wherever it covers a pixel's centre. Objects anchored anywhere count, since a box can overhang its
+    // footprint into the rect, and a box clear of the image clips to nothing.
+    static void PaintCollisionBoxes(byte[] rgba, int width, int height, TileRect rect, int plane, int pxPerTile,
+        TileWorldDocument doc, TileWorldCatalogs catalogs)
+    {
+        TileLoadedCorners corners = TileLoadedCorners.Of(doc);
+        foreach (TileObject o in doc.AllObjects())
+        {
+            if (o.Plane != plane || catalogs.Archetype(o.ArchetypeId) is not { } archetype
+                || !TileCollisionBoxes.Describes(archetype)) continue;
+            foreach (TileCollisionBox? box in archetype.CollisionBoxes!)
+            {
+                if (TileCollisionBoxes.TryPlace(doc, corners, archetype, o, box, out TilePlacedCollisionBox placed))
+                    FillCollisionBox(rgba, width, height, rect, pxPerTile, doc.TileSize, placed);
+            }
+        }
+    }
+
+    // A pixel is inside when its centre, taken back into the box's own frame, lies within the half extents, which
+    // holds for an axis-aligned and a yawed box alike. Only the pixels under the box's plan bounds are tested, and those
+    // bounds are clamped to the image before any of them becomes an index.
+    static void FillCollisionBox(byte[] rgba, int width, int height, TileRect rect, int pxPerTile, float tileSize,
+        TilePlacedCollisionBox box)
+    {
+        Vector3 axisX = Vector3.Transform(Vector3.UnitX, box.Orientation);
+        Vector3 axisZ = Vector3.Transform(Vector3.UnitZ, box.Orientation);
+        float spanX = MathF.Abs(axisX.X) * box.HalfX + MathF.Abs(axisZ.X) * box.HalfZ;
+        float spanZ = MathF.Abs(axisX.Z) * box.HalfX + MathF.Abs(axisZ.Z) * box.HalfZ;
+        // Image columns grow east with tile x and rows grow south, against tile z, the mapping Column and Row use.
+        float left = (TileWorldSpace.TileX(box.CentreX - spanX, tileSize) - rect.X) * pxPerTile;
+        float right = (TileWorldSpace.TileX(box.CentreX + spanX, tileSize) - rect.X) * pxPerTile;
+        float top = (rect.Z1 - TileWorldSpace.TileZ(box.CentreZ - spanZ, tileSize)) * pxPerTile;
+        float bottom = (rect.Z1 - TileWorldSpace.TileZ(box.CentreZ + spanZ, tileSize)) * pxPerTile;
+        int x0 = ClampPixel(MathF.Floor(left), width), x1 = ClampPixel(MathF.Ceiling(right), width);
+        int y0 = ClampPixel(MathF.Floor(top), height), y1 = ClampPixel(MathF.Ceiling(bottom), height);
+        Quaternion toBox = Quaternion.Conjugate(box.Orientation);
+        for (int py = y0; py < y1; py++)
+            for (int px = x0; px < x1; px++)
+            {
+                float worldX = TileWorldSpace.WorldX(rect.X + (px + 0.5f) / pxPerTile, tileSize);
+                float worldZ = TileWorldSpace.WorldZ(rect.Z1 - (py + 0.5f) / pxPerTile, tileSize);
+                Vector3 local = Vector3.Transform(new Vector3(worldX - box.CentreX, 0f, worldZ - box.CentreZ), toBox);
+                if (MathF.Abs(local.X) <= box.HalfX && MathF.Abs(local.Z) <= box.HalfZ)
+                    Blend(rgba, (py * width + px) * 4, CollisionBoxColor, CollisionBoxAlpha);
+            }
+    }
+
+    // A pixel bound clamped in float before it becomes an index, so a box far past the image costs nothing.
+    static int ClampPixel(float value, int limit) => value <= 0f ? 0 : value >= limit ? limit : (int)value;
 
     // Objects on the QUERIED plane only. The render itself draws every plane (a map view looks at the roofs), but
     // an anchor dot is an authoring aid for the plane being edited, and one dot per plane stacked on one tile
@@ -191,13 +256,16 @@ public static class TopDownOverlayPainter
         int x1 = Math.Min(width, x + w), y1 = Math.Min(height, y + h);
         for (int py = y0; py < y1; py++)
             for (int px = x0; px < x1; px++)
-            {
-                int i = (py * width + px) * 4;
-                rgba[i] = Mix(rgba[i], color.R, alpha);
-                rgba[i + 1] = Mix(rgba[i + 1], color.G, alpha);
-                rgba[i + 2] = Mix(rgba[i + 2], color.B, alpha);
-                rgba[i + 3] = 255;
-            }
+                Blend(rgba, (py * width + px) * 4, color, alpha);
+    }
+
+    // One pixel at byte offset i, left opaque.
+    static void Blend(byte[] rgba, int i, (byte R, byte G, byte B) color, float alpha)
+    {
+        rgba[i] = Mix(rgba[i], color.R, alpha);
+        rgba[i + 1] = Mix(rgba[i + 1], color.G, alpha);
+        rgba[i + 2] = Mix(rgba[i + 2], color.B, alpha);
+        rgba[i + 3] = 255;
     }
 
     static byte Mix(byte dst, byte src, float alpha) =>

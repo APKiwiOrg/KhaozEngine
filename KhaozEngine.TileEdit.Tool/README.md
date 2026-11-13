@@ -174,7 +174,7 @@ hands its rows straight to `height_set` without flipping the terrain.
 | `world_save()` | Validates, checks the clearance rules against the meshes on disk, then writes the world back to its own directory and clears the dirty flag. An invalid world, or one with any clearance issue, throws listing the issues and nothing is written. Returns the directory and the world hash of what landed. |
 | `world_summary()` | Id, display name, directory, plane count, tile size, region/object/marker counts, world hash, dirty flag, undo and redo depths with their labels, and the manifest's catalog paths. |
 | `world_validate()` | Every validator issue, then every clearance issue, as `[code] message` rather than a failed call. Returns a valid flag and the list. |
-| `catalog_list(kind)` | The loaded catalogs' `materials` or `archetypes`, so a client knows the legal ids before it paints or places. |
+| `catalog_list(kind)` | The loaded catalogs' `materials` or `archetypes`, so a client knows the legal ids before it paints or places. Each archetype carries its footprint, collision kind and authored `collisionBoxes` in the mesh's local metres. |
 | `region_create(rx, rz)` | Materialises an empty 64x64 region, void ground until something paints it. |
 | `region_delete(rx, rz)` | Deletes a whole region, tile layers, objects and markers included. The undo puts all of it back. |
 | `region_list()` | Every region the world holds, south row first and west to east, each with its tile rect and its object and marker counts. The map of where the world actually exists. |
@@ -300,7 +300,7 @@ the LF as sample 0, shifting the whole raster. The image's own row 0 is treated 
 | `object_rotate(id, rotation)` | Turns it in place. A non-square archetype covers different tiles afterwards, so both footprints are reported. |
 | `object_remove(id)` | Deletes it. The undo puts it back with the id it had, so every reference still resolves. |
 | `object_set_tags(id, tags?)` | Replaces the authoring tags outright. Null or empty removes every tag. |
-| `object_get(id)` | Archetype, anchor, plane, rotation, tags and the tile rect its rotated footprint covers. |
+| `object_get(id)` | Archetype, anchor, plane, rotation, tags, the tile rect its rotated footprint covers, and `collisionBoxes`: where each authored collision box stands in world metres. |
 | `objects_in_rect(x, z, width, height, plane?)` | Every object whose ANCHOR falls inside the rect, in id order. An object anchored just outside but overhanging in is NOT listed, so widen the rect by the largest archetype when that matters. |
 | `object_find(archetypeId?, tag?)` | Every object in the world matching an archetype, a tag, or both, in id order. Both null lists everything. |
 | `objects_line(archetypeId, fromX, fromZ, toX, toZ, plane, rotation = 0)` | One object per tile of the straight line between two tiles, both ends included, as a SINGLE undo step. The fence and wall-run verb. |
@@ -346,7 +346,17 @@ differs from the hash after the place alone. Same world to play, different objec
 
 Collision is DERIVED, never authored: it is baked from the tiles' own `Blocked` setting plus the collision kind
 of every object standing on them. The way to change what these verbs report is to paint a setting or place an
-object and ask again.
+object and ask again. An archetype's `collisionBoxes` refine only the physics shape: a boxed object still blocks
+the tiles its collision kind blocks, so these verbs read the same with or without them. `object_get` and the
+`collision` overlay show the boxes themselves.
+
+The boxes are read, validated and kept by the tool like every other catalog field. `world_open` loads them through
+the engine loader, which refuses an inverted, empty or non-finite box and boxes on a kind that builds no object
+collider, `catalog_list` reports them as authored, and `archetype_set_collision_heights` rewrites only
+`collisionHeight`, so every byte of a box survives a height write. A box edited in the catalog file outside the tool
+needs `world_open`, like any other catalog edit. The field and placement rules are in the
+[`KhaozEngine.TileWorld`](../KhaozEngine.TileWorld/README.md#catalogs-and-validation) and
+[`KhaozEngine.TileWorld.Physics`](../KhaozEngine.TileWorld.Physics/README.md#what-becomes-a-collider) READMEs.
 
 `path` never changes plane. An unreachable goal still returns the steps to the NEAREST reachable tile with
 `reached` false, and so does a goal simply further away than `maxRadius`, which is a search-window limit rather
@@ -359,7 +369,8 @@ than a verdict on the world. Widen `maxRadius` before concluding a place is cut 
 | `archetype_measure_heights(kitRoot)` | Every archetype of the open catalogs with its model top in metres above the mesh's local base (max Y of the glb's vertices), its collision kind, the height its catalog already records, and an error when it could not be measured. Read-only. |
 | `archetype_set_collision_heights(heights, overwrite = false)` | Writes `collisionHeight` into the catalog file that defines each archetype. Returns each change with its file, the skips, the per-entry errors and `sessionRefreshError`. |
 
-A physics consumer needs a height on every `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype, and these two
+A physics consumer needs a height on every `Wall` and `WallCorner` archetype and on every `Solid` and `Diagonal`
+one that lists no `collisionBoxes` (each box carries its own top), and these two
 fill it from the kit. `kitRoot` resolves against the world directory when relative and must exist. Measuring has
 no greybox fallback, so a missing or unreadable glb is an error entry, never a guessed box, and so is a model top
 at or below 0, which the catalog loader would refuse. Those archetypes take a hand-set height. The good rows of
@@ -396,7 +407,8 @@ the world directory) and the saved path joins the framing line, so a client read
 where the file went.
 
 `overlays` is a comma list painted into the captured pixels afterwards: `grid` (one line per tile edge),
-`collision` (blocked tiles tinted, each wall drawn on the edge it blocks), `objects` (a dot at each anchor,
+`collision` (blocked tiles tinted, each wall drawn on the edge it blocks, and each authored collision box of an
+object on the queried plane filled where physics places it, turned with the object), `objects` (a dot at each anchor,
 coloured by archetype, for the QUERIED plane only, since one dot per plane stacked on a tile would say nothing
 about either) and `regions` (the borders between regions). They paint in a fixed order whatever order they were
 asked in, so the anchors stay on top and two renders of the same overlays look the same. Empty paints none, and

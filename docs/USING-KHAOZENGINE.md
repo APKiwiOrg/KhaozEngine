@@ -10069,7 +10069,7 @@ Change that digest when policy semantics or inputs change. `TileWorldColliders.H
 built set. Contact registration, live environment identity, format 2 and runtime profile validation do not
 automatically persist this source or replace it. Matching expectations load, while changing only this source
 returns `SourcesChanged` naming `policy/colliders`, even with identical full collider hashes and tuning.
-Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
+Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces or collision boxes turned off a quarter turn, since that hash is
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
 changes, and keep a game test that loads the shipped bake and expects `Loaded`. Load also compares the normalized
 `KhaozEngine.Movement` assembly version. Any engine version change, a patch included, therefore requires
@@ -14411,7 +14411,8 @@ registering and stepping a body is in the package README's
 
 `TileWorldColliders.Build(document, catalogs, options)` describes the loaded plane-0 regions as static colliders
 and registers nothing: one ground mesh per region from the same triangles the renderer draws, a box per blocked
-wall edge, blocked tile and `Solid` or `Diagonal` object, and a thin box under each walk surface. `AddTo(world)`
+wall edge, blocked tile and `Solid` or `Diagonal` object (or one per authored collision box when its archetype lists
+`collisionBoxes`), and a thin box under each walk surface. `AddTo(world)`
 registers every collider. `AddTo(world, include)` registers a selected subset, and disposing the registration
 removes its installed statics. `Ground` is the floor sampler, read from the drawn ground only, so a deck or a bridge holds a body up as a
 static and never becomes the floor. `Medium` puts feet in water only below a water body's surface. Their delegates
@@ -14477,11 +14478,17 @@ details rollback, default/all-true compatibility and the matching-load/policy-on
 
 The contract a consumer has to keep:
 
-- **Every `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype needs a `collisionHeight`**, whose field rules are
-  in the `KhaozEngine.TileWorld` README. `Build` throws a `TileWorldException` with
-  `TileWorldRefusal.ColliderCollisionHeightMissing`, `ArchetypeId`, `CollisionKind`, `ObjectId` and `Tile` including
-  its known plane when a placed archetype has none. `ke-tileedit`'s `archetype_measure_heights` and
-  `archetype_set_collision_heights` fill them from the kit.
+- **Every `Wall` and `WallCorner` archetype, and every `Solid` and `Diagonal` one without `collisionBoxes`, needs a
+  `collisionHeight`**, whose field rules are in the `KhaozEngine.TileWorld` README. `Build` throws a
+  `TileWorldException` with `TileWorldRefusal.ColliderCollisionHeightMissing`, `ArchetypeId`, `CollisionKind`,
+  `ObjectId` and `Tile` including its known plane when a placed archetype has none. `ke-tileedit`'s
+  `archetype_measure_heights` and `archetype_set_collision_heights` fill them from the kit.
+- **A prop that needs its real shape lists `collisionBoxes`.** A `Solid` or `Diagonal` archetype's boxes replace its
+  footprint box in physics, so a bench is a seat a body stands on and a back it bumps into, with nothing over the rest
+  of its footprint. The boxes turn with the mesh, may carry their own yaw for round props and diagonal members, and
+  stand on the placed height. The tile collision map, pathing and the catalog's other fields are untouched by them.
+  The field rules are in the `KhaozEngine.TileWorld` README and the placement and slope rules in the
+  `KhaozEngine.TileWorld.Physics` README.
 - **Collider thicknesses and a set blocked height must be finite and positive.** `Build` throws
   `TileColliderOptionsRangeException` with `TileColliderOptionsRefusal.OptionNotFinitePositive`, `OptionName`,
   `ParamName = options` and the numeric `ActualValue`. It derives from `ArgumentOutOfRangeException`, so existing
@@ -14722,7 +14729,8 @@ LOD never changes the full authored footprint, collision, pathing, object identi
 
 `TileObjectArchetype.CollisionHeight` (`collisionHeight` in a catalog) is how tall the model stands above its local
 base in metres, which [tile world physics](#physics-for-a-tile-world-khaozenginetileworldphysics) adds to the
-model's standing height for the top of a wall or object box. The renderer never reads it.
+model's standing height for the top of a wall or footprint object box. An archetype that lists `collisionBoxes` uses
+each box's own top instead. The renderer never reads either.
 `ke-tileedit`'s `archetype_measure_heights` takes it from the glb as the highest vertex Y, so a kit piece authored
 to the contract below, its origin on its own floor, measures true. The field rules are in the
 `KhaozEngine.TileWorld` README.

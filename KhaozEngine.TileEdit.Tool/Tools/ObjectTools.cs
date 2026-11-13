@@ -57,13 +57,13 @@ public sealed class ObjectTools(QueryService query, MutationService mutate)
         => ToolGuard.Guard(() => mutate.ObjectSetTags(id, tags));
 
     /// <summary>One object by id.</summary>
-    [McpServerTool(Name = "object_get"), Description("Reads one object by id: its archetype, anchor tile, plane, rotation, tags and the tile rect its rotated footprint covers. Fails when no object carries that id.")]
+    [McpServerTool(Name = "object_get"), Description("Reads one object by id: its archetype, anchor tile, plane, rotation, tags, the tile rect its rotated footprint covers, and collisionBoxes, where each of its archetype's authored collision boxes stands in WORLD metres (world z is minus tile z): plan centre, half extents along the box's own axes, yaw clockwise from above (0 for an axis-aligned box) and bottom and top, the boxes tile world physics builds for it. Empty when the archetype lists none. Fails when no object carries that id.")]
     public ObjectInfo ObjectGet(
         [Description("The object id.")] long id)
         => ToolGuard.Guard(() => query.ObjectGet(id));
 
     /// <summary>Every object anchored inside a rect.</summary>
-    [McpServerTool(Name = "objects_in_rect"), Description("Lists every object whose ANCHOR tile falls inside the rect, in id order. An object anchored just outside but overhanging into the rect is not listed, so widen the rect by the largest archetype when that matters.")]
+    [McpServerTool(Name = "objects_in_rect"), Description("Lists every object whose ANCHOR tile falls inside the rect, in id order, each as object_get describes it, collision boxes included. An object anchored just outside but overhanging into the rect is not listed, so widen the rect by the largest archetype when that matters.")]
     public IReadOnlyList<ObjectInfo> ObjectsInRect(
         [Description("Rect's west edge, tile x, inclusive.")] int x,
         [Description("Rect's south edge, tile z, inclusive.")] int z,
@@ -73,7 +73,7 @@ public sealed class ObjectTools(QueryService query, MutationService mutate)
         => ToolGuard.Guard(() => query.ObjectsInRect(new TileRect(x, z, width, height), plane));
 
     /// <summary>Every object matching an archetype, a tag, or both.</summary>
-    [McpServerTool(Name = "object_find"), Description("Lists every object in the whole world matching an archetype id, a tag, or both, in id order. Both left null lists everything, which is what to call after a scatter to see what landed.")]
+    [McpServerTool(Name = "object_find"), Description("Lists every object in the whole world matching an archetype id, a tag, or both, in id order, each as object_get describes it. Both left null lists everything, which is what to call after a scatter to see what landed.")]
     public IReadOnlyList<ObjectInfo> ObjectFind(
         [Description("Archetype id to match exactly. Null matches any archetype.")] string? archetypeId = null,
         [Description("Tag the object must carry. Null matches regardless of tags.")] string? tag = null)

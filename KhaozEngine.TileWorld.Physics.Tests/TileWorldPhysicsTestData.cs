@@ -42,6 +42,12 @@ public static class TileWorldPhysicsTestData
     /// height.</summary>
     public const short PlateauCm = 400;
 
+    /// <summary>Where <see cref="BoxedBenchWorld"/>'s <c>bench_boxed</c> is anchored.</summary>
+    public const int BenchX = 20, BenchZ = 20;
+
+    /// <summary>The <c>bench_boxed</c> seat's top above the ground it stands on.</summary>
+    public const float SeatTop = 0.45f;
+
     /// <summary>One archetype per collider rule, each with the height the rule needs:
     /// <list type="bullet">
     /// <item><c>wall</c>, a 1x1 <c>Wall</c> 2.5 m tall.</item>
@@ -57,6 +63,12 @@ public static class TileWorldPhysicsTestData
     /// <item><c>high_deck</c>, a 3x3 with no collision and a walk surface <see cref="HighDeckHeight"/> up over its
     /// whole footprint, high enough for a standing body to pass under.</item>
     /// <item><c>unmeasured</c>, a <c>Solid</c> with no collision height.</item>
+    /// <item><c>bench_boxed</c>, a 2x1 <c>Solid</c> with no collision height and two collision boxes: a seat
+    /// <see cref="SeatTop"/> high from local x -0.8 to 0.8 and z -0.18 to 0.42, and a back 0.94 m high behind it from z
+    /// -0.3 to -0.18, so the footprint's ends and its north strip are empty.</item>
+    /// <item><c>diag_boxed</c>, a 2x1 <c>Diagonal</c> with no collision height and one 1.4 m by 0.1 m box 2 m high on
+    /// its mesh origin, turned 45 degrees.</item>
+    /// <item><c>roof_boxed</c>, a <c>Solid</c> roof with one collision box.</item>
     /// </list>
     /// And three ground materials: grass (1) and dirt (2), both ground, and water (<see cref="Water"/>).</summary>
     public static TileWorldCatalogs Catalogs() => TileWorldCatalogs.LoadJson(
@@ -85,7 +97,16 @@ public static class TileWorldPhysicsTestData
               "yawOffsetDegrees": 30, "walkSurfaces": [ { "height": 1.2, "minX": -2, "maxX": 1 } ] },
             { "id": "high_deck", "name": "high_deck", "meshRef": "test/high_deck.glb", "sizeX": 3, "sizeZ": 3,
               "walkSurfaces": [ { "height": 2.5 } ] },
-            { "id": "unmeasured", "name": "unmeasured", "meshRef": "test/unmeasured.glb", "collisionKind": "Solid" }
+            { "id": "unmeasured", "name": "unmeasured", "meshRef": "test/unmeasured.glb", "collisionKind": "Solid" },
+            { "id": "bench_boxed", "name": "bench_boxed", "meshRef": "test/bench.glb", "sizeX": 2, "sizeZ": 1,
+              "collisionKind": "Solid", "collisionBoxes": [
+                { "minX": -0.8, "maxX": 0.8, "minZ": -0.18, "maxZ": 0.42, "maxY": 0.45 },
+                { "minX": -0.8, "maxX": 0.8, "minZ": -0.3, "maxZ": -0.18, "maxY": 0.94 } ] },
+            { "id": "diag_boxed", "name": "diag_boxed", "meshRef": "test/diag_wall.glb", "sizeX": 2, "sizeZ": 1,
+              "collisionKind": "Diagonal", "collisionBoxes": [
+                { "minX": -0.7, "maxX": 0.7, "minZ": -0.05, "maxZ": 0.05, "maxY": 2, "yawDegrees": 45 } ] },
+            { "id": "roof_boxed", "name": "roof_boxed", "meshRef": "test/roof.glb", "isRoof": true,
+              "collisionKind": "Solid", "collisionBoxes": [ { "minX": -0.5, "maxX": 0.5, "minZ": -0.5, "maxZ": 0.5, "maxY": 0.5 } ] }
           ]
         }
         """,
@@ -267,6 +288,16 @@ public static class TileWorldPhysicsTestData
         TileWorldDocument doc = FlatWorld();
         for (int x = WallRunFirstX; x <= WallRunLastX; x++)
             if (x != DoorX) doc.AddObject("wall", x, DoorRow, 0, 3);
+        return doc;
+    }
+
+    /// <summary><see cref="FlatWorld"/> with a <c>bench_boxed</c> at (<see cref="BenchX"/>, <see cref="BenchZ"/>), unturned:
+    /// its seat stands from tile x 20.2 to 21.8 and tile z 20.08 to 20.68, its back from tile z 20.68 to 20.8, inside a
+    /// footprint from x 20 to 22 and z 20 to 21.</summary>
+    public static TileWorldDocument BoxedBenchWorld()
+    {
+        TileWorldDocument doc = FlatWorld();
+        doc.AddObject("bench_boxed", BenchX, BenchZ, 0, 0);
         return doc;
     }
 

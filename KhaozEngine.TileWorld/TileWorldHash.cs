@@ -80,9 +80,9 @@ public static class TileWorldHash
     /// collision map, so two heads over one world directory with independently updated catalogs agreed on the world
     /// digest and then disagreed on every wall. <see cref="OfWorldAndCatalogs"/> is the composed digest a netcode
     /// gate should use.</para>
-    /// <para>EVERY authored field is in, cosmetic ones included (walk surfaces, collision height and a material's
-    /// steep companion too, each written only for an entry that carries one, so a catalog without any digests
-    /// exactly as it did before the field existed), rather than only the fields the collision baker reads. The engine does not know which fields a given
+    /// <para>EVERY authored field is in, cosmetic ones included (walk surfaces, collision height, collision boxes and a
+    /// material's steep companion too, each written only for an entry that carries one, so a catalog without any
+    /// digests exactly as it did before the field existed), rather than only the fields the collision baker reads. The engine does not know which fields a given
     /// game treats as decoration, a mesh reference points at content the client has to ship anyway, and a digest that
     /// blessed art drift would be silently wrong for the first game that dispatched on a tag.</para>
     /// </summary>
@@ -123,6 +123,7 @@ public static class TileWorldHash
             for (int i = 0; i < (a.Tags?.Count ?? 0); i++) Text(sb, a.Tags![i]);
             WalkSurfaces(sb, a.WalkSurfaces);
             CollisionHeight(sb, a.CollisionHeight);
+            CollisionBoxes(sb, a.CollisionBoxes);
             sb.Append('\n');
         }
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
@@ -209,6 +210,24 @@ public static class TileWorldHash
     static void CollisionHeight(StringBuilder sb, float? height)
     {
         if (height is { } h) sb.Append("h ").Append(Float(h)).Append(' ');
+    }
+
+    // Collision boxes ride the archetype line the same way again, after any height. An archetype with none writes
+    // NOTHING, so every catalog digested before the field existed keeps its identity. A list writes a 'b' marker and
+    // its count, which neither a walk-surface entry (a float or '-') nor the 'h' marker can be, then every box in
+    // authored order, defaulted bounds and yaw included, since a default is a value the physics reads.
+    static void CollisionBoxes(StringBuilder sb, List<TileCollisionBox>? boxes)
+    {
+        if (boxes is not { Count: > 0 }) return;
+        sb.Append("b ").Append(Inv(boxes.Count)).Append(' ');
+        foreach (TileCollisionBox? box in boxes)
+        {
+            if (box is null) { sb.Append("- "); continue; }
+            sb.Append(Float(box.MinX)).Append(' ').Append(Float(box.MaxX)).Append(' ');
+            sb.Append(Float(box.MinY)).Append(' ').Append(Float(box.MaxY)).Append(' ');
+            sb.Append(Float(box.MinZ)).Append(' ').Append(Float(box.MaxZ)).Append(' ');
+            sb.Append(Float(box.YawDegrees)).Append(' ');
+        }
     }
 
     // Written only for a material that carries a companion, so a catalog without any digests exactly as it did

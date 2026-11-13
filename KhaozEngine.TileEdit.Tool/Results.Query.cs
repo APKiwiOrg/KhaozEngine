@@ -36,10 +36,22 @@ public sealed record TileStep(int X, int Z);
 /// many there are. An unreachable goal still returns the walk to the nearest reachable tile.</summary>
 public sealed record PathResult(bool Reached, IReadOnlyList<TileStep> Steps, int Length);
 
-/// <summary>One placed object: its id, archetype, anchor, plane, rotation, tags, and the tile rect its rotated
-/// footprint covers.</summary>
+/// <summary>One placed object: its id, archetype, anchor, plane, rotation, tags, the tile rect its rotated footprint
+/// covers, and where its archetype's collision boxes stand, empty when it lists none.</summary>
 public sealed record ObjectInfo(long Id, string ArchetypeId, int X, int Z, int Plane, int Rotation,
-    IReadOnlyList<string> Tags, RectInfo Footprint);
+    IReadOnlyList<string> Tags, RectInfo Footprint, IReadOnlyList<PlacedCollisionBoxInfo> CollisionBoxes);
+
+/// <summary>One authored collision box of an archetype, in the mesh's local metres (x east, z south at rotation 0, y
+/// above the mesh base) with its yaw about its own centre in degrees, clockwise seen from above.</summary>
+public sealed record CollisionBoxInfo(float MinX, float MaxX, float MinY, float MaxY, float MinZ, float MaxZ,
+    float YawDegrees);
+
+/// <summary>One collision box where its object puts it, in WORLD metres (world z is minus tile z): the centre of its
+/// plan, its half extents along its own axes, its yaw clockwise seen from above, and its bottom and top. A yaw of 0 is
+/// an axis-aligned box with its halves along the world axes, which is what every whole quarter turn comes out as. The
+/// same box tile world physics builds for an object on plane 0.</summary>
+public sealed record PlacedCollisionBoxInfo(float CentreX, float CentreZ, float HalfX, float HalfZ, float YawDegrees,
+    float Bottom, float Top);
 
 /// <summary>One named marker: where it stands and what it is tagged with.</summary>
 public sealed record MarkerInfo(string Name, int X, int Z, int Plane, IReadOnlyList<string> Tags);
@@ -48,9 +60,10 @@ public sealed record MarkerInfo(string Name, int X, int Z, int Plane, IReadOnlyL
 public sealed record MaterialInfo(ushort Id, string Name, string Color, string Kind);
 
 /// <summary>One object archetype of the loaded catalogs, with the footprint and collision an authoring client
-/// needs before it places one.</summary>
+/// needs before it places one, its authored collision boxes included (empty when it lists none).</summary>
 public sealed record ArchetypeInfo(string Id, string Name, string MeshRef, int SizeX, int SizeZ,
-    string CollisionKind, bool IsRoof, bool Interactive, IReadOnlyList<string> Tags);
+    string CollisionKind, bool IsRoof, bool Interactive, IReadOnlyList<string> Tags,
+    IReadOnlyList<CollisionBoxInfo> CollisionBoxes);
 
 /// <summary>A catalog listing. Only the list matching the requested kind is filled, the other is empty, so a
 /// client reads one shape whichever kind it asked for.</summary>

@@ -249,7 +249,7 @@ match. Missing collision heights keep the exact `TileWorldException` type.
 | Exception and reason | What it refuses | Identifiers |
 | --- | --- | --- |
 | `TileColliderOptionsRangeException`, `TileColliderOptionsRefusal.OptionNotFinitePositive` | A thickness or set blocked height that is not finite and positive | `OptionName`, `ParamName = options`, `ActualValue` |
-| `TileWorldException`, `TileWorldRefusal.ColliderCollisionHeightMissing` | A collidable placed archetype without a collision height | `ArchetypeId`, `CollisionKind`, `ObjectId`, `Tile` including its known plane |
+| `TileWorldException`, `TileWorldRefusal.ColliderCollisionHeightMissing` | A collidable placed archetype without a collision height, other than a `Solid` or `Diagonal` one that lists collision boxes | `ArchetypeId`, `CollisionKind`, `ObjectId`, `Tile` including its known plane |
 
 ## What becomes a collider
 
@@ -261,23 +261,50 @@ match. Missing collision heights keep the exact `TileWorldException` type.
 - **Blocked:** one box per tile with no underlay or marked `TileSettings.Blocked`, from the tile's lowest corner to
   its highest corner plus `BlockedHeight`. The tile collision map refuses the whole tile, so the box stands above
   every point of its ground, and a body cannot step onto a steep blocked tile from the high side.
-- **Object:** a box over a `Solid` object's rotated footprint, or over a `Diagonal` object's anchor tile.
+- **Object:** a box over a `Solid` object's rotated footprint, or over a `Diagonal` object's anchor tile. When the
+  archetype lists `collisionBoxes`, one box per authored box instead, in catalog order (see below).
 - **WalkSurface:** a box `WalkSurfaceThickness` thick under each walk surface's top, over its rectangle as
   `TileWalkSurfaces` resolves it.
 
-A wall or object box's top is the height the model stands at, `TileObjectPlacement.AnchorPosition`, plus the
-archetype's `CollisionHeight`. Its bottom is the lower of the lowest ground corner under the box and that standing
-height, so it never inverts on a steep slope. Solid, Diagonal and wall boxes are axis-aligned over the tiles the
-collision baker blocks, so they stand where the editor's and the server's tile collision says. Walk surfaces are
-the only yawed boxes. On a quarter turn they stay axis-aligned with their half extents swapped as the turn needs.
+A wall or footprint object box's top is the height the model stands at, `TileObjectPlacement.AnchorPosition`, plus
+the archetype's `CollisionHeight`. Its bottom is the lower of the lowest ground corner under the box and that
+standing height, so it never inverts on a steep slope. Footprint, anchor-tile and wall boxes are axis-aligned over
+the tiles the collision baker blocks, so they stand where the editor's and the server's tile collision says. On a
+quarter turn a walk surface stays axis-aligned with its half extents swapped as the turn needs.
+
+**Authored collision boxes.** An archetype's `collisionBoxes` (field rules in the
+[`KhaozEngine.TileWorld` README](../KhaozEngine.TileWorld/README.md#catalogs-and-validation)) replace the footprint
+or anchor-tile box of a `Solid` or `Diagonal` object, so a bench is its seat and its back. A body stands on the seat at
+the seat's own top and walks into the footprint's empty strips, where one footprint box would have held it up at the
+back's height over the whole 2x1. The placement is the one rule `ke-tileedit` draws and reports with:
+
+- **Planar:** the box's local centre goes through the object's anchor and planar basis exactly as a walk surface rect
+  does, and its axes turn by the whole turn, the instance rotation plus the yaw offset plus the box's own
+  `yawDegrees`. A whole number of quarter turns is an axis-aligned box with its half extents swapped on an odd one,
+  with no trigonometry. Any other turn is a box yawed about +Y.
+- **Vertical:** the top is the standing height plus the box's `maxY`, a surface a capsule stands on. The bottom is the
+  standing height plus `minY`, and a box resting on or sunk below the base (`minY` at or below 0) reaches further down
+  to the lowest ground corner under its own plan bounds when that is lower, the rule the footprint box keeps, so on a
+  slope it meets the ground on the downhill side instead of leaving a gap a foot catches under. A box raised off the
+  base keeps its authored bottom, so the space under a table top or an awning stays open. The corner search is
+  clamped to the loaded regions, beyond which the ground is only edge-extended.
+- **Collision height:** not read. Every box carries its own top, so a boxed archetype needs no `collisionHeight`.
+- A box edited in memory after load into one that cannot be a volume (null, non-finite, inverted, or too thin to
+  survive being added to its standing height in a float) gets no collider.
+
+The tile collision map is unchanged by boxes: the object still blocks its footprint or anchor tile there, the
+reasons are in the [`KhaozEngine.TileWorld` README](../KhaozEngine.TileWorld/README.md#collision-derived-and-never-authored).
+So a body can stand on a seat or in a footprint's empty strip that the map calls blocked, and `CanStep` lets it walk
+out.
 
 **The floor is the drawn ground only.** `Ground` answers from the ground triangles and never from a walk surface or
 an object top. A deck, a crate or a bridge holds a body up only as a physics static, so a body can walk under a
 high deck on the ground and stand on it from above.
 
-**Every Solid, Diagonal, Wall and WallCorner archetype needs a `collisionHeight`.** `Build` throws a
-`TileWorldException` with `TileWorldRefusal.ColliderCollisionHeightMissing`, `ArchetypeId`, `CollisionKind`,
-`ObjectId` and `Tile` when a placed one has none. `ke-tileedit` fills them from the kit:
+**Every Wall and WallCorner archetype, and every Solid and Diagonal one without collision boxes, needs a
+`collisionHeight`.** `Build` throws a `TileWorldException` with
+`TileWorldRefusal.ColliderCollisionHeightMissing`, `ArchetypeId`, `CollisionKind`, `ObjectId` and `Tile` when a
+placed one has none. `ke-tileedit` fills them from the kit:
 `archetype_measure_heights` reads each model's top and `archetype_set_collision_heights` writes the heights into the
 catalog files.
 
@@ -383,9 +410,12 @@ These providers were audited for a parallel contact navigation bake, `NavBakeExe
 and its pose as seven little-endian floats (position x, y, z, then orientation x, y, z, w). Filtering installation
 does not change this complete-set hash or create an installed-subset hash. The same world and
 catalogs hash equal on every rebuild, whatever order the regions were loaded in. Ground meshes and every box on a
-quarter turn use no trigonometry, so they hash exactly across architectures. A walk surface on a yaw that is not a
-quarter turn takes its centre and orientation from `MathF` trigonometry, which can differ in the last bits between
-x64 and ARM64, and so can the hash of a world that has one.
+quarter turn use no trigonometry, so they hash exactly across architectures. A walk surface or a collision box whose
+turn is not a whole number of quarter turns takes its centre or orientation from `MathF` trigonometry, which can
+differ in the last bits between x64 and ARM64, and so can the hash of a world that has one. Collision boxes are
+colliders like any other, so an edit to one moves the hash, and a navigation bake that folds the hash into its
+sources reports `SourcesChanged` until it is rebaked. A catalog without boxes builds exactly the colliders, and so the
+hash, it built before the field existed.
 
 ## Limits
 
@@ -399,4 +429,5 @@ x64 and ARM64, and so can the hash of a world that has one.
   undrawn one, may miss under the backend's half-open triangle edges. Interior lattice lines and region seams hit.
   The movement floor is the sampler, not a ray, so a walking body never depends on that line, and a void tile
   beside it carries a blocked box.
-- No `.coll` prop shapes. Every object collider is a box.
+- No `.coll` prop shapes, hulls or round primitives. Every object collider is a box, either over the footprint or
+  one of the archetype's authored collision boxes, so a round prop is approximated by boxes turned against each other.

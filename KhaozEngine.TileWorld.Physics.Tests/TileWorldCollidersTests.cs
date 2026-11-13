@@ -261,10 +261,13 @@ public class TileWorldCollidersTests
         AssertBox(diagonal, 3.5f, -3.5f, 0.5f, 0.5f, bottom: 0.3f, top: 0.4f + 2f);
     }
 
-    [Fact]
-    public void ARoofGetsNoCollider()
+    // A roof builds no collider of any kind, collision boxes included.
+    [Theory]
+    [InlineData("roof")]
+    [InlineData("roof_boxed")]
+    public void ARoofGetsNoCollider(string roof)
     {
-        TileWorldDocument doc = SlopedWorldWith("roof", 12, 12);
+        TileWorldDocument doc = SlopedWorldWith(roof, 12, 12);
 
         TileCollider only = Assert.Single(TileWorldColliders.Build(doc, Catalogs()).Colliders);
 

@@ -85,8 +85,15 @@ public sealed class TileObjectArchetype
     /// See <see cref="TileWalkSurface"/> and <see cref="TileWalkSurfaces"/>. An empty list loads as null.</summary>
     public List<TileWalkSurface>? WalkSurfaces { get; set; }
     /// <summary>How tall the object stands for collision, in metres, null when not authored. Finite and above 0 when
-    /// present. Optional at load. A consumer that needs it decides what a missing height means.</summary>
+    /// present. Optional at load. A consumer that needs it decides what a missing height means. Tile world physics
+    /// reads it for the box over the footprint, so it does not read it for an archetype that lists
+    /// <see cref="CollisionBoxes"/>.</summary>
     public float? CollisionHeight { get; set; }
+    /// <summary>The boxes tile world physics builds for this archetype in place of the one box over its footprint, in
+    /// the mesh's local metres, null when the archetype has none. See <see cref="TileCollisionBox"/>. Only a
+    /// <c>Solid</c> or <c>Diagonal</c> archetype may list them, and an empty list loads as null. The tile collision
+    /// map never reads them, so a boxed object still blocks the tiles its collision kind blocks.</summary>
+    public List<TileCollisionBox>? CollisionBoxes { get; set; }
 }
 
 /// <summary>Footprint helpers. Rotation swaps X and Z on odd quarter turns, the anchor stays the SW tile.</summary>
@@ -290,8 +297,10 @@ public sealed class TileWorldCatalogs
             { SourceName = source, FirstSourceName = _archetypeSources[a.Id].Name, ArchetypeId = a.Id };
         if (string.IsNullOrWhiteSpace(a.LodMeshRef)) a.LodMeshRef = null;
         if (a.WalkSurfaces is { Count: 0 }) a.WalkSurfaces = null;
+        if (a.CollisionBoxes is { Count: 0 }) a.CollisionBoxes = null;
         ValidateWalkSurfaces(a, source);
         ValidateCollisionHeight(a, source);
+        TileCollisionBoxRules.ThrowIfInvalid(a, source);
         _archetypes.Add(a.Id, a);
         _archetypeSources[a.Id] = (source, sourceIsFile);
     }

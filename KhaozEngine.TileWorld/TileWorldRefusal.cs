@@ -320,4 +320,15 @@ public enum TileWorldRefusal
     // Placed collider geometry.
     /// <summary>Refuses a collidable placed archetype without a collision height.</summary>
     ColliderCollisionHeightMissing,
+
+    // Catalog collision boxes.
+    /// <summary>Refuses collision boxes on an archetype whose collision kind builds no object collider.</summary>
+    CatalogCollisionBoxKindUnsupported,
+    /// <summary>Refuses a null entry in an archetype's collision boxes.</summary>
+    CatalogCollisionBoxNull,
+    /// <summary>Refuses a non-finite collision-box bound or yaw.</summary>
+    CatalogCollisionBoxNonFinite,
+    /// <summary>Refuses a collision box whose minimum is not below its maximum on an axis, so it is inverted or
+    /// empty.</summary>
+    CatalogCollisionBoxBoundsUnordered,
 }

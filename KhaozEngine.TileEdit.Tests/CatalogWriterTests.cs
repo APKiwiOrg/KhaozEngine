@@ -24,6 +24,7 @@ public class CatalogWriterTests
             { "id": "wall", "name": "Wall", "meshRef": "kit/wall.glb", "sizeX": 1, "sizeZ": 1, "collisionKind": "Wall", "tags": ["no-examine", "blocks-camera"] },
             { "id": "tree", "name": "Tree", "meshRef": "kit/tree.glb", "lodMeshRef": "kit/lod/tree.glb", "sizeX": 1, "sizeZ": 1, "collisionKind": "Solid", "interactive": true, "tags": ["tree"] },
             { "id": "bridge", "name": "Timber bridge", "meshRef": "kit/bridge.glb", "sizeX": 3, "sizeZ": 3, "collisionKind": "None", "tags": ["bridge"], "walkSurfaces": [{ "height": 0.825, "minX": -2.5, "maxX": 2.5 }] },
+            { "id": "bench", "name": "Bench", "meshRef": "kit/bench.glb", "sizeX": 2, "sizeZ": 1, "collisionKind": "Solid", "collisionBoxes": [{ "minX": -0.8, "maxX": 0.8, "minZ": -0.2, "maxZ": 0.3, "maxY": 0.45 }, { "minX": -0.8, "maxX": 0.8, "minY": 0.45, "maxY": 0.94, "minZ": -0.3, "maxZ": -0.2 }] },
             { "id": "rug", "name": "Rug", "meshRef": "kit/rug.glb" }
           ]
         }
@@ -95,12 +96,17 @@ public class CatalogWriterTests
     {
         using var temp = new TempDir();
 
-        // One line per archetype: the new property follows collisionKind with the entry's own ", " separator.
+        // One line per archetype: the new property follows collisionKind with the entry's own ", " separator, ahead of
+        // a bench's collision boxes, which stay byte for byte.
         string oneLine = temp.Sub("one-line.json");
         File.WriteAllText(oneLine, OneLine);
-        Assert.True(CatalogWriter.WriteCollisionHeights(oneLine, new Dictionary<string, float> { ["wall"] = 2.5f }));
-        string expected = OneLine.Replace("\"collisionKind\": \"Wall\", \"tags\"",
-            "\"collisionKind\": \"Wall\", \"collisionHeight\": 2.5, \"tags\"", StringComparison.Ordinal);
+        Assert.True(CatalogWriter.WriteCollisionHeights(oneLine,
+            new Dictionary<string, float> { ["wall"] = 2.5f, ["bench"] = 0.94f }));
+        string expected = OneLine
+            .Replace("\"collisionKind\": \"Wall\", \"tags\"",
+                "\"collisionKind\": \"Wall\", \"collisionHeight\": 2.5, \"tags\"", StringComparison.Ordinal)
+            .Replace("\"collisionKind\": \"Solid\", \"collisionBoxes\"",
+                "\"collisionKind\": \"Solid\", \"collisionHeight\": 0.94, \"collisionBoxes\"", StringComparison.Ordinal);
         Assert.NotEqual(OneLine, expected);
         Assert.Equal(expected, File.ReadAllText(oneLine));
 
@@ -127,6 +133,11 @@ public class CatalogWriterTests
         Assert.Null(loaded.Archetype("tree")!.CollisionHeight);
         Assert.Null(loaded.Archetype("bridge")!.CollisionHeight);
         Assert.Equal(new[] { "dressing" }, loaded.Archetype("crate")!.Tags);
+        TileObjectArchetype bench = loaded.Archetype("bench")!;
+        Assert.Equal(0.94f, bench.CollisionHeight);
+        Assert.Equal(2, bench.CollisionBoxes!.Count);
+        TileCollisionBox back = bench.CollisionBoxes[1];
+        Assert.Equal((-0.8f, 0.8f, 0.45f, 0.94f, -0.3f, -0.2f), (back.MinX, back.MaxX, back.MinY, back.MaxY, back.MinZ, back.MaxZ));
     }
 
     // A // comment ending collisionKind's line annotates collisionKind, so the new property takes the next line and

@@ -46,9 +46,10 @@ public sealed partial class TileWorldColliders
     /// writes it, and its pose as seven little-endian floats (position x, y, z, then orientation x, y, z, w). The same
     /// world and catalogs hash equal on every rebuild and reload, whatever order the regions were created or loaded
     /// in. Across machines the hash is exact for the ground meshes and every box on a quarter turn, none of which
-    /// uses trigonometry. A walk surface on a yaw that is not a quarter turn takes its centre and orientation from
-    /// <see cref="MathF"/> trigonometry, which .NET does not promise is bit-identical across x64 and ARM64, so such a
-    /// world can hash differently on another architecture. Each read returns a fresh copy.
+    /// uses trigonometry. A walk surface or a collision box whose turn is not a whole number of quarter turns takes
+    /// its centre or orientation from <see cref="MathF"/> trigonometry, which .NET does not promise is bit-identical
+    /// across x64 and ARM64, so such a world can hash differently on another architecture. Each read returns a fresh
+    /// copy.
     /// </summary>
     public byte[] Hash => (byte[])_hash.Clone();
 
@@ -71,15 +72,19 @@ public sealed partial class TileWorldColliders
     /// tile's lowest corner to its highest corner plus <see cref="TileColliderOptions.BlockedHeight"/>, so it stands
     /// above every point of the tile's ground however steep the tile is.</item>
     /// <item><b>Object:</b> a box over a <c>Solid</c> object's rotated footprint, or a <c>Diagonal</c> object's
-    /// anchor tile.</item>
+    /// anchor tile. When the archetype lists <see cref="TileObjectArchetype.CollisionBoxes"/>, one box per authored
+    /// box instead, in catalog order, turned with the object and by the box's own yaw.</item>
     /// <item><b>WalkSurface:</b> a box <see cref="TileColliderOptions.WalkSurfaceThickness"/> thick under each walk
     /// surface's top, over its rectangle as <see cref="TileWalkSurfaces"/> resolves it. A rectangle that resolves
     /// empty gets none.</item>
     /// </list>
-    /// A wall or object box's top is the height the model stands at, <see cref="TileObjectPlacement.AnchorPosition"/>,
-    /// plus the archetype's <see cref="TileObjectArchetype.CollisionHeight"/>. Its bottom is the lower of the lowest
-    /// ground corner under it and that standing height, so it never inverts on a steep slope. Every box is
-    /// axis-aligned except a walk surface yawed off a quarter turn.
+    /// A wall or footprint object box's top is the height the model stands at,
+    /// <see cref="TileObjectPlacement.AnchorPosition"/>, plus the archetype's
+    /// <see cref="TileObjectArchetype.CollisionHeight"/>. Its bottom is the lower of the lowest ground corner under it
+    /// and that standing height, so it never inverts on a steep slope. An authored collision box spans its own
+    /// bottom and top above that standing height instead, and one that rests on the base reaches down to the lowest
+    /// ground corner under it the same way. Every box is axis-aligned except a walk surface or a collision box turned
+    /// off a quarter turn.
     /// <para>A <see cref="TileSettings.NoDraw"/> tile gets no ground triangle and no blocked box, so it is a hole in the
     /// physics floor. NoDraw marks a plane whose floor is an object, the upper-floor case this round leaves
     /// out.</para>
@@ -95,8 +100,9 @@ public sealed partial class TileWorldColliders
     /// <see cref="TileColliderOptions.WalkSurfaceThickness"/> or a set <see cref="TileColliderOptions.BlockedHeight"/>
     /// is not a finite number above 0. Carries <see cref="TileColliderOptionsRefusal.OptionNotFinitePositive"/>,
     /// <see cref="TileColliderOptionsRangeException.OptionName"/>, ParamName = options and ActualValue.</exception>
-    /// <exception cref="TileWorldException">A placed <c>Solid</c>, <c>Diagonal</c>, <c>Wall</c> or <c>WallCorner</c>
-    /// object's archetype has no <see cref="TileObjectArchetype.CollisionHeight"/>. Carries
+    /// <exception cref="TileWorldException">A placed <c>Wall</c> or <c>WallCorner</c> object's archetype, or a placed
+    /// <c>Solid</c> or <c>Diagonal</c> one that lists no collision boxes, has no
+    /// <see cref="TileObjectArchetype.CollisionHeight"/>. Carries
     /// <see cref="TileWorldRefusal.ColliderCollisionHeightMissing"/>, <see cref="TileWorldException.ArchetypeId"/>,
     /// <see cref="TileWorldException.CollisionKind"/>, <see cref="TileWorldException.ObjectId"/> and
     /// <see cref="TileWorldException.Tile"/>.</exception>

@@ -54,7 +54,7 @@ public sealed class WorldTools(TileEditSession session, QueryService query, Muta
         => ToolGuard.Guard(session.Validate);
 
     /// <summary>Lists the loaded catalogs' materials or object archetypes.</summary>
-    [McpServerTool(Name = "catalog_list"), Description("Lists what the loaded catalogs define, so a client knows the legal material ids and archetype ids before it paints or places. Returns one record carrying both lists, with the kind that was not asked for empty.")]
+    [McpServerTool(Name = "catalog_list"), Description("Lists what the loaded catalogs define, so a client knows the legal material ids and archetype ids before it paints or places. Each archetype carries its footprint, collision kind and authored collisionBoxes, in the mesh's local metres (x east, z south at rotation 0, y above the mesh base) with each box's yaw. Returns one record carrying both lists, with the kind that was not asked for empty.")]
     public CatalogListResult CatalogList(
         [Description("Which catalog to list: materials or archetypes.")] string kind)
         => ToolGuard.Guard(() => query.CatalogList(kind));

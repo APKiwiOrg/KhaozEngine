@@ -224,6 +224,10 @@ region file and is null for these in-memory attachment, restoration and save che
 | `CatalogCollisionHeightInvalid` | A collision height that is not finite and positive | `SourceName`, `ArchetypeId`, `Field`, `Value` |
 | `CatalogWalkSurfaceNonFinite` | A non-finite walk-surface height or extent | `SourceName`, `ArchetypeId`, `SurfaceIndex`, `Field`, `Value` |
 | `CatalogWalkSurfaceBoundsUnordered` | Walk-surface bounds whose minimum is not below the maximum | `SourceName`, `ArchetypeId`, `SurfaceIndex`, `MinField`, `MaxField`, `Minimum`, `Maximum` |
+| `CatalogCollisionBoxKindUnsupported` | Collision boxes on an archetype whose collision kind builds no object collider (`None`, `Wall`, `WallCorner`) | `SourceName`, `ArchetypeId`, `CollisionKind` |
+| `CatalogCollisionBoxNull` | A null entry in an archetype's collision boxes | `SourceName`, `ArchetypeId`, `CollisionBoxIndex` |
+| `CatalogCollisionBoxNonFinite` | A non-finite collision-box bound or yaw | `SourceName`, `ArchetypeId`, `CollisionBoxIndex`, `Field`, `Value` |
+| `CatalogCollisionBoxBoundsUnordered` | A collision box whose minimum is not below its maximum on an axis, so it is inverted or empty | `SourceName`, `ArchetypeId`, `CollisionBoxIndex`, `MinField`, `MaxField`, `Minimum`, `Maximum` |
 | `CatalogArchetypeMissing` | Placement or scatter requiring an archetype absent from the catalogs | `ArchetypeId` |
 | `SteepSelfReference` | A material using itself as its steep companion | `SourceName`, `MaterialId`, `MaterialName`, `CompanionMaterialId` |
 | `SteepCompanionMissing` | A steep companion absent from the same catalog | `SourceName`, `MaterialId`, `MaterialName`, `CompanionMaterialId` |
@@ -320,7 +324,7 @@ are owned read-only snapshots. `TileWorldSchema.GetCatalogJson()` returns the em
 resource is missing, it throws `SchemaResourceMissing` with `ResourceName`. `GroundMaterial` is
 `{ Id, Name, Color, Texture, Kind, TilesPerMetre, Steep }` (`Ground` or `Water`, id 0 reserved for void) and
 `TileObjectArchetype` is
-`{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces, CollisionHeight }`, with
+`{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces, CollisionHeight, CollisionBoxes }`, with
 `TileCollisionKind` one of `None`, `Solid`, `Wall`, `WallCorner`, `Diagonal`. `TileFootprint.Rotated` and
 `TileFootprint.Of` give the rotated footprint size and the world rect an instance covers.
 
@@ -373,10 +377,52 @@ metres above the mesh's local base, so a collider's top is the height the model 
 as null, and a present value must be a finite number above 0. The schema refuses 0, a negative number and a JSON
 `null`. `Merge` refuses any such value edited in after load, NaN and infinity included, with
 `CatalogCollisionHeightInvalid`, `SourceName`, `ArchetypeId`, `Field` = `collisionHeight` and `Value`.
-The tile collision map and pathing never read it. `KhaozEngine.TileWorld.Physics` requires it on every
-`Solid`, `Diagonal`, `Wall` and `WallCorner` archetype, and `ke-tileedit`'s `archetype_measure_heights` and
-`archetype_set_collision_heights` fill it from the kit. `OfCatalogs` digests it only when present, so a catalog
-without heights keeps its digest.
+The tile collision map and pathing never read it. `KhaozEngine.TileWorld.Physics` requires it on every `Wall`
+and `WallCorner` archetype and on every `Solid` and `Diagonal` one that lists no collision boxes, and
+`ke-tileedit`'s `archetype_measure_heights` and `archetype_set_collision_heights` fill it from the kit.
+`OfCatalogs` digests it only when present, so a catalog without heights keeps its digest.
+
+`CollisionBoxes` is the optional `collisionBoxes` catalog field: the shape tile world physics builds for a prop in
+place of one box over its whole footprint, so a body bumps into a bench's seat and back, stands on the seat, and
+stands on nothing the bench does not have. Each `TileCollisionBox` is
+`{ MinX, MaxX, MinY, MaxY, MinZ, MaxZ, YawDegrees }` in the MESH's local metres, the frame walk surfaces use (x east
+and z south at rotation 0, before the instance rotation and the yaw offset turn it). Y is metres above the mesh base,
+which is the placed standing height, so a seat box topped at 0.45 is a seat 0.45 m above where the bench stands.
+`minY` defaults to 0, a box resting on the base, and `yawDegrees` defaults to 0. A box may reach past the footprint,
+the way an awning or a cart's shafts do.
+
+```json
+{
+  "id": "bench",
+  "name": "Bench",
+  "meshRef": "models/bench.glb",
+  "sizeX": 2,
+  "collisionKind": "Solid",
+  "collisionBoxes": [
+    { "minX": -0.8, "maxX": 0.8, "minZ": -0.18, "maxZ": 0.42, "maxY": 0.45 },
+    { "minX": -0.8, "maxX": 0.8, "minZ": -0.3, "maxZ": -0.18, "maxY": 0.94 }
+  ]
+}
+```
+
+`yawDegrees` turns a box about its own centre, clockwise seen from above like `yawOffsetDegrees` and the quarter
+turns. It is there for round props and diagonal members: two boxes at 0 and 45 degrees make an octagon around a barrel
+or a well far closer than one square, and one box turned 45 degrees is a cart shaft or a diagonal rail. A box whose
+whole turn (rotation, yaw offset and its own yaw) is a whole number of quarter turns places axis-aligned with no
+trigonometry, so only a genuinely diagonal box costs the cross-architecture exactness the
+[physics hash](../KhaozEngine.TileWorld.Physics/README.md#hash) describes.
+
+Only a `Solid` or `Diagonal` archetype may list boxes, because those are the two kinds that build an object collider.
+Boxes on `None`, `Wall` or `WallCorner` would be ignored, so the loader refuses them with
+`CatalogCollisionBoxKindUnsupported` rather than hide the mistake. The schema requires `minX`, `maxX`, `maxY`,
+`minZ` and `maxZ` and refuses any other key. Every bound is explicit, so unlike a walk surface nothing waits on the tile
+size: the loader refuses a null entry with `CatalogCollisionBoxNull`, a non-finite bound or yaw with
+`CatalogCollisionBoxNonFinite` and a min that is not below its max on any axis, an inverted or empty box, with
+`CatalogCollisionBoxBoundsUnordered`, each carrying `CollisionBoxIndex`. `Merge` re-runs the checks. An empty list
+loads as null. A boxed archetype needs no `collisionHeight`, since every box carries its own top. A roof builds no
+physics collider at all, so boxes on a roof are inert, as its collision kind is. Boxes change no footprint, no tile
+collision and no pathing (see [collision](#collision-derived-and-never-authored)). `OfCatalogs` digests every box value
+only for an archetype that lists any, so a catalog without boxes keeps its digest.
 
 `TilesPerMetre` is the optional `tilesPerMetre` catalog field, the texture repeats per metre the textured ground
 path gives that material, null to take the renderer default of 0.5. `MaterialSource(id)` returns the catalog
@@ -544,6 +590,13 @@ touches that has no storage yet, dropping the storage of any it touches that the
 deleted region reads blocked again rather than turning into walkable void), and gathering objects out to a margin
 taken from the catalogs' largest footprint. THE CALLER MUST PASS A RECT COVERING THE FULL FOOTPRINT of anything it
 removed, measured with `TileFootprint.Of` BEFORE the removal. `EdgeFlag` and `WallFacing` are the mapping helpers.
+
+An archetype's `collisionBoxes` never reach the map. A boxed `Solid` blocks its whole footprint and a boxed
+`Diagonal` its anchor tile, exactly as without boxes, for four reasons. The map is the tile-resolution model the
+pathfinder, `is_walkable` and scatter tools read, and at that resolution a tile partly filled by a bench is not one an
+agent can occupy. Edits rebake by footprint rects, and boxes may overhang their footprint. Adding boxes then changes
+the physics shape only, so pathing and every check built on the map keep their meaning. And `CanStep` already lets a
+body out of a blocked tile, so one standing on a seat or in a footprint's empty strip still paths away.
 
 `TileCollisionMap` is the storage, keyed by region and plane, never persisted. Reads outside storage answer
 `Blocked`, so an unloaded region is a wall rather than a void, and an `Or` outside storage is a NO-OP.

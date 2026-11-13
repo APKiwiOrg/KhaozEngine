@@ -14,6 +14,7 @@ public class TopDownOverlayPainterTests
     const int PxPerTile = 4;
     static readonly TileRect Rect = new(0, 0, 4, 4);
     const int Size = 4 * PxPerTile;
+    static readonly TileWorldCatalogs NoCatalogs = TileWorldCatalogs.Empty();
 
     static byte[] Buffer(byte fill)
     {
@@ -56,7 +57,7 @@ public class TopDownOverlayPainterTests
         (TileWorldDocument doc, TileCollisionMap collision) = World();
         byte[] rgba = Buffer(255);
 
-        TopDownOverlayPainter.Paint(rgba, Size, Size, Rect, 0, PxPerTile, doc, collision, new[] { "grid" });
+        TopDownOverlayPainter.Paint(rgba, Size, Size, Rect, 0, PxPerTile, doc, NoCatalogs, collision, new[] { "grid" });
 
         // Black at 0.35 over white: 255 + (0 - 255) * 0.35 = 165.75, rounded to 166. Sampled where exactly one
         // line runs, since a crossing is blended by both of them.
@@ -77,7 +78,7 @@ public class TopDownOverlayPainterTests
         collision.Or(2, 3, 0, TileCollisionFlags.WallN);
         byte[] rgba = Buffer(255);
 
-        TopDownOverlayPainter.Paint(rgba, Size, Size, Rect, 0, PxPerTile, doc, collision, new[] { "collision" });
+        TopDownOverlayPainter.Paint(rgba, Size, Size, Rect, 0, PxPerTile, doc, NoCatalogs, collision, new[] { "collision" });
 
         // Tile (1, 1) spans columns 4..7 and rows 8..11 (z 1 is the third band from the top).
         // (200, 40, 40) at 0.4 over white is (233, 169, 169).
@@ -88,6 +89,41 @@ public class TopDownOverlayPainterTests
         Assert.Equal<(byte, byte, byte, byte)>((255, 255, 255, 255), Pixel(rgba, 9, 1));
     }
 
+    // A boxed prop shows the shape physics collides with inside the tiles the map blocks. The 2x1 seat at (1, 1) has
+    // one box over the middle of its west tile, world x 1.25 to 1.75 and tile z 1.25 to 1.75, which is pixel columns 5
+    // and 6 and rows 9 and 10. The 1x1 rail at (1, 2) is one thin box turned 45 degrees clockwise from above, so it runs
+    // from the tile's north-west corner to its south-east one and never along the other diagonal. Issue
+    // https://github.com/APKiwiOrg/KhaozEngine/issues/1782.
+    [Fact]
+    public void Collision_FillsEachPlacedCollisionBoxOverTheTilesTheMapBlocks()
+    {
+        (TileWorldDocument doc, _) = World();
+        TileWorldCatalogs catalogs = TileWorldCatalogs.LoadJson("""
+            { "archetypes": [
+                { "id": "seat", "name": "seat", "meshRef": "m", "sizeX": 2, "collisionKind": "Solid",
+                  "collisionBoxes": [ { "minX": -0.75, "maxX": -0.25, "minZ": -0.25, "maxZ": 0.25, "maxY": 0.45 } ] },
+                { "id": "rail", "name": "rail", "meshRef": "m", "collisionKind": "Solid",
+                  "collisionBoxes": [ { "minX": -0.6, "maxX": 0.6, "minZ": -0.08, "maxZ": 0.08, "maxY": 1, "yawDegrees": 45 } ] } ] }
+            """, "boxes.json");
+        doc.AddObject("seat", 1, 1, 0, 0);
+        doc.AddObject("rail", 1, 2, 0, 0);
+        TileCollisionMap collision = TileCollisionBaker.Bake(doc, catalogs);
+        byte[] rgba = Buffer(255);
+
+        TopDownOverlayPainter.Paint(rgba, Size, Size, Rect, 0, PxPerTile, doc, catalogs, collision, new[] { "collision" });
+
+        // (250, 200, 40) at 0.6 over the blocked tint (233, 169, 169) is (243, 188, 92).
+        (byte, byte, byte, byte) boxed = (243, 188, 92, 255), blocked = (233, 169, 169, 255);
+        Assert.Equal(boxed, Pixel(rgba, 5, 9));
+        Assert.Equal(boxed, Pixel(rgba, 6, 10));
+        Assert.Equal(blocked, Pixel(rgba, 4, 9));
+        Assert.Equal(blocked, Pixel(rgba, 9, 9));
+        // The rail: a pixel 0.375 m south-east of its centre is on it, the one 0.375 m north-east is not.
+        Assert.Equal(boxed, Pixel(rgba, 7, 7));
+        Assert.Equal(blocked, Pixel(rgba, 7, 4));
+        Assert.Equal<(byte, byte, byte, byte)>((255, 255, 255, 255), Pixel(rgba, 5, 13));
+    }
+
     [Fact]
     public void Objects_DotTheAnchorTileOfTheQueriedPlane()
     {
@@ -96,7 +132,7 @@ public class TopDownOverlayPainterTests
         doc.AddObject("tree", 3, 0, 0, 0);
         byte[] rgba = Buffer(0);
 
-        TopDownOverlayPainter.Paint(rgba, Size, Size, Rect, 0, PxPerTile, doc, collision, new[] { "objects" });
+        TopDownOverlayPainter.Paint(rgba, Size, Size, Rect, 0, PxPerTile, doc, NoCatalogs, collision, new[] { "objects" });
 
         (byte r, byte g, byte b) = TopDownOverlayPainter.ObjectColor("tree");
         // The north-west object sits in the top-left band, centred on (2, 2) with a three pixel dot.
@@ -114,7 +150,7 @@ public class TopDownOverlayPainterTests
         byte[] rgba = Buffer(0);
 
         // The rect starts at the origin, so its west edge and its south edge are both region borders.
-        TopDownOverlayPainter.Paint(rgba, Size, Size, Rect, 0, PxPerTile, doc, collision, new[] { "regions" });
+        TopDownOverlayPainter.Paint(rgba, Size, Size, Rect, 0, PxPerTile, doc, NoCatalogs, collision, new[] { "regions" });
 
         Assert.Equal<(byte, byte, byte, byte)>((255, 255, 255, 255), Pixel(rgba, 0, 8));
         Assert.Equal<(byte, byte, byte, byte)>((255, 255, 255, 255), Pixel(rgba, 1, 8));
@@ -131,10 +167,10 @@ public class TopDownOverlayPainterTests
         IReadOnlyList<string> grid = TopDownOverlayPainter.Parse("grid");
 
         Assert.Throws<ArgumentException>(() =>
-            TopDownOverlayPainter.Paint(Buffer(0), Size, Size, new TileRect(0, 0, 3, 4), 0, PxPerTile, doc, collision, grid));
+            TopDownOverlayPainter.Paint(Buffer(0), Size, Size, new TileRect(0, 0, 3, 4), 0, PxPerTile, doc, NoCatalogs, collision, grid));
         Assert.Throws<ArgumentException>(() =>
-            TopDownOverlayPainter.Paint(new byte[16], Size, Size, Rect, 0, PxPerTile, doc, collision, grid));
+            TopDownOverlayPainter.Paint(new byte[16], Size, Size, Rect, 0, PxPerTile, doc, NoCatalogs, collision, grid));
         Assert.Throws<ArgumentException>(() =>
-            TopDownOverlayPainter.Paint(Buffer(0), Size, Size, new TileRect(0, 0, 0, 0), 0, PxPerTile, doc, collision, grid));
+            TopDownOverlayPainter.Paint(Buffer(0), Size, Size, new TileRect(0, 0, 0, 0), 0, PxPerTile, doc, NoCatalogs, collision, grid));
     }
 }

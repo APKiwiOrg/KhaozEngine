@@ -12,8 +12,9 @@ namespace KhaozEngine.Tests.TileWorld.Physics;
 
 /// <summary>A character driven through <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
 /// over a tile world's registered colliders, its floor, normal and water samplers: it climbs a slope, passes a door,
-/// is stopped by walls and blocked tiles, walks under a deck and stands on it, and wades a river.</summary>
-public class CharacterOnTileWorldTests
+/// is stopped by walls and blocked tiles, walks under a deck and stands on it, wades a river, and meets a bench's
+/// authored collision boxes.</summary>
+public partial class CharacterOnTileWorldTests
 {
     const float Dt = 1f / 60f;
 

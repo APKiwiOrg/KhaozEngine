@@ -68,9 +68,16 @@ public static class TileObjectPlacement
     // off zero. That error is under a micrometre on any mesh, but it decides which side of an inclusive edge a
     // point exactly ON the edge falls, and a deck edge sits exactly on a tile corner often enough to matter.
     // Local to world is x' = x cos + z sin, z' = z cos - x sin, the row-vector rotation Vector3.Transform applies.
-    internal static void PlanarBasis(TileObjectArchetype archetype, int rotation, out float cos, out float sin)
+    internal static void PlanarBasis(TileObjectArchetype archetype, int rotation, out float cos, out float sin) =>
+        PlanarBasis(rotation * (double)DegreesPerRotation + archetype.YawOffsetDegrees, YawRadians(archetype, rotation),
+            out cos, out sin);
+
+    // The same basis for any whole turn in degrees, which decides the exact quarter-turn case, with the yaw in radians
+    // the trigonometry takes otherwise. A collision box turns by the instance rotation, the archetype's yaw offset and
+    // its own yaw together, so it shares this one rule with the object it belongs to.
+    internal static void PlanarBasis(double turnDegrees, float yawRadians, out float cos, out float sin)
     {
-        double quarters = (rotation * (double)DegreesPerRotation + archetype.YawOffsetDegrees) / DegreesPerRotation;
+        double quarters = turnDegrees / DegreesPerRotation;
         if (quarters == Math.Floor(quarters) && Math.Abs(quarters) < 1e15)
         {
             // The yaw is minus the turn, so quarter k is an angle of -k * 90 degrees.
@@ -82,8 +89,7 @@ public static class TileObjectPlacement
                 default: cos = 0f; sin = 1f; return;
             }
         }
-        float yaw = YawRadians(archetype, rotation);
-        cos = MathF.Cos(yaw);
-        sin = MathF.Sin(yaw);
+        cos = MathF.Cos(yawRadians);
+        sin = MathF.Sin(yawRadians);
     }
 }

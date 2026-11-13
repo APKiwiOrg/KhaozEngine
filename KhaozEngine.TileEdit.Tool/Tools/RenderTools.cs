@@ -33,7 +33,7 @@ public sealed class RenderTools(RenderService render)
         [Description("Rect height in tiles, z + height exclusive.")] int height,
         [Description("Plane index to draw, 0 is the ground storey.")] int plane,
         [Description("Pixels per tile, at least 1. Defaults to 4, which keeps a whole 64 tile region inside a 256 pixel image.")] int pxPerTile = 4,
-        [Description("Comma list of overlays to paint: grid, collision, objects, regions. Empty (the default) paints none. An unknown name fails before any GPU work.")] string overlays = "",
+        [Description("Comma list of overlays to paint: grid, collision, objects, regions. collision tints blocked tiles, lines walls and fills each authored collision box where physics places it. Empty (the default) paints none. An unknown name fails before any GPU work.")] string overlays = "",
         [Description("Optional path to also write the PNG to. A relative path resolves against the OPEN WORLD's directory, and the directory is created. Null returns the image only.")] string? savePath = null)
         => ToolGuard.Guard(() => Blocks(render.RenderTopDown(new TileRect(x, z, width, height), plane, pxPerTile,
             overlays, savePath)));

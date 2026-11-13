@@ -124,6 +124,38 @@ public class TileCollisionBakerTests
         Assert.Equal(TileCollisionFlags.None, map.Get(44, 45, 0));
     }
 
+    // Collision boxes refine only the physics shape. The tile map still blocks what the kind blocks: the whole bench
+    // footprint though its one box covers part of one tile, and the diagonal's anchor tile, tile for tile the map the
+    // same world bakes without boxes. Issue https://github.com/APKiwiOrg/KhaozEngine/issues/1782.
+    [Fact]
+    public void Collision_boxes_leave_the_tile_map_to_the_kinds_footprint_rule()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.AddObject("bench", 40, 40, 0, 0);
+        doc.AddObject("bench", 44, 44, 0, 1);
+        doc.AddObject("diag_wall", 30, 30, 0, 1);
+        TileWorldCatalogs boxed = TileWorldCatalogs.Greybox();
+        // The 1x2 bench's box sits inside its south tile alone, local z 0.25 to 0.75 of its -1 to 1.
+        boxed.Archetype("bench")!.CollisionBoxes = new()
+        {
+            new TileCollisionBox { MinX = -0.25f, MaxX = 0.25f, MinZ = 0.25f, MaxZ = 0.75f, MaxY = 0.45f },
+        };
+        boxed.Archetype("diag_wall")!.CollisionBoxes = new()
+        {
+            new TileCollisionBox { MinX = -0.7f, MaxX = 0.7f, MinZ = -0.05f, MaxZ = 0.05f, MaxY = 2f, YawDegrees = 45f },
+        };
+
+        TileCollisionMap withBoxes = TileCollisionBaker.Bake(doc, boxed);
+        TileCollisionMap without = TileCollisionBaker.Bake(doc, Cat);
+
+        Assert.Equal(TileCollisionFlags.Blocked, withBoxes.Get(40, 41, 0));
+        Assert.Equal(TileCollisionFlags.Blocked, withBoxes.Get(45, 44, 0));
+        Assert.Equal(TileCollisionFlags.Blocked, withBoxes.Get(30, 30, 0));
+        for (int z = 0; z < TileRegion.Size; z++)
+            for (int x = 0; x < TileRegion.Size; x++)
+                Assert.Equal(without.Get(x, z, 0), withBoxes.Get(x, z, 0));
+    }
+
     [Fact]
     public void A_border_wall_does_not_open_the_missing_neighbour_region()
     {

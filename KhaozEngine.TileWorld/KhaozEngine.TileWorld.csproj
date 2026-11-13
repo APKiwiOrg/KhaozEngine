@@ -22,10 +22,12 @@
          mesher's optical audit uses. -->
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <!-- The collider builder places object boxes with the same quarter-turn basis the renderer uses
-         (TileObjectPlacement.PlanarBasis and AnchorPlanar), so a box can never drift from its drawn model. -->
+         (TileObjectPlacement.PlanarBasis and AnchorPlanar), so a box can never drift from its drawn model, and builds
+         authored collision boxes through the one placement rule ke-tileedit draws them with (TileCollisionBoxes). -->
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics" />
     <!-- ke-tileedit writes catalog files through the same tmp-and-rename primitive the world save uses
-         (TileWorldFile.WriteAtomic), so a catalog is always one complete file. -->
+         (TileWorldFile.WriteAtomic), so a catalog is always one complete file, and reports and draws collision boxes
+         through the placement physics builds them with (TileCollisionBoxes), so the two never disagree. -->
     <InternalsVisibleTo Include="KhaozEngine.TileEdit.Tool" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <EmbeddedResource Include="tileworld.catalog.schema.json" />

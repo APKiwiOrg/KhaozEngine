@@ -13,7 +13,8 @@ public enum TileColliderKind : byte
     Wall,
     /// <summary>A tile with no underlay or marked <see cref="TileSettings.Blocked"/>, a box.</summary>
     Blocked,
-    /// <summary>A placed <c>Solid</c> or <c>Diagonal</c> object, a box.</summary>
+    /// <summary>A placed <c>Solid</c> or <c>Diagonal</c> object: a box over its footprint or anchor tile, or one box per
+    /// authored collision box when its archetype lists them.</summary>
     Object,
     /// <summary>One walk surface of a placed object, a thin box under its top.</summary>
     WalkSurface,

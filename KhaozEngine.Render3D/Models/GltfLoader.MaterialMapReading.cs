@@ -89,7 +89,7 @@ namespace KhaozEngine.Render3D
         static DecodedImage? DecodeChannel(GltfMaterial mat, string key, string? assetDirectory)
         {
             if (ChannelImage(mat, key) is not { } image) return null;
-            MaterialImageSource? source = MaterialImageCache.Resolve(ImageIdentity(image, assetDirectory), image.Content.Span);
+            MaterialImageSource? source = MaterialImageCache.Shared.Resolve(ImageIdentity(image, assetDirectory), image.Content.Span);
             return source is null ? null : new DecodedImage(source);
         }
 

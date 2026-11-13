@@ -151,24 +151,54 @@ public class TileCollisionBoxPlacementTests
         Assert.Equal(-1.5f, placed.Bottom, Tolerance);
     }
 
+    // A ground search can span more corners than an int counts. Regions (-1, 0) and (33554431, 0), the last region
+    // column of the corner domain, bound a range from x -64 to int.MaxValue, so its far edge is past int.MaxValue and
+    // it is 2^31 + 64 corners wide. Every corner the two regions own or edge-read stands at 1 m and every corner between
+    // them reads the base height, 0. So a grounded box over the range reaches down to 0 rather than resting on the
+    // loaded terrain's 1 m above the missing ground, and the search still reads only the loaded terrain. From the
+    // re-check of https://github.com/APKiwiOrg/KhaozEngine/issues/1782.
+    [Fact]
+    public void A_box_over_a_range_wider_than_int_still_counts_the_corners_between_its_regions()
+    {
+        RegionCoord near = new(-1, 0), last = new(33554431, 0);
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, near, last);
+        SetOwnedCorners(doc, near, 100);
+        SetOwnedCorners(doc, last, 100);
+        var box = new TileCollisionBox { MinX = -1e30f, MaxX = 1e30f, MaxY = 1f, MinZ = -0.25f, MaxZ = 0.25f };
+        var o = new TileObject { Id = 7, ArchetypeId = "bench", X = -2, Z = 5 };
+
+        TilePlacedCollisionBox placed = Place(doc, Bench(0f, box), o, box);
+        Assert.Equal(0f, placed.Bottom, Tolerance);
+
+        TileCollisionBoxes.LowestCornerCm(doc, 0, near.OriginX, int.MaxValue, 5, 6, out long read);
+        long loadedTerrain = 2L * (TileRegion.Size * TileRegion.Size + 2 * (TileRegion.Size + 1));
+        Assert.True(read <= loadedTerrain, $"read {read} corners, the loaded terrain is {loadedTerrain}");
+    }
+
     // Reading loaded terrain alone answers what the document's own corner read answers over every corner of the range:
     // an owned corner, a missing region's seam corner that edge-reads its loaded neighbour, and a missing region's inner
-    // corner, which reads the base height. Each row's minimum comes from a different kind of corner (see SeamWorld).
+    // corner, which reads the base height. Each row's minimum comes from a different kind of corner (see SeamWorld and
+    // DomainEdgeWorld).
     [Theory]
-    [InlineData(10, 20, 10, 20)]
-    [InlineData(64, 64, 10, 12)]
-    [InlineData(64, 66, 10, 12)]
-    [InlineData(60, 130, 5, 5)]
-    [InlineData(64, 64, 64, 64)]
-    [InlineData(10, 10, 128, 128)]
-    [InlineData(140, 141, 70, 71)]
-    public void The_lowest_corner_reads_a_missing_corner_as_the_document_does(int x0, int x1, int z0, int z1)
+    [InlineData("seams", 10, 20, 10, 20)]
+    [InlineData("seams", 64, 64, 10, 12)]
+    [InlineData("seams", 64, 66, 10, 12)]
+    [InlineData("seams", 60, 130, 5, 5)]
+    [InlineData("seams", 64, 64, 64, 64)]
+    [InlineData("seams", 10, 10, 128, 128)]
+    [InlineData("seams", 140, 141, 70, 71)]
+    [InlineData("domain edge", 2147483584, int.MaxValue, 5, 6)]
+    [InlineData("domain edge", 64, 64, 2147483600, int.MaxValue)]
+    [InlineData("domain edge", int.MinValue, int.MinValue, 5, 6)]
+    [InlineData("domain edge", 10, 11, int.MinValue, int.MinValue)]
+    [InlineData("domain edge", int.MinValue, -2147483578, 70, 70)]
+    public void The_lowest_corner_reads_a_missing_corner_as_the_document_does(string world, int x0, int x1, int z0, int z1)
     {
-        TileWorldDocument doc = SeamWorld();
+        TileWorldDocument doc = world == "seams" ? SeamWorld() : DomainEdgeWorld();
         short expected = short.MaxValue;
-        for (int z = z0; z <= z1; z++)
-            for (int x = x0; x <= x1; x++)
-                expected = Math.Min(expected, doc.CornerHeightCm(x, z, 0));
+        for (long z = z0; z <= z1; z++)
+            for (long x = x0; x <= x1; x++)
+                expected = Math.Min(expected, doc.CornerHeightCm((int)x, (int)z, 0));
 
         Assert.Equal(expected, TileCollisionBoxes.LowestCornerCm(doc, 0, x0, x1, z0, z1, out _));
     }
@@ -186,15 +216,51 @@ public class TileCollisionBoxPlacementTests
         var east = new RegionCoord(2, 0);
         var north = new RegionCoord(0, 1);
         TileWorldDocument doc = TileWorldTestData.FlatWorld(4, south, east, north);
-        foreach ((RegionCoord region, short height) in new[] { (south, (short)200), (east, (short)300), (north, (short)250) })
-            for (int z = region.OriginZ; z < region.OriginZ + TileRegion.Size; z++)
-                for (int x = region.OriginX; x < region.OriginX + TileRegion.Size; x++)
-                    doc.SetCornerHeightCm(x, z, 0, height);
+        SetOwnedCorners(doc, south, 200);
+        SetOwnedCorners(doc, east, 300);
+        SetOwnedCorners(doc, north, 250);
         for (int z = 0; z < TileRegion.Size; z++) doc.SetCornerHeightCm(TileRegion.Size - 1, z, 0, 120);
         for (int z = TileRegion.Size; z < 2 * TileRegion.Size; z++) doc.SetCornerHeightCm(TileRegion.Size - 1, z, 0, 130);
         for (int x = 0; x < TileRegion.Size; x++) doc.SetCornerHeightCm(x, 2 * TileRegion.Size - 1, 0, 140);
         doc.SetCornerHeightCm(130, 5, 0, -90);
         return doc;
+    }
+
+    // Regions (33554431, 0) and (0, 33554431) are the last region column and row of the int corner domain, so their far
+    // edges are past int.MaxValue. The document's corner read takes a missing corner's west and south neighbours with
+    // wrapping int arithmetic, so it reads those regions' east and north edges from the domain's first column and row.
+    // (33554431, 0) stands at 100 cm with its east column, x int.MaxValue, at -70. (0, 33554431) stands at 200 with its
+    // east column at -80 and the rest of its north row, z int.MaxValue, at -60. (-33554432, 1), the first region column,
+    // stands at 100, and (33554432, 1), a region the document admits but whose origin wraps onto the same corners, is
+    // never read for them. So the rows above find, in order: owned corners up to int.MaxValue (-70), the seam east of
+    // (0, 33554431) in rows up to int.MaxValue (-80), the seams the document reads across the domain's edge, east of
+    // (33554431, 0) on the first column (-70) and north of (0, 33554431) on the first row (-60), and past the first
+    // column's own corners and seam the base height (0), which counting the wrapped region's corners as owned would hide.
+    static TileWorldDocument DomainEdgeWorld()
+    {
+        var lastColumn = new RegionCoord(33554431, 0);
+        var lastRow = new RegionCoord(0, 33554431);
+        var firstColumn = new RegionCoord(-33554432, 1);
+        var wrapped = new RegionCoord(33554432, 1);
+        TileWorldDocument doc = TileWorldTestData.FlatWorld(4, lastColumn, lastRow, firstColumn, wrapped);
+        SetOwnedCorners(doc, lastColumn, 100);
+        SetOwnedCorners(doc, lastRow, 200);
+        SetOwnedCorners(doc, firstColumn, 100);
+        for (int dz = 0; dz < TileRegion.Size; dz++)
+        {
+            doc.SetCornerHeightCm(int.MaxValue, lastColumn.OriginZ + dz, 0, -70);
+            doc.SetCornerHeightCm(TileRegion.Size - 1, lastRow.OriginZ + dz, 0, -80);
+        }
+        for (int x = 0; x < TileRegion.Size - 1; x++) doc.SetCornerHeightCm(x, int.MaxValue, 0, -60);
+        return doc;
+    }
+
+    // Every corner a region owns, counted from its origin so the last region of the domain does not wrap.
+    static void SetOwnedCorners(TileWorldDocument doc, RegionCoord region, short cm)
+    {
+        for (int dz = 0; dz < TileRegion.Size; dz++)
+            for (int dx = 0; dx < TileRegion.Size; dx++)
+                doc.SetCornerHeightCm(region.OriginX + dx, region.OriginZ + dz, 0, cm);
     }
 
     // Finite, ordered bounds whose float sum overflows still have a midpoint and a half extent a float holds, so the box
@@ -221,9 +287,12 @@ public class TileCollisionBoxPlacementTests
     }
 
     // A loaded box can still be edited in memory, and one that cannot be a volume places nothing rather than a shape
-    // no physics backend can hold. The last two are valid where authored. One turns through a yaw offset and a box yaw
-    // whose sum leaves the float range, so it has no orientation. The other collapses once added to a standing height
-    // too large for its thickness to survive.
+    // no physics backend can hold. The last three are valid where authored. One turns through a yaw offset and a box
+    // yaw whose sum leaves the float range, so it has no orientation. One is too thin to survive being added to its
+    // standing height: its top and bottom differ in double but round to the same float, the height the editor reports.
+    // The last fits a float in every value, but turned 45 degrees its corners reach past the float range, so the bounds
+    // physics declares for it are not finite. Its control is the same box unturned. From the re-check of
+    // https://github.com/APKiwiOrg/KhaozEngine/issues/1782.
     [Theory]
     [InlineData("null")]
     [InlineData("inverted")]
@@ -231,9 +300,11 @@ public class TileCollisionBoxPlacementTests
     [InlineData("infinite yaw")]
     [InlineData("overflowing turn")]
     [InlineData("absorbed")]
+    [InlineData("turned past the float range")]
     public void A_box_that_cannot_be_a_volume_places_nothing(string defect)
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        TileCollisionBox control = OffCentre();
         TileCollisionBox? box = OffCentre();
         float yawOffset = 0f;
         switch (defect)
@@ -246,16 +317,21 @@ public class TileCollisionBoxPlacementTests
                 yawOffset = 3e38f;
                 box.YawDegrees = 3e38f;
                 break;
-            default:
-                for (int z = 0; z < TileRegion.Size; z++)
-                    for (int x = 0; x < TileRegion.Size; x++)
-                        doc.SetCornerHeightCm(x, z, 0, 30000);
+            case "absorbed":
+                SetOwnedCorners(doc, new RegionCoord(0, 0), 30000);
                 box.MinY = 0f;
-                box.MaxY = 1e-30f;
+                box.MaxY = 1e-6f;
+                break;
+            default:
+                control = new TileCollisionBox { MinX = -3e38f, MaxX = 3e38f, MinY = 1f, MaxY = 2f, MinZ = -3e38f, MaxZ = 3e38f };
+                box = new TileCollisionBox
+                {
+                    MinX = -3e38f, MaxX = 3e38f, MinY = 1f, MaxY = 2f, MinZ = -3e38f, MaxZ = 3e38f, YawDegrees = 45f,
+                };
                 break;
         }
         TileObjectArchetype bench = Bench(yawOffset, OffCentre());
-        Assert.True(TileCollisionBoxes.TryPlace(doc, TileLoadedCorners.Of(doc), bench, Placed(0), OffCentre(), out _));
+        Assert.True(TileCollisionBoxes.TryPlace(doc, TileLoadedCorners.Of(doc), bench, Placed(0), control, out _));
 
         Assert.False(TileCollisionBoxes.TryPlace(doc, TileLoadedCorners.Of(doc), bench, Placed(0), box, out _));
     }

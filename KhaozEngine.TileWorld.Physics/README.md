@@ -293,13 +293,19 @@ back's height over the whole 2x1. The placement is the one rule `ke-tileedit` dr
   stops at the loaded regions' bounding corners, past which the ground carries on level as the floor sampler has it.
   It reads only the loaded regions under the box: their own corners, then the seam corners along their east and north
   edges that edge-read them, and the base height once when the box covers any other missing corner. So a box spanning
-  sparse regions costs the loaded terrain under it, never the empty space between.
+  sparse regions costs the loaded terrain under it, never the empty space between. The search holds over the whole int
+  corner domain: a range wider than an int counts its corners in wide arithmetic, the domain's last region column and
+  row are searched up to `int.MaxValue`, and their seams wrap onto the domain's first column and row exactly as
+  `CornerHeightCm` wraps its west and south neighbours.
 - **Collision height:** not read. Every box carries its own top, so a boxed archetype needs no `collisionHeight`.
 - **Range:** every sum is taken in double and only the final centre, half extents, bottom, top and orientation become
   floats, each checked, so finite bounds whose float sum would overflow still place at their midpoint. A box edited in
-  memory after load into one that cannot be a volume (null, non-finite or inverted), and one whose placed values or
-  turn leave the float range or whose thickness does not survive being added to its standing height, gets no
-  collider.
+  memory after load into one that cannot be a volume (null, non-finite or inverted) gets no collider. Neither does one
+  whose placed values or turn leave the float range, one whose bottom and top round to the same float at its standing
+  height (the editor reports those floats, so a box with no height there has none in physics either), or one whose
+  turned corners reach past the float range. The last is judged by the bounds the build declares for every collider to
+  the movement extent, each corner moved by its pose in float and widened by one representable value, so a box that
+  places always has finite bounds there and the build never refuses its movement extent over a box.
 
 The tile collision map is unchanged by boxes: the object still blocks its footprint or anchor tile there, the
 reasons are in the [`KhaozEngine.TileWorld` README](../KhaozEngine.TileWorld/README.md#collision-derived-and-never-authored).

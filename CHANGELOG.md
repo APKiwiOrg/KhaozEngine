@@ -15,8 +15,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `TileWorldColliders.Build` builds one `Object` box per authored box in place of the box over the footprint or anchor
   tile, turned with the object and by each box's own yaw about its centre, from the placed standing height to each
   box's top. A box resting on the base reaches down to the lowest ground corner under it on a slope, and a raised box
-  keeps its bottom. A boxed archetype needs no `collisionHeight`. The tile collision map and pathing are unchanged, so
-  a boxed object still blocks its footprint or anchor tile. The loader refuses boxes on `None`, `Wall` and
+  keeps its bottom. A boxed archetype needs no `collisionHeight`. A box a float cannot place (a value or turn past the
+  float range, a height that rounds away at its standing height, or turned corners past the float range) builds no
+  collider rather than failing the build. The tile collision map and pathing are unchanged, so a boxed object still
+  blocks its footprint or anchor tile. The loader refuses boxes on `None`, `Wall` and
   `WallCorner` archetypes and null, non-finite, inverted or empty boxes with the new `TileWorldRefusal` members
   `CatalogCollisionBoxKindUnsupported`, `CatalogCollisionBoxNull`, `CatalogCollisionBoxNonFinite` and
   `CatalogCollisionBoxBoundsUnordered`, which carry the new `TileWorldException.CollisionBoxIndex`.

@@ -6,9 +6,10 @@ namespace KhaozEngine.TileWorld;
 
 /// <summary>One authored collision box placed in the world, in absolute document metres: the box tile world physics
 /// builds and the tile editor draws and reports. Checked before it is handed out: every value is a finite float, every
-/// half extent is above 0 and <see cref="Orientation"/> is a unit quaternion. That is the identity for a box whose
-/// whole turn is a quarter turn, with the half extents already along the world axes, and a yaw about +Y otherwise,
-/// with <see cref="YawDegrees"/> the turn clockwise seen from above.</summary>
+/// half extent is above 0, <see cref="Bottom"/> is below <see cref="Top"/>, <see cref="Orientation"/> is a unit
+/// quaternion, and the bounds physics declares for the box (<see cref="TileColliderBounds"/>) are finite. The
+/// orientation is the identity for a box whose whole turn is a quarter turn, with the half extents already along the
+/// world axes, and a yaw about +Y otherwise, with <see cref="YawDegrees"/> the turn clockwise seen from above.</summary>
 internal readonly record struct TilePlacedCollisionBox(Vector3 Centre, Vector3 HalfExtents, float Bottom, float Top,
     Quaternion Orientation, float YawDegrees)
 {
@@ -33,21 +34,27 @@ internal readonly struct TileLoadedCorners
         (_minX, _maxX, _minZ, _maxZ, _tileSize) = (minX, maxX, minZ, maxZ, tileSize);
 
     /// <summary>The corners of every loaded region, from the first region's south-west corner to the last one's far
-    /// edge inclusive. A document with no region answers the single corner at the origin.</summary>
+    /// edge inclusive: the rectangle the floor sampler bounds, taken from the region indices in wide arithmetic and
+    /// clamped to the int corner domain, so the far edge of the domain's last region column or row, past
+    /// <see cref="int.MaxValue"/>, stops at the domain's last corner. A document with no region answers the single
+    /// corner at the origin.</summary>
     internal static TileLoadedCorners Of(TileWorldDocument document)
     {
-        int minX = int.MaxValue, maxX = int.MinValue, minZ = int.MaxValue, maxZ = int.MinValue;
+        long minX = long.MaxValue, maxX = long.MinValue, minZ = long.MaxValue, maxZ = long.MinValue;
         foreach (RegionCoord region in document.Regions.Keys)
         {
-            minX = Math.Min(minX, region.OriginX);
-            maxX = Math.Max(maxX, region.OriginX + TileRegion.Size);
-            minZ = Math.Min(minZ, region.OriginZ);
-            maxZ = Math.Max(maxZ, region.OriginZ + TileRegion.Size);
+            minX = Math.Min(minX, region.Rx);
+            maxX = Math.Max(maxX, region.Rx);
+            minZ = Math.Min(minZ, region.Rz);
+            maxZ = Math.Max(maxZ, region.Rz);
         }
         return minX > maxX
             ? new TileLoadedCorners(0, 0, 0, 0, document.TileSize)
-            : new TileLoadedCorners(minX, maxX, minZ, maxZ, document.TileSize);
+            : new TileLoadedCorners(Corner(minX * TileRegion.Size), Corner((maxX + 1) * TileRegion.Size),
+                Corner(minZ * TileRegion.Size), Corner((maxZ + 1) * TileRegion.Size), document.TileSize);
     }
+
+    static int Corner(long corner) => (int)Math.Clamp(corner, int.MinValue, int.MaxValue);
 
     /// <summary>The lattice corners under a plan rect in world metres, inclusive, clamped to these corners. World z runs
     /// against tile z, so the rect's lowest world z is its highest tile z.</summary>
@@ -82,8 +89,9 @@ internal readonly struct TileLoadedCorners
 /// loaded regions' bounding corners, and the search touches only the loaded regions under the box. A box raised off
 /// the base keeps its authored bottom, so the space under a table top or an awning stays open.</para>
 /// <para>Every sum is taken in double and only the final values become floats, each checked, so a box whose finite
-/// bounds would overflow a float sum still places at its midpoint, and one that a float cannot hold places
-/// nothing.</para>
+/// bounds would overflow a float sum still places at its midpoint, and one that a float cannot hold places nothing:
+/// a value or a turn past the float range, a height that rounds away at its standing height, or turned corners past
+/// the float range, which physics could not declare bounds for.</para>
 /// </summary>
 internal static class TileCollisionBoxes
 {
@@ -95,8 +103,9 @@ internal static class TileCollisionBoxes
         && archetype.CollisionKind is TileCollisionKind.Solid or TileCollisionKind.Diagonal;
 
     /// <summary>Places one box of a placed object's archetype. False for a null box, or one edited after load into a
-    /// non-finite or empty one, and for one whose placed centre, extents or turn leave the float range or whose
-    /// thickness does not survive being added to its standing height. Each places nothing, the way a walk surface rect
+    /// non-finite or empty one, and for one whose placed centre, extents, turn or turned corners leave the float range
+    /// or whose thickness does not survive being added to its standing height, as the bottom and top floats the editor
+    /// reports. Each places nothing, the way a walk surface rect
     /// that resolves empty covers nothing.</summary>
     internal static bool TryPlace(TileWorldDocument document, TileLoadedCorners corners, TileObjectArchetype archetype,
         TileObject o, TileCollisionBox? box, out TilePlacedCollisionBox placed)
@@ -157,15 +166,24 @@ internal static class TileCollisionBoxes
         return true;
     }
 
-    // A box a backend can hold: every coordinate a finite float, every half extent above 0, and the orientation a unit
-    // quaternion. A value past the float range, a turn whose sum left it, or a box too thin to survive being added to
-    // its standing height fails here.
-    static bool Holdable(Vector3 centre, Vector3 halfExtents, float bottom, float top, Quaternion orientation) =>
-        float.IsFinite(centre.X) && float.IsFinite(centre.Y) && float.IsFinite(centre.Z)
-        && Positive(halfExtents.X) && Positive(halfExtents.Y) && Positive(halfExtents.Z)
-        && float.IsFinite(bottom) && float.IsFinite(top)
-        && float.IsFinite(orientation.X) && float.IsFinite(orientation.Y) && float.IsFinite(orientation.Z)
-        && float.IsFinite(orientation.W) && MathF.Abs(orientation.LengthSquared() - 1f) < 1e-3f;
+    // A box a backend can hold: every coordinate a finite float, every half extent above 0, the bottom below the top as
+    // the floats the editor reports, the orientation a unit quaternion, and the bounds physics declares for the box
+    // finite. A value past the float range, a turn whose sum left it, a box too thin to survive being added to its
+    // standing height, or one whose turned corners reach past the float range fails here.
+    static bool Holdable(Vector3 centre, Vector3 halfExtents, float bottom, float top, Quaternion orientation)
+    {
+        if (!(Finite(centre) && Positive(halfExtents.X) && Positive(halfExtents.Y) && Positive(halfExtents.Z)
+              && float.IsFinite(bottom) && float.IsFinite(top) && bottom < top
+              && float.IsFinite(orientation.X) && float.IsFinite(orientation.Y) && float.IsFinite(orientation.Z)
+              && float.IsFinite(orientation.W) && MathF.Abs(orientation.LengthSquared() - 1f) < 1e-3f))
+            return false;
+        Vector3 min = TileColliderBounds.EmptyMinimum, max = TileColliderBounds.EmptyMaximum;
+        TileColliderBounds.IncludeBox(halfExtents, centre, orientation, ref min, ref max);
+        (Vector3 minimum, Vector3 maximum) = TileColliderBounds.Widened(min, max);
+        return Finite(minimum) && Finite(maximum);
+    }
+
+    static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 
     static bool Positive(float value) => value > 0f && float.IsFinite(value);
 
@@ -181,6 +199,13 @@ internal static class TileCollisionBoxes
     /// once exactly when the range holds more corners than the owned and seam corners found in it.</para>
     /// <para><paramref name="cornersRead"/> is how many corners were read, which never exceeds the owned and seam
     /// corners of the loaded regions the range reaches.</para>
+    /// <para>It holds over the whole int corner domain. Region edges, loops and the range's size are taken in wide
+    /// arithmetic, since the domain's last region column and row end on <see cref="int.MaxValue"/> and a range across
+    /// the domain is 2^32 corners on a side. The document reads a missing corner's west and south neighbours with
+    /// wrapping int arithmetic, so a seam wraps the same way: the last region column's east seam is the domain's first
+    /// column, and the last row's north seam its first row. A region the document admits but whose origin leaves the
+    /// int domain wraps onto another region's corners, which the document never reads through it, so it supplies
+    /// none.</para>
     /// </summary>
     internal static short LowestCornerCm(TileWorldDocument document, int plane, int x0, int x1, int z0, int z1,
         out long cornersRead)
@@ -193,28 +218,32 @@ internal static class TileCollisionBoxes
         HashSet<(int X, int Z)>? seams = null;
         foreach (RegionCoord region in document.Regions.Keys)
         {
-            int ox = region.OriginX, oz = region.OriginZ;
-            int ax = Math.Max(x0, ox), bx = Math.Min(x1, ox + size - 1);
-            int az = Math.Max(z0, oz), bz = Math.Min(z1, oz + size - 1);
+            if (RegionCoord.Of(region.OriginX, region.OriginZ) != region) continue;
+            long ox = region.OriginX, oz = region.OriginZ;
+            long ax = Math.Max(x0, ox), bx = Math.Min(x1, ox + size - 1);
+            long az = Math.Max(z0, oz), bz = Math.Min(z1, oz + size - 1);
             if (ax <= bx && az <= bz)
             {
-                for (int z = az; z <= bz; z++)
-                    for (int x = ax; x <= bx; x++)
-                        lowest = Math.Min(lowest, document.CornerHeightCm(x, z, plane));
-                long count = (long)(bx - ax + 1) * (bz - az + 1);
+                for (long z = az; z <= bz; z++)
+                    for (long x = ax; x <= bx; x++)
+                        lowest = Math.Min(lowest, document.CornerHeightCm((int)x, (int)z, plane));
+                long count = (bx - ax + 1) * (bz - az + 1);
                 owned += count;
                 read += count;
             }
-            // The east seam column, its north-east corner included, then the north seam row.
-            int east = ox + size, north = oz + size;
-            if (east >= x0 && east <= x1)
-                for (int z = Math.Max(z0, oz), last = Math.Min(z1, north); z <= last; z++)
-                    ReadSeamCorner(document, plane, east, z, ref seams, ref lowest, ref read);
-            if (north >= z0 && north <= z1)
-                for (int x = Math.Max(x0, ox), last = Math.Min(x1, east); x <= last; x++)
-                    ReadSeamCorner(document, plane, x, north, ref seams, ref lowest, ref read);
+            // The east seam column beside the region's own rows, the north seam row above its own columns, and the
+            // corner north-east of it.
+            int east = unchecked((int)(ox + size)), north = unchecked((int)(oz + size));
+            bool eastInRange = east >= x0 && east <= x1, northInRange = north >= z0 && north <= z1;
+            if (eastInRange)
+                for (long z = az; z <= bz; z++)
+                    ReadSeamCorner(document, plane, east, (int)z, ref seams, ref lowest, ref read);
+            if (northInRange)
+                for (long x = ax; x <= bx; x++)
+                    ReadSeamCorner(document, plane, (int)x, north, ref seams, ref lowest, ref read);
+            if (eastInRange && northInRange) ReadSeamCorner(document, plane, east, north, ref seams, ref lowest, ref read);
         }
-        long total = (long)(x1 - x0 + 1) * (z1 - z0 + 1);
+        Int128 total = (Int128)((long)x1 - x0 + 1) * ((long)z1 - z0 + 1);
         if (total > owned + (seams?.Count ?? 0)) lowest = Math.Min(lowest, document.UnsuppliedCornerHeightCm(plane));
         cornersRead = read;
         return lowest;

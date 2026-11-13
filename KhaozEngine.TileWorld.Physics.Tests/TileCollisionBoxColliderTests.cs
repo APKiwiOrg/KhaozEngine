@@ -71,24 +71,41 @@ public class TileCollisionBoxColliderTests
         Assert.Equal(0.4f + 2f, wall.Pose.Position.Y + box.HalfExtents.Y, Tolerance);
     }
 
-    // A finite box whose bounds sum past the float range builds a finite collider at its midpoint, rather than an
-    // infinite centre the movement extent the build declares would refuse. From the review of
-    // https://github.com/APKiwiOrg/KhaozEngine/issues/1782.
+    // Boxes at the float range build whenever a float holds every corner of them, and the rest are left out rather than
+    // failing the build: the movement extent the build declares refuses bounds that are not finite. A finite box whose
+    // bounds sum past the float range builds at its midpoint. A box 6e38 m wide builds unturned, but turned 45 degrees
+    // its corners reach about 4.2e38 m, past the float range, so the same box is left out. From the review and re-check
+    // of https://github.com/APKiwiOrg/KhaozEngine/issues/1782.
     [Fact]
-    public void ABoxWhoseBoundsSumPastTheFloatRangeBuildsAFiniteCollider()
+    public void ABoxAtTheFloatRangeBuildsWhenAFloatHoldsItsCornersAndIsLeftOutWhenNot()
     {
         TileWorldCatalogs catalogs = TileWorldCatalogs.Merge(Catalogs(), TileWorldCatalogs.LoadJson("""
-            { "archetypes": [ { "id": "high_box", "name": "high_box", "meshRef": "test/high_box.glb", "collisionKind": "Solid",
-                                "collisionBoxes": [ { "minX": -0.5, "maxX": 0.5, "minZ": -0.5, "maxZ": 0.5, "minY": 2e38, "maxY": 3e38 } ] } ] }
-            """, "high-box"));
+            { "archetypes": [
+                { "id": "high_box", "name": "high_box", "meshRef": "test/high_box.glb", "collisionKind": "Solid",
+                  "collisionBoxes": [ { "minX": -0.5, "maxX": 0.5, "minZ": -0.5, "maxZ": 0.5, "minY": 2e38, "maxY": 3e38 } ] },
+                { "id": "wide_box", "name": "wide_box", "meshRef": "test/wide_box.glb", "collisionKind": "Solid",
+                  "collisionBoxes": [ { "minX": -3e38, "maxX": 3e38, "minZ": -3e38, "maxZ": 3e38, "minY": 1, "maxY": 2 } ] },
+                { "id": "turned_wide_box", "name": "turned_wide_box", "meshRef": "test/wide_box.glb", "collisionKind": "Solid",
+                  "collisionBoxes": [ { "minX": -3e38, "maxX": 3e38, "minZ": -3e38, "maxZ": 3e38, "minY": 1, "maxY": 2,
+                                        "yawDegrees": 45 } ] } ] }
+            """, "float-range-boxes"));
         TileWorldDocument doc = FlatWorld();
         doc.AddObject("high_box", 5, 5, 0, 0);
+        doc.AddObject("wide_box", 8, 5, 0, 0);
+        doc.AddObject("turned_wide_box", 11, 5, 0, 0);
 
-        TileCollider box = Assert.Single(Objects(TileWorldColliders.Build(doc, catalogs)));
+        TileCollider[] boxes = Objects(TileWorldColliders.Build(doc, catalogs));
 
-        float centreY = box.Pose.Position.Y, halfY = Assert.IsType<BoxShape>(box.Shape).HalfExtents.Y;
-        Assert.True(MathF.Abs(centreY / 2.5e38f - 1f) < 1e-6f, $"centre at {centreY}");
-        Assert.True(MathF.Abs(halfY / 5e37f - 1f) < 1e-6f, $"half height {halfY}");
+        Assert.Equal(2, boxes.Length);
+        TileCollider high = Assert.Single(boxes, b => b.Pose.Position.Y > 1e37f);
+        TileCollider wide = Assert.Single(boxes, b => b.Shape is BoxShape { HalfExtents.X: > 1e37f });
+        AssertRelative(2.5e38f, high.Pose.Position.Y);
+        AssertRelative(5e37f, Assert.IsType<BoxShape>(high.Shape).HalfExtents.Y);
+        AssertRelative(3e38f, Assert.IsType<BoxShape>(wide.Shape).HalfExtents.X);
+        AssertRelative(3e38f, Assert.IsType<BoxShape>(wide.Shape).HalfExtents.Z);
+
+        static void AssertRelative(float expected, float actual) =>
+            Assert.True(MathF.Abs(actual / expected - 1f) < 1e-6f, $"{actual} is not {expected}");
     }
 
     // Consumers fold the collider hash into their navigation bake inputs, so a box edit has to move it and putting the

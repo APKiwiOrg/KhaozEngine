@@ -1269,6 +1269,14 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   the bit. The defaults therefore keep the sampler that has sampled them exactly on all three backends since
   5.35.1, which is what keeps every untextured mesh byte-identical at any anisotropy.
   `MaterialSamplerBindingTests` fails a set that binds a default through the material sampler.
+- **lavapipe reports anisotropic filtering and samples the material tap trilinearly.** The Vulkan backend creates
+  the material sampler with `anisotropyEnable` and a maximum of 16 whenever the device reports
+  `samplerAnisotropy`, and lavapipe reports it, but llvmpipe returns the trilinear image through the model tap:
+  `MaterialAnisotropyGoldenTests` measured the same far-band contrast at 16x and at 1 (0.0346), where Metal keeps
+  2.55 times as much. The Vulkan leg's goldens of textured scenes therefore carry the trilinear look, and that test
+  holds lavapipe to the trilinear image as it holds a device without the feature. WARP and Apple GPUs filter
+  anisotropically, so the property is measured there. A temporal fact on textured ground can read differently on
+  WARP for the same reason, and `TemporalDeviceClass` states such a bound apart (#1776).
 - **A read map drains the device on Metal and Vulkan and not on Direct3D 11.** `Map` of a staging resource for
   reading waits for the whole device on Metal and on Vulkan, and only for the mapped resource on Direct3D 11, so no
   readback on the seam is free of a stall on every backend. That is why the temporal counts are sampled on request

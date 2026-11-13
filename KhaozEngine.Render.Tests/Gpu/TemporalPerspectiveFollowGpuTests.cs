@@ -191,6 +191,17 @@ namespace KhaozEngine.Tests.Gpu
             (LowPitch, FollowHeading.Towards, 3f, U, Acceptance3),     // worst 0 of 44 over 4 phases, phase 0 0
         };
 
+        /// <summary>The past-the-reach bounds WARP holds apart from <see cref="PastTheReach"/>
+        /// (<see cref="TemporalDeviceClass"/>), each set the way that table's are, from WARP's own phases. A walk listed
+        /// here holds this bound on WARP and its table bound on every other device.</summary>
+        static readonly (float Pitch, FollowHeading Heading, float Speed, TemporalUpscale Preset, int Bound)[]
+            WarpPastTheReach =
+        {
+            // Worst 27 of 100 over 4 phases, phase 0 27 (27 11 19 21), with the 16x material sampler (#1776). The
+            // trilinear sampler read 25 11 24 20, on the table bound at phase 0, so WARP never had headroom here.
+            (BootPitch, FollowHeading.Away, 1.5f, U, 33),
+        };
+
         internal static int Bound(float pitch, FollowHeading heading, float speed, TemporalUpscale preset, int count)
         {
             foreach (var r in Residuals)
@@ -204,6 +215,10 @@ namespace KhaozEngine.Tests.Gpu
         internal static int? ReachBound(float pitch, FollowHeading heading, float speed, TemporalUpscale preset,
             int count)
         {
+            if (TemporalDeviceClass.Warp)
+                foreach (var r in WarpPastTheReach)
+                    if (r.Pitch == pitch && r.Heading == heading && r.Speed == speed && r.Preset == preset)
+                        return r.Bound;
             foreach (var r in PastTheReach)
                 if (r.Pitch == pitch && r.Heading == heading && r.Speed == speed && r.Preset == preset)
                     return r.Bound == Acceptance3 ? Allowed(count) : r.Bound;

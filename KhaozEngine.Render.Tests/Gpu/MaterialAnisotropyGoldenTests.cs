@@ -10,7 +10,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// Anisotropic material sampling (issue #1776): a tiled ground texture seen at a grazing angle keeps its detail
     /// far down the view at the default 16x, where trilinear filtering blurs it toward grey, and a device without
-    /// anisotropic filtering falls back to exactly the trilinear image. The golden pins the default look.
+    /// anisotropic filtering, or lavapipe, whose llvmpipe samples this tap trilinearly, renders exactly the trilinear
+    /// image. The golden pins the default look.
     /// <para>
     /// HDR is off so the frame carries the sampled checker without a tonemap, and the ambient is a quarter so the lit
     /// checks never clip. The far band is the upper third of the ground, where a check is a pixel or two deep and the
@@ -86,8 +87,11 @@ namespace KhaozEngine.Tests.Gpu
             // The grid first, so a bake still writes it when a backend's ratio needs reading.
             GoldenCompare.AssertOrUpdate("scene3d_material_anisotropy", anisotropic, W, H);
             // 16x kept 2.55 times trilinear's far-band contrast on Metal (0.0884 against 0.0346). The floor is that
-            // ratio less a margin for the software rasterizers' own anisotropic footprints.
-            if (supported)
+            // ratio less a margin for WARP's own anisotropic footprints. lavapipe reports samplerAnisotropy and the
+            // backend enables it, but llvmpipe samples this tap trilinearly (0.0346 both ways in hosted run
+            // 43355104261), so it is held to the trilinear image like a device without the feature. That also
+            // fails the day llvmpipe starts filtering anisotropically, which moves it to the ratio.
+            if (supported && !TemporalDeviceClass.Lavapipe)
                 Assert.True(cA > MinContrastRatio * cT,
                     $"16x must keep grazing detail trilinear blurs: {cA:0.0000} against {cT:0.0000}");
             else

@@ -901,6 +901,10 @@ Implementation review established the contract amendments below.
     where the worst over the phases meets it, else that worst and about a quarter more, at least 2, near the edge at
     every preset and past the reach at Quality, Performance and UltraPerformance, and on the whole avatar after a stop
     the worst share over the phases and about a quarter more where it passes 0.02 (0.05 under the damped camera).
+    Those values are Metal's. WARP holds one bound of its own, set the same way from its own phases: the boot pitch
+    walking away at 1.5 display pixels a frame at UltraPerformance, past the reach, reads 27 11 19 21 there with the
+    16x material sampler, where the trilinear sampler read 25 11 24 20, on the Metal bound of 25 at the first phase
+    ([#1776](https://github.com/APKiwiOrg/KhaozEngine/issues/1776)).
 
     Every rule above lives once, in shared shader functions, and the resolve has two entry points over them. The
     per-texel preparation (`TemporalPrepareGlsl`) derives what the resolve needs from one internal texel alone: its

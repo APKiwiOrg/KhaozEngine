@@ -56,15 +56,14 @@ internal readonly struct TileLoadedCorners
 /// <para>Planar: the box's local centre goes through the object's anchor and planar basis exactly as a walk surface
 /// rect does (<see cref="TileObjectPlacement.AnchorPlanar"/> and <see cref="TileObjectPlacement.PlanarBasis(TileObjectArchetype, int, out float, out float)"/>),
 /// and the box's own axes turn by the whole turn: the instance rotation, the archetype's yaw offset and the box's
-/// own yaw. A whole number of quarter turns answers exact axes, so such a box is axis-aligned with no
-/// trigonometry.</para>
+/// own yaw. Each of the two turns that is a whole number of quarter turns answers exact axes with no trigonometry,
+/// and a whole turn that is one makes the box axis-aligned.</para>
 /// <para>Vertical: the top is the standing height (the document height at the anchor) plus the box's
 /// <see cref="TileCollisionBox.MaxY"/>, and the bottom is the standing height plus its
-/// <see cref="TileCollisionBox.MinY"/>.
-/// A box resting on or sunk below the base (MinY at or below 0) reaches further down to the lowest ground lattice
-/// corner under its plan bounds when that is lower, the rule the footprint box keeps, so on a slope it meets the
-/// ground on its downhill side instead of leaving a gap a foot can catch under. A box raised off the base keeps its
-/// authored bottom, so the space under a table top or an awning stays open.</para>
+/// <see cref="TileCollisionBox.MinY"/>. A box resting on or sunk below the base (MinY at or below 0) reaches further
+/// down to the lowest ground lattice corner under its plan bounds when that is lower, the rule the footprint box keeps,
+/// so on a slope it meets the ground on its downhill side instead of leaving a gap a foot can catch under. A box raised
+/// off the base keeps its authored bottom, so the space under a table top or an awning stays open.</para>
 /// </summary>
 internal static class TileCollisionBoxes
 {

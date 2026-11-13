@@ -406,23 +406,24 @@ the way an awning or a cart's shafts do.
 ```
 
 `yawDegrees` turns a box about its own centre, clockwise seen from above like `yawOffsetDegrees` and the quarter
-turns. It is there for round props and diagonal members: two boxes at 0 and 45 degrees make an octagon around a barrel
-or a well far closer than one square, and one box turned 45 degrees is a cart shaft or a diagonal rail. A box whose
-whole turn (rotation, yaw offset and its own yaw) is a whole number of quarter turns places axis-aligned with no
-trigonometry, so only a genuinely diagonal box costs the cross-architecture exactness the
-[physics hash](../KhaozEngine.TileWorld.Physics/README.md#hash) describes.
+turns. It is there for round props and diagonal members: two boxes at 0 and 45 degrees make an octagon around a
+barrel or a well far closer than one square, and one box turned 45 degrees is a cart shaft or a diagonal rail. A
+box's centre turns with the object (rotation and yaw offset) and its axes by the whole turn, its own yaw included. A
+whole turn that is a whole number of quarter turns places the box axis-aligned, and each of the two turns that is
+one is placed with no trigonometry, so only a genuinely diagonal box, or one on a yawed object, costs the
+cross-architecture exactness the [physics hash](../KhaozEngine.TileWorld.Physics/README.md#hash) describes.
 
-Only a `Solid` or `Diagonal` archetype may list boxes, because those are the two kinds that build an object collider.
-Boxes on `None`, `Wall` or `WallCorner` would be ignored, so the loader refuses them with
+Only a `Solid` or `Diagonal` archetype may list boxes, because those are the two kinds that build an object
+collider. Boxes on `None`, `Wall` or `WallCorner` would be ignored, so the loader refuses them with
 `CatalogCollisionBoxKindUnsupported` rather than hide the mistake. The schema requires `minX`, `maxX`, `maxY`,
-`minZ` and `maxZ` and refuses any other key. Every bound is explicit, so unlike a walk surface nothing waits on the tile
-size: the loader refuses a null entry with `CatalogCollisionBoxNull`, a non-finite bound or yaw with
+`minZ` and `maxZ` and refuses any other key. Every bound is explicit, so unlike a walk surface nothing waits on the
+tile size: the loader refuses a null entry with `CatalogCollisionBoxNull`, a non-finite bound or yaw with
 `CatalogCollisionBoxNonFinite` and a min that is not below its max on any axis, an inverted or empty box, with
 `CatalogCollisionBoxBoundsUnordered`, each carrying `CollisionBoxIndex`. `Merge` re-runs the checks. An empty list
 loads as null. A boxed archetype needs no `collisionHeight`, since every box carries its own top. A roof builds no
-physics collider at all, so boxes on a roof are inert, as its collision kind is. Boxes change no footprint, no tile
-collision and no pathing (see [collision](#collision-derived-and-never-authored)). `OfCatalogs` digests every box value
-only for an archetype that lists any, so a catalog without boxes keeps its digest.
+physics collider at all, so boxes on a roof change nothing in physics. Boxes change no footprint, no tile collision
+and no pathing (see [collision](#collision-derived-and-never-authored)). `OfCatalogs` digests every box value only
+for an archetype that lists any, so a catalog without boxes keeps its digest.
 
 `TilesPerMetre` is the optional `tilesPerMetre` catalog field, the texture repeats per metre the textured ground
 path gives that material, null to take the renderer default of 0.5. `MaterialSource(id)` returns the catalog
@@ -593,10 +594,11 @@ removed, measured with `TileFootprint.Of` BEFORE the removal. `EdgeFlag` and `Wa
 
 An archetype's `collisionBoxes` never reach the map. A boxed `Solid` blocks its whole footprint and a boxed
 `Diagonal` its anchor tile, exactly as without boxes, for four reasons. The map is the tile-resolution model the
-pathfinder, `is_walkable` and scatter tools read, and at that resolution a tile partly filled by a bench is not one an
-agent can occupy. Edits rebake by footprint rects, and boxes may overhang their footprint. Adding boxes then changes
-the physics shape only, so pathing and every check built on the map keep their meaning. And `CanStep` already lets a
-body out of a blocked tile, so one standing on a seat or in a footprint's empty strip still paths away.
+pathfinder, `is_walkable` and scatter tools read, and at that resolution a tile partly filled by a bench is not one
+an agent can occupy. Edits rebake by footprint rects, and boxes may overhang their footprint, so a map derived from
+boxes could fall out of step with those rebakes. Adding boxes then changes the physics shape only, so pathing and
+every check built on the map keep their meaning. And `CanStep` already lets a body out of a blocked tile, so one
+standing on a seat or in a footprint's empty strip still paths away.
 
 `TileCollisionMap` is the storage, keyed by region and plane, never persisted. Reads outside storage answer
 `Blocked`, so an unloaded region is a wall rather than a void, and an `Or` outside storage is a NO-OP.

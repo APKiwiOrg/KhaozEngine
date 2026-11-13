@@ -46,10 +46,10 @@ public sealed partial class TileWorldColliders
     /// writes it, and its pose as seven little-endian floats (position x, y, z, then orientation x, y, z, w). The same
     /// world and catalogs hash equal on every rebuild and reload, whatever order the regions were created or loaded
     /// in. Across machines the hash is exact for the ground meshes and every box on a quarter turn, none of which
-    /// uses trigonometry. A walk surface or a collision box whose turn is not a whole number of quarter turns takes
-    /// its centre or orientation from <see cref="MathF"/> trigonometry, which .NET does not promise is bit-identical
-    /// across x64 and ARM64, so such a world can hash differently on another architecture. Each read returns a fresh
-    /// copy.
+    /// uses trigonometry. A walk surface on an object turned off a whole number of quarter turns, or a collision box
+    /// when its object's turn or its own whole turn is off one, takes its centre or orientation from
+    /// <see cref="MathF"/> trigonometry, which .NET does not promise is bit-identical across x64 and ARM64, so such a
+    /// world can hash differently on another architecture. Each read returns a fresh copy.
     /// </summary>
     public byte[] Hash => (byte[])_hash.Clone();
 

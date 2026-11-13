@@ -12,9 +12,10 @@ namespace KhaozEngine.TileWorld;
 /// footprint, the way an awning or a cart's shafts do.</para>
 /// <para><see cref="YawDegrees"/> turns the box about its own centre, clockwise seen from above, the same sense as
 /// <see cref="TileObjectArchetype.YawOffsetDegrees"/> and the quarter turns, so two boxes at 0 and 45 degrees make an
-/// octagon for a round prop and one box turned 45 degrees is a diagonal member. A box whose whole turn (the instance
-/// rotation, the archetype's yaw offset and this yaw) is a whole number of quarter turns places axis-aligned with no
-/// trigonometry. Any other turn places an oriented box.</para>
+/// octagon for a round prop and one box turned 45 degrees is a diagonal member. The box's centre turns with the object
+/// (the instance rotation and the archetype's yaw offset) and its axes by the whole turn, this yaw included. A whole
+/// turn that is a whole number of quarter turns places the box axis-aligned, any other places it oriented, and each
+/// of the two turns that is a whole number of quarter turns is placed with no trigonometry.</para>
 /// <para>Every bound is explicit and the catalog loader judges them all: a non-finite value, or a minimum that is
 /// not below its maximum on any axis (an inverted or empty box), refuses the load, and so does a list on an archetype
 /// whose collision kind builds no object collider. The placement and slope rules are in the

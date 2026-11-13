@@ -280,8 +280,9 @@ back's height over the whole 2x1. The placement is the one rule `ke-tileedit` dr
 
 - **Planar:** the box's local centre goes through the object's anchor and planar basis exactly as a walk surface rect
   does, and its axes turn by the whole turn, the instance rotation plus the yaw offset plus the box's own
-  `yawDegrees`. A whole number of quarter turns is an axis-aligned box with its half extents swapped on an odd one,
-  with no trigonometry. Any other turn is a box yawed about +Y.
+  `yawDegrees`. A whole turn that is a whole number of quarter turns is an axis-aligned box with its half extents
+  swapped on an odd one. Any other turn is a box yawed about +Y. The centre turns with the object alone, so it is
+  exact when the object's turn is a whole number of quarter turns, and the axes are exact when the whole turn is.
 - **Vertical:** the top is the standing height plus the box's `maxY`, a surface a capsule stands on. The bottom is the
   standing height plus `minY`, and a box resting on or sunk below the base (`minY` at or below 0) reaches further down
   to the lowest ground corner under its own plan bounds when that is lower, the rule the footprint box keeps, so on a
@@ -410,9 +411,10 @@ These providers were audited for a parallel contact navigation bake, `NavBakeExe
 and its pose as seven little-endian floats (position x, y, z, then orientation x, y, z, w). Filtering installation
 does not change this complete-set hash or create an installed-subset hash. The same world and
 catalogs hash equal on every rebuild, whatever order the regions were loaded in. Ground meshes and every box on a
-quarter turn use no trigonometry, so they hash exactly across architectures. A walk surface or a collision box whose
-turn is not a whole number of quarter turns takes its centre or orientation from `MathF` trigonometry, which can
-differ in the last bits between x64 and ARM64, and so can the hash of a world that has one. Collision boxes are
+quarter turn use no trigonometry, so they hash exactly across architectures. A walk surface on an object turned off a
+whole number of quarter turns, or a collision box when its object's turn or its own whole turn is off one, takes its
+centre or orientation from `MathF` trigonometry, which can differ in the last bits between x64 and ARM64, and so can
+the hash of a world that has one. Collision boxes are
 colliders like any other, so an edit to one moves the hash, and a navigation bake that folds the hash into its
 sources reports `SourcesChanged` until it is rebaked. A catalog without boxes builds exactly the colliders, and so the
 hash, it built before the field existed.

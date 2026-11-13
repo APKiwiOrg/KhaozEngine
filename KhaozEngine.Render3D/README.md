@@ -2332,7 +2332,9 @@ staging samples source texel centres bilinearly. Model material maps are the sce
 #1776): the upload takes a reference per map at preparation, the first upload naming an image creates its texture,
 and every upload naming it writes its level-0 rows after its own buffers, so an image a batch in flight shares is
 written once. The first to finish generates the chain on the GPU in the recording its completion fence proves,
-exactly as `LoadTexture` builds one. Measurement still prices every map as a full chain the upload creates, so a
+exactly as `LoadTexture` builds one. The chain counts only once that recording is submitted: an upload whose recording,
+End or submission fails is cancelled with the chain still owed, and the texture's next owner, an upload or a
+convenience load, generates it before anything samples the texture. Measurement still prices every map as a full chain the upload creates, so a
 demand never depends on what else is resident. A texture an upload created keeps its reservation charged until the
 texture is destroyed (`SceneUploadLease`), and counts in its retained inventory. A glow
 (`GltfMaterialMaps.EmissiveFactor`) owns a parameter block written with the buffers, and the material set binds the

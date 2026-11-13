@@ -39,6 +39,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every texture the factory handed out, in creation order.</summary>
         internal List<FakeTexture> Textures => _factory.Inner.Textures;
 
+        /// <summary>The fake factory behind the ring's lists, which arms their faults and holds their mip generations.</summary>
+        internal FakeGpuResourceFactory InnerFactory => _factory.Inner;
+
         /// <summary>Every fence the factory handed out, in creation order.</summary>
         internal List<ManualFence> Fences => _factory.Fences;
 

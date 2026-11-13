@@ -28,6 +28,12 @@ public sealed class AdmittedMaterialResidencyTests
 
     public enum First { Convenience, Admitted }
 
+    public enum Completion { Drained, Fenced }
+
+    public enum Fault { End, Submit }
+
+    public enum Survivor { Admitted, Convenience }
+
     static readonly Vector3 Factor = new(2f, 1f, 0.5f);
 
     [Theory]
@@ -275,6 +281,79 @@ public sealed class AdmittedMaterialResidencyTests
         Assert.True(texture.Disposed);
         Assert.Equal(1, ra.ReleaseCount);
         Assert.Equal(1, rb.ReleaseCount);
+    }
+
+    /// <summary>A chain counts as generated only once the recording that generates it is submitted. The creator's
+    /// recording fails at its End or at its submission, on the fenced completion and on the drained one, and the
+    /// creator is cancelled. The texture lives on for the upload sharing it, and the next owner to need it, that
+    /// upload or a convenience load arriving first, submits the chain before anything samples it. The texture then
+    /// retires once and each reservation settles once.</summary>
+    [Theory]
+    [InlineData(Completion.Drained, Fault.End, Survivor.Admitted)]
+    [InlineData(Completion.Drained, Fault.Submit, Survivor.Admitted)]
+    [InlineData(Completion.Fenced, Fault.End, Survivor.Admitted)]
+    [InlineData(Completion.Fenced, Fault.Submit, Survivor.Admitted)]
+    [InlineData(Completion.Drained, Fault.End, Survivor.Convenience)]
+    [InlineData(Completion.Drained, Fault.Submit, Survivor.Convenience)]
+    [InlineData(Completion.Fenced, Fault.End, Survivor.Convenience)]
+    [InlineData(Completion.Fenced, Fault.Submit, Survivor.Convenience)]
+    public void A_chain_whose_recording_failed_is_submitted_by_the_owner_that_survives(Completion completion, Fault fault,
+        Survivor survivor)
+    {
+        ReadbackRingFakeDevice? ring = completion == Completion.Fenced ? new ReadbackRingFakeDevice() : null;
+        using var host = new NativeUploadTestScene(ring);
+        FakeGpuResourceFactory factory = ring?.InnerFactory ?? (FakeGpuResourceFactory)host.Device.Inner.Factory;
+        var maps = new GltfMaterialMaps(Loader($"fault-oak-{completion}-{fault}-{survivor}", 100), null, null);
+        SceneUploadData a = Rigid(maps), b = Rigid(maps);
+        var ra = Reserve(host.Scene, a);
+        var rb = Reserve(host.Scene, b);
+        SceneResourceUpload creator = host.Scene.PrepareResourceUpload(a, ra);
+        FakeTexture texture = factory.Textures[^1];
+        using SceneResourceUpload sharer = host.Scene.PrepareResourceUpload(b, rb);
+
+        if (fault == Fault.End) factory.FailNextEnd();
+        else host.Device.FailNextSubmit();
+        Assert.Throws<InvalidOperationException>(() => creator.Advance(long.MaxValue));
+        Assert.Equal(4 * 4 * 4, TextureBytes(host));   // level 0 was written before the recording failed
+        Assert.Equal(0, SubmittedGenerations(host, texture));
+        Settle(host, ring);
+        Assert.False(texture.Disposed);
+        Assert.Equal(0, ra.ReleaseCount);   // the texture its claim paid for is still alive for the sharer
+
+        Scene3D.SurfaceMaps convenience = default;
+        if (survivor == Survivor.Convenience) convenience = host.Scene.LoadSurfaceMaps(maps);
+        sharer.Advance(long.MaxValue);
+        if (ring is not null) foreach (IGpuFence fence in ring.SubmittedFences) fence.AsManual().Signal();
+        Assert.True(sharer.Ready);
+        Assert.Equal(1, SubmittedGenerations(host, texture));
+        Assert.Equal(4 * 4 * 4, TextureBytes(host));   // nothing written twice
+        SceneResourceHandle handle = sharer.Publish();
+        Assert.Same(texture, MaterialSet(host.Scene, handle).Bound("Albedo"));
+
+        if (survivor == Survivor.Convenience) host.Scene.UnloadSurfaceMaps(convenience);
+        host.Scene.ReleaseResource(handle);
+        Settle(host, ring);
+        Assert.Equal(1, texture.DisposeCalls);
+        Assert.Equal(0, host.Scene.ResidentMaterialTextureCount);
+        Assert.Equal((1, 1), (ra.ReleaseCount, ra.DisposeCount));
+        Assert.Equal((1, 1), (rb.ReleaseCount, rb.DisposeCount));
+        Assert.Equal((0L, 0L), (ra.ReservedBytes, rb.ReservedBytes));
+    }
+
+    // Generations of the chain in lists a submission accepted. A list whose End or submission failed never got there.
+    static int SubmittedGenerations(NativeUploadTestScene host, IGpuTexture texture) =>
+        host.Device.SubmittedLists.Sum(list =>
+            (list is CommandTallyGpuCommandList tally ? tally.Inner : list) is NullGpuCommandList recorded
+                ? recorded.MipGenerations.Count(t => ReferenceEquals(t, texture)) : 0);
+
+    // A fenced device retires only behind signalled fences, so each frame of the drain signals every one submitted.
+    static void Settle(NativeUploadTestScene host, ReadbackRingFakeDevice? ring)
+    {
+        for (int frame = 0; frame <= GpuRetireQueue.DefaultFrameDelay + 1; frame++)
+        {
+            if (ring is not null) foreach (IGpuFence fence in ring.SubmittedFences) fence.AsManual().Signal();
+            host.Scene.Begin();
+        }
     }
 
     static int TextureBytes(NativeUploadTestScene host) => host.Device.TextureCopies.Sum(c => c.Bytes.Length);

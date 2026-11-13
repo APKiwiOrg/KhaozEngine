@@ -147,17 +147,18 @@ public sealed partial class Scene3D
     internal IGpuTexture? MaterialTextureOf(TextureHandle handle) => handle.IsValid ? _textures[handle.ListIndex] : null;
 
     // A convenience load is about to draw with a texture an admitted upload is still writing. It cannot wait for the
-    // uploads in flight, so it writes the remaining rows and generates the chain now, as LoadTexture would have.
+    // uploads in flight, so it writes the remaining rows and generates the chain now, as LoadTexture would have. It
+    // trusts only a submitted chain: one an upload recorded and then failed to end or submit is still owed.
     void CompleteFill(ResidentTexture entry)
     {
         if (entry.Fill is not { } fill) return;
         if (!fill.Complete)
         {
             fill.WriteAll(_gd);
-            if (!fill.ChainGenerated)
+            if (!fill.ChainSubmitted)
             {
                 TextureUploads.GenerateChain(_gd, fill.Texture, "Scene3D.LoadSurfaceMaps");
-                fill.MarkGenerated();
+                fill.MarkSubmitted();
             }
         }
         entry.Fill = null;

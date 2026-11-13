@@ -128,6 +128,19 @@ namespace KhaozEngine.Tests.Gpu
         internal void FailTextureCreationAfter(int successfulCreates) =>
             ThrowOnTextureCreate = Textures.Count + successfulCreates + 1;
 
+        bool _failNextEnd;
+
+        /// <summary>The next End on any list this factory handed out throws, once, as a backend's failed End does.
+        /// The recording is abandoned and the device's recording slot is free again.</summary>
+        internal void FailNextEnd() => _failNextEnd = true;
+
+        internal void EndRecording()
+        {
+            if (!_failNextEnd) return;
+            _failNextEnd = false;
+            throw new InvalidOperationException("planned command list End failure");
+        }
+
         /// <summary>Every buffer this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
         internal List<FakeBuffer> Buffers { get; } = new();
         internal List<FakeFramebuffer> Framebuffers { get; } = new();
@@ -256,7 +269,7 @@ namespace KhaozEngine.Tests.Gpu
         }
         public IGpuCommandList CreateCommandList()
         {
-            var cl = new NullGpuCommandList();
+            var cl = new NullGpuCommandList(this);
             CommandLists.Add(cl);
             return cl;
         }
@@ -331,10 +344,14 @@ namespace KhaozEngine.Tests.Gpu
 
         internal Action? OnDispose { get; set; }
 
+        /// <summary>How many times it was disposed, so a test can tell one retirement from two.</summary>
+        internal int DisposeCalls { get; private set; }
+
         public void Dispose()
         {
             OnDispose?.Invoke();
             Disposed = true;
+            DisposeCalls++;
         }
     }
 
@@ -450,10 +467,12 @@ namespace KhaozEngine.Tests.Gpu
     /// to when there is no real device behind it.</summary>
     internal sealed class NullGpuCommandList : IGpuCommandList
     {
+        readonly FakeGpuResourceFactory? _factory;
+        internal NullGpuCommandList(FakeGpuResourceFactory? factory = null) => _factory = factory;
         internal Action<IGpuPipeline>? PipelineBinding { get; set; }
         internal Action<IGpuComputePipeline>? ComputePipelineBinding { get; set; }
         public void Begin() { }
-        public void End() { }
+        public void End() => _factory?.EndRecording();
         public void SetFramebuffer(IGpuFramebuffer fb) { }
         public void ClearColorTarget(uint index, Color rgba) { }
         public void ClearDepthStencil(float depth) { }

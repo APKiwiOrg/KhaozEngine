@@ -15,8 +15,9 @@ namespace KhaozEngine.Render3D;
 /// upload and convenience load that names the image, and held by reference from preparation until the upload is
 /// cancelled or its resource is released. The first upload to name an image creates the texture and its claim pays
 /// for it. Every upload naming the image writes its level-0 rows after its own buffers, so an image a batch shares is
-/// written once, and the first to finish generates its chain in the recording its completion fence proves. A glow
-/// owns a parameter block written with the upload's buffers.
+/// written once, and the first to finish generates its chain in the recording its completion fence proves. That chain
+/// counts once the recording is submitted, so an upload whose recording or submission fails leaves it to the texture's
+/// next owner. A glow owns a parameter block written with the upload's buffers.
 /// </para></summary>
 public sealed class SceneResourceUpload : IDisposable
 {
@@ -218,13 +219,17 @@ public sealed class SceneResourceUpload : IDisposable
         catch { Dispose(); throw; }
     }
 
+    // A chain counts once the submission carrying it is accepted. Recording, End or submission throwing leaves every
+    // fill this recorded still owed, and Advance cancels this upload, so a surviving owner generates the chain.
     void CompleteTransfer()
     {
         if (_submitted) return;
         if (_completion is not null)
         {
-            using (GpuRecording.Open(_device, _barrier!, "Scene3D.ResourceUpload")) GenerateChains(_barrier!);
+            List<MaterialTextureFill>? recorded;
+            using (GpuRecording.Open(_device, _barrier!, "Scene3D.ResourceUpload")) recorded = RecordChains(_barrier!);
             _device.Submit(_barrier!, _completion);
+            MarkSubmitted(recorded);
         }
         else
         {
@@ -232,11 +237,13 @@ public sealed class SceneResourceUpload : IDisposable
             IGpuCommandList? chains = null;
             try
             {
-                if (!_fills.TrueForAll(fill => fill.ChainGenerated))
+                if (!_fills.TrueForAll(fill => fill.ChainSubmitted))
                 {
                     chains = _device.Factory.CreateCommandList();
-                    using (GpuRecording.Open(_device, chains, "Scene3D.ResourceUpload")) GenerateChains(chains);
+                    List<MaterialTextureFill>? recorded;
+                    using (GpuRecording.Open(_device, chains, "Scene3D.ResourceUpload")) recorded = RecordChains(chains);
                     _device.Submit(chains);
+                    MarkSubmitted(recorded);
                 }
                 if (Demand.TransferBytes > 0 || chains is not null) _device.WaitForIdle();
             }
@@ -245,9 +252,18 @@ public sealed class SceneResourceUpload : IDisposable
         _submitted = true;
     }
 
-    void GenerateChains(IGpuCommandList list)
+    List<MaterialTextureFill>? RecordChains(IGpuCommandList list)
     {
-        foreach (MaterialTextureFill fill in _fills) fill.Generate(list);
+        List<MaterialTextureFill>? recorded = null;
+        foreach (MaterialTextureFill fill in _fills)
+            if (fill.RecordGeneration(list)) (recorded ??= new()).Add(fill);
+        return recorded;
+    }
+
+    static void MarkSubmitted(List<MaterialTextureFill>? recorded)
+    {
+        if (recorded is null) return;
+        foreach (MaterialTextureFill fill in recorded) fill.MarkSubmitted();
     }
 
     /// <summary>Publish once, after readiness. Draw submissions can only resolve this accepted handle.</summary>

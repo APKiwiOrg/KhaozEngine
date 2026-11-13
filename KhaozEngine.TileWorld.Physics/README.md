@@ -287,11 +287,19 @@ back's height over the whole 2x1. The placement is the one rule `ke-tileedit` dr
   standing height plus `minY`, and a box resting on or sunk below the base (`minY` at or below 0) reaches further down
   to the lowest ground corner under its own plan bounds when that is lower, the rule the footprint box keeps, so on a
   slope it meets the ground on the downhill side instead of leaving a gap a foot catches under. A box raised off the
-  base keeps its authored bottom, so the space under a table top or an awning stays open. The corner search is
-  clamped to the loaded regions, beyond which the ground is only edge-extended.
+  base keeps its authored bottom, so the space under a table top or an awning stays open.
+- **Ground search:** every corner under the box counts as `TileWorldDocument.CornerHeightCm` reads it, so a corner of a
+  missing region takes its edge-extended height beside a loaded neighbour and the base height elsewhere. The search
+  stops at the loaded regions' bounding corners, past which the ground carries on level as the floor sampler has it.
+  It reads only the loaded regions under the box: their own corners, then the seam corners along their east and north
+  edges that edge-read them, and the base height once when the box covers any other missing corner. So a box spanning
+  sparse regions costs the loaded terrain under it, never the empty space between.
 - **Collision height:** not read. Every box carries its own top, so a boxed archetype needs no `collisionHeight`.
-- A box edited in memory after load into one that cannot be a volume (null, non-finite, inverted, or too thin to
-  survive being added to its standing height in a float) gets no collider.
+- **Range:** every sum is taken in double and only the final centre, half extents, bottom, top and orientation become
+  floats, each checked, so finite bounds whose float sum would overflow still place at their midpoint. A box edited in
+  memory after load into one that cannot be a volume (null, non-finite or inverted), and one whose placed values or
+  turn leave the float range or whose thickness does not survive being added to its standing height, gets no
+  collider.
 
 The tile collision map is unchanged by boxes: the object still blocks its footprint or anchor tile there, the
 reasons are in the [`KhaozEngine.TileWorld` README](../KhaozEngine.TileWorld/README.md#collision-derived-and-never-authored).

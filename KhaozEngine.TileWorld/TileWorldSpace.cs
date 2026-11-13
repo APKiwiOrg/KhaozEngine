@@ -23,6 +23,12 @@ public static class TileWorldSpace
     /// <summary>Tile z of a world z in metres, the inverse of <see cref="WorldZ"/>.</summary>
     public static float TileZ(float worldZ, float tileSize) => -worldZ / tileSize;
 
+    // The same two inverses in double, for a span whose float form could overflow, such as a collision box's plan
+    // bounds, so the sign still lives only here.
+    internal static double TileX(double worldX, float tileSize) => worldX / tileSize;
+
+    internal static double TileZ(double worldZ, float tileSize) => -worldZ / tileSize;
+
     /// <summary>A tile point at a height in metres as a world position.</summary>
     public static Vector3 ToWorld(float tileX, float heightMetres, float tileZ, float tileSize) =>
         new(WorldX(tileX, tileSize), heightMetres, WorldZ(tileZ, tileSize));

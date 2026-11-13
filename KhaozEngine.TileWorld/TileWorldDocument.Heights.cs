@@ -21,6 +21,14 @@ public sealed partial class TileWorldDocument
     /// <summary>The same corner height in metres.</summary>
     public float CornerHeight(int x, int z, int plane) => CornerHeightCm(x, z, plane) * 0.01f;
 
+    // What CornerHeightCm answers for a corner that neither its own region nor a region west, south or south-west of it
+    // can supply: the base, 0 lifted to the plane. A search over many such corners reads this once instead of each.
+    internal short UnsuppliedCornerHeightCm(int plane)
+    {
+        RequirePlane(plane);
+        return LiftedCm(0, plane);
+    }
+
     /// <summary>Writes a corner. Throws when the corner's own region does not exist (edge-extended reads are
     /// not writable). The first write on a higher plane materialises that plane's derived lattice first.</summary>
     public void SetCornerHeightCm(int x, int z, int plane, short cm)

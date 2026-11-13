@@ -71,6 +71,26 @@ public class TileCollisionBoxColliderTests
         Assert.Equal(0.4f + 2f, wall.Pose.Position.Y + box.HalfExtents.Y, Tolerance);
     }
 
+    // A finite box whose bounds sum past the float range builds a finite collider at its midpoint, rather than an
+    // infinite centre the movement extent the build declares would refuse. From the review of
+    // https://github.com/APKiwiOrg/KhaozEngine/issues/1782.
+    [Fact]
+    public void ABoxWhoseBoundsSumPastTheFloatRangeBuildsAFiniteCollider()
+    {
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Merge(Catalogs(), TileWorldCatalogs.LoadJson("""
+            { "archetypes": [ { "id": "high_box", "name": "high_box", "meshRef": "test/high_box.glb", "collisionKind": "Solid",
+                                "collisionBoxes": [ { "minX": -0.5, "maxX": 0.5, "minZ": -0.5, "maxZ": 0.5, "minY": 2e38, "maxY": 3e38 } ] } ] }
+            """, "high-box"));
+        TileWorldDocument doc = FlatWorld();
+        doc.AddObject("high_box", 5, 5, 0, 0);
+
+        TileCollider box = Assert.Single(Objects(TileWorldColliders.Build(doc, catalogs)));
+
+        float centreY = box.Pose.Position.Y, halfY = Assert.IsType<BoxShape>(box.Shape).HalfExtents.Y;
+        Assert.True(MathF.Abs(centreY / 2.5e38f - 1f) < 1e-6f, $"centre at {centreY}");
+        Assert.True(MathF.Abs(halfY / 5e37f - 1f) < 1e-6f, $"half height {halfY}");
+    }
+
     // Consumers fold the collider hash into their navigation bake inputs, so a box edit has to move it and putting the
     // box back has to restore it.
     [Fact]

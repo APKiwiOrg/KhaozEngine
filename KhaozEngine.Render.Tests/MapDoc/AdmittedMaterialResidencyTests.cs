@@ -302,6 +302,7 @@ public sealed class AdmittedMaterialResidencyTests
     {
         ReadbackRingFakeDevice? ring = completion == Completion.Fenced ? new ReadbackRingFakeDevice() : null;
         using var host = new NativeUploadTestScene(ring);
+        host.Device.RecordSubmissions();
         FakeGpuResourceFactory factory = ring?.InnerFactory ?? (FakeGpuResourceFactory)host.Device.Inner.Factory;
         var maps = new GltfMaterialMaps(Loader($"fault-oak-{completion}-{fault}-{survivor}", 100), null, null);
         SceneUploadData a = Rigid(maps), b = Rigid(maps);
@@ -342,7 +343,7 @@ public sealed class AdmittedMaterialResidencyTests
 
     // Generations of the chain in lists a submission accepted. A list whose End or submission failed never got there.
     static int SubmittedGenerations(NativeUploadTestScene host, IGpuTexture texture) =>
-        host.Device.SubmittedLists.Sum(list =>
+        host.Device.SubmittedLists!.Sum(list =>
             (list is CommandTallyGpuCommandList tally ? tally.Inner : list) is NullGpuCommandList recorded
                 ? recorded.MipGenerations.Count(t => ReferenceEquals(t, texture)) : 0);
 

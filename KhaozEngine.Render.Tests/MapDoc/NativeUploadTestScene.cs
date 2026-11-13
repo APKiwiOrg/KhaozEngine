@@ -55,9 +55,12 @@ internal sealed class NativeUploadTestDevice(IGpuDevice inner) : IGpuDevice
     internal IGpuDevice Inner => inner;
     internal long UploadBytes { get; private set; }
     internal long Submissions { get; private set; }
-    internal void ResetCounters() { UploadBytes = 0; BufferWrites = 0; TextureWrites = 0; TextureCopies.Clear(); BufferCopies.Clear(); SubmittedLists.Clear(); }
-    /// <summary>Every list a submission accepted, in order. A list whose submission failed is not among them.</summary>
-    internal List<IGpuCommandList> SubmittedLists { get; } = new();
+    internal void ResetCounters() { UploadBytes = 0; BufferWrites = 0; TextureWrites = 0; TextureCopies.Clear(); BufferCopies.Clear(); SubmittedLists?.Clear(); }
+    /// <summary>Every list a submission accepted, in order, once <see cref="RecordSubmissions"/> turns recording on. A
+    /// list whose submission failed is not among them. Off by default, because the allocation tests submit through
+    /// this device and must measure nothing of its own.</summary>
+    internal List<IGpuCommandList>? SubmittedLists { get; private set; }
+    internal void RecordSubmissions() => SubmittedLists ??= new();
     bool _failNextSubmit;
     /// <summary>The next submission throws, once, before the list reaches the device.</summary>
     internal void FailNextSubmit() => _failNextSubmit = true;
@@ -78,8 +81,8 @@ internal sealed class NativeUploadTestDevice(IGpuDevice inner) : IGpuDevice
     public IGpuSampler PointSampler => inner.PointSampler;
     public IGpuSampler LinearSampler => inner.LinearSampler;
     public bool SyncToVerticalBlank { get => inner.SyncToVerticalBlank; set => inner.SyncToVerticalBlank = value; }
-    public void Submit(IGpuCommandList cl) { Accept(); inner.Submit(cl); Submissions++; SubmittedLists.Add(cl); }
-    public void Submit(IGpuCommandList cl, IGpuFence fence) { Accept(); inner.Submit(cl, fence); Submissions++; SubmittedLists.Add(cl); }
+    public void Submit(IGpuCommandList cl) { Accept(); inner.Submit(cl); Submissions++; SubmittedLists?.Add(cl); }
+    public void Submit(IGpuCommandList cl, IGpuFence fence) { Accept(); inner.Submit(cl, fence); Submissions++; SubmittedLists?.Add(cl); }
     public void WaitForIdle() => inner.WaitForIdle();
     public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
     {

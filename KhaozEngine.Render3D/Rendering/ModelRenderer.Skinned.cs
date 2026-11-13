@@ -72,15 +72,17 @@ internal sealed partial class ModelRenderer
 
     // ---- GPU skinning (the default). See the field block + ShaderSources.SkinnedModelVert for the two-buffer design. ----
 
-    /// <summary>Build a skinned mesh's set-1 material set (albedo/normal/roughness + shared sampler + shadow map),
-    /// bound to the FRAGMENT-only skinned material layout. The frame UBO is NOT here - the skinned fragment reads
-    /// it from set 0 binding 0, the shared block the model pass binds (see <see cref="EnsureSkinnedMainCapacity"/>),
-    /// so this set stays pure per-mesh material data and never has to be rebuilt when a frame changes. Defaults to
-    /// white/flat/zero so an untextured skinned mesh matches the CPU path. Owned by the caller (Scene3D), disposed
-    /// when the mesh unloads.</summary>
-    public IGpuResourceSet CreateSkinnedMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null) =>
-        CreateShadowSamplingSet(_skinnedFragLayout, _shadowMap.ShadowTexture,
-            albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler);
+    /// <summary>Build a skinned mesh's set-1 material set (albedo/normal/roughness/emissive with their per-slot
+    /// samplers, the material params block and the shadow map), bound to the FRAGMENT-only skinned material layout.
+    /// The frame UBO is NOT here - the skinned fragment reads it from set 0 binding 0, the shared block the model
+    /// pass binds (see <see cref="EnsureSkinnedMainCapacity"/>), so this set stays pure per-mesh material data and
+    /// never has to be rebuilt when a frame changes. Defaults to white/flat/zero/white with the no-glow block so an
+    /// untextured skinned mesh matches the CPU path. Owned by the caller (Scene3D), disposed when the mesh unloads.
+    /// The params buffer stays the caller's.</summary>
+    public IGpuResourceSet CreateSkinnedMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null,
+        IGpuTexture? emissive = null, IGpuBuffer? materialParams = null) =>
+        CreateModelMaterialSet(_skinnedFragLayout,
+            new ModelMaterialSlots(albedo, normal, roughness, emissive, materialParams ?? _zeroMaterialParams));
 
     /// <summary>Ensure the per-draw main UBO holds at least <paramref name="slotCount"/> slots (each
     /// <see cref="SkinnedMainSlotBytes"/>), growing geometrically and retiring the old buffer + its set. Rebuilds

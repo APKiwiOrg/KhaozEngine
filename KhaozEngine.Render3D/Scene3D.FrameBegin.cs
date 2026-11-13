@@ -30,6 +30,7 @@ public sealed partial class Scene3D
         if (submission is not null) _retired.BeginFrame(submission);
         ApplyPendingShadowLayout();
         ApplyPendingPointShadowLayout();
+        ApplyMaterialAnisotropy();
         if (submission is null) _retired.BeginFrame();
         LatchRenderOrigin();
         BeginFrameView();   // one frame index per Begin (Scene3D.FrameView.cs)

@@ -26,10 +26,11 @@ namespace KhaozEngine.Render3D
             => LoadPartsWithMaterials(path, null);
 
         internal static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(string path, string? entryId)
-            => BuildParts(LoadModel(path, entryId), path, entryId);
+            => BuildParts(LoadModel(path, entryId), path, entryId, assetDirectory: AssetDirectory(path));
 
         static IReadOnlyList<GltfMeshPart> BuildParts(ModelRoot root, string path, string? entryId = null,
-            CoverageImportCollector? coverage = null, Func<GltfMaterial?, GltfMaterialMaps>? readMaps = null, bool admitted = false)
+            CoverageImportCollector? coverage = null, Func<GltfMaterial?, GltfMaterialMaps>? readMaps = null, bool admitted = false,
+            string? assetDirectory = null)
         {
             // Distinct materials in first-use order (a null material - primitives with none - is a valid key). Walk
             // meshes then primitives, the same traversal BuildRigid uses, so the single-material part's corner order
@@ -67,7 +68,7 @@ namespace KhaozEngine.Render3D
                     if (admitted) GltfDecodeAdmission.EnterLargeAllocation();
                     var decoded = MeshAssembler.Build(corners);
                     coverage?.CompleteRigidSlice(parts.Count, decoded);
-                    parts.Add(new GltfMeshPart(decoded, readMaps is null ? ReadMaterialMaps(material) : readMaps(material)));
+                    parts.Add(new GltfMeshPart(decoded, readMaps is null ? ReadMaterialMaps(material, assetDirectory) : readMaps(material)));
                 }
             }
 

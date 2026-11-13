@@ -531,9 +531,14 @@ var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSiz
 - **A `MeshRef` no path API will accept falls back too.** `Path.GetFullPath` throws on an embedded NUL, which a
   JSON catalog can carry, so the path mapping runs inside the same guard as the load. Nothing about bad content
   throws out of `Resolve`. `PathFor` is the unguarded form, for a tool that wants the exception.
-- **There is no eviction.** Every cached part holds its decoded RGBA8 `GltfMaterialMaps` pixels for the
-  resolver's lifetime, still resident after the view has uploaded them to the GPU, and a glb regenerated while
-  the app is running is never picked up.
+- **There is no eviction, and kit textures are shared.** Cached parts live for the resolver's lifetime and a glb
+  regenerated while the app is running is never picked up. Their material images are shared by identity across
+  every piece that names them: an external image file is one image however many glbs reference it, and so is the
+  same PNG embedded in many glbs. The resolver keeps each distinct image's encoded bytes once and its decoded RGBA8
+  pixels only until a scene has uploaded them. The view's uploads go through the scene's material residency, so a
+  kit uploads one texture per distinct image and `TileWorldView.Dispose` releases them. A game can assert this
+  headlessly with `Scene3D.ResidentMaterialTextureCount`, or without a scene by counting distinct
+  `DecodedImage.Identity` values across its resolved parts.
 
 **A glb is drawn exactly as authored: nothing here scales, rotates or re-centres it.** So a kit piece has to meet
 the same local-space contract `GreyboxMeshResolver.BuildMesh` builds to:

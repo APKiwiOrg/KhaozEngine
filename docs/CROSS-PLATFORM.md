@@ -1255,6 +1255,14 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   gradients by `exp2(bias)` instead (`ShaderSources.MaterialLodGradGlsl`). A bias of exactly 0.0 and a gradient scale
   of exactly 1.0 leave the tap unchanged on all three backends, which is what keeps every golden byte-identical with
   temporal anti-aliasing off. `MaterialMipBiasShaderContractTests` fails a material program that samples around it.
+- **A 1x1 default material texture keeps the device's linear sampler, never an anisotropic one.** Real model
+  material maps sample through the anisotropic material sampler, but each slot that falls back to its 1x1 default
+  (white albedo, flat normal, zero roughness, white emissive) binds `IGpuDevice.LinearSampler`, because every map
+  has its own sampler binding (`ModelRenderer.MaterialSampling.cs`). An anisotropic filter averages several probes,
+  and nothing in any backend's contract promises that such an average of one constant texel returns that texel to
+  the bit. The defaults therefore keep the sampler that has sampled them exactly on all three backends since
+  5.35.1, which is what keeps every untextured mesh byte-identical at any anisotropy.
+  `MaterialSamplerBindingTests` fails a set that binds a default through the material sampler.
 - **A read map drains the device on Metal and Vulkan and not on Direct3D 11.** `Map` of a staging resource for
   reading waits for the whole device on Metal and on Vulkan, and only for the mapped resource on Direct3D 11, so no
   readback on the seam is free of a stall on every backend. That is why the temporal counts are sampled on request

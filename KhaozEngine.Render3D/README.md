@@ -150,10 +150,23 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `GameApp3D` uses the window frame's existing owner automatically, so coverage can be queued from
   `OnDraw3D`. Shared retirement defers when completion capacity is full, with the
   [queue's drain bound](../KhaozEngine.Gpu/README.md), rather than terminating the host frame.
-- `Scene3D.LoadSurfaceMaps` uploads each present glTF material map transactionally. A later upload failure
-  retires the maps already created. `UnloadSurfaceMaps(in maps)` releases each distinct valid map handle
-  through the same deferred queue. Unload the meshes that reference a map bundle first. All-absent bundles
-  neither upload textures nor release scene defaults.
+- Shared material textures: `Scene3D.LoadSurfaceMaps` uploads each present glTF material map, or takes a
+  reference to the texture already resident for its `DecodedImage.Identity` (`file:` absolute path for an external
+  image, `sha256:` of the encoded bytes for an embedded one), so one image is one texture per scene however many
+  parts, glbs or archetypes name it. A later upload failure releases what the call took and retires what it
+  created. `UnloadSurfaceMaps(in maps)` releases one reference per slot, and the last reference retires the texture
+  through the same deferred queue. The turn-key glTF uploads (`LoadProp`, `LoadPropMeshes`, `LoadMesh(mesh, maps)`,
+  `LoadSkinnedMesh(mesh, maps)`) hand the references to their mesh, which releases them on unload. Unload the meshes
+  that reference a map bundle first. All-absent bundles neither upload textures nor release scene defaults.
+  `ResidentMaterialTextureCount` and `ResidentMaterialTextureBytes` report the residency. The loader decodes each
+  identity once while its parts are referenced, holds the pixels until the first upload, and keeps the encoded bytes
+  after that (`Scene3D.MaterialTextureResidency.cs`, `Models/MaterialImageCache.cs`).
+- Material sampling and emissive: real material maps sample through a wrap anisotropic sampler at
+  `Post.Quality.MaterialAnisotropy` (16 by default, 1 is the device's linear sampler), while each absent map's 1x1
+  default keeps the linear sampler so untextured meshes never change. glTF `emissiveFactor`, `emissiveTexture` and
+  `KHR_materials_emissive_strength` arrive in `GltfMaterialMaps.Emissive` / `EmissiveFactor` and `SurfaceMaps`, and
+  the model fragments add the glow after lighting as HDR light that lights and shadows never scale, on top of the
+  per-instance `Material.Emissive` (`Rendering/ModelRenderer.MaterialSampling.cs`).
 - `RigidInstanceDraw` / `SkinnedInstanceDraw` / `MotionKey` - draw descriptors and motion keys. A descriptor carries
   every knob of one draw (mesh, absolute transform, tint, material, dissolve and edge, shadow casting, the
   shadow-only flag, inverted shadow dither and complement phase) plus a `Motion` key, for rigid and skinned draws.

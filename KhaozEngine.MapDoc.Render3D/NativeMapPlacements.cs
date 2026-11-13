@@ -366,7 +366,7 @@ public static class NativeMapPlacements
     }
     static MapSubmissionAnchor Anchor(MapEffectiveTransform pose) => new(checked((long)Math.Floor(pose.X)), checked((long)Math.Floor(pose.Y)), checked((long)Math.Floor(pose.Z)));
     static long Bytes(GltfMesh mesh, GltfMaterialMaps maps) => checked(256L + (long)mesh.Vertices.Length * ModelVertex.SizeInBytes +
-        4L * mesh.Indices32.Length + (maps.Albedo?.Rgba.LongLength ?? 0) + (maps.Normal?.Rgba.LongLength ?? 0) + (maps.Roughness?.Rgba.LongLength ?? 0));
+        4L * mesh.Indices32.Length + maps.DecodedBytes);
     static MapBox3 Union(MapBox3 a, MapBox3 b) => new(Math.Min(a.MinX, b.MinX), Math.Min(a.MinY, b.MinY), Math.Min(a.MinZ, b.MinZ),
         Math.Max(a.MaxX, b.MaxX), Math.Max(a.MaxY, b.MaxY), Math.Max(a.MaxZ, b.MaxZ));
 }

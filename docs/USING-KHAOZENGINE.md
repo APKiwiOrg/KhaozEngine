@@ -4399,32 +4399,68 @@ var sockets = GltfLoader.LoadNamedNodes("ship_hull.glb").ToDictionary(n => n.Nam
 scene.Draw(hull, shipWorld, Color.White);
 scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
 ```
-- PBR-lite materials: the rigid lit model pass takes an optional tangent-space NORMAL map and a
-  ROUGHNESS map alongside the albedo. Load each map with `LoadTexture`, then bind them with `Scene3D.SurfaceMaps`:
-  `scene.LoadMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))` - any handle may be `default` to fall
-  back to its 1x1 default (white albedo / flat normal / zero roughness). Normal mapping needs per-vertex tangents,
-  so it applies to glTF meshes (`GltfLoader.Load` reads the `TANGENT` accessor, or computes one from the UVs) and
-  `MeshAssembler` output; `MeshPrimitives` carry no tangent, so a normal map is inert on a primitive (it stays lit
-  by its geometric normal). Roughness uses the glTF metallic-roughness `.g` convention (0 = smooth/glossy,
-  1 = matte; metallic is ignored) and modulates the Blinn-Phong specular. Meshes with no maps render exactly as
-  before. Skinned meshes take normal/roughness too: bind via
-  `scene.LoadSkinnedMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))`; `GltfLoader.LoadSkinned` and
-  `SkinnedMeshBuilder.BuildTube` compute tangents, and the tangent rides the per-frame skin deform so the TBN
-  tracks the pose. The pure `SurfaceShading` helper mirrors the shader math (handy for headless tests / tooling).
+- PBR-lite materials: the rigid lit model pass takes an optional tangent-space NORMAL map, a ROUGHNESS map and an
+  EMISSIVE map alongside the albedo. Load each map with `LoadTexture`, then bind them with `Scene3D.SurfaceMaps`:
+  `scene.LoadMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))`, or the six-argument constructor that
+  adds `emissive` and `emissiveFactor`. Any handle may be `default` to fall back to its 1x1 default (white albedo,
+  flat normal, zero roughness, white emissive). Normal mapping needs per-vertex tangents, so it applies to glTF
+  meshes (`GltfLoader.Load` reads the `TANGENT` accessor, or computes one from the UVs) and `MeshAssembler` output.
+  `MeshPrimitives` carry no tangent, so a normal map is inert on a primitive (it stays lit by its geometric normal).
+  Roughness uses the glTF metallic-roughness `.g` convention (0 = smooth/glossy, 1 = matte, metallic is ignored)
+  and modulates the Blinn-Phong specular. Meshes with no maps render exactly as before. Skinned meshes take every
+  map too: bind via `scene.LoadSkinnedMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))`.
+  `GltfLoader.LoadSkinned` and `SkinnedMeshBuilder.BuildTube` compute tangents, and the tangent rides the per-frame
+  skin deform so the TBN tracks the pose. The pure `SurfaceShading` helper mirrors the shader math (handy for
+  headless tests / tooling).
+- Material texture sampling: a real material map (albedo, normal, roughness or emissive, rigid or skinned) samples
+  through a wrap-addressed anisotropic sampler at `scene.Post.Quality.MaterialAnisotropy`, 16 by default, so tiled
+  roofs, walls and floors stay sharp at grazing angles. 1 is trilinear with anisotropy off, exactly the device's
+  built-in linear sampler and the look textured meshes had before the setting existed. Values outside 1 to 16 clamp,
+  and a device without anisotropic filtering samples trilinear at any value. A change applies when the next
+  `Begin` starts a frame and rebuilds the scene's textured material bindings once, so it is safe to drive from an
+  options menu. Each map slot has its own sampler: a map the material does not have samples its 1x1 default
+  through the linear sampler at every setting, which keeps the defaults exactly white, flat and zero on every
+  backend and every untextured mesh byte-identical. Terrain keeps its own sampler (`TerrainSamplerConfig`).
+- Emissive (glows that bloom): a glTF material's `emissiveFactor` times its `KHR_materials_emissive_strength`
+  (1 when the extension is absent) arrives as `GltfMaterialMaps.EmissiveFactor`, and its `emissiveTexture` as
+  `GltfMaterialMaps.Emissive`, decoded only when the factor is non-zero (a zero factor makes it invisible under the
+  glTF spec). `LoadSurfaceMaps` carries both into `SurfaceMaps.Emissive` and `SurfaceMaps.EmissiveFactor`. The model
+  fragment adds `emissiveMap.rgb * EmissiveFactor` after lighting as HDR light that the scene's lights and shadows
+  never scale, so a lit window or a forge mouth glows in the dark and feeds bloom with `Post.Hdr` on. It adds to the
+  per-instance `Material.Emissive` (both are added, neither scales the other), atmospheric fog applies to both, and
+  during a dissolve the instance term turns into the edge colour as before while the material glow stays on the
+  surviving fragments. A factor with no map is a flat glow. Emissive texels are used as stored, the same gamma-space
+  convention as albedo. Rigid, CPU-skinned and GPU-skinned draws all apply it. A material with no emissive binds a
+  shared zero block and renders byte-identically. The strict budgeted attachment decode reads `emissiveFactor` and
+  still refuses `emissiveTexture` and every material extension.
 - Auto-read glTF material textures (opt-in): instead of exporting PNGs and binding them by hand, let
   the loader read the material's textures straight off the glb. `GltfLoader.LoadWithMaterial(path)` returns
-  `(GltfMesh Mesh, GltfMaterialMaps Maps)` and `LoadSkinnedWithMaterial(path)` the skinned equivalent; the mesh is
+  `(GltfMesh Mesh, GltfMaterialMaps Maps)` and `LoadSkinnedWithMaterial(path)` the skinned equivalent. The mesh is
   identical to `Load`/`LoadSkinned`, and `GltfMaterialMaps` carries the decoded baseColor / normal /
-  metallicRoughness textures as raw RGBA8 `DecodedImage?` (the loader has no GPU device, so it decodes only -
-  metallicRoughness passes through unchanged since the shader reads roughness from `.g`, normal stays
+  metallicRoughness / emissive textures as raw RGBA8 `DecodedImage?` (the loader has no GPU device, so it decodes
+  only. metallicRoughness passes through unchanged since the shader reads roughness from `.g`, and normal stays
   tangent-space RGB). Upload them with `scene.LoadSurfaceMaps(maps)` → `SurfaceMaps`, or skip a step with the
   one-call overloads `scene.LoadMesh(mesh, maps)` / `scene.LoadSkinnedMesh(mesh, maps)` (both taking a
-  `GltfMaterialMaps`). Embedded GLB images and external image files are both read; a material with no textures - or
-  a missing/undecodable image - yields an all-absent bundle (`maps.IsEmpty`) and falls back to the renderer
-  defaults, never a throw. The default explicit-`SurfaceMaps` path is unchanged, so this is purely a convenience
-  on top. `LoadSurfaceMaps` retires already uploaded maps if a later texture creation fails.
-  An owning caller can unload its meshes, then call `UnloadSurfaceMaps(in maps)` to retire each distinct
-  valid texture handle. All-absent bundles retain invalid handles and never unload scene defaults.
+  `GltfMaterialMaps`), whose mesh owns its map references and releases them when it unloads. Embedded GLB images
+  and external image files are both read. A material with no textures, or a missing/undecodable image, yields an
+  all-absent bundle (`maps.IsEmpty`) and falls back to the renderer defaults, never a throw. The default
+  explicit-`SurfaceMaps` path is unchanged, so this is purely a convenience on top.
+- Shared material textures: every image the glTF loader reads carries `DecodedImage.Identity`, `file:` plus the
+  absolute path for an external image URI (resolved against its glb's folder) or `sha256:` plus the hex SHA-256 of
+  the encoded bytes for an embedded one. The loader decodes each identity once while any loaded part list still
+  references it, and a scene uploads it once: `LoadSurfaceMaps` takes a reference to the resident texture instead
+  of uploading again, so a kit that stores its tileable sets as shared files, or embeds the same PNG in every glb,
+  holds one texture per image. References belong to a bundle until `UnloadSurfaceMaps` releases one per slot, or
+  to the mesh of a turn-key upload (`LoadProp`, `LoadPropMeshes`, `LoadMesh(mesh, maps)`,
+  `LoadSkinnedMesh(mesh, maps)`) until `UnloadMesh`, `UnloadProp` or `UnloadSkinnedMesh` releases them. The last
+  release retires the texture through the scene's retire queue. `UnloadTexture` on a resident handle releases one
+  reference. A failed upload releases everything it took and retires what it created, and scene defaults are
+  never released. An image the caller built has no identity and uploads on its own. Read the residency with
+  `scene.ResidentMaterialTextureCount` and `scene.ResidentMaterialTextureBytes` (RGBA8 bytes of every mip level),
+  for example in a headless test that loads a kit and asserts one texture per distinct image. Decoded pixels are
+  transient: they are held from decode until a scene has uploaded them, then only the image's encoded bytes are
+  kept, one copy per identity, and reading `DecodedImage.Rgba` decodes again when needed. Treat a shared image's
+  pixels as read-only, and copy them into a new `DecodedImage` to edit them.
 - Alpha cutout (foliage / leaf cards): `GltfMaterialMaps.AlphaCutoff` (and `SurfaceMaps.AlphaCutoff`) carries the
   glTF material's `alphaMode`: `0` for OPAQUE (the default when absent - no clip, byte-identical render), else the
   material's `alphaCutoff` (default 0.5 per spec) for MASK. glTF BLEND is out of scope for the mesh pass and is
@@ -8992,6 +9028,11 @@ accepts or the loader rejects it. The rules:
 - **Indexed triangles carrying `POSITION` + `NORMAL`.**
 - **A single flat material** - one `pbrMetallicRoughness.baseColorFactor`, no textures.
 
+A textured kit uses the textured path instead (`"textured": true`, `PropLoader.LoadPropParts`, or a tile world's
+`GltfMeshResolver`), which reads baseColor, normal, metallicRoughness and emissive textures from embedded or
+external PNG/JPEG images and shares each image across every piece that names it. See "Shared kit textures" under
+Textured props.
+
 **The metallic gotcha that always bites.** A Blender-default glTF export sets the material
 `metallicFactor = 1.0` (fully metallic). A mesh exported with no PBR setup then renders **dark / near-black**
 in the flat-lit prop path. Fix: set `metallicFactor: 0` and match the kit greys (e.g. the showcase rock kit is
@@ -12214,6 +12255,16 @@ per-instance shader indexing, both forms ride the same `SceneInstances` path. Th
 `Room3D` scatters the re-baked textured pine/oak/rock kit (see `tools/kit-bake/`) and how `ke-mapedit`'s editor
 viewport renders the same kit with its **Textured props** toggle (see `KhaozEngine.MapEditor/README.md`) and the
 `render_topdown`/`render_view` MCP verbs' `textured` parameter (see `KhaozEngine.MapEdit.Tool/README.md`).
+
+**Shared kit textures.** A kit whose pieces share tileable texture sets uploads each image once per scene, whether
+the sets are separate image files beside the glbs (one `file:` identity each) or the same PNG embedded in every glb
+(one `sha256:` identity each). Every part from `LoadProp` or `LoadPropMeshes` owns a reference to each map it binds,
+so unloading the last piece that uses an oak set releases the oak textures and unloading one piece of many keeps
+them for the rest. `scene.ResidentMaterialTextureCount` counts the distinct images a scene holds, which is the number
+to assert in a kit test. The textures sample through the anisotropic material sampler
+(`Post.Quality.MaterialAnisotropy`), and a material with an `emissiveFactor` (a window pane, a lantern, a forge)
+glows through `GltfMaterialMaps.Emissive` with no extra call. See the PBR-lite, sampling, emissive and shared-texture
+notes under Rendering.
 
 **Alpha-cutout foliage.** Leaf-card foliage (the Quaternius pine/oak/bush kits) stores an alpha-cutout mask in
 its baseColor texture and declares glTF `alphaMode: MASK`. `LoadPropParts` / `LoadPropAuto` (and the

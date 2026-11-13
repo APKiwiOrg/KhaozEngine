@@ -169,5 +169,14 @@ namespace KhaozEngine.Render3D
         /// existing scenes byte-stable). Set it from a menu, e.g. <c>Post.Quality.Shadows.Mode = ShadowMode.Blob</c>.
         /// Validate a menu choice against the device with <see cref="ShadowSettings.ResolveFor"/>.</summary>
         public ShadowSettings Shadows = new();
+
+        /// <summary>Maximum anisotropy for model material textures (albedo, normal, roughness and emissive maps on
+        /// rigid and skinned meshes), wrap-addressed. Default 16. 1 is trilinear with anisotropy off, exactly the
+        /// device's built-in linear sampler, which is how textured meshes sampled before this setting existed. Values
+        /// outside 1 to 16 are clamped, and a device without anisotropic filtering samples trilinear whatever the
+        /// value. A change applies when the next <see cref="Scene3D.Begin"/> starts a frame, which rebuilds the
+        /// scene's textured material bindings once. A map a material does not have samples its 1x1 default through
+        /// the linear sampler at every setting, so untextured meshes never change. Terrain keeps its own sampler.</summary>
+        public int MaterialAnisotropy = Rendering.ModelRenderer.MaxMaterialAnisotropy;
     }
 }

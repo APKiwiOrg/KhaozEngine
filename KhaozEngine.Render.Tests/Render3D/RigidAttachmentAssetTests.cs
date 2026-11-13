@@ -136,10 +136,10 @@ public sealed class RigidAttachmentAssetTests
     {
         using var harness = new AttachmentAssetHarness();
         var source = new AttachmentTestSource();
-        byte[] glb = AttachmentTestSource.Glb(textured: true);
-        AttachmentMeshRef previous = source.Mesh("previous.glb", glb);
-        AttachmentMeshRef first = source.Mesh("a.glb", glb);
-        AttachmentMeshRef second = source.Mesh("b.glb", glb);
+        // Each mesh has images of its own, so the failed transaction stages textures of its own to retire.
+        AttachmentMeshRef previous = source.Mesh("previous.glb", AttachmentTestSource.Glb(textured: true));
+        AttachmentMeshRef first = source.Mesh("a.glb", AttachmentTestSource.Glb(textured: true, seed: 1));
+        AttachmentMeshRef second = source.Mesh("b.glb", AttachmentTestSource.Glb(textured: true, seed: 2));
         string previousHash = source.Set("previous.json", previous);
         string failedHash = source.Set("failed.json", previous, first, second);
         var recording = new AttachmentRecordingScene(harness.Scene);
@@ -325,16 +325,18 @@ internal sealed class AttachmentTestSource : IAttachmentAssetSource
     internal string Set(string key, params AttachmentMeshRef[] meshes) => Add(key,
         AttachmentSetJson.Write(new AttachmentSetDefinition(meshes.Select((mesh, index) =>
             new RigidAttachmentPartDefinition((uint)index + 1, mesh, "hip", Matrix4x4.Identity)))));
-    internal static byte[] Glb(int materials = 1, bool textured = false)
+    // Each textured material's three maps are distinct images, distinct again per material and per seed, so every map
+    // is its own resident texture: a scene shares one texture per image identity (#1776), and a fixture that reused
+    // one image would collapse the per-upload lifetimes these tests watch into a single shared texture.
+    internal static byte[] Glb(int materials = 1, bool textured = false, byte seed = 0)
     {
-        byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==");
         var mesh = new MeshBuilder<VertexPositionNormal, VertexTexture1>("triangle");
         for (int i = 0; i < materials; i++)
         {
             var material = new MaterialBuilder("material" + i);
-            if (textured) material = material.WithBaseColor(new SharpGLTF.Memory.MemoryImage(png))
-                .WithNormal(new SharpGLTF.Memory.MemoryImage(png))
-                .WithMetallicRoughness(new SharpGLTF.Memory.MemoryImage(png));
+            if (textured) material = material.WithBaseColor(new SharpGLTF.Memory.MemoryImage(Png(seed, i, 0)))
+                .WithNormal(new SharpGLTF.Memory.MemoryImage(Png(seed, i, 1)))
+                .WithMetallicRoughness(new SharpGLTF.Memory.MemoryImage(Png(seed, i, 2)));
             VertexBuilder<VertexPositionNormal, VertexTexture1, VertexEmpty> V(Vector3 p, Vector2 uv) =>
                 new(new VertexPositionNormal(p, Vector3.UnitZ), new VertexTexture1(uv));
             mesh.UsePrimitive(material).AddTriangle(V(new(i, 0, 0), new(0, 0)),
@@ -346,4 +348,8 @@ internal sealed class AttachmentTestSource : IAttachmentAssetSource
         try { scene.ToGltf2().SaveGLB(path); return File.ReadAllBytes(path); }
         finally { File.Delete(path); }
     }
+
+    /// <summary>A 1x1 PNG unique to one seed, material and map channel.</summary>
+    internal static byte[] Png(byte seed, int material, int channel) =>
+        KhaozEngine.Imaging.PngWriter.Encode(new byte[] { seed, (byte)material, (byte)channel, 255 }, 1, 1);
 }

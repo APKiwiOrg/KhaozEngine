@@ -14,6 +14,10 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class WaterVolumeLayoutTests
 {
+    // The rigid model layout (water at binding 15) ends with the five-element material tail (#1776). Every other lit
+    // layout still ends at its caustic sampler.
+    static int MaterialTailAfter(int waterBinding) => waterBinding == 15 ? 5 : 0;
+
     static readonly GpuOutputDescription Outputs = new(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R8G8B8A8UNorm,
         GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R32Float);
 
@@ -59,7 +63,7 @@ public sealed class WaterVolumeLayoutTests
         var pipeline = factory.GraphicsPipelines.First(p => p.FragmentGlsl == program.FragmentGlsl);
         var layout = Assert.IsType<FakeResourceLayout>(pipeline.Description.ResourceLayouts[0]);
         GpuResourceLayoutElement[] elements = layout.Description.Elements;
-        Assert.Equal(binding + 3, elements.Length);
+        Assert.Equal(binding + 3 + MaterialTailAfter(binding), elements.Length);
         Assert.Equal("WaterVolumes", elements[binding].Name);
         Assert.Equal(GpuResourceKind.StructuredBufferReadOnly, elements[binding].Kind);
         Assert.Equal(GpuShaderStages.Fragment, elements[binding].Stages);
@@ -99,7 +103,7 @@ public sealed class WaterVolumeLayoutTests
                 program.VertexGlsl, program.FragmentGlsl, program.Name);
             GpuResourceLayoutElement[] elements = compiled.Reflection.ResourceLayouts[0].Elements;
             int binding = program.WaterVolumeBinding!.Value;
-            Assert.Equal(binding + 3, elements.Length);
+            Assert.Equal(binding + 3 + MaterialTailAfter(binding), elements.Length);
             Assert.Equal(GpuResourceKind.StructuredBufferReadOnly, elements[binding].Kind);
             Assert.Equal(GpuResourceKind.TextureReadOnly, elements[binding + 1].Kind);
             Assert.Equal(GpuResourceKind.Sampler, elements[binding + 2].Kind);

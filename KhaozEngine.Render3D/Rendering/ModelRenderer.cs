@@ -237,7 +237,8 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution,
-            int shadowCascadeCount, GpuRetireQueue retired, AtmosphereBindings atmosphere)
+            int shadowCascadeCount, GpuRetireQueue retired, AtmosphereBindings atmosphere,
+            int materialAnisotropy = MaxMaterialAnisotropy)
         {
             _gd = LitReceiverRequirements.RequireSupportedDevice(gd);
             InteriorResources = new InteriorCutResources(gd);
@@ -261,7 +262,7 @@ namespace KhaozEngine.Render3D.Rendering
             CreateWaterVolumes(factory);
             CreateCausticPlaceholder(factory);
 
-            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AppendWaterVolumeLayout(AppendInteriorCutLayout(AtmosphereBindings.AppendLayout(
+            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AppendModelMaterialTail(AppendWaterVolumeLayout(AppendInteriorCutLayout(AtmosphereBindings.AppendLayout(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointLights", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointLightClusters", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
@@ -272,7 +273,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment))))));
+                new GpuResourceLayoutElement("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)))))));
 
             // Use the device's built-in linear sampler (wrap-addressed) - the SAME one Render2D samples its
             // textures (incl. a 1x1 white) through, which verifies correctly on D3D11/WARP. A custom
@@ -280,6 +281,9 @@ namespace KhaozEngine.Render3D.Rendering
             // default as < 1.0 on D3D11 - uniformly darkening untextured meshes (the golden net caught it on the
             // green box) while Metal clamped fine. Built-in sampler is non-owning, so it is NOT disposed here.
             _sampler = gd.LinearSampler;
+            // Real material maps sample through their own anisotropic sampler, defaults keep this one per slot
+            // (ModelRenderer.MaterialSampling.cs).
+            CreateMaterialSampling(factory, materialAnisotropy);
 
             // 1x1 white default texture: an untextured mesh samples (1,1,1), so albedo == vColor*vTint and every
             // existing scene renders pixel-identical (the safety invariant).
@@ -298,8 +302,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             CreatePointShadowDefault(factory);   // white defaults for both point-shadow atlas bindings
 
-            _defaultSet = CreateShadowSamplingSet(_layout, _shadowMap.ShadowTexture,
-                includesPointLights: true, _ubo, _white, _flatNormal, _defaultRough, _sampler);
+            _defaultSet = CreateModelMaterialSet(_layout, new ModelMaterialSlots(null, null, null, null, _zeroMaterialParams));
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelFrag);
             _dissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
@@ -318,7 +321,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("PointLights", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointLightClusters", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)))));
-            _skinnedFragLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+            _skinnedFragLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AppendModelMaterialTail(
                 new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("NormalMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("RoughnessMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
@@ -326,11 +329,11 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment))));
             _skinnedShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag);
             _skinnedDissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag);
-            _skinnedDefaultFragSet = CreateShadowSamplingSet(_skinnedFragLayout, _shadowMap.ShadowTexture,
-                _white, _flatNormal, _defaultRough, _sampler);
+            _skinnedDefaultFragSet = CreateModelMaterialSet(_skinnedFragLayout,
+                new ModelMaterialSlots(null, null, null, null, _zeroMaterialParams));
 
             // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
             // (CreateSampler falls back to trilinear when the backend lacks anisotropy). 16x anisotropy + a +1 mip
@@ -502,14 +505,15 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Build a per-mesh material resource set binding <paramref name="albedo"/> (white default
-        /// when null), <paramref name="normal"/> (flat-normal default when null), and
-        /// <paramref name="roughness"/> (zero-roughness default when null), plus the shared frame UBO and
-        /// sampler. Owned by the caller (Scene3D) and disposed when the mesh unloads. Passing only an albedo
-        /// reproduces the pre-PBR single-texture material exactly.</summary>
-        public IGpuResourceSet CreateMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null) =>
-            CreateShadowSamplingSet(_layout, _shadowMap.ShadowTexture,
-                includesPointLights: true, _ubo, albedo ?? _white, normal ?? _flatNormal,
-                roughness ?? _defaultRough, _sampler);
+        /// when null), <paramref name="normal"/> (flat-normal default when null), <paramref name="roughness"/>
+        /// (zero-roughness default when null) and <paramref name="emissive"/> (white default when null), each through
+        /// its slot's sampler, plus the shared frame UBO and <paramref name="materialParams"/> (the shared no-glow block
+        /// when null). Owned by the caller (Scene3D) and disposed when the mesh unloads. The params buffer stays the
+        /// caller's.</summary>
+        public IGpuResourceSet CreateMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null,
+            IGpuTexture? emissive = null, IGpuBuffer? materialParams = null) =>
+            CreateModelMaterialSet(_layout,
+                new ModelMaterialSlots(albedo, normal, roughness, emissive, materialParams ?? _zeroMaterialParams));
 
         /// <summary>Create a wrap-addressed terrain sampler from <paramref name="cfg"/> (anisotropy/trilinear/point +
         /// mip LOD bias). The caller owns and disposes it. Mirrors the shared default sampler this renderer builds at
@@ -631,6 +635,7 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedPipeline.Dispose(); _skinnedDissolvePipeline.Dispose();
             _skinnedShaders.Dispose(); _skinnedDissolveShaders.Dispose();
             _skinnedDefaultFragSet.Dispose(); _skinnedMainLayout.Dispose(); _skinnedFragLayout.Dispose();
+            DisposeMaterialSampling();   // after every set that names the sampler or the zero block
             _skinnedMainUbo?.Dispose(); _skinnedMainSet?.Dispose();
             _bonePalette.Dispose();   // after _shadowMap, which binds the same set
             _pointLightClusterBuffer.Dispose();

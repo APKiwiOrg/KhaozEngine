@@ -52,6 +52,11 @@ namespace KhaozEngine.Tests.Gpu
         static GpuResourceLayoutElement TextureRW(string name)
             => new(name, GpuResourceKind.TextureReadWrite, GpuShaderStages.Compute);
 
+        // The model material tail appended to the rigid model layout and the skinned fragment layout (#1776): the
+        // normal, roughness and emissive slot samplers, the emissive map and the material params block.
+        static GpuResourceLayoutElement[] MaterialTail()
+            => [S("NormalSamp"), S("RoughnessSamp"), T("EmissiveMap"), S("EmissiveSamp"), U("MaterialParams")];
+
         /// <summary>
         /// Every resource layout the engine's renderers declare, with the registers its elements must take. The
         /// expected column is the layout-RELATIVE numbering, in declaration order, written the way HLSL writes it.
@@ -72,17 +77,18 @@ namespace KhaozEngine.Tests.Gpu
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                     StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"),
                     T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"),
-                    T("PointShadowTransientMap")), T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")],
-                "b0 t0 t1 t2 t3 t4 s0 t5 s1 t6 t7 b1 t8 s2 t9 t10 t11 s3"),
+                    T("PointShadowTransientMap")), T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler"),
+                    .. MaterialTail()],
+                "b0 t0 t1 t2 t3 t4 s0 t5 s1 t6 t7 b1 t8 s2 t9 t10 t11 s3 s4 s5 t12 s6 b2"),
             // Shared frame, per-draw vertex block, atmosphere and the appended water reader.
             ("ModelRenderer._skinnedMainLayout",
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                     StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true)),
                     StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")], "b0 t0 t1 b1 b2 t2 s0 t3 t4 s1"),
             ("ModelRenderer._skinnedFragLayout",
-                new[] { T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),
-                    S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap") },
-                "t0 t1 t2 s0 t3 s1 t4 t5"),
+                [T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),
+                    S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap"), .. MaterialTail()],
+                "t0 t1 t2 s0 t3 s1 t4 t5 s2 s3 t6 s4 b0"),
             // The shared per-caster bone palette (#407). One declaration, bound by BOTH skinned pipelines, at
             // different slots: set 2 of the model pair and set 1 of the depth one. Layout-relative it is always b0,
             // and the ACROSS-layouts row below is where the two pipelines' different bases show up.
@@ -322,22 +328,23 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("b0", Absolute(masked, 1));
 
             // The skinned model pass: the shared frame block and the per-draw header at set 0, the material
-            // textures and samplers at set 1, the shared per-caster bone palette at set 2 since #407. Three sets,
-            // and atmosphere adds a third uniform in set 0, so the palette lands at b3.
+            // textures and samplers at set 1, the shared per-caster bone palette at set 2 since #407. Three sets.
+            // Atmosphere adds a third uniform in set 0 and the material params block a fourth in set 1, so the
+            // palette lands at b4.
             using var skinnedMain = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                 StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true)),
                 StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")]));
             using var skinnedFrag = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
-                T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
-                T("PointShadowMap"), T("PointShadowTransientMap")));
+                [T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
+                T("PointShadowMap"), T("PointShadowTransientMap"), .. MaterialTail()]));
             using var bonePalette = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("Palette", dynamic: true)));
             D3D11ResourceLayout[] skinned = { skinnedMain, skinnedFrag, bonePalette };
 
             Assert.Equal("b0 t0 t1 b1 b2 t2 s0 t3 t4 s1", Absolute(skinned, 0));
-            Assert.Equal("t5 t6 t7 s2 t8 s3 t9 t10", Absolute(skinned, 1));
-            Assert.Equal("b3", Absolute(skinned, 2));
+            Assert.Equal("t5 t6 t7 s2 t8 s3 t9 t10 s4 s5 t11 s6 b3", Absolute(skinned, 1));
+            Assert.Equal("b4", Absolute(skinned, 2));
 
             // The skinned DEPTH pass takes the SAME palette layout object at a different slot, where the base in
             // front of it is one buffer instead of two. That is the property a per-layout base would get wrong: a
@@ -377,35 +384,37 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("b2 t5 s2 t6 s3 t7 t8", Absolute(ground, 1));
 
             // The rigid temporal variant: the model layout at set 0 and the motion set at set 1, so the motion block is
-            // b2 and the previous transforms follow the model layout's twelve t registers.
+            // b3 (after the frame, atmosphere and material params blocks) and the previous transforms follow the model
+            // layout's thirteen t registers.
             using var model = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                 StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"), T("RoughnessMap"),
                 S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
-                T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler")]));
+                T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment), T("CausticMap"), S("CausticSampler"),
+                .. MaterialTail()]));
             using var rigidMotion = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("MotionFrame"), StructRO("PreviousInstanceTransforms", GpuShaderStages.Vertex)));
             D3D11ResourceLayout[] rigid = { model, rigidMotion };
 
-            Assert.Equal("b2 t12", Absolute(rigid, 1));
+            Assert.Equal("b3 t13", Absolute(rigid, 1));
 
             // The skinned temporal variant: the three skinned sets, then the motion set at set 3, whose two uniform
-            // buffers continue the b file after the palette's b3.
+            // buffers continue the b file after the palette's b4.
             using var skinnedMotion = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("MotionFrame"), U("PrevPalette", dynamic: true)));
             D3D11ResourceLayout[] skinnedTemporal = { skinnedMain, skinnedFrag, bonePalette, skinnedMotion };
 
-            Assert.Equal("b4 b5", Absolute(skinnedTemporal, 3));
+            Assert.Equal("b5 b6", Absolute(skinnedTemporal, 3));
 
             // The foliage temporal variant: the model layout, the foliage block at set 1 and the motion block alone at
-            // set 2, so the two blocks continue the b file after the frame block. Read off the emitted HLSL, whose
-            // vertex stage names the foliage block b2 and the motion block b3.
+            // set 2, so the two blocks continue the b file after the model layout's three blocks. Read off the emitted
+            // HLSL, whose vertex stage names the foliage block b3 and the motion block b4.
             using var foliage = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Foliage", dynamic: true)));
             using var motionFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("MotionFrame")));
             D3D11ResourceLayout[] foliageTemporal = { model, foliage, motionFrame };
 
-            Assert.Equal("b2", Absolute(foliageTemporal, 1));
-            Assert.Equal("b3", Absolute(foliageTemporal, 2));
+            Assert.Equal("b3", Absolute(foliageTemporal, 1));
+            Assert.Equal("b4", Absolute(foliageTemporal, 2));
 
             // The two ground temporal variants: each ground pass's frame and material sets, then the motion block alone
             // at set 2, so it continues the b file after the material's params block and the two sets keep the base

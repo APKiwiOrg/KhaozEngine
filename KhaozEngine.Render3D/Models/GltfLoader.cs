@@ -10,52 +10,6 @@ using GltfMaterial = SharpGLTF.Schema2.Material;
 
 namespace KhaozEngine.Render3D
 {
-    /// <summary>One decoded material texture: tightly-packed RGBA8 pixels (row-major, top-left origin,
-    /// <c>Rgba.Length == Width * Height * 4</c>) plus its dimensions. Carries no GPU resources; upload it with
-    /// <see cref="Scene3D.LoadTexture(byte[],int,int,TextureMipPolicy)"/> (or via <see cref="Scene3D.LoadSurfaceMaps"/>).</summary>
-    public readonly struct DecodedImage
-    {
-        /// <summary>Tightly-packed RGBA8 pixels, row-major, top-left origin (length = Width*Height*4).</summary>
-        public byte[] Rgba { get; }
-        public int Width { get; }
-        public int Height { get; }
-        public DecodedImage(byte[] rgba, int width, int height) { Rgba = rgba; Width = width; Height = height; }
-    }
-
-    /// <summary>The optional textures auto-read from a glTF material by <see cref="GltfLoader.LoadWithMaterial(string)"/> /
-    /// <see cref="GltfLoader.LoadSkinnedWithMaterial"/>, each decoded to raw RGBA8 (the loader has no GPU device, so
-    /// it never creates a <see cref="Scene3D.TextureHandle"/>; the upload stays in <see cref="Scene3D"/>). Any map a
-    /// material doesn't reference - or whose image is missing/external-unresolved/undecodable - is left
-    /// <c>null</c> (absent, never a throw), so a material with no textures yields an all-null
-    /// <see cref="GltfMaterialMaps"/>. <see cref="Roughness"/> is glTF's packed ORM-style texture passed
-    /// through unchanged (the model shader samples <c>.g</c> for roughness); <see cref="Normal"/> is the
-    /// tangent-space RGB normal map unchanged. <see cref="AlphaCutoff"/> carries the material's alpha-cutout
-    /// threshold (0 = OPAQUE, no clip). Feed the bundle to <see cref="Scene3D.LoadSurfaceMaps"/> (or the
-    /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/> overload) to upload only the present maps.</summary>
-    public readonly struct GltfMaterialMaps
-    {
-        /// <summary>Decoded baseColor (albedo) texture, or <c>null</c> if the material has none.</summary>
-        public DecodedImage? Albedo { get; }
-        /// <summary>Decoded tangent-space normal map (RGB unchanged), or <c>null</c> if the material has none.</summary>
-        public DecodedImage? Normal { get; }
-        /// <summary>Decoded glTF metallic-roughness texture, passed through unchanged (roughness in <c>.g</c>), or
-        /// <c>null</c> if the material has none.</summary>
-        public DecodedImage? Roughness { get; }
-        /// <summary>The alpha-cutout threshold read from the glTF material's alphaMode: <c>0</c> for OPAQUE (the
-        /// default when absent, so no fragment is clipped and the render is unchanged), else the material's
-        /// <c>alphaCutoff</c> (default 0.5 per spec) for MASK. glTF BLEND is out of scope and treated as MASK
-        /// (its cutoff, default 0.5). The model fragment discards a texel whose sampled baseColor alpha is below
-        /// this value, so a leaf-card / foliage texture reads as its silhouette instead of a solid quad.</summary>
-        public float AlphaCutoff { get; }
-        public GltfMaterialMaps(DecodedImage? albedo, DecodedImage? normal, DecodedImage? roughness, float alphaCutoff = 0f)
-        {
-            Albedo = albedo; Normal = normal; Roughness = roughness; AlphaCutoff = alphaCutoff;
-        }
-        /// <summary>True when the material referenced (and the loader decoded) no textures at all. (The alpha-cutout
-        /// threshold is metadata, not a texture, so it does not affect emptiness.)</summary>
-        public bool IsEmpty => Albedo is null && Normal is null && Roughness is null;
-    }
-
     /// <summary>One material sub-range of a multi-material prop loaded by
     /// <see cref="GltfLoader.LoadPartsWithMaterials(string)"/> (and normalized by <see cref="PropLoader.LoadPropParts"/>):
     /// the welded geometry of the primitives that reference a single glTF material (<see cref="Mesh"/>) paired with
@@ -148,7 +102,7 @@ namespace KhaozEngine.Render3D
         {
             ModelRoot root = LoadModel(path, entryId);
             GltfMesh mesh = BuildRigid(root, path, entryId: entryId);
-            return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
+            return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root), AssetDirectory(path)));
         }
 
         /// <summary>Load a rigid glb/glTF as ONE flattened <see cref="GltfMesh"/> exactly like <see cref="Load"/>,
@@ -165,7 +119,7 @@ namespace KhaozEngine.Render3D
         internal static GltfMesh LoadFlattenedAlbedo(string path, string? entryId)
         {
             ModelRoot root = LoadModel(path, entryId);
-            return BuildRigid(root, path, MakeAlbedoFlattenResolver(), entryId);
+            return BuildRigid(root, path, MakeAlbedoFlattenResolver(AssetDirectory(path)), entryId);
         }
 
         /// <summary><see cref="LoadFlattenedAlbedo(string)"/> over a binary glTF held in memory. Only
@@ -177,7 +131,7 @@ namespace KhaozEngine.Render3D
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(identity);
             ModelRoot root = LoadModel(glb, identity);
-            return BuildRigid(root, identity, MakeAlbedoFlattenResolver());
+            return BuildRigid(root, identity, MakeAlbedoFlattenResolver(assetDirectory: null));
         }
 
         // The flat scene weld. <paramref name="baseColorFor"/> resolves a primitive's per-vertex base colour. When
@@ -488,7 +442,7 @@ namespace KhaozEngine.Render3D
         // alpha preserved). Memoized per material so a multi-primitive material decodes its albedo once, not per
         // primitive. A material with no baseColorTexture returns the factor unchanged, so the flattened mesh is
         // byte-identical to Load for untextured assets.
-        static Func<GltfMaterial?, Vector4> MakeAlbedoFlattenResolver()
+        static Func<GltfMaterial?, Vector4> MakeAlbedoFlattenResolver(string? assetDirectory)
         {
             var cache = new Dictionary<GltfMaterial, Vector4>();
             return mat =>
@@ -496,7 +450,7 @@ namespace KhaozEngine.Render3D
                 if (mat == null) return ReadBaseColor(mat);
                 if (cache.TryGetValue(mat, out Vector4 cached)) return cached;
                 Vector4 factor = ReadBaseColor(mat);
-                DecodedImage? albedo = DecodeChannel(mat, "BaseColor");
+                DecodedImage? albedo = DecodeChannel(mat, "BaseColor", assetDirectory);
                 Vector4 eff = factor;
                 if (albedo is { } img)
                 {
@@ -506,78 +460,6 @@ namespace KhaozEngine.Render3D
                 cache[mat] = eff;
                 return eff;
             };
-        }
-
-        /// <summary>The first logical material that references at least one of the auto-read texture channels
-        /// (BaseColor / Normal / MetallicRoughness), or the first primitive's material, or null. Single-material
-        /// assumption mirrors the loaders flattening all primitives into one mesh: the auto-read path is a
-        /// convenience for the common one-material asset, not a multi-material atlas system.</summary>
-        static GltfMaterial? FirstTexturedMaterial(ModelRoot root)
-        {
-            foreach (var m in root.LogicalMaterials)
-                if (HasAnyAutoReadTexture(m)) return m;
-            // No textured material: fall back to the first primitive's material so an explicit-but-untextured
-            // material still resolves (ReadMaterialMaps then just returns all-absent).
-            return root.LogicalMeshes.SelectMany(me => me.Primitives).Select(p => p.Material).FirstOrDefault(m => m != null);
-        }
-
-        static bool HasAnyAutoReadTexture(GltfMaterial? mat)
-        {
-            if (mat == null) return false;
-            return ChannelTexture(mat, "BaseColor") != null
-                || ChannelTexture(mat, "Normal") != null
-                || ChannelTexture(mat, "MetallicRoughness") != null;
-        }
-
-        /// <summary>Decode a material's baseColor / normal / metallicRoughness textures to raw RGBA8. Each absent or
-        /// undecodable channel becomes a null map (graceful degrade, never a throw). metallicRoughness is passed
-        /// through unchanged (the shader reads roughness from .g); normal stays tangent-space RGB.</summary>
-        static GltfMaterialMaps ReadMaterialMaps(GltfMaterial? mat)
-        {
-            if (mat == null) return default;   // all-null (alpha cutoff 0 = OPAQUE)
-            return new GltfMaterialMaps(
-                DecodeChannel(mat, "BaseColor"),
-                DecodeChannel(mat, "Normal"),
-                DecodeChannel(mat, "MetallicRoughness"),
-                ReadAlphaCutoff(mat));
-        }
-
-        /// <summary>The alpha-cutout threshold for a glTF material: <c>0</c> for OPAQUE (the spec default when
-        /// alphaMode is absent, so nothing is clipped and the render is byte-identical to the pre-cutout path),
-        /// else the material's <c>alphaCutoff</c> (default 0.5) for MASK. BLEND is out of scope for the mesh pass,
-        /// so it is treated as MASK (its cutoff, default 0.5) rather than left as translucent - a foliage card
-        /// still reads as its silhouette. A MASK material with cutoff 0 collapses to OPAQUE (nothing clipped),
-        /// which is why 0 doubles as the "no clip" sentinel downstream.</summary>
-        static float ReadAlphaCutoff(GltfMaterial mat) =>
-            mat.Alpha == SharpGLTF.Schema2.AlphaMode.OPAQUE ? 0f : mat.AlphaCutoff;
-
-        /// <summary>The encoded image bytes (PNG/JPG/...) for a material channel's texture, or null if the channel
-        /// has no texture / no primary image / the image is empty or unresolved (e.g. an external file that did not
-        /// resolve relative to the glb).</summary>
-        static ReadOnlyMemory<byte>? ChannelTexture(GltfMaterial mat, string key)
-        {
-            var ch = mat.FindChannel(key);
-            var content = ch?.Texture?.PrimaryImage?.Content;
-            if (content is not { IsValid: true } img) return null;
-            return img.Content;
-        }
-
-        /// <summary>Decode one material channel's texture to RGBA8 via the engine's shared image decoder
-        /// (<see cref="ImageRgba.Decode"/>); returns null when the channel has no usable image OR the bytes fail to
-        /// decode (a corrupt/unsupported image is treated as absent, so the mesh just renders without that map).</summary>
-        static DecodedImage? DecodeChannel(GltfMaterial mat, string key)
-        {
-            var bytes = ChannelTexture(mat, key);
-            if (bytes is not { } b) return null;
-            try
-            {
-                ImageRgba img = ImageRgba.Decode(b.Span);
-                return new DecodedImage(img.Pixels, img.Width, img.Height);
-            }
-            catch
-            {
-                return null;   // undecodable image => map absent (degrade gracefully, no throw)
-            }
         }
     }
 }

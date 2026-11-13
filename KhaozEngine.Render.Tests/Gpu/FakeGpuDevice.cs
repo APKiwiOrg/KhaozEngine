@@ -210,7 +210,7 @@ namespace KhaozEngine.Tests.Gpu
         public IGpuSampler CreateSampler(in GpuSamplerDescription d)
         {
             SamplerCreateCount++;
-            return new FakeSampler();
+            return new FakeSampler(d);
         }
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
         {
@@ -362,7 +362,14 @@ namespace KhaozEngine.Tests.Gpu
         public void Dispose() { OnDispose?.Invoke(); Disposed = true; }
     }
 
-    internal sealed class FakeSampler : IGpuSampler { public void Dispose() { } }
+    /// <summary>An inert sampler that remembers the description it was created from, so a test can tell which filter
+    /// and addressing a binding samples through. The device's own point and linear pair carry the default one.</summary>
+    internal sealed class FakeSampler(GpuSamplerDescription description = default) : IGpuSampler
+    {
+        internal GpuSamplerDescription Description { get; } = description;
+        internal bool Disposed { get; private set; }
+        public void Dispose() => Disposed = true;
+    }
     internal sealed class FakeResourceLayout(GpuResourceLayoutDescription description = default) : IGpuResourceLayout
     {
         internal GpuResourceLayoutDescription Description { get; } = description;

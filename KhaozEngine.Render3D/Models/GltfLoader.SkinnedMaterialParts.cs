@@ -12,7 +12,7 @@ namespace KhaozEngine.Render3D
         /// Primitives without a material form their own untextured part. All parts share one skeleton and
         /// skin-order inverse binds and rest poses. Mesh-node transforms are not baked into skinned vertices.</summary>
         public static IReadOnlyList<GltfSkinnedMeshPart> LoadSkinnedPartsWithMaterials(string path) =>
-            BuildSkinnedParts(LoadModel(path), path);
+            BuildSkinnedParts(LoadModel(path), path, AssetDirectory(path));
 
         /// <summary>Load skinned material parts from binary glTF bytes without temporary files or source
         /// mutation. Uses the same geometry, material ordering and decoded maps as the path overload.
@@ -26,14 +26,14 @@ namespace KhaozEngine.Render3D
         /// the joint cap or has an influence outside the skin joint count. Reason identifies the rule.</exception>
         /// <exception cref="MeshIndexStateException">A source index or rebased index is outside its range.</exception>
         public static IReadOnlyList<GltfSkinnedMeshPart> LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte> glb, string identity) =>
-            TranslateModelErrors(identity, () => BuildSkinnedParts(LoadModel(glb, identity), identity));
+            TranslateModelErrors(identity, () => BuildSkinnedParts(LoadModel(glb, identity), identity, assetDirectory: null));
 
-        static IReadOnlyList<GltfSkinnedMeshPart> BuildSkinnedParts(ModelRoot root, string identity)
+        static IReadOnlyList<GltfSkinnedMeshPart> BuildSkinnedParts(ModelRoot root, string identity, string? assetDirectory)
         {
             var meshes = DecodeSkinned(root, identity, splitByMaterial: true);
             var parts = new List<GltfSkinnedMeshPart>(meshes.Count);
             foreach (var (mesh, material) in meshes)
-                parts.Add(new GltfSkinnedMeshPart(mesh, ReadMaterialMaps(material)));
+                parts.Add(new GltfSkinnedMeshPart(mesh, ReadMaterialMaps(material, assetDirectory)));
             return parts;
         }
     }

@@ -33,18 +33,21 @@ public static partial class GltfLoader
 
     static GltfMaterialMaps StrictMaps(SharpGLTF.Schema2.Material? material, GltfDecodeBudget budget)
     {
-        // Admission refuses textured channels and material extensions that these three maps cannot represent.
+        // Admission refuses the emissive texture and every material extension, so a strict material glows only
+        // through its core emissiveFactor. The decoded arrays stay owned by this load, because the budget accounts
+        // for them, and still carry their identity so a scene uploads one texture per image.
         if (material is null) return default;
-        return new(Decode("BaseColor"), Decode("Normal"), Decode("MetallicRoughness"), ReadAlphaCutoff(material));
+        return new(Decode("BaseColor"), Decode("Normal"), Decode("MetallicRoughness"), ReadAlphaCutoff(material),
+            emissive: null, ReadEmissiveFactor(material));
         DecodedImage? Decode(string key)
         {
             if (material.FindChannel(key)?.Texture is null) return null;
-            var bytes = ChannelTexture(material, key);
-            if (bytes is null) throw new GltfDecodeRefusal(GltfDecodeStatus.Invalid, "Referenced material image is unavailable.");
+            if (ChannelImage(material, key) is not { } source)
+                throw new GltfDecodeRefusal(GltfDecodeStatus.Invalid, "Referenced material image is unavailable.");
             try
             {
-                ImageRgba image = ImageRgba.DecodeBounded(bytes.Value.Span, budget.Limits.MaxPeakBytes, budget.Limits.MaxImagePixels, budget.Limits);
-                return new(image.Pixels, image.Width, image.Height);
+                ImageRgba image = ImageRgba.DecodeBounded(source.Content.Span, budget.Limits.MaxPeakBytes, budget.Limits.MaxImagePixels, budget.Limits);
+                return new(image.Pixels, image.Width, image.Height, ImageIdentity(source, assetDirectory: null));
             }
             catch (ImageDecodeRefusal ex) { throw new GltfDecodeRefusal((GltfDecodeStatus)ex.Status, ex.Message); }
         }

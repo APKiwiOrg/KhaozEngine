@@ -33,7 +33,7 @@ public static partial class GltfLoader
                 var (mesh, material) = decoded[slice];
                 var covered = new SkinnedGltfMesh(mesh.Vertices, mesh.Indices32, mesh.InverseBind, mesh.RestPose, mesh.Skeleton)
                 { Coverage = HostCoveragePart.CreateSlice(hostCoverageMap, source, slice, mesh) };
-                parts.Add(new GltfSkinnedMeshPart(covered, ReadMaterialMaps(material)));
+                parts.Add(new GltfSkinnedMeshPart(covered, ReadMaterialMaps(material, assetDirectory: null)));
             }
             return parts;
         });

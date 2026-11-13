@@ -31,6 +31,8 @@ void main() {
     {
         string header = ModelFrag[..ModelFrag.IndexOf("void main() {", StringComparison.Ordinal)]
             .Replace(InteriorCutGlsl, "", StringComparison.Ordinal);
+        // The material tail is removed line and all, so the header keeps the exact text its DXBC fixtures hash.
+        header = header.Replace(RigidMaterialTailGlsl, "", StringComparison.Ordinal);
         header = Regex.Replace(header, @"layout\(set=0, binding=(3|4|5|6|14)\)[^;]+;[^\r\n]*", "");
         return Regex.Replace(header, @"(?<=set=0, binding=)(7|8|9|10|11|12|13|15|16|17)(?=\))", match =>
         {

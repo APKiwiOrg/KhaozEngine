@@ -163,9 +163,9 @@ namespace KhaozEngine.Tests.Gpu
 
             VulkanResourceSet material = harness.Set("Model");
 
-            // Albedo, NormalMap, RoughnessMap, ShadowMap, both point-shadow atlases, atmosphere sky-view, interior cut
-            // and the caustic map.
-            Assert.Equal(9, material.Images.Length);
+            // Albedo, NormalMap, RoughnessMap, ShadowMap, both point-shadow atlases, atmosphere sky-view, interior cut,
+            // the caustic map and the emissive map.
+            Assert.Equal(10, material.Images.Length);
             foreach (VulkanBoundImage image in material.Images)
             {
                 Assert.False(image.Storage);
@@ -337,9 +337,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             VulkanCmdCallCounts counts = DrawFrame(meshes: 5, drawsPerMesh: 4);
 
-            // The windowed vertex block contributes one offset per draw. Each of the five Model sets has both
-            // frame and atmosphere uniforms, so its one bind contributes an additional offset under V-D4.
-            Assert.Equal(counts.DescriptorSetsBound + 5, counts.DynamicOffsetsPassed);
+            // The windowed vertex block contributes one offset per draw. Each of the five Model sets has frame,
+            // atmosphere and material params uniforms, so its one bind contributes two additional offsets under V-D4.
+            Assert.Equal(counts.DescriptorSetsBound + 10, counts.DynamicOffsetsPassed);
         }
 
         // ---- (c) Trace identity ----

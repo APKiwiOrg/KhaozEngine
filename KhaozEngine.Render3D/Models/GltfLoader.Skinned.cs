@@ -47,7 +47,7 @@ namespace KhaozEngine.Render3D
         {
             ModelRoot root = LoadModel(path);
             SkinnedGltfMesh mesh = BuildSkinned(root, path);
-            return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
+            return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root), AssetDirectory(path)));
         }
 
         static SkinnedGltfMesh BuildSkinned(ModelRoot root, string path) =>

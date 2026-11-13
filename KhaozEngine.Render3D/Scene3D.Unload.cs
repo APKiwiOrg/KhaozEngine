@@ -24,8 +24,8 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public sealed partial class Scene3D
     {
-        /// <summary>Free every sub-mesh of <paramref name="prop"/> (each via <see cref="UnloadMesh"/>) and its
-        /// textures' owning scope. A <c>default</c>/invalid handle is a no-op.</summary>
+        /// <summary>Free every sub-mesh of <paramref name="prop"/> (each via <see cref="UnloadMesh"/>), which releases
+        /// each part's material texture references. A <c>default</c>/invalid handle is a no-op.</summary>
         public void UnloadProp(PropHandle prop)
         {
             if (prop.Parts == null) return;
@@ -49,7 +49,8 @@ namespace KhaozEngine.Render3D
             // Retire rather than destroy: queued GPU work may still reference these buffers, and draining the whole
             // device per unload stalled the frame thread on the terrain streaming path (every chunk leaving the ring
             // and every LOD flip lands here). The pool frees them behind one drain a few frames later. The per-mesh
-            // material set goes too, but NOT the texture: that is owned in _textures and shared between meshes.
+            // material set goes too. A texture goes only when this mesh held the last residency reference to it, which
+            // only a turn-key glTF upload takes (Scene3D.MaterialTextureResidency.cs).
             if (_meshes[h.Index] is { } mesh)
             {
                 _retired.Retire(mesh.Vb, mesh.OutlineNormalVb, mesh.Ib);
@@ -58,6 +59,7 @@ namespace KhaozEngine.Render3D
                 _retired.Retire(mesh.ShadowCutoutSet);
             }
             _meshes[h.Index] = null;
+            ReleaseMeshMaterial(h.Index, h.Generation);
         }
 
         /// <summary>Free a splat-terrain material's GPU resources (its texture arrays, params UBO, resource set) and
@@ -101,8 +103,17 @@ namespace KhaozEngine.Render3D
         /// once <see cref="Dispose"/> has run: Dispose already freed every texture and cleared the backing list, so
         /// a caller that still holds a handle (e.g. a world disposed after its owning scene) would otherwise index
         /// past the end of the now-empty list and get an <see cref="System.ArgumentOutOfRangeException"/> instead of a
-        /// silent no-op (mirrors <see cref="UnloadSplatMaterial"/>'s guard).</summary>
+        /// silent no-op (mirrors <see cref="UnloadSplatMaterial"/>'s guard).
+        /// <para>A material texture the residency tracks (from <see cref="LoadSurfaceMaps"/> or a glTF upload) is
+        /// shared, so this releases ONE reference to it, and only the last release frees it.</para></summary>
         public void UnloadTexture(TextureHandle h)
+        {
+            if (ReleaseMaterialTexture(h)) return;
+            RetireTexture(h);
+        }
+
+        // Free one texture slot through the retire queue, whoever owned it.
+        void RetireTexture(TextureHandle h)
         {
             if (!h.IsValid || h.ListIndex >= _textures.Count) return;
             int i = h.ListIndex;
@@ -139,6 +150,7 @@ namespace KhaozEngine.Render3D
             }
             _skinnedMeshes[h.Index] = null;
             _skinnedCpuVerts[h.Index] = null;
+            ReleaseSkinnedMaterial(h.Index, h.Generation);
         }
 
         /// <summary>Sealed retirement batches the scene is holding, each one frame's worth of unloads waiting on its

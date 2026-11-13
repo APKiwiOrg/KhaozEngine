@@ -119,23 +119,27 @@ internal sealed partial class ModelRenderer
             paramsUbo, albedoArray, normalArray, sampler ?? _terrainSampler);
 
     // Shadow resources end each material prefix. Rigid set 0 appends atmosphere, the interior texture, then water
-    // volumes and the caustic map.
+    // volumes and the caustic map. A model material set (rigid or skinned) ends with its material tail, whose
+    // samplers are chosen per slot at every build (ModelRenderer.MaterialSampling.cs).
     IGpuResourceSet BuildShadowSamplingSet(ShadowSamplingBinding binding, IGpuTexture shadowTexture,
         IGpuTexture pointShadowTexture, IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer,
         IGpuTexture? interiorCut = null, IGpuTexture? causticMap = null)
     {
+        IGpuBindableResource[] material = binding.Model is { } model
+            ? ModelMaterialPrefix(binding, model)
+            : binding.MaterialResources;
         int pointLightOffset = binding.IncludesPointLights ? 2 : 0;
-        var resources = new IGpuBindableResource[binding.MaterialResources.Length + pointLightOffset + 4];
+        var resources = new IGpuBindableResource[material.Length + pointLightOffset + 4];
         if (binding.IncludesPointLights)
         {
-            resources[0] = binding.MaterialResources[0];
+            resources[0] = material[0];
             resources[1] = pointLightBuffer;
             resources[2] = _pointLightClusterBuffer;
-            binding.MaterialResources.AsSpan(1).CopyTo(resources.AsSpan(3));
+            material.AsSpan(1).CopyTo(resources.AsSpan(3));
         }
         else
         {
-            binding.MaterialResources.CopyTo(resources, 0);
+            material.CopyTo(resources, 0);
         }
         resources[^4] = shadowTexture;
         resources[^3] = _shadowMap.ShadowSampler;
@@ -143,23 +147,27 @@ internal sealed partial class ModelRenderer
         resources[^1] = pointShadowTransientTexture;
         if (binding.IncludesAtmosphere)
             resources = WaterVolumeResources(causticMap ?? _causticMap, [.. _atmosphere.AppendResources(resources), interiorCut ?? _interiorTexture]);
+        if (binding.Model is { } slots) resources = [.. resources, .. ModelMaterialTail(slots)];
         return _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(binding.Layout, resources));
     }
 
     sealed class ShadowSamplingBinding
     {
         internal ShadowSamplingBinding(IGpuResourceLayout layout, IGpuBindableResource[] materialResources,
-            bool includesPointLights, bool includesAtmosphere)
+            bool includesPointLights, bool includesAtmosphere, ModelMaterialSlots? model = null)
         {
             Layout = layout;
             MaterialResources = materialResources;
             IncludesPointLights = includesPointLights;
             IncludesAtmosphere = includesAtmosphere;
+            Model = model;
         }
 
         internal IGpuResourceLayout Layout { get; }
+        // Fixed resources for a ground set. A model set leaves this empty and derives its resources from Model.
         internal IGpuBindableResource[] MaterialResources { get; }
         internal bool IncludesPointLights { get; }
         internal bool IncludesAtmosphere { get; }
+        internal ModelMaterialSlots? Model { get; }
     }
 }

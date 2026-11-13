@@ -206,7 +206,7 @@ public static class NativeMapFoliage
                     using var copyPreparation = admission.BeginPreparation();
                     var part = lod.BorrowParts[i];
                     long bytes = checked(256L + (long)part.Mesh.Vertices.Length * ModelVertex.SizeInBytes + 4L * part.Mesh.Indices32.Length +
-                        (part.Maps.Albedo?.Rgba.LongLength ?? 0) + (part.Maps.Normal?.Rgba.LongLength ?? 0) + (part.Maps.Roughness?.Rgba.LongLength ?? 0));
+                        part.Maps.DecodedBytes);
                     admission.ReserveBytes(checked(512 + 4 * bytes));
                     string digest = MapPlacementDigest.Hash(w =>
                     {

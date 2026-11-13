@@ -124,6 +124,45 @@ flowchart LR
    shader (lit / cel / textured), and writes the framebuffer. `AppWindow` calls `Present()` to put the
    swapchain image on screen.
 
+## Model materials: shared textures, per-slot samplers and emissive
+
+**Material texture upload (loaded image -> resident GPU texture), once per image per scene:**
+
+```mermaid
+flowchart LR
+    GLB["GltfLoader<br/>(material channels)"] --> ID["DecodedImage<br/>Identity = file: path or sha256:"]
+    ID --> LSM["Scene3D.LoadSurfaceMaps"]
+    LSM -->|identity resident| REF["reference ++"]
+    LSM -->|first use| UP["LoadTexture + mips<br/>pixels released after upload"]
+    REF & UP --> SM["SurfaceMaps<br/>(bundle or mesh owns the references)"]
+```
+
+`GltfLoader` names every material image by identity (`file:` plus the absolute path of an external image, or
+`sha256:` plus the hash of an embedded one's encoded bytes) and decodes each identity once through a process-wide
+weak index (`MaterialImageCache`). `Scene3D.MaterialTextureResidency.cs` keeps one texture per identity per scene
+with a reference count. A `SurfaceMaps` bundle holds one reference per present slot, and a turn-key glTF upload
+(`LoadProp`, `LoadPropMeshes`, `LoadMesh(mesh, GltfMaterialMaps)`, `LoadSkinnedMesh(mesh, GltfMaterialMaps)`) hands its
+bundle's references to the mesh, which releases them on unload. The last release retires the texture through the
+scene's retire queue. Pixels are held from decode until the first upload, then only the encoded bytes are kept.
+
+**A model material set** binds the frame block, the albedo, normal and roughness maps with the albedo slot's sampler,
+the shadow, atmosphere, interior-cut and water bindings, and then the material tail appended at the end of the rigid
+layout (set 0 bindings 18 to 22) and of the skinned fragment layout (set 1 bindings 8 to 12): the normal, roughness
+and emissive slot samplers, the emissive map and the `MaterialParams` block. Each slot's sampler is chosen when the
+set is built (`ModelRenderer.MaterialSampling.cs`). A real map binds the material sampler, wrap-addressed and
+anisotropic at `RenderQuality.MaterialAnisotropy`. A slot on its 1x1 default binds the device's built-in linear
+sampler, which is what keeps the defaults exact on every backend and the default set (every untextured mesh)
+byte-identical. A change of anisotropy is applied at `Begin` by rebuilding every live textured set through the same
+replacement transaction the shadow atlas uses. Appending the tail moved no existing binding number. It raised the
+heaviest pipeline's Vulkan dynamic uniform count to 7 of the floor of 8, and later material factors join the same
+block.
+
+**Emissive.** `MaterialParams.MaterialEmissive.rgb` is the glTF emissive factor times its strength. The model
+fragments (rigid, dissolve, GPU-skinned, skinned dissolve and the coverage and foliage programs built on them) add
+`emissiveMap.rgb * MaterialEmissive.rgb` after lighting and after the per-instance emissive, before fog. Lights and
+shadows never scale it, so it reaches the HDR target and bloom. A material without a glow binds the shared zero
+block, so the term adds exactly zero.
+
 ## Physical atmosphere fog
 
 Lit models (rigid, dissolved and skinned), terrain, tile ground and foliage call
@@ -577,6 +616,7 @@ shimmer from frame to frame. The bands a river shows sit short of focus, where t
 | Water optical beds | `KhaozEngine.Render3D/Scene3D.WaterOptics.cs`, `WaterOpticsField.cs`, `WaterOpticsTriangleField.cs`, `Internal/ShaderSources.WaterOptics.cs` |
 | Underwater key lighting | `KhaozEngine.Render3D/Scene3D.WaterVolumes.cs`, `Rendering/ModelRenderer.WaterVolumes.cs`, `Internal/WaterVolumeClusterBuilder.cs`, `Internal/ShaderSources.Underwater.cs` |
 | 3D instanced draws + post | `KhaozEngine.Render3D/Rendering/` (`ModelRenderer`), `PixelPostProcessSettings.cs` |
+| Model materials and texture residency | `KhaozEngine.Render3D/Scene3D.MaterialTextureResidency.cs`, `Scene3D.MaterialMeshes.cs`, `Scene3D.SurfaceMapUpload.cs`, `Rendering/ModelRenderer.MaterialSampling.cs`, `Models/MaterialImageSource.cs`, `Models/MaterialImageCache.cs`, `Models/GltfLoader.MaterialMapReading.cs` |
 | Terrain splat pipeline | `KhaozEngine.Render3D/Internal/ShaderSources.cs` (`SplatFrag`), `Scene3D.cs` (`LoadSplatMaterial`), `KhaozEngine.Terrain.Render3D/TerrainScene3D.cs` (`LoadTerrainMaterial`) |
 | 2D batching | `KhaozEngine.Render2D/SpriteBatch.cs` + `Render2DSurface.cs` |
 | The backend seam | `KhaozEngine.Gpu/GpuDeviceContext.cs`, `GpuBackendSelector.cs`, `GpuCapabilities.cs`, `GpuClip.cs` |

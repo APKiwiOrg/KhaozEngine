@@ -20,8 +20,9 @@ public sealed class WaterColumnResourceLifecycleTests
         var factory = (FakeGpuResourceFactory)device.Factory;
         Assert.Equal(0, scene.RetiredResourceCount);
         // The construction inventory before M5 (0af218d5b), without standalone column fallbacks, plus the one
-        // caustic placeholder texture and sampler a scene that never participates still owns.
-        Assert.Equal((20, 32, 5), (factory.Textures.Count, factory.Buffers.Count, factory.SamplerCreateCount));
+        // caustic placeholder texture and sampler a scene that never participates still owns, plus the material
+        // sampler and the shared no-glow material params block (#1776).
+        Assert.Equal((20, 33, 6), (factory.Textures.Count, factory.Buffers.Count, factory.SamplerCreateCount));
         var water = scene.WaterShadowBindingsForTests;
         var model = scene.ModelShadowBindingsForTests;
         Assert.Same(model.Atlas, water.Atlas);

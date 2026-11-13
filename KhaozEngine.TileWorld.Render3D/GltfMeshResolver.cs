@@ -34,9 +34,10 @@ namespace KhaozEngine.TileWorld;
 /// caller cannot write through it into the shared cache. What is NOT cached here is the fallback's answer, because
 /// it is the ARCHETYPE's rather than the reference's: a missing glb asks the fallback again on every call, and both
 /// shipped fallbacks cache, so the same list still comes back. There is no eviction either, so the
-/// parts, including each part's decoded RGBA8 <see cref="GltfMaterialMaps"/> pixels, stay live for the resolver's
-/// lifetime even after a view has uploaded them, and a glb regenerated while the app runs is never picked
-/// up.</para>
+/// parts stay live for the resolver's lifetime and a glb regenerated while the app runs is never picked up. Their
+/// material images are shared by identity across every piece that names them (see <see cref="DecodedImage"/>): the
+/// resolver keeps each distinct image's encoded bytes once, and its decoded RGBA8 pixels only until a scene has
+/// uploaded them, so a kit that shares a dozen tileable sets holds a dozen sets, not one copy per part.</para>
 ///
 /// <para>A glb is PLANE-LOCAL and drawn exactly as authored: nothing here scales, rotates or re-centres it. The
 /// contract it has to meet is the one <see cref="GreyboxMeshResolver"/> builds to, and it is spelled out in this

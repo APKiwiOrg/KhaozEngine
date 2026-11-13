@@ -195,11 +195,11 @@ public sealed class SkinnedAttachmentAssetTests
     {
         using var harness = new AttachmentAssetHarness();
         var source = new AttachmentTestSource();
-        byte[] rigidBytes = AttachmentTestSource.Glb(textured: true), skinBytes = Glb(textured: true);
-        AttachmentMeshRef previousRigid = source.Mesh("previous-rigid.glb", rigidBytes);
-        AttachmentMeshRef previousSkin = source.Mesh("previous-skinned.glb", skinBytes);
-        AttachmentMeshRef first = source.Mesh("a-rigid.glb", rigidBytes);
-        AttachmentMeshRef later = source.Mesh("b-skinned.glb", Glb(materials: 2, textured: true));
+        // The failed transaction's meshes have images of their own, so it stages textures of its own to retire.
+        AttachmentMeshRef previousRigid = source.Mesh("previous-rigid.glb", AttachmentTestSource.Glb(textured: true));
+        AttachmentMeshRef previousSkin = source.Mesh("previous-skinned.glb", Glb(textured: true));
+        AttachmentMeshRef first = source.Mesh("a-rigid.glb", AttachmentTestSource.Glb(textured: true, seed: 1));
+        AttachmentMeshRef later = source.Mesh("b-skinned.glb", Glb(materials: 2, textured: true, seed: 2));
         string previousHash = Set(source, "previous.json", Rigid(1, previousRigid), Skin(2, previousSkin));
         string failedHash = Set(source, "failed.json", Rigid(1, previousRigid), Skin(2, previousSkin),
             Rigid(3, first), Skin(4, later));
@@ -343,19 +343,27 @@ public sealed class SkinnedAttachmentAssetTests
     static string Set(AttachmentTestSource source, string key, params AttachmentPartDefinition[] parts) =>
         source.Add(key, AttachmentSetJson.Write(new AttachmentSetDefinition(parts)));
 
-    static byte[] Glb(int materials = 1, bool textured = false)
+    // Each material references three images of its own (base colour, normal, metallic-roughness), unique per seed, so
+    // every map is its own resident texture. See AttachmentTestSource.Glb.
+    static byte[] Glb(int materials = 1, bool textured = false, byte seed = 0)
     {
         var fixture = new SkinnedAttachmentGlbFixture();
         fixture.Root["materials"] = new JsonArray();
         if (textured)
         {
-            byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==");
-            fixture.Root["images"] = new JsonArray(new JsonObject
+            var images = new JsonArray();
+            var textures = new JsonArray();
+            for (int i = 0; i < materials * 3; i++)
             {
-                ["bufferView"] = fixture.AddView(png),
-                ["mimeType"] = "image/png",
-            });
-            fixture.Root["textures"] = JsonNode.Parse("""[{"source":0}]""");
+                images.Add(new JsonObject
+                {
+                    ["bufferView"] = fixture.AddView(AttachmentTestSource.Png((byte)(seed + 100), i / 3, i % 3)),
+                    ["mimeType"] = "image/png",
+                });
+                textures.Add(new JsonObject { ["source"] = i });
+            }
+            fixture.Root["images"] = images;
+            fixture.Root["textures"] = textures;
         }
         JsonObject first = fixture.Primitives[0]!.AsObject();
         int uvAccessor = fixture.Accessors.Count;
@@ -372,9 +380,17 @@ public sealed class SkinnedAttachmentAssetTests
         first["material"] = 0;
         for (int i = 0; i < materials; i++)
         {
-            JsonNode material = JsonNode.Parse(textured
-                ? """{"pbrMetallicRoughness":{"baseColorTexture":{"index":0},"metallicRoughnessTexture":{"index":0}},"normalTexture":{"index":0}}"""
-                : """{"pbrMetallicRoughness":{"baseColorFactor":[1,1,1,1]}}""")!;
+            JsonNode material = textured
+                ? new JsonObject
+                {
+                    ["pbrMetallicRoughness"] = new JsonObject
+                    {
+                        ["baseColorTexture"] = new JsonObject { ["index"] = 3 * i },
+                        ["metallicRoughnessTexture"] = new JsonObject { ["index"] = 3 * i + 2 },
+                    },
+                    ["normalTexture"] = new JsonObject { ["index"] = 3 * i + 1 },
+                }
+                : JsonNode.Parse("""{"pbrMetallicRoughness":{"baseColorFactor":[1,1,1,1]}}""")!;
             fixture.Root["materials"]!.AsArray().Add(material);
             if (i == 0) continue;
             JsonObject next = first.DeepClone().AsObject();

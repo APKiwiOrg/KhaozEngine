@@ -8,6 +8,29 @@ namespace KhaozEngine.Render3D.Internal
     internal static partial class ShaderSources
     {
 
+        // ---- The model material tail (issue #1776): set 0 bindings 18 to 22 of the rigid layout, set 1 bindings 8 to 12
+        //      of the skinned fragment layout, appended so every older binding keeps its number. Each map has its own
+        //      sampler binding: a slot with a real map binds the anisotropic material sampler and a slot on its 1x1
+        //      default binds the exact linear sampler, so the defaults sample exactly as they always did on every
+        //      backend (ModelRenderer.MaterialSampling.cs). Albedo keeps binding 6 `Samp` as its slot sampler.
+        //      MaterialParams rgb is the material's emissive colour (glTF emissiveFactor times
+        //      KHR_materials_emissive_strength), a is reserved, zero for every material without a glow. Each declaration
+        //      is ONE line, because FoliageOpaqueHeader strips these lines whole to keep the opaque foliage GLSL, and
+        //      the DXBC fixtures hashed from it, unchanged. ----
+        internal const string RigidMaterialTailGlsl = @"layout(set=0, binding=18) uniform sampler NormalSamp;
+layout(set=0, binding=19) uniform sampler RoughnessSamp;
+layout(set=0, binding=20) uniform texture2D EmissiveMap;
+layout(set=0, binding=21) uniform sampler EmissiveSamp;
+layout(set=0, binding=22) uniform MaterialParams { vec4 MaterialEmissive; };
+";
+
+        internal const string SkinnedMaterialTailGlsl = @"layout(set=1, binding=8) uniform sampler NormalSamp;
+layout(set=1, binding=9) uniform sampler RoughnessSamp;
+layout(set=1, binding=10) uniform texture2D EmissiveMap;
+layout(set=1, binding=11) uniform sampler EmissiveSamp;
+layout(set=1, binding=12) uniform MaterialParams { vec4 MaterialEmissive; };
+";
+
         // ---- Model pass. Per-frame UBO (binding 0, both stages) holds only frame uniforms; per-instance data
         //      (Model matrix, Tint, Emissive, SpecParams) arrives via an instanced vertex stream (buffer slot 1,
         //      instanceStepRate 1). The Model matrix is reconstructed from 4 instance vec4 rows: InstanceData.Model
@@ -122,13 +145,13 @@ layout(set=0, binding=0) uniform U {
 layout(set=0, binding=3) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=4) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
 layout(set=0, binding=5) uniform texture2D RoughnessMap; // 1x1 zero default => spec uses per-instance params
-layout(set=0, binding=6) uniform sampler Samp;           // shared sampler for all three textures (EdgeFrag-style)
+layout(set=0, binding=6) uniform sampler Samp;           // the albedo slot's sampler, see the material tail note above ModelVert
 layout(set=0, binding=7) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the material maps (Metal first-sample-order rule); 1x1 default when shadows off
 layout(set=0, binding=8) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
 layout(set=0, binding=9) uniform texture2D PointShadowMap;  // point-light distance atlas (R32F), read through ShadowSamp; 1x1 default when no light carries one
 layout(set=0, binding=10) uniform texture2D PointShadowTransientMap;
 layout(set=0, binding=14) uniform texture2D InteriorCut;
-layout(location=0) in vec3 vNormalW;
+" + RigidMaterialTailGlsl + @"layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
 layout(location=3) in vec2 vUv;
@@ -165,8 +188,9 @@ void main() {
     // bind by explicit decoration and are order-insensitive; this is purely the Metal path.) Mirrors EdgeFrag.
     vec4 texRgba = materialSample(Albedo, Samp, vUv);          // white (1,1,1,1) for untextured meshes
     vec3 texRgb = texRgba.rgb;
-    vec3 normalTex = materialSample(NormalMap, Samp, vUv).xyz; // flat (0.5,0.5,1.0) default => (0,0,1)
-    float rough = materialSample(RoughnessMap, Samp, vUv).g;   // 0 default => per-instance spec unchanged
+    vec3 normalTex = materialSample(NormalMap, NormalSamp, vUv).xyz; // flat (0.5,0.5,1.0) default => (0,0,1)
+    float rough = materialSample(RoughnessMap, RoughnessSamp, vUv).g;   // 0 default => per-instance spec unchanged
+    vec3 emissiveTex = materialSample(EmissiveMap, EmissiveSamp, vUv).rgb; // 1x1 white default, scaled by MaterialEmissive
     // Alpha cutout (MASK materials, e.g. foliage/leaf cards): vSpecParams.z carries the cutoff, and we discard a
     // texel whose baseColor alpha is below it so the quad reads as its silhouette instead of a solid (often black)
     // card. Done AFTER all three samples so the implicit-LOD derivatives stay well-defined and the Metal
@@ -215,6 +239,11 @@ void main() {
     } else {
         lit += vEmissive.rgb;                   // base emissive, unchanged old path
     }
+    // Material emissive (glTF emissiveTexture x emissiveFactor x KHR_materials_emissive_strength): HDR light that
+    // neither the scene's lights nor its shadows scale, so it blooms. It adds to the per-instance emissive above and
+    // stays on surviving fragments during a dissolve. A material with no glow binds a zero MaterialEmissive, so this
+    // adds exactly zero and the render is byte-identical.
+    lit += emissiveTex * MaterialEmissive.rgb;
     lit = atmosphereFogKeyShadowed(lit, vWorldPos, RenderOrigin.w > 0.5, ShadowMap, ShadowSamp);
     oColor = vec4(lit, 1.0);
     // rgb: GEOMETRIC normal for the edge pass (not the perturbed one). a: dynamic-geometry decal mask - 1 for the
@@ -266,7 +295,7 @@ layout(set=0, binding=8) uniform sampler ShadowSamp;
 layout(set=0, binding=9) uniform texture2D PointShadowMap;
 layout(set=0, binding=10) uniform texture2D PointShadowTransientMap;
 layout(set=0, binding=14) uniform texture2D InteriorCut;
-layout(location=0) in vec3 vNormalW;
+" + RigidMaterialTailGlsl + @"layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
 layout(location=3) in vec2 vUv;
@@ -302,8 +331,9 @@ void main() {
 
     vec3 Ngeo = normalize(vNormalW);
     vec3 texRgb = texRgba.rgb;
-    vec3 normalTex = materialSample(NormalMap, Samp, vUv).xyz;
-    float rough = materialSample(RoughnessMap, Samp, vUv).g;
+    vec3 normalTex = materialSample(NormalMap, NormalSamp, vUv).xyz;
+    float rough = materialSample(RoughnessMap, RoughnessSamp, vUv).g;
+    vec3 emissiveTex = materialSample(EmissiveMap, EmissiveSamp, vUv).rgb;
     vec3 N = Ngeo;
     if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
         vec3 T = normalize(vTangent.xyz);
@@ -324,6 +354,7 @@ void main() {
     // threshold 0 (a fully-solid avatar routed through this pipeline still reads clean).
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
     lit += vEmissive.rgb * edge;
+    lit += emissiveTex * MaterialEmissive.rgb;   // material glow on surviving fragments, see ModelFrag
     lit = atmosphereFogKeyShadowed(lit, vWorldPos, RenderOrigin.w > 0.5, ShadowMap, ShadowSamp);
     oColor = vec4(lit, 1.0);
     // Keep binding 14 live for the shared layout without cutting CPU-skinned dissolve pixels.
@@ -492,7 +523,7 @@ layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
 layout(set=1, binding=6) uniform texture2D PointShadowMap;
 layout(set=1, binding=7) uniform texture2D PointShadowTransientMap;
-layout(location=0) in vec3 vNormalW;
+" + SkinnedMaterialTailGlsl + @"layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
 layout(location=3) in vec2 vUv;
@@ -509,8 +540,9 @@ void main() {
     vec3 Ngeo = normalize(vNormalW);
     vec4 texRgba = materialSample(Albedo, Samp, vUv);
     vec3 texRgb = texRgba.rgb;
-    vec3 normalTex = materialSample(NormalMap, Samp, vUv).xyz;
-    float rough = materialSample(RoughnessMap, Samp, vUv).g;
+    vec3 normalTex = materialSample(NormalMap, NormalSamp, vUv).xyz;
+    float rough = materialSample(RoughnessMap, RoughnessSamp, vUv).g;
+    vec3 emissiveTex = materialSample(EmissiveMap, EmissiveSamp, vUv).rgb;
     if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;
     vec3 N = Ngeo;
     if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
@@ -528,6 +560,7 @@ void main() {
     vec3 diffuse; vec3 specColor;
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (indirectDiffuse(N, vWorldPos) + diffuse) + specColor + vEmissive.rgb;
+    lit += emissiveTex * MaterialEmissive.rgb;   // material glow, see ModelFrag
     lit = atmosphereFogKeyShadowed(lit, vWorldPos, RenderOrigin.w > 0.5, ShadowMap, ShadowSamp);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
@@ -573,7 +606,7 @@ layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
 layout(set=1, binding=6) uniform texture2D PointShadowMap;
 layout(set=1, binding=7) uniform texture2D PointShadowTransientMap;
-layout(location=0) in vec3 vNormalW;
+" + SkinnedMaterialTailGlsl + @"layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
 layout(location=3) in vec2 vUv;
@@ -608,8 +641,9 @@ void main() {
 
     vec3 Ngeo = normalize(vNormalW);
     vec3 texRgb = texRgba.rgb;
-    vec3 normalTex = materialSample(NormalMap, Samp, vUv).xyz;
-    float rough = materialSample(RoughnessMap, Samp, vUv).g;
+    vec3 normalTex = materialSample(NormalMap, NormalSamp, vUv).xyz;
+    float rough = materialSample(RoughnessMap, RoughnessSamp, vUv).g;
+    vec3 emissiveTex = materialSample(EmissiveMap, EmissiveSamp, vUv).rgb;
     vec3 N = Ngeo;
     if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
         vec3 T = normalize(vTangent.xyz);
@@ -628,6 +662,7 @@ void main() {
     vec3 lit = albedo * (indirectDiffuse(N, vWorldPos) + diffuse) + specColor;
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
     lit += vEmissive.rgb * edge;
+    lit += emissiveTex * MaterialEmissive.rgb;   // material glow on surviving fragments, see ModelFrag
     lit = atmosphereFogKeyShadowed(lit, vWorldPos, RenderOrigin.w > 0.5, ShadowMap, ShadowSamp);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)

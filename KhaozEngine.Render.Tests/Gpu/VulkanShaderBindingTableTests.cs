@@ -256,6 +256,14 @@ namespace KhaozEngine.Tests.Gpu
                 new(0, waterBinding, GpuResourceKind.StructuredBufferReadOnly, "WaterVolumeBuffer"),
                 new(0, waterBinding + 1, GpuResourceKind.TextureReadOnly, "CausticMap"),
                 new(0, waterBinding + 2, GpuResourceKind.Sampler, "CausticSampler")];
+            // The rigid model layout ends with the material tail (#1776), after the water bindings.
+            if (prefix == 11)
+                atmosphere = [.. atmosphere,
+                    new(0, 18, GpuResourceKind.Sampler, "NormalSamp"),
+                    new(0, 19, GpuResourceKind.Sampler, "RoughnessSamp"),
+                    new(0, 20, GpuResourceKind.TextureReadOnly, "EmissiveMap"),
+                    new(0, 21, GpuResourceKind.Sampler, "EmissiveSamp"),
+                    new(0, 22, GpuResourceKind.UniformBuffer, "MaterialParams")];
             Assert.Equal(atmosphere, Parse(program.FragmentGlsl)
                 .Where(d => d.Set == 0 && d.Binding >= prefix).OrderBy(d => d.Binding).ToArray());
         }

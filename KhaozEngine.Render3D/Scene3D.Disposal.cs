@@ -75,9 +75,11 @@ namespace KhaozEngine.Render3D
                 }
             foreach (var set in _texBillboardSets) Release("texturedBillboardSet", () => set?.Dispose());
             _texBillboardSets.Clear();
-            // Per-mesh sets name these scene-loaded maps. Ground bundles own their maps separately.
+            // Per-mesh sets name these scene-loaded maps and owned material parameter buffers. Ground bundles own
+            // their maps separately.
             if (shadowReceiversReleased)
             {
+                DisposeMaterialResidency(disposal);
                 foreach (var texture in _textures) Release("texture", () => texture?.Dispose());
                 _textures.Clear();
             }

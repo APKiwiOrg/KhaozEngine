@@ -13,28 +13,43 @@ public sealed partial class Scene3D
     /// Untextured meshes sample the 1x1 white default, so their colour is the baked vertex colour times any
     /// per-instance tint.</summary>
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) =>
-        LoadSkinnedInternal(mesh, null, null, null, 0f);
+        LoadSkinnedInternal(mesh, null, null, null, null, null, 0f);
 
     /// <summary>Upload a skinned mesh and bind <paramref name="texture"/> as its albedo
     /// (<c>texRgb * vColor * vTint</c>). An invalid handle falls back to untextured.</summary>
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, TextureHandle texture)
     {
         IGpuTexture? albedo = texture.IsValid ? _textures[texture.ListIndex] : null;
-        return LoadSkinnedInternal(mesh, albedo, null, null, 0f);
+        return LoadSkinnedInternal(mesh, albedo, null, null, null, null, 0f);
     }
 
     /// <summary>Upload a skinned mesh and bind a full PBR-lite material (<paramref name="maps"/>): albedo +
-    /// optional normal + optional roughness, mirroring <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/>. Invalid
-    /// handles fall back to the renderer defaults (white albedo / flat normal / zero roughness). Normal
-    /// perturbation requires the mesh to carry tangents. Skinned glTF via <see cref="GltfLoader.LoadSkinned(string)"/> or
+    /// optional normal + optional roughness + optional emissive, mirroring <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/>.
+    /// Invalid handles fall back to the renderer defaults (white albedo / flat normal / zero roughness / white
+    /// emissive). Normal perturbation requires the mesh to carry tangents. Skinned glTF via <see cref="GltfLoader.LoadSkinned(string)"/> or
     /// <see cref="SkinnedMeshBuilder"/> output both compute them. A tangent-less skinned vertex is lit by its
-    /// geometric normal. The tangent rides the skin deform on either skinning path, so the TBN tracks the pose.</summary>
-    public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, SurfaceMaps maps)
+    /// geometric normal. The tangent rides the skin deform on either skinning path, so the TBN tracks the pose.
+    /// The mesh borrows the textures: the caller keeps owning them.</summary>
+    public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, SurfaceMaps maps) =>
+        LoadSkinnedMesh(mesh, maps, ownedTextures: null);
+
+    // ownedTextures are references this mesh takes over from the residency, released when it unloads.
+    SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, SurfaceMaps maps, TextureHandle[]? ownedTextures)
     {
-        IGpuTexture? albedo = maps.Albedo.IsValid ? _textures[maps.Albedo.ListIndex] : null;
-        IGpuTexture? normal = maps.Normal.IsValid ? _textures[maps.Normal.ListIndex] : null;
-        IGpuTexture? roughness = maps.Roughness.IsValid ? _textures[maps.Roughness.ListIndex] : null;
-        return LoadSkinnedInternal(mesh, albedo, normal, roughness, maps.AlphaCutoff);
+        IGpuBuffer? materialParams = CreateEmissiveParams(maps.EmissiveFactor);
+        SkinnedMeshHandle handle;
+        try
+        {
+            handle = LoadSkinnedInternal(mesh, TextureOrNull(maps.Albedo), TextureOrNull(maps.Normal),
+                TextureOrNull(maps.Roughness), TextureOrNull(maps.Emissive), materialParams, maps.AlphaCutoff);
+        }
+        catch
+        {
+            materialParams?.Dispose();
+            throw;
+        }
+        RecordSkinnedMaterial(handle, ownedTextures, materialParams);
+        return handle;
     }
 
     SkinnedMeshHandle LoadSkinnedInternal(
@@ -42,6 +57,8 @@ public sealed partial class Scene3D
         IGpuTexture? albedo,
         IGpuTexture? normal,
         IGpuTexture? roughness,
+        IGpuTexture? emissive,
+        IGpuBuffer? materialParams,
         float alphaCutoff)
     {
         if (mesh.Coverage is not null) mesh = RetainSkinningSource(mesh);
@@ -57,9 +74,14 @@ public sealed partial class Scene3D
             _gd.UpdateBuffer(vertexBuffer, 0, mesh.Vertices);
             indexBuffer = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
 
-            bool hasOrdinaryMap = albedo is not null || normal is not null || roughness is not null;
-            material = hasOrdinaryMap ? _model.CreateMaterialSet(albedo, normal, roughness) : null;
-            skinnedMaterial = hasOrdinaryMap ? _model.CreateSkinnedMaterialSet(albedo, normal, roughness) : null;
+            // Both sets share one params buffer: the CPU-skinned path binds the model-layout set and the GPU path
+            // the skinned fragment set, and either way the material glows the same.
+            bool hasMaterial = albedo is not null || normal is not null || roughness is not null || emissive is not null
+                || materialParams is not null;
+            material = hasMaterial ? _model.CreateMaterialSet(albedo, normal, roughness, emissive, materialParams) : null;
+            skinnedMaterial = hasMaterial
+                ? _model.CreateSkinnedMaterialSet(albedo, normal, roughness, emissive, materialParams)
+                : null;
             outlineMaterial = albedo is null ? null : _targetOutlines.CreateMaterialSet(albedo);
 
             MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);

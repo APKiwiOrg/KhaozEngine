@@ -61,9 +61,12 @@ internal sealed class NativeUploadTestDevice(IGpuDevice inner) : IGpuDevice
     /// this device and must measure nothing of its own.</summary>
     internal List<IGpuCommandList>? SubmittedLists { get; private set; }
     internal void RecordSubmissions() => SubmittedLists ??= new();
-    bool _failNextSubmit;
+    bool _failNextSubmit, _failNextDrain;
     /// <summary>The next submission throws, once, before the list reaches the device.</summary>
     internal void FailNextSubmit() => _failNextSubmit = true;
+    /// <summary>The next drain throws, once, after every earlier submission was accepted, as a backend's failed wait
+    /// does without losing the device.</summary>
+    internal void FailNextDrain() => _failNextDrain = true;
     void Accept()
     {
         if (!_failNextSubmit) return;
@@ -83,7 +86,11 @@ internal sealed class NativeUploadTestDevice(IGpuDevice inner) : IGpuDevice
     public bool SyncToVerticalBlank { get => inner.SyncToVerticalBlank; set => inner.SyncToVerticalBlank = value; }
     public void Submit(IGpuCommandList cl) { Accept(); inner.Submit(cl); Submissions++; SubmittedLists?.Add(cl); }
     public void Submit(IGpuCommandList cl, IGpuFence fence) { Accept(); inner.Submit(cl, fence); Submissions++; SubmittedLists?.Add(cl); }
-    public void WaitForIdle() => inner.WaitForIdle();
+    public void WaitForIdle()
+    {
+        if (_failNextDrain) { _failNextDrain = false; throw new InvalidOperationException("planned drain failure"); }
+        inner.WaitForIdle();
+    }
     public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
     {
         UploadBytes += data.Length * Marshal.SizeOf<T>(); BufferWrites++;

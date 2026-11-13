@@ -148,7 +148,9 @@ public sealed partial class Scene3D
 
     // A convenience load is about to draw with a texture an admitted upload is still writing. It cannot wait for the
     // uploads in flight, so it writes the remaining rows and generates the chain now, as LoadTexture would have. It
-    // trusts only a submitted chain: one an upload recorded and then failed to end or submit is still owed.
+    // trusts only a submitted chain: one an upload recorded and then failed to end or submit is still owed. Its own
+    // generation counts the moment its submission is accepted, ahead of the drain, so a drain that throws afterwards
+    // cannot leave an accepted chain owed for an upload sharing the texture to submit again.
     void CompleteFill(ResidentTexture entry)
     {
         if (entry.Fill is not { } fill) return;
@@ -156,10 +158,7 @@ public sealed partial class Scene3D
         {
             fill.WriteAll(_gd);
             if (!fill.ChainSubmitted)
-            {
-                TextureUploads.GenerateChain(_gd, fill.Texture, "Scene3D.LoadSurfaceMaps");
-                fill.MarkSubmitted();
-            }
+                TextureUploads.GenerateChain(_gd, fill.Texture, "Scene3D.LoadSurfaceMaps", fill.MarkSubmitted);
         }
         entry.Fill = null;
     }

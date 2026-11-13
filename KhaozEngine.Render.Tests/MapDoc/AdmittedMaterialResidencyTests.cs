@@ -32,7 +32,7 @@ public sealed class AdmittedMaterialResidencyTests
 
     public enum Fault { End, Submit }
 
-    public enum Survivor { Admitted, Convenience }
+    public enum Survivor { Admitted, Convenience, ConvenienceUnaccepted, ConvenienceUndrained }
 
     static readonly Vector3 Factor = new(2f, 1f, 0.5f);
 
@@ -283,11 +283,13 @@ public sealed class AdmittedMaterialResidencyTests
         Assert.Equal(1, rb.ReleaseCount);
     }
 
-    /// <summary>A chain counts as generated only once the recording that generates it is submitted. The creator's
+    /// <summary>A chain counts as generated once, from the moment a submission carrying it is accepted. The creator's
     /// recording fails at its End or at its submission, on the fenced completion and on the drained one, and the
     /// creator is cancelled. The texture lives on for the upload sharing it, and the next owner to need it, that
-    /// upload or a convenience load arriving first, submits the chain before anything samples it. The texture then
-    /// retires once and each reservation settles once.</summary>
+    /// upload or a convenience load arriving first, submits the chain before anything samples it. A convenience load
+    /// whose own submission is refused leaves the chain owed to the sharer. One whose submission is accepted and whose
+    /// drain then throws has generated it, so the sharer does not submit it again. The texture then retires once and
+    /// each reservation settles once.</summary>
     [Theory]
     [InlineData(Completion.Drained, Fault.End, Survivor.Admitted)]
     [InlineData(Completion.Drained, Fault.Submit, Survivor.Admitted)]
@@ -297,6 +299,10 @@ public sealed class AdmittedMaterialResidencyTests
     [InlineData(Completion.Drained, Fault.Submit, Survivor.Convenience)]
     [InlineData(Completion.Fenced, Fault.End, Survivor.Convenience)]
     [InlineData(Completion.Fenced, Fault.Submit, Survivor.Convenience)]
+    [InlineData(Completion.Drained, Fault.End, Survivor.ConvenienceUnaccepted)]
+    [InlineData(Completion.Fenced, Fault.End, Survivor.ConvenienceUnaccepted)]
+    [InlineData(Completion.Drained, Fault.End, Survivor.ConvenienceUndrained)]
+    [InlineData(Completion.Fenced, Fault.End, Survivor.ConvenienceUndrained)]
     public void A_chain_whose_recording_failed_is_submitted_by_the_owner_that_survives(Completion completion, Fault fault,
         Survivor survivor)
     {
@@ -322,7 +328,22 @@ public sealed class AdmittedMaterialResidencyTests
         Assert.Equal(0, ra.ReleaseCount);   // the texture its claim paid for is still alive for the sharer
 
         Scene3D.SurfaceMaps convenience = default;
-        if (survivor == Survivor.Convenience) convenience = host.Scene.LoadSurfaceMaps(maps);
+        switch (survivor)
+        {
+            case Survivor.Convenience:
+                convenience = host.Scene.LoadSurfaceMaps(maps);
+                break;
+            case Survivor.ConvenienceUnaccepted:
+                host.Device.FailNextSubmit();
+                Assert.Throws<InvalidOperationException>(() => host.Scene.LoadSurfaceMaps(maps));
+                Assert.Equal(0, SubmittedGenerations(host, texture));
+                break;
+            case Survivor.ConvenienceUndrained:
+                host.Device.FailNextDrain();
+                Assert.Throws<InvalidOperationException>(() => host.Scene.LoadSurfaceMaps(maps));
+                Assert.Equal(1, SubmittedGenerations(host, texture));
+                break;
+        }
         sharer.Advance(long.MaxValue);
         if (ring is not null) foreach (IGpuFence fence in ring.SubmittedFences) fence.AsManual().Signal();
         Assert.True(sharer.Ready);

@@ -21,10 +21,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `MapScene3DSink` uses for MapDoc props) share the same residency: an upload holds a reference per map until it is
   cancelled or released, uploads in flight write a shared image once, and the copies `SceneUploadData`,
   `MapRigidResource` and `MapRenderLod` retain keep each image's identity. Their material maps write level 0 and
-  generate the chain on the GPU as `LoadTexture` does, where they wrote a CPU chain before. A chain counts only once
-  its recording is submitted, so an upload whose recording or submission fails leaves it to the texture's next owner.
-  An upload that created a texture keeps its reservation charged until that texture is destroyed. `UnloadTexture` on a resident handle
-  releases one reference. `Scene3D.ResidentMaterialTextureCount` and `ResidentMaterialTextureBytes` report the
+  generate the chain on the GPU as `LoadTexture` does, where they wrote a CPU chain before. A chain counts once a
+  submission carrying it is accepted, so a recording or submission that fails leaves it to the texture's next owner,
+  and a drain that fails afterwards does not make it generate twice. An upload that created a texture keeps its
+  reservation charged until that texture is destroyed. `UnloadTexture` on a resident handle releases one reference.
+  `Scene3D.ResidentMaterialTextureCount` and `ResidentMaterialTextureBytes` report the
   residency. Decoded pixels are held only until a scene uploads them, then each image keeps its encoded bytes, so
   `GltfMeshResolver` no longer holds RGBA8 per part. A shared image's pixels are read-only.
 - Model material maps sample anisotropically ([#1776](https://github.com/APKiwiOrg/KhaozEngine/issues/1776)).

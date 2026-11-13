@@ -4460,9 +4460,10 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   defaults are never released. An image the caller built has no identity and uploads on its own. Admitted uploads
   in flight share an image too: the first to name it creates the texture, every upload naming it writes its
   level-0 rows within its own byte allowance, and the chain is generated on the GPU exactly as `LoadTexture`
-  generates it, so a texture is the same whichever path built it, and a convenience load that meets one still
-  being written finishes it first. The chain counts only once the recording that generates it is submitted, so an
-  upload whose recording or submission fails leaves it to the texture's next owner. A texture an admitted upload created keeps that upload's reservation charged
+  generates it, so a texture is the same whichever path built it, and a convenience load that meets one still being
+  written finishes it first. The chain counts once a submission carrying it is accepted, so an upload or convenience
+  load whose recording or submission fails leaves it to the texture's next owner, and one whose drain fails
+  afterwards has still generated it. A texture an admitted upload created keeps that upload's reservation charged
   until the texture is destroyed, even after another owner outlives the upload. The retained copies of
   `SceneUploadData.Maps`, `MapRigidResource.Maps` and `MapRenderLod.Parts` keep every map, the emissive and each
   image's identity: an image that owns its pixel array is copied and keeps its identity, a shared loader image is

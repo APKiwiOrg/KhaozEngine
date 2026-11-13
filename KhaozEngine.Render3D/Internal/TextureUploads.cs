@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Rendering;
@@ -116,16 +117,20 @@ namespace KhaozEngine.Render3D.Internal
         }
 
         /// <summary>Generate the chain of a texture whose level 0 is already written, the way
-        /// <see cref="CreateMipped"/> generates it, submitted and drained before this returns.</summary>
-        internal static void GenerateChain(IGpuDevice gd, IGpuTexture texture, string owner)
+        /// <see cref="CreateMipped"/> generates it, submitted and drained before this returns.
+        /// <paramref name="accepted"/> runs as soon as the submission is accepted, before the drain and before the
+        /// list is disposed, so a caller that counts the chain counts it even when the drain then throws. A failure
+        /// while recording, at End or at the submission itself never runs it.</summary>
+        internal static void GenerateChain(IGpuDevice gd, IGpuTexture texture, string owner, Action? accepted = null)
         {
-            if (texture.MipLevels > 1) GenerateMips(gd, owner, texture, null);
+            if (texture.MipLevels > 1) GenerateMips(gd, owner, texture, null, accepted);
         }
 
         // One transient list for the whole generate, opened through the seam's register so a mid-frame call
         // refuses by name instead of resetting the frame's device state (#424). Submitted and drained here: the
         // chain has to exist before the first draw that samples it.
-        static void GenerateMips(IGpuDevice gd, string owner, IGpuTexture first, IGpuTexture? second)
+        static void GenerateMips(IGpuDevice gd, string owner, IGpuTexture first, IGpuTexture? second,
+            Action? accepted = null)
         {
             using IGpuCommandList cl = gd.Factory.CreateCommandList();
             using (GpuRecording.Open(gd, cl, owner))
@@ -134,6 +139,8 @@ namespace KhaozEngine.Render3D.Internal
                 if (second is not null) cl.GenerateMipmaps(second);
             }
             gd.Submit(cl);
+            // The device has the generation now and runs it whatever the drain reports.
+            accepted?.Invoke();
             gd.WaitForIdle();
         }
     }

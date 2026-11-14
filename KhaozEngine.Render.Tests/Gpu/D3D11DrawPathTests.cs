@@ -170,6 +170,7 @@ namespace KhaozEngine.Tests.Gpu
             var instances = new TraceBuffer(64);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(32u, 16u));
             log.Reset();
             emitter.SetVertexBuffer(0, positions, 0);
@@ -201,6 +202,7 @@ namespace KhaozEngine.Tests.Gpu
             var vertices = new TraceBuffer(256);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(32u));
             emitter.SetVertexBuffer(0, vertices, 0);
             emitter.Draw(3, 1, 0, 0);
@@ -223,6 +225,7 @@ namespace KhaozEngine.Tests.Gpu
             var vertices = new TraceBuffer(256);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(32u));
             emitter.SetVertexBuffer(0, vertices, 0);
             emitter.Draw(3, 1, 0, 0);
@@ -249,6 +252,7 @@ namespace KhaozEngine.Tests.Gpu
             var c = new TraceBuffer(64);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(4u, 8u, 12u));
             emitter.SetVertexBuffer(0, a, 0);
             emitter.SetVertexBuffer(1, b, 0);
@@ -280,6 +284,7 @@ namespace KhaozEngine.Tests.Gpu
             var vertices = new TraceBuffer(256);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(32u));
             emitter.SetVertexBuffer(0, vertices, 0);
             emitter.Draw(3, 1, 0, 0);
@@ -303,6 +308,7 @@ namespace KhaozEngine.Tests.Gpu
             uint[] strides = { 32u };
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrideArray(strides));
             emitter.SetVertexBuffer(0, vertices, 0);
             emitter.Draw(3, 1, 0, 0);
@@ -324,6 +330,7 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(32u));
             emitter.SetVertexBuffer(0, new TraceBuffer(64), 0);
             emitter.SetPipeline(D3D11StateCacheTests.Pipeline());   // no strides at all
@@ -395,12 +402,14 @@ namespace KhaozEngine.Tests.Gpu
             var indices = new TraceBuffer(64);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(32u));
             emitter.SetVertexBuffer(0, vertices, 0);
             emitter.SetIndexBuffer(indices, GpuIndexFormat.UInt16);
             emitter.Draw(3, 1, 0, 0);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             log.Reset();
             emitter.SetPipeline(PipelineWithStrides(32u));
             emitter.SetVertexBuffer(0, vertices, 0);
@@ -426,6 +435,7 @@ namespace KhaozEngine.Tests.Gpu
             var other = new TraceBuffer(64);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(4u, 8u, 12u));
             emitter.SetVertexBuffer(0, shared, 0);
             emitter.SetVertexBuffer(1, other, 0);
@@ -458,6 +468,7 @@ namespace KhaozEngine.Tests.Gpu
             var live = new TraceBuffer(64);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(4u, 8u, 12u));
             emitter.SetVertexBuffer(0, disposed, 0);
             emitter.SetVertexBuffer(1, live, 24);
@@ -495,6 +506,7 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(PipelineWithStrides(32u));
             emitter.SetVertexBuffer(0, new TraceBuffer(64), 0);
             emitter.Draw(3, 1, 0, 0);

@@ -291,6 +291,14 @@ with this backend's handle types or with fakes that answer the same device-free 
 `ID3D11BindableViews`, `ID3D11ComputePipelineState`). The trace resolves only where the device does, so an empty
 write, a ring-backed write and a zero-size copy are accepted with any buffer, as on the device.
 
+`Draw` (both overloads) and `DrawIndexed` require a framebuffer bound in the current recording. They throw
+`GpuBoundFramebufferException` with `GpuBoundFramebufferRefusal.FramebufferNotBound` and `Command` set to
+`Draw` or `DrawIndexed` before flushing resource sets or vertex streams, as Metal and Vulkan do. Both emitters
+use `D3D11BindResolve.RequireDrawFramebuffer`. The default deferred driver checks the same rule before appending
+the draw, so a refusal escapes the draw call and leaves the stream unchanged. `Begin` forgets the recorded target,
+and `SetFramebufferWithStoreActions` supplies it through the ordinary framebuffer bind
+([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
+
 Four checks stay in the real emitter alone, because each names a type only a device can build or a Direct3D type
 the device-free trace cannot name.
 

@@ -57,9 +57,12 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList third = D3D11CommandDrivers.CreateDeferred();
 
             first.Begin();
+            first.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             second.Begin();
+            second.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             first.Draw(1);
             third.Begin();
+            third.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             second.Draw(10);
             third.Draw(100);
             first.Draw(2);
@@ -77,9 +80,15 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(
                 new[]
                 {
-                    "ClearState()", "DrawInstanced(100,1,0,0)", "DrawInstanced(200,1,0,0)",
-                    "ClearState()", "DrawInstanced(1,1,0,0)", "DrawInstanced(2,1,0,0)",
-                    "ClearState()", "DrawInstanced(10,1,0,0)", "DrawInstanced(20,1,0,0)",
+                    "ClearState()", "OMSetRenderTargets(r0)",
+                    "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "DrawInstanced(100,1,0,0)", "DrawInstanced(200,1,0,0)",
+                    "ClearState()", "OMSetRenderTargets(r1)",
+                    "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "DrawInstanced(1,1,0,0)", "DrawInstanced(2,1,0,0)",
+                    "ClearState()", "OMSetRenderTargets(r2)",
+                    "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "DrawInstanced(10,1,0,0)", "DrawInstanced(20,1,0,0)",
                 },
                 log.Trace);
             Assert.Equal(3, log.Count(D3D11NativeCall.ClearState));
@@ -128,8 +137,11 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList third = D3D11CommandDrivers.CreateDeferred();
 
             first.Begin();
+            first.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             second.Begin();
+            second.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             third.Begin();
+            third.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             first.Draw(1);
             second.Draw(2);
             third.Draw(3);
@@ -141,7 +153,9 @@ namespace KhaozEngine.Tests.Gpu
             third.End();
             D3D11CommandDrivers.Submit(new object(), first, ref emitter);
 
-            Assert.Equal(new[] { "ClearState()", "DrawInstanced(1,1,0,0)" }, log.Trace);
+            Assert.Equal(new[] { "ClearState()", "OMSetRenderTargets(r0)",
+                "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                "DrawInstanced(1,1,0,0)" }, log.Trace);
         }
 
         /// <summary>
@@ -167,6 +181,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 uint first = (uint)i * 1000u;
                 lists[i].Begin();
+                lists[i].SetFramebuffer(D3D11BindFixtures.Framebuffer());
                 for (uint draw = 0; draw < DrawsPerList; draw++) lists[i].Draw(first + draw + 1u);
                 lists[i].End();
             });
@@ -177,6 +192,9 @@ namespace KhaozEngine.Tests.Gpu
             for (uint i = 0; i < Lists; i++)
             {
                 expected.Add("ClearState()");
+                expected.Add($"OMSetRenderTargets(r{i})");
+                expected.Add("RSSetViewports(1,0,0,640,480,0,1)");
+                expected.Add("RSSetScissorRects(count:1,[0,0,640,480])");
                 for (uint draw = 0; draw < DrawsPerList; draw++)
                     expected.Add($"DrawInstanced({(i * 1000u) + draw + 1u},1,0,0)");
             }
@@ -214,11 +232,13 @@ namespace KhaozEngine.Tests.Gpu
                 : (IGpuCommandList)D3D11CommandDrivers.CreateDeferred();
 
             list.Begin();
+            list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             list.Draw(1);
             list.End();
             D3D11CommandDrivers.Submit(submitLock, list, ref emitter);
 
             list.Begin();
+            list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             list.Draw(2);
             list.End();
             D3D11CommandDrivers.Submit(submitLock, list, ref emitter);
@@ -226,8 +246,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(
                 new[]
                 {
-                    "ClearState()", "DrawInstanced(1,1,0,0)",
-                    "ClearState()", "DrawInstanced(2,1,0,0)",
+                    "ClearState()", "OMSetRenderTargets(r0)",
+                    "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "DrawInstanced(1,1,0,0)",
+                    "ClearState()", "OMSetRenderTargets(r1)",
+                    "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "DrawInstanced(2,1,0,0)",
                 },
                 log.Trace);
         }
@@ -242,11 +266,12 @@ namespace KhaozEngine.Tests.Gpu
             for (int frame = 0; frame < 32; frame++)
             {
                 list.Begin();
+                list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
                 list.Draw(3);
                 list.Draw(6);
                 list.End();
 
-                Assert.Equal(2, list.Emitter.Stream.Count);
+                Assert.Equal(3, list.Emitter.Stream.Count);
             }
         }
 

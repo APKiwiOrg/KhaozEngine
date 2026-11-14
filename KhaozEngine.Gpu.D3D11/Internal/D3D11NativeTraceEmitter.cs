@@ -263,11 +263,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 D3D11ScissorState.Describe(_state.Scissors.SetFull(framebuffer.Width, framebuffer.Height)));
         }
 
-        /// <summary>Decision R5, rule 2, in the order every draw path in this backend takes: the resource-set
-        /// flush FIRST, then the batched vertex streams, then the draw. The topology and the blend factor were
+        /// <summary>Decision R5, rule 2: require a framebuffer, flush resource sets, flush batched vertex streams,
+        /// then draw. The topology and the blend factor were
         /// paid at the pipeline bind, which is where they ride (5.3).</summary>
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
+            D3D11BindResolve.RequireDrawFramebuffer(_state.BoundFramebuffer, nameof(IGpuCommandList.Draw));
             FlushGraphicsBinds();
             FlushVertexBuffers();
             _log.Record(D3D11NativeCall.DrawInstanced,
@@ -278,6 +279,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset,
             uint instanceStart)
         {
+            D3D11BindResolve.RequireDrawFramebuffer(_state.BoundFramebuffer, nameof(IGpuCommandList.DrawIndexed));
             FlushGraphicsBinds();
             FlushVertexBuffers();
             _log.Record(D3D11NativeCall.DrawIndexedInstanced,

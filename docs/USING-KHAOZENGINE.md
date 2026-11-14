@@ -30793,10 +30793,11 @@ from observer snapshots, so the wire payload does not grow.
 D3D11, Metal and Vulkan throw `GpuBoundFramebufferException`, derived from `InvalidOperationException`,
 with `GpuBoundFramebufferRefusal.FramebufferNotBound` when an existing framebuffer-dependent command has
 no target. `ClearColorTarget`, `ClearDepthStencil` and `SetFullScissorRects` report those exact member names
-in `Command`. Metal and Vulkan also refuse draws without a target and report `Draw` or `DrawIndexed`.
-D3D11 retains its existing draw acceptance. A depth clear against a colour-only target uses
+in `Command`. All three backends also refuse draws without a target and report `Draw` or `DrawIndexed`.
+D3D11 checks before the bind flush on both emitters and at the draw call on both recording drivers. Each
+recording needs its own framebuffer bind. A depth clear against a colour-only target uses
 `DepthAttachmentMissing` and `Command = "ClearDepthStencil"` on all three backends. Bind a target with the
-required attachment before retrying. Messages and refusal points are unchanged.
+required attachment before retrying.
 
 ### Backend diagnostic settings refusals
 

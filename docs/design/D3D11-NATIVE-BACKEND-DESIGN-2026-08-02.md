@@ -356,7 +356,12 @@ Not negotiable. This is the shape that produced the 40x shadow-encode collapse a
 
 1. `SetGraphicsResourceSet` and `SetComputeResourceSet` RECORD only, comparing against what is already
    recorded and marking the slot `Clean`, `DynamicOffsetsOnly` or `Full`.
-2. `Draw`, `DrawIndexed` and `Dispatch` flush every dirty slot through a pre-command hook, then issue.
+2. `Draw` and `DrawIndexed` require a bound framebuffer before the resource-set or vertex-stream flush, then
+   issue. The device and trace emitters share `D3D11BindResolve.RequireDrawFramebuffer`, which throws
+   `GpuBoundFramebufferException` with `GpuBoundFramebufferRefusal.FramebufferNotBound` and `Command` set to
+   `Draw` or `DrawIndexed`. The deferred stream emitter checks the same rule before appending, using the target
+   recorded since its last `Begin`, so both drivers refuse at the draw call. `Dispatch` flushes dirty compute
+   slots and issues without needing a framebuffer ([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
 3. `Full` slots activate fully. `DynamicOffsetsOnly` slots push ONLY the dynamic constant buffers and skip
    textures and samplers entirely.
 4. Flush is in SLOT order. The one observable difference from bind order is a resource bound two incompatible

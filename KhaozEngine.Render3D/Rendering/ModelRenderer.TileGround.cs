@@ -39,6 +39,17 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuShaderSet _tileGroundShaders = null!;
         IGpuPipeline _tileGroundPipeline = null!;              // rebuilt by SetOutputs alongside _pipeline (set via BuildTileGroundPipeline)
 
+        // The RELIEF variant (TileGroundRelief): the same vertex shader and frame set, its own fragment and a set 1
+        // with the SurfaceArray beside the albedo array, in the splat pass's binding order. A material set picks one
+        // of the two pipelines at load. The relief shaders and pipeline are built by the FIRST relief material's load
+        // (EnsureTileGroundRelief), so a renderer that never loads one compiles nothing more than it always did.
+        IGpuResourceLayout _tileGroundReliefMaterialLayout = null!;  // set 1: params + AlbedoArray + SurfaceArray + Sampler + shadow maps
+        IGpuShaderSet? _tileGroundReliefShaders;
+        IGpuPipeline? _tileGroundReliefPipeline;
+        // What the last BuildTileGroundPipeline was given, so a relief pipeline built later matches the plain one.
+        GpuOutputDescription _tileGroundOutputs;
+        GpuVertexLayoutDescription _tileGroundVertexLayout, _tileGroundInstanceLayout;
+
         /// <summary>Create the tile-ground resource layouts, the shared frame set and the shader set. All three are
         /// sample-count-independent, so this runs once from the constructor (after <c>_ubo</c> and the shadow map
         /// exist) and only the pipeline is rebuilt when the MRT changes.</summary>
@@ -64,54 +75,103 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
 
             _tileGroundShaders = factory.CreateShadersFromSpirv(ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag);
+
+            _tileGroundReliefMaterialLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("TileGroundParams", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("AlbedoArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("SurfaceArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
         }
 
-        /// <summary>Build the tile-ground pipeline from the MRT outputs and the shared vertex + instance layouts.
-        /// Called by <see cref="BuildPipelines"/>, so <see cref="SetOutputs"/> rebuilds it with the rest when the
-        /// sample count changes. The layout array order IS the set numbering the backends flatten registers in, so
-        /// set 0 (frame) comes before set 1 (material), and against a temporal target set 2 is the motion block.</summary>
+        /// <summary>Build the tile-ground pipelines, plain and relief, from the MRT outputs and the shared vertex +
+        /// instance layouts. Called by <see cref="BuildPipelines"/>, so <see cref="SetOutputs"/> rebuilds them with
+        /// the rest when the sample count changes. The layout array order IS the set numbering the backends flatten
+        /// registers in, so set 0 (frame) comes before set 1 (material), and against a temporal target set 2 is the
+        /// motion block.</summary>
         void BuildTileGroundPipeline(IGpuResourceFactory factory, GpuOutputDescription modelOutputs,
             GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout)
+        {
+            _tileGroundOutputs = modelOutputs;
+            _tileGroundVertexLayout = vertexLayout;
+            _tileGroundInstanceLayout = instanceLayout;
+            _tileGroundPipeline = BuildTileGroundVariant(factory, modelOutputs, vertexLayout, instanceLayout,
+                _tileGroundMaterialLayout, ShaderSources.TileGroundFrag, ShaderSources.TileGroundMotionFrag,
+                _tileGroundShaders, motion => motion.TileGroundShaders);
+            // Rebuilt only once some relief material has asked for it.
+            if (_tileGroundReliefShaders is not null) BuildTileGroundReliefPipeline(factory);
+        }
+
+        /// <summary>Build the relief shaders and pipeline if no relief material has yet, against the outputs the plain
+        /// pipeline was last built for. Called by every relief material load, outside frame recording.</summary>
+        internal void EnsureTileGroundRelief()
+        {
+            if (_tileGroundReliefPipeline is not null) return;
+            _tileGroundReliefShaders ??= _gd.Factory.CreateShadersFromSpirv(ShaderSources.TileGroundVert,
+                ShaderSources.TileGroundReliefFrag);
+            BuildTileGroundReliefPipeline(_gd.Factory);
+        }
+
+        void BuildTileGroundReliefPipeline(IGpuResourceFactory factory) =>
+            _tileGroundReliefPipeline = BuildTileGroundVariant(factory, _tileGroundOutputs, _tileGroundVertexLayout,
+                _tileGroundInstanceLayout, _tileGroundReliefMaterialLayout, ShaderSources.TileGroundReliefFrag,
+                ShaderSources.TileGroundReliefMotionFrag, _tileGroundReliefShaders!, motion => motion.TileGroundReliefShaders);
+
+        IGpuPipeline BuildTileGroundVariant(IGpuResourceFactory factory, GpuOutputDescription modelOutputs,
+            GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout,
+            IGpuResourceLayout materialLayout, string fragment, string motionFragment, IGpuShaderSet shaders,
+            Func<ModelMotionResources, IGpuShaderSet> motionShaders)
         {
             if (_motion is { } motion && MotionMath.IsTemporal(modelOutputs))
             {
                 // The temporal variant: the ground's two sets, then the motion block at set 2.
-                _tileGroundPipeline = OpaqueMotionPipeline(factory, modelOutputs, _visibilityShaders.TrySelect(factory, modelOutputs, ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, preserve: false, out IGpuShaderSet motionVisibilityShaders)
-                    ? motionVisibilityShaders : motion.TileGroundShaders,
-                    new[] { _tileGroundFrameLayout, _tileGroundMaterialLayout, motion.FrameLayout },
+                return OpaqueMotionPipeline(factory, modelOutputs, _visibilityShaders.TrySelect(factory, modelOutputs, ShaderSources.TileGroundMotionVert, motionFragment, preserve: false, out IGpuShaderSet motionVisibilityShaders)
+                    ? motionVisibilityShaders : motionShaders(motion),
+                    new[] { _tileGroundFrameLayout, materialLayout, motion.FrameLayout },
                     new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout });
-                return;
             }
-            _tileGroundPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            return factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),
                 DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _tileGroundFrameLayout, _tileGroundMaterialLayout },
-                ShaderSet = _visibilityShaders.TrySelect(factory, modelOutputs, ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag, preserve: false, out IGpuShaderSet visibilityShaders)
-                    ? visibilityShaders : _tileGroundShaders,
+                ResourceLayouts = new[] { _tileGroundFrameLayout, materialLayout },
+                ShaderSet = _visibilityShaders.TrySelect(factory, modelOutputs, ShaderSources.TileGroundVert, fragment, preserve: false, out IGpuShaderSet visibilityShaders)
+                    ? visibilityShaders : shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
         }
 
-        /// <summary>Create a tile-ground material's PARAMS UBO: <see cref="TileGroundMaterialConfig.ParamsBytes"/>
-        /// holding <paramref name="paramsTail"/> alone, written once here and never re-uploaded. The frame block is
-        /// not in it any more (#727), so this is pure load-time material data and there is no CPU mirror to keep:
-        /// the write covers the whole buffer from offset 0, which is also the cheap Direct3D 11 route. (#408's
-        /// blocking Map was caused by the PARTIAL per-frame write into the larger combined buffer this replaces,
-        /// and that write is gone rather than optimised.) Owned by Scene3D and shared by every mesh using this
-        /// material.</summary>
+        // SetOutputs retires both pipelines with the rest before BuildPipelines builds their replacements.
+        void RetireTileGroundPipelines()
+        {
+            _retired.Retire(_tileGroundPipeline);
+            if (_tileGroundReliefPipeline is not null) _retired.Retire(_tileGroundReliefPipeline);
+            _tileGroundReliefPipeline = null;
+        }
+
+        /// <summary>Create a tile-ground material's PARAMS UBO holding <paramref name="paramsTail"/> alone, written
+        /// once here and never re-uploaded: <see cref="TileGroundMaterialConfig.ParamsBytes"/> for a plain material,
+        /// <see cref="TileGroundMaterialConfig.ReliefParamsBytes"/> for a relief one. The frame block is not in it any
+        /// more (#727), so this is pure load-time material data and there is no CPU mirror to keep: the write covers
+        /// the whole buffer from offset 0, which is also the cheap Direct3D 11 route. (#408's blocking Map was caused
+        /// by the PARTIAL per-frame write into the larger combined buffer this replaces, and that write is gone
+        /// rather than optimised.) Owned by Scene3D and shared by every mesh using this material.</summary>
         public IGpuBuffer CreateTileGroundParamsUbo(Vector4[] paramsTail)
         {
-            if (paramsTail.Length * 16 != TileGroundMaterialConfig.ParamsBytes)
+            uint bytes = (uint)paramsTail.Length * 16;
+            if (bytes != TileGroundMaterialConfig.ParamsBytes && bytes != TileGroundMaterialConfig.ReliefParamsBytes)
                 throw new ArgumentException(
-                    $"a tile-ground params tail is {TileGroundMaterialConfig.ParamsBytes} bytes, got {paramsTail.Length * 16}.",
+                    $"a tile-ground params tail is {TileGroundMaterialConfig.ParamsBytes} bytes, or " +
+                    $"{TileGroundMaterialConfig.ReliefParamsBytes} for a relief material, got {bytes}.",
                     nameof(paramsTail));
-            var ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription(
-                TileGroundMaterialConfig.ParamsBytes, GpuBufferUsage.UniformBuffer));
+            var ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription(bytes, GpuBufferUsage.UniformBuffer));
             _gd.UpdateBuffer(ubo, 0, paramsTail);
             return ubo;
         }
@@ -128,10 +188,24 @@ namespace KhaozEngine.Render3D.Rendering
             CreateShadowSamplingSet(_tileGroundMaterialLayout, _shadowMap.ShadowTexture,
                 paramsUbo, albedoArray, sampler);
 
-        /// <summary>Bind the tile-ground pipeline for the tile-ground pass (call once before its draw loop). The
-        /// frame block it reads is the shared one <see cref="SetFrameUniforms"/> already uploaded this frame, so
-        /// since #727 there is nothing per-material to re-sync first.</summary>
-        public void BindTileGroundPass(IGpuCommandList cl) => cl.SetPipeline(_tileGroundPipeline);
+        /// <summary>Build a RELIEF tile-ground material resource set (set 1): the material's relief params UBO, the
+        /// albedo array, the surface array, the sampler (the shared terrain one unless <paramref name="sampler"/>
+        /// overrides it, which the caller then owns) and the shadow maps. Tracked like the plain set, so a shadow
+        /// layout change rebuilds it.</summary>
+        public IGpuResourceSet CreateTileGroundReliefMaterialSet(IGpuBuffer paramsUbo, IGpuTexture albedoArray,
+            IGpuTexture surfaceArray, IGpuSampler? sampler = null) =>
+            CreateShadowSamplingSet(_tileGroundReliefMaterialLayout, _shadowMap.ShadowTexture,
+                paramsUbo, albedoArray, surfaceArray, sampler ?? _terrainSampler);
+
+        /// <summary>Bind a tile-ground pipeline for the tile-ground pass: the relief one when
+        /// <paramref name="relief"/>, the plain one otherwise. The pass binds again only when a run's material
+        /// changes kind. The frame block it reads is the shared one <see cref="SetFrameUniforms"/> already uploaded
+        /// this frame, so since #727 there is nothing per-material to re-sync first.</summary>
+        public void BindTileGroundPass(IGpuCommandList cl, bool relief = false) =>
+            cl.SetPipeline(relief
+                ? _tileGroundReliefPipeline ?? throw new InvalidOperationException(
+                    "a relief tile-ground material is drawn, but no relief material load built its pipeline.")
+                : _tileGroundPipeline);
 
         /// <summary>Draw one tile-ground mesh run through the tile-ground pipeline, reusing the shared instance
         /// buffer. Set 0 is the shared frame block and set 1 is <paramref name="groundSet"/>, the material's params
@@ -155,10 +229,13 @@ namespace KhaozEngine.Render3D.Rendering
         void DisposeTileGroundResources()
         {
             _tileGroundPipeline.Dispose();
+            _tileGroundReliefPipeline?.Dispose();
             _tileGroundFrameSet.Dispose();
             _tileGroundFrameLayout.Dispose();
             _tileGroundMaterialLayout.Dispose();
+            _tileGroundReliefMaterialLayout.Dispose();
             _tileGroundShaders.Dispose();
+            _tileGroundReliefShaders?.Dispose();
         }
     }
 }

@@ -138,6 +138,10 @@ namespace KhaozEngine.Tests.Gpu
                 ["Model.tileGroundFrame"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)), Ro("WaterVolumes", F), T("CausticMap"), S("CausticSampler")]),
                 ["Model.tileGroundMaterial"] = L(U("TileGroundParams", F), T("AlbedoArray"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
+                // Render3D/Rendering/ModelRenderer.TileGround.cs, the relief variant's set 1 (TileGroundRelief): the
+                // surface array joins the albedo array in the splat material's order, so the shadow map stays last.
+                ["Model.tileGroundReliefMaterial"] = L(U("TileGroundParams", F), T("AlbedoArray"), T("SurfaceArray"),
+                    S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/ModelMotionResources.cs, the rigid temporal variant's set 1: the motion block and
                 // the previous transforms, both read by the vertex stage alone.
                 ["Motion.rigid"] = L(U("MotionFrame", V), Ro("PreviousInstanceTransforms", V)),
@@ -311,8 +315,10 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
+            ("ModelRenderer tile ground relief", ["Model.tileGroundFrame", "Model.tileGroundReliefMaterial"]),
             ("ModelRenderer splat motion", ["Model.splatFrame", "Model.splatMaterial", "Motion.frame"]),
             ("ModelRenderer tile ground motion", ["Model.tileGroundFrame", "Model.tileGroundMaterial", "Motion.frame"]),
+            ("ModelRenderer tile ground relief motion", ["Model.tileGroundFrame", "Model.tileGroundReliefMaterial", "Motion.frame"]),
             ("ModelRenderer motion", ["Model", "Motion.rigid"]),
             ("ModelRenderer cpu skinned motion", ["Model", "Motion.frame"]),
             ("OceanFftProducer row", ["OceanFft.row"]),
@@ -395,8 +401,9 @@ namespace KhaozEngine.Tests.Gpu
             // and point shadow, with BoundedWater, SceneAnchor and the empty opaque material gap.
             // The three caustic programs each add one dense layout and pipeline row.
             // T8-R1 keeps completeness independent of the catalogs themselves.
-            Assert.Equal(75, ShippedLayouts.Count);
-            Assert.Equal(88, ShippedPipelines.Count);
+            // The tile-ground relief variant adds its material layout and its plain and motion pipelines.
+            Assert.Equal(76, ShippedLayouts.Count);
+            Assert.Equal(90, ShippedPipelines.Count);
             Assert.Equal(ShippedPipelines.Count,
                 ShippedPipelines.Select(p => p.Pipeline).Distinct(StringComparer.Ordinal).Count());
             Assert.Equal(ShippedLayouts.Keys.Order(StringComparer.Ordinal),

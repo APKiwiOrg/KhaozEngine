@@ -89,31 +89,42 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>Create ONE mipped RGBA8 texture array (one layer per <paramref name="layers"/> entry), upload
         /// every layer's level 0, and generate the mip chain in one transient command list. The albedo-only sibling
-        /// of <see cref="CreateSplatArrays"/>, for the tile-ground pass, which ships no normal maps. Same failure
-        /// contract: a refused mid-frame open (#424) frees the array, so the caller owns nothing when this
-        /// throws.</summary>
+        /// of <see cref="CreateSplatArrays"/>, for the tile-ground pass, whose normal and roughness live in a second,
+        /// separately sized surface array (<see cref="CreateLayerArray"/>). Same failure contract: a refused
+        /// mid-frame open (#424) frees the array, so the caller owns nothing when this throws.</summary>
         internal static IGpuTexture CreateAlbedoArray(
             IGpuDevice gd, uint w, uint h, uint mips, IReadOnlyList<TileGroundLayerImage> layers, string owner)
+        {
+            var pixels = new byte[layers.Count][];
+            for (int L = 0; L < layers.Count; L++) pixels[L] = layers[L].AlbedoRgba;
+            return CreateLayerArray(gd, w, h, mips, pixels, owner);
+        }
+
+        /// <summary>Create ONE mipped RGBA8 texture array from <paramref name="layers"/>, one slice each, with the
+        /// same contract as <see cref="CreateAlbedoArray"/>, which is this over the albedo bytes. The relief
+        /// tile-ground material's surface array is the other caller.</summary>
+        internal static IGpuTexture CreateLayerArray(
+            IGpuDevice gd, uint w, uint h, uint mips, IReadOnlyList<byte[]> layers, string owner)
         {
             // A single-level array (a 1x1 flat-colour set, the untextured world's shape) neither declares the
             // generate usage nor runs the generate pass, mirroring CreateMipped: the native Vulkan backend
             // refuses a generation request on a texture with nothing to generate, and the incumbent merely
             // tolerated it as a no-op. Found by the vulkan-native guest leg on the first untextured golden.
             GpuTextureUsage usage = GpuTextureUsage.Sampled | (mips > 1 ? GpuTextureUsage.GenerateMipmaps : 0);
-            IGpuTexture albedo = gd.Factory.CreateTexture(GpuTextureDescription.Texture2DArray(
+            IGpuTexture array = gd.Factory.CreateTexture(GpuTextureDescription.Texture2DArray(
                 w, h, GpuPixelFormat.R8G8B8A8UNorm, usage, (uint)layers.Count, mips));
             try
             {
                 for (int L = 0; L < layers.Count; L++)
-                    gd.UpdateTexture(albedo, layers[L].AlbedoRgba, 0, 0, w, h, mipLevel: 0, arrayLayer: (uint)L);
-                if (mips > 1) GenerateMips(gd, owner, albedo, null);
+                    gd.UpdateTexture(array, layers[L], 0, 0, w, h, mipLevel: 0, arrayLayer: (uint)L);
+                if (mips > 1) GenerateMips(gd, owner, array, null);
             }
             catch
             {
-                albedo.Dispose();
+                array.Dispose();
                 throw;
             }
-            return albedo;
+            return array;
         }
 
         /// <summary>Generate the chain of a texture whose level 0 is already written, the way

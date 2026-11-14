@@ -8,4 +8,7 @@ public enum TileGroundUploadRefusal
 
     /// <summary>Refuses an upload slice with the wrong RGBA byte length.</summary>
     LayerByteLengthMismatch,
+
+    /// <summary>Refuses a layer's surface texels whose RGBA byte length is not the set's surface size.</summary>
+    SurfaceByteLengthMismatch,
 }

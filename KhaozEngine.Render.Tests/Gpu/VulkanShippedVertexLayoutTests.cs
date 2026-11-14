@@ -49,6 +49,8 @@ namespace KhaozEngine.Tests.Gpu
             model.UploadFoliageUniforms(commands, [default]);
             using (IGpuBuffer dummy = factory.CreateBuffer(new GpuBufferDescription(256, GpuBufferUsage.VertexBuffer | GpuBufferUsage.IndexBuffer)))
                 model.DrawFoliageMesh(commands, dummy, dummy, 0, GpuIndexFormat.UInt16, dummy, 0, 0, 0, null, true);
+            // The relief tile-ground pipeline is built by the first relief material load, which is this call.
+            model.EnsureTileGroundRelief();
             CaptureClipmapPipeline(device, framebuffer.Outputs, commands);
             CaptureBoundedWaterPipeline(scene);
             CaptureTriangleOpticsPipelines(device, framebuffer.Outputs);
@@ -265,6 +267,7 @@ namespace KhaozEngine.Tests.Gpu
             GpuOutputDescription target = outputs ?? ModelTargets.Temporal;
             using var model = new ModelRenderer(device, target, 64, 1);
             model.UploadFoliageUniforms(commands, [default]);
+            model.EnsureTileGroundRelief();
             using var anchorBuffer = device.Factory.CreateBuffer(new(32, GpuBufferUsage.UniformBuffer));
             using var anchor = model.CreatePreparedFoliageAnchorSet(anchorBuffer);
             using var vertices = device.Factory.CreateBuffer(new(3 * ModelVertex.SizeInBytes, GpuBufferUsage.VertexBuffer));

@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu
     /// or a backend cross-compile miscompile now fails the build instead of only surfacing at first run on a real
     /// device of that backend. The pairs mirror how the renderers actually create pipelines from ShaderSources:
     /// <list type="bullet">
-    /// <item>ModelVert+ModelFrag, SplatVert+SplatFrag, TileGroundVert+TileGroundFrag (ModelRenderer)</item>
+    /// <item>ModelVert+ModelFrag, SplatVert+SplatFrag, TileGroundVert+TileGroundFrag and TileGroundVert+TileGroundReliefFrag (ModelRenderer)</item>
     /// <item>ShadowDepthVert+ShadowDepthFrag, ShadowDepthDissolveVert+ShadowDepthDissolveFrag and the cutout pairs
     /// (ShadowMapRenderer's rigid depth pipelines), SkinnedShadowDepthVert and SkinnedShadowDepthDissolveVert (its
     /// skinned ones)</item>
@@ -83,6 +83,12 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TileGround()
             => ShaderValidation.ValidatePair(ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag, "TileGround");
+
+        // Its relief variant: the plain vertex shader with the relief fragment (TileGroundRelief), a second array
+        // and a larger params block at set 1, built once a relief material loads.
+        [Fact]
+        public void TileGroundRelief()
+            => ShaderValidation.ValidatePair(ShaderSources.TileGroundVert, ShaderSources.TileGroundReliefFrag, "TileGroundRelief");
 
         [Fact]
         public void ShadowDepth()
@@ -310,6 +316,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TileGroundMotion()
             => ShaderValidation.ValidatePair(ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, "TileGroundMotion");
+
+        [Fact]
+        public void TileGroundReliefMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundReliefMotionFrag, "TileGroundReliefMotion");
 
         // The transparent passes' temporal variants: each base fragment plus a zero fourth output its blend discards.
         [Fact]

@@ -68,6 +68,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["SkinnedModelDissolve"] = "ModelRenderer skinned dissolve",
                 ["Splat"] = "ModelRenderer splat",
                 ["TileGround"] = "ModelRenderer tile ground",
+                ["TileGroundRelief"] = "ModelRenderer tile ground relief",
                 ["ModelMotion"] = "ModelRenderer motion",
                 ["SkinnedModelMotion"] = "ModelRenderer skinned motion",
                 ["SkinnedModelDissolveMotion"] = "ModelRenderer skinned motion",
@@ -77,6 +78,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["FoliageOpaqueMotion"] = "ModelRenderer foliage opaque motion",
                 ["SplatMotion"] = "ModelRenderer splat motion",
                 ["TileGroundMotion"] = "ModelRenderer tile ground motion",
+                ["TileGroundReliefMotion"] = "ModelRenderer tile ground relief motion",
                 ["TexturedBillboardMotion"] = "TexturedBillboardRenderer",
                 ["BeamMotion"] = "BeamRenderer",
                 ["TrailMotion"] = "TrailRenderer",
@@ -96,6 +98,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["SkinnedModelDissolveVisibility"] = "ModelRenderer skinned dissolve",
                 ["SplatVisibility"] = "ModelRenderer splat",
                 ["TileGroundVisibility"] = "ModelRenderer tile ground",
+                ["TileGroundReliefVisibility"] = "ModelRenderer tile ground relief",
                 ["ModelMotionVisibility"] = "ModelRenderer motion",
                 ["SkinnedModelMotionVisibility"] = "ModelRenderer skinned motion",
                 ["SkinnedModelDissolveMotionVisibility"] = "ModelRenderer skinned motion",
@@ -105,6 +108,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["FoliageOpaqueMotionVisibility"] = "ModelRenderer foliage opaque motion",
                 ["SplatMotionVisibility"] = "ModelRenderer splat motion",
                 ["TileGroundMotionVisibility"] = "ModelRenderer tile ground motion",
+                ["TileGroundReliefMotionVisibility"] = "ModelRenderer tile ground relief motion",
                 ["TexturedBillboardVisibility"] = "TexturedBillboardRenderer",
                 ["TexturedBillboardMotionVisibility"] = "TexturedBillboardRenderer",
                 ["BeamVisibility"] = "BeamRenderer",
@@ -402,7 +406,8 @@ namespace KhaozEngine.Tests.Gpu
                         "FoliageOpaque" or "FoliageOpaqueMotion" or "PreparedFoliageOpaque" or "PreparedFoliageOpaqueMotion" => 7,
                         "SkinnedModel" or "SkinnedModelDissolve" or "SkinnedModelMotion"
                             or "SkinnedModelDissolveMotion" => 4,
-                        "Splat" or "TileGround" or "SplatMotion" or "TileGroundMotion" => 3,
+                        "Splat" or "TileGround" or "SplatMotion" or "TileGroundMotion"
+                            or "TileGroundRelief" or "TileGroundReliefMotion" => 3,
                         _ => -1,
                     };
                     if (prefix >= 0) cases.Add(program.Name, prefix);

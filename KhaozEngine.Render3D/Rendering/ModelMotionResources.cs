@@ -38,7 +38,7 @@ internal sealed class ModelMotionResources : IDisposable
     uint _cpuPreviousCapacity;
     IGpuShaderSet? _cpuSkinned, _cpuSkinnedDissolve;
     IGpuShaderSet? _foliage;
-    IGpuShaderSet? _splat, _tileGround;
+    IGpuShaderSet? _splat, _tileGround, _tileGroundRelief;
 
     internal ModelMotionResources(IGpuDevice gd, GpuRetireQueue retired)
     {
@@ -119,6 +119,10 @@ internal sealed class ModelMotionResources : IDisposable
     internal IGpuShaderSet TileGroundShaders => _tileGround ??= _gd.Factory.CreateShadersFromSpirv(
         ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag);
 
+    /// <summary>TileGroundMotionVert with TileGroundReliefMotionFrag.</summary>
+    internal IGpuShaderSet TileGroundReliefShaders => _tileGroundRelief ??= _gd.Factory.CreateShadersFromSpirv(
+        ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundReliefMotionFrag);
+
     IGpuBuffer CreatePrevious(uint capacity) => _gd.Factory.CreateBuffer(new GpuBufferDescription(
         capacity * MatrixBytes, GpuBufferUsage.StructuredBufferReadOnly, MatrixBytes));
 
@@ -186,6 +190,7 @@ internal sealed class ModelMotionResources : IDisposable
         _foliage?.Dispose();
         _splat?.Dispose();
         _tileGround?.Dispose();
+        _tileGroundRelief?.Dispose();
         _frame.Dispose();
         _rigid?.Dispose();
     }

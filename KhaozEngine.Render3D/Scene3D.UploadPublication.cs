@@ -96,22 +96,24 @@ public sealed partial class Scene3D
             foliage.PreparedPointStream = null;
         }
     }
+    // A non-null surface array makes this a relief material: its own set layout, and the relief pipeline at draw.
     TileGroundMaterialHandle LoadTileGroundMaterial(IGpuTexture albedo, IGpuBuffer ubo,
-        TerrainSamplerConfig? sampler, List<IDisposable>? owned)
+        TerrainSamplerConfig? sampler, List<IDisposable>? owned, IGpuTexture? surface = null)
     {
         IGpuSampler? selected = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
         if (selected is not null) owned?.Add(selected);
-        var set = selected is null ? _model.CreateTileGroundMaterialSet(ubo, albedo)
+        var set = surface is not null ? _model.CreateTileGroundReliefMaterialSet(ubo, albedo, surface, selected)
+            : selected is null ? _model.CreateTileGroundMaterialSet(ubo, albedo)
             : _model.CreateTileGroundMaterialSet(ubo, albedo, selected);
         owned?.Add(set);
         // Only upload-owned slots are reusable. Legacy handles keep their historical indices, including
         // unloaded slots, so a stale public handle can never resolve a native resource's material.
         if (owned is not null && _freeUploadedGroundMaterials.TryPop(out int index))
         {
-            _tileGroundMaterials[index] = new(albedo, ubo, set, selected);
+            _tileGroundMaterials[index] = new(albedo, ubo, set, selected, surface);
             return new(index);
         }
-        _tileGroundMaterials.Add(new(albedo, ubo, set, selected));
+        _tileGroundMaterials.Add(new(albedo, ubo, set, selected, surface));
         return new(_tileGroundMaterials.Count - 1);
     }
 }

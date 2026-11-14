@@ -44,7 +44,8 @@ namespace KhaozEngine.Render3D
         /// is the slot a mesh vertex names, so the caller decides the material-to-slot mapping. Returns a handle to
         /// draw meshes through the tile-ground pipeline. The material is owned by the scene and freed in
         /// <see cref="Dispose"/> (or <see cref="UnloadTileGroundMaterial"/>), and it is shared across every mesh
-        /// that references it.
+        /// that references it. A layer carrying surface texels needs the surface size, so it loads through the
+        /// overload that takes one.
         /// <para>NOT A MID-FRAME CALL: the mip chain needs a command list of its own, so this refuses with
         /// <see cref="GpuNestedRecordingException"/> while a frame is recording (#424). Load once per view
         /// construction or catalog change.</para></summary>
@@ -56,6 +57,28 @@ namespace KhaozEngine.Render3D
         public TileGroundMaterialHandle LoadTileGroundMaterial(int width, int height,
             IReadOnlyList<TileGroundLayerImage> layers, float baseSpecStrength = 0.15f,
             TerrainSamplerConfig? sampler = null)
+            => LoadTileGroundMaterial(width, height, layers, 0, 0, baseSpecStrength, sampler);
+
+        /// <summary>Upload a tile-ground material whose layers may carry relief members (<see cref="TileGroundRelief"/>).
+        /// A set none of whose layers uses one loads exactly as the overload without a surface size does and draws
+        /// through the plain pipeline. Otherwise the set draws through the relief pipeline: the params UBO is
+        /// <see cref="TileGroundMaterialConfig.ReliefParamsBytes"/>, and the layers carrying
+        /// <see cref="TileGroundLayerImage.SurfaceRgba"/> upload, in slot order, into a second mipped array of
+        /// <paramref name="surfaceWidth"/> x <paramref name="surfaceHeight"/> RGBA8, which is independent of the
+        /// albedo size. A relief set with no surface texels binds a one-texel flat surface array instead, so memory
+        /// follows only the layers that use a map. Every refusal is raised before any GPU resource exists.</summary>
+        /// <param name="width">Albedo layer width in texels, shared by every layer.</param>
+        /// <param name="height">Albedo layer height in texels, shared by every layer.</param>
+        /// <param name="layers">The layers, in slot order. 1 to <see cref="TileGroundMaterialConfig.MaxMaterials"/>.</param>
+        /// <param name="surfaceWidth">Surface layer width in texels, shared by every surface layer. Read only when a
+        /// layer carries surface texels, and then it must be positive.</param>
+        /// <param name="surfaceHeight">Surface layer height in texels, the same rule.</param>
+        /// <param name="baseSpecStrength">Base specular strength for the whole set: the map-less specular, and the
+        /// strength a roughness map of 0.5 reproduces.</param>
+        /// <param name="sampler">Optional sampler override. Null binds the renderer's shared terrain sampler.</param>
+        public TileGroundMaterialHandle LoadTileGroundMaterial(int width, int height,
+            IReadOnlyList<TileGroundLayerImage> layers, int surfaceWidth, int surfaceHeight,
+            float baseSpecStrength = 0.15f, TerrainSamplerConfig? sampler = null)
         {
             // A non-positive size would reach the texture description as a huge uint and fail somewhere in the
             // seam, so it is caught by name here. Zero is the likelier mistake of the two, from an unset field.
@@ -84,20 +107,76 @@ namespace KhaozEngine.Render3D
                         Width = width,
                         Height = height,
                     };
+            CheckSurfaceTexels(layers, surfaceWidth, surfaceHeight);
 
-            // Packed, and so validated, BEFORE any GPU resource exists: a layer whose steep companion is refused
-            // throws here, and a throw after the upload below would leak the texture array it created.
-            Vector4[] tail = TileGroundMaterialConfig.BuildParams(layers, baseSpecStrength);
+            // Packed, and so validated, BEFORE any GPU resource exists: a layer whose steep companion or relief
+            // members are refused throws here, and a throw after the upload below would leak the arrays it created.
+            bool relief = TileGroundRelief.UsesRelief(layers);
+            Vector4[] tail = relief
+                ? TileGroundMaterialConfig.BuildReliefParams(layers, baseSpecStrength)
+                : TileGroundMaterialConfig.BuildParams(layers, baseSpecStrength);
+            if (relief) _model.EnsureTileGroundRelief();
 
             uint w = (uint)width, h = (uint)height, mips = TileGroundMaterialConfig.MipLevelCount(width, height);
             // Created, uploaded and mipped in one transient list, and freed if that list is refused mid-frame (#424).
             IGpuTexture albedo = TextureUploads.CreateAlbedoArray(_gd, w, h, mips, layers, "Scene3D.LoadTileGroundMaterial");
+            IGpuTexture? surface = null;
+            try
+            {
+                if (relief) surface = CreateTileGroundSurfaceArray(layers, surfaceWidth, surfaceHeight);
+            }
+            catch
+            {
+                albedo.Dispose();
+                throw;
+            }
 
             // The material's OWN uniform buffer, holding these params alone and written once, here. The frame
             // uniforms are not in it: the pipeline reads those from the renderer's shared block at set 0 (#727).
             IGpuBuffer ubo = _model.CreateTileGroundParamsUbo(tail);
 
-            return LoadTileGroundMaterial(albedo, ubo, sampler, null);
+            return LoadTileGroundMaterial(albedo, ubo, sampler, null, surface);
+        }
+
+        // Surface texels must match the declared surface size, which must be positive once any layer carries them.
+        static void CheckSurfaceTexels(IReadOnlyList<TileGroundLayerImage> layers, int surfaceWidth, int surfaceHeight)
+        {
+            if (TileGroundRelief.SurfaceLayerCount(layers) == 0) return;
+            if (surfaceWidth <= 0)
+                throw new ArgumentOutOfRangeException(nameof(surfaceWidth), surfaceWidth,
+                    "a tile-ground layer carries surface texels, so the surface width must be positive.");
+            if (surfaceHeight <= 0)
+                throw new ArgumentOutOfRangeException(nameof(surfaceHeight), surfaceHeight,
+                    "a tile-ground layer carries surface texels, so the surface height must be positive.");
+            int expected = surfaceWidth * surfaceHeight * 4;
+            for (int i = 0; i < layers.Count; i++)
+                if (layers[i].SurfaceRgba is { } texels && texels.Length != expected)
+                    throw new TileGroundUploadArgumentException(TileGroundUploadRefusal.SurfaceByteLengthMismatch,
+                        $"tile-ground layer {i}'s surface texels are {texels.Length} bytes, expected {expected} for the " +
+                        $"{surfaceWidth}x{surfaceHeight} RGBA8 surface size.", nameof(layers))
+                    {
+                        LayerIndex = i,
+                        ActualByteLength = texels.Length,
+                        ExpectedByteLength = expected,
+                        Width = surfaceWidth,
+                        Height = surfaceHeight,
+                    };
+        }
+
+        // The relief set's surface array: the layers that carry texels, in slot order, which is the numbering
+        // TileGroundRelief.Pack gave them. None at all binds one flat texel, a straight-up normal and roughness 0.5,
+        // which no layer reads because none says it has a map.
+        IGpuTexture CreateTileGroundSurfaceArray(IReadOnlyList<TileGroundLayerImage> layers, int surfaceWidth, int surfaceHeight)
+        {
+            var texels = new List<byte[]>();
+            foreach (TileGroundLayerImage layer in layers)
+                if (layer.SurfaceRgba is { } t) texels.Add(t);
+            if (texels.Count == 0)
+                return TextureUploads.CreateLayerArray(_gd, 1, 1, 1, new[] { new byte[] { 128, 128, 255, 128 } },
+                    "Scene3D.LoadTileGroundMaterial");
+            uint w = (uint)surfaceWidth, h = (uint)surfaceHeight;
+            return TextureUploads.CreateLayerArray(_gd, w, h, TileGroundMaterialConfig.MipLevelCount(surfaceWidth, surfaceHeight),
+                texels, "Scene3D.LoadTileGroundMaterial");
         }
 
         /// <summary>Upload a mesh and draw it through the tile-ground pipeline with <paramref name="material"/>: its
@@ -127,7 +206,8 @@ namespace KhaozEngine.Render3D
         // are loaded. The material's own params went up once, at load.
         void DrawTileGroundRuns(IGpuCommandList cl)
         {
-            bool groundBound = false;
+            // Which pipeline is bound: none yet, plain or relief. A run whose material is the other kind rebinds.
+            int bound = -1;
             foreach (var run in _runs)
             {
                 if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
@@ -136,7 +216,8 @@ namespace KhaozEngine.Render3D
                 if (mesh.TileGroundMaterial < 0) continue;
                 var tg = _tileGroundMaterials[mesh.TileGroundMaterial];
                 if (tg is null) continue;
-                if (!groundBound) { _model.BindTileGroundPass(cl); groundBound = true; }
+                int kind = tg.SurfaceArray is null ? 0 : 1;
+                if (bound != kind) { _model.BindTileGroundPass(cl, relief: kind == 1); bound = kind; }
                 uint spanStart = run.Start; uint spanLen = 0;
                 for (uint s = 0; s < run.Count; s++)
                 {
@@ -162,16 +243,19 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>A loaded tile-ground material: the albedo texture array (one layer per catalog material), the
-        /// params UBO (written once at load, never re-uploaded), and the resource set. Owned by Scene3D and shared
-        /// by every mesh that uses it.</summary>
+        /// surface array of a relief material (null for a plain one, which is also how the draw picks its pipeline),
+        /// the params UBO (written once at load, never re-uploaded), and the resource set. Owned by Scene3D and
+        /// shared by every mesh that uses it.</summary>
         sealed class TileGroundMaterialEntry : IDisposable
         {
             public readonly IGpuTexture AlbedoArray;
+            public readonly IGpuTexture? SurfaceArray;
             public readonly IGpuBuffer Ubo;
             public IGpuResourceSet Set { get; private set; }
             readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
-            public TileGroundMaterialEntry(IGpuTexture albedo, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
-            { AlbedoArray = albedo; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
+            public TileGroundMaterialEntry(IGpuTexture albedo, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null,
+                IGpuTexture? surface = null)
+            { AlbedoArray = albedo; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; SurfaceArray = surface; }
             public void ReplaceSet(IGpuResourceSet set) => Set = set;
             public void Dispose()
             {
@@ -184,6 +268,7 @@ namespace KhaozEngine.Render3D
             {
                 if (!disposal.Release("tileGround.set", Set.Dispose)) return false;
                 disposal.Release("tileGround.albedo", AlbedoArray.Dispose);
+                disposal.Release("tileGround.surface", () => SurfaceArray?.Dispose());
                 disposal.Release("tileGround.uniform", Ubo.Dispose);
                 disposal.Release("tileGround.sampler", () => _ownedSampler?.Dispose());
                 return true;

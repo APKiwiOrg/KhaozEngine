@@ -360,7 +360,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
             if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) _visibilityShaders.Release(_retired);
-            _retired.Retire(_pipeline); _retired.Retire(_splatPipeline); _retired.Retire(_dissolvePipeline); _retired.Retire(_tileGroundPipeline);
+            _retired.Retire(_pipeline); _retired.Retire(_splatPipeline); _retired.Retire(_dissolvePipeline); RetireTileGroundPipelines();
             _retired.Retire(_skinnedPipeline); _retired.Retire(_skinnedDissolvePipeline);
             _retired.Retire(_cpuSkinnedMotionPipeline); _cpuSkinnedMotionPipeline = null;
             BuildPipelines(_gd.Factory, modelOutputs);

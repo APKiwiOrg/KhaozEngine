@@ -26,6 +26,11 @@ public sealed class SceneGroundMaterialData
         if (layers.Count is < 1 or > TileGroundMaterialConfig.MaxMaterials ||
             layers.Any(l => l is null || l.AlbedoRgba.LongLength != checked((long)width * height * 4)))
             throw new ArgumentException("Ground layers require equal RGBA8 dimensions.", nameof(layers));
+        // The scene resource upload carries plain layers only. Refused rather than copied without its relief members,
+        // which would draw a mapped material flat without a word. Scene3D.LoadTileGroundMaterial takes relief layers.
+        if (TileGroundRelief.UsesRelief(layers))
+            throw new ArgumentException("The scene resource upload carries plain ground layers only. Load relief " +
+                "layers through Scene3D.LoadTileGroundMaterial.", nameof(layers));
         _layers = layers.Select(Copy).ToArray();
         _ = TileGroundMaterialConfig.BuildParams(_layers, baseSpecularStrength);
         Width = width; Height = height; BaseSpecularStrength = baseSpecularStrength; Sampler = sampler;

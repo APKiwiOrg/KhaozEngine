@@ -21,9 +21,10 @@ public static partial class ShippedShaderPrograms
         {
             bool lit = program.Name is "Model" or "Foliage" or "PreparedFoliage" or "PreparedFoliageMotion" or "PreparedFoliageOpaque" or "PreparedFoliageOpaqueMotion"
                 or "ModelDissolve" or "SkinnedModel"
-                or "SkinnedModelDissolve" or "Splat" or "TileGround" or "ModelMotion" or "SkinnedModelMotion"
+                or "SkinnedModelDissolve" or "Splat" or "TileGround" or "TileGroundRelief" or "ModelMotion" or "SkinnedModelMotion"
                 or "SkinnedModelDissolveMotion" or "ModelCpuSkinnedMotion" or "ModelCpuSkinnedDissolveMotion"
-                or "FoliageOpaque" or "FoliageOpaqueMotion" or "FoliageMotion" or "SplatMotion" or "TileGroundMotion";
+                or "FoliageOpaque" or "FoliageOpaqueMotion" or "FoliageMotion" or "SplatMotion" or "TileGroundMotion"
+                or "TileGroundReliefMotion";
             bool preserve = program.Name is "TexturedBillboard" or "Beam" or "Trail" or "OverlayMesh"
                 or "TexturedBillboardMotion" or "BeamMotion" or "TrailMotion" or "OverlayMeshMotion" or "SilhouetteMotion";
             if (!lit && !preserve) continue;

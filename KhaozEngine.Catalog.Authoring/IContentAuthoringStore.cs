@@ -108,7 +108,7 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     /// <param name="actor">What the engine authenticated.</param>
     /// <param name="operatorId">The identity the console forwarded, empty when it forwarded none.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
-    /// <exception cref="ContentAuthoringException"><paramref name="version"/> names a version that does not exist.</exception>
+    /// <exception cref="ContentAuthoringException"><paramref name="version"/> names a version that does not exist, refused with <see cref="ContentAuthoringRefusal.VersionUnknown"/>, its <c>VersionNumber</c> and <see cref="ContentAuthoringException.UnknownVersionReason"/>.</exception>
     Task SetPinnedVersionAsync(
         int? version,
         string actor,

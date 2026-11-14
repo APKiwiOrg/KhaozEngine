@@ -112,7 +112,7 @@ public sealed class ContentAuthoringException : Exception
     /// </summary>
     public const string CatalogNotEmptyReason = "catalog-not-empty";
 
-    /// <summary>A read named a version the store does not hold.</summary>
+    /// <summary>A read, a rollback or a pin named a version the store does not hold.</summary>
     public const string UnknownVersionReason = "unknown-version";
 
     /// <summary>

@@ -49,15 +49,15 @@ public sealed partial class SqlServerContentAuthoringStore : IContentVersionSele
                 if (version is int held
                     && !await VersionExistsAsync(scope, held, token).ConfigureAwait(false))
                 {
-                    // The reason token is the one the in-memory reference store answers with, defect and all
-                    // (https://github.com/APKiwiOrg/KhaozEngine/issues/919), so a console that keys on it
-                    // reads the same answer whichever provider is behind the seam.
+                    // The reason token is the unknown-version token every other unknown-version refusal and
+                    // the in-memory reference store answer with, so a console that keys on it reads the same
+                    // answer whichever provider is behind the seam.
                     throw new ContentAuthoringException(
                         ContentAuthoringRefusal.VersionUnknown,
                         FormattableString.Invariant($"Version {held} does not exist, so it cannot be pinned."),
                         default,
                         0,
-                        ContentAuthoringException.UnknownTypeReason)
+                        ContentAuthoringException.UnknownVersionReason)
                     { VersionNumber = held };
                 }
 

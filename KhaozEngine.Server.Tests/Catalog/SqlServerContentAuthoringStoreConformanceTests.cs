@@ -315,6 +315,11 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task APinOfAVersionTheStoreDoesNotHoldIsRefusedAsAnUnknownVersion()
+        => base.APinOfAVersionTheStoreDoesNotHoldIsRefusedAsAnUnknownVersion();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task EveryProviderPublishesAnEmptyLanguageListWhichIsWhatARebuildReliesOn()
         => base.EveryProviderPublishesAnEmptyLanguageListWhichIsWhatARebuildReliesOn();
 

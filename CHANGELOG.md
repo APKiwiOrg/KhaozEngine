@@ -65,6 +65,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   support file's `surfaces`, such as `$.surfaces[0].semanticSha256`, and a map's `prefabs` block, which reports it
   under `$.prefabs`. A null required member keeps `SchemaValueRequired`
   ([#1793](https://github.com/APKiwiOrg/KhaozEngine/issues/1793)).
+- Undoing a `TerrainEditCommand` that added a dependent patch no longer reports `MapNativeWriteSet.OwnerChanges` for
+  that patch, which the undo removes. Undo now matches a forward edit to the same result, and surviving patches keep
+  their inverted owner changes ([#1337](https://github.com/APKiwiOrg/KhaozEngine/issues/1337)).
 - The native Direct3D 11 backend refuses a nonzero dynamic offset on a resource set whose layout declares no dynamic
   uniform buffer, as Metal and Vulkan do, instead of dropping the offset and drawing with the set's first window.
   `SetGraphicsResourceSet` and `SetComputeResourceSet` throw `GpuDynamicBindingException` with
@@ -85,6 +88,19 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `GpuBoundFramebufferException` with `GpuBoundFramebufferRefusal.FramebufferNotBound` and `Command` at the draw
   call, before any bind flush, on the immediate driver and on the default deferred driver, which appends nothing for
   a refused draw ([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
+- The native Direct3D 11 backend refuses a constant-buffer window whose composed offset is off the 256-byte boundary
+  Direct3D 11 requires, or that runs past its ring segment, as Metal and Vulkan do, instead of rounding the offset
+  down and binding the wrong slice. `SetGraphicsResourceSet` and `SetComputeResourceSet` throw
+  `GpuDynamicBindingRangeException` with `GpuDynamicBindingRefusal.OffsetMisaligned` or `WindowOutsideSegment` at
+  the bind call, on the immediate driver and on the default deferred driver, carrying `Set`, `Binding`,
+  `RangeOffset`, `DynamicOffset`, `RangeBytes` and `SegmentStride`, plus `ComposedOffset`, `RingBase` and
+  `AlignmentBytes` for a misaligned offset ([#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689)).
+- A Metal device that presents to a `CAMetalLayer` runs 2 or 3 frames in flight, the drawable counts Core Animation
+  supports, so its uniform ring and `maximumDrawableCount` stay equal instead of an override of 1 or 4 to 16 reaching
+  the layer. Headless devices keep 1 to 16. A `KE_METAL_FRAMES_IN_FLIGHT` value outside the presenting range warns
+  with that range and keeps the default of 3, and an unsupported programmatic `FramesInFlight` setting throws
+  `ArgumentOutOfRangeException` naming the setting before the layer is configured
+  ([#1549](https://github.com/APKiwiOrg/KhaozEngine/issues/1549)).
 - `IContentAuthoringStore.SetPinnedVersionAsync` on the in-memory, SQLite and SQL Server stores refuses a version the
   store does not hold with the `unknown-version` reason token (`ContentAuthoringException.UnknownVersionReason`)
   instead of `unknown-type`, matching every other unknown-version refusal. `Refusal` stays `VersionUnknown` with
@@ -96,6 +112,14 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `KEC0041` for `forkKey` and `flagField`, matching their wrong-kind refusals, and the `catalog-list` and
   `catalog-get` filters with their `{ error }` response. A valid surrogate pair still reads
   ([#1255](https://github.com/APKiwiOrg/KhaozEngine/issues/1255)).
+- `IContentAuthoringStore.ImportBundleAsync` on the in-memory, SQLite and SQL Server stores refuses an empty
+  catalog's open draft that holds row, text or language work before staging anything, instead of publishing the
+  pending rows in version 1 or discarding them in a failed import's reset. It reports
+  `ContentAuthoringRefusal.DraftOpen` with the `draft-open` reason, `MemberName`, `RowEditCount`, `TextEditCount`
+  and `LanguageIntroductionCount`, as `ImportTextBundleAsync` already did, and `catalog-import` answers 409 on both
+  provider paths. A draft holding only text work, which used to refuse this import as `TextDraftOnRowOnlyRoute`
+  with `text-unrepresented`, now refuses as `DraftOpen` too. An open draft with no work still allows the import
+  ([#1251](https://github.com/APKiwiOrg/KhaozEngine/issues/1251)).
 - `PanZoomController` pairs a double tap only from two consecutive taps it owns. A press it refused, such as a click
   on an overlay control near the first tap, used to leave that tap waiting, so the next map tap zoomed in. Any mouse or
   touch sequence that ends without a recorded tap now breaks pairing: a refused, unowned or consumed press, a drag, a
@@ -143,6 +167,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `FloorHeightMeters` or set `CeilingHeightMeters`, NaN included, with `ArgumentException` naming the property.
   Values at or below zero keep `PositiveValueRequired`
   ([#1721](https://github.com/APKiwiOrg/KhaozEngine/issues/1721)).
+- `Scene3D`'s key-light shadow caster compare includes each instance's `DissolveComplement`, read above one half as
+  the point-light signature does, so flipping only the complement at a constant threshold re-renders the key-light
+  atlas instead of reusing stale depth. Unchanged frames still skip the pass
+  ([#1131](https://github.com/APKiwiOrg/KhaozEngine/issues/1131)).
 
 ## 23.12.0
 

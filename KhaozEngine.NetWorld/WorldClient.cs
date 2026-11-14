@@ -749,8 +749,14 @@ public sealed partial class WorldClient : IDisposable
     // A snapshot could not be decoded: surface it as a clean, terminal disconnect (the client is out of date;
     // reconnecting to the same build would just fail the same way) rather than letting the throw escape into the
     // consumer's frame loop. Matches the connect-time handshake's DisconnectReason.IncompatibleVersion path.
+    // The one place every decode failure (legacy snapshot, legacy delta, format 2) ends the connection locally, so the
+    // server sees the leave at once instead of holding the session until its own timeout. NetClient.Disconnect only
+    // stages transport events and never touches the session inbox the Poll drain is reading. A terminal end already
+    // holds its reason, so a later failure in the same drain neither rewrites it nor raises the event again.
     private void OnSnapshotDecodeFailed(string? error)
     {
+        if (state == WorldConnectionState.Disconnected) return;
+        net.Disconnect();
         string detail = string.IsNullOrEmpty(error) ? "snapshot decode failed" : error!;
         disconnectReason = DisconnectReason.IncompatibleVersion;
         disconnectReasonDetail = detail;

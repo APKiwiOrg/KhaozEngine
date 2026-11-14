@@ -2467,6 +2467,12 @@ Its throwing adapter takes the first concrete finding and preserves the full ord
 The full snapshot also survives a state-read exception wrapping an aggregate document refusal.
 Known JSON and document refusals retain their reason and identifiers. An unclassified producer failure uses
 `PrefabStateUnreadable` with the document ID and original cause, without inventing a property path.
+A null required member in state constructed in code uses `SchemaValueRequired` with the member's `FieldPath`. That
+covers an instance's `Bindings` with its `InstanceId`, a replace or add override value and each child payload,
+reference list or water render material with the local `Child`, a roof link's roof, rooms and groups or a roof
+group's rooms with its `EntityId`, and a transfer row or its binding with `DocumentId`, `Index` and a document path.
+The JSON codec refuses the same nulls on read. Validation checks them before the first dereference, so a
+`NullReferenceException` is never classified as authored prefab state and escapes as the defect it is.
 Missing root or asset child collections use `SchemaValueRequired`. Over-cap collections use `WorkCapacityExceeded`
 with `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known `DocumentId` or `AssetId`.
 Unsupported runtime children and topology records use `OperationKindUnsupported` with their type and local identity.

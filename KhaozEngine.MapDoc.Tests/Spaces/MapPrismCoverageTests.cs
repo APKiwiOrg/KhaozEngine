@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
@@ -53,5 +54,31 @@ public sealed partial class MapPrismCoverageTests
         var asset = f.Assets.GetPrefab("hut");
         Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(asset with
         { Children = asset.Children.Where(c => c.Key.Kind != MapPrefabChildKind.Storey).ToArray() }));
+    }
+
+    // #1398. MapDocumentValidator does not validate topology references before prefab validation runs, so the storey
+    // refusal built for a prism built in code without a space must not dereference the space. This needs two defects
+    // by nature, because the dereference only ran while a storey refusal was being built.
+    [Fact]
+    public void StandaloneStorey_RefusesAPrismWithoutASpaceThroughTheDocumentValidator()
+    {
+        var f = PrefabFixtures.StandalonePrism();
+        string? prismId = null;
+        foreach (var patch in f.Document.Surfaces.Patches.Values)
+            for (int i = 0; i < patch.Records.Count; i++)
+                if (patch.Records[i] is MapPrismDomain prism && prismId is null)
+                {
+                    prismId = prism.Id;
+                    patch.Records[i] = prism with { Space = null! };
+                }
+        Assert.NotNull(prismId);
+        f.Document.BuildingIntent = new(1, [], [], [], []) { Storeys = Array.Empty<MapStoreyDoc>() };
+
+        var findings = MapDocumentValidator.ValidateFindings(f.Document, MapDocRegistry.CreateDefault());
+
+        var storey = Assert.Single(findings, x => x.SubjectKind == "storey");
+        Assert.Equal(MapDocumentRefusal.ReferenceMissing, storey.Reason);
+        Assert.Equal(prismId, storey.RecordId);
+        Assert.Null(storey.SpaceId);
     }
 }

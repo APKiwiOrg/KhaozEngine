@@ -19,7 +19,7 @@ public sealed class MapPrefabRequiredMemberRefusalTests
 
     // #1398. A null required member is refused by name before the validator dereferences it, rather than surfacing
     // as a NullReferenceException read as unclassified prefab state or escaping validation. Transfer and storey rows
-    // carry a standalone prism, whose storey check reads both collections. The indoor-parent row is closure bound.
+    // carry a standalone prism, whose storey check reads both collections.
     [Theory]
     [InlineData("transfer", "$.prefabs.transfers[0]")]
     [InlineData("transfer-binding", "$.prefabs.transfers[0].binding")]
@@ -94,13 +94,10 @@ public sealed class MapPrefabRequiredMemberRefusalTests
     {
         var (valid, child) = Children(fault);
         bool overridden = fault is "replace-value" or "add-value" || !ReferenceEquals(child, valid);
-        bool closure = fault == "indoor-parent";
         bool transfer = fault.StartsWith("transfer", StringComparison.Ordinal);
         bool storey = fault.StartsWith("storey", StringComparison.Ordinal);
-        PrefabFixture? fixture = closure ? PrefabFixtures.Create("roomless") : transfer || storey ? PrefabFixtures.StandalonePrism() : null;
-        var document = fixture?.Document ?? MapPrefabDocumentRefusalTests.Empty();
-        MapPrefabInstance instance = closure ? Assert.Single(document.Prefabs!.Instances)
-            : new("a", "hut", new string('a', 64), new(Vector3.Zero, 0, 1), null, new([]), []);
+        var document = transfer || storey ? PrefabFixtures.StandalonePrism().Document : MapPrefabDocumentRefusalTests.Empty();
+        MapPrefabInstance instance = new("a", "hut", new string('a', 64), new(Vector3.Zero, 0, 1), null, new([]), []);
         MapStoreyDoc[] storeys = document.BuildingIntent?.Storeys.ToArray() ?? [];
         Assert.Equal(transfer || storey, document.Surfaces.Patches.Values.SelectMany(p => p.Records).OfType<MapPrismDomain>().Any());
         MapPrefabOverride Override(MapPrefabChild value) => fault == "replace-value"
@@ -110,10 +107,10 @@ public sealed class MapPrefabRequiredMemberRefusalTests
             Bindings = fault == "bindings" ? null! : instance.Bindings,
             Overrides = overridden ? [Override(fault is "replace-value" or "add-value" ? null! : child)] : [],
         }], fault switch { "transfer" => [null!], "transfer-binding" => [new(instance.Id, null!)], _ => [] });
-        if (!closure) document.BuildingIntent = new(1, [Link(fault)], [Group(fault)], [], [])
+        document.BuildingIntent = new(1, [Link(fault)], [Group(fault)], [], [])
         { Storeys = fault switch { "storeys" => null!, "storey-element" => [null!, .. storeys], _ => storeys } };
 
-        var finding = MapPrefabDocumentRefusalTests.Refused(document, closure ? fixture!.Assets : null, MapDocumentRefusal.SchemaValueRequired);
+        var finding = MapPrefabDocumentRefusalTests.Refused(document, null, MapDocumentRefusal.SchemaValueRequired);
         Assert.Equal(path, finding.FieldPath);
         Assert.Equal(path?.Contains("[0]", StringComparison.Ordinal) == true || fault == "storey-element" ? 0 : null, finding.Index);
         if (transfer) Assert.Equal(document.Id, finding.DocumentId);
@@ -123,9 +120,9 @@ public sealed class MapPrefabRequiredMemberRefusalTests
         if (fault.StartsWith("group-", StringComparison.Ordinal)) Assert.Equal("group", finding.EntityId);
         if (overridden) Assert.Equal(valid.Key, finding.Child);
 
-        document.Prefabs = new(1, 1, [instance with { Overrides = closure ? instance.Overrides : overridden ? [Override(valid)] : [] }], []);
-        if (!closure) document.BuildingIntent = new(1, [Link("")], [Group("")], [], []) { Storeys = storeys };
-        Assert.Empty(MapPrefabValidation.Validate(document, closure ? fixture!.Assets : null));
+        document.Prefabs = new(1, 1, [instance with { Overrides = overridden ? [Override(valid)] : [] }], []);
+        document.BuildingIntent = new(1, [Link("")], [Group("")], [], []) { Storeys = storeys };
+        Assert.Empty(MapPrefabValidation.Validate(document, null));
     }
 
     static MapRoofLinkDoc Link(string fault)

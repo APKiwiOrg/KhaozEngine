@@ -2478,7 +2478,9 @@ parent and footprint rects and rings, and footprint space, slot cells and bounds
 `Index`. The standalone storey check reads every transfer and storey, so it runs after the transfer and storey
 collections pass their own checks, and duplicate transfers refuse as `IdentityDuplicate` before a removed source reads
 them by key. Surface patch internals are left to the patch codec, which refuses its own null members. A prefab
-surface child carries no records, and native prisms belong to native document validation.
+surface child carries no records. Native prisms are checked by topology reference validation when surfaces are saved
+or snapshotted, which refuses a prism without a space. `MapDocumentValidator` does not run that check, so the
+standalone storey check tolerates such a prism and refuses with no `SpaceId`.
 The JSON codec refuses the same nulls on read, and only an instance's `parentSpace` may be null or absent there. An
 indoor span's `parentSpace` is required, refused as `SchemaValueRequired` when null and `SchemaMalformed` when absent.
 Validation checks these members before the first dereference, so a `NullReferenceException` is never classified as

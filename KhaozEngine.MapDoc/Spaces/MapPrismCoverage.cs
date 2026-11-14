@@ -190,13 +190,15 @@ public static class MapPrismCoverage
         {
             var storey = document.BuildingIntent?.Storeys.SingleOrDefault(s => s.Id == prism.StoreyId)
                 ?? throw new MapDocumentException(MapDocumentRefusal.ReferenceMissing, "Prism names an undeclared standalone storey.")
-                { RecordId = prism.Id, SpaceId = prism.Space.Id, EntityId = prism.StoreyId, SubjectKind = "storey", FieldPath = "StoreyId" };
+                { RecordId = prism.Id, SpaceId = prism.Space?.Id, EntityId = prism.StoreyId, SubjectKind = "storey", FieldPath = "StoreyId" };
             if (storey.PayloadVersion != 1 || prism.InstanceId != "" || storey.InstanceId is not null)
                 throw new MapDocumentException(storey.PayloadVersion != 1 ? MapDocumentRefusal.SchemaPayloadVersionUnsupported
                     : MapDocumentRefusal.AuthoredOwnershipMismatch, "Standalone prism and storey must have standalone ownership.")
                 {
                     RecordId = prism.Id,
-                    SpaceId = prism.Space.Id,
+                    // MapDocumentValidator reaches this check without validating topology references, so a prism built in
+                    // code may lack its space here and the refusal must not need one.
+                    SpaceId = prism.Space?.Id,
                     EntityId = storey.Id,
                     SubjectKind = "storey",
                     InstanceId = prism.InstanceId,

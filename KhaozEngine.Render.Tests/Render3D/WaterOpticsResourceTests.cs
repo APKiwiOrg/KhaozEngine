@@ -187,14 +187,14 @@ public sealed class WaterOpticsResourceTests
     }
 
     [Fact]
-    public void DisposedSceneDiagnosesUnloadAndBoundDrawAsDisposed()
+    public void DisposedSceneIgnoresUnloadButDiagnosesBoundDrawAsDisposed()
     {
         var device = new FakeGpuDevice();
         var scene = new Scene3D(device, new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));
         WaterOpticsHandle handle = scene.LoadWaterOpticsField(Field());
         var binding = new WaterOpticsBinding(handle, new Vector3(-5f, 0f, -5f), new Vector2(10f));
         scene.Dispose();
-        Assert.Throws<ObjectDisposedException>(() => scene.UnloadWaterOpticsField(handle));
+        scene.UnloadWaterOpticsField(handle);
         Assert.Throws<ObjectDisposedException>(() => scene.DrawWater(new WaterPlane(0f, 0f, 0f, 5f, optics: binding)));
         scene.UnloadWaterOpticsField(default);
     }

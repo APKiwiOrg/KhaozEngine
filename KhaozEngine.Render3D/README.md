@@ -136,7 +136,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   seam's `GpuRetireQueue`, which destroys them a few frames later, once a fence (or the frame count on a backend
   with none) says the GPU is done. `UnloadProp` forwards to `UnloadMesh`, so it behaves the same. That is what
   took the per-chunk stall off the terrain streaming path and, for the skinned one, the per-despawn stall off an
-  MMO client. The rule the old
+  MMO client. Scene unloads are no-ops after `Dispose`, including water optics and surface-map releases.
+  The rule the old
   per-call `IGpuDevice.WaitForIdle` existed for is unchanged: a queued upload or draw may still reference the
   resource, so nothing is destroyed in the frame it was retired in. The unload bodies live in `Scene3D.Unload.cs`,
   and `Scene3D.RetiredResourceCount` is the observable: a healthy streaming world shows a small number that returns
@@ -1132,8 +1133,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     Native bounded surfaces contribute ocean demand and reserve their shared uniform slots before optical sets
     are created. They remain separate from the optical plane queue and its coverage certificates.
   - **Lifetime**: reuse the handle across frames. `UnloadWaterOpticsField` invalidates either kind at once and
-    defers texture destruction through the scene's retirement queue. On a disposed scene, unloading or binding a
-    handle throws `ObjectDisposedException`. `WaterOpticsStats` counts live fields,
+    defers texture destruction through the scene's retirement queue. On a live scene, foreign, stale and
+    double-released handles throw `ArgumentException`. Unloading after scene disposal is a no-op, while loading
+    fields or drawing bound water still throws `ObjectDisposedException`. `WaterOpticsStats` counts live fields,
     padded live and retired texture bytes, uploads, and live and retired retained CPU payload bytes until actual
     retirement. Device recreation means a new scene: handles from another or an older scene are invalid, so the
     producer explicitly loads its retained CPU fields into the new scene.

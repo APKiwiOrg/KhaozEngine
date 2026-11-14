@@ -792,6 +792,7 @@ catalog archetype up front, so a region load is placements alone.
   a whole-region seasonal swap through it: call `TileObjectProps.Build` once instead. There is no batch door.
 - `Dispose` cancels and drains the background queues, releases region ground, cover and cluster state, frees the
   optional LOD uploads and every archetype mesh set, and disposes the shared cluster owner. The scene is not owned.
+  With `Scene3DTileWorldScene`, it is safe to dispose the view after the scene, including after a snapshot capture.
 
 ## Animated authored foliage
 

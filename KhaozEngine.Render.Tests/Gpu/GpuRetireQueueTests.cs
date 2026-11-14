@@ -526,36 +526,82 @@ namespace KhaozEngine.Tests.Gpu
             var firstError = new InvalidOperationException();
             var secondError = new NotSupportedException();
             var released = new HashSet<string>();
-            CountingResource Resource(string name, Exception? error = null) => new(() =>
+            CountingResource Resource(string name, Exception? error = null, IDisposable? child = null) => new(() =>
             {
                 Assert.True(drained);
                 Assert.True(released.Add(name));
+                pool.Retire(child);
                 if (error is not null) throw error;
             });
             pool.Retire(Resource("first"));
             pool.BeginFrame();
-            pool.Retire(Resource("middle", firstError));
+            // #1760: a child retired by a throwing disposal is still released by the same flush.
+            pool.Retire(Resource("middle", firstError, Resource("child")));
             pool.BeginFrame();
             pool.Retire(Resource("last", failures == 2 ? secondError : null));
 
             Exception? thrown = Record.Exception(pool.FlushAll);
 
-            if (failures == 1) Assert.Same(firstError, Assert.IsType<InvalidOperationException>(thrown));
-            else
-            {
-                // Multiple failures are reported in disposal attempt order without replacing either error.
-                var aggregate = Assert.IsType<AggregateException>(thrown);
-                Assert.Collection(aggregate.InnerExceptions,
-                    error => Assert.Same(firstError, error), error => Assert.Same(secondError, error));
-            }
-            Assert.Contains("first", released);
-            Assert.Contains("middle", released);
-            Assert.Contains("last", released);
+            AssertReported(thrown, failures, firstError, secondError);
+            Assert.Equal(new[] { "child", "first", "last", "middle" }, released.Order());
             Assert.Equal(0, pool.PendingCount);
             Assert.Equal(0, pool.SealedBatchCount);
             Assert.NotEmpty(barrier.Issued);
             Assert.All(barrier.Issued, fence => Assert.True(barrier.IsReleased(fence)));
             pool.FlushAll();
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void BeginFrame_frees_every_ripe_batch_before_reporting_failures(int failures)
+        {
+            // #1760: a throwing disposal on the per-frame path must not leave its batch at the front to be
+            // disposed again on every later frame, hold back a later ripe batch or keep its fence.
+            var barrier = new FakeBarrier();
+            var pool = new GpuRetireQueue(() => Assert.Fail("the fence path must never drain"), barrier);
+            var firstError = new InvalidOperationException();
+            var secondError = new NotSupportedException();
+            var released = new HashSet<string>();
+            CountingResource Resource(string name, Exception? error = null) => new(() =>
+            {
+                Assert.True(released.Add(name));
+                if (error is not null) throw error;
+            });
+            pool.Retire(Resource("before"));
+            pool.Retire(Resource("throwing", firstError));
+            pool.Retire(Resource("after"));
+            pool.BeginFrame();
+            pool.Retire(Resource("later", failures == 2 ? secondError : null));
+            pool.BeginFrame();
+            foreach (FakeFence fence in barrier.Issued) fence.Signaled = true;
+
+            Exception? thrown = Record.Exception(pool.BeginFrame);
+
+            AssertReported(thrown, failures, firstError, secondError);
+            Assert.Equal(new[] { "after", "before", "later", "throwing" }, released.Order());
+            Assert.Equal(0, pool.PendingCount);
+            Assert.Equal(0, pool.SealedBatchCount);
+            Assert.Equal(2, barrier.Issued.Count);
+            Assert.All(barrier.Issued, fence => Assert.True(barrier.IsReleased(fence)));
+
+            pool.BeginFrame();   // nothing is left to dispose again, so nothing is reported again
+
+            Assert.Equal(4, released.Count);
+        }
+
+        // One failure is rethrown as the same instance. Several are reported in attempt order without replacing
+        // either error.
+        static void AssertReported(Exception? thrown, int failures, Exception firstError, Exception secondError)
+        {
+            if (failures == 1)
+            {
+                Assert.Same(firstError, Assert.IsType<InvalidOperationException>(thrown));
+                return;
+            }
+            var aggregate = Assert.IsType<AggregateException>(thrown);
+            Assert.Collection(aggregate.InnerExceptions,
+                error => Assert.Same(firstError, error), error => Assert.Same(secondError, error));
         }
 
         // ---- the frame-count-only path (no fence, no drain) ----

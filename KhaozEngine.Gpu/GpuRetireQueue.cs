@@ -419,6 +419,14 @@ namespace KhaozEngine.Gpu
         /// <summary>Advance one frame: destroy every batch the GPU has provably finished with, then seal whatever
         /// was retired during the frame just ended behind a fresh fence. A frame with nothing pending and nothing
         /// newly retired touches the device not at all.</summary>
+        /// <remarks><b>A throwing disposal never strands the queue</b>, here or on any other path that frees
+        /// (<see cref="BeginFrame(GpuFrameSubmission)"/>, the host's completion callbacks, <see cref="FlushAll"/>
+        /// and <see cref="Dispose"/>). Every entry being freed is attempted exactly once and leaves the queue
+        /// whether or not it throws, its batch is dropped and a fence the queue owns is handed back to the
+        /// barrier, and every other ripe batch is still freed. Only then does the call report: a single failure is rethrown
+        /// unchanged with its original stack, and several are reported as one <see cref="AggregateException"/> in
+        /// attempt order. A later call therefore never disposes a failed entry again. Nothing is allocated for this
+        /// unless a disposal actually throws.</remarks>
         public void BeginFrame()
         {
             _sharedDeferredBoundaries = 0;
@@ -435,10 +443,19 @@ namespace KhaozEngine.Gpu
             FreeRipeBatches();
         }
 
+        // FreeRipeBatches for a caller with nothing else to finish first: frees, then reports any disposal failure.
+        void FreeRipeBatches()
+        {
+            List<Exception>? failures = null;
+            FreeRipeBatches(ref failures);
+            ThrowReleaseFailures(failures);
+        }
+
         // Free the ripe PREFIX of _batches, stopping at the first batch that is not ripe. Stopping (rather than
         // skipping ahead to a later batch whose fence happens to be signaled) is load-bearing: it is what makes
-        // "this batch died" imply "every older batch died first".
-        void FreeRipeBatches()
+        // "this batch died" imply "every older batch died first". A failed disposal is collected in failures
+        // and does not stop the sweep (#1760): the caller reports once the queue is consistent again.
+        void FreeRipeBatches(ref List<Exception>? failures)
         {
             // THE SAFETY VALVE (#425). Past the cap, stop asking the fences and pay one drain instead. A drain
             // waits out everything SUBMITTED, and every batch here was sealed behind a fence submitted at an
@@ -484,11 +501,10 @@ namespace KhaozEngine.Gpu
                     }
                 }
 
-                for (int i = 0; i < b.Count; i++) _pending[i].Dispose();
-                _pending.RemoveRange(0, b.Count);
+                ReleaseFront(b.Count, ref failures);
                 _batched -= b.Count;
                 _batches.RemoveAt(0);
-                if (!b.SharedFence && b.Fence is { } spent) _barrier!.Release(spent);
+                ReleaseOwnedFence(b, ref failures);
             }
         }
 
@@ -521,10 +537,9 @@ namespace KhaozEngine.Gpu
         /// half-built renderer it had already constructed, from inside the outer recording, and that teardown
         /// frees nothing. Turning that into a second exception would replace the useful diagnosis with an
         /// unrelated one and leak the renderer as well.</para></summary>
-        /// <remarks>After a successful drain every pending disposal is attempted in retirement order. Each entry
-        /// is removed before its attempt, and fences are released and batches cleared even if a disposal fails.
-        /// A single failure is rethrown unchanged with its original stack. Multiple failures are reported as one
-        /// <see cref="AggregateException"/> in attempt order. A later flush does nothing.</remarks>
+        /// <remarks>After a successful drain every pending entry is attempted in retirement order, including any a
+        /// disposal retires on the way, every owned fence is handed back and every batch is cleared. A failed
+        /// disposal is reported as <see cref="BeginFrame()"/> describes, so a later flush does nothing.</remarks>
         /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device and
         /// this queue has resources to free. Nothing was drained and nothing was destroyed.</exception>
         public void FlushAll() => FlushAllCore(disposeBarrier: false);
@@ -551,34 +566,65 @@ namespace KhaozEngine.Gpu
             // error, so the drain has to have retired every in-flight submission first).
             _drainDevice();
             List<Exception>? failures = null;
-            while (_pending.Count > 0)
-            {
-                IDisposable resource = _pending[0];
-                _pending.RemoveAt(0);
-                Attempt(resource.Dispose);
-            }
-            foreach (Batch b in _batches)
-                if (!b.SharedFence && b.Fence is { } fence) Attempt(() => _barrier!.Release(fence));
+            ReleaseAll(ref failures);
+            foreach (Batch b in _batches) ReleaseOwnedFence(b, ref failures);
             _batches.Clear();
             _batched = _sharedDeferredBoundaries = 0;
-            if (disposeBarrier && _barrier is { } barrier) Attempt(barrier.Dispose);
-            if (failures is { Count: 1 }) ExceptionDispatchInfo.Capture(failures[0]).Throw();
-            if (failures is not null) throw new AggregateException(failures);
-
-            void Attempt(Action release)
+            if (disposeBarrier && _barrier is { } barrier)
             {
-                try { release(); }
+                try { barrier.Dispose(); }
                 catch (Exception error) { (failures ??= []).Add(error); }
             }
+            ThrowReleaseFailures(failures);
+        }
+
+        // Release every pending entry, including children a disposal retires on the way: each pass releases the
+        // entries present when it started, and a child lands behind them for the next pass.
+        void ReleaseAll(ref List<Exception>? failures)
+        {
+            while (_pending.Count > 0) ReleaseFront(_pending.Count, ref failures);
+        }
+
+        // THE ONE RELEASE LOOP behind every path that frees (#1760). Attempts each of the first count pending
+        // entries exactly once and then removes all of them, so a throwing entry neither stops the ones after it
+        // nor stays behind to be disposed again by the next call. The failure list exists only once something
+        // threw, which keeps the per-frame path allocation-free. Attempting in place before one RemoveRange is
+        // safe because no resource the engine retires calls back into a freeing path on its own queue. A
+        // disposal only reaches the queue through Retire, which appends behind the range.
+        void ReleaseFront(int count, ref List<Exception>? failures)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                try { _pending[i].Dispose(); }
+                catch (Exception error) { (failures ??= []).Add(error); }
+            }
+            _pending.RemoveRange(0, count);
+        }
+
+        // Hand a dropped batch's fence back to the barrier. A borrowed host fence stays the host's.
+        void ReleaseOwnedFence(Batch batch, ref List<Exception>? failures)
+        {
+            if (batch.SharedFence || batch.Fence is not { } fence) return;
+            try { _barrier!.Release(fence); }
+            catch (Exception error) { (failures ??= []).Add(error); }
+        }
+
+        // Report what the release paths collected: one failure unchanged with its original stack, several as one
+        // AggregateException in attempt order.
+        static void ThrowReleaseFailures(List<Exception>? failures)
+        {
+            if (failures is null) return;
+            if (failures.Count == 1) ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            throw new AggregateException(failures);
         }
 
         /// <summary>Flush everything pending, then free the barrier's own GPU objects. Renderer teardown, and it
         /// inherits <see cref="FlushAll"/>'s refusal exactly, including the empty case: tearing a renderer down
         /// from inside an open recording is the same use-after-free when there is a tail to free, and nothing at
         /// all when there is not.</summary>
-        /// <remarks>After a successful drain the barrier is attempted even if a pending disposal fails.
-        /// Failures are reported as on <see cref="FlushAll"/>, with barrier failure last. A recording refusal or
-        /// failed drain leaves the barrier intact.</remarks>
+        /// <remarks>After a successful drain the barrier is attempted even if a pending disposal fails, and a
+        /// barrier failure is reported last among the failures <see cref="BeginFrame()"/> describes. A recording
+        /// refusal or failed drain leaves the barrier intact.</remarks>
         /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device and
         /// this queue has resources to free. Nothing was freed, including the barrier.</exception>
         public void Dispose() => FlushAllCore(disposeBarrier: true);

@@ -432,6 +432,11 @@ public sealed class CatalogReadActionTests : IDisposable
     [InlineData("catalog-get", """{ "typeKey": "thing", "id": 0 }""", "id")]
     [InlineData("catalog-get", """{ "typeKey": "thing", "id": 99 }""", "99")]
     [InlineData("catalog-get", """{ "typeKey": "thing", "key": "absent" }""", "absent")]
+    // #1255: an escaped lone surrogate in a string filter is a refusal, not a 500.
+    [InlineData("catalog-list", """{ "typeKey": "\ud800" }""", "typeKey")]
+    [InlineData("catalog-list", """{ "typeKey": "thing", "keyPrefix": "\udc00" }""", "keyPrefix")]
+    [InlineData("catalog-get", """{ "typeKey": "\ud800", "key": "stone_sword" }""", "typeKey")]
+    [InlineData("catalog-get", """{ "typeKey": "thing", "key": "\ud800" }""", "key")]
     public async Task ARefusedRead_IsABadRequestNamingWhatWasWrong(string action, string? body, string mentions)
     {
         AdminActionResult result = await CallAsync(action, body);

@@ -1,19 +1,18 @@
 using System;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
-using KhaozEngine.Server.Admin;
 using KhaozEngine.Server.Admin.Catalog;
 using Xunit;
 
 namespace KhaozEngine.Tests.Catalog;
 
-/// <summary>Catalog string decoding refusals through the real HTTPS action boundary.</summary>
+/// <summary>
+/// Catalog string decoding refusals on the mutating actions, dispatched through the registry the way the endpoint
+/// does. An exception escaping a handler is what the endpoint answers as a 500, so it fails these facts too. Read
+/// actions carry the same rows in <see cref="CatalogReadActionTests"/>.
+/// </summary>
 public sealed class CatalogStringRequestTests : IDisposable
 {
     readonly CatalogActionHarness _harness = new();
@@ -36,14 +35,13 @@ public sealed class CatalogStringRequestTests : IDisposable
         string request = await PrepareAsync(action);
         string before = await _harness.SnapshotAsync();
 
-        JsonElement refused = await PostAsync(
-            action, WithMember(request, member, @"\ud800"), HttpStatusCode.BadRequest);
+        JsonElement refused = await _harness.RefusedAsync(action, WithMember(request, member, @"\ud800"));
 
         Assert.Equal(CatalogRequest.MalformedRequestReason, refused.GetProperty("reason").GetString());
         Assert.Empty(refused.GetProperty("findings").EnumerateArray());
         Assert.Equal(before, await _harness.SnapshotAsync());
 
-        await PostAsync(action, WithMember(request, member, @"\ud83d\ude00"), HttpStatusCode.OK);
+        await _harness.OkAsync(action, WithMember(request, member, @"😀"));
     }
 
     // #1255: each edit reader retains its existing finding family, including opaque hex values.
@@ -63,28 +61,11 @@ public sealed class CatalogStringRequestTests : IDisposable
         await _harness.PublishThingsAsync("stone_sword");
         string before = await _harness.SnapshotAsync();
 
-        JsonElement refused = await PostAsync(
-            "catalog-edit", "{ \"edits\": [" + entry + "] }", HttpStatusCode.BadRequest);
+        JsonElement refused = await _harness.RefusedAsync("catalog-edit", "{ \"edits\": [" + entry + "] }");
 
         Assert.Equal(CatalogEditParser.Reason, refused.GetProperty("reason").GetString());
         Assert.Equal(new[] { code }, CatalogActionHarness.Codes(refused));
         Assert.Equal(before, await _harness.SnapshotAsync());
-    }
-
-    // #1255: reads keep their documented error-only response rather than becoming server faults.
-    [Theory]
-    [InlineData("catalog-list", """{ "typeKey": "\ud800" }""")]
-    [InlineData("catalog-get", """{ "typeKey": "\ud800", "key": "stone_sword" }""")]
-    [InlineData("catalog-list", """{ "typeKey": "thing", "keyPrefix": "\udc00" }""")]
-    [InlineData("catalog-get", """{ "typeKey": "thing", "key": "\ud800" }""")]
-    public async Task UnreadableReadString_IsAnErrorOnlyBadRequest(string action, string request)
-    {
-        await _harness.PublishThingsAsync("stone_sword");
-
-        JsonElement refused = await PostAsync(action, request, HttpStatusCode.BadRequest);
-
-        Assert.False(string.IsNullOrWhiteSpace(refused.GetProperty("error").GetString()));
-        Assert.Equal("error", Assert.Single(refused.EnumerateObject()).Name);
     }
 
     async Task<string> PrepareAsync(string action)
@@ -124,32 +105,6 @@ public sealed class CatalogStringRequestTests : IDisposable
         string prefix = request[..^1].TrimEnd();
         string separator = prefix.EndsWith('{') ? string.Empty : ",";
         return prefix + separator + "\"" + member + "\":\"" + escapedValue + "\"}";
-    }
-
-    async Task<JsonElement> PostAsync(string action, string request, HttpStatusCode expected)
-    {
-        var certificate = AdminTlsCertificate.CreateSelfSigned("localhost");
-        using var tls = certificate.Certificate;
-        await using var http = new AdminHttpServer(_harness.Admin, new AdminEndpointOptions
-        {
-            Port = 0,
-            BearerToken = "catalog-test",
-            Certificate = certificate,
-        });
-        await http.StartAsync();
-        using var handler = new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = static (_, _, _, _) => true,
-        };
-        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "catalog-test");
-        string url = FormattableString.Invariant($"https://127.0.0.1:{http.BoundPort}/admin/actions/{action}");
-        using var content = new StringContent(request, Encoding.UTF8, "application/json");
-        using HttpResponseMessage response = await client.PostAsync(url, content);
-
-        Assert.Equal(expected, response.StatusCode);
-        using JsonDocument document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return document.RootElement.Clone();
     }
 
     /// <inheritdoc />

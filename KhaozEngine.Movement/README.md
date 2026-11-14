@@ -31,6 +31,8 @@ bits. This immutable view shares the baked graph and captured columns, including
 without another capture or profile bake. Reuse a view across pursuits. Zero returns the same instance and
 chained calls accumulate exclusions. The baked required and excluded masks remain in force, so excluding a
 required bit refuses every affected surface rather than replacing the original filter.
+Views also share the source's current terrain routes and certificate cache, including later evidence rebinding.
+`MoveToRange` keeps the stored terrain policy and refuses excluded terrain links before following them.
 
 The full capsule footprint checks the exclusion at search nodes and along directed edges, including Stair
 links with dry endpoints. Admission, every replan, straightening, actual-to-route entry and waypoint advancement
@@ -861,6 +863,12 @@ No precision threshold or physical gate is widened.
 Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
 synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
 or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
+An `ExcludingAreas` view prepares that same source cache. Terrain ownership is read through the source rather
+than copied, so later attachment or evidence rebinding remains visible. Internal attach and rebind calls on a
+view forward to the source, preserving its single owner and original profile footprint.
+Terrain exclusions check retained analytic face areas across the complete doubled-radius certificate projection
+before planning or launch preview. Ordinary captured columns omit steep faces, so their supported-walk footprint
+cannot decide terrain-link eligibility. Shared certificates never authorize an excluded interior or shell fringe.
 Loading and reconstruction use no platform trigonometric functions. Excluded evidence always throws
 `DependencyMissing`, including steep-presence queries. It cannot select a fallback policy. No trajectories or
 per-mode physics verdicts are stored. Formats 1, 2 and 3 keep their exact bytes and candidate meanings.

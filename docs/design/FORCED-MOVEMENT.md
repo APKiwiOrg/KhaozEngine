@@ -43,6 +43,9 @@ view shares the baked graph and captured per-surface area bits, so an actor allo
 dry bridge without a second whole-world bake. Exclusions accumulate and are checked in addition to the original
 required and excluded masks. Zero keeps the original profile. Even an exclusion overlapping a required bit can
 only refuse more routes. The existing bake format and runtime movement binding remain unchanged.
+The view also shares current source terrain ownership, including later attachment and evidence rebinding.
+Range movement retains the stored terrain Drop policy and checks exclusions across its complete certificate
+shell before execution. Pursuit still refuses every Drop through its separate walk-only policy.
 
 The query restriction trusts the graph's existing support and clearance proofs. Requiring a link's straight
 chord to satisfy supported-walk height checks would reject a permitted tall dry Drop even when the excluded

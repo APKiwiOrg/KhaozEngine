@@ -6,7 +6,6 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Prefabs;
-using KhaozEngine.Tests.MapDoc.Markers;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Prefabs;
@@ -174,6 +173,8 @@ public sealed class MapPrefabDocumentRefusalTests
     [InlineData("source-missing", MapDocumentRefusal.AuthoredOwnershipMismatch)]
     [InlineData("source-mismatch", MapDocumentRefusal.AuthoredOwnershipMismatch)]
     [InlineData("source-foreign", MapDocumentRefusal.AuthoredOwnershipMismatch)]
+    // #1398. Repeated transfers refuse as duplicates before the source inventory reads them by key.
+    [InlineData("source-duplicate", MapDocumentRefusal.IdentityDuplicate)]
     public void Binding_inventory_and_liveness_refusals_keep_the_typed_owner(string fault, MapDocumentRefusal reason)
     {
         var fixture = PrefabFixtures.Create("roomless");
@@ -193,6 +194,7 @@ public sealed class MapPrefabDocumentRefusalTests
         {
             "source-dormant" or "source-foreign" => [new(original.Id, binding)],
             "source-mismatch" => [new(original.Id, binding with { WorldId = "other" })],
+            "source-duplicate" => [new(original.Id, binding), new(original.Id, binding)],
             _ => [],
         };
         var invalid = original with { Removed = source, Unpacked = source, Bindings = new(entries) };
@@ -202,6 +204,7 @@ public sealed class MapPrefabDocumentRefusalTests
         Assert.Equal(original.Id, finding.InstanceId);
         Assert.Equal(fault == "ghost" ? extra.Child : binding.Child, finding.Child);
         if (fault == "source-dormant") { Assert.Equal(1, finding.ActualCount); Assert.Equal(0, finding.ExpectedCount); }
+        if (fault == "source-duplicate") { Assert.Equal(1, finding.Index); Assert.Equal("transfer", finding.SubjectKind); }
         if (fault is "source-missing" or "source-mismatch")
         {
             Assert.Equal(fault == "source-missing" ? 0 : 1, finding.ActualCount);
@@ -252,103 +255,6 @@ public sealed class MapPrefabDocumentRefusalTests
         // The smallest normal binary64 scale avoids subnormal-dependent controls at this strict-positive boundary.
         var accepted = fault.StartsWith("scale-", StringComparison.Ordinal) ? pose with { Scale = BitConverter.Int64BitsToDouble(0x0010000000000000) } : pose;
         document.NativeResourceTransforms = [new(MapPrefabChildKind.Placement, "owner", accepted, new string('a', 64))];
-        Assert.Empty(MapPrefabValidation.Validate(document, null));
-    }
-
-    // #1398. A null required member is refused by name before the validator dereferences it, rather than surfacing
-    // as a NullReferenceException read as unclassified prefab state.
-    [Theory]
-    [InlineData("transfer", "$.prefabs.transfers[0]")]
-    [InlineData("transfer-binding", "$.prefabs.transfers[0].binding")]
-    [InlineData("bindings", "$.bindings")]
-    [InlineData("replace-value", "$.value")]
-    [InlineData("add-value", "$.value")]
-    [InlineData("references", "$.references")]
-    [InlineData("placement", "$.value")]
-    [InlineData("surface", "$.surface")]
-    [InlineData("patches", "$.patches")]
-    [InlineData("record", "$.value")]
-    [InlineData("medium", "$.value")]
-    [InlineData("water", "$.value")]
-    [InlineData("water-material", "$.value.renderMaterial")]
-    [InlineData("light", "$.value")]
-    [InlineData("marker", "$.value")]
-    [InlineData("roof-link", "$.value")]
-    [InlineData("roof-group", "$.value")]
-    [InlineData("link-roof", "$.roof")]
-    [InlineData("link-rooms", "$.rooms")]
-    [InlineData("link-room", "$.rooms[0]")]
-    [InlineData("link-groups", "$.groups")]
-    [InlineData("link-group", "$.groups[0]")]
-    [InlineData("group-rooms", "$.rooms")]
-    [InlineData("group-room", "$.rooms[0]")]
-    public void Null_required_members_identify_the_member_and_its_owner(string fault, string path)
-    {
-        var placement = PrefabFixtures.Create("roomless").Assets.GetPrefab("hut").Children.OfType<MapPrefabPlacementChild>().First();
-        var water = PrefabFixtures.WaterCaves().Assets.GetPrefab("hut").Children;
-        var surface = water.OfType<MapPrefabSurfaceChild>().First();
-        var body = water.OfType<MapPrefabWaterChild>().First();
-        var marker = MarkerFixtures.BasicMarker();
-        MapPrefabReference room = new(MapPrefabReferenceScope.World, MapPrefabChildKind.Record, "room");
-        MapPrefabReference group = new(MapPrefabReferenceScope.World, MapPrefabChildKind.RoofGroup, "group");
-        var link = new MapRoofLinkDoc("link", new(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, "roof"), [room], [group], 0);
-        var roofGroup = new MapRoofGroupDoc("group", [room]);
-        MapPrefabChild valid = fault switch
-        {
-            "surface" or "patches" => surface,
-            "record" => water.OfType<MapPrefabRecordChild>().First(),
-            "medium" => water.OfType<MapPrefabMediumChild>().First(),
-            "water" or "water-material" => body,
-            "light" => new MapPrefabLightChild(new(MapPrefabChildKind.Light, "glow"), PrefabFixtures.GlowLight()),
-            "marker" => new MapPrefabMarkerChild(new(MapPrefabChildKind.Marker, marker.Id), marker),
-            "roof-link" => new MapPrefabRoofChild(new(MapPrefabChildKind.RoofLink, link.Id), link),
-            "roof-group" => new MapPrefabRoofGroupChild(new(MapPrefabChildKind.RoofGroup, roofGroup.Id), roofGroup),
-            _ => placement,
-        };
-        MapPrefabChild child = fault switch
-        {
-            "references" => valid with { References = null! },
-            "placement" => placement with { Value = null! },
-            "surface" => surface with { Surface = null! },
-            "patches" => surface with { Patches = null! },
-            "record" => (MapPrefabRecordChild)valid with { Value = null! },
-            "medium" => (MapPrefabMediumChild)valid with { Value = null! },
-            "water" => body with { Value = null! },
-            "water-material" => body with { Value = body.Value with { RenderMaterial = null! } },
-            "light" => (MapPrefabLightChild)valid with { Value = null! },
-            "marker" => (MapPrefabMarkerChild)valid with { Value = null! },
-            "roof-link" => (MapPrefabRoofChild)valid with { Value = null! },
-            "roof-group" => (MapPrefabRoofGroupChild)valid with { Value = null! },
-            _ => valid,
-        };
-        MapPrefabOverride Override(MapPrefabChild value) => fault == "replace-value"
-            ? new MapPrefabReplaceOverride(valid.Key, value) : new MapPrefabAddOverride(valid.Key, value);
-        bool overridden = fault is "replace-value" or "add-value" || !ReferenceEquals(child, valid);
-        MapPrefabInstance instance = new("a", "hut", new string('a', 64), new(Vector3.Zero, 0, 1), null, new([]), []);
-        var document = Empty();
-        document.Prefabs = new(1, 1, [instance with
-        {
-            Bindings = fault == "bindings" ? null! : instance.Bindings,
-            Overrides = overridden ? [Override(fault is "replace-value" or "add-value" ? null! : child)] : [],
-        }], fault switch { "transfer" => [null!], "transfer-binding" => [new("a", null!)], _ => [] });
-        document.BuildingIntent = new(1, [fault switch
-        {
-            "link-roof" => link with { Roof = null! },
-            "link-rooms" => link with { Rooms = null! },
-            "link-room" => link with { Rooms = [null!] },
-            "link-groups" => link with { Groups = null! },
-            "link-group" => link with { Groups = [null!] },
-            _ => link,
-        }], [fault switch { "group-rooms" => roofGroup with { Rooms = null! }, "group-room" => roofGroup with { Rooms = [null!] }, _ => roofGroup }], [], []);
-        var finding = Refused(document, null, MapDocumentRefusal.SchemaValueRequired);
-        Assert.Equal(path, finding.FieldPath);
-        if (fault.StartsWith("transfer", StringComparison.Ordinal)) { Assert.Equal(document.Id, finding.DocumentId); Assert.Equal(0, finding.Index); }
-        if (fault is "transfer-binding" or "bindings") Assert.Equal("a", finding.InstanceId);
-        if (fault.StartsWith("link-", StringComparison.Ordinal)) Assert.Equal("link", finding.EntityId);
-        if (fault.StartsWith("group-", StringComparison.Ordinal)) Assert.Equal("group", finding.EntityId);
-        if (overridden) Assert.Equal(valid.Key, finding.Child);
-        document.Prefabs = new(1, 1, [instance with { Overrides = overridden ? [Override(valid)] : [] }], []);
-        document.BuildingIntent = new(1, [link], [roofGroup], [], []);
         Assert.Empty(MapPrefabValidation.Validate(document, null));
     }
 

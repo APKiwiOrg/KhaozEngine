@@ -10,8 +10,8 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// unexpected null dereference escapes validation as the defect it is instead of reading as authored state.</summary>
 internal static class MapPrefabRequiredMembers
 {
-    /// <summary>Transfers are read by the instance loop before their own uniqueness pass, so each row and its binding
-    /// is checked first. Paths are rooted at the document because a transfer has no identity without its binding.</summary>
+    /// <summary>Transfers are read by the instance loop and the standalone storey check, so each row and its binding is
+    /// checked before either. Paths are rooted at the document because a transfer has no identity without its binding.</summary>
     internal static void Transfers(IReadOnlyList<MapPrefabBindingTransfer> transfers, string documentId)
     {
         for (int index = 0; index < transfers.Count; index++)
@@ -54,6 +54,7 @@ internal static class MapPrefabRequiredMembers
             case MapPrefabRoofChild r: Require(r.Value, "$.value", "prefab child", child: child.Key); break;
             case MapPrefabRoofGroupChild g: Require(g.Value, "$.value", "prefab child", child: child.Key); break;
         }
+        MapPrefabReferenceMembers.Child(child);
     }
 
     internal static void RoofLink(MapRoofLinkDoc roof)
@@ -72,7 +73,7 @@ internal static class MapPrefabRequiredMembers
             Require(values[index], $"{path}[{index}]", subjectKind, entityId: entityId, index: index);
     }
 
-    static void Require([NotNull] object? value, string path, string subjectKind, string? documentId = null, string? instanceId = null,
+    internal static void Require([NotNull] object? value, string path, string subjectKind, string? documentId = null, string? instanceId = null,
         MapPrefabChildKey? child = null, string? entityId = null, int? index = null)
     {
         if (value is null) throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Required prefab member '" + path + "' must not be null.")

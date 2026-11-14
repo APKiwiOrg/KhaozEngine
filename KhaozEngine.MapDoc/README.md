@@ -2468,11 +2468,21 @@ The full snapshot also survives a state-read exception wrapping an aggregate doc
 Known JSON and document refusals retain their reason and identifiers. An unclassified producer failure uses
 `PrefabStateUnreadable` with the document ID and original cause, without inventing a property path.
 A null required member in state constructed in code uses `SchemaValueRequired` with the member's `FieldPath`. That
-covers an instance's `Bindings` with its `InstanceId`, a replace or add override value and each child payload,
-reference list or water render material with the local `Child`, a roof link's roof, rooms and groups or a roof
-group's rooms with its `EntityId`, and a transfer row or its binding with `DocumentId`, `Index` and a document path.
-The JSON codec refuses the same nulls on read. Validation checks them before the first dereference, so a
-`NullReferenceException` is never classified as authored prefab state and escapes as the defect it is.
+covers an instance's `Bindings` with its `InstanceId`, a transfer row or its binding with `DocumentId`, `Index` and a
+document path, and a roof link's roof, rooms and groups or a roof group's rooms with its `EntityId`. With the local
+`Child` it covers a replace or add override value, each child payload and reference list, a surface's patches and
+indoor span `parentSpace` and `domainTags`, a water body's render material and covers, and every reference and list
+the reference walker reads in a topology record: seam edges and pairs, chain vertices, wall strip chains, portal
+spaces, interval and band bottom, vertical link spaces and lists, space tags, walls, portals and links, prism space,
+parent and footprint rects and rings, and footprint space, slot cells and bounds. An element of a list adds its
+`Index`. The standalone storey check reads every transfer and storey, so it runs after the transfer and storey
+collections pass their own checks, and duplicate transfers refuse as `IdentityDuplicate` before a removed source reads
+them by key. Surface patch internals are left to the patch codec, which refuses its own null members. A prefab
+surface child carries no records, and native prisms belong to native document validation.
+The JSON codec refuses the same nulls on read, and only an instance's `parentSpace` may be null or absent there. An
+indoor span's `parentSpace` is required, refused as `SchemaValueRequired` when null and `SchemaMalformed` when absent.
+Validation checks these members before the first dereference, so a `NullReferenceException` is never classified as
+authored prefab state and escapes as the defect it is.
 Missing root or asset child collections use `SchemaValueRequired`. Over-cap collections use `WorkCapacityExceeded`
 with `Budget`, captured `ActualCount`, inclusive `Limit`, `FieldPath` and known `DocumentId` or `AssetId`.
 Unsupported runtime children and topology records use `OperationKindUnsupported` with their type and local identity.

@@ -66,7 +66,6 @@ public static class MapPrefabValidation
 
     static void ValidateDocument(MapDocument doc, MapAssetClosure? assets)
     {
-        MapPrismCoverage.RequireStandaloneStoreys(doc);
         bool present = doc.Prefabs is not null || doc.BuildingIntent is not null || doc.NativeResourceTransforms is not null;
         if (present && (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } || doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2))
         {
@@ -111,6 +110,8 @@ public static class MapPrefabValidation
             }
             Unique(set.Instances, i => i.Id, "prefab instance");
             MapPrefabRequiredMembers.Transfers(set.Transfers, doc.Id);
+            // Removed sources read transfers by key before the instance loop ends, so duplicates refuse first.
+            Unique(set.Transfers, t => (t.InstanceId, t.Binding.Child), "transfer");
             foreach (MapPrefabInstance instance in set.Instances)
             {
                 MapPrefabRequiredMembers.Instance(instance);
@@ -176,7 +177,6 @@ public static class MapPrefabValidation
                 foreach (MapPrefabPlacementOverride placement in Intents(instance.Overrides).OfType<MapPrefabPlacementOverride>())
                     if (placement.AssetId is { } assetId) _ = assets.GetAsset(assetId);
             }
-            Unique(set.Transfers, t => (t.InstanceId, t.Binding.Child), "transfer");
             foreach (MapPrefabBindingTransfer transfer in set.Transfers) { Text(transfer.InstanceId); Binding(transfer.Binding); }
             Unique(set.Attachments, a => (a.PlacementId, a.Kind, a.ResourceId), "attachment transfer");
             foreach (MapPrefabAttachmentTransfer attachment in set.Attachments)
@@ -227,6 +227,8 @@ public static class MapPrefabValidation
             using var json = JsonDocument.Parse(MapPrefabJson.Bytes(intent));
             MapPrefabJson.Preflight(json.RootElement);
         }
+        // Standalone prisms read every transfer and storey, so it runs once both collections passed their own checks.
+        MapPrismCoverage.RequireStandaloneStoreys(doc);
         if (doc.NativeResourceTransforms is { } poses)
         {
             Unique(poses, p => (p.Kind, p.OwnerId), "standalone resource transform");

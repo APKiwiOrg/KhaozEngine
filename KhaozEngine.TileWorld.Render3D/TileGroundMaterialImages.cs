@@ -77,10 +77,14 @@ internal sealed class TileGroundMaterialImages
         };
     }
 
+    // The path a map decodes from. Absolute stays put, relative resolves against the catalog FILE that declared the
+    // material, which is the same rule world.json uses for its catalog paths.
     static string Resolve(TileWorldCatalogs catalogs, GroundMaterial material, string path, string field)
     {
         if (Path.IsPathRooted(path)) return path;
         string? source = catalogs.MaterialSource(material.Id);
+        // A catalog built in memory has no directory to resolve against, and guessing one (the process working
+        // directory, say) would find a different file on every machine.
         if (source is null)
             throw new TileWorldException(TileWorldRefusal.GroundMaterialTextureSourceMissing,
                 $"ground material {material.Id} ('{material.Name}') carries relative {field} '{path}', " +

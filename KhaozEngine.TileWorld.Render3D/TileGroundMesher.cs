@@ -286,8 +286,11 @@ public static partial class TileGroundMesher
         // The overlay is a slot rather than a colour, so an id the catalogs no longer define lands on the slot
         // map's reserved slot and paints from there, the same way a dangling underlay does.
         int? overlaySlot = overlay == 0 ? null : c.Options.Slots.SlotOf(overlay);
-        float featherWidth = MathF.Min(c.Catalogs.Material(overlay)?.Feather?.WidthMetres
-            ?? c.Options.OverlayFeatherWidthMetres, c.TileSize * 0.5f);
+        // The overlay material's own feather width, else the option. A width the catalog rules refuse (a catalog
+        // edited in memory after its load) takes the option rather than a zero or NaN width the ramp divides by.
+        float? authored = c.Catalogs.Material(overlay)?.Feather?.WidthMetres;
+        float featherWidth = MathF.Min(authored is { } a && float.IsFinite(a) && a > 0f
+            ? a : c.Options.OverlayFeatherWidthMetres, c.TileSize * 0.5f);
         AddCutTile(mesh, c, lx, lz, cell.Cut, overlaySlot, featherWidth, triangles[..cell.TriangleCount]);
     }
 

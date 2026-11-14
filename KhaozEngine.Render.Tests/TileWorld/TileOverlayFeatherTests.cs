@@ -81,6 +81,9 @@ public sealed class TileOverlayFeatherTests
     [InlineData(0.125f, 0.25f, 0.125f, false)]
     [InlineData(2f, 0.125f, 0.5f, false)]
     [InlineData(null, 0.25f, 0.25f, true)]
+    // A width the catalog rules refuse, edited in after load, takes the option instead of a degenerate ramp.
+    [InlineData(0f, 0.25f, 0.25f, false)]
+    [InlineData(float.NaN, 0.25f, 0.25f, false)]
     public void Feather_weights_reach_full_overlay_at_the_material_width_or_the_default(
         float? materialWidth, float optionWidth, float effectiveWidth, bool missingMaterial)
     {

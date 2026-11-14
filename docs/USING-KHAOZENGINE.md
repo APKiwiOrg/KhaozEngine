@@ -1188,9 +1188,12 @@ history. Held contacts cannot restart until physically released. A native moment
 cancelled sequence. Continue lifecycle sampling while a view is inactive, or retain inhibition until release.
 
 `Tapped`/`TapPosition` and `DoubleTapped`/`DoubleTapPosition` are results of the latest controller update.
-A single tap reports immediately. A qualifying second tap zooms at its position and reports double-tap
-instead of a second single tap. Selection can therefore happen on the first tap before zooming. A two-finger
-tap zooms out at its centroid. Drag releases and cancelled sequences never select.
+A single tap reports immediately. A qualifying second consecutive owned tap zooms at its position and reports
+double-tap instead of a second single tap. Any mouse or touch sequence that does not end in a recorded tap breaks
+pairing, including rejected or unowned starts, consumption, drags, long holds, two-finger gestures and releases over
+an occluder or outside the viewport. Selection can therefore happen on the first tap before zooming. Call `Cancel()`
+after a selecting tap when selection must also end pairing, even without an intervening rejected sequence.
+A two-finger tap zooms out at its centroid. Drag releases and cancelled sequences never select.
 
 `PanZoomOptions` validates mutable policy at each update. Defaults include slop 8, tap/double-tap timing
 0.3 seconds, double-tap radius 24, wheel factor 1.1 and duration 0.12 seconds, inertia decay 8 and stationary

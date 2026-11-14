@@ -27460,6 +27460,15 @@ and freeing behind it is a use-after-free with a drain in front of it. Mid-frame
 `BeginFrame` do the freeing. An empty flush is still a no-op there, so a renderer half-built by a capture the
 seam refused mid-frame can still be torn down on the way out.
 
+A throwing disposal never strands the queue, on the frame path or at teardown. `BeginFrame`, the shared
+`BeginFrame(submission)`, `FlushAll` and `Dispose` each attempt every entry they free exactly once and drop it
+whether or not it throws. The batch goes, its fence returns to the barrier, every other ripe batch is still
+freed and teardown also releases what a disposal retired on the way. Only then does the call report. A
+single failure is rethrown unchanged with its original stack, and several form an `AggregateException` in
+attempt order, so the next frame or flush never disposes a failed entry again. `Dispose()` also attempts to
+free the barrier after those releases, even if they fail. A recording refusal or failed drain leaves the
+barrier intact.
+
 `CreateFrameCounted(gd, frameDelay)` is the answer when your frame boundary is inside the recording and
 you cannot move it. It never mints a fence and never drains on the frame path (only at teardown), so a
 batch is destroyed purely on the frame count. Pass MORE than the deepest your backend lets the CPU run

@@ -513,6 +513,15 @@ What it owns today:
     `BeginFrame` is the pair that frees things, and neither drains. An EMPTY flush stays a no-op even
     mid-recording: there is no drain and no disposal to protect, and refusing it would break the teardown a
     capture does after the seam refuses it mid-frame (#424).
+  - **A throwing disposal never strands the queue** (#1760). Every path that frees (`BeginFrame()`,
+    `BeginFrame(GpuFrameSubmission)` and its valve drain, the host's completion callbacks, `FlushAll()` and
+    `Dispose()`) attempts each entry it frees exactly once and drops it whether or not it throws. The batch goes,
+    a fence the queue owns returns to the barrier, every other ripe batch is still freed and a teardown also
+    releases what a disposal retired on the way. Only then does the call report: one failure is rethrown
+    unchanged with its original stack, and several form one `AggregateException` in attempt order. The next
+    frame or flush therefore never disposes a failed entry again. The per-frame path allocates nothing for this
+    unless something throws. `Dispose()` also attempts barrier teardown after release failures, reporting a
+    barrier failure last, but a recording refusal or failed drain leaves the barrier intact.
   - **Gate on `GpuCapabilities.SupportsCompletionFences`, which all three native backends answer true.** The
     native Direct3D 11 backend answers true on a real device-wide completion counter, which was its one permitted
     capability difference from the deleted incumbent: that incumbent handed out a fence on Direct3D11 and OpenGL

@@ -44,6 +44,8 @@ namespace KhaozEngine.Tests.Gpu
             readonly Stack<FakeFence> _free = new();
             public readonly List<FakeFence> Issued = new();
             public int Submits, Releases, Disposes;
+            public bool Disposed { get; private set; }
+            public bool IsReleased(IGpuFence fence) => _free.Contains((FakeFence)fence);
             /// <summary>Makes Submit return null, the way a real barrier would if it could not issue a fence. The
             /// batch then falls back to the frame count even though a barrier exists.</summary>
             public bool CannotIssue;
@@ -60,7 +62,7 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             public void Release(IGpuFence fence) { Releases++; _free.Push((FakeFence)fence); }
-            public void Dispose() => Disposes++;
+            public void Dispose() { Disposes++; Disposed = true; }
         }
 
         // Records the drain order against disposals so a test can assert nothing was destroyed before the drain.
@@ -512,6 +514,96 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, barrier.Releases);   // the in-flight fence goes back to the barrier, not to the floor
         }
 
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void FlushAll_attempts_every_disposal_before_reporting_failures(int failures)
+        {
+            // #1760: one failed release must not strand later entries or replay earlier releases on retry.
+            var barrier = new FakeBarrier();
+            bool drained = false;
+            var pool = new GpuRetireQueue(() => { Assert.False(drained); drained = true; }, barrier);
+            var firstError = new InvalidOperationException();
+            var secondError = new NotSupportedException();
+            var released = new HashSet<string>();
+            CountingResource Resource(string name, Exception? error = null, IDisposable? child = null) => new(() =>
+            {
+                Assert.True(drained);
+                Assert.True(released.Add(name));
+                pool.Retire(child);
+                if (error is not null) throw error;
+            });
+            pool.Retire(Resource("first"));
+            pool.BeginFrame();
+            // #1760: a child retired by a throwing disposal is still released by the same flush.
+            pool.Retire(Resource("middle", firstError, Resource("child")));
+            pool.BeginFrame();
+            pool.Retire(Resource("last", failures == 2 ? secondError : null));
+
+            Exception? thrown = Record.Exception(pool.FlushAll);
+
+            AssertReported(thrown, failures, firstError, secondError);
+            Assert.Equal(new[] { "child", "first", "last", "middle" }, released.Order());
+            Assert.Equal(0, pool.PendingCount);
+            Assert.Equal(0, pool.SealedBatchCount);
+            Assert.NotEmpty(barrier.Issued);
+            Assert.All(barrier.Issued, fence => Assert.True(barrier.IsReleased(fence)));
+            pool.FlushAll();
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void BeginFrame_frees_every_ripe_batch_before_reporting_failures(int failures)
+        {
+            // #1760: a throwing disposal on the per-frame path must not leave its batch at the front to be
+            // disposed again on every later frame, hold back a later ripe batch or keep its fence.
+            var barrier = new FakeBarrier();
+            var pool = new GpuRetireQueue(() => Assert.Fail("the fence path must never drain"), barrier);
+            var firstError = new InvalidOperationException();
+            var secondError = new NotSupportedException();
+            var released = new HashSet<string>();
+            CountingResource Resource(string name, Exception? error = null) => new(() =>
+            {
+                Assert.True(released.Add(name));
+                if (error is not null) throw error;
+            });
+            pool.Retire(Resource("before"));
+            pool.Retire(Resource("throwing", firstError));
+            pool.Retire(Resource("after"));
+            pool.BeginFrame();
+            pool.Retire(Resource("later", failures == 2 ? secondError : null));
+            pool.BeginFrame();
+            foreach (FakeFence fence in barrier.Issued) fence.Signaled = true;
+
+            Exception? thrown = Record.Exception(pool.BeginFrame);
+
+            AssertReported(thrown, failures, firstError, secondError);
+            Assert.Equal(new[] { "after", "before", "later", "throwing" }, released.Order());
+            Assert.Equal(0, pool.PendingCount);
+            Assert.Equal(0, pool.SealedBatchCount);
+            Assert.Equal(2, barrier.Issued.Count);
+            Assert.All(barrier.Issued, fence => Assert.True(barrier.IsReleased(fence)));
+
+            pool.BeginFrame();   // nothing is left to dispose again, so nothing is reported again
+
+            Assert.Equal(4, released.Count);
+        }
+
+        // One failure is rethrown as the same instance. Several are reported in attempt order without replacing
+        // either error.
+        static void AssertReported(Exception? thrown, int failures, Exception firstError, Exception secondError)
+        {
+            if (failures == 1)
+            {
+                Assert.Same(firstError, Assert.IsType<InvalidOperationException>(thrown));
+                return;
+            }
+            var aggregate = Assert.IsType<AggregateException>(thrown);
+            Assert.Collection(aggregate.InnerExceptions,
+                error => Assert.Same(firstError, error), error => Assert.Same(secondError, error));
+        }
+
         // ---- the frame-count-only path (no fence, no drain) ----
 
         [Fact]
@@ -620,7 +712,8 @@ namespace KhaozEngine.Tests.Gpu
             // Dispose is FlushAll plus the barrier, so tearing a renderer down from inside the frame's own
             // recording is the same use-after-free, and is refused whole rather than done half way.
             var device = new SpyGpuDevice(new FakeGpuDevice());
-            GpuRetireQueue queue = GpuRetireQueue.CreateFrameCounted(device, 4);
+            var barrier = new FakeBarrier();
+            var queue = new GpuRetireQueue(device.WaitForIdle, barrier, frameDelay: 4, device: device);
             var res = new FakeResource();
             queue.Retire(res);
 
@@ -628,24 +721,32 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Throws<GpuDrainDuringRecordingException>(queue.Dispose);
 
             Assert.Equal(0, res.DisposeCount);
+            Assert.False(barrier.Disposed);
 
             queue.Dispose();   // outside the recording it is the ordinary teardown
             Assert.Equal(1, device.WaitForIdleCalls);
             Assert.Equal(1, res.DisposeCount);
         }
 
-        [Fact]
-        public void Dispose_flushes_the_tail_and_frees_the_barrier()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void Dispose_flushes_the_tail_and_frees_the_barrier(bool disposalFails)
         {
+            // #1760: entry disposal failure must not prevent barrier teardown after a successful drain.
             var barrier = new FakeBarrier();
             int drains = 0;
             var pool = new GpuRetireQueue(() => drains++, barrier);
             var res = new FakeResource();
             pool.Retire(res);
             pool.BeginFrame();
+            var failure = new InvalidOperationException();
+            if (disposalFails) pool.Retire(new CountingResource(() => throw failure));
 
-            pool.Dispose();
+            Exception? thrown = Record.Exception(pool.Dispose);
 
+            if (disposalFails) Assert.Same(failure, Assert.IsType<InvalidOperationException>(thrown));
+            else Assert.Null(thrown);
             Assert.Equal(1, drains);
             Assert.Equal(1, res.DisposeCount);
             Assert.Equal(1, barrier.Disposes);

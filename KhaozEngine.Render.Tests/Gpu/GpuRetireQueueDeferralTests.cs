@@ -37,22 +37,29 @@ public sealed class GpuRetireQueueDeferralTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Sustained_deferral_is_bounded_by_one_permitted_drain(bool consumerFull)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Sustained_deferral_is_bounded_by_one_permitted_drain(bool consumerFull, bool tailThrows)
     {
         using var device = new GpuPerfTimestampTestDevice();
         using var queue = GpuRetireQueue.Create(device, maxSealedBatches: 2);
         using var host = new GpuFrameSubmission(device, retainedFrames: 1, consumerCapacity: 1);
         using var commands = device.Factory.CreateCommandList();
         var first = new Resource(); var child = new Resource();
-        var tail = new Resource(() => queue.Retire(child));
+        var failure = new InvalidOperationException();
+        var tail = new Resource(() => { queue.Retire(child); if (tailThrows) throw failure; });
         host.Begin();
         if (consumerFull) Assert.True(host.TryRetain(new OccupiedConsumer(), out _));
         queue.Retire(first); queue.BeginFrame(host); host.Submit(commands);
         host.Begin(); queue.Retire(tail); queue.BeginFrame(host); host.Submit(commands);
         Assert.Equal(0, first.Disposals); Assert.Equal(0, tail.Disposals);
-        host.Begin(); queue.BeginFrame(host);
+        host.Begin();
+        // #1760: a throwing disposal in the drained holding is reported only after the whole holding,
+        // including the child it retired, has been released.
+        Exception? thrown = Record.Exception(() => queue.BeginFrame(host));
+        if (tailThrows) Assert.Same(failure, Assert.IsType<InvalidOperationException>(thrown));
+        else Assert.Null(thrown);
         Assert.Equal(1, queue.ValveDrains); Assert.Equal(1, device.Waits);
         Assert.Equal(1, first.Disposals); Assert.Equal(1, tail.Disposals);
         Assert.Equal(1, child.Disposals);

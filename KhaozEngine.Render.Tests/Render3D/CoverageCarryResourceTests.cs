@@ -17,6 +17,7 @@ public sealed class CoverageCarryResourceTests
     [InlineData(3)]
     public void Surface_disposal_releases_every_buffer_before_rethrowing(int failures)
     {
+        // #1760: the first buffer's failure must not strand the other two or allow a later disposal retry.
         using var device = new SubmissionTestDevice(3);
         var surface = new CoverageCarrySurface(device, 1, 1, 1, 1, 1);
         IGpuBuffer[] buffers = [surface.Results, surface.Work, surface.Surface];
@@ -26,12 +27,12 @@ public sealed class CoverageCarryResourceTests
         {
             var buffer = (SubmissionTestBuffer)buffers[i];
             Exception? error = i < failures ? errors[i] : null;
-            buffer.OnDispose = () => { released.Add(buffer); if (error is not null) throw error; };
+            buffer.OnDispose = () => { Assert.True(released.Add(buffer)); if (error is not null) throw error; };
         }
         Exception? thrown = Record.Exception(surface.Dispose);
         Assert.All(buffers, buffer => Assert.Contains(buffer, released));
         Assert.True(surface.IsDisposed);
-        if (failures == 1) Assert.Same(errors[0], thrown);
+        if (failures == 1) Assert.Same(errors[0], Assert.IsType<InvalidOperationException>(thrown));
         else
         {
             var aggregate = Assert.IsType<AggregateException>(thrown);

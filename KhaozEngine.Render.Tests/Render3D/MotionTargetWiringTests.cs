@@ -210,6 +210,12 @@ public sealed class MotionTargetWiringTests
         using var harness = new MotionTestScene(maxColorAttachments);
         var factory = (FakeGpuResourceFactory)harness.Device.Factory;
         MeshHandle box = harness.Scene.LoadMesh(MeshPrimitives.Box(1f));
+        // A relief material builds both relief pipelines at load, so they rebuild with the plain one.
+        harness.Scene.LoadTileGroundMaterial(4, 4, new TileGroundLayerImage[]
+        {
+            new() { AlbedoRgba = new byte[4 * 4 * 4], FeatherBreakup = 0.5f },
+            new() { AlbedoRgba = new byte[4 * 4 * 4], AntiTiling = TileGroundAntiTiling.Offset },
+        });
         void Queue(Scene3D s) => s.Draw(box, Matrix4x4.Identity);
         Frame(harness, Queue).Dispose();
         Frame(harness, Queue).Dispose();   // the size, sample count and colour format are settled
@@ -227,6 +233,7 @@ public sealed class MotionTargetWiringTests
         {
             "ModelMotion", "ModelCpuSkinnedMotion", "ModelCpuSkinnedDissolveMotion",
             "SkinnedModelMotion", "SkinnedModelDissolveMotion", "SplatMotion", "TileGroundMotion",
+            "TileGroundReliefMotion", "TileGroundReliefHexMotion",
             "TexturedBillboardMotion", "TexturedBillboardMotion", "BeamMotion",
             "TrailMotion", "TrailMotion", "OverlayMeshMotion", "SilhouetteMotion",
         };
@@ -244,6 +251,8 @@ public sealed class MotionTargetWiringTests
         Assert.All(off, p => MotionTargetPrograms.AssertLayout(p, 3));
         Assert.Contains(off, p => p.VertexGlsl == ShaderSources.ModelVert && p.FragmentGlsl == ShaderSources.ModelFrag);
         Assert.Contains(off, p => p.FragmentGlsl == ShaderSources.TexturedBillboardFrag);
+        Assert.Contains(off, p => p.FragmentGlsl == ShaderSources.TileGroundReliefFrag);
+        Assert.Contains(off, p => p.FragmentGlsl == ShaderSources.TileGroundReliefHexFrag);
     }
 
     [Theory]

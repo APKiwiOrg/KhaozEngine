@@ -48,8 +48,35 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `NullReferenceException` as `PrefabStateUnreadable`. A null dereference the checks do not expect now escapes as the
   defect it is. Two transfers from one unpacked instance for the same child refuse as `IdentityDuplicate`. A prefab
   or map file whose `indoorSpan` carries a null `parentSpace` refuses on read with `SchemaValueRequired`, or with
-  `SchemaMalformed` when the member is missing, instead of failing later in validation
+  `SchemaMemberMissing` when the member is missing, instead of failing later in validation
   ([#1398](https://github.com/APKiwiOrg/KhaozEngine/issues/1398)).
+- A required member missing from a prefab, light or support resource file refuses with
+  `MapDocumentRefusal.SchemaMemberMissing` at a `FieldPath` rooted at the document that names the member, instead
+  of `SchemaMalformed` at a path relative to a nested value. That covers a member inside a child or override payload,
+  such as an indoor span without `parentSpace` at `$.children[0].surface.indoorSpan.parentSpace`, a member inside a
+  support file's `surfaces`, such as `$.surfaces[0].semanticSha256`, and a map's `prefabs` block, which reports it
+  under `$.prefabs`. A null required member keeps `SchemaValueRequired`
+  ([#1793](https://github.com/APKiwiOrg/KhaozEngine/issues/1793)).
+- The native Direct3D 11 backend refuses a nonzero dynamic offset on a resource set whose layout declares no dynamic
+  uniform buffer, as Metal and Vulkan do, instead of dropping the offset and drawing with the set's first window.
+  `SetGraphicsResourceSet` and `SetComputeResourceSet` throw `GpuDynamicBindingException` with
+  `GpuDynamicBindingRefusal.DynamicElementMissing`, `Backend`, `Set` and `DynamicOffset` at the bind call, on the
+  immediate driver and on the default deferred driver. Zero offsets, null sets and sets with a dynamic uniform buffer
+  are unchanged ([#1687](https://github.com/APKiwiOrg/KhaozEngine/issues/1687)).
+- Native Direct3D 11 layout creation refuses every `GpuResourceLayoutElement` declared dynamic that is not a uniform
+  buffer, textures and samplers included, with `GpuResourceLayoutException` and
+  `GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind`, matching Metal and Vulkan. Such a layout used to be
+  accepted on Windows alone ([#1795](https://github.com/APKiwiOrg/KhaozEngine/issues/1795)).
+- The engine's headless Direct3D 11 trace emitter, which backs the device-free D3D11 tests, refuses a framebuffer,
+  index, vertex, written or copied buffer, bound resource or compute pipeline from another backend with
+  `GpuResourceOwnershipArgumentException` and `GpuResourceOwnershipRefusal.ForeignBackend`, through the same resolver
+  and in the same order as the device emitter, so those tests prove the shipped refusals
+  ([#1691](https://github.com/APKiwiOrg/KhaozEngine/issues/1691)).
+- `IContentAuthoringStore.SetPinnedVersionAsync` on the in-memory, SQLite and SQL Server stores refuses a version the
+  store does not hold with the `unknown-version` reason token (`ContentAuthoringException.UnknownVersionReason`)
+  instead of `unknown-type`, matching every other unknown-version refusal. `Refusal` stays `VersionUnknown` with
+  `VersionNumber`. A caller that keyed on `unknown-type` for this case should key on `Refusal` or `unknown-version`
+  ([#919](https://github.com/APKiwiOrg/KhaozEngine/issues/919)).
 
 ## 23.12.0
 

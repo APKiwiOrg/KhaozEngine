@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gui;
+using KhaozEngine.Platform;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -72,14 +73,43 @@ namespace KhaozEngine.Tests.Gui
             return string.Join("\n", lines);
         }
 
-        [Fact]
-        public void Tap_focuses_and_release_outside_unfocuses()
+        [Theory]
+        [InlineData(null, new Key[] { }, "ac", 1)]
+        [InlineData("b", new Key[] { }, "abc", 2)]
+        [InlineData(null, new[] { Key.B }, "abc", 2)]
+        [InlineData(null, new[] { Key.Backspace }, "c", 0)]
+        [InlineData(null, new[] { Key.Enter }, "a\nc", 2)]
+        [InlineData(null, new[] { Key.Delete }, "a", 1)]
+        [InlineData(null, new[] { Key.Left }, "ac", 0)]
+        [InlineData(null, new[] { Key.LeftControl, Key.V }, "aXYc", 3)]
+        [InlineData(null, new[] { Key.LeftSuper, Key.V }, "aXYc", 3)]
+        public void Tap_focuses_and_release_outside_unfocuses(
+            string? committedText, Key[] pressed, string expected, int expectedCaret)
         {
-            var area = new TextArea(Area, new FixedMeasurer());
-            Tap(area, Inside);
-            Assert.True(area.IsFocused);
-            Tap(area, Outside);
-            Assert.False(area.IsFocused);
+            // Regression #1466: apply every edit on the release frame before losing focus.
+            Clipboard.RegisterTextProvider(static () => "XY", static _ => true);
+            try
+            {
+                var area = new TextArea(Area, new FixedMeasurer());
+                Tap(area, Inside);
+                Assert.True(area.IsFocused);
+                area.SetText("ac");
+                Press(area, Key.Left);
+                Step(area, Frame(Outside, leftDown: true));
+
+                InputState release = Frame(Outside, pressed: pressed, committedText: committedText);
+                _pointer.Update(release);
+                Assert.False(area.Update(_pointer, release, 0f));
+
+                Assert.Equal(expected, area.Text);
+                Assert.Equal(expectedCaret, area.Caret);
+                Assert.Equal(expected != "ac", area.TextChanged);
+                Assert.False(area.IsFocused);
+            }
+            finally
+            {
+                Clipboard.ClearTextProvider();
+            }
         }
 
         [Fact]

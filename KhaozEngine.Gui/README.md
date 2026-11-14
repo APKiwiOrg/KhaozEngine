@@ -792,6 +792,7 @@ chat.Draw(batch, white);
     A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate. `SetText(value)`
     replaces the buffer programmatically (clamped to `MaxLength`, seen as a change by the next `Update`); `Focus()` /
     `Unfocus()` drive focus directly. The placeholder is `LocalizedText` via `PlaceholderContent`.
+    A release outside unfocuses after applying that frame's committed text, fallback keys, Backspace and paste.
     `PrefixContent` is an optional `LocalizedText` that defaults to empty and resolves lazily through the current localization catalog. It draws in `TextColor` before either the
     placeholder or typed text. It is presentation only, so editing and `MaxLength` apply solely to the text
     buffer. `Opacity` fades the whole field for a host transition, and `TextScale` (default `1f`) scales the prefix,
@@ -804,7 +805,8 @@ chat.Draw(batch, white);
     Neither scrolls the visible window with the caret yet.
   - `TextArea` - multi-line field for long free text, constructed with the `ITextMeasurer` its layout uses
     until a `Font` is set. `MaxLength` defaults to `DefaultMaxLength` (4000 UTF-16 units). Tap focuses and places
-    the caret, and a release outside unfocuses. While focused, committed text, Backspace and Ctrl+V or Cmd+V
+    the caret, and a release outside unfocuses after applying that frame's edits and caret navigation.
+    While focused, committed text, Backspace and Ctrl+V or Cmd+V
     paste edit at the caret through `TextEntry`. Enter inserts a newline, while Ctrl+Enter or Cmd+Enter is left
     for the host to read, for example as Send. Delete removes the next scalar. Left and Right step one scalar, Up
     and Down move over visual lines and keep their column across consecutive moves, and Home and End go to the

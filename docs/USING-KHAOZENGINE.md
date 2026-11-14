@@ -840,6 +840,9 @@ stays the press edge only (auto-repeat excluded), so existing callers are unchan
 dead-key output. `TextInputAvailable` stays true on empty text frames to avoid a US key-map fallback for dead
 keys. Headless frames and non-GLFW windows keep that fallback. `WasTyped` still handles Backspace and fallback
 repeat. The windowing seam does not expose IME preedit text or candidate selection.
+`TextInput` and `TextArea` apply the focused frame's edits before an outside pointer release removes focus.
+Committed text, fallback keys, Backspace and paste are kept on that release frame, along with `TextArea`'s
+Enter, Delete and caret navigation. Their `Update` returns false after that release because focus has ended.
 
 `MouseReleased` (since 14.25.0) is the mouse counterpart to `KeysReleased`, read via `WasReleased(MouseButton)`.
 Before it existed the mouse had a press edge but no release edge, so a rebindable action bound to a mouse button

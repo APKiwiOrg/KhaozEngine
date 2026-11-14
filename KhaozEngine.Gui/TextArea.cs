@@ -11,7 +11,8 @@ namespace KhaozEngine.Gui
 {
     /// <summary>
     /// A multi-line text field over <see cref="Pointer"/> and <see cref="TextEntry"/>. A tap inside focuses it and
-    /// places the caret, a release outside unfocuses it. While focused, committed text, Backspace and Ctrl+V or
+    /// places the caret, a release outside unfocuses it after that frame's edits and navigation.
+    /// While focused, committed text, Backspace and Ctrl+V or
     /// Cmd+V paste edit the text before the caret through <see cref="TextEntry.Apply(string, InputState, int, Func{string, char, bool}?, bool)"/>.
     /// Enter inserts a newline unless Ctrl or Cmd is held, so a host can read that chord as Send. Delete removes
     /// the next scalar. Left and Right step one scalar, Up and Down keep a remembered column across visual lines,
@@ -141,11 +142,6 @@ namespace KhaozEngine.Gui
                 Focus();
                 PlaceCaret(pointer.Position);
             }
-            else if (pointer.IsReleasedOutside(Bounds))
-            {
-                Unfocus();
-            }
-
             if (IsFocused)
             {
                 bool entry = NeedsTextEntry(input);
@@ -153,6 +149,7 @@ namespace KhaozEngine.Gui
                 _blink += dt;
                 while (_blink >= BlinkRate) { _blink -= BlinkRate; CursorVisible = !CursorVisible; }
             }
+            if (pointer.IsReleasedOutside(Bounds)) Unfocus();
 
             TextChanged = !string.Equals(Text, _previousText, StringComparison.Ordinal);
             if (TextChanged) ResetBlink();

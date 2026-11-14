@@ -304,6 +304,16 @@ The rest of the schedule, since each clause carries its own weight:
   every slot owing a full activation, so rebind your resource sets after one.**
 - A re-bind of the pipeline already current drains nothing and forgets nothing, guarded on the layout array by
   reference, so binding a pipeline defensively between two draws costs nothing.
+- A NON-ZERO dynamic offset against a set whose layout declares no dynamic uniform buffer is refused at the
+  record with `GpuDynamicBindingException` and `GpuDynamicBindingRefusal.DynamicElementMissing`, carrying
+  `Backend`, `Set` and `DynamicOffset`, the refusal Metal and Vulkan raise. The activation adds the offset to a
+  constant buffer declared dynamic and to nothing else, so without the refusal the offset would be dropped and the
+  draw would read the window the set was created with. The refusal comes before the record changes, so the slot
+  keeps what it held. A zero offset is accepted against any set and a null set is not checked. A texture or sampler
+  flagged dynamic does not count, because no bind of either carries an offset. A set from another backend is not
+  checked either, since it has no layout this backend can read, and the flush refuses it by ownership instead. Both
+  emitters share the record, so the immediate driver throws from the bind call and the deferred driver throws from
+  the replay inside `Submit`.
 - A slot whose recorded set has gone null is skipped rather than unbound, and a slot goes clean only once its
   activation has landed, so a refused bind throws again on the next draw rather than once and then silently.
 - Repeated marks on one slot between two draws collapse to one flush, and the flush owes the greater of them: an
@@ -999,7 +1009,8 @@ For the same reason, a record-time uniform write lands the moment it is made, so
 inside one recording leave the second value for every draw of that recording, including draws recorded between
 them.
 Per-draw uniforms are addressed by dynamic offset rather than by rewriting one range, which is what the renderers
-already do and what makes the ring possible at all.
+already do and what makes the ring possible at all. The offset needs a layout element declared dynamic to land
+on, and a nonzero offset against a set with none is refused at the bind (see the bind flush above).
 
 **Everything else is unchanged (U4).** Vertex, index and other bulk record-time payloads take the per-list
 reusable CPU arena and replay as `UpdateSubresource`, since Direct3D 11 permits a partial box on a non-constant
@@ -1490,6 +1501,11 @@ Framebuffer creation reports `ForeignBackend` for foreign colour or depth textur
 and identifies the attachment through `Context`. Graphics and compute pipeline adapters, resource-set
 binds, texture transfers and device-level texture uploads also report ownership refusals. Native
 view and register validation remains the separate bind-resolution contract.
+
+A nonzero dynamic offset on a set whose layout declares no dynamic uniform buffer uses the portable
+`GpuDynamicBindingException` and `GpuDynamicBindingRefusal.DynamicElementMissing`, carrying
+`Backend = Direct3D11Native`, `Set` and `DynamicOffset`, as Metal and Vulkan do. A set from another backend
+bound with an offset still reports `GpuResourceOwnershipRefusal.ForeignBackend` at the flush.
 
 D3D11 currently accepts dynamic offset alignment and segment-window inputs that Metal and Vulkan refuse
 through `GpuDynamicBindingRangeException` with `OffsetMisaligned` or `WindowOutsideSegment`.

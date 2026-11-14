@@ -30811,9 +30811,11 @@ carries the feature and device. `VulkanResultRefusal.NativeCallFailed` carries t
 identifiers. `MessengerUnavailable` refuses a requested validation rung in CI without a native messenger and
 carries the creation site. See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#refusals).
 
-On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable
+On all three native backends, a nonzero offset on a set with no authored dynamic element throws the portable
 `GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,
-set number and offset. These families preserve the original BCL exception bases and parameter data.
+set number and offset. Metal and Vulkan and the immediate D3D11 driver throw from the bind call. The deferred
+D3D11 driver throws from `Submit`, where it replays the bind. A zero offset is accepted against any set.
+These families preserve the original BCL exception bases and parameter data.
 
 Post-probe native creation checks also carry structured reasons. D3D11 identifies a missing HWND,
 versioned context or native creation output. Metal identifies a missing eligible device or command queue.

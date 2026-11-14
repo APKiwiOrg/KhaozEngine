@@ -58,7 +58,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             _slots = new D3D11RegisterSlot[_elements.Length];
             Counts = D3D11RegisterScheme.AssignWithinLayout(_elements, _slots);
+
+            for (int i = 0; i < _elements.Length; i++)
+            {
+                if (_elements[i].Dynamic && _elements[i].Kind == GpuResourceKind.UniformBuffer)
+                    CarriesDynamicOffset = true;
+            }
         }
+
+        /// <summary>
+        /// Whether any element applies the caller's per-draw offset, which is the question
+        /// <see cref="D3D11BindFlush"/> asks before it records a non-zero offset against a set on this layout.
+        /// <para>
+        /// IT COUNTS DYNAMIC UNIFORM BUFFERS ALONE, which is the portable meaning of
+        /// <see cref="GpuResourceLayoutElement.Dynamic"/> and the one shape this backend can rebase: the only bind
+        /// that carries an offset is the constant-buffer bind. A dynamic structured buffer never reaches here,
+        /// because the constructor refuses it. A texture or sampler flagged dynamic is still accepted at creation,
+        /// and counting its flag would let a non-zero offset through to a bind that drops it, which is the silent
+        /// wrong slice the record-time refusal exists to stop. Metal and Vulkan answer the same question through
+        /// their own flags, and on both every declared-dynamic element is a buffer that carries the offset.
+        /// </para>
+        /// </summary>
+        internal bool CarriesDynamicOffset { get; }
 
         /// <summary>How many registers of each file this layout consumes. Summed across the layouts before a set,
         /// in pipeline-array order, this is that set's base.</summary>

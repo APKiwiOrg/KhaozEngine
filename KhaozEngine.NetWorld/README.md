@@ -602,7 +602,8 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   protocol) becomes the same clean `DisconnectReason.IncompatibleVersion` disconnect plus a **`SnapshotDecodeFailed`**
   event - never an unhandled exception in the consumer's frame loop. It is terminal and never reconnects. Every
   decode failure, legacy or format 2, also ends the connection locally, so the server sees the leave at once instead
-  of holding the session until its own timeout. The event fires once per end. State frames already queued behind
+  of holding the session until its own timeout. The event fires once per end, before `ConnectionStateChanged`
+  reports `Disconnected`, so a terminal state handler can already tell a decode failure apart. State frames already queued behind
   the failure in the same poll are ignored, while notices and game messages still surface. (An unregistered *consumer extension* id, at/above the floor,
   is instead skipped - see the server-owned-entities section below - so a newer server's added component never
   disconnects an older client.) Pair with the `KhaozEngine.Updates` startup gate

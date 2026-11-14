@@ -70,6 +70,33 @@ public sealed class GpuRetireQueueDeferralTests
     }
 
     [Fact]
+    public void A_failed_disposal_at_a_submission_boundary_still_seals_that_boundary_s_retirements()
+    {
+        // #1760: the boundary reports a failed disposal only after sealing what was retired before it, so the
+        // fresh resource rides this frame's completion fence instead of waiting unsealed.
+        using var device = new GpuPerfTimestampTestDevice();
+        using var queue = GpuRetireQueue.Create(device, maxSealedBatches: 2);
+        using var host = new GpuFrameSubmission(device, retainedFrames: 2);
+        using var commands = device.Factory.CreateCommandList();
+        var failure = new InvalidOperationException();
+        var throwing = new Resource(() => throw failure);
+        var fresh = new Resource();
+        host.Begin(); queue.Retire(throwing); queue.BeginFrame(host); host.Submit(commands);
+        host.Begin();
+        // The GPU finishes frame 1 while frame 2 records, so the queue's own boundary frees that batch.
+        device.Fences[0].Signaled = true;
+        queue.Retire(fresh);
+        Exception? thrown = Record.Exception(() => queue.BeginFrame(host));
+
+        Assert.Same(failure, Assert.IsType<InvalidOperationException>(thrown));
+        Assert.Equal(1, throwing.Disposals);
+        Assert.Equal(0, fresh.Disposals);
+        Assert.Equal(1, queue.PendingCount);
+        Assert.Equal(1, queue.SealedBatchCount);
+        host.Submit(commands);
+    }
+
+    [Fact]
     public void Frame_count_only_policy_never_drains_for_shared_deferrals()
     {
         using var device = new GpuPerfTimestampTestDevice();

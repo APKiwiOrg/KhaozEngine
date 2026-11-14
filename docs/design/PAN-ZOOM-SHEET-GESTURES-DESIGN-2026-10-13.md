@@ -165,9 +165,12 @@ Callers cancel when hiding or replacing a view. No synthetic release may become 
   without singular scale or jumps. Lifting one finger rebases the remaining drag and cannot tap.
   An applied nonidentity pair transform commits the gesture and disqualifies its two-finger tap,
   even when each contact moved less than drag slop. Continuing one finger then has no new slop.
-- A double tap zooms in at the second tap. A two-finger tap zooms out at its centroid. Movement,
-  cancellation or extra contacts disqualify taps. Single taps are reported immediately, the second
-  qualifying tap reports double-tap instead of another single. Document this selection tradeoff.
+- A double tap zooms in at the second consecutive owned tap. Any mouse or touch sequence that ends without
+  a recorded tap breaks pairing, including rejected or unowned starts, consumption, drags, long holds,
+  two-finger gestures and releases over an occluder or outside the viewport. A two-finger tap zooms out at
+  its centroid. Movement, cancellation or extra contacts disqualify taps. Single taps are reported
+  immediately, the second qualifying tap reports double-tap instead of another single. Callers whose
+  selecting tap must end pairing cancel after selection, even without an intervening rejected sequence.
 - Optional focused keyboard arrows pan and plus/minus zoom about the viewport centre. No wall clock,
   background task or platform timing is read by the controller. Zero elapsed time advances no animation
   or velocity estimate. Reject negative/non-finite elapsed time and invalid configuration.

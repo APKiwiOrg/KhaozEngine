@@ -63,7 +63,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// there is not one.</para>
     ///
     /// <para><b>THE COMPRESSED BRANCH IS DELIBERATELY ABSENT rather than reproduced.</b>
-    /// <see cref="GpuPixelFormat"/> has eight members and not one is block-compressed, so the incumbent's
+    /// <see cref="GpuPixelFormat"/> has nine members and not one is block-compressed, so the incumbent's
     /// <c>blockSize</c> is 1 at every site this backend can reach and its <c>(width + 3) / 4</c> row arithmetic is
     /// unreachable code. Carrying an unreachable branch would be carrying a second thing to keep correct with no
     /// way to test it. If the seam ever gains a compressed format the branch comes back HERE, with the incumbent's
@@ -86,7 +86,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     internal static class MetalStagingLayout
     {
         /// <summary>
-        /// Bytes per texel. <c>FormatSizeHelpers.GetSizeInBytes</c>, restricted to the eight formats the seam has.
+        /// Bytes per texel. <c>FormatSizeHelpers.GetSizeInBytes</c>, restricted to the nine formats the seam has.
         /// <para>
         /// <b><see cref="GpuPixelFormat.D32FloatS8UInt"/> IS FIVE BYTES, AND IT IS THE ONE VALUE A READER WILL
         /// DOUBT.</b> The real <c>MTLPixelFormatDepth32Float_Stencil8</c> texture is eight bytes per texel with
@@ -105,6 +105,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             GpuPixelFormat.D24UNormS8UInt => 4,
             GpuPixelFormat.D32FloatS8UInt => 5,
             GpuPixelFormat.R16G16B16A16Float => 8,
+            GpuPixelFormat.R32G32B32A32Float => 16,
             _ => throw new ArgumentOutOfRangeException(nameof(format), format,
                 "The native Metal staging layout has no byte size for that pixel format. The seam gained a "
                 + "member this arithmetic has not been taught, and guessing would garble every readback of it "

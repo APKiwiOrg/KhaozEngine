@@ -14,7 +14,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="VulkanViewPolicy"/>'s, in the backend's own enums, so the interesting half is tested with no
     /// loader. What is left below is a switch per enum, reproduced from the incumbent's <c>VkFormats</c>.</para>
     ///
-    /// <para><b>ONLY THE ENGINE'S OWN FORMATS ARE MAPPED.</b> <see cref="GpuPixelFormat"/> has eight members and
+    /// <para><b>ONLY THE ENGINE'S OWN FORMATS ARE MAPPED.</b> <see cref="GpuPixelFormat"/> has nine members and
     /// the seam cannot express a ninth, so an unmapped value is a seam change that has not reached here yet, and it
     /// throws rather than guessing.</para>
     ///
@@ -47,6 +47,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // See the class note: the incumbent answered R16G16B16A16Sfloat here and that is its bug, not its
             // contract.
             GpuPixelFormat.R16G16Float => Format.R16G16Sfloat,
+            GpuPixelFormat.R32G32B32A32Float => Format.R32G32B32A32Sfloat,
             GpuPixelFormat.R8G8B8A8UNorm => Format.R8G8B8A8Unorm,
             GpuPixelFormat.B8G8R8A8UNorm => Format.B8G8R8A8Unorm,
             GpuPixelFormat.R16G16B16A16Float => Format.R16G16B16A16Sfloat,

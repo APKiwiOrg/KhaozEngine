@@ -34,6 +34,7 @@ internal sealed class D3D11MemoryDiagnostics : IGpuResourceMemoryDiagnostics
     {
         GpuPixelFormat.R8UNorm => 1,
         GpuPixelFormat.R16G16B16A16Float or GpuPixelFormat.D32FloatS8UInt => 8,
+        GpuPixelFormat.R32G32B32A32Float => 16,
         GpuPixelFormat.R8G8B8A8UNorm or GpuPixelFormat.B8G8R8A8UNorm or GpuPixelFormat.R32Float
             or GpuPixelFormat.D24UNormS8UInt or GpuPixelFormat.R16G16Float => 4,
         _ => throw new ArgumentOutOfRangeException(nameof(format))

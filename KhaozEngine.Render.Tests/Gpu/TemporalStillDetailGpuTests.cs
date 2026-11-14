@@ -98,12 +98,7 @@ namespace KhaozEngine.Tests.Gpu
             for (int n = 0; n < Converge + Measured; n++)
             {
                 Vector2 jitter = TemporalJitter.Offset(n, phases);
-                float[] scene = Grey(iw, ih, (sx, sy) =>
-                {
-                    float sampleX = sx + 0.5f - jitter.X;
-                    float stripe = sampleX - MathF.Floor(sampleX) < 0.5f ? 0.80f : 0.15f;
-                    return stripe + ((sx + sy) % 2 == 0 ? 0.10f : -0.10f);
-                });
+                float[] scene = TrippedFeatureScene(iw, ih, jitter);
                 rig.BeginFrame();
                 rig.Fill(scene, scene, motion);
                 rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, DisplayW, DisplayH, n > 0));
@@ -445,6 +440,13 @@ namespace KhaozEngine.Tests.Gpu
                 float distance = y + 0.5f - jitter.Y - StepY(x + 0.5f - jitter.X, ih);
                 return trim && MathF.Abs(distance) < 0.2f ? 0.75f : distance < 0f ? 0.60f : 0.11f;
             });
+
+        internal static float[] TrippedFeatureScene(int iw, int ih, Vector2 jitter) => Grey(iw, ih, (sx, sy) =>
+        {
+            float sampleX = sx + 0.5f - jitter.X;
+            float stripe = sampleX - MathF.Floor(sampleX) < 0.5f ? 0.80f : 0.15f;
+            return stripe + ((sx + sy) % 2 == 0 ? 0.10f : -0.10f);
+        });
 
         internal static float[] OncePerCycleLineScene(int iw, int ih, Vector2 jitter, int frame)
             => Grey(iw, ih, (x, _) => frame % 8 == 0 && x == iw / 2 ? Line : Wall);

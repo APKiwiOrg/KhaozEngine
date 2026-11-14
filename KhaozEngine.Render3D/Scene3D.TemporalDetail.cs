@@ -1,9 +1,21 @@
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D;
 
 public sealed partial class Scene3D
 {
+    void UpdateTemporalDetail(IGpuCommandList cl)
+    {
+        if (TemporalHistory.DetailStore is not { } detail) return;
+        using (ProfilePass(cl, "temporal.detail-store"))
+        {
+            if (TemporalHistory.IsValid) detail.Update(cl, TemporalHistory.WriteIndex);
+            else detail.Replicate(cl, TemporalHistory.WriteIndex);
+        }
+        _frameStats.DrawCalls += 2;   // classification and update, beyond the ordinary resolve and depth store
+    }
+
     /// <summary>The history grid latched by the last frame's first render. Display before the first render,
     /// without the temporal resolve, or when Fine exceeds its pixel budget or the device dimension limit.</summary>
     public TemporalHistoryDetail TemporalHistoryDetailInEffect { get; private set; }

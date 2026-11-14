@@ -29,14 +29,15 @@ namespace KhaozEngine.Tests.Gpu
         long _frame;
 
         public TemporalResolveRig(int internalWidth, int internalHeight, int displayWidth, int displayHeight, float sceneNdc,
-            PixelPostProcessSettings? outlineSettings = null, Func<string, string>? fragmentSource = null)
+            PixelPostProcessSettings? outlineSettings = null, Func<string, string>? fragmentSource = null,
+            TemporalHistoryDetail detail = TemporalHistoryDetail.Display)
         {
             _width = internalWidth;
             _height = internalHeight;
             _gpu = GpuDeviceContext.CreateHeadless();
             _gd = _gpu.GpuDevice;
             _renderer = new TemporalResolveRenderer(_gd, fragmentSource);
-            _history.EnsureTargets(_gd, displayWidth, displayHeight, internalWidth, internalHeight);
+            _history.EnsureTargets(_gd, displayWidth, displayHeight, internalWidth, internalHeight, detail: detail);
             _scene = Input(GpuPixelFormat.R16G16B16A16Float);
             _opaque = Input(GpuPixelFormat.R16G16B16A16Float);
             _depth = Input(GpuPixelFormat.R32Float);
@@ -102,6 +103,15 @@ namespace KhaozEngine.Tests.Gpu
         public void FillHistory(float[] color, float[] state, Func<int, int, float> previousDepth)
         {
             TemporalTextureIo.Upload(_gd, _history.Color(_history.ReadIndex), color);
+            if (_history.DetailStore is { } detail)
+            {
+                int width = _history.DisplayWidth, height = _history.DisplayHeight;
+                var fine = new float[color.Length * 4];
+                for (int y = 0; y < 2 * height; y++)
+                    for (int x = 0; x < 2 * width; x++)
+                        Array.Copy(color, ((y / 2) * width + x / 2) * 4, fine, (y * 2 * width + x) * 4, 4);
+                TemporalTextureIo.Upload(_gd, detail.Color(_history.ReadIndex), fine);
+            }
             TemporalTextureIo.Upload(_gd, _history.Confidence(_history.ReadIndex), state);
             var depth = new float[_width * _height];
             for (int y = 0; y < _height; y++)
@@ -131,6 +141,7 @@ namespace KhaozEngine.Tests.Gpu
                     _outlinePost.RunTemporalOutline(cl, _outlineTargets!, _opaque, _outlineRetired!);
                 }
                 _renderer.Run(cl, _history);
+                _history.DetailStore?.Update(cl, _history.WriteIndex);
                 afterResolve?.Invoke(cl);
             }
             _gd.Submit(cl);

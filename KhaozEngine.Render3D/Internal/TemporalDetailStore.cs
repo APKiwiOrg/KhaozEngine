@@ -8,7 +8,7 @@ namespace KhaozEngine.Render3D.Internal;
 
 /// <summary>The additional colour pair at exactly twice the display on each axis. Owned by TemporalHistory and
 /// indexed by its pair, never independently advanced. Allocation, generation changes and retirement belong to that
-/// owner. Nothing samples these textures yet. Replication writes the resolve's history-space colour before post.</summary>
+/// owner. Fine reads this pair through its resolve and updates it before post.</summary>
 internal sealed class TemporalDetailStore(IGpuDevice gd)
 {
     readonly IGpuTexture?[] _color = new IGpuTexture?[2];
@@ -19,6 +19,16 @@ internal sealed class TemporalDetailStore(IGpuDevice gd)
     IGpuSampler? _sampler;
     IGpuBuffer? _parameters;
     IGpuPipeline? _pipeline;
+    TemporalDetailPass? _resolve;
+
+    internal void BindResolve(TemporalHistory history, IGpuResourceLayout layout, IGpuResourceLayout fineLayout) =>
+        _resolve ??= new TemporalDetailPass(gd, history, this, layout, fineLayout);
+
+    internal IGpuResourceSet ReadSet(int write) => _resolve!.ReadSet(write);
+
+    internal void Resolve(IGpuCommandList cl, IGpuResourceSet inputs, int write) => _resolve!.Resolve(cl, inputs, write);
+
+    internal void Update(IGpuCommandList cl, int write) => _resolve!.Update(cl, write);
 
     internal IGpuTexture Color(int index) => _color[index] ?? throw new InvalidOperationException(
         "The detail store has no colour targets. Allocate it together with temporal history.");
@@ -68,6 +78,8 @@ internal sealed class TemporalDetailStore(IGpuDevice gd)
     /// borrow the owner's display targets. Every field is recorded as it is allocated, including partial creation.</summary>
     internal void Release(GpuRetireQueue? retired)
     {
+        _resolve?.Release(retired);
+        _resolve = null;
         for (int i = 0; i < 2; i++)
         {
             Free(ref _sets[i], retired);

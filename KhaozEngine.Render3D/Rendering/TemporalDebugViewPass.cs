@@ -26,10 +26,13 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _modeLayout;
         readonly IGpuBuffer[] _modeBuffers = new IGpuBuffer[Views.Length];
         readonly IGpuResourceSet[] _modeSets = new IGpuResourceSet[Views.Length];
-        readonly TemporalVisibilityPipelinePair _programs;
+        readonly TemporalVisibilityPipelinePair? _programs;
+        readonly IGpuShaderSet? _detailShaders;
+        readonly IGpuPipeline? _detailPipeline;
 
         public TemporalDebugViewPass(IGpuDevice gd, IGpuResourceLayout resolveLayout,
-            IGpuResourceLayout fullyLitLayout, GpuOutputDescription targetOutput, Func<string, string>? rewrite = null)
+            IGpuResourceLayout fullyLitLayout, GpuOutputDescription targetOutput, Func<string, string>? rewrite = null,
+            IGpuResourceLayout? detailLayout = null)
         {
             IGpuResourceFactory f = gd.Factory;
             _modeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
@@ -41,14 +44,24 @@ namespace KhaozEngine.Render3D.Rendering
                 gd.UpdateBuffer(_modeBuffers[i], 0, new DebugViewUbo { Mode = new Vector4((int)Views[i], 0f, 0f, 0f) });
                 _modeSets[i] = f.CreateResourceSet(new GpuResourceSetDescription(_modeLayout, _modeBuffers[i]));
             }
-            _programs = new TemporalVisibilityPipelinePair(gd,
-                ShaderSources.TemporalDebugFragment(TemporalResolvePrecisionPolicy.For(gd)),
-                [resolveLayout, _modeLayout], [fullyLitLayout, _modeLayout], targetOutput, rewrite);
+            if (detailLayout is null)
+                _programs = new TemporalVisibilityPipelinePair(gd,
+                    ShaderSources.TemporalDebugFragment(TemporalResolvePrecisionPolicy.For(gd)),
+                    [resolveLayout, _modeLayout], [fullyLitLayout, _modeLayout], targetOutput, rewrite);
+            else
+            {
+                string source = ShaderSources.TemporalDetailDebugFragment(TemporalResolvePrecisionPolicy.For(gd));
+                _detailShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
+                    TemporalVisibilityGatherPolicy.ForBackend(rewrite?.Invoke(source) ?? source, gd.Backend));
+                _detailPipeline = TemporalResolveRenderer.Fullscreen(f, _detailShaders,
+                    [resolveLayout, _modeLayout, detailLayout], targetOutput);
+            }
         }
 
         /// <summary>Replace <paramref name="target"/>'s image with <paramref name="view"/>. Any other view draws
         /// nothing.</summary>
-        public void Draw(IGpuCommandList cl, SceneDebugView view, IGpuResourceSet resolveSet, IGpuFramebuffer target, bool withoutVisibility = false)
+        public void Draw(IGpuCommandList cl, SceneDebugView view, IGpuResourceSet resolveSet, IGpuFramebuffer target,
+            bool withoutVisibility = false, IGpuResourceSet? detailSet = null)
         {
             int slot = view switch
             {
@@ -60,15 +73,18 @@ namespace KhaozEngine.Render3D.Rendering
             };
             if (slot < 0) return;
             cl.SetFramebuffer(target);
-            cl.SetPipeline(_programs.Select(withoutVisibility));
+            cl.SetPipeline(_detailPipeline ?? _programs!.Select(withoutVisibility));
             cl.SetGraphicsResourceSet(0, resolveSet);
             cl.SetGraphicsResourceSet(1, _modeSets[slot]);
+            if (detailSet is not null) cl.SetGraphicsResourceSet(2, detailSet);
             cl.Draw(3);
         }
 
         public void Dispose()
         {
-            _programs.Dispose();
+            _programs?.Dispose();
+            _detailPipeline?.Dispose();
+            _detailShaders?.Dispose();
             for (int i = 0; i < _modeSets.Length; i++) { _modeSets[i].Dispose(); _modeBuffers[i].Dispose(); }
             _modeLayout.Dispose();
         }

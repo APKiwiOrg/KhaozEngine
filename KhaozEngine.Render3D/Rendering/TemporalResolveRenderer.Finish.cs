@@ -8,9 +8,10 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed partial class TemporalResolveRenderer
     {
         TemporalDebugViewPass? _debugView;
+        TemporalDebugViewPass? _detailDebugView;
 
         /// <summary>Whether the debug view pass has been built. For tests.</summary>
-        internal bool DebugViewBuilt => _debugView != null;
+        internal bool DebugViewBuilt => _debugView != null || _detailDebugView != null;
 
         /// <summary>Replace <paramref name="target"/>'s image with <paramref name="view"/>, reading this frame's
         /// resolve inputs through <see cref="CurrentSet"/>. Does nothing before the resolve has bound a set. The
@@ -20,17 +21,26 @@ namespace KhaozEngine.Render3D.Rendering
             GpuOutputDescription targetOutput)
         {
             if (CurrentSet is not { } set) return;
+            if (_boundHistory?.DetailStore is { } detail)
+            {
+                (_detailDebugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, FullyLitResolveLayout,
+                    targetOutput, _fragmentSourceForTests, _detailLayout)).Draw(cl, view, set, target,
+                        detailSet: detail.ReadSet(_boundHistory.WriteIndex));
+                return;
+            }
             (_debugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, FullyLitResolveLayout, targetOutput, _fragmentSourceForTests)).Draw(cl, view, set, target, LastVisibilityDecisionSkipped);
         }
 
         TemporalCountProbe? _countProbe;
+        TemporalCountProbe? _detailCountProbe;
+        bool _lastCountsFine;
         bool _countsArmed;
 
         /// <summary>Whether the count probe has been built. For tests.</summary>
-        internal bool CountProbeBuilt => _countProbe != null;
+        internal bool CountProbeBuilt => _countProbe != null || _detailCountProbe != null;
 
         /// <summary>How many times the count probe's grid has been read back. For tests.</summary>
-        internal int CountReadbacks => _countProbe?.Readbacks ?? 0;
+        internal int CountReadbacks => (_countProbe?.Readbacks ?? 0) + (_detailCountProbe?.Readbacks ?? 0);
 
         /// <summary>Arm the probe for the next resolve this renderer records.</summary>
         internal void ArmCounts() => _countsArmed = true;
@@ -43,6 +53,14 @@ namespace KhaozEngine.Render3D.Rendering
             if (!_countsArmed || CurrentSet is not { } set) return;
             using var profile = Profiling?.Pass(cl, "display.temporal-count-probe") ?? default;
             _countsArmed = false;
+            _lastCountsFine = _boundHistory?.DetailStore is not null;
+            if (_boundHistory?.DetailStore is { } detail)
+            {
+                (_detailCountProbe ??= new TemporalCountProbe(_gd, ResolveLayout, FullyLitResolveLayout,
+                    _fragmentSourceForTests, _detailLayout)).Record(cl, set,
+                        detailSet: detail.ReadSet(_boundHistory.WriteIndex));
+                return;
+            }
             (_countProbe ??= new TemporalCountProbe(_gd, ResolveLayout, FullyLitResolveLayout, _fragmentSourceForTests)).Record(cl, set, LastVisibilityDecisionSkipped);
         }
 
@@ -51,15 +69,20 @@ namespace KhaozEngine.Render3D.Rendering
         internal bool TryHarvestCounts(out int disoccluded, out int reactive, out int clipped)
         {
             disoccluded = reactive = clipped = 0;
-            return _countProbe is { } probe && probe.TryHarvest(out disoccluded, out reactive, out clipped);
+            return (_lastCountsFine ? _detailCountProbe : _countProbe) is { } probe
+                && probe.TryHarvest(out disoccluded, out reactive, out clipped);
         }
 
         void DisposeFinish()
         {
             _debugView?.Dispose();
             _countProbe?.Dispose();
+            _detailDebugView?.Dispose();
+            _detailCountProbe?.Dispose();
             _debugView = null;
             _countProbe = null;
+            _detailDebugView = null;
+            _detailCountProbe = null;
         }
     }
 }

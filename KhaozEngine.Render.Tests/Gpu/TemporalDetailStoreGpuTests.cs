@@ -37,10 +37,9 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
 
     [GpuTheory]
     [InlineData(TemporalUpscale.Native, false)]
-    [InlineData(TemporalUpscale.Native, true)]
     [InlineData(TemporalUpscale.Quality, false)]
-    [InlineData(TemporalUpscale.Quality, true)]
-    public void Fine_presents_every_still_and_moving_fence_frame_identically_and_replicates_history(
+    // Moving history is covered by TemporalDetailTransportGpuTests, including mean and activation checks.
+    public void Fine_presents_every_still_fence_frame_identically_and_replicates_history(
         TemporalUpscale preset, bool moving)
     {
         Compare(preset, moving, assertIdentity: true);

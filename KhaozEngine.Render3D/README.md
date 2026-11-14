@@ -359,8 +359,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   pass a `MotionKey` through `RigidInstanceDraw` or `SkinnedInstanceDraw`, camera jumps call `Scene3D.CameraCut()`,
   and `Scene3D.DebugView`, `Scene3D.RequestTemporalCounts()` and `LastTemporalDiagnostics` show what the resolve did.
   `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. Opt-in `Fine` keeps an extra
-  RGBA16F colour pair at twice the display on each axis, replicated from the resolved display colour before post.
-  Nothing reads it yet, so the image is unchanged. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
+  RGBA16F colour pair at twice the display on each axis. Moving pixels can read its four reprojected texels,
+  retain bounded sub-pixel deviations and preserve the resolved mean. Still and distrusted pixels use the
+  original display history and replicate the resolved colour. Both paths present the resolve directly, before
+  distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
   latched on the frame's first render. Fine requires the temporal resolve, a fitting device texture dimension,
   and a display pixel count within `Post.Temporal.HistoryDetailPixelLimit` (default 3,686,400). The pair uses
   225 MiB at 2560 by 1440. At 3840 by 2160 it would use 506.25 MiB and falls back to Display by default.

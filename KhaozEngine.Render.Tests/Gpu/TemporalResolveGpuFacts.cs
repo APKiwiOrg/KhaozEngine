@@ -150,9 +150,11 @@ namespace KhaozEngine.Tests.Gpu
         private protected sealed class Rig : TemporalResolveRig
         {
             public Rig() : base(N, N, N, N, SceneNdc) { }
+            public Rig(KhaozEngine.Render3D.TemporalHistoryDetail detail) : base(N, N, N, N, SceneNdc, detail: detail) { }
 
-            public Rig(int internalWidth, int internalHeight, int displayWidth, int displayHeight, float sceneNdc)
-                : base(internalWidth, internalHeight, displayWidth, displayHeight, sceneNdc) { }
+            public Rig(int internalWidth, int internalHeight, int displayWidth, int displayHeight, float sceneNdc,
+                KhaozEngine.Render3D.TemporalHistoryDetail detail = KhaozEngine.Render3D.TemporalHistoryDetail.Display)
+                : base(internalWidth, internalHeight, displayWidth, displayHeight, sceneNdc, detail: detail) { }
         }
     }
 }

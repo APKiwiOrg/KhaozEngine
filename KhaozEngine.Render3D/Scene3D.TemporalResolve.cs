@@ -260,11 +260,7 @@ namespace KhaozEngine.Render3D
                 }
             _temporalResolve!.Run(cl, TemporalHistory, ResolvedVisibilityFullyLit);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
-            if (TemporalHistory.DetailStore is { } detail)
-            {
-                using (ProfilePass(cl, "temporal.detail-store")) detail.Replicate(cl, TemporalHistory.WriteIndex);
-                _frameStats.DrawCalls++;
-            }
+            UpdateTemporalDetail(cl);
         }
 
         // A frame without the resolve holds none of its targets. The history targets, the resolve's sets that name them,

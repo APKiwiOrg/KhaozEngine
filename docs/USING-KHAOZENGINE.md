@@ -4923,9 +4923,12 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   reset takes the rebuild at the internal resolution, and a moving pixel shifts towards it, wholly at 2 display pixels
   a frame, so fast motion reads softer until it settles.
 - **History grid.** `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. Opt-in `Fine`
-  allocates an extra RGBA16F colour pair at exactly twice the display on each axis. It replicates each resolved
-  display colour into its four fine texels before distortion, bloom and tonemapping, with no filtering arithmetic.
-  Nothing reads the fine pair yet, so presented images and display-sized history are unchanged. The temporal
+  allocates an extra RGBA16F colour pair at exactly twice the display on each axis. Admitted moving pixels
+  resolve from the mean of four reprojected fine-history fetches. Their finite, nonnegative deviations survive
+  into the next generation while their stored mean stays within one binary16 step of the display result.
+  Still pixels and distrusted footprints use the original display-history expressions and replicate their
+  stored result exactly. There is no new presentation filter. The update runs before distortion, bloom and
+  tonemapping. Classification and transport also use display-sized full-float targets. The temporal
   resolve must be active, the extent must fit the device's 2D render texture dimension limit, and the display's
   pixel count must fit the inclusive `Post.Temporal.HistoryDetailPixelLimit`. That budget defaults to 3,686,400,
   admitting 2560 by 1440 with 225 MiB for the extra pair. A 3840 by 2160 display would need 506.25 MiB and
@@ -4935,6 +4938,7 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   `TemporalResetReason.HistoryDetail`. A settings change within the frame waits for the next frame.
   Resizes recreate the pair with history, and cuts and other resets re-seed its write side. A later render
   inside the frame, including an offscreen capture, neither reads nor advances it.
+  Temporal debug views and on-request counts replay the selected mode's own history fetch and trust gate.
 - **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.
   `Post.Temporal.Sharpness` runs from 0 (the pass does not run) to 1, default 0.25, and a value outside that range is
   clamped. It limits each pixel by its four neighbours, so it leaves an edge already at full contrast alone and

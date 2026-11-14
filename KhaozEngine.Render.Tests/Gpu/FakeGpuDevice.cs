@@ -116,6 +116,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Absolute 1-based texture creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnTextureCreate { get; set; }
+        internal GpuPixelFormat? ThrowOnTextureFormat { get; set; }
         internal int ThrowOnFramebufferCreate { get; set; }
         internal int ThrowOnResourceSetCreate { get; set; }
         /// <summary>Absolute 1-based buffer creation to fail, or zero for no injected failure.</summary>
@@ -196,7 +197,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
         {
-            if (ThrowOnTextureCreate == Textures.Count + 1)
+            if (ThrowOnTextureCreate == Textures.Count + 1 || ThrowOnTextureFormat == d.Format)
                 throw new InvalidOperationException("planned texture creation failure");
             var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format, d.Usage, d.ArrayLayers,
                 d.IsArray);

@@ -145,7 +145,9 @@ copy, invalidation and retirement rules.
 `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. `Fine` adds a pair of colour
 targets at exactly twice the display on each axis, in the history's RGBA16F format. `TemporalDetailStore`
 belongs to `TemporalHistory`, shares its target generation and read/write indices, and exists only while
-Fine is in effect. State, previous depth, visibility, jitter, internal size and the resolve stay unchanged.
+Fine is in effect. State, previous depth, visibility, jitter and internal size keep their original grids.
+The resolve keeps its original reconstruction, clipping, releases and weights. Only its central history
+colour fetch changes on admitted moving pixels. Display composes and runs the original shader programs.
 
 The first render latches `Scene3D.TemporalHistoryDetailInEffect`. Fine requires the temporal resolve,
 an extent within `GpuCapabilities.MaxRenderTexture2DDimension`, and a display pixel count at or below
@@ -153,11 +155,79 @@ an extent within `GpuCapabilities.MaxRenderTexture2DDimension`, and a display pi
 3,686,400, so 2560 by 1440 is admitted and 3840 by 2160 falls back to Display. The additional pair costs
 225 MiB and 506.25 MiB respectively. Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
 
-Every resolving frame replicates its display colour result into the four fine texels of each display pixel.
-The pass reuses the shipped blit with a point sampler, alpha preservation and the vertical correction, so
-the quarter and three-quarter source-texel positions select the same stored value with no colour arithmetic.
-It runs immediately after the resolve, before distortion, bloom or tonemapping. Nothing reads the fine pair
-yet, so both presented images and the ordinary colour and state histories remain unchanged in Fine.
+Fine classifies trust on the display grid, resolves on that grid, and updates the fine grid immediately
+afterward, before distortion, bloom or tonemapping. It presents the resolve's R directly. There is no new
+presentation filter. The classification uses the candidate's own chosen reprojection and history state.
+Its one-pixel Chebyshev halo is gathered by the resolve, so no neighbour's classification is guessed from
+the centre. The classification and the two transport exports are RGBA32F. This preserves the actual
+float32 Hbar, chosen previous UV and retention across passes without another half rounding.
+
+Each display pixel takes one of two paths:
+
+- Coarse fetches the display-sized colour history at the shipped position with the shipped expressions.
+  Its four fine texels point-load stored R without deviation or remainder arithmetic.
+- Fine fetches the four fine texel centres, a quarter display pixel either side of the pixel centre on each
+  axis, shifted by the chosen reprojection. Each fetch uses the shipped five-tap Catmull-Rom and its
+  nearest-four clamp, in fine coordinates. Their mean Hbar replaces the central history colour. Every
+  downstream resolve rule is shared with Display. The update recomputes the same fetches and transports
+  the surviving deviations around the stored R.
+
+A pixel goes coarse for any of these reasons:
+
+- Chosen motion below 2^-14 display pixels. This excludes still reprojection roundoff while staying far
+  below the existing quarter-pixel still interval.
+- Invalid, reset, offscreen or disoccluded history at the pixel or within one display pixel. Such a footprint
+  cannot transport trustworthy detail from the preceding frame.
+- A positive lock with motion at or below the existing quarter-pixel still interval. This preserves the
+  jitter-only thin-detail contract on slowly moving locked coverage.
+- A current followed or band mark, or a carried band/followed mark at the chosen reprojection, at the pixel
+  or within one display pixel. Those histories can belong to the surface being followed rather than this one.
+
+Variance clipping, a visibility release and reactive state do not independently force coarse. They retain
+their original effects on R, the current weight and state.
+
+#### Bounded transport and the stored mean
+
+The scalar retention is `clamp(dot(R-c,Hbar-c)/dot(Hbar-c,Hbar-c),0,1-w)` in history colour space.
+Here R is rounded to its actual store format, c is the resolve's current reconstruction and w its current
+weight. A zero denominator keeps `1-w`. Rejected history retains zero. For each channel, alpha included,
+limit retention by `R / -deviation` for every negative deviation, and by
+`(65504-R) / deviation` for every positive deviation. This is the greatest admissible retention up to the
+scalar value that keeps the unrounded children inside the finite nonnegative binary16 range.
+
+Float32 division can round the limiting quotient outward. When evaluating the four children detects that
+case, retention takes the next smaller float. The fourth deviation implied by the first three is also
+constrained: rounding the four-fetch mean can otherwise leave a residual in the independent deviations,
+especially when the reconstructed R is very small. This extra constraint protects the actual remainder.
+A non-finite R, fetch or Hbar, or R outside the store range, instead point-copies R to all four children.
+Zero retention bypasses every multiplication.
+
+Round the first three children to binary16, including subnormals. Store the fourth as rounded
+`clamp(4*R-((a+b)+c),0,65504)`, using the three already-rounded values. No child can be negative or overflow.
+The stored mean differs from stored R by at most one binary16 step at R, using the larger adjacent spacing
+at powers of two. Both limiting directions matter. Limiting only below zero can still overflow the format
+when R is bright. An unrestricted scalar projection can retain a large deviation in a channel the resolve
+removed, making cancellation depend on the spacing of a much larger remainder.
+
+For the bound, let U be the binary16 step at R and x the four nonnegative, finite unrounded children whose
+sum is 4R. If the remainder q after the first three roundings is in range, the only remaining mean error is
+`(round(q)-q)/4`. Since q is at most 4R, its spacing is at most 4U, so that error is at most U/2. If q falls
+outside the range, clamping it moves it toward the original fourth child. The remaining sum error is at
+most the sum of the first three rounding errors. Their spacings sum to at most 8U: for normal R, spacing is
+a power of two and three children with a larger spacing sum would already exceed 4R. Subnormal spacing is
+constant and satisfies the same bound. Half that spacing sum, divided by four for the mean, is at most U.
+The float32 remainder constraint handles the residual from computing Hbar, and the outward-rounding guard
+keeps limiting arithmetic on the safe side of both endpoints.
+
+Headless property checks cover the gate, scalar retention, per-channel bounds, subnormals, zero and removed
+channels, the finite maximum and both cancellation/overflow regressions. Metal checks cover still colour
+and state identity from cold prefixes, presented still frames, moving/recovery means, return to exact
+replication after motion stops, thin-detail retention and a moving output that differs from Display.
+
+Fine debug views and sampled counts share the fine resolve core and its classification/read bindings.
+Each sampled pixel initializes its own transport context, including the count grid's sixteen samples per cell.
+Their pipelines and staging snapshots belong to the renderer, while the borrowed fine sets follow the history
+generation. This keeps pending count readbacks valid across a mode change or resize.
 
 A change of the mode in effect resets history once with `TemporalResetReason.HistoryDetail`. Existing
 settings and resize reasons outrank it, since they can cause the fallback. It outranks camera cuts. A mode

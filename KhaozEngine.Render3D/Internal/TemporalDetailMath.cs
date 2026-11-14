@@ -2,7 +2,7 @@ namespace KhaozEngine.Render3D.Internal;
 
 /// <summary>The integer grid and admission rules of the additional colour history. No render or history state
 /// changes size with this grid.</summary>
-internal static class TemporalDetailMath
+internal static partial class TemporalDetailMath
 {
     internal static (int Width, int Height)? Extent(int width, int height, uint deviceLimit)
     {

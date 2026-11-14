@@ -34,13 +34,15 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        static TemporalFixture Fixture(Jump jump, SceneDebugView view = SceneDebugView.None) => new(W, H, s =>
+        static TemporalFixture Fixture(Jump jump, SceneDebugView view = SceneDebugView.None,
+            TemporalHistoryDetail detail = TemporalHistoryDetail.Display) => new(W, H, s =>
         {
             s.Post.UseSmoothPreset();
             s.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             s.Camera.Azimuth = 0f; s.Camera.Elevation = 0f; s.Camera.AspectRatio = (float)W / H;
             s.Camera.OrthoSize = 4.5f; s.Camera.Target = Vector3.Zero;
             s.DebugView = view;
+            s.Post.Temporal.HistoryDetail = detail;
             jump.Box = s.LoadMesh(MeshPrimitives.Box(1f));
         });
 
@@ -116,11 +118,13 @@ namespace KhaozEngine.Tests.Gpu
         /// pixels its red marks must be exactly the samples the probe counted. The sample set is symmetric under a
         /// flip of either axis at this size, so the comparison does not depend on the readback's row order.
         /// </summary>
-        [GpuFact]
-        public void TheDisoccludedCountIsTheResolvesOwnDecisionAtEverySample()
+        [GpuTheory]
+        [InlineData(TemporalHistoryDetail.Display)]
+        [InlineData(TemporalHistoryDetail.Fine)]
+        public void TheDisoccludedCountIsTheResolvesOwnDecisionAtEverySample(TemporalHistoryDetail detail)
         {
             var jump = new Jump();
-            using TemporalFixture fx = Fixture(jump, SceneDebugView.Disocclusion);
+            using TemporalFixture fx = Fixture(jump, SceneDebugView.Disocclusion, detail);
             for (int n = 0; n < jump.JumpFrame; n++) fx.Frames(1, jump.Draw);
             fx.Scene.RequestTemporalCounts();
             byte[] view = fx.Frame(jump.Draw);
@@ -142,11 +146,13 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The frame a request arms records the grid, and the next PrepareFrame reads it back, once. Later
         /// frames read nothing and leave the counts alone.</summary>
-        [GpuFact]
-        public void ARequestIsReadBackOnceAtTheNextPrepareFrame()
+        [GpuTheory]
+        [InlineData(TemporalHistoryDetail.Display)]
+        [InlineData(TemporalHistoryDetail.Fine)]
+        public void ARequestIsReadBackOnceAtTheNextPrepareFrame(TemporalHistoryDetail detail)
         {
             var jump = new Jump();
-            using TemporalFixture fx = Fixture(jump);
+            using TemporalFixture fx = Fixture(jump, detail: detail);
             fx.Frames(jump.JumpFrame, jump.Draw);
             fx.Scene.RequestTemporalCounts();
             fx.Frames(1, jump.Draw);
@@ -155,6 +161,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, fx.Scene.TemporalCountReadbacksForTests);
             Assert.Equal(-1, fx.Scene.LastTemporalDiagnostics.CountsFrameIndex);
 
+            if (detail == TemporalHistoryDetail.Fine)
+                fx.Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
             fx.Frames(1, jump.Draw);   // its PrepareFrame harvests the requested frame
             TemporalDiagnostics harvested = fx.Scene.LastTemporalDiagnostics;
             Assert.Equal(1, fx.Scene.TemporalCountReadbacksForTests);
@@ -168,6 +176,16 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal((harvested.CountsFrameIndex, harvested.DisoccludedPixels, harvested.ReactivePixels,
                 harvested.ClippedPixels), (later.CountsFrameIndex, later.DisoccludedPixels, later.ReactivePixels,
                 later.ClippedPixels));
+            if (detail == TemporalHistoryDetail.Fine)
+            {
+                fx.Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Fine;
+                fx.Scene.RequestTemporalCounts();
+                fx.Frames(1, jump.Draw);
+                long next = fx.Scene.LastTemporalDiagnostics.FrameIndex;
+                fx.Frames(1, jump.Draw);
+                Assert.Equal(next, fx.Scene.LastTemporalDiagnostics.CountsFrameIndex);
+                Assert.Equal(2, fx.Scene.TemporalCountReadbacksForTests);
+            }
         }
 
         /// <summary>The display pixels the probe program samples: 4 by 4 per cell of the 32 by 18 grid, each at

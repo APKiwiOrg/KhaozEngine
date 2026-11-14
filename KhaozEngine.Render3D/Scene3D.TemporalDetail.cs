@@ -8,7 +8,12 @@ public sealed partial class Scene3D
     /// without the temporal resolve, or when Fine exceeds its pixel budget or the device dimension limit.</summary>
     public TemporalHistoryDetail TemporalHistoryDetailInEffect { get; private set; }
 
-    void LatchTemporalDetail() => TemporalHistoryDetailInEffect = TemporalDetailMath.Mode(
-        Post.Temporal.HistoryDetail, _frameResolves, _latchedDisplayWidth, _latchedDisplayHeight,
-        _gd.Capabilities.MaxRenderTexture2DDimension, Post.Temporal.HistoryDetailPixelLimit);
+    // Admission is evaluated only when Fine is requested on a resolving frame, so the default reads neither the
+    // device limit nor the budget. Leaving Fine still latches Display here, which is what resets the history.
+    void LatchTemporalDetail() => TemporalHistoryDetailInEffect =
+        Post.Temporal.HistoryDetail == TemporalHistoryDetail.Fine && _frameResolves
+            ? TemporalDetailMath.Mode(TemporalHistoryDetail.Fine, resolves: true, _latchedDisplayWidth,
+                _latchedDisplayHeight, _gd.Capabilities.MaxRenderTexture2DDimension,
+                Post.Temporal.HistoryDetailPixelLimit)
+            : TemporalHistoryDetail.Display;
 }

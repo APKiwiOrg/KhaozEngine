@@ -14,6 +14,12 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   sign-in, while any other non-success status (a 5xx, say) throws `IdentitySignInException` with
   `TokenHttpFailure` and the `StatusCode` as a transient error to retry later. The interactive sign-in code
   exchange is unchanged: a 400 there is still a hard `IdentitySignInException` with `TokenHttpFailure`.
+  Discovery and token success bodies must be JSON objects, otherwise `EndpointJsonMalformed` names the
+  `EndpointRole`. Only a JSON parse failure carries a parser inner exception. Present required endpoint and
+  credential members must be non-empty JSON strings, otherwise `DiscoveryEndpointEmpty` or `TokenMemberEmpty`
+  names the `MemberName` and `EndpointRole`. A wrong-kind `refresh_token` also refuses with `TokenMemberEmpty`,
+  while an absent, null or empty refresh token stays accepted. Malformed `expires_in` refuses with
+  `TokenExpiryMalformed`, its `MemberName` and `EndpointRole`.
 - **OidcTokenValidator** - `IIdentityValidator` implementation that validates an id_token against the
   issuer's discovery document + JWKS (via `Microsoft.IdentityModel.Protocols.OpenIdConnect` /
   `JsonWebTokens`), checks issuer/audience/lifetime/signature, and maps the `sub` claim (+ `name` or

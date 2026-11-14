@@ -189,18 +189,19 @@ The reasons are `SignInRefusal` members, and `EndpointRole` is a `SignInEndpoint
 | `AuthorityNotAbsolute` | an OIDC authority that is not an absolute URL | none, never the authority |
 | `AuthorityNotHttps` | an OIDC authority that is not https, other than a plain-http loopback authority under `AllowInsecureLoopbackAuthority` | `ActualScheme` |
 | `DiscoveryHttpFailure` | a discovery document request answered with a non-success status | `StatusCode`, `EndpointRole` |
-| `DiscoveryEndpointMissing` | a discovery document without `authorization_endpoint` or `token_endpoint` | `MemberName`, the first one missing |
-| `DiscoveryEndpointEmpty` | a discovery document whose `authorization_endpoint` or `token_endpoint` is null or empty | `MemberName`, the first one empty |
+| `DiscoveryEndpointMissing` | a discovery document without `authorization_endpoint` or `token_endpoint` | `MemberName`, the first one missing, and `EndpointRole` |
+| `DiscoveryEndpointEmpty` | a discovery document whose required endpoint member is present but not a non-empty JSON string | `MemberName`, the first one unusable, and `EndpointRole` |
 | `TokenHttpFailure` | a token request answered with a non-success status, other than the 400 or 401 a refresh reads as a dead chain | `StatusCode`, `EndpointRole` |
-| `TokenMemberMissing` | a token response without its credential, `id_token` for OIDC and `access_token` for Discord | `MemberName` |
-| `TokenMemberEmpty` | a token response whose credential member is null or empty | `MemberName` |
-| `TokenExpiryMalformed` | a token response whose `expires_in` is not a JSON number within `int` range | `MemberName`, `expires_in` |
-| `EndpointJsonMalformed` | a success response whose body is not JSON | `EndpointRole`, and the parser's `JsonException` as the inner exception |
+| `TokenMemberMissing` | a token response without its credential, `id_token` for OIDC and `access_token` for Discord | `MemberName`, `EndpointRole` |
+| `TokenMemberEmpty` | a token response whose required credential is present but not a non-empty JSON string, or whose optional `refresh_token` is neither a JSON string nor null | `MemberName`, `EndpointRole` |
+| `TokenExpiryMalformed` | a token response whose `expires_in` is not a JSON number within `int` range | `MemberName`, `expires_in`, and `EndpointRole` |
+| `EndpointJsonMalformed` | a success response whose body is not a JSON object | `EndpointRole`, and the parser's `JsonException` as the inner exception only for syntactically invalid JSON |
 
 `EndpointRole` is `DiscoveryDocument` or `TokenEndpoint`. `MemberName` is a member's name, never its value. No
 identifier carries a token, an authorization code, a `state` value, a client secret, an authority URL or a response
 body. The parser's inner exception names at most the offending character or a few bytes of a malformed literal and
-its position, never a string value from the body.
+its position, never a string value from the body. A valid JSON value of another kind has no inner exception or
+`MemberName`. An absent or null `refresh_token` means no refresh token, and an empty string stays accepted.
 
 ## Durable silent refresh
 

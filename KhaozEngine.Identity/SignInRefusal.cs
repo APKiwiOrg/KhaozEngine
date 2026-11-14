@@ -39,7 +39,7 @@ public enum SignInRefusal
     DiscoveryEndpointMissing,
 
     /// <summary>Refuses a discovery document whose required endpoint member, named by
-    /// <see cref="SignInException.MemberName"/>, is null or empty.</summary>
+    /// <see cref="SignInException.MemberName"/>, is present but not a non-empty JSON string.</summary>
     DiscoveryEndpointEmpty,
 
     // Token endpoint.
@@ -52,8 +52,9 @@ public enum SignInRefusal
     /// <see cref="SignInException.MemberName"/>.</summary>
     TokenMemberMissing,
 
-    /// <summary>Refuses a token response whose credential member, named by
-    /// <see cref="SignInException.MemberName"/>, is null or empty.</summary>
+    /// <summary>Refuses a token response whose required credential member, named by
+    /// <see cref="SignInException.MemberName"/>, is present but not a non-empty JSON string, or whose optional
+    /// <c>refresh_token</c> is neither a JSON string nor null. An absent, null or empty refresh token is accepted.</summary>
     TokenMemberEmpty,
 
     /// <summary>Refuses a token response whose <c>expires_in</c> is present but not a JSON number within the
@@ -63,6 +64,7 @@ public enum SignInRefusal
     // Either endpoint.
 
     /// <summary>Refuses a success response, from the endpoint <see cref="SignInException.EndpointRole"/> names,
-    /// whose body is not JSON. The parser's exception is the inner exception.</summary>
+    /// whose body is not a JSON object. Syntactically invalid JSON carries the parser's exception as the inner
+    /// exception. A valid JSON value of another kind has no inner exception.</summary>
     EndpointJsonMalformed,
 }

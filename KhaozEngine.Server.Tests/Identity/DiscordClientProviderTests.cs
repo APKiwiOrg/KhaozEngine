@@ -267,6 +267,7 @@ public class DiscordClientProviderTests
     /// <summary>#168: a string-typed or out-of-Int32-range <c>expires_in</c> used to escape as a raw
     /// <see cref="InvalidOperationException"/>/<see cref="FormatException"/> from an unguarded
     /// <c>GetInt32()</c>, past every caller catching the provider's own failure type.</summary>
+    // #1720: expiry refusals also identify the token endpoint.
     [Theory]
     [InlineData("{\"access_token\":\"the-access-token\",\"expires_in\":\"3600\"}")]
     [InlineData("{\"access_token\":\"the-access-token\",\"expires_in\":99999999999}")]
@@ -284,6 +285,7 @@ public class DiscordClientProviderTests
 
         Assert.Equal(SignInRefusal.TokenExpiryMalformed, ex.Reason);
         Assert.Equal("expires_in", ex.MemberName);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
         SignInRefusalSecrets.AssertCarriesNone(ex, "the-access-token");
 
         ProviderCredential control = await SignInProviderWith(
@@ -292,24 +294,44 @@ public class DiscordClientProviderTests
         Assert.Equal("the-access-token", control.CredentialToken);
     }
 
+    // #1720: a present wrong-kind credential or refresh token must stay within the sign-in refusal contract.
     [Theory]
-    [InlineData("{\"refresh_token\":\"leaked-refresh\",\"expires_in\":3600}", SignInRefusal.TokenMemberMissing)]
-    [InlineData("{\"access_token\":\"\",\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty)]
-    [InlineData("{\"access_token\":null,\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty)]
-    public async Task SignIn_refuses_a_token_response_without_its_access_token(string tokenBody, SignInRefusal expected)
+    [InlineData("{\"refresh_token\":\"leaked-refresh\",\"expires_in\":3600}", SignInRefusal.TokenMemberMissing, "access_token")]
+    [InlineData("{\"access_token\":\"\",\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty, "access_token")]
+    [InlineData("{\"access_token\":null,\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty, "access_token")]
+    [InlineData("{\"access_token\":42,\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty, "access_token")]
+    [InlineData("{\"access_token\":\"the-access-token\",\"refresh_token\":{\"secret\":\"leaked-refresh\"}}", SignInRefusal.TokenMemberEmpty, "refresh_token")]
+    public async Task SignIn_refuses_a_token_response_without_a_usable_token_member(
+        string tokenBody, SignInRefusal expected, string member)
     {
         IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => SignInProviderWith(new BodyTokenHandler(tokenBody)).SignInAsync(CancellationToken.None));
 
         Assert.Equal(expected, ex.Reason);
-        Assert.Equal("access_token", ex.MemberName);
+        Assert.Equal(member, ex.MemberName);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
         Assert.Equal("discord", ex.ProviderId);
-        SignInRefusalSecrets.AssertCarriesNone(ex, "leaked-refresh");
+        SignInRefusalSecrets.AssertCarriesNone(ex, "leaked-refresh", "the-access-token");
 
         ProviderCredential control = await SignInProviderWith(
             new BodyTokenHandler("{\"access_token\":\"the-access-token\",\"refresh_token\":\"leaked-refresh\"}"))
             .SignInAsync(CancellationToken.None);
         Assert.Equal("the-access-token", control.CredentialToken);
+        Assert.Equal("leaked-refresh", control.RefreshToken);
+    }
+
+    // #1720: the refresh-token kind guard must preserve accepted null and empty optional refresh tokens.
+    [Theory]
+    [InlineData("null", null)]
+    [InlineData("\"\"", "")]
+    public async Task SignIn_accepts_an_optional_refresh_token(string refreshJson, string? expected)
+    {
+        ProviderCredential credential = await SignInProviderWith(
+            new BodyTokenHandler("{\"access_token\":\"the-access-token\",\"refresh_token\":" + refreshJson + "}"))
+            .SignInAsync(CancellationToken.None);
+
+        Assert.Equal("the-access-token", credential.CredentialToken);
+        Assert.Equal(expected, credential.RefreshToken);
     }
 
     /// <summary>The abandoned flow: the player opens the browser and never comes back, so the redirect never
@@ -376,18 +398,26 @@ public class DiscordClientProviderTests
     /// reverse proxy) used to throw a raw JsonException straight out of sign-in, past every caller catching the
     /// provider's own failure type. The parser's exception stays the inner exception, so the form-encoded and
     /// truncated bodies prove it does not echo a token.</summary>
+    // #1720: a non-object token body refuses with endpoint context and no parser exception.
     [Theory]
-    [InlineData("<html><body>Sign in to the hotel network</body></html>", "hotel network")]
-    [InlineData("access_token=leaked-access-token&refresh_token=leaked-refresh", "leaked-access-token")]
-    [InlineData("{\"access_token\":\"leaked-access-token", "leaked-access-token")]
-    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_non_json(string body, string bodyValue)
+    [InlineData("<html><body>Sign in to the hotel network</body></html>", "hotel network", true)]
+    [InlineData("access_token=leaked-access-token&refresh_token=leaked-refresh", "leaked-access-token", true)]
+    [InlineData("{\"access_token\":\"leaked-access-token", "leaked-access-token", true)]
+    [InlineData("[\"leaked-access-token\"]", "leaked-access-token", false)]
+    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_malformed_json(
+        string body, string bodyValue, bool parserFailure)
     {
         IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => SignInProviderWith(new BodyTokenHandler(body)).SignInAsync(CancellationToken.None));
 
         Assert.Equal(SignInRefusal.EndpointJsonMalformed, ex.Reason);
         Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
-        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        Assert.Equal("discord", ex.ProviderId);
+        Assert.Null(ex.MemberName);
+        if (parserFailure)
+            Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        else
+            Assert.Null(ex.InnerException);
         SignInRefusalSecrets.AssertCarriesNone(ex, bodyValue);
 
         ProviderCredential control = await SignInProviderWith(

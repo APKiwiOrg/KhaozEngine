@@ -293,6 +293,7 @@ public class OidcClientProviderTests
     /// <summary>#168: a string-typed or out-of-Int32-range <c>expires_in</c> used to escape as a raw
     /// <see cref="InvalidOperationException"/>/<see cref="FormatException"/> from an unguarded
     /// <c>GetInt32()</c>, past every caller catching the provider's own failure type.</summary>
+    // #1720: expiry refusals also identify the token endpoint.
     [Theory]
     [InlineData("{\"id_token\":\"the-id-token\",\"expires_in\":\"3600\"}")]
     [InlineData("{\"id_token\":\"the-id-token\",\"expires_in\":99999999999}")]
@@ -310,6 +311,7 @@ public class OidcClientProviderTests
 
         Assert.Equal(SignInRefusal.TokenExpiryMalformed, ex.Reason);
         Assert.Equal("expires_in", ex.MemberName);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
         SignInRefusalSecrets.AssertCarriesNone(ex, "the-id-token");
 
         ProviderCredential control = await SignInProviderWith(
@@ -317,24 +319,44 @@ public class OidcClientProviderTests
         Assert.Equal("the-id-token", control.CredentialToken);
     }
 
+    // #1720: a present wrong-kind credential or refresh token must stay within the sign-in refusal contract.
     [Theory]
-    [InlineData("{\"refresh_token\":\"leaked-refresh\",\"expires_in\":3600}", SignInRefusal.TokenMemberMissing)]
-    [InlineData("{\"id_token\":\"\",\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty)]
-    [InlineData("{\"id_token\":null,\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty)]
-    public async Task SignIn_refuses_a_token_response_without_its_id_token(string tokenBody, SignInRefusal expected)
+    [InlineData("{\"refresh_token\":\"leaked-refresh\",\"expires_in\":3600}", SignInRefusal.TokenMemberMissing, "id_token")]
+    [InlineData("{\"id_token\":\"\",\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty, "id_token")]
+    [InlineData("{\"id_token\":null,\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty, "id_token")]
+    [InlineData("{\"id_token\":42,\"refresh_token\":\"leaked-refresh\"}", SignInRefusal.TokenMemberEmpty, "id_token")]
+    [InlineData("{\"id_token\":\"the-id-token\",\"refresh_token\":{\"secret\":\"leaked-refresh\"}}", SignInRefusal.TokenMemberEmpty, "refresh_token")]
+    public async Task SignIn_refuses_a_token_response_without_a_usable_token_member(
+        string tokenBody, SignInRefusal expected, string member)
     {
         IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => SignInProviderWith(new BodyTokenHandler(tokenBody)).SignInAsync(CancellationToken.None));
 
         Assert.Equal(expected, ex.Reason);
-        Assert.Equal("id_token", ex.MemberName);
+        Assert.Equal(member, ex.MemberName);
+        Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
         Assert.Equal("oidc", ex.ProviderId);
-        SignInRefusalSecrets.AssertCarriesNone(ex, "leaked-refresh");
+        SignInRefusalSecrets.AssertCarriesNone(ex, "leaked-refresh", "the-id-token");
 
         ProviderCredential control = await SignInProviderWith(
             new BodyTokenHandler("{\"id_token\":\"the-id-token\",\"refresh_token\":\"leaked-refresh\"}"))
             .SignInAsync(CancellationToken.None);
         Assert.Equal("the-id-token", control.CredentialToken);
+        Assert.Equal("leaked-refresh", control.RefreshToken);
+    }
+
+    // #1720: the refresh-token kind guard must preserve accepted null and empty optional refresh tokens.
+    [Theory]
+    [InlineData("null", null)]
+    [InlineData("\"\"", "")]
+    public async Task SignIn_accepts_an_optional_refresh_token(string refreshJson, string? expected)
+    {
+        ProviderCredential credential = await SignInProviderWith(
+            new BodyTokenHandler("{\"id_token\":\"the-id-token\",\"refresh_token\":" + refreshJson + "}"))
+            .SignInAsync(CancellationToken.None);
+
+        Assert.Equal("the-id-token", credential.CredentialToken);
+        Assert.Equal(expected, credential.RefreshToken);
     }
 
     /// <summary>Serves a caller-chosen status and body for the discovery document, then a good token response.</summary>
@@ -372,12 +394,15 @@ public class OidcClientProviderTests
 
     /// <summary>The refusal names the first member the predicate reaches, so a document lacking both names
     /// <c>authorization_endpoint</c>.</summary>
+    // #1720: each discovery string read must refuse a wrong-kind member with its name and endpoint role.
     [Theory]
     [InlineData("{\"token_endpoint\":\"https://issuer.test/token\"}", SignInRefusal.DiscoveryEndpointMissing, "authorization_endpoint")]
     [InlineData("{\"authorization_endpoint\":\"https://issuer.test/auth\"}", SignInRefusal.DiscoveryEndpointMissing, "token_endpoint")]
     [InlineData("{}", SignInRefusal.DiscoveryEndpointMissing, "authorization_endpoint")]
     [InlineData("{\"authorization_endpoint\":\"\",\"token_endpoint\":\"https://issuer.test/token\"}", SignInRefusal.DiscoveryEndpointEmpty, "authorization_endpoint")]
     [InlineData("{\"authorization_endpoint\":\"https://issuer.test/auth\",\"token_endpoint\":null}", SignInRefusal.DiscoveryEndpointEmpty, "token_endpoint")]
+    [InlineData("{\"authorization_endpoint\":42,\"token_endpoint\":\"https://issuer.test/token\"}", SignInRefusal.DiscoveryEndpointEmpty, "authorization_endpoint")]
+    [InlineData("{\"authorization_endpoint\":\"https://issuer.test/auth\",\"token_endpoint\":true}", SignInRefusal.DiscoveryEndpointEmpty, "token_endpoint")]
     public async Task SignIn_refuses_a_discovery_document_without_a_usable_endpoint(
         string document, SignInRefusal expected, string member)
     {
@@ -386,6 +411,7 @@ public class OidcClientProviderTests
 
         Assert.Equal(expected, ex.Reason);
         Assert.Equal(member, ex.MemberName);
+        Assert.Equal(SignInEndpointRole.DiscoveryDocument, ex.EndpointRole);
         Assert.Equal("oidc", ex.ProviderId);
         SignInRefusalSecrets.AssertCarriesNone(ex, "issuer.test");
 
@@ -562,21 +588,29 @@ public class OidcClientProviderTests
 
     /// <summary>#175: a non-JSON 200 used to throw a raw JsonException straight out of sign-in, past every
     /// caller catching the provider's own failure type.</summary>
-    [Fact]
-    public async Task SignIn_throws_sign_in_failure_when_discovery_returns_non_json()
+    // #1720: valid JSON with a non-object root also refuses, without inventing a parser exception.
+    [Theory]
+    [InlineData("<html><body>Sign in to the hotel network</body></html>", "hotel network", true)]
+    [InlineData("[\"issuer.test\"]", "issuer.test", false)]
+    public async Task SignIn_throws_sign_in_failure_when_discovery_returns_malformed_json(
+        string body, string bodyValue, bool parserFailure)
     {
-        StateHolder holder = new();
-        OidcClientProvider provider = new(
-            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
-            new FakeBrowser(holder), _ => new FakeListener(holder), new HttpClient(new HtmlDiscoveryHandler()));
-
         IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
-            () => provider.SignInAsync(CancellationToken.None));
+            () => SignInProviderWith(new DiscoveryHandler(HttpStatusCode.OK, body)).SignInAsync(CancellationToken.None));
 
         Assert.Equal(SignInRefusal.EndpointJsonMalformed, ex.Reason);
         Assert.Equal(SignInEndpointRole.DiscoveryDocument, ex.EndpointRole);
-        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
-        SignInRefusalSecrets.AssertCarriesNone(ex, "hotel network");
+        Assert.Equal("oidc", ex.ProviderId);
+        Assert.Null(ex.MemberName);
+        if (parserFailure)
+            Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        else
+            Assert.Null(ex.InnerException);
+        SignInRefusalSecrets.AssertCarriesNone(ex, bodyValue);
+
+        ProviderCredential control = await SignInProviderWith(new DiscoveryHandler(HttpStatusCode.OK, GoodDiscovery))
+            .SignInAsync(CancellationToken.None);
+        Assert.Equal("the-id-token", control.CredentialToken);
     }
 
     [Fact]
@@ -597,18 +631,26 @@ public class OidcClientProviderTests
 
     /// <summary>The parser's exception stays the inner exception, so these bodies prove it does not echo a token
     /// from a form-encoded or truncated response.</summary>
+    // #1720: a non-object token body refuses with endpoint context and no parser exception.
     [Theory]
-    [InlineData("<html><body>Sign in to the hotel network</body></html>", "hotel network")]
-    [InlineData("id_token=leaked-id-token&refresh_token=leaked-refresh", "leaked-id-token")]
-    [InlineData("{\"id_token\":\"leaked-id-token", "leaked-id-token")]
-    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_non_json(string body, string bodyValue)
+    [InlineData("<html><body>Sign in to the hotel network</body></html>", "hotel network", true)]
+    [InlineData("id_token=leaked-id-token&refresh_token=leaked-refresh", "leaked-id-token", true)]
+    [InlineData("{\"id_token\":\"leaked-id-token", "leaked-id-token", true)]
+    [InlineData("null", "null", false)]
+    public async Task SignIn_throws_sign_in_failure_when_token_endpoint_returns_malformed_json(
+        string body, string bodyValue, bool parserFailure)
     {
         IdentitySignInException ex = await Assert.ThrowsAsync<IdentitySignInException>(
             () => SignInProviderWith(new BodyTokenHandler(body)).SignInAsync(CancellationToken.None));
 
         Assert.Equal(SignInRefusal.EndpointJsonMalformed, ex.Reason);
         Assert.Equal(SignInEndpointRole.TokenEndpoint, ex.EndpointRole);
-        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        Assert.Equal("oidc", ex.ProviderId);
+        Assert.Null(ex.MemberName);
+        if (parserFailure)
+            Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        else
+            Assert.Null(ex.InnerException);
         SignInRefusalSecrets.AssertCarriesNone(ex, bodyValue);
 
         ProviderCredential control = await SignInProviderWith(new BodyTokenHandler("{\"id_token\":\"the-id-token\"}"))

@@ -155,16 +155,18 @@ public sealed class OidcClientProvider(
             {
                 ProviderId = ProviderId,
                 MemberName = authElement.ValueKind == JsonValueKind.Undefined ? "authorization_endpoint" : "token_endpoint",
+                EndpointRole = SignInEndpointRole.DiscoveryDocument,
             };
 
-        string? authorizationEndpoint = authElement.GetString();
-        string? tokenEndpoint = tokenElement.GetString();
+        string? authorizationEndpoint = authElement.ValueKind == JsonValueKind.String ? authElement.GetString() : null;
+        string? tokenEndpoint = tokenElement.ValueKind == JsonValueKind.String ? tokenElement.GetString() : null;
         if (string.IsNullOrEmpty(authorizationEndpoint) || string.IsNullOrEmpty(tokenEndpoint))
             throw new IdentitySignInException(
                 SignInRefusal.DiscoveryEndpointEmpty, "OIDC discovery document has empty required endpoints")
             {
                 ProviderId = ProviderId,
                 MemberName = string.IsNullOrEmpty(authorizationEndpoint) ? "authorization_endpoint" : "token_endpoint",
+                EndpointRole = SignInEndpointRole.DiscoveryDocument,
             };
 
         return (authorizationEndpoint, tokenEndpoint);
@@ -201,20 +203,33 @@ public sealed class OidcClientProvider(
             {
                 ProviderId = ProviderId,
                 MemberName = "id_token",
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
             };
 
-        string? idToken = idTokenElement.GetString();
+        string? idToken = idTokenElement.ValueKind == JsonValueKind.String ? idTokenElement.GetString() : null;
         if (string.IsNullOrEmpty(idToken))
             throw new IdentitySignInException(
                 SignInRefusal.TokenMemberEmpty, "token endpoint response has an empty id_token")
             {
                 ProviderId = ProviderId,
                 MemberName = "id_token",
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
             };
 
-        string? refreshToken = doc.RootElement.TryGetProperty("refresh_token", out JsonElement refreshElement)
-            ? refreshElement.GetString()
-            : null;
+        string? refreshToken = null;
+        if (doc.RootElement.TryGetProperty("refresh_token", out JsonElement refreshElement))
+        {
+            if (refreshElement.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                throw new IdentitySignInException(
+                    SignInRefusal.TokenMemberEmpty, "token endpoint response has an unusable refresh_token")
+                {
+                    ProviderId = ProviderId,
+                    MemberName = "refresh_token",
+                    EndpointRole = SignInEndpointRole.TokenEndpoint,
+                };
+
+            refreshToken = refreshElement.ValueKind == JsonValueKind.String ? refreshElement.GetString() : null;
+        }
 
         DateTimeOffset expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(ReadExpiresInSeconds(doc.RootElement));
 
@@ -258,14 +273,25 @@ public sealed class OidcClientProvider(
     /// instead of a raw <see cref="JsonException"/> escaping sign-in past every caller catching that type.
     /// <paramref name="role"/> names the endpoint in <see cref="SignInException.EndpointRole"/> and the message.
     /// The parser's exception stays the inner exception: it names the offending character, or the few bytes of a
-    /// malformed literal, and its position, never a string value from the body.</summary>
+    /// malformed literal, and its position, never a string value from the body. A valid JSON value that is not
+    /// an object refuses with the same reason and no inner exception, before any member or expiry read.</summary>
     private async Task<JsonDocument> ParseJsonBodyAsync(
         HttpResponseMessage response, SignInEndpointRole role, CancellationToken ct)
     {
         using System.IO.Stream stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         try
         {
-            return await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            JsonDocument doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                return doc;
+
+            doc.Dispose();
+            throw new IdentitySignInException(
+                SignInRefusal.EndpointJsonMalformed, "the endpoint did not return a JSON object")
+            {
+                ProviderId = ProviderId,
+                EndpointRole = role,
+            };
         }
         catch (JsonException ex)
         {
@@ -294,6 +320,7 @@ public sealed class OidcClientProvider(
             {
                 ProviderId = ProviderId,
                 MemberName = "expires_in",
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
             };
 
         return seconds;

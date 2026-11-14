@@ -1353,6 +1353,9 @@ for the avatar, camera and other visual consumers. Do not use its position to de
 to feed `MoveToRange`, because a presentation offset can differ from the current simulation state during
 reconciliation.
 
+`PlayerMoveState` implements the prediction interface's steady-path members explicitly, including its planar
+`PredictionTarget`, so local prediction and render-state reads do not box the state.
+
 ```csharp
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;

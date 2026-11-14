@@ -50,7 +50,14 @@ render-offset smoothing (hard-snap + dead-zone).
 ```csharp
 readonly record struct ShipState(Vector2 Position, Vector2 Velocity) : IPredictedState<ShipState>
 {
+    public Vector2 PredictionTarget => Position;
+    public float Vertical => 0f;
+    public float StepDeltaY => 0f;
+    public Vector2 FrameAnchor => Vector2.Zero;
+    public uint TeleportEpoch => 0;
+    public bool HasYaw => false;
     public ShipState WithPosition(Vector2 p) => this with { Position = p };
+    public ShipState WithRenderState(Vector2 p, float vertical) => WithPosition(p);
 }
 
 sealed class ShipSim : ITickSimulator<ShipState, MyCommand>
@@ -74,10 +81,17 @@ This places a freshly predicted segment at its actual phase and keeps local step
 cadences. The one-argument overload retains its whole-frame accumulation behavior.
 
 `IPredictedState.PredictionTarget` is the planar endpoint the inter-tick render ease reaches. It defaults to
-`Position`, so ordinary continuous and discrete states need no extra member. A state whose deterministic
+`Position`, so ordinary continuous and discrete states keep the same endpoint. A state whose deterministic
 `Position` deliberately remains at the start of a newly committed presentation path can override the target.
 Reconciliation error and `PredictedHorizontalSpeed` still read `Position`, so the override changes presentation
 only.
+
+For an allocation-free steady prediction path, a struct implements every default interface member that path
+reads. Otherwise the constrained generic call boxes the state. Implement `PredictionTarget`, `Vertical`,
+`StepDeltaY`, `FrameAnchor`, `TeleportEpoch` and the two-argument `WithRenderState`, even when returning their
+default values, as in `ShipState` above. With `InterpolateYaw` enabled, also implement `HasYaw`, and implement
+`Yaw` and the three-argument `WithRenderState` if `HasYaw` is true. A state whose `FrameAnchor` always returns
+zero can keep the throwing `WithFrameAnchor` default because prediction never calls it for that state.
 
 Each unchanged finite planar coordinate stays exact at finite presentation phases, even while the other
 coordinate moves. Correction offsets still apply and decay normally. Reconciliation and quiet reseeding use

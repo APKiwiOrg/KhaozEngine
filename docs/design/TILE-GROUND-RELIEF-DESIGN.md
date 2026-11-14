@@ -140,6 +140,8 @@ height adds nothing, and the surface array adds one layer per material with a no
 - MapDoc native terrain still draws albedo only, and the scene resource upload refuses relief layers until it can
   carry them, [#1800](https://github.com/APKiwiOrg/KhaozEngine/issues/1800).
 - The steep companion stays a slope blend and takes no part in the height blend. A rock companion's heights could
-  resolve the grass to rock shoulder the same way, once a game asks for it.
-- Specular anti-aliasing for normal-mapped ground (a Toksvig-style roughness lift for minified normals) belongs with
-  physically based lighting, which takes the same roughness value.
+  resolve the grass to rock shoulder the same way, once a game asks for it
+  ([#1805](https://github.com/APKiwiOrg/KhaozEngine/issues/1805)).
+- Specular anti-aliasing for normal-mapped ground (a Toksvig-style roughness lift for minified normals) belongs in
+  the shared roughness path, which physically based lighting takes too
+  ([#1804](https://github.com/APKiwiOrg/KhaozEngine/issues/1804)).

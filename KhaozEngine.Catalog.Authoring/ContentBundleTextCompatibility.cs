@@ -55,7 +55,7 @@ internal static class ContentBundleTextCompatibility
     }
 
     /// <summary>
-    /// Refuses a companion import while an open draft holds any work, rows, text intents or language
+    /// Refuses a bundle import while an open draft holds any work, rows, text intents or language
     /// introductions, because the import's own draft would merge with it and publish or drop work the operator
     /// never reviewed as part of the seed. It runs before an import resets or stages anything.
     /// </summary>

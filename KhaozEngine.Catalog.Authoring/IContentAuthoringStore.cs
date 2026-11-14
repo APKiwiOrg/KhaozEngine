@@ -460,6 +460,8 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     /// <summary>
     /// Imports a whole bundle into an EMPTY database, publishing it as version 1. Empty means the version
     /// table holds no rows, and a non-empty database is refused with nothing written.
+    /// An open draft holding any row, text or language work refuses with <see cref="ContentAuthoringRefusal.DraftOpen"/>
+    /// before staging, leaving the draft unchanged. An open draft without work does not block.
     /// <para>
     /// This route is ROW-ONLY, so it imports format 1 bundles only. A text-bearing bundle, or a later format
     /// that lost its text section, is refused before anything is staged, and imports through
@@ -471,7 +473,7 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     /// <param name="operatorId">The identity the console forwarded.</param>
     /// <param name="note">The operator's note.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
-    /// <exception cref="ContentAuthoringException">The database already holds a published version.</exception>
+    /// <exception cref="ContentAuthoringException">The database already holds a published version or the open draft holds work.</exception>
     Task<ContentPublishResult> ImportBundleAsync(
         ContentBundle bundle,
         string actor,

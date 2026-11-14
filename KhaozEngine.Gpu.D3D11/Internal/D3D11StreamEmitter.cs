@@ -53,11 +53,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => _stream.Append(new D3D11Op(D3D11OpCode.SetPipeline, _stream.AddReference(pipeline)));
 
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
-            => _stream.Append(new D3D11Op(D3D11OpCode.SetGraphicsResourceSet, _stream.AddReference(set), a0: slot));
+        {
+            D3D11BindFlush.RequireOffsetCarried(slot, set, 0);
+            _stream.Append(new D3D11Op(D3D11OpCode.SetGraphicsResourceSet, _stream.AddReference(set), a0: slot));
+        }
 
         /// <summary>The offset is checked HERE, before the op is appended, so a nonzero offset no layout element
-        /// carries is refused at the seam call as Metal and Vulkan refuse it, not from <c>Submit</c> after the
-        /// list's earlier ops reached the device. See <see cref="D3D11BindFlush.RequireOffsetCarried"/>.</summary>
+        /// carries, a misaligned offset or an out-of-segment window is refused at the seam call, before
+        /// <c>Submit</c> reaches the device. See <see cref="D3D11BindFlush.RequireOffsetCarried"/>.</summary>
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
         {
             D3D11BindFlush.RequireOffsetCarried(slot, set, dynamicOffset);
@@ -174,7 +177,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => _stream.Append(new D3D11Op(D3D11OpCode.SetComputePipeline, _stream.AddReference(pipeline)));
 
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
-            => _stream.Append(new D3D11Op(D3D11OpCode.SetComputeResourceSet, _stream.AddReference(set), a0: slot));
+        {
+            D3D11BindFlush.RequireOffsetCarried(slot, set, 0);
+            _stream.Append(new D3D11Op(D3D11OpCode.SetComputeResourceSet, _stream.AddReference(set), a0: slot));
+        }
 
         /// <inheritdoc cref="SetGraphicsResourceSet(uint, IGpuResourceSet, uint)"/>
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)

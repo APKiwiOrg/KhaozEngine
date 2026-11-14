@@ -14,10 +14,14 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class MetalFramesInFlightTests
     {
-        [Fact]
-        public void UnsetTakesTheDefault()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void UnsetTakesTheDefault(bool presenting)
         {
-            Assert.Equal(MetalFramesInFlight.Default, MetalFramesInFlight.Resolve(null, out string? unrecognized));
+            // #1549: a presenting device and a headless device share the default, not the whole range.
+            Assert.Equal(MetalFramesInFlight.Default,
+                MetalFramesInFlight.Resolve(null, out string? unrecognized, presenting));
             Assert.Null(unrecognized);
         }
 
@@ -33,14 +37,16 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [InlineData("1", 1)]
-        [InlineData("2", 2)]
-        [InlineData("3", 3)]
-        [InlineData("  4  ", 4)]
-        [InlineData("16", 16)]
-        public void AWholeNumberInRangeIsTaken(string value, int expected)
+        [InlineData("1", 1, false)]
+        [InlineData("2", 2, false)]
+        [InlineData("3", 3, false)]
+        [InlineData("  4  ", 4, false)]
+        [InlineData("16", 16, false)]
+        [InlineData("2", 2, true)]
+        [InlineData("  3  ", 3, true)]
+        public void AWholeNumberInRangeIsTaken(string value, int expected, bool presenting)
         {
-            Assert.Equal(expected, MetalFramesInFlight.Resolve(value, out string? unrecognized));
+            Assert.Equal(expected, MetalFramesInFlight.Resolve(value, out string? unrecognized, presenting));
             Assert.Null(unrecognized);
         }
 
@@ -59,18 +65,53 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [InlineData("0")]
-        [InlineData("-1")]
-        [InlineData("17")]
-        [InlineData("three")]
-        [InlineData("3.5")]
-        public void OutOfRangeAndUnparseableBothWarnAndKeepTheDefault(string value)
+        [InlineData("0", false)]
+        [InlineData("-1", false)]
+        [InlineData("17", false)]
+        [InlineData("three", false)]
+        [InlineData("3.5", false)]
+        [InlineData("0", true)]
+        [InlineData("1", true)]
+        [InlineData("4", true)]
+        [InlineData("16", true)]
+        [InlineData("three", true)]
+        public void OutOfRangeAndUnparseableBothWarnAndKeepTheDefault(string value, bool presenting)
         {
-            Assert.Equal(MetalFramesInFlight.Default, MetalFramesInFlight.Resolve(value, out string? unrecognized));
+            // #1549: unsupported drawable counts are unrecognized overrides, never clamped.
+            Assert.Equal(MetalFramesInFlight.Default,
+                MetalFramesInFlight.Resolve(value, out string? unrecognized, presenting));
 
             // Verbatim, because the warning quotes what was actually set: a capture taken at the default after a
             // mistype reads as evidence about the value the tester THOUGHT they set otherwise.
             Assert.Equal(value, unrecognized);
+        }
+
+        [Theory]
+        [InlineData(1, false)]
+        [InlineData(16, false)]
+        [InlineData(2, true)]
+        [InlineData(3, true)]
+        public void ProgrammaticDepthUsesTheDeviceRangeAndOverridesTheEnvironment(int frames, bool presenting)
+        {
+            // #1549: settings and environment values use the same range, with explicit settings taking priority.
+            Assert.Equal(frames, MetalFramesInFlight.ResolveForDevice(frames, "bad", presenting,
+                out string? unrecognized));
+            Assert.Null(unrecognized);
+        }
+
+        [Theory]
+        [InlineData(0, false)]
+        [InlineData(17, false)]
+        [InlineData(1, true)]
+        [InlineData(4, true)]
+        [InlineData(16, true)]
+        public void UnsupportedProgrammaticDepthIsRefused(int frames, bool presenting)
+        {
+            // #1549: an explicit unsupported setting must fail before a native layer can see it.
+            var error = Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+                MetalFramesInFlight.ResolveForDevice(frames, "2", presenting, out _));
+            Assert.Equal("FramesInFlight", error.ParamName);
+            Assert.Equal(frames, error.ActualValue);
         }
 
         [Fact]

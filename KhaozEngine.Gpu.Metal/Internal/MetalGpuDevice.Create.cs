@@ -151,10 +151,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // backpressure counter was measured against rather than resting on the tester believing they set
                 // the variable. The uniform ring's segments and each list's staging arena slots are cut to it,
                 // and row 15 reads it for maximumDrawableCount.
-                string? unrecognizedFrames = null;
-                int framesInFlight = settings?.FramesInFlight ?? MetalFramesInFlight.FromEnvironment(out unrecognizedFrames);
+                int framesInFlight = MetalFramesInFlight.FromEnvironment(out string? unrecognizedFrames,
+                    presenting: host.HasValue, settings?.FramesInFlight);
                 if (unrecognizedFrames is not null)
-                    log.Warn(MetalFramesInFlight.UnrecognizedWarning(unrecognizedFrames));
+                    log.Warn(MetalFramesInFlight.UnrecognizedWarning(unrecognizedFrames, presenting: host.HasValue));
                 log.Info(MetalFramesInFlight.ActiveDescription(framesInFlight));
 
                 // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created before anything can submit. Row 5 built
@@ -207,7 +207,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // has to unwind the queue, the timeline and the completion registration exactly as any other
                 // failure here does. The layer itself is the CALLER's to release on this path, which is what
                 // CreateForWindow's own catch does, because ownership of it transfers to the api this builds.
-                if (host is { } resolved) created.AttachSwapchain(resolved, syncToVerticalBlank, framesInFlight);
+                if (host is { } resolved) created.AttachSwapchain(resolved, syncToVerticalBlank);
 
                 // No threading probe and no threading failure. That pair exists because the GPU package holds
                 // no device object of its own for D3D11ThreadingProbe to read a raw Direct3D 11 pointer

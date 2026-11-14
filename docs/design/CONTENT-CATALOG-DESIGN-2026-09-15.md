@@ -3486,6 +3486,13 @@ database backup, and section 10.9's last paragraph says what is.
 imports a whole bundle into an empty database only"). Empty means `catalog_version` has no rows. A non-empty
 database gets a 409 with `{ "error": "catalog is not empty", "activeVersion": 48 }` and no partial write.
 
+An empty database can still hold an open draft. Both row-only and text imports refuse any pending row edit,
+text intent or language introduction with `ContentAuthoringRefusal.DraftOpen` and reason `draft-open` before
+staging. The refusal carries `MemberName`, `RowEditCount`, `TextEditCount` and `LanguageIntroductionCount`.
+`catalog-import` maps it to 409 with a remedy to publish or discard first. The draft stays unchanged, so the
+seed cannot publish unreviewed operator work or discard it during a failed import's reset. An open draft
+with no work does not block.
+
 That single rule is the answer to the reference consumer's entire seeding class of defects, and it is worth naming them
 because the rule looks unhelpfully strict until they are on the page:
 

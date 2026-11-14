@@ -923,6 +923,15 @@ Its immediate and default deferred drivers refuse at the draw call, with no draw
 `Begin` resets the recorded target, so every recording binds its own framebuffer
 ([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
 
+D3D11 constant-buffer binds also share Metal and Vulkan's `GpuDynamicBindingRangeException` refusals.
+`OffsetMisaligned` reports a composed offset off D3D11's required 256-byte boundary. `WindowOutsideSegment`
+reports `rangeOffset + appliedDynamicOffset + rangeBytes > segmentStride`, checked before alignment.
+Both carry `Set`, `Binding`, `RangeOffset`, `DynamicOffset`, `RangeBytes` and the ring's `SegmentStride` when
+present. Alignment also carries `ComposedOffset`, `RingBase` and `AlignmentBytes`. Immediate recording,
+default deferred recording and headless tracing share the check at the resource-set bind call, before a
+record changes or an op is appended. An aligned window ending exactly at the segment end is accepted
+([#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689)).
+
 `KE_GPU_TESTS` accepts two values. `1` is strict (CI and the dev Mac): tests run, and a device-creation
 failure is a test error, never a skip, so CI cannot go green with zero GPU coverage. `probe` is for
 arbitrary machines: a one-per-process headless device probe runs the tests when a device exists and

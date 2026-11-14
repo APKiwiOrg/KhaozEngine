@@ -34,10 +34,18 @@ namespace KhaozEngine.Tests.Gpu
         /// incumbent's: a drawable acquired before the pixel format was written would be the wrong format, and the
         /// layer reports no error for it.
         /// </summary>
-        [Fact]
-        public void ConstructionConfiguresTheLayerWithoutTakingADrawable()
+        [Theory]
+        [InlineData(null, FramesInFlight)]
+        [InlineData("1", FramesInFlight)]
+        [InlineData("2", 2)]
+        [InlineData("3", 3)]
+        [InlineData("4", FramesInFlight)]
+        [InlineData("16", FramesInFlight)]
+        public void ConstructionConfiguresTheLayerWithoutTakingADrawable(string? overrideValue, int expectedDepth)
         {
-            Harness h = Harness.Windowed(scriptDrawables: 1);
+            // #1549: the depth resolved for a presenting device is forwarded without diverging from its ring.
+            int depth = MetalFramesInFlight.ResolveForDevice(null, overrideValue, presenting: true, out _);
+            Harness h = Harness.Windowed(scriptDrawables: 1, framesInFlight: depth);
 
             Assert.Equal(new MetalDrawableSize(1280u, 720u), h.Api.ConfiguredSize);
             Assert.False(h.Api.ConfiguredSrgb);
@@ -45,9 +53,27 @@ namespace KhaozEngine.Tests.Gpu
 
             // M-W4: the drawable queue and the uniform ring are ONE number, and this is the consumer of
             // KE_METAL_FRAMES_IN_FLIGHT that was not live until row 15.
-            Assert.Equal(FramesInFlight, h.Api.ConfiguredMaximumDrawableCount);
+            Assert.Equal(expectedDepth, h.Api.ConfiguredMaximumDrawableCount);
 
             Assert.Equal(new[] { "configure" }, h.Api.Log);
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(4)]
+        [InlineData(16)]
+        public void UnsupportedDrawableDepthIsRefusedBeforeLayerConfiguration(int framesInFlight)
+        {
+            // #1549: even a caller bypassing device resolution cannot configure an unsupported drawable count.
+            var api = new FakeMetalSwapchainApi();
+            var error = Assert.Throws<ArgumentOutOfRangeException>(() => new MetalPresentBoundary(api,
+                new FakeMetalOrphanTarget(), new MetalUncommittedBuffers(framesInFlight), new WaitAccumulator(),
+                new object(), () => { }, () => { }, new MetalDrawableSize(1280u, 720u),
+                MetalSwapchainPolicy.ColourSrgbRequested, true, framesInFlight));
+
+            Assert.Equal("maximumDrawableCount", error.ParamName);
+            Assert.Equal(framesInFlight, error.ActualValue);
+            Assert.Equal(default, api.ConfiguredSize);
         }
 
         /// <summary>
@@ -601,11 +627,11 @@ namespace KhaozEngine.Tests.Gpu
                 => ((IMetalBoundFramebufferSource)Boundary.Framebuffer).AsBound;
 
             internal static Harness Windowed(int scriptDrawables, MetalDrawableSize? size = null,
-                bool syncToVerticalBlank = true)
+                bool syncToVerticalBlank = true, int framesInFlight = FramesInFlight)
             {
                 var api = new FakeMetalSwapchainApi();
                 var orphan = new FakeMetalOrphanTarget(api.Log);
-                var uncommitted = new MetalUncommittedBuffers(FramesInFlight, new RecordingLogger());
+                var uncommitted = new MetalUncommittedBuffers(framesInFlight, new RecordingLogger());
                 var logger = new RecordingLogger();
 
                 for (int i = 0; i < scriptDrawables; i++) api.ScriptDrawable();
@@ -624,7 +650,7 @@ namespace KhaozEngine.Tests.Gpu
                 harness.Boundary = new MetalPresentBoundary(api, orphan, uncommitted, new WaitAccumulator(),
                     harness.SubmitLock, harness.Drain, () => api.Note("capture"),
                     size ?? new MetalDrawableSize(1280u, 720u), MetalSwapchainPolicy.ColourSrgbRequested,
-                    syncToVerticalBlank, FramesInFlight, logger);
+                    syncToVerticalBlank, framesInFlight, logger);
 
                 return harness;
             }

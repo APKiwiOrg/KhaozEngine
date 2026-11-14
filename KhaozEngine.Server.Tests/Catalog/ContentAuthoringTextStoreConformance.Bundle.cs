@@ -100,6 +100,7 @@ public abstract partial class ContentAuthoringTextStoreConformance
     [Fact]
     public virtual async Task Text17_ARowOnlyImportOverADraftHoldingTextIsRefusedBeforeStaging()
     {
+        // #1251: row-only imports use the same pending-work refusal for rows, text and introductions.
         IContentTextAuthoringStore store = await OpenAsync();
         await ApplyAsync(store, new[] { Add("stone_sword") }, Set("stone_sword", NameField, "en", "Stone Sword"));
         ContentDraft held = (await store.GetOpenDraftAsync())!;
@@ -109,7 +110,12 @@ public abstract partial class ContentAuthoringTextStoreConformance
         var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.ImportBundleAsync(RowSeed(), Actor, Operator, "import"));
 
-        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, refused.Reason);
+        Assert.Equal(ContentAuthoringException.DraftOpenReason, refused.Reason);
+        Assert.Equal(ContentAuthoringRefusal.DraftOpen, refused.Refusal);
+        Assert.Equal(nameof(IContentAuthoringStore.ImportBundleAsync), refused.MemberName);
+        Assert.Equal(held.EditCount, refused.RowEditCount);
+        Assert.Equal(held.TextEditCount, refused.TextEditCount);
+        Assert.Equal(held.LanguageIntroductionCount, refused.LanguageIntroductionCount);
         Assert.Empty(await store.ListVersionsAsync());
         Assert.Empty(await store.ListFamiliesAsync(default));
         Assert.Equal(mark, await ((IContentIdPersistence)store).ReadHighWaterAsync(Item));
@@ -121,19 +127,6 @@ public abstract partial class ContentAuthoringTextStoreConformance
         Assert.Equal("stone_sword", Assert.Single(after.Changes.Edits).Key.ToString());
         Assert.Equal("Stone Sword", Assert.Single(after.TextState!.Edits).Value);
         Assert.Equal("en", Assert.Single(after.TextState.Introductions).Language);
-    }
-
-    [Fact]
-    public virtual async Task Text18_ARowOnlyImportOverADraftHoldingOnlyRowsIsNotATextRefusal()
-    {
-        IContentTextAuthoringStore store = await OpenAsync();
-        await store.ApplyEditsAsync(new[] { Add("axe") }, Actor, Operator, "rows");
-
-        // Only the text refusal is pinned here. What the import does with the draft's pending rows is #1251.
-        ContentPublishResult imported = await store.ImportBundleAsync(RowSeed(), Actor, Operator, "import");
-
-        Assert.Equal(1, imported.VersionNumber);
-        Assert.Equal(3, (await store.ListRowsAsync(Item, 1, "sword", true, 0, 1)).Rows.Single().Id);
     }
 
     /// <summary>Every object the store's pack target actually holds.</summary>

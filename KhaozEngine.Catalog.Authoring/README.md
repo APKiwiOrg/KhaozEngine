@@ -1216,7 +1216,10 @@ OPTIONAL: named, it is imported with it, unnamed, it is allocated in row order.
 Import works into an EMPTY database only. That single rule is the answer to a whole class of seeding defect,
 where a seed that runs repeatedly against live data either reverts an operator's value on the next deploy or
 is beaten forever by a stored row. A deployed database's values change through an edit and a publish and
-through nothing else.
+through nothing else. Both `ImportBundleAsync` and `ImportTextBundleAsync` also refuse an open draft holding
+any row, text or language work before staging, with `Refusal` `DraftOpen`, `Reason` `draft-open`, the importing
+`MemberName`, `RowEditCount`, `TextEditCount` and `LanguageIntroductionCount`. The draft stays unchanged.
+An open draft with no work does not block an import.
 
 A lossless export is NOT a backup, and the difference is the version LINE. An import republishes at version
 1, so the new database's history starts there. A durable page carries the version number it was stamped
@@ -1494,8 +1497,9 @@ holds:
 - `DiscardDraftAsync` refuses a draft holding text intents or introductions.
 - `RollbackToAsync` refuses when the current or the target version holds a value or a language, or has no
   complete text record.
-- `ImportBundleAsync` refuses a bundle carrying a text section or any format other than 1. It also refuses
-  before anything is staged when the open draft holds text intents or introductions.
+- `ImportBundleAsync` refuses a bundle carrying a text section or any format other than 1 with
+  `text-unrepresented`. Any pending draft work instead refuses with `DraftOpen` and `draft-open`, as on the
+  companion import, before anything is staged.
 - `ContentPublishCommit.WriteAsync` refuses the row half of a text plan and a plan naming a text chunk the pack
   store does not already hold.
 
@@ -1509,7 +1513,7 @@ The legacy `Reason`, `Type` and `Id` values stay unchanged. A text target checke
 | Refusal | What it refuses | Identifiers |
 |---|---|---|
 | `BundleTextSectionMissing` | Reading or writing format 2 after its text section was dropped | `ActualFormatVersion` |
-| `DraftOpen` | Companion import while an open draft holds work | `MemberName`, `RowEditCount`, `TextEditCount`, `LanguageIntroductionCount` |
+| `DraftOpen` | Row-only or companion import while an open draft holds work | `MemberName`, `RowEditCount`, `TextEditCount`, `LanguageIntroductionCount` |
 | `BundleTextRowUnknown` | A text target naming no row the bundle carries | `Type`, `Id` 0, `RowKey`, `FieldName`, `Language`, zero-based value `Index` |
 | `TextExportRowUnknown` | A text revision whose row is not live in the exported version | `TextRowType`, `TextRowId`, `FieldName`, `Language`, `VersionNumber`, `MemberName` |
 | `TypeUnknown` | An unregistered text target type | `Type`, `Id` 0 |
@@ -1541,7 +1545,7 @@ planning confirms the companion exists.
 | `text-operation-unavailable` | Text input reached a store that implements only `IContentAuthoringStore` |
 | `text-provenance-unknown` | A version has no complete text record and no read-only proof that it held none |
 | `text-chunk-mismatch` | A plan's or a rebuild's chunk hash does not regenerate from its values |
-| `draft-open` | A text import found an open draft holding work |
+| `draft-open` | A row-only or text import found an open draft holding work |
 | `bundle-format` | A bundle declares an unread format, or format 2 lost its text section |
 
 ## Rules this package will not bend

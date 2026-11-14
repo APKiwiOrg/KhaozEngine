@@ -286,7 +286,7 @@ public enum ContentAuthoringRefusal
 
     // Text route admission and exact-version export.
 
-    /// <summary>Refuses a companion import while a draft holds work. Carries <c>MemberName</c>,
+    /// <summary>Refuses a row-only or companion import while a draft holds work. Carries <c>MemberName</c>,
     /// <c>RowEditCount</c>, <c>TextEditCount</c> and <c>LanguageIntroductionCount</c>.</summary>
     DraftOpen,
 

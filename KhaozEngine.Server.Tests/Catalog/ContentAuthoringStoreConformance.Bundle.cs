@@ -49,6 +49,69 @@ public abstract partial class ContentAuthoringStoreConformance
         Assert.True(next > 41, FormattableString.Invariant($"The next plain id was {next}, which is at or under a carried id."));
     }
 
+    /// <summary>An open draft without work does not prevent an otherwise valid seed.</summary>
+    [Fact]
+    public virtual async Task AnImportOverAnOpenEmptyDraftSucceeds()
+    {
+        // #1251: the guard is pending work, not the existence of a draft.
+        IContentAuthoringStore store = await ResetToEmptyAsync();
+        ContentDraft draft = await store.ApplyEditsAsync([], CatalogFixtures.Actor, CatalogFixtures.Operator, "empty");
+        Assert.Equal(0, draft.TotalWorkCount);
+        Assert.NotNull(await store.GetOpenDraftAsync());
+
+        ContentPublishResult imported = await store.ImportBundleAsync(
+            SeedBundle(FamilyKey), CatalogFixtures.Actor, CatalogFixtures.Operator, "seed");
+
+        Assert.Equal(1, imported.VersionNumber);
+        Assert.Equal(new[] { 40, 41 }, Ids(await RowsAsync(store, includeRetired: true)));
+        Assert.Null(await store.GetOpenDraftAsync());
+    }
+
+    /// <summary>An import cannot publish or discard the operator's pending rows as part of its seed.</summary>
+    [Fact]
+    public virtual async Task AnImportOverADraftHoldingWorkIsRefusedBeforeStaging()
+    {
+        // #1251: a version-empty catalog can still hold unpublished operator work.
+        IContentAuthoringStore store = await ResetToEmptyAsync();
+        ContentDraft before = await store.ApplyEditsAsync(
+            [ContentEdit.Add(Thing, new ContentKey("axe"), CatalogFixtures.Fields(11))],
+            CatalogFixtures.Actor, CatalogFixtures.Operator, "pending");
+        ContentIdHighWater mark = await Ids(store).ReadHighWaterAsync(Thing);
+        int audits = (await store.ListAuditAsync(default, 0, 0, 100)).Count;
+
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.ImportBundleAsync(SeedBundle(FamilyKey), CatalogFixtures.Actor, CatalogFixtures.Operator, "seed"));
+
+        Assert.Equal(ContentAuthoringRefusal.DraftOpen, refused.Refusal);
+        Assert.Equal(ContentAuthoringException.DraftOpenReason, refused.Reason);
+        Assert.Equal(nameof(IContentAuthoringStore.ImportBundleAsync), refused.MemberName);
+        Assert.Equal(before.EditCount, refused.RowEditCount);
+        Assert.Equal(before.TextEditCount, refused.TextEditCount);
+        Assert.Equal(before.LanguageIntroductionCount, refused.LanguageIntroductionCount);
+        ContentDraft after = await DraftAsync(store);
+        Assert.Equal((before.BaseVersion, before.FrozenForBaseVersion, before.OpenedBy, before.OpenedAtUtc, before.Note),
+            (after.BaseVersion, after.FrozenForBaseVersion, after.OpenedBy, after.OpenedAtUtc, after.Note));
+        ContentEdit pending = Assert.Single(after.Changes.Edits);
+        Assert.Equal("axe", pending.Key.ToString());
+        Assert.Equal(ContentEditOperation.Add, pending.Operation);
+        Assert.Equal(11, pending.Fields[0].Value.Number);
+        Assert.Equal(0, await store.GetActiveVersionAsync());
+        Assert.Empty(await store.ListVersionsAsync());
+        Assert.Empty(await store.ListFamiliesAsync(default));
+        Assert.Empty(await RulesAsync(store));
+        Assert.Equal(mark, await Ids(store).ReadHighWaterAsync(Thing));
+        Assert.Equal(audits, (await store.ListAuditAsync(default, 0, 0, 100)).Count);
+        await foreach (string hash in ((IPackStorePruning)PackOf(store)).EnumerateAsync())
+        {
+            Assert.Fail("A refused import must not write a pack object: " + hash);
+        }
+
+        // Removing only the pending work makes the same bundle admissible.
+        await store.DiscardDraftAsync(CatalogFixtures.Actor, CatalogFixtures.Operator);
+        Assert.Equal(1, (await store.ImportBundleAsync(
+            SeedBundle(FamilyKey), CatalogFixtures.Actor, CatalogFixtures.Operator, "seed")).VersionNumber);
+    }
+
     /// <summary>
     /// FACT 19. An import into a NON-EMPTY database is refused with nothing written. That one rule is the
     /// answer to a whole class of seeding defect: a seed that runs repeatedly against live data either reverts

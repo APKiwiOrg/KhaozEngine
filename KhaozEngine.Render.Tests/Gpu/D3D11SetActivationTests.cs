@@ -237,12 +237,12 @@ namespace KhaozEngine.Tests.Gpu
             D3D11NativeTraceEmitter emitter = harness.Emitter;
 
             emitter.SetPipeline(D3D11BindFixtures.Pipeline(layout));
-            emitter.SetGraphicsResourceSet(0, set, 128);
+            emitter.SetGraphicsResourceSet(0, set, 256);
             harness.Log.Reset();
             emitter.Draw(3, 1, 0, 0);
 
-            // Segment zero: base 0, plus the 128-byte dynamic offset, is constant 8.
-            Assert.Equal(new[] { $"VSSetConstantBuffers1(0,1,{harness.Log.Id(buffer)}@8+16)" }, harness.BindTrace());
+            // Segment zero: base 0, plus the 256-byte dynamic offset, is constant 16. #1689.
+            Assert.Equal(new[] { $"VSSetConstantBuffers1(0,1,{harness.Log.Id(buffer)}@16+16)" }, harness.BindTrace());
 
             // The next frame, which is the next replay: the segment rolls and the recording opens again.
             rings.Allocator.BeginFrame();
@@ -250,13 +250,13 @@ namespace KhaozEngine.Tests.Gpu
             emitter.Begin();
             emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(D3D11BindFixtures.Pipeline(layout));
-            emitter.SetGraphicsResourceSet(0, set, 128);
+            emitter.SetGraphicsResourceSet(0, set, 256);
             harness.Log.Reset();
             emitter.Draw(3, 1, 0, 0);
 
             // Segment one starts 512 bytes in, which is constant 32, so the SAME set at the SAME dynamic offset
-            // is now constant 40. Nothing about the set changed, which is decision U3 holding.
-            Assert.Equal(new[] { $"VSSetConstantBuffers1(0,1,{harness.Log.Id(buffer)}@40+16)" }, harness.BindTrace());
+            // is now constant 48. Nothing about the set changed, which is decision U3 holding.
+            Assert.Equal(new[] { $"VSSetConstantBuffers1(0,1,{harness.Log.Id(buffer)}@48+16)" }, harness.BindTrace());
         }
 
         // ---- The !DriverCommandLists workaround (decision R7), BOTH arms -----------------------------------

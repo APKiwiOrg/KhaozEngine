@@ -137,10 +137,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="host">The resolved layer and its size. Ownership of the layer transfers to the api this
         /// creates, which releases it at teardown.</param>
         /// <param name="syncToVerticalBlank">The consumer's requested vsync, written unconditionally (M-W2).</param>
-        /// <param name="framesInFlight">MM4's depth, which becomes <c>maximumDrawableCount</c> (M-W4).</param>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void AttachSwapchain(in MetalSwapchainHost host, bool syncToVerticalBlank, int framesInFlight)
+        void AttachSwapchain(in MetalSwapchainHost host, bool syncToVerticalBlank)
         {
             _syncToVerticalBlank = syncToVerticalBlank;
 
@@ -164,7 +163,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 host.Size,
                 MetalSwapchainPolicy.ColourSrgbRequested,
                 syncToVerticalBlank,
-                framesInFlight);
+                _rings.FramesInFlight);
         }
 
         // M-W5's ORPHAN TARGET, created through this device's own resource path so it is an ordinary Private

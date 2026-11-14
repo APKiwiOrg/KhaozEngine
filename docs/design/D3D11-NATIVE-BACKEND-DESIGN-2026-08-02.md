@@ -453,6 +453,16 @@ Every `UniformBuffer`-usage buffer is allocated as `size * FramesInFlight` with 
   `numConstants = roundUp16(size) / 16` and claimed every real engine stride was already 256-aligned. That was
   false, and it was the defect: the model frame UBO binds 1008 bytes, the splat combined UBO 1120 and the palette
   buffer 1040, none of them 256-aligned. The premise shipped the silent drop that the first WARP run caught.)
+- Before recording the bind, `D3D11DynamicBindingRange` checks
+  `rangeOffset + appliedDynamicOffset + rangeBytes <= segmentStride` for a ring-backed buffer, then checks
+  `(frameBase + rangeOffset + appliedDynamicOffset) % 256 == 0`. The applied offset is zero for an element
+  not declared dynamic. The fixed 256-byte boundary is D3D11's native requirement, while Metal checks its
+  device minimum and Vulkan uses the greater of 256 and its device minimum. The shared admission path serves
+  the immediate device emitter, headless trace emitter and default deferred encoder at the resource-set bind
+  call. It raises `GpuDynamicBindingRangeException` with `WindowOutsideSegment` or `OffsetMisaligned` before
+  changing a pending record or appending an op. The refusal carries the set and layout element, range offset,
+  applied dynamic offset, range length and ring stride. Alignment also carries the composed offset, ring base
+  and required alignment. Exact-end windows remain legal ([#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689)).
 - The ring is mapped lazily on the first write of a record phase with `MAP_WRITE_NO_OVERWRITE` and unmapped at
   the start of the next `Submit`. Two native calls per ring per submit, which is the floor.
 - Frame N uses segment `N % FramesInFlight`. Before handing out a segment the allocator checks the fence of

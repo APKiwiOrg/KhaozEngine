@@ -347,6 +347,12 @@ The rest of the schedule, since each clause carries its own weight:
   Every driver refuses at the bind call. The immediate driver reaches the check through the record, and the
   deferred driver runs the same check in its op encoder before it appends the op, so a refused bind never reaches
   the replay inside `Submit`, where the list's earlier commands would already have reached the device.
+- Every composed constant-buffer offset must be a multiple of 256 bytes, the 16-constant boundary required by
+  `*SetConstantBuffers1`. A ring-backed window must also satisfy
+  `rangeOffset + appliedDynamicOffset + rangeBytes <= segmentStride`. The window check runs first, followed by
+  alignment of `ringBase + rangeOffset + appliedDynamicOffset`. Both drivers check at the bind call through the
+  same validator used by the device and headless trace emitters, before changing a record or appending an op.
+  Zero offsets and windows ending exactly at the segment boundary are accepted when the composed offset is aligned.
 - A slot whose recorded set has gone null is skipped rather than unbound, and a slot goes clean only once its
   activation has landed, so a refused bind throws again on the next draw rather than once and then silently.
 - Repeated marks on one slot between two draws collapse to one flush, and the flush owes the greater of them: an
@@ -1545,9 +1551,15 @@ A nonzero dynamic offset on a set whose layout declares no dynamic uniform buffe
 `Backend = Direct3D11Native`, `Set` and `DynamicOffset`, as Metal and Vulkan do. A set from another backend
 bound with an offset still reports `GpuResourceOwnershipRefusal.ForeignBackend` at the flush.
 
-D3D11 currently accepts dynamic offset alignment and segment-window inputs that Metal and Vulkan refuse
-through `GpuDynamicBindingRangeException` with `OffsetMisaligned` or `WindowOutsideSegment`.
-The admission gap is tracked in [#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689).
+Constant-buffer binds use `GpuDynamicBindingRangeException` with
+`GpuDynamicBindingRefusal.OffsetMisaligned` for a composed offset off the fixed 256-byte D3D11 boundary, or
+`WindowOutsideSegment` for a range that crosses its ring segment. Both reasons carry `Set`, `Binding` (the
+layout element index), `RangeOffset`, `DynamicOffset`, `RangeBytes` and `SegmentStride` when ring-backed.
+Alignment refusals also carry `ComposedOffset`, `RingBase` and `AlignmentBytes`. Window refusals name
+`GpuBufferRange` in `RecoveryOperation`. The window is checked before alignment, matching Metal and Vulkan.
+The immediate and default deferred drivers refuse at `SetGraphicsResourceSet` or `SetComputeResourceSet`,
+including the zero-offset and no-offset forms. This preserves the pending record and appends no refused op
+([#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689)).
 
 A resource of the declared logical kind from another backend uses `GpuResourceOwnershipRefusal.ForeignBackend`
 in resource-set admission. A genuinely different logical kind keeps `GpuResourceSetRefusal.ResourceKindMismatch`.

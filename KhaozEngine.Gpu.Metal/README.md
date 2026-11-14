@@ -542,7 +542,7 @@ persists for the buffer's life exactly as it does on a backend where the buffer 
 current segment was a shipped defect elsewhere for one release: a load-time write reached one segment in three,
 so two frames in three bound memory nothing had ever written, with nothing thrown and nothing logged.
 
-**At `KE_METAL_FRAMES_IN_FLIGHT=1`, and only there, that call BLOCKS.** The never-blocks property comes from
+**On a headless device at `KE_METAL_FRAMES_IN_FLIGHT=1`, and only there, that call BLOCKS.** The never-blocks property comes from
 copying the current segment ungated and deferring the others, and at a depth of one there are no others: the
 ungated copy would be a CPU write into the one segment the GPU may be reading, which is the exact race the ring
 exists to close. So at the floor it waits for the submission that last read the segment before copying.
@@ -617,6 +617,12 @@ where it means two on Vulkan. All three are live as of
 [row 15](https://github.com/APKiwiOrg/KhaozEngine/issues/581), so raising the variable costs a
 256-aligned segment per uniform buffer per extra frame, plus one more drawable in the layer's queue on a
 windowed device, and nothing more. A headless device spends only the first two, having no layer.
+Presenting devices accept only 2 or 3, the counts `CAMetalLayer.maximumDrawableCount` supports, so their
+uniform ring, staging slots and drawable queue keep the same depth. Headless devices accept 1 to 16.
+Both default to 3. A nonblank environment override outside the device's range WARNs with that range and
+uses the default, without clamping. An invalid programmatic `FramesInFlight` setting throws
+`ArgumentOutOfRangeException` with `ParamName` equal to `FramesInFlight` and the setting as `ActualValue`.
+The host is known before the ring is sized, and swapchain attachment is private to device creation.
 What the queue does have is its own maximum number of UNCOMMITTED buffers, past which `commandBuffer` blocks,
 so the backend counts what it holds against that depth plus one (the separate present buffer) and warns once
 rather than discovering it as a frame-loop stall with nothing attached.
@@ -1154,8 +1160,10 @@ offers no zero-timeout probe, no semaphore form and no readiness query, so the s
 counted and timed into `GpuDeviceCounters.AcquireWaitCount` and `AcquireWaitMs` instead, one entry per acquired
 frame, including nil results. Construction and a completed present acquire no extra future drawable. Expect it to be
 non-zero under vsync: a vsync-paced frame SHOULD wait for a drawable. `maximumDrawableCount` is set to
-`KE_METAL_FRAMES_IN_FLIGHT`, so the depth of the drawable queue and the depth of the uniform ring are one
-number.
+`KE_METAL_FRAMES_IN_FLIGHT`, restricted to 2 or 3 for a presenting device, so the depth of the drawable queue
+and the depth of the uniform ring are one number. The device-free presentation boundary also refuses a
+programmatic count outside that range before configuring the layer, with `ArgumentOutOfRangeException`,
+`ParamName` equal to `maximumDrawableCount` and the rejected count as `ActualValue`.
 
 **A resize is queued and applied at the next present boundary, after a drain.** `ResizeSwapchain` stores a size
 and returns: no lock, no native call, nothing that can block, so a window callback arriving on any thread while

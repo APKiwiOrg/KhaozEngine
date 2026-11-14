@@ -74,9 +74,12 @@ public sealed class CatalogBundleActionTests : IDisposable
     /// the way out, because the import would merge that unreviewed work into the seed. The draft stays exactly
     /// as it was and nothing is published.
     /// </summary>
-    [Fact]
-    public async Task Import_IntoAnEmptyStoreWhoseOpenDraftHoldsWork_IsA409AndKeepsTheDraft()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Import_IntoAnEmptyStoreWhoseOpenDraftHoldsWork_IsA409AndKeepsTheDraft(bool rowOnly)
     {
+        // #1251: the row-only provider path must map the same pending-work refusal as the companion.
         await _harness.PublishThingsAsync("stone_sword");
         string bundle = (await _harness.OkAsync("catalog-export", null)).GetProperty("bundle").GetRawText();
         using var fresh = new CatalogActionHarness();
@@ -85,12 +88,26 @@ public sealed class CatalogBundleActionTests : IDisposable
         """);
         string before = (await fresh.OkAsync("catalog-draft", null)).GetRawText();
 
-        JsonElement body = await fresh.ConflictAsync("catalog-import", $$"""{ "bundle": {{bundle}} }""");
+        ServerAdmin admin = fresh.Admin;
+        if (rowOnly)
+        {
+            admin = CatalogActionHarness.NewSurface();
+            CatalogAdminActions.Register(admin, new RowOnlyStore(fresh.Store), fresh.Registry);
+        }
+
+        AdminActionResult result = await CatalogActionHarness.DispatchAsync(
+            admin, "catalog-import", $$"""{ "bundle": {{bundle}} }""");
+        Assert.Equal(AdminActionStatus.Conflict, result.Status);
+        JsonElement body = CatalogActionHarness.Wire(result);
 
         Assert.Equal(ContentAuthoringException.DraftOpenReason, body.GetProperty("reason").GetString());
         Assert.Contains("catalog-discard", body.GetProperty("remedy").GetString(), StringComparison.Ordinal);
         Assert.Equal(before, (await fresh.OkAsync("catalog-draft", null)).GetRawText());
         Assert.Equal(0, await fresh.Store.GetActiveVersionAsync());
+
+        await fresh.OkAsync("catalog-discard", null);
+        Assert.Equal(AdminActionStatus.Ok, (await CatalogActionHarness.DispatchAsync(
+            admin, "catalog-import", $$"""{ "bundle": {{bundle}} }""")).Status);
     }
 
     /// <summary>
@@ -429,6 +446,8 @@ public sealed class CatalogBundleActionTests : IDisposable
         Assert.True(read.Success, "the server manifest reads back.");
         return read.Manifest!.Types.SelectMany(static type => type.Chunks).First().Hash;
     }
+
+    sealed class RowOnlyStore(IContentAuthoringStore inner) : ForwardingContentAuthoringStore(inner);
 
     sealed class SweepOnlyControllable : IAdminControllable
     {

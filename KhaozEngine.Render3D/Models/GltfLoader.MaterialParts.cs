@@ -86,8 +86,11 @@ namespace KhaozEngine.Render3D
         /// InvalidDataException is sealed.</exception>
         /// <exception cref="GltfImportStateException">The glTF has no triangles or fails strict validation.</exception>
         /// <exception cref="MeshIndexStateException">A triangle index is outside its vertex domain.</exception>
-        public static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(ReadOnlyMemory<byte> glb, string identity) =>
-            TranslateModelErrors(identity, () => BuildParts(LoadModel(glb, identity), identity));
+        public static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(ReadOnlyMemory<byte> glb, string identity)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(identity);
+            return TranslateModelErrors(identity, () => BuildParts(LoadModel(glb, identity), identity));
+        }
 
         // As AppendMeshCorners, but only primitives that reference exactly <paramref name="material"/>
         // (reference-equality; a null target matches primitives with no material) contribute. Used by

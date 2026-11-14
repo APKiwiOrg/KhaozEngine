@@ -50,6 +50,9 @@ Beyond the renames above:
   diagnostic is `InnerException`. This type derives from `MalformedDataException` in Primitives because
   `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
   Callers never need a SharpGLTF exception type.
+  Truncated GLB headers or chunks, invalid JSON and wrong JSON value types carry the same refusal and original reader exception.
+  Each overload requires a nonblank `identity`. Null throws `ArgumentNullException`, and empty or whitespace
+  throws `ArgumentException`.
 
 `AttachmentPartDefinition` has two concrete kinds, `RigidAttachmentPartDefinition` and
 `SkinnedAttachmentPartDefinition`. The rigid kind keeps its existing joint and local correction.

@@ -33,8 +33,11 @@ namespace KhaozEngine.Render3D
         /// <exception cref="GltfImportStateException">The glTF fails strict validation, has no skin, exceeds
         /// the joint cap or has an influence outside the skin joint count. Reason identifies the rule.</exception>
         /// <exception cref="MeshIndexStateException">A source index or rebased index is outside its range.</exception>
-        public static SkinnedGltfMesh LoadSkinned(ReadOnlyMemory<byte> glb, string identity) =>
-            TranslateModelErrors(identity, () => BuildSkinned(LoadModel(glb, identity), identity));
+        public static SkinnedGltfMesh LoadSkinned(ReadOnlyMemory<byte> glb, string identity)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(identity);
+            return TranslateModelErrors(identity, () => BuildSkinned(LoadModel(glb, identity), identity));
+        }
 
         /// <summary>Opt-in convenience: load a rigged glb/glTF AND auto-read its first textured material's
         /// baseColor/normal/metallicRoughness textures, decoded to raw RGBA8 (no GPU). The

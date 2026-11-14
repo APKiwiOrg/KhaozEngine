@@ -1,4 +1,6 @@
 using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -187,21 +189,98 @@ public sealed class GltfSkinnedMaterialPartsTests
         fixture.Primitives[0]!["attributes"]!["NORMAL"] = normals;
         byte[] glb = fixture.Build();
         const string identity = "malformed-normal.glb";
-        Action load = overload switch
-        {
-            "rigid-parts" => () => GltfLoader.LoadPartsWithMaterials(glb, identity),
-            "skinned-parts" => () => GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity),
-            "skinned" => () => GltfLoader.LoadSkinned(glb, identity),
-            "flattened-albedo" => () => GltfLoader.LoadFlattenedAlbedo(glb, identity),
-            _ => throw new ArgumentOutOfRangeException(nameof(overload), overload, null),
-        };
-
-        GltfImportDataException error = Assert.Throws<GltfImportDataException>(load);
+        GltfImportDataException error = Assert.Throws<GltfImportDataException>(() => LoadBytes(overload, glb, identity));
 
         Assert.IsAssignableFrom<MalformedDataException>(error);
         Assert.Equal(GltfImportRefusal.MalformedModel, error.Reason);
         Assert.Equal(identity, error.Identity);
         Assert.NotNull(error.InnerException);
+    }
+
+    public static IEnumerable<object[]> MalformedByteInputs =>
+        from overload in new[] { "rigid-parts", "skinned-parts", "skinned", "flattened-albedo", "coverage-source", "covered-skinned-parts" }
+        from input in new[] { "empty", "header-cut-short", "chunk-header-cut-short", "chunk-past-end", "binary-cut-short", "invalid-json", "invalid-magic", "wrong-number-type" }
+        select new object[] { overload, input };
+
+    [Theory]
+    [MemberData(nameof(MalformedByteInputs))]
+    public void Malformed_bytes_carry_their_reason_identity_and_original_failure(string overload, string input)
+    {
+        // #1791: standard reader exceptions must have the same refusal contract as SharpGLTF failures.
+        const string identity = " caller-owned-malformed.glb ";
+        var error = Assert.Throws<GltfImportDataException>(() => LoadBytes(overload, MalformedGlb(input), identity));
+        Assert.Equal(GltfImportRefusal.MalformedModel, error.Reason);
+        Assert.Equal(identity, error.Identity);
+        Assert.NotNull(error.InnerException);
+    }
+
+    [Theory]
+    [InlineData("empty")]
+    [InlineData("header-cut-short")]
+    [InlineData("chunk-header-cut-short")]
+    [InlineData("chunk-past-end")]
+    [InlineData("binary-cut-short")]
+    [InlineData("invalid-json")]
+    [InlineData("invalid-magic")]
+    [InlineData("wrong-number-type")]
+    public void Malformed_bytes_keep_the_strict_admission_refusal(string input)
+    {
+        // #1791: the strict overload's earlier admission contract still owns invalid GLB metadata.
+        var error = Assert.Throws<GltfDecodeRefusal>(() => GltfLoader.LoadPartsWithMaterialsStrict(
+            MalformedGlb(input), "strict-malformed.glb", new GltfDecodeBudget(new())));
+        Assert.Equal(GltfDecodeStatus.Invalid, error.Status);
+    }
+
+    public static IEnumerable<object?[]> BlankIdentities =>
+        from overload in new[] { "rigid-parts", "skinned-parts", "skinned", "flattened-albedo" }
+        from identity in new[] { null, "", " \t\r\n" }
+        select new object?[] { overload, identity };
+
+    [Theory]
+    [MemberData(nameof(BlankIdentities))]
+    public void Byte_import_requires_a_nonblank_identity(string overload, string? identity)
+    {
+        // #1791: each byte overload must reject a missing diagnostic identity before decoding.
+        byte[] glb = Fixture().Build();
+        var error = Assert.ThrowsAny<ArgumentException>(() => LoadBytes(overload, glb, identity!));
+        Assert.Equal("identity", error.ParamName);
+    }
+
+    static void LoadBytes(string overload, byte[] glb, string identity)
+    {
+        switch (overload)
+        {
+            case "rigid-parts": GltfLoader.LoadPartsWithMaterials(glb, identity); break;
+            case "skinned-parts": GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity); break;
+            case "skinned": GltfLoader.LoadSkinned(glb, identity); break;
+            case "flattened-albedo": GltfLoader.LoadFlattenedAlbedo(glb, identity); break;
+            case "coverage-source": GltfLoader.LoadCoverageSource(glb, identity); break;
+            case "covered-skinned-parts": GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity, CoverageImportTests.Map(glb)); break;
+            default: throw new ArgumentOutOfRangeException(nameof(overload), overload, null);
+        }
+    }
+
+    static byte[] MalformedGlb(string input)
+    {
+        var fixture = new SkinnedAttachmentGlbFixture();
+        if (input == "wrong-number-type")
+        {
+            fixture.Accessors[0]!["count"] = "three";
+            return fixture.Build();
+        }
+        byte[] glb = fixture.Build();
+        switch (input)
+        {
+            case "empty": return Array.Empty<byte>();
+            case "header-cut-short": return glb[..8];
+            case "chunk-header-cut-short": return glb[..17];
+            case "chunk-past-end": BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(12), (uint)glb.Length); break;
+            case "binary-cut-short": return glb[..^1];
+            case "invalid-json": glb[20] = (byte)'!'; break;
+            case "invalid-magic": glb[0] = 0; break;
+            default: throw new ArgumentOutOfRangeException(nameof(input), input, null);
+        }
+        return glb;
     }
 
     [Fact]

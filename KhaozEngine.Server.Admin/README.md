@@ -318,10 +318,11 @@ The other actions read and move text completely:
 - `catalog-discard` deletes a text-bearing draft through `TryDiscardChangesAsync`. A draft that changed after
   the discard read it is a 409 under `text-state-mismatch` that deletes nothing.
 - `catalog-rollback` builds its draft through `RollbackTextToAsync`, restoring rows and strings together.
-- `catalog-import` runs `ImportTextBundleAsync`, which reads format 1 as empty text, and `catalog-export`
-  reports the bundle's `formatVersion` with its language and value counts. An import while the open draft
+- `catalog-import` runs `ImportTextBundleAsync`, which reads format 1 as empty text, or `ImportBundleAsync`
+  on a row-only provider. `catalog-export` reports the bundle's `formatVersion` with its language and value
+  counts. An import through either provider path while the open draft
   holds any row, text or language work is a 409 under `draft-open` whose `remedy` says to publish or discard
-  that draft first. Nothing is staged and the draft is unchanged.
+  that draft first. Nothing is staged and the draft is unchanged. An open draft with no work does not block.
 
 A store that implements only `IContentAuthoringStore` keeps every row-only behavior. Text input to it,
 `textEdits` or a format 2 bundle, is refused under `text-operation-unavailable` before anything is applied or

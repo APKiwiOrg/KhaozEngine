@@ -170,7 +170,9 @@ A game that ships its client content pack inside the client build cuts that pack
 pack is always content version 1. The connect door compares the version NUMBER as well as the manifest hash,
 and the number is inside the hashed manifest, so such a game cannot publish its server store forward to
 version 2. It has to REPLACE the store from its committed bundle on every content release, and
-`ImportBundleAsync` refuses a store that has published anything. `SqlServerCatalogReset` is the way back to an
+`ImportBundleAsync` refuses a store that has published anything, or an open draft holding any row, text or
+language work. Pending work reports `DraftOpen` and `draft-open` before staging and leaves the draft unchanged.
+An open draft without work does not block. `SqlServerCatalogReset` is the way back to an
 importable store.
 
 ```csharp

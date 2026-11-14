@@ -45,7 +45,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentVersionSelec
                         $"Version {held} does not exist, so it cannot be pinned."),
                     default,
                     0,
-                    ContentAuthoringException.UnknownTypeReason)
+                    ContentAuthoringException.UnknownVersionReason)
                 { VersionNumber = held };
             }
 

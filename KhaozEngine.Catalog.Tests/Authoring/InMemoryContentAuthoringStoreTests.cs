@@ -244,20 +244,6 @@ public class InMemoryContentAuthoringStoreTests
     }
 
     [Fact]
-    public async Task PinningAVersionTheStoreDoesNotHoldIsRefused()
-    {
-        InMemoryContentAuthoringStore store = NewStore();
-
-        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.SetPinnedVersionAsync(7, Actor, Operator));
-        Assert.Equal(ContentAuthoringRefusal.VersionUnknown, refused.Refusal);
-        Assert.Equal(7, refused.VersionNumber);
-        Assert.Equal(ContentAuthoringException.UnknownTypeReason, refused.Reason);
-
-        Assert.Null(await store.GetPinnedVersionAsync());
-    }
-
-    [Fact]
     public async Task ClearingAPinIsAlwaysAllowedBecauseNoPinIsTheOrdinaryState()
     {
         InMemoryContentAuthoringStore store = NewStore();

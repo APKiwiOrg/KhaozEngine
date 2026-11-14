@@ -400,9 +400,10 @@ Text apply reuses `TextBindingRowUnknown` and `TextLanguageUndeclared` with thei
 | `TransactionContended` | A SQL Server transaction refused with error 1205 or 3960 | `SqlErrorNumber` |
 
 `TextRowType` and `TextRowId` identify rows without changing the existing store-wide legacy `Type` and
-`Id` values of default and 0. Pinning an absent version retains its existing `unknown-type` legacy token
-while `Refusal` reports `VersionUnknown`. A pack reader returns a stable token rather than an exception,
-so `PackUnreadable` preserves that token without inventing an inner exception.
+`Id` values of default and 0. Pinning an absent version reports `VersionUnknown` with `VersionNumber` and
+the `unknown-version` token on every provider, matching every other unknown-version refusal. A pack reader
+returns a stable token rather than an exception, so `PackUnreadable` preserves that token without inventing
+an inner exception.
 SQLite uses the same member and identifier set for each shared rule. Its missing metadata read and stored
 type identity checks use the durable-store members above. No migration identifier is invented for a missing
 singleton. Non-null malformed scalars use `StoredScalarTypeMismatch`, carrying the expected and actual CLR

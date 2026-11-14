@@ -92,7 +92,7 @@ tag_release_window() {
   printf past-tag
 }
 
-# Parse the small XML subset that proves a test project non-packable. Project mode emits only
+# Parse the small XML subset that proves a project non-packable. Project mode emits only
 # literal imports resolved within test-shared/. Shared mode forbids further imports and admits only
 # false IsPackable properties, Compile items and AssemblyAttribute items with their safe metadata.
 # Unknown properties, items or attributes cannot acquire an exclusion by hiding in shared props.
@@ -204,20 +204,48 @@ tag_nonpackable_test_xml() {
 # false in a direct unconditional PropertyGroup. Imports must be regular tracked props files inside
 # test-shared/, proved separately by the same parser. Unsupported XML stays version-bearing.
 tag_nonpackable_test() (
-  _nt_commit=$1
   _nt_dir=${2%%/*}
   case "$_nt_dir" in KhaozEngine.*Tests) ;; *) exit 1 ;; esac
-  _nt_project=$_nt_dir/$_nt_dir.csproj
-  _nt_imports=$(git show "$_nt_commit:$_nt_project" 2>/dev/null | tag_nonpackable_test_xml 0 "$_nt_dir") || exit 1
-  printf '%s\n' "$_nt_imports" | while IFS= read -r _nt_import; do
-    [ -n "$_nt_import" ] || continue
-    git ls-tree "$_nt_commit" -- "$_nt_import" | grep -Eq "^100(644|755) blob " || exit 1
-    git show "$_nt_commit:$_nt_import" 2>/dev/null | tag_nonpackable_test_xml 1 > /dev/null || exit 1
+  tag_nonpackable_project "$1" "$_nt_dir/$_nt_dir.csproj"
+)
+
+# The same committed XML proof also applies to non-test consumers, such as the showcase icon.
+tag_nonpackable_project() (
+  _np_commit=$1; _np_project=$2
+  _np_dir=${_np_project%/*}
+  [ "$_np_dir" != "$_np_project" ] || _np_dir=.
+  _np_imports=$(git show "$_np_commit:$_np_project" 2>/dev/null | tag_nonpackable_test_xml 0 "$_np_dir") || exit 1
+  printf '%s\n' "$_np_imports" | while IFS= read -r _np_import; do
+    [ -n "$_np_import" ] || continue
+    git ls-tree "$_np_commit" -- "$_np_import" | grep -Eq "^100(644|755) blob " || exit 1
+    git show "$_np_commit:$_np_import" 2>/dev/null | tag_nonpackable_test_xml 1 > /dev/null || exit 1
+  done
+)
+
+# tag_art_assets_nonpackable <commit> -> 0 when build files have no possible package reference.
+# Scan whole committed files, not a particular XML item, attribute or path separator. Numeric XML
+# entities and MSBuild percent escapes might spell the folder without its literal token, so treat
+# them as possible references too. Binary build files (including UTF-16 XML) and read errors cannot
+# prove absence. Comments and inactive conditions may cost a refusal, never a missed package input.
+tag_art_assets_nonpackable() (
+  _aa_commit=$1
+  set -- ':(icase)*proj' ':(icase)*.props' ':(icase)*.targets'
+  _aa_all=$(git grep --no-textconv -al -e '^' "$_aa_commit" -- "$@") || [ $? -eq 1 ] || exit 1
+  _aa_text=$(git grep --no-textconv -Il -e '^' "$_aa_commit" -- "$@") || [ $? -eq 1 ] || exit 1
+  [ "$_aa_all" = "$_aa_text" ] || exit 1
+  _aa_refs=$(LC_ALL=C git grep --no-textconv -ailE 'art-assets|&#|%[[:xdigit:]]{2}|<!DOCTYPE' "$_aa_commit" -- "$@") || [ $? -eq 1 ] || exit 1
+  printf '%s\n' "$_aa_refs" | while IFS= read -r _aa_ref; do
+    [ -n "$_aa_ref" ] || continue
+    _aa_path=${_aa_ref#*:}
+    case "$_aa_path" in
+      *[pP][rR][oO][jJ]) tag_nonpackable_project "$_aa_commit" "$_aa_path" || exit 1 ;;
+      *) exit 1 ;;
+    esac
   done
 )
 
 # tag_version_bearing <from> <to> -> 0 when the range changes something that ships inside a package,
-# 1 when every change is tests, documentation, tooling or repository governance.
+# 1 when every change is tests, documentation, tooling, repository artwork or governance.
 #
 # The carve-out is not leniency, it is the contributor rule: tooling, documentation and repository
 # governance do not bump the version. Without it, every docs or hook commit landing on top of a release
@@ -235,6 +263,11 @@ tag_nonpackable_test() (
 # Test projects are also non-packable, including the rump KhaozEngine.Tests project. No packable
 # project references them. Check their declaration at both commits before excluding a path. A new
 # non-packable test project is safe, but retiring a packable or unknown project still needs a bump.
+#
+# art-assets/ holds repository branding. Its only build consumer is the non-packable showcase's
+# window icon, not a NuGet package. Prove that at both commits rather than trusting the directory:
+# a reference from any props or targets file, or a project not proved non-packable, makes artwork
+# package-bearing again. Escaped or unreadable build inputs stay conservative too.
 #
 # .gitignore and .filesize-baseline are governance in the same sense: they decide what is TRACKED and
 # how large a file may be, never what a package contains. .gitignore joined the list the third time
@@ -255,20 +288,30 @@ tag_version_bearing() {
     ':(exclude)docs/**' ':(exclude)*.md' ':(exclude)scripts/**' ':(exclude)tools/**' \
     ':(exclude).github/**' ':(exclude).githooks/**' ':(exclude).claude/**' ':(exclude).codex/**' \
     ':(exclude).filesize-baseline' ':(exclude).gitignore' 2>/dev/null | (
+      _vb_art_safe=0
       while IFS= read -r _vb_path; do
         if [ "$_vb_path" = .gitattributes ]; then
           tag_gitattributes_version_bearing "$_vb_from" "$_vb_to" && exit 0
           continue
         fi
+        case "$_vb_path" in art-assets/*)
+          [ "$_vb_art_safe" = 1 ] || tag_path_nonpackable "$_vb_from" "$_vb_to" "$_vb_path" || exit 0
+          _vb_art_safe=1
+          continue ;;
+        esac
         tag_path_nonpackable "$_vb_from" "$_vb_to" "$_vb_path" || exit 0
       done
       exit 1
     )
 }
 
-# tag_path_nonpackable <from> <to> <path> -> 0 when <path> sits in a test project that is non-packable
-# at <to>, and also at <from> when the project already existed there.
+# tag_path_nonpackable <from> <to> <path> -> 0 for artwork without package consumers at either
+# commit, or a test project non-packable at <to> and at <from> when it already existed there.
 tag_path_nonpackable() (
+  case "$3" in art-assets/*)
+    tag_art_assets_nonpackable "$1" && tag_art_assets_nonpackable "$2"
+    exit $? ;;
+  esac
   tag_nonpackable_test "$2" "$3" || exit 1
   _pn_dir=${3%%/*}
   if git cat-file -e "$1:$_pn_dir/$_pn_dir.csproj" 2>/dev/null; then

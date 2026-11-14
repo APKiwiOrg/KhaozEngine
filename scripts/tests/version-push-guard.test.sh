@@ -134,6 +134,59 @@ echo '{"sharp":"0.35.4"}' > tools/kit/package-lock.json
 git commit --quiet -am "deps: patch a dev tool's dependency"
 check "a dev-tool dependency bump rides a release" allowed "$(try_push main)"
 
+# Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1247.
+# Artwork is repository content while only a proved non-packable project consumes it. References
+# under tools/ deliberately bypass the ordinary package-path check, so these cases exercise the
+# artwork evidence rather than merely refusing the project edit itself.
+for art_case in artwork mixed unknown project-tip project-from props targets directory-props directory-targets casefold xml-escape msbuild-escape utf16 unknown-project dirty-safe dirty-unsafe; do
+  w=$(new_repo 1.0.0); cd "$w"
+  mkdir -p art-assets/icon KhaozEngine.Showcase tools/art-package
+  printf 'original\n' > art-assets/icon/icon.png
+  cp "$SRC/../KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" KhaozEngine.Showcase/
+  art_reference='<Project><PropertyGroup><IsPackable>true</IsPackable><PackageIcon>../art-assets/icon/icon.png</PackageIcon></PropertyGroup></Project>'
+  art_build=tools/art-package/Art.csproj
+  case "$art_case" in
+    props|dirty-unsafe) art_build=tools/art-package/art.props ;;
+    targets) art_build=tools/art-package/art.targets ;;
+    directory-props) art_build=Directory.Build.props
+      art_reference='<Project><PropertyGroup><KhaozEngineVersion>1.0.0</KhaozEngineVersion><PackageIcon>art-assets/icon/icon.png</PackageIcon></PropertyGroup></Project>' ;;
+    directory-targets) art_build=Directory.Build.targets ;;
+    casefold) art_build=tools/art-package/Art.CSPROJ
+      art_reference='<Project><ItemGroup><None Include="..\ART-ASSETS\icon\icon.png" Pack="true" /></ItemGroup></Project>' ;;
+    xml-escape) art_reference='<Project><PropertyGroup><PackageIcon>../art&#45;assets/icon/icon.png</PackageIcon></PropertyGroup></Project>' ;;
+    msbuild-escape) art_reference='<Project><PropertyGroup><PackageIcon>../art%2Dassets/icon/icon.png</PackageIcon></PropertyGroup></Project>' ;;
+    unknown-project) art_build=KhaozEngine.Showcase/KhaozEngine.Showcase.csproj
+      art_reference='<Project><PropertyGroup><PackageIcon>../art-assets/icon/icon.png</PackageIcon></PropertyGroup></Project>' ;;
+  esac
+  case "$art_case" in
+    artwork|mixed|unknown|project-tip|dirty-safe) ;;
+    *) printf '%s\n' "$art_reference" > "$art_build" ;;
+  esac
+  if [ "$art_case" = utf16 ]; then
+    printf '\377\376' > "$TMPROOT/utf16"
+    printf '%s\n' "$art_reference" | iconv -f UTF-8 -t UTF-16LE >> "$TMPROOT/utf16"
+    mv "$TMPROOT/utf16" "$art_build"
+  fi
+  git add art-assets KhaozEngine.Showcase tools/art-package Directory.Build.props
+  [ ! -f Directory.Build.targets ] || git add Directory.Build.targets
+  git commit --quiet -m "test: configure artwork consumers"
+  git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+  printf 'updated\n' > art-assets/icon/icon.png
+  case "$art_case" in
+    mixed) printf 'changed\n' >> src/Engine.cs ;;
+    unknown) printf 'unknown\n' > unclassified.bin; git add unclassified.bin ;;
+    project-tip) printf '%s\n' "$art_reference" > "$art_build"; git add "$art_build" ;;
+    project-from) git rm --quiet "$art_build" ;;
+  esac
+  git commit --quiet -am "test: update repository artwork"
+  case "$art_case" in
+    dirty-safe) printf '%s\n' "$art_reference" > src/Engine.csproj ;;
+    dirty-unsafe) printf '<Project />\n' > "$art_build" ;;
+  esac
+  case "$art_case" in artwork|dirty-safe) expected=allowed ;; *) expected=refused ;; esac
+  check "artwork with $art_case evidence is $expected" "$expected" "$(try_push main)"
+done
+
 # #1765. The distributed verifier is package content even though it stays outside the engine solution.
 w=$(new_repo 1.0.0); cd "$w"
 mkdir -p tools/Coverage.Verify
@@ -182,6 +235,8 @@ gitattributes_case "an LF pin on a non-packable test folder rides a release" all
 KhaozEngine.TileWorld.Netcode.Tests/Fixtures/*.txt text eol=lf
 '
 gitattributes_case "an anchored pin on a carved-out folder rides a release" allowed '' '/docs/** text eol=lf
+'
+gitattributes_case "an LF pin on repository artwork rides a release" allowed '' 'art-assets/** text eol=lf
 '
 gitattributes_case "a comment-only attributes edit rides a release" allowed '# keep' '# keep, now explained
 '

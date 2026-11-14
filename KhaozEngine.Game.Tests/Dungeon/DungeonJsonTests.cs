@@ -144,6 +144,7 @@ namespace KhaozEngine.Tests.Dungeon
         [InlineData("layout", "floorHeightMeters", "$.floorHeightMeters")]
         [InlineData("config", "cellSizeMeters", "$.cellSizeMeters")]
         [InlineData("config", "floorHeightMeters", "$.floorHeightMeters")]
+        [InlineData("config", "ceilingHeightMeters", "$.ceilingHeightMeters")]
         public void NonFiniteSize_Throws_NamingField(string section, string member, string jsonPath)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>

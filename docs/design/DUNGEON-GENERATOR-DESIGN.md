@@ -67,7 +67,7 @@ Pure, deterministic, bounded. One `DeterministicRng` split via `CreateDerived("r
 `CreateDerived("gating")`, `CreateDerived("markers")` so tuning one subsystem does not reshuffle the
 others.
 
-**`DungeonConfig`** (validated at Generate entry): positive, finite tile cell size and floor height in meters,
+**`DungeonConfig`** (validated at Generate entry): positive, finite tile cell size, floor height and set ceiling height in meters,
 room count target, room size range in tiles, max floors, plot bounds in tiles, critical-path length
 target, loop-edge budget, lock/key pair count, boss room toggle, marker density ranges.
 

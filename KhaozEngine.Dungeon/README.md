@@ -49,9 +49,9 @@ the identifiers below name the offending member. When set, `JsonPath` is a roote
 and indices. `RootObjectRequired` and a reader failure without a path leave it null. The message is prose naming
 the same member in its own camelCase spelling, never a contract. Layout JSON preserves `CeilingMode` and the
 resolved `CeilingHeightMeters`. Older layouts without those optional fields load as `Open` with a zero ceiling
-height. Config and layout loading require positive, finite cell sizes and floor heights. Layout loading also
-rejects a negative or nonfinite persisted ceiling height before constructing the layout. Writes reject nonfinite
-floating values.
+height. Config and layout loading require positive, finite cell sizes and floor heights, and a config ceiling
+height, when set, must be positive and finite too. Layout loading also rejects a negative or nonfinite persisted
+ceiling height before constructing the layout. Writes reject nonfinite floating values.
 
 | `Reason` | What it refuses | Identifiers |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ floating values.
 | `PercentageOutsideRange` | a config `hallChancePercent` outside 0 to 100 | `JsonPath`, `ActualInteger`, `MinimumInteger` (0), `MaximumInteger` (100) |
 | `RoomMarginInsufficient` | a config `plotWidthTiles` or `plotDepthTiles` below `roomMaxTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
 | `HallMarginInsufficient` | with halls enabled, a config `plotWidthTiles` or `plotDepthTiles` below `hallMaxLengthTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
-| `NumberNonfinite` | a config or layout `cellSizeMeters` or `floorHeightMeters`, or a layout `ceilingHeightMeters`, of positive infinity, such as `1e39`. Negative infinity follows the positive-required or nonnegative-required rule first | `JsonPath`, `ActualNumber` |
+| `NumberNonfinite` | a config or layout `cellSizeMeters`, `floorHeightMeters` or `ceilingHeightMeters` of positive infinity, such as `1e39`. Negative infinity follows the positive-required or nonnegative-required rule first | `JsonPath`, `ActualNumber` |
 | `NullValue` | a JSON null for a layout section (`grid`, `rooms`, `edges`, `keys`, `markers`, `stats`), a grid floor or row, a room, edge, key or marker entry, or an edge `path` or `doors` or a marker `tags`. An absent section loads as empty | `JsonPath`, such as `$.rooms[0]` or `$.edges[2].path` |
 | `GridFloorCountMismatch` | a `grid` whose floor count is not the layout's `floors` | `JsonPath` (`$.grid`), `ActualCount`, `ExpectedCount` |
 | `GridRowCountMismatch` | a grid floor whose row count is not the layout's `depth` | `JsonPath` (`$.grid[f]`), `Floor`, `ActualCount`, `ExpectedCount` |

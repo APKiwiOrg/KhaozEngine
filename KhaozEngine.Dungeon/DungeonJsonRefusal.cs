@@ -46,9 +46,9 @@ public enum DungeonJsonRefusal
     // width, depth and floors reuse IntegerBelowMinimum and a negative ceiling height reuses
     // NonnegativeValueRequired.
 
-    /// <summary>Refuses a nonfinite config or layout cell size or floor height, or a nonfinite layout ceiling
-    /// height. Nonpositive cell sizes and floor heights, negative infinity included, use
-    /// <see cref="PositiveValueRequired"/> first. A negative ceiling height, negative infinity included, uses
+    /// <summary>Refuses a nonfinite config or layout cell size, floor height or ceiling height. Nonpositive cell
+    /// sizes, floor heights and set config ceiling heights, negative infinity included, use
+    /// <see cref="PositiveValueRequired"/> first. A negative layout ceiling height, negative infinity included, uses
     /// <see cref="NonnegativeValueRequired"/> first. Carries the rooted <see cref="DungeonJsonException.JsonPath"/>
     /// and <see cref="DungeonJsonException.ActualNumber"/>.</summary>
     NumberNonfinite,

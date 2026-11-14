@@ -37,6 +37,8 @@ namespace KhaozEngine.Tests.Dungeon
         [InlineData(nameof(DungeonConfig.HallChancePercent))]
         [InlineData(nameof(DungeonConfig.HallMinLengthTiles))]
         [InlineData(nameof(DungeonConfig.CeilingHeightMeters))]
+        [InlineData(nameof(DungeonConfig.CeilingHeightMeters), float.PositiveInfinity)]
+        [InlineData(nameof(DungeonConfig.CeilingHeightMeters), float.NaN)]
         public void Invalid_Throws_NamingProperty(string property, float size = 0f)
         {
             var config = new DungeonConfig();
@@ -50,7 +52,7 @@ namespace KhaozEngine.Tests.Dungeon
                 case nameof(DungeonConfig.CorridorMaxWidth): config.CorridorMinWidth = 4; config.CorridorMaxWidth = 3; break; // min > max
                 case nameof(DungeonConfig.HallChancePercent): config.HallChancePercent = 101; break; // > 100
                 case nameof(DungeonConfig.HallMinLengthTiles): config.HallChancePercent = 20; config.HallMinLengthTiles = 30; config.HallMaxLengthTiles = 16; break; // min > max
-                case nameof(DungeonConfig.CeilingHeightMeters): config.CeilingHeightMeters = 0f; break; // <= 0 when set
+                case nameof(DungeonConfig.CeilingHeightMeters): config.CeilingHeightMeters = size; break; // <= 0 or nonfinite when set
             }
             var ex = Assert.Throws<ArgumentException>(() => config.Validate());
             // The min-over-max rule names the minimum, the first invalid property in check order.

@@ -115,7 +115,7 @@ public sealed class DungeonConfig
     /// positive, finite cell/floor sizes, RoomMinTiles between 1 and RoomMaxTiles inclusive, positive room count, floor
     /// count and critical-path target, non-negative loop budget, lock count and marker maxima, corridor widths
     /// (at least 1, min not exceeding max), hall knobs (chance in 0..100, min length at least 1 not exceeding
-    /// max), a positive ceiling height when one is set, a plot large enough to fit the largest room plus a
+    /// max), a positive, finite ceiling height when one is set, a plot large enough to fit the largest room plus a
     /// one-tile margin on each side, and (only when halls are enabled) large enough to fit the largest hall on
     /// both axes.</summary>
     public void Validate()
@@ -253,6 +253,13 @@ public sealed class DungeonConfig
             return new(DungeonJsonRefusal.PositiveValueRequired, nameof(CeilingHeightMeters),
                 "CeilingHeightMeters must be greater than zero when set.")
             { ActualNumber = ceiling };
+        }
+
+        if (CeilingHeightMeters is float setCeiling && !float.IsFinite(setCeiling))
+        {
+            return new(DungeonJsonRefusal.NumberNonfinite, nameof(CeilingHeightMeters),
+                "CeilingHeightMeters must be finite when set.")
+            { ActualNumber = setCeiling };
         }
 
         // The margin is computed once in int arithmetic, as the comparison always was, so the reported minimum is

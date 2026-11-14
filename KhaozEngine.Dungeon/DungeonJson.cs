@@ -60,7 +60,7 @@ public sealed class DungeonJsonException : Exception
     /// <summary>The refused floating value, for <see cref="DungeonJsonRefusal.PositiveValueRequired"/> (a config or
     /// layout length, whose limit is zero, exclusive), for <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/>
     /// from the layout <c>ceilingHeightMeters</c>, and for <see cref="DungeonJsonRefusal.NumberNonfinite"/> from a
-    /// config or layout <c>cellSizeMeters</c> or <c>floorHeightMeters</c>, or a layout <c>ceilingHeightMeters</c>.</summary>
+    /// config or layout <c>cellSizeMeters</c>, <c>floorHeightMeters</c> or <c>ceilingHeightMeters</c>.</summary>
     public double? ActualNumber { get; init; }
 
     /// <summary>The inclusive minimum, for <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/> from the layout

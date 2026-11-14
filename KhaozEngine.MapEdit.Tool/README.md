@@ -74,6 +74,8 @@ Native publication uses `MapDocumentException` with these reasons. Existing diag
 | `SchemaValueRequired` | A native binding without its storage path | `DocumentId`, `Operation`, `FieldPath` `DocumentPath` |
 | `ToolStagedMutationRequired` | A native command outside a mutation or after another command was staged | `DocumentId`, `Operation`, `CommandType` |
 | `ToolNestedMutationUnsupported` | A nested native session mutation | `DocumentId`, `Operation` |
+| `ToolPublicationDuringMutationUnsupported` | Native publication or session replacement/storage/closure work while a native mutation callback is open | `DocumentId`, `Operation` |
+| `ToolMutationCandidateRequired` | Staging a native command into a document other than the current callback's detached candidate | `DocumentId`, `Operation`, `CommandType` |
 | `ToolPublishedClosureMismatch` | A staged closure different from the supplied publication closure | supplied `ExpectedHash`, staged `ActualHash`, `DocumentId`, `Operation` |
 | `ToolPublicationPathInvalid` | A rooted publication path or one escaping the resource root | submitted `Path`, `StoragePath`, `DocumentForm`, known `ResourceRoot` |
 | `AssetStoragePathReserved` | A publication path entering writer-owned map storage | submitted `Path`, `StoragePath`, `DocumentForm`, `ResourceRoot` |
@@ -132,6 +134,20 @@ outer validation and publication. Rejection leaves roots, closure, reservations,
 dirty state untouched. A genuine no-op creates no history entry or dirty transition. `PlacementRename` changes the native display label and returns the unchanged placement ID. The
 explicit service APIs `PlacementLabel` and `PlacementRemapId` distinguish label edits from stable-ID
 remapping. These are service APIs, not additional MCP registrations.
+
+A native mutation callback may stage one command into its own detached candidate. Further edits to that
+candidate, including members outside the command's write set and replaced collections, are validated and
+restaged as one complete snapshot under the command's label. Effects, undo and redo describe that final
+snapshot, so late edits cannot disappear through an unshared member. An invalid final candidate leaves the
+session unchanged. Native asset publication, undo, redo, open, create, save, window replacement, conversion,
+retile and closure binding refuse while the callback is open, before changing session state or storage.
+Native publication uses `MapDocumentException` and lifecycle work uses `MapSessionException`, both with
+`ToolPublicationDuringMutationUnsupported`, `DocumentId` and `Operation`. Staging into another document
+uses `MapDocumentException` with `ToolMutationCandidateRequired` and the known `CommandType`.
+`PrefabAssetPublisher.Publish` refuses before writing immutable prefab or manifest bytes, including when
+`updateOpenMap` is false. Collider `SetHeights` with `dryRun: false` refuses before writing collider or manifest
+bytes. These use the same publication refusal with `Operation` `Publish` or `SetHeights`. Collider dry runs
+remain available inside a callback because they only read the accepted session and write no files.
 
 The terrain path, new in 20.30.0, is also a service API. `MutationService.TerrainApply(edit)` runs the GUI's
 `TerrainEditCommand(MapTerrainEdit)` under the session lock, through the same native transaction seam. It

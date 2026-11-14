@@ -190,6 +190,167 @@ public sealed class SessionPublicationRefusalTests
     }
 
     [Theory]
+    [InlineData("assets", true)]
+    [InlineData("assets-checkpoint", true)]
+    [InlineData("undo", true)]
+    [InlineData("redo", true)]
+    [InlineData("bind", false)]
+    [InlineData("open", false)]
+    [InlineData("open-markers", false)]
+    [InlineData("create", false)]
+    [InlineData("save", false)]
+    [InlineData("window", false)]
+    [InlineData("tiled", false)]
+    [InlineData("single", false)]
+    [InlineData("retile", false)]
+    public void PublicationDuringMutation_PreservesSessionAndStorageAndAdmitsAfterCallback(string operation, bool native)
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1481
+        var fixture = PrefabFixtures.Create();
+        var session = PrefabEditorFixtures.Session(fixture);
+        string root = Path.GetDirectoryName(session.DocumentPath)!;
+        try
+        {
+            string tiled = Path.Combine(root, "tiled");
+            Directory.CreateDirectory(tiled);
+            foreach (var resource in fixture.Assets.CapturedResources)
+            {
+                string target = Path.Combine(tiled, resource.Reference.Path);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.WriteAllBytes(target, resource.Bytes.ToArray());
+            }
+            session.ConvertToTiled(tiled);
+            session.Mutate((doc, _) => { doc.DisplayName = "Accepted name"; return 0; }, false);
+            session.ExecuteNativeCommand(Move());
+            session.UndoNative();
+            Action publish = operation switch
+            {
+                "assets" => () => session.ApplyNativeAssets(Move(), fixture.Assets),
+                "assets-checkpoint" => () => session.ApplyNativeAssets(Move(), fixture.Assets, () => File.WriteAllText(Path.Combine(root, "checkpoint"), "published")),
+                "undo" => () => session.UndoNative(),
+                "redo" => () => session.RedoNative(),
+                "bind" => () => session.BindNativeAssets(fixture.Assets),
+                "open" => () => session.Open(Path.Combine(root, "other.map.json")),
+                "open-markers" => () => session.Open(Path.Combine(root, "other.map.json"), null, KhaozEngine.MapDoc.Markers.MapMarkerConsumerOptions.None),
+                "create" => () => session.Create(Path.Combine(root, "created.map.json"), "created", "Created", -8, -8, 8, 8),
+                "save" => () => session.Save(),
+                "window" => () => session.SetWindow(-32, -32, 32, 32, true),
+                "tiled" => () => session.ConvertToTiled(root),
+                "single" => () => session.ConvertToSingle(Path.Combine(root, "converted.map.json")),
+                _ => () => session.Retile(32),
+            };
+            var before = PrefabEditorFixtures.State(session);
+            long version = session.SnapshotVersion;
+            string[] files = Files(root);
+            string expectedOperation = operation switch
+            {
+                "assets" or "assets-checkpoint" => "ApplyNativeAssets", "undo" => "UndoNative", "redo" => "RedoNative",
+                "bind" => "BindNativeAssets", "open" or "open-markers" => "Open", "create" => "Create",
+                "save" => "Save", "window" => "SetWindow", "tiled" => "ConvertToTiled", "single" => "ConvertToSingle", _ => "Retile",
+            };
+            Action mutate = () => session.Mutate((doc, _) => { doc.DisplayName = "Unpublished name"; publish(); return 0; }, false);
+            if (native)
+            {
+                var error = Assert.Throws<MapDocumentException>(mutate);
+                Assert.Equal(MapDocumentRefusal.ToolPublicationDuringMutationUnsupported, error.Reason);
+                Assert.Equal(fixture.Document.Id, error.DocumentId);
+                Assert.Equal(expectedOperation, error.Operation);
+            }
+            else
+            {
+                var error = Assert.Throws<MapSessionException>(mutate);
+                Assert.Equal(MapDocumentRefusal.ToolPublicationDuringMutationUnsupported, error.Reason);
+                Assert.Equal(fixture.Document.Id, error.DocumentId);
+                Assert.Equal(expectedOperation, error.Operation);
+            }
+            Assert.Equal(before, PrefabEditorFixtures.State(session));
+            Assert.Equal(version, session.SnapshotVersion);
+            Assert.Equal(files, Files(root));
+            publish();
+            Assert.True(session.SnapshotVersion > version);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void StagedNativeCommand_RequiresTheCallbacksDetachedCandidate()
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1481
+        var session = PrefabEditorFixtures.Session(PrefabFixtures.Create());
+        try
+        {
+            var before = PrefabEditorFixtures.State(session);
+            var error = Assert.Throws<MapDocumentException>(() => session.Mutate((_, _) =>
+                session.WithDocument((live, registry) => session.ApplyNative(Move(), live, registry)), true));
+            Assert.Equal(MapDocumentRefusal.ToolMutationCandidateRequired, error.Reason);
+            Assert.Equal(session.WithDocument((doc, _) => doc.Id), error.DocumentId);
+            Assert.Equal("ApplyNative", error.Operation);
+            Assert.Equal(typeof(PrefabEditCommand), error.CommandType);
+            Assert.Equal(before, PrefabEditorFixtures.State(session));
+            session.ExecuteNativeCommand(Move());
+            Assert.NotEqual(before, PrefabEditorFixtures.State(session));
+        }
+        finally { FoliageEditorFixtures.Delete(session); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PrefabPublicationDuringMutation_RefusesBeforeWritingImmutableBytes(bool updateOpenMap)
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1481
+        var session = PrefabEditorFixtures.Session(PrefabFixtures.Create());
+        try
+        {
+            var service = new PrefabService(session);
+            var asset = service.Open("hut");
+            var marker = PrefabEditorFixtures.Marker(asset);
+            service.Edit(marker with { Value = marker.Value with { Name = "Changed" } });
+            string root = Path.GetDirectoryName(session.DocumentPath)!;
+            string[] files = Files(root);
+            var before = PrefabEditorFixtures.State(session);
+            var publisher = new PrefabAssetPublisher(session);
+            var error = Assert.Throws<MapDocumentException>(() => session.Mutate((_, _) =>
+                publisher.Publish(service.Export(), "hut", "published", updateOpenMap), false));
+            Assert.Equal(files, Files(root));
+            Assert.Equal(before, PrefabEditorFixtures.State(session));
+            Assert.Equal(MapDocumentRefusal.ToolPublicationDuringMutationUnsupported, error.Reason);
+            Assert.Equal("Publish", error.Operation);
+            Assert.Equal(session.WithDocument((doc, _) => doc.Id), error.DocumentId);
+            Assert.Null(publisher.PublishedAssets);
+            var published = publisher.Publish(service.Export(), "hut", "published", updateOpenMap);
+            Assert.True(File.Exists(Path.Combine(root, published.Resource.Path)));
+            Assert.Equal(updateOpenMap, published.Mutation is not null);
+        }
+        finally { FoliageEditorFixtures.Delete(session); }
+    }
+
+    [Fact]
+    public void ColliderPublicationDuringMutation_RefusesBeforeWritingAndKeepsDryRunsAvailable()
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1481
+        using var fixture = new NativeCollisionToolFixture();
+        var session = fixture.Session;
+        byte[] files = fixture.ReadAssetDirectoryDigest();
+        string before = session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry));
+        var history = session.NativeHistoryState;
+        long version = session.SnapshotVersion;
+        var error = Assert.Throws<MapDocumentException>(() => session.Mutate((_, _) =>
+            fixture.Service.SetHeights("wall-variant", 0, 3, dryRun: false), true));
+        Assert.Equal(files, fixture.ReadAssetDirectoryDigest());
+        Assert.Equal(before, session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry)));
+        Assert.Equal(history, session.NativeHistoryState);
+        Assert.Equal(version, session.SnapshotVersion);
+        Assert.False(session.IsDirty);
+        Assert.Equal(MapDocumentRefusal.ToolPublicationDuringMutationUnsupported, error.Reason);
+        Assert.Equal("SetHeights", error.Operation);
+        Assert.Equal(session.WithDocument((doc, _) => doc.Id), error.DocumentId);
+        Assert.False(session.Mutate((_, _) => fixture.Service.SetHeights("wall-variant", 0, 3), false).Applied);
+        Assert.Equal(files, fixture.ReadAssetDirectoryDigest());
+        Assert.True(fixture.Service.SetHeights("wall-variant", 0, 3, dryRun: false).Applied);
+    }
+
+    [Theory]
     [InlineData("rooted", MapDocumentRefusal.ToolPublicationPathInvalid)]
     [InlineData("escape", MapDocumentRefusal.ToolPublicationPathInvalid)]
     [InlineData("reserved", MapDocumentRefusal.AssetStoragePathReserved)]

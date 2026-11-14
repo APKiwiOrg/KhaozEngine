@@ -2181,6 +2181,8 @@ their joined diagnostic text.
 | `ToolNativeDocumentRequired` | Native tool work through an analytic document | `DocumentId`, `Operation`, `FieldPath`, known `CommandType` |
 | `ToolPublishedClosureMismatch` | A staged closure different from its supplied publication closure | supplied `ExpectedHash`, staged `ActualHash`, `DocumentId`, `Operation` |
 | `ToolNestedMutationUnsupported` | A nested native session mutation | `DocumentId`, `Operation` |
+| `ToolPublicationDuringMutationUnsupported` | Native publication or session replacement/storage/closure work inside a native mutation callback, carried by `MapDocumentException` for native publication or `MapSessionException` for lifecycle work | `DocumentId`, `Operation` |
+| `ToolMutationCandidateRequired` | Staging a command into a document other than the current callback's detached candidate | `DocumentId`, `Operation`, known `CommandType` |
 | `ToolPublicationPathInvalid` | A rooted or escaping publication path | submitted `Path`, `StoragePath`, `DocumentForm`, known `ResourceRoot` |
 | `ToolTiledSessionRequired` | A window move without tiled source storage, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath`, `DocumentForm`, `ExpectedDocumentForm` |
 | `ToolUnsavedChanges` | A window move discarding dirty content without permission, carried by `MapSessionException` | `DocumentId`, `Path`, `Operation`, `FieldPath` `IsDirty`, `DocumentForm` |

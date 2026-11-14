@@ -1050,6 +1050,11 @@ reach marker seating retain `MapDocumentRefusal.MarkerSupportUnresolved`, `Marke
 Callback edits can fail earlier in space-coverage validation. Its aggregate forwards the first typed
 finding's reason and identifiers and retains the ordered `Findings` snapshot.
 
+Session callbacks that edit their detached candidate after staging restage from that candidate as one complete
+snapshot under the command's label. This includes late edits outside the staged write set, whose members may
+not share storage with the callback. Final validation, effects and history therefore describe the same state.
+The session refuses nested publication and lifecycle changes until the native mutation callback closes.
+
 Unpacked placement commands preserve binary64 pose components outside the explicit edit intent. Moves
 replace XZ and supplied Y, rotations replace yaw, scales replace scale, and label edits retain the pose.
 Missing Y retains authored support seating. Floor changes consume that dependency using precise XZ and

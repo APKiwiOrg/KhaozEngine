@@ -94,9 +94,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// values against the same buffer and they simply add.
         /// <para>
         /// <paramref name="frameBaseBytes"/> is <see cref="D3D11UniformRing.CurrentFrameBaseBytes"/> for a
-        /// ring-backed buffer and zero for anything else. It is 256-aligned by construction and the other two are
-        /// 256-aligned by every caller in the engine, so the sum lands on the 16-constant boundary Direct3D 11
-        /// requires.
+        /// ring-backed buffer and zero for anything else. It is 256-aligned by construction.
+        /// <see cref="D3D11DynamicBindingRange"/> checks the composed offset at the bind call before this
+        /// conversion, so an unaligned sum cannot silently bind the wrong slice.
         /// </para>
         /// </summary>
         internal static uint FirstConstant(uint frameBaseBytes, uint offsetBytes, uint dynamicOffsetBytes)

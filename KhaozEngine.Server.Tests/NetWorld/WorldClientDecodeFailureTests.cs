@@ -96,8 +96,12 @@ public class WorldClientDecodeFailureTests
         Assert.True(slot >= 0);
         Assert.Equal(WorldConnectionState.Connected, client.ConnectionState);
 
-        // Server pushes a state frame the client's registry cannot decode.
+        // Server pushes a state frame the client's registry cannot decode, then a valid empty snapshot naming another
+        // local id. Both land in the client's first drain.
         server.SendTo(slot, BadStateFrame(kind), NetChannelReliability.ReliableOrdered);
+        server.SendTo(slot, MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot,
+            MoveProtocol.EncodeSnapshotFrame(localNetId: 2, ackSeq: 0, BitConverter.GetBytes(0))),
+            NetChannelReliability.ReliableOrdered);
 
         // Pumping the client must NOT throw (the whole point); it disconnects cleanly instead.
         bool serverSawLeave = false;
@@ -118,5 +122,7 @@ public class WorldClientDecodeFailureTests
         Assert.NotNull(decodeError);
         Assert.Contains($"unregistered type id {UnregisteredBuiltInTypeId}", client.DisconnectReasonDetail);
         Assert.True(serverSawLeave, "the server sees the session end without waiting for its own timeout");
+        // #1262: a state frame queued behind the failure is ignored once the end is terminal, so nothing is ingested.
+        Assert.Equal(-1, client.LocalNetId);
     }
 }

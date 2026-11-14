@@ -372,6 +372,12 @@ comes out inverted simply covers nothing. An empty list loads as null. Walk surf
 collision and no pathing. `OfCatalogs` digests them, writing nothing for an archetype without any, so a catalog
 with no walk surfaces keeps the digest it had before the field existed.
 
+`KhaozEngine.TileWorld.Physics` builds a thin box under each top. It leaves out a surface whose placed values or
+turned corners a float cannot hold, using the same bounds check as authored collision boxes, without failing the
+world build or dropping other surfaces. This placement limit does not change catalog validation or `OfCatalogs`,
+which still digests every authored surface. The [physics README](../KhaozEngine.TileWorld.Physics/README.md#what-becomes-a-collider)
+describes the bounds and collider hash rules.
+
 `CollisionHeight` is the optional `collisionHeight` catalog field: how tall the object stands for collision, in
 metres above the mesh's local base, so a collider's top is the height the model stands at plus this. Absent loads
 as null, and a present value must be a finite number above 0. The schema refuses 0, a negative number and a JSON

@@ -6,14 +6,33 @@ namespace KhaozEngine.TileWorld;
 /// <summary>
 /// The absolute bounds tile world physics declares for each collider it builds, which feed the movement extent it
 /// hands the movement installer: every point of the shape moved by its pose in float, then widened outward by one
-/// representable value on every side. The one rule physics provenance captures its bounds with and the collision box
-/// placement checks a box against, so a box that places is one whose declared bounds are finite, as the movement
+/// representable value on every side. The one rule physics provenance captures its bounds with and collision box
+/// and walk surface placement check against, so a box that places has finite declared bounds, as the movement
 /// extent requires.
 /// </summary>
 internal static class TileColliderBounds
 {
     /// <summary>Bounds that hold nothing yet, which the first point included replaces.</summary>
     internal static readonly Vector3 EmptyMinimum = new(float.PositiveInfinity), EmptyMaximum = new(float.NegativeInfinity);
+
+    /// <summary>Whether a backend and the declared movement extent can hold a placed box: finite values, positive
+    /// half extents, bottom below top, a unit orientation and finite widened bounds, including turned corners.</summary>
+    internal static bool HoldsBox(Vector3 centre, Vector3 halfExtents, float bottom, float top, Quaternion orientation)
+    {
+        if (!(Finite(centre) && Positive(halfExtents.X) && Positive(halfExtents.Y) && Positive(halfExtents.Z)
+              && float.IsFinite(bottom) && float.IsFinite(top) && bottom < top
+              && float.IsFinite(orientation.X) && float.IsFinite(orientation.Y) && float.IsFinite(orientation.Z)
+              && float.IsFinite(orientation.W) && MathF.Abs(orientation.LengthSquared() - 1f) < 1e-3f))
+            return false;
+        Vector3 min = EmptyMinimum, max = EmptyMaximum;
+        IncludeBox(halfExtents, centre, orientation, ref min, ref max);
+        (Vector3 minimum, Vector3 maximum) = Widened(min, max);
+        return Finite(minimum) && Finite(maximum);
+    }
+
+    static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
+
+    static bool Positive(float value) => value > 0f && float.IsFinite(value);
 
     /// <summary>Grows the bounds by one point of a shape, moved by its pose.</summary>
     internal static void Include(Vector3 point, Vector3 position, Quaternion orientation, ref Vector3 min, ref Vector3 max)

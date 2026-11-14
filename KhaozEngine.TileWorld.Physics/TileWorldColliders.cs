@@ -76,7 +76,9 @@ public sealed partial class TileWorldColliders
     /// box instead, in catalog order, turned with the object and by the box's own yaw.</item>
     /// <item><b>WalkSurface:</b> a box <see cref="TileColliderOptions.WalkSurfaceThickness"/> thick under each walk
     /// surface's top, over its rectangle as <see cref="TileWalkSurfaces"/> resolves it. A rectangle that resolves
-    /// empty gets none.</item>
+    /// empty gets none. Neither does a surface whose placed values or turned corners a float cannot hold, checked
+    /// against the same finite widened bounds as an authored collision box. Other surfaces and objects still build,
+    /// and the collider hash, provenance and movement registration digest cover only the colliders built.</item>
     /// </list>
     /// A wall or footprint object box's top is the height the model stands at,
     /// <see cref="TileObjectPlacement.AnchorPosition"/>, plus the archetype's

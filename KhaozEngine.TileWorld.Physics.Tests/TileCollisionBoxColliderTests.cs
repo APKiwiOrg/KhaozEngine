@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Physics;
 using Xunit;
@@ -106,6 +107,49 @@ public class TileCollisionBoxColliderTests
 
         static void AssertRelative(float expected, float actual) =>
             Assert.True(MathF.Abs(actual / expected - 1f) < 1e-6f, $"{actual} is not {expected}");
+    }
+
+    // Issue #1785: the first row overflows the float width, the second only the turned corners. Both must leave out
+    // just that surface. Unturned, even bounds whose float sum or difference overflows still fit after double sums.
+    [Theory]
+    [InlineData(-3e38f, 3e38f, 45f, false)]
+    [InlineData(0f, 3e38f, 45f, false)]
+    [InlineData(-3e38f, 3e38f, 0f, true)]
+    [InlineData(2e38f, 3e38f, 0f, true)]
+    public void AWalkSurfaceAtTheFloatRangeBuildsOnlyWhenAFloatHoldsItsPlacedBounds(
+        float min, float max, float yaw, bool builds)
+    {
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Merge(Catalogs(), TileWorldCatalogs.LoadJson(
+            FormattableString.Invariant($$"""
+            { "archetypes": [ { "id": "float_deck", "name": "float_deck", "meshRef": "test/deck.glb",
+                "yawOffsetDegrees": {{yaw}}, "walkSurfaces": [
+                    { "height": 1.2, "minX": {{min}}, "maxX": {{max}}, "minZ": {{min}}, "maxZ": {{max}} },
+                    { "height": 2.5 } ] } ] }
+            """), "float-range-surfaces"));
+        TileWorldDocument doc = FlatWorld();
+        doc.AddObject("float_deck", 5, 5, 0, 0);
+        doc.AddObject("bench_boxed", 8, 5, 0, 0);
+
+        TileWorldColliders actual = TileWorldColliders.Build(doc, catalogs, "float-range-surfaces");
+
+        TileCollider[] surfaces = actual.Colliders.Where(c => c.Kind == TileColliderKind.WalkSurface).ToArray();
+        Assert.Equal(builds ? 2 : 1, surfaces.Length);
+        TileCollider control = Assert.Single(surfaces, c => c.Shape is BoxShape { HalfExtents.X: 0.5f, HalfExtents.Z: 0.5f });
+        Assert.Equal(2.5f, control.Pose.Position.Y + Assert.IsType<BoxShape>(control.Shape).HalfExtents.Y, Tolerance);
+        Assert.Equal(2, Objects(actual).Length);
+        if (builds) return;
+
+        // Leaving out a surface is identical to removing it from the catalog, including captured bounds and owners.
+        catalogs.Archetype("float_deck")!.WalkSurfaces!.RemoveAt(0);
+        TileWorldColliders expected = TileWorldColliders.Build(doc, catalogs, "float-range-surfaces");
+        Assert.Equal(expected.Hash, actual.Hash);
+        Assert.Equal(expected.MovementExtent, actual.MovementExtent);
+        using var actualPhysics = new BepuPhysicsWorld(Vector3.Zero);
+        using var expectedPhysics = new BepuPhysicsWorld(Vector3.Zero);
+        using var actualInstalled = actual.AddTo(actualPhysics);
+        using var expectedInstalled = expected.AddTo(expectedPhysics);
+        Assert.Equal(expectedInstalled.CreateMovementRegistration("float-range-surfaces").SemanticDigest,
+            actualInstalled.CreateMovementRegistration("float-range-surfaces").SemanticDigest);
     }
 
     // Consumers fold the collider hash into their navigation bake inputs, so a box edit has to move it and putting the

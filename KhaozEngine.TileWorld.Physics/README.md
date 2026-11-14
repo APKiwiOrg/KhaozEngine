@@ -264,7 +264,12 @@ match. Missing collision heights keep the exact `TileWorldException` type.
 - **Object:** a box over a `Solid` object's rotated footprint, or over a `Diagonal` object's anchor tile. When the
   archetype lists `collisionBoxes`, one box per authored box instead, in catalog order (see below).
 - **WalkSurface:** a box `WalkSurfaceThickness` thick under each walk surface's top, over its rectangle as
-  `TileWalkSurfaces` resolves it.
+  `TileWalkSurfaces` resolves it. Bound sums and differences use double, so finite bounds whose float sum or width
+  would overflow can still build at their midpoint. An empty rectangle or a surface whose placed centre, half
+  extents, vertical span, orientation or turned corners a float cannot hold gets no collider. The same check as an
+  authored collision box checks every corner moved by its pose in float and widened by one representable value, so
+  leaving out that surface never fails the world's movement extent. Other surfaces and objects still build, and
+  `Hash`, provenance and the movement registration digest describe only the colliders built.
 
 A wall or footprint object box's top is the height the model stands at, `TileObjectPlacement.AnchorPosition`, plus
 the archetype's `CollisionHeight`. Its bottom is the lower of the lowest ground corner under the box and that

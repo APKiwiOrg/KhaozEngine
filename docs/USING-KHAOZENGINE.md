@@ -30813,8 +30813,8 @@ carries the creation site. See the [Vulkan refusal table](../KhaozEngine.Gpu.Vul
 
 On all three native backends, a nonzero offset on a set with no authored dynamic element throws the portable
 `GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,
-set number and offset. Metal and Vulkan and the immediate D3D11 driver throw from the bind call. The deferred
-D3D11 driver throws from `Submit`, where it replays the bind. A zero offset is accepted against any set.
+set number and offset. Every backend throws from the bind call, on both D3D11 drivers. A zero offset is
+accepted against any set.
 These families preserve the original BCL exception bases and parameter data.
 
 Post-probe native creation checks also carry structured reasons. D3D11 identifies a missing HWND,

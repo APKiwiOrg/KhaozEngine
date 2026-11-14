@@ -132,6 +132,44 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(D3D11SlotDirty.Full, harness.Binds.GraphicsDirty(0));
         }
 
+        /// <summary>
+        /// THE DEFERRED DRIVER REFUSES THE SAME BIND AT THE SEAM CALL AND APPENDS NOTHING. Its seam calls only
+        /// encode ops, so without its own check the refusal would escape <c>Submit</c> after the list's earlier
+        /// commands reached the device, with the submission left unsignalled. The two arms are two overloads of
+        /// the op encoder, so each is a row. A zero offset against the same set is appended.
+        /// </summary>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void OnTheDeferredDriver_ANonZeroOffsetAgainstANonDynamicSet_IsRefusedAtTheBindCall(bool compute)
+        {
+            // #1687.
+            using D3D11ResourceLayout plainLayout = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.U("U", GpuShaderStages.Vertex));
+            using D3D11ResourceSet plain = D3D11BindFixtures.Set(plainLayout, new FakeBuffer(4096));
+            using D3D11CommandRecorder<D3D11StreamEmitter> list = D3D11CommandDrivers.CreateDeferred();
+            D3D11CommandStream stream = list.Emitter.Stream;
+            list.Begin();
+
+            void Bind(uint offset)
+            {
+                if (compute) list.SetComputeResourceSet(0, plain, offset);
+                else list.SetGraphicsResourceSet(0, plain, offset);
+            }
+
+            var refused = Assert.Throws<GpuDynamicBindingException>(() => Bind(256));
+
+            Assert.Equal(GpuDynamicBindingRefusal.DynamicElementMissing, refused.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, refused.Backend);
+            Assert.Equal(0u, refused.Set);
+            Assert.Equal(256u, refused.DynamicOffset);
+            Assert.Equal("dynamicOffset", refused.ParamName);
+            Assert.Equal(0, stream.Count);
+
+            Bind(0);
+            Assert.Equal(1, stream.Count);
+        }
+
         // ---- Rule 2: the draw and the dispatch flush, through the pre-command hook --------------------------
 
         /// <summary>The binds land BEFORE the draw and the slot is clean afterwards, which is what "pre-command

@@ -161,9 +161,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// and the second has no layout this backend can read, so the flush refuses it by ownership instead.
         /// </para>
         /// <para>
-        /// BOTH EMITTERS REACH THIS, which is why the refusal lives here rather than in either of them. On the
-        /// immediate driver it throws from the seam call. On the deferred driver the seam call only appends an op,
-        /// so it throws from the replay inside <c>Submit</c>, the same place the flush's ownership refusal throws.
+        /// EVERY DRIVER REFUSES AT THE SEAM CALL. Both emitters reach this record, so the immediate driver and the
+        /// trace emitter throw from it. The deferred driver's seam call only appends an op, so
+        /// <see cref="D3D11StreamEmitter"/> runs the same <see cref="RequireOffsetCarried"/> before appending, and
+        /// a refused bind never reaches the replay inside <c>Submit</c>.
         /// </para>
         /// </summary>
         /// <param name="slot">The set number this binds at.</param>
@@ -339,8 +340,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _activation.Conflicts.Reset();
         }
 
-        static void Record(ref SlotRecord[] records, uint slot, IGpuResourceSet? set, uint dynamicOffset,
-            bool hasDynamicOffset)
+        /// <summary>
+        /// THE ONE CHECK BEHIND THE <see cref="GpuDynamicBindingRefusal.DynamicElementMissing"/> REFUSAL, shared by
+        /// <see cref="Record"/> and by <see cref="D3D11StreamEmitter"/>'s two offset overloads. The deferred driver
+        /// calls it at the seam call, before the op is appended, so the refusal escapes the bind exactly as it does
+        /// on Metal and Vulkan rather than escaping <c>Submit</c> after the list's earlier commands already reached
+        /// the device and with the submission left unsignalled. <see cref="Record"/> keeps the call as the backstop
+        /// for the immediate driver and the trace emitter, where the seam call reaches it directly.
+        /// <para>
+        /// A zero offset, a null set and a set from another backend pass. The last has no layout this backend can
+        /// read, so the flush refuses it by ownership instead.
+        /// </para>
+        /// </summary>
+        internal static void RequireOffsetCarried(uint slot, IGpuResourceSet? set, uint dynamicOffset)
         {
             if (dynamicOffset != 0 && set is D3D11ResourceSet { Layout.CarriesDynamicOffset: false })
             {
@@ -360,6 +372,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     DynamicOffset = dynamicOffset,
                 };
             }
+        }
+
+        static void Record(ref SlotRecord[] records, uint slot, IGpuResourceSet? set, uint dynamicOffset,
+            bool hasDynamicOffset)
+        {
+            RequireOffsetCarried(slot, set, dynamicOffset);
 
             EnsureSlot(ref records, slot);
             ref SlotRecord record = ref records[slot];

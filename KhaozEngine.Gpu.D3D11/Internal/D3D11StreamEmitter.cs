@@ -52,9 +52,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
             => _stream.Append(new D3D11Op(D3D11OpCode.SetGraphicsResourceSet, _stream.AddReference(set), a0: slot));
 
+        /// <summary>The offset is checked HERE, before the op is appended, so a nonzero offset no layout element
+        /// carries is refused at the seam call as Metal and Vulkan refuse it, not from <c>Submit</c> after the
+        /// list's earlier ops reached the device. See <see cref="D3D11BindFlush.RequireOffsetCarried"/>.</summary>
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => _stream.Append(new D3D11Op(D3D11OpCode.SetGraphicsResourceSetDynamic, _stream.AddReference(set),
+        {
+            D3D11BindFlush.RequireOffsetCarried(slot, set, dynamicOffset);
+            _stream.Append(new D3D11Op(D3D11OpCode.SetGraphicsResourceSetDynamic, _stream.AddReference(set),
                 a0: slot, a1: dynamicOffset));
+        }
 
         public void SetVertexBuffer(uint slot, IGpuBuffer buffer, uint offsetBytes)
             => _stream.Append(new D3D11Op(D3D11OpCode.SetVertexBuffer, _stream.AddReference(buffer),
@@ -161,9 +167,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
             => _stream.Append(new D3D11Op(D3D11OpCode.SetComputeResourceSet, _stream.AddReference(set), a0: slot));
 
+        /// <inheritdoc cref="SetGraphicsResourceSet(uint, IGpuResourceSet, uint)"/>
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
-            => _stream.Append(new D3D11Op(D3D11OpCode.SetComputeResourceSetDynamic, _stream.AddReference(set),
+        {
+            D3D11BindFlush.RequireOffsetCarried(slot, set, dynamicOffset);
+            _stream.Append(new D3D11Op(D3D11OpCode.SetComputeResourceSetDynamic, _stream.AddReference(set),
                 a0: slot, a1: dynamicOffset));
+        }
 
         public void BeginTimestamps(IGpuTimestampPool pool, uint count)
             => _stream.Append(new D3D11Op(D3D11OpCode.BeginTimestamps, _stream.AddReference(pool), a0: count));

@@ -311,9 +311,10 @@ The rest of the schedule, since each clause carries its own weight:
   draw would read the window the set was created with. The refusal comes before the record changes, so the slot
   keeps what it held. A zero offset is accepted against any set and a null set is not checked. A texture or sampler
   flagged dynamic does not count, because no bind of either carries an offset. A set from another backend is not
-  checked either, since it has no layout this backend can read, and the flush refuses it by ownership instead. Both
-  emitters share the record, so the immediate driver throws from the bind call and the deferred driver throws from
-  the replay inside `Submit`.
+  checked either, since it has no layout this backend can read, and the flush refuses it by ownership instead.
+  Every driver refuses at the bind call. The immediate driver reaches the check through the record, and the
+  deferred driver runs the same check in its op encoder before it appends the op, so a refused bind never reaches
+  the replay inside `Submit`, where the list's earlier commands would already have reached the device.
 - A slot whose recorded set has gone null is skipped rather than unbound, and a slot goes clean only once its
   activation has landed, so a refused bind throws again on the next draw rather than once and then silently.
 - Repeated marks on one slot between two draws collapse to one flush, and the flush owes the greater of them: an

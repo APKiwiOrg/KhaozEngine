@@ -496,7 +496,8 @@ internal static class CatalogEditParser
 
             case ContentFieldKind.OpaqueBytes:
                 if (value.ValueKind != JsonValueKind.String
-                    || !TryHex(value.GetString() ?? string.Empty, out byte[] bytes))
+                    || !CatalogRequest.TryStringValue(value, out string? hex)
+                    || !TryHex(hex ?? string.Empty, out byte[] bytes))
                 {
                     parsed = default;
                     why = "opaque bytes are LOWER HEX, the same rendering the audit ledger and every read use.";

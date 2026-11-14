@@ -399,6 +399,13 @@ Text reads likewise recognize the legacy `text-provenance-unknown` and `text-ope
 tokens as unknown text rather than an empty snapshot, whether or not the exception carries an enum.
 Other refusals propagate unchanged.
 
+An escaped unpaired UTF-16 surrogate in a catalog string member is a 400 naming the member, rather than
+a server fault. Request-level strings such as `operator` and `note` use `malformed-request`. Row edit
+members and `OpaqueBytes` values use `content-edit-refused` with `KEC0004`, or `KEC0041` for `forkKey`
+and `flagField`, matching their wrong-kind refusals. Text edits retain `text-bounds` for an unreadable
+`value` and `KEC0004` for target members. Read filters retain the `{ error }` response below. A valid
+surrogate pair decodes normally, then follows the member's existing rules, including hex for opaque bytes.
+
 Each rollback blocker names its row through `type` and `fromId`. Its `kind` carries the matching rule's
 actual name, normally `Retired`. If the provider's baseline has no matching rule, `kind` is JSON null and
 both `sequence` and `introducedIn` are 0. The row still blocks the rollback.

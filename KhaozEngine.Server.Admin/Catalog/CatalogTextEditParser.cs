@@ -284,22 +284,19 @@ internal static class CatalogTextEditParser
     static bool TryString(JsonElement entry, string name, out string? value, out string? refusal, out string code)
     {
         code = CatalogEditParser.UnknownFieldCode;
-        try
+        if (CatalogRequest.TryOptionalString(entry, name, out value, out refusal))
         {
-            return CatalogRequest.TryOptionalString(entry, name, out value, out refusal);
+            return true;
         }
-        catch (InvalidOperationException)
-        {
-            value = null;
-            refusal = FormattableString.Invariant(
-                $"carries an unpaired surrogate in '{name}', which is not a well-formed string.");
-            if (string.Equals(name, ValueMember, StringComparison.Ordinal))
-            {
-                code = ContentAuthoringException.TextBoundsReason;
-            }
 
-            return false;
+        // A present string that the shared reader refused is unreadable, rather than the wrong JSON kind.
+        if (string.Equals(name, ValueMember, StringComparison.Ordinal)
+            && entry.GetProperty(name).ValueKind == JsonValueKind.String)
+        {
+            code = ContentAuthoringException.TextBoundsReason;
         }
+
+        return false;
     }
 
     static ContentTextEdit? Refuse(

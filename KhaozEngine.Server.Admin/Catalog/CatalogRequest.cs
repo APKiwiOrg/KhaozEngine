@@ -231,8 +231,29 @@ internal static class CatalogRequest
             return false;
         }
 
-        value = property.GetString();
+        if (!TryStringValue(property, out value))
+        {
+            refusal = FormattableString.Invariant(
+                $"carries an unpaired surrogate in '{name}', which is not a well-formed string.");
+            return false;
+        }
+
         return true;
+    }
+
+    /// <summary>A JSON string value, or false when its escapes cannot decode to a well-formed string.</summary>
+    public static bool TryStringValue(JsonElement property, out string? value)
+    {
+        value = null;
+        try
+        {
+            value = property.GetString();
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     /// <summary>An optional boolean property, false when absent, or a refusal naming it.</summary>

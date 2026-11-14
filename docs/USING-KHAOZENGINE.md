@@ -7533,6 +7533,9 @@ Besides the set type renames in the design record table:
   diagnostic is `InnerException`. This type derives from `MalformedDataException` in Primitives because
   `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
   Callers never need a SharpGLTF exception type.
+  Truncated GLB headers or chunks, invalid JSON and wrong JSON value types carry the same refusal and original reader exception.
+  Each overload requires a nonblank `identity`. Null throws `ArgumentNullException`, and empty or whitespace
+  throws `ArgumentException`.
 
 ### Offline table equipment coverage
 
@@ -11915,6 +11918,12 @@ and joint refusals also carry the counts or the vertex's `BoneIndices`, `VertexI
 Every `GltfLoader` byte overload, `LoadFlattenedAlbedo(ReadOnlyMemory<byte>, string)` included, reports a malformed
 glTF as `GltfImportDataException` with `GltfImportRefusal.MalformedModel`, the supplied raw `Identity` and the
 importer's diagnostic as `InnerException`, so callers never catch a SharpGLTF exception type.
+This includes truncated GLB headers or chunks, invalid JSON and wrong JSON value types. Standard reader I/O,
+format, argument and JSON value-reading failures are translated only while reading the supplied bytes. Engine mesh-building defects keep their
+original exceptions, and strict validation keeps `GltfImportStateException` with `ValidationFailed`.
+Every byte overload requires a nonblank `identity`. Null throws `ArgumentNullException`, and empty or whitespace
+throws `ArgumentException`. The strict overload's metadata admission can refuse earlier with `GltfDecodeRefusal`
+and `GltfDecodeStatus.Invalid`.
 `PropLoader` normalization uses `PropLoadRefusal.DeclaredHeightOutsideRange`, `NoMeasurableHeight` or
 `ScaleOutsideRange` with the declared or measured values and validation bounds. Empty material parts use
 `PropLoadArgumentException`, `PropLoadRefusal.MaterialPartsEmpty`, `PartCount` and `ParamName`.

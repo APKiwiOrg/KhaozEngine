@@ -77,6 +77,40 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   instead of `unknown-type`, matching every other unknown-version refusal. `Refusal` stays `VersionUnknown` with
   `VersionNumber`. A caller that keyed on `unknown-type` for this case should key on `Refusal` or `unknown-version`
   ([#919](https://github.com/APKiwiOrg/KhaozEngine/issues/919)).
+- `PanZoomController` pairs a double tap only from two consecutive taps it owns. A press it refused, such as a click
+  on an overlay control near the first tap, used to leave that tap waiting, so the next map tap zoomed in. Any mouse or
+  touch sequence that ends without a recorded tap now breaks pairing: a refused, unowned or consumed press, a drag, a
+  long hold, a two-finger gesture, a release over an occluder or outside the viewport, and touch taking over an
+  unfinished mouse press. A touch tap released over an occluder no longer reports a tap, as a mouse tap already did
+  not ([#1395](https://github.com/APKiwiOrg/KhaozEngine/issues/1395)).
+- `OidcClientProvider` and `DiscordClientProvider` refuse a response member of the wrong JSON type, and a success
+  response whose body is valid JSON but not an object, with `SignInException` instead of letting System.Text.Json's
+  `InvalidOperationException` escape. A required endpoint or credential member that is present but not a non-empty
+  string refuses with `DiscoveryEndpointEmpty` or `TokenMemberEmpty`, a `refresh_token` that is neither a string nor
+  null refuses with `TokenMemberEmpty`, and a non-object body refuses with `EndpointJsonMalformed` and no inner
+  exception. Member and `expires_in` refusals now also carry `EndpointRole`
+  ([#1720](https://github.com/APKiwiOrg/KhaozEngine/issues/1720)).
+- The `GltfLoader` byte overloads, the coverage overloads included, report a reader failure on malformed bytes, such
+  as a string where the JSON needs a number, as `GltfImportDataException` with `GltfImportRefusal.MalformedModel`, the
+  caller's `Identity` and the reader's exception as `InnerException`, like other malformed bytes, instead of letting
+  the reader's `InvalidOperationException` escape. On the coverage overloads that input used to refuse as
+  `HostCoverageDataException`. Failures inside the engine's mesh builders still escape unchanged.
+  `LoadPartsWithMaterials`, `LoadSkinned` and `LoadSkinnedPartsWithMaterials` over bytes refuse a null, empty or
+  blank identity with `ArgumentException`, as the other byte overloads do
+  ([#1791](https://github.com/APKiwiOrg/KhaozEngine/issues/1791)).
+- Client prediction no longer boxes the shipped predicted states on its steady path. `PlayerMoveState` implements
+  `PredictionTarget`, and `TileMoveState` implements `StepDeltaY`, `FrameAnchor` and `HasYaw`, with the values the
+  interface defaults returned, so `ClientPrediction` ticks, reconciliation and render reads with either state, and
+  `WorldClient.AdvancePresentation` with `LocalRenderState`, allocate nothing. The Netcode README lists the members a
+  custom struct state implements to stay allocation free
+  ([#1279](https://github.com/APKiwiOrg/KhaozEngine/issues/1279)).
+- A `GroundNavigation.ExcludingAreas` view shares its source's terrain descent routes. A view used to lose them, so it
+  previewed and followed a Drop the bake accepted only through the terrain route as a sharp Drop, and
+  `PrepareTerrainDescents` on a view prepared nothing. A view now plans, previews and follows those Drops through the
+  terrain route and prepares the source's shared certificates, including a view made before a bake load rebinds the
+  source's terrain evidence. It refuses a terrain Drop whose certified path, the Drop segment widened by twice the
+  agent radius, touches terrain in an excluded area, both when planning and in preview
+  ([#1711](https://github.com/APKiwiOrg/KhaozEngine/issues/1711)).
 
 ## 23.12.0
 

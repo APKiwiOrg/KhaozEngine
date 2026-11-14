@@ -31,7 +31,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// deliberately never waits: a slot whose blocks the GPU has not finished with keeps them until a later
     /// visit, which is what keeps that number single-sourced.</para>
     ///
-    /// <para><b>THE FLOOR IS 1 HERE AND 2 ON VULKAN, and that is a derived difference rather than a copied
+    /// <para><b>THE HEADLESS FLOOR IS 1 HERE AND 2 ON VULKAN, and that is a derived difference rather than a copied
     /// constant drifting.</b> The Vulkan floor is 2 because at 1 every list would own ONE command pool, so every
     /// <c>Begin</c> would advance onto the slot it had just used and wait for its own previous record to finish
     /// on the GPU: a synchronous round trip per RECORD rather than a frame of latency. That argument needs a
@@ -45,6 +45,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// only one there is, so an ungated copy would be M-M7's race with nothing between it and the GPU. Correct but
     /// slow is the right direction at a debugging depth, and it is the reason a capture taken at 1 is evidence
     /// about backpressure rather than about the cost of a device-level uniform write.</para>
+    ///
+    /// <para>Presenting devices accept only 2 or 3, because M-W4 uses the same depth for the uniform ring and
+    /// <c>CAMetalLayer.maximumDrawableCount</c>, whose supported counts are 2 and 3. The host is known before
+    /// the ring is sized, and swapchain attachment is private to creation. A nonblank environment override
+    /// outside the device's range WARNs with that range and uses the default, without clamping. An explicit
+    /// programmatic setting outside the range is refused with <see cref="ArgumentOutOfRangeException"/>,
+    /// carrying the setting's name and rejected value, before the layer is configured.</para>
     ///
     /// <para><b>THE BET THIS TURNS OFF.</b> MM4 says 3 is enough that ring backpressure never blocks the CPU and
     /// that a drawable acquire does not become the frame's pacing, and its exit criterion is
@@ -61,7 +68,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>COST OF RAISING IT</b>, so a field session knows what it is trading. Every uniform buffer in the
     /// process is allocated at its 256-aligned size times this number, each command list's staging arena keeps
     /// one more slot of pooled blocks, and a windowed device's <c>maximumDrawableCount</c> is set to it (M-W4),
-    /// so four is a third more uniform memory and one more drawable held. No command buffer anywhere is
+    /// so raising a headless depth from three to four costs a third more uniform memory. Presenting devices
+    /// can raise the depth only from two to three, adding one drawable with it. No command buffer anywhere is
     /// allocated per frame in flight, which is the whole of M-R2.</para>
     ///
     /// <para>Everything here is pure except <see cref="FromEnvironment"/>, so the parse is headless-testable on
@@ -76,7 +84,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>Three, which is the number section 9.2 fixes and MM4 is the bet on.</summary>
         internal const int Default = 3;
 
-        /// <summary>One, which pipelines nothing and is legal anyway. See the class note for why this is not the
+        /// <summary>One, which pipelines nothing and is legal headless. See the class note for why this is not the
         /// Vulkan sibling's 2.</summary>
         internal const int Minimum = 1;
 
@@ -85,9 +93,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// renderer can use, and sixteen times the uniform memory is not free.</summary>
         internal const int Maximum = 16;
 
+        /// <summary>The supported CAMetalLayer drawable counts also bound the presenting device's ring.</summary>
+        internal const int WindowedMinimum = 2;
+        internal const int WindowedMaximum = 3;
+
         /// <summary>
         /// How many frames <paramref name="envValue"/> asks for. A non-blank value that does not parse, or that
-        /// parses outside <see cref="Minimum"/> to <see cref="Maximum"/>, comes back through
+        /// parses outside the device's range (2 to 3 presenting, 1 to 16 headless), comes back through
         /// <paramref name="unrecognizedValue"/> verbatim so the caller can WARN, and <see cref="Default"/> is
         /// used.
         /// <para>
@@ -96,13 +108,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// about four and was taken on three.
         /// </para>
         /// </summary>
-        internal static int Resolve(string? envValue, out string? unrecognizedValue)
+        internal static int Resolve(string? envValue, out string? unrecognizedValue, bool presenting = false)
         {
             unrecognizedValue = null;
             if (string.IsNullOrWhiteSpace(envValue)) return Default;
 
             if (!int.TryParse(envValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int frames)
-                || frames < Minimum || frames > Maximum)
+                || !IsSupported(frames, presenting))
             {
                 unrecognizedValue = envValue;
                 return Default;
@@ -111,13 +123,47 @@ namespace KhaozEngine.Gpu.Metal.Internal
             return frames;
         }
 
+        /// <summary>Explicit settings take priority over the environment and are refused rather than defaulted.
+        /// Settings are internal plain parameters, with their name and rejected value carried by the exception.</summary>
+        internal static int ResolveForDevice(int? framesInFlight, string? envValue, bool presenting,
+            out string? unrecognizedValue)
+        {
+            unrecognizedValue = null;
+            return framesInFlight is { } configured
+                ? RequireSupported(configured, presenting, nameof(MetalHeadlessDiagnosticSettings.FramesInFlight))
+                : Resolve(envValue, out unrecognizedValue, presenting);
+        }
+
+        /// <summary>Validate a programmatic depth before it sizes a ring or reaches layer configuration.</summary>
+        internal static int RequireSupported(int framesInFlight, bool presenting, string parameterName)
+        {
+            if (!IsSupported(framesInFlight, presenting))
+                throw new ArgumentOutOfRangeException(parameterName, framesInFlight,
+                    presenting
+                        ? $"A presenting Metal device requires {WindowedMinimum} to {WindowedMaximum} frames in flight, matching CAMetalLayer's drawable count."
+                        : $"A headless Metal device requires {Minimum} to {Maximum} frames in flight.");
+            return framesInFlight;
+        }
+
+        static bool IsSupported(int framesInFlight, bool presenting)
+            => presenting
+                ? framesInFlight is >= WindowedMinimum and <= WindowedMaximum
+                : framesInFlight is >= Minimum and <= Maximum;
+
         /// <summary>The same decision read from the live environment. The one impure member here.</summary>
-        internal static int FromEnvironment(out string? unrecognizedValue)
-            => Resolve(Environment.GetEnvironmentVariable(EnvVarName), out unrecognizedValue);
+        internal static int FromEnvironment(out string? unrecognizedValue, bool presenting = false,
+            int? framesInFlight = null)
+            => ResolveForDevice(framesInFlight,
+                framesInFlight.HasValue ? null : Environment.GetEnvironmentVariable(EnvVarName),
+                presenting, out unrecognizedValue);
 
         /// <summary>The WARN body for a value that was set and understood as nothing.</summary>
-        internal static string UnrecognizedWarning(string value)
-            => $"{EnvVarName}='{value}' is not a whole number of frames between {Minimum} and {Maximum}. The "
+        internal static string UnrecognizedWarning(string value, bool presenting = false)
+            => presenting
+                ? $"{EnvVarName}='{value}' is not a whole number of frames in the supported windowed range "
+                    + $"{WindowedMinimum} to {WindowedMaximum}. The native Metal backend keeps {Default} frames "
+                    + "in flight, which is the default, so the uniform ring and CAMetalLayer drawable count match."
+                : $"{EnvVarName}='{value}' is not a whole number of frames between {Minimum} and {Maximum}. The "
                 + $"native Metal backend keeps {Default} frames in flight, which is the default. The floor is "
                 + $"{Minimum} rather than the Vulkan backend's 2 because nothing here is allocated per frame in "
                 + "flight except uniform ring segments: this backend has no command-buffer pool to advance onto.";

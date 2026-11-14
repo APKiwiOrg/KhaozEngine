@@ -101,7 +101,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="colourSrgb">Whether the sRGB colour format is wanted. See
         /// <see cref="MetalSwapchainPolicy.ColourSrgbRequested"/>.</param>
         /// <param name="syncToVerticalBlank">The initial vsync value, written unconditionally (M-W2).</param>
-        /// <param name="maximumDrawableCount">The drawable queue depth (M-W4).</param>
+        /// <param name="maximumDrawableCount">The drawable queue depth (M-W4), restricted to 2 or 3.</param>
         /// <param name="logger">The sink, or null for this type's own category logger.</param>
         internal MetalPresentBoundary(IMetalSwapchainApi api, IMetalOrphanTarget orphan,
             MetalUncommittedBuffers uncommitted, WaitAccumulator waits, object submitLock, Action drain,
@@ -115,6 +115,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ArgumentNullException.ThrowIfNull(submitLock);
             ArgumentNullException.ThrowIfNull(drain);
             ArgumentNullException.ThrowIfNull(afterPresent);
+            MetalFramesInFlight.RequireSupported(maximumDrawableCount, presenting: true,
+                nameof(maximumDrawableCount));
 
             _api = api;
             _orphan = orphan;

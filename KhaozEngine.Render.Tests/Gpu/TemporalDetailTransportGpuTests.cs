@@ -26,10 +26,17 @@ public sealed class TemporalDetailTransportGpuTests(TemporalDetailSceneFixture f
     [InlineData(TemporalUpscale.Quality, true)]
     public void Moving_detail_remains_in_history_space_through_hdr_bloom_and_distortion(TemporalUpscale preset, bool hdr)
     {
+        PostChain(preset, hdr, true);
+        if (preset == TemporalUpscale.Quality) PostChain(TemporalUpscale.Balanced, hdr, false);
+    }
+
+    void PostChain(TemporalUpscale preset, bool hdr, bool assertContract)
+    {
         fixture.Reset(preset, hdr);
         var view = fixture.Fine;
         view.Frame.Scene.Post.Bloom.Enabled = true;
         long transported = 0;
+        double largest = 0;
         for (int n = 0; n < 12; n++)
         {
             view.Frame.Frame((scene, _) =>
@@ -41,9 +48,12 @@ public sealed class TemporalDetailTransportGpuTests(TemporalDetailSceneFixture f
                     Shape = DistortionShape.Ripple, Strength = 2.5f, Seed = 0.31f,
                 });
             });
-            transported += CheckMean(view.Frame, false, true).Transported;
+            var measured = CheckMean(view.Frame, false, assertContract);
+            largest = Math.Max(largest, measured.Deviation);
+            transported += measured.Transported;
         }
-        Assert.True(transported > 0, "The post-chain proof must include transported fine detail.");
+        output.WriteLine($"{preset} hdr={hdr}: transported components={transported}, largest stored mean deviation={largest:R}");
+        if (assertContract) Assert.True(transported > 0, "The post-chain proof must include transported fine detail.");
     }
 
     void Run(TemporalUpscale preset, bool assertContract)

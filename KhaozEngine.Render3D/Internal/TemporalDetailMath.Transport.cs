@@ -22,14 +22,10 @@ internal static partial class TemporalDetailMath
         float denominator = Vector3.Dot(delta, delta);
         float cap = Math.Clamp(1f - weight, 0f, 1f);
         float numerator = Vector3.Dot(resolved - current, delta);
-        if (!float.IsFinite(denominator) || !float.IsFinite(numerator))
-        {
-            double hx = (double)mean.X - current.X, hy = (double)mean.Y - current.Y, hz = (double)mean.Z - current.Z;
-            double divisor = hx * hx + hy * hy + hz * hz;
-            double product = ((double)resolved.X - current.X) * hx + ((double)resolved.Y - current.Y) * hy
-                + ((double)resolved.Z - current.Z) * hz;
-            return divisor == 0 ? cap : (float)Math.Clamp(product / divisor, 0, cap);
-        }
+        // Products that leave float32 need colours far outside the store's range. The shader has no wider
+        // arithmetic to fall back on and its result there is unspecified, so the mirror keeps nothing rather
+        // than promise a value the shader does not compute.
+        if (!float.IsFinite(denominator) || !float.IsFinite(numerator)) return 0f;
         return denominator == 0f ? cap
             : Math.Clamp(numerator / denominator, 0f, cap);
     }

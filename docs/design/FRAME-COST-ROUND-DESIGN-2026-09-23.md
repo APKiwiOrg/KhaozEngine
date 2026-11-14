@@ -156,11 +156,11 @@ are separable. This round is smaller and lands first. The #1054 implementation r
 ### Today
 
 A dissolving prop casts a dithered point shadow through the dissolve pipelines of `PointShadowRenderer`, with the
-same noise as the colour pass. The signature mixes the raw bits of `Dissolve.X`. A prop inside a distance fade
-band or an LOD crossfade band changes `Dissolve.X` on every frame the draw focus moves, so any static light with
-such a prop inside its radius is dirty on every frame of the fade. The rebuild budget of two per frame is spent
-continuously. The signature also omits `DissolveComplement`, so a complement flip at a constant threshold changes
-the map without changing the signature.
+same noise as the colour pass. The signature quantizes `Dissolve.X` and includes the `DissolveComplement` flag.
+A prop inside a distance fade band or an LOD crossfade band changes `Dissolve.X` on every frame the draw focus
+moves. Mixing the raw bits would dirty every static light with such a prop inside its radius on every frame
+of the fade, spending the rebuild budget of two per frame continuously. The complement flag must remain in
+the signature because a flip at a constant threshold changes the map.
 
 ### Design
 
@@ -179,8 +179,9 @@ pixels. A prop at run pace crosses a 16 m fade band in about sixteen rebuilds in
 Rigid bodies inside a lamp radius still dirty it on every frame they move, by design. Grimhollow's avatar leaves
 the rigid signature when it goes skinned under #1054.
 
-The key-light caster compare has the same complement gap. That is recorded as a follow-up issue and not changed
-here, because the key-light compare is exact rather than hashed and belongs to the #410 work.
+The key-light caster compare also includes the complement flag, read above `0.5f` like the point signature and
+shader ([#1131](https://github.com/APKiwiOrg/KhaozEngine/issues/1131)). Its threshold comparison remains exact
+rather than quantized. A complement flip alone re-renders the key-light atlas, while an unchanged frame reuses it.
 
 ### Tests
 

@@ -5399,12 +5399,13 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - ANY of the fitted
       cascade matrices (which fold in the light direction, the camera-frustum slice, and the light distance, so a
       moving sun past the light-hold threshold below, or a camera pan/turn past a texel, re-renders), the rigid caster
-      set + world transforms, the map
-      resolution, any animated skinned caster present (a bone pose can change every frame, so any skinned caster
+      set + world transforms, exact dissolve thresholds, `DissolveComplement` flags (set above `0.5f`), interior-cut
+      state, the map resolution, any animated skinned caster present (a bone pose can change every frame, so any skinned caster
       forces a re-render), or the skinned casters the last rendered pass DREW having all gone this frame (since
       17.37.0, issue #23: the atlas is reused rather than cleared, so the frame a character despawns has to
       re-render once to take its shadow off it, and the frame after that is clean again).
-      An unchanged static scene reuses the prior atlas and skips every caster draw, so a
+      A complement flip alone re-renders even when its threshold and transform hold still. An unchanged static
+      scene reuses the prior atlas and skips every caster draw, so a
       mostly-static view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw
       calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when
       the tier is not `ShadowMap`) for a HUD/diagnostics signal. `LastShadowPassDiagnostics` (a

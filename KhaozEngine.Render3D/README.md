@@ -261,10 +261,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     `TileGroundUploadRefusal.LayerCountOutsideRange` with `LayerCount`, `MinimumLayerCount` and
     `MaximumLayerCount`. Wrong RGBA slice sizes carry `TileGroundUploadRefusal.LayerByteLengthMismatch`
     with `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width` and `Height` on
-    `TileGroundUploadArgumentException`. Albedo only by design: there is no normal array,
-    and the specular exponent is a constant 28 (what the splat pass reaches at roughness 0.5) with
-    `baseSpecStrength` as the whole set's strength, because an albedo layer carries no roughness channel. A set of
-    exactly ONE layer is a one-layer array, not a padded two-layer one: between 17.38.0 and 17.39.0 it was
+    `TileGroundUploadArgumentException`. A plain layer is albedo only: its specular exponent is a constant 28
+    (what the splat pass reaches at roughness 0.5) with `baseSpecStrength` as the whole set's strength, because it
+    carries no roughness. Relief layers add maps through the overload that takes a surface size, see Relief below.
+    A set of exactly ONE layer is a one-layer array, not a padded two-layer one: between 17.38.0 and 17.39.0 it was
     duplicated into a second slice, because the GPU seam could not express a one-layer array and the fragment
     declares `texture2DArray` (#666, fixed by `GpuTextureDescription.IsArray`).
   - **Upload reuse.** Tile-ground upload shares only complete byte-identical vertex tuples, including the outline
@@ -300,6 +300,70 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     Repeated active corner or overlay roles reuse the complete sample for their clamped slot ID, including its
     steep companion. Each role keeps its original weight threshold and ordered weighted addition. Equal-slot
     weights are never combined, so the optimization preserves rounding and output pixels.
+  - **Relief (`TileGroundRelief`, since 23.13.0).** A layer can carry surface maps, a height map, a feather breakup
+    and hex-tiling, on `TileGroundLayerImage`: `SurfaceRgba` with `NormalMapped` and `RoughnessMapped`,
+    `HeightMapped`, `HeightBlendSharpness`, `FeatherBreakup` and `AntiTiling`. Load them with
+    `LoadTileGroundMaterial(width, height, layers, surfaceWidth, surfaceHeight, baseSpecStrength, sampler)`.
+    - **Nothing changes for a set that uses none of it.** `TileGroundRelief.UsesRelief` is false, the set loads
+      exactly as before and its meshes draw through the unchanged plain program, so a consumer that ships no maps
+      keeps today's shader, pixels and cost. Its shader hash rows did not move when the relief programs landed.
+    - **A mesh draws with the cheapest program its slots need.** A relief set also keeps a plain-program resource
+      set, and `LoadMesh(mesh, material)` reads every slot the mesh names in its five lanes (map-less lanes
+      included, read the way the fragment reads them) and picks the plain program when it names no relief layer,
+      the relief program otherwise, and a separate relief program with hex-tiling compiled in only when it names a
+      hex-tiled layer. A steep companion raises its layer to the companion's need. A tile world's region meshes are
+      separate meshes, so a region that paints no relief material costs what it always did. Hex-tiling is its own
+      program because its registers, allocated for every fragment of a program that contains it, measured as about
+      half of the relief program's overhead on fragments that never take it.
+    - **Packing.** The height rides in the ALBEDO alpha, so a height map costs no memory and no tap. Normal (rgb)
+      and roughness (alpha) go into a second RGBA8 array, the surface array, holding only the layers that carry
+      `SurfaceRgba`, in slot order, at the set's surface size, which may differ from the albedo size. A relief set
+      with no surface texels binds a one-texel flat surface array. One size per array is kept because a texture
+      array has one size per mip level, per-size arrays would multiply bindings and need non-uniform array
+      selection in the shader, and resampling behind the caller would hide memory and blur.
+    - **Tangent frames.** The ground's uv is a world-axis projection, so each projection's frame is its own uv axes,
+      orthonormalised against the interpolated lattice normal: top-down u = +X with the image top (-v) along -Z,
+      the side along X u = +Z with the top +Y, the side along Z u = +X with the top +Y. The frame is therefore the
+      same on every tile, region and ground LOD, and the perturbed normal is seamless wherever the lattice normal
+      is. Normal maps use the glTF convention (+x right, +y toward the image top), the same as the model pass, so
+      one texture pipeline authors both. Lighting, indirect light and the specular term read the perturbed normal.
+      The shadow normal offset, the shadow slope bias and the edge pass keep the geometric one, so a bumpy map
+      cannot open acne on flat ground.
+    - **Roughness.** Until physically based lighting takes the same value, roughness r drives the existing
+      Blinn-Phong: strength `baseSpecStrength * 2 * (1 - r)` and exponent `mix(48, 8, r)`. At r = 0.5 that is
+      exactly the plain program's strength and 28, which is also what a layer without a roughness map takes.
+    - **Height blend.** Where materials meet, at corner blends and feathered overlay edges, the weights resolve by
+      height. Map-less materials join one flat group at `NeutralHeight` (0.5) whose members keep their linear
+      split. The group and each height-mapped material take the logit `ln(weight) + HeightInfluence * height`, and
+      the resolved weights are their softmax scaled by the fragment's sharpness, the weight-mean of the mapped
+      materials' `HeightBlendSharpness` (1 soft to 64 crisp, default 8). A weight of 0 stays 0, so a shared corner
+      keeps its one material and a shared edge depends only on its two materials and the world-anchored heights:
+      the blend is seamless across tiles, regions and LODs. With no mapped material in play it is exactly the
+      linear blend, which is why map-less neighbours never sharpen against each other. `HeightInfluence` is ln 10,
+      so a full height difference moves a boundary to a 10:1 weight ratio and the largest blend a role can win at
+      the 0.001 weight below which its taps are skipped is 1 percent, so a corner never pops. The steep companion
+      stays a slope blend and takes no part.
+    - **Feather breakup.** A feathered overlay's weight o becomes `o ^ (1 + 6 * FeatherBreakup * m)`, m a
+      deterministic two-octave world-space value noise (wavelength `BreakupWavelengthMetres`, 1.6 m) in [0, 1]
+      from an integer hash, the same bits on every backend. The exponent never drops below 1, so the overlay never
+      reaches further out than the straight feather: an exponent below 1 would steepen the fringe at the tile
+      boundary into a visible line along the grid, which the breakup is there to hide. The visible edge wanders
+      inward instead, as deep as the ramp's 0.9 contour at full breakup, and 0 and 1 stay fixed points.
+    - **Hex-tiling.** `TileGroundAntiTiling.Offset` or `Rotate` hex-tiles the layer's top-down taps (Mikkelsen
+      2022): three randomly offset (and, for Rotate, turned) copies from a hex lattice of about half a repeat,
+      blended by sharpened barycentric weights biased toward the higher height, or the brighter tap without a
+      height map. Rotated taps turn their gradients and their tangent-space normal back. Side projections on steep
+      ground stay single taps. Offset keeps a directional texture's orientation, Rotate hides the repeat best on an
+      isotropic one.
+    - **Cost.** A 512 px RGBA8 layer with its mip chain is 1.33 MiB. The albedo array is unchanged, the surface
+      array adds 1.33 MiB per layer with a normal or roughness map, and a relief params block is 4144 bytes against
+      2080. Measured on an Apple M2 Max (Metal) at 1920x1080 with 512 px layers, pass medians over 360 frames
+      from `TileGroundReliefCostDiagnosticTests`, transition-heavy ground then single-material ground: plain
+      0.60 and 0.48 ms, a relief set's plain-program mesh within the run's noise of plain (it is the same program),
+      the relief program without maps 0.93 and
+      0.76 ms, with height, normal and roughness maps 0.98 and 0.77 ms, and with hex-tiling as well 2.18 and
+      1.34 ms. The maps themselves are cheap, and the relief program's cost is mostly the state it keeps for five
+      roles. These are one machine's numbers, so measure your own target with the same Diagnostic test.
   - **Constraints worth knowing.** Entries past the layer count are zeroed, while the shader clamps every mesh slot
     to the last real texture layer before reading either resource. A hand-built mesh naming an invalid slot
     therefore shows the set's last material instead of sampling a nonexistent array slice. The pipeline binds TWO
@@ -307,7 +371,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     material's own `TileGroundParams` buffer (`vec4 TintTiling[64]`, a `Misc` vector carrying base specular
     strength and layer count, a `Triplanar` vector and `vec4 SteepBand[64]`, 2080 bytes written once at load),
     then the albedo array, its sampler, and the shadow map and its sampler LAST, which is the binding-order
-    convention the terrain pass established. Until 18.1.0 the frame block and the params rode in ONE buffer per
+    convention the terrain pass established. A relief material's block appends `vec4 Surface[64]`,
+    `vec4 Blend[64]` and one `vec4 Relief` (4144 bytes), and its relief set puts the surface array after the albedo
+    array, the splat material's order. The plain block is the relief block's prefix, which is why a relief
+    material's plain-program set binds the same buffer. Until 18.1.0 the frame block and the params rode in ONE buffer per
     material, re-uploaded whole every frame, which is what #727 unfolded. Tile ground CASTS shadows, like a model
     mesh and unlike the splat terrain.
   - **Lifetime.** The material is owned by the scene, shared by every mesh drawn with it, and unloading a mesh does
@@ -2462,11 +2529,14 @@ allocation. This is a lit-pipeline requirement owned by Render3D.
 
 ## Tile-ground render refusals
 
-`TileGroundSteepArgumentException` and `TileGroundUploadArgumentException` derive from `ArgumentException`
-and carry a non-null `Reason` with the identifiers below. Optional identifiers are null when unused.
-`TileGroundSteepShading.Validate` owns companion and band checks shared by params packing, scene upload and
-TileWorld material sets. Upload and params construction share `TileGroundUploadRefusal.LayerCountOutsideRange`.
-Numeric width and height checks remain `ArgumentOutOfRangeException` with `ParamName` and `ActualValue`.
+`TileGroundSteepArgumentException`, `TileGroundReliefArgumentException` and `TileGroundUploadArgumentException`
+derive from `ArgumentException` and carry a non-null `Reason` with the identifiers below. Optional identifiers are
+null when unused. `TileGroundSteepShading.Validate` owns companion and band checks and `TileGroundRelief.Validate`
+owns the relief member checks, both shared by params packing, scene upload and TileWorld material sets. Upload
+and params construction share `TileGroundUploadRefusal.LayerCountOutsideRange`. Numeric width and height checks,
+the surface size included, remain `ArgumentOutOfRangeException` with `ParamName` and `ActualValue`. The scene
+resource upload (`SceneGroundMaterialData`) carries plain layers only and refuses relief ones with an
+`ArgumentException` naming `layers`.
 
 | Reason | Refused input | Identifiers |
 |---|---|---|
@@ -2476,3 +2546,9 @@ Numeric width and height checks remain `ArgumentOutOfRangeException` with `Param
 | `TileGroundSteepRefusal.BandCosinesNotDistinct` | a steep band whose endpoints pack to the same cosine | `LayerIndex`, `FromDegrees`, `ToDegrees` |
 | `TileGroundUploadRefusal.LayerCountOutsideRange` | a tile-ground upload or params pack with an unsupported layer count | `LayerCount`, `MinimumLayerCount`, `MaximumLayerCount` |
 | `TileGroundUploadRefusal.LayerByteLengthMismatch` | an upload slice with the wrong RGBA byte length | `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width`, `Height` |
+| `TileGroundUploadRefusal.SurfaceByteLengthMismatch` | a layer's surface texels that are not the declared surface size | `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width`, `Height` |
+| `TileGroundReliefRefusal.MapFlagWithoutSurface` | a normal or roughness flag on a layer with no surface texels | `LayerIndex` |
+| `TileGroundReliefRefusal.SurfaceWithoutMapFlag` | surface texels that neither map flag claims | `LayerIndex` |
+| `TileGroundReliefRefusal.HeightBlendSharpnessOutsideRange` | a height-mapped layer's sharpness outside 1 to 64 or not a number | `LayerIndex`, `Value` |
+| `TileGroundReliefRefusal.FeatherBreakupOutsideRange` | a feather breakup outside 0 to 1 or not a number | `LayerIndex`, `Value` |
+| `TileGroundReliefRefusal.AntiTilingUndefined` | an anti-tiling value the enum does not define | `LayerIndex`, `Value` |

@@ -52,12 +52,20 @@ public sealed class MotionShaderSignatureTests
 
     /// <summary>The tile-ground pair reads every interpolant its vertex emits, so its variant must too: the two
     /// signatures are the same set, as <c>D3D11FxcValidationTests.TheTileGroundInterpolants_AreGapFreeAndEntirelyRead</c>
-    /// holds for the base pair.</summary>
-    [Fact]
-    public void TheTileGroundVariantReadsEveryInterpolantItsVertexEmits()
+    /// holds for the base pair. The relief fragments' motion variants pair with the same vertex.</summary>
+    [Theory]
+    [InlineData("TileGroundMotion")]
+    [InlineData("TileGroundReliefMotion")]
+    [InlineData("TileGroundReliefHexMotion")]
+    public void TheTileGroundVariantReadsEveryInterpolantItsVertexEmits(string name)
     {
-        CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
-            ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, "TileGroundMotion");
+        string fragment = name switch
+        {
+            "TileGroundReliefMotion" => ShaderSources.TileGroundReliefMotionFrag,
+            "TileGroundReliefHexMotion" => ShaderSources.TileGroundReliefHexMotionFrag,
+            _ => ShaderSources.TileGroundMotionFrag,
+        };
+        CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.TileGroundMotionVert, fragment, name);
 
         Assert.Equal(D3D11FxcValidationTests.Semantics(pair.VertexSource, "SPIRV_Cross_Output"),
             D3D11FxcValidationTests.Semantics(pair.FragmentSource, "SPIRV_Cross_Input"));

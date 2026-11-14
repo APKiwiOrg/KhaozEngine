@@ -216,6 +216,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
             list.Begin();
+            list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             list.Draw(1);
             list.End();
 
@@ -264,6 +265,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
             list.Begin();
+            list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             list.Draw(1);
             list.End();
             harness.Ring.Write(0, new byte[] { 1, 2, 3, 4 });
@@ -273,7 +275,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(1, harness.Memory.UnmapCount);
             Assert.Equal(0, harness.Memory.EmitterCallsAtLastUnmap);
-            Assert.Equal(3, signal.EmitterCallsAtLastSignal);   // Begin, Draw, End: the signal is at the far end
+            Assert.Equal(4, signal.EmitterCallsAtLastSignal);   // Begin, framebuffer, draw, End precede the signal.
             Assert.False(harness.Ring.IsMapped);
             Assert.True(harness.Memory.LastUnmapHeldTheSubmitLock);
         }
@@ -303,6 +305,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
             list.Begin();
+            list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             list.Draw(1);
             list.End();
             harness.Ring.Write(0, new byte[] { 1, 2, 3, 4 });

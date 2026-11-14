@@ -248,6 +248,7 @@ namespace KhaozEngine.Tests.Gpu
             rings.Allocator.BeginFrame();
             emitter.End();
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(D3D11BindFixtures.Pipeline(layout));
             emitter.SetGraphicsResourceSet(0, set, 128);
             harness.Log.Reset();

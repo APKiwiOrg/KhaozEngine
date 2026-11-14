@@ -128,6 +128,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using D3D11CommandRecorder<D3D11StreamEmitter> list = D3D11CommandDrivers.CreateDeferred();
             list.Begin();
+            list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             list.SetPipeline(D3D11BindFixtures.Pipeline(layout));
             for (int draw = 0; draw < 8; draw++)
             {

@@ -196,6 +196,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 Command = command,
             };
 
+        /// <summary>The draw target, required before either bind flush on both emitters and before encoding a
+        /// deferred draw. A refused draw leaves pending binds and the command stream untouched.</summary>
+        internal static IGpuFramebuffer RequireDrawFramebuffer(IGpuFramebuffer? bound, string command)
+            => RequireBoundFramebuffer(bound, command,
+                "A draw needs a render target. Bind a framebuffer in this recording before drawing.");
+
         /// <summary>
         /// The bound framebuffer whose extent IS the full scissor, refused by name when none is bound, in the one
         /// place BOTH emitters ask (https://github.com/APKiwiOrg/KhaozEngine/issues/496).

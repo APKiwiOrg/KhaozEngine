@@ -916,6 +916,13 @@ either. The first full-suite sweeps surfaced 13 real Windows portability bugs, a
 contract violation in three test classes that only Vulkan enforces, and the lavapipe host-crash
 instability above - all of which the golden-only filter had been hiding.
 
+D3D11, Metal and Vulkan refuse `Draw` and `DrawIndexed` without a bound framebuffer with
+`GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` and the corresponding
+`Command`. D3D11's headless trace exercises the same check as its device emitter, before either bind flush.
+Its immediate and default deferred drivers refuse at the draw call, with no draw appended on refusal.
+`Begin` resets the recorded target, so every recording binds its own framebuffer
+([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
+
 `KE_GPU_TESTS` accepts two values. `1` is strict (CI and the dev Mac): tests run, and a device-creation
 failure is a test error, never a skip, so CI cannot go green with zero GPU coverage. `probe` is for
 arbitrary machines: a one-per-process headless device probe runs the tests when a device exists and

@@ -9,7 +9,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <see cref="D3D11StreamEmitter"/> and the decoding in <see cref="D3D11StreamReplay"/>, which is what keeps
     /// three jobs out of one file (the incumbent's equivalent was 1751 lines against an 800-line cap).
     /// <para>
-    /// <see cref="Reset"/> is what <c>Begin</c> reaches, and it is one integer write plus two child resets. No
+    /// <see cref="Reset"/> is what <c>Begin</c> reaches, resetting the count, target and two child stores. No
     /// native call, no lock, no device contact, which is the property section 5.1 states and the one that makes a
     /// nested or concurrent <c>Begin</c> structurally harmless: two recorders are two arrays, so there is no
     /// shared device state for one to wipe out from under the other.
@@ -48,6 +48,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Bytes of bulk payload this recording holds.</summary>
         internal int PayloadLength => _payloads.Length;
 
+        /// <summary>The target recorded since the last Begin. Draw validation must run before appending an op,
+        /// rather than escape Submit after earlier commands have already reached the device.</summary>
+        internal IGpuFramebuffer? BoundFramebuffer { get; set; }
+
         /// <summary>True once <c>End</c> has sealed the recording. This mirrors the recorder's own seal flag
         /// for test visibility only. Replaying a list that was never ended would replay a half-recorded frame
         /// rather than failing. In production, Submit checks the recorder's <c>IsSealed</c> instead.</summary>
@@ -59,6 +63,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _count = 0;
             _references.Reset();
             _payloads.Reset();
+            BoundFramebuffer = null;
             Sealed = false;
         }
 

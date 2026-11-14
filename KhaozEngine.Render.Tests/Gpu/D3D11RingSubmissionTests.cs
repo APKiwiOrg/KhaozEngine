@@ -250,6 +250,7 @@ namespace KhaozEngine.Tests.Gpu
             internal void Record(params byte[][] writes)
             {
                 _list.Begin();
+                _list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
                 foreach (byte[] bytes in writes) _list.UpdateBuffer<byte>(_buffer, 0, bytes);
                 _list.Draw(1);
                 _list.End();

@@ -256,12 +256,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>
-        /// DECISION R5, RULE 2, in the order every draw path in this backend takes: the resource-set flush FIRST,
-        /// then the batched vertex streams, then the draw. Direct3D 11 has no non-instanced entry point, so the
+        /// DECISION R5, RULE 2: require a framebuffer, flush resource sets, flush batched vertex streams, then
+        /// draw. Direct3D 11 has no non-instanced entry point, so the
         /// seam's single-instance draw arrives here as one instance, exactly as the incumbent issued it.
         /// </summary>
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
+            D3D11BindResolve.RequireDrawFramebuffer(_state.BoundFramebuffer, nameof(IGpuCommandList.Draw));
             FlushGraphicsBinds();
             FlushVertexBuffers();
             Native.DrawInstanced((int)vertexCount, (int)instanceCount, (int)vertexStart, (int)instanceStart);
@@ -271,6 +272,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset,
             uint instanceStart)
         {
+            D3D11BindResolve.RequireDrawFramebuffer(_state.BoundFramebuffer, nameof(IGpuCommandList.DrawIndexed));
             FlushGraphicsBinds();
             FlushVertexBuffers();
             Native.DrawIndexedInstanced((int)indexCount, (int)instanceCount, (int)indexStart, vertexOffset,
@@ -286,7 +288,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             Native.Dispatch((int)groupCountX, (int)groupCountY, (int)groupCountZ);
         }
 
-        /// <summary>THE PRE-COMMAND HOOK of decision R5, called first by every draw. Named rather than inlined at
+        /// <summary>THE PRE-COMMAND HOOK of decision R5, called after the draw target check. Named rather than inlined at
         /// each site so the position is one thing to get right and this draw path reads the same as the trace
         /// emitter's.</summary>
         internal void FlushGraphicsBinds()

@@ -624,6 +624,7 @@ namespace KhaozEngine.Tests.Gpu
             emitter.End();
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             harness.Log.Reset();
             emitter.SetPipeline(pipeline);
             emitter.SetGraphicsResourceSet(0, set);
@@ -663,6 +664,7 @@ namespace KhaozEngine.Tests.Gpu
             using D3D11ResourceSet set = D3D11BindFixtures.ShadowSet(layout, buffer);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(D3D11BindFixtures.Pipeline(layout));
             emitter.SetGraphicsResourceSet(0, set, 0);
 
@@ -704,6 +706,7 @@ namespace KhaozEngine.Tests.Gpu
             using D3D11ResourceSet set = D3D11BindFixtures.ShadowSet(layout, buffer);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.SetPipeline(D3D11BindFixtures.Pipeline(layout));
             emitter.SetGraphicsResourceSet(0, set, 0);
             emitter.Draw(3, 1, 0, 0);

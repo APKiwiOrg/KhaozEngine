@@ -51,6 +51,9 @@ namespace KhaozEngine.Tests.Gpu
 
         internal static TraceTexture Texture() => new();
 
+        internal static TraceFramebuffer Framebuffer() => new(new GpuOutputDescription(
+            GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R8G8B8A8UNorm), 640, 480);
+
         /// <summary><c>ModelRenderer._layout</c> verbatim: the frame UBO, two point-light buffers, five textures and
         /// two samplers. Registers <c>b0 t0 t1 t2 t3 t4 s0 t5 s1 t6 t7</c>.</summary>
         internal static D3D11ResourceLayout ModelLayout() => Layout(
@@ -160,6 +163,7 @@ namespace KhaozEngine.Tests.Gpu
                 State = new D3D11DeviceState(new D3D11BindFlush(unsetConstantBuffersBeforeSet, rings));
                 Emitter = new D3D11NativeTraceEmitter(State, Log);
                 Emitter.Begin();
+                Emitter.SetFramebuffer(Framebuffer());
                 Log.Reset();
             }
 

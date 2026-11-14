@@ -9158,8 +9158,12 @@ a `oneOf` over the config and layout shapes), which the package's tests validate
 available for editor/AI tooling. The load path itself enforces its own semantic checks, throwing
 `DungeonJsonException`. Its `Reason` (a `DungeonJsonRefusal`) names the rule and, where one applies, `JsonPath`
 names the offending member as a rooted path, such as `$.roomCountTarget` or `$.rooms[2].id`,
-with the other identifiers listed in the package README. The message is prose, never a contract. A hand-authored
-or generated config looks like:
+with the other identifiers listed in the package README. Config and layout cell sizes and floor heights, and a
+set config ceiling height, must be positive and finite. A positive overflow such as `1e39` reports `NumberNonfinite`, the rooted member path and
+`ActualNumber`. Nonpositive sizes, including negative infinity, report `PositiveValueRequired` first.
+`DungeonConfig.Validate` and `DungeonGenerator.Generate` enforce the same size rules with `ArgumentException`
+and the property as `ParamName`. The message is prose, never a contract. A hand-authored or generated config
+looks like:
 
 ```jsonc
 {

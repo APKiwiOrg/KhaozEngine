@@ -111,13 +111,12 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal(0f, loaded.CeilingHeightMeters);
         }
 
-        // A saved layout with its ceilingHeightMeters replaced by a raw JSON number, so out-of-range literals such as
-        // 1e1000 (which System.Text.Json reads as infinity) reach the semantic check.
-        static string LayoutWithCeiling(string literal)
+        // A raw JSON number lets overflowing literals reach the semantic check. Regression #1721.
+        static string DocumentWithNumber(string section, string member, string literal)
         {
-            DungeonLayout layout = DungeonGenerator.Generate(Config(), 42UL);
-            return Regex.Replace(DungeonJson.SaveLayout(layout),
-                "\"ceilingHeightMeters\":\\s*[-+0-9.eE]+", "\"ceilingHeightMeters\": " + literal,
+            string document = section == "config" ? ConfigJson((member, 0)) : ValidDocument(section);
+            return Regex.Replace(document,
+                "\"" + member + "\":\\s*[-+0-9.eE]+", "\"" + member + "\": " + literal,
                 RegexOptions.None, System.TimeSpan.FromSeconds(1));
         }
 
@@ -128,7 +127,7 @@ namespace KhaozEngine.Tests.Dungeon
         public void Layout_NegativeCeilingHeight_Throws_NamingField(string literal, double refused)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
-                DungeonJson.LoadLayout(LayoutWithCeiling(literal)));
+                DungeonJson.LoadLayout(DocumentWithNumber("layout", "ceilingHeightMeters", literal)));
 
             Assert.Equal(DungeonJsonRefusal.NonnegativeValueRequired, ex.Reason);
             Assert.Equal("$.ceilingHeightMeters", ex.JsonPath);
@@ -136,22 +135,32 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.Equal(0.0, ex.MinimumNumber);
 
             // The limit is zero, inclusive.
-            Assert.Equal(0f, DungeonJson.LoadLayout(LayoutWithCeiling("0")).CeilingHeightMeters);
+            Assert.Equal(0f, DungeonJson.LoadLayout(DocumentWithNumber("layout", "ceilingHeightMeters", "0")).CeilingHeightMeters);
         }
 
-        [Fact]
-        public void Layout_NonFiniteCeilingHeight_Throws_NamingField()
+        [Theory]
+        [InlineData("layout", "ceilingHeightMeters", "$.ceilingHeightMeters")]
+        [InlineData("layout", "cellSizeMeters", "$.cellSizeMeters")]
+        [InlineData("layout", "floorHeightMeters", "$.floorHeightMeters")]
+        [InlineData("config", "cellSizeMeters", "$.cellSizeMeters")]
+        [InlineData("config", "floorHeightMeters", "$.floorHeightMeters")]
+        [InlineData("config", "ceilingHeightMeters", "$.ceilingHeightMeters")]
+        public void NonFiniteSize_Throws_NamingField(string section, string member, string jsonPath)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
-                DungeonJson.LoadLayout(LayoutWithCeiling("1e1000")));
+                Load(section, DocumentWithNumber(section, member, "1e39")));
 
             Assert.Equal(DungeonJsonRefusal.NumberNonfinite, ex.Reason);
-            Assert.Equal("$.ceilingHeightMeters", ex.JsonPath);
+            Assert.Equal(jsonPath, ex.JsonPath);
             Assert.Equal(double.PositiveInfinity, ex.ActualNumber);
             Assert.Null(ex.MinimumNumber);
 
             // The largest finite float loads.
-            Assert.Equal(float.MaxValue, DungeonJson.LoadLayout(LayoutWithCeiling("3.4028235E+38")).CeilingHeightMeters);
+            string control = DocumentWithNumber(section, member, "3.4028235E+38");
+            string saved = section == "config"
+                ? DungeonJson.SaveConfig(DungeonJson.LoadConfig(control))
+                : DungeonJson.SaveLayout(DungeonJson.LoadLayout(control));
+            Assert.Equal(float.MaxValue, JsonNode.Parse(saved)![member]!.GetValue<float>());
         }
 
         [Fact]
@@ -233,12 +242,15 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Theory]
-        [InlineData("cellSizeMeters", "$.cellSizeMeters", 0f)]
-        [InlineData("ceilingHeightMeters", "$.ceilingHeightMeters", -1f)]
-        public void NonPositiveSize_Throws_NamingField(string member, string jsonPath, float refused)
+        [InlineData("cellSizeMeters", "$.cellSizeMeters", "0", 0.0)]
+        [InlineData("floorHeightMeters", "$.floorHeightMeters", "0", 0.0)]
+        [InlineData("cellSizeMeters", "$.cellSizeMeters", "-1e39", double.NegativeInfinity)]
+        [InlineData("floorHeightMeters", "$.floorHeightMeters", "-1e39", double.NegativeInfinity)]
+        [InlineData("ceilingHeightMeters", "$.ceilingHeightMeters", "-1", -1.0)]
+        public void NonPositiveSize_Throws_NamingField(string member, string jsonPath, string literal, double refused)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
-                DungeonJson.LoadConfig(ConfigJson((member, refused))));
+                DungeonJson.LoadConfig(DocumentWithNumber("config", member, literal)));
 
             Assert.Equal(DungeonJsonRefusal.PositiveValueRequired, ex.Reason);
             Assert.Equal(jsonPath, ex.JsonPath);
@@ -366,16 +378,18 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Theory]
-        [InlineData("cellSizeMeters", "$.cellSizeMeters")]
-        [InlineData("floorHeightMeters", "$.floorHeightMeters")]
-        public void BadLayoutDims_Throws_NamingField(string member, string jsonPath)
+        [InlineData("cellSizeMeters", "$.cellSizeMeters", "0", 0.0)]
+        [InlineData("floorHeightMeters", "$.floorHeightMeters", "0", 0.0)]
+        [InlineData("cellSizeMeters", "$.cellSizeMeters", "-1e39", double.NegativeInfinity)]
+        [InlineData("floorHeightMeters", "$.floorHeightMeters", "-1e39", double.NegativeInfinity)]
+        public void BadLayoutDims_Throws_NamingField(string member, string jsonPath, string literal, double refused)
         {
             DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
-                DungeonJson.LoadLayout(LayoutWith("/" + member, 0)));
+                DungeonJson.LoadLayout(DocumentWithNumber("layout", member, literal)));
 
             Assert.Equal(DungeonJsonRefusal.PositiveValueRequired, ex.Reason);
             Assert.Equal(jsonPath, ex.JsonPath);
-            Assert.Equal(0.0, ex.ActualNumber);
+            Assert.Equal(refused, ex.ActualNumber);
 
             DungeonJson.LoadLayout(DungeonJson.SaveLayout(ContentLayout()));
         }

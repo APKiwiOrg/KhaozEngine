@@ -352,8 +352,9 @@ public sealed class ReportRedactorAllocationTests
     public void Clean_text_does_not_allocate()
     {
         var redactor = new ReportRedactor("/Users/ann");
-        // #1463: Basic candidates with no decoded colon must also avoid allocations.
-        const string text = "basic materials and basic settings with Basic c2V0dGluZ3M= from /Volumes/Backup/Users/ann";
+        // #1463: Basic candidates with no decoded colon and home tails of longer paths must also avoid allocations.
+        const string text = "Loaded 12 tiles in 3.2 ms from /Users/anna/tiles with tokenizer=fast, basic materials and "
+            + "basic settings with Basic c2V0dGluZ3M= from /Volumes/Backup/Users/ann";
 
         void Run() => redactor.Redact(text);
 
@@ -368,7 +369,8 @@ public sealed class ReportRedactorAllocationTests
         // A regex holds its parsed replacement only weakly, so a full collection drops it and the next replace
         // parses it again. Clean text must not reach a replace, or every full collection costs a report string.
         var redactor = new ReportRedactor("/Users/ann");
-        const string text = "basic materials and basic settings with Basic c2V0dGluZ3M= from /Volumes/Backup/Users/ann";
+        const string text = "Loaded 12 tiles in 3.2 ms from /Users/anna/tiles with tokenizer=fast, basic materials and "
+            + "basic settings with Basic c2V0dGluZ3M= from /Volumes/Backup/Users/ann";
 
         void Run() => redactor.Redact(text);
 

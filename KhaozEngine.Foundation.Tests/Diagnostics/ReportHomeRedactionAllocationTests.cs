@@ -15,7 +15,9 @@ public sealed class ReportHomeRedactionAllocationTests(ITestOutputHelper output)
 
     [Fact]
     public void Adjacent_home_occurrences_allocate_only_the_result_string() =>
-        AssertAllocation(string.Concat(Enumerable.Repeat("/Users/ann", 1000)), new string('~', 1000), 2024);
+        // #1463: a slash between homes remains a reusable boundary.
+        AssertAllocation(string.Join("/", Enumerable.Repeat("/Users/ann", 1000)),
+            string.Join("/", Enumerable.Repeat("~", 1000)), 4024);
 
     void AssertAllocation(string text, string expected, long maximumBytes)
     {

@@ -122,7 +122,9 @@ public sealed class ReportRedactor
             foreach (Rule rule in rules)
             {
                 if (result.Length > MaximumInputLength) return Mask;
-                if (rule.Pattern.IsMatch(result))
+                if (rule.ChecksCredential)
+                    result = ReportAuthorizationRedaction.Redact(result, rule.Pattern);
+                else if (rule.Pattern.IsMatch(result))
                     result = rule.Pattern.Replace(result, rule.Replacement);
             }
             if (result.Length > MaximumInputLength) return Mask;
@@ -175,16 +177,21 @@ public sealed class ReportRedactor
         new(@"(^|[^A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}", "$1" + Mask, timeout),
         // GitHub, Slack, AWS access key id and OpenAI style tokens.
         new(@"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,})\b", Mask, timeout),
-        // Bearer and Basic credentials keep the scheme and its spacing.
-        new(@"(?i)\b(bearer|basic)(\s+)[A-Za-z0-9._~+/=-]{8,}", "$1$2" + Mask, timeout),
+        // Bearer and Basic credentials keep the scheme and its spacing. A Basic run masks only when it decodes to a
+        // user:password credential, so the replacement here is the Bearer outcome the backtracking checks compare.
+        new(@"(?i)\b(bearer|basic)(\s+)[A-Za-z0-9._~+/=-]{8,}", "$1$2" + Mask, timeout, checksCredential: true),
         // Secret URL query values keep the parameter name.
         new(@"(?i)([?&](?:sig|signature|code|token|access_token|id_token|refresh_token|key|apikey|api_key|client_secret|password)=)[^&#\s""']+", "$1" + Mask, timeout),
     ];
 
-    internal readonly struct Rule(string pattern, string replacement, TimeSpan timeout)
+    internal readonly struct Rule(string pattern, string replacement, TimeSpan timeout, bool checksCredential = false)
     {
         public Regex Pattern { get; } = new(pattern, RuleOptions, timeout);
 
         public string Replacement { get; } = replacement;
+
+        /// <summary>Matches go through <see cref="ReportAuthorizationRedaction"/>, which keeps a Basic run that holds
+        /// no decoded credential.</summary>
+        public bool ChecksCredential { get; } = checksCredential;
     }
 }

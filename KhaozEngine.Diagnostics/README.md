@@ -177,6 +177,12 @@ string anonymous = reporter.Redact(line);
   provider tokens (GitHub, Slack, AWS access key ids, `sk-` keys), Bearer and Basic credentials (the scheme is
   kept), secret URL query values (the parameter name is kept), and secret key and value pairs such as
   `password=`, `"apiKey": "..."` or `AccountKey=` (the key and separator are kept).
+- Bearer and Basic keep their scheme and spacing. Bearer masks token runs of at least eight characters from
+  `[A-Za-z0-9._~+/=-]`. Basic considers the same runs, but masks only when their leading complete standard-base64
+  quanta decode to bytes containing a colon, the RFC 7617 `user:password` separator. Invalid input or valid padding
+  ends that prefix. A trailing partial quantum is ignored. Thus `basic materials` and `basic settings` survive,
+  while full and truncated credentials such as `Basic dXNlcjpwYXNzd29yZA==` and `Basic dXNlcjpwY` mask the entire
+  token run.
 - `WithReporterIdentityTerms(source)` calls the game source once now and returns an independent snapshot. It masks
   complete escaped literal terms, including occurrences inside longer text, after secrets and before home. Matching
   is invariant case-insensitive, longest first, with the non-backtracking engine and no wall-clock deadline. Null, blank
@@ -184,13 +190,17 @@ string anonymous = reporter.Redact(line);
   unsupported pattern, or a combined escaped pattern above 4096 characters fails closed by masking every string.
   The source must finish promptly. `BugReportServiceOptions.ReporterIdentityTerms` takes this snapshot at each
   report's finish, so the game can return the signed-in display name and subject without caching them at startup.
-- The home directory becomes `~`, matched case-insensitively with either separator and only where the path ends,
-  so `/Users/anna` survives a home of `/Users/ann`. Trailing separators on the home are ignored, and a home
-  shorter than three characters turns the rule off.
+- The home directory becomes `~`, matched case-insensitively with either separator. It starts only at the start of
+  the text or after a character outside `[A-Za-z0-9._-]`, and ends only at the end of the text or before such a
+  character. Both boundary characters are kept. For a home of `/home/runner`, `/home/runners` and
+  `/Volumes/Backup/home/runner` survive, `file:///home/runner/x` becomes `file://~/x`, and `/home/runner/home/runner` becomes
+  `~/home/runner`. Trailing separators on the home are ignored, and a home shorter than three characters turns the
+  rule off.
 - Every rule runs on the non-backtracking engine, so it is linear in the input by construction. A JWT
   may start only at the start of the text or after a character that cannot be in a token, and that character is
-  kept. The home rule matches an escaped literal path and its following boundary, preserving that boundary for
-  adjacent paths. An unsupported home pattern or one above 4096 escaped characters masks every string.
+  kept. The home rule matches an escaped literal path and its boundaries in the original text, preserving a
+  separator between adjacent paths for both matches. An unsupported home pattern or one above 4096 escaped
+  characters masks every string.
 - Secret key/value pairs match the key, quotes and separator with a non-backtracking prefix pattern, then scan
   the value up to the original whitespace, quote, comma, semicolon or ampersand boundary. This avoids growing a
   combined key/value automaton across reports while retaining the same masked values.

@@ -47,6 +47,10 @@ internal static class ReportRedactionAdversarialCases
             Repeat(" eyJaaaaa.bbbbb", Length),
             Repeat(" ghp_aaaa", Length),
             Repeat("basic ", Length),
+            // #1463: long candidates without a decoded colon stay useful report prose.
+            Repeat("basic settings ", Length),
+            "Basic " + new string('A', Length),
+            Repeat("/Volumes/Backup/Users/ann ", Length),
             Repeat("&sig", Length),
             Repeat("token ", Length),
             Repeat("-----BEGIN PRIVATE KEY-----A-----END ", Length),
@@ -59,7 +63,11 @@ internal static class ReportRedactionAdversarialCases
         Assert.Equal(string.Concat(Enumerable.Repeat(Mask + ".", 7_408)), redactor.Redact(Repeat("eyJaaaaa.", 200_016)));
         Assert.Equal(Mask + "-", redactor.Redact(Repeat("sk-", Length)));
         Assert.Equal("-" + Mask, redactor.Redact(Repeat("-sk", Length)));
-        Assert.Equal(new string('~', 20_000), redactor.Redact(Repeat("/Users/ann", Length)));
+        // #1463: concatenated suffixes are not new home starts, unlike separated paths.
+        string homes = Repeat("/Users/ann", Length);
+        Assert.Equal("~" + homes[10..], redactor.Redact(homes));
+        // 200,000 characters round up to 18,182 complete eleven-character units.
+        Assert.Equal(string.Concat(Enumerable.Repeat("~ ", 18_182)), redactor.Redact(Repeat("/Users/ann ", Length)));
     }
 
     internal static string Repeat(string unit, int totalChars)

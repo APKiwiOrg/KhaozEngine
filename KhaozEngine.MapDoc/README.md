@@ -2626,8 +2626,10 @@ converter reads separately. It refuses with `SchemaMemberMissing` at a path root
 rather than leaving the serializer's bare failure to read as `SchemaMalformed` at a path relative to the nested value.
 Only this missing-member path is rooted at the enclosing file when the codec reads a value embedded in one: a map
 document's `prefabs`, `buildingIntent` and `nativeResourceTransforms` blocks use `$.prefabs` and so on, and a support
-file's `surfaces`, `patches`, `space` and `references` use their member. Other refusals from those embedded reads, such
-as preflight capacity, null and duplicate refusals, keep paths that start at the embedded value. Required members come
+file's `surfaces`, `patches`, `space` and `references` use their member. In a map document, other refusals from those
+embedded reads, such as preflight capacity, null and duplicate refusals, keep paths that start at the embedded block. A
+support file runs the preflight over the whole file before its embedded reads, so its preflight refusals are already
+rooted at the file. Required members come
 from the codec's own resolved metadata and from the child and override member tables the converters also check and
 read, so the two cannot disagree. A member an override type does not admit is refused as `SchemaMemberUnknown` by the
 converter and is not walked. Values with a dedicated codec, such as topology records, patches, water, marker support

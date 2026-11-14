@@ -20,4 +20,11 @@ public enum TileGroundMaterialSetRefusal
 
     /// <summary>Refuses a steep companion referencing the reserved missing slot.</summary>
     CompanionIsMissingLayer,
+
+    /// <summary>Refuses surface bytes with the wrong length. Carries LayerIndex, ActualByteLength,
+    /// ExpectedByteLength and the surface Width and Height.</summary>
+    SurfaceByteLengthMismatch,
+
+    /// <summary>Refuses relief on the reserved magenta layer. Carries LayerIndex.</summary>
+    MissingLayerHasRelief,
 }

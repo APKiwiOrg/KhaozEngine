@@ -19,8 +19,8 @@ public enum GroundMaterialKind
     Water,
 }
 
-/// <summary>A ground material referenced by underlay/overlay id. Colour drives the v1 vertex-colour renderer,
-/// <see cref="Texture"/> is reserved for a later texture path.</summary>
+/// <summary>A ground material referenced by underlay/overlay id. Colour drives headless readers and flat fills,
+/// while optional maps feed the textured ground renderer.</summary>
 public sealed class GroundMaterial
 {
     /// <summary>Catalog id, referenced from the underlay and overlay layers. 0 is reserved for void.</summary>
@@ -29,8 +29,24 @@ public sealed class GroundMaterial
     public string Name { get; set; } = "";
     /// <summary><c>#rrggbb</c>.</summary>
     public string Color { get; set; } = "#ffffff";
-    /// <summary>Texture reference for the later texture path, null when the material is colour only.</summary>
+    /// <summary>Albedo map, resolved relative to the catalog file, null when the material is colour only.</summary>
     public string? Texture { get; set; }
+    /// <summary>Normal map, resolved relative to the catalog file. Uses the glTF convention: +X right,
+    /// +Y toward the top of the image (green up).</summary>
+    public string? NormalTexture { get; set; }
+    /// <summary>Roughness map, resolved relative to the catalog file. Read from GREEN, the grayscale value or
+    /// the roughness channel of a glTF metallic-roughness texture.</summary>
+    public string? RoughnessTexture { get; set; }
+    /// <summary>Height map, resolved relative to the catalog file and read from GREEN. Height 0.5 is level
+    /// with a material that has no height map.</summary>
+    public string? HeightTexture { get; set; }
+    /// <summary>How crisply the height map resolves blends, 1 soft to 64 crisp. Null takes the renderer's
+    /// default of 8. Requires <see cref="HeightTexture"/>.</summary>
+    public float? HeightBlendSharpness { get; set; }
+    /// <summary>Optional inward feather width and edge breakup for feathered overlays.</summary>
+    public GroundMaterialFeather? Feather { get; set; }
+    /// <summary>Hex-tiling of top-down texture taps to hide repetition.</summary>
+    public GroundMaterialAntiTiling AntiTiling { get; set; }
     /// <summary>Ordinary ground or water.</summary>
     public GroundMaterialKind Kind { get; set; } = GroundMaterialKind.Ground;
     /// <summary>Texture repeats per metre on the textured ground path, null to take the renderer default of 0.5.</summary>
@@ -168,6 +184,12 @@ public sealed class TileWorldCatalogs
                 Name = material.Name,
                 Color = material.Color,
                 Texture = material.Texture,
+                NormalTexture = material.NormalTexture,
+                RoughnessTexture = material.RoughnessTexture,
+                HeightTexture = material.HeightTexture,
+                HeightBlendSharpness = material.HeightBlendSharpness,
+                Feather = material.Feather?.Clone(),
+                AntiTiling = material.AntiTiling,
                 Kind = material.Kind,
                 TilesPerMetre = material.TilesPerMetre,
                 Steep = material.Steep?.Clone(),
@@ -228,6 +250,7 @@ public sealed class TileWorldCatalogs
         foreach (TileObjectArchetype a in file.Archetypes ?? new()) c.AddArchetype(a, sourceName, sourceIsFile);
         // A steep companion resolves inside its own file, so the check runs per file, before any merge.
         GroundMaterialSteepRules.ThrowIfInvalid(c, sourceName);
+        GroundMaterialReliefRules.ThrowIfInvalid(c, sourceName);
         return c;
     }
 

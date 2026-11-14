@@ -214,13 +214,20 @@ public sealed class TileGroundOpticsSurfaceParityTests
     [InlineData("feather")]
     [InlineData("kind")]
     [InlineData("width")]
+    [InlineData("materialWidth")]
     public void TopologyAndMesherInputsInvalidateTheRange(string change)
     {
         TileWorldDocument doc = World();
         doc.SetUnderlay(10, 10, 0, TileRenderTestData.Grass);
         TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
         var options = new TileGroundMesherOptions();
+        if (change == "materialWidth")
+        {
+            doc.SetOverlay(10, 10, 0, TileRenderTestData.Grass);
+            doc.SetSettings(10, 10, 0, TileSettings.FeatherOverlay);
+        }
         TileGroundCpuBuild build = Build(doc, catalogs: catalogs, options: options);
+        Assert.True(build.Surface!.SourceWitness.IsRangeCurrent(RangeAt(build.Surface!, 10, 10), doc, catalogs, options));
         switch (change)
         {
             case "mask": doc.SetSettings(10, 10, 0, TileSettings.NoDraw); break;
@@ -230,6 +237,7 @@ public sealed class TileGroundOpticsSurfaceParityTests
             case "feather": doc.SetSettings(10, 10, 0, TileSettings.FeatherOverlay); break;
             case "kind": catalogs.Material(TileRenderTestData.Grass)!.Kind = GroundMaterialKind.Water; break;
             case "width": options.OverlayFeatherWidthMetres = 0.1f; break;
+            case "materialWidth": catalogs.Material(TileRenderTestData.Grass)!.Feather = new() { WidthMetres = 0.1f }; break;
         }
         Assert.False(build.Surface!.SourceWitness.IsRangeCurrent(RangeAt(build.Surface!, 10, 10), doc, catalogs, options));
     }

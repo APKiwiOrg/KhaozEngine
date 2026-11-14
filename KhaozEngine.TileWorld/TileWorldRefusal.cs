@@ -304,9 +304,11 @@ public enum TileWorldRefusal
     // Catalog ground material sets.
     /// <summary>Refuses a catalog exceeding one material set's capacity after reserving the missing layer.</summary>
     GroundMaterialLayerLimitExceeded,
-    /// <summary>Refuses a ground texture whose dimensions differ from the first textured material.</summary>
+    /// <summary>Refuses a ground map whose dimensions differ from the first map in its size class.
+    /// Carries the material, Field, actual dimensions, reference material and expected dimensions.</summary>
     GroundMaterialTextureSizeMismatch,
-    /// <summary>Refuses a relative ground texture when its catalog has no source file.</summary>
+    /// <summary>Refuses a relative ground map when its catalog has no source file.
+    /// Carries the material, TexturePath and Field.</summary>
     GroundMaterialTextureSourceMissing,
 
     // Authored colour parsing.
@@ -331,4 +333,16 @@ public enum TileWorldRefusal
     /// <summary>Refuses a collision box whose minimum is not below its maximum on an axis, so it is inverted or
     /// empty.</summary>
     CatalogCollisionBoxBoundsUnordered,
+
+    // Ground material relief. Appended to preserve existing refusal values.
+    /// <summary>Refuses heightBlendSharpness without a height texture. Carries the material and Field.</summary>
+    GroundMaterialHeightSharpnessWithoutHeight,
+    /// <summary>Refuses non-finite height sharpness or a value outside [1, 64]. Carries the material, Field and Value.</summary>
+    GroundMaterialHeightSharpnessOutsideRange,
+    /// <summary>Refuses a feather width that is not finite and positive. Carries the material, Field and Value.</summary>
+    GroundMaterialFeatherWidthInvalid,
+    /// <summary>Refuses non-finite feather breakup or a value outside [0, 1]. Carries the material, Field and Value.</summary>
+    GroundMaterialFeatherBreakupOutsideRange,
+    /// <summary>Refuses an undefined anti-tiling enum. Carries the material, Field and its integer Value.</summary>
+    GroundMaterialAntiTilingUndefined,
 }

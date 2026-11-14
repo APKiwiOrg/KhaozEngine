@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -30,6 +29,12 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
     /// <param name="layers">One layer per material id, then the reserved missing-material layer.</param>
     public TileGroundMaterialSet(int width, int height, IReadOnlyList<ushort> materialIds,
                                  IReadOnlyList<TileGroundLayerImage> layers)
+        : this(width, height, materialIds, layers, 0, 0) { }
+
+    /// <summary>Builds a decoded set with a separate surface array size. Non-null surface images must match
+    /// that size. The reserved missing layer carries no relief, and every layer passes TileGroundRelief.Validate.</summary>
+    public TileGroundMaterialSet(int width, int height, IReadOnlyList<ushort> materialIds,
+                                 IReadOnlyList<TileGroundLayerImage> layers, int surfaceWidth, int surfaceHeight)
     {
         ArgumentNullException.ThrowIfNull(materialIds);
         ArgumentNullException.ThrowIfNull(layers);
@@ -69,9 +74,32 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
                     Width = width,
                     Height = height,
                 };
+            if (layer.SurfaceRgba is { } surface)
+            {
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(surfaceWidth);
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(surfaceHeight);
+                int surfaceExpected = checked(surfaceWidth * surfaceHeight * 4);
+                if (surface.Length != surfaceExpected)
+                    throw new TileGroundMaterialSetArgumentException(TileGroundMaterialSetRefusal.SurfaceByteLengthMismatch,
+                        $"layer {slot} surface is {surface.Length} bytes, expected {surfaceExpected}.", nameof(layers))
+                    {
+                        LayerIndex = slot,
+                        ActualByteLength = surface.Length,
+                        ExpectedByteLength = surfaceExpected,
+                        Width = surfaceWidth,
+                        Height = surfaceHeight,
+                    };
+            }
             copy[slot] = layer;
         }
         TileGroundSteepCompanions.CheckSet(copy, copy.Length - 1);
+        TileGroundLayerImage missing = copy[^1];
+        if (missing.SurfaceRgba is not null || missing.NormalMapped || missing.RoughnessMapped
+            || missing.HeightMapped || missing.FeatherBreakup != 0f || missing.AntiTiling != TileGroundAntiTiling.None)
+            throw new TileGroundMaterialSetArgumentException(TileGroundMaterialSetRefusal.MissingLayerHasRelief,
+                "the reserved missing-material layer must carry no relief.", nameof(layers))
+            { LayerIndex = copy.Length - 1 };
+        TileGroundRelief.Validate(copy);
 
         _slots = new Dictionary<ushort, int>(materialIds.Count);
         var ids = new ushort[materialIds.Count];
@@ -91,6 +119,8 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
 
         Width = width;
         Height = height;
+        SurfaceWidth = surfaceWidth;
+        SurfaceHeight = surfaceHeight;
         _layers = Array.AsReadOnly(copy);
         _materialIds = Array.AsReadOnly(ids);
     }
@@ -100,6 +130,12 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
 
     /// <summary>Layer height in texels, shared by every layer.</summary>
     public int Height { get; }
+
+    /// <summary>Surface array width in texels, 0 when a catalog uses no normal or roughness maps.</summary>
+    public int SurfaceWidth { get; }
+
+    /// <summary>Surface array height in texels, 0 when a catalog uses no normal or roughness maps.</summary>
+    public int SurfaceHeight { get; }
 
     /// <summary>Every layer in slot order, the reserved missing-material one last.</summary>
     public IReadOnlyList<TileGroundLayerImage> Layers => _layers;
@@ -128,14 +164,15 @@ public static class TileGroundMaterials
 
     /// <summary>Builds the set for these catalogs. A material's <see cref="GroundMaterial.Texture"/> is resolved
     /// RELATIVE TO THE CATALOG FILE that declared it (an absolute path is taken as written) and decoded with
-    /// <paramref name="load"/>, defaulting to <see cref="ImageRgba.Load"/>. Every textured material must decode
-    /// to the size of the FIRST textured one, and every untextured material is filled flat at that size (1x1 when
-    /// nothing is textured at all), because the whole set uploads into one texture array.</summary>
+    /// <paramref name="load"/>, defaulting to <see cref="ImageRgba.Load"/>. Albedo and height maps share the
+    /// first such map's size (1x1 when absent). Normal and roughness maps share a separate surface size, which
+    /// may differ. No map is resampled. Height uses albedo alpha and single-channel maps read GREEN.</summary>
     /// <param name="catalogs">The ground catalog to slot, materials taken in ascending id order.</param>
     /// <param name="load">Decodes one resolved texture path, or null for <see cref="ImageRgba.Load"/>.</param>
     public static TileGroundMaterialSet Build(TileWorldCatalogs catalogs, Func<string, ImageRgba>? load = null)
     {
         ArgumentNullException.ThrowIfNull(catalogs);
+        GroundMaterialReliefRules.ThrowIfInvalid(catalogs, "ground material set");
         load ??= ImageRgba.Load;
 
         var ids = new List<ushort>(catalogs.Materials.Keys);
@@ -148,79 +185,23 @@ public static class TileGroundMaterials
                 "a catalog across several sets is not built yet, so a world this big needs a smaller catalog.")
             { MaterialCount = ids.Count, MaximumMaterialCount = TileGroundMaterialConfig.MaxMaterials - 1 };
 
-        // Decoded first, because the size of the first textured material is what every other layer is built to,
-        // and an untextured material cannot be filled until that size is known.
-        var decoded = new Dictionary<ushort, ImageRgba>();
-        int width = 0, height = 0;
-        ushort sizedBy = 0;
-        foreach (ushort id in ids)
-        {
-            GroundMaterial material = catalogs.Materials[id];
-            if (string.IsNullOrWhiteSpace(material.Texture)) continue;
-
-            ImageRgba image = load(ResolvedTexture(catalogs, id, material));
-            if (width == 0)
-            {
-                width = image.Width;
-                height = image.Height;
-                sizedBy = id;
-            }
-            else if (image.Width != width || image.Height != height)
-            {
-                throw new TileWorldException(TileWorldRefusal.GroundMaterialTextureSizeMismatch,
-                    $"ground material {id} ('{material.Name}') decodes to {image.Width}x{image.Height}, but the set " +
-                    $"is {width}x{height} (from material {sizedBy}, '{catalogs.Materials[sizedBy].Name}'). Every " +
-                    "layer of one set is one slice of the same texture array, so resize the texture: the set never " +
-                    "resamples one behind your back.")
-                {
-                    MaterialId = id,
-                    MaterialName = material.Name,
-                    Width = image.Width,
-                    Height = image.Height,
-                    ReferenceMaterialId = sizedBy,
-                    ReferenceMaterialName = catalogs.Materials[sizedBy].Name,
-                    ExpectedWidth = width,
-                    ExpectedHeight = height,
-                };
-            }
-            decoded[id] = image;
-        }
-
-        // Nothing textured at all, so the flat fills only ever need one texel each.
-        if (width == 0) { width = 1; height = 1; }
+        var images = new TileGroundMaterialImages(catalogs, ids, load);
+        int width = images.Width, height = images.Height;
 
         var layers = new TileGroundLayerImage[ids.Count + 1];
         for (int slot = 0; slot < ids.Count; slot++)
         {
             GroundMaterial material = catalogs.Materials[ids[slot]];
             float tiles = material.TilesPerMetre ?? DefaultTilesPerMetre;
-            layers[slot] = decoded.TryGetValue(ids[slot], out ImageRgba image)
+            layers[slot] = images.Albedo(ids[slot]) is { } image
                 // White tint: the texture is the colour, and the catalog colour stays what the headless readers use.
                 ? new TileGroundLayerImage { AlbedoRgba = image.Pixels, Tint = Color.White, TilesPerMetre = tiles }
                 : Flat(TileColors.Parse(material), width, height, tiles);
+            images.Apply(ids[slot], material, layers[slot]);
         }
         layers[^1] = Flat(TileGroundMesher.MissingMaterialColor, width, height, DefaultTilesPerMetre);
         TileGroundSteepCompanions.Apply(catalogs, ids, layers);
-        return new TileGroundMaterialSet(width, height, ids, layers);
-    }
-
-    // The path the material's texture decodes from. Absolute stays put, relative resolves against the catalog
-    // FILE that declared this material, which is the same rule world.json uses for its catalog paths.
-    static string ResolvedTexture(TileWorldCatalogs catalogs, ushort id, GroundMaterial material)
-    {
-        string texture = material.Texture!;
-        if (Path.IsPathRooted(texture)) return texture;
-
-        string? source = catalogs.MaterialSource(id);
-        // A catalog built in memory has no directory to resolve against, and guessing one (the process working
-        // directory, say) would find a different file on every machine.
-        if (source is null)
-            throw new TileWorldException(TileWorldRefusal.GroundMaterialTextureSourceMissing,
-                $"ground material {id} ('{material.Name}') carries the relative texture '{texture}', but its catalog " +
-                "did not come from a file, so there is no directory to resolve it against. Load the catalog from a " +
-                "file, or give the material an absolute texture path.")
-            { MaterialId = id, MaterialName = material.Name, TexturePath = texture };
-        return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source) ?? string.Empty, texture));
+        return new TileGroundMaterialSet(width, height, ids, layers, images.SurfaceWidth, images.SurfaceHeight);
     }
 
     // One layer filled with a single colour. Alpha is forced opaque: an authored #rrggbbaa would otherwise make

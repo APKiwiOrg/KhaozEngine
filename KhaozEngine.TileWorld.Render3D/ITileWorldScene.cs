@@ -424,7 +424,7 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverage
     public TileGroundMaterialHandle LoadTileGroundMaterial(TileGroundMaterialSet set)
     {
         ArgumentNullException.ThrowIfNull(set);
-        return _scene.LoadTileGroundMaterial(set.Width, set.Height, set.Layers);
+        return _scene.LoadTileGroundMaterial(set.Width, set.Height, set.Layers, set.SurfaceWidth, set.SurfaceHeight);
     }
 
     /// <inheritdoc />

@@ -80,19 +80,24 @@ internal static class MapPrefabJson
         return options;
     }
 
-    internal static T Read<T>(JsonElement value) => Read<T>(value, Limits.MaxPayloadBytes);
+    internal static T Read<T>(JsonElement value) => Read<T>(value, Limits.MaxPayloadBytes, "$");
+
+    /// <summary>Reads a value embedded at <paramref name="fieldPath"/> of its document, so a missing required member is
+    /// refused at the path the document knows it by.</summary>
+    internal static T ReadAt<T>(JsonElement value, string fieldPath) => Read<T>(value, Limits.MaxPayloadBytes, fieldPath);
 
     // Run real byte measurement and deserialization with a small ceiling instead of a 256 MiB fixture.
     internal static T ReadWithPayloadByteLimitForTests<T>(JsonElement value, long maximumPayloadBytes) =>
-        Read<T>(value, maximumPayloadBytes);
+        Read<T>(value, maximumPayloadBytes, "$");
 
-    static T Read<T>(JsonElement value, long maximumPayloadBytes)
+    static T Read<T>(JsonElement value, long maximumPayloadBytes, string fieldPath)
     {
         try
         {
             MapPrefabCapacity.RequirePayloadBytes(Encoding.UTF8.GetByteCount(value.GetRawText()), "Prefab",
                 maximumPayloadBytes: maximumPayloadBytes);
             Preflight(value);
+            MapPrefabMissingMembers.Require(value, typeof(T), Options, fieldPath);
             T result = value.Deserialize<T>(Options) ?? throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Prefab value must not be null.") { FieldPath = "$" };
             if (result is MapSurfaceRef surface) MapSurfaceJson.RequirePaintPriority(surface);
             return result;
@@ -377,36 +382,23 @@ internal static class MapPrefabJson
             using JsonDocument json = JsonDocument.ParseValue(ref reader);
             JsonElement root = json.RootElement;
             string type = root.GetProperty("type").GetString()!;
-            string[] payload = type switch { "Surface" => ["surface", "patches"], "Record" => ["value", "anchor"], "Storey" => ["name"], _ => ["value"] };
-            Members(root, "$", new[] { "type", "key" }.Concat(payload).ToArray(), "localTransform", "references");
+            Members(root, "$", MapPrefabPayloadShapes.ChildRequired(type), MapPrefabPayloadShapes.ChildOptionalNames);
             if (type == "Placement")
             {
                 JsonElement value = root.GetProperty("value");
-                Members(value, MapDocumentJsonPath.AppendProperty("$", "value"), ["id", "kind", "assetId", "x", "z", "yaw", "scale", "tags"], "y", "numericId", "displayName", "supportBinding");
+                Members(value, MapDocumentJsonPath.AppendProperty("$", "value"), MapPrefabPayloadShapes.PlacementRequired, "y", "numericId", "displayName", "supportBinding");
                 if (value.TryGetProperty("numericId", out var numericId) && numericId.ValueKind != JsonValueKind.Null)
                     throw new MapDocumentException(MapDocumentRefusal.AuthoredOwnershipMismatch, "Prefab placement numeric IDs belong to instance bindings.")
                     { ChildKind = MapPrefabChildKind.Placement, FieldPath = MapDocumentJsonPath.AppendProperty(MapDocumentJsonPath.AppendProperty("$", "value"), "numericId") };
             }
-            var key = MapPrefabJson.Read<MapPrefabChildKey>(root.GetProperty("key"));
-            MapPrefabChild child = type switch
-            {
-                "Placement" => new MapPrefabPlacementChild(key, MapPrefabJson.Read<MapPlacement>(root.GetProperty("value"))),
-                "Surface" => new MapPrefabSurfaceChild(key, MapPrefabJson.Read<MapSurfaceRef>(root.GetProperty("surface")), MapPrefabJson.Read<MapSurfacePatch[]>(root.GetProperty("patches"))),
-                "Record" => new MapPrefabRecordChild(key, MapPrefabJson.Read<MapTopologyRecord>(root.GetProperty("value")), MapPrefabJson.Read<MapPatchKey>(root.GetProperty("anchor"))),
-                "Storey" => new MapPrefabStoreyChild(key, root.GetProperty("name").GetString()!),
-                "WaterMedium" => new MapPrefabMediumChild(key, MapPrefabJson.Read<MapWaterMediumDoc>(root.GetProperty("value"))),
-                "WaterBody" => new MapPrefabWaterChild(key, MapPrefabJson.Read<MapWaterBodyDoc>(root.GetProperty("value"))),
-                "Light" => new MapPrefabLightChild(key, MapPrefabJson.Read<MapLocalLightDoc>(root.GetProperty("value"))),
-                "Marker" => new MapPrefabMarkerChild(key, MapPrefabJson.Read<MapLocalMarkerDoc>(root.GetProperty("value"))),
-                "RoofLink" => new MapPrefabRoofChild(key, MapPrefabJson.Read<MapRoofLinkDoc>(root.GetProperty("value"))),
-                "RoofGroup" => new MapPrefabRoofGroupChild(key, MapPrefabJson.Read<MapRoofGroupDoc>(root.GetProperty("value"))),
-                _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unsupported prefab child type '" + type + "'.")
-                { ActualText = type, FieldPath = "$.type", Child = key },
-            };
+            var key = MapPrefabPayloadShapes.Key.Read(root);
+            MapPrefabChild child = MapPrefabPayloadShapes.Children.TryGetValue(type, out var shape) ? shape.Create(key, root)
+                : throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unsupported prefab child type '" + type + "'.")
+                { ActualText = type, FieldPath = "$.type", Child = key };
             return child with
             {
-                LocalTransform = root.TryGetProperty("localTransform", out var transform) ? MapPrefabJson.Read<MapTransform>(transform) : child.LocalTransform,
-                References = root.TryGetProperty("references", out var references) ? MapPrefabJson.Read<MapPrefabReferenceSlot[]>(references) : child.References,
+                LocalTransform = root.TryGetProperty(MapPrefabPayloadShapes.LocalTransform.Name, out _) ? MapPrefabPayloadShapes.LocalTransform.Read(root) : child.LocalTransform,
+                References = root.TryGetProperty(MapPrefabPayloadShapes.References.Name, out _) ? MapPrefabPayloadShapes.References.Read(root) : child.References,
             };
         }
 
@@ -452,25 +444,11 @@ internal static class MapPrefabJson
             using JsonDocument json = JsonDocument.ParseValue(ref reader);
             JsonElement root = json.RootElement;
             string type = root.GetProperty("type").GetString()!;
-            string[] required = type switch
-            {
-                "Replace" or "Add" => ["type", "child", "value"],
-                "Transform" => ["type", "child", "transform"],
-                _ => ["type", "child"],
-            };
-            Members(root, "$", required, type == "Remove" ? ["previous"] : type == "Placement" ? ["transform", "assetId", "tags"] : []);
-            var child = MapPrefabJson.Read<MapPrefabChildKey>(root.GetProperty("child"));
-            T? Optional<T>(string name) => root.TryGetProperty(name, out var v) && v.ValueKind != JsonValueKind.Null ? MapPrefabJson.Read<T>(v) : default;
-            return type switch
-            {
-                "Remove" => new MapPrefabRemoveOverride(child, Optional<MapPrefabOverride>("previous")),
-                "Replace" => new MapPrefabReplaceOverride(child, MapPrefabJson.Read<MapPrefabChild>(root.GetProperty("value"))),
-                "Add" => new MapPrefabAddOverride(child, MapPrefabJson.Read<MapPrefabChild>(root.GetProperty("value"))),
-                "Transform" => new MapPrefabTransformOverride(child, MapPrefabJson.Read<MapTransform>(root.GetProperty("transform"))),
-                "Placement" => new MapPrefabPlacementOverride(child, Optional<MapTransform?>("transform"), Optional<string>("assetId"), Optional<string[]>("tags")),
-                _ => throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unsupported prefab override type.")
-                { ActualText = type, FieldPath = "$.type", Child = child },
-            };
+            MapPrefabPayloadShapes.OverrideShape shape = MapPrefabPayloadShapes.Override(type);
+            Members(root, "$", shape.RequiredNames, shape.OptionalNames);
+            var child = MapPrefabPayloadShapes.OverrideChild.Read(root);
+            return shape.Create?.Invoke(child, root) ?? throw new MapDocumentException(MapDocumentRefusal.OperationKindUnsupported, "Unsupported prefab override type.")
+            { ActualText = type, FieldPath = "$.type", Child = child };
         }
 
         public override void Write(Utf8JsonWriter w, MapPrefabOverride value, JsonSerializerOptions options)
@@ -662,7 +640,7 @@ internal sealed class MapPrefabSetJsonConverter : JsonConverter<MapPrefabSet>
 {
     public MapPrefabSetJsonConverter() { }
     public override MapPrefabSet Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    { using JsonDocument json = JsonDocument.ParseValue(ref reader); return MapPrefabJson.Read<MapPrefabSet>(json.RootElement); }
+    { using JsonDocument json = JsonDocument.ParseValue(ref reader); return MapPrefabJson.ReadAt<MapPrefabSet>(json.RootElement, "$.prefabs"); }
     public override void Write(Utf8JsonWriter w, MapPrefabSet value, JsonSerializerOptions options) => MapPrefabJson.Write(w, value);
 }
 // Internal implementation. System.Text.Json instantiates an attribute-named converter through its public parameterless constructor.
@@ -670,7 +648,7 @@ internal sealed class MapBuildingIntentJsonConverter : JsonConverter<MapBuilding
 {
     public MapBuildingIntentJsonConverter() { }
     public override MapBuildingIntent Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    { using JsonDocument json = JsonDocument.ParseValue(ref reader); return MapPrefabJson.Read<MapBuildingIntent>(json.RootElement); }
+    { using JsonDocument json = JsonDocument.ParseValue(ref reader); return MapPrefabJson.ReadAt<MapBuildingIntent>(json.RootElement, "$.buildingIntent"); }
     public override void Write(Utf8JsonWriter w, MapBuildingIntent value, JsonSerializerOptions options) => MapPrefabJson.Write(w, value);
 }
 // Internal implementation. System.Text.Json instantiates an attribute-named converter through its public parameterless constructor.
@@ -678,6 +656,6 @@ internal sealed class MapStandaloneTransformsJsonConverter : JsonConverter<IRead
 {
     public MapStandaloneTransformsJsonConverter() { }
     public override IReadOnlyList<MapStandaloneResourceTransform> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    { using JsonDocument json = JsonDocument.ParseValue(ref reader); return MapPrefabJson.Read<MapStandaloneResourceTransform[]>(json.RootElement); }
+    { using JsonDocument json = JsonDocument.ParseValue(ref reader); return MapPrefabJson.ReadAt<MapStandaloneResourceTransform[]>(json.RootElement, "$.nativeResourceTransforms"); }
     public override void Write(Utf8JsonWriter w, IReadOnlyList<MapStandaloneResourceTransform> value, JsonSerializerOptions options) => MapPrefabJson.Write(w, value);
 }

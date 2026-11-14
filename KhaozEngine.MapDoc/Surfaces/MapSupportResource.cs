@@ -46,11 +46,11 @@ public static class MapSupportResourceFile
             bool versionIsInteger = payload.ValueKind == JsonValueKind.Number && payload.TryGetInt32(out _);
             int version = versionIsInteger ? payload.GetInt32() : 0;
             var surfaces = new MapSurfaceSet();
-            surfaces.Refs.AddRange(MapPrefabJson.Read<MapSurfaceRef[]>(root.GetProperty("surfaces")));
-            foreach (MapSurfacePatch patch in MapPrefabJson.Read<MapSurfacePatch[]>(root.GetProperty("patches")))
+            surfaces.Refs.AddRange(MapPrefabJson.ReadAt<MapSurfaceRef[]>(root.GetProperty("surfaces"), "$.surfaces"));
+            foreach (MapSurfacePatch patch in MapPrefabJson.ReadAt<MapSurfacePatch[]>(root.GetProperty("patches"), "$.patches"))
                 if (!surfaces.Patches.TryAdd(patch.Key, patch)) Fail(MapDocumentRefusal.IdentityDuplicate, resourceId, "duplicate patch", "$.patches", patch.Key);
-            MapRecordRef? space = root.TryGetProperty("space", out JsonElement value) ? MapPrefabJson.Read<MapRecordRef>(value) : null;
-            var resource = new MapSupportResource(version, surfaces, space, MapPrefabJson.Read<MapPrefabReferenceSlot[]>(root.GetProperty("references")));
+            MapRecordRef? space = root.TryGetProperty("space", out JsonElement value) ? MapPrefabJson.ReadAt<MapRecordRef>(value, "$.space") : null;
+            var resource = new MapSupportResource(version, surfaces, space, MapPrefabJson.ReadAt<MapPrefabReferenceSlot[]>(root.GetProperty("references"), "$.references"));
             Require(resource, resourceId, versionIsInteger);
             return resource;
         }

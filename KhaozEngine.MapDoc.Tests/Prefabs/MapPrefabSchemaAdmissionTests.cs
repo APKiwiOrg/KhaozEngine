@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -54,12 +55,17 @@ public sealed class MapPrefabSchemaAdmissionTests
     [InlineData("""{"type":"Storey","key":{"kind":"Storey","key":"s"}}""", MapDocumentRefusal.SchemaMemberMissing, "$.name")]
     [InlineData("""{"type":"Storey","key":{"kind":"Storey","key":"s"},"name":"level","notes.extra":1}""", MapDocumentRefusal.SchemaMemberUnknown, "$['notes.extra']")]
     [InlineData("""{"type":"Storey","key":{"kind":"Storey","key":"s"},"name":"level","notes[extra]":1}""", MapDocumentRefusal.SchemaMemberUnknown, "$['notes[extra]']")]
-    public void Closed_child_members_identify_the_missing_or_unknown_property(string refused, MapDocumentRefusal reason, string fieldPath)
+    // #1793. A Remove override admits no value, so a stray value is unknown, even when it is itself incomplete.
+    [InlineData("""{"type":"Remove","child":{"kind":"Surface","key":"s"},"value":{"type":"Surface","key":{"kind":"Surface","key":"s"}}}""", MapDocumentRefusal.SchemaMemberUnknown, "$.value")]
+    public void Closed_child_and_override_members_identify_the_missing_or_unknown_property(string refused, MapDocumentRefusal reason, string fieldPath)
     {
-        var error = Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadChild(refused));
+        const string Remove = """{"type":"Remove","child":{"kind":"Surface","key":"s"}}""";
+        bool asOverride = refused.StartsWith("{\"type\":\"Remove\"", StringComparison.Ordinal);
+        var error = Assert.Throws<MapDocumentException>(() => asOverride ? MapPrefabJson.ReadOverride(refused) : (object)MapPrefabJson.ReadChild(refused));
         Assert.Equal(reason, error.Reason);
         Assert.Equal(fieldPath, error.FieldPath);
-        Assert.IsType<MapPrefabStoreyChild>(MapPrefabJson.ReadChild(Storey));
+        if (asOverride) Assert.IsType<MapPrefabRemoveOverride>(MapPrefabJson.ReadOverride(Remove));
+        else Assert.IsType<MapPrefabStoreyChild>(MapPrefabJson.ReadChild(Storey));
     }
 
     [Fact]
@@ -133,10 +139,11 @@ public sealed class MapPrefabSchemaAdmissionTests
     }
 
     // #1398. A prefab file whose indoor span parentSpace is null or absent is refused on read with the member, instead
-    // of loading a null that crashes validation in the reference walker.
+    // of loading a null that crashes validation in the reference walker. #1793. The absent member is told apart from a
+    // null one and is located in the document, not relative to the surface the child converter reads separately.
     [Theory]
     [InlineData("null", MapDocumentRefusal.SchemaValueRequired, "$.children[0].surface.indoorSpan.parentSpace")]
-    [InlineData("missing", MapDocumentRefusal.SchemaMalformed, "$.indoorSpan")]
+    [InlineData("missing", MapDocumentRefusal.SchemaMemberMissing, "$.children[0].surface.indoorSpan.parentSpace")]
     public void Prefab_file_requires_the_indoor_span_parent_space(string form, MapDocumentRefusal reason, string fieldPath)
     {
         var floor = PrefabFixtures.SurfaceChild("floor", MapSurfaceRole.SupportFloor, PrefabFixtures.Patch("floor", 1, 1, 0));
@@ -156,6 +163,39 @@ public sealed class MapPrefabSchemaAdmissionTests
         Assert.Equal(fieldPath, error.FieldPath);
         Assert.Equal("indoor", error.ResourceId);
         Assert.NotNull(Assert.IsType<MapPrefabSurfaceChild>(Assert.Single(MapPrefabFile.Read(bytes, "indoor").Children)).Surface.IndoorSpan);
+    }
+
+    // #1793. A map reads its prefab block through the prefab codec. A surface member that codec requires and the map
+    // schema leaves optional is refused as missing at its path in the map, in the monolithic and the tiled form.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Map_prefab_block_locates_a_missing_child_member_in_the_document(bool tiled)
+    {
+        var f = PrefabFixtures.Create("roomless");
+        var surface = PrefabFixtures.SurfaceChild("extra", MapSurfaceRole.SupportFloor, PrefabFixtures.Patch("extra", 1, 1, 0));
+        var instance = Assert.Single(f.Document.Prefabs!.Instances) with { Overrides = [new MapPrefabAddOverride(surface.Key, surface)] };
+        f.Document.Prefabs = new(1, 1, [instance], []);
+        string dir = PrefabFixtures.TempDirectory();
+        try
+        {
+            string path = Path.Combine(dir, "map.json");
+            if (tiled) MapDocumentFile.SaveTiled(f.Document, dir);
+            else File.WriteAllText(path, MapDocumentFile.SaveText(f.Document));
+            string accepted = File.ReadAllText(path);
+            var json = JsonNode.Parse(accepted)!;
+            json["prefabs"]!["instances"]![0]!["overrides"]![0]!["value"]!["surface"]!.AsObject().Remove("indoorSpan");
+            MapDocument Load(string text)
+            {
+                File.WriteAllText(path, text);
+                return tiled ? MapDocumentFile.LoadTiled(dir) : MapDocumentFile.Load(path);
+            }
+            var error = Assert.Throws<MapDocumentException>(() => Load(json.ToJsonString()));
+            Assert.Equal(MapDocumentRefusal.SchemaMemberMissing, error.Reason);
+            Assert.Equal("$.prefabs.instances[0].overrides[0].value.surface.indoorSpan", error.FieldPath);
+            Assert.IsType<MapPrefabAddOverride>(Assert.Single(Assert.Single(Load(accepted).Prefabs!.Instances).Overrides));
+        }
+        finally { Directory.Delete(dir, true); }
     }
 
     [Fact]

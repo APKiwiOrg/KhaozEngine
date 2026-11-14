@@ -4,10 +4,52 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 23.12.1
+## 23.13.0
 
 2026-11-14
 
+- Tile ground can carry normal, roughness and height maps. `TileGroundLayerImage` gains `SurfaceRgba` (normal in
+  rgb with the glTF convention, roughness in alpha), `NormalMapped`, `RoughnessMapped`, `HeightMapped` (height rides
+  the albedo alpha), `HeightBlendSharpness`, `FeatherBreakup` and `AntiTiling`, and `Scene3D.LoadTileGroundMaterial`
+  gains an overload taking the surface array's own width and height. A set that uses any of them draws through relief
+  programs lit by the existing sun and ambient terms: per-pixel normals in a tangent frame built for each
+  world-aligned projection, roughness steering the specular lobe, with 0.5 reproducing the plain lobe exactly, and
+  height-blended corners and feathered overlays. Each mesh draws with the cheapest program the slots its vertices
+  name need, so ground naming no relief layer keeps the plain program inside a relief set, and a set with no relief
+  layer creates no relief pipeline and keeps the plain shader bytes, pixels and cost. `TileGroundRelief.Validate`
+  refuses a map flag without surface bytes, surface bytes without a map flag, a sharpness outside 1 to 64 on a
+  height-mapped layer, a breakup outside 0 to 1 and an undefined anti-tiling value with
+  `TileGroundReliefArgumentException`, `TileGroundReliefRefusal`, `LayerIndex` and `Value`, and the upload refuses
+  surface bytes of the wrong length with `TileGroundUploadRefusal.SurfaceByteLengthMismatch`. The Render3D README's
+  relief section gives the bindings, memory and measured frame cost
+  ([#1799](https://github.com/APKiwiOrg/KhaozEngine/issues/1799)).
+- Height blending resolves blended corners and feathered overlay edges along each material's height map, so stones
+  stand proud of the dirt between them instead of fading evenly. A weight of 0 stays 0, which keeps shared corners,
+  region borders and both ground LODs seamless, and materials without a height map stay exactly linear among
+  themselves. Sharpness is a per-material choice, averaged by weight over the height-mapped materials present
+  ([#1799](https://github.com/APKiwiOrg/KhaozEngine/issues/1799)).
+- `FeatherBreakup` wanders a feathered overlay's edge inward with deterministic world-space noise, so a track or
+  apron no longer fades along the tile grid. It needs no maps and never lifts the overlay at the tile boundary
+  ([#1799](https://github.com/APKiwiOrg/KhaozEngine/issues/1799)).
+- `TileGroundAntiTiling.Offset` and `Rotate` hex-tile a material's top-down taps through a third program that only
+  meshes naming such a layer pay for. It hides the repeat of stochastic textures such as grass and dirt, and breaks a
+  mosaic of discrete stones, so cobble and flagstones stay at `None` until
+  [#1803](https://github.com/APKiwiOrg/KhaozEngine/issues/1803) designs mosaic variation.
+- Ground catalog materials take `normalTexture`, `roughnessTexture`, `heightTexture`, `heightBlendSharpness`,
+  `feather` (`widthMetres`, `breakup`) and `antiTiling`, as `GroundMaterial.NormalTexture`, `RoughnessTexture`,
+  `HeightTexture`, `HeightBlendSharpness`, `GroundMaterialFeather` and `GroundMaterialAntiTiling`. The loader refuses
+  a sharpness without a height map or outside 1 to 64, a feather width that is not positive and finite, a breakup
+  outside 0 to 1 and an undefined anti-tiling value with the new `TileWorldRefusal` members
+  `GroundMaterialHeightSharpnessWithoutHeight`, `GroundMaterialHeightSharpnessOutsideRange`,
+  `GroundMaterialFeatherWidthInvalid`, `GroundMaterialFeatherBreakupOutsideRange` and
+  `GroundMaterialAntiTilingUndefined`. `TileGroundMaterials.Build` packs the maps, keeping one size per array with
+  the albedo and surface arrays independent, and refuses relief on the reserved missing layer and surface bytes of
+  the wrong length with `TileGroundMaterialSetRefusal.MissingLayerHasRelief` and `SurfaceByteLengthMismatch`. A
+  feathered overlay fades over its material's `feather.widthMetres`, else `OverlayFeatherWidthMetres`, still capped
+  at half a tile and inside its own tiles. `TileWorldHash.OfCatalogs` covers the new fields, and a catalog without
+  them digests, builds and meshes as before. Ground triangles, raycast, colliders and navigation are unchanged. MapDoc
+  native terrain stays albedo only and its scene upload refuses relief layers
+  ([#1800](https://github.com/APKiwiOrg/KhaozEngine/issues/1800)).
 - A `TileWorldView` can be disposed after its `Scene3D`, including after `Render3DSnapshot.CaptureWithBackend` has
   disposed the scene the view was built in. Every `Scene3D` resource unload (`UnloadMesh`, `UnloadProp`,
   `UnloadSkinnedMesh`, `UnloadTexture`, `UnloadSurfaceMaps`, `UnloadSplatMaterial`, `UnloadTileGroundMaterial` and

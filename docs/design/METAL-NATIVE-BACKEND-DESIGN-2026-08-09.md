@@ -1638,14 +1638,23 @@ backend never holds more uncommitted buffers than `FramesInFlight` plus one, the
 M-W6 keeps. A blocked `commandBuffer` would present as a frame-loop stall with no counter attached, which is
 the shape section 16 exists to keep off the list.
 
-**Row 7's floor for `KE_METAL_FRAMES_IN_FLIGHT` is 1, not the Vulkan variable's 2, and the difference is
+**Row 7's headless floor for `KE_METAL_FRAMES_IN_FLIGHT` is 1, not the Vulkan variable's 2, and the difference is
 derived from the paragraph above rather than a constant drifting.** V-M3's floor is 2 because at 1 every Vulkan
 list would own ONE command pool, so every `Begin` would advance onto the slot it had just used and wait for its
 own previous record to finish on the GPU: a synchronous round trip per RECORD rather than a frame of latency,
 and a capture taken there would measure the drain rather than the pipeline. That argument needs a per-list pool
 ring and M-R2 removes it, so what is left at 1 here is the shape phase 2 already calls its honest degenerate
 case: one frame of latency, one stall per frame, and a configuration that proves the backpressure counter
-counts something real. The ceiling stays 16 and the default stays 3.
+counts something real. The headless ceiling stays 16 and the default stays 3.
+Presenting devices accept only 2 or 3 because M-W4 uses the same depth for the ring and
+`CAMetalLayer.maximumDrawableCount`, whose supported counts are 2 and 3. Device creation knows the host
+before allocating the ring, and swapchain attachment is private to that creation path. An environment
+override outside the device's range WARNs with the range and uses the default, without clamping.
+A programmatic `FramesInFlight` outside the range throws `ArgumentOutOfRangeException` carrying
+`FramesInFlight` as `ParamName` and the rejected setting as `ActualValue`. The device-free present
+boundary independently refuses an unsupported drawable count before configuring the layer, carrying
+`maximumDrawableCount` as `ParamName` and the count as `ActualValue`
+([#1549](https://github.com/APKiwiOrg/KhaozEngine/issues/1549)).
 
 **Concurrent recording (M-R3).** N lists record concurrently and genuinely, because each holds its own command
 buffer and its own encoders, and **this design has no shared record-time state at all**: no layout tracker

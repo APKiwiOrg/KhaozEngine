@@ -21600,12 +21600,16 @@ naming a variable nobody had set.
 The engine's `metal-native` CI leg arms the API layer on every run and the shader rung on its weekly sweep,
 which is where these three facts come from.
 
-**`KE_METAL_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (1 to 16, default 3). It
+**`KE_METAL_FRAMES_IN_FLIGHT=<n>` sets how far ahead of the GPU the CPU may run** (2 or 3 when presenting,
+1 to 16 headless, default 3 for both). It
 sizes the uniform ring's segments, each command list's staging arena slots, and through the same
 number the swapchain's `maximumDrawableCount`. All three are live
 (https://github.com/APKiwiOrg/KhaozEngine/issues/581), so raising it costs a 256-aligned segment per uniform
 buffer per extra step, plus one more drawable in the layer's queue on a windowed device, and nothing else. A
-headless device spends only the first two, because it has no layer. Nothing here is a command-buffer pool: a Metal command buffer
+headless device spends only the first two, because it has no layer. A presenting device resolves the depth
+before sizing the ring, and its private swapchain attachment uses that same depth. `CAMetalLayer` supports
+only 2 or 3 drawables, so presenting devices cannot use the wider headless range.
+Nothing here is a command-buffer pool: a Metal command buffer
 is single-use, the queue owns its memory and hands out a fresh one per `Begin`, so this number never
 multiplies command buffers the way the Vulkan variable does, and `GpuDeviceCounters.BackpressureStallCount`
 therefore has exactly one source on this backend where it has two on Vulkan.
@@ -21619,24 +21623,28 @@ frame opens four lists at the default, it has under one frame of headroom and a 
 list count rather than about the depth.
 
 ```bash
-KE_METAL_FRAMES_IN_FLIGHT=4   # deeper, if a soak reports backpressure stalls at the default
-KE_METAL_FRAMES_IN_FLIGHT=1   # one recording of latency and one stall per recording, for measuring
+KE_METAL_FRAMES_IN_FLIGHT=2   # shallower ring and drawable queue on a presenting device
+KE_METAL_FRAMES_IN_FLIGHT=4   # deeper ring on a headless device only
+KE_METAL_FRAMES_IN_FLIGHT=1   # headless only, one recording of latency and one stall per recording
 ```
 
-**The floor is 1 here and 2 on Vulkan, and that is not a typo in either place.** The Vulkan floor is 2 because
+**The headless floor is 1 here and 2 on Vulkan, and that is not a typo in either place.** The Vulkan floor is 2 because
 at 1 every command list there owns one command pool and every `Begin` waits for its own previous record to
 finish on the GPU, which is a synchronous round trip per RECORD rather than a frame of latency. That argument
 needs a per-list pool ring and this backend has none, so 1 is simply the shallowest honest setting: one
 recording of latency, one stall per recording, and a configuration that proves the backpressure counter counts
-something real. Ship 3. A value that is set and understood as nothing WARNS and leaves the default, and the
+something real. Ship 3. A nonblank environment value outside the device's range WARNS with that range and
+uses the default, without clamping. A programmatic `FramesInFlight` setting outside the device's range
+throws `ArgumentOutOfRangeException` with `ParamName` equal to `FramesInFlight` and the rejected setting
+as `ActualValue`, before the layer is configured. The
 session log names the depth this run actually got, because a capture is only evidence about the number it was
 taken at.
 
-**Past 4 it outruns the 2D batch's deferred retirement.** `SpriteBatch` frees an evicted resource set or a
+**On a headless device, past 4 it outruns the 2D batch's deferred retirement.** `SpriteBatch` frees an evicted resource set or a
 replaced buffer 4 frame boundaries after retiring it, on the frame count alone with no fence behind it, so a
 depth above 4 can destroy a resource the GPU has not finished reading.
 
-**One thing behaves differently at 1**, and it is worth knowing before reading a capture taken there: a
+**One thing behaves differently at 1 on a headless device**, and it is worth knowing before reading a capture taken there: a
 device-level `UpdateBuffer` on a uniform buffer BLOCKS at that depth. It never blocks at any other, because it
 copies the current segment and defers the segments still in flight, and at a depth of one there are no others,
 so an ungated copy would be a CPU write into the one segment the GPU may be reading. Correct but slow is the

@@ -92,24 +92,27 @@ public sealed class MapTypedResourceSchemaTests
         }
     }
 
-    // #1793. A missing light member is told apart from malformed JSON, as a missing support member already was.
+    // #1793. A missing light member is told apart from malformed JSON, as a missing support member already was. A
+    // member missing inside a support file's surfaces is located in the file, as a null one is.
     [Theory]
-    [InlineData("light", "missing-member", MapDocumentRefusal.SchemaMemberMissing)]
-    [InlineData("light", "unknown-member", MapDocumentRefusal.SchemaMalformed)]
-    [InlineData("light", "wrong-schema", MapDocumentRefusal.SchemaValueRequired)]
-    [InlineData("light", "truncated", MapDocumentRefusal.SchemaMalformed)]
-    [InlineData("light", "unknown-contains-id", MapDocumentRefusal.SchemaMalformed)]
-    [InlineData("surface", "missing-member", MapDocumentRefusal.SchemaMemberMissing)]
-    [InlineData("surface", "unknown-member", MapDocumentRefusal.SchemaMemberUnknown)]
-    [InlineData("surface", "wrong-schema", MapDocumentRefusal.SchemaValueRequired)]
-    [InlineData("surface", "truncated", MapDocumentRefusal.SchemaMalformed)]
-    public void MalformedTypedPayload_RefusesTheClosure(string id, string fault, MapDocumentRefusal reason)
+    [InlineData("light", "missing-member", MapDocumentRefusal.SchemaMemberMissing, "$.radius")]
+    [InlineData("light", "unknown-member", MapDocumentRefusal.SchemaMalformed, null)]
+    [InlineData("light", "wrong-schema", MapDocumentRefusal.SchemaValueRequired, null)]
+    [InlineData("light", "truncated", MapDocumentRefusal.SchemaMalformed, null)]
+    [InlineData("light", "unknown-contains-id", MapDocumentRefusal.SchemaMalformed, null)]
+    [InlineData("surface", "missing-member", MapDocumentRefusal.SchemaMemberMissing, "$.references")]
+    [InlineData("surface", "missing-nested-member", MapDocumentRefusal.SchemaMemberMissing, "$.surfaces[0].semanticSha256")]
+    [InlineData("surface", "unknown-member", MapDocumentRefusal.SchemaMemberUnknown, null)]
+    [InlineData("surface", "wrong-schema", MapDocumentRefusal.SchemaValueRequired, null)]
+    [InlineData("surface", "truncated", MapDocumentRefusal.SchemaMalformed, null)]
+    public void MalformedTypedPayload_RefusesTheClosure(string id, string fault, MapDocumentRefusal reason, string? fieldPath)
     {
         byte[] valid = id == "light" ? MapLightFile.Write(PrefabFixtures.GlowLight()) : MapSupportResourceFile.Write(PrefabFixtures.DeckSupport());
         var root = JsonNode.Parse(valid)!.AsObject();
         switch (fault)
         {
             case "missing-member": root.Remove(id == "light" ? "radius" : "references"); break;
+            case "missing-nested-member": root["surfaces"]![0]!.AsObject().Remove("semanticSha256"); break;
             case "unknown-member": root["extra"] = true; break;
             case "unknown-contains-id": root["'light'"] = true; break;
             case "wrong-schema": root["resourceSchema"] = id == "light" ? "kemap/support-resource" : "kemap/light-resource"; break;
@@ -119,6 +122,7 @@ public sealed class MapTypedResourceSchemaTests
         var (roots, source) = NativeAssetFixtures.WithResourceBytes(id, Encoding.UTF8.GetBytes(text));
         var error = Assert.Throws<MapDocumentException>(() => MapAssetClosure.Load(roots, source));
         Assert.Equal(reason, error.Reason);
+        if (fieldPath is not null) Assert.Equal(fieldPath, error.FieldPath);
         Assert.Equal(id, error.ResourceId);
         var (controlRoots, controlSource) = NativeAssetFixtures.WithResourceBytes(id, valid);
         Assert.True(id == "light" ? MapAssetClosure.Load(controlRoots, controlSource).HasLight(id)

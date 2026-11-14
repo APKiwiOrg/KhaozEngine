@@ -2620,13 +2620,17 @@ object as its cause through the same source-copy method. A prefab file JSON fail
 `ResourceId`, including when deserialization has already wrapped the JSON failure as a document refusal.
 The copy keeps an existing resource identity and source name when the wrapper has no new source name.
 
-Prefab preflight paths start at the supplied payload root and retain array positions. A map document reads its
-`prefabs`, `buildingIntent` and `nativeResourceTransforms` blocks through the same codec rooted at that member, such
-as `$.prefabs`. Before deserialization the codec finds a required member missing anywhere it reads, including inside a
-child's or override's payload that its converter reads separately. It refuses with `SchemaMemberMissing` at that rooted
-path naming the member, rather than leaving the serializer's bare failure to read as `SchemaMalformed` at a path
-relative to the nested value. Required members come from the codec's own resolved metadata and the child and override
-converters' member tables. Values with a dedicated codec, such as topology records, patches, water, marker support
+Prefab preflight paths start at the supplied payload root and retain array positions. Before deserialization the
+codec finds a required member missing anywhere it reads, including inside a child's or override's payload that its
+converter reads separately. It refuses with `SchemaMemberMissing` at a path rooted at the document naming the member,
+rather than leaving the serializer's bare failure to read as `SchemaMalformed` at a path relative to the nested value.
+Only this missing-member path is rooted at the enclosing file when the codec reads a value embedded in one: a map
+document's `prefabs`, `buildingIntent` and `nativeResourceTransforms` blocks use `$.prefabs` and so on, and a support
+file's `surfaces`, `patches`, `space` and `references` use their member. Other refusals from those embedded reads, such
+as preflight capacity, null and duplicate refusals, keep paths that start at the embedded value. Required members come
+from the codec's own resolved metadata and from the child and override member tables the converters also check and
+read, so the two cannot disagree. A member an override type does not admit is refused as `SchemaMemberUnknown` by the
+converter and is not walked. Values with a dedicated codec, such as topology records, patches, water, marker support
 bindings and patch keys, keep that codec's refusal and paths. Other child and override converter member paths, such as
 unknown members, start at that converter's object, with placement fields below `$.value`. Duplicate
 prefab members identify their containing object. Null prefab members use `SchemaValueRequired`, while native

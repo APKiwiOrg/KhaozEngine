@@ -13401,12 +13401,13 @@ reader's path, zero-based `LineNumber` and UTF-8 `BytePositionInLine` where avai
 containing a known structured document refusal retains its reason, every identifier and that original
 refusal as its cause. A prefab file JSON failure supplies its known `ResourceId`, including when deserialization
 has already wrapped the JSON failure as a document refusal. An existing resource
-identity survives the context copy. Prefab preflight paths retain array positions from the supplied root, and a
-map document's prefab blocks are rooted at their member, such as `$.prefabs`. A required prefab or light member that
-is absent, including inside a child or override payload, uses `SchemaMemberMissing` at that rooted path naming the
-member, so `$.children[0].surface.indoorSpan.parentSpace` locates an indoor span without its parent space. Other
-child and override converter member paths are relative to that converter's object, with placement payload
-fields below `$.value`. Null prefab members and blank marker-adoption identity fields use
+identity survives the context copy. Prefab preflight paths retain array positions from the supplied root. A required
+prefab, light or support member that is absent, including inside a child or override payload, uses
+`SchemaMemberMissing` at a path rooted at the document naming the member, so
+`$.children[0].surface.indoorSpan.parentSpace` locates an indoor span without its parent space. That missing-member
+path is rooted at a map's prefab block member, such as `$.prefabs`, and at a support file's member, such as
+`$.surfaces`. Other refusals from those blocks keep paths that start at the block. Other child and override converter
+member paths are relative to that converter's object, with placement payload fields below `$.value`. Null prefab members and blank marker-adoption identity fields use
 `SchemaValueRequired`. Marker option and adoption schema guards identify their refused field through
 `FieldPath`. Prefab patch dimensions outside 1 through 64 inclusive use `BoundsInvalid`, with `Width`,
 `Depth` and the patch object's `FieldPath`. Binding and enum converters without a structured cause use

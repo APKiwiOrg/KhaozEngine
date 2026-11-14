@@ -55,12 +55,17 @@ public sealed class MapPrefabSchemaAdmissionTests
     [InlineData("""{"type":"Storey","key":{"kind":"Storey","key":"s"}}""", MapDocumentRefusal.SchemaMemberMissing, "$.name")]
     [InlineData("""{"type":"Storey","key":{"kind":"Storey","key":"s"},"name":"level","notes.extra":1}""", MapDocumentRefusal.SchemaMemberUnknown, "$['notes.extra']")]
     [InlineData("""{"type":"Storey","key":{"kind":"Storey","key":"s"},"name":"level","notes[extra]":1}""", MapDocumentRefusal.SchemaMemberUnknown, "$['notes[extra]']")]
-    public void Closed_child_members_identify_the_missing_or_unknown_property(string refused, MapDocumentRefusal reason, string fieldPath)
+    // #1793. A Remove override admits no value, so a stray value is unknown, even when it is itself incomplete.
+    [InlineData("""{"type":"Remove","child":{"kind":"Surface","key":"s"},"value":{"type":"Surface","key":{"kind":"Surface","key":"s"}}}""", MapDocumentRefusal.SchemaMemberUnknown, "$.value")]
+    public void Closed_child_and_override_members_identify_the_missing_or_unknown_property(string refused, MapDocumentRefusal reason, string fieldPath)
     {
-        var error = Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadChild(refused));
+        const string Remove = """{"type":"Remove","child":{"kind":"Surface","key":"s"}}""";
+        bool asOverride = refused.StartsWith("{\"type\":\"Remove\"", StringComparison.Ordinal);
+        var error = Assert.Throws<MapDocumentException>(() => asOverride ? MapPrefabJson.ReadOverride(refused) : (object)MapPrefabJson.ReadChild(refused));
         Assert.Equal(reason, error.Reason);
         Assert.Equal(fieldPath, error.FieldPath);
-        Assert.IsType<MapPrefabStoreyChild>(MapPrefabJson.ReadChild(Storey));
+        if (asOverride) Assert.IsType<MapPrefabRemoveOverride>(MapPrefabJson.ReadOverride(Remove));
+        else Assert.IsType<MapPrefabStoreyChild>(MapPrefabJson.ReadChild(Storey));
     }
 
     [Fact]

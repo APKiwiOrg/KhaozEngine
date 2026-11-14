@@ -66,12 +66,13 @@ public class SignInException : Exception
     /// and <see cref="SignInRefusal.TokenHttpFailure"/>.</summary>
     public int? StatusCode { get; init; }
 
-    /// <summary>The endpoint that was being read, for <see cref="SignInRefusal.DiscoveryHttpFailure"/>,
-    /// <see cref="SignInRefusal.TokenHttpFailure"/> and <see cref="SignInRefusal.EndpointJsonMalformed"/>.</summary>
+    /// <summary>The endpoint that was being read, for discovery HTTP and endpoint-member refusals, token HTTP,
+    /// token-member and expiry refusals, and <see cref="SignInRefusal.EndpointJsonMalformed"/>.</summary>
     public SignInEndpointRole? EndpointRole { get; init; }
 
     /// <summary>The JSON member the rule names, for the discovery endpoint, token member and
-    /// <c>expires_in</c> refusals. It is the member's name, never its value.</summary>
+    /// <c>expires_in</c> refusals. It is the member's name, never its value. Token members include the required
+    /// credential and the optional <c>refresh_token</c>. Null when the whole response body is malformed.</summary>
     public string? MemberName { get; init; }
 
     /// <summary>The authority's scheme, for <see cref="SignInRefusal.AuthorityNotHttps"/>. The rest of the

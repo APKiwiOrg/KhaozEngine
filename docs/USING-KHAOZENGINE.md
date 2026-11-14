@@ -25937,6 +25937,12 @@ catch (SignInException ex)
 value, a client secret, an authority URL or a response body. It is null only for an instance another backend
 built through a message-only constructor, whose text is then in `Detail`. The
 [Sign-in refusals](../KhaozEngine.Identity/README.md#sign-in-refusals) table lists every reason.
+Discovery and token success bodies must be JSON objects. A non-object body refuses with `EndpointJsonMalformed`
+and `EndpointRole`, with a parser inner exception only when the JSON syntax is invalid. Present required
+endpoint or credential members without a non-empty JSON string refuse with `DiscoveryEndpointEmpty` or
+`TokenMemberEmpty`, carrying `MemberName` and `EndpointRole`. A present `refresh_token` of any kind other than
+string or null also refuses with `TokenMemberEmpty`. An absent, null or empty refresh token stays accepted.
+Malformed `expires_in` keeps `TokenExpiryMalformed`, with its `MemberName` and `EndpointRole`.
 The shared base and both provider types retain every legacy constructor. Forwarding preserves `Detail`, a
 null reason and the inner cause for consumer-built instances. Engine construction is fenced in all three
 assemblies, including calls from provider constructors.

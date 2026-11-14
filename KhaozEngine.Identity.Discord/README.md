@@ -13,6 +13,11 @@ OAuth2 authorization-code + PKCE flow, using the system browser and a local loop
   status (a 5xx, say) throws `IdentitySignInException` with `TokenHttpFailure` and the `StatusCode` as a
   transient error to retry later. The interactive sign-in code exchange is unchanged: a 400 there is still a
   hard `IdentitySignInException` with `TokenHttpFailure`.
+  Token success bodies must be JSON objects, otherwise `EndpointJsonMalformed` names the `EndpointRole`.
+  Only a JSON parse failure carries a parser inner exception. A present `access_token` must be a non-empty
+  JSON string, otherwise `TokenMemberEmpty` names the `MemberName` and `EndpointRole`. A wrong-kind
+  `refresh_token` also refuses with `TokenMemberEmpty`, while an absent, null or empty refresh token stays
+  accepted. Malformed `expires_in` refuses with `TokenExpiryMalformed`, its `MemberName` and `EndpointRole`.
 - **DiscordTokenValidator** - `IIdentityValidator` implementation that verifies a Discord access
   token by calling `GET https://discord.com/api/oauth2/@me` (token introspection) and mapping the nested
   `user` object's `id`/`username`/`email` to a `VerifiedIdentity`. It takes a required `expectedClientId`

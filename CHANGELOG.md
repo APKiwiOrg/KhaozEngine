@@ -43,6 +43,14 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `SnapshotDecodeFailed` fires once per terminal end with the `IncompatibleVersion` reason it already carried, and
   legacy state frames queued behind the failure in the same poll are ignored. Notices and game messages still arrive
   ([#1262](https://github.com/APKiwiOrg/KhaozEngine/issues/1262)).
+- A `WorldClient` whose no-frame timeout or join deadline expires ends its connection locally before reconnect
+  backoff or the terminal `Disconnected` state, so the server sees the session leave at once instead of holding it
+  until its own timeout. Every attempt the client ends shares that path. A disconnect, rejection or Welcome queued
+  behind an ended attempt no longer changes its `DisconnectReason`, adds a state change or spends a reconnect
+  attempt, so a rejected client with `RetryOnReject` keeps `RejectedToken` and a late Welcome cannot revive an
+  expired join. `SnapshotDecodeFailed` still fires before `ConnectionStateChanged` reports `Disconnected`, and the
+  instance constructor still leaves its transport to the caller
+  ([#1790](https://github.com/APKiwiOrg/KhaozEngine/issues/1790)).
 - `MapPrefabValidation.Validate` and `ValidateFindings` refuse a null required member of prefab state built in code
   with `SchemaValueRequired`, naming the member's `FieldPath` and its owner, instead of reporting a caught
   `NullReferenceException` as `PrefabStateUnreadable`. A null dereference the checks do not expect now escapes as the
@@ -72,11 +80,22 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `GpuResourceOwnershipArgumentException` and `GpuResourceOwnershipRefusal.ForeignBackend`, through the same resolver
   and in the same order as the device emitter, so those tests prove the shipped refusals
   ([#1691](https://github.com/APKiwiOrg/KhaozEngine/issues/1691)).
+- The native Direct3D 11 backend refuses `Draw` and `DrawIndexed` with no framebuffer bound in the current recording,
+  as Metal and Vulkan do, instead of drawing into whatever target the context held or into nothing. Both throw
+  `GpuBoundFramebufferException` with `GpuBoundFramebufferRefusal.FramebufferNotBound` and `Command` at the draw
+  call, before any bind flush, on the immediate driver and on the default deferred driver, which appends nothing for
+  a refused draw ([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
 - `IContentAuthoringStore.SetPinnedVersionAsync` on the in-memory, SQLite and SQL Server stores refuses a version the
   store does not hold with the `unknown-version` reason token (`ContentAuthoringException.UnknownVersionReason`)
   instead of `unknown-type`, matching every other unknown-version refusal. `Refusal` stays `VersionUnknown` with
   `VersionNumber`. A caller that keyed on `unknown-type` for this case should key on `Refusal` or `unknown-version`
   ([#919](https://github.com/APKiwiOrg/KhaozEngine/issues/919)).
+- Catalog admin actions refuse a string member whose JSON escapes decode to an unpaired UTF-16 surrogate, such as
+  `"\ud800"`, with HTTP 400 naming the member instead of failing with HTTP 500. `operator` and `note` refuse as
+  `malformed-request`, row edit members and `OpaqueBytes` values as `content-edit-refused` with `KEC0004`, or
+  `KEC0041` for `forkKey` and `flagField`, matching their wrong-kind refusals, and the `catalog-list` and
+  `catalog-get` filters with their `{ error }` response. A valid surrogate pair still reads
+  ([#1255](https://github.com/APKiwiOrg/KhaozEngine/issues/1255)).
 - `PanZoomController` pairs a double tap only from two consecutive taps it owns. A press it refused, such as a click
   on an overlay control near the first tap, used to leave that tap waiting, so the next map tap zoomed in. Any mouse or
   touch sequence that ends without a recorded tap now breaks pairing: a refused, unowned or consumed press, a drag, a
@@ -111,6 +130,19 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   source's terrain evidence. It refuses a terrain Drop whose certified path, the Drop segment widened by twice the
   agent radius, touches terrain in an excluded area, both when planning and in preview
   ([#1711](https://github.com/APKiwiOrg/KhaozEngine/issues/1711)).
+- `ReportRedactor.Redact` masks a Basic credential only when the leading whole base64 quanta of its token decode to
+  bytes holding the RFC 7617 `user:password` colon, so report prose such as "basic settings" survives while full and
+  truncated credentials still mask. Bearer is unchanged. The home directory becomes `~` only where it starts the text
+  or follows a character outside `[A-Za-z0-9._-]`, so for a home of `/home/runner` the path
+  `/Volumes/Backup/home/runner` survives and `/home/runner/home/runner` becomes `~/home/runner`
+  ([#1463](https://github.com/APKiwiOrg/KhaozEngine/issues/1463)).
+- `DungeonJson.LoadConfig` and `LoadLayout` refuse a `cellSizeMeters` or `floorHeightMeters` too large for a float,
+  such as `1e39`, with `DungeonJsonException`, `DungeonJsonRefusal.NumberNonfinite`, its rooted `JsonPath` and
+  `ActualNumber`, instead of loading positive infinity, and a config's set `ceilingHeightMeters` refuses the same
+  way. `DungeonConfig.Validate` and `DungeonGenerator.Generate` refuse a nonfinite `CellSizeMeters`,
+  `FloorHeightMeters` or set `CeilingHeightMeters`, NaN included, with `ArgumentException` naming the property.
+  Values at or below zero keep `PositiveValueRequired`
+  ([#1721](https://github.com/APKiwiOrg/KhaozEngine/issues/1721)).
 
 ## 23.12.0
 

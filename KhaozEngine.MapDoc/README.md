@@ -77,6 +77,8 @@ the reported bounds, including record copies that change them. Spatial values al
 `Describe()` adds `oldSpatialBounds` and `newSpatialBounds` after the reported bounds only when they differ.
 `MapNativeWriteSet` names patch payloads, surface declarations and placement state for publication.
 Records, spaces, corner owners and material uses are carried by the named patch payloads.
+`OwnerChanges` reports changed corner owners only for patches present in the result. Removed patches
+remain in `Patches` for publication, with no owner-change entries.
 
 The terrain API, new in 20.30.0, uses `MapTerrainEdits.Prepare(surfaces, edit)` to return a detached candidate,
 its exact `MapNativeWriteSet` and effects without mutating the input. `MapSetCornerHeights`, `MapSmoothCorners`,

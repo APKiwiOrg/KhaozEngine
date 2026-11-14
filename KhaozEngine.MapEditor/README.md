@@ -911,7 +911,9 @@ Direct placement `Apply` and `Revert` check document-local native validity only,
 edits. It captures exact before and after patch and surface-ref snapshots of the accepted write set.
 Undo and redo replay those snapshots, restoring corner owners, topology records, surface-ref order and
 semantic identity without rerunning smoothing or conversion. Undo reports digest and owner changes from
-new to old. A rejected preparation never captures command state. Both modes validate the published
+new to old. Its `MapNativeWriteSet.OwnerChanges` includes only dependent patches present after undo,
+matching forward preparation. Undoing a patch addition reports no owner changes for that removed patch.
+A rejected preparation never captures command state. Both modes validate the published
 surfaces, including space coverage. Direct terrain `Apply` and `Revert` check document-local validity
 only, while bound editor transactions also check the asset closure. `EditorDocument.LastNativeEffects`
 reports the accepted terrain execute, undo or redo. `MutationService.TerrainApply(edit)` runs this same

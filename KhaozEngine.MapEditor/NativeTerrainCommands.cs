@@ -50,7 +50,8 @@ public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
         var after = NativeDocumentSnapshot.Clone(candidate, registry);
         var undoWrites = writeset with
         {
-            OwnerChanges = prepared.WriteSet.OwnerChanges.Select(c => Invert(c, before.Surfaces, after.Surfaces)).ToArray(),
+            OwnerChanges = prepared.WriteSet.OwnerChanges.Where(c => before.Surfaces.Patches.ContainsKey(c.Dependent))
+                .Select(c => Invert(c, before.Surfaces, after.Surfaces)).ToArray(),
         };
         var named = MapDocumentTerrainEdits.Name(candidate, surfaceEffects);
         return new(writeset, named, () =>

@@ -1508,6 +1508,16 @@ correct for the replayed steps. A consumer that only uses the engine's positions
 guarantees at least 64 m of travel between consecutive re-anchors. The island re-anchors after the tick's movement
 has settled and before anything reads a position back, so no step ever observes a half-rebased island.
 
+## Client connection ends and reconnect
+
+`WorldClient.Poll(dt)` ends the current connection locally when the no-frame timeout or join deadline expires,
+before entering `Reconnecting` backoff or terminal `Disconnected`. Decode and replication failures use the same
+connection-end path. The server receives the leave on its next poll instead of waiting for its own timeout.
+Queued disconnects, rejections and Welcomes from an ended attempt cannot change its reason, add another state
+transition or spend another reconnect attempt. A fresh attempt starts only after the configured backoff.
+The instance constructor leaves transport disposal to the caller. The factory constructor owns disposal and
+replaces its transport when the next attempt starts.
+
 ## Reconnect input backlog (since 8.8.0)
 
 Holding the movement key through a long auto-reconnect outage no longer freezes the player on rejoin. Two guards:

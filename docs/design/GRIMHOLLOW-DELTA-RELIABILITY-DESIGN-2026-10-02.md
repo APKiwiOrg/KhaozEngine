@@ -389,6 +389,10 @@ valid ack. A stale/duplicate packet is ignored before decoding its body. Malform
 built-ins remain terminal decode incompatibility, distinct from a normal baseline miss. A recovery
 deadline produces a specific failure, and the owner chooses how the game presents/retries that failure.
 Ignored datagrams must not indefinitely refresh the client's valid-state liveness deadline.
+`WorldClient` ends the current connection locally on a timeout, join deadline, decode failure or replication
+failure before reconnect backoff or terminal disconnection. The server sees the leave on its next poll. Late
+events from that ended attempt cannot change its reason or consume another retry, and caller-owned transports
+remain the caller's to dispose.
 
 If repeated complete projections exceed the 64 KiB or metadata cap, repair cannot fix them. Report a
 capacity failure and use the owner-approved disconnect/fallback policy. Repeated reliable keyframes

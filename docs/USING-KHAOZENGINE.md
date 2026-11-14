@@ -21443,8 +21443,8 @@ table that fails its structural checks is deleted rather than used. Opening the 
 engine versions' folders beside it, so the tree holds the running version's folder rather than one per version
 the machine has ever run. Only the default location is swept, never a directory you named yourself.
 
-**Layouts and sets are the same code you already write**, with one declaration this backend refuses that the
-others take: `GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
+**Layouts and sets are the same code you already write**, and like the other native backends this one refuses
+`GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
 is applied with Metal's `setBufferOffset:`, which exists only for buffers, so a dynamic offset declared anywhere
 else would be silently dropped at every bind and is refused at layout creation instead. On a buffer element of
 any kind it is accepted, including both structured kinds, and that is WIDER than the seam
@@ -30811,9 +30811,11 @@ carries the feature and device. `VulkanResultRefusal.NativeCallFailed` carries t
 identifiers. `MessengerUnavailable` refuses a requested validation rung in CI without a native messenger and
 carries the creation site. See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#refusals).
 
-On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable
+On all three native backends, a nonzero offset on a set with no authored dynamic element throws the portable
 `GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,
-set number and offset. These families preserve the original BCL exception bases and parameter data.
+set number and offset. Every backend throws from the bind call, on both D3D11 drivers. A zero offset is
+accepted against any set.
+These families preserve the original BCL exception bases and parameter data.
 
 Post-probe native creation checks also carry structured reasons. D3D11 identifies a missing HWND,
 versioned context or native creation output. Metal identifies a missing eligible device or command queue.

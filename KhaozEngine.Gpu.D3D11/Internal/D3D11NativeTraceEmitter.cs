@@ -177,8 +177,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc cref="SetGraphicsResourceSet(uint, IGpuResourceSet)"/>
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
         {
-            _log.Record(D3D11NativeCall.ResourceSetPending, $"gfx,{N(slot)},{_log.Id(set)},{N(dynamicOffset)}");
             _state.Binds.RecordGraphics(slot, set, dynamicOffset, hasDynamicOffset: true);
+            _log.Record(D3D11NativeCall.ResourceSetPending, $"gfx,{N(slot)},{_log.Id(set)},{N(dynamicOffset)}");
         }
 
         /// <summary>
@@ -301,8 +301,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc cref="SetGraphicsResourceSet(uint, IGpuResourceSet)"/>
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
         {
-            _log.Record(D3D11NativeCall.ResourceSetPending, $"cs,{N(slot)},{_log.Id(set)},{N(dynamicOffset)}");
             _state.Binds.RecordCompute(slot, set, dynamicOffset, hasDynamicOffset: true);
+            _log.Record(D3D11NativeCall.ResourceSetPending, $"cs,{N(slot)},{_log.Id(set)},{N(dynamicOffset)}");
         }
 
         /// <summary>Decision R5, rule 2, on the compute side: the pre-command hook first, then the dispatch.

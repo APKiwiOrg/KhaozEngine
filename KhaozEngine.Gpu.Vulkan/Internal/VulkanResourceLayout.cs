@@ -47,7 +47,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             Array.Copy(source, _elements, source.Length);
 
             // THROWS on a declared-dynamic element that is not a uniform buffer, before anything native happens.
-            // See VulkanDescriptorPolicy.TypeFor for why that refusal is wider than the Direct3D 11 backend's.
+            // See VulkanDescriptorPolicy.TypeFor for why. The Direct3D 11 backend refuses the same set of kinds.
             _bindings = VulkanDescriptorPolicy.BindingsFor(new GpuResourceLayoutDescription(_elements));
 
             Counts = VulkanDescriptorCounts.ForBindings(_bindings);

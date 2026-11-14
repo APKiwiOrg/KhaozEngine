@@ -94,6 +94,82 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(D3D11SlotDirty.Full, harness.Binds.GraphicsDirty(0));
         }
 
+        /// <summary>
+        /// AN OFFSET AGAINST A SET WHOSE LAYOUT DECLARES NO DYNAMIC UNIFORM BUFFER IS REFUSED BY NAME, with the
+        /// refusal Metal and Vulkan raise. Nothing would carry it: the activation adds the offset to a declared
+        /// dynamic constant buffer alone, so the draw would read the set's first window while the caller believed
+        /// it had moved. The refusal comes before the record changes, so the slot keeps the set it held. A ZERO
+        /// offset is accepted against the same set. Graphics and compute share the one record path.
+        /// </summary>
+        [Fact]
+        public void ANonZeroOffsetAgainstANonDynamicSet_IsRefusedAndLeavesTheSlotAsItWas()
+        {
+            // #1687.
+            var harness = new D3D11BindFixtures.Harness();
+            using D3D11ResourceLayout dynamicLayout = D3D11BindFixtures.ShadowLayout();
+            using D3D11ResourceSet held = D3D11BindFixtures.ShadowSet(dynamicLayout);
+            using D3D11ResourceLayout plainLayout = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.U("U", GpuShaderStages.Vertex));
+            using D3D11ResourceSet plain = D3D11BindFixtures.Set(plainLayout, new FakeBuffer(4096));
+            D3D11NativeTraceEmitter emitter = harness.Emitter;
+            emitter.SetPipeline(D3D11BindFixtures.Pipeline(dynamicLayout));
+            emitter.SetGraphicsResourceSet(0, held, 256);
+            emitter.Draw(3, 1, 0, 0);
+
+            var refused = Assert.Throws<GpuDynamicBindingException>(
+                () => emitter.SetGraphicsResourceSet(0, plain, 256));
+
+            Assert.Equal(GpuDynamicBindingRefusal.DynamicElementMissing, refused.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, refused.Backend);
+            Assert.Equal(0u, refused.Set);
+            Assert.Equal(256u, refused.DynamicOffset);
+            Assert.Equal("dynamicOffset", refused.ParamName);
+            Assert.Same(held, harness.Binds.RecordedGraphicsSet(0));
+            Assert.Equal(D3D11SlotDirty.Clean, harness.Binds.GraphicsDirty(0));
+
+            emitter.SetGraphicsResourceSet(0, plain, 0);
+            Assert.Same(plain, harness.Binds.RecordedGraphicsSet(0));
+            Assert.Equal(D3D11SlotDirty.Full, harness.Binds.GraphicsDirty(0));
+        }
+
+        /// <summary>
+        /// THE DEFERRED DRIVER REFUSES THE SAME BIND AT THE SEAM CALL AND APPENDS NOTHING. Its seam calls only
+        /// encode ops, so without its own check the refusal would escape <c>Submit</c> after the list's earlier
+        /// commands reached the device, with the submission left unsignalled. The two arms are two overloads of
+        /// the op encoder, so each is a row. A zero offset against the same set is appended.
+        /// </summary>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void OnTheDeferredDriver_ANonZeroOffsetAgainstANonDynamicSet_IsRefusedAtTheBindCall(bool compute)
+        {
+            // #1687.
+            using D3D11ResourceLayout plainLayout = D3D11BindFixtures.Layout(
+                D3D11BindFixtures.U("U", GpuShaderStages.Vertex));
+            using D3D11ResourceSet plain = D3D11BindFixtures.Set(plainLayout, new FakeBuffer(4096));
+            using D3D11CommandRecorder<D3D11StreamEmitter> list = D3D11CommandDrivers.CreateDeferred();
+            D3D11CommandStream stream = list.Emitter.Stream;
+            list.Begin();
+
+            void Bind(uint offset)
+            {
+                if (compute) list.SetComputeResourceSet(0, plain, offset);
+                else list.SetGraphicsResourceSet(0, plain, offset);
+            }
+
+            var refused = Assert.Throws<GpuDynamicBindingException>(() => Bind(256));
+
+            Assert.Equal(GpuDynamicBindingRefusal.DynamicElementMissing, refused.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, refused.Backend);
+            Assert.Equal(0u, refused.Set);
+            Assert.Equal(256u, refused.DynamicOffset);
+            Assert.Equal("dynamicOffset", refused.ParamName);
+            Assert.Equal(0, stream.Count);
+
+            Bind(0);
+            Assert.Equal(1, stream.Count);
+        }
+
         // ---- Rule 2: the draw and the dispatch flush, through the pre-command hook --------------------------
 
         /// <summary>The binds land BEFORE the draw and the slot is clean afterwards, which is what "pre-command

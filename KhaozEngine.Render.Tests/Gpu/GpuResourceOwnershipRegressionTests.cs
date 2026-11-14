@@ -48,10 +48,14 @@ public sealed class GpuResourceOwnershipRegressionTests
         Assert.NotEqual(0UL, cache.GetOrCreate(new[] { layout, layout }));
     }
 
+    // A foreign set bound WITH an offset still reaches the flush's ownership refusal: the record-time
+    // DynamicElementMissing check reads a D3D11 layout, and a foreign set has none to read. #1687.
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void D3D11FlushRefusesAForeignResourceSet(bool compute)
+    [InlineData(false, 0u)]
+    [InlineData(true, 0u)]
+    [InlineData(false, 256u)]
+    [InlineData(true, 256u)]
+    public void D3D11FlushRefusesAForeignResourceSet(bool compute, uint dynamicOffset)
     {
         var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
         using var layout = D3D11BindFixtures.Layout();
@@ -61,7 +65,9 @@ public sealed class GpuResourceOwnershipRegressionTests
         using var kernel = new D3D11BindFlushTests.FakeComputePipeline(layout);
         emitter.SetPipeline(graphics);
         emitter.SetComputePipeline(kernel);
-        if (compute) emitter.SetComputeResourceSet(0, foreign);
+        if (compute && dynamicOffset != 0) emitter.SetComputeResourceSet(0, foreign, dynamicOffset);
+        else if (compute) emitter.SetComputeResourceSet(0, foreign);
+        else if (dynamicOffset != 0) emitter.SetGraphicsResourceSet(0, foreign, dynamicOffset);
         else emitter.SetGraphicsResourceSet(0, foreign);
 
         void Flush()

@@ -44,13 +44,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="ArgumentException"><see cref="GpuResourceLayoutElement.Dynamic"/> is set on anything
         /// that is not a <see cref="GpuResourceKind.UniformBuffer"/>. See the method's own remarks.</exception>
         /// <remarks>
-        /// <b>A DECLARED-DYNAMIC ELEMENT THAT IS NOT A UNIFORM BUFFER IS REFUSED, and the refusal is wider than
-        /// the Direct3D 11 backend's by one case.</b> <c>D3D11ResourceLayout</c> refuses a dynamic STRUCTURED
-        /// buffer because neither of that API's shader-resource binds carries a per-bind window, so the offset
-        /// would be silently dropped. Here a dynamic structured buffer would additionally have to become
-        /// <c>STORAGE_BUFFER_DYNAMIC</c>, which 8.1's mapping does not produce, and a dynamic TEXTURE or SAMPLER
-        /// has no dynamic form at all. Both would leave the caller's per-draw offset with no dynamic descriptor
-        /// to land on, so it is silently dropped, and a bind that supplied one anyway would carry a
+        /// <b>A DECLARED-DYNAMIC ELEMENT THAT IS NOT A UNIFORM BUFFER IS REFUSED, the same kinds
+        /// <c>D3D11ResourceLayout</c> refuses.</b> That backend refuses a dynamic STRUCTURED buffer because
+        /// neither of its shader-resource binds carries a per-bind window, so the offset would be silently
+        /// dropped, and a texture or sampler because neither carries an offset at all. Here a dynamic structured
+        /// buffer would additionally have to become <c>STORAGE_BUFFER_DYNAMIC</c>, which 8.1's mapping does not
+        /// produce, and a dynamic TEXTURE or SAMPLER has no dynamic form at all. Both would leave the caller's
+        /// per-draw offset with no dynamic descriptor to land on, so it is silently dropped, and a bind that
+        /// supplied one anyway would carry a
         /// dynamicOffsetCount the set's dynamic descriptors do not match
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/521). Vacuous in the engine today: all six shipped
         /// dynamic elements are uniform buffers.
@@ -68,8 +69,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "no dynamic form at all. Accepting it would leave the caller's per-draw offset with no "
                     + "dynamic descriptor to land on, so it is silently dropped, and a bind that supplied one "
                     + "anyway would carry a dynamicOffsetCount the set's dynamic descriptors do not match. The "
-                    + "Direct3D 11 backend refuses the structured half of this for its own reason, so an element "
-                    + "like this is already unshippable on two of the three backends. Declare it as a uniform "
+                    + "Direct3D 11 backend refuses the same kinds for its own reasons. Declare it as a uniform "
                     + "buffer, or build one resource set per window.",
                     nameof(element))
                 {

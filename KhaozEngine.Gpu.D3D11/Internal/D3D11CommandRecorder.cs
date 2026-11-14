@@ -43,7 +43,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// silently corrupts a frame over: a double <see cref="Begin"/>, an <see cref="End"/> with no recording open,
     /// a command recorded outside a Begin and End pair (see <see cref="RequireRecording"/>, which is the one
     /// place the two drivers would otherwise answer differently), a command on a disposed list, and submitting a
-    /// list that was never ended.
+    /// list that was never ended. One argument check also runs at record on both drivers: a nonzero dynamic
+    /// offset against a set with no dynamic uniform buffer, refused by the emitter at the bind call (see
+    /// <see cref="D3D11BindFlush.RequireOffsetCarried"/>).
     /// </para>
     /// </summary>
     internal sealed partial class D3D11CommandRecorder<TEmitter> : IGpuCommandList, ID3D11SwapchainBindTracking

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
@@ -148,7 +149,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// equal would let a switch between the two forms take the offsets-only path and leave the textures of a
         /// full activation unbound.
         /// </para>
+        /// <para>
+        /// A NON-ZERO OFFSET AGAINST A SET THAT DECLARES NO DYNAMIC ELEMENT IS REFUSED, because nothing would
+        /// carry it. The activation adds the caller's offset only to a constant buffer declared dynamic, so an
+        /// offset passed to a set without one is silently dropped and the draw reads the window the set was
+        /// created with. The throw is a <see cref="GpuDynamicBindingException"/> with
+        /// <see cref="GpuDynamicBindingRefusal.DynamicElementMissing"/>, the same refusal Metal and Vulkan raise,
+        /// and it comes BEFORE the slot record changes, so a refused bind leaves the slot as it was. A ZERO offset
+        /// is accepted against any set, because dropping zero changes nothing and the seam's no-offset overload is
+        /// exactly that call. A null set and a set from another backend are not checked here: the first unbinds,
+        /// and the second has no layout this backend can read, so the flush refuses it by ownership instead.
+        /// </para>
+        /// <para>
+        /// EVERY DRIVER REFUSES AT THE SEAM CALL. Both emitters reach this record, so the immediate driver and the
+        /// trace emitter throw from it. The deferred driver's seam call only appends an op, so
+        /// <see cref="D3D11StreamEmitter"/> runs the same <see cref="RequireOffsetCarried"/> before appending, and
+        /// a refused bind never reaches the replay inside <c>Submit</c>.
+        /// </para>
         /// </summary>
+        /// <param name="slot">The set number this binds at.</param>
+        /// <param name="set">The set, or null to record that the slot holds none.</param>
+        /// <param name="dynamicOffset">The caller's per-draw byte offset, 0 for the overload that passes none.</param>
+        /// <param name="hasDynamicOffset">Whether the bind used the offset-carrying overload.</param>
         internal void RecordGraphics(uint slot, IGpuResourceSet? set, uint dynamicOffset, bool hasDynamicOffset)
             => Record(ref _graphics, slot, set, dynamicOffset, hasDynamicOffset);
 
@@ -318,9 +340,45 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _activation.Conflicts.Reset();
         }
 
+        /// <summary>
+        /// THE ONE CHECK BEHIND THE <see cref="GpuDynamicBindingRefusal.DynamicElementMissing"/> REFUSAL, shared by
+        /// <see cref="Record"/> and by <see cref="D3D11StreamEmitter"/>'s two offset overloads. The deferred driver
+        /// calls it at the seam call, before the op is appended, so the refusal escapes the bind exactly as it does
+        /// on Metal and Vulkan rather than escaping <c>Submit</c> after the list's earlier commands already reached
+        /// the device and with the submission left unsignalled. <see cref="Record"/> keeps the call as the backstop
+        /// for the immediate driver and the trace emitter, where the seam call reaches it directly.
+        /// <para>
+        /// A zero offset, a null set and a set from another backend pass. The last has no layout this backend can
+        /// read, so the flush refuses it by ownership instead.
+        /// </para>
+        /// </summary>
+        internal static void RequireOffsetCarried(uint slot, IGpuResourceSet? set, uint dynamicOffset)
+        {
+            if (dynamicOffset != 0 && set is D3D11ResourceSet { Layout.CarriesDynamicOffset: false })
+            {
+                throw new GpuDynamicBindingException(GpuDynamicBindingRefusal.DynamicElementMissing,
+                    "A native Direct3D 11 resource set was bound at set "
+                    + slot.ToString(CultureInfo.InvariantCulture) + " with a dynamic offset of "
+                    + dynamicOffset.ToString(CultureInfo.InvariantCulture)
+                    + " bytes, and its layout declares no dynamic uniform buffer for that offset to apply to. The "
+                    + "only bind on this backend that carries an offset is the constant-buffer bind of an element "
+                    + "declared dynamic, so with no such element the offset would be dropped and the draw would "
+                    + "read the window the set was created with. Declare the element dynamic in the resource "
+                    + "layout, or bind through the overload that passes no offset.",
+                    nameof(dynamicOffset))
+                {
+                    Backend = GpuBackendKind.Direct3D11Native,
+                    Set = slot,
+                    DynamicOffset = dynamicOffset,
+                };
+            }
+        }
+
         static void Record(ref SlotRecord[] records, uint slot, IGpuResourceSet? set, uint dynamicOffset,
             bool hasDynamicOffset)
         {
+            RequireOffsetCarried(slot, set, dynamicOffset);
+
             EnsureSlot(ref records, slot);
             ref SlotRecord record = ref records[slot];
 

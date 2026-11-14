@@ -688,7 +688,7 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 | `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.DepthAttachmentMissing` | Refuses a depth clear when the bound framebuffer declares no depth attachment. | `Command` |
-| `GpuDynamicBindingException`, `GpuDynamicBindingRefusal.DynamicElementMissing` | Refuses a nonzero dynamic offset on a set with no dynamic layout element. | `ParamName`, `Backend`, `Set`, `DynamicOffset` |
+| `GpuDynamicBindingException`, `GpuDynamicBindingRefusal.DynamicElementMissing` | Refuses a nonzero dynamic offset on a set with no dynamic layout element, on all three native backends. | `ParamName`, `Backend`, `Set`, `DynamicOffset` |
 | `ShaderValidationException`, `ShaderValidationRefusal.ComputeLocalSizeMissing` | Refuses a compute module without a literal local-size execution mode. | `Label` |
 | `ShaderValidationException`, `ShaderValidationRefusal.ComputeLocalSizeSpecialized` | Refuses a compute local size requiring specialization constant evaluation. | `Label`, `ExecutionMode` |
 | `ShaderValidationException`, `ShaderValidationRefusal.CrossCompileFailed` | Refuses a shader translation after a structured cross-compiler failure is caught. | `Label`, `Stage`, `Target`, `InnerException` |

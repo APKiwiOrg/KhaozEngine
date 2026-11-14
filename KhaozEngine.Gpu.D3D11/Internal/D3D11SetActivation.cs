@@ -274,6 +274,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// bind goes through the <c>1</c> overload for exactly that reason, and one path means one place for the
         /// arithmetic to be wrong in.
         /// </para>
+        /// <para>
+        /// THE OFFSET IS ADDED ONLY WHERE THE ELEMENT WAS DECLARED DYNAMIC, and that drop is safe because
+        /// <see cref="D3D11BindFlush"/> refuses a non-zero offset at record time against a set with no dynamic
+        /// uniform buffer. The zero here is therefore only ever a sibling constant buffer in a set that has one.
+        /// </para>
         /// </summary>
         static D3D11ConstantBufferBind ConstantBind(in D3D11BoundResource binding, uint dynamicOffsetBytes)
         {

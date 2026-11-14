@@ -56,6 +56,7 @@ internal sealed class NavAreaFootprint
 
     /// <summary>The area filter applied to every touched surface.</summary>
     internal NavAreaFilter Areas => _areas;
+    internal uint ExcludedAreas => _excludedAreas;
     internal double SurfaceReach => _surfaceReach;
 
     /// <summary>One delegate over <see cref="Accepts"/>, built once so traversal proofs do not allocate it per call.</summary>

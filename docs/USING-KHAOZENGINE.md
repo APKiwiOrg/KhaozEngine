@@ -10049,6 +10049,10 @@ No precision threshold or physical gate is widened.
 Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
 synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
 or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
+`ExcludingAreas` views share the source's current terrain ownership and prepare its shared certificate cache.
+Later terrain attachment or evidence rebinding remains visible to existing views. Terrain links retain their
+stored policy, while planning and launch preview check the view's exclusions against retained analytic face
+areas across the full doubled-radius certificate projection, including steep interiors and the shell fringe.
 
 Terrain Drops execute through `MoveToRange` using the same policy as the bake. Stored routes select sharp or
 terrain behavior before evidence access. Preview and submission share the current `PlayerPathInput` when using
@@ -16557,6 +16561,8 @@ The immutable view shares the baked graph and captured columns, including loaded
 across pursuits. No extra capture, whole-world profile or bake format change is needed. Zero keeps the same
 instance and chained calls accumulate exclusions. Baked required and excluded masks still apply. Excluding
 a required bit makes affected surfaces ineligible and never widens the original profile.
+The view also shares current source terrain routes and certificates. A `MoveToRange` using the view keeps terrain
+descent ownership and refuses excluded terrain links before execution. Pursuit retains its walk-only policy.
 
 The exclusion checks the complete capsule footprint on search nodes and directed edges, including Stair links,
 and guards straightening, actual-to-route entry, every kept segment and waypoint shortcuts. It applies at Admit

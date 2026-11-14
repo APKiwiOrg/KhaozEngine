@@ -11,6 +11,8 @@ internal static class ContactTerrainDropPreview
         in MoveState body, in MoveTuning tuning, bool run, float dt, GroundMoveContext context,
         ContactDropPredictionBasis basis, PlayerPathInput? input)
     {
+        if (navigation.AreaExclusionSource is not null &&
+            !ContactTerrainAreaExclusions.Allows(navigation, traversal.Link)) return RangeMoveStatus.Blocked;
         if (!navigation.Terrain!.TryGet(traversal.Link, out var certificate)) return RangeMoveStatus.Blocked;
         int steps = ContactDropControl.PreviewSteps(navigation.Footprint.Options, dt);
         if (steps < 3) return RangeMoveStatus.Blocked;

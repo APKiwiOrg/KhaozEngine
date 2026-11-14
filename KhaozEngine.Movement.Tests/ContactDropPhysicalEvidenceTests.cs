@@ -1,6 +1,9 @@
 using System.Numerics;
+using System.Linq;
+using System.IO;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
+using KhaozEngine.Navigation;
 using KhaozEngine.Tests.Movement.Fixtures;
 using Xunit;
 using Xunit.Abstractions;
@@ -9,6 +12,104 @@ namespace KhaozEngine.Tests.Movement;
 
 public class ContactDropPhysicalEvidenceTests(ITestOutputHelper output)
 {
+    // #1711. Area views retain the terrain policy through later source ownership installation and rebinding.
+    [Theory]
+    [InlineData("source")]
+    [InlineData("view")]
+    [InlineData("attach")]
+    [InlineData("rebind")]
+    [InlineData("view-attach")]
+    [InlineData("view-rebind")]
+    [InlineData("loaded")]
+    public void TerrainDropPreviewAndRealFollowerShareTheCurrentSourceOwner(string ownership)
+    {
+        using var fixture = new ContactTerrainFixture(4, terrainEvidence: true);
+        var tuning = ContactTerrainFixture.Tuning;
+        var baked = fixture.Capture.BuildProfile(tuning, default,
+            new GroundProfileOptions { MaxDropMetres = 6, AllowTerrainDescents = true });
+        if (ownership == "loaded")
+        {
+            var sources = new NavBakeSources().Add("world", new byte[32]);
+            var profiles = new[] { new NavBakeProfile("player", tuning, default) { MaxDropMetres = 6, AllowTerrainDescents = true } };
+            var bake = GroundNavigationBake.Create(fixture.Capture, sources, profiles);
+            using var stream = new MemoryStream();
+            bake.WriteTo(stream);
+            stream.Position = 0;
+            var loaded = GroundNavigationBake.Load(stream, new(fixture.Capture.Options, sources, profiles));
+            Assert.Equal(NavBakeLoadStatus.Loaded, loaded.Status);
+            baked = loaded.Bake!.GetProfile("player");
+        }
+        var terrainLinks = baked.Graph.Links.Where(link => baked.Terrain!.Route(link) == ContactDropRoute.Terrain).ToArray();
+        Assert.NotEmpty(terrainLinks);
+        var source = ownership.Contains("attach")
+            ? new GroundNavigation(baked.Graph, tuning, baked.Footprint, false, 6, true) : baked;
+        var navigation = ownership == "source" ? source : source.ExcludingAreas(1).ExcludingAreas(2);
+        if (ownership.Contains("attach"))
+            (ownership == "view-attach" ? navigation : source).AttachTerrain(baked.Terrain!.Evidence, terrainLinks, baked.Terrain.SlopeCos);
+        if (ownership.Contains("rebind"))
+            (ownership == "view-rebind" ? navigation : source).RebindTerrainEvidence(baked.Terrain!.Evidence);
+        Assert.NotNull(source.Terrain);
+        Assert.Equal(0, source.Terrain.CertificateCountForTests);
+        navigation.PrepareTerrainDescents();
+        Assert.Equal(terrainLinks.Length, source.Terrain.CertificateCountForTests);
+
+        var link = terrainLinks.Single(link => ContactDropProof.Feet(source.Space.Layers[link.FromLayer], link.FromX, link.FromZ) == fixture.From &&
+            ContactDropProof.Feet(source.Space.Layers[link.ToLayer], link.ToX, link.ToZ) == fixture.To);
+        var traversal = new NavDropTraversal(link, fixture.From, fixture.To);
+        var body = new MoveState { Position = fixture.From + Vector3.UnitY * tuning.CapsuleHalfHeight, Grounded = true, SpeedScale = 1 };
+        Assert.Equal(RangeMoveStatus.Dropping, ContactDropPreview.Prove(navigation, traversal, body, tuning, false,
+            1f / 30, fixture.Context, new()));
+        var move = new MoveToRange(navigation);
+        var target = ReachTarget.Point(fixture.To + Vector3.UnitY * tuning.CapsuleHalfHeight);
+        bool dropped = false, fringe = false;
+        RangeSteering steering = default;
+        for (int tick = 0; tick < 160; tick++)
+        {
+            steering = move.Tick(body, tuning, target, 0, false, 1f / 30, fixture.Context);
+            Assert.Contains(steering.Status, new[] { RangeMoveStatus.Following, RangeMoveStatus.Dropping, RangeMoveStatus.InRange });
+            dropped |= steering.Status == RangeMoveStatus.Dropping;
+            fringe |= dropped && body.Grounded && !navigation.Footprint.Accepts(body.Position - Vector3.UnitY * tuning.CapsuleHalfHeight);
+            if (steering.Status == RangeMoveStatus.InRange) break;
+            body = NpcGroundMovement.Step(body, steering, false, 1f / 30, tuning, fixture.Context);
+        }
+        Assert.True(dropped);
+        Assert.True(fringe);
+        Assert.Equal(RangeMoveStatus.InRange, steering.Status);
+        Assert.True(body.Grounded);
+    }
+
+    // #1711. A terrain certificate's full shell must respect exclusions, including outside the planner's chord shell.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TerrainDropExclusionRefusesTheInteriorAndTheCertificateFringe(bool fringe)
+    {
+        using var fixture = new ContactTerrainFixture(4, terrainEvidence: true,
+            classify: p => p.X is > 0 and < 1 && (!fringe || p.Z is > 0.5f or < -0.5f) ? 1u : 0u);
+        var tuning = ContactTerrainFixture.Tuning;
+        var source = fixture.Capture.BuildProfile(tuning, default,
+            new GroundProfileOptions { MaxDropMetres = 6, AllowTerrainDescents = true });
+        var ordinary = source.Planner.FindPath(fixture.From, fixture.To, tuning.CapsuleRadius, PathQueryBudget.Default);
+        Assert.Equal(NavPathStatus.Complete, ordinary.Status);
+        Assert.Contains(ordinary.Waypoints, waypoint => waypoint.Kind == NavWaypointKind.Drop);
+        var navigation = source.ExcludingAreas(1);
+        var control = source.ExcludingAreas(2).Planner.FindPath(fixture.From, fixture.To, tuning.CapsuleRadius, PathQueryBudget.Default);
+        Assert.Equal(NavPathStatus.Complete, control.Status);
+        var link = source.Graph.Links.Single(link => ContactDropProof.Feet(source.Space.Layers[link.FromLayer], link.FromX, link.FromZ) == fixture.From &&
+            ContactDropProof.Feet(source.Space.Layers[link.ToLayer], link.ToX, link.ToZ) == fixture.To);
+        var traversal = new NavDropTraversal(link, fixture.From, fixture.To);
+        var body = new MoveState { Position = fixture.From + Vector3.UnitY * tuning.CapsuleHalfHeight, Grounded = true, SpeedScale = 1 };
+        Assert.Equal(RangeMoveStatus.Dropping, ContactDropPreview.Prove(source, traversal, body, tuning, false, 1f / 30, fixture.Context, new()));
+        Assert.Equal(RangeMoveStatus.Blocked, ContactDropPreview.Prove(navigation, traversal, body, tuning, false, 1f / 30, fixture.Context, new()));
+        var path = navigation.Planner.FindPath(fixture.From, fixture.To, tuning.CapsuleRadius, PathQueryBudget.Default);
+        Assert.Equal(NavPathStatus.Unreachable, path.Status);
+        var move = new MoveToRange(navigation);
+        var steering = move.Tick(body, tuning, ReachTarget.Point(fixture.To + Vector3.UnitY * tuning.CapsuleHalfHeight),
+            0, false, 1f / 30, fixture.Context);
+        Assert.Equal(RangeMoveStatus.Unreachable, steering.Status);
+        Assert.Equal(Vector2.Zero, steering.WorldDirection);
+    }
+
     // #1697. Continuous terrain keeps the sharp recipe's local horizon and independent physical gates.
     [Theory]
     [InlineData(1.3f)]

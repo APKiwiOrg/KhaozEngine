@@ -29,10 +29,10 @@ public enum DungeonCeilingMode
 /// </summary>
 public sealed class DungeonConfig
 {
-    /// <summary>World size of one tile edge, in metres.</summary>
+    /// <summary>World size of one tile edge, in metres. Must be positive and finite.</summary>
     public float CellSizeMeters { get; set; } = 2f;
 
-    /// <summary>World height between floors, in metres.</summary>
+    /// <summary>World height between floors, in metres. Must be positive and finite.</summary>
     public float FloorHeightMeters { get; set; } = 4f;
 
     /// <summary>Number of rooms the generator aims to place.</summary>
@@ -112,7 +112,7 @@ public sealed class DungeonConfig
     public float? CeilingHeightMeters { get; set; }
 
     /// <summary>Throws <see cref="ArgumentException"/> naming the first invalid property, in check order:
-    /// positive cell/floor sizes, RoomMinTiles between 1 and RoomMaxTiles inclusive, positive room count, floor
+    /// positive, finite cell/floor sizes, RoomMinTiles between 1 and RoomMaxTiles inclusive, positive room count, floor
     /// count and critical-path target, non-negative loop budget, lock count and marker maxima, corridor widths
     /// (at least 1, min not exceeding max), hall knobs (chance in 0..100, min length at least 1 not exceeding
     /// max), a positive ceiling height when one is set, a plot large enough to fit the largest room plus a
@@ -137,10 +137,22 @@ public sealed class DungeonConfig
             { ActualNumber = CellSizeMeters };
         }
 
+        if (!float.IsFinite(CellSizeMeters))
+        {
+            return new(DungeonJsonRefusal.NumberNonfinite, nameof(CellSizeMeters), "CellSizeMeters must be finite.")
+            { ActualNumber = CellSizeMeters };
+        }
+
         if (FloorHeightMeters <= 0f)
         {
             return new(DungeonJsonRefusal.PositiveValueRequired, nameof(FloorHeightMeters),
                 "FloorHeightMeters must be greater than zero.")
+            { ActualNumber = FloorHeightMeters };
+        }
+
+        if (!float.IsFinite(FloorHeightMeters))
+        {
+            return new(DungeonJsonRefusal.NumberNonfinite, nameof(FloorHeightMeters), "FloorHeightMeters must be finite.")
             { ActualNumber = FloorHeightMeters };
         }
 

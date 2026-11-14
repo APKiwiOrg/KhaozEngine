@@ -59,7 +59,8 @@ public sealed class DungeonJsonException : Exception
 
     /// <summary>The refused floating value, for <see cref="DungeonJsonRefusal.PositiveValueRequired"/> (a config or
     /// layout length, whose limit is zero, exclusive), for <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/>
-    /// from the layout <c>ceilingHeightMeters</c>, and for <see cref="DungeonJsonRefusal.NumberNonfinite"/>.</summary>
+    /// from the layout <c>ceilingHeightMeters</c>, and for <see cref="DungeonJsonRefusal.NumberNonfinite"/> from a
+    /// config or layout <c>cellSizeMeters</c> or <c>floorHeightMeters</c>, or a layout <c>ceilingHeightMeters</c>.</summary>
     public double? ActualNumber { get; init; }
 
     /// <summary>The inclusive minimum, for <see cref="DungeonJsonRefusal.NonnegativeValueRequired"/> from the layout
@@ -448,6 +449,13 @@ public static class DungeonJson
             ActualNumber = actual,
         };
 
+    private static DungeonJsonException Nonfinite(string path, double actual) =>
+        new(DungeonJsonRefusal.NumberNonfinite, $"{path}: must be finite.")
+        {
+            JsonPath = "$." + path,
+            ActualNumber = actual,
+        };
+
     private static DungeonJsonException IntegerBelowOne(string path, int actual) =>
         new(DungeonJsonRefusal.IntegerBelowMinimum, $"{path}: must be greater than zero.")
         {
@@ -490,9 +498,19 @@ public static class DungeonJson
             throw NotPositive("cellSizeMeters", dto.CellSizeMeters);
         }
 
+        if (!float.IsFinite(dto.CellSizeMeters))
+        {
+            throw Nonfinite("cellSizeMeters", dto.CellSizeMeters);
+        }
+
         if (dto.FloorHeightMeters <= 0f)
         {
             throw NotPositive("floorHeightMeters", dto.FloorHeightMeters);
+        }
+
+        if (!float.IsFinite(dto.FloorHeightMeters))
+        {
+            throw Nonfinite("floorHeightMeters", dto.FloorHeightMeters);
         }
 
         // One message for two rules, so the reason follows the predicate's order: a negative value (negative

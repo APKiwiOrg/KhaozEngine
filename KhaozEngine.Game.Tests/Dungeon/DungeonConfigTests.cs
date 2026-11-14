@@ -22,6 +22,14 @@ namespace KhaozEngine.Tests.Dungeon
 
         [Theory]
         [InlineData(nameof(DungeonConfig.CellSizeMeters))]
+        // Regression #1721 also applies to code-built configs and the generator entry point.
+        [InlineData(nameof(DungeonConfig.CellSizeMeters), float.PositiveInfinity)]
+        [InlineData(nameof(DungeonConfig.CellSizeMeters), float.NegativeInfinity)]
+        [InlineData(nameof(DungeonConfig.CellSizeMeters), float.NaN)]
+        [InlineData(nameof(DungeonConfig.FloorHeightMeters))]
+        [InlineData(nameof(DungeonConfig.FloorHeightMeters), float.PositiveInfinity)]
+        [InlineData(nameof(DungeonConfig.FloorHeightMeters), float.NegativeInfinity)]
+        [InlineData(nameof(DungeonConfig.FloorHeightMeters), float.NaN)]
         [InlineData(nameof(DungeonConfig.RoomMinTiles))]
         [InlineData(nameof(DungeonConfig.PlotWidthTiles))]
         [InlineData(nameof(DungeonConfig.CorridorMinWidth))]
@@ -29,12 +37,13 @@ namespace KhaozEngine.Tests.Dungeon
         [InlineData(nameof(DungeonConfig.HallChancePercent))]
         [InlineData(nameof(DungeonConfig.HallMinLengthTiles))]
         [InlineData(nameof(DungeonConfig.CeilingHeightMeters))]
-        public void Invalid_Throws_NamingProperty(string property)
+        public void Invalid_Throws_NamingProperty(string property, float size = 0f)
         {
             var config = new DungeonConfig();
             switch (property)
             {
-                case nameof(DungeonConfig.CellSizeMeters): config.CellSizeMeters = 0f; break;
+                case nameof(DungeonConfig.CellSizeMeters): config.CellSizeMeters = size; break;
+                case nameof(DungeonConfig.FloorHeightMeters): config.FloorHeightMeters = size; break;
                 case nameof(DungeonConfig.RoomMinTiles): config.RoomMinTiles = 9; break; // > RoomMaxTiles (8)
                 case nameof(DungeonConfig.PlotWidthTiles): config.PlotWidthTiles = 5; break; // < RoomMaxTiles + 2
                 case nameof(DungeonConfig.CorridorMinWidth): config.CorridorMinWidth = 0; break; // < 1
@@ -48,6 +57,25 @@ namespace KhaozEngine.Tests.Dungeon
             string expected = property == nameof(DungeonConfig.CorridorMaxWidth)
                 ? nameof(DungeonConfig.CorridorMinWidth) : property;
             Assert.Equal(expected, ex.ParamName);
+
+            if (property is nameof(DungeonConfig.CellSizeMeters) or nameof(DungeonConfig.FloorHeightMeters))
+            {
+                ArgumentException generatorError = Assert.Throws<ArgumentException>(() => DungeonGenerator.Generate(config, 1UL));
+                Assert.Equal(property, generatorError.ParamName);
+
+                if (property == nameof(DungeonConfig.CellSizeMeters))
+                {
+                    config.CellSizeMeters = float.MaxValue;
+                }
+                else
+                {
+                    config.FloorHeightMeters = float.MaxValue;
+                }
+                config.Validate();
+                DungeonLayout control = DungeonGenerator.Generate(config, 1UL);
+                Assert.Equal(float.MaxValue, property == nameof(DungeonConfig.CellSizeMeters)
+                    ? control.CellSizeMeters : control.FloorHeightMeters);
+            }
         }
 
         [Fact]

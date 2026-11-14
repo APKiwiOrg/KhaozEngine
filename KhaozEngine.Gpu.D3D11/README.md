@@ -288,10 +288,24 @@ the index, vertex, written and copied buffers, each bound resource and the compu
 the same `D3D11BindResolve` member in the same order relative to the redundancy guards, so a handle from another
 backend is refused with the same `GpuResourceOwnershipRefusal.ForeignBackend` and fields. A test drives the trace
 with this backend's handle types or with fakes that answer the same device-free seams (`ID3D11RenderTargetSurface`,
-`ID3D11BindableViews`, `ID3D11ComputePipelineState`). Two splits remain because the real emitter's refusal names
-a concrete type only a device can build. The graphics pipeline is refused with `ExpectedType` naming
-`D3D11GraphicsPipeline` on the device and `ID3D11PipelineState` in the trace. The texture transfers are refused
-by the device for anything but a `D3D11Texture` and are not refused by the trace at all.
+`ID3D11BindableViews`, `ID3D11ComputePipelineState`). The trace resolves only where the device does, so an empty
+write, a ring-backed write and a zero-size copy are accepted with any buffer, as on the device.
+
+Four checks stay in the real emitter alone, because each names a type only a device can build or a Direct3D type
+the device-free trace cannot name.
+
+- The graphics pipeline is refused by both, with `ExpectedType` naming `D3D11GraphicsPipeline` on the device and
+  `ID3D11PipelineState` in the trace.
+- The texture transfers are refused by the device for anything but a `D3D11Texture`, for a `GenerateMipmaps`
+  texture with no mip-chain view and for a swapchain copy whose colour view is not a render target view. The
+  trace refuses none of them.
+- The compute pipeline's shader is refused by the device when it is null (`MissingResource`) or not an
+  `ID3D11ComputeShader` (`ForeignBackend`). The trace does not check the shader.
+- The depth clear throws `InvalidOperationException` on the device for a framebuffer that declares depth and
+  carries no depth view. No stream can produce one, so the trace does not model it.
+
+One split runs the other way. On an empty bind span the trace still resolves the call name, which refuses an
+unsupported stage, where the device returns before asking.
 
 ## The bind flush
 

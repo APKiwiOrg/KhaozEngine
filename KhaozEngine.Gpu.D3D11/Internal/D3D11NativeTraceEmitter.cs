@@ -24,8 +24,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// handle is refused with the same exception, reason and fields. A test therefore drives this type with the
     /// backend's own handle types or with fakes that answer the same device-free seams
     /// (<see cref="ID3D11RenderTargetSurface"/>, <see cref="ID3D11BindableViews"/>,
-    /// <see cref="ID3D11ComputePipelineState"/>). The graphics pipeline and the texture transfers are the two
-    /// splits left, and each says why where it lives.
+    /// <see cref="ID3D11ComputePipelineState"/>).
+    /// </para>
+    /// <para>
+    /// FOUR CHECKS STAY IN THE REAL EMITTER ALONE, because each names a type only a device can build or a
+    /// Direct3D type this device-free body cannot name. The graphics pipeline is refused here too, but against
+    /// <see cref="ID3D11PipelineState"/> rather than the concrete <see cref="D3D11GraphicsPipeline"/>, so only its
+    /// <c>ExpectedType</c> differs (see <see cref="SetPipeline"/>). The texture transfers are not refused here at
+    /// all (see <see cref="CopyTexture"/>), which covers the real emitter's texture type check, its missing
+    /// mip-chain view on <c>GenerateMipmaps</c> and its swapchain colour view check. The compute pipeline's shader
+    /// is not checked here: the real emitter refuses a null one and one that is not an <c>ID3D11ComputeShader</c>.
+    /// The depth clear's backstop for a framebuffer that declares depth and carries no depth view is not modelled,
+    /// since no stream can produce one. The reverse holds once: on an EMPTY bind span this type still resolves the
+    /// call name, which refuses an unsupported stage, where the real emitter returns before asking.
     /// </para>
     /// <para>
     /// THE BIND FLUSH IS MODELLED TOO, and that is the sink decision of work-breakdown row 9. The schedule of
@@ -279,7 +290,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void UpdateBuffer(IGpuBuffer buffer, uint offsetBytes, ReadOnlySpan<byte> data)
         {
             if (buffer is null) throw new ArgumentNullException(nameof(buffer));
-            if (buffer is not ID3D11RingBacked { Ring: not null } && !data.IsEmpty) D3D11BindResolve.NativeBuffer(buffer);
+            if (buffer is not ID3D11RingBacked { Ring: not null } && !data.IsEmpty)
+                D3D11BindResolve.NativeBuffer(buffer);
 
             _log.Record(D3D11NativeCall.UpdateSubresource, $"{_log.Id(buffer)},{N(offsetBytes)},{N(data.Length)}b");
         }
@@ -300,9 +312,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>
-        /// THE TEXTURE TRANSFERS APPLY NO OWNERSHIP REFUSAL HERE, and that is the one split this type keeps. The
-        /// real emitter refuses anything that is not its concrete <see cref="D3D11Texture"/>, which only a device
-        /// can build, so a trace that asked the same question could never be handed a texture it accepts.
+        /// THE TEXTURE TRANSFERS APPLY NO OWNERSHIP REFUSAL HERE, one of the four checks the class summary lists as
+        /// the real emitter's alone. The real emitter refuses anything that is not its concrete
+        /// <see cref="D3D11Texture"/>, which only a device can build, so a trace that asked the same question could
+        /// never be handed a texture it accepts.
         /// </summary>
         public void CopyTexture(IGpuTexture src, IGpuTexture dst)
             => _log.Record(D3D11NativeCall.CopyResource, $"{_log.Id(src)},{_log.Id(dst)}");

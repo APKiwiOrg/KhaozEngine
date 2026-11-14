@@ -87,13 +87,16 @@ public sealed class GpuResourceOwnershipRegressionTests
     // #1691. The device-free trace resolves every handle the real emitter resolves, through the same shared member,
     // so a handle from another backend earns the same refusal without a device. The framebuffer and index buffer
     // rows ask twice because the real emitter resolves BEFORE its redundancy guard: resolving after it would record
-    // the first foreign bind and pass the second one as redundant.
+    // the first foreign bind and pass the second one as redundant. The trace must not refuse MORE than the device
+    // either, so a row's control half also hands foreign handles to every call the real emitter never names a
+    // buffer for: an empty write, a ring-backed write and a zero-size copy.
     [Theory]
     [InlineData("SetFramebuffer")]
     [InlineData("SetIndexBuffer")]
     [InlineData("SetVertexBuffer")]
     [InlineData("UpdateBuffer")]
     [InlineData("CopyBuffer")]
+    [InlineData("CopyBufferDestination")]
     [InlineData("ResourceBind")]
     [InlineData("SetComputePipeline")]
     public void D3D11TraceRefusesTheForeignHandlesTheDeviceRefuses(string entry)
@@ -108,6 +111,8 @@ public sealed class GpuResourceOwnershipRegressionTests
         using var ownBuffer = new TraceBuffer(64);
         using var foreignSet = D3D11BindFixtures.Set(layout, foreignBuffer);
         using var ownSet = D3D11BindFixtures.Set(layout, ownBuffer);
+        using var rings = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 2);
+        using var ringOnly = new RingOnlyBuffer(rings.Ring);
         emitter.SetPipeline(pipeline);
         emitter.SetGraphicsResourceSet(0, ownSet);
 
@@ -123,11 +128,21 @@ public sealed class GpuResourceOwnershipRegressionTests
                 () => { emitter.SetVertexBuffer(0, ownBuffer, 0); emitter.Draw(3, 1, 0, 0); },
                 typeof(FakeBuffer), typeof(ID3D11BindableViews), "buffer", "buffer"),
             "UpdateBuffer" => (() => emitter.UpdateBuffer(foreignBuffer, 0, new byte[4]),
-                () => emitter.UpdateBuffer(ownBuffer, 0, new byte[4]),
+                () =>
+                {
+                    emitter.UpdateBuffer(ownBuffer, 0, new byte[4]);
+                    emitter.UpdateBuffer(foreignBuffer, 0, Array.Empty<byte>());
+                    emitter.UpdateBuffer(ringOnly, 0, new byte[4]);
+                },
                 typeof(FakeBuffer), typeof(ID3D11BindableViews), "buffer", "buffer"),
-            // The source is the foreign one because the destination is resolved first, so this row also shows
-            // the second handle is asked.
             "CopyBuffer" => (() => emitter.CopyBuffer(foreignBuffer, 0, ownBuffer, 0, 4),
+                () =>
+                {
+                    emitter.CopyBuffer(ownBuffer, 0, ownBuffer, 0, 4);
+                    emitter.CopyBuffer(foreignBuffer, 0, foreignBuffer, 0, 0);
+                },
+                typeof(FakeBuffer), typeof(ID3D11BindableViews), "buffer", "buffer"),
+            "CopyBufferDestination" => (() => emitter.CopyBuffer(ownBuffer, 0, foreignBuffer, 0, 4),
                 () => emitter.CopyBuffer(ownBuffer, 0, ownBuffer, 0, 4),
                 typeof(FakeBuffer), typeof(ID3D11BindableViews), "buffer", "buffer"),
             "ResourceBind" => (() => { emitter.SetGraphicsResourceSet(0, foreignSet); emitter.Draw(3, 1, 0, 0); },
@@ -153,6 +168,18 @@ public sealed class GpuResourceOwnershipRegressionTests
         }
 
         row.own();
+    }
+
+    // A ring-backed buffer that answers no native buffer. The real emitter writes into the ring and never names
+    // one, so the trace must accept this where a resolve would refuse it.
+    sealed class RingOnlyBuffer(D3D11UniformRing ring) : IGpuBuffer, ID3D11RingBacked
+    {
+        public uint SizeInBytes => ring.SizeInBytes;
+        public D3D11UniformRing? Ring => ring;
+
+        public void Dispose()
+        {
+        }
     }
 
     [Fact]

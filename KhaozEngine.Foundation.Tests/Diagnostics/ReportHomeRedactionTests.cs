@@ -7,8 +7,19 @@ namespace KhaozEngine.Tests.Diagnostics;
 public sealed class ReportHomeRedactionTests
 {
     [Theory]
-    [InlineData("/Users/ann", "/Users/ann/Users/ann", "~~")]
-    [InlineData("/aba/ab", "/aba/aba/ab", "/aba~")]
+    // #1463: both boundaries belong to the original text, including when scanning resumes.
+    [InlineData("/Users/ann", "/Users/ann/Users/ann", "~/Users/ann")]
+    [InlineData("/aba/ab", "/aba/aba/ab", "/aba/aba/ab")]
+    [InlineData("/Users/al", "/Volumes/Backup/Users/al/x", "/Volumes/Backup/Users/al/x")]
+    [InlineData("/Users/al", "/Users/al", "~")]
+    [InlineData("/Users/al", " /Users/al", " ~")]
+    [InlineData("/Users/al", "\"/Users/al\"", "\"~\"")]
+    [InlineData("/Users/al", "path=/Users/al", "path=~")]
+    [InlineData("/Users/al", "file:///Users/al/x", "file://~/x")]
+    [InlineData(@"C:\Users\al", @"\\?\C:\Users\al\x", @"\\?\~\x")]
+    [InlineData("/Users/al", "/Users/al /Users/al", "~ ~")]
+    [InlineData("/Users/al", "/Users/al//Users/al", "~/~")]
+    [InlineData("/Users/al", "a/Users/al ./Users/al _/Users/al -/Users/al 1/Users/al", "a/Users/al ./Users/al _/Users/al -/Users/al 1/Users/al")]
     [InlineData("/Users/ann", "/Users/anna /Users/ann. /Users/ann_ /Users/ann-", "/Users/anna /Users/ann. /Users/ann_ /Users/ann-")]
     [InlineData("/Users/ann", "/Users/ann!\n/Users/ann\n", "~!\n~\n")]
     [InlineData(@"C:\Users\Ann", @"C:\Users\Ann\C:\Users\Ann", @"~\~")]

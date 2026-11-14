@@ -51,11 +51,27 @@ public sealed class ReportRedactorTests
         Assert.Equal(home.Length < 3 ? home : "~", new ReportRedactor(null).Redact(home));
     }
 
-    [Fact]
-    public void Bearer_value_is_masked()
+    // #1463: Basic prose is not a credential without a colon in its decoded prefix.
+    [Theory]
+    [InlineData("Authorization: Bearer abc.def-123456", "Authorization: Bearer [redacted]")]
+    [InlineData("Authorization: basic  dXNlcjpwYXNz", "Authorization: basic  [redacted]")]
+    [InlineData("Basic dXNlcjpwYXNzd29yZA==", "Basic [redacted]")]
+    [InlineData("Basic dXNlcjpw", "Basic [redacted]")]
+    [InlineData("Basic dXNlcjpwY", "Basic [redacted]")]
+    [InlineData("Basic dXNlcjpwYX", "Basic [redacted]")]
+    [InlineData("Basic dXNlcjpwYXN", "Basic [redacted]")]
+    [InlineData("bAsIc\t\tdXNlcjpw._~+/=-", "bAsIc\t\t[redacted]")]
+    [InlineData("Basic dXNlcjo=", "Basic [redacted]")]
+    [InlineData("Basic dXNlcjo=more", "Basic [redacted]")]
+    [InlineData("basic materials", "basic materials")]
+    [InlineData("basic settings", "basic settings")]
+    [InlineData("Basic c2V0dGluZ3M=", "Basic c2V0dGluZ3M=")]
+    [InlineData("Basic c2V0.dXNlcjpw", "Basic c2V0.dXNlcjpw")]
+    [InlineData("Basic c2V0====dXNlcjpw", "Basic c2V0====dXNlcjpw")]
+    [InlineData("Basic c2V0ZA==dXNlcjpw", "Basic c2V0ZA==dXNlcjpw")]
+    public void Authorization_values_mask_only_credentials(string text, string expected)
     {
-        Assert.Equal("Authorization: Bearer [redacted]", NoHome.Redact("Authorization: Bearer abc.def-123456"));
-        Assert.Equal("Authorization: basic  [redacted]", NoHome.Redact("Authorization: basic  dXNlcjpwYXNz"));
+        Assert.Equal(expected, NoHome.Redact(text));
     }
 
     [Fact]
@@ -124,6 +140,9 @@ public sealed class ReportRedactorTests
             "design=x",
             "/Users/anna/x",
             "https://x/b?sv=1&se=2",
+            // #1463: a rejected Basic candidate keeps the clean string instance.
+            "basic materials and basic settings with Basic c2V0dGluZ3M=",
+            "/Volumes/Backup/Users/ann/x",
             "",
         ];
 
@@ -200,7 +219,9 @@ public sealed class ReportRedactorTests
     {
         var redactor = new ReportRedactor("/Users/ann");
 
-        Assert.Equal("~~ ~", redactor.Redact("/Users/ann/Users/ann /Users/ann"));
+        // #1463: a suffix cannot become a new text start after replacing the first home.
+        Assert.Equal("~/Users/ann ~", redactor.Redact("/Users/ann/Users/ann /Users/ann"));
+        Assert.Equal("~/~ ~", redactor.Redact("/Users/ann//Users/ann /Users/ann"));
         Assert.Equal("~/x:~/y", redactor.Redact("/Users/ann/x:/Users/ann/y"));
         Assert.Equal("~\n", redactor.Redact("/Users/ann\n"));
         Assert.Equal(@"~\~", new ReportRedactor(@"C:\Users\Ann").Redact(@"C:\Users\Ann\C:\Users\Ann"));
@@ -331,7 +352,8 @@ public sealed class ReportRedactorAllocationTests
     public void Clean_text_does_not_allocate()
     {
         var redactor = new ReportRedactor("/Users/ann");
-        const string text = "Loaded 12 tiles in 3.2 ms from /Users/anna/tiles with tokenizer=fast";
+        // #1463: Basic candidates with no decoded colon must also avoid allocations.
+        const string text = "basic materials and basic settings with Basic c2V0dGluZ3M= from /Volumes/Backup/Users/ann";
 
         void Run() => redactor.Redact(text);
 
@@ -346,7 +368,7 @@ public sealed class ReportRedactorAllocationTests
         // A regex holds its parsed replacement only weakly, so a full collection drops it and the next replace
         // parses it again. Clean text must not reach a replace, or every full collection costs a report string.
         var redactor = new ReportRedactor("/Users/ann");
-        const string text = "Loaded 12 tiles in 3.2 ms from /Users/anna/tiles with tokenizer=fast";
+        const string text = "basic materials and basic settings with Basic c2V0dGluZ3M= from /Volumes/Backup/Users/ann";
 
         void Run() => redactor.Redact(text);
 

@@ -30,6 +30,9 @@ public sealed class ReportRedactor
 
     static readonly TimeSpan DefaultMatchTimeout = Regex.InfiniteMatchTimeout;
 
+    // Authorization stays between provider tokens and URL query values in BuildRules.
+    const int AuthorizationRuleIndex = 3;
+
     /// <summary>Variable name fragments whose whole value is masked whatever it holds.</summary>
     static readonly string[] SecretNameParts = ["TOKEN", "SECRET", "PASSWORD", "PASSWD", "KEY"];
 
@@ -119,10 +122,13 @@ public sealed class ReportRedactor
         try
         {
             string result = text;
-            foreach (Rule rule in rules)
+            for (int index = 0; index < rules.Length; index++)
             {
                 if (result.Length > MaximumInputLength) return Mask;
-                if (rule.Pattern.IsMatch(result))
+                Rule rule = rules[index];
+                if (index == AuthorizationRuleIndex)
+                    result = ReportAuthorizationRedaction.Redact(result, rule.Pattern);
+                else if (rule.Pattern.IsMatch(result))
                     result = rule.Pattern.Replace(result, rule.Replacement);
             }
             if (result.Length > MaximumInputLength) return Mask;

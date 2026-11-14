@@ -20,7 +20,7 @@ internal sealed class ReportHomeRedaction(Regex? pattern, int pathLength, bool m
             string native = Regex.Escape(path);
             string alternate = Regex.Escape(SwapSeparators(path));
             string body = native == alternate ? native : "(?:" + native + "|" + alternate + ")";
-            string expression = body + @"(?:$|[^A-Za-z0-9._-])";
+            string expression = @"(^|[^A-Za-z0-9._-])" + body + @"(?:$|[^A-Za-z0-9._-])";
             if (expression.Length > MaximumPatternLength) return Failed;
             return new ReportHomeRedaction(new Regex(expression,
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.NonBacktracking, timeout), path.Length);
@@ -41,12 +41,12 @@ internal sealed class ReportHomeRedaction(Regex? pattern, int pathLength, bool m
         int search = 0;
         while (search < text.Length)
         {
-            Regex.ValueMatchEnumerator matches = pattern.EnumerateMatches(text.AsSpan(search));
-            if (!matches.MoveNext()) break;
+            int index = FindNextHome(text, search);
+            if (index < 0) break;
             length -= pathLength - 1;
             // The regex consumes the boundary instead of using look-ahead. Resume at the path's end so
             // that boundary can also start the next home. Rejected siblings are skipped inside the matcher.
-            search += matches.Current.Index + pathLength;
+            search = index + pathLength;
         }
         if (length == text.Length) return text;
 
@@ -60,9 +60,8 @@ internal sealed class ReportHomeRedaction(Regex? pattern, int pathLength, bool m
         int written = 0;
         while (copied < text.Length)
         {
-            Regex.ValueMatchEnumerator matches = pattern!.EnumerateMatches(text.AsSpan(copied));
-            if (!matches.MoveNext()) break;
-            int index = copied + matches.Current.Index;
+            int index = FindNextHome(text, copied);
+            if (index < 0) break;
             ReadOnlySpan<char> unchanged = text.AsSpan(copied, index - copied);
             unchanged.CopyTo(destination[written..]);
             written += unchanged.Length;
@@ -70,6 +69,18 @@ internal sealed class ReportHomeRedaction(Regex? pattern, int pathLength, bool m
             copied = index + pathLength;
         }
         text.AsSpan(copied).CopyTo(destination[written..]);
+    }
+
+    int FindNextHome(string text, int start)
+    {
+        // Keep the original text so ^ cannot turn a resume point into a new home start.
+        Regex.ValueMatchEnumerator matches = pattern!.EnumerateMatches(text.AsSpan(), start);
+        if (!matches.MoveNext()) return -1;
+        int index = matches.Current.Index;
+        // ValueMatch exposes only the full match. At index zero a home-only probe distinguishes
+        // the zero-width start alternative from a consumed one-character prefix, without allocating.
+        bool atStart = index == 0 && pattern.IsMatch(text.AsSpan(0, pathLength));
+        return atStart ? 0 : index + 1;
     }
 
     static string SwapSeparators(string path)

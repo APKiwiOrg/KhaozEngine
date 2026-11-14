@@ -309,9 +309,9 @@ The rest of the schedule, since each clause carries its own weight:
   `Backend`, `Set` and `DynamicOffset`, the refusal Metal and Vulkan raise. The activation adds the offset to a
   constant buffer declared dynamic and to nothing else, so without the refusal the offset would be dropped and the
   draw would read the window the set was created with. The refusal comes before the record changes, so the slot
-  keeps what it held. A zero offset is accepted against any set and a null set is not checked. A texture or sampler
-  flagged dynamic does not count, because no bind of either carries an offset. A set from another backend is not
-  checked either, since it has no layout this backend can read, and the flush refuses it by ownership instead.
+  keeps what it held. A zero offset is accepted against any set and a null set is not checked. A set from another
+  backend is not checked either, since it has no layout this backend can read, and the flush refuses it by
+  ownership instead.
   Every driver refuses at the bind call. The immediate driver reaches the check through the record, and the
   deferred driver runs the same check in its op encoder before it appends the op, so a refused bind never reaches
   the replay inside `Submit`, where the list's earlier commands would already have reached the device.
@@ -354,6 +354,10 @@ would read the window the view was created with while the caller believed it had
 in the engine today (all six dynamic elements shipped are uniform buffers) and is refused anyway, because nothing
 further down the path would ever say so. Declare the element as a uniform buffer, or build one set per window.
 The native Metal backend accepts the combination, which its own README names as a documented superset.
+A TEXTURE OR SAMPLER element declared dynamic throws the same `GpuResourceLayoutException` with
+`DynamicOffsetUnsupportedForKind`, since neither has an offset of any kind. Metal and Vulkan refuse it at layout
+creation too, so every element declared dynamic on this backend is a uniform buffer
+([#1795](https://github.com/APKiwiOrg/KhaozEngine/issues/1795)).
 
 **The ring is unmapped at the flush point on the immediate driver.** `KE_D3D11_RECORD=immediate` issues draws as
 the seam is called, so a ring mapped by a record-time uniform write is still mapped when the next draw binds it.

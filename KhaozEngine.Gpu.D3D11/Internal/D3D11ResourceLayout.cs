@@ -33,7 +33,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             for (int i = 0; i < _elements.Length; i++)
             {
-                if (!IsDynamicStructured(_elements[i])) continue;
+                if (!IsDynamicNonUniform(_elements[i])) continue;
 
                 throw new GpuResourceLayoutException(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind,
                     $"'{_elements[i].Name}' is declared as {_elements[i].Kind} AND dynamic, which the native "
@@ -41,12 +41,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     + "bind that carries one is the constant-buffer bind, which takes a first constant and a "
                     + "count. A structured buffer binds through a view created ONCE over the whole buffer "
                     + "(decision C2's full-range RAW view), and neither *SetShaderResources nor "
-                    + "*SetUnorderedAccessViews has a per-bind window to put the offset in, so the offset would "
-                    + "be dropped in both directions: a full activation would write the pre-resolved view with "
-                    + "nothing added, and the offsets-only path would skip the element entirely for not being a "
-                    + "constant buffer. Every draw would read the window the view was created with while the "
-                    + "caller believed it had moved. Declare the element as a uniform buffer, or build one "
-                    + "resource set per window.",
+                    + "*SetUnorderedAccessViews has a per-bind window to put the offset in. A texture or a "
+                    + "sampler has no offset of any kind. The offset would be dropped in both directions: a full "
+                    + "activation would write the pre-resolved view or sampler with nothing added, and the "
+                    + "offsets-only path would skip the element entirely for not being a constant buffer. Every "
+                    + "draw would read what the set was created with while the caller believed it had moved. "
+                    + "Declare the element as a uniform buffer, or build one resource set per window.",
                     nameof(description))
                 {
                     Backend = GpuBackendKind.Direct3D11Native,
@@ -58,25 +58,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             _slots = new D3D11RegisterSlot[_elements.Length];
             Counts = D3D11RegisterScheme.AssignWithinLayout(_elements, _slots);
-
-            for (int i = 0; i < _elements.Length; i++)
-            {
-                if (_elements[i].Dynamic && _elements[i].Kind == GpuResourceKind.UniformBuffer)
-                    CarriesDynamicOffset = true;
-            }
+            CarriesDynamicOffset = Array.Exists(_elements, static element => element.Dynamic);
         }
 
         /// <summary>
         /// Whether any element applies the caller's per-draw offset, which is the question
         /// <see cref="D3D11BindFlush"/> asks before it records a non-zero offset against a set on this layout.
         /// <para>
-        /// IT COUNTS DYNAMIC UNIFORM BUFFERS ALONE, which is the portable meaning of
+        /// ANY DYNAMIC ELEMENT IS A DYNAMIC UNIFORM BUFFER, because the constructor refuses the flag on every other
+        /// kind, so the flag alone answers it. That is the portable meaning of
         /// <see cref="GpuResourceLayoutElement.Dynamic"/> and the one shape this backend can rebase: the only bind
-        /// that carries an offset is the constant-buffer bind. A dynamic structured buffer never reaches here,
-        /// because the constructor refuses it. A texture or sampler flagged dynamic is still accepted at creation,
-        /// and counting its flag would let a non-zero offset through to a bind that drops it, which is the silent
-        /// wrong slice the record-time refusal exists to stop. Metal and Vulkan answer the same question through
-        /// their own flags, and on both every declared-dynamic element is a buffer that carries the offset.
+        /// that carries an offset is the constant-buffer bind. Vulkan answers the same question the same way.
         /// </para>
         /// </summary>
         internal bool CarriesDynamicOffset { get; }
@@ -150,15 +142,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// combination is refused at buffer creation: the backend cannot honour the combination, and every way of
         /// discovering that at run time is a wrong frame rather than an error.
         /// <para>
-        /// Vacuous in the engine today (all six dynamic elements shipped are uniform buffers) and refused anyway,
-        /// because nothing further down the path would ever say so: the full activation writes the pre-resolved
-        /// view and the offsets-only path does not consider the element at all, so both halves of the flush
-        /// silently agree to ignore the offset.
+        /// EVERY KIND BUT THE UNIFORM BUFFER, matching Vulkan. A structured buffer binds through a view with no
+        /// per-bind window, and a texture or a sampler has no offset at all, so the full activation writes what
+        /// the set resolved and the offsets-only path does not consider the element. Both halves of the flush
+        /// would silently agree to ignore the offset. Vacuous in the engine today (every shipped dynamic element
+        /// is a uniform buffer) and refused anyway, because nothing further down the path would ever say so, and
+        /// so that a layout refused on macOS and Linux is refused on Windows too
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1795).
         /// </para>
         /// </summary>
-        static bool IsDynamicStructured(in GpuResourceLayoutElement element)
-            => element.Dynamic
-                && element.Kind is GpuResourceKind.StructuredBufferReadOnly
-                    or GpuResourceKind.StructuredBufferReadWrite;
+        static bool IsDynamicNonUniform(in GpuResourceLayoutElement element)
+            => element.Dynamic && element.Kind != GpuResourceKind.UniformBuffer;
     }
 }

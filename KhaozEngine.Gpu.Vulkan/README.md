@@ -861,9 +861,8 @@ teardown.
 The per-frame ring base has to be applied at bind and the dynamic offset is the only bind-time knob Vulkan
 offers on a uniform buffer, so the type comes from the KIND alone and the declared flag decides exactly one
 thing: whether the caller's own per-draw offset is added on top for that element. A declared-dynamic element
-that is not a uniform buffer is REFUSED at layout creation, one case wider than the Direct3D 11 backend's
-identical refusal for structured buffers, because a texture or a sampler has no dynamic form at all and either
-would leave the positional `pDynamicOffsets` array misaligned against the set's real dynamic descriptors.
+that is not a uniform buffer is REFUSED at layout creation, the same refusal the Direct3D 11 backend makes,
+because a texture or a sampler has no dynamic form at all and either would leave the positional `pDynamicOffsets` array misaligned against the set's real dynamic descriptors.
 Vacuous in the engine today: all six shipped dynamic elements are uniform buffers. The seam agrees with this
 refusal since [#597](https://github.com/APKiwiOrg/KhaozEngine/issues/597): `GpuResourceLayoutElement.Dynamic` is
 a dynamic-offset uniform buffer and only that, so the structured half is no longer a documented width this

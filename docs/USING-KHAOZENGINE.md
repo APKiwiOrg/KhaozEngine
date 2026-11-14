@@ -21443,8 +21443,8 @@ table that fails its structural checks is deleted rather than used. Opening the 
 engine versions' folders beside it, so the tree holds the running version's folder rather than one per version
 the machine has ever run. Only the default location is swept, never a directory you named yourself.
 
-**Layouts and sets are the same code you already write**, with one declaration this backend refuses that the
-others take: `GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
+**Layouts and sets are the same code you already write**, and like the other native backends this one refuses
+`GpuResourceLayoutElement`'s `dynamic: true` on a texture or a sampler element. The per-draw offset
 is applied with Metal's `setBufferOffset:`, which exists only for buffers, so a dynamic offset declared anywhere
 else would be silently dropped at every bind and is refused at layout creation instead. On a buffer element of
 any kind it is accepted, including both structured kinds, and that is WIDER than the seam

@@ -525,17 +525,21 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A DYNAMIC STRUCTURED ELEMENT IS REFUSED AT LAYOUT CREATION, both kinds, which is the second
+        /// A DYNAMIC ELEMENT THAT IS NOT A UNIFORM BUFFER IS REFUSED AT LAYOUT CREATION, which is the second
         /// backend-divergent creation failure after decision U3's ring combination. Nothing further down the path
         /// would ever say so: a dynamic offset can only be carried by the constant-buffer bind, so a full
         /// activation writes the structured view with no offset added and the offsets-only path skips the element
         /// entirely for not being a constant buffer. Both halves of the flush silently agree to ignore it, and
-        /// every draw reads the window the view was created with while the caller believes it moved.
+        /// every draw reads the window the view was created with while the caller believes it moved. The texture
+        /// row is #1795: Metal and Vulkan refuse it at layout creation, so a layout this backend admitted failed
+        /// only once the code reached another backend. One predicate refuses every non-uniform kind, so one
+        /// texture row stands for the texture and sampler kinds.
         /// </summary>
         [Theory]
         [InlineData(GpuResourceKind.StructuredBufferReadOnly)]
         [InlineData(GpuResourceKind.StructuredBufferReadWrite)]
-        public void ADynamicStructuredElement_IsRefusedAtLayoutCreation(GpuResourceKind kind)
+        [InlineData(GpuResourceKind.TextureReadOnly)]
+        public void ADynamicNonUniformElement_IsRefusedAtLayoutCreation(GpuResourceKind kind)
         {
             var element = new GpuResourceLayoutElement("Work", kind, GpuShaderStages.Compute, dynamic: true);
 

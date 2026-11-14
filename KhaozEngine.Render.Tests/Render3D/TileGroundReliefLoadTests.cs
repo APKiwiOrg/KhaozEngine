@@ -14,9 +14,10 @@ namespace KhaozEngine.Tests.Render3D;
 /// </summary>
 public sealed class TileGroundReliefLoadTests
 {
-    static (FakeGpuResourceFactory Factory, Scene3D Scene) NewScene()
+    static (FakeGpuResourceFactory Factory, Scene3D Scene) NewScene() => NewScene(new FakeGpuDevice());
+
+    static (FakeGpuResourceFactory Factory, Scene3D Scene) NewScene(FakeGpuDevice fake)
     {
-        var fake = new FakeGpuDevice();
         var factory = (FakeGpuResourceFactory)fake.Factory;
         IGpuTexture tex = factory.CreateTexture(GpuTextureDescription.Texture2D(
             16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
@@ -158,24 +159,80 @@ public sealed class TileGroundReliefLoadTests
         }
     }
 
-    [Fact]
-    public void A_refused_relief_layer_throws_before_any_texture_or_buffer_is_created()
+    // Whatever the rest of the set carries, a refused relief layer throws before any resource exists. A map flag
+    // without its texels beside plain layers is the case that once loaded as a plain material instead.
+    [Theory]
+    [InlineData("normalFlag", TileGroundReliefRefusal.MapFlagWithoutSurface)]
+    [InlineData("roughnessFlag", TileGroundReliefRefusal.MapFlagWithoutSurface)]
+    [InlineData("breakup", TileGroundReliefRefusal.FeatherBreakupOutsideRange)]
+    public void A_refused_relief_layer_throws_before_any_resource_is_created(string rule, TileGroundReliefRefusal reason)
     {
         (FakeGpuResourceFactory factory, Scene3D scene) = NewScene();
         using (scene)
         {
-            TileGroundLayerImage layer = Mapped(8 * 8);
-            layer.FeatherBreakup = 2f;
-            int textures = factory.Textures.Count;
-            int buffers = factory.Buffers.Count;
+            TileGroundLayerImage layer = rule switch
+            {
+                "normalFlag" => new TileGroundLayerImage { AlbedoRgba = new byte[4 * 4 * 4], NormalMapped = true },
+                "roughnessFlag" => new TileGroundLayerImage { AlbedoRgba = new byte[4 * 4 * 4], RoughnessMapped = true },
+                _ => Mapped(8 * 8),
+            };
+            if (rule == "breakup") layer.FeatherBreakup = 2f;
+            var before = (factory.Textures.Count, factory.Buffers.Count, factory.ResourceSets.Count, factory.Samplers.Count);
 
             var ex = Assert.Throws<TileGroundReliefArgumentException>(() =>
                 scene.LoadTileGroundMaterial(4, 4, new[] { Plain(), layer }, 8, 8));
 
-            Assert.Equal(TileGroundReliefRefusal.FeatherBreakupOutsideRange, ex.Reason);
+            Assert.Equal(reason, ex.Reason);
             Assert.Equal(1, ex.LayerIndex);
-            Assert.Equal(textures, factory.Textures.Count);
-            Assert.Equal(buffers, factory.Buffers.Count);
+            Assert.Equal(before,
+                (factory.Textures.Count, factory.Buffers.Count, factory.ResourceSets.Count, factory.Samplers.Count));
+        }
+    }
+
+    public enum LoadFault { SurfaceArray, ParamsBuffer, ParamsWrite, PlainSet, ReliefSet }
+
+    // A relief material with a sampler override makes every kind of resource a load can: the albedo array, then the
+    // surface array, the params buffer, the sampler, the plain set and the relief set. Each row refuses one of them
+    // and names how many textures, buffers, samplers and sets exist by then, so it is known the refusal came there.
+    [Theory]
+    [InlineData(LoadFault.SurfaceArray, 1, 0, 0, 0)]
+    [InlineData(LoadFault.ParamsBuffer, 2, 0, 0, 0)]
+    [InlineData(LoadFault.ParamsWrite, 2, 1, 0, 0)]
+    [InlineData(LoadFault.PlainSet, 2, 1, 1, 0)]
+    [InlineData(LoadFault.ReliefSet, 2, 1, 1, 1)]
+    public void A_load_the_backend_refuses_partway_frees_everything_it_made(LoadFault fault, int textures, int buffers,
+        int samplers, int sets)
+    {
+        var device = new FakeGpuDevice();
+        (FakeGpuResourceFactory factory, Scene3D scene) = NewScene(device);
+        using (scene)
+        {
+            (int t, int b, int s, int r) = (factory.Textures.Count, factory.Buffers.Count, factory.Samplers.Count,
+                factory.ResourceSets.Count);
+            switch (fault)
+            {
+                case LoadFault.SurfaceArray: factory.FailTextureCreationAfter(1); break;
+                case LoadFault.ParamsBuffer: factory.FailBufferCreationAfter(0); break;
+                case LoadFault.ParamsWrite: device.OnBufferUpdate = _ => throw new InvalidOperationException("refused write"); break;
+                case LoadFault.PlainSet: factory.FailResourceSetCreationAfter(0); break;
+                case LoadFault.ReliefSet: factory.FailResourceSetCreationAfter(1); break;
+            }
+
+            Assert.Throws<InvalidOperationException>(() => scene.LoadTileGroundMaterial(4, 4,
+                new[] { Mapped(8 * 8), Plain() }, 8, 8, sampler: TerrainSamplerConfig.Default));
+            device.OnBufferUpdate = null;
+
+            FakeTexture[] madeTextures = factory.Textures.Skip(t).ToArray();
+            FakeBuffer[] madeBuffers = factory.Buffers.Skip(b).ToArray();
+            FakeSampler[] madeSamplers = factory.Samplers.Skip(s).ToArray();
+            FakeResourceSet[] madeSets = factory.ResourceSets.Skip(r).ToArray();
+            Assert.Equal((textures, buffers, samplers, sets),
+                (madeTextures.Length, madeBuffers.Length, madeSamplers.Length, madeSets.Length));
+            Assert.All(madeTextures, texture => Assert.True(texture.Disposed));
+            Assert.All(madeBuffers, buffer => Assert.True(buffer.Disposed));
+            Assert.All(madeSamplers, sampler => Assert.True(sampler.Disposed));
+            Assert.All(madeSets, set => Assert.True(set.Disposed));
+            Assert.Equal(0, scene.LiveTileGroundMaterialCount);
         }
     }
 }

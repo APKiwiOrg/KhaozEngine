@@ -24,10 +24,13 @@ namespace KhaozEngine.Render3D
     /// The relief half of the tile-ground pipeline: the constants of its height blend, feather breakup and
     /// hex-tiling, the rule that selects it, and the packing of each layer's relief members into the params block.
     /// Pure, no GPU.
-    /// <para>A set none of whose layers uses a relief member draws through the plain tile-ground program, which is
-    /// unchanged, so a consumer that ships no maps keeps today's shader, output and cost. Any relief member on any
-    /// layer selects the relief program for the whole set, and inside it a layer without maps still takes the plain
-    /// formulas: the lattice normal, the map-less specular and a linear blend against other map-less layers.</para>
+    /// <para>A set none of whose layers uses a relief member loads as a plain material and draws through the plain
+    /// tile-ground program, which is unchanged, so a consumer that ships no maps keeps today's shader, output and
+    /// cost. A relief member on any layer makes the set a relief material, and each mesh then draws with the cheapest
+    /// program the layers it names need: a mesh naming only plain layers keeps the plain program, so ground painted
+    /// only with map-less materials costs what it always did. Inside a relief program a layer without maps still
+    /// takes the plain formulas: the lattice normal, the map-less specular and a linear blend against other map-less
+    /// layers.</para>
     /// <para>HEIGHT BLEND. Where layers meet, at blended corners and at feathered overlay edges, the weights are
     /// resolved by the layers' height maps. Layers without one join one flat group at <see cref="NeutralHeight"/>
     /// whose members keep their linear split. The group and each height-mapped layer take the logit
@@ -75,17 +78,21 @@ namespace KhaozEngine.Render3D
         /// spans a little over half a repeat and every repeat is covered by differently placed copies.</summary>
         public const float HexLatticeScale = 3.46410162f;
 
-        /// <summary>True when any layer uses a relief member, which selects the relief program for the whole set.
-        /// <see cref="TileGroundLayerImage.HeightBlendSharpness"/> alone selects nothing, because it only shapes a
-        /// height map's blend.</summary>
+        /// <summary>True when any layer sets a relief member: surface texels or a map flag, a height map, a feather
+        /// breakup or an anti-tiling mode. That makes the set a relief material, which carries the relief params
+        /// block, the surface array and the relief programs' resource set beside the plain one. It does not choose
+        /// what a mesh draws with: each mesh takes the cheapest program the layers it names need, so one naming only
+        /// plain layers keeps the plain program. <see cref="TileGroundLayerImage.HeightBlendSharpness"/> alone
+        /// selects nothing, because it only shapes a height map's blend. A map flag counts even without its texels,
+        /// so a gate on this predicate sees the layer as relief rather than as plain.</summary>
         public static bool UsesRelief(IReadOnlyList<TileGroundLayerImage> layers)
         {
             ArgumentNullException.ThrowIfNull(layers);
             for (int i = 0; i < layers.Count; i++)
             {
                 TileGroundLayerImage l = layers[i];
-                if (l.SurfaceRgba is not null || l.HeightMapped || l.FeatherBreakup != 0f
-                    || l.AntiTiling != TileGroundAntiTiling.None) return true;
+                if (l.SurfaceRgba is not null || l.NormalMapped || l.RoughnessMapped || l.HeightMapped
+                    || l.FeatherBreakup != 0f || l.AntiTiling != TileGroundAntiTiling.None) return true;
             }
             return false;
         }

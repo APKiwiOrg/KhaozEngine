@@ -7,8 +7,8 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D
 {
-    /// <summary>The relief half of the tile-ground params block, headless: where its entries land, what selects the
-    /// relief program, the layer checks it packs behind, and the GLSL declarations the packing has to agree with.</summary>
+    /// <summary>The relief half of the tile-ground params block, headless: where its entries land, what makes a set a
+    /// relief material, the layer checks it packs behind, and the GLSL declarations the packing has to agree with.</summary>
     public class TileGroundReliefTests
     {
         static TileGroundLayerImage Plain() => new() { AlbedoRgba = new byte[4] };
@@ -106,30 +106,39 @@ namespace KhaozEngine.Tests.Render3D
         static TileGroundLayerImage WithMember(string member) => member switch
         {
             "surface" => new TileGroundLayerImage { AlbedoRgba = new byte[4], SurfaceRgba = new byte[4], NormalMapped = true },
+            "normalFlag" => new TileGroundLayerImage { AlbedoRgba = new byte[4], NormalMapped = true },
+            "roughnessFlag" => new TileGroundLayerImage { AlbedoRgba = new byte[4], RoughnessMapped = true },
             "height" => new TileGroundLayerImage { AlbedoRgba = new byte[4], HeightMapped = true },
             "breakup" => new TileGroundLayerImage { AlbedoRgba = new byte[4], FeatherBreakup = 0.25f },
             "antiTiling" => new TileGroundLayerImage { AlbedoRgba = new byte[4], AntiTiling = TileGroundAntiTiling.Offset },
             _ => throw new ArgumentOutOfRangeException(nameof(member)),
         };
 
+        // A map flag counts without its texels, so the scene resource upload, which carries plain layers only and
+        // gates on this predicate, refuses it rather than copying the layer away as plain.
         [Theory]
         [InlineData("surface")]
+        [InlineData("normalFlag")]
+        [InlineData("roughnessFlag")]
         [InlineData("height")]
         [InlineData("breakup")]
         [InlineData("antiTiling")]
-        public void Any_relief_member_on_any_layer_selects_the_relief_program(string member)
+        public void Any_relief_member_on_any_layer_makes_a_relief_material_the_resource_upload_refuses(string member)
         {
-            Assert.True(TileGroundRelief.UsesRelief(new[] { Plain(), WithMember(member) }));
+            TileGroundLayerImage[] layers = { Plain(), WithMember(member) };
+            Assert.True(TileGroundRelief.UsesRelief(layers));
+            var ex = Assert.Throws<ArgumentException>(() => new SceneGroundMaterialData(1, 1, layers));
+            Assert.Equal("layers", ex.ParamName);
         }
 
         [Fact]
-        public void A_plain_set_and_a_sharpness_alone_keep_the_plain_program()
+        public void A_plain_set_and_a_sharpness_alone_stay_a_plain_material_the_resource_upload_carries()
         {
+            TileGroundLayerImage[] sharpness = { new() { AlbedoRgba = new byte[4], HeightBlendSharpness = 30f } };
             Assert.False(TileGroundRelief.UsesRelief(new[] { Plain(), Plain() }));
-            Assert.False(TileGroundRelief.UsesRelief(new[]
-            {
-                new TileGroundLayerImage { AlbedoRgba = new byte[4], HeightBlendSharpness = 30f },
-            }));
+            Assert.False(TileGroundRelief.UsesRelief(sharpness));
+            _ = new SceneGroundMaterialData(1, 1, new[] { Plain(), Plain() });
+            _ = new SceneGroundMaterialData(1, 1, sharpness);
         }
 
         static TileGroundLayerImage Refused(string rule) => rule switch

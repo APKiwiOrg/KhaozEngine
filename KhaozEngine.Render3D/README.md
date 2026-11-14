@@ -383,8 +383,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     mesh and unlike the splat terrain.
   - **Lifetime.** The material is owned by the scene, shared by every mesh drawn with it, and unloading a mesh does
     not free it. `LoadTileGroundMaterial` builds its mip chain on a command list of its own, so it refuses
-    mid-frame with `GpuNestedRecordingException` (load once per view construction or catalog change).
-    `UnloadTileGroundMaterial` retires the whole bundle (array, UBO, resource set, any owned sampler) as ONE
+    mid-frame with `GpuNestedRecordingException` (load once per view construction or catalog change). Every
+    argument and relief refusal is raised before anything exists, and the relief rules run on every set, so a
+    layer's refusal never depends on what the other layers carry. When the backend refuses a resource partway (an
+    array, the params buffer or its write, the sampler or either set), the load frees everything it made before
+    that refusal propagates, so the caller owns nothing after a throw and can retry.
+    `UnloadTileGroundMaterial` retires the whole bundle (the arrays, UBO, resource sets and any owned sampler) as ONE
     resource through the scene's `GpuRetireQueue`, so it never drains the device.
 - `Render3DPreview(AppWindow, width, height)` - live render-to-texture: render a model into a sampleable
   `Render2D.Texture2D` on the same device and draw it inside a 2D `SpriteBatch`/Gui panel (unit inspectors, shop

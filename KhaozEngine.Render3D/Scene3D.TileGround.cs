@@ -61,12 +61,18 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Upload a tile-ground material whose layers may carry relief members (<see cref="TileGroundRelief"/>).
         /// A set none of whose layers uses one loads exactly as the overload without a surface size does and draws
-        /// through the plain pipeline. Otherwise the set draws through the relief pipeline: the params UBO is
+        /// through the plain pipeline. Otherwise it loads as a relief material: the params UBO is
         /// <see cref="TileGroundMaterialConfig.ReliefParamsBytes"/>, and the layers carrying
         /// <see cref="TileGroundLayerImage.SurfaceRgba"/> upload, in slot order, into a second mipped array of
         /// <paramref name="surfaceWidth"/> x <paramref name="surfaceHeight"/> RGBA8, which is independent of the
         /// albedo size. A relief set with no surface texels binds a one-texel flat surface array instead, so memory
-        /// follows only the layers that use a map. Every refusal is raised before any GPU resource exists.</summary>
+        /// follows only the layers that use a map. The program is chosen per mesh, from the layers its vertices
+        /// name (<see cref="LoadMesh(GltfMesh, TileGroundMaterialHandle)"/>), so a mesh naming only plain layers
+        /// keeps the plain program inside a relief material.
+        /// <para>Every argument refusal is raised before any GPU resource exists, and the relief rules apply to every
+        /// set, so whether a layer is refused never depends on what the other layers carry. When the backend refuses
+        /// a resource partway, everything this load created is freed before that refusal propagates, so the caller
+        /// owns nothing after a throw.</para></summary>
         /// <param name="width">Albedo layer width in texels, shared by every layer.</param>
         /// <param name="height">Albedo layer height in texels, shared by every layer.</param>
         /// <param name="layers">The layers, in slot order. 1 to <see cref="TileGroundMaterialConfig.MaxMaterials"/>.</param>
@@ -109,8 +115,10 @@ namespace KhaozEngine.Render3D
                     };
             CheckSurfaceTexels(layers, surfaceWidth, surfaceHeight);
 
-            // Packed, and so validated, BEFORE any GPU resource exists: a layer whose steep companion or relief
-            // members are refused throws here, and a throw after the upload below would leak the arrays it created.
+            // Validated and packed BEFORE any GPU resource exists, so a refused layer throws with nothing to free. The
+            // relief rules run on every set, plain or not, so a layer's refusal never depends on the other layers: a
+            // map flag left without its texels beside plain layers is refused rather than drawn flat.
+            TileGroundRelief.Validate(layers);
             bool relief = TileGroundRelief.UsesRelief(layers);
             Vector4[] tail = relief
                 ? TileGroundMaterialConfig.BuildReliefParams(layers, baseSpecStrength)
@@ -125,24 +133,38 @@ namespace KhaozEngine.Render3D
             }
 
             uint w = (uint)width, h = (uint)height, mips = TileGroundMaterialConfig.MipLevelCount(width, height);
-            // Created, uploaded and mipped in one transient list, and freed if that list is refused mid-frame (#424).
-            IGpuTexture albedo = TextureUploads.CreateAlbedoArray(_gd, w, h, mips, layers, "Scene3D.LoadTileGroundMaterial");
-            IGpuTexture? surface = null;
+            // Each resource joins this list the moment it exists and stays the load's until the material is
+            // published, so a refusal at any later step frees all of them and the caller owns nothing. Sized for the
+            // most it holds (both arrays, the buffer, the sampler and both sets), so tracking never allocates.
+            var unpublished = new List<IDisposable>(6);
             try
             {
-                if (relief) surface = CreateTileGroundSurfaceArray(layers, surfaceWidth, surfaceHeight);
+                // Created, uploaded and mipped in one transient list, and freed if that list is refused mid-frame (#424).
+                IGpuTexture albedo = TextureUploads.CreateAlbedoArray(_gd, w, h, mips, layers, "Scene3D.LoadTileGroundMaterial");
+                unpublished.Add(albedo);
+                IGpuTexture? surface = relief ? CreateTileGroundSurfaceArray(layers, surfaceWidth, surfaceHeight) : null;
+                if (surface is not null) unpublished.Add(surface);
+                // The material's OWN uniform buffer, holding these params alone and written once, here. The frame
+                // uniforms are not in it: the pipeline reads those from the renderer's shared block at set 0 (#727).
+                IGpuBuffer ubo = _model.CreateTileGroundParamsUbo(tail);
+                unpublished.Add(ubo);
+                return LoadTileGroundMaterial(albedo, ubo, sampler, unpublished, reusableSlot: false, surface, needs);
             }
             catch
             {
-                albedo.Dispose();
+                ReleaseUnpublished(unpublished);
                 throw;
             }
+        }
 
-            // The material's OWN uniform buffer, holding these params alone and written once, here. The frame
-            // uniforms are not in it: the pipeline reads those from the renderer's shared block at set 0 (#727).
-            IGpuBuffer ubo = _model.CreateTileGroundParamsUbo(tail);
-
-            return LoadTileGroundMaterial(albedo, ubo, sampler, null, surface, needs);
+        // Frees what a refused load made, newest first, so each set goes before the arrays and buffer it binds. Every
+        // release is attempted even if one throws. The load's own refusal is what propagates, because callers act on
+        // its type (a mid-frame load moves before the frame and retries), so a release that also fails is dropped.
+        static void ReleaseUnpublished(List<IDisposable> unpublished)
+        {
+            var disposal = new Internal.ResourceDisposal();
+            for (int i = unpublished.Count - 1; i >= 0; i--)
+                disposal.Release("tileGround.unpublished", unpublished[i].Dispose);
         }
 
         // Surface texels must match the declared surface size, which must be positive once any layer carries them.

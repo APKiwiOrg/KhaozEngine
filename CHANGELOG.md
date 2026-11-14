@@ -50,6 +50,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   them digests, builds and meshes as before. Ground triangles, raycast, colliders and navigation are unchanged. MapDoc
   native terrain stays albedo only and its scene upload refuses relief layers
   ([#1800](https://github.com/APKiwiOrg/KhaozEngine/issues/1800)).
+- `Scene3D.LoadTileGroundMaterial` frees every resource it made when the backend refuses one partway, whether the
+  params buffer, its write, the sampler override or either resource set, before the refusal propagates, so the
+  caller owns nothing after a throw. A refused params buffer used to leave the albedo array without an owner, and a
+  refused set the buffer and sampler as well
+  ([#1799](https://github.com/APKiwiOrg/KhaozEngine/issues/1799)).
 - A `TileWorldView` can be disposed after its `Scene3D`, including after `Render3DSnapshot.CaptureWithBackend` has
   disposed the scene the view was built in. Every `Scene3D` resource unload (`UnloadMesh`, `UnloadProp`,
   `UnloadSkinnedMesh`, `UnloadTexture`, `UnloadSurfaceMaps`, `UnloadSplatMaterial`, `UnloadTileGroundMaterial` and

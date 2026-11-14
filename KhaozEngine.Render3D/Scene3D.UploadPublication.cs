@@ -22,7 +22,7 @@ public sealed partial class Scene3D
         float alphaCutoff = source.AlphaCutoff;
         if (source.Ground)
         {
-            var handle = LoadTileGroundMaterial(groundAlbedo!, groundParams!, source.Sampler, owned);
+            var handle = LoadTileGroundMaterial(groundAlbedo!, groundParams!, source.Sampler, owned, reusableSlot: true);
             tileGround = handle.ListIndex;
         }
         else
@@ -99,27 +99,30 @@ public sealed partial class Scene3D
         }
     }
     // A non-null surface array makes this a relief material: the relief programs' set beside the plain one, and the
-    // layers' program needs that pick each mesh's program.
+    // layers' program needs that pick each mesh's program. Each resource made here joins owner the moment it exists,
+    // so whoever holds that list frees it if a later step throws, the second set included: an upload's own resource
+    // list, or the public load's list of what it has not yet published.
     TileGroundMaterialHandle LoadTileGroundMaterial(IGpuTexture albedo, IGpuBuffer ubo,
-        TerrainSamplerConfig? sampler, List<IDisposable>? owned, IGpuTexture? surface = null,
+        TerrainSamplerConfig? sampler, List<IDisposable> owner, bool reusableSlot, IGpuTexture? surface = null,
         TileGroundProgram[]? layerPrograms = null)
     {
         IGpuSampler? selected = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
-        if (selected is not null) owned?.Add(selected);
+        if (selected is not null) owner.Add(selected);
         var set = selected is null ? _model.CreateTileGroundMaterialSet(ubo, albedo)
             : _model.CreateTileGroundMaterialSet(ubo, albedo, selected);
-        owned?.Add(set);
+        owner.Add(set);
         IGpuResourceSet? reliefSet = surface is null ? null
             : _model.CreateTileGroundReliefMaterialSet(ubo, albedo, surface, selected);
-        if (reliefSet is not null) owned?.Add(reliefSet);
+        if (reliefSet is not null) owner.Add(reliefSet);
+        var entry = new TileGroundMaterialEntry(albedo, ubo, set, selected, surface, reliefSet, layerPrograms);
         // Only upload-owned slots are reusable. Legacy handles keep their historical indices, including
         // unloaded slots, so a stale public handle can never resolve a native resource's material.
-        if (owned is not null && _freeUploadedGroundMaterials.TryPop(out int index))
+        if (reusableSlot && _freeUploadedGroundMaterials.TryPop(out int index))
         {
-            _tileGroundMaterials[index] = new(albedo, ubo, set, selected, surface, reliefSet, layerPrograms);
+            _tileGroundMaterials[index] = entry;
             return new(index);
         }
-        _tileGroundMaterials.Add(new(albedo, ubo, set, selected, surface, reliefSet, layerPrograms));
+        _tileGroundMaterials.Add(entry);
         return new(_tileGroundMaterials.Count - 1);
     }
 }

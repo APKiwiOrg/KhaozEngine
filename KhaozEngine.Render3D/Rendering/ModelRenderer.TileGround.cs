@@ -178,7 +178,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// more (#727), so this is pure load-time material data and there is no CPU mirror to keep: the write covers
         /// the whole buffer from offset 0, which is also the cheap Direct3D 11 route. (#408's blocking Map was caused
         /// by the PARTIAL per-frame write into the larger combined buffer this replaces, and that write is gone
-        /// rather than optimised.) Owned by Scene3D and shared by every mesh using this material.</summary>
+        /// rather than optimised.) Owned by Scene3D and shared by every mesh using this material. A refused write
+        /// frees the buffer before it propagates, so the caller owns nothing after a throw.</summary>
         public IGpuBuffer CreateTileGroundParamsUbo(Vector4[] paramsTail)
         {
             uint bytes = (uint)paramsTail.Length * 16;
@@ -188,7 +189,15 @@ namespace KhaozEngine.Render3D.Rendering
                     $"{TileGroundMaterialConfig.ReliefParamsBytes} for a relief material, got {bytes}.",
                     nameof(paramsTail));
             var ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription(bytes, GpuBufferUsage.UniformBuffer));
-            _gd.UpdateBuffer(ubo, 0, paramsTail);
+            try
+            {
+                _gd.UpdateBuffer(ubo, 0, paramsTail);
+            }
+            catch
+            {
+                ubo.Dispose();
+                throw;
+            }
             return ubo;
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu
@@ -520,14 +521,24 @@ namespace KhaozEngine.Gpu
         /// half-built renderer it had already constructed, from inside the outer recording, and that teardown
         /// frees nothing. Turning that into a second exception would replace the useful diagnosis with an
         /// unrelated one and leak the renderer as well.</para></summary>
+        /// <remarks>After a successful drain every pending disposal is attempted in retirement order. Each entry
+        /// is removed before its attempt, and fences are released and batches cleared even if a disposal fails.
+        /// A single failure is rethrown unchanged with its original stack. Multiple failures are reported as one
+        /// <see cref="AggregateException"/> in attempt order. A later flush does nothing.</remarks>
         /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device and
         /// this queue has resources to free. Nothing was drained and nothing was destroyed.</exception>
-        public void FlushAll()
+        public void FlushAll() => FlushAllCore(disposeBarrier: false);
+
+        void FlushAllCore(bool disposeBarrier)
         {
             // A batch always owns at least one entry, so an empty holding means there are no batches either and
             // there is nothing to drain for. This shortcut comes BEFORE the refusal below on purpose: see the
             // empty-flush paragraph on this member.
-            if (_pending.Count == 0) return;
+            if (_pending.Count == 0)
+            {
+                if (disposeBarrier) _barrier?.Dispose();
+                return;
+            }
 
             // THE REFUSAL, on the one call that would actually drain and destroy, which is the only shape of this
             // that can be unsafe. Same shape as the seam's nested-recording refusal (#424): a device-level
@@ -539,24 +550,38 @@ namespace KhaozEngine.Gpu
             // (a recycled fence gets Reset on its next submit, and resetting one still in flight is a validation
             // error, so the drain has to have retired every in-flight submission first).
             _drainDevice();
-            for (int i = 0; i < _pending.Count; i++) _pending[i].Dispose();
-            _pending.Clear();
-            foreach (Batch b in _batches) if (!b.SharedFence && b.Fence is { } fence) _barrier!.Release(fence);
+            List<Exception>? failures = null;
+            while (_pending.Count > 0)
+            {
+                IDisposable resource = _pending[0];
+                _pending.RemoveAt(0);
+                Attempt(resource.Dispose);
+            }
+            foreach (Batch b in _batches)
+                if (!b.SharedFence && b.Fence is { } fence) Attempt(() => _barrier!.Release(fence));
             _batches.Clear();
             _batched = _sharedDeferredBoundaries = 0;
+            if (disposeBarrier && _barrier is { } barrier) Attempt(barrier.Dispose);
+            if (failures is { Count: 1 }) ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            if (failures is not null) throw new AggregateException(failures);
+
+            void Attempt(Action release)
+            {
+                try { release(); }
+                catch (Exception error) { (failures ??= []).Add(error); }
+            }
         }
 
         /// <summary>Flush everything pending, then free the barrier's own GPU objects. Renderer teardown, and it
         /// inherits <see cref="FlushAll"/>'s refusal exactly, including the empty case: tearing a renderer down
         /// from inside an open recording is the same use-after-free when there is a tail to free, and nothing at
         /// all when there is not.</summary>
+        /// <remarks>After a successful drain the barrier is attempted even if a pending disposal fails.
+        /// Failures are reported as on <see cref="FlushAll"/>, with barrier failure last. A recording refusal or
+        /// failed drain leaves the barrier intact.</remarks>
         /// <exception cref="GpuDrainDuringRecordingException">Something is recording on this queue's device and
         /// this queue has resources to free. Nothing was freed, including the barrier.</exception>
-        public void Dispose()
-        {
-            FlushAll();
-            _barrier?.Dispose();
-        }
+        public void Dispose() => FlushAllCore(disposeBarrier: true);
 
         // One frame's worth of retirements, sealed at a frame boundary. A null fence means this batch is on the
         // frame-count fallback (no barrier at all, or a barrier that could not issue one).

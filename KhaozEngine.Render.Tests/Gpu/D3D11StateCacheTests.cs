@@ -38,7 +38,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            FakeFramebuffer target = Framebuffer(640, 480);
+            TraceFramebuffer target = Framebuffer(640, 480);
 
             emitter.Begin();
             emitter.SetFramebuffer(target);
@@ -68,7 +68,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            FakeFramebuffer target = Framebuffer(640, 480);
+            TraceFramebuffer target = Framebuffer(640, 480);
 
             emitter.Begin();
             emitter.SetFramebuffer(target);
@@ -93,7 +93,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            FakeFramebuffer target = Framebuffer(640, 480);
+            TraceFramebuffer target = Framebuffer(640, 480);
 
             emitter.Begin();
             emitter.SetFramebuffer(target);
@@ -121,7 +121,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            FakeFramebuffer target = Framebuffer(640, 480);
+            TraceFramebuffer target = Framebuffer(640, 480);
 
             emitter.Begin();
             emitter.SetFramebuffer(target);
@@ -145,8 +145,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            FakeFramebuffer first = Framebuffer(640, 480);
-            FakeFramebuffer second = Framebuffer(256, 128);
+            TraceFramebuffer first = Framebuffer(640, 480);
+            TraceFramebuffer second = Framebuffer(256, 128);
 
             emitter.Begin();
             emitter.SetFramebuffer(first);
@@ -173,8 +173,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            FakeFramebuffer first = Framebuffer(640, 480);
-            FakeFramebuffer second = Framebuffer(256, 256);
+            TraceFramebuffer first = Framebuffer(640, 480);
+            TraceFramebuffer second = Framebuffer(256, 256);
 
             emitter.Begin();
             emitter.SetFramebuffer(first);
@@ -198,7 +198,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            FakeFramebuffer target = Framebuffer(640, 480);
+            TraceFramebuffer target = Framebuffer(640, 480);
 
             emitter.Begin();
             emitter.SetFramebuffer(target);
@@ -243,7 +243,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("SetFullScissorRects", Assert.Throws<GpuBoundFramebufferException>(emitter.SetFullScissorRects).Command);
             Assert.Equal(GpuBoundFramebufferRefusal.FramebufferNotBound, Assert.Throws<GpuBoundFramebufferException>(() => D3D11BindResolve.RequireScissorExtent(null)).Reason);
 
-            FakeFramebuffer target = Framebuffer(640, 480);
+            TraceFramebuffer target = Framebuffer(640, 480);
             Assert.Same(target, D3D11BindResolve.RequireScissorExtent(target));
             emitter.SetFramebuffer(target);
             emitter.SetFullScissorRects();
@@ -253,16 +253,23 @@ namespace KhaozEngine.Tests.Gpu
         /// THE OTHER EMITTER TAKES THE SAME SEAM, read off the compiled assembly because its body names Vortice
         /// types and cannot be executed here. Without this the row above would pin one of the two copies and
         /// leave the copy that actually runs on a Windows machine free to drift, which is the whole defect.
+        /// <para>
+        /// The framebuffer and compute pipeline rows are the same rule for the ownership refusals the trace used
+        /// to skip (https://github.com/APKiwiOrg/KhaozEngine/issues/1691): the trace's refusal is only the
+        /// device's if the device asks the same member.
+        /// </para>
         /// </summary>
-        [Fact]
-        public void BothEmitters_TakeTheFullScissorRefusalFromTheSharedSeam()
+        [Theory]
+        [InlineData("SetFullScissorRects", "D3D11BindResolve.RequireScissorExtent")]
+        [InlineData("SetFramebuffer", "D3D11BindResolve.RenderTargets")]
+        [InlineData("SetComputePipeline", "D3D11BindResolve.ComputePipelineState")]
+        public void BothEmitters_TakeTheRefusalFromTheSharedSeam(string method, string seam)
         {
             using var backend = D3D11BackendMetadata.Open();
 
             foreach (string emitter in new[] { "D3D11NativeEmitter", "D3D11NativeTraceEmitter" })
             {
-                Assert.Equal(1, backend.CallCountIn(emitter, "SetFullScissorRects",
-                    "D3D11BindResolve.RequireScissorExtent"));
+                Assert.Equal(1, backend.CallCountIn(emitter, method, seam));
             }
         }
 
@@ -323,7 +330,7 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
 
             emitter.Begin();
-            emitter.SetFramebuffer(new FakeFramebuffer(
+            emitter.SetFramebuffer(new TraceFramebuffer(
                 new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm), 64, 64));
 
             var refusal = Assert.Throws<GpuBoundFramebufferException>(() => emitter.ClearDepthStencil(1f));
@@ -593,7 +600,7 @@ namespace KhaozEngine.Tests.Gpu
             var log = new D3D11NativeCallLog();
             var state = new D3D11DeviceState();
             var emitter = new D3D11NativeTraceEmitter(state, log);
-            FakeFramebuffer target = Framebuffer(640, 480);
+            TraceFramebuffer target = Framebuffer(640, 480);
 
             emitter.Begin();
             emitter.SetFramebuffer(target);
@@ -652,7 +659,7 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- Fixtures ----
 
-        static FakeFramebuffer Framebuffer(uint width, uint height) => new(
+        static TraceFramebuffer Framebuffer(uint width, uint height) => new(
             new GpuOutputDescription(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R8G8B8A8UNorm), width, height);
 
         /// <summary>A pipeline whose seven state objects are all distinct, which is the shape a first bind of a

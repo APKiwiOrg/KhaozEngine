@@ -14,9 +14,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// caches of R6, the batching of the vertex streams, the schedule of R5, the precise scrub of R8, the
     /// framebuffer-guarded viewport of W6) is taken inside <see cref="D3D11DeviceState"/>,
     /// <see cref="D3D11BindFlush"/>, <see cref="D3D11VertexStreams"/> and <see cref="D3D11SetActivation"/>, which
-    /// this type uses unchanged, and every REFUSAL a stream can earn (a buffer or a framebuffer
-    /// from another backend, a clear against no target or against an attachment the bound framebuffer does not
-    /// have) is taken inside <see cref="D3D11BindResolve"/>, which the trace emitter asks in the same order. What
+    /// this type uses unchanged, and every REFUSAL a stream can earn (a buffer, a framebuffer, a bound resource
+    /// or a compute pipeline from another backend, a clear against no target or against an attachment the bound
+    /// framebuffer does not have) is taken inside <see cref="D3D11BindResolve"/>, which the trace emitter asks in
+    /// the same order. The exceptions are the checks the trace emitter's summary lists as this type's alone (the
+    /// graphics pipeline's concrete type, the texture transfers, the compute shader and the depth view backstop),
+    /// each naming a type only a device can build or a Direct3D type the trace cannot name. What
     /// is left here is the translation into a Vortice call, plus two casts that cannot be pushed down: the
     /// <c>object</c> a resolve answers with into its Direct3D type, and a backstop for a framebuffer that declares
     /// a depth attachment while carrying no view for it, which is a defect in this backend's own construction

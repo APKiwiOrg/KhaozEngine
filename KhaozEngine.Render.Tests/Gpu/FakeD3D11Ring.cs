@@ -183,8 +183,13 @@ namespace KhaozEngine.Tests.Gpu
     /// <c>D3D11Buffer</c> is Windows-only at the type level (it holds Direct3D objects), so this is what lets the
     /// ROUTING of decision U4 be exercised off Windows: a write to a ring-backed buffer goes into the mapped
     /// segment and records nothing, and a write to anything else takes the recording's payload arena.
+    /// <para>
+    /// It answers <see cref="ID3D11BindableViews"/> with a native buffer and no views, as a uniform
+    /// <c>D3D11Buffer</c> does, because both emitters resolve a bound constant buffer through that seam
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1691).
+    /// </para>
     /// </summary>
-    internal sealed class FakeRingBackedBuffer : IGpuBuffer, ID3D11RingBacked
+    internal sealed class FakeRingBackedBuffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews
     {
         internal FakeRingBackedBuffer(D3D11UniformRing ring)
         {
@@ -197,6 +202,11 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <inheritdoc/>
         public D3D11UniformRing? Ring { get; }
+
+        object? ID3D11BindableViews.BufferObject { get; } = new object();
+        object? ID3D11BindableViews.ShaderResourceViewObject => null;
+        object? ID3D11BindableViews.UnorderedAccessViewObject => null;
+        object? ID3D11BindableViews.SamplerStateObject => null;
 
         public void Dispose()
         {

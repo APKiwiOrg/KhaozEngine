@@ -283,6 +283,30 @@ what the tests pin is the shipped decision rather than a copy of it. A resource-
 as `ResourceSetPending`, which holds its place in the order and is excluded from the total, because a bind
 genuinely issues nothing.
 
+The trace applies the shipped ownership refusals too. Every handle the real emitter resolves (the framebuffer,
+the index, vertex, written and copied buffers, each bound resource and the compute pipeline) is resolved through
+the same `D3D11BindResolve` member in the same order relative to the redundancy guards, so a handle from another
+backend is refused with the same `GpuResourceOwnershipRefusal.ForeignBackend` and fields. A test drives the trace
+with this backend's handle types or with fakes that answer the same device-free seams (`ID3D11RenderTargetSurface`,
+`ID3D11BindableViews`, `ID3D11ComputePipelineState`). The trace resolves only where the device does, so an empty
+write, a ring-backed write and a zero-size copy are accepted with any buffer, as on the device.
+
+Four checks stay in the real emitter alone, because each names a type only a device can build or a Direct3D type
+the device-free trace cannot name.
+
+- The graphics pipeline is refused by both, with `ExpectedType` naming `D3D11GraphicsPipeline` on the device and
+  `ID3D11PipelineState` in the trace.
+- The texture transfers are refused by the device for anything but a `D3D11Texture`, for a `GenerateMipmaps`
+  texture with no mip-chain view and for a swapchain copy whose colour view is not a render target view. The
+  trace refuses none of them.
+- The compute pipeline's shader is refused by the device when it is null (`MissingResource`) or not an
+  `ID3D11ComputeShader` (`ForeignBackend`). The trace does not check the shader.
+- The depth clear throws `InvalidOperationException` on the device for a framebuffer that declares depth and
+  carries no depth view. No stream can produce one, so the trace does not model it.
+
+One split runs the other way. On an empty bind span the trace still resolves the call name, which refuses an
+unsupported stage, where the device returns before asking.
+
 ## The bind flush
 
 **A resource-set bind records only, and the draw pays for it (decision R5).** `SetGraphicsResourceSet` and
@@ -459,8 +483,9 @@ The resource-view and native-buffer adapters use the same shared family. A missi
 that, and `D3D11BindResolve` is the device-free half of the bind: it unwraps a `GpuBufferRange` to its buffer,
 refuses a resource whose declared usage never earned it the view its layout asks for with
 `GpuResourceOwnershipRefusal.MissingResource` and `RegisterLetter`, `ActualType` and `ExpectedType`, passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
-the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: a buffer
-from another backend, and the framebuffer a clear names an attachment of (none bound, no
+the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: a buffer,
+a framebuffer, a bound resource or a compute pipeline from another backend, and the framebuffer a clear names an
+attachment of (none bound, no
 colour attachment at that index, no depth attachment at all). The missing-framebuffer and missing-depth
 rules throw `GpuBoundFramebufferException` with `GpuBoundFramebufferRefusal` and the refused `Command`.
 A refusal kept in the real emitter alone means the

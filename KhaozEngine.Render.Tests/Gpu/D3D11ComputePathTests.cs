@@ -39,7 +39,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AGraphicsSrvBind_UnbindsTheComputeUavOfTheSameTexture_InTheSameFlush()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture storage = D3D11BindFixtures.Texture();
+            TraceTexture storage = D3D11BindFixtures.Texture();
             using D3D11ResourceLayout computeLayout = StorageLayout();
             using D3D11ResourceLayout drawLayout = SampledLayout();
             using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(computeLayout, storage);
@@ -74,7 +74,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AComputeUavBind_UnbindsTheGraphicsSrvOfTheSameTexture_InTheSameFlush()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture storage = D3D11BindFixtures.Texture();
+            TraceTexture storage = D3D11BindFixtures.Texture();
             using D3D11ResourceLayout drawLayout = SampledLayout();
             using D3D11ResourceLayout computeLayout = StorageLayout();
             using D3D11ResourceSet drawSet = D3D11BindFixtures.Set(drawLayout, storage);
@@ -110,7 +110,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AVertexSrvOfAComputeWrittenBuffer_UnbindsItsUavInTheSameFlush()
         {
             var harness = new D3D11BindFixtures.Harness();
-            var buffer = new FakeBuffer(256);
+            var buffer = new TraceBuffer(256);
             using D3D11ResourceLayout computeLayout = D3D11BindFixtures.Layout(D3D11BindFixtures.StructRW("Work"));
             using D3D11ResourceLayout drawLayout = D3D11BindFixtures.Layout(
                 D3D11BindFixtures.StructRO("Entries", GpuShaderStages.Vertex));
@@ -145,7 +145,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AComputeUavOfAVertexReadBuffer_InvalidatesTheGraphicsBinding()
         {
             var harness = new D3D11BindFixtures.Harness();
-            var buffer = new FakeBuffer(256);
+            var buffer = new TraceBuffer(256);
             using D3D11ResourceLayout drawLayout = D3D11BindFixtures.Layout(
                 D3D11BindFixtures.StructRO("Entries", GpuShaderStages.Vertex));
             using D3D11ResourceLayout computeLayout = D3D11BindFixtures.Layout(D3D11BindFixtures.StructRW("Work"));
@@ -181,8 +181,8 @@ namespace KhaozEngine.Tests.Gpu
         public void TheUnbind_IsOneArrayCallOverTheSpanRatherThanOnePerRegister()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture first = D3D11BindFixtures.Texture();
-            FakeTexture second = D3D11BindFixtures.Texture();
+            TraceTexture first = D3D11BindFixtures.Texture();
+            TraceTexture second = D3D11BindFixtures.Texture();
             using D3D11ResourceLayout computeLayout = StorageLayout("A", "B");
             using D3D11ResourceLayout drawLayout = SampledLayout("A", "B");
             using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(computeLayout, first, second);
@@ -213,9 +213,9 @@ namespace KhaozEngine.Tests.Gpu
         public void ALiveRegisterInsideTheUnbindSpan_IsReboundRatherThanNulled()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture conflicting = D3D11BindFixtures.Texture();
-            var untouched = new FakeBuffer(64);
-            FakeTexture alsoConflicting = D3D11BindFixtures.Texture();
+            TraceTexture conflicting = D3D11BindFixtures.Texture();
+            var untouched = new TraceBuffer(64);
+            TraceTexture alsoConflicting = D3D11BindFixtures.Texture();
             using D3D11ResourceLayout computeLayout = D3D11BindFixtures.Layout(
                 Storage("A"), D3D11BindFixtures.StructRW("Work"), Storage("B"));
             using D3D11ResourceLayout drawLayout = SampledLayout("A", "B");
@@ -247,7 +247,7 @@ namespace KhaozEngine.Tests.Gpu
         public void TheUnbind_RaisesTheOwningSlotBackToFull_SoTheNextFlushRebindsIt()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture storage = D3D11BindFixtures.Texture();
+            TraceTexture storage = D3D11BindFixtures.Texture();
             using D3D11ResourceLayout computeLayout = StorageLayout();
             using D3D11ResourceLayout drawLayout = SampledLayout();
             using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(computeLayout, storage);
@@ -314,7 +314,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ABufferRangeAndItsBuffer_AreOneResourceForTheUnbind()
         {
             var harness = new D3D11BindFixtures.Harness();
-            var shared = new FakeBuffer(256);
+            var shared = new TraceBuffer(256);
             using D3D11ResourceLayout computeLayout = D3D11BindFixtures.Layout(D3D11BindFixtures.StructRW("Work"));
             using D3D11ResourceLayout drawLayout = D3D11BindFixtures.Layout(
                 new GpuResourceLayoutElement("Read", GpuResourceKind.StructuredBufferReadOnly,
@@ -346,7 +346,7 @@ namespace KhaozEngine.Tests.Gpu
         public void AClearStateBoundary_ForgetsEveryTrackedRegister()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture storage = D3D11BindFixtures.Texture();
+            TraceTexture storage = D3D11BindFixtures.Texture();
             using D3D11ResourceLayout computeLayout = StorageLayout();
             using D3D11ResourceLayout drawLayout = SampledLayout();
             using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(computeLayout, storage);
@@ -414,7 +414,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ASetBindingOneResourceBothWays_StaysFullyDirtyAndPaysFourCallsEveryFlush()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture shared = D3D11BindFixtures.Texture();
+            TraceTexture shared = D3D11BindFixtures.Texture();
             using D3D11ResourceLayout layout = D3D11BindFixtures.Layout(
                 Storage("Dst"), D3D11BindFixtures.T("Src", GpuShaderStages.Compute));
             using D3D11ResourceSet set = D3D11BindFixtures.Set(layout, shared, shared);
@@ -476,7 +476,7 @@ namespace KhaozEngine.Tests.Gpu
         public void ASwitchAfterARaise_DrainsAnActivationTheWipeThenDiscards_AndKeepsTheGraphicsRaise()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture storage = D3D11BindFixtures.Texture();
+            TraceTexture storage = D3D11BindFixtures.Texture();
             using D3D11ResourceLayout computeLayout = StorageLayout();
             using D3D11ResourceLayout drawLayout = SampledLayout();
             using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(computeLayout, storage);
@@ -598,7 +598,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var harness = new D3D11BindFixtures.Harness();
             FakeTexture multisampled = new(8, 8, 1, 4, GpuPixelFormat.R8G8B8A8UNorm);
-            FakeTexture single = D3D11BindFixtures.Texture();
+            TraceTexture single = D3D11BindFixtures.Texture();
             harness.Log.Reset();
 
             harness.Emitter.ResolveTexture(multisampled, single);
@@ -615,7 +615,7 @@ namespace KhaozEngine.Tests.Gpu
         public void MipGeneration_IsOneGenerateMipsThroughTheEagerView()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture texture = D3D11BindFixtures.Texture();
+            TraceTexture texture = D3D11BindFixtures.Texture();
             harness.Log.Reset();
 
             harness.Emitter.GenerateMipmaps(texture);
@@ -629,10 +629,10 @@ namespace KhaozEngine.Tests.Gpu
         public void TheCopies_AreTheRegionFormsTheSeamAsksFor()
         {
             var harness = new D3D11BindFixtures.Harness();
-            FakeTexture source = D3D11BindFixtures.Texture();
-            FakeTexture destination = D3D11BindFixtures.Texture();
-            var from = new FakeBuffer(256);
-            var to = new FakeBuffer(256);
+            TraceTexture source = D3D11BindFixtures.Texture();
+            TraceTexture destination = D3D11BindFixtures.Texture();
+            var from = new TraceBuffer(256);
+            var to = new TraceBuffer(256);
             harness.Log.Reset();
 
             harness.Emitter.CopyTexture(source, destination);
@@ -659,8 +659,8 @@ namespace KhaozEngine.Tests.Gpu
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
             using var recorder = new D3D11CommandRecorder<D3D11NativeTraceEmitter>(emitter);
-            FakeTexture source = D3D11BindFixtures.Texture();
-            FakeTexture destination = D3D11BindFixtures.Texture();
+            TraceTexture source = D3D11BindFixtures.Texture();
+            TraceTexture destination = D3D11BindFixtures.Texture();
 
             recorder.Begin();
             log.Reset();

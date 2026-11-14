@@ -166,8 +166,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            var positions = new FakeBuffer(256);
-            var instances = new FakeBuffer(64);
+            var positions = new TraceBuffer(256);
+            var instances = new TraceBuffer(64);
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(32u, 16u));
@@ -198,7 +198,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            var vertices = new FakeBuffer(256);
+            var vertices = new TraceBuffer(256);
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(32u));
@@ -220,7 +220,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            var vertices = new FakeBuffer(256);
+            var vertices = new TraceBuffer(256);
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(32u));
@@ -244,9 +244,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            var a = new FakeBuffer(64);
-            var b = new FakeBuffer(64);
-            var c = new FakeBuffer(64);
+            var a = new TraceBuffer(64);
+            var b = new TraceBuffer(64);
+            var c = new TraceBuffer(64);
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(4u, 8u, 12u));
@@ -277,7 +277,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            var vertices = new FakeBuffer(256);
+            var vertices = new TraceBuffer(256);
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(32u));
@@ -299,7 +299,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            var vertices = new FakeBuffer(256);
+            var vertices = new TraceBuffer(256);
             uint[] strides = { 32u };
 
             emitter.Begin();
@@ -325,7 +325,7 @@ namespace KhaozEngine.Tests.Gpu
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(32u));
-            emitter.SetVertexBuffer(0, new FakeBuffer(64), 0);
+            emitter.SetVertexBuffer(0, new TraceBuffer(64), 0);
             emitter.SetPipeline(D3D11StateCacheTests.Pipeline());   // no strides at all
             log.Reset();
             emitter.Draw(3, 1, 0, 0);
@@ -341,7 +341,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            var indices = new FakeBuffer(64);
+            var indices = new TraceBuffer(64);
 
             emitter.Begin();
             emitter.SetIndexBuffer(indices, GpuIndexFormat.UInt16);
@@ -361,14 +361,14 @@ namespace KhaozEngine.Tests.Gpu
             var harness = new D3D11BindFixtures.Harness();
             D3D11NativeTraceEmitter emitter = harness.Emitter;
             using D3D11ResourceLayout layout = D3D11BindFixtures.ShadowLayout();
-            using D3D11ResourceSet set = D3D11BindFixtures.ShadowSet(layout, new FakeBuffer(256));
+            using D3D11ResourceSet set = D3D11BindFixtures.ShadowSet(layout, new TraceBuffer(256));
 
             emitter.SetPipeline(new D3D11StateCacheTests.FakeD3D11Pipeline(
                 new object(), new object(), new object(), new object(), new object(), new object(), 4u, layout)
             {
                 VertexStrides = new[] { 32u },
             });
-            emitter.SetVertexBuffer(0, new FakeBuffer(64), 0);
+            emitter.SetVertexBuffer(0, new TraceBuffer(64), 0);
             harness.Log.Reset();
             emitter.SetGraphicsResourceSet(0, set);
             emitter.DrawIndexed(6, 1, 0, 0, 0);
@@ -391,8 +391,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            var vertices = new FakeBuffer(64);
-            var indices = new FakeBuffer(64);
+            var vertices = new TraceBuffer(64);
+            var indices = new TraceBuffer(64);
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(32u));
@@ -422,8 +422,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
-            var shared = new FakeBuffer(256);
-            var other = new FakeBuffer(64);
+            var shared = new TraceBuffer(256);
+            var other = new TraceBuffer(64);
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(4u, 8u, 12u));
@@ -454,8 +454,8 @@ namespace KhaozEngine.Tests.Gpu
             var log = new D3D11NativeCallLog();
             var state = new D3D11DeviceState();
             var emitter = new D3D11NativeTraceEmitter(state, log);
-            var disposed = new FakeBuffer(256);
-            var live = new FakeBuffer(64);
+            var disposed = new TraceBuffer(256);
+            var live = new TraceBuffer(64);
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(4u, 8u, 12u));
@@ -496,11 +496,11 @@ namespace KhaozEngine.Tests.Gpu
 
             emitter.Begin();
             emitter.SetPipeline(PipelineWithStrides(32u));
-            emitter.SetVertexBuffer(0, new FakeBuffer(64), 0);
+            emitter.SetVertexBuffer(0, new TraceBuffer(64), 0);
             emitter.Draw(3, 1, 0, 0);
             log.Reset();
 
-            emitter.ScrubDisposed(new FakeBuffer(64));
+            emitter.ScrubDisposed(new TraceBuffer(64));
 
             Assert.Empty(log.Trace);
         }

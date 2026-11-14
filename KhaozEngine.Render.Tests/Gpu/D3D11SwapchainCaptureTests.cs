@@ -105,7 +105,7 @@ namespace KhaozEngine.Tests.Gpu
             var surface = new FakeD3D11SwapchainSurface(1280, 720);
             using var swapchain = new D3D11Swapchain(surface, new object(), 1280, 720, syncToVerticalBlank: true);
             var destination = new FakeTexture(1280, 720, 1, 1, GpuPixelFormat.B8G8R8A8UNorm);
-            var offscreen = new FakeFramebuffer(new GpuOutputDescription(null, GpuPixelFormat.B8G8R8A8UNorm), 64, 64);
+            var offscreen = new TraceFramebuffer(new GpuOutputDescription(null, GpuPixelFormat.B8G8R8A8UNorm), 64, 64);
             var log = new D3D11NativeCallLog();
             using var recorder = new D3D11CommandRecorder<D3D11NativeTraceEmitter>(
                 new D3D11NativeTraceEmitter(new D3D11DeviceState(), log));

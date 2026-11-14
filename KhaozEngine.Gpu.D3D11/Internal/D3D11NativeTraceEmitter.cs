@@ -18,6 +18,27 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// the first time a guard was tightened.
     /// </para>
     /// <para>
+    /// THE REFUSALS ARE THE SHIPPED ONES TOO. Every handle the real emitter resolves (a framebuffer, an index,
+    /// vertex, written or copied buffer, a bound resource, a compute pipeline) is resolved here through the same
+    /// <see cref="D3D11BindResolve"/> member in the same order relative to the redundancy guards, so a foreign
+    /// handle is refused with the same exception, reason and fields. A test therefore drives this type with the
+    /// backend's own handle types or with fakes that answer the same device-free seams
+    /// (<see cref="ID3D11RenderTargetSurface"/>, <see cref="ID3D11BindableViews"/>,
+    /// <see cref="ID3D11ComputePipelineState"/>).
+    /// </para>
+    /// <para>
+    /// FOUR CHECKS STAY IN THE REAL EMITTER ALONE, because each names a type only a device can build or a
+    /// Direct3D type this device-free body cannot name. The graphics pipeline is refused here too, but against
+    /// <see cref="ID3D11PipelineState"/> rather than the concrete <see cref="D3D11GraphicsPipeline"/>, so only its
+    /// <c>ExpectedType</c> differs (see <see cref="SetPipeline"/>). The texture transfers are not refused here at
+    /// all (see <see cref="CopyTexture"/>), which covers the real emitter's texture type check, its missing
+    /// mip-chain view on <c>GenerateMipmaps</c> and its swapchain colour view check. The compute pipeline's shader
+    /// is not checked here: the real emitter refuses a null one and one that is not an <c>ID3D11ComputeShader</c>.
+    /// The depth clear's backstop for a framebuffer that declares depth and carries no depth view is not modelled,
+    /// since no stream can produce one. The reverse holds once: on an EMPTY bind span this type still resolves the
+    /// call name, which refuses an unsupported stage, where the real emitter returns before asking.
+    /// </para>
+    /// <para>
     /// THE BIND FLUSH IS MODELLED TOO, and that is the sink decision of work-breakdown row 9. The schedule of
     /// decision R5 and the array-batched fan-out of decision R6 live in <see cref="D3D11BindFlush"/> and
     /// <see cref="D3D11SetActivation"/>, which the real emitter uses unchanged, so this type supplies only the
@@ -75,10 +96,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// the full viewport and the full scissor that Veldrid's base <c>SetFramebuffer</c> auto-applies, and a
         /// redundant re-bind is zero calls and leaves the viewport and the scissor exactly as they were. There is
         /// no <c>SetViewport</c> on the seam, so this is the only place a viewport is ever set.
+        /// <para>
+        /// The surface is resolved through the shared seam BEFORE the identity guard, as the real emitter does,
+        /// so a framebuffer from another backend is refused here too, on a redundant re-bind as well as on a
+        /// change (https://github.com/APKiwiOrg/KhaozEngine/issues/1691).
+        /// </para>
         /// </summary>
         public void SetFramebuffer(IGpuFramebuffer framebuffer)
         {
-            if (framebuffer is null) throw new ArgumentNullException(nameof(framebuffer));
+            D3D11BindResolve.RenderTargets(framebuffer);
             if (!_state.BindFramebuffer(framebuffer)) return;
 
             _log.Record(D3D11NativeCall.OMSetRenderTargets, _log.Id(framebuffer));
@@ -115,6 +141,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// because those layouts are what numbers the registers a mark recorded under the outgoing pipeline
         /// belongs at. So the drained binds appear in the trace AHEAD of this pipeline's state calls, which is
         /// where they happened.
+        /// </para>
+        /// <para>
+        /// THE OWNERSHIP REFUSAL IS THIS TYPE'S OWN, not the shared seam's. Both emitters refuse a pipeline from
+        /// another backend with <see cref="GpuResourceOwnershipRefusal.ForeignBackend"/>, but the real emitter
+        /// names its concrete <see cref="D3D11GraphicsPipeline"/>, which only a device can build, so this one
+        /// asks for the device-free seam that pipeline answers and its <c>ExpectedType</c> says so.
         /// </para>
         /// </summary>
         public void SetPipeline(IGpuPipeline pipeline)
@@ -195,9 +227,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>Issued at the bind, guarded by the redundancy cache over the pair (buffer, format). There is
-        /// nothing to batch an index bind with, since <c>IASetIndexBuffer</c> binds exactly one.</summary>
+        /// nothing to batch an index bind with, since <c>IASetIndexBuffer</c> binds exactly one. The buffer is
+        /// resolved through the shared seam BEFORE that cache, as the real emitter does, so a buffer from another
+        /// backend is refused on every bind rather than recorded once and then passed as redundant.</summary>
         public void SetIndexBuffer(IGpuBuffer buffer, GpuIndexFormat format)
         {
+            D3D11BindResolve.NativeBuffer(buffer);
             if (!_state.Vertices.BindIndexBuffer(buffer, format)) return;
 
             _log.Record(D3D11NativeCall.IASetIndexBuffer, $"{_log.Id(buffer)},{format}");
@@ -249,15 +284,39 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 $"{N(indexCount)},{N(instanceCount)},{N(indexStart)},{N(vertexOffset)},{N(instanceStart)}");
         }
 
+        /// <summary>The buffer is resolved through the shared seam exactly when the real emitter names it, which
+        /// is every write it issues: a ring-backed buffer writes into its mapped segment and an empty write is a
+        /// no-op, and neither asks.</summary>
         public void UpdateBuffer(IGpuBuffer buffer, uint offsetBytes, ReadOnlySpan<byte> data)
-            => _log.Record(D3D11NativeCall.UpdateSubresource,
-                $"{_log.Id(buffer)},{N(offsetBytes)},{N(data.Length)}b");
+        {
+            if (buffer is null) throw new ArgumentNullException(nameof(buffer));
+            if (buffer is not ID3D11RingBacked { Ring: not null } && !data.IsEmpty)
+                D3D11BindResolve.NativeBuffer(buffer);
 
+            _log.Record(D3D11NativeCall.UpdateSubresource, $"{_log.Id(buffer)},{N(offsetBytes)},{N(data.Length)}b");
+        }
+
+        /// <summary>Both buffers are resolved through the shared seam, destination first, whenever the real
+        /// emitter issues the copy, which is every copy of a non-zero size.</summary>
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes,
             uint sizeInBytes)
-            => _log.Record(D3D11NativeCall.CopySubresourceRegion,
-                $"{_log.Id(src)},{N(srcOffsetBytes)},{_log.Id(dst)},{N(dstOffsetBytes)},{N(sizeInBytes)}");
+        {
+            if (sizeInBytes != 0)
+            {
+                D3D11BindResolve.NativeBuffer(dst);
+                D3D11BindResolve.NativeBuffer(src);
+            }
 
+            _log.Record(D3D11NativeCall.CopySubresourceRegion,
+                $"{_log.Id(src)},{N(srcOffsetBytes)},{_log.Id(dst)},{N(dstOffsetBytes)},{N(sizeInBytes)}");
+        }
+
+        /// <summary>
+        /// THE TEXTURE TRANSFERS APPLY NO OWNERSHIP REFUSAL HERE, one of the four checks the class summary lists as
+        /// the real emitter's alone. The real emitter refuses anything that is not its concrete
+        /// <see cref="D3D11Texture"/>, which only a device can build, so a trace that asked the same question could
+        /// never be handed a texture it accepts.
+        /// </summary>
         public void CopyTexture(IGpuTexture src, IGpuTexture dst)
             => _log.Record(D3D11NativeCall.CopyResource, $"{_log.Id(src)},{_log.Id(dst)}");
 
@@ -284,7 +343,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         public void SetComputePipeline(IGpuComputePipeline pipeline)
         {
-            if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
+            D3D11BindResolve.ComputePipelineState(pipeline);
 
             D3D11NativeTraceEmitter sink = this;
             _state.Binds.SetComputePipeline(ref sink, pipeline);
@@ -349,13 +408,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // ONE IASetVertexBuffers OVER A SPAN, CARRYING WHAT THE RECORD HOLDS, which is the rule rather than the
         // flush's private arrangement: the scrub writes its span through here too, so a live slot straddled by two
         // scrubbed ones is rebound to what it already holds instead of being unbound behind the record's back.
+        // Every live buffer in the span is resolved through the shared seam before the call, as the real emitter
+        // resolves each one it passes, so a vertex buffer from another backend is refused at the draw.
         void RecordVertexBuffers(uint startSlot, int count)
         {
             var text = new System.Text.StringBuilder();
             text.Append(N(startSlot)).Append(',').Append(N(count));
             for (uint slot = startSlot; slot < startSlot + (uint)count; slot++)
             {
-                text.Append(',').Append(_log.Id(_state.Vertices.BufferAt(slot)))
+                IGpuBuffer? buffer = _state.Vertices.BufferAt(slot);
+                if (buffer is not null) D3D11BindResolve.NativeBuffer(buffer);
+
+                text.Append(',').Append(_log.Id(buffer))
                     .Append('@').Append(N(_state.Vertices.OffsetAt(slot)))
                     .Append('/').Append(N(_state.Vertices.StrideAt(slot)));
             }
@@ -364,12 +428,26 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         // ---- ID3D11BindSink: the naming translation, and the only thing a device-free budget can drift in ----
+        //
+        // Each bind resolves every entry through the shared seam in the order the real emitter does, so a resource
+        // from another backend, a resource with no view for its register file and a window against no buffer are
+        // refused here as they are on the device. Only the unordered-access bind names its call first, because
+        // the real emitter does: that name is itself the refusal for every non-compute stage.
 
         /// <inheritdoc/>
         public void SetConstantBuffers(GpuShaderStages stage, uint startSlot,
             ReadOnlySpan<D3D11ConstantBufferBind> binds)
-            => _log.Record(D3D11NativeCallName.ConstantBuffers(stage),
+        {
+            if (binds.Length != 0)
+            {
+                D3D11BindResolve.Constants(binds, new int[binds.Length], new int[binds.Length]);
+                for (int i = 0; i < binds.Length; i++)
+                    D3D11BindResolve.ViewOf(binds[i].Buffer, D3D11RegisterFile.ConstantBuffer);
+            }
+
+            _log.Record(D3D11NativeCallName.ConstantBuffers(stage),
                 $"{N(startSlot)},{N(binds.Length)},{DescribeConstants(binds)}");
+        }
 
         /// <inheritdoc/>
         public void UnsetConstantBuffers(GpuShaderStages stage, uint startSlot, int count)
@@ -378,19 +456,33 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc/>
         public void SetShaderResources(GpuShaderStages stage, uint startSlot,
             ReadOnlySpan<IGpuBindableResource?> resources)
-            => _log.Record(D3D11NativeCallName.ShaderResources(stage),
+        {
+            ResolveViews(resources, D3D11RegisterFile.ShaderResource);
+            _log.Record(D3D11NativeCallName.ShaderResources(stage),
                 $"{N(startSlot)},{N(resources.Length)},{Describe(resources)}");
+        }
 
         /// <inheritdoc/>
         public void SetSamplers(GpuShaderStages stage, uint startSlot, ReadOnlySpan<IGpuBindableResource?> samplers)
-            => _log.Record(D3D11NativeCallName.Samplers(stage),
+        {
+            ResolveViews(samplers, D3D11RegisterFile.Sampler);
+            _log.Record(D3D11NativeCallName.Samplers(stage),
                 $"{N(startSlot)},{N(samplers.Length)},{Describe(samplers)}");
+        }
 
         /// <inheritdoc/>
         public void SetUnorderedAccessViews(GpuShaderStages stage, uint startSlot,
             ReadOnlySpan<IGpuBindableResource?> views)
-            => _log.Record(D3D11NativeCallName.UnorderedAccessViews(stage),
-                $"{N(startSlot)},{N(views.Length)},{Describe(views)}");
+        {
+            D3D11NativeCall call = D3D11NativeCallName.UnorderedAccessViews(stage);
+            ResolveViews(views, D3D11RegisterFile.UnorderedAccess);
+            _log.Record(call, $"{N(startSlot)},{N(views.Length)},{Describe(views)}");
+        }
+
+        static void ResolveViews(ReadOnlySpan<IGpuBindableResource?> resources, D3D11RegisterFile file)
+        {
+            for (int i = 0; i < resources.Length; i++) D3D11BindResolve.ViewOf(resources[i], file);
+        }
 
         // One entry per register in the span, separated by '|', so a reader can see which register got what and a
         // hole is visibly a hole rather than an absent entry that shifts everything after it. A constant-buffer

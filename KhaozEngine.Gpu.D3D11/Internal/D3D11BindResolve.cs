@@ -19,9 +19,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <para>
     /// IT IS ALSO WHERE A REFUSAL BOTH EMITTERS OWE LIVES. A rule enforced in the real emitter alone accepts a
     /// stream in the trace that the device would have thrown on, so the two disagree about what the seam permits
-    /// and neither refusal is reachable by a test on this machine. A buffer that came from another backend and
-    /// the framebuffer a clear names an attachment of are refused here, once, and both
-    /// emitters ask.
+    /// and neither refusal is reachable by a test on this machine. A buffer, a framebuffer, a bound resource or a
+    /// compute pipeline that came from another backend, and the framebuffer a clear names an attachment of, are
+    /// refused here, once, and both emitters ask in the same order.
     /// </para>
     /// <para>
     /// A NULL IS A HOLE AND IS PASSED THROUGH. A RESOURCE WITHOUT THE VIEW IS A REFUSAL. Those are different
@@ -146,6 +146,29 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 ResourceKind = "buffer",
                 Context = "native buffer",
             };
+
+        /// <summary>
+        /// THE COMPUTE SEAM A PIPELINE THIS BACKEND CREATED ANSWERS, refused by name for one from another backend,
+        /// in the one place both emitters ask. Only the interface is checked here. Whether the shader it carries
+        /// is an <c>ID3D11ComputeShader</c> names a Direct3D type, so that cast stays in the real emitter.
+        /// </summary>
+        internal static ID3D11ComputePipelineState ComputePipelineState(IGpuComputePipeline pipeline)
+        {
+            if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
+
+            return pipeline as ID3D11ComputePipelineState ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
+                $"A {pipeline.GetType().Name} reached the native Direct3D 11 emitter as a compute pipeline. A "
+                + "pipeline this backend created answers ID3D11ComputePipelineState, which is where the "
+                + "compiled compute shader comes from.", nameof(pipeline))
+            {
+                ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                ActualType = pipeline.GetType(),
+                ExpectedType = typeof(ID3D11ComputePipelineState),
+                ResourceKind = "pipeline",
+                Context = "compute pipeline",
+                PipelineKind = "compute",
+            };
+        }
 
         /// <summary>
         /// THE FRAMEBUFFER A COMMAND NAMES AN ATTACHMENT OF, refused by name when nothing is bound, in the one

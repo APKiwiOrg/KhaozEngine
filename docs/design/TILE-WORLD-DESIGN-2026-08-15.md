@@ -508,7 +508,8 @@ The fields are repurposed for this pipeline only:
   in catalog id order would otherwise burn its first layer in every set.
 - `Tangent.z` = the per-vertex brightness jitter, the same sharing-tile average the colour path uses today, so
   it stays soft across corners rather than stepping per tile. `Tangent.w` = 0.
-- `Normal` = the lattice normal as today. No normal maps in R5: the OSRS register is flat low-frequency
+- `Normal` = the lattice normal as today. No normal maps in R5 (they arrived later as optional relief, see the
+  note at the end of this section): the OSRS register is flat low-frequency
   texture under smooth lighting, and four more array samples per fragment buy little. The array is built
   albedo-only (a new albedo-only sibling of `TextureUploads.CreateSplatArrays`, which wants both maps), and a
   `NormalArray` is the documented next step if the look wants it (section 14).
@@ -594,11 +595,14 @@ its perspective and top-down captures, and therefore `ke-tileedit`'s renders, co
 reads the catalog colour is the headless side: `tile_get`, the top-down overlay painter's tints, and the
 flat-layer fill for an untextured material.
 
-**Deliberately not done.** Normal maps (section 14). sRGB (the engine has no sRGB formats, everything is
-sampled in gamma space and the goldens are baked that way, a colour-space change is fleet-wide and not this
-program's). An overlay edge feather (a road blending into grass along its cut edge): the cut is exact by design
-(7.1), the feather would need a second palette per overlay triangle, and the shaped edges already break the
-hard line. Per-vertex texture rotation (the OSRS trick that hides tiling): noted, cheap later, not now.
+**Deliberately not done in R5.** sRGB (the engine has no sRGB formats, everything is sampled in gamma space and
+the goldens are baked that way, a colour-space change is fleet-wide and not this program's). Three items R5 left
+out landed later and are documented as they stand in the package READMEs: the opt-in overlay edge feather
+(`TileSettings.FeatherOverlay`, which keeps the exact cut and fades inward on subdivided triangles rather than
+adding a second palette), and optional ground relief with hex-tiling against visible repeats
+(https://github.com/APKiwiOrg/KhaozEngine/issues/1799, `TileGroundRelief`). The relief kept this section's
+shape: the four corner slots, the one-hot corners and so the C0 continuity are unchanged, normals perturb in each
+world-axis projection's own frame, and a set without relief draws through this section's pipeline untouched.
 
 ### 7.6 Water (R5): the engine's water pass, one plane per water body
 
@@ -944,12 +948,12 @@ Each of these is filed as an issue when its round lands, not carried here.
   number on purpose: the orientation list at the top of this doc splits the shell and the walking into (2) and
   (3), and the round notes elsewhere in the fleet treat them as one, so the number is the part nobody has
   settled and the ordering is the part everybody agrees on.
-- Textured ground materials and water: deferred from v1, now R5 (7.5 and 7.6). What R5 in turn leaves out:
-  normal maps for ground materials (a second array, four more samples), an overlay edge feather, per-vertex
-  texture rotation against tiling, flowing water and sloped river surfaces (one surface height per water body
-  in R5, a descending river is authored as bodies with a drop between them). R5 shipped, so all five are filed,
-  alongside the round's own deferred minors, as
-  [#665](https://github.com/APKiwiOrg/KhaozEngine/issues/665).
+- Textured ground materials and water: deferred from v1, now R5 (7.5 and 7.6). What R5 in turn left out:
+  normal maps for ground materials, an overlay edge feather, per-vertex texture rotation against tiling, flowing
+  water and sloped river surfaces (one surface height per water body in R5, a descending river is authored as
+  bodies with a drop between them). All five were filed, alongside the round's own deferred minors, as
+  [#665](https://github.com/APKiwiOrg/KhaozEngine/issues/665). The edge feather, normal maps and anti-tiling have
+  since landed (see 7.5).
 - The over/under bridge plane trick: `Settings.Bridge` is reserved, semantics undefined until a bridge is
   authored that needs it.
 - Auto-tiling road brushes and multi-object marquee in the GUI: AI-first, the MCP verbs cover the need.

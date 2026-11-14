@@ -4,6 +4,30 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.12.1
+
+2026-11-14
+
+- A `TileWorldView` can be disposed after its `Scene3D`, including after `Render3DSnapshot.CaptureWithBackend` has
+  disposed the scene the view was built in. Every `Scene3D` resource unload (`UnloadMesh`, `UnloadProp`,
+  `UnloadSkinnedMesh`, `UnloadTexture`, `UnloadSurfaceMaps`, `UnloadSplatMaterial`, `UnloadTileGroundMaterial` and
+  `UnloadWaterOpticsField`) is a no-op once the scene is disposed, so a world released after its scene no longer
+  throws `ObjectDisposedException` from water optics or `ArgumentException` from a mesh slot. Loads and draws on a
+  disposed scene and stale handles on a live scene keep their errors
+  ([#1778](https://github.com/APKiwiOrg/KhaozEngine/issues/1778)).
+- `TileWorldColliders.Build` leaves out a walk surface whose placed values or turned corners a float cannot hold,
+  with the same check authored collision boxes use, instead of failing the whole world build. Other surfaces and
+  objects still build, and finite bounds whose float sum or width overflows now place at their midpoint
+  ([#1785](https://github.com/APKiwiOrg/KhaozEngine/issues/1785)).
+- A GPU resource whose disposal throws no longer strands `GpuRetireQueue`. Per-frame reclamation, the shared-fence
+  valve drain, `FlushAll` and `Dispose` each attempt every resource they free once, drop its batch and return its
+  fence before reporting. One failure is rethrown unchanged and several arrive as one `AggregateException`, and a
+  later frame or flush never disposes the failed resource again. `Dispose` still frees the barrier after a release
+  failure ([#1760](https://github.com/APKiwiOrg/KhaozEngine/issues/1760)).
+- `TextArea` and `TextInput` keep text typed in the frame a pointer release outside them removes focus. Committed
+  text, edit keys and paste apply before the focus change, and `TextArea` also applies Enter, Delete and caret
+  moves ([#1466](https://github.com/APKiwiOrg/KhaozEngine/issues/1466)).
+
 ## 23.12.0
 
 2026-11-14

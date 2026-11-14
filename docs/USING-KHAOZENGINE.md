@@ -11971,6 +11971,11 @@ Across `crossfadeWidth` the two crossfade - the props dissolve out and the merge
 the rigid-dissolve primitive. Both halves use the same threshold `t`: individuals keep `mask >= t`, and the merged
 half sets `DissolveComplement = 1` to keep `mask < t` in colour and shadow. Selected outlines use the same split.
 With one active representation handoff, coincident surfaces cover each noise value exactly once.
+When the draw-radius exit band overlaps the HLOD band, its progress `e` reserves one shared gap instead:
+individuals keep `mask >= e + t * (1 - e)`, and the merged complement keeps `mask < t * (1 - e)`.
+The gap has width `e`, so the pair fades out together in colour, shadows and selected outlines. The individual
+emitter still takes the maximum of this floor and each placement's own exit fade. A lone representation near
+the handoff skip gates uses an ordinary exit fade. Profiles with separated bands keep their existing draw state.
 Overlapping individual LOD and HLOD bands retain their existing three-way gap composition.
 Different silhouettes can still expose holes because
 they sample different world positions (#1296). The transition remains deterministic by distance with no

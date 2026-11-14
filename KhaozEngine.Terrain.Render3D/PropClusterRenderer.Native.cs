@@ -132,23 +132,7 @@ public sealed partial class PropClusterRenderer
         var layer = request.BorrowLayer;
         float dx = (request.Area.MinX + request.Area.MaxX) * .5f - localFocus.X;
         float dz = (request.Area.MinZ + request.Area.MaxZ) * .5f - localFocus.Z;
-        return ResolveCoverage(MathF.Sqrt(dx * dx + dz * dz), layer, request.Generation, request.Generation) with
+        return PropClusterCoverage.Resolve(MathF.Sqrt(dx * dx + dz * dz), layer, request.Generation, request.Generation) with
         { HasIndividualGeometry = request.Instances.Count > 0 };
-    }
-
-    // Both retained legacy clusters and native typed recording consume this same coverage decision.
-    static PropClusterDrawState ResolveCoverage(float distance, PropLayer layer, long individualGeneration, long mergedGeneration)
-    {
-        if (distance >= layer.DrawRadius) return new(false, 0, false, 0, false, individualGeneration, mergedGeneration);
-        float t = PropHlod.CrossfadeAt(distance, layer.HlodDistance, layer.HlodCrossfadeWidth);
-        bool individuals = PropHlod.DrawsHlodProps(t);
-        float start = MathF.Max(0, layer.DrawRadius - layer.FadeBandWidth);
-        if (layer.FadeBandWidth > 0 && distance >= start)
-            return new(individuals, t, true, Math.Clamp((distance - start) / (layer.DrawRadius - start), 0, 1), false, individualGeneration, mergedGeneration);
-        bool merged = PropHlod.DrawsHlodMerged(t);
-        // Only dissolve while both halves are submitted. A lone representation stays solid.
-        bool complement = individuals && merged;
-        float handoffDissolve = complement ? t : 0f;
-        return new(individuals, handoffDissolve, merged, handoffDissolve, complement, individualGeneration, mergedGeneration);
     }
 }

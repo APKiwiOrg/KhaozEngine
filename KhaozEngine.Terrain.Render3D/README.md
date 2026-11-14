@@ -303,7 +303,13 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   handle share one threshold with opposite keep sets in colour and shadow through `DissolveComplement`.
   Selected outlines use the same threshold and phase. With one active handoff, coincident surfaces have no gaps
   or doubled coverage. Overlapping individual LOD and HLOD bands retain the existing three-way gap composition.
-  Different silhouettes still sample different world positions (#1296). The draw-radius exit remains an ordinary fade.
+  If the draw-radius exit band overlaps the HLOD band, exit progress `e` reserves a shared gap in the noise
+  coverage: individuals keep `mask >= e + t * (1 - e)` and the merged complement keeps `mask < t * (1 - e)`.
+  The gap has width `e`, so both halves fade out together without doubled coverage or extra handoff holes.
+  The individual emitter still takes the maximum of that floor and each placement's own exit fade. Near the
+  handoff skip gates, a lone representation uses an ordinary exit fade. Separated bands keep their draw state,
+  including the ordinary merged exit fade. Colour and shadow-only submissions share these decisions.
+  Different silhouettes still sample different world positions (#1296).
   `DrawWithVisibility(focus, IPropClusterVisibility)` routes hidden placements into shadow-only submission with
   the same transforms, LOD and fades. The visibility source retains metadata for both generations reported by
   `PropClusterDrawState`. A partly hidden merged cluster falls back to resident individuals without its HLOD fade

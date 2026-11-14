@@ -129,8 +129,9 @@ public sealed partial class WorldClient
         }
     }
 
-    // An incompatible decode is terminal, so it ends the connection locally like a typed failure. Without that the
-    // server would keep the session until its own deadline or a restart reject, neither of which may rewrite the reason.
+    // An incompatible decode is terminal. OnSnapshotDecodeFailed ends the connection locally like a typed failure, for
+    // the legacy paths too. Without that the server would keep the session until its own deadline or a restart reject,
+    // neither of which may rewrite the reason.
     private void EndRebuild(string? error)
     {
         if (rebuild!.Failure is ReplicationFailure failure)
@@ -138,8 +139,6 @@ public sealed partial class WorldClient
             EndOnReplicationFailure(failure);
             return;
         }
-        if (state == WorldConnectionState.Disconnected) return;
-        net.Disconnect();
         OnSnapshotDecodeFailed(error ?? "format 2 replication decode failed");
     }
 

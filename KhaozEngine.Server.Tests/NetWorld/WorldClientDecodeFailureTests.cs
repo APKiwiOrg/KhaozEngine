@@ -9,8 +9,8 @@ using Xunit;
 namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
-/// The last-resort backstop: a snapshot the client cannot decode because it carries an unregistered <b>built-in</b>
-/// (below-floor) component type id (a genuinely newer/incompatible core protocol) must become a clean
+/// The last-resort backstop: a legacy snapshot or delta the client cannot decode because it carries an unregistered
+/// <b>built-in</b> (below-floor) component type id (a genuinely newer/incompatible core protocol) must become a clean
 /// <see cref="DisconnectReason.IncompatibleVersion"/> disconnect, never an unhandled exception escaping
 /// <see cref="WorldClient.Poll"/> into the consumer's frame loop. (An unregistered <em>extension</em> id, at/above
 /// <see cref="KhaozEngine.Replication.ReplicationRegistry.FirstExtensionTypeId"/>, is instead SKIPPED, covered by
@@ -27,21 +27,31 @@ public class WorldClientDecodeFailureTests
     // registered id.
     private const ushort UnregisteredBuiltInTypeId = 7;
 
-    // A snapshot with one entity carrying a single component of an unregistered built-in type id (reserved below the
-    // extension floor), wrapped as a server->client snapshot frame. Below the floor it is unframed, so an unknown id
-    // there is a hard "client out of date" mismatch, not a skip.
-    private static byte[] BadSnapshotFrame()
+    // A legacy state frame whose one entity carries a single component of an unregistered built-in type id (reserved
+    // below the extension floor). Below the floor it is unframed, so an unknown id there is a hard "client out of
+    // date" mismatch, not a skip. The delta body is a baseline -1 full delta, so the failure is the type id and never
+    // a baseline gap.
+    private static byte[] BadStateFrame(MoveProtocol.ServerFrameKind kind)
     {
         using var ms = new MemoryStream();
         using (var bw = new BinaryWriter(ms))
         {
-            bw.Write(1);                              // entity count
+            if (kind == MoveProtocol.ServerFrameKind.Delta)
+            {
+                bw.Write(-1);                         // baseline seq: a full delta
+                bw.Write(1);                          // snapshot seq
+                bw.Write(0);                          // removed entity count
+            }
+            bw.Write(1);                              // entity count (changed count in a delta)
             bw.Write(1L);                             // netId (64-bit)
+            if (kind == MoveProtocol.ServerFrameKind.Delta)
+            {
+                bw.Write((byte)1);                    // isNew
+                bw.Write(0);                          // removed component count
+            }
             bw.Write(UnregisteredBuiltInTypeId);      // unregistered built-in (below-floor) id -> decode fails here
         }
-        byte[] snapshot = ms.ToArray();
-        return MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot,
-            MoveProtocol.EncodeSnapshotFrame(localNetId: 1, ackSeq: 0, snapshot));
+        return MoveProtocol.EncodeServerFrame(kind, MoveProtocol.EncodeSnapshotFrame(localNetId: 1, ackSeq: 0, ms.ToArray()));
     }
 
     [Fact]
@@ -60,8 +70,12 @@ public class WorldClientDecodeFailureTests
         Assert.False(MoveProtocol.CreateRegistry().IsRegistered(UnregisteredBuiltInTypeId));
     }
 
-    [Fact]
-    public void Undecodable_snapshot_disconnects_cleanly_instead_of_throwing()
+    // #1262: both legacy state paths end the connection locally, so the server sees the leave at once rather than
+    // holding the session until its own timeout. The format 2 path has the same proof in WorldClientRebuildRecoveryTests.
+    [Theory]
+    [InlineData(MoveProtocol.ServerFrameKind.Snapshot)]
+    [InlineData(MoveProtocol.ServerFrameKind.Delta)]
+    public void Undecodable_legacy_state_disconnects_cleanly_instead_of_throwing(MoveProtocol.ServerFrameKind kind)
     {
         var (serverTransport, clientTransport) = LoopbackTransport.CreatePair();
         var server = new NetServer(serverTransport, maxPlayers: 4, new AllowAllAuthenticator());
@@ -82,13 +96,24 @@ public class WorldClientDecodeFailureTests
         Assert.True(slot >= 0);
         Assert.Equal(WorldConnectionState.Connected, client.ConnectionState);
 
-        // Server pushes a snapshot the client's registry cannot decode.
-        server.SendTo(slot, BadSnapshotFrame(), NetChannelReliability.ReliableOrdered);
+        // Server pushes a state frame the client's registry cannot decode, then a valid empty snapshot naming another
+        // local id. Both land in the client's first drain.
+        server.SendTo(slot, BadStateFrame(kind), NetChannelReliability.ReliableOrdered);
+        server.SendTo(slot, MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot,
+            MoveProtocol.EncodeSnapshotFrame(localNetId: 2, ackSeq: 0, BitConverter.GetBytes(0))),
+            NetChannelReliability.ReliableOrdered);
 
         // Pumping the client must NOT throw (the whole point); it disconnects cleanly instead.
+        bool serverSawLeave = false;
         Exception? thrown = Record.Exception(() =>
         {
-            for (int i = 0; i < 5; i++) { server.Poll(); client.Poll(); }
+            for (int i = 0; i < 5; i++)
+            {
+                server.Poll();
+                while (server.TryDequeueEvent(out ServerSessionEvent ev))
+                    serverSawLeave |= ev.Kind == ServerSessionEventKind.Left && ev.Slot == slot;
+                client.Poll();
+            }
         });
 
         Assert.Null(thrown);
@@ -96,5 +121,8 @@ public class WorldClientDecodeFailureTests
         Assert.Equal(DisconnectReason.IncompatibleVersion, client.DisconnectReason);
         Assert.NotNull(decodeError);
         Assert.Contains($"unregistered type id {UnregisteredBuiltInTypeId}", client.DisconnectReasonDetail);
+        Assert.True(serverSawLeave, "the server sees the session end without waiting for its own timeout");
+        // #1262: a state frame queued behind the failure is ignored once the end is terminal, so nothing is ingested.
+        Assert.Equal(-1, client.LocalNetId);
     }
 }

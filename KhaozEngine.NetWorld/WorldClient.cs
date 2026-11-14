@@ -216,9 +216,10 @@ public sealed partial class WorldClient : IDisposable
     /// to keep the bytes.</summary>
     public event ClientGameMessageHandler? GameMessageReceived;
 
-    /// <summary>Raised when an incoming snapshot could not be decoded (e.g. an unregistered component type id from a
-    /// newer server protocol). The client disconnects with <see cref="DisconnectReason.IncompatibleVersion"/>; the
-    /// argument is the decode error. A consumer can subscribe to log it or show "client out of date, please update"
+    /// <summary>Raised once per terminal end when an incoming legacy snapshot or delta, or a format 2 frame, could not be
+    /// decoded (e.g. an unregistered component type id from a newer server protocol). The client ends the transport
+    /// locally, disconnects with <see cref="DisconnectReason.IncompatibleVersion"/> and ignores state frames after it;
+    /// the argument is the decode error. A consumer can subscribe to log it or show "client out of date, please update"
     /// without polling <see cref="DisconnectReason"/>.</summary>
     public event Action<string>? SnapshotDecodeFailed;
 
@@ -599,6 +600,11 @@ public sealed partial class WorldClient : IDisposable
     {
         if (!MoveProtocol.TryDecodeServerFrame(data, out MoveProtocol.ServerFrameKind kind, out byte[] payload)) return;
         if (RouteRebuildFrame(kind, payload, reliability)) return;
+        // NetClient.Disconnect leaves frames already drained into its inbox queued, so a terminal end ignores the legacy
+        // state frames behind it. Notices and game messages still surface, as before.
+        if (state == WorldConnectionState.Disconnected && kind is MoveProtocol.ServerFrameKind.Snapshot
+            or MoveProtocol.ServerFrameKind.TickedSnapshot or MoveProtocol.ServerFrameKind.Delta
+            or MoveProtocol.ServerFrameKind.TickedDelta) return;
         switch (kind)
         {
             case MoveProtocol.ServerFrameKind.Snapshot:
@@ -749,8 +755,14 @@ public sealed partial class WorldClient : IDisposable
     // A snapshot could not be decoded: surface it as a clean, terminal disconnect (the client is out of date;
     // reconnecting to the same build would just fail the same way) rather than letting the throw escape into the
     // consumer's frame loop. Matches the connect-time handshake's DisconnectReason.IncompatibleVersion path.
+    // The one place every decode failure (legacy snapshot, legacy delta, format 2) ends the connection locally, so the
+    // server sees the leave at once instead of holding the session until its own timeout. NetClient.Disconnect only
+    // stages transport events and never touches the session inbox the Poll drain is reading. A terminal end already
+    // holds its reason, so a later failure in the same drain neither rewrites it nor raises the event again.
     private void OnSnapshotDecodeFailed(string? error)
     {
+        if (state == WorldConnectionState.Disconnected) return;
+        net.Disconnect();
         string detail = string.IsNullOrEmpty(error) ? "snapshot decode failed" : error!;
         disconnectReason = DisconnectReason.IncompatibleVersion;
         disconnectReasonDetail = detail;

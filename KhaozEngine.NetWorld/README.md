@@ -597,10 +597,13 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     (the pre-10.2.0 advice); the `ProtocolVersion` gate above is now purely your game version, layered on top. A bare
     `NetClient` used against a `WorldServer` / `ShardedWorldServer` must present the wire layer itself via
     `ProtocolHandshake.BuildClientToken`.
-- **Graceful decode (last resort).** `WorldClient.OnSnapshot` decodes via `ClientReplicationView.TryApply`, so an
-  undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes the same
-  clean `DisconnectReason.IncompatibleVersion` disconnect plus a **`SnapshotDecodeFailed`** event - never an
-  unhandled exception in the consumer's frame loop. (An unregistered *consumer extension* id, at/above the floor,
+- **Graceful decode (last resort).** `WorldClient` decodes legacy state through `ClientReplicationView.TryApply` and
+  `TryApplyDelta`, so an undecodable snapshot or delta (an unregistered BUILT-IN component type id from a newer core
+  protocol) becomes the same clean `DisconnectReason.IncompatibleVersion` disconnect plus a **`SnapshotDecodeFailed`**
+  event - never an unhandled exception in the consumer's frame loop. It is terminal and never reconnects. Every
+  decode failure, legacy or format 2, also ends the connection locally, so the server sees the leave at once instead
+  of holding the session until its own timeout. The event fires once per end. State frames already queued behind
+  the failure in the same poll are ignored, while notices and game messages still surface. (An unregistered *consumer extension* id, at/above the floor,
   is instead skipped - see the server-owned-entities section below - so a newer server's added component never
   disconnects an older client.) Pair with the `KhaozEngine.Updates` startup gate
   (`UpdateService.EnsureUpToDateAsync`) so a client self-heals before it ever connects.

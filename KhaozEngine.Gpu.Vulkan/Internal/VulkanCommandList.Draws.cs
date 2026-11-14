@@ -87,7 +87,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// </remarks>
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
-            => RequireDraws("Drawing").Draw(CurrentBuffer, RequireRendering("Drawing"), _graphicsBinds,
+            => RequireDraws("Drawing").Draw(CurrentBuffer,
+                RequirePipeline(compute: false, "Drawing", nameof(Draw)), _graphicsBinds,
                 new VulkanDrawCall(vertexCount, instanceCount, vertexStart, instanceStart));
 
         /// <inheritdoc/>
@@ -96,8 +97,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// packed behind another one in a shared buffer passes a negative one.</remarks>
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset,
             uint instanceStart)
-            => RequireDraws("Drawing indexed").DrawIndexed(CurrentBuffer, RequireRendering("Drawing indexed"),
-                _graphicsBinds,
+            => RequireDraws("Drawing indexed").DrawIndexed(CurrentBuffer,
+                RequirePipeline(compute: false, "Drawing indexed", nameof(DrawIndexed)), _graphicsBinds,
                 new VulkanIndexedDrawCall(indexCount, instanceCount, indexStart, vertexOffset, instanceStart));
 
         /// <inheritdoc/>
@@ -115,7 +116,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </remarks>
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
             => RequireDraws("Dispatching compute").Dispatch(CurrentBuffer,
-                RequireRendering("Dispatching compute"), _computeBinds, groupCountX, groupCountY, groupCountZ);
+                RequirePipeline(compute: true, "Dispatching compute", nameof(Dispatch)), _computeBinds,
+                groupCountX, groupCountY, groupCountZ);
+
+        // Validate before the recorder can transition resources, open or end a pass, or consume clears.
+        VulkanRenderingSchedule RequirePipeline(bool compute, string what, string command)
+        {
+            VulkanRenderingSchedule rendering = RequireRendering(what);
+            if ((compute ? _boundComputePipeline : _boundGraphicsPipeline) != 0) return rendering;
+
+            throw new GpuRecordingStateException(
+                compute ? GpuRecordingStateRefusal.ComputePipelineNotBound : GpuRecordingStateRefusal.GraphicsPipelineNotBound,
+                command + " requires a " + (compute ? "compute" : "graphics")
+                    + " pipeline bound since Begin. Call " + (compute ? "SetComputePipeline" : "SetPipeline") + " first.")
+            { Backend = GpuBackendKind.VulkanNative, Command = command };
+        }
 
         // THE ONE THING EVERY MEMBER HERE NEEDS TRUE. A list built with no draw seam is only a list a test
         // constructed: every list the device hands out has one.

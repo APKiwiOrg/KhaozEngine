@@ -17,4 +17,12 @@ public enum GpuRecordingStateRefusal
 
     /// <summary>Refuses submission of a command list without a sealed recording.</summary>
     SubmissionWithoutSeal,
+
+    /// <summary>Refuses Draw or DrawIndexed without a graphics pipeline bound in the current recording.
+    /// Carries Backend and Command, naming Draw or DrawIndexed.</summary>
+    GraphicsPipelineNotBound,
+
+    /// <summary>Refuses Dispatch without a compute pipeline bound in the current recording.
+    /// Carries Backend and Command, naming Dispatch.</summary>
+    ComputePipelineNotBound,
 }

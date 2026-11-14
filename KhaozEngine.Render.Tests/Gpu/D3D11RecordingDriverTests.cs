@@ -98,10 +98,11 @@ namespace KhaozEngine.Tests.Gpu
                 D3D11RecordMode.Immediate, new D3D11CountingEmitter(log));
 
             list.Begin();
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(3);
 
             // Before any submit, and before End: the calls have already been made.
-            Assert.Equal(2, log.TotalCalls);
+            Assert.Equal(3, log.TotalCalls);
             Assert.Equal(1, log.Count(D3D11OpCode.Begin));
             Assert.Equal(1, log.Count(D3D11OpCode.Draw));
 
@@ -113,7 +114,7 @@ namespace KhaozEngine.Tests.Gpu
             D3D11CommandDrivers.Replay(list, ref replay);
 
             // Submitting adds nothing, because there is nothing recorded to replay.
-            Assert.Equal(3, log.TotalCalls);
+            Assert.Equal(4, log.TotalCalls);
         }
 
         // ---- Decision R2: both drivers share every line above the emitter ----
@@ -213,6 +214,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = CreateDeferred();
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(3);
             list.End();
 
@@ -243,8 +245,10 @@ namespace KhaozEngine.Tests.Gpu
 
             first.Begin();
             first.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            first.SetPipeline(D3D11BindFixtures.Pipeline());
             second.Begin();
             second.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            second.SetPipeline(D3D11BindFixtures.Pipeline());
             first.Draw(1);
             second.Draw(2);
             first.Draw(3);
@@ -258,8 +262,8 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(new[]
             {
-                "Begin()", "SetFramebuffer(r0)", "Draw(2,1,0,0)", "Draw(4,1,0,0)", "End()",
-                "Begin()", "SetFramebuffer(r1)", "Draw(1,1,0,0)", "Draw(3,1,0,0)", "End()",
+                "Begin()", "SetFramebuffer(r0)", "SetPipeline(r1)", "Draw(2,1,0,0)", "Draw(4,1,0,0)", "End()",
+                "Begin()", "SetFramebuffer(r2)", "SetPipeline(r3)", "Draw(1,1,0,0)", "Draw(3,1,0,0)", "End()",
             }, log.Trace);
         }
 
@@ -369,6 +373,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 deferred.Begin();
                 deferred.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+                deferred.SetPipeline(D3D11BindFixtures.Pipeline());
                 deferred.Draw(3);
                 Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() =>
                 {
@@ -380,6 +385,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList immediate = CreateRecording(D3D11RecordMode.Immediate, emitter);
             immediate.Begin();
             immediate.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            immediate.SetPipeline(D3D11BindFixtures.Pipeline());
             immediate.Draw(3);
             Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() =>
             {
@@ -442,6 +448,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = CreateDeferred();
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(3);
             list.End();
 
@@ -467,7 +474,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(finished.Wait(TimeSpan.FromSeconds(10)), "Submit never completed after the lock released.");
             Assert.True(blocked, "Submit replayed without taking the submit lock the caller passed it.");
-            Assert.Equal(4, log.TotalCalls);
+            Assert.Equal(5, log.TotalCalls);
         }
 
         /// <summary>

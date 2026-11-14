@@ -144,10 +144,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// graphics pipeline is bound.</exception>
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
-            // M-N5's one pool for the pass opening, the bind flush and the draw. See the type remarks.
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+            MetalGraphicsPipeline pipeline = RequireGraphicsPipeline("Drawing", nameof(Draw));
 
-            MetalGraphicsPipeline pipeline = BeginDraw("Drawing", nameof(IGpuCommandList.Draw), out IntPtr encoder);
+            // Validate before even opening the autorelease pool. It is a native call on macOS.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+            ResolveDeferredDrawable();
+            IntPtr encoder = _passes.PrepareDraw(nameof(Draw));
             if (encoder == IntPtr.Zero) return;
 
             if (KhaozEngineMetal.IsPlatformSupported && _sink is MetalEncoderSink native)
@@ -178,10 +180,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset,
             uint instanceStart)
         {
-            // M-N5's one pool for the pass opening, the bind flush and the draw. See the type remarks.
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
-            MetalGraphicsPipeline pipeline = RequireGraphicsPipeline("Drawing indexed");
+            MetalGraphicsPipeline pipeline = RequireGraphicsPipeline("Drawing indexed", nameof(DrawIndexed));
 
             // THE INDEX REFUSAL COMES BEFORE THE PASS OPENS, beside the pipeline refusal and for its reason: a
             // refusal spends nothing. PrepareDraw opens the encoder and CONSUMES the pending clears, so refusing
@@ -196,6 +195,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // frame.
             if (_indices.DrawRefusal() is { } refusal) throw new InvalidOperationException(refusal);
 
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
             ResolveDeferredDrawable();
             IntPtr encoder = _passes.PrepareDraw(nameof(IGpuCommandList.DrawIndexed));
             if (encoder == IntPtr.Zero) return;
@@ -237,19 +237,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// bound.</exception>
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         {
-            // M-N5's one pool for this member. See the type remarks.
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
             ObjectDisposedException.ThrowIf(_disposed, this);
             RequireRecording("Dispatching compute work");
 
-            MetalComputePipeline pipeline = _pipelines.Compute ?? throw new InvalidOperationException(
+            MetalComputePipeline pipeline = _pipelines.Compute ?? throw new GpuRecordingStateException(
+                GpuRecordingStateRefusal.ComputePipelineNotBound,
                 "A dispatch was recorded on a native Metal command list with no compute pipeline bound. Call "
                 + "SetComputePipeline first. Metal takes the threadgroup size as an ARGUMENT to "
                 + "dispatchThreadgroups:threadsPerThreadgroup: rather than reading it out of the bound kernel the "
                 + "way Direct3D 11 and Vulkan do, so without a pipeline this backend does not know how many "
-                + "threads a group has, quite apart from having no kernel to run.");
+                + "threads a group has, quite apart from having no kernel to run.")
+            { Backend = GpuBackendKind.MetalNative, Command = nameof(Dispatch) };
 
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
             IntPtr encoder = _encoders.EnsureComputeEncoder();
 
             // A NIL COMPUTE ENCODER IS A COMMAND BUFFER IN A STATE METAL WILL NOT ENCODE INTO, which is a device
@@ -331,31 +331,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
             FlushVertexStreams(ref sink, encoder);
         }
 
-        // THE FIRST STEP, plus the two things every graphics command needs true. Every refusal is spent BEFORE
-        // the pass opens, which is why the two halves are separate members: DrawIndexed has a third refusal of its
-        // own and it belongs between them.
-        MetalGraphicsPipeline BeginDraw(string what, string command, out IntPtr encoder)
-        {
-            MetalGraphicsPipeline pipeline = RequireGraphicsPipeline(what);
-
-            ResolveDeferredDrawable();
-            encoder = _passes.PrepareDraw(command);
-            return pipeline;
-        }
-
         // EVERYTHING A GRAPHICS COMMAND REFUSES ON, and nothing that spends anything. PrepareDraw opens an encoder
         // and consumes the pending clears, so a guard that ran after it would cost a boundary and lose the clears
         // for a command that never happened.
-        MetalGraphicsPipeline RequireGraphicsPipeline(string what)
+        MetalGraphicsPipeline RequireGraphicsPipeline(string what, string command)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             RequireRecording(what);
 
-            return _pipelines.Graphics ?? throw new InvalidOperationException(
+            return _pipelines.Graphics ?? throw new GpuRecordingStateException(
+                GpuRecordingStateRefusal.GraphicsPipelineNotBound,
                 what + " was recorded on a native Metal command list with no graphics pipeline bound. Call "
                 + "SetPipeline first. A pipeline is where the render pipeline state, the rasterizer state and the "
                 + "TOPOLOGY all come from, and on this API the topology is an argument to the draw call itself, "
-                + "so there is nothing to fall back to.");
+                + "so there is nothing to fall back to.")
+            { Backend = GpuBackendKind.MetalNative, Command = command };
         }
     }
 }

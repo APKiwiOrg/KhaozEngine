@@ -274,7 +274,8 @@ namespace KhaozEngine.Gpu
         void ClearColorTarget(uint index, Color rgba);
         /// <summary>Clear the depth attachment.</summary>
         void ClearDepthStencil(float depth);
-        /// <summary>Bind a graphics pipeline.</summary>
+        /// <summary>Bind a graphics pipeline for this recording. Graphics and compute bindings are separate.
+        /// The binding survives framebuffer changes and pass boundaries until replaced or reset by Begin.</summary>
         void SetPipeline(IGpuPipeline p);
         /// <summary>Bind a resource set to graphics slot <paramref name="slot"/>.</summary>
         void SetGraphicsResourceSet(uint slot, IGpuResourceSet set);
@@ -294,11 +295,21 @@ namespace KhaozEngine.Gpu
         void SetScissorRect(uint index, uint x, uint y, uint w, uint h);
         /// <summary>Reset scissor to the full framebuffer for all outputs.</summary>
         void SetFullScissorRects();
-        /// <summary>Non-indexed draw. The fullscreen passes call <c>Draw(3, 1, 0, 0)</c>.</summary>
+        /// <summary>Non-indexed draw. The fullscreen passes call <c>Draw(3, 1, 0, 0)</c>.
+        /// Requires a graphics pipeline bound since the current Begin. Refusal precedes native commands,
+        /// recorded operations, pass creation and consumption of pending clears.</summary>
+        /// <exception cref="GpuRecordingStateException">No graphics pipeline is bound, with
+        /// <see cref="GpuRecordingStateRefusal.GraphicsPipelineNotBound"/>, Backend and Command = "Draw".</exception>
         void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart);
-        /// <summary>Non-indexed draw of a single instance (convenience; the fullscreen-triangle passes use this).</summary>
+        /// <summary>Non-indexed draw of a single instance. Requires the same graphics pipeline binding as
+        /// <see cref="Draw(uint,uint,uint,uint)"/> and refuses before spending any recording state.</summary>
+        /// <exception cref="GpuRecordingStateException">No graphics pipeline is bound, with
+        /// <see cref="GpuRecordingStateRefusal.GraphicsPipelineNotBound"/>, Backend and Command = "Draw".</exception>
         void Draw(uint vertexCount);
-        /// <summary>Indexed (optionally instanced) draw.</summary>
+        /// <summary>Indexed (optionally instanced) draw. Requires a graphics pipeline bound since the current
+        /// Begin, with the same refusal-before-spending rule as <see cref="Draw(uint,uint,uint,uint)"/>.</summary>
+        /// <exception cref="GpuRecordingStateException">No graphics pipeline is bound, with
+        /// <see cref="GpuRecordingStateRefusal.GraphicsPipelineNotBound"/>, Backend and Command = "DrawIndexed".</exception>
         void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart);
         /// <summary>Upload a single unmanaged struct into a buffer at <paramref name="offsetBytes"/>.</summary>
         void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged;
@@ -403,7 +414,8 @@ namespace KhaozEngine.Gpu
         // SV_VertexID leaves them out, the same gap SV_InstanceID has for the first instance.
 
         /// <summary>Bind a compute pipeline. Compute and graphics pipeline bindings are tracked separately, so
-        /// this does not disturb a bound graphics pipeline (and vice versa).</summary>
+        /// this does not disturb a bound graphics pipeline (and vice versa). The binding survives framebuffer
+        /// changes and pass boundaries until replaced or reset by Begin.</summary>
         void SetComputePipeline(IGpuComputePipeline p);
 
         /// <summary>Bind a resource set to COMPUTE slot <paramref name="slot"/>. Compute and graphics resource-set
@@ -424,7 +436,10 @@ namespace KhaozEngine.Gpu
         /// <see cref="IGpuComputeShader.ThreadGroupSizeX"/>/<c>Y</c>/<c>Z</c>, so cover N elements with
         /// <c>(N + groupSize - 1) / groupSize</c> groups and bounds-check in the shader (the tail group runs on
         /// out-of-range indices). See the ordering contract above for what a later command in the same list may
-        /// read.</summary>
+        /// read. Requires a compute pipeline bound since the current Begin. Refusal precedes native commands,
+        /// recorded operations, encoder or pass changes and consumption of pending clears.</summary>
+        /// <exception cref="GpuRecordingStateException">No compute pipeline is bound, with
+        /// <see cref="GpuRecordingStateRefusal.ComputePipelineNotBound"/>, Backend and Command = "Dispatch".</exception>
         void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ);
 
         /// <summary>Encode the start of a timestamp batch in this open list, without submitting. The pool must

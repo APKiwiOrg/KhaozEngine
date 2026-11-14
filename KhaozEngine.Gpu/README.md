@@ -770,6 +770,8 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 | `GpuRecordingStateException`, `GpuRecordingStateRefusal.EndWithoutRecording` | End before a recording has begun or after a failed recording was abandoned | `Backend`, `Command` |
 | `GpuRecordingStateException`, `GpuRecordingStateRefusal.RecordingAlreadySealed` | End when the recording is already sealed | `Backend`, `Command` |
 | `GpuRecordingStateException`, `GpuRecordingStateRefusal.SubmissionWithoutSeal` | submission of a command list without a sealed recording | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.GraphicsPipelineNotBound` | Draw or DrawIndexed without a graphics pipeline in this recording | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.ComputePipelineNotBound` | Dispatch without a compute pipeline in this recording | `Backend`, `Command` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotEnded` | resolving or awaiting a batch that has not ended | `Command`, `Count` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotRecording` | a timestamp write or tail arm before the batch begins | `Command` |
 | `GpuTimestampRangeException`, `GpuTimestampRefusal.FinalIndexRequired` | arming any index except the batch final index | `ParamName`, `ActualValue`, `FinalIndex`, `Count` |

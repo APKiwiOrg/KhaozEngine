@@ -333,6 +333,7 @@ namespace KhaozEngine.Tests.Gpu
 
             VulkanCommandList list = fixture.CreateList();
             list.Begin();
+            VulkanPipelineFixtures.BindBoth(list, fixture, owned);
             list.SetFramebuffer(framebuffer);
             fixture.Trace.Clear();
             return list;

@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.Gpu
     /// any order before the draw, and reproducing the incumbent's sequence buys parity rather than correctness.
     /// Everything the order rows below assert is a position one of the two logs really does record.</para>
     /// </summary>
-    public sealed class MetalDrawPathTests : IDisposable
+    public sealed partial class MetalDrawPathTests : IDisposable
     {
         /// <inheritdoc/>
         public void Dispose()
@@ -539,63 +539,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(owed, render.ClearOn(0));
 
             list.End();
-        }
-
-        /// <summary>
-        /// A DRAW WITH NO GRAPHICS PIPELINE IS REFUSED BEFORE THE PASS OPENS, which is why <c>BeginDraw</c> reads
-        /// the pipeline first: a recording with no pipeline is refused without having spent an encoder on it, so
-        /// the mis-sequenced frame does not also pay a boundary and leave a pass open behind the throw.
-        /// </summary>
-        [Fact]
-        public void ADrawWithNoGraphicsPipelineIsRefusedBeforeThePassOpens()
-        {
-            (MetalCommandList list, FakeMetalEncoderCalls calls, FakeMetalRenderCalls render, _) = NewList();
-
-            list.Begin();
-            list.SetFramebuffer(new RecordedFramebuffer());
-
-            Assert.Throws<InvalidOperationException>(() => list.Draw(3));
-
-            Assert.Empty(render.Passes);
-            Assert.Equal(0, calls.EncoderBoundaries);
-            Assert.Equal(MetalEncoderKind.None, list.Encoders.Open);
-
-            list.SetPipeline(Pipeline());
-            list.Draw(3);
-            Assert.Single(render.Passes);
-            list.End();
-        }
-
-        /// <summary>
-        /// EACH OF THE THREE COMMANDS REFUSES A LIST THAT IS NOT RECORDING WITH ITS OWN MESSAGE, which is the
-        /// difference between "call Begin" and every other reason a draw can fail. The three prefixes are
-        /// asserted whole rather than as a shared substring, because "Drawing" is a prefix of "Drawing indexed"
-        /// and a test written on the short one passes on a backend that answers one message for all three.
-        /// </summary>
-        [Fact]
-        public void TheThreeCommandsRefuseAListThatIsNotRecording()
-        {
-            (MetalCommandList list, FakeMetalEncoderCalls calls, FakeMetalRenderCalls render, _) = NewList();
-
-            var draw = Assert.Throws<GpuRecordingStateException>(() => list.Draw(3));
-            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, draw.Reason);
-            Assert.Equal(GpuBackendKind.MetalNative, draw.Backend);
-            Assert.Equal("Drawing", draw.Command);
-            var instanced = Assert.Throws<GpuRecordingStateException>(() => list.Draw(3, 1, 0, 0));
-            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, instanced.Reason);
-            Assert.Equal(GpuBackendKind.MetalNative, instanced.Backend);
-            Assert.Equal("Drawing", instanced.Command);
-            var indexed = Assert.Throws<GpuRecordingStateException>(() => list.DrawIndexed(3, 1, 0, 0, 0));
-            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, indexed.Reason);
-            Assert.Equal(GpuBackendKind.MetalNative, indexed.Backend);
-            Assert.Equal("Drawing indexed", indexed.Command);
-            var compute = Assert.Throws<GpuRecordingStateException>(() => list.Dispatch(1, 1, 1));
-            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, compute.Reason);
-            Assert.Equal(GpuBackendKind.MetalNative, compute.Backend);
-            Assert.Equal("Dispatching compute work", compute.Command);
-
-            Assert.Empty(calls.Log);
-            Assert.Empty(render.Log);
         }
 
         // ---- The budget (M-T2, section 6.3) ---------------------------------------------------------------

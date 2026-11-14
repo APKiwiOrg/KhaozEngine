@@ -265,6 +265,7 @@ namespace KhaozEngine.Tests.Gpu
                 list.End();
 
                 list.Begin();
+                VulkanPipelineFixtures.BindBoth(list, fixture, owned);
                 list.SetFramebuffer(framebuffer);
                 list.SetVertexBuffer(0, vertices);
                 list.Draw(3);
@@ -563,6 +564,7 @@ namespace KhaozEngine.Tests.Gpu
 
                 list.End();
                 list.Begin();
+                VulkanPipelineFixtures.BindBoth(list, fixture, owned);
                 list.SetFramebuffer(framebuffer);
 
                 Assert.Equal(0, list.Draws.Hazards.WrittenCount);
@@ -595,7 +597,9 @@ namespace KhaozEngine.Tests.Gpu
                 new VulkanExtent(64, 64));
 
             using VulkanCommandList list = fixture.CreateList();
+            using var pipeline = VulkanPipelineFixtures.Graphics(fixture);
             list.Begin();
+            list.SetPipeline(pipeline);
             list.SetFramebuffer(framebuffer);
             list.Draw(3);
             list.End();
@@ -673,6 +677,7 @@ namespace KhaozEngine.Tests.Gpu
 
             VulkanCommandList list = fixture.CreateList();
             list.Begin();
+            VulkanPipelineFixtures.BindBoth(list, fixture, owned);
             list.SetFramebuffer(framebuffer);
 
             // The framebuffer bind itself records nothing native, so the trace starts empty for the assertions

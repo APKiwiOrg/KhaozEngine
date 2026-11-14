@@ -26,7 +26,13 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
             var log = new D3D11EmitterCallLog();
             var emitter = new D3D11CountingEmitter(log);
             using var list = D3D11CommandDrivers.Create(mode, emitter);
-            list.Begin(); list.Draw(3); list.End();
+            using var pipeline = new FakePipeline();
+            using var framebuffer = new FakeFramebuffer(new(null, GpuPixelFormat.R8G8B8A8UNorm), 64, 64);
+            list.Begin();
+            list.SetFramebuffer(framebuffer);
+            list.SetPipeline(pipeline);
+            list.Draw(3);
+            list.End();
             Assert.Equal(immediate ? 1 : 0, log.Count(D3D11OpCode.Draw));
             D3D11CommandDrivers.Submit(new object(), list, ref emitter);
             Assert.Equal(1, log.Count(D3D11OpCode.Draw));

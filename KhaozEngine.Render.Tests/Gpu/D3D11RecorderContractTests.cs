@@ -111,12 +111,15 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList b = D3D11CommandDrivers.Create(D3D11RecordMode.Immediate, deviceEmitter);
 
             a.Begin();
+            a.SetPipeline(new FakePipeline());
             a.Draw(1);
             b.Begin();
+            b.SetPipeline(new FakePipeline());
             b.Draw(2);
 
             Assert.Equal(
-                new[] { "Begin()", "Draw(1,1,0,0)", "Begin()", "Draw(2,1,0,0)" },
+                new[] { "Begin()", "SetPipeline(r0)", "Draw(1,1,0,0)",
+                    "Begin()", "SetPipeline(r1)", "Draw(2,1,0,0)" },
                 log.Trace);
         }
 
@@ -155,6 +158,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 deferred.Begin();
                 deferred.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+                deferred.SetPipeline(D3D11BindFixtures.Pipeline());
                 deferred.Draw(1);
                 deferred.End();
 
@@ -170,13 +174,14 @@ namespace KhaozEngine.Tests.Gpu
             {
                 immediate.Begin();
                 immediate.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+                immediate.SetPipeline(D3D11BindFixtures.Pipeline());
                 immediate.Draw(1);
                 immediate.End();
 
                 Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => immediate.Draw(2)).Reason);
             }
 
-            Assert.Equal(new[] { "Begin()", "SetFramebuffer(r0)", "Draw(1,1,0,0)", "End()" }, deferredLog.Trace);
+            Assert.Equal(new[] { "Begin()", "SetFramebuffer(r0)", "SetPipeline(r1)", "Draw(1,1,0,0)", "End()" }, deferredLog.Trace);
             Assert.Equal(deferredLog.Trace, immediateLog.Trace);
         }
 
@@ -188,6 +193,7 @@ namespace KhaozEngine.Tests.Gpu
             using D3D11CommandRecorder<D3D11StreamEmitter> list = D3D11CommandDrivers.CreateDeferred();
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(1);
             list.End();
             int recorded = list.Emitter.Stream.Count;
@@ -297,6 +303,7 @@ namespace KhaozEngine.Tests.Gpu
             D3D11CommandStream stream = list.Emitter.Stream;
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(1);
             list.Dispose();
 

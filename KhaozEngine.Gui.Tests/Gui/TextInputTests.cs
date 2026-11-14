@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Gui;
+using KhaozEngine.Platform;
 using KhaozEngine.Render2D;
 using KhaozEngine.Tests.App;
 using KhaozEngine.Windowing;
@@ -50,15 +51,40 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(field.IsFocused);
         }
 
-        [Fact]
-        public void Tap_outside_unfocuses()
+        [Theory]
+        [InlineData(null, new Key[] { }, "ac")]
+        [InlineData("b", new Key[] { }, "acb")]
+        [InlineData(null, new[] { Key.B }, "acb")]
+        [InlineData(null, new[] { Key.Backspace }, "a")]
+        [InlineData(null, new[] { Key.LeftControl, Key.V }, "acXY")]
+        [InlineData(null, new[] { Key.LeftSuper, Key.V }, "acXY")]
+        public void Tap_outside_unfocuses(string? committedText, Key[] pressed, string expected)
         {
-            var field = new TextInput(Field);
-            var p = new Pointer();
-            Tap(field, p, Inside);
-            Assert.True(field.IsFocused);
-            Tap(field, p, Outside);
-            Assert.False(field.IsFocused);
+            // Regression #1466 also affects the single-line sibling's release-frame edits.
+            Clipboard.RegisterTextProvider(static () => "XY", static _ => true);
+            try
+            {
+                var field = new TextInput(Field);
+                var p = new Pointer();
+                Tap(field, p, Inside);
+                Assert.True(field.IsFocused);
+                field.SetText("ac");
+                InputState press = Frame(Outside, true);
+                p.Update(press);
+                field.Update(p, press, 0f);
+
+                InputState release = Frame(Outside, false, pressed, committedText);
+                p.Update(release);
+                Assert.False(field.Update(p, release, 0f));
+
+                Assert.Equal(expected, field.Text);
+                Assert.Equal(expected != "ac", field.TextChanged);
+                Assert.False(field.IsFocused);
+            }
+            finally
+            {
+                Clipboard.ClearTextProvider();
+            }
         }
 
         [Fact]

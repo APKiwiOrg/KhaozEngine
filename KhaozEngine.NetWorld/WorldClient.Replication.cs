@@ -95,7 +95,7 @@ public sealed partial class WorldClient
             or MoveProtocol.ServerFrameKind.RebuildKeyframeChunk;
         if (!owned) return rebuild.OwnsLiveness && (kind is MoveProtocol.ServerFrameKind.Snapshot
             or MoveProtocol.ServerFrameKind.Delta);
-        if (state == WorldConnectionState.Disconnected) return true;
+        if (AttemptEnded) return true;
         string? error;
         switch (kind)
         {
@@ -156,10 +156,9 @@ public sealed partial class WorldClient
     // reconnect. A client-detected failure is always one of the three terminal reasons.
     private void EndOnReplicationFailure(ReplicationFailure failure)
     {
-        if (state == WorldConnectionState.Disconnected) return;
+        if (AttemptEnded) return;
         disconnectReason = failure.Reason;
         disconnectReasonDetail = failure.Detail;
-        net.Disconnect();
         FailAttempt(allowReconnect: !failure.IsTerminal);
     }
 

@@ -27374,6 +27374,12 @@ renderer or content-streaming system built directly on `KhaozEngine.Gpu` should 
 anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
 drain at all.
 
+Native Vulkan additionally collects earlier disposed resources when `WaitForIdle` returns, including memory
+chunks retired by their destruction. Headless and render-to-texture callers can therefore reclaim those
+resources without `Present`. A pool keeps its last backing chunk for reuse. Submission and fence polling do
+not collect the backend's unordered retire list, so loops replacing resources still need periodic
+`WaitForIdle` or `Present` even after their completion fences signal.
+
 **No `Scene3D` unload drains, since 17.38.0.** `UnloadMesh`, `UnloadSkinnedMesh`, `UnloadTexture`,
 `UnloadSplatMaterial` and `UnloadTileGroundMaterial` all hand their GPU resources to a `GpuRetireQueue` instead. At the next
 `Scene3D.Begin` the queue seals

@@ -1477,10 +1477,17 @@ first-ever transition, and a swapchain image being reacquired for a frame that w
 asserted at the point of use.
 
 **Deferred disposal (V-F9).** `Dispose` on any resource records the device's current timeline value and moves
-the handle to a retire list drained at frame boundaries and at device teardown. That turns "mid-life resource
+the handle to a retire list drained at frame boundaries, after `WaitForIdle`, and at device teardown. The idle
+path snapshots the allocation high-water under the short submit lock after the setup flush, then waits without
+holding that lock and drains through the snapshot twice. The second pass releases chunks retired by resource
+destruction. This also releases entries gated on a failed-submit gap without waiting for an unreachable signal,
+while resources retired against newer unfinished submissions remain held. Native destruction is skipped after
+device loss. The unordered retire list needs a full scan, so submission and fence polls do not collect it.
+Headless callers replacing resources periodically call `WaitForIdle` or `Present` to reclaim them.
+That turns "mid-life resource
 disposal racing queued async work", one of the four defects the CI workflow header records as fixed
 engine-side, from convention-safe into a structural property of the backend. The engine's own `WaitForIdle`
-calls stay, because they are the seam's contract and the Veldrid leg still needs them.
+calls stay, because they are the portable seam's contract.
 
 **Liveness (V-F10).** The `DeviceLiveness` latch is reproduced exactly: a shared volatile token flipped inside
 the lifecycle lock before the real device is destroyed, every wrapper's `Dispose` gated on it,

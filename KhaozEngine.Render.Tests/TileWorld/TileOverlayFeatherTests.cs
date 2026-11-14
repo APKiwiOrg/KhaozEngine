@@ -48,23 +48,52 @@ public sealed class TileOverlayFeatherTests
         Assert.Contains(vertices, v => RoadWeight(v) > 0.99f);
     }
 
-    [Fact]
-    public void Joined_regions_agree_on_the_fade_and_the_solid_center()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0.25f)]
+    public void Joined_regions_agree_on_the_fade_and_the_solid_center(float? materialWidth)
     {
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox();
+        catalogs.Material(6)!.Feather = materialWidth is { } width ? new() { WidthMetres = width } : null;
         TileWorldDocument doc = World();
         doc.GetOrCreateRegion(new RegionCoord(1, 0));
         for (int z = 8; z <= 12; z++)
             for (int x = 61; x <= 66; x++) doc.SetUnderlay(x, z, 0, 1);
         Road(doc, 63, 10);
         Road(doc, 64, 10);
-        ModelVertex[] west = Build(doc).Vertices;
-        ModelVertex[] east = TileGroundMesher.Build(doc, TileRenderTestData.Catalogs, new RegionCoord(1, 0), 0)!.Vertices;
-        foreach (float z in new[] { 10f, 10.0625f, 10.125f, 10.5f, 11f })
+        ModelVertex[] west = TileGroundMesher.Build(doc, catalogs, new RegionCoord(0, 0), 0)!.Vertices;
+        ModelVertex[] east = TileGroundMesher.Build(doc, catalogs, new RegionCoord(1, 0), 0)!.Vertices;
+        float[] edgePoints = west.Where(v => Math.Abs(v.Position.X - 64) < 0.0001f
+            && -v.Position.Z >= 10 && -v.Position.Z <= 11).Select(v => -v.Position.Z).Distinct().ToArray();
+        Assert.NotEmpty(edgePoints);
+        foreach (float z in edgePoints)
         {
             float a = RoadWeight(At(west, 64, z).First());
+            Assert.All(At(west, 64, z), v => Assert.Equal(a, RoadWeight(v), 5));
             Assert.All(At(east, 0, z), v => Assert.Equal(a, RoadWeight(v), 5));
         }
         Assert.All(At(west, 64, 10.5f), v => Assert.Equal(1f, RoadWeight(v), 5));
+    }
+
+    [Theory]
+    [InlineData(null, 0.25f, 0.25f, false)]
+    [InlineData(0.25f, 0.125f, 0.25f, false)]
+    [InlineData(0.125f, 0.25f, 0.125f, false)]
+    [InlineData(2f, 0.125f, 0.5f, false)]
+    [InlineData(null, 0.25f, 0.25f, true)]
+    public void Feather_weights_reach_full_overlay_at_the_material_width_or_the_default(
+        float? materialWidth, float optionWidth, float effectiveWidth, bool missingMaterial)
+    {
+        TileWorldDocument doc = World();
+        Road(doc, 10, 10);
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox();
+        catalogs.Material(6)!.Feather = materialWidth is { } width ? new() { WidthMetres = width } : null;
+        if (missingMaterial) doc.SetOverlay(10, 10, 0, 99);
+        ModelVertex[] vertices = TileGroundMesher.Build(doc, catalogs, new RegionCoord(0, 0), 0,
+            new TileGroundMesherOptions { OverlayFeatherWidthMetres = optionWidth })!.Vertices;
+        Assert.All(At(vertices, 10 + effectiveWidth, 10.5f), v => Assert.Equal(1f, RoadWeight(v), 5));
+        Assert.All(At(vertices, 10 + effectiveWidth * 0.5f, 10.5f), v => Assert.InRange(RoadWeight(v), 0.01f, 0.99f));
+        Assert.All(At(vertices, 10, 10.5f), v => Assert.Equal(0f, RoadWeight(v), 5));
     }
 
     [Fact]

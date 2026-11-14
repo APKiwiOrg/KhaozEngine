@@ -19,7 +19,7 @@ public sealed record TileWorldIssue(string Code, string Message, RegionCoord? Re
 /// <c>region.planeCount</c>, <c>material.missing</c>, <c>overlay.shape</c>, <c>archetype.missing</c>,
 /// <c>object.plane</c>, <c>object.footprint</c>, <c>object.duplicateId</c>, <c>object.region</c>,
 /// <c>marker.plane</c>, <c>marker.duplicateName</c>, <c>marker.region</c>,
-/// <c>foliage.archetype</c>, <c>foliage.underlay</c>, <c>material.steep</c>. The clearance codes
+/// <c>foliage.archetype</c>, <c>foliage.underlay</c>, <c>material.steep</c>, <c>material.relief</c>. The clearance codes
 /// <c>clearance.overlap</c>, <c>clearance.mesh</c> and <c>clearance.rule</c> share this issue type but come only from
 /// <see cref="TileWorldClearance.Check"/>, never from <see cref="Validate"/>, which has no meshes to read.</summary>
 public static class TileWorldValidator
@@ -39,6 +39,9 @@ public static class TileWorldValidator
         foreach (GroundMaterial material in catalogs.Materials.Values.OrderBy(m => m.Id))
             if (GroundMaterialSteepRules.Problem(material, catalogs) is { } problem)
                 issues.Add(new("material.steep", problem, null, null));
+        foreach (GroundMaterial material in catalogs.Materials.Values.OrderBy(m => m.Id))
+            if (GroundMaterialReliefRules.Problem(material) is { } problem)
+                issues.Add(new("material.relief", problem, null, null));
 
         var seenIds = new HashSet<long>();
         var seenMarkers = new HashSet<string>(StringComparer.Ordinal);

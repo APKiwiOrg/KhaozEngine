@@ -236,6 +236,11 @@ region file and is null for these in-memory attachment, restoration and save che
 | `SteepToOutsideRightAngle` | A resolved steep blend end outside (0, 90) | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `toDegrees`, `FromDegrees`, `ToDegrees` |
 | `SteepBandUnordered` | A resolved steep blend start not below its end | `SourceName`, `MaterialId`, `MaterialName`, `FromDegrees`, `ToDegrees`, `FromIsDefault`, `ToIsDefault` |
 | `SteepCosinesCollapsed` | A steep blend whose endpoint cosines cannot be ordered in single precision | `SourceName`, `MaterialId`, `MaterialName`, `FromDegrees`, `ToDegrees` |
+| `GroundMaterialHeightSharpnessWithoutHeight` | A height blend sharpness on a material with no height map | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `heightBlendSharpness` |
+| `GroundMaterialHeightSharpnessOutsideRange` | A height blend sharpness outside 1 to 64 or not a number | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `heightBlendSharpness`, `Value` |
+| `GroundMaterialFeatherWidthInvalid` | A feather width that is not a finite number above 0 | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `feather.widthMetres`, `Value` |
+| `GroundMaterialFeatherBreakupOutsideRange` | A feather breakup outside 0 to 1 or not a number | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `feather.breakup`, `Value` |
+| `GroundMaterialAntiTilingUndefined` | An anti-tiling value the enum does not define | `SourceName`, `MaterialId`, `MaterialName`, `Field` = `antiTiling`, `Value` |
 | `WorldValidationFailed` | A document with semantic validation issues | `WorldId`, total `IssueCount`, complete owned read-only `Issues` snapshot |
 | `PrefabSizeNonPositive` | A prefab whose width or height is not positive | `PrefabName`, `Width`, `Height`, plus `SourceName` on load |
 | `PrefabPlaneCountNonPositive` | A prefab file whose plane count is not positive | `SourceName`, `PrefabName`, `PlaneCount` |
@@ -322,7 +327,8 @@ failing instance locations and immutable `KhaozEngine.Content.JsonSchemaFinding`
 Locations are JSON Pointers, including unknown properties such as `/materials/0/steep/chain`. Both collections
 are owned read-only snapshots. `TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. If the
 resource is missing, it throws `SchemaResourceMissing` with `ResourceName`. `GroundMaterial` is
-`{ Id, Name, Color, Texture, Kind, TilesPerMetre, Steep }` (`Ground` or `Water`, id 0 reserved for void) and
+`{ Id, Name, Color, Texture, NormalTexture, RoughnessTexture, HeightTexture, HeightBlendSharpness, Feather,
+AntiTiling, Kind, TilesPerMetre, Steep }` (`Ground` or `Water`, id 0 reserved for void) and
 `TileObjectArchetype` is
 `{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces, CollisionHeight, CollisionBoxes }`, with
 `TileCollisionKind` one of `None`, `Solid`, `Wall`, `WallCorner`, `Diagonal`. `TileFootprint.Rotated` and
@@ -457,6 +463,35 @@ in single precision cosine, which is what the renderer blends on. `Problem` repo
 finding as developer prose without throwing. `OfCatalogs` digests the companion only when present, so a
 catalog without companions keeps its digest.
 
+The relief fields give a material maps and edge behaviour for the textured ground renderer (the relief tile-ground
+programs, see `TileGroundRelief` in the Render3D README). All are optional, and a catalog that sets none of them
+renders exactly as before.
+
+- `normalTexture`, `roughnessTexture` and `heightTexture` are map paths, resolved like `texture` against the
+  catalog FILE. A normal map uses the glTF convention, +X right and +Y toward the top of the image (green up), the
+  same as the model pass, so one authoring path serves both. Roughness and height are read from the GREEN channel,
+  which is a grayscale image's value and where a glTF metallic-roughness texture keeps roughness. A height of 0.5
+  is level with a material that has no height map, so stones above it win a blend and joints below it fill.
+- `heightBlendSharpness` (1 to 64, default 8) shapes how crisply the height map resolves blends, from a soft
+  height-biased ramp to a cut along the stones. It requires `heightTexture`, because it shapes nothing else.
+- `feather` is `{ "widthMetres": 0.3, "breakup": 0.6 }`, both optional. `widthMetres` replaces the mesher's
+  `OverlayFeatherWidthMetres` on this material's tiles marked `FeatherOverlay`, so a cut-stone apron stays crisp
+  beside a soft dirt track, and is still capped at half a tile. `breakup` (0 to 1) wanders the feathered edge
+  inward by world-space noise. The width belongs to the material rather than to a tile because the look of an
+  edge is the material's, one width per material keeps a connected overlay seamless, and a per-tile width would
+  need a tile format change and per-tile authoring.
+- `antiTiling` is `None`, `Offset` or `Rotate`, hex-tiling of the top-down taps. It suits stochastic textures
+  such as grass, dirt and gravel and shatters a mosaic of discrete stones, so leave cobble and flagstones at None.
+
+The schema refuses a sharpness outside 1 to 64, a width not above 0, a breakup outside 0 to 1, an unknown anti-tiling
+name and an unknown key inside `feather`. `GroundMaterialReliefRules.ThrowIfInvalid` refuses the same values
+edited in memory, NaN included, plus a sharpness without a height map, throwing `TileWorldException` with one of
+the five `GroundMaterial` relief reasons in the refusal table and `SourceName`, `MaterialId`, `MaterialName`,
+`Field` and `Value` (the anti-tiling value as a number). Materials are checked in ascending id order and
+`Problem(material)` reports the same finding as prose. `GroundMaterialRelief` holds the sharpness bounds, which
+match the renderer's. `OfCatalogs` digests the relief fields only when one is authored, so a catalog without them
+keeps its digest, and an empty `feather` object is distinct from none.
+
 `TileWorldValidator.Validate(doc, catalogs)` returns `TileWorldIssue(Code, Message, Region, Tile)` records and
 never throws on bad content. `ValidateOrThrow` throws `WorldValidationFailed` with `WorldId`, total
 `IssueCount` and the complete `Issues` list, including findings beyond the first five summarized in the
@@ -465,8 +500,8 @@ collection or casting the exposed list cannot mutate it. The codes are stable
 and callers may branch on them: `header.planeCount`, `header.tileSize`, `header.planeHeight`,
 `region.planeCount`, `material.missing`, `overlay.shape`, `archetype.missing`, `object.plane`,
 `object.footprint`, `object.duplicateId`, `object.region`, `marker.plane`, `marker.duplicateName`,
-`marker.region`, `foliage.archetype`, `foliage.underlay`, `material.steep`. The last reports a steep companion
-edited unsound in memory after the loader accepted it. The three `clearance.*` codes below share
+`marker.region`, `foliage.archetype`, `foliage.underlay`, `material.steep`, `material.relief`. The last two report
+a steep companion or a relief field edited unsound in memory after the loader accepted it. The three `clearance.*` codes below share
 `TileWorldIssue` but never come from `Validate`.
 
 ## Clearance

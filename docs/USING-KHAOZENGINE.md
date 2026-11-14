@@ -13406,7 +13406,8 @@ prefab, light or support member that is absent, including inside a child or over
 `SchemaMemberMissing` at a path rooted at the document naming the member, so
 `$.children[0].surface.indoorSpan.parentSpace` locates an indoor span without its parent space. That missing-member
 path is rooted at a map's prefab block member, such as `$.prefabs`, and at a support file's member, such as
-`$.surfaces`. Other refusals from those blocks keep paths that start at the block. Other child and override converter
+`$.surfaces`. In a map, other refusals from those blocks keep paths that start at the block. A support file runs the
+preflight over the whole file first, so its capacity, null and duplicate refusals are rooted at the file. Other child and override converter
 member paths are relative to that converter's object, with placement payload fields below `$.value`. Null prefab members and blank marker-adoption identity fields use
 `SchemaValueRequired`. Marker option and adoption schema guards identify their refused field through
 `FieldPath`. Prefab patch dimensions outside 1 through 64 inclusive use `BoundsInvalid`, with `Width`,

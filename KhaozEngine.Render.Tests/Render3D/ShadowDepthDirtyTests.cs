@@ -9,8 +9,8 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// Headless coverage for the shadow depth-pass dirty-skip decision (Scene3D.ShadowDepthPassDirty /
     /// ShadowCastersChanged). The pass re-renders the persistent light-space depth map only when a shadow-relevant
-    /// input changed since the last rendered pass, and otherwise it reuses the prior map. These pure predicates carry the
-    /// skip logic, so they are unit-tested without a GPU (the GPU proof that the reuse is pixel-identical lives in
+    /// input changed since the last rendered pass, and otherwise it reuses the prior map. Pure predicates and the
+    /// fake-device scene exercise the skip logic without a GPU (the proof that reuse is pixel-identical lives in
     /// KhaozEngine.Tests/Gpu/ShadowDepthDirtySkipGpuTests).
     /// </summary>
     public sealed class ShadowDepthDirtyTests
@@ -155,17 +155,42 @@ namespace KhaozEngine.Tests.Render3D
                 skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: now != held, casterDataChanged: false));
         }
 
-        [Fact]
-        public void A_changed_dissolve_is_a_change()
+        [Theory]
+        [InlineData(0f, 0f, 0.4f, 0f, true)]
+        [InlineData(0.4f, 0f, 0.4f, 1f, true)]
+        [InlineData(0.4f, 0f, 0.4f, 0f, false)]
+        [InlineData(0.4f, 0f, 0.4f, 0.5f, false)]
+        [InlineData(0.4f, 0.75f, 0.4f, 1f, false)]
+        public void Dissolve_changes_dirty_the_key_light_atlas(float beforeThreshold, float beforeComplement,
+            float afterThreshold, float afterComplement, bool expectedDirty)
         {
-            // A caster whose dissolve moved records DIFFERENT depth (the dissolve-aware depth pass discards more of
-            // it), so the signature must trip even though the caster set and every transform held still - the case a
-            // matrix-only signature missed, e.g. an HLOD crossfade ramping under a camera parked on a texel.
-            var runs = Runs((3, 1, 1));
-            var solid = new List<Scene3D.ShadowCasterInstance> { new(Matrix4x4.Identity, 0f) };
-            var fading = new List<Scene3D.ShadowCasterInstance> { new(Matrix4x4.Identity, 0.4f) };
-            Assert.True(Scene3D.ShadowCastersChanged(runs, solid, runs, fading));
-            Assert.False(Scene3D.ShadowCastersChanged(runs, fading, runs, fading));
+            // #1131: a complement flip changes depth even when the threshold holds. Both caches read the flag
+            // above one half, so values that keep the same noise set must not dirty an otherwise unchanged atlas.
+            using var rig = new MotionTestScene();
+            Scene3D scene = rig.Scene;
+            scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+            scene.RequestShadowMapLayout(256, 1);
+            MeshHandle mesh = scene.LoadMesh(MeshPrimitives.Box());
+
+            ShadowPassDiagnostics Frame(float threshold, float complement)
+            {
+                scene.Begin();
+                scene.Draw(new RigidInstanceDraw(mesh, Matrix4x4.Identity)
+                {
+                    Dissolve = threshold,
+                    DissolveComplement = complement,
+                });
+                rig.Render();
+                return scene.LastShadowPassDiagnostics;
+            }
+
+            Assert.True(Frame(beforeThreshold, beforeComplement).Rendered);
+            ShadowPassDiagnostics changed = Frame(afterThreshold, afterComplement);
+            Assert.True(changed.HadPrevious);
+            Assert.False(changed.LightMatrixChanged);
+            Assert.Equal(expectedDirty, changed.CasterDataChanged);
+            Assert.Equal(expectedDirty, changed.Rendered);
+            Assert.False(Frame(afterThreshold, afterComplement).Rendered);
         }
 
         [Fact]

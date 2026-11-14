@@ -466,10 +466,14 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a device without depth-sample support
   (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The atlas persists across frames, so the pass
   **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY cascade's fitted matrix, the rigid
-  caster set/transforms, the resolution, any animated skinned caster present, or the skinned casters the last
-  rendered pass drew having all gone) and otherwise reuses the prior atlas,
-  so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
-  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a simple diagnostics signal, or
+  caster set/transforms, dissolve threshold or `DissolveComplement` flag, interior-cut state, the resolution,
+  any animated skinned caster present, or the skinned casters the last rendered pass drew having all gone)
+  and otherwise reuses the prior atlas,
+  so a mostly-static scene stops repainting it every frame. The key-light threshold comparison stays exact,
+  and the complement flag is set above `0.5f`, matching the point-light signature and shader. A complement flip
+  alone therefore re-renders the atlas, while an otherwise unchanged frame reuses it.
+  A skipped pass adds zero shadow draw calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame`
+  for a simple diagnostics signal, or
   `Scene3D.LastShadowPassDiagnostics` (a `ShadowPassDiagnostics`) for the whole last-frame decision: `Rendered` /
   `Skipped` / `HadPrevious`, one bit per dirty reason (`AnySkinnedCaster`, `SkinnedCastersCleared`,
   `ResolutionChanged`, `LightMatrixChanged`,

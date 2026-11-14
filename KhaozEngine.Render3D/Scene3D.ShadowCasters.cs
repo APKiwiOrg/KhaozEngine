@@ -62,11 +62,11 @@ namespace KhaozEngine.Render3D
         /// compares. An all-opaque frame yields one span per run, so this is the pre-policy run list exactly.</summary>
         internal readonly record struct ShadowCasterSpan(int Index, int Generation, uint Start, uint Count, ShadowCastKind Kind);
 
-        /// <summary>One captured caster instance: its uploaded world matrix, dissolve threshold and interior opt-in.
-        /// These all change the recorded depth, so a dissolve or cut bit that changes while the light matrices
-        /// and transforms hold still must still re-render the atlas.</summary>
+        /// <summary>One captured caster instance: its uploaded world matrix, dissolve threshold, complement flag
+        /// and interior opt-in. These all change the recorded depth, so a dissolve threshold, complement or cut bit
+        /// that changes while the light matrices and transforms hold still must still re-render the atlas.</summary>
         internal readonly record struct ShadowCasterInstance(Matrix4x4 Model, float Dissolve, bool CutInsideInteriors = false,
-            AnchoredRigidTransform? Anchored = null);
+            AnchoredRigidTransform? Anchored = null, bool DissolveComplement = false);
 
         // Per-instance caster classification, index-aligned to _instanceData (filled by GroupInstances, which is the
         // one place that knows each uploaded slot's source instance). Reused, never per-frame allocated.
@@ -234,7 +234,8 @@ namespace KhaozEngine.Render3D
                     for (uint s = 0; s < span.Count; s++)
                     {
                         ModelRenderer.InstanceData d = _instanceData[(int)(span.Start + s)];
-                        instances.Add(new ShadowCasterInstance(d.Model, d.Dissolve.X, d.SpecParams.W > 0.5f, InstanceAnchor((int)(span.Start + s))));
+                        instances.Add(new ShadowCasterInstance(d.Model, d.Dissolve.X, d.SpecParams.W > 0.5f,
+                            InstanceAnchor((int)(span.Start + s)), d.DissolveComplement > 0.5f));
                         mesh.Bounds.WorldSphere(d.Model, out Vector3 bc, out float br);
                         _shadowCasterSpheres.Add(new Vector4(bc, br));
                     }
@@ -264,7 +265,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Pure sequence compare of two captured shadow-caster signatures (each a per-span mesh handle + instance
-        /// count + cast kind list, and the flat per-instance world-matrix + dissolve list, in draw order). Uploaded
+        /// count + cast kind list, and the flat per-instance world-matrix + dissolve threshold/complement list,
+        /// in draw order). Uploaded
         /// offsets and non-caster gaps are ignored: adjacent spans of the same mesh, generation and cast kind are
         /// compared as one group, so compacting receive-only instances never dirties an unchanged atlas. Returns
         /// <c>true</c> when they DIFFER, so the depth map must re-render. Both signatures are captured by

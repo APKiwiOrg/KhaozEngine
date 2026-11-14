@@ -36,7 +36,8 @@ internal static class MapPrefabJson
         {
             foreach (JsonPropertyInfo property in info.Properties)
             {
-                if (property.Name is "parentSpace" or "retired")
+                // Only an instance's parentSpace is optional. An indoor span's parentSpace stays required.
+                if (property.Name == "retired" || info.Type == typeof(MapPrefabInstance) && property.Name == "parentSpace")
                 {
                     property.IsRequired = false;
                     if (property.Name == "parentSpace") property.ShouldSerialize = (_, value) => value is not null;
@@ -346,8 +347,10 @@ internal static class MapPrefabJson
                 int index = 0;
                 foreach (JsonElement item in node.EnumerateArray()) Visit(item, name, $"{path}[{index++}]", parent);
             }
-            else if (node.ValueKind == JsonValueKind.Null && !(parent == "supportBinding" && name is ("surfaceId" or "spaceId" or "referenceY" or "searchBelow" or "searchAbove")) && name is not ("numericId" or "parentSpace" or "owner" or "shadowExclusion" or "instanceId" or "previous" or "transform" or "assetId" or "tags" or
-                "parent" or "aliasOf" or "sourcePatch" or "heightUnits" or "opening" or "surfaceId" or "bandTop" or "paintTargetSurfaceId" or "indoorSpan" or "anchor"))
+            // An instance's parentSpace is optional. An indoor span's parentSpace is required, so its null refuses here.
+            else if (node.ValueKind == JsonValueKind.Null && !(parent == "supportBinding" && name is ("surfaceId" or "spaceId" or "referenceY" or "searchBelow" or "searchAbove")) &&
+                (name == "parentSpace" && parent == "indoorSpan" || name is not ("numericId" or "parentSpace" or "owner" or "shadowExclusion" or "instanceId" or "previous" or "transform" or "assetId" or "tags" or
+                "parent" or "aliasOf" or "sourcePatch" or "heightUnits" or "opening" or "surfaceId" or "bandTop" or "paintTargetSurfaceId" or "indoorSpan" or "anchor")))
                 throw new MapDocumentException(MapDocumentRefusal.SchemaValueRequired, "Prefab member '" + name + "' must not be null.") { FieldPath = path };
         }
     }

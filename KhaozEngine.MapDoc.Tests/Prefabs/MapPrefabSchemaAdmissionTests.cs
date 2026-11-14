@@ -1,8 +1,11 @@
 using System;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Surfaces;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Prefabs;
@@ -35,6 +38,8 @@ public sealed class MapPrefabSchemaAdmissionTests
     [InlineData("""{"children":[{"key":null}]}""", """{"children":[{"key":{}}]}""", MapDocumentRefusal.SchemaValueRequired, "$.children[0].key")]
     [InlineData("""{"heightMode":"Support","supportBinding":{"surfaceId":null}}""", """{"heightMode":"Support","supportBinding":{"surfaceId":"floor"}}""", MapDocumentRefusal.SchemaValueRequired, "$.supportBinding.surfaceId")]
     [InlineData("null", "{}", MapDocumentRefusal.SchemaValueRequired, "$")]
+    // #1398. Only an instance's parentSpace may be null. An indoor span's parentSpace is required.
+    [InlineData("""{"surface":{"indoorSpan":{"parentSpace":null}}}""", """{"parentSpace":null,"surface":{"indoorSpan":{"parentSpace":{}}}}""", MapDocumentRefusal.SchemaValueRequired, "$.surface.indoorSpan.parentSpace")]
     public void Preflight_identifies_the_actual_nested_field(string refused, string accepted, MapDocumentRefusal reason, string fieldPath)
     {
         using var invalid = JsonDocument.Parse(refused);
@@ -125,6 +130,32 @@ public sealed class MapPrefabSchemaAdmissionTests
         Assert.Equal("m", error.MarkerId);
         Assert.Equal(fieldPath, error.FieldPath);
         Assert.Single(MapPrefabJson.ReadMarkerAdoption(Row("""{"explicitY":3.4028235e38}""", "-3.4028235e38")));
+    }
+
+    // #1398. A prefab file whose indoor span parentSpace is null or absent is refused on read with the member, instead
+    // of loading a null that crashes validation in the reference walker.
+    [Theory]
+    [InlineData("null", MapDocumentRefusal.SchemaValueRequired, "$.children[0].surface.indoorSpan.parentSpace")]
+    [InlineData("missing", MapDocumentRefusal.SchemaMalformed, "$.indoorSpan")]
+    public void Prefab_file_requires_the_indoor_span_parent_space(string form, MapDocumentRefusal reason, string fieldPath)
+    {
+        var floor = PrefabFixtures.SurfaceChild("floor", MapSurfaceRole.SupportFloor, PrefabFixtures.Patch("floor", 1, 1, 0));
+        var indoor = floor with
+        {
+            Surface = floor.Surface with { IndoorSpan = new("span", new("room", new("floor", 0, 0)), 0, 1, []) },
+            References = PrefabFixtures.Slots(floor.References.ToArray<object>().Append(
+                PrefabFixtures.Ref("/surface/indoorSpan/parentSpace", "room", "floor", MapPrefabReferenceScope.World)).ToArray()),
+        };
+        byte[] bytes = MapPrefabFile.Write(new MapPrefabAsset(1, "indoor", [indoor]));
+        var json = JsonNode.Parse(bytes)!;
+        var span = json["children"]![0]!["surface"]!["indoorSpan"]!.AsObject();
+        if (form == "null") span["parentSpace"] = null;
+        else span.Remove("parentSpace");
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(Encoding.UTF8.GetBytes(json.ToJsonString()), "indoor"));
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(fieldPath, error.FieldPath);
+        Assert.Equal("indoor", error.ResourceId);
+        Assert.NotNull(Assert.IsType<MapPrefabSurfaceChild>(Assert.Single(MapPrefabFile.Read(bytes, "indoor").Children)).Surface.IndoorSpan);
     }
 
     [Fact]

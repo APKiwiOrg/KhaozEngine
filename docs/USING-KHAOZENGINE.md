@@ -12692,6 +12692,11 @@ wrappers preserve this structured cause and add their source context without cha
 Throwing validation uses the first finding, attaches the complete `Findings` snapshot and retains its original cause.
 The complete snapshot survives state-read exceptions wrapping aggregate document refusals too.
 An unclassified state producer failure uses `PrefabStateUnreadable` with `DocumentId`, without a fabricated field path.
+A null required member in prefab state constructed in code, including the references and lists inside a child's
+topology record, indoor span and water covers, uses `SchemaValueRequired` with the member's `FieldPath` and its owner
+(`InstanceId`, local `Child`, roof `EntityId`, or `DocumentId` and `Index` for a transfer row). Duplicate transfers
+refuse as `IdentityDuplicate`. A prefab file whose indoor span `parentSpace` is null or absent is refused on read. A
+`NullReferenceException` during validation is a defect and escapes rather than becoming `PrefabStateUnreadable`.
 Prefab expansion preflight uses `WorkCapacityExceeded`, selecting the first failing expansion-limit name in
 `Budget` with the measured `ActualCount` and inclusive `Limit`. Payload-byte budgets also carry `ActualByteCount`.
 Checked count overflow names `PrefabExpansionCount`, carries `Limit = long.MaxValue` and leaves `ActualCount` null.

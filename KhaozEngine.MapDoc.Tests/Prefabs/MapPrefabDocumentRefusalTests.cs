@@ -173,6 +173,8 @@ public sealed class MapPrefabDocumentRefusalTests
     [InlineData("source-missing", MapDocumentRefusal.AuthoredOwnershipMismatch)]
     [InlineData("source-mismatch", MapDocumentRefusal.AuthoredOwnershipMismatch)]
     [InlineData("source-foreign", MapDocumentRefusal.AuthoredOwnershipMismatch)]
+    // #1398. Repeated transfers refuse as duplicates before the source inventory reads them by key.
+    [InlineData("source-duplicate", MapDocumentRefusal.IdentityDuplicate)]
     public void Binding_inventory_and_liveness_refusals_keep_the_typed_owner(string fault, MapDocumentRefusal reason)
     {
         var fixture = PrefabFixtures.Create("roomless");
@@ -192,6 +194,7 @@ public sealed class MapPrefabDocumentRefusalTests
         {
             "source-dormant" or "source-foreign" => [new(original.Id, binding)],
             "source-mismatch" => [new(original.Id, binding with { WorldId = "other" })],
+            "source-duplicate" => [new(original.Id, binding), new(original.Id, binding)],
             _ => [],
         };
         var invalid = original with { Removed = source, Unpacked = source, Bindings = new(entries) };
@@ -201,6 +204,7 @@ public sealed class MapPrefabDocumentRefusalTests
         Assert.Equal(original.Id, finding.InstanceId);
         Assert.Equal(fault == "ghost" ? extra.Child : binding.Child, finding.Child);
         if (fault == "source-dormant") { Assert.Equal(1, finding.ActualCount); Assert.Equal(0, finding.ExpectedCount); }
+        if (fault == "source-duplicate") { Assert.Equal(1, finding.Index); Assert.Equal("transfer", finding.SubjectKind); }
         if (fault is "source-missing" or "source-mismatch")
         {
             Assert.Equal(fault == "source-missing" ? 0 : 1, finding.ActualCount);

@@ -43,7 +43,8 @@ public static class MapPrefabValidation
             else if (MapDocumentFinding.FromException(ex) is { } finding) findings?.Add(finding);
             else findings?.Add(new(MapDocumentRefusal.PrefabStateUnreadable, ex.Message) { DocumentId = document.Id });
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NullReferenceException or JsonException)
+        // A null required member is refused by name before any dereference, so a NullReferenceException is a defect and escapes.
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or JsonException)
         {
             cause = ex;
             string message = "Invalid prefab state: " + ex.Message;
@@ -65,7 +66,6 @@ public static class MapPrefabValidation
 
     static void ValidateDocument(MapDocument doc, MapAssetClosure? assets)
     {
-        MapPrismCoverage.RequireStandaloneStoreys(doc);
         bool present = doc.Prefabs is not null || doc.BuildingIntent is not null || doc.NativeResourceTransforms is not null;
         if (present && (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } || doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2))
         {
@@ -109,8 +109,12 @@ public static class MapPrefabValidation
                     "Prefab root collection limit exceeded or collection missing.", documentId: doc.Id);
             }
             Unique(set.Instances, i => i.Id, "prefab instance");
+            MapPrefabRequiredMembers.Transfers(set.Transfers, doc.Id);
+            // Removed sources read transfers by key before the instance loop ends, so duplicates refuse first.
+            Unique(set.Transfers, t => (t.InstanceId, t.Binding.Child), "transfer");
             foreach (MapPrefabInstance instance in set.Instances)
             {
+                MapPrefabRequiredMembers.Instance(instance);
                 Text(instance.ResourceId); Digest(instance.ResourceSha256); Pose(instance.Transform);
                 Unique(instance.Bindings.Entries, b => b.Child, "binding");
                 foreach (MapPrefabBinding binding in instance.Bindings.Entries) Binding(binding);
@@ -173,7 +177,6 @@ public static class MapPrefabValidation
                 foreach (MapPrefabPlacementOverride placement in Intents(instance.Overrides).OfType<MapPrefabPlacementOverride>())
                     if (placement.AssetId is { } assetId) _ = assets.GetAsset(assetId);
             }
-            Unique(set.Transfers, t => (t.InstanceId, t.Binding.Child), "transfer");
             foreach (MapPrefabBindingTransfer transfer in set.Transfers) { Text(transfer.InstanceId); Binding(transfer.Binding); }
             Unique(set.Attachments, a => (a.PlacementId, a.Kind, a.ResourceId), "attachment transfer");
             foreach (MapPrefabAttachmentTransfer attachment in set.Attachments)
@@ -224,6 +227,8 @@ public static class MapPrefabValidation
             using var json = JsonDocument.Parse(MapPrefabJson.Bytes(intent));
             MapPrefabJson.Preflight(json.RootElement);
         }
+        // Standalone prisms read every transfer and storey, so it runs once both collections passed their own checks.
+        MapPrismCoverage.RequireStandaloneStoreys(doc);
         if (doc.NativeResourceTransforms is { } poses)
         {
             Unique(poses, p => (p.Kind, p.OwnerId), "standalone resource transform");
@@ -254,11 +259,11 @@ public static class MapPrefabValidation
         foreach (MapPrefabChild child in asset.Children)
         {
             Child(child);
-            foreach (MapPrefabReferenceSlot slot in child.References ?? []) if (slot?.Target is { } target) Reference(target);
+            foreach (MapPrefabReferenceSlot slot in child.References) if (slot?.Target is { } target) Reference(target);
             var (_, occurrences) = MapPrefabReferenceWalker.Child(child, MapPrefabReferenceMap.Identity);
-            MapPrefabReferences.RequireSlots(child.References!, occurrences, targets,
+            MapPrefabReferences.RequireSlots(child.References, occurrences, targets,
                 child is MapPrefabRecordChild ? child.LocalTransform : null, $"Prefab {child.Key.Kind} '{child.Key.Key}'", child.Key);
-            if (child is MapPrefabRecordChild && child.References!.Single(s => s.Path == "/anchor/surfaceId").Target.Scope != MapPrefabReferenceScope.Local)
+            if (child is MapPrefabRecordChild && child.References.Single(s => s.Path == "/anchor/surfaceId").Target.Scope != MapPrefabReferenceScope.Local)
                 throw new MapDocumentException(MapDocumentRefusal.PrefabLocalAnchorInvalid, $"Prefab record '{child.Key.Key}' must be anchored on a declared local surface.")
                 { Child = child.Key, RecordId = child.Key.Key, FieldPath = "$.anchor.surfaceId" };
             // Annotation references carry their scope directly and take no slots.
@@ -311,6 +316,7 @@ public static class MapPrefabValidation
     static void Child(MapPrefabChild child)
     {
         Key(child.Key, "$.key"); Pose(child.LocalTransform, "$.localTransform", child.Key);
+        MapPrefabRequiredMembers.Child(child);
         (MapPrefabChildKind Kind, string Id) identity = child switch
         {
             MapPrefabPlacementChild p => (MapPrefabChildKind.Placement, p.Value.Id),
@@ -454,6 +460,7 @@ public static class MapPrefabValidation
     static void Override(MapPrefabOverride value)
     {
         Key(value.Child);
+        MapPrefabRequiredMembers.Override(value);
         switch (value)
         {
             case MapPrefabRemoveOverride r when r.Previous is MapPrefabRemoveOverride: Fail(MapDocumentRefusal.PrefabPreviousOverrideNestedRemove, "Previous must not be a remove override.", new() { Child = r.Child, FieldPath = "$.previous" }); break;
@@ -566,6 +573,7 @@ public static class MapPrefabValidation
     static void Marker(MapLocalMarkerDoc m) => MapMarkerValidation.Require(m);
     static void Roof(MapRoofLinkDoc roof)
     {
+        MapPrefabRequiredMembers.RoofLink(roof);
         Text(roof.Id); RoofReference(roof.Roof);
         foreach (var room in roof.Rooms)
         {
@@ -586,6 +594,7 @@ public static class MapPrefabValidation
     }
     static void Group(MapRoofGroupDoc group)
     {
+        MapPrefabRequiredMembers.RoofGroup(group);
         Text(group.Id);
         foreach (var room in group.Rooms)
         {

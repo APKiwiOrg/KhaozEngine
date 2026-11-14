@@ -117,6 +117,47 @@ public sealed class TileGroundReliefLoadTests
         }
     }
 
+    // A one-vertex-per-lane tile-ground mesh naming the given slots: four corner lanes and the overlay lane (slot plus
+    // one, 0 for none). Only the slots matter to program selection.
+    static GltfMesh Naming(int s0, int s1, int s2, int s3, int overlayPlusOne = 0)
+    {
+        var v = new ModelVertex(System.Numerics.Vector3.Zero, System.Numerics.Vector3.UnitY,
+            new System.Numerics.Vector4(1f, 0f, 0f, 0f), new System.Numerics.Vector2(s0, s1),
+            new System.Numerics.Vector4(s2, s3, 1f, overlayPlusOne));
+        return new GltfMesh(new[] { v, v, v }, new ushort[] { 0, 1, 2 });
+    }
+
+    [Fact]
+    public void A_mesh_draws_with_the_cheapest_program_its_slots_need()
+    {
+        (_, Scene3D scene) = NewScene();
+        using (scene)
+        {
+            TileGroundLayerImage mapped = Plain();
+            mapped.HeightMapped = true;
+            TileGroundLayerImage hex = Plain();
+            hex.AntiTiling = TileGroundAntiTiling.Rotate;
+            TileGroundLayerImage companionOfMapped = Plain();
+            companionOfMapped.Steep = new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = 40f, ToDegrees = 55f };
+            var relief = scene.LoadTileGroundMaterial(4, 4, new[] { Plain(), mapped, hex, companionOfMapped }, 0, 0);
+            var plainSet = scene.LoadTileGroundMaterial(4, 4, new[] { Plain(), Plain() });
+
+            TileGroundProgram Program(GltfMesh mesh, Scene3D.TileGroundMaterialHandle material) =>
+                scene.TileGroundProgramForTests(scene.LoadMesh(mesh, material));
+
+            Assert.Equal(TileGroundProgram.Plain, Program(Naming(0, 0, 0, 0), relief));
+            Assert.Equal(TileGroundProgram.Relief, Program(Naming(0, 0, 0, 1), relief));
+            Assert.Equal(TileGroundProgram.ReliefHex, Program(Naming(0, 1, 2, 0), relief));
+            // A plain layer whose steep companion is mapped takes the companion's taps, so it needs relief.
+            Assert.Equal(TileGroundProgram.Relief, Program(Naming(3, 3, 3, 3), relief));
+            // The overlay lane counts, as the slot plus one.
+            Assert.Equal(TileGroundProgram.ReliefHex, Program(Naming(0, 0, 0, 0, overlayPlusOne: 3), relief));
+            // A slot past the set clamps to its last layer, as the fragment reads it.
+            Assert.Equal(TileGroundProgram.Relief, Program(Naming(9, 9, 9, 9), relief));
+            Assert.Equal(TileGroundProgram.Plain, Program(Naming(0, 1, 1, 0), plainSet));
+        }
+    }
+
     [Fact]
     public void A_refused_relief_layer_throws_before_any_texture_or_buffer_is_created()
     {

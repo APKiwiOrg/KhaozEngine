@@ -39,13 +39,14 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuShaderSet _tileGroundShaders = null!;
         IGpuPipeline _tileGroundPipeline = null!;              // rebuilt by SetOutputs alongside _pipeline (set via BuildTileGroundPipeline)
 
-        // The RELIEF variant (TileGroundRelief): the same vertex shader and frame set, its own fragment and a set 1
-        // with the SurfaceArray beside the albedo array, in the splat pass's binding order. A material set picks one
-        // of the two pipelines at load. The relief shaders and pipeline are built by the FIRST relief material's load
+        // The RELIEF variants (TileGroundRelief): the same vertex shader and frame set, their own fragment and a set 1
+        // with the SurfaceArray beside the albedo array, in the splat pass's binding order. Two of them, the second
+        // with hex-tiling compiled in, and a mesh draws with the cheapest program its slots need
+        // (TileGroundProgram). Each is built by the first relief material load that can need it
         // (EnsureTileGroundRelief), so a renderer that never loads one compiles nothing more than it always did.
         IGpuResourceLayout _tileGroundReliefMaterialLayout = null!;  // set 1: params + AlbedoArray + SurfaceArray + Sampler + shadow maps
-        IGpuShaderSet? _tileGroundReliefShaders;
-        IGpuPipeline? _tileGroundReliefPipeline;
+        IGpuShaderSet? _tileGroundReliefShaders, _tileGroundReliefHexShaders;
+        IGpuPipeline? _tileGroundReliefPipeline, _tileGroundReliefHexPipeline;
         // What the last BuildTileGroundPipeline was given, so a relief pipeline built later matches the plain one.
         GpuOutputDescription _tileGroundOutputs;
         GpuVertexLayoutDescription _tileGroundVertexLayout, _tileGroundInstanceLayout;
@@ -101,24 +102,38 @@ namespace KhaozEngine.Render3D.Rendering
             _tileGroundPipeline = BuildTileGroundVariant(factory, modelOutputs, vertexLayout, instanceLayout,
                 _tileGroundMaterialLayout, ShaderSources.TileGroundFrag, ShaderSources.TileGroundMotionFrag,
                 _tileGroundShaders, motion => motion.TileGroundShaders);
-            // Rebuilt only once some relief material has asked for it.
-            if (_tileGroundReliefShaders is not null) BuildTileGroundReliefPipeline(factory);
+            // Rebuilt only once some relief material has asked for them.
+            if (_tileGroundReliefShaders is not null) BuildTileGroundReliefPipeline(factory, hex: false);
+            if (_tileGroundReliefHexShaders is not null) BuildTileGroundReliefPipeline(factory, hex: true);
         }
 
-        /// <summary>Build the relief shaders and pipeline if no relief material has yet, against the outputs the plain
-        /// pipeline was last built for. Called by every relief material load, outside frame recording.</summary>
-        internal void EnsureTileGroundRelief()
+        /// <summary>Build a relief variant's shaders and pipeline if no relief material has yet, against the outputs
+        /// the plain pipeline was last built for: the hex variant when <paramref name="hex"/>, the other otherwise.
+        /// Called by relief material loads, outside frame recording.</summary>
+        internal void EnsureTileGroundRelief(bool hex = false)
         {
-            if (_tileGroundReliefPipeline is not null) return;
-            _tileGroundReliefShaders ??= _gd.Factory.CreateShadersFromSpirv(ShaderSources.TileGroundVert,
-                ShaderSources.TileGroundReliefFrag);
-            BuildTileGroundReliefPipeline(_gd.Factory);
+            if ((hex ? _tileGroundReliefHexPipeline : _tileGroundReliefPipeline) is not null) return;
+            if (hex)
+                _tileGroundReliefHexShaders ??= _gd.Factory.CreateShadersFromSpirv(ShaderSources.TileGroundVert,
+                    ShaderSources.TileGroundReliefHexFrag);
+            else
+                _tileGroundReliefShaders ??= _gd.Factory.CreateShadersFromSpirv(ShaderSources.TileGroundVert,
+                    ShaderSources.TileGroundReliefFrag);
+            BuildTileGroundReliefPipeline(_gd.Factory, hex);
         }
 
-        void BuildTileGroundReliefPipeline(IGpuResourceFactory factory) =>
-            _tileGroundReliefPipeline = BuildTileGroundVariant(factory, _tileGroundOutputs, _tileGroundVertexLayout,
-                _tileGroundInstanceLayout, _tileGroundReliefMaterialLayout, ShaderSources.TileGroundReliefFrag,
-                ShaderSources.TileGroundReliefMotionFrag, _tileGroundReliefShaders!, motion => motion.TileGroundReliefShaders);
+        void BuildTileGroundReliefPipeline(IGpuResourceFactory factory, bool hex)
+        {
+            if (hex)
+                _tileGroundReliefHexPipeline = BuildTileGroundVariant(factory, _tileGroundOutputs, _tileGroundVertexLayout,
+                    _tileGroundInstanceLayout, _tileGroundReliefMaterialLayout, ShaderSources.TileGroundReliefHexFrag,
+                    ShaderSources.TileGroundReliefHexMotionFrag, _tileGroundReliefHexShaders!,
+                    motion => motion.TileGroundReliefHexShaders);
+            else
+                _tileGroundReliefPipeline = BuildTileGroundVariant(factory, _tileGroundOutputs, _tileGroundVertexLayout,
+                    _tileGroundInstanceLayout, _tileGroundReliefMaterialLayout, ShaderSources.TileGroundReliefFrag,
+                    ShaderSources.TileGroundReliefMotionFrag, _tileGroundReliefShaders!, motion => motion.TileGroundReliefShaders);
+        }
 
         IGpuPipeline BuildTileGroundVariant(IGpuResourceFactory factory, GpuOutputDescription modelOutputs,
             GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout,
@@ -153,7 +168,8 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _retired.Retire(_tileGroundPipeline);
             if (_tileGroundReliefPipeline is not null) _retired.Retire(_tileGroundReliefPipeline);
-            _tileGroundReliefPipeline = null;
+            if (_tileGroundReliefHexPipeline is not null) _retired.Retire(_tileGroundReliefHexPipeline);
+            _tileGroundReliefPipeline = _tileGroundReliefHexPipeline = null;
         }
 
         /// <summary>Create a tile-ground material's PARAMS UBO holding <paramref name="paramsTail"/> alone, written
@@ -197,15 +213,18 @@ namespace KhaozEngine.Render3D.Rendering
             CreateShadowSamplingSet(_tileGroundReliefMaterialLayout, _shadowMap.ShadowTexture,
                 paramsUbo, albedoArray, surfaceArray, sampler ?? _terrainSampler);
 
-        /// <summary>Bind a tile-ground pipeline for the tile-ground pass: the relief one when
-        /// <paramref name="relief"/>, the plain one otherwise. The pass binds again only when a run's material
-        /// changes kind. The frame block it reads is the shared one <see cref="SetFrameUniforms"/> already uploaded
-        /// this frame, so since #727 there is nothing per-material to re-sync first.</summary>
-        public void BindTileGroundPass(IGpuCommandList cl, bool relief = false) =>
-            cl.SetPipeline(relief
-                ? _tileGroundReliefPipeline ?? throw new InvalidOperationException(
-                    "a relief tile-ground material is drawn, but no relief material load built its pipeline.")
-                : _tileGroundPipeline);
+        /// <summary>Bind the tile-ground pipeline of <paramref name="program"/> for the tile-ground pass. The pass
+        /// binds again only when a run's mesh needs another program. The frame block it reads is the shared one
+        /// <see cref="SetFrameUniforms"/> already uploaded this frame, so since #727 there is nothing per-material to
+        /// re-sync first.</summary>
+        public void BindTileGroundPass(IGpuCommandList cl, TileGroundProgram program = TileGroundProgram.Plain) =>
+            cl.SetPipeline(program switch
+            {
+                TileGroundProgram.Plain => _tileGroundPipeline,
+                TileGroundProgram.Relief => _tileGroundReliefPipeline,
+                _ => _tileGroundReliefHexPipeline,
+            } ?? throw new InvalidOperationException(
+                $"a tile-ground mesh needs the {program} program, but no relief material load built its pipeline."));
 
         /// <summary>Draw one tile-ground mesh run through the tile-ground pipeline, reusing the shared instance
         /// buffer. Set 0 is the shared frame block and set 1 is <paramref name="groundSet"/>, the material's params
@@ -230,12 +249,14 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _tileGroundPipeline.Dispose();
             _tileGroundReliefPipeline?.Dispose();
+            _tileGroundReliefHexPipeline?.Dispose();
             _tileGroundFrameSet.Dispose();
             _tileGroundFrameLayout.Dispose();
             _tileGroundMaterialLayout.Dispose();
             _tileGroundReliefMaterialLayout.Dispose();
             _tileGroundShaders.Dispose();
             _tileGroundReliefShaders?.Dispose();
+            _tileGroundReliefHexShaders?.Dispose();
         }
     }
 }

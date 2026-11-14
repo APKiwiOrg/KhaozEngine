@@ -316,9 +316,11 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
             ("ModelRenderer tile ground relief", ["Model.tileGroundFrame", "Model.tileGroundReliefMaterial"]),
+            ("ModelRenderer tile ground relief hex", ["Model.tileGroundFrame", "Model.tileGroundReliefMaterial"]),
             ("ModelRenderer splat motion", ["Model.splatFrame", "Model.splatMaterial", "Motion.frame"]),
             ("ModelRenderer tile ground motion", ["Model.tileGroundFrame", "Model.tileGroundMaterial", "Motion.frame"]),
             ("ModelRenderer tile ground relief motion", ["Model.tileGroundFrame", "Model.tileGroundReliefMaterial", "Motion.frame"]),
+            ("ModelRenderer tile ground relief hex motion", ["Model.tileGroundFrame", "Model.tileGroundReliefMaterial", "Motion.frame"]),
             ("ModelRenderer motion", ["Model", "Motion.rigid"]),
             ("ModelRenderer cpu skinned motion", ["Model", "Motion.frame"]),
             ("OceanFftProducer row", ["OceanFft.row"]),
@@ -401,9 +403,9 @@ namespace KhaozEngine.Tests.Gpu
             // and point shadow, with BoundedWater, SceneAnchor and the empty opaque material gap.
             // The three caustic programs each add one dense layout and pipeline row.
             // T8-R1 keeps completeness independent of the catalogs themselves.
-            // The tile-ground relief variant adds its material layout and its plain and motion pipelines.
+            // The tile-ground relief variants add their material layout and their plain and motion pipelines, two each.
             Assert.Equal(76, ShippedLayouts.Count);
-            Assert.Equal(90, ShippedPipelines.Count);
+            Assert.Equal(92, ShippedPipelines.Count);
             Assert.Equal(ShippedPipelines.Count,
                 ShippedPipelines.Select(p => p.Pipeline).Distinct(StringComparer.Ordinal).Count());
             Assert.Equal(ShippedLayouts.Keys.Order(StringComparer.Ordinal),

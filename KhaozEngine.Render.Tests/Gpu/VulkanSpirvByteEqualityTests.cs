@@ -138,7 +138,7 @@ namespace KhaozEngine.Tests.Gpu
             Dictionary<string, string> emitted = EmitEverything();
             int distinct = emitted.Values.Distinct(StringComparer.Ordinal).Count();
 
-            // 302 adds the tile-ground relief variant's four programs (base, motion and their visibility pairs).
+            // 310 adds the two tile-ground relief variants' eight programs (base, motion and their visibility pairs).
             // 294 stages cover masked SpriteBatch, visibility, fully lit, triangle optics, bounded water,
             // prepared foliage and its opaque/visibility variants, and the three caustic programs.
             // 250 adds ten fully lit temporal specializations. 230 adds 25 visibility pairs.
@@ -151,7 +151,7 @@ namespace KhaozEngine.Tests.Gpu
             // and its depth store, 138 the MotionVectors debug view, 136 the thirteen temporal motion programs, 126
             // their eight opaque ones, 110 the five target-outline pairs and three point-skinned pairs, 94 the cascade
             // cutout pair and dissolve-aware skinned vertex, and the 76 above is the original 2026-08-08 measurement.
-            Assert.Equal(302, emitted.Count);
+            Assert.Equal(310, emitted.Count);
             Assert.True(distinct < emitted.Count,
                 $"The {emitted.Count} shipped stage emissions produced {distinct} distinct SPIR-V modules, so "
                 + "nothing is shared and decision V-S7's dedup buys nothing. Measured at 59 distinct on "

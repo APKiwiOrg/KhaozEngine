@@ -21,12 +21,16 @@ public sealed partial class Scene3D
         // no albedo, both of which keep the depth-only pipeline. Names no shadow resource, so a shadow layout
         // replacement carries it over unchanged.
         public readonly IGpuResourceSet? ShadowCutoutSet;
+        // The tile-ground program this mesh's slots need, chosen once at load. Plain for every other mesh.
+        public readonly TileGroundProgram TileGroundProgram;
 
         public Mesh(IGpuBuffer vb, IGpuBuffer outlineNormalVb, IGpuBuffer ib, int indexCount,
             GpuIndexFormat indexFormat, in MeshBounds bounds, IGpuResourceSet? materialSet = null,
             IGpuResourceSet? outlineMaterialSet = null, int splatMaterial = -1, float alphaCutoff = 0f,
-            int tileGroundMaterial = -1, IGpuResourceSet? shadowCutoutSet = null, bool opaqueFoliage = false)
+            int tileGroundMaterial = -1, IGpuResourceSet? shadowCutoutSet = null, bool opaqueFoliage = false,
+            TileGroundProgram tileGroundProgram = TileGroundProgram.Plain)
         {
+            TileGroundProgram = tileGroundProgram;
             Vb = vb;
             OutlineNormalVb = outlineNormalVb;
             Ib = ib;

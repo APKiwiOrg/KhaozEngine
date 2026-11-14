@@ -90,6 +90,11 @@ namespace KhaozEngine.Tests.Gpu
         public void TileGroundRelief()
             => ShaderValidation.ValidatePair(ShaderSources.TileGroundVert, ShaderSources.TileGroundReliefFrag, "TileGroundRelief");
 
+        // The same relief fragment with hex-tiling compiled in, its own program so the plain relief one never holds its registers.
+        [Fact]
+        public void TileGroundReliefHex()
+            => ShaderValidation.ValidatePair(ShaderSources.TileGroundVert, ShaderSources.TileGroundReliefHexFrag, "TileGroundReliefHex");
+
         [Fact]
         public void ShadowDepth()
             => ShaderValidation.ValidatePair(ShaderSources.ShadowDepthVert, ShaderSources.ShadowDepthFrag, "ShadowDepth");
@@ -320,6 +325,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TileGroundReliefMotion()
             => ShaderValidation.ValidatePair(ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundReliefMotionFrag, "TileGroundReliefMotion");
+
+        [Fact]
+        public void TileGroundReliefHexMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundReliefHexMotionFrag, "TileGroundReliefHexMotion");
 
         // The transparent passes' temporal variants: each base fragment plus a zero fourth output its blend discards.
         [Fact]

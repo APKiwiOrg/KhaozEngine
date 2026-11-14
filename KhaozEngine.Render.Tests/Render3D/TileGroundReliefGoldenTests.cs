@@ -88,29 +88,42 @@ public sealed class TileGroundReliefGoldenTests(ITestOutputHelper output)
     [GpuFact]
     public void A_mapless_material_in_a_relief_set_draws_as_the_plain_set_draws_it_Golden()
     {
-        // A red to blue corner ramp, lit with specular on. The relief set adds an unused third layer that carries a
-        // breakup, which selects the relief program and changes nothing the two drawn layers use.
+        // A red to blue corner ramp, lit with specular on, drawn three ways: through a plain set, through a relief set
+        // by a mesh that names no relief layer (the plain program with the relief params buffer bound), and through
+        // the relief program, by the same ramp naming the set's relief layer in two zero-weight lanes. The relief
+        // layer is an unused third one carrying a breakup, which changes nothing the drawn layers use.
         TileGroundLayerImage Red() => new() { AlbedoRgba = Solid(4, 220, 40, 40, 255) };
         TileGroundLayerImage Blue() => new() { AlbedoRgba = Solid(4, 40, 40, 220, 255) };
-        GltfMesh ramp = Quad(-2f, 2f, new Vector4(1f, 0f, 0f, 0f), new Vector4(0f, 1f, 0f, 0f), 0f, 1f, 0f);
+        TileGroundLayerImage Unused() => new() { AlbedoRgba = Solid(4, 0, 255, 0, 255), FeatherBreakup = 0.5f };
+        var west = new Vector4(1f, 0f, 0f, 0f);
+        var east = new Vector4(0f, 1f, 0f, 0f);
+        GltfMesh plainRamp = Quad(-2f, 2f, west, east, 0f, 1f, 0f);
+        GltfMesh reliefRamp = Quad4(-2f, 2f, west, east, 0f, 1f, 2f, 2f, 0f);
+        var light = new Vector3(-0.4f, -0.8f, -0.45f);
 
-        byte[] plain = Capture(scene => scene.LoadMesh(ramp,
-            scene.LoadTileGroundMaterial(4, 4, new[] { Red(), Blue() }, 0, 0, 0.35f)), light: new Vector3(-0.4f, -0.8f, -0.45f));
-        byte[] relief = Capture(scene => scene.LoadMesh(ramp,
-            scene.LoadTileGroundMaterial(4, 4, new[] { Red(), Blue(), new TileGroundLayerImage
-            {
-                AlbedoRgba = Solid(4, 0, 255, 0, 255), FeatherBreakup = 0.5f,
-            } }, 0, 0, 0.35f)), light: new Vector3(-0.4f, -0.8f, -0.45f));
+        byte[] plain = Capture(scene => scene.LoadMesh(plainRamp,
+            scene.LoadTileGroundMaterial(4, 4, new[] { Red(), Blue() }, 0, 0, 0.35f)), light: light);
+        byte[] reliefSetPlainProgram = Capture(scene => scene.LoadMesh(plainRamp,
+            scene.LoadTileGroundMaterial(4, 4, new[] { Red(), Blue(), Unused() }, 0, 0, 0.35f)), light: light);
+        byte[] reliefProgram = Capture(scene => scene.LoadMesh(reliefRamp,
+            scene.LoadTileGroundMaterial(4, 4, new[] { Red(), Blue(), Unused() }, 0, 0, 0.35f)), light: light);
 
-        int worst = 0, lit = 0;
+        int lit = 0;
         for (int i = 0; i < plain.Length; i += 4)
-        {
             if (plain[i] + plain[i + 1] + plain[i + 2] > 60) lit++;
-            for (int c = 0; c < 3; c++) worst = Math.Max(worst, Math.Abs(plain[i + c] - relief[i + c]));
-        }
-        output.WriteLine($"lit pixels {lit}, worst channel difference {worst}");
+        int viaPlain = WorstDifference(plain, reliefSetPlainProgram), viaRelief = WorstDifference(plain, reliefProgram);
+        output.WriteLine($"lit pixels {lit}, worst channel difference: plain program {viaPlain}, relief program {viaRelief}");
         Assert.True(lit > Size * Size / 2, "the ramp did not render");
-        Assert.True(worst <= 2, $"a map-less material drew differently in the relief program: {worst}");
+        Assert.True(viaPlain <= 2, $"a relief set's plain-program mesh drew differently: {viaPlain}");
+        Assert.True(viaRelief <= 2, $"a map-less material drew differently in the relief program: {viaRelief}");
+    }
+
+    static int WorstDifference(byte[] a, byte[] b)
+    {
+        int worst = 0;
+        for (int i = 0; i < a.Length; i += 4)
+            for (int c = 0; c < 3; c++) worst = Math.Max(worst, Math.Abs(a[i + c] - b[i + c]));
+        return worst;
     }
 
     // ---- The feather breakup -----------------------------------------------------------------------------------
@@ -178,9 +191,10 @@ public sealed class TileGroundReliefGoldenTests(ITestOutputHelper output)
     float RepeatDifference(TileGroundAntiTiling mode)
     {
         var layer = new TileGroundLayerImage { AlbedoRgba = Gradient(16), TilesPerMetre = 1f, AntiTiling = mode };
-        // The relief program, also for the plain capture, through a second unused layer carrying a breakup.
+        // A relief program for the plain capture too: a second, unused layer carrying a breakup, named in the two
+        // zero-weight lanes.
         var selector = new TileGroundLayerImage { AlbedoRgba = Solid(16, 0, 0, 0, 255), FeatherBreakup = 0.5f };
-        byte[] rgba = Capture(scene => scene.LoadMesh(Quad(-2f, 2f, Even1(), Even1(), 0f, 0f, 0f),
+        byte[] rgba = Capture(scene => scene.LoadMesh(Quad4(-2f, 2f, Even1(), Even1(), 0f, 0f, 1f, 1f, 0f),
             scene.LoadTileGroundMaterial(16, 16, new[] { layer, selector }, 0, 0, 0f)));
         int period = (int)PixelsPerMetre;
         long total = 0; int n = 0;
@@ -243,11 +257,16 @@ public sealed class TileGroundReliefGoldenTests(ITestOutputHelper output)
 
     // A quad over x in [x0, x1], z in [-2, 2], with the given west and east weights over slots (slotA, slotB,
     // slotA, slotB) and Tangent.w as given (an overlay slot plus one, or 0).
-    static GltfMesh Quad(float x0, float x1, Vector4 west, Vector4 east, float slotA, float slotB, float overlay)
+    static GltfMesh Quad(float x0, float x1, Vector4 west, Vector4 east, float slotA, float slotB, float overlay) =>
+        Quad4(x0, x1, west, east, slotA, slotB, slotA, slotB, overlay);
+
+    // The same with all four corner lanes named.
+    static GltfMesh Quad4(float x0, float x1, Vector4 west, Vector4 east, float s0, float s1, float s2, float s3,
+        float overlay)
     {
         var normal = Vector3.UnitY;
-        var uv = new Vector2(slotA, slotB);
-        var tangent = new Vector4(slotA, slotB, 1f, overlay);
+        var uv = new Vector2(s0, s1);
+        var tangent = new Vector4(s2, s3, 1f, overlay);
         var verts = new[]
         {
             new ModelVertex(new Vector3(x0, 0f, -2f), normal, west, uv, tangent),

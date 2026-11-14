@@ -35,7 +35,17 @@ namespace KhaozEngine.Render3D.Internal
         //      interpolants are TileGroundVert's eight and every one is read (the FXC rule in TileGroundVert's
         //      note). Every tap is a textureGrad off the hoisted world derivatives, as in TileGroundFrag. ----
         public const string TileGroundReliefFrag = @"#version 450
-layout(set=0, binding=0) uniform U {
+#define TILEGROUND_RELIEF_HEX 0
+" + TileGroundReliefFragBody;
+
+        /// <summary>The relief fragment with hex-tiling compiled in, for a mesh that names a hex-tiled layer. Its own
+        /// program because the hex taps' registers would otherwise be allocated for every relief fragment, which
+        /// measured as about half the relief program's overhead on a fragment that never takes them.</summary>
+        public const string TileGroundReliefHexFrag = @"#version 450
+#define TILEGROUND_RELIEF_HEX 1
+" + TileGroundReliefFragBody;
+
+        const string TileGroundReliefFragBody = @"layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
     vec4 FillDir; vec4 FillColor; vec4 CameraPos;
@@ -159,15 +169,50 @@ void projectionTaps(int sl, int surfaceLayer, vec2 uv, vec2 g0, vec2 g1, vec3 T,
     }
 }
 
+#if TILEGROUND_RELIEF_HEX
 // The texture rotation of one hex, applied to a uv offset and gradient AND to a tangent-space normal's xy: the same
 // matrix serves both because tangent y runs toward the image top, against v, which flips the rotation's sense back.
 vec2 hexTurn(vec2 v, vec2 cs) { return vec2(cs.x * v.x + cs.y * v.y, -cs.y * v.x + cs.x * v.y); }
 
+// One hex of the hex-tiled top-down tap: the copy of the texture centred on lattice vertex v, with its random
+// offset and, in Rotate mode, its random turn, sampled at uv and added to the running sums at its blend weight.
+// The weight is the hex's barycentric weight sharpened to the 7th power, biased toward the higher height, or the
+// brighter tap for a material without a height map, and it depends on this tap alone, so the three hexes are
+// summed as they are taken and normalised once, rather than all held at once.
+void hexTap(int sl, int surfaceLayer, ivec2 v, float bw, vec2 uv, vec2 g0, vec2 g1, vec3 N, bool rotate,
+            inout vec4 albedoHeight, inout vec3 normal, inout float rough, inout float weight) {
+    vec2 centre = vec2(float(v.x) + 0.5 * float(v.y), 0.8660254 * float(v.y)) / Relief.w;
+    vec2 offset = vec2(reliefUnit(reliefHash(v)), reliefUnit(reliefHash(v + ivec2(1291, 3307))));
+    float angle = rotate ? 6.28318531 * reliefUnit(reliefHash(v + ivec2(-457, 9173))) : 0.0;
+    vec2 cs = vec2(cos(angle), sin(angle));
+    vec2 tuv = centre + hexTurn(uv - centre, cs) + offset;
+    vec2 t0 = hexTurn(g0, cs), t1 = hexTurn(g1, cs);
+    vec4 a = tapAlbedo(sl, tuv, t0, t1);
+    float bias = Blend[sl].x > 0.5 ? a.a : dot(a.rgb, vec3(0.299, 0.587, 0.114));
+    // Clamped first: a barycentric weight can land a rounding error below 0, and pow of a negative is undefined.
+    float w = mix(1.0, bias, 0.6) * pow(max(bw, 0.0), 7.0);
+    albedoHeight += w * a;
+    weight += w;
+    vec3 n = N;
+    float r = 0.5;
+    if (surfaceLayer >= 0) {
+        vec4 sf = tapSurface(surfaceLayer, tuv, t0, t1);
+        if (Surface[sl].y > 0.5) {
+            vec3 nTS = sf.rgb * 2.0 - 1.0;
+            nTS.xy = hexTurn(nTS.xy, cs);
+            n = reliefNormal(nTS, vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, -1.0), N);
+        }
+        if (Surface[sl].z > 0.5) { r = sf.a; }
+    }
+    normal += w * n;
+    rough += w * r;
+}
+
 // HEX-TILING of a top-down tap (after Mikkelsen 2022, Practical Real-Time Hex-Tiling). The uv is cut into a
 // triangle grid whose vertices are hex centres. Each of the three hexes covering the point gives the texture a
-// random offset, and in Rotate mode a random turn about its centre, and the three taps blend by their barycentric
-// weights sharpened to the 7th power and biased toward the higher height, or the brighter tap for a material
-// without a height map, so neighbouring copies meet along stones rather than in a smear.
+// random offset, and in Rotate mode a random turn about its centre, so neighbouring copies meet along stones rather
+// than in a smear (hexTap has the weights). No local arrays: a dynamically indexed one lands in stack memory on some
+// backends.
 void hexTaps(int sl, int surfaceLayer, vec2 uv, vec2 g0, vec2 g1, vec3 N, bool rotate,
              out vec4 albedoHeight, out vec3 normal, out float rough) {
     vec2 st = uv * Relief.w;
@@ -177,52 +222,35 @@ void hexTaps(int sl, int surfaceLayer, vec2 uv, vec2 g0, vec2 g1, vec3 N, bool r
     f.z = 1.0 - f.x - f.y;
     float s = step(0.0, -f.z);
     float s2 = 2.0 * s - 1.0;
-    vec3 bw = vec3(-f.z * s2, s - f.y * s2, s - f.x * s2);
     ivec2 base = ivec2(cell);
     int si = int(s);
-    ivec2 vtx[3] = ivec2[3](base + ivec2(si, si), base + ivec2(si, 1 - si), base + ivec2(1 - si, si));
-    vec4 a[3]; vec3 n[3]; float r[3];
-    for (int i = 0; i < 3; i++) {
-        ivec2 v = vtx[i];
-        vec2 centre = vec2(float(v.x) + 0.5 * float(v.y), 0.8660254 * float(v.y)) / Relief.w;
-        vec2 offset = vec2(reliefUnit(reliefHash(v)), reliefUnit(reliefHash(v + ivec2(1291, 3307))));
-        float angle = rotate ? 6.28318531 * reliefUnit(reliefHash(v + ivec2(-457, 9173))) : 0.0;
-        vec2 cs = vec2(cos(angle), sin(angle));
-        vec2 tuv = centre + hexTurn(uv - centre, cs) + offset;
-        vec2 t0 = hexTurn(g0, cs), t1 = hexTurn(g1, cs);
-        a[i] = tapAlbedo(sl, tuv, t0, t1);
-        n[i] = N;
-        r[i] = 0.5;
-        if (surfaceLayer >= 0) {
-            vec4 sf = tapSurface(surfaceLayer, tuv, t0, t1);
-            if (Surface[sl].y > 0.5) {
-                vec3 nTS = sf.rgb * 2.0 - 1.0;
-                nTS.xy = hexTurn(nTS.xy, cs);
-                n[i] = reliefNormal(nTS, vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, -1.0), N);
-            }
-            if (Surface[sl].z > 0.5) { r[i] = sf.a; }
-        }
-    }
-    vec3 bias = Blend[sl].x > 0.5 ? vec3(a[0].a, a[1].a, a[2].a)
-        : vec3(dot(a[0].rgb, vec3(0.299, 0.587, 0.114)), dot(a[1].rgb, vec3(0.299, 0.587, 0.114)),
-               dot(a[2].rgb, vec3(0.299, 0.587, 0.114)));
-    // Clamped first: a barycentric weight can land a rounding error below 0, and pow of a negative is undefined.
-    vec3 W = mix(vec3(1.0), bias, 0.6) * pow(max(bw, vec3(0.0)), vec3(7.0));
-    W /= max(W.x + W.y + W.z, 1e-6);
-    albedoHeight = W.x * a[0] + W.y * a[1] + W.z * a[2];
-    normal = safeNormalize(W.x * n[0] + W.y * n[1] + W.z * n[2], N);
-    rough = W.x * r[0] + W.y * r[1] + W.z * r[2];
+    albedoHeight = vec4(0.0);
+    normal = vec3(0.0);
+    rough = 0.0;
+    float weight = 0.0;
+    hexTap(sl, surfaceLayer, base + ivec2(si, si), -f.z * s2, uv, g0, g1, N, rotate, albedoHeight, normal, rough, weight);
+    hexTap(sl, surfaceLayer, base + ivec2(si, 1 - si), s - f.y * s2, uv, g0, g1, N, rotate, albedoHeight, normal, rough, weight);
+    hexTap(sl, surfaceLayer, base + ivec2(1 - si, si), s - f.x * s2, uv, g0, g1, N, rotate, albedoHeight, normal, rough, weight);
+    float inv = 1.0 / max(weight, 1e-6);
+    albedoHeight *= inv;
+    normal = safeNormalize(normal, N);
+    rough *= inv;
 }
 
-// The top-down projection of one material: hex-tiled when its Surface.w asks, the single tap otherwise.
+#endif
+
+// The top-down projection of one material: hex-tiled when its Surface.w asks and this is the hex variant, the single
+// tap otherwise.
 void topTaps(int sl, int surfaceLayer, vec2 uv, vec2 g0, vec2 g1, vec3 N,
              out vec4 albedoHeight, out vec3 normal, out float rough) {
+#if TILEGROUND_RELIEF_HEX
     if (Surface[sl].w > 0.5) {
         hexTaps(sl, surfaceLayer, uv, g0, g1, N, Surface[sl].w > 1.5, albedoHeight, normal, rough);
-    } else {
-        projectionTaps(sl, surfaceLayer, uv, g0, g1, vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, -1.0), N,
-                       albedoHeight, normal, rough);
+        return;
     }
+#endif
+    projectionTaps(sl, surfaceLayer, uv, g0, g1, vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, -1.0), N,
+                   albedoHeight, normal, rough);
 }
 
 // One material at this fragment over the projections TileGroundFrag samples, tinted: albedo (rgb) with height (a),
@@ -257,6 +285,24 @@ void reliefMaterial(int sl, vec3 wpAbs, vec3 dWx, vec3 dWy, vec3 tw, bool tri, v
     }
     albedoHeight.rgb *= TintTiling[sl].xyz;
 }
+
+// One distinct material of this fragment: reliefMaterial, then its steep companion, which takes over the look on a
+// cliff but never the height, so the height blend stays the material's own business.
+void reliefRole(int sl, vec3 wpAbs, vec3 dWx, vec3 dWy, vec3 tw, bool tri, float ny, int maxSlot, vec3 N,
+                out vec4 albedoHeight, out vec3 normal, out float rough) {
+    reliefMaterial(sl, wpAbs, dWx, dWy, tw, tri, N, albedoHeight, normal, rough);
+    vec4 sb = SteepBand[sl];
+    if (sb.x > 0.5) {
+        float s = 1.0 - smoothstep(sb.y, sb.z, ny);
+        if (s > 0.0) {
+            vec4 ca; vec3 cn; float cr;
+            reliefMaterial(clamp(int(sb.x - 0.5), 0, maxSlot), wpAbs, dWx, dWy, tw, tri, N, ca, cn, cr);
+            albedoHeight.rgb = mix(albedoHeight.rgb, ca.rgb, s);
+            normal = safeNormalize(mix(normal, cn, s), N);
+            rough = mix(rough, cr, s);
+        }
+    }
+}
 " + MaterialLodGradGlsl + LightingCommonGlsl + AtmosphereBindingsAt3Glsl + AtmosphereFogGlsl + AtmosphereFogKeyShadowGlsl + @"
 void main() {
     vec3 Ngeo = normalize(vNormalW);
@@ -286,10 +332,14 @@ void main() {
     }
     if (vOverlaySlot > 0.5) { wsum = max(1.0, wsum); }
     if (wsum > 1e-5) { a0/=wsum; a1/=wsum; a2/=wsum; a3/=wsum; } else { a0 = 1.0; a1 = a2 = a3 = 0.0; }
-    float w[5] = float[5](a0, a1, a2, a3, overlayWeight);
-    int slot[5] = int[5](clamp(int(vSlots.x + 0.5), 0, maxSlot), clamp(int(vSlots.y + 0.5), 0, maxSlot),
-                         clamp(int(vSlots.z + 0.5), 0, maxSlot), clamp(int(vSlots.w + 0.5), 0, maxSlot),
-                         overlaySlot);
+    // The five roles, the four corners in a vector and the overlay beside it, each weight already cut at the 0.001 the
+    // plain fragment skips at. No local arrays anywhere below: a dynamically indexed one lands in stack memory on
+    // some backends, which cost more than everything else this program adds.
+    ivec4 sq = ivec4(clamp(int(vSlots.x + 0.5), 0, maxSlot), clamp(int(vSlots.y + 0.5), 0, maxSlot),
+                     clamp(int(vSlots.z + 0.5), 0, maxSlot), clamp(int(vSlots.w + 0.5), 0, maxSlot));
+    int s4 = overlaySlot;
+    vec4 wq = vec4(a0 > 0.001 ? a0 : 0.0, a1 > 0.001 ? a1 : 0.0, a2 > 0.001 ? a2 : 0.0, a3 > 0.001 ? a3 : 0.0);
+    float w4 = overlayWeight > 0.001 ? overlayWeight : 0.0;
 
     // Hoisted derivatives and slope, exactly as TileGroundFrag takes them.
     vec3 dWx = dFdx(vWorldPos) * materialGradScale();
@@ -308,107 +358,73 @@ void main() {
         tw /= tw.x + tw.y + tw.z;
     }
 
-    // Each active role's material, once per distinct slot (firstOf names the role that sampled it). The steep
-    // companion takes over the look on a cliff, never the height: the height blend stays the material's own.
-    float P[5];
-    int firstOf[5];
-    vec4 roleAlbedo[5];
-    vec3 roleNormal[5];
-    float roleRough[5];
+    // Each DISTINCT material is sampled once, by the first active role naming it, which carries the whole weight of
+    // every role naming it (gN, 0 for the others). The blend is between materials, not roles.
+    vec4 c0 = vec4(0.0), c1 = vec4(0.0), c2 = vec4(0.0), c3 = vec4(0.0), c4 = vec4(0.0);
+    vec3 n0 = Ngeo, n1 = Ngeo, n2 = Ngeo, n3 = Ngeo, n4 = Ngeo;
+    float r0 = 0.5, r1 = 0.5, r2 = 0.5, r3 = 0.5, r4 = 0.5;
+    float g0 = 0.0, g1 = 0.0, g2 = 0.0, g3 = 0.0, g4 = 0.0;
     for (int L = 0; L < 5; L++) {
-        P[L] = w[L] > 0.001 ? w[L] : 0.0;
-        firstOf[L] = L;
+        int sl = L < 4 ? sq[L] : s4;
+        float wl = L < 4 ? wq[L] : w4;
+        if (wl <= 0.0) { continue; }
+        bool first = true;
         for (int Q = 0; Q < L; Q++) {
-            if (P[Q] > 0.0 && slot[Q] == slot[L]) { firstOf[L] = Q; break; }
+            if (wq[Q] > 0.0 && sq[Q] == sl) { first = false; }
         }
-        roleAlbedo[L] = vec4(0.0);
-        roleNormal[L] = Ngeo;
-        roleRough[L] = 0.5;
-        if (P[L] <= 0.0) { continue; }
-        if (firstOf[L] != L) {
-            roleAlbedo[L] = roleAlbedo[firstOf[L]];
-            roleNormal[L] = roleNormal[firstOf[L]];
-            roleRough[L] = roleRough[firstOf[L]];
-            continue;
-        }
-        int sl = slot[L];
-        vec4 a; vec3 n; float r;
-        reliefMaterial(sl, wpAbs, dWx, dWy, tw, tri, Ngeo, a, n, r);
-        vec4 sb = SteepBand[sl];
-        if (sb.x > 0.5) {
-            float s = 1.0 - smoothstep(sb.y, sb.z, ny);
-            if (s > 0.0) {
-                vec4 ca; vec3 cn; float cr;
-                reliefMaterial(clamp(int(sb.x - 0.5), 0, maxSlot), wpAbs, dWx, dWy, tw, tri, Ngeo, ca, cn, cr);
-                a.rgb = mix(a.rgb, ca.rgb, s);
-                n = safeNormalize(mix(n, cn, s), Ngeo);
-                r = mix(r, cr, s);
-            }
-        }
-        roleAlbedo[L] = a;
-        roleNormal[L] = n;
-        roleRough[L] = r;
+        if (!first) { continue; }
+        float g = dot(vec4(equal(sq, ivec4(sl))), wq) + (s4 == sl ? w4 : 0.0);
+        vec4 c; vec3 n; float r;
+        reliefRole(sl, wpAbs, dWx, dWy, tw, tri, ny, maxSlot, Ngeo, c, n, r);
+        if (L == 0) { c0 = c; n0 = n; r0 = r; g0 = g; }
+        else if (L == 1) { c1 = c; n1 = n; r1 = r; g1 = g; }
+        else if (L == 2) { c2 = c; n2 = n; r2 = r; g2 = g; }
+        else if (L == 3) { c3 = c; n3 = n; r3 = r; g3 = g; }
+        else { c4 = c; n4 = n; r4 = r; g4 = g; }
     }
 
-    // HEIGHT BLEND (TileGroundRelief). Map-less roles form one flat group at the neutral height whose members keep
-    // their linear split. The group and each distinct height-mapped material take the logit ln(weight) +
-    // influence * height, and the resolved weights are their softmax at the fragment's sharpness, the weight-mean of
-    // the mapped materials' own. Weight 0 stays 0, so shared corners and edges stay seamless. With no mapped role
-    // active the weights are exactly the plain ones.
-    float R[5] = float[5](P[0], P[1], P[2], P[3], P[4]);
-    float wFlat = 0.0, wMapped = 0.0, sharpSum = 0.0;
-    float slotWeight[5] = float[5](0.0, 0.0, 0.0, 0.0, 0.0);
-    for (int L = 0; L < 5; L++) {
-        if (P[L] <= 0.0) { continue; }
-        if (Blend[slot[L]].x > 0.5) {
-            wMapped += P[L];
-            sharpSum += P[L] * Blend[slot[L]].y;
-            slotWeight[firstOf[L]] += P[L];
-        } else {
-            wFlat += P[L];
-        }
-    }
+    // HEIGHT BLEND (TileGroundRelief). Map-less materials form one flat group at the neutral height whose members keep
+    // their linear split. The group and each height-mapped material take the logit ln(weight) + influence * height,
+    // and the resolved weights are their softmax at the fragment's sharpness, the weight-mean of the mapped
+    // materials' own. Weight 0 stays 0, so shared corners and edges stay seamless. With no mapped material active
+    // the weights are exactly the linear ones.
+    bvec4 mq = bvec4(g0 > 0.0 && Blend[sq.x].x > 0.5, g1 > 0.0 && Blend[sq.y].x > 0.5,
+                     g2 > 0.0 && Blend[sq.z].x > 0.5, g3 > 0.0 && Blend[sq.w].x > 0.5);
+    bool m4 = g4 > 0.0 && Blend[s4].x > 0.5;
+    vec4 gq = vec4(g0, g1, g2, g3);
+    vec4 mapped = vec4(mq);
+    float wMapped = dot(mapped, gq) + (m4 ? g4 : 0.0);
+    vec4 Rq = gq;
+    float R4 = g4;
     if (wMapped > 0.0) {
-        float sharp = sharpSum / wMapped;
-        float flatLogit = wFlat > 0.0 ? log(wFlat) + Relief.x * Relief.y : 0.0;
-        float top = wFlat > 0.0 ? flatLogit : -3.0e38;
-        float logit[5] = float[5](0.0, 0.0, 0.0, 0.0, 0.0);
-        for (int L = 0; L < 5; L++) {
-            if (slotWeight[L] <= 0.0) { continue; }
-            logit[L] = log(slotWeight[L]) + Relief.x * roleAlbedo[L].a;
-            top = max(top, logit[L]);
-        }
+        float wFlat = dot(vec4(1.0) - mapped, gq) + (m4 ? 0.0 : g4);
+        vec4 sharpq = vec4(Blend[sq.x].y, Blend[sq.y].y, Blend[sq.z].y, Blend[sq.w].y);
+        float sharp = (dot(mapped * gq, sharpq) + (m4 ? g4 * Blend[s4].y : 0.0)) / wMapped;
+        const float none = -3.0e38;
+        float flatLogit = wFlat > 0.0 ? log(wFlat) + Relief.x * Relief.y : none;
+        vec4 hq = vec4(c0.a, c1.a, c2.a, c3.a);
+        vec4 lq = vec4(mq.x ? log(g0) + Relief.x * hq.x : none, mq.y ? log(g1) + Relief.x * hq.y : none,
+                       mq.z ? log(g2) + Relief.x * hq.z : none, mq.w ? log(g3) + Relief.x * hq.w : none);
+        float l4 = m4 ? log(g4) + Relief.x * c4.a : none;
+        float top = max(max(max(lq.x, lq.y), max(lq.z, lq.w)), max(l4, flatLogit));
         // The largest logit contributes exp(0) = 1, so the sum is never below 1.
+        vec4 eq = mapped * exp(sharp * (max(lq, vec4(top - 80.0)) - top));
+        float e4 = m4 ? exp(sharp * (l4 - top)) : 0.0;
         float flatShare = wFlat > 0.0 ? exp(sharp * (flatLogit - top)) : 0.0;
-        float total = flatShare;
-        float share[5] = float[5](0.0, 0.0, 0.0, 0.0, 0.0);
-        for (int L = 0; L < 5; L++) {
-            if (slotWeight[L] > 0.0) { share[L] = exp(sharp * (logit[L] - top)); }
-            total += share[L];
-        }
-        for (int L = 0; L < 5; L++) {
-            if (P[L] <= 0.0) { continue; }
-            int f = firstOf[L];
-            R[L] = Blend[slot[L]].x > 0.5 ? share[f] / total * (P[L] / slotWeight[f])
-                                          : flatShare / total * (P[L] / wFlat);
-        }
+        float total = flatShare + eq.x + eq.y + eq.z + eq.w + e4;
+        float flatScale = wFlat > 0.0 ? flatShare / (total * wFlat) : 0.0;
+        Rq = mix(gq * flatScale, eq / total, mapped);
+        R4 = m4 ? e4 / total : g4 * flatScale;
     }
 
-    vec3 albedo = vec3(0.0);
-    vec3 Nsum = vec3(0.0);
-    float roughSum = 0.0, weightSum = 0.0;
-    for (int L = 0; L < 5; L++) {
-        if (P[L] <= 0.0) { continue; }
-        albedo += R[L] * roleAlbedo[L].rgb;
-        Nsum += R[L] * roleNormal[L];
-        roughSum += R[L] * roleRough[L];
-        weightSum += R[L];
-    }
+    vec3 albedo = Rq.x * c0.rgb + Rq.y * c1.rgb + Rq.z * c2.rgb + Rq.w * c3.rgb + R4 * c4.rgb;
     albedo *= vJitter * vTint.rgb;
-    vec3 N = safeNormalize(Nsum, Ngeo);
-    // Divided by the weights' own sum, so a fragment of map-less roles is exactly 0.5 however many weights were
+    vec3 N = safeNormalize(Rq.x * n0 + Rq.y * n1 + Rq.z * n2 + Rq.w * n3 + R4 * n4, Ngeo);
+    // Divided by the weights' own sum, so a fragment of map-less materials is exactly 0.5 however many weights were
     // skipped, and its specular exactly the plain fragment's.
-    float rough = weightSum > 0.0 ? roughSum / weightSum : 0.5;
+    float weightSum = Rq.x + Rq.y + Rq.z + Rq.w + R4;
+    float rough = weightSum > 0.0
+        ? (Rq.x * r0 + Rq.y * r1 + Rq.z * r2 + Rq.w * r3 + R4 * r4) / weightSum : 0.5;
 
     // Blinn-Phong from roughness until physically based lighting takes the same roughness: strength
     // Misc.x * 2 * (1 - r) and exponent mix(48, 8, r), which at r = 0.5 are exactly the plain fragment's Misc.x and

@@ -41,19 +41,21 @@ public sealed partial class Scene3D
     }
     MeshHandle PublishMesh(GltfMesh source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
         IGpuResourceSet? material, IGpuResourceSet? outline, int splatMaterial = -1, float alphaCutoff = 0,
-        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0)
+        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0,
+        TileGroundProgram tileGroundProgram = TileGroundProgram.Plain)
         => PublishMesh(SceneUploadPublication.From(source), vertices, normals, indices, material, outline,
-            splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout, meshOrder);
+            splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout, meshOrder, tileGroundProgram);
 
     MeshHandle PublishMesh(SceneUploadPublication source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
         IGpuResourceSet? material, IGpuResourceSet? outline, int splatMaterial = -1, float alphaCutoff = 0,
-        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0)
+        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0,
+        TileGroundProgram tileGroundProgram = TileGroundProgram.Plain)
     {
         ArgumentNullException.ThrowIfNull(source.Coverage);
         int index = _slots.Alloc(out int generation, meshOrder);
         var mesh = new Mesh(vertices, normals, indices, source.IndexCount, source.IndexFormat, source.Bounds,
             material, outline, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout,
-            source.OpaqueFoliage && material is null && alphaCutoff == 0f);
+            source.OpaqueFoliage && material is null && alphaCutoff == 0f, tileGroundProgram);
         try
         {
             _coverageUploads.Add((index, generation), source.Coverage);
@@ -96,24 +98,28 @@ public sealed partial class Scene3D
             foliage.PreparedPointStream = null;
         }
     }
-    // A non-null surface array makes this a relief material: its own set layout, and the relief pipeline at draw.
+    // A non-null surface array makes this a relief material: the relief programs' set beside the plain one, and the
+    // layers' program needs that pick each mesh's program.
     TileGroundMaterialHandle LoadTileGroundMaterial(IGpuTexture albedo, IGpuBuffer ubo,
-        TerrainSamplerConfig? sampler, List<IDisposable>? owned, IGpuTexture? surface = null)
+        TerrainSamplerConfig? sampler, List<IDisposable>? owned, IGpuTexture? surface = null,
+        TileGroundProgram[]? layerPrograms = null)
     {
         IGpuSampler? selected = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
         if (selected is not null) owned?.Add(selected);
-        var set = surface is not null ? _model.CreateTileGroundReliefMaterialSet(ubo, albedo, surface, selected)
-            : selected is null ? _model.CreateTileGroundMaterialSet(ubo, albedo)
+        var set = selected is null ? _model.CreateTileGroundMaterialSet(ubo, albedo)
             : _model.CreateTileGroundMaterialSet(ubo, albedo, selected);
         owned?.Add(set);
+        IGpuResourceSet? reliefSet = surface is null ? null
+            : _model.CreateTileGroundReliefMaterialSet(ubo, albedo, surface, selected);
+        if (reliefSet is not null) owned?.Add(reliefSet);
         // Only upload-owned slots are reusable. Legacy handles keep their historical indices, including
         // unloaded slots, so a stale public handle can never resolve a native resource's material.
         if (owned is not null && _freeUploadedGroundMaterials.TryPop(out int index))
         {
-            _tileGroundMaterials[index] = new(albedo, ubo, set, selected, surface);
+            _tileGroundMaterials[index] = new(albedo, ubo, set, selected, surface, reliefSet, layerPrograms);
             return new(index);
         }
-        _tileGroundMaterials.Add(new(albedo, ubo, set, selected, surface));
+        _tileGroundMaterials.Add(new(albedo, ubo, set, selected, surface, reliefSet, layerPrograms));
         return new(_tileGroundMaterials.Count - 1);
     }
 }

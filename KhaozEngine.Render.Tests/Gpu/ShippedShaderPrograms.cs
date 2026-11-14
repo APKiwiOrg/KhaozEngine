@@ -86,6 +86,7 @@ namespace KhaozEngine.Tests.Gpu
             // Its relief variant (TileGroundRelief): the same vertex shader, so the same interpolants, with its own
             // fragment and material set. Built only once a relief material loads.
             yield return new("TileGroundRelief", ShaderSources.TileGroundVert, ShaderSources.TileGroundReliefFrag, 6);
+            yield return new("TileGroundReliefHex", ShaderSources.TileGroundVert, ShaderSources.TileGroundReliefHexFrag, 6);
 
             // Temporal variants (TEMPORAL-FOUNDATIONS-DESIGN section 3). Built only against a model target that carries
             // the motion attachment. VulkanShippedVertexLayoutTests builds one to capture them.
@@ -101,6 +102,7 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("SplatMotion", ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag, 6);
             yield return new("TileGroundMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, 6);
             yield return new("TileGroundReliefMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundReliefMotionFrag, 6);
+            yield return new("TileGroundReliefHexMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundReliefHexMotionFrag, 6);
             yield return new("TexturedBillboardMotion", ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag);
             yield return new("BeamMotion", ShaderSources.BeamVert, ShaderSources.BeamMotionFrag);
             yield return new("TrailMotion", ShaderSources.TrailVert, ShaderSources.TrailMotionFrag);

@@ -240,6 +240,16 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task AnImportOverAnOpenEmptyDraftSucceeds()
+        => base.AnImportOverAnOpenEmptyDraftSucceeds();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AnImportOverADraftHoldingWorkIsRefusedBeforeStaging()
+        => base.AnImportOverADraftHoldingWorkIsRefusedBeforeStaging();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task Fact19_AnImportIntoANonEmptyDatabaseIsRefusedAndWritesNothing()
         => base.Fact19_AnImportIntoANonEmptyDatabaseIsRefusedAndWritesNothing();
 

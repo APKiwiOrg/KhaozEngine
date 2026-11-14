@@ -92,8 +92,9 @@ public sealed class MapTypedResourceSchemaTests
         }
     }
 
+    // #1793. A missing light member is told apart from malformed JSON, as a missing support member already was.
     [Theory]
-    [InlineData("light", "missing-member", MapDocumentRefusal.SchemaMalformed)]
+    [InlineData("light", "missing-member", MapDocumentRefusal.SchemaMemberMissing)]
     [InlineData("light", "unknown-member", MapDocumentRefusal.SchemaMalformed)]
     [InlineData("light", "wrong-schema", MapDocumentRefusal.SchemaValueRequired)]
     [InlineData("light", "truncated", MapDocumentRefusal.SchemaMalformed)]

@@ -13401,8 +13401,11 @@ reader's path, zero-based `LineNumber` and UTF-8 `BytePositionInLine` where avai
 containing a known structured document refusal retains its reason, every identifier and that original
 refusal as its cause. A prefab file JSON failure supplies its known `ResourceId`, including when deserialization
 has already wrapped the JSON failure as a document refusal. An existing resource
-identity survives the context copy. Prefab preflight paths retain array positions from the supplied root.
-Child and override converter member paths are relative to that converter's object, with placement payload
+identity survives the context copy. Prefab preflight paths retain array positions from the supplied root, and a
+map document's prefab blocks are rooted at their member, such as `$.prefabs`. A required prefab or light member that
+is absent, including inside a child or override payload, uses `SchemaMemberMissing` at that rooted path naming the
+member, so `$.children[0].surface.indoorSpan.parentSpace` locates an indoor span without its parent space. Other
+child and override converter member paths are relative to that converter's object, with placement payload
 fields below `$.value`. Null prefab members and blank marker-adoption identity fields use
 `SchemaValueRequired`. Marker option and adoption schema guards identify their refused field through
 `FieldPath`. Prefab patch dimensions outside 1 through 64 inclusive use `BoundsInvalid`, with `Width`,

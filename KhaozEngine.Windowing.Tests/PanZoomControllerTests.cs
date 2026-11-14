@@ -67,19 +67,120 @@ public sealed class PanZoomControllerTests
         Assert.False(rig.Controller.Tapped);
     }
 
-    [Fact]
-    public void First_tap_reports_immediately_and_second_tap_zooms_at_its_position()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void First_tap_reports_immediately_and_second_tap_zooms_at_its_position(bool firstTouch, bool secondTouch)
     {
+        // #1395: consecutive owned taps still pair, including across input sources.
         var rig = new PanZoomTestRig();
-        rig.Step(Frame(press: true, release: true));
+        Tap(rig, firstTouch, new(20, 20));
         Assert.True(rig.Controller.Tapped);
-        rig.Step(Frame(new(25, 20), press: true, release: true), 0.1f);
+        Tap(rig, secondTouch, new(25, 20), 0.1f);
         Assert.False(rig.Controller.Tapped);
         Assert.True(rig.Controller.DoubleTapped);
         Near(new(25, 20), rig.Controller.DoubleTapPosition);
         Near(new(25, 20), rig.Target.Screen(new(25, 20)));
         Near(2, rig.Target.Scale);
     }
+
+    [Theory]
+    [InlineData("region", false)]
+    [InlineData("region", true)]
+    [InlineData("predicate", false)]
+    [InlineData("occlusion", false)]
+    [InlineData("consumed", false)]
+    [InlineData("notFresh", false)]
+    public void Rejected_mouse_press_breaks_double_tap_pairing(string rejection, bool sameFrame)
+    {
+        // #1395: an overlay click between nearby map taps must not trigger a zoom.
+        var rig = new PanZoomTestRig();
+        Tap(rig, false, new(20, 20));
+        var press = Frame(new(25, 20), down: !sameFrame, press: true, release: sameFrame);
+        rig.Input.Update(press);
+        if (rejection == "notFresh") rig.Input.Update(press);
+        if (rejection == "region") rig.Input.BlockInputRegion(Bounds);
+        if (rejection == "occlusion") rig.Input.Pointer.Occlude(Bounds);
+        if (rejection == "consumed") rig.Input.Pointer.ConsumeGesture();
+        rig.Controller.Update(rig.Input, rig.Target, Bounds, .01f, isBlocked: _ => rejection == "predicate");
+        if (!sameFrame) rig.Step(Frame(new(25, 20), release: true));
+        Assert.False(rig.Controller.Tapped);
+        Tap(rig, false, new(20, 20));
+        Assert.False(rig.Controller.DoubleTapped);
+        Assert.True(rig.Controller.Tapped);
+        Near(1, rig.Target.Scale);
+    }
+
+    [Theory]
+    [InlineData(false, "drag")]
+    [InlineData(true, "drag")]
+    [InlineData(false, "occludedRelease")]
+    [InlineData(true, "occludedRelease")]
+    [InlineData(false, "outsideRelease")]
+    [InlineData(true, "outsideRelease")]
+    [InlineData(false, "longHold")]
+    [InlineData(true, "longHold")]
+    [InlineData(false, "consumed")]
+    [InlineData(true, "blocked")]
+    [InlineData(true, "notFresh")]
+    [InlineData(true, "malformed")]
+    [InlineData(true, "pair")]
+    public void Sequence_without_a_recorded_tap_breaks_double_tap_pairing(bool touch, string outcome)
+    {
+        // #1395: only consecutive recorded taps may pair, regardless of why a contact did not tap.
+        var rig = new PanZoomTestRig(new() { TapMaxDuration = .02f });
+        Vector2 position = new(2, 20);
+        Tap(rig, touch, position);
+        rig.Step(ContactFrame(touch, position, outcome == "notFresh" ? TouchPhase.Moved : TouchPhase.Began),
+            blocked: _ => outcome == "blocked");
+        if (outcome == "drag") rig.Step(ContactFrame(touch, new(20, 20), TouchPhase.Moved));
+        if (outcome == "malformed") rig.Step(Frame(touches: new[] { Touch(1, 2, 20, (TouchPhase)99) }));
+        if (outcome == "pair") rig.Step(Frame(touches: new[] { Touch(1, 2, 20), StartTouch(2, 4, 20) }));
+        Vector2 release = outcome == "outsideRelease" ? new(-2, 20) : position;
+        rig.Input.Update(outcome == "pair"
+            ? Frame(touches: new[] { Touch(1, 2, 20, TouchPhase.Ended), Touch(2, 4, 20, TouchPhase.Ended) })
+            : ContactFrame(touch, release, TouchPhase.Ended));
+        if (outcome == "occludedRelease") rig.Input.Pointer.Occlude(Bounds);
+        if (outcome == "consumed") rig.Input.Pointer.ConsumeGesture();
+        rig.Controller.Update(rig.Input, rig.Target, Bounds, outcome == "longHold" ? .03f : .01f);
+        Assert.False(rig.Controller.Tapped);
+        Assert.False(rig.Controller.DoubleTapped);
+        float scale = rig.Target.Scale;
+        Tap(rig, touch, position);
+        Assert.False(rig.Controller.DoubleTapped);
+        Assert.True(rig.Controller.Tapped);
+        Near(scale, rig.Target.Scale);
+    }
+
+    [Fact]
+    public void Touch_taking_over_an_unfinished_mouse_sequence_breaks_double_tap_pairing()
+    {
+        // #1395: discarding a mouse sequence for touch cannot preserve an earlier tap.
+        var rig = new PanZoomTestRig();
+        Tap(rig, false, new(20, 20));
+        rig.Step(Frame(down: true, press: true));
+        Tap(rig, true, new(20, 20));
+        Assert.False(rig.Controller.DoubleTapped);
+        Assert.True(rig.Controller.Tapped);
+        Near(1, rig.Target.Scale);
+    }
+
+    static void Tap(PanZoomTestRig rig, bool touch, Vector2 position, float dt = .01f)
+    {
+        if (touch)
+        {
+            rig.Step(ContactFrame(true, position, TouchPhase.Began));
+            rig.Step(ContactFrame(true, position, TouchPhase.Ended), dt);
+        }
+        else rig.Step(Frame(position, press: true, release: true), dt);
+    }
+
+    static InputState ContactFrame(bool touch, Vector2 position, TouchPhase phase) => touch
+        ? Frame(touches: new[] { new TouchPoint(1, position, phase) })
+        : Frame(position, down: phase != TouchPhase.Ended, press: phase == TouchPhase.Began,
+            release: phase == TouchPhase.Ended);
 
     [Fact]
     public void Legacy_accumulator_scroll_zooms_but_enabled_empty_stream_never_replays_it()

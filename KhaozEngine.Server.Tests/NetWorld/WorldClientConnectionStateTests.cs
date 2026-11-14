@@ -45,26 +45,33 @@ public class WorldClientConnectionStateTests
         Assert.Equal(DisconnectReason.Unreachable, client.DisconnectReason);
     }
 
-    [Fact]
-    public void Rejected_token_is_surfaced_as_RejectedToken_with_detail()
+    // #1790: a reasonless transport close queued after Reject must not fail the same attempt twice.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Rejected_token_is_surfaced_as_RejectedToken_with_detail(bool retry)
     {
         var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         // An authenticator that rejects every token with a known reason.
-        var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default,
+        // This decorator uses the optional reason-carrying Disconnect default, so Reject and drop both arrive.
+        var server = new WorldServer(new RecordingTransport(hub.Server), config, Flat, MoveTuning.Default,
             authenticator: new RejectingAuthenticator("bad token"));
-        var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
-            new WorldClientConfig { TickSeconds = config.TickSeconds }, token: new byte[] { 1 });
+        var clientConfig = new WorldClientConfig { TickSeconds = config.TickSeconds, RetryOnReject = retry };
+        using var client = new WorldClient(hub.CreateClient, Flat, MoveTuning.Default, clientConfig, token: new byte[] { 1 });
 
         var states = new List<WorldConnectionState>();
         client.ConnectionStateChanged += s => states.Add(s);
 
         for (int i = 0; i < 8; i++) { server.Poll(); server.Tick(config.TickSeconds); client.Poll(); }
 
-        Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);
+        WorldConnectionState ended = retry ? WorldConnectionState.Reconnecting : WorldConnectionState.Disconnected;
+        Assert.Equal(ended, client.ConnectionState);
         Assert.Equal(DisconnectReason.RejectedToken, client.DisconnectReason);
         Assert.Equal("bad token", client.DisconnectReasonDetail);
-        Assert.Contains(WorldConnectionState.Disconnected, states);
+        Assert.Equal(new[] { ended }, states);
+        Assert.Equal(retry ? 1 : 0, client.ReconnectAttempt);
+        Assert.Equal(retry ? clientConfig.Reconnect.InitialSeconds : 0f, client.SecondsUntilNextRetry);
     }
 
     private sealed class RejectingAuthenticator : IConnectionAuthenticator

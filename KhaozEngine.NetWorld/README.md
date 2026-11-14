@@ -602,7 +602,8 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   protocol) becomes the same clean `DisconnectReason.IncompatibleVersion` disconnect plus a **`SnapshotDecodeFailed`**
   event - never an unhandled exception in the consumer's frame loop. It is terminal and never reconnects. Every
   decode failure, legacy or format 2, also ends the connection locally, so the server sees the leave at once instead
-  of holding the session until its own timeout. The event fires once per end. State frames already queued behind
+  of holding the session until its own timeout. The event fires once per end, before `ConnectionStateChanged`
+  reports `Disconnected`, so a terminal state handler can already tell a decode failure apart. State frames already queued behind
   the failure in the same poll are ignored, while notices and game messages still surface. (An unregistered *consumer extension* id, at/above the floor,
   is instead skipped - see the server-owned-entities section below - so a newer server's added component never
   disconnects an older client.) Pair with the `KhaozEngine.Updates` startup gate
@@ -1353,6 +1354,9 @@ for the avatar, camera and other visual consumers. Do not use its position to de
 to feed `MoveToRange`, because a presentation offset can differ from the current simulation state during
 reconciliation.
 
+`PlayerMoveState` implements the prediction interface's steady-path members explicitly, including its planar
+`PredictionTarget`, so local prediction and render-state reads do not box the state.
+
 ```csharp
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
@@ -1504,6 +1508,16 @@ correct for the replayed steps. A consumer that only uses the engine's positions
 `WorldFrame.Grid` is 128 m and the trigger is a local axis past `WorldFrame.ReanchorRadius` (96 m), which
 guarantees at least 64 m of travel between consecutive re-anchors. The island re-anchors after the tick's movement
 has settled and before anything reads a position back, so no step ever observes a half-rebased island.
+
+## Client connection ends and reconnect
+
+`WorldClient.Poll(dt)` ends the current connection locally when the no-frame timeout or join deadline expires,
+before entering `Reconnecting` backoff or terminal `Disconnected`. Decode and replication failures use the same
+connection-end path. The server receives the leave on its next poll instead of waiting for its own timeout.
+Queued disconnects, rejections and Welcomes from an ended attempt cannot change its reason, add another state
+transition or spend another reconnect attempt. A fresh attempt starts only after the configured backoff.
+The instance constructor leaves transport disposal to the caller. The factory constructor owns disposal and
+replaces its transport when the next attempt starts.
 
 ## Reconnect input backlog (since 8.8.0)
 

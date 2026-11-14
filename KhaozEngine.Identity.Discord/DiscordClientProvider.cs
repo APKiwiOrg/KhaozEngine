@@ -156,20 +156,33 @@ public sealed class DiscordClientProvider(
             {
                 ProviderId = ProviderId,
                 MemberName = "access_token",
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
             };
 
-        string? accessToken = accessTokenElement.GetString();
+        string? accessToken = accessTokenElement.ValueKind == JsonValueKind.String ? accessTokenElement.GetString() : null;
         if (string.IsNullOrEmpty(accessToken))
             throw new IdentitySignInException(
                 SignInRefusal.TokenMemberEmpty, "token endpoint response has an empty access_token")
             {
                 ProviderId = ProviderId,
                 MemberName = "access_token",
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
             };
 
-        string? refreshToken = doc.RootElement.TryGetProperty("refresh_token", out JsonElement refreshElement)
-            ? refreshElement.GetString()
-            : null;
+        string? refreshToken = null;
+        if (doc.RootElement.TryGetProperty("refresh_token", out JsonElement refreshElement))
+        {
+            if (refreshElement.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                throw new IdentitySignInException(
+                    SignInRefusal.TokenMemberEmpty, "token endpoint response has an unusable refresh_token")
+                {
+                    ProviderId = ProviderId,
+                    MemberName = "refresh_token",
+                    EndpointRole = SignInEndpointRole.TokenEndpoint,
+                };
+
+            refreshToken = refreshElement.ValueKind == JsonValueKind.String ? refreshElement.GetString() : null;
+        }
 
         DateTimeOffset expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(ReadExpiresInSeconds(doc.RootElement));
 
@@ -182,13 +195,24 @@ public sealed class DiscordClientProvider(
     /// <see cref="JsonException"/> escaping sign-in past every caller catching that type. The token endpoint is
     /// the only endpoint this provider reads. The parser's exception stays the inner exception: it names the
     /// offending character, or the few bytes of a malformed literal, and its position, never a string value from
-    /// the body.</summary>
+    /// the body. A valid JSON value that is not an object refuses with the same reason and no inner exception,
+    /// before any member or expiry read.</summary>
     private async Task<JsonDocument> ParseTokenJsonBodyAsync(HttpResponseMessage response, CancellationToken ct)
     {
         using System.IO.Stream stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         try
         {
-            return await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            JsonDocument doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                return doc;
+
+            doc.Dispose();
+            throw new IdentitySignInException(
+                SignInRefusal.EndpointJsonMalformed, "the token endpoint did not return a JSON object")
+            {
+                ProviderId = ProviderId,
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
+            };
         }
         catch (JsonException ex)
         {
@@ -217,6 +241,7 @@ public sealed class DiscordClientProvider(
             {
                 ProviderId = ProviderId,
                 MemberName = "expires_in",
+                EndpointRole = SignInEndpointRole.TokenEndpoint,
             };
 
         return seconds;

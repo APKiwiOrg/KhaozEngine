@@ -263,6 +263,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("SetFullScissorRects", "D3D11BindResolve.RequireScissorExtent")]
         [InlineData("SetFramebuffer", "D3D11BindResolve.RenderTargets")]
         [InlineData("SetComputePipeline", "D3D11BindResolve.ComputePipelineState")]
+        [InlineData("Draw", "D3D11BindResolve.RequireDrawFramebuffer")]
+        [InlineData("DrawIndexed", "D3D11BindResolve.RequireDrawFramebuffer")]
         public void BothEmitters_TakeTheRefusalFromTheSharedSeam(string method, string seam)
         {
             using var backend = D3D11BackendMetadata.Open();
@@ -276,7 +278,7 @@ namespace KhaozEngine.Tests.Gpu
         // ---- The clears, refused in the one place both emitters ask ----
 
         /// <summary>
-        /// A CLEAR NAMES AN ATTACHMENT OF THE BOUND FRAMEBUFFER, so with none bound there is nothing to name. The
+        /// A CLEAR OR DRAW NEEDS A BOUND FRAMEBUFFER, so with none bound there is nothing to render into. The
         /// refusal lives on the shared seam rather than in the real emitter, which is what makes it reachable
         /// here at all: while it lived in the Vortice body, the trace emitter recorded the same stream happily and
         /// the two disagreed about what the seam permits, unnoticed on this machine.
@@ -284,19 +286,26 @@ namespace KhaozEngine.Tests.Gpu
         [Theory]
         [InlineData("ClearColorTarget")]
         [InlineData("ClearDepthStencil")]
-        public void AClearWithNoFramebufferBound_IsRefused(string command)
+        [InlineData("Draw")]
+        [InlineData("DrawIndexed")]
+        public void ACommandWithNoFramebufferBound_IsRefused(string command)
         {
+            // #1688: draws share the clear refusal, before any pending binds are flushed.
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
-            Action clear = command == "ClearColorTarget"
-                ? () => emitter.ClearColorTarget(0, KhaozEngine.Primitives.Color.Black)
-                : () => emitter.ClearDepthStencil(1f);
-            var refusal = Assert.Throws<GpuBoundFramebufferException>(clear);
+            Action issue = command switch
+            {
+                "ClearColorTarget" => () => emitter.ClearColorTarget(0, KhaozEngine.Primitives.Color.Black),
+                "ClearDepthStencil" => () => emitter.ClearDepthStencil(1f),
+                "DrawIndexed" => () => emitter.DrawIndexed(3, 1, 0, 0, 0),
+                _ => () => emitter.Draw(3, 1, 0, 0),
+            };
+            var refusal = Assert.Throws<GpuBoundFramebufferException>(issue);
             Assert.Equal(GpuBoundFramebufferRefusal.FramebufferNotBound, refusal.Reason);
             Assert.Equal(command, refusal.Command);
             Assert.IsAssignableFrom<InvalidOperationException>(refusal);
             emitter.SetFramebuffer(Framebuffer(640, 480));
-            clear();
+            issue();
         }
 
         /// <summary>An index past the bound framebuffer's colour attachments is refused rather than clearing

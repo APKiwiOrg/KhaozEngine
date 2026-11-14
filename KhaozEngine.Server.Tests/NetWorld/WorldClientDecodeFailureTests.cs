@@ -82,7 +82,12 @@ public class WorldClientDecodeFailureTests
         var client = new WorldClient(clientTransport, Flat, MoveTuning.Default, new WorldClientConfig());
 
         string? decodeError = null;
-        client.SnapshotDecodeFailed += e => decodeError = e;
+        WorldConnectionState? stateAtDecodeFailure = null;
+        client.SnapshotDecodeFailed += e =>
+        {
+            decodeError = e;
+            stateAtDecodeFailure = client.ConnectionState;
+        };
 
         // Handshake the client in, capturing the joined slot.
         int slot = -1;
@@ -120,6 +125,8 @@ public class WorldClientDecodeFailureTests
         Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);
         Assert.Equal(DisconnectReason.IncompatibleVersion, client.DisconnectReason);
         Assert.NotNull(decodeError);
+        // #1790: the event still fires before the terminal state change, which consumers read on Disconnected.
+        Assert.Equal(WorldConnectionState.Connected, stateAtDecodeFailure);
         Assert.Contains($"unregistered type id {UnregisteredBuiltInTypeId}", client.DisconnectReasonDetail);
         Assert.True(serverSawLeave, "the server sees the session end without waiting for its own timeout");
         // #1262: a state frame queued behind the failure is ignored once the end is terminal, so nothing is ingested.

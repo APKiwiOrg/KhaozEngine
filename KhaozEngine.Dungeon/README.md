@@ -32,7 +32,8 @@ Console.WriteLine($"solvable: {report.IsSolvable}, critical path: {layout.Stats.
 density caps, corridor width (`CorridorMinWidth`/`CorridorMaxWidth`, see below), the hall knobs
 (`HallChancePercent`, `HallMinLengthTiles`/`HallMaxLengthTiles`, see below), and the roofed-interior toggle
 (`CeilingMode`, see below). `Validate()` throws
-`ArgumentException` naming the first offending property (`Generate` calls it for you). `DungeonLayout` exposes the raster read-only via `GetCell(x, z, floor)` plus
+`ArgumentException` naming the first offending property (`Generate` calls it for you). Cell size and floor height
+must be positive and finite. `DungeonLayout` exposes the raster read-only via `GetCell(x, z, floor)` plus
 `Rooms`/`Edges`/`Keys`/`Markers` and a `Stats` summary (`RoomsPlaced`, `CriticalPathLength`, `LocksPlaced`,
 `Saturated` when the plot or room budget ran out before hitting the target). `CriticalPathTarget` is
 validated but advisory and reserved: the boss room is derived as the farthest room from the entrance by BFS,
@@ -48,7 +49,9 @@ the identifiers below name the offending member. When set, `JsonPath` is a roote
 and indices. `RootObjectRequired` and a reader failure without a path leave it null. The message is prose naming
 the same member in its own camelCase spelling, never a contract. Layout JSON preserves `CeilingMode` and the
 resolved `CeilingHeightMeters`. Older layouts without those optional fields load as `Open` with a zero ceiling
-height. Layout loading rejects a negative or non-finite persisted ceiling height before constructing the layout.
+height. Config and layout loading require positive, finite cell sizes and floor heights, and a config ceiling
+height, when set, must be positive and finite too. Layout loading also rejects a negative or nonfinite persisted
+ceiling height before constructing the layout. Writes reject nonfinite floating values.
 
 | `Reason` | What it refuses | Identifiers |
 | --- | --- | --- |
@@ -62,7 +65,7 @@ height. Layout loading rejects a negative or non-finite persisted ceiling height
 | `PercentageOutsideRange` | a config `hallChancePercent` outside 0 to 100 | `JsonPath`, `ActualInteger`, `MinimumInteger` (0), `MaximumInteger` (100) |
 | `RoomMarginInsufficient` | a config `plotWidthTiles` or `plotDepthTiles` below `roomMaxTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
 | `HallMarginInsufficient` | with halls enabled, a config `plotWidthTiles` or `plotDepthTiles` below `hallMaxLengthTiles` + 2 | `JsonPath`, `ActualInteger`, `MinimumInteger` |
-| `NumberNonfinite` | a layout `ceilingHeightMeters` of positive infinity, such as `1e1000` | `JsonPath`, `ActualNumber` |
+| `NumberNonfinite` | a config or layout `cellSizeMeters`, `floorHeightMeters` or `ceilingHeightMeters` of positive infinity, such as `1e39`. Negative infinity follows the positive-required or nonnegative-required rule first | `JsonPath`, `ActualNumber` |
 | `NullValue` | a JSON null for a layout section (`grid`, `rooms`, `edges`, `keys`, `markers`, `stats`), a grid floor or row, a room, edge, key or marker entry, or an edge `path` or `doors` or a marker `tags`. An absent section loads as empty | `JsonPath`, such as `$.rooms[0]` or `$.edges[2].path` |
 | `GridFloorCountMismatch` | a `grid` whose floor count is not the layout's `floors` | `JsonPath` (`$.grid`), `ActualCount`, `ExpectedCount` |
 | `GridRowCountMismatch` | a grid floor whose row count is not the layout's `depth` | `JsonPath` (`$.grid[f]`), `Floor`, `ActualCount`, `ExpectedCount` |

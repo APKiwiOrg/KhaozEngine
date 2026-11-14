@@ -275,16 +275,18 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11StreamEmitter(stream);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             for (int i = 0; i < 100; i++) emitter.Draw((uint)i, 1, 0, 0);
             emitter.End();
             int grown = stream.Capacity;
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.Draw(3, 1, 0, 0);
 
             Assert.True(grown >= 100);
             Assert.Equal(grown, stream.Capacity);
-            Assert.Equal(1, stream.Count);
+            Assert.Equal(2, stream.Count);
         }
 
         /// <summary><c>End</c> seals, and a <c>Begin</c> unseals. This is the stream's own mirror of the
@@ -318,12 +320,13 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11StreamEmitter(stream);
             var buffer = new FakeBuffer(256);
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
 
             emitter.SetVertexBuffer(2, buffer, 48);
             emitter.DrawIndexed(6, 1, 12, -4, 0);
             emitter.ClearDepthStencil(0.5f);
 
-            ReadOnlySpan<D3D11Op> ops = stream.Ops;
+            ReadOnlySpan<D3D11Op> ops = stream.Ops[1..]; // Skip the framebuffer setup.
             Assert.Equal(3, ops.Length);
 
             Assert.Equal(D3D11OpCode.SetVertexBuffer, ops[0].Code);
@@ -352,10 +355,11 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11StreamEmitter(stream);
 
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             emitter.Draw(3, 1, 0, 0);
             emitter.End();
 
-            Assert.Equal(1, stream.Count);
+            Assert.Equal(2, stream.Count);
             foreach (D3D11Op op in stream.Ops)
             {
                 Assert.NotEqual(D3D11OpCode.Begin, op.Code);

@@ -212,6 +212,7 @@ namespace KhaozEngine.Tests.Gpu
             var log = new D3D11EmitterCallLog();
             using IGpuCommandList list = CreateDeferred();
             list.Begin();
+            list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             list.Draw(3);
             list.End();
 
@@ -241,7 +242,9 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList second = CreateDeferred();
 
             first.Begin();
+            first.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             second.Begin();
+            second.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             first.Draw(1);
             second.Draw(2);
             first.Draw(3);
@@ -255,8 +258,8 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(new[]
             {
-                "Begin()", "Draw(2,1,0,0)", "Draw(4,1,0,0)", "End()",
-                "Begin()", "Draw(1,1,0,0)", "Draw(3,1,0,0)", "End()",
+                "Begin()", "SetFramebuffer(r0)", "Draw(2,1,0,0)", "Draw(4,1,0,0)", "End()",
+                "Begin()", "SetFramebuffer(r1)", "Draw(1,1,0,0)", "Draw(3,1,0,0)", "End()",
             }, log.Trace);
         }
 
@@ -365,6 +368,7 @@ namespace KhaozEngine.Tests.Gpu
             using (IGpuCommandList deferred = CreateDeferred())
             {
                 deferred.Begin();
+                deferred.SetFramebuffer(D3D11BindFixtures.Framebuffer());
                 deferred.Draw(3);
                 Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() =>
                 {
@@ -375,6 +379,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuCommandList immediate = CreateRecording(D3D11RecordMode.Immediate, emitter);
             immediate.Begin();
+            immediate.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             immediate.Draw(3);
             Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() =>
             {
@@ -436,6 +441,7 @@ namespace KhaozEngine.Tests.Gpu
             object submitLock = new();
             using IGpuCommandList list = CreateDeferred();
             list.Begin();
+            list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             list.Draw(3);
             list.End();
 
@@ -461,7 +467,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(finished.Wait(TimeSpan.FromSeconds(10)), "Submit never completed after the lock released.");
             Assert.True(blocked, "Submit replayed without taking the submit lock the caller passed it.");
-            Assert.Equal(3, log.TotalCalls);
+            Assert.Equal(4, log.TotalCalls);
         }
 
         /// <summary>

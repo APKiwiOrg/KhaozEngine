@@ -45,7 +45,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// place the two drivers would otherwise answer differently), a command on a disposed list, and submitting a
     /// list that was never ended. One argument check also runs at record on both drivers: a nonzero dynamic
     /// offset against a set with no dynamic uniform buffer, refused by the emitter at the bind call (see
-    /// <see cref="D3D11BindFlush.RequireOffsetCarried"/>).
+    /// <see cref="D3D11BindFlush.RequireOffsetCarried"/>). Both drivers also require a framebuffer at the draw
+    /// call, through <see cref="D3D11BindResolve.RequireDrawFramebuffer"/> before any bind flush or draw op.
     /// </para>
     /// </summary>
     internal sealed partial class D3D11CommandRecorder<TEmitter> : IGpuCommandList, ID3D11SwapchainBindTracking

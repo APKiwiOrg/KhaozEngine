@@ -314,6 +314,7 @@ public sealed partial class WorldClient : IDisposable
             switch (ev.Kind)
             {
                 case ClientSessionEventKind.Joined:
+                    if (AttemptEnded) break;   // a queued Welcome cannot revive an ended attempt
                     disconnectReason = DisconnectReason.None;
                     disconnectReasonDetail = string.Empty;
                     sawShutdownNotice = false;
@@ -335,7 +336,7 @@ public sealed partial class WorldClient : IDisposable
                     OnServerFrame(ev.Data, ev.Reliability);
                     break;
                 case ClientSessionEventKind.Rejected:
-                    if (state == WorldConnectionState.Disconnected) break;   // a terminal end already holds its reason
+                    if (AttemptEnded) break;   // an ended attempt already holds its reason and retry schedule
                     // ConnectRefusal owns what each refusal token means and whether the attempt is retried.
                     refusal = ConnectRefusal.Read(ev.RejectReason);
                     disconnectReason = refusal.Reason;
@@ -343,7 +344,7 @@ public sealed partial class WorldClient : IDisposable
                     FailAttempt(allowReconnect: refusal.AllowsReconnect(retryOnReject));
                     break;
                 case ClientSessionEventKind.Disconnected:
-                    if (state != WorldConnectionState.Disconnected)
+                    if (!AttemptEnded)
                     {
                         // A typed notice that arrived before the drop says what the drop MEANS, so it wins over the
                         // generic Unreachable a bare transport loss gets. A ban outranks a shutdown when somehow
@@ -385,10 +386,12 @@ public sealed partial class WorldClient : IDisposable
     }
 
     private bool CanReconnect => connectFactory is not null && autoReconnect;
+    private bool AttemptEnded => awaitingBackoff || state == WorldConnectionState.Disconnected;
 
-    // A live attempt failed (drop, reject, or join-deadline). Either schedule another attempt or go terminal.
+    // End a failed attempt locally before backoff or a terminal state. Disconnect never disposes a borrowed transport.
     private void FailAttempt(bool allowReconnect)
     {
+        net.Disconnect();
         if (allowReconnect && CanReconnect && (backoff.MaxAttempts == 0 || attempt < backoff.MaxAttempts))
         {
             attempt = Math.Max(1, attempt + 1);
@@ -602,7 +605,7 @@ public sealed partial class WorldClient : IDisposable
         if (RouteRebuildFrame(kind, payload, reliability)) return;
         // NetClient.Disconnect leaves frames already drained into its inbox queued, so a terminal end ignores the legacy
         // state frames behind it. Notices and game messages still surface, as before.
-        if (state == WorldConnectionState.Disconnected && kind is MoveProtocol.ServerFrameKind.Snapshot
+        if (AttemptEnded && kind is MoveProtocol.ServerFrameKind.Snapshot
             or MoveProtocol.ServerFrameKind.TickedSnapshot or MoveProtocol.ServerFrameKind.Delta
             or MoveProtocol.ServerFrameKind.TickedDelta) return;
         switch (kind)
@@ -755,14 +758,12 @@ public sealed partial class WorldClient : IDisposable
     // A snapshot could not be decoded: surface it as a clean, terminal disconnect (the client is out of date;
     // reconnecting to the same build would just fail the same way) rather than letting the throw escape into the
     // consumer's frame loop. Matches the connect-time handshake's DisconnectReason.IncompatibleVersion path.
-    // The one place every decode failure (legacy snapshot, legacy delta, format 2) ends the connection locally, so the
-    // server sees the leave at once instead of holding the session until its own timeout. NetClient.Disconnect only
-    // stages transport events and never touches the session inbox the Poll drain is reading. A terminal end already
-    // holds its reason, so a later failure in the same drain neither rewrites it nor raises the event again.
+    // The event fires before FailAttempt ends the connection and reports Disconnected, so a consumer's terminal
+    // ConnectionStateChanged handler can already tell a decode failure from a door refusal. A later failure in the
+    // same drain neither rewrites the ended attempt's reason nor raises the event again.
     private void OnSnapshotDecodeFailed(string? error)
     {
-        if (state == WorldConnectionState.Disconnected) return;
-        net.Disconnect();
+        if (AttemptEnded) return;
         string detail = string.IsNullOrEmpty(error) ? "snapshot decode failed" : error!;
         disconnectReason = DisconnectReason.IncompatibleVersion;
         disconnectReasonDetail = detail;

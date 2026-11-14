@@ -360,6 +360,7 @@ namespace KhaozEngine.Tests.Gpu
             // The next submit: one ClearState, and nothing is bound on the context afterwards.
             emitter.End();
             emitter.Begin();
+            emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
 
             emitter.SetPipeline(D3D11BindFixtures.Pipeline(drawLayout));
             emitter.SetGraphicsResourceSet(0, drawSet);

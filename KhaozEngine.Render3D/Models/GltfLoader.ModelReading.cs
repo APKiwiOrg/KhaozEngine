@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using SharpGLTF.Schema2;
 
 namespace KhaozEngine.Render3D
@@ -22,7 +23,14 @@ namespace KhaozEngine.Render3D
             return LoadModel(identity, settings =>
             {
                 using var stream = new MemoryStream(bytes.Array!, bytes.Offset, bytes.Count, writable: false);
-                return ModelRoot.ReadGLB(stream, settings);
+                try { return ModelRoot.ReadGLB(stream, settings); }
+                catch (Exception ex) when (ex is IOException or ArgumentException or FormatException
+                    or JsonException or InvalidOperationException)
+                {
+                    // These failures describe the supplied bytes. Keep this catch around the reader only,
+                    // so failures in our mesh builders are not mistaken for malformed input.
+                    throw MalformedModelError(identity, ex);
+                }
             });
         }
 
@@ -33,11 +41,13 @@ namespace KhaozEngine.Render3D
             try { return load(); }
             catch (SharpGLTF.Validation.ModelException ex)
             {
-                throw new GltfImportDataException(GltfImportRefusal.MalformedModel,
-                    $"glTF asset '{identity}' is malformed: {ex.Message}", ex)
-                { Identity = identity };
+                throw MalformedModelError(identity, ex);
             }
         }
+
+        static GltfImportDataException MalformedModelError(string identity, Exception error) =>
+            new(GltfImportRefusal.MalformedModel, $"glTF asset '{identity}' is malformed: {error.Message}", error)
+            { Identity = identity };
 
         // identity names the asset in errors: a file path, or the caller's identity for bytes. read takes null for
         // SharpGLTF's default strict settings, or the fallback's validation-skipping settings.

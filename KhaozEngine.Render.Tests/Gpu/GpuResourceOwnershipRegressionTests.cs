@@ -58,6 +58,7 @@ public sealed class GpuResourceOwnershipRegressionTests
     public void D3D11FlushRefusesAForeignResourceSet(bool compute, uint dynamicOffset)
     {
         var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
+        emitter.SetFramebuffer(D3D11BindFixtures.Framebuffer());
         using var layout = D3D11BindFixtures.Layout();
         using var foreign = new FakeResourceSet();
         using var own = D3D11BindFixtures.Set(layout);

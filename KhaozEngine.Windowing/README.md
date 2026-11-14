@@ -234,7 +234,9 @@ Windowing and input foundation for KhaozEngine.
   require `TouchPhase.Began`. Undefined phases, nonfinite positions and duplicate IDs reject the touch sequence
   until release. `Pointer.IsConsumed` rejects the left mouse sequence through release, while fresh touch, wheel
   and native samples use region admission even while that button stays held. Single taps report immediately, and a
-  qualifying second tap zooms instead of reporting another single. See the
+  qualifying second consecutive owned tap zooms instead of reporting another single. A rejected or unowned mouse or
+  touch sequence, consumption, drag, long hold, two-finger gesture or release over an occluder or outside the viewport
+  breaks pairing. See the
   [consumer contract](../docs/USING-KHAOZENGINE.md#pan-and-zoom) for units, policy defaults and target examples.
   Native macOS precise pan/magnify and Windows Ctrl+wheel compatibility require device validation through the
   [probe](../tools/GestureInputProbe/README.md). Full native Windows precision pan is outside scope.

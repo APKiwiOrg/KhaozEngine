@@ -58,15 +58,26 @@ public sealed partial class GroundNavigation
             if (terrain.Route(link) == ContactDropRoute.Terrain) terrain.TryGet(link, out _);
     }
 
-    internal ContactTerrainNavigation? Terrain { get; private set; }
+    ContactTerrainNavigation? _terrain;
+    internal ContactTerrainNavigation? Terrain => AreaExclusionSource is { } source ? source.Terrain : _terrain;
     internal void AttachTerrain(PhysicsNavDescentEvidence evidence, IEnumerable<NavLink> terrainLinks, float slopeCos)
     {
+        if (AreaExclusionSource is { } source)
+        {
+            source.AttachTerrain(evidence, terrainLinks, slopeCos);
+            return;
+        }
         if (!AllowTerrainDescents || Terrain is not null) throw new InvalidOperationException("Terrain ownership must be installed once on an enabled profile.");
-        Terrain = new(this, evidence, terrainLinks, slopeCos);
+        _terrain = new(this, evidence, terrainLinks, slopeCos);
     }
     internal void RebindTerrainEvidence(PhysicsNavDescentEvidence evidence)
     {
+        if (AreaExclusionSource is { } source)
+        {
+            source.RebindTerrainEvidence(evidence);
+            return;
+        }
         if (Terrain is null) throw new InvalidOperationException("Only enabled terrain navigation owns terrain evidence.");
-        Terrain = Terrain.Rebind(evidence);
+        _terrain = Terrain.Rebind(evidence);
     }
 }

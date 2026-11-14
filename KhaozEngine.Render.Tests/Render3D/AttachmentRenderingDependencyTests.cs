@@ -26,7 +26,7 @@ public sealed class AttachmentRenderingDependencyTests
 
         Assert.True(gltf.Length == 0,
             "KhaozEngine.Attachments.Render3D names a type from a SharpGLTF assembly: [" + string.Join(", ", gltf)
-            + "]. GltfLoader's byte overloads translate SharpGLTF failures to InvalidDataException so callers "
+            + "]. GltfLoader's byte overloads translate SharpGLTF failures to GltfImportDataException so callers "
             + "never name the importer.");
     }
 }

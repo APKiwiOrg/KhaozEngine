@@ -96,6 +96,13 @@ Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame
 synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
 or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
 
+Area-exclusion views read terrain ownership through their source, including later attachment and evidence
+rebinding. Internal attach and rebind calls on a view forward to that source, so no view installs a separate
+owner or replaces the original certificate footprint. Preparation through any view warms the shared source cache.
+Planning and launch preview apply the view's exclusions across the full doubled-radius certificate shell.
+They read retained analytic face areas because ordinary captured columns omit steep faces. An excluded
+interior or fringe refuses the link before following, while a permitted terrain Drop keeps its stored policy.
+
 ## Planning and following
 
 Ordinary exits and accepted links remain separate. Public `NavTraversalGraph.CanTraverse` is their union.

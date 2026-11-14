@@ -1561,6 +1561,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `GltfImportDataException` with `GltfImportRefusal.MalformedModel`, raw `Identity` and the importer's diagnostic
   as `InnerException`, whether the importer refuses it while reading the model or while building the mesh. No
   SharpGLTF exception type reaches the caller. This is a breaking catch change from `InvalidDataException`, which is sealed.
+  Truncated headers or chunks, invalid JSON and wrong JSON value types use the same refusal. Standard I/O,
+  format, argument and JSON value-reading failures are translated only during the in-memory model read,
+  so engine mesh-building defects keep their original exceptions.
+  Each byte overload requires a nonblank `identity`, with `ArgumentException` for empty or whitespace identities
+  and `ArgumentNullException` for null. The strict overload can refuse invalid metadata earlier through
+  `GltfDecodeRefusal` with `GltfDecodeStatus.Invalid`, before model reading.
   `GltfImportDataException` derives from `MalformedDataException` in Primitives. Catch the base to handle
   malformed data across engine families, or the concrete type to inspect `GltfImportRefusal`.
   Strict validation, missing triangles, missing skins and invalid skin joints carry `GltfImportRefusal` on
@@ -2207,7 +2213,7 @@ Every constructor of these concrete family types requires a reason.
 | GltfImportRefusal | Refused input | Identifiers |
 |---|---|---|
 | `ValidationFailed` | Strict import validation after the index preflight | `Identity`, original `InnerException` |
-| `MalformedModel` | Malformed imported model data | `Identity`, original importer `InnerException` on `GltfImportDataException` |
+| `MalformedModel` | Malformed imported model data, including truncated GLB bytes and invalid JSON | `Identity`, original reader or importer `InnerException` on `GltfImportDataException` |
 | `NoTriangles` | A rigid import without triangle geometry | `Identity` |
 | `NoSkinnedMesh` | An import without usable skinned geometry | `Identity` |
 | `SkinJointLimitExceeded` | A skin above the renderer joint limit | `Identity`, `JointCount`, `MaximumJointCount` |

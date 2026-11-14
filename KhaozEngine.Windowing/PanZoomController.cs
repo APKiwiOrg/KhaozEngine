@@ -104,13 +104,16 @@ public sealed class PanZoomController
         if (touchFrame)
         {
             _mouseIgnored |= held;
+            if (_mouseSequence) _hasLastTap = false;
             _mouseSequence = _mouseAdmitted = false;
             _drag.Reset();
             bool wasActive = _touch.IsActive;
             _touch.Update(input.Touches, _coordinates, Options, dtSeconds, admits, pan, zoom);
             if (_touch.Started) _velocity = Vector2.Zero;
-            if (_touch.Tapped && viewport.Contains(_touch.TapPosition)) RecordTap(target, _touch.TapPosition);
             released = wasActive && !_touch.IsActive;
+            if (_touch.Tapped && viewport.Contains(_touch.TapPosition) && !pointer.IsOccluded(_touch.TapPosition))
+                RecordTap(target, _touch.TapPosition);
+            else if (released) _hasLastTap = false;
             if (released) _velocity = _touch.ReleaseVelocity;
         }
         else if (_mouseIgnored)
@@ -156,6 +159,7 @@ public sealed class PanZoomController
                 _drag = CreateDrag();
                 _drag.Begin(pointer.PressOrigin);
             }
+            else _hasLastTap = false;
             if (held) return false;
         }
         if (!_mouseSequence) return false;
@@ -184,9 +188,10 @@ public sealed class PanZoomController
             _drag.Release(pointer.Position, sameFrameTap ? 0 : dtSeconds);
             DirectPan(target, _drag.DragDelta);
             _velocity = _drag.ReleaseVelocity;
-            if (_drag.TapEligible && !pointer.IsOccluded(pointer.Position) && _viewport.Contains(pointer.Position))
-                RecordTap(target, pointer.Position);
         }
+        if (_mouseAdmitted && _drag.TapEligible && !pointer.IsOccluded(pointer.Position) && _viewport.Contains(pointer.Position))
+            RecordTap(target, pointer.Position);
+        else _hasLastTap = false;
         _mouseSequence = _mouseAdmitted = false;
         return true;
     }

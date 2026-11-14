@@ -18,6 +18,7 @@ public sealed partial class D3D11TimestampEndTests
         {
             rig.Start();
             rig.Arm();
+            rig.List.SetFramebuffer(D3D11BindFixtures.Framebuffer());
             rig.List.Draw(3);
             rig.List.DrawIndexed(6, 2, 0, 0, 0);
             rig.List.Dispatch(1, 1, 1);
@@ -148,6 +149,7 @@ public sealed partial class D3D11TimestampEndTests
         using var rig = new D3D11TimestampEndFixture(true);
         rig.Start();
         rig.Arm();
+        rig.List.SetFramebuffer(D3D11BindFixtures.Framebuffer());
         rig.List.Draw(3);
         rig.Pool.Dispose();
         Assert.Throws<ObjectDisposedException>(rig.List.End);

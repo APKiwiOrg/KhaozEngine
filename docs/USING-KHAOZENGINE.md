@@ -1188,9 +1188,12 @@ history. Held contacts cannot restart until physically released. A native moment
 cancelled sequence. Continue lifecycle sampling while a view is inactive, or retain inhibition until release.
 
 `Tapped`/`TapPosition` and `DoubleTapped`/`DoubleTapPosition` are results of the latest controller update.
-A single tap reports immediately. A qualifying second tap zooms at its position and reports double-tap
-instead of a second single tap. Selection can therefore happen on the first tap before zooming. A two-finger
-tap zooms out at its centroid. Drag releases and cancelled sequences never select.
+A single tap reports immediately. A qualifying second consecutive owned tap zooms at its position and reports
+double-tap instead of a second single tap. Any mouse or touch sequence that does not end in a recorded tap breaks
+pairing, including rejected or unowned starts, consumption, drags, long holds, two-finger gestures and releases over
+an occluder or outside the viewport. Selection can therefore happen on the first tap before zooming. Call `Cancel()`
+after a selecting tap when selection must also end pairing, even without an intervening rejected sequence.
+A two-finger tap zooms out at its centroid. Drag releases and cancelled sequences never select.
 
 `PanZoomOptions` validates mutable policy at each update. Defaults include slop 8, tap/double-tap timing
 0.3 seconds, double-tap radius 24, wheel factor 1.1 and duration 0.12 seconds, inertia decay 8 and stationary
@@ -7533,6 +7536,9 @@ Besides the set type renames in the design record table:
   diagnostic is `InnerException`. This type derives from `MalformedDataException` in Primitives because
   `InvalidDataException` is sealed. Update existing malformed-data catches to include `MalformedDataException`.
   Callers never need a SharpGLTF exception type.
+  Truncated GLB headers or chunks, invalid JSON and wrong JSON value types carry the same refusal and original reader exception.
+  Each overload requires a nonblank `identity`. Null throws `ArgumentNullException`, and empty or whitespace
+  throws `ArgumentException`.
 
 ### Offline table equipment coverage
 
@@ -9152,8 +9158,12 @@ a `oneOf` over the config and layout shapes), which the package's tests validate
 available for editor/AI tooling. The load path itself enforces its own semantic checks, throwing
 `DungeonJsonException`. Its `Reason` (a `DungeonJsonRefusal`) names the rule and, where one applies, `JsonPath`
 names the offending member as a rooted path, such as `$.roomCountTarget` or `$.rooms[2].id`,
-with the other identifiers listed in the package README. The message is prose, never a contract. A hand-authored
-or generated config looks like:
+with the other identifiers listed in the package README. Config and layout cell sizes and floor heights, and a
+set config ceiling height, must be positive and finite. A positive overflow such as `1e39` reports `NumberNonfinite`, the rooted member path and
+`ActualNumber`. Nonpositive sizes, including negative infinity, report `PositiveValueRequired` first.
+`DungeonConfig.Validate` and `DungeonGenerator.Generate` enforce the same size rules with `ArgumentException`
+and the property as `ParamName`. The message is prose, never a contract. A hand-authored or generated config
+looks like:
 
 ```jsonc
 {
@@ -10043,6 +10053,10 @@ No precision threshold or physical gate is widened.
 Call `GroundNavigation.PrepareTerrainDescents()` during loading, outside a frame or simulation tick. It builds the
 synchronized certificate cache without physics and is safe for concurrent callers. First use can exceed a frame
 or tick budget. Preparation caches immutable topology only and never replaces the live preview or actual Hold.
+`ExcludingAreas` views share the source's current terrain ownership and prepare its shared certificate cache.
+Later terrain attachment or evidence rebinding remains visible to existing views. Terrain links retain their
+stored policy, while planning and launch preview check the view's exclusions against retained analytic face
+areas across the full doubled-radius certificate projection, including steep interiors and the shell fringe.
 
 Terrain Drops execute through `MoveToRange` using the same policy as the bake. Stored routes select sharp or
 terrain behavior before evidence access. Preview and submission share the current `PlayerPathInput` when using
@@ -11915,6 +11929,12 @@ and joint refusals also carry the counts or the vertex's `BoneIndices`, `VertexI
 Every `GltfLoader` byte overload, `LoadFlattenedAlbedo(ReadOnlyMemory<byte>, string)` included, reports a malformed
 glTF as `GltfImportDataException` with `GltfImportRefusal.MalformedModel`, the supplied raw `Identity` and the
 importer's diagnostic as `InnerException`, so callers never catch a SharpGLTF exception type.
+This includes truncated GLB headers or chunks, invalid JSON and wrong JSON value types. Standard reader I/O,
+format, argument and JSON value-reading failures are translated only while reading the supplied bytes. Engine mesh-building defects keep their
+original exceptions, and strict validation keeps `GltfImportStateException` with `ValidationFailed`.
+Every byte overload requires a nonblank `identity`. Null throws `ArgumentNullException`, and empty or whitespace
+throws `ArgumentException`. The strict overload's metadata admission can refuse earlier with `GltfDecodeRefusal`
+and `GltfDecodeStatus.Invalid`.
 `PropLoader` normalization uses `PropLoadRefusal.DeclaredHeightOutsideRange`, `NoMeasurableHeight` or
 `ScaleOutsideRange` with the declared or measured values and validation bounds. Empty material parts use
 `PropLoadArgumentException`, `PropLoadRefusal.MaterialPartsEmpty`, `PartCount` and `ParamName`.
@@ -16550,6 +16570,8 @@ The immutable view shares the baked graph and captured columns, including loaded
 across pursuits. No extra capture, whole-world profile or bake format change is needed. Zero keeps the same
 instance and chained calls accumulate exclusions. Baked required and excluded masks still apply. Excluding
 a required bit makes affected surfaces ineligible and never widens the original profile.
+The view also shares current source terrain routes and certificates. A `MoveToRange` using the view keeps terrain
+descent ownership and refuses excluded terrain links before execution. Pursuit retains its walk-only policy.
 
 The exclusion checks the complete capsule footprint on search nodes and directed edges, including Stair links,
 and guards straightening, actual-to-route entry, every kept segment and waypoint shortcuts. It applies at Admit
@@ -17410,7 +17432,9 @@ almost all of it.
    boots into a framed server with no consumer wiring. A config with `IncludeEngineMigrations = false` has to
    register it explicitly.
 6. **A custom `IPredictedState<T>`** that opts into `FrameAnchor` must also implement `WithFrameAnchor`. Leaving
-   both at their defaults keeps a frameless state working exactly as before.
+   both at their defaults keeps a frameless state working exactly as before. For allocation-free prediction,
+   implement the steady-path members explicitly, including a zero `FrameAnchor`, as described in the
+   [Netcode prediction contract](../KhaozEngine.Netcode/README.md#clientpredictiontstate-tcommand).
 7. **Optional:** handle `WorldClient.FrameChanged` for colliders you registered yourself outside the engine's
    streaming sink. A consumer that only reads the positions the engine hands it needs no handler.
 
@@ -25942,6 +25966,12 @@ catch (SignInException ex)
 value, a client secret, an authority URL or a response body. It is null only for an instance another backend
 built through a message-only constructor, whose text is then in `Detail`. The
 [Sign-in refusals](../KhaozEngine.Identity/README.md#sign-in-refusals) table lists every reason.
+Discovery and token success bodies must be JSON objects. A non-object body refuses with `EndpointJsonMalformed`
+and `EndpointRole`, with a parser inner exception only when the JSON syntax is invalid. Present required
+endpoint or credential members without a non-empty JSON string refuse with `DiscoveryEndpointEmpty` or
+`TokenMemberEmpty`, carrying `MemberName` and `EndpointRole`. A present `refresh_token` of any kind other than
+string or null also refuses with `TokenMemberEmpty`. An absent, null or empty refresh token stays accepted.
+Malformed `expires_in` keeps `TokenExpiryMalformed`, with its `MemberName` and `EndpointRole`.
 The shared base and both provider types retain every legacy constructor. Forwarding preserves `Detail`, a
 null reason and the inner cause for consumer-built instances. Engine construction is fenced in all three
 assemblies, including calls from provider constructors.
@@ -29547,7 +29577,14 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the `ke:banned` connect refusal or the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up", which parses `DisconnectReasonDetail` with `ContentRefusal`). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the `ke:banned` connect refusal or the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up", which parses `DisconnectReasonDetail` with `ContentRefusal`). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` has no reconnect and leaves transport disposal to the caller.
+
+When the no-frame timeout or join deadline expires, `WorldClient.Poll(dt)` ends the current connection locally
+before entering reconnect backoff or terminal `Disconnected`. Decode and replication failures end it through
+the same path. The server sees the leave on its next poll, without waiting for its own timeout. Queued disconnects,
+rejections and Welcomes from that attempt cannot replace its reason or schedule another retry. Ending a connection
+does not dispose a caller-owned transport. Factory-owned transports are disposed when replaced or when the client
+is disposed.
 
 A drop does not always remove the player's body at once. A `ShardedWorldServer` with
 `ShardedWorldServerConfig.DisconnectLingerTicks` set can keep the body in the world for the ticks the game grants,
@@ -30772,10 +30809,11 @@ from observer snapshots, so the wire payload does not grow.
 D3D11, Metal and Vulkan throw `GpuBoundFramebufferException`, derived from `InvalidOperationException`,
 with `GpuBoundFramebufferRefusal.FramebufferNotBound` when an existing framebuffer-dependent command has
 no target. `ClearColorTarget`, `ClearDepthStencil` and `SetFullScissorRects` report those exact member names
-in `Command`. Metal and Vulkan also refuse draws without a target and report `Draw` or `DrawIndexed`.
-D3D11 retains its existing draw acceptance. A depth clear against a colour-only target uses
+in `Command`. All three backends also refuse draws without a target and report `Draw` or `DrawIndexed`.
+D3D11 checks before the bind flush on both emitters and at the draw call on both recording drivers. Each
+recording needs its own framebuffer bind. A depth clear against a colour-only target uses
 `DepthAttachmentMissing` and `Command = "ClearDepthStencil"` on all three backends. Bind a target with the
-required attachment before retrying. Messages and refusal points are unchanged.
+required attachment before retrying.
 
 ### Backend diagnostic settings refusals
 

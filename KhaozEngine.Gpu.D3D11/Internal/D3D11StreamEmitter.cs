@@ -37,7 +37,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void End() => _stream.Seal();
 
         public void SetFramebuffer(IGpuFramebuffer framebuffer)
-            => _stream.Append(new D3D11Op(D3D11OpCode.SetFramebuffer, _stream.AddReference(framebuffer)));
+        {
+            _stream.Append(new D3D11Op(D3D11OpCode.SetFramebuffer, _stream.AddReference(framebuffer)));
+            _stream.BoundFramebuffer = framebuffer;
+        }
 
         public void ClearColorTarget(uint index, Color rgba)
             => _stream.Append(new D3D11Op(D3D11OpCode.ClearColorTarget, a0: index,
@@ -78,12 +81,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             => _stream.Append(new D3D11Op(D3D11OpCode.SetFullScissorRects));
 
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
-            => _stream.Append(new D3D11Op(D3D11OpCode.Draw,
+        {
+            D3D11BindResolve.RequireDrawFramebuffer(_stream.BoundFramebuffer, nameof(IGpuCommandList.Draw));
+            _stream.Append(new D3D11Op(D3D11OpCode.Draw,
                 a0: vertexCount, a1: instanceCount, a2: vertexStart, a3: instanceStart));
+        }
 
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
-            => _stream.Append(new D3D11Op(D3D11OpCode.DrawIndexed,
+        {
+            D3D11BindResolve.RequireDrawFramebuffer(_stream.BoundFramebuffer, nameof(IGpuCommandList.DrawIndexed));
+            _stream.Append(new D3D11Op(D3D11OpCode.DrawIndexed,
                 a0: indexCount, a1: instanceCount, a2: indexStart, a3: D3D11Op.Signed(vertexOffset), a4: instanceStart));
+        }
 
         /// <summary>
         /// THE ONE PLACE THE TWO UPLOAD PATHS PART (decisions U1 and U4), and the only seam call that does not

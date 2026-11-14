@@ -1484,10 +1484,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   mutation, and `identity` is the raw `MeshIndexStateException.Identity` for malformed indices. Attachment consumers apply
   `AttachmentGlb.ValidateRigidEmbedded` before import through `KhaozEngine.Attachments`.
   `KhaozEngine.Attachments.Render3D` supplies the skeleton binding and ships in Game3D.
-- Byte import exception contract: `LoadPartsWithMaterials(glb, identity)`,
-  `LoadSkinnedPartsWithMaterials(glb, identity)` and `LoadSkinned(glb, identity)` report a malformed glTF as
+- Byte import exception contract: every `GltfLoader` byte overload, including `LoadPartsWithMaterials(glb, identity)`,
+  `LoadSkinnedPartsWithMaterials(glb, identity)`, `LoadSkinned(glb, identity)` and
+  `LoadFlattenedAlbedo(glb, identity)`, reports a malformed glTF as
   `GltfImportDataException` with `GltfImportRefusal.MalformedModel`, raw `Identity` and the importer's diagnostic
-  as `InnerException`. This is a breaking catch change from `InvalidDataException`, which is sealed.
+  as `InnerException`, whether the importer refuses it while reading the model or while building the mesh. No
+  SharpGLTF exception type reaches the caller. This is a breaking catch change from `InvalidDataException`, which is sealed.
   `GltfImportDataException` derives from `MalformedDataException` in Primitives. Catch the base to handle
   malformed data across engine families, or the concrete type to inspect `GltfImportRefusal`.
   Strict validation, missing triangles, missing skins and invalid skin joints carry `GltfImportRefusal` on
@@ -1550,7 +1552,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     asset file) for samples and tests, mirroring `TerrainMaterialPresets.Procedural`.
 - Load-time flatten: `GltfLoader.LoadFlattenedAlbedo(path) -> GltfMesh` is what `PropLoader.LoadProp` calls.
   `LoadFlattenedAlbedo(glb, identity)` parses a binary glTF already in memory the same way, naming `identity` in
-  errors. It has no directory to resolve a relative external URI against, so a caller that must read nothing beyond
+  errors and following the byte import exception contract above. It has no directory to resolve a relative
+  external URI against, so a caller that must read nothing beyond
   its bytes, like `NativeMapAssetLoader`, refuses external URIs first.
   When a source material carries a `baseColorTexture`, it decodes the texture and folds
   `GltfLoader.AverageAlbedo`'s alpha-weighted average colour (texels with alpha >= 0.5, falling back to a

@@ -127,11 +127,17 @@ namespace KhaozEngine.Render3D
         /// against, so a caller that must not read outside its bytes refuses external URIs first.
         /// <paramref name="identity"/> is the raw MeshIndex or GltfImport refusal Identity where the path overload uses the file.
         /// Array-backed bytes are read in place without a copy, so they must not change during the call.</summary>
+        /// <exception cref="GltfImportDataException">The glTF is malformed. Reason is
+        /// <see cref="GltfImportRefusal.MalformedModel"/>, Identity is <paramref name="identity"/> and the
+        /// importer's diagnostic is the inner exception. This type derives from Exception because
+        /// InvalidDataException is sealed.</exception>
+        /// <exception cref="GltfImportStateException">The glTF has no triangles or fails strict validation.</exception>
+        /// <exception cref="MeshIndexStateException">A triangle index is outside its vertex domain.</exception>
         public static GltfMesh LoadFlattenedAlbedo(ReadOnlyMemory<byte> glb, string identity)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(identity);
-            ModelRoot root = LoadModel(glb, identity);
-            return BuildRigid(root, identity, MakeAlbedoFlattenResolver(assetDirectory: null));
+            return TranslateModelErrors(identity,
+                () => BuildRigid(LoadModel(glb, identity), identity, MakeAlbedoFlattenResolver(assetDirectory: null)));
         }
 
         // The flat scene weld. <paramref name="baseColorFor"/> resolves a primitive's per-vertex base colour. When

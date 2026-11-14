@@ -176,9 +176,11 @@ vec2 hexTurn(vec2 v, vec2 cs) { return vec2(cs.x * v.x + cs.y * v.y, -cs.y * v.x
 
 // One hex of the hex-tiled top-down tap: the copy of the texture centred on lattice vertex v, with its random
 // offset and, in Rotate mode, its random turn, sampled at uv and added to the running sums at its blend weight.
-// The weight is the hex's barycentric weight sharpened to the 7th power, biased toward the higher height, or the
-// brighter tap for a material without a height map, and it depends on this tap alone, so the three hexes are
-// summed as they are taken and normalised once, rather than all held at once.
+// The weight is the hex's barycentric weight sharpened to the 7th power, times exp(4 h) for a height-mapped
+// material, so where two copies meet the higher stone wins outright and a seam runs along joints instead of through
+// stones (a 1 to 55 swing, which a hex core's barycentric lead still outweighs), or Mikkelsen's mild brightness bias
+// for a material without one. It depends on this tap alone, so the three hexes are summed as they are taken and
+// normalised once, rather than all held at once.
 void hexTap(int sl, int surfaceLayer, ivec2 v, float bw, vec2 uv, vec2 g0, vec2 g1, vec3 N, bool rotate,
             inout vec4 albedoHeight, inout vec3 normal, inout float rough, inout float weight) {
     vec2 centre = vec2(float(v.x) + 0.5 * float(v.y), 0.8660254 * float(v.y)) / Relief.w;
@@ -188,9 +190,9 @@ void hexTap(int sl, int surfaceLayer, ivec2 v, float bw, vec2 uv, vec2 g0, vec2 
     vec2 tuv = centre + hexTurn(uv - centre, cs) + offset;
     vec2 t0 = hexTurn(g0, cs), t1 = hexTurn(g1, cs);
     vec4 a = tapAlbedo(sl, tuv, t0, t1);
-    float bias = Blend[sl].x > 0.5 ? a.a : dot(a.rgb, vec3(0.299, 0.587, 0.114));
+    float bias = Blend[sl].x > 0.5 ? exp(4.0 * a.a) : mix(1.0, dot(a.rgb, vec3(0.299, 0.587, 0.114)), 0.6);
     // Clamped first: a barycentric weight can land a rounding error below 0, and pow of a negative is undefined.
-    float w = mix(1.0, bias, 0.6) * pow(max(bw, 0.0), 7.0);
+    float w = bias * pow(max(bw, 0.0), 7.0);
     albedoHeight += w * a;
     weight += w;
     vec3 n = N;

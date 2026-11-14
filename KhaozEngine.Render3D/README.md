@@ -351,8 +351,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
       inward instead, as deep as the ramp's 0.9 contour at full breakup, and 0 and 1 stay fixed points.
     - **Hex-tiling.** `TileGroundAntiTiling.Offset` or `Rotate` hex-tiles the layer's top-down taps (Mikkelsen
       2022): three randomly offset (and, for Rotate, turned) copies from a hex lattice of about half a repeat,
-      blended by sharpened barycentric weights biased toward the higher height, or the brighter tap without a
-      height map. Rotated taps turn their gradients and their tangent-space normal back. Side projections on steep
+      blended by barycentric weights sharpened to the 7th power. A height-mapped layer's weights are multiplied by
+      exp(4 h), so where two copies meet the higher stone wins outright and the seam runs along joints rather than
+      through stones. A layer without a height map takes Mikkelsen's mild brightness bias instead. Hex-tiling suits
+      stochastic textures (grass, dirt, gravel, rough rock) and SHATTERS a mosaic of discrete stones (cobble, setts,
+      flagstones): its copies overlap stone on stone, so a seam cuts through stones however it is weighted. Hide a
+      mosaic's repeat with a larger, more varied texture instead. Rotated taps turn their gradients and their tangent-space normal back. Side projections on steep
       ground stay single taps. Offset keeps a directional texture's orientation, Rotate hides the repeat best on an
       isotropic one.
     - **Cost.** A 512 px RGBA8 layer with its mip chain is 1.33 MiB. The albedo array is unchanged, the surface

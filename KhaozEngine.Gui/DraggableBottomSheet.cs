@@ -46,8 +46,9 @@ public sealed class DraggableBottomSheet
         _motion.Dismissed += () => Dismissed?.Invoke();
     }
 
-    /// <summary>Resolve body-only content height and host safe area. Layout or coordinate changes cancel
-    /// held gestures and settle the same target ID. Suppressed raw State is used only for release detection.
+    /// <summary>Resolve body-only content height and host safe area. Layout, resolved detent height or
+    /// coordinate changes cancel held gestures and settle the same target ID. Suppressed raw State is used only
+    /// for release detection.
     /// Left consumption gates mouse admission. Touch and native admission use geometry and blocked regions.
     /// Command scroll and magnify are reserved zoom intent and never move a sheet.</summary>
     public void Update(InputManager input, Rect availableBounds, SafeAreaInsets safeArea,
@@ -62,7 +63,8 @@ public sealed class DraggableBottomSheet
         var pointer = input.Pointer;
         ExpireReleasedLeft(input);
         Rect safe = safeArea.Apply(availableBounds);
-        bool changed = _hasLayout && (_safeBounds != safe || _contentHeight != contentHeight
+        bool hadLayout = _hasLayout;
+        bool changed = hadLayout && (_safeBounds != safe || _contentHeight != contentHeight
             || !_coordinates.HasSameMapping(pointer.Coordinates));
         bool held = state.IsDown(MouseButton.Left);
         if (!held) _mouseIgnored = false;
@@ -74,7 +76,8 @@ public sealed class DraggableBottomSheet
         _coordinates = pointer.Coordinates;
         _hasLayout = true;
         _contentHeight = contentHeight;
-        _motion.Resolve(safe.Height, contentHeight);
+        // A resolver reading host state can change a detent height while both inputs stay the same.
+        changed |= _motion.ResolveChanged(safe.Height, contentHeight) && hadLayout;
         _frameRegions.Add(Bounds);
         if (changed || input.PointerInputSuppressed || !state.WindowFocused || state.PointerCaptured
             || !ValidMapping(_coordinates) || active > 1)

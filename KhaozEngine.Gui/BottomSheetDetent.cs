@@ -9,7 +9,8 @@ public sealed class BottomSheetDetent
     public string Id { get; }
     public bool Dismissible { get; }
 
-    /// <summary>The resolver receives safe available height and desired body plus handle height.</summary>
+    /// <summary>The resolver receives safe available height and desired body plus handle height. It runs on every
+    /// resolve and may read host state. A changed result re-settles the same target detent.</summary>
     public BottomSheetDetent(string id, Func<float, float, float> heightResolver, bool dismissible = false)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A detent ID is required.", nameof(id));

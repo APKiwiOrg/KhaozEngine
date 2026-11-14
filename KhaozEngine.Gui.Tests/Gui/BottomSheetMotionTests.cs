@@ -106,11 +106,13 @@ public sealed class BottomSheetMotionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => Model().Advance(dt));
 
     [Fact]
-    public void Resize_and_content_changes_preserve_named_target_and_cancel_snap()
+    public void Resize_content_and_resolver_changes_preserve_named_target_and_cancel_snap()
     {
+        float hostCap = 1;
         var model = new BottomSheetMotion(new[]
         {
-            BottomSheetDetent.Fraction("peek", .25f), BottomSheetDetent.Fraction("full", .75f)
+            BottomSheetDetent.Fraction("peek", .25f),
+            new BottomSheetDetent("full", (available, _) => available * .75f * hostCap)
         }, "peek");
         model.Resolve(800, 1000);
         model.SetDetent("full", true);
@@ -125,6 +127,17 @@ public sealed class BottomSheetMotionTests
         Assert.Equal("full", model.TargetDetentId);
         model.Resolve(800, 1200);
         Assert.Equal(600, model.Height);
+        // #1400: host state read by a resolver changes with identical inputs and re-settles the same target.
+        model.SetDetent("peek", false);
+        model.SetDetent("full", true);
+        model.Advance(.09f);
+        hostCap = .5f;
+        model.Resolve(800, 1200);
+        Assert.Equal("full", model.TargetDetentId);
+        Assert.Equal("full", model.CurrentDetentId);
+        Assert.Equal(300, model.TargetHeight);
+        Assert.Equal(300, model.Height);
+        Assert.False(model.IsAnimating);
     }
 
     [Fact]

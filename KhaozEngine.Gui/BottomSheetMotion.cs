@@ -10,7 +10,7 @@ public sealed class BottomSheetMotion
 {
     const float SnapSeconds = .18f;
     readonly BottomSheetDetent[] _detents;
-    readonly float[] _heights;
+    readonly float[] _heights, _resolving;
     readonly DragMotionTracker _drag;
     readonly string[]? _toggleIds;
     float _available, _contentHeight, _snapOrigin;
@@ -44,6 +44,7 @@ public sealed class BottomSheetMotion
         Options.Validate();
         _detents = new BottomSheetDetent[detents.Count];
         _heights = new float[detents.Count];
+        _resolving = new float[detents.Count];
         var ids = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < detents.Count; i++)
         {
@@ -63,22 +64,30 @@ public sealed class BottomSheetMotion
         _drag = new(Options.DragSlop, Options.TapMaxDuration, Options.StationaryReleaseCutoff);
     }
 
-    /// <summary>Resolve against safe height and body-only content height. Changes settle the same target ID.</summary>
-    public void Resolve(float availableHeight, float contentHeight)
+    /// <summary>Resolve against safe height and body-only content height. Every call runs every detent resolver,
+    /// so a resolver may read host state beyond these two inputs. Changed inputs or a changed resolved height
+    /// cancel motion and settle the same target ID. Unchanged inputs and heights leave motion untouched.</summary>
+    public void Resolve(float availableHeight, float contentHeight) => ResolveChanged(availableHeight, contentHeight);
+
+    /// <summary>Resolve and report whether the layout changed, so a host can cancel its own gesture state.</summary>
+    internal bool ResolveChanged(float availableHeight, float contentHeight)
     {
         BottomSheetOptions.Nonnegative(availableHeight, nameof(availableHeight));
         BottomSheetOptions.Nonnegative(contentHeight, nameof(contentHeight));
-        if (_resolved && _available == availableHeight && _contentHeight == contentHeight) return;
         float total = contentHeight + Options.HandleHeight;
         BottomSheetOptions.Nonnegative(total, nameof(contentHeight));
-        var resolved = new float[_detents.Length];
-        for (int i = 0; i < resolved.Length; i++)
+        // The cache keys on resolved heights as well as inputs, so host state read by a resolver cannot
+        // leave a stale height. The scratch buffer keeps the per-frame steady state allocation free.
+        bool same = _resolved && _available == availableHeight && _contentHeight == contentHeight;
+        for (int i = 0; i < _resolving.Length; i++)
         {
             float height = _detents[i].ResolveHeight(availableHeight, total);
             BottomSheetOptions.Nonnegative(height, nameof(availableHeight));
-            resolved[i] = MathF.Min(height, availableHeight);
+            _resolving[i] = MathF.Min(height, availableHeight);
+            same &= _resolving[i] == _heights[i];
         }
-        resolved.CopyTo(_heights, 0);
+        if (same) return false;
+        _resolving.CopyTo(_heights, 0);
         _available = availableHeight;
         _contentHeight = contentHeight;
         _resolved = true;
@@ -86,6 +95,7 @@ public sealed class BottomSheetMotion
         Height = TargetHeight;
         ClampScroll();
         Settle();
+        return true;
     }
 
     public void SetDetent(string id, bool animated)

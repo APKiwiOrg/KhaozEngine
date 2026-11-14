@@ -1268,6 +1268,9 @@ overlay/sheet reservations and cancellation.
 The host supplies bounds excluding HUD/tab bars and `SafeAreaInsets`. All heights use Pointer coordinates.
 Detents have stable IDs and caller-owned height policies. `Update` takes body-only measured content height.
 Custom detent resolvers receive safe available height and total desired sheet height, including the handle.
+Every `Update` runs every resolver, so a resolver may also read host state such as a layout cap or text
+scale. A changed result is a layout change: it cancels held gestures and settles the same target ID with no
+invalidation call. An unchanged result leaves an in-flight drag or snap untouched.
 
 ```csharp
 var sheet = new DraggableBottomSheet(new[]
@@ -1297,9 +1300,10 @@ starts stay rejected through release even after dismissal.
 
 `Bounds`, `HandleBounds`, `ContentBounds` and positive `ScrollOffset` describe the current presentation.
 `CurrentDetentId` is last settled, `TargetDetentId` is selected. `SetDetent(id, animated)` selects without
-resetting identity on selection changes. Layout/content/mapping changes cancel motion and settle the same
-target ID. `DetentChanged` fires on an actual settled/immediate ID change. `Dismissed` fires on arrival from
-a non-dismissible ID into an explicitly dismissible ID. Repeated selection/resize does not repeat events.
+resetting identity on selection changes. Layout/content/mapping and resolved detent height changes cancel
+motion and settle the same target ID. `DetentChanged` fires on an actual settled/immediate ID change.
+`Dismissed` fires on arrival from a non-dismissible ID into an explicitly dismissible ID. Repeated
+selection/resize does not repeat events.
 `ToggleHandle(animated = true)` is also a caller-driven keyboard action with caller-owned focus. An explicit
 pair can include dismissal or equal-height IDs. Without one, it uses the lowest/highest non-dismissible IDs,
 with declaration order breaking ties. Fewer than two distinct eligible IDs or equal extrema is a no-op.

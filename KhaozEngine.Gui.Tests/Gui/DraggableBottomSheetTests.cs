@@ -12,13 +12,18 @@ public sealed class DraggableBottomSheetTests
 {
     static readonly Rect Available = new(100, 100, 800, 800);
     readonly InputManager _input = new();
-    readonly DraggableBottomSheet _sheet = new(new[]
-    {
-        BottomSheetDetent.Fixed("closed", 0, true), BottomSheetDetent.Fixed("peek", 200),
-        BottomSheetDetent.Fixed("full", 600)
-    }, "peek", new BottomSheetOptions { HandleToggleDetentIds = new[] { "peek", "full" } });
+    readonly DraggableBottomSheet _sheet;
+    float _peek = 200;
 
-    public DraggableBottomSheetTests() => Step(Frame(), 0);
+    public DraggableBottomSheetTests()
+    {
+        _sheet = new(new[]
+        {
+            BottomSheetDetent.Fixed("closed", 0, true), new BottomSheetDetent("peek", (_, _) => _peek),
+            BottomSheetDetent.Fixed("full", 600)
+        }, "peek", new BottomSheetOptions { HandleToggleDetentIds = new[] { "peek", "full" } });
+        Step(Frame(), 0);
+    }
 
     [Theory]
     [InlineData(false)]
@@ -264,19 +269,21 @@ public sealed class DraggableBottomSheetTests
     [InlineData(2)]
     [InlineData(3)]
     [InlineData(4)]
+    [InlineData(5)]
     public void Lifecycle_cancellation_inhibits_held_mouse_and_allows_fresh_press_after_release(int cause)
     {
         Step(Frame(new(400, 710), down: true, press: true));
         if (cause == 0) _sheet.CancelGestures();
+        if (cause == 5) _peek = 250; // #1400: host state read by a resolver changes with identical inputs.
         Step(Frame(new(400, 650), down: true, focused: cause != 1, captured: cause == 2),
             suppressed: cause == 3, bounds: cause == 4 ? new Rect(100, 100, 800, 700) : null);
         Step(Frame(new(400, 500), down: true));
         Step(Frame(new(400, 710)), suppressed: true);
         Assert.Equal("peek", _sheet.TargetDetentId);
-        Assert.Equal(200, _sheet.Bounds.Height);
+        Assert.Equal(_peek, _sheet.Bounds.Height);
         Step(Frame(new(400, 710), down: true, press: true));
         Step(Frame(new(400, 610), down: true));
-        Assert.Equal(300, _sheet.Bounds.Height);
+        Assert.Equal(_peek + 100, _sheet.Bounds.Height);
     }
 
     [Fact]
@@ -343,6 +350,21 @@ public sealed class DraggableBottomSheetTests
         Assert.Equal(0, _sheet.ScrollOffset);
         Step(Frame(), 1);
         Assert.Equal(580, _sheet.Bounds.Height);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Layout_and_resolver_changes_end_native_scroll_admission(bool resolver)
+    {
+        Rect? bounds = resolver ? null : new Rect(100, 100, 800, 700);
+        Step(Frame(samples: new[] { Precise(-100, 760, PointerGestureInputPhase.Began) }));
+        Assert.Equal(300, _sheet.Bounds.Height);
+        if (resolver) _peek = 250; // #1400: a changed resolver height is a layout change.
+        Step(Frame(samples: new[] { Precise(-50, 760, PointerGestureInputPhase.Changed) }), bounds: bounds);
+        Step(Frame(samples: new[] { Precise(-50, 760, PointerGestureInputPhase.Changed) }), bounds: bounds);
+        Assert.Equal("peek", _sheet.TargetDetentId);
+        Assert.Equal(_peek, _sheet.Bounds.Height);
     }
 
     [Fact]

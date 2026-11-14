@@ -78,8 +78,10 @@ zoom, including wheel snap stops, while native magnify and command+precise zoom 
 `DraggableBottomSheet` accepts named `BottomSheetDetent` policies and `BottomSheetOptions`. Its
 `Update(input, availableBounds, safeArea, bodyContentHeight, dtSeconds)` runs before lower maps and
 owns body expand/scroll/collapse handoff without passing residual to them. Content height is body-only.
-Detent resolvers receive total desired height including the handle. `CurrentDetentId` is settled,
-`TargetDetentId` is selected, and `SetDetent`, `ToggleHandle` and `CancelGestures` expose caller control.
+Detent resolvers receive total desired height including the handle. Every update runs every resolver, so a
+resolver may read host state, and a changed result cancels held gestures and settles the same target ID.
+`CurrentDetentId` is settled, `TargetDetentId` is selected, and `SetDetent`, `ToggleHandle` and
+`CancelGestures` expose caller control.
 `DetentChanged` is `Action<string>`, `Dismissed` is `Action`, and dismissal requires an explicit detent.
 The host owns keyboard focus, localized body content, optional white texture, theme and batch lifecycle.
 `Draw(batch, Action<Rect, float>)` clips the body and restores enclosing clips.

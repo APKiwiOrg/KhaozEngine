@@ -203,7 +203,9 @@ detents for mouse/keyboard accessibility. Dismissal requires an explicit dismiss
 
 Release projects the shared drag velocity onto the vertical axis and selects a bounded detent.
 Snap motion is driven only by supplied elapsed time. New press interrupts it. Bounds changes cancel
-motion and resolve the same named detent against the new safe area. Selection changes do not reset it.
+motion and resolve the same named detent against the new safe area. Resolvers run on every update and may
+read host state, so the resolution cache compares resolved heights as well as inputs. A changed height
+cancels motion like a bounds change. Selection changes do not reset it.
 
 The sheet owns a headless scroll/handoff model and can render caller content through a clipped
 callback. It does not require a ScrollablePanel to process the same drag again. Shared panel geometry

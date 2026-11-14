@@ -75,6 +75,11 @@ namespace KhaozEngine.Gpu
         /// or allocation-success guarantee.</summary>
         public uint MaxStorageBufferRangeBytes { get; init; }
 
+        /// <summary>Guaranteed largest width or height of a sampled 2D colour render target. Intersects image and
+        /// framebuffer limits on Vulkan. Zero means unknown, so optional larger-target paths must fall back.
+        /// Metal reports the Mac-family guarantee and Direct3D 11 its feature-level 11 minimum.</summary>
+        public uint MaxRenderTexture2DDimension { get; init; }
+
         /// <summary>True if the device implements fixed timestamp pools and non-blocking resolution of usable
         /// elapsed ticks. Defaults to false. Unsupported pool creation throws <see cref="System.NotSupportedException"/>,
         /// so a caller omits GPU timing rather than estimating it.</summary>

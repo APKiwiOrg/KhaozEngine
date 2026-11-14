@@ -275,6 +275,10 @@ What it owns today:
   lit renderer construction throw Render3D's `LitReceiverNotSupportedException` before GPU allocation, with
   `LitReceiverRefusal.FragmentStorageBufferLimitInsufficient`, `RequiredCount`, `AvailableCount` and
   `CapabilityName` (`maxPerStageDescriptorStorageBuffers`).
+  `MaxRenderTexture2DDimension` reports the guaranteed largest sampled 2D colour render target axis,
+  or zero when unknown. Vulkan intersects `maxImageDimension2D`, `maxFramebufferWidth` and
+  `maxFramebufferHeight`. Metal uses the Mac-family guarantee of 16384 and Direct3D 11 the feature-level
+  11 guarantee of 16384. Optional larger-target paths fall back when the limit is unknown or exceeded.
   `MaxStorageBufferRangeBytes` is the maximum admitted whole storage
   binding in bytes, or zero when unknown. Vulkan retains `maxStorageBufferRange` from the selected
   physical device. Direct3D 11 folds its adapter-dependent resource guarantee with the full raw-view

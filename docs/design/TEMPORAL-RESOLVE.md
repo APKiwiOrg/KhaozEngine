@@ -140,6 +140,32 @@ follow that owner's read/write indices and target generation. A separate 16-byte
 jitter and readiness without changing the 256-byte resolve uniform contract. Amendment 35 specifies the
 copy, invalidation and retirement rules.
 
+### Optional fine colour store
+
+`Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. `Fine` adds a pair of colour
+targets at exactly twice the display on each axis, in the history's RGBA16F format. `TemporalDetailStore`
+belongs to `TemporalHistory`, shares its target generation and read/write indices, and exists only while
+Fine is in effect. State, previous depth, visibility, jitter, internal size and the resolve stay unchanged.
+
+The first render latches `Scene3D.TemporalHistoryDetailInEffect`. Fine requires the temporal resolve,
+an extent within `GpuCapabilities.MaxRenderTexture2DDimension`, and a display pixel count at or below
+`Post.Temporal.HistoryDetailPixelLimit`. Unknown device limits refuse Fine. The pixel budget defaults to
+3,686,400, so 2560 by 1440 is admitted and 3840 by 2160 falls back to Display. The additional pair costs
+225 MiB and 506.25 MiB respectively. Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
+
+Every resolving frame replicates its display colour result into the four fine texels of each display pixel.
+The pass reuses the shipped blit with a point sampler, alpha preservation and the vertical correction, so
+the quarter and three-quarter source-texel positions select the same stored value with no colour arithmetic.
+It runs immediately after the resolve, before distortion, bloom or tonemapping. Nothing reads the fine pair
+yet, so both presented images and the ordinary colour and state histories remain unchanged in Fine.
+
+A change of the mode in effect resets history once with `TemporalResetReason.HistoryDetail`. Existing
+settings and resize reasons outrank it, since they can cause the fallback. It outranks camera cuts. A mode
+change, either size change or release retires the pair and its bindings through the history owner's queue
+and bumps the same generation. A reset keeps targets and seeds the write side from this frame's result.
+The next frame reads only the side that was written. A later render or offscreen capture leaves both sides,
+indices, mode and generation alone. Turning the temporal resolve off retires the store with history.
+
 ## Shimmer record
 
 The record distinguishes alternating jitter error from persistent lighting change. Before clipping and
@@ -370,6 +396,8 @@ unchanged.
 - `Post.Temporal.Upscale` (`TemporalUpscale.Native`, `Quality`, `Balanced`, `Performance` or `UltraPerformance`), the
   nullable `Post.Temporal.UpscaleRatio` that overrides it, `Post.Temporal.Sharpness` and
   `Post.Temporal.MipBiasOffset`, beside the foundations' cut thresholds.
+- `Post.Temporal.HistoryDetail`, `Post.Temporal.HistoryDetailPixelLimit` and the read-only
+  `Scene3D.TemporalHistoryDetailInEffect` select and report the [optional fine colour store](#optional-fine-colour-store).
 - `Scene3D.LastTemporalDiagnostics` gains the internal and display sizes, the preset, and per-frame counts of
   disoccluded, reactive and clipped pixels, sampled on a coarse grid so reading them costs nothing measurable.
 - `Scene3D.DebugView` includes `History`, `Disocclusion`, `Reactive` and `Shimmer`.

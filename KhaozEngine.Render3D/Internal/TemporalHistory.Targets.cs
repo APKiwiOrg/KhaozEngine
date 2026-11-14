@@ -11,6 +11,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// with them. Formats are <see cref="TemporalFormats"/>'s. Created while the resolve
 /// runs, reused while both sizes hold, recreated when either changes, released when the resolve stops. A reset
 /// (<see cref="Invalidate"/>) keeps them, since <see cref="IsValid"/> already stops every read.
+/// Fine also owns a <see cref="TemporalDetailStore"/> on the same generation and pair indices. A change between
+/// Display and Fine recreates the target family and retires every binding with it.
 /// <para><b>A NEW GENERATION IS A RESET.</b> Every creation bumps <see cref="TargetGeneration"/>, a recreation at the
 /// same sizes after <see cref="ReleaseTargets"/> included, and so does every release of allocated targets, so a consumer
 /// holding sets over released targets sees the change even when nothing replaces them. New targets hold nothing, so a
@@ -41,6 +43,9 @@ internal sealed partial class TemporalHistory
 
     /// <summary>Whether the targets exist.</summary>
     public bool TargetsAllocated => _historyColor[0] is not null;
+    /// <summary>The borrowed Fine pair on this owner's generation and read/write indices. Null in Display.
+    /// Do not dispose or mutate.</summary>
+    internal TemporalDetailStore? DetailStore { get; private set; }
     public int DisplayWidth { get; private set; }
     public int DisplayHeight { get; private set; }
     public int InternalWidth { get; private set; }
@@ -70,15 +75,17 @@ internal sealed partial class TemporalHistory
     /// device. True when they were created by this call, which is when their content is undefined, the generation has
     /// moved and the caller must not read history. Targets this replaces go to <paramref name="retired"/>, or on a
     /// device change, where the new device's queue says nothing about the old one, through the old device's drain.
+    /// <paramref name="detail"/> also participates in reuse, so a mode change replaces the whole family.
     /// Replacing targets through a drain throws <see cref="InvalidOperationException"/> while that device is recording,
     /// as <see cref="ReleaseTargets"/> does.</summary>
     public bool EnsureTargets(IGpuDevice gd, int displayWidth, int displayHeight, int internalWidth, int internalHeight,
-        GpuRetireQueue? retired = null)
+        GpuRetireQueue? retired = null, TemporalHistoryDetail detail = TemporalHistoryDetail.Display)
     {
         int dw = Math.Max(1, displayWidth), dh = Math.Max(1, displayHeight);
         int iw = Math.Max(1, internalWidth), ih = Math.Max(1, internalHeight);
         if (TargetsAllocated && ReferenceEquals(gd, _targetDevice) && dw == DisplayWidth && dh == DisplayHeight
-            && iw == InternalWidth && ih == InternalHeight)
+            && iw == InternalWidth && ih == InternalHeight
+            && (DetailStore is not null) == (detail == TemporalHistoryDetail.Fine))
             return false;
 
         FreeTargets(ReferenceEquals(gd, _targetDevice) ? retired : null);   // the creation below bumps the generation once
@@ -96,6 +103,11 @@ internal sealed partial class TemporalHistory
             _previousDepth[i] = depth;
             _resolveFramebuffers[i] = f.CreateFramebuffer(null, color, confidence);
             _previousDepthFramebuffers[i] = f.CreateFramebuffer(null, depth);
+        }
+        if (detail == TemporalHistoryDetail.Fine)
+        {
+            DetailStore = new TemporalDetailStore(gd);
+            DetailStore.Allocate(this, dw, dh);
         }
         DisplayWidth = dw;
         DisplayHeight = dh;
@@ -142,6 +154,8 @@ internal sealed partial class TemporalHistory
         _resolveFrame = -1;
         if (_targetDevice is null) return false;
         if (retired is null) _targetDevice.WaitForIdle();
+        DetailStore?.Release(retired);   // sets before the display textures they borrow
+        DetailStore = null;
         for (int i = 0; i < 2; i++)
         {
             Free(ref _resolveFramebuffers[i], retired);   // the framebuffers first, since they name the textures

@@ -4922,6 +4922,19 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   loss at `Performance` is open in [#1212](https://github.com/APKiwiOrg/KhaozEngine/issues/1212). A pixel just after a
   reset takes the rebuild at the internal resolution, and a moving pixel shifts towards it, wholly at 2 display pixels
   a frame, so fast motion reads softer until it settles.
+- **History grid.** `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. Opt-in `Fine`
+  allocates an extra RGBA16F colour pair at exactly twice the display on each axis. It replicates each resolved
+  display colour into its four fine texels before distortion, bloom and tonemapping, with no filtering arithmetic.
+  Nothing reads the fine pair yet, so presented images and display-sized history are unchanged. The temporal
+  resolve must be active, the extent must fit the device's 2D render texture dimension limit, and the display's
+  pixel count must fit the inclusive `Post.Temporal.HistoryDetailPixelLimit`. That budget defaults to 3,686,400,
+  admitting 2560 by 1440 with 225 MiB for the extra pair. A 3840 by 2160 display would need 506.25 MiB and
+  falls back to Display by default. Nonpositive budgets disable Fine and unknown enum values mean Display.
+  Read `Scene3D.TemporalHistoryDetailInEffect` for the selection latched by the last frame's first render,
+  Display before rendering. A change of that selection resets history for one frame with
+  `TemporalResetReason.HistoryDetail`. A settings change within the frame waits for the next frame.
+  Resizes recreate the pair with history, and cuts and other resets re-seed its write side. A later render
+  inside the frame, including an offscreen capture, neither reads nor advances it.
 - **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.
   `Post.Temporal.Sharpness` runs from 0 (the pass does not run) to 1, default 0.25, and a value outside that range is
   clamped. It limits each pixel by its four neighbours, so it leaves an edge already at full contrast alone and
@@ -4998,7 +5011,8 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   rigid and skinned draws and key collisions, whether history was valid and why it was last reset, the internal and
   display sizes, the preset and the effective `UpscaleRatio`. `LastReset` is a `TemporalResetReason`: `None`,
   `FirstFrame`, `Resize`, `RenderScale`, `AntiAliasing`, `CameraCutRequested` for a `CameraCut()` call,
-  `CameraCutDetected` for a move or turn past the thresholds or an origin jump, and `DeviceReset` for the HDR toggle,
+  `CameraCutDetected` for a move or turn past the thresholds or an origin jump, `DeviceReset` for the HDR toggle,
+  and `HistoryDetail` for a change of the colour history grid in effect,
   and a frame with both a call and a detected cut reports the call. `scene.RequestTemporalCounts()` samples
   disoccluded, reactive and clipped pixel counts on a 32 by 18 grid on the next frame that runs the resolve, and they
   land at the following `PrepareFrame` with `CountsFrameIndex` naming the frame they came from. Reading them back

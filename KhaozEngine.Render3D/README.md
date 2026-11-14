@@ -358,6 +358,14 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   single-sample and never combines with MSAA. Moving draws
   pass a `MotionKey` through `RigidInstanceDraw` or `SkinnedInstanceDraw`, camera jumps call `Scene3D.CameraCut()`,
   and `Scene3D.DebugView`, `Scene3D.RequestTemporalCounts()` and `LastTemporalDiagnostics` show what the resolve did.
+  `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. Opt-in `Fine` keeps an extra
+  RGBA16F colour pair at twice the display on each axis, replicated from the resolved display colour before post.
+  Nothing reads it yet, so the image is unchanged. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
+  latched on the frame's first render. Fine requires the temporal resolve, a fitting device texture dimension,
+  and a display pixel count within `Post.Temporal.HistoryDetailPixelLimit` (default 3,686,400). The pair uses
+  225 MiB at 2560 by 1440. At 3840 by 2160 it would use 506.25 MiB and falls back to Display by default.
+  Nonpositive budgets disable Fine and unknown enum values mean Display. A mode change resets history once
+  with `TemporalResetReason.HistoryDetail`. Later renders and captures leave the pair untouched.
   Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent
   writers preserve it and cutout/dissolve discards expose the receiver below. Depth-qualified current/history
   means use relative tolerance 0.02 and finite reference/sample depths. A stored R8 difference strictly above 0.1

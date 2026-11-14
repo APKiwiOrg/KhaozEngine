@@ -158,7 +158,8 @@ namespace KhaozEngine.Render3D
             _temporalPost ??= new TemporalPostTargets(_gd);
             // New targets hold nothing. A new display or internal size already reset the history through the frame key,
             // so this catches a replacement the key cannot see, and the resolve never reads new targets as history.
-            if (TemporalHistory.EnsureTargets(_gd, displayWidth, displayHeight, _res.Width, _res.Height, _retired)
+            if (TemporalHistory.EnsureTargets(_gd, displayWidth, displayHeight, _res.Width, _res.Height, _retired,
+                TemporalHistoryDetailInEffect)
                 && TemporalHistory.IsValid)
             {
                 TemporalHistory.Invalidate(TemporalResetReason.Resize);
@@ -167,6 +168,7 @@ namespace KhaozEngine.Render3D
             _temporalPost.Ensure(_res, TemporalHistory, displayWidth, displayHeight, Post.Bloom.Enabled, _retired);
 
             TemporalHistory.BeginResolve(current.FrameIndex);
+            TemporalHistory.DetailStore?.Prepare(cl);
             IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
                 "The temporal resolve runs only while temporal rendering is active, which allocates the motion target.");
             _temporalResolve.SelectEntry(ChooseTemporalEntry(), _retired);   // TemporalEntry
@@ -258,6 +260,11 @@ namespace KhaozEngine.Render3D
                 }
             _temporalResolve!.Run(cl, TemporalHistory, ResolvedVisibilityFullyLit);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
+            if (TemporalHistory.DetailStore is { } detail)
+            {
+                using (ProfilePass(cl, "temporal.detail-store")) detail.Replicate(cl, TemporalHistory.WriteIndex);
+                _frameStats.DrawCalls++;
+            }
         }
 
         // A frame without the resolve holds none of its targets. The history targets, the resolve's sets that name them,

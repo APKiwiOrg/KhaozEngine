@@ -126,6 +126,8 @@ distortion toggle or a bloom change, no longer discard temporal state. History r
 - a change of the display size the frame presents at, which a capped or fixed internal size can hide, reported as
   `Resize`,
 - a device or backend reset,
+- a change of the colour history grid in effect, reported as `HistoryDetail`
+  ([fine colour store](TEMPORAL-RESOLVE.md#optional-fine-colour-store)),
 - `Scene3D.CameraCut()`, for teleports, loading screens and cutscene cuts,
 - an automatic cut when the camera moves further than `Post.Temporal.CutDistanceMetres` (default 16) or turns more
   than `Post.Temporal.CutAngleDegrees` (default 60) in one frame.
@@ -144,7 +146,7 @@ eye stays still, so the distance check cannot be relied on to catch these.
 
 One reason is reported per frame. On a frame that continues a temporal one, every trigger is evaluated and the
 highest ranked reason is reported, in the order `FirstFrame`, `DeviceReset`, `AntiAliasing`, `RenderScale`,
-`Resize`, `CameraCutRequested`, `CameraCutDetected` (`TemporalResetPrecedence`). A settings change is reported over
+`Resize`, `HistoryDetail`, `CameraCutRequested`, `CameraCutDetected` (`TemporalResetPrecedence`). A settings change is reported over
 the size change it causes, and an explicit cut over a detected one. `FirstFrame` outranks every trigger, so a frame
 whose last rendered frame was not temporal, and every frame with temporal rendering off, reports it without comparing
 the rest. The rank is a reason's place in this order, not its declared value in `TemporalResetReason`.

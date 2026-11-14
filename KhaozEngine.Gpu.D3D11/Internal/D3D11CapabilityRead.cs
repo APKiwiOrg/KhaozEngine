@@ -189,6 +189,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 supportsCompletionFences)
             {
                 MaxColorAttachments = SimultaneousRenderTargets,
+                // D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION at the admitted feature level 11_0 or above.
+                MaxRenderTexture2DDimension = 16384,
                 MaxFragmentStorageBuffers = 128,
                 SupportsTimestamps = supportsTimestamps,
                 MaxStorageBufferRangeBytes = bufferLimits.StorageRangeBytes,

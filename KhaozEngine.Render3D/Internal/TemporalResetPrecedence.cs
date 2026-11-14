@@ -6,7 +6,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// Which reset reason is reported when several triggers fire in one frame
 /// (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 2). One reason is reported per frame, the root cause
 /// over the effects it causes: a colour-format rebuild, then the anti-aliasing selection, then the render scale, then
-/// the internal size those settings may also have changed, then an explicit cut over a detected one. The rank is a
+/// the internal size those settings may also have changed, then the history grid, then an explicit cut over a detected
+/// one. The rank is a
 /// reason's place in <see cref="HighestFirst"/>, never its declared value, which follows a different order.
 /// </summary>
 internal static class TemporalResetPrecedence
@@ -18,6 +19,7 @@ internal static class TemporalResetPrecedence
         TemporalResetReason.AntiAliasing,
         TemporalResetReason.RenderScale,
         TemporalResetReason.Resize,
+        TemporalResetReason.HistoryDetail,
         TemporalResetReason.CameraCutRequested,
         TemporalResetReason.CameraCutDetected,
     ];

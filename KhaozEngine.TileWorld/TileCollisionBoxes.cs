@@ -160,32 +160,11 @@ internal static class TileCollisionBoxes
             ? Quaternion.Identity
             : Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawRadians);
         float bottomAt = (float)bottom, topAt = (float)top;
-        if (!Holdable(centre, halfExtents, bottomAt, topAt, orientation)) return false;
+        if (!TileColliderBounds.HoldsBox(centre, halfExtents, bottomAt, topAt, orientation)) return false;
 
         placed = new TilePlacedCollisionBox(centre, halfExtents, bottomAt, topAt, orientation, quarterTurn ? 0f : turn);
         return true;
     }
-
-    // A box a backend can hold: every coordinate a finite float, every half extent above 0, the bottom below the top as
-    // the floats the editor reports, the orientation a unit quaternion, and the bounds physics declares for the box
-    // finite. A value past the float range, a turn whose sum left it, a box too thin to survive being added to its
-    // standing height, or one whose turned corners reach past the float range fails here.
-    static bool Holdable(Vector3 centre, Vector3 halfExtents, float bottom, float top, Quaternion orientation)
-    {
-        if (!(Finite(centre) && Positive(halfExtents.X) && Positive(halfExtents.Y) && Positive(halfExtents.Z)
-              && float.IsFinite(bottom) && float.IsFinite(top) && bottom < top
-              && float.IsFinite(orientation.X) && float.IsFinite(orientation.Y) && float.IsFinite(orientation.Z)
-              && float.IsFinite(orientation.W) && MathF.Abs(orientation.LengthSquared() - 1f) < 1e-3f))
-            return false;
-        Vector3 min = TileColliderBounds.EmptyMinimum, max = TileColliderBounds.EmptyMaximum;
-        TileColliderBounds.IncludeBox(halfExtents, centre, orientation, ref min, ref max);
-        (Vector3 minimum, Vector3 maximum) = TileColliderBounds.Widened(min, max);
-        return Finite(minimum) && Finite(maximum);
-    }
-
-    static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
-
-    static bool Positive(float value) => value > 0f && float.IsFinite(value);
 
     /// <summary>
     /// The lowest lattice corner from (<paramref name="x0"/>, <paramref name="z0"/>) to (<paramref name="x1"/>,

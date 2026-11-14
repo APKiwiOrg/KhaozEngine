@@ -14412,7 +14412,11 @@ registering and stepping a body is in the package README's
 `TileWorldColliders.Build(document, catalogs, options)` describes the loaded plane-0 regions as static colliders
 and registers nothing: one ground mesh per region from the same triangles the renderer draws, a box per blocked
 wall edge, blocked tile and `Solid` or `Diagonal` object (or one per authored collision box when its archetype lists
-`collisionBoxes`), and a thin box under each walk surface. `AddTo(world)`
+`collisionBoxes`), and a thin box under each walk surface. A walk surface whose placed values or turned corners
+a float cannot hold builds no collider, using the authored collision box check, while the other surfaces and
+objects still build. Bounds are checked as provenance declares them, with every corner transformed in float and
+widened by one representable value. The collider hash and movement registration digest cover the colliders built.
+`AddTo(world)`
 registers every collider. `AddTo(world, include)` registers a selected subset, and disposing the registration
 removes its installed statics. `Ground` is the floor sampler, read from the drawn ground only, so a deck or a bridge holds a body up as a
 static and never becomes the floor. `Medium` puts feet in water only below a water body's surface. Their delegates

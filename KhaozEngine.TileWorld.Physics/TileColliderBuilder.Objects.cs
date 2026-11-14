@@ -133,17 +133,26 @@ static partial class TileColliderBuilder
                 float minZ = surface.MinZ ?? -footZ, maxZ = surface.MaxZ ?? footZ;
                 if (!(minX < maxX && minZ < maxZ)) continue;
 
-                float localX = (minX + maxX) * 0.5f, localZ = (minZ + maxZ) * 0.5f;
-                float halfX = (maxX - minX) * 0.5f, halfZ = (maxZ - minZ) * 0.5f;
+                // A finite sum or width can overflow in float before it is halved, even when the midpoint and half
+                // extent fit. Keep those sums wide, then retain the existing finite placement rounding for hash
+                // compatibility. If the planar float arithmetic overflows, take that placement in double too.
+                double localX = ((double)minX + maxX) * 0.5, localZ = ((double)minZ + maxZ) * 0.5;
+                float halfX = (float)(((double)maxX - minX) * 0.5), halfZ = (float)(((double)maxZ - minZ) * 0.5);
                 // Local to world through the basis, the inverse of the query's ToLocal.
-                float centreX = anchorX + localX * cos + localZ * sin;
-                float centreZ = anchorZ + localZ * cos - localX * sin;
+                float centreX = anchorX + (float)localX * cos + (float)localZ * sin;
+                float centreZ = anchorZ + (float)localZ * cos - (float)localX * sin;
+                if (!float.IsFinite(centreX)) centreX = (float)(anchorX + localX * cos + localZ * sin);
+                if (!float.IsFinite(centreZ)) centreZ = (float)(anchorZ + localZ * cos - localX * sin);
                 if (quarterTurn && sin != 0f) (halfX, halfZ) = (halfZ, halfX);
 
-                float top = anchorY + surface.Height;
+                float top = (float)((double)anchorY + surface.Height);
+                float bottom = (float)((double)top - thickness);
+                var centre = new Vector3(centreX, (float)((double)top - thickness * 0.5f), centreZ);
+                var halfExtents = new Vector3(halfX, thickness * 0.5f, halfZ);
+                if (!TileColliderBounds.HoldsBox(centre, halfExtents, bottom, top, orientation)) continue;
+
                 into.Add(new TileCollider(TileColliderKind.WalkSurface,
-                    new BoxShape(new Vector3(halfX, thickness * 0.5f, halfZ)),
-                    new Pose(new Vector3(centreX, top - thickness * 0.5f, centreZ), orientation)));
+                    new BoxShape(halfExtents), new Pose(centre, orientation)));
                 provenance?.Add(TileColliderProvenance.Capture(FormattableString.Invariant($"placed/{o.Id}"), into[^1]));
             }
         }

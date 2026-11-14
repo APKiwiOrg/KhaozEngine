@@ -7,8 +7,8 @@ namespace KhaozEngine.TileWorld.Physics;
 internal readonly record struct TileColliderProvenance(string OwnerLocalId,
     Vector3 AbsoluteMinimum, Vector3 AbsoluteMaximum)
 {
-    // Bounds by TileColliderBounds, the rule the collision box placement checks against too, so every box that places
-    // captures finite bounds here.
+    // Bounds by TileColliderBounds, the rule collision box and walk surface placement check against too, so every
+    // authored box or surface that places captures finite bounds here.
     internal static TileColliderProvenance Capture(string owner, TileCollider collider)
     {
         Vector3 min = TileColliderBounds.EmptyMinimum, max = TileColliderBounds.EmptyMaximum;

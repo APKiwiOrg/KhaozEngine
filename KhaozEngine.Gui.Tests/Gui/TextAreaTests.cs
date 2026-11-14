@@ -113,6 +113,35 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Moving_focus_to_another_area_gives_that_frame_s_typing_only_to_the_area_that_had_focus()
+        {
+            // Regression #1466: the area focused when a frame begins owns its edits. The area that frame's tap
+            // focuses starts on the next frame, so one frame's input never edits both.
+            Vector2 otherInside = new(150, 350);
+            TextArea first = Focused("ac");
+            var second = new TextArea(new Rect(100, 300, 216, 112), new FixedMeasurer());
+            void StepBoth(InputState frame)
+            {
+                _pointer.Update(frame);
+                first.Update(_pointer, frame, 0f);
+                second.Update(_pointer, frame, 0f);
+            }
+
+            StepBoth(Frame(otherInside));
+            StepBoth(Frame(otherInside, leftDown: true));
+            StepBoth(Frame(otherInside, committedText: "x"));
+
+            Assert.Equal("acx", first.Text);
+            Assert.False(first.IsFocused);
+            Assert.Equal("", second.Text);
+            Assert.True(second.IsFocused);
+
+            StepBoth(Frame(otherInside, committedText: "y"));
+            Assert.Equal("acx", first.Text);
+            Assert.Equal("y", second.Text);
+        }
+
+        [Fact]
         public void Committed_text_inserts_at_the_caret()
         {
             TextArea area = Focused("ac");

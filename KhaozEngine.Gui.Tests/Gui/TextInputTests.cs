@@ -88,6 +88,38 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Moving_focus_to_another_field_gives_that_frame_s_typing_only_to_the_field_that_had_focus()
+        {
+            // Regression #1466: the field focused when a frame begins owns its edits. The field that frame's tap
+            // focuses starts on the next frame, so one frame's input never edits both.
+            Vector2 otherInside = new(150, 215);
+            var first = new TextInput(Field);
+            var second = new TextInput(new Rect(100, 200, 200, 30));
+            var p = new Pointer();
+            first.SetText("ac");
+            first.Focus();
+            void StepBoth(InputState frame)
+            {
+                p.Update(frame);
+                first.Update(p, frame, 0f);
+                second.Update(p, frame, 0f);
+            }
+
+            StepBoth(Frame(otherInside, false));
+            StepBoth(Frame(otherInside, true));
+            StepBoth(Frame(otherInside, false, committedText: "x"));
+
+            Assert.Equal("acx", first.Text);
+            Assert.False(first.IsFocused);
+            Assert.Equal("", second.Text);
+            Assert.True(second.IsFocused);
+
+            StepBoth(Frame(otherInside, false, committedText: "y"));
+            Assert.Equal("acx", first.Text);
+            Assert.Equal("y", second.Text);
+        }
+
+        [Fact]
         public void Typing_while_focused_appends_to_text()
         {
             var field = new TextInput(Field);

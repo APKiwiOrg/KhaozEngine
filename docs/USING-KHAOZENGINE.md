@@ -843,6 +843,9 @@ repeat. The windowing seam does not expose IME preedit text or candidate selecti
 `TextInput` and `TextArea` apply the focused frame's edits before an outside pointer release removes focus.
 Committed text, fallback keys, Backspace and paste are kept on that release frame, along with `TextArea`'s
 Enter, Delete and caret navigation. Their `Update` returns false after that release because focus has ended.
+A frame's edits go to the field focused when the frame began. A field a tap focuses starts editing on the next
+frame, so when focus moves from one field to another, that frame's typing lands in the field that had focus and
+never in both.
 
 `MouseReleased` (since 14.25.0) is the mouse counterpart to `KeysReleased`, read via `WasReleased(MouseButton)`.
 Before it existed the mouse had a press edge but no release edge, so a rebindable action bound to a mouse button

@@ -24,9 +24,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   fence before reporting. One failure is rethrown unchanged and several arrive as one `AggregateException`, and a
   later frame or flush never disposes the failed resource again. `Dispose` still frees the barrier after a release
   failure ([#1760](https://github.com/APKiwiOrg/KhaozEngine/issues/1760)).
-- `TextArea` and `TextInput` keep text typed in the frame a pointer release outside them removes focus. Committed
-  text, edit keys and paste apply before the focus change, and `TextArea` also applies Enter, Delete and caret
-  moves ([#1466](https://github.com/APKiwiOrg/KhaozEngine/issues/1466)).
+- `TextArea` and `TextInput` keep text typed in the frame a pointer release outside them removes focus. A frame's
+  edits (committed text, edit keys, paste, and `TextArea`'s Enter, Delete and caret moves) go to the field focused
+  when the frame began. When a tap moves focus to another field, that frame's typing lands once, in the field that
+  had focus, and the newly focused field edits from the next frame
+  ([#1466](https://github.com/APKiwiOrg/KhaozEngine/issues/1466)).
 
 ## 23.12.0
 

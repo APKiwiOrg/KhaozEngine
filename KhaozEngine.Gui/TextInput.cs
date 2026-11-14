@@ -9,7 +9,8 @@ namespace KhaozEngine.Gui
 {
     /// <summary>
     /// A single-line text field over <see cref="Pointer"/> + <see cref="TextEntry"/>: a tap inside focuses it,
-    /// a release outside unfocuses it after applying that frame's edits.
+    /// a release outside unfocuses it after applying that frame's edits. A frame's edits go to the field focused
+    /// when the frame began, so a field a tap focuses edits from the next frame.
     /// While focused, this frame's committed text edits <see cref="Text"/> (and Ctrl+V / Cmd+V
     /// pastes the clipboard). Draws a bordered field with the non-editable <see cref="PrefixContent"/> followed by
     /// the text or <see cref="PlaceholderContent"/>, then a blinking caret. Typed input comes from the headless
@@ -96,11 +97,13 @@ namespace KhaozEngine.Gui
         public bool Update(Pointer pointer, InputState input, float dt)
         {
             pointer.BlockRegion(Bounds); // reserve the field for click-through (the click-through gate)
+            // A frame's edits belong to the field that held focus when the frame began, as in TextArea (#1466).
+            bool editing = IsFocused;
             if (pointer.IsTapIn(Bounds)) Focus();
 
             if (IsFocused)
             {
-                Text = TextEntry.Apply(Text, input, MaxLength, CharFilter);
+                if (editing) Text = TextEntry.Apply(Text, input, MaxLength, CharFilter);
 
                 _blink += dt;
                 while (_blink >= BlinkRate) { _blink -= BlinkRate; CursorVisible = !CursorVisible; }

@@ -11,7 +11,8 @@ namespace KhaozEngine.Gui
 {
     /// <summary>
     /// A multi-line text field over <see cref="Pointer"/> and <see cref="TextEntry"/>. A tap inside focuses it and
-    /// places the caret, a release outside unfocuses it after that frame's edits and navigation.
+    /// places the caret, a release outside unfocuses it after that frame's edits and navigation. A frame's edits go
+    /// to the area focused when the frame began, so an area a tap focuses edits from the next frame.
     /// While focused, committed text, Backspace and Ctrl+V or
     /// Cmd+V paste edit the text before the caret through <see cref="TextEntry.Apply(string, InputState, int, Func{string, char, bool}?, bool)"/>.
     /// Enter inserts a newline unless Ctrl or Cmd is held, so a host can read that chord as Send. Delete removes
@@ -137,6 +138,10 @@ namespace KhaozEngine.Gui
         public bool Update(Pointer pointer, InputState input, float dt)
         {
             pointer.BlockRegion(Bounds);
+            // A frame's edits belong to the area that held focus when the frame began (#1466). An area losing focus
+            // to this frame's release still applies them, and one this frame's tap focuses starts on the next frame,
+            // so moving focus between two fields never applies one frame's input to both.
+            bool editing = IsFocused;
             if (pointer.IsTapIn(Bounds))
             {
                 Focus();
@@ -144,8 +149,11 @@ namespace KhaozEngine.Gui
             }
             if (IsFocused)
             {
-                bool entry = NeedsTextEntry(input);
-                if (entry || HasEditOrNavigationKey(input)) ApplyKeys(input, entry);
+                if (editing)
+                {
+                    bool entry = NeedsTextEntry(input);
+                    if (entry || HasEditOrNavigationKey(input)) ApplyKeys(input, entry);
+                }
                 _blink += dt;
                 while (_blink >= BlinkRate) { _blink -= BlinkRate; CursorVisible = !CursorVisible; }
             }

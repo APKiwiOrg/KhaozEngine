@@ -602,7 +602,8 @@ public sealed partial class TileWorldView : IDisposable
     public TileGroundMaterialSet GroundMaterials => _materials;
 
     /// <summary>Frees every region, the ground material set and every archetype mesh set this view uploaded. The
-    /// scene itself is not owned, so it outlives the view. Safe to call twice.</summary>
+    /// scene itself is not owned. Safe to call twice. With <see cref="Scene3DTileWorldScene"/>, also safe after
+    /// the scene has been disposed.</summary>
     public void Dispose()
     {
         if (_disposed) return;

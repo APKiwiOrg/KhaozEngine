@@ -6252,8 +6252,9 @@ is retained after a failed preparation and is zero before the first success. Unr
     binding. Preparation revalidates coverage from the absolute queue, exactly as `DrawWater` admitted it, so an
     explicit off-grid `RenderOrigin` cannot turn an admitted plane into a refusal. Reuse handles across frames.
     `UnloadWaterOpticsField` invalidates either kind immediately and defers texture destruction through the scene's
-    retirement queue. After the scene is disposed, unloading or
-    binding a handle throws `ObjectDisposedException`. `WaterOpticsStats` keeps texture and retained
+    retirement queue. Unloading after scene disposal is a no-op. Loading fields or drawing bound water after
+    disposal still throws `ObjectDisposedException`, and foreign, stale or double-released handles on a live
+    scene still throw `ArgumentException`. `WaterOpticsStats` keeps texture and retained
     CPU payload bytes charged until GPU retirement completes. Device recreation means a new scene. Handles from
     another or recreated scene are invalid, so explicitly reload retained fields into the new scene.
 

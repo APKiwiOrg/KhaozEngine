@@ -32,9 +32,11 @@ public sealed partial class Scene3D
     /// <see cref="LoadSurfaceMaps"/> returns) releases one reference per slot, and the last reference retires the
     /// texture. A handle the residency does not track, such as the caller's own
     /// <see cref="LoadTexture(byte[],int,int,TextureMipPolicy)"/> texture placed in a bundle by hand, is retired
-    /// once per distinct handle as before. Invalid handles never release the scene's default textures.</summary>
+    /// once per distinct handle as before. Invalid handles never release the scene's default textures.
+    /// A no-op after <see cref="Dispose"/> has run.</summary>
     public void UnloadSurfaceMaps(in SurfaceMaps maps)
     {
+        if (_disposalComplete) return;
         Release(maps.Albedo, default, default, default);
         Release(maps.Normal, maps.Albedo, default, default);
         Release(maps.Roughness, maps.Albedo, maps.Normal, default);

@@ -264,6 +264,11 @@ and bound FFT water is refused until FFT has a certified displacement envelope. 
 plane, so geometry above the surface occludes it. The FFT shoaling and surf bathymetry is a separate scene-wide
 input. API detail lives in the [Render3D package reference](../KhaozEngine.Render3D/README.md).
 
+`UnloadWaterOpticsField` is a no-op after scene disposal, as are the scene's other unloads. A `TileWorldView`
+created in snapshot setup can therefore be disposed after the capture releases its scene. Loading fields and
+drawing bound water on a disposed scene still throw `ObjectDisposedException`. Foreign, stale and double-released
+optical handles on a live scene still throw `ArgumentException`.
+
 ## Water surface shadows
 
 An underwater bed shadow is correctly displaced below a floater and cannot by itself tie shade to the

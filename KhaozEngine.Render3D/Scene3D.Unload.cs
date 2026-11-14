@@ -21,24 +21,32 @@ namespace KhaozEngine.Render3D
     /// The skinned path is the one that mattered in the field. An MMO client despawns avatars and corpses
     /// continuously as they leave interest range, and every despawn used to drain the whole device.
     /// </para>
+    /// <para>
+    /// Resource unloads are no-ops after <see cref="Dispose"/> has run, because disposal already released the
+    /// scene's resources. This lets a world release its handles after its owning scene, including when snapshot
+    /// capture disposes the scene before returning. Live-scene handle validation is unchanged.
+    /// </para>
     /// </summary>
     public sealed partial class Scene3D
     {
         /// <summary>Free every sub-mesh of <paramref name="prop"/> (each via <see cref="UnloadMesh"/>), which releases
-        /// each part's material texture references. A <c>default</c>/invalid handle is a no-op.</summary>
+        /// each part's material texture references. A <c>default</c>/invalid handle is a no-op.
+        /// Also a no-op after <see cref="Dispose"/> has run.</summary>
         public void UnloadProp(PropHandle prop)
         {
-            if (prop.Parts == null) return;
+            if (_disposalComplete || prop.Parts == null) return;
             foreach (MeshHandle part in prop.Parts) UnloadMesh(part);
         }
 
         /// <summary>
         /// Free the GPU buffers backing <paramref name="h"/> and release its slot for reuse. A <c>default</c>
         /// handle is a no-op. A stale or bogus handle (its generation no longer matches the slot, e.g. a
-        /// double-free) throws <see cref="System.ArgumentException"/>.
+        /// double-free) throws <see cref="System.ArgumentException"/> on a live scene.
+        /// A no-op after <see cref="Dispose"/> has run.
         /// </summary>
         public void UnloadMesh(MeshHandle h)
         {
+            if (_disposalComplete) return;
             if (_publishedResourceMeshes.Contains(h))
                 throw new System.InvalidOperationException("A published resource mesh is borrowed. Use ReleaseResource.");
             if (h.Generation == 0) return;          // default handle: no-op
@@ -64,15 +72,12 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Free a splat-terrain material's GPU resources (its texture arrays, params UBO, resource set) and
         /// release its slot. A <c>default</c>/Invalid handle is a no-op. Meshes still referencing it must be unloaded
-        /// first (they hold no reference after this). Also a no-op once <see cref="Dispose"/> has run: Dispose
-        /// already freed every splat material and cleared the backing list, so a caller that still holds a handle
-        /// (e.g. a world disposed after its owning scene) would otherwise index past the end of the now-empty list
-        /// and get an <see cref="System.ArgumentOutOfRangeException"/> instead of a silent no-op.
+        /// first (they hold no reference after this). Also a no-op after <see cref="Dispose"/> has run.
         /// <para>Does not drain: the whole material goes to the retire queue as one resource, so its arrays, UBO,
         /// set and any owned sampler are destroyed together once the GPU is done with them.</para></summary>
         public void UnloadSplatMaterial(SplatMaterialHandle h)
         {
-            if (!h.IsValid || h.ListIndex >= _splatMaterials.Count) return;
+            if (_disposalComplete || !h.IsValid || h.ListIndex >= _splatMaterials.Count) return;
             // A null slot (already unloaded) is retired as nothing: the queue ignores it, so there is no guard here.
             _retired.Retire(_splatMaterials[h.ListIndex]);
             _splatMaterials[h.ListIndex] = null;
@@ -80,14 +85,14 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Free a tile-ground material's GPU resources (its albedo texture array, params UBO, resource set)
         /// and release its slot. A <c>default</c>/Invalid handle is a no-op, and so is a call once
-        /// <see cref="Dispose"/> has run, for the same reason <see cref="UnloadSplatMaterial"/> guards it. Meshes
+        /// <see cref="Dispose"/> has run. Meshes
         /// still referencing the material must be unloaded first (they hold no reference after this).
         /// <para>Does not drain, exactly as the splat sibling does not: the whole material goes to the retire queue
         /// as one resource, so its array, UBO, set and any owned sampler are destroyed together once the GPU is done
         /// with them.</para></summary>
         public void UnloadTileGroundMaterial(TileGroundMaterialHandle h)
         {
-            if (!h.IsValid || h.ListIndex >= _tileGroundMaterials.Count) return;
+            if (_disposalComplete || !h.IsValid || h.ListIndex >= _tileGroundMaterials.Count) return;
             // A null slot (already unloaded) is retired as nothing: the queue ignores it, so there is no guard here.
             _retired.Retire(_tileGroundMaterials[h.ListIndex]);
             _tileGroundMaterials[h.ListIndex] = null;
@@ -100,14 +105,12 @@ namespace KhaozEngine.Render3D
         /// still bound to this texture must be unloaded first or simply not drawn afterwards (mirrors
         /// <see cref="UnloadSplatMaterial"/>). Without this, textures only free at <see cref="Dispose"/>, so a
         /// long-lived scene that streams or reloads textured assets leaks one native texture per load. Also a no-op
-        /// once <see cref="Dispose"/> has run: Dispose already freed every texture and cleared the backing list, so
-        /// a caller that still holds a handle (e.g. a world disposed after its owning scene) would otherwise index
-        /// past the end of the now-empty list and get an <see cref="System.ArgumentOutOfRangeException"/> instead of a
-        /// silent no-op (mirrors <see cref="UnloadSplatMaterial"/>'s guard).
+        /// after <see cref="Dispose"/> has run.
         /// <para>A material texture the residency tracks (from <see cref="LoadSurfaceMaps"/> or a glTF upload) is
         /// shared, so this releases ONE reference to it, and only the last release frees it.</para></summary>
         public void UnloadTexture(TextureHandle h)
         {
+            if (_disposalComplete) return;
             if (ReleaseMaterialTexture(h)) return;
             RetireTexture(h);
         }
@@ -137,12 +140,14 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Free a skinned mesh's GPU buffers and release its slot. A <c>default</c> handle is a no-op. A
-        /// stale handle throws.
+        /// stale handle throws <see cref="System.ArgumentException"/> on a live scene.
+        /// A no-op after <see cref="Dispose"/> has run.
         /// <para>Does not drain. This is the unload an MMO client runs constantly, one per avatar or corpse leaving
         /// interest range, so the buffers and all material sets are retired and destroyed at a later frame
         /// boundary instead of stalling the frame thread on every despawn.</para></summary>
         public void UnloadSkinnedMesh(SkinnedMeshHandle h)
         {
+            if (_disposalComplete) return;
             if (h.Generation == 0) return;
             _skinnedSlots.Free(h.Index, h.Generation);
             if (_skinnedMeshes[h.Index] is { } e)

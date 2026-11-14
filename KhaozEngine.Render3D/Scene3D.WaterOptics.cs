@@ -20,9 +20,13 @@ public sealed partial class Scene3D
     public WaterOpticsHandle LoadWaterOpticsTriangles(WaterOpticsTriangleField field) => _water.Optics.LoadTriangles(field);
 
     /// <summary>Invalidate a field immediately and defer texture destruction through the scene's retirement queue.
-    /// Default is a no-op. Foreign, stale and double-released handles throw <see cref="ArgumentException"/>.
-    /// After the scene is disposed, any other handle throws <see cref="ObjectDisposedException"/>.</summary>
-    public void UnloadWaterOpticsField(WaterOpticsHandle handle) => _water.UnloadOpticsField(handle);
+    /// Default is a no-op. Foreign, stale and double-released handles throw <see cref="ArgumentException"/> on a
+    /// live scene. A no-op after <see cref="Dispose"/> has run.</summary>
+    public void UnloadWaterOpticsField(WaterOpticsHandle handle)
+    {
+        if (_disposalComplete) return;
+        _water.UnloadOpticsField(handle);
+    }
 
     /// <summary>Certified horizontal procedural swell padding for producer preflight against the effective look.
     /// FFT water is refused because it has no certified displacement envelope.</summary>

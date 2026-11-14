@@ -3,6 +3,8 @@ using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Gpu;
+using KhaozEngine.Tests.TileWorld;
+using KhaozEngine.TileWorld;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -11,7 +13,8 @@ namespace KhaozEngine.Tests.Render3D;
 /// <summary>
 /// The relief tile-ground pipeline on a real device, with absolute pixel assertions rather than a committed grid, so
 /// each test states the behaviour it proves: the normal map's tangent frame, the height blend's winner, a map-less
-/// material drawing as the plain pipeline draws it, the feather breakup, and hex-tiling. Named Golden so the
+/// material drawing as the plain pipeline draws it, the feather breakup, hex-tiling, and an overlay cut of a meshed
+/// tile world lighting its normal map as the whole tile does at every rotation. Named Golden so the
 /// cross-platform matrix runs them on every backend. Each capture builds and drops its own device, so the class
 /// needs no serial collection.
 /// <para>The view is orthographic and nearly straight down (azimuth 0, so screen +x is world +x, and the top of
@@ -206,6 +209,70 @@ public sealed class TileGroundReliefGoldenTests(ITestOutputHelper output)
                     n++;
                 }
         return (float)total / n;
+    }
+
+    // ---- Overlay cuts ------------------------------------------------------------------------------------------
+
+    [GpuFact]
+    public void An_overlay_cut_at_any_rotation_lights_its_normal_map_as_the_whole_tile_does_Golden()
+    {
+        // A feathered, normal-mapped road tile meshed from a tile world: whole, then cut to a diagonal half and a
+        // three-quarter corner at all four rotations, the odd ones laying the corner fan out mirrored. The normal map
+        // tilts toward +x and the light comes from the east, so a cut that turned or flipped the tangent frame would
+        // light its road differently. Every relief input is world-anchored, so wherever a cut keeps the road at full
+        // weight it draws as the whole tile does there. The road carries no blue and the grass is all blue, so the
+        // pixels at the image's least blue (flat ground takes any fog evenly) are road at full weight.
+        var layers = new TileGroundLayerImage[TileRenderTestData.Road + 1];
+        for (int i = 0; i < layers.Length; i++) layers[i] = new TileGroundLayerImage { AlbedoRgba = Solid(4, 0, 0, 220, 255) };
+        layers[TileRenderTestData.Road] = new TileGroundLayerImage
+        {
+            AlbedoRgba = Solid(4, 200, 200, 0, 255),
+            SurfaceRgba = Solid(4, Encode(0.6f), Encode(0f), Encode(0.8f), 128),
+            NormalMapped = true,
+        };
+        var light = new Vector3(-1f, -0.6f, 0f);
+        var tile = new Vector3(10.5f, 0f, -10.5f);
+        byte[] Draw(TileOverlayShape shape, int rotation)
+        {
+            GltfMesh mesh = RoadTile(shape, rotation);
+            return Capture(scene => scene.LoadMesh(mesh, scene.LoadTileGroundMaterial(4, 4, layers, 4, 4, 0f)), light, tile);
+        }
+
+        byte[] whole = Draw(TileOverlayShape.Full, 0);
+        int floor = 255;
+        for (int i = 0; i < whole.Length; i += 4) floor = Math.Min(floor, whole[i + 2]);
+        foreach (TileOverlayShape shape in new[] { TileOverlayShape.DiagonalHalf, TileOverlayShape.CornerThreeQuarter })
+            for (int rotation = 0; rotation < 4; rotation++)
+            {
+                byte[] cut = Draw(shape, rotation);
+                int road = 0, worst = 0;
+                for (int i = 0; i < cut.Length; i += 4)
+                {
+                    if (cut[i + 2] > floor + 1 || whole[i + 2] > floor + 1) continue;
+                    road++;
+                    worst = Math.Max(worst, Math.Max(Math.Abs(cut[i] - whole[i]), Math.Abs(cut[i + 1] - whole[i + 1])));
+                }
+                output.WriteLine($"{shape} rotation {rotation}: {road} road pixels at full weight, worst difference {worst}");
+                Assert.True(road >= 100, $"{shape} at rotation {rotation} kept only {road} road pixels at full weight");
+                Assert.True(worst <= 2, $"{shape} at rotation {rotation} lit its road {worst} levels from the whole tile");
+            }
+    }
+
+    // Grass over tiles (6, 6) to (15, 15) with a feathered road on tile (10, 10) cut to the shape, meshed as a tile
+    // world meshes it. The feather is narrow, so a cut keeps a wide area at full weight, and there is no brightness
+    // jitter, which follows the triangulation.
+    static GltfMesh RoadTile(TileOverlayShape shape, int rotation)
+    {
+        var doc = new TileWorldDocument();
+        doc.GetOrCreateRegion(TileRenderTestData.Region);
+        for (int z = 6; z <= 15; z++)
+            for (int x = 6; x <= 15; x++) doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);
+        doc.SetOverlay(10, 10, 0, TileRenderTestData.Road);
+        doc.SetOverlayShape(10, 10, 0, shape);
+        doc.SetOverlayRotation(10, 10, 0, rotation);
+        doc.SetSettings(10, 10, 0, TileSettings.FeatherOverlay);
+        return TileGroundMesher.Build(doc, TileRenderTestData.Catalogs, TileRenderTestData.Region, 0,
+            new TileGroundMesherOptions { OverlayFeatherWidthMetres = 0.1f, JitterAmplitude = 0f })!;
     }
 
     // ---- Helpers -----------------------------------------------------------------------------------------------

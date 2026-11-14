@@ -129,7 +129,7 @@ namespace KhaozEngine.Tests.Gpu
             using D3D11ResourceLayout compute = D3D11BindFixtures.Layout(
                 D3D11BindFixtures.U("Params", GpuShaderStages.Compute),
                 D3D11BindFixtures.StructRW("WorkBuf"));
-            using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(compute, new FakeBuffer(256), new FakeBuffer(64));
+            using D3D11ResourceSet computeSet = D3D11BindFixtures.Set(compute, new TraceBuffer(256), new TraceBuffer(64));
             D3D11NativeTraceEmitter emitter = harness.Emitter;
 
             emitter.SetPipeline(D3D11BindFixtures.Pipeline(graphics));
@@ -290,7 +290,7 @@ namespace KhaozEngine.Tests.Gpu
                 D3D11BindFixtures.U("B", GpuShaderStages.Compute));
             using D3D11ResourceLayout work = D3D11BindFixtures.Layout(
                 D3D11BindFixtures.U("Params", GpuShaderStages.Compute, dynamic: true));
-            using D3D11ResourceSet set = D3D11BindFixtures.Set(work, new GpuBufferRange(new FakeBuffer(4096), 0, 64));
+            using D3D11ResourceSet set = D3D11BindFixtures.Set(work, new GpuBufferRange(new TraceBuffer(4096), 0, 64));
             D3D11NativeTraceEmitter emitter = harness.Emitter;
 
             emitter.SetComputePipeline(new FakeComputePipeline(oneUbo, work));
@@ -353,7 +353,7 @@ namespace KhaozEngine.Tests.Gpu
             var harness = new D3D11BindFixtures.Harness();
             using D3D11ResourceLayout work = D3D11BindFixtures.Layout(
                 D3D11BindFixtures.U("Params", GpuShaderStages.Compute, dynamic: true));
-            using D3D11ResourceSet set = D3D11BindFixtures.Set(work, new GpuBufferRange(new FakeBuffer(4096), 0, 64));
+            using D3D11ResourceSet set = D3D11BindFixtures.Set(work, new GpuBufferRange(new TraceBuffer(4096), 0, 64));
             var pipeline = new FakeComputePipeline(work);
             D3D11NativeTraceEmitter emitter = harness.Emitter;
 
@@ -663,13 +663,17 @@ namespace KhaozEngine.Tests.Gpu
             return null;
         }
 
-        /// <summary>A compute pipeline that answers its resource layouts, which is all the bind flush asks of one.
-        /// The rest of the compute path is work-breakdown row 12.</summary>
-        internal sealed class FakeComputePipeline : IGpuComputePipeline, ID3D11PipelineLayouts
+        /// <summary>A compute pipeline that answers its resource layouts, which is all the bind flush asks of one,
+        /// and the compute seam a pipeline of this backend answers, which the emitters refuse one without
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1691).</summary>
+        internal sealed class FakeComputePipeline : IGpuComputePipeline, ID3D11PipelineLayouts,
+            ID3D11ComputePipelineState
         {
             internal FakeComputePipeline(params D3D11ResourceLayout[] layouts) => ResourceLayouts = layouts;
 
             public D3D11ResourceLayout[] ResourceLayouts { get; }
+
+            public object? ComputeShader { get; } = new object();
 
             public void Dispose()
             {

@@ -174,20 +174,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         public void SetComputePipeline(IGpuComputePipeline pipeline)
         {
-            if (pipeline is null) throw new ArgumentNullException(nameof(pipeline));
-            if (pipeline is not ID3D11ComputePipelineState state)
-                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
-                    $"A {pipeline.GetType().Name} reached the native Direct3D 11 emitter as a compute pipeline. A "
-                    + "pipeline this backend created answers ID3D11ComputePipelineState, which is where the "
-                    + "compiled compute shader comes from.", nameof(pipeline))
-                {
-                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
-                    ActualType = pipeline.GetType(),
-                    ExpectedType = typeof(ID3D11ComputePipelineState),
-                    ResourceKind = "pipeline",
-                    Context = "compute pipeline",
-                    PipelineKind = "compute",
-                };
+            // Refused in the one place both emitters ask, so the trace refuses the same foreign pipeline.
+            ID3D11ComputePipelineState state = D3D11BindResolve.ComputePipelineState(pipeline);
 
             D3D11NativeEmitter sink = this;
             _state.Binds.SetComputePipeline(ref sink, pipeline);

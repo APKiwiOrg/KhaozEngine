@@ -185,7 +185,7 @@ namespace KhaozEngine.Tests.Gpu
             var harness = new D3D11BindFixtures.Harness();
             using D3D11ResourceLayout layout = D3D11BindFixtures.Layout(
                 D3D11BindFixtures.U("U", GpuShaderStages.Vertex));
-            var buffer = new FakeBuffer(1024);
+            var buffer = new TraceBuffer(1024);
             using D3D11ResourceSet set = D3D11BindFixtures.Set(layout, buffer);
             D3D11NativeTraceEmitter emitter = harness.Emitter;
 
@@ -358,7 +358,7 @@ namespace KhaozEngine.Tests.Gpu
                 D3D11BindFixtures.StructRW("H0Buf"),
                 D3D11BindFixtures.StructRW("WorkBuf"));
             using D3D11ResourceSet set = D3D11BindFixtures.Set(
-                layout, new FakeBuffer(256), new FakeBuffer(64), new FakeBuffer(64));
+                layout, new TraceBuffer(256), new TraceBuffer(64), new TraceBuffer(64));
             D3D11NativeTraceEmitter emitter = harness.Emitter;
 
             emitter.SetComputePipeline(new D3D11BindFlushTests.FakeComputePipeline(layout));

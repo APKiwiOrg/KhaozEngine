@@ -283,6 +283,16 @@ what the tests pin is the shipped decision rather than a copy of it. A resource-
 as `ResourceSetPending`, which holds its place in the order and is excluded from the total, because a bind
 genuinely issues nothing.
 
+The trace applies the shipped ownership refusals too. Every handle the real emitter resolves (the framebuffer,
+the index, vertex, written and copied buffers, each bound resource and the compute pipeline) is resolved through
+the same `D3D11BindResolve` member in the same order relative to the redundancy guards, so a handle from another
+backend is refused with the same `GpuResourceOwnershipRefusal.ForeignBackend` and fields. A test drives the trace
+with this backend's handle types or with fakes that answer the same device-free seams (`ID3D11RenderTargetSurface`,
+`ID3D11BindableViews`, `ID3D11ComputePipelineState`). Two splits remain because the real emitter's refusal names
+a concrete type only a device can build. The graphics pipeline is refused with `ExpectedType` naming
+`D3D11GraphicsPipeline` on the device and `ID3D11PipelineState` in the trace. The texture transfers are refused
+by the device for anything but a `D3D11Texture` and are not refused by the trace at all.
+
 ## The bind flush
 
 **A resource-set bind records only, and the draw pays for it (decision R5).** `SetGraphicsResourceSet` and
@@ -444,8 +454,9 @@ The resource-view and native-buffer adapters use the same shared family. A missi
 that, and `D3D11BindResolve` is the device-free half of the bind: it unwraps a `GpuBufferRange` to its buffer,
 refuses a resource whose declared usage never earned it the view its layout asks for with
 `GpuResourceOwnershipRefusal.MissingResource` and `RegisterLetter`, `ActualType` and `ExpectedType`, passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
-the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: a buffer
-from another backend, and the framebuffer a clear names an attachment of (none bound, no
+the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: a buffer,
+a framebuffer, a bound resource or a compute pipeline from another backend, and the framebuffer a clear names an
+attachment of (none bound, no
 colour attachment at that index, no depth attachment at all). The missing-framebuffer and missing-depth
 rules throw `GpuBoundFramebufferException` with `GpuBoundFramebufferRefusal` and the refused `Command`.
 A refusal kept in the real emitter alone means the

@@ -459,7 +459,7 @@ namespace KhaozEngine.Tests.Gpu
             var harness = new D3D11BindFixtures.Harness();
             using D3D11ResourceLayout layout = D3D11BindFixtures.Layout(
                 D3D11BindFixtures.U("U", stages, dynamic: true));
-            using D3D11ResourceSet set = D3D11BindFixtures.Set(layout, new FakeBuffer(4096));
+            using D3D11ResourceSet set = D3D11BindFixtures.Set(layout, new TraceBuffer(4096));
             D3D11NativeTraceEmitter emitter = harness.Emitter;
 
             emitter.SetPipeline(D3D11BindFixtures.Pipeline(layout));
@@ -479,7 +479,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 D3D11BindFixtures.U("U", GpuShaderStages.Fragment),
             };
-            var resources = new List<IGpuBindableResource> { new FakeBuffer(256) };
+            var resources = new List<IGpuBindableResource> { new TraceBuffer(256) };
             for (int i = 0; i < textures; i++)
             {
                 elements.Add(D3D11BindFixtures.T("Tex" + i, GpuShaderStages.Fragment));
@@ -530,17 +530,17 @@ namespace KhaozEngine.Tests.Gpu
                 SecondTarget = Target(512, 512);
                 Materials = new D3D11ResourceSet[MaxMaterials];
                 for (int i = 0; i < MaxMaterials; i++) Materials[i] = D3D11BindFixtures.ModelSet(model);
-                PerDrawBuffer = new FakeBuffer(65536);
+                PerDrawBuffer = new TraceBuffer(65536);
                 PerDraw = D3D11BindFixtures.Set(perDraw, new GpuBufferRange(PerDrawBuffer, 0, 256),
-                    D3D11BindFixtures.Texture(), new FakeSampler());
+                    D3D11BindFixtures.Texture(), new TraceSampler());
             }
 
             internal D3D11ResourceLayout ModelLayout { get; }
             internal D3D11ResourceLayout PerDrawLayout { get; }
             internal D3D11StateCacheTests.FakeD3D11Pipeline Pipeline { get; }
             internal D3D11StateCacheTests.FakeD3D11Pipeline TailPipeline { get; }
-            internal FakeFramebuffer Framebuffer { get; }
-            internal FakeFramebuffer SecondTarget { get; }
+            internal TraceFramebuffer Framebuffer { get; }
+            internal TraceFramebuffer SecondTarget { get; }
             internal D3D11ResourceSet[] Materials { get; }
             internal D3D11ResourceSet PerDraw { get; }
 
@@ -563,7 +563,7 @@ namespace KhaozEngine.Tests.Gpu
                 ModelLayout.Dispose();
             }
 
-            static FakeFramebuffer Target(uint width, uint height) => new(
+            static TraceFramebuffer Target(uint width, uint height) => new(
                 new GpuOutputDescription(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R8G8B8A8UNorm),
                 width, height);
         }

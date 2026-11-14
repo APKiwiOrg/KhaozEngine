@@ -84,6 +84,77 @@ public sealed class GpuResourceOwnershipRegressionTests
         Flush();
     }
 
+    // #1691. The device-free trace resolves every handle the real emitter resolves, through the same shared member,
+    // so a handle from another backend earns the same refusal without a device. The framebuffer and index buffer
+    // rows ask twice because the real emitter resolves BEFORE its redundancy guard: resolving after it would record
+    // the first foreign bind and pass the second one as redundant.
+    [Theory]
+    [InlineData("SetFramebuffer")]
+    [InlineData("SetIndexBuffer")]
+    [InlineData("SetVertexBuffer")]
+    [InlineData("UpdateBuffer")]
+    [InlineData("CopyBuffer")]
+    [InlineData("ResourceBind")]
+    [InlineData("SetComputePipeline")]
+    public void D3D11TraceRefusesTheForeignHandlesTheDeviceRefuses(string entry)
+    {
+        D3D11NativeTraceEmitter emitter = new D3D11BindFixtures.Harness().Emitter;
+        using var layout = D3D11BindFixtures.Layout(D3D11BindFixtures.U("U", GpuShaderStages.Vertex));
+        using var pipeline = new D3D11StateCacheTests.FakeD3D11Pipeline(new object(), new object(), new object(),
+            new object(), new object(), new object(), 4u, layout) { VertexStrides = new[] { 16u } };
+        var outputs = new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm);
+        using var foreignTarget = new FakeFramebuffer(outputs, 4, 4);
+        using var foreignBuffer = new FakeBuffer(64);
+        using var ownBuffer = new TraceBuffer(64);
+        using var foreignSet = D3D11BindFixtures.Set(layout, foreignBuffer);
+        using var ownSet = D3D11BindFixtures.Set(layout, ownBuffer);
+        emitter.SetPipeline(pipeline);
+        emitter.SetGraphicsResourceSet(0, ownSet);
+
+        (Action foreign, Action own, Type actual, Type expected, string param, string kind) row = entry switch
+        {
+            "SetFramebuffer" => (() => emitter.SetFramebuffer(foreignTarget),
+                () => emitter.SetFramebuffer(new TraceFramebuffer(outputs, 4, 4)),
+                typeof(FakeFramebuffer), typeof(ID3D11RenderTargetSurface), "framebuffer", "framebuffer"),
+            "SetIndexBuffer" => (() => emitter.SetIndexBuffer(foreignBuffer, GpuIndexFormat.UInt16),
+                () => emitter.SetIndexBuffer(ownBuffer, GpuIndexFormat.UInt16),
+                typeof(FakeBuffer), typeof(ID3D11BindableViews), "buffer", "buffer"),
+            "SetVertexBuffer" => (() => { emitter.SetVertexBuffer(0, foreignBuffer, 0); emitter.Draw(3, 1, 0, 0); },
+                () => { emitter.SetVertexBuffer(0, ownBuffer, 0); emitter.Draw(3, 1, 0, 0); },
+                typeof(FakeBuffer), typeof(ID3D11BindableViews), "buffer", "buffer"),
+            "UpdateBuffer" => (() => emitter.UpdateBuffer(foreignBuffer, 0, new byte[4]),
+                () => emitter.UpdateBuffer(ownBuffer, 0, new byte[4]),
+                typeof(FakeBuffer), typeof(ID3D11BindableViews), "buffer", "buffer"),
+            // The source is the foreign one because the destination is resolved first, so this row also shows
+            // the second handle is asked.
+            "CopyBuffer" => (() => emitter.CopyBuffer(foreignBuffer, 0, ownBuffer, 0, 4),
+                () => emitter.CopyBuffer(ownBuffer, 0, ownBuffer, 0, 4),
+                typeof(FakeBuffer), typeof(ID3D11BindableViews), "buffer", "buffer"),
+            "ResourceBind" => (() => { emitter.SetGraphicsResourceSet(0, foreignSet); emitter.Draw(3, 1, 0, 0); },
+                () => { emitter.SetGraphicsResourceSet(0, ownSet); emitter.Draw(3, 1, 0, 0); },
+                typeof(FakeBuffer), typeof(ID3D11BindableViews), "resource", "bindable resource"),
+            "SetComputePipeline" => (() => emitter.SetComputePipeline(new D3D11RecordingDriverTests.FakeComputePipeline()),
+                () => emitter.SetComputePipeline(new D3D11BindFlushTests.FakeComputePipeline()),
+                typeof(D3D11RecordingDriverTests.FakeComputePipeline), typeof(ID3D11ComputePipelineState),
+                "pipeline", "pipeline"),
+            _ => throw new ArgumentOutOfRangeException(nameof(entry), entry, null),
+        };
+
+        bool resolvesBeforeRedundancyGuard = entry is "SetFramebuffer" or "SetIndexBuffer";
+        for (int ask = 0; ask < (resolvesBeforeRedundancyGuard ? 2 : 1); ask++)
+        {
+            var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(row.foreign);
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, refusal.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, refusal.ExpectedBackend);
+            Assert.Equal(row.actual, refusal.ActualType);
+            Assert.Equal(row.expected, refusal.ExpectedType);
+            Assert.Equal(row.param, refusal.ParamName);
+            Assert.Equal(row.kind, refusal.ResourceKind);
+        }
+
+        row.own();
+    }
+
     [Fact]
     public void VulkanSwapchainCopyRefusesAForeignCommandListOnAValidRequest()
     {

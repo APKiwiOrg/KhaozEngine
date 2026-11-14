@@ -171,6 +171,7 @@ public sealed class GltfSkinnedMaterialPartsTests
     [InlineData("rigid-parts")]
     [InlineData("skinned-parts")]
     [InlineData("skinned")]
+    [InlineData("flattened-albedo")] // #1415
     public void Malformed_accessor_through_a_byte_overload_carries_its_reason_and_identity(string overload)
     {
         var fixture = new SkinnedAttachmentGlbFixture();
@@ -191,6 +192,7 @@ public sealed class GltfSkinnedMaterialPartsTests
             "rigid-parts" => () => GltfLoader.LoadPartsWithMaterials(glb, identity),
             "skinned-parts" => () => GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity),
             "skinned" => () => GltfLoader.LoadSkinned(glb, identity),
+            "flattened-albedo" => () => GltfLoader.LoadFlattenedAlbedo(glb, identity),
             _ => throw new ArgumentOutOfRangeException(nameof(overload), overload, null),
         };
 

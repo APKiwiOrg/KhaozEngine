@@ -11908,6 +11908,9 @@ Direct `Normalize` and `NormalizeParts` throw the mesh refusal directly with `Id
 Other model refusals use `GltfImportStateException` and `GltfImportRefusal` for strict validation, no triangles,
 no usable skin, too many skin joints or an influence outside the skin joint count. Each carries raw `Identity`,
 and joint refusals also carry the counts or the vertex's `BoneIndices`, `VertexIndex` and `PartIndex`.
+Every `GltfLoader` byte overload, `LoadFlattenedAlbedo(ReadOnlyMemory<byte>, string)` included, reports a malformed
+glTF as `GltfImportDataException` with `GltfImportRefusal.MalformedModel`, the supplied raw `Identity` and the
+importer's diagnostic as `InnerException`, so callers never catch a SharpGLTF exception type.
 `PropLoader` normalization uses `PropLoadRefusal.DeclaredHeightOutsideRange`, `NoMeasurableHeight` or
 `ScaleOutsideRange` with the declared or measured values and validation bounds. Empty material parts use
 `PropLoadArgumentException`, `PropLoadRefusal.MaterialPartsEmpty`, `PartCount` and `ParamName`.

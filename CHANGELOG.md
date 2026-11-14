@@ -29,6 +29,27 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   when the frame began. When a tap moves focus to another field, that frame's typing lands once, in the field that
   had focus, and the newly focused field edits from the next frame
   ([#1466](https://github.com/APKiwiOrg/KhaozEngine/issues/1466)).
+- `BottomSheetMotion.Resolve` and `DraggableBottomSheet.Update` run every `BottomSheetDetent` resolver on each call,
+  so a resolver that reads host state such as a layout cap or text scale takes effect on the next frame with no
+  invalidation call. A changed resolved height cancels held gestures and re-settles the same target detent, as a
+  layout change does, and an unchanged one leaves an in-flight drag or snap untouched. The steady state allocates
+  nothing ([#1400](https://github.com/APKiwiOrg/KhaozEngine/issues/1400)).
+- `GltfLoader.LoadFlattenedAlbedo(ReadOnlyMemory<byte>, string)` reports a malformed glTF as `GltfImportDataException`
+  with `GltfImportRefusal.MalformedModel`, the caller's identity and the importer's error as `InnerException`, like
+  the other byte overloads, instead of letting SharpGLTF's `SchemaException` escape
+  ([#1415](https://github.com/APKiwiOrg/KhaozEngine/issues/1415)).
+- A `WorldClient` that cannot decode a legacy snapshot or delta ends its connection locally, as the format 2 stream
+  already did, so the server sees the session leave at once instead of holding it until its own timeout.
+  `SnapshotDecodeFailed` fires once per terminal end with the `IncompatibleVersion` reason it already carried, and
+  legacy state frames queued behind the failure in the same poll are ignored. Notices and game messages still arrive
+  ([#1262](https://github.com/APKiwiOrg/KhaozEngine/issues/1262)).
+- `MapPrefabValidation.Validate` and `ValidateFindings` refuse a null required member of prefab state built in code
+  with `SchemaValueRequired`, naming the member's `FieldPath` and its owner, instead of reporting a caught
+  `NullReferenceException` as `PrefabStateUnreadable`. A null dereference the checks do not expect now escapes as the
+  defect it is. Two transfers from one unpacked instance for the same child refuse as `IdentityDuplicate`. A prefab
+  or map file whose `indoorSpan` carries a null `parentSpace` refuses on read with `SchemaValueRequired`, or with
+  `SchemaMalformed` when the member is missing, instead of failing later in validation
+  ([#1398](https://github.com/APKiwiOrg/KhaozEngine/issues/1398)).
 
 ## 23.12.0
 

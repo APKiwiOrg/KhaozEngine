@@ -341,15 +341,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>
-        /// THE ONE CHECK BEHIND THE <see cref="GpuDynamicBindingRefusal.DynamicElementMissing"/> REFUSAL, shared by
-        /// <see cref="Record"/> and by <see cref="D3D11StreamEmitter"/>'s two offset overloads. The deferred driver
-        /// calls it at the seam call, before the op is appended, so the refusal escapes the bind exactly as it does
-        /// on Metal and Vulkan rather than escaping <c>Submit</c> after the list's earlier commands already reached
+        /// BIND ADMISSION, including <see cref="GpuDynamicBindingRefusal.DynamicElementMissing"/> and the
+        /// composed constant-buffer windows, shared by <see cref="Record"/> and <see cref="D3D11StreamEmitter"/>.
+        /// The deferred driver calls it at the seam call, before the op is appended, so the refusal escapes the
+        /// bind as on Metal and Vulkan rather than escaping <c>Submit</c> after earlier commands already reached
         /// the device and with the submission left unsignalled. <see cref="Record"/> keeps the call as the backstop
         /// for the immediate driver and the trace emitter, where the seam call reaches it directly.
         /// <para>
-        /// A zero offset, a null set and a set from another backend pass. The last has no layout this backend can
-        /// read, so the flush refuses it by ownership instead.
+        /// A zero offset needs no dynamic element, but its composed window still has to be aligned and fit.
+        /// A null set and a set from another backend pass. The last has no layout this backend can read, so the
+        /// flush refuses it by ownership instead.
         /// </para>
         /// </summary>
         internal static void RequireOffsetCarried(uint slot, IGpuResourceSet? set, uint dynamicOffset)
@@ -372,6 +373,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     DynamicOffset = dynamicOffset,
                 };
             }
+
+            if (set is D3D11ResourceSet native)
+                D3D11DynamicBindingRange.RequireValid(slot, native, dynamicOffset);
         }
 
         static void Record(ref SlotRecord[] records, uint slot, IGpuResourceSet? set, uint dynamicOffset,

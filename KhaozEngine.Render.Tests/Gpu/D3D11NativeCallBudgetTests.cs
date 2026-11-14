@@ -117,8 +117,9 @@ namespace KhaozEngine.Tests.Gpu
             var log = new D3D11NativeCallLog();
             var submitLock = new object();
             var allocator = new D3D11RingAllocator(3, new FakeD3D11Completion(), submitLock);
-            using var memory = new D3D11BindFixtures.TracedRingMemory(D3D11UniformRing.TotalBytesFor(512, 3), log);
-            var ring = new D3D11UniformRing(allocator, memory, 512);
+            // #1689. Every draw below selects its own in-segment 256-byte slot.
+            using var memory = new D3D11BindFixtures.TracedRingMemory(D3D11UniformRing.TotalBytesFor(8 * 256, 3), log);
+            var ring = new D3D11UniformRing(allocator, memory, 8 * 256);
             var buffer = new FakeRingBackedBuffer(ring);
             var signal = new D3D11SubmitSignalTests.FakeD3D11SubmitSignal();
 
@@ -419,9 +420,9 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     // Twice, at two windows, and the draw pays for ONE push.
                     emitter.SetGraphicsResourceSet(1, scene.PerDraw, offset);
-                    emitter.SetGraphicsResourceSet(1, scene.PerDraw, offset + 128);
+                    emitter.SetGraphicsResourceSet(1, scene.PerDraw, offset + 256); // #1689, both windows are aligned.
                     emitter.DrawIndexed(6, (uint)instancesPerDraw, 0, 0, 0);
-                    offset += 256;
+                    offset += 512;
                 }
             }
 

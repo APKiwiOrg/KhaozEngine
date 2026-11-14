@@ -65,6 +65,9 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
 
     readonly Vector2 IPredictedState<PlayerMoveState>.Position => new(Move.Position.X, Move.Position.Z);
 
+    // Match the default planar endpoint without boxing this state on every prediction tick and render frame.
+    readonly Vector2 IPredictedState<PlayerMoveState>.PredictionTarget => new(Move.Position.X, Move.Position.Z);
+
     /// <summary>The vertical axis (height) carried through render smoothing, so a jump/fall eases on screen.</summary>
     readonly float IPredictedState<PlayerMoveState>.Vertical => Move.Position.Y;
 

@@ -241,6 +241,11 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// <inheritdoc/>
     public readonly uint TeleportEpoch => Epoch;
 
+    // Keep the default values without boxing on prediction/reconciliation ticks or heading-enabled render frames.
+    readonly float IPredictedState<TileMoveState>.StepDeltaY => 0f;
+    readonly Vector2 IPredictedState<TileMoveState>.FrameAnchor => Vector2.Zero;
+    readonly bool IPredictedState<TileMoveState>.HasYaw => false;
+
     /// <summary>NOT a position setter, whatever the interface says. <see cref="Position"/> is DERIVED from
     /// <see cref="Tile"/> and <see cref="Route"/>, so <paramref name="position"/> is never applied to it and the
     /// returned state stands exactly where this one does. What the call does do is stamp the PRESENTATION override:

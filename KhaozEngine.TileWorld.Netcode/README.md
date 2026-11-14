@@ -191,7 +191,8 @@ subtype. Frame `TryDecode` methods and the total item-instance reader retain the
   `StepFrom` into `Tile`. At a one-tick cadence its `PredictionTarget` is the committed tile, so local inter-tick
   presentation crosses a landing-door step while the deterministic `Position` stays at zero progress. At every
   other cadence the target is `Position` bit for bit. `Vertical` is the plane INDEX, so the state needs no world
-  document. It also carries
+  document. Its explicit `StepDeltaY` (zero), `FrameAnchor` (zero) and `HasYaw` (false) implementations keep
+  prediction, reconciliation and heading-enabled render reads from boxing the state. It also carries
   `CombatTarget`, the NET ID this entity is locked onto and the reason the chase lives inside the one stepper both
   heads run rather than in a second movement authority a client cannot predict. `CombatTarget` and
   `InteractTarget` are mutually exclusive, each clearing the other, and a `WalkTo` clears both, which is how

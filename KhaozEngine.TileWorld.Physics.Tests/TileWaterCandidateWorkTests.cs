@@ -48,6 +48,9 @@ public class TileWaterCandidateWorkTests(ITestOutputHelper output)
         var expectedContacts = new MovementDomainContact[256];
         var actualContacts = new MovementDomainContact[256];
         TileWaterQueryWork.Reset();
+        // The dispatcher reaches the flat reference only on its flat branch, so a count left by an earlier
+        // flat trace on this thread must not satisfy the brute-force bound below.
+        Fixtures.FlatWaterCoverageReference.Intersections = 0;
         try
         {
             var expected = Fixtures.WaterTraceReference.Trace(captured, query, Vector3.Zero,

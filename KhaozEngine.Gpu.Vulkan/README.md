@@ -1428,6 +1428,11 @@ of pending clears. Graphics and compute bindings are separate, survive framebuff
 and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
 ([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
 
+`SetPipeline(null)` and `SetComputePipeline(null)` throw `ArgumentNullException` with `ParamName` equal to `p`
+at the call, before any native command, pass change or bound-state change. Null is not an unbind operation,
+and a refused bind preserves the current pipeline
+([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
+
 Every member of `IGpuCommandList` is live. A draw does four things before its `vkCmd*` and they are written ONCE
 rather than at each of the five members, because the order is what can be wrong and a missing step renders
 plausibly wrong rather than throwing:

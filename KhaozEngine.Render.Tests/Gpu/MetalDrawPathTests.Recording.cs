@@ -8,6 +8,46 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed partial class MetalDrawPathTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ANullPipelineBindIsRefusedBeforeSpendingAnything(bool compute)
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1808
+        var (list, calls, render, computeCalls) = NewList();
+        using var graphics = Pipeline();
+        using var kernel = new MetalComputePipeline(_harness.Liveness,
+            new MetalComputeShader(_harness.Liveness, default,
+                MetalShaderIndexTable.Build([], [], "hand-built"), 1, 1, 1), [], default);
+
+        list.Begin();
+        list.SetFramebuffer(new RecordedFramebuffer());
+        if (compute) list.SetComputePipeline(kernel);
+        else list.SetPipeline(graphics);
+
+        Action bindNull = compute ? () => list.SetComputePipeline(null!) : () => list.SetPipeline(null!);
+        var refusal = Assert.Throws<ArgumentNullException>(bindNull);
+        Assert.Equal("p", refusal.ParamName);
+        Assert.Empty(calls.Log);
+        Assert.Empty(render.Log);
+        Assert.Empty(computeCalls.States);
+        Assert.Equal(MetalEncoderKind.None, list.Encoders.Open);
+
+        if (compute)
+        {
+            Assert.Same(kernel, list.Pipelines.Compute);
+            list.Dispatch(1, 1, 1);
+            Assert.Equal(MetalEncoderKind.Compute, list.Encoders.Open);
+        }
+        else
+        {
+            Assert.Same(graphics, list.Pipelines.Graphics);
+            list.Draw(3);
+            Assert.Single(render.Passes);
+        }
+        list.End();
+    }
+
     /// <summary>
     /// A draw with no graphics pipeline is refused before opening a pass or consuming pending clears, so
     /// the mis-sequenced frame does not also pay a boundary and leave a pass open behind the throw.

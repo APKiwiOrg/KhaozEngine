@@ -276,6 +276,8 @@ namespace KhaozEngine.Gpu
         void ClearDepthStencil(float depth);
         /// <summary>Bind a graphics pipeline for this recording. Graphics and compute bindings are separate.
         /// The binding survives framebuffer changes and pass boundaries until replaced or reset by Begin.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="p"/> is null. Refusal precedes native
+        /// commands, recorded operations and bound-state changes. Null does not unbind a pipeline.</exception>
         void SetPipeline(IGpuPipeline p);
         /// <summary>Bind a resource set to graphics slot <paramref name="slot"/>.</summary>
         void SetGraphicsResourceSet(uint slot, IGpuResourceSet set);
@@ -416,6 +418,8 @@ namespace KhaozEngine.Gpu
         /// <summary>Bind a compute pipeline. Compute and graphics pipeline bindings are tracked separately, so
         /// this does not disturb a bound graphics pipeline (and vice versa). The binding survives framebuffer
         /// changes and pass boundaries until replaced or reset by Begin.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="p"/> is null. Refusal precedes native
+        /// commands, recorded operations and bound-state changes. Null does not unbind a pipeline.</exception>
         void SetComputePipeline(IGpuComputePipeline p);
 
         /// <summary>Bind a resource set to COMPUTE slot <paramref name="slot"/>. Compute and graphics resource-set

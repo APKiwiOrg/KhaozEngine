@@ -462,6 +462,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public void SetPipeline(IGpuPipeline p)
         {
             IVulkanPipelineBinder binder = RequireBinder("Binding a graphics pipeline");
+            ArgumentNullException.ThrowIfNull(p);
             VulkanGraphicsPipeline pipeline = VulkanGraphicsPipeline.Require(
                 p, "a native Vulkan graphics pipeline bind");
             RequireLivePipeline(pipeline.Handle, "graphics");
@@ -513,6 +514,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public void SetComputePipeline(IGpuComputePipeline p)
         {
             IVulkanPipelineBinder binder = RequireBinder("Binding a compute pipeline");
+            ArgumentNullException.ThrowIfNull(p);
             VulkanComputePipeline pipeline = VulkanComputePipeline.Require(
                 p, "a native Vulkan compute pipeline bind");
             RequireLivePipeline(pipeline.Handle, "compute");

@@ -8,6 +8,39 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class VulkanPipelineRecordingTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ANullPipelineBindIsRefusedBeforeSpendingAnything(bool compute)
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1808
+        var fixture = new VulkanResourceFixture();
+        using var colour = fixture.Factory.CreateTexture(
+            VulkanResourceFixture.Texture(64, 64, GpuTextureUsage.RenderTarget));
+        using var target = fixture.Factory.CreateFramebuffer(null, colour);
+        using var graphics = VulkanPipelineFixtures.Graphics(fixture);
+        using var kernel = VulkanPipelineFixtures.Compute(fixture);
+        using var list = fixture.CreateList();
+
+        list.Begin();
+        list.SetFramebuffer(target);
+        if (compute) list.SetComputePipeline(kernel);
+        else list.SetPipeline(graphics);
+        fixture.Trace.Clear();
+
+        Action bindNull = compute ? () => list.SetComputePipeline(null!) : () => list.SetPipeline(null!);
+        var refusal = Assert.Throws<ArgumentNullException>(bindNull);
+        Assert.Equal("p", refusal.ParamName);
+        Assert.Empty(fixture.Trace);
+        Assert.False(list.Rendering.IsRendering);
+        Assert.Empty(fixture.RenderApi.Begins);
+
+        if (compute) list.Dispatch(1, 1, 1);
+        else list.Draw(3);
+        Assert.NotEmpty(fixture.Trace);
+        list.End();
+    }
+
+    [Theory]
     [InlineData("Draw")]
     [InlineData("DrawSingle")]
     [InlineData("DrawIndexed")]

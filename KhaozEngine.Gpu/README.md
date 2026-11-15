@@ -786,6 +786,11 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 | `GpuTimestampStateException`, `GpuTimestampRefusal.UnresolvedBatch` | beginning a batch while the preceding batch is unresolved | `Count`, `Backend` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.WrongRecording` | timestamp work on another list, command buffer or recording | `Backend`, `Command`, `RecordingId` |
 
+`IGpuCommandList.SetPipeline(null)` and `SetComputePipeline(null)` throw plain `ArgumentNullException`
+with `ParamName` equal to `p` at the call on every backend. Refusal precedes native commands, recorded
+operations and bound-state changes. Null is not an unbind operation, and the prior binding remains usable
+([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
+
 Ownership checks also cover framebuffer attachment adapters, pipeline and resource-set binds, uploads,
 completed staging-buffer reads and swapchain-copy command lists. A null slot in a pipeline's layout
 array carries `MissingResource` with `ResourceIndex`. A retirement queue refuses a frame submission

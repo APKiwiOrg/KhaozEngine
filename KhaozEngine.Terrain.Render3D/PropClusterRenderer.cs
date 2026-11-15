@@ -306,7 +306,7 @@ namespace KhaozEngine.Terrain
             float dx = centerX - focus.X;
             float dz = centerZ - focus.Z;
             float distance = MathF.Sqrt(dx * dx + dz * dz);
-            return ResolveCoverage(distance, cluster.Layer, cluster.PresentationGeneration, cluster.Generation);
+            return PropClusterCoverage.Resolve(distance, cluster.Layer, cluster.PresentationGeneration, cluster.Generation);
         }
 
         internal long GenerationOf(PropClusterKey key)

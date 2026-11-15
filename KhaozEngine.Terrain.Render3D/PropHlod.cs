@@ -303,8 +303,8 @@ namespace KhaozEngine.Terrain
         /// the layer's <paramref name="hlodDistance"/>, and a <paramref name="crossfadeWidth"/>, return the fade
         /// parameter t in 0..1. t is 0 up to the near edge (draw the full props, HLOD hidden), ramps linearly across
         /// the band centred on <paramref name="hlodDistance"/>, and is 1 past the far edge (props hidden, HLOD solid).
-        /// The individual props dissolve toward 1 as t rises and the merged mesh dissolves toward 0 (fades in) as
-        /// (1 - t) falls, so the two swap with the 14.5.0 rigid-dissolve primitive - deterministic by distance, no
+        /// Both halves use threshold t with opposite keep sets through DissolveComplement: individuals keep
+        /// mask &gt;= t and the merged mesh keeps mask &lt; t. The handoff is deterministic by distance with no
         /// per-frame randomness. A non-positive width is a hard swap at <paramref name="hlodDistance"/>.</summary>
         public static float CrossfadeAt(float distance, float hlodDistance, float crossfadeWidth)
         {
@@ -316,19 +316,12 @@ namespace KhaozEngine.Terrain
 
         // ---- Crossfade draw gates (issue #405). Near either end of the band one of the two halves is dithered
         // almost fully away, so drawing it still pays full vertex/triangle cost for a side that contributes close to
-        // nothing on screen. Both the individual-props dither (ShaderSources.Model's ModelFrag / the shadow depth
-        // pass's ShadowDepthDissolveFrag) and the merged-mesh dither (the same frag, plus the issue #391 INVERTED
-        // shadow variant ShadowDepthDissolveInvertedFrag) discard `mask < threshold` (or its complement) against a
-        // world-space value-noise mask spread over the full 0..1 range, so a threshold's kept-fragment fraction is
-        // ~ (1 - threshold): that is the documented reading of "threshold: 0 = solid .. 1 = gone" on IDissolve.x.
-        //
-        // The props half's threshold IS t (dissolveFloor below), so its kept fraction is ~ (1 - t): past t = 0.97
-        // that is under 3 percent. The merged half's threshold is (1 - t) (hlodDissolve below, color and shadow
-        // alike per the derivation in ShadowDepthDissolveInvertedFrag), so ITS kept fraction is ~ t: below t = 0.03
-        // that is under 3 percent too. Both figures hold for the shadow pass as well as color, since the shadow
-        // dither reads the very same threshold (plain for props, inverted for merged) - so gating the one Draw /
-        // DrawProps call that feeds both the color instance and its shadow-caster registration keeps color and
-        // shadow skipped together, with no separate shadow-side gate needed.
+        // nothing on screen. Colour and shadow use the same world-space noise mask and shared threshold t.
+        // Individuals keep mask >= t, with fraction ~ (1 - t). The merged half sets DissolveComplement and
+        // keeps mask < t, with fraction ~ t. The individual fraction is under 3 percent at t >= 0.97, and
+        // the merged fraction is under 3 percent at t <= 0.03, so both passes skip the same negligible half.
+        // An overlapping exit scales each half's share by its surviving fraction. PropClusterCoverage keeps
+        // the merged complement phase through the rest of that exit, even after the individuals are skipped.
 
         /// <summary>The crossfade band's near-edge gate for the merged HLOD half (issue #405): below this its dither
         /// keeps only a ~t fraction of fragments (see the derivation above), under 3 percent below this threshold.</summary>

@@ -65,6 +65,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   keep the original cleanup, which also clears partial writes left by a refusal or throw, including default-equal
   values such as negative zero. Results, refusals and allocation are unchanged, with no public API change
   ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
+- Contact support proposals reuse one per-thread admission result for the canonical upright pose instead of
+  rebuilding the pose operator on every proposal. The cached Boolean is keyed by the exact quaternion bits and the
+  native floating-point controls, applies only to `(0, 0, 0, 1)` on .NET 10 x64 and arm64 with hardware SIMD, and
+  still runs the live position, radius and probe length checks on every call. Other rotations, signed-zero
+  variants, reference evaluation and platforms whose controls cannot be read use the original predicate. Results
+  are unchanged, with no public API change ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
 - Catalog `ImportBundleAsync` and `ImportTextBundleAsync` hold the draft freeze from staging through publication on
   the in-memory, SQLite and SQL Server stores. A rival edit, discard or import that arrives meanwhile is refused with
   `ContentAuthoringRefusal.PublishInProgress` and can retry once the import ends. It used to join the imported draft,

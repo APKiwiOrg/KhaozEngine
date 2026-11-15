@@ -1,7 +1,7 @@
 # KhaozEngine.Physics.Bepu
 
 BepuPhysics v2 backend for the [KhaozEngine.Physics](../KhaozEngine.Physics) seam.
-**`BepuPhysicsWorld : IPhysicsWorld`** over BepuPhysics 2.4.0 (pure managed, Apache-2.0, no native
+**`BepuPhysicsWorld : IPhysicsWorld`** over BepuPhysics 2.4.0 (pure managed, Apache-2.0, no bundled native
 libraries) with a single-threaded, deterministic `Simulation` (null dispatcher, fixed solve description,
 4 substeps, uniform gravity applied in the pose integrator). Opt-in and in NO umbrella: consumers depend on
 the dependency-free seam and add this backend explicitly, the same pattern as `Netcode.LiteNetLib` or
@@ -138,9 +138,19 @@ either value shifts the bit-exact result legitimately.
   atomically at 257 without touching either output span. Unsupported mesh scales, uncertified shapes,
   predicates or work domains refuse. Radius is 0.01 to 2 m and proposal probes are upright with length
   at most 8 m. Selected exclusions and original receiver/lease currentness apply to all work.
+  Proposal pose admission retains one thread-local Boolean, keyed by all quaternion component bits and
+  native FP controls. Only the canonical `(0, 0, 0, 1)` bits qualify on .NET 10 x64/arm64 with hardware
+  SIMD. Its zero/one rotation arithmetic is independent of translation and JIT tier. Other rotations,
+  including signed-zero variants, use the original predicate until separately proven. FP controls are
+  an arithmetic input, so a changed control token misses. Sticky status flags are excluded.
+  Each call still checks finite position components and the inclusive +/-2048 m bounds. Probe radius
+  and length guards, fresh lease authentication, proposal sweeps and every later certificate still run.
+  A miss evaluates the original support predicate. Unsupported readers or runtimes and reference
+  evaluation bypass the slot. No translated operator or selected-support result is retained by this
+  cache, whose key/result payload is under 128 bytes per thread.
   Immutable installed local geometry is keyed by owner, installation identity and static-geometry version.
   Static add/remove/replacement and changed rebase invalidate it. Simulation steps and dynamic mutations
-  do not. Results still authenticate the global lease generation. No selected-support result is cached.
+  do not. Results still authenticate the global lease generation. This geometry cache retains no selected-support result.
   See [complete footprint use](../docs/USING-KHAOZENGINE.md#complete-support-footprints).
   Local vertex components are admitted through 2048 m. This is a range domain, not a precision guarantee.
   Each query still enforces its position, separation and normal publication ceilings, exact-arithmetic

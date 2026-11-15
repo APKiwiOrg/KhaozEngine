@@ -11,6 +11,7 @@
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
     <InternalsVisibleTo Include="KhaozEngine.Physics.Bepu" />
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics" />
     <InternalsVisibleTo Include="KhaozEngine.Locomotion" />
     <InternalsVisibleTo Include="KhaozEngine.Movement" />
     <InternalsVisibleTo Include="KhaozEngine.NetWorld" />

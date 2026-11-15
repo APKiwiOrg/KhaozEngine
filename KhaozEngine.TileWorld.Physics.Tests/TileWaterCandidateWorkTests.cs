@@ -52,8 +52,9 @@ public class TileWaterCandidateWorkTests(ITestOutputHelper output)
         {
             var expected = Fixtures.WaterTraceReference.Trace(captured, query, Vector3.Zero,
                 MovementWaterFieldTests.Identity, expectedSpans, expectedContacts);
-            int before = TileWaterQueryWork.Intersections;
+            int before = Fixtures.FlatWaterCoverageReference.Intersections;
             Assert.True(before > 1024);
+            Assert.Equal(0, TileWaterQueryWork.Intersections);
             TileWaterQueryWork.Reset();
             var actual = field.TraceWater(query, Vector3.Zero, MovementWaterFieldTests.Identity,
                 actualSpans, actualContacts);

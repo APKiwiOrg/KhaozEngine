@@ -139,7 +139,7 @@ internal sealed class FrozenTileWaterPrismCoverage
                 bool dry = Dry(pieces, faces, candidates[..candidateCount], prismStarts, scratch.Faces.AsSpan(0, faceCount), query, origin, enter, exit);
                 scratch.Spans[s] = new(enter, exit, first, contactCount - first, dry || first == contactCount);
             }
-            float certificate = TileWaterColumnCoverage.Upper(error);
+            float certificate = FrozenTileWaterColumnCoverage.Upper(error);
             if (!float.IsFinite(certificate)) return Refuse(MovementAvailability.Unresolved, identity);
             if (certificate > MovementQueryLease.CoverageSkinMetres)
                 return Refuse(MovementAvailability.PrecisionExceeded, identity);
@@ -159,7 +159,7 @@ internal sealed class FrozenTileWaterPrismCoverage
         if (count == output.Length) return false;
         float fraction = Math.Clamp((float)Math.Max(enter, contact.Enter), enter, exit);
         V located = contact.Witness(fraction) + (V)piece.Reference;
-        double x = TileWaterConvexShape.Mid(located.X), z = TileWaterConvexShape.Mid(located.Z);
+        double x = FrozenTileWaterConvexShape.Mid(located.X), z = FrozenTileWaterConvexShape.Mid(located.Z);
         Vector2 column = new(Math.Clamp((float)x, piece.Column.Minimum.X, piece.Column.Maximum.X),
             Math.Clamp((float)z, piece.Column.Minimum.Z, piece.Column.Maximum.Z));
         if (!ground.TryDrawnHeight(column.X, column.Y, out float bed) || !(bed < piece.Column.Maximum.Y))
@@ -220,7 +220,7 @@ internal sealed class FrozenTileWaterPrismCoverage
         {
             double value = endpoint == 0 ? range.Enter : range.Exit;
             if (value <= 0 || value >= 1) continue;
-            float low = TileWaterColumnCoverage.Lower(value), high = TileWaterColumnCoverage.Upper(value);
+            float low = FrozenTileWaterColumnCoverage.Lower(value), high = FrozenTileWaterColumnCoverage.Upper(value);
             error = Math.Max(error, Math.Max(value - low, high - value) * delta.Length());
             if (!Insert(low, cuts, ref count) || !Insert(high, cuts, ref count)) return false;
         }

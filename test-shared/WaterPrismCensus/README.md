@@ -91,7 +91,7 @@ refusal. This validates the reported removals for the recorded inputs. It is not
 Both moving-bank cases contain a fully dry motion-resolve trace inside an otherwise wet gameplay step.
 No recorded trace qualifies as fully submerged. These bounds remain observations and are not applied as culling.
 
-Coverage output compares bitwise with the frozen prism evaluator through `WaterCoverageComparison` and
+Coverage output compares bitwise with the frozen flat and prism evaluators through `WaterCoverageComparison` and
 `WaterCoverageDigest`. Its shared helpers and snapshot boundary are listed below. Independent box and seam
 tests remain necessary. No timing assertion is installed.
 
@@ -116,11 +116,24 @@ warm table. Idle standing and treading reuse all four calls in this fixture.
 ## Frozen differential kernel contract
 
 `Fixtures/FrozenWater` in the physics test project holds the evaluator and complete prism trace frozen from
-`85e484e87`. They read copied ordered shape geometry, recompute the original expressions and suppress production
-diagnostic counters. Source hashes pin the deliberate snapshot. A helper changed by a later optimisation must
-also be frozen in that change. The reference shares interval arithmetic, root uncertainty, immutable bed seams,
-witness lookup, candidate indexes, prism/face geometry and captured ground. It preserves the old evaluator's
-behavior, including numerical behavior that might later receive a separately reviewed correction.
+`85e484e87`, plus the indexed flat evaluator frozen from `1599ccd75` for
+[#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756). The flat reference owns separate interval arithmetic,
+capsule intersection, flat candidate indexes and dispatch bounds. It reads copied column and boundary records and
+never calls the production flat evaluator, index selection or numerical helpers. The older pre-index flat
+reference also uses the frozen capsule helper. It resets its own per-thread intersection count for each trace,
+so brute-force work remains measurable without changing production counters or the guarded helper snapshot.
+Prism assembly uses the frozen outward float rounding helpers.
+The prism reference still shares interval arithmetic, root uncertainty, immutable bed seams, witness lookup,
+candidate indexes, prism/face geometry and captured ground. These unchanged dependencies remain outside its frozen
+boundary. A later change to a shared helper must freeze it before changing it. The references recompute the original
+expressions and suppress production diagnostic counters. LF-pinned source hashes guard the deliberate snapshots.
+They preserve the original numerical behavior, including behavior that might later receive a reviewed correction.
+
+`WaterCoverageComparison` compares every result field and refusal capacity/identity, every span byte and every
+contact field, including float sign and NaN payload bits in caller storage. Caller-owned identity and space strings
+retain reference identity. The existing exception for freshly allocated joined-triangle boundary IDs remains
+value-only. Both written prefixes and the complete sentinel-filled suffixes are compared. Comparator mutations
+cover result identifiers, contact identifiers/classifications, span classifications, signed zeros and NaN payloads.
 
 `Category=WaterKernelContract` selects the differential corpus and shape/trace matrix, including Diagnostic
 storage boundaries, the 252-sample patch sweeps and all 510 existing bank-lift inputs. These include every trace
@@ -129,10 +142,18 @@ sentinel-filled caller buffers compared by bits through the entire supplied arra
 trace-matrix cases run bypassed, cold and repeated warm reads. The seeded corpus also replays in shuffled order,
 and memo tests retain their bypassed-sampler oracle plus frozen census checks. Shape windows exercise the kernel
 directly below the sampler boundary. The normal CI filter skips Diagnostic cases. Its small corpus instead adds
-frozen comparisons to the existing census observations, avoiding another construction of all nine worlds.
+frozen comparisons to the existing census observations. `ContactQueryCostOracleTests` adds the six cost cases below,
+with two fixed-basis operations and 32 advancing ticks per case. Every recorded water query is checked bypassed,
+cold and warm, including short-span and short-contact refusals. The collider case must select real statics and the
+shore walk must publish results beyond the small memo limits. `WaterQueryCostMutationTests` proves that cold suffix
+corruption, warm stale identity, large-output truncation and stale moving output are rejected. These are evaluator
+and comparator controls. Cache-key mutation tests require the later cache implementation.
+
+Set `CENSUS_RESULTS` to an absolute results directory outside the checkout before running the contract command.
 
 ```bash
-build-slot --label water-kernel-contract -- dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --filter 'Category=WaterKernelContract'
+build-slot --label water-kernel-contract -- dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --filter 'Category=WaterKernelContract' --logger 'trx;LogFileName=water-kernel.trx' --results-directory "$CENSUS_RESULTS"
+python3 scripts/check-water-kernel-trx.py "$CENSUS_RESULTS/water-kernel.trx"
 ```
 
 The independent `water-kernel-contract` CI job builds only this headless test project on hosted ubuntu-26.04
@@ -140,6 +161,8 @@ x64 and macos-26 arm64. Each job runs the contract with `DOTNET_TieredCompilatio
 TRX files. Its filter excludes `TileWaterPrismCensusTests`, whose pre-existing census digests remain in the
 ordinary test slice. The extended corpus still records all nine fixtures over four ticks on each runtime.
 Each TRX must execute a positive number of tests, execute its entire selected total and report zero failures.
+The TRX guard also requires the query-cost oracle, mutation, comparator and frozen-source test classes, so a
+mistyped filter that runs other old tests cannot silently omit all new controls.
 It runs separately from the selective runner's Foundation/Server pass, so an affected-project selection
 cannot omit this matrix. Each execution compares frozen against production on the same runtime. The runtime
 gate asserts no single numeric digest across architectures.
@@ -177,3 +200,27 @@ per authority operation and per individual trace, cold-read and Step phases, the
 and the residual. Phase medians are not additive. Per-trace stopwatches are coarse enough for the millisecond
 kernel, but trace and residual measurements include clock overhead. Inner projection phases have no clocks.
 The census build refuses to run the timing mode. Shared-machine timings are indicative, with no budget gate.
+
+## Contact query cost diagnostic
+
+The benchmark's separate `--query-cost` mode uses the same six-case roster as the exact-output corpus.
+Dry standing and walking use `dry-control`. Dry collider walking adds 24 corridor boxes and a registered support
+platform under the support disc. Flat open water uses `flat-control`. Shore standing and walking use `bank-stand`,
+with the walking command east along the contour. Each controller owns its own world, sampler and simulator and
+settles its own basis. Contact uses SurfaceSwimmer and Legacy uses its required default water policy. Their
+outputs are not a semantic parity claim.
+
+The mode runs eight warm-up operations, 96 fixed-basis samples and a separate 32-tick advancing history per case.
+Contact and Legacy execution order alternates. `--quick` reduces this to one warm-up and two samples per history
+for structural smoke checks. No stopwatch runs unless `--timers` is supplied. `--trace-timers` additionally enables
+the recording field's per-trace stopwatches and requires `--timers`. `--counters` separately enables the existing
+support work capture and reports the combined Contact and Legacy counts. It does not enable timers. Timed runs
+require a normal Release build and `DOTNET_TieredCompilation=0`. Raw elapsed samples are report-only. Default CI
+does not run this mode or compare elapsed times. Per-trace clocks add overhead and should be left off for whole-step
+comparisons. This diagnostic adds no production timer, probe type or cache.
+
+```bash
+build-slot --label query-cost-build -- dotnet build KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj -c Release
+build-slot --label query-cost-smoke -- dotnet KhaozEngine.Benchmarks/bin/Release/net10.0/KhaozEngine.Benchmarks.dll --query-cost --quick
+build-slot --heavy --label query-cost-timing -- env DOTNET_TieredCompilation=0 dotnet KhaozEngine.Benchmarks/bin/Release/net10.0/KhaozEngine.Benchmarks.dll --query-cost --timers
+```

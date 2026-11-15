@@ -5,17 +5,19 @@ using KhaozEngine.TileWorld.Physics;
 
 namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 
-// The flat path remains the existing pre-index reference. Nonuniform evaluation is independently frozen.
+// Snapshot geometry is shared. Dispatch, flat evaluation and prism evaluation never use the live sampler.
 internal sealed class FrozenWaterReference
 {
     readonly TileWaterTraceTestSnapshot _geometry;
     readonly FrozenTileWaterPrismCoverage _prisms;
+    readonly FrozenTileWaterFlatIndex _flat;
     readonly string _world;
 
     internal FrozenWaterReference(TileWaterTraceTestSnapshot geometry, string world = "water-world")
     {
         _geometry = geometry;
         _prisms = new(geometry);
+        _flat = new(geometry.Columns, geometry.Boundaries, geometry.Exterior);
         _world = world;
     }
 
@@ -26,12 +28,12 @@ internal sealed class FrozenWaterReference
         if (!query.IsValid || !identity.IsValid || !float.IsFinite(origin.X) || !float.IsFinite(origin.Y) ||
             !float.IsFinite(origin.Z) || query.Body.CurrentSpace.WorldId != _world)
             return new(MovementAvailability.Invalid, 0, 0, 0, 0, 0, identity);
-        var bounds = new TileWaterPathBounds(query, origin);
+        var bounds = new FrozenTileWaterPathBounds(query, origin);
         foreach (var column in _geometry.Nonuniform)
             if (bounds.Meets(column.Minimum, column.Maximum))
                 return TracePrisms(query, origin, identity, spans, contacts);
-        return FlatWaterCoverageReference.Trace(_geometry.Columns, _geometry.Boundaries, _geometry.Exterior,
-            query, origin, identity, spans, contacts);
+        return FrozenTileWaterColumnCoverage.Trace(_geometry.Columns, _geometry.Boundaries, _geometry.Exterior,
+            query, origin, identity, spans, contacts, _flat);
     }
 
     internal MovementCoverageResult TracePrisms(in MovementMediumSweepQuery query, Vector3 origin,

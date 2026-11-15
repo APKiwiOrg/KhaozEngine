@@ -12,11 +12,14 @@ spec.loader.exec_module(guard)
 
 
 class WaterKernelTrxTests(unittest.TestCase):
-    def validate(self, attributes):
+    def validate(self, attributes, classes=guard.REQUIRED_CLASSES):
         with tempfile.TemporaryDirectory(prefix='water-kernel-trx-') as directory:
             path = Path(directory) / 'results.trx'
             root = ET.Element('TestRun', xmlns='http://microsoft.com/schemas/VisualStudio/TeamTest/2010')
             ET.SubElement(ET.SubElement(root, 'ResultSummary'), 'Counters', attributes)
+            definitions = ET.SubElement(root, 'TestDefinitions')
+            for name in classes:
+                ET.SubElement(ET.SubElement(definitions, 'UnitTest'), 'TestMethod', className='Tests.' + name)
             ET.ElementTree(root).write(path)
             return guard.validate(path)
 
@@ -39,6 +42,14 @@ class WaterKernelTrxTests(unittest.TestCase):
         for attributes in [dict(total='7', executed='7'), dict(total='many', executed='7', failed='0')]:
             with self.subTest(attributes=attributes), self.assertRaises(ValueError):
                 self.validate(attributes)
+
+    def test_a_positive_execution_cannot_hide_an_unselected_oracle_class(self):
+        self.assertEqual(('ContactQueryCostOracleTests', 'WaterQueryCostMutationTests',
+                          'WaterCoverageComparisonTests', 'WaterKernelFrozenReferenceTests'), guard.REQUIRED_CLASSES)
+        for missing in guard.REQUIRED_CLASSES:
+            with self.subTest(missing=missing), self.assertRaises(ValueError):
+                self.validate(dict(total='7', executed='7', failed='0'),
+                              tuple(name for name in guard.REQUIRED_CLASSES if name != missing))
 
 
 if __name__ == '__main__':

@@ -5,14 +5,23 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 
+REQUIRED_CLASSES = ('ContactQueryCostOracleTests', 'WaterQueryCostMutationTests',
+                    'WaterCoverageComparisonTests', 'WaterKernelFrozenReferenceTests')
+
+
 def validate(path):
-    counters = ET.parse(path).findall('.//{*}Counters')
+    root = ET.parse(path)
+    counters = root.findall('.//{*}Counters')
     if len(counters) != 1:
         raise ValueError('Expected exactly one TRX counter record.')
     values = counters[0].attrib
     total, executed, failed = (int(values.get(name, '')) for name in ('total', 'executed', 'failed'))
     if total <= 0 or executed != total or failed != 0:
         raise ValueError(f'Incomplete water kernel execution: total={total}, executed={executed}, failed={failed}.')
+    classes = {method.get('className', '').split('.')[-1] for method in root.findall('.//{*}TestMethod')}
+    missing = set(REQUIRED_CLASSES) - classes
+    if missing:
+        raise ValueError('Missing water query oracle classes: ' + ', '.join(sorted(missing)))
     return total, executed, failed
 
 

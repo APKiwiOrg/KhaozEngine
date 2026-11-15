@@ -21,7 +21,7 @@ namespace KhaozEngine.Tests.Gpu
     /// release's two change tests alone deciding at Quality, the still wall of one display pixel texels measured 15
     /// and 44 percent above its figures, so both must read a change where the frame upscales.
     /// </summary>
-    public sealed class TemporalStableDetailGpuTests(ITestOutputHelper output)
+    public sealed partial class TemporalStableDetailGpuTests(ITestOutputHelper output)
     {
         const int W = 320, H = 180, FirstMeasured = 80, Measured = 8, Margin = 8;
         const float OrthoSize = 1.5f;
@@ -100,11 +100,12 @@ namespace KhaozEngine.Tests.Gpu
                 }
 
                 byte[][] reference = TemporalAcceptance.ReferenceSequence(W, H,
-                    s => stage.Setup(s, AntiAliasing.Temporal, TemporalUpscale.Native), Draw, FirstMeasured, Measured);
-                byte[][] frames = TemporalAcceptance.Sequence(W, H, s => stage.Setup(s, AntiAliasing.Temporal, c.Preset),
+                    s => { stage.Setup(s, AntiAliasing.Temporal, TemporalUpscale.Native); Detail(s); }, Draw, FirstMeasured, Measured);
+                byte[][] frames = TemporalAcceptance.Sequence(W, H, s => { stage.Setup(s, AntiAliasing.Temporal, c.Preset); Detail(s); },
                     Draw, FirstMeasured, Measured);
                 Check(c.Name, Measure(frames, reference), failures);
             }
+            if (!_reportOnly)
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         }
 
@@ -119,6 +120,7 @@ namespace KhaozEngine.Tests.Gpu
                 void Setup(Scene3D s, TemporalUpscale preset)
                 {
                     stage.Setup(s, AntiAliasing.Temporal, preset);
+                    Detail(s);
                     panel = s.LoadMesh(stage.PanelMesh(c.TexelPixels), s.LoadTexture(FrontStage.NoiseTexture(),
                         FrontStage.TextureSize, FrontStage.TextureSize));
                 }
@@ -131,6 +133,7 @@ namespace KhaozEngine.Tests.Gpu
                     FirstMeasured, Measured);
                 Check(c.Name, Measure(frames, reference), failures);
             }
+            if (!_reportOnly)
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         }
 
@@ -144,6 +147,8 @@ namespace KhaozEngine.Tests.Gpu
 
         void Check(string name, Figures f, List<string> failures)
         {
+            _reported[name] = f;
+            if (_reportOnly) return;
             output.WriteLine($"{TemporalDeviceClass.Name} {name}: error {f.Error:0.00000}, temporal error "
                 + $"{f.TemporalError:0.00000}");
             if (!Baseline.TryGetValue(name, out Figures before))

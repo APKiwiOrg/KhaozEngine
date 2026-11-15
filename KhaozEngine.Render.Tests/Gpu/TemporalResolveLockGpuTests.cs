@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu
     /// as <see cref="TemporalResolveRendererGpuTests"/>, through <see cref="TemporalResolveGpuFacts"/>. The moving and
     /// still line facts write their measurements to the test output and into their failure messages.
     /// </summary>
-    public sealed class TemporalResolveLockGpuTests : TemporalResolveGpuFacts
+    public sealed partial class TemporalResolveLockGpuTests : TemporalResolveGpuFacts, IClassFixture<TemporalKeyedLineCache>
     {
         /// <summary>The share of a feature's contrast above the background at which a pixel it left counts as trail.</summary>
         const float TrailContrast = 0.1f;
@@ -29,15 +29,11 @@ namespace KhaozEngine.Tests.Gpu
         static readonly float[] Speeds = { 0.3f, 0.6f, 0.9f };
         static readonly float[] OccluderSpeeds = { 0.1f, 0.3f, 0.6f, 0.9f };
 
-        readonly ITestOutputHelper _output;
-
-        public TemporalResolveLockGpuTests(ITestOutputHelper output) => _output = output;
-
-        [GpuFact]
-        public void A_thin_ridge_takes_a_lock_and_the_lock_holds_its_luma_against_the_clip()
+        [GpuTheory, TemporalHistoryModeData]
+        public void A_thin_ridge_takes_a_lock_and_the_lock_holds_its_luma_against_the_clip(TemporalHistoryDetail detail)
         {
             float[] zero = Motion((_, _) => Vector2.Zero);
-            using var rig = new Rig();
+            using var rig = new Rig(detail: detail);
             float bg = Q(0.1f), line = Q(1f), held = Q(0.55f);
 
             // Frame one: the line is in the current samples. The ridge takes a lock on its own column only.
@@ -78,23 +74,23 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.UltraPerformance)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void A_keyed_thin_feature_leaves_no_trail_two_frames_after_it_passes(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void A_keyed_thin_feature_leaves_no_trail_two_frames_after_it_passes(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
             // Design section 7 acceptance 3. A bright line one internal pixel wide converges still in front of the wall,
             // then moves 0.3 to 0.9 display pixels a frame with its true motion on its own texels, as the foliage wind
             // writes it for a swaying blade. Two frames after it passes a pixel, no more than one display pixel may keep
             // TrailContrast of its contrast.
-            (LineRun[] runs, string message) = RunKeyed(preset);
+            (LineRun[] runs, string message) = RunKeyed(preset, detail: detail);
             _output.WriteLine(message);
             Assert.True(Array.TrueForAll(runs, r => r.Trail <= 1), message);
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.UltraPerformance)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
             // The other side of risk 1 for the same keyed line: the history follows it, so from the eighth frame of
             // motion on it keeps, averaged over the window, at least half the contrast it converges to held still at
@@ -104,7 +100,7 @@ namespace KhaozEngine.Tests.Gpu
             // that accumulates lowers every frame of the window, so the mean still catches it. At UltraPerformance the
             // line is 3 display pixels wide and always covers one whole pixel, so there the worst frame keeps half too.
             // The worst frame is in the message.
-            (LineRun[] runs, string message) = RunKeyed(preset);
+            (LineRun[] runs, string message) = RunKeyed(preset, detail: detail);
             _output.WriteLine(message);
             bool worstHolds = preset != TemporalUpscale.UltraPerformance || Array.TrueForAll(runs, r => r.KeptLeast >= 0.5f);
             Assert.True(Array.TrueForAll(runs, r => r.KeptMean >= 0.5f) && worstHolds, message);
@@ -112,28 +108,28 @@ namespace KhaozEngine.Tests.Gpu
 
         // The keyed line at each speed. The motion steps 0.3 display pixels at a time and both presets' grids line up
         // again every three display pixels, so ten still runs give the still contrast at every position it takes.
-        static (LineRun[] Runs, string Message) RunKeyed(TemporalUpscale preset)
+        static (LineRun[] Runs, string Message) CaptureKeyed(TemporalUpscale preset, TemporalHistoryDetail detail = TemporalHistoryDetail.Display)
         {
             const int StillFrames = 48, MovingFrames = 32, Offsets = 10;
             float factor = TemporalSettings.DisplayOverInternal(preset);
             var still = new float[Offsets];
             for (int m = 0; m < Offsets; m++)
                 still[m] = RunLine(preset, LineStart + 0.3f * m / factor, 0f, keyed: true, StillFrames, StillFrames,
-                    StillFrames, _ => 1f).Still;
+                    StillFrames, _ => 1f, detail: detail).Still;
             var runs = new LineRun[Speeds.Length];
             var report = new List<string> { "still " + string.Join(" ", Array.ConvertAll(still, v => v.ToString("P0"))) };
             for (int i = 0; i < Speeds.Length; i++)
             {
                 int steps = (int)MathF.Round(Speeds[i] / 0.3f);
                 runs[i] = RunLine(preset, LineStart, Speeds[i], keyed: true, StillFrames, StillFrames + MovingFrames,
-                    StillFrames + 2, moved => still[moved * steps % Offsets]);
+                    StillFrames + 2, moved => still[moved * steps % Offsets], detail: detail);
                 report.Add($"{Speeds[i]} px/frame: {runs[i]}");
             }
             return (runs, $"{preset}: " + string.Join(", ", report));
         }
 
-        [GpuFact]
-        public void A_thin_feature_moving_without_motion_trails_no_more_than_one_internal_texel()
+        [GpuTheory, TemporalHistoryModeData]
+        public void A_thin_feature_moving_without_motion_trails_no_more_than_one_internal_texel(TemporalHistoryDetail detail)
         {
             // Design section 3 step 6 and risk 1, at the preset whose texels are widest: UltraPerformance, a third of the
             // display per axis. Acceptance 3 is written for a keyed object, and the keyed facts above are its bar. This is
@@ -151,7 +147,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (float speed in Speeds)
             {
                 LineRun run = RunLine(Preset, LineStart, speed, keyed: false, stillFrames: 0, frames: 64, measureFrom: 16,
-                    _ => 1f);
+                    _ => 1f, detail: detail);
                 worst = Math.Max(worst, run.Trail);
                 report.Add($"{speed} px/frame: {run}");
             }
@@ -161,27 +157,27 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        [InlineData(TemporalUpscale.UltraPerformance)]
-        public void A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance)]
+        public void A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
             // Design section 7 acceptance 2, the owner's grass shimmer. A still vertical line three eighths of a texel
             // wide, centred in its texel column, is in that column's samples on 3 of every 8 frames and absent from the
             // whole neighbourhood on the rest. The pattern is the one the native jitter gives it: Halton x offsets 0,
             // 0.125 and -0.125, phases 0, 4 and 5, put the sample inside it. Without the lock a missed frame clips the
             // history to the wall. HoldsLikeAStillLine sets the bounds.
-            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f);
+            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f, detail: detail);
             _output.WriteLine($"{preset}: {run}");
             Assert.True(HoldsLikeAStillLine(preset, run), $"{preset}: {run}");
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 0.3f)]
-        [InlineData(TemporalUpscale.Native, 0.5f)]
-        [InlineData(TemporalUpscale.UltraPerformance, 0.3f)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 0.3f)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 0.5f)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance, 0.3f)]
         public void A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(TemporalUpscale preset,
-            float speed)
+            float speed, TemporalHistoryDetail detail)
         {
             // The same line on a surface that sways as the foliage wind sways a blade, a sine with a 24 frame period
             // peaking at speed internal pixels a frame, so it swings back and forth about its place and crosses a few
@@ -193,30 +189,30 @@ namespace KhaozEngine.Tests.Gpu
             // UltraPerformance takes 0.3 alone. Quality is left out: there the pixels beside the line's centre share its
             // reconstruction but take a ridge only on the frames whose jitter puts their centre texel on it, and even
             // held still the line sums to 28 percent, at the floor.
-            SubTexelRun run = RunSwayingLine(preset, speed);
+            SubTexelRun run = RunSwayingLine(preset, speed, detail: detail);
             _output.WriteLine($"{preset} at {speed} px/frame: {run}");
             Assert.True(HoldsLikeAStillLine(preset, run), $"{preset} at {speed} px/frame: {run}");
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.UltraPerformance)]
-        public void A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance)]
+        public void A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
             // A follow camera. The camera steps sideways every frame and the surface carrying the line moves with it, as
             // an avatar's staff or blade does, so on screen it is still and its motion is zero, while the camera alone
             // would have moved a static point there 8 internal pixels. Its history is exactly where it was, so it must
             // hold as the still line does.
-            SubTexelRun run = RunSubTexelLine(preset, followStep: 8f);
+            SubTexelRun run = RunSubTexelLine(preset, followStep: 8f, detail: detail);
             _output.WriteLine($"{preset}: {run}");
             Assert.True(HoldsLikeAStillLine(preset, run), $"{preset}: {run}");
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        [InlineData(TemporalUpscale.UltraPerformance)]
-        public void A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance)]
+        public void A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
             // The still line with the background sentinel around it in place of the wall, as a far blade stands against
             // the sky. Where a pixel's centre texel is sky and the line is the nearest surface around it, the edge
@@ -224,20 +220,20 @@ namespace KhaozEngine.Tests.Gpu
             // under a still camera. Without that, Quality's pixel at the line's centre averages 5.1 percent. The depth
             // stored where the line was missed is the background's, farther than any surface, and that must not release
             // the line's own lock either.
-            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f, overSky: true);
+            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f, overSky: true, detail: detail);
             _output.WriteLine($"{preset}: {run}");
             Assert.True(HoldsLikeAStillLine(preset, run), $"{preset}: {run}");
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, -1)]
-        [InlineData(TemporalUpscale.Native, 1)]
-        [InlineData(TemporalUpscale.Quality, -1)]
-        [InlineData(TemporalUpscale.Quality, 1)]
-        [InlineData(TemporalUpscale.UltraPerformance, -1)]
-        [InlineData(TemporalUpscale.UltraPerformance, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, -1)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, -1)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance, -1)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance, 1)]
         public void A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(TemporalUpscale preset,
-            int side)
+            int side, TemporalHistoryDetail detail)
         {
             // The still line with a still dark surface standing LineMetres ahead in every texel on one side of its column,
             // as a blade stands beside a rock. The surface is the nearest in the line's neighbourhood, so step 1 takes its
@@ -245,18 +241,18 @@ namespace KhaozEngine.Tests.Gpu
             // the line's history is its own and it must hold as the still line does. Releasing the lock wherever the
             // history lies farther than the dilated surface averaged 5.9 percent at Native and 5.4 at UltraPerformance
             // with the surface to the left, and 4.3 at Quality with it to the right.
-            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f, beside: side);
+            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f, beside: side, detail: detail);
             _output.WriteLine($"{preset}, surface on side {side}: {run}");
             Assert.True(HoldsLikeAStillLine(preset, run), $"{preset}, surface on side {side}: {run}");
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, -1)]
-        [InlineData(TemporalUpscale.Native, 1)]
-        [InlineData(TemporalUpscale.Quality, -1)]
-        [InlineData(TemporalUpscale.Quality, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, -1)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, -1)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 1)]
         public void A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(
-            TemporalUpscale preset, int side)
+            TemporalUpscale preset, int side, TemporalHistoryDetail detail)
         {
             // The still line beside the still nearer surface, with the surface's edge half a texel into the column next
             // to the line, so the jitter decides each frame whether that column's sample lands on the surface, as a
@@ -264,19 +260,19 @@ namespace KhaozEngine.Tests.Gpu
             // the surface to the left that column shows the surface on the frames n % 8 of 2, 4 and 6. On 3 and 7 the
             // line is missed too, so the current 3x3 holds only wall while last frame's stored depths still hold the
             // surface. Nothing moves, so the line must hold as the still line does.
-            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f, beside: side, edgeInto: 0.5f);
+            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f, beside: side, edgeInto: 0.5f, detail: detail);
             _output.WriteLine($"{preset}, surface edge half a texel into the column on side {side}: {run}");
             Assert.True(HoldsLikeAStillLine(preset, run),
                 $"{preset}, surface edge half a texel into the column on side {side}: {run}");
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, false)]
-        [InlineData(TemporalUpscale.Native, true)]
-        [InlineData(TemporalUpscale.Quality, false)]
-        [InlineData(TemporalUpscale.Quality, true)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, false)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, true)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, false)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, true)]
         public void Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(TemporalUpscale preset,
-            bool ahead)
+            bool ahead, TemporalHistoryDetail detail)
         {
             // Two still lines three eighths of a texel wide centred in neighbouring columns, the left bright and the
             // right dimmer, shown together on the frames the jitter lands in them (RunLinePair). The left takes a ridge
@@ -287,7 +283,7 @@ namespace KhaozEngine.Tests.Gpu
             // the left line's history whenever all four stored depths were line, which the resolve did before
             // amendment 23 as well, so that case checks the right line: it changes by 10 percent a frame, and dropping
             // its history there made it change by 43.8.
-            var (left, right) = RunLinePair(preset, ahead);
+            var (left, right) = RunLinePair(preset, ahead, detail: detail);
             string message = $"{preset}, {(ahead ? "standing ahead" : "on the wall")}: left {left}, right {right}";
             _output.WriteLine(message);
             if (ahead && preset == TemporalUpscale.Native)
@@ -297,10 +293,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
         public void Of_three_lines_narrower_than_a_texel_side_by_side_an_outer_one_holds_like_a_still_one(
-            TemporalUpscale preset)
+            TemporalUpscale preset, TemporalHistoryDetail detail)
         {
             // Three still lines three eighths of a texel wide centred in neighbouring columns, bright, dimmer and
             // bright, standing LineMetres ahead of the wall (RunLines). After a frame that showed them the stored
@@ -310,7 +306,7 @@ namespace KhaozEngine.Tests.Gpu
             // four stored depths and drop their history, as they did before amendment 23. Without the lock clause the
             // right line averaged 13.8 percent at Native, changing by 43.8 percent a frame, and the left 18.4 percent
             // at Quality, changing by 64.2.
-            SubTexelRun[] runs = RunLines(preset, ahead: true, new[] { Line, Q(0.5f), Line });
+            SubTexelRun[] runs = RunLines(preset, ahead: true, new[] { Line, Q(0.5f), Line }, detail: detail);
             SubTexelRun outer = preset == TemporalUpscale.Native ? runs[2] : runs[0];
             string message = $"{preset}: left {runs[0]}, middle {runs[1]}, right {runs[2]}";
             _output.WriteLine(message);
@@ -318,11 +314,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        [InlineData(TemporalUpscale.UltraPerformance)]
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance)]
         public void A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(
-            TemporalUpscale preset)
+            TemporalUpscale preset, TemporalHistoryDetail detail)
         {
             // The still line against the sky with a still dark surface LineMetres ahead in every texel left of its
             // column, run once at the centre and once in the top left quarter of the screen, with the same alignment to
@@ -333,8 +329,8 @@ namespace KhaozEngine.Tests.Gpu
             // their centre means agree within a hundredth of the contrast. With the edge counted from zero motion up,
             // the line in the corner averaged 7.3 percent at Native and 6.3 at UltraPerformance against 40.4 and 81.5
             // at the centre.
-            SubTexelRun centred = RunSubTexelLine(preset, 0f, overSky: true, beside: -1, displayHeight: 24);
-            SubTexelRun corner = RunSubTexelLine(preset, 0f, overSky: true, beside: -1, displayHeight: 24, offCentre: true);
+            SubTexelRun centred = RunSubTexelLine(preset, 0f, overSky: true, beside: -1, displayHeight: 24, detail: detail);
+            SubTexelRun corner = RunSubTexelLine(preset, 0f, overSky: true, beside: -1, displayHeight: 24, offCentre: true, detail: detail);
             string message = $"{preset}: centred {centred}, in the corner {corner}";
             _output.WriteLine(message);
             Assert.True(HoldsLikeAStillLine(preset, centred) && HoldsLikeAStillLine(preset, corner)
@@ -342,10 +338,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        [InlineData(TemporalUpscale.UltraPerformance)]
-        public void A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance)]
+        public void A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
             // Only the line sways, a blade standing LineMetres ahead of still ground, and it writes its motion and its
             // depth on the frames that see it. The pixels beside it take its motion by the dilation of step 1 while
@@ -355,17 +351,17 @@ namespace KhaozEngine.Tests.Gpu
             // coverage: it sums to 22.1, and a LockEdgeRelease of 4 takes it to 13.1. From 0.2 on the blade sums to 16
             // percent or less at every preset with any lock tried, and the same with the edge release off: nothing
             // carries its history through the frames that miss it, so the history stays where the blade was last seen.
-            SubTexelRun run = RunSwayingLine(preset, 0.1f, bladeOnly: true);
+            SubTexelRun run = RunSwayingLine(preset, 0.1f, bladeOnly: true, detail: detail);
             _output.WriteLine($"{preset} at 0.1 px/frame: {run}");
             bool holds = preset == TemporalUpscale.Quality ? run.Mean >= 0.5f * 3f / 8f : HoldsLikeAStillLine(preset, run);
             Assert.True(holds, $"{preset} at 0.1 px/frame: {run}");
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        [InlineData(TemporalUpscale.UltraPerformance)]
-        public void A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        [TemporalHistoryModeData(TemporalUpscale.UltraPerformance)]
+        public void A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
             // Design section 7 acceptance 3 from the lock's side. The still line of the facts above holds its lock, and
             // a dark surface standing LineMetres ahead of it, as a trunk stands in front of a grass blade, crosses it
@@ -379,7 +375,7 @@ namespace KhaozEngine.Tests.Gpu
             bool holds = true;
             foreach (float speed in OccluderSpeeds)
             {
-                OccluderRun run = RunOccluder(preset, speed);
+                OccluderRun run = RunOccluder(preset, speed, detail: detail);
                 holds &= run.Ghost <= 1;
                 report.Add($"{speed} px/frame: {run}");
             }
@@ -404,7 +400,7 @@ namespace KhaozEngine.Tests.Gpu
         // motion on its own texels, until its trailing edge is past the line. A pixel wholly on the surface now and two
         // frames ago should show the surface, and one within a texel of its edge is left out on a frame the line shows,
         // whose reconstruction reaches a texel. Any other pixel should show no more than the still image or the wall.
-        static OccluderRun RunOccluder(TemporalUpscale preset, float speed)
+        static OccluderRun RunOccluder(TemporalUpscale preset, float speed, TemporalHistoryDetail detail = TemporalHistoryDetail.Display)
         {
             const int DisplayW = 96, DisplayH = 12, Row = DisplayH / 2, Converge = 64, OccluderTexels = 6;
             float factor = TemporalSettings.DisplayOverInternal(preset);
@@ -417,7 +413,7 @@ namespace KhaozEngine.Tests.Gpu
             TemporalViewInput still = View(Eye, projection);
             float wallNdc = NdcDepth(projection, SceneMetres), occluderNdc = NdcDepth(projection, LineMetres);
 
-            using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc);
+            using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc, detail: detail);
             var stillImage = new float[DisplayW];
             int ghost = 0, ghostFrame = 0, ghost5 = 0, peakPixel = 0, peakFrame = 0;
             float peak = 0f;
@@ -491,9 +487,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             public override string ToString() => Centre < 0
                 ? $"largest frame to frame change {Change:P1} of the contrast at frame {ChangeFrame}, summed coverage mean "
-                    + $"{Mean:P1} against 37.5%"
+                    + $"{Mean:P1} against 37.5% (change {Change:R}, mean {Mean:R})"
                 : $"largest frame to frame change {Change:P1} of the contrast at pixel {ChangePixel} frame {ChangeFrame}, "
-                    + $"centre pixel {Centre} mean {Mean:P1} against coverage 37.5%";
+                    + $"centre pixel {Centre} mean {Mean:P1} against coverage 37.5% (change {Change:R}, mean {Mean:R})";
         }
 
         // A line three eighths of a texel wide in the middle texel column, lit on the frames n % 8 of 0, 4 and 5.
@@ -506,7 +502,7 @@ namespace KhaozEngine.Tests.Gpu
         // display row an eighth of the way down, which for a display height of 24 keeps both grids aligned as at the
         // centre. Converges 64 frames and measures 16.
         static SubTexelRun RunSubTexelLine(TemporalUpscale preset, float followStep, bool overSky = false, int beside = 0,
-            int displayHeight = 12, bool offCentre = false, float edgeInto = 0f)
+            int displayHeight = 12, bool offCentre = false, float edgeInto = 0f, TemporalHistoryDetail detail = TemporalHistoryDetail.Display)
         {
             const int DisplayW = 48, Converge = 64, Measured = 16;
             int DisplayH = displayHeight, Row = offCentre ? displayHeight / 8 : displayHeight / 2;
@@ -532,7 +528,7 @@ namespace KhaozEngine.Tests.Gpu
             int centre = (int)MathF.Floor((column + 0.5f) * factor);
             Assert.Contains(centre, pixels);
 
-            using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc);
+            using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc, detail: detail);
             float nearNdc = NdcDepth(projection, LineMetres);
             if (beside != 0) rig.FillDepth(DepthMap(iw, ih, x => Near(x) ? nearNdc : wallNdc));
             // With edgeInto the surface's edge lies inside the column beside the line's, and a texel is on the surface
@@ -581,9 +577,9 @@ namespace KhaozEngine.Tests.Gpu
         // the current 3x3 holds neither line while the stored depths hold both. ahead stands them LineMetres in front
         // of the wall, in colour and in depth. Converges 64 frames and measures 16, and reports each line as
         // RunSubTexelLine reports one.
-        static (SubTexelRun Left, SubTexelRun Right) RunLinePair(TemporalUpscale preset, bool ahead)
+        static (SubTexelRun Left, SubTexelRun Right) RunLinePair(TemporalUpscale preset, bool ahead, TemporalHistoryDetail detail = TemporalHistoryDetail.Display)
         {
-            SubTexelRun[] runs = RunLines(preset, ahead, new[] { Line, Q(0.5f) });
+            SubTexelRun[] runs = RunLines(preset, ahead, new[] { Line, Q(0.5f) }, detail: detail);
             return (runs[0], runs[1]);
         }
 
@@ -591,7 +587,7 @@ namespace KhaozEngine.Tests.Gpu
         // per grey, each lit where its texel's jittered sample falls inside it, as RunLinePair lights two. ahead stands
         // them LineMetres in front of the wall. Converges 64 frames and measures 16, and reports each line as
         // RunSubTexelLine reports one.
-        static SubTexelRun[] RunLines(TemporalUpscale preset, bool ahead, float[] greys)
+        static SubTexelRun[] RunLines(TemporalUpscale preset, bool ahead, float[] greys, TemporalHistoryDetail detail = TemporalHistoryDetail.Display)
         {
             const int DisplayW = 48, DisplayH = 12, Row = DisplayH / 2, Converge = 64, Measured = 16;
             float factor = TemporalSettings.DisplayOverInternal(preset);
@@ -611,7 +607,7 @@ namespace KhaozEngine.Tests.Gpu
                 centres[i] = (int)MathF.Floor((column + i + 0.5f) * factor);
             }
 
-            using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc);
+            using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc, detail: detail);
             var previous = new float[DisplayW];
             var change = new float[count];
             var changeFrame = new int[count];
@@ -661,7 +657,7 @@ namespace KhaozEngine.Tests.Gpu
         // lit texel writes the sway, standing LineMetres ahead. Each frame's value is the weighted contrast summed over
         // the display pixels centred within 1.5 texels of the line's centre, over the display pixels per texel, so a
         // line of coverage 3/8 sums to 3/8 wherever it sits. Converges 64 frames and measures 16.
-        static SubTexelRun RunSwayingLine(TemporalUpscale preset, float speed, bool bladeOnly = false)
+        static SubTexelRun RunSwayingLine(TemporalUpscale preset, float speed, bool bladeOnly = false, TemporalHistoryDetail detail = TemporalHistoryDetail.Display)
         {
             const int DisplayW = 48, DisplayH = 12, Row = DisplayH / 2, Converge = 64, Measured = 16, Period = 24;
             float factor = TemporalSettings.DisplayOverInternal(preset);
@@ -673,7 +669,7 @@ namespace KhaozEngine.Tests.Gpu
             float wBg = Weighted(Bg), wContrast = Weighted(Line) - wBg;
 
             float wallNdc = NdcDepth(projection, SceneMetres), bladeNdc = NdcDepth(projection, LineMetres);
-            using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc);
+            using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc, detail: detail);
             float change = 0f, sum = 0f, previous = 0f;
             int changeFrame = 0;
             for (int n = 0; n < Converge + Measured; n++)
@@ -711,11 +707,11 @@ namespace KhaozEngine.Tests.Gpu
         /// KeptLeast, at frame KeptLeastFrame, and KeptMean are the least and the mean the line shows at its true
         /// position over the measured frames, from the eighth frame of motion on, as a share of the reference contrast
         /// for that position.</summary>
-        readonly record struct LineRun(int Trail, int TrailFrame, int Trail5, float Peak, float Still, float KeptLeast,
+        internal readonly record struct LineRun(int Trail, int TrailFrame, int Trail5, float Peak, float Still, float KeptLeast,
             int KeptLeastFrame, float KeptMean)
         {
             public override string ToString() => $"trail {Trail} px at frame {TrailFrame} (5%: {Trail5} px), trail peak "
-                + $"{Peak:P0}, kept least {KeptLeast:P0} at frame {KeptLeastFrame} mean {KeptMean:P0}";
+                + $"{Peak:P0}, kept least {KeptLeast:P0} at frame {KeptLeastFrame} mean {KeptMean:P0} (least {KeptLeast:R}, mean {KeptMean:R})";
         }
 
         // A line one internal pixel wide, lit in each row at the texel whose jittered sample falls inside it, as a
@@ -725,7 +721,7 @@ namespace KhaozEngine.Tests.Gpu
         // two frames ago shows history alone. reference gives the contrast to hold the line to after a number of frames
         // of motion. The reset frame must show the line, or the rig renders nothing and the measure proves nothing.
         static LineRun RunLine(TemporalUpscale preset, float start, float speed, bool keyed, int stillFrames, int frames,
-            int measureFrom, Func<int, float> reference)
+            int measureFrom, Func<int, float> reference, TemporalHistoryDetail detail = TemporalHistoryDetail.Display)
         {
             float factor = TemporalSettings.DisplayOverInternal(preset);
             int iw = (int)(LineW / factor), ih = (int)(LineH / factor), phases = TemporalJitter.PhaseCount(factor);
@@ -735,7 +731,7 @@ namespace KhaozEngine.Tests.Gpu
             float threshold = Bg + TrailContrast * (Line - Bg), threshold5 = Bg + 0.05f * (Line - Bg);
             var motion = new Vector2(speed / LineW, 0f);
 
-            using var rig = new Rig(iw, ih, LineW, LineH, wallNdc);
+            using var rig = new Rig(iw, ih, LineW, LineH, wallNdc, detail: detail);
             int trail = 0, trailFrame = 0, trail5 = 0, stillCount = 0, keptCount = 0, keptLeastFrame = 0;
             float peak = 0f, stillSum = 0f, keptLeast = float.MaxValue, keptSum = 0f;
             for (int n = 0; n < frames; n++)

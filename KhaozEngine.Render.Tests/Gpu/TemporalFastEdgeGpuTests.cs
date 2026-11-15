@@ -62,15 +62,19 @@ namespace KhaozEngine.Tests.Gpu
                 + $"{r.TrailChecked} (worst {r.TrailWorst:0.000}), coverage energy {Share(r.CoverageEnergy)}, ring "
                 + $"{Share(r.RingEnergy)}";
             output.WriteLine(line);
+            output.WriteLine($"ACCEPT|fast edge|{scene}|{preset}|edge={r.EdgeError:R}|trail={r.TrailOver}"
+                + $"|coverage={r.CoverageEnergy:R}|sharpness={r.Flicker.Sharpness:R}|fast flips={r.Flicker.FastFlips:R}"
+                + $"|fast flip bound={FastFlipBound(r.Flicker):R}");
             return line;
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 3)]
-        [InlineData(TemporalUpscale.Quality, 1)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 3)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 1)]
         public void A_keyed_line_crossing_fast_leaves_no_trail_and_does_not_shimmer(TemporalUpscale preset,
-            int maxTrail)
+            int maxTrail, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             // Measured: energy over the line's own coverage 1.052 and 0.968, which is 1.054 and 0.969 of MSAA 4x's
             // 0.999, summed over the band 1.087 and 1.065, 0.035 and 0.096 in the ring beside the line, fast flips
             // 0.0190 and 0.0224 against a bound of 0.0219 and 0.0242, 1.25 times the reference's fast flips of 0.0175
@@ -102,10 +106,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void A_keyed_box_crossing_fast_keeps_its_edges_close_to_the_reference(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void A_keyed_box_crossing_fast_keeps_its_edges_close_to_the_reference(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             // Measured: edge error 0.00146 and 0.00173, fast flips 0.00068 and 0.00178 against reference flips of
             // 0.00176 and 0.00546, no trail, temporal error over the band 0.00208 and 0.00260. Before amendment 23 the
             // edge error was 0.00083 and 0.00140 and the band's temporal error 0.00085 and 0.00168: an edge pixel whose
@@ -119,11 +124,12 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 0.045, 11)]
-        [InlineData(TemporalUpscale.Quality, 0.064, 16)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 0.045, 11)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 0.064, 16)]
         public void A_still_box_over_the_textured_wall_under_a_sideways_camera_keeps_its_edges(TemporalUpscale preset,
-            double maxEdgeError, int maxTrail)
+            double maxEdgeError, int maxTrail, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             // Measured: edge error 0.0374 and 0.0530, trail 4 and 14, and with the 3x3 at half precision (Metal, design
             // amendment 25) trail 7 and 15. The Native trail on a Tesla T4 is 10 under Direct3D 11 and Windows Vulkan
             // and 8 under Linux Vulkan, so each trail bound keeps one pixel over its worst backend: Native 11 over
@@ -140,11 +146,12 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 0.02)]
-        [InlineData(TemporalUpscale.Quality, 0.032)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 0.02)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 0.032)]
         public void A_still_box_against_the_sky_under_a_sideways_camera_keeps_steady_edges(TemporalUpscale preset,
-            double maxEdgeError)
+            double maxEdgeError, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             // Measured: fast flips 0 and 0.00004, edge error 0.0162 and 0.0270, as before amendment 23. Reprojecting
             // the sky beside the box by its own motion gave fast flips of 0.0035 and 0.0063 and edge errors of 0.0278
             // and 0.0362.
@@ -163,16 +170,19 @@ namespace KhaozEngine.Tests.Gpu
         /// reference.
         /// </summary>
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 0.25f, 0.019)]
-        [InlineData(TemporalUpscale.Native, 0.5f, 0.020)]
-        [InlineData(TemporalUpscale.Native, 1f, 0.014)]
-        [InlineData(TemporalUpscale.Quality, 0.25f, 0.025)]
-        [InlineData(TemporalUpscale.Quality, 0.5f, 0.026)]
-        [InlineData(TemporalUpscale.Quality, 1f, 0.028)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 0.25f, 0.019)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 0.5f, 0.020)]
+        [TemporalHistoryModeData(TemporalUpscale.Native, 1f, 0.014)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 0.25f, 0.025)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 0.5f, 0.026)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality, 1f, 0.028)]
         public void A_followed_keyed_box_keeps_its_own_edges_under_the_reach(TemporalUpscale preset, float speed,
-            double maxEdgeError)
+            double maxEdgeError, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             FastEdgeRun r = runs.Run(FastEdgeScene.FollowedBox, preset, AntiAliasing.Temporal, speed);
+            output.WriteLine($"ACCEPT|fast edge followed|{detail}|{preset}|{speed:R}|edge={r.EdgeError:R}"
+                + $"|edge bound={maxEdgeError:R}|fast flips={r.Flicker.FastFlips:R}|fast flip bound={FastFlipBound(r.Flicker):R}");
             FlickerStats f = r.Flicker;
             string message = $"followed box, {preset}, {speed} internal px a frame: {f}, edge error "
                 + $"{r.EdgeError:0.00000}, fast flip bound {FastFlipBound(f):0.00000}";
@@ -182,9 +192,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Trait("Category", "Diagnostic")]
-        [GpuFact]
-        public void The_fast_edge_table_prints_every_run()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void The_fast_edge_table_prints_every_run(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             output.WriteLine("| Scene | Preset | Error | Frozen | Added | Removed | Sharp | Flips | Fast flips "
                 + "| Reference flips | Edge error | Trail | Trail worst | Energy | Coverage energy | Ring |");
             output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 16)));
@@ -207,9 +219,11 @@ namespace KhaozEngine.Tests.Gpu
         /// frame: crossing the flat wall under a still camera, and followed by the camera across the textured wall, so
         /// the wall pans past its edges (TEMPORAL-RESOLVE amendment 23). Report only.</summary>
         [Trait("Category", "Diagnostic")]
-        [GpuFact]
-        public void The_box_edge_table_prints_the_walks_under_the_reach()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void The_box_edge_table_prints_the_walks_under_the_reach(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             output.WriteLine("| Scene | Internal px | Preset | Error | Fast flips | Reference fast flips | Edge error "
                 + "| Sharp |");
             output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 8)));
@@ -227,9 +241,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Trait("Category", "Diagnostic")]
-        [GpuFact]
-        public void The_keyed_line_table_prints_the_resolve_against_msaa_4x_and_no_anti_aliasing()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void The_keyed_line_table_prints_the_resolve_against_msaa_4x_and_no_anti_aliasing(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             // Measured over the line's own coverage: the resolve 1.052 and 0.968, MSAA 4x 0.999 at both presets and no
             // anti-aliasing 1.001 and 1.000. Fast flips 0.0190, 0.0211 and 0.0117 at Native and 0.0224, 0.0222 and
             // 0.0145 at Quality, against reference flips of 0.0175 and 0.0194, every one of them fast, because each
@@ -306,6 +322,19 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalFastEdgeRuns
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalHistoryVariants<TemporalFastEdgeRuns> _variants;
+
+        public TemporalFastEdgeRuns() : this(TemporalHistoryDetail.Display) { }
+
+        TemporalFastEdgeRuns(TemporalHistoryDetail detail, TemporalHistoryVariants<TemporalFastEdgeRuns>? variants = null)
+        {
+            _detail = detail;
+            _variants = variants ?? new TemporalHistoryVariants<TemporalFastEdgeRuns>(this, detail, (mode, pool) => new(mode, pool));
+        }
+
+        internal TemporalFastEdgeRuns For(TemporalHistoryDetail detail) => _variants.For(detail);
+
         public const int W = 320, H = 180, Warm = 8, Measured = 16;
 
         /// <summary>The relative motion, in internal pixels a frame, between the moving surface and what lies behind
@@ -411,6 +440,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 stage.Setup(s, mode, preset);
                 s.Post.Hdr.Enabled = false;
+                s.Post.Temporal.HistoryDetail = _detail;
             };
             byte[][] frames;
             if (temporal)

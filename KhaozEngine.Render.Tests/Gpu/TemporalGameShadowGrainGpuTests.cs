@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Gpu;
 /// light hold off. FXAA renders the identical path and hold history, including warmup. The band follows each
 /// reference column's half-contrast crossing, avoiding the normal offset's face-dependent displacement.
 /// </summary>
-public sealed class TemporalGameShadowGrainGpuTests(GameShadowGrainScene scene, ITestOutputHelper output)
+public sealed partial class TemporalGameShadowGrainGpuTests(GameShadowGrainScene scene, ITestOutputHelper output)
     : IClassFixture<GameShadowGrainScene>
 {
     [GpuFact]

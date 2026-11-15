@@ -25,9 +25,11 @@ namespace KhaozEngine.Tests.Gpu
         // About 70 percent of the measured 0.047, as the stability class's sharpness floors are.
         const double MinStillSharpness = 0.033;
 
-        [GpuFact]
-        public void The_window_opens_once_the_fence_carries_the_confidence_the_rule_starts_from()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void The_window_opens_once_the_fence_carries_the_confidence_the_rule_starts_from(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             float median = runs.ConvergedMedianConfidence;
             output.WriteLine($"fence under the slow pan, UltraPerformance, frame "
                 + $"{TemporalStabilityRuns.ConvergedWarm}: median stored confidence {median:0.000}, start "
@@ -37,10 +39,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public void A_slow_pan_over_thin_geometry_does_not_shimmer_once_UltraPerformance_converges(bool overWall)
+        [TemporalHistoryModeData(false)]
+        [TemporalHistoryModeData(true)]
+        public void A_slow_pan_over_thin_geometry_does_not_shimmer_once_UltraPerformance_converges(bool overWall, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             StabilityPath path = overWall ? runs.ConvergedWallPan : runs.ConvergedFencePan;
             FlickerStats f = path.Temporal[TemporalUpscale.UltraPerformance];
             double share = f.TemporalError / path.Frozen;
@@ -51,17 +54,27 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(share <= TemporalStabilityGpuTests.MaxErrorShareOfFrozen, $"the resolve shimmers. {ctx}");
         }
 
-        [GpuFact(RequiresFourSampleMsaa = true)]
-        public void A_slow_pan_over_thin_geometry_flickers_less_than_Msaa4x_once_UltraPerformance_converges() =>
-            AssertAddsLessChangeThanMsaa(runs.ConvergedFencePan);
-
-        [GpuFact(RequiresFourSampleMsaa = true)]
-        public void A_slow_pan_over_thin_geometry_on_a_wall_flickers_less_than_Msaa4x_once_UltraPerformance_converges()
-            => AssertAddsLessChangeThanMsaa(runs.ConvergedWallPan);
-
-        [GpuFact]
-        public void Still_thin_geometry_keeps_its_sharpness_once_UltraPerformance_converges()
+        [GpuTheory(RequiresFourSampleMsaa = true)]
+        [TemporalHistoryModeData]
+        public void A_slow_pan_over_thin_geometry_flickers_less_than_Msaa4x_once_UltraPerformance_converges(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
+            AssertAddsLessChangeThanMsaa(runs.ConvergedFencePan);
+        }
+
+        [GpuTheory(RequiresFourSampleMsaa = true)]
+        [TemporalHistoryModeData]
+        public void A_slow_pan_over_thin_geometry_on_a_wall_flickers_less_than_Msaa4x_once_UltraPerformance_converges(TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
+            AssertAddsLessChangeThanMsaa(runs.ConvergedWallPan);
+        }
+
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void Still_thin_geometry_keeps_its_sharpness_once_UltraPerformance_converges(TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
             FlickerStats f = runs.ConvergedStill;
             string ctx = $"fence still from frame {TemporalStabilityRuns.ConvergedWarm}, TAA UltraPerformance: "
                 + $"sharpness {f.Sharpness:0.000} (floor {MinStillSharpness}), energy {f.Energy:0.000}, flips "

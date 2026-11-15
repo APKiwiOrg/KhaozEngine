@@ -90,12 +90,15 @@ namespace KhaozEngine.Tests.Gpu
         /// of the pixels beside the box's moving edge by their own motion are what keep it clean.
         /// </summary>
         [GpuTheory]
-        [InlineData(false, TemporalUpscale.Native)]
-        [InlineData(false, TemporalUpscale.Quality)]
-        [InlineData(true, TemporalUpscale.Native)]
-        [InlineData(true, TemporalUpscale.Quality)]
-        public void AKeyedCrossingObjectLeavesNoTrail(bool textured, TemporalUpscale preset) =>
+        [TemporalHistoryModeData(false, TemporalUpscale.Native)]
+        [TemporalHistoryModeData(false, TemporalUpscale.Quality)]
+        [TemporalHistoryModeData(true, TemporalUpscale.Native)]
+        [TemporalHistoryModeData(true, TemporalUpscale.Quality)]
+        public void AKeyedCrossingObjectLeavesNoTrail(bool textured, TemporalUpscale preset, TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
             AssertNoTrail(runs.Crossing(keyed: true, textured, preset));
+        }
 
         /// <summary>
         /// The unkeyed box leaves no trail over the flat wall, where the clip removes it. Over the textured wall the
@@ -105,10 +108,13 @@ namespace KhaozEngine.Tests.Gpu
         /// motion key.
         /// </summary>
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void AnUnkeyedCrossingObjectOverAFlatWallLeavesNoTrail(TemporalUpscale preset) =>
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void AnUnkeyedCrossingObjectOverAFlatWallLeavesNoTrail(TemporalUpscale preset, TemporalHistoryDetail detail)
+        {
+            runs = runs.For(detail);
             AssertNoTrail(runs.Crossing(keyed: false, textured: false, preset));
+        }
 
         /// <summary>
         /// A keyed body's 10 m jump keeps history and its jump frame's motion equals the jump. The pixels its old
@@ -116,10 +122,11 @@ namespace KhaozEngine.Tests.Gpu
         /// for about four frames after the jump (https://github.com/APKiwiOrg/KhaozEngine/issues/1185).
         /// </summary>
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void AKeyedTeleportWithinTheCutDistanceKeepsHistoryAndMovesByTheJump(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void AKeyedTeleportWithinTheCutDistanceKeepsHistoryAndMovesByTheJump(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             TeleportRun t = runs.Teleport(preset);
             float errorX = MathF.Abs(t.Motion.X - t.Want) * t.InternalWidth;
             float errorY = MathF.Abs(t.Motion.Y) * t.InternalHeight;
@@ -138,10 +145,11 @@ namespace KhaozEngine.Tests.Gpu
         /// edges. The zoom is a projection change the motion target carries, so it fails with the motion
         /// ignored.</summary>
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void AnOrthographicZoomLeavesNoGhost(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void AnOrthographicZoomLeavesNoGhost(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             ZoomRun zoom = runs.Zoom(preset, GhostTolerance, GhostEdgeStep);
             foreach (var (frame, level, ghosts) in zoom.Checkpoints)
             {
@@ -164,9 +172,11 @@ namespace KhaozEngine.Tests.Gpu
         /// the history there, and the stripes are still accumulating again under the pan. Those presets are printed
         /// by <see cref="TheGhostingTableCoversEveryPreset"/> and not asserted.
         /// </summary>
-        [GpuFact]
-        public void AParticleBurstOverAMovingBackgroundLeavesNoTrail()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void AParticleBurstOverAMovingBackgroundLeavesNoTrail(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             BurstRun b = runs.Burst(TemporalUpscale.Native);
             string ctx = Describe(b, TemporalUpscale.Native);
             output.WriteLine(ctx);
@@ -178,10 +188,11 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The reactive estimate marks the particles on a frame they draw, and nothing else, so the burst
         /// exercises it.</summary>
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void TheReactiveEstimateMarksTheParticles(TemporalUpscale preset)
+        [TemporalHistoryModeData(TemporalUpscale.Native)]
+        [TemporalHistoryModeData(TemporalUpscale.Quality)]
+        public void TheReactiveEstimateMarksTheParticles(TemporalUpscale preset, TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             BurstRun b = runs.Burst(preset);
             string ctx = Describe(b, preset);
             output.WriteLine(ctx);
@@ -193,9 +204,11 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every case at every preset, with the crossing's trail by age at Native. It also prints the three
         /// results no test asserts, each labelled with its reason.</summary>
         [Trait("Category", "Diagnostic")]
-        [GpuFact]
-        public void TheGhostingTableCoversEveryPreset()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void TheGhostingTableCoversEveryPreset(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             output.WriteLine("| Case | Preset | Checked | Over | Luma over | Worst | Floor over | Floor worst | Excess "
                 + "| Worst excess | Reach | Oldest | Age 2 excess | Column worst | Column excess |");
             output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 15)));

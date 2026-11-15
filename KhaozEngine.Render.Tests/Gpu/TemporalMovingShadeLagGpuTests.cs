@@ -210,7 +210,7 @@ namespace KhaozEngine.Tests.Gpu
     /// same device class (<see cref="TemporalDeviceClass"/>).
     /// </para>
     /// </summary>
-    public sealed class TemporalMovingShadeLagGpuTests(ITestOutputHelper output)
+    public sealed partial class TemporalMovingShadeLagGpuTests(ITestOutputHelper output)
     {
         const int W = 320, H = 180;
         const int FirstMeasured = 80, Measured = 8;
@@ -327,7 +327,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
 
                 byte[][] frames = TemporalAcceptance.Sequence(W, H,
-                    s => stage.Setup(s, AntiAliasing.Temporal, c.Preset, holdTexels: 1f), stage.Draw, FirstMeasured,
+                    s => { stage.Setup(s, AntiAliasing.Temporal, c.Preset, holdTexels: 1f); Detail(s); }, stage.Draw, FirstMeasured,
                     Measured);
                 var m = new ShadowEdgeMeasure(W, H, stage.Receiver(), c.Sign, frames, reference, FirstMeasured);
 
@@ -343,6 +343,7 @@ namespace KhaozEngine.Tests.Gpu
                         + $"{region.Bias,7:0.0000}  {region.GrainOut:0.0000}     {region.GrainRef:0.0000}     "
                         + $"{region.ErrorGrain:0.0000}     {region.Change:0.0000}   {region.ChangeRef:0.0000}   "
                         + $"{region.ChangeError:0.0000}");
+                    if (!_reportOnly)
                     Assert.True(region.Count > 0, $"{c.Name}: the {name} region holds no pixels");
                     r[name] = region;
                 }
@@ -369,6 +370,7 @@ namespace KhaozEngine.Tests.Gpu
                     + $"{ShadowEdgeMeasure.ProfileAhead - span} (behind) to {ShadowEdgeMeasure.ProfileAhead} (ahead)";
                 output.WriteLine($"  textured signed error x1000, {bins}: {m.Profile(flat: false)}");
                 output.WriteLine($"  flat signed error x1000, {bins}: {m.Profile(flat: true)}");
+                if (!_reportOnly)
                 Assert.True(m.ReferenceContrast > 0.05,
                     $"{c.Name}: the reference shows no shadow edge, contrast {m.ReferenceContrast:0.000}");
                 summary.Add($"{c.Name,-38} {r["band textured"].Mean:0.0000} {r["tail textured"].Mean:0.0000} "
@@ -387,7 +389,9 @@ namespace KhaozEngine.Tests.Gpu
                 + "chgT   chRefT chErrT  chgF   chRefF chErrF");
             foreach (string line in summary) output.WriteLine(line);
             output.WriteLine($"device class {TemporalDeviceClass.Name}");
-            AssertBounds(measured, controls);
+            _reported = measured;
+            _paired = controls;
+            if (!_reportOnly) AssertBounds(measured, controls);
         }
 
         static void AssertBounds(Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> measured,

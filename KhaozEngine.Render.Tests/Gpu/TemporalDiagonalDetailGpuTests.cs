@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Gpu
     /// The GPU receives point samples, camera-consistent motion and real jitter. The reference uses 16x16 sub-pixel
     /// samples and no temporal resolve. All figures use weighted luma, the space in which the release decides.
     /// </summary>
-    public sealed class TemporalDiagonalDetailGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
+    public sealed partial class TemporalDiagonalDetailGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         const int W = 120, H = 90, Warm = 80, Measured = 24, Margin = 8, ReferenceSide = 16;
         const float GroundMean = 0.12f, TextureAmplitude = 0.025f, Spacing = 13.7f;
@@ -35,8 +35,10 @@ namespace KhaozEngine.Tests.Gpu
                             string name = $"{preset} {angle}deg {contrast}h pan{pan:0.0}";
                             TemporalReviewFigures figures = Run(preset, angle, contrast, pan);
                             output.WriteLine($"DIAGONAL {TemporalDeviceClass.Name}|{name}|{figures}");
-                            TemporalReviewBaseline.Check("diagonal", name, figures, failures);
+                            _reported[name] = figures;
+                            if (!_reportOnly) TemporalReviewBaseline.Check("diagonal", name, figures, failures);
                         }
+            if (!_reportOnly)
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         }
 
@@ -55,7 +57,9 @@ namespace KhaozEngine.Tests.Gpu
             float ndc = NdcDepth(projection, SceneMetres);
             float step = pan * SceneMetres / (projection.M11 * W * 0.5f);
             float[] motion = Pairs(iw, ih, (_, _) => new Vector2(-pan / W, 0f));
-            using var rig = new Rig(iw, ih, W, H, ndc);
+            using var rig = new Rig(iw, ih, W, H, ndc,
+                fragmentSource: _gate == TemporalDetailGate.Production ? null : source => TemporalDetailGateVariants.Rewrite(source, _gate),
+                detail: _detail);
             float[]? previous = null;
             double error = 0, change = 0, referenceChange = 0, temporal = 0;
             int pixels = 0, changes = 0, missed = 0;
@@ -130,10 +134,12 @@ namespace KhaozEngine.Tests.Gpu
                 previous = color;
             }
             extents.Sort();
+            if (!_reportOnly)
             Assert.True(missed > 100, $"{preset} {angle} {contrast} {pan}: no carried, missed line samples");
             float halfWidth = extents[extents.Count / 2];
             output.WriteLine($"  missed locked samples {missed}, ground half-width median {halfWidth:0.000000}, "
                 + $"line contrast {contrast * nominalHalfWidth:0.000000} ({contrast * nominalHalfWidth / halfWidth:0.00} half-widths)");
+            if (!_reportOnly)
             Assert.True(halfWidth > 0.005f, "the textured ground must pass the carried-lock flat exemption");
             return new(error / pixels, change / changes, temporal / changes, referenceChange / changes);
         }

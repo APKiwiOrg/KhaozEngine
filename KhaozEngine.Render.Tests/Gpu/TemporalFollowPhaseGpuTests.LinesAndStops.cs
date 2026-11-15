@@ -27,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
                 foreach (float speed in Speeds)
                     foreach (float texels in new[] { ThreeEighths, OneQuarter })
                     {
-                        if (!TemporalStabilityRuns.FullTable
+                        if (!FullTable
                             && !(preset == Q && (speed == 1.5f && texels == OneQuarter
                                 || speed == 2f && texels == ThreeEighths))) continue;
                         int[] phases = Phases(preset, preset == Q && texels == OneQuarter && speed is >= 1f and <= 2f);
@@ -39,6 +39,7 @@ namespace KhaozEngine.Tests.Gpu
                             int[] shares = measures.Select(m =>
                             {
                                 double worst = pick(m).Worst;
+                                if (!_reportOnly)
                                 Assert.False(double.IsNaN(worst), $"{preset} {speed} {texels} {name}: no line pixels");
                                 return (int)Math.Floor(worst * 1000);
                             }).ToArray();
@@ -66,7 +67,7 @@ namespace KhaozEngine.Tests.Gpu
             var sweeps = new List<PhaseSweep>();
             foreach (var (label, preset, walk) in StopWalks())
             {
-                if (!TemporalStabilityRuns.FullTable && label is not ("ortho Stop Quality" or "ortho Reversal Quality"))
+                if (!FullTable && label is not ("ortho Stop Quality" or "ortho Reversal Quality"))
                     continue;
                 StopRun first = walk(0);
                 bool every = preset == Q && first.Ending == FollowEnding.Stop && first.Surround == StopSurround.Ground

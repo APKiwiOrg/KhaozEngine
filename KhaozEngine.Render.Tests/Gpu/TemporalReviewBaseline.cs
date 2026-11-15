@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// also bound raw change. Moving rims report raw change against the reference, since better tracking can raise it
     /// legitimately. Rim checks use the separate bilinear-input control and retain this table as point-PCF history.
     /// The half unit in the last printed place covers rounding of the stored six-decimal figures.</summary>
-    internal static class TemporalReviewBaseline
+    internal static partial class TemporalReviewBaseline
     {
         const double Tolerance = 0.1, Rounding = 0.0000005;
         // Hosted v21.2.0 accumulate at a82078bdb, run 39069066431. Windows figures are from the same shader

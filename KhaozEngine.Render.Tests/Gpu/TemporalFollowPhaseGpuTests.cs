@@ -111,12 +111,12 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", 9)));
         }
 
-        static void Footer(ITestOutputHelper output, List<PhaseSweep> sweeps, double seconds)
+        void Footer(ITestOutputHelper output, List<PhaseSweep> sweeps, double seconds)
         {
             int runs = sweeps.Sum(s => s.Phases.Length);
             output.WriteLine($"{sweeps.Count(s => s.Over == 0)} of {sweeps.Count} cells within their bound at every "
                 + $"phase, {runs} runs in {seconds:0.0} s");
-            output.WriteLine(TemporalStabilityRuns.FullTable ? "the full table"
+            output.WriteLine(FullTable ? "the full table"
                 : $"the default cells only. Set {TemporalStabilityRuns.TableVariable}=1 for the full table");
         }
 
@@ -176,10 +176,11 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     bool every = OrthoEvery(preset, speed);
                     bool asserted = speed == 1f && preset != U || preset == Q && speed == 0.5f;
-                    if (!TemporalStabilityRuns.FullTable && !asserted) continue;
+                    if (!FullTable && !asserted) continue;
                     int[] phases = Phases(preset, every);
                     CrossingTrail[] runs = phases.Select(p => ortho.Run(preset, speed, phase: p)).ToArray();
                     foreach (CrossingTrail c in runs)
+                        if (!_reportOnly)
                         Assert.True(c.Total.Checked > 0, $"{c.Name}: the trail region measured nothing");
                     sweeps.Add(new PhaseSweep($"{preset} {speed}", phases, runs.Select(c => c.Total.Excess).ToArray(),
                         runs.Select(c => TemporalFollowCameraGpuTests.Bound(preset, speed, c.Total.Checked)!.Value)
@@ -226,12 +227,13 @@ namespace KhaozEngine.Tests.Gpu
                         foreach (float speed in Speeds)
                         {
                             var cell = (pitch, heading, speed, preset);
-                            if (!TemporalStabilityRuns.FullTable && !defaults.Contains(cell)) continue;
+                            if (!FullTable && !defaults.Contains(cell)) continue;
                             int[] phases = Phases(preset, PerspectiveEvery.Contains(cell)
-                                && (TemporalStabilityRuns.FullTable || preset != U));
+                                && (FullTable || preset != U));
                             CrossingTrail[] runs = phases
                                 .Select(p => perspective.Run(preset, speed, pitch, heading, phase: p)).ToArray();
                             foreach (CrossingTrail c in runs)
+                                if (!_reportOnly)
                                 Assert.True(c.Total.Checked > 0, $"{c.Name}: the trail region measured nothing");
                             string name = $"{(pitch == B ? "boot" : "low")} {heading} {speed} {preset}";
                             sweeps.Add(new PhaseSweep(name, phases, runs.Select(c => c.Total.Excess).ToArray(),

@@ -153,8 +153,10 @@ namespace KhaozEngine.Tests.Gpu
             public Rig(KhaozEngine.Render3D.TemporalHistoryDetail detail) : base(N, N, N, N, SceneNdc, detail: detail) { }
 
             public Rig(int internalWidth, int internalHeight, int displayWidth, int displayHeight, float sceneNdc,
-                KhaozEngine.Render3D.TemporalHistoryDetail detail = KhaozEngine.Render3D.TemporalHistoryDetail.Display)
-                : base(internalWidth, internalHeight, displayWidth, displayHeight, sceneNdc, detail: detail) { }
+                KhaozEngine.Render3D.TemporalHistoryDetail detail = KhaozEngine.Render3D.TemporalHistoryDetail.Display,
+                Func<string, string>? fragmentSource = null)
+                : base(internalWidth, internalHeight, displayWidth, displayHeight, sceneNdc,
+                    fragmentSource: fragmentSource, detail: detail) { }
         }
     }
 }

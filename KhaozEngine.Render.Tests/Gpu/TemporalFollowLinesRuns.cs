@@ -56,6 +56,39 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalFollowLinesRuns
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalDetailGate _gate;
+        readonly Dictionary<TemporalDetailGate, TemporalFollowLinesRuns> _gates = new();
+        readonly TemporalHistoryVariants<TemporalFollowLinesRuns> _variants;
+
+        public TemporalFollowLinesRuns() : this(TemporalHistoryDetail.Display) { }
+
+        TemporalFollowLinesRuns(TemporalHistoryDetail detail, TemporalHistoryVariants<TemporalFollowLinesRuns>? variants = null,
+            TemporalDetailGate gate = TemporalDetailGate.Production)
+        {
+            _detail = detail;
+            _gate = gate;
+            _variants = variants ?? new TemporalHistoryVariants<TemporalFollowLinesRuns>(this, detail, (mode, pool) => new(mode, pool, gate));
+        }
+
+        internal TemporalFollowLinesRuns For(TemporalHistoryDetail detail) => _variants.For(detail);
+
+        internal TemporalFollowLinesRuns ForGate(TemporalDetailGate gate)
+        {
+            if (gate == TemporalDetailGate.Production) return For(TemporalHistoryDetail.Fine);
+            if (!_gates.TryGetValue(gate, out var source))
+                _gates.Add(gate, source = new TemporalFollowLinesRuns(TemporalHistoryDetail.Fine, gate: gate));
+            return source;
+        }
+
+        void Detail(Scene3D scene)
+        {
+            scene.Post.Temporal.HistoryDetail = _detail;
+            if (_detail == TemporalHistoryDetail.Fine && _gate != TemporalDetailGate.Production)
+                scene.InstallTemporalResolveForTests(source => TemporalDetailGateVariants.Rewrite(source, _gate));
+        }
+
+
         public const int StillFrames = 16, Last = StillFrames + 23, NearPixels = 24;
         const float CoverageStep = 0.02f;
 
@@ -83,7 +116,7 @@ namespace KhaozEngine.Tests.Gpu
             var floors = new byte[TemporalGhostingRuns.TrailFrames][];
             for (int age = TemporalGhostingRuns.FirstAge; age < floors.Length; age++)
             {
-                using var fx = new TemporalFixture(w, h, s => walk.Setup(s, preset));
+                using var fx = new TemporalFixture(w, h, s => { walk.Setup(s, preset); Detail(s); });
                 fx.SkipPhases(phase);
                 fx.SkipFrames(Last - age + 1);
                 fx.Frames(age - 1, (s, n) => walk.Draw(s, n, false, true));
@@ -160,8 +193,8 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        static byte[][] Sequence(IFollowLinesWalk walk, TemporalUpscale preset, bool box, bool lines, int phase) =>
-            TemporalAcceptance.Sequence(walk.W, walk.H, s => walk.Setup(s, preset),
+        byte[][] Sequence(IFollowLinesWalk walk, TemporalUpscale preset, bool box, bool lines, int phase) =>
+            TemporalAcceptance.Sequence(walk.W, walk.H, s => { walk.Setup(s, preset); Detail(s); },
                 (s, n) => walk.Draw(s, n, box, lines), StillFrames, Last - StillFrames + 1, phase);
     }
 

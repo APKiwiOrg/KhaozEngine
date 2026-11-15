@@ -21,8 +21,12 @@ internal sealed class TemporalDetailStore(IGpuDevice gd)
     IGpuPipeline? _pipeline;
     TemporalDetailPass? _resolve;
 
-    internal void BindResolve(TemporalHistory history, IGpuResourceLayout layout, IGpuResourceLayout fineLayout) =>
-        _resolve ??= new TemporalDetailPass(gd, history, this, layout, fineLayout);
+    internal void BindResolve(TemporalHistory history, IGpuResourceLayout layout, IGpuResourceLayout fineLayout,
+        Func<string, string>? fragmentSourceForTests = null) =>
+        _resolve ??= new TemporalDetailPass(gd, history, this, layout, fineLayout, fragmentSourceForTests);
+
+    /// <summary>Borrowed live resolve transport for the path-count parity test. Never dispose or mutate.</summary>
+    internal IGpuTexture TransportForTests => _resolve!.TransportForTests;
 
     internal IGpuResourceSet ReadSet(int write) => _resolve!.ReadSet(write);
 

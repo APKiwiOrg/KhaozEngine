@@ -150,7 +150,7 @@ namespace KhaozEngine.Tests.Gpu
     /// their output grain stays at least <see cref="StillGrainShare"/> of the reference's, so texture detail is kept.
     /// </para>
     /// </summary>
-    public sealed class TemporalShadowEdgeLagGpuTests(ITestOutputHelper output)
+    public sealed partial class TemporalShadowEdgeLagGpuTests(ITestOutputHelper output)
     {
         const int W = 320, H = 180;
         const int FirstMeasured = 80, Measured = 8;
@@ -237,7 +237,7 @@ namespace KhaozEngine.Tests.Gpu
                 var frames = new byte[Measured][];
                 int refits = 0;
                 using (var fx = new TemporalFixture(W, H,
-                    s => stage.Setup(s, AntiAliasing.Temporal, c.Preset, c.Hold)))
+                    s => { stage.Setup(s, AntiAliasing.Temporal, c.Preset, c.Hold); Detail(s); }))
                 {
                     fx.Frames(FirstMeasured, stage.Draw);
                     for (int i = 0; i < Measured; i++)
@@ -259,19 +259,22 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     output.WriteLine($"  {name,-15} {r.Count,6}   {r.Mean:0.0000}   {r.P95:0.0000}   {r.Bias,7:0.0000}  "
                         + $"{r.GrainOut:0.0000}     {r.GrainRef:0.0000}     {r.ErrorGrain:0.0000}");
+                    if (!_reportOnly)
                     Assert.True(r.Count > 0, $"{c.Name}: the {name} region holds no pixels");
                 }
                 string bins = $"{ProfileBin} px bins of travel from {ProfileAhead - ProfileBins * ProfileBin} (behind) to "
                     + $"{ProfileAhead} (ahead)";
                 output.WriteLine($"  textured signed error x1000, {bins}: {m.Profile(flat: false)}");
                 output.WriteLine($"  flat signed error x1000, {bins}: {m.Profile(flat: true)}");
+                if (!_reportOnly)
                 Assert.True(m.ReferenceContrast > 0.05,
                     $"{c.Name}: the reference shows no shadow edge, contrast {m.ReferenceContrast:0.000}");
                 measured[c] = new Dictionary<string, ShadowEdgeRegion>();
                 foreach ((string name, ShadowEdgeRegion r) in m.Regions) measured[c][name] = r;
             }
             output.WriteLine($"device class {TemporalDeviceClass.Name}");
-            AssertReleased(measured);
+            _reported = measured;
+            if (!_reportOnly) AssertReleased(measured);
         }
 
         // The acceptance bounds, checked after every case has printed, so a failure still shows the whole table.

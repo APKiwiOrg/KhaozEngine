@@ -497,6 +497,31 @@ paths.
 The accepted still-detail source is pinned like any other shader edit, by the composed-source and emission
 tables [RENDER-PIPELINE.md](../RENDER-PIPELINE.md) describes. The pure D oracle and its pins are unchanged.
 
+`TemporalMotionClarityGpuTests` compares Display and Fine on the same moving blades and textured panel,
+against FXAA and a factor-four spatial reference. Translation and fixed-eye rotation cover 0.5, 1.37 and
+3.3 display pixels per frame. Native and Quality require higher moving detail energy, lower luma RMS,
+added change within the larger of Display and FXAA, and sustained stop recovery no slower than Display.
+Balanced is reported. The shared scene has an aged-versus-fresh image parity check.
+
+Fine also runs the existing absolute image limits in the ghosting, fast-edge, stability and zoom,
+convergence, reset, sub-texel line and blade, follow-line, narrow-crossing and passing-box classes.
+Their Display rows keep their original bounds. The live fine-path export is compared with the decision
+probe's count before that probe supplies a gate study.
+
+The followed-object trail, stop, phase and long-hold protocols and recorded shading/detail controls
+run in Fine as Diagnostic reports. Sharper history can move those control comparisons. Their reports
+print Display, Fine and the existing limit without assigning a new recorded limit to Fine. The
+Diagnostic gate study compares the shipped admission with untrusted-history-only admission and with
+the shipped admission plus clip, visibility-release and reactive observations. These interventions
+use the renderer's test source seam and expose no production switch.
+
+On Metal the production gate improves every Native and Quality rig cell, while Fine crosses some of
+the older follow and diagonal-detail control limits. The full follow tables can move more than the
+one or two excess pixels seen in the initial spike, and damped-stop control margins can move by much
+more than one percent. The wider gate loses the rig's detail or error improvement in some cells.
+The narrower gate matches the production rig results but changes some follow measurements. These
+observations do not establish new Fine limits or select a different production gate.
+
 ## Grimhollow adoption
 
 Grimhollow's adoption runs in Grimhollow on the released engine and has its own implementation plan. Its design is set

@@ -171,7 +171,7 @@ namespace KhaozEngine.Render3D.Rendering
                 if (history.DetailStore is { } detail)
                 {
                     _detailLayout ??= f.CreateResourceLayout(new GpuResourceLayoutDescription(T("DetailColor"), T("DetailClassification")));
-                    detail.BindResolve(history, _resolveLayout, _detailLayout);
+                    detail.BindResolve(history, _resolveLayout, _detailLayout, _fragmentSourceForTests);
                 }
             }
             catch { FreeSets(retired); throw; }

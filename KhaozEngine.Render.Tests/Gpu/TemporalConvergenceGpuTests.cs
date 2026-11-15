@@ -29,6 +29,8 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalConvergenceGpuTests(ITestOutputHelper output)
     {
+        TemporalHistoryDetail _detail;
+
         const int W = 320, H = 180, Factor = 8;
         const int FirstChecked = 32, LastChecked = 48;   // frame numbers from 1, the first frame is frame 1
 
@@ -45,9 +47,11 @@ namespace KhaozEngine.Tests.Gpu
         readonly record struct Convergence(double OffBox, double FirstBox, double WorstBox, double OffWeighted,
             double WorstWeighted);
 
-        [GpuFact]
-        public void MidContrastThinGeometryConvergesTowardAnEightTimesSupersampledReference()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void MidContrastThinGeometryConvergesTowardAnEightTimesSupersampledReference(TemporalHistoryDetail detail)
         {
+            _detail = detail;
             var fence = new FenceScene(W, H);
             Convergence c = Measure("mid contrast", fence, (s, _) => MidContrastFence(fence, s));
             string ctx = $"off {c.OffBox:0.00000}, frame 1 {c.FirstBox:0.00000}, worst of frames {FirstChecked} to "
@@ -62,9 +66,11 @@ namespace KhaozEngine.Tests.Gpu
                 $"the converged frame must sit within {MaxConvergedError} mean luma of the reference. {ctx}");
         }
 
-        [GpuFact]
-        public void HighContrastThinGeometryConvergesTowardTheLumaWeightedSupersampledAverage()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void HighContrastThinGeometryConvergesTowardTheLumaWeightedSupersampledAverage(TemporalHistoryDetail detail)
         {
+            _detail = detail;
             var fence = new FenceScene(W, H);
             Convergence c = Measure("high contrast", fence, (s, _) => fence.Draw(s, 0f));
             string ctx = $"box: off {c.OffBox:0.00000}, frame 1 {c.FirstBox:0.00000}, worst {c.WorstBox:0.00000}. "
@@ -92,10 +98,11 @@ namespace KhaozEngine.Tests.Gpu
             fence.Stage.Wall(s);
         }
 
-        static Action<Scene3D> Setup(FenceScene fence, AntiAliasing aa) => s =>
+        Action<Scene3D> Setup(FenceScene fence, AntiAliasing aa) => s =>
         {
             fence.Stage.Setup(s, aa, TemporalUpscale.Native, sharpness: 0f);
             s.Post.Hdr.Enabled = false;   // the legacy chain, no tonemap, see the class summary
+            s.Post.Temporal.HistoryDetail = _detail;
         };
 
         Convergence Measure(string name, FenceScene fence, Action<Scene3D, int> draw)
@@ -123,6 +130,9 @@ namespace KhaozEngine.Tests.Gpu
             var c = new Convergence(ToBox(off), ToBox(first), window.Max(ToBox), ToWeighted(off),
                 window.Max(ToWeighted));
             double bestBox = window.Min(ToBox), bestWeighted = window.Min(ToWeighted);
+            output.WriteLine($"ACCEPT|convergence|{_detail}|{name}|off={c.OffBox:R}|first={c.FirstBox:R}"
+                + $"|worst={c.WorstBox:R}|off weighted={c.OffWeighted:R}|worst weighted={c.WorstWeighted:R}"
+                + $"|aliasing bound={MaxShareOfAliasingError:R}|first bound={MaxShareOfFirstFrame:R}|absolute bound={MaxConvergedError:R}");
 
             output.WriteLine($"{name}, HDR off, Native, frames {FirstChecked} to {LastChecked}, mean abs luma:");
             output.WriteLine($"  against the 8x box average: off {c.OffBox:0.00000}, MSAA 4x {ToBox(msaa):0.00000}, "

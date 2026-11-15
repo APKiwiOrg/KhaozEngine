@@ -31,6 +31,19 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalNarrowCrossingRuns
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalHistoryVariants<TemporalNarrowCrossingRuns> _variants;
+
+        public TemporalNarrowCrossingRuns() : this(TemporalHistoryDetail.Display) { }
+
+        TemporalNarrowCrossingRuns(TemporalHistoryDetail detail, TemporalHistoryVariants<TemporalNarrowCrossingRuns>? variants = null)
+        {
+            _detail = detail;
+            _variants = variants ?? new TemporalHistoryVariants<TemporalNarrowCrossingRuns>(this, detail, (mode, pool) => new(mode, pool));
+        }
+
+        internal TemporalNarrowCrossingRuns For(TemporalHistoryDetail detail) => _variants.For(detail);
+
         public const int W = 320, H = 180, StillFrames = 16, Last = StillFrames + 23;
         public const float StartPixels = 60f, HeightPixels = 30f;
         internal const int BoxTexture = 32;
@@ -50,7 +63,7 @@ namespace KhaozEngine.Tests.Gpu
             var scene = new Crossing(crossing, preset);
             var (wall, floors) = Walls(scene, preset);
             byte[] frame;
-            using (var fx = new TemporalFixture(W, H, s => scene.Setup(s, preset)))
+            using (var fx = new TemporalFixture(W, H, s => { scene.Setup(s, preset); s.Post.Temporal.HistoryDetail = _detail; }))
             {
                 fx.Frames(Last, scene.Draw);
                 frame = fx.Frame(scene.Draw);
@@ -69,7 +82,7 @@ namespace KhaozEngine.Tests.Gpu
         (byte[] Wall, byte[][] Floors) Walls(Crossing scene, TemporalUpscale preset)
         {
             if (_walls.TryGetValue(preset, out var cached)) return cached;
-            Action<Scene3D> setup = s => scene.Setup(s, preset);
+            Action<Scene3D> setup = s => { scene.Setup(s, preset); s.Post.Temporal.HistoryDetail = _detail; };
             byte[] wall;
             using (var fx = new TemporalFixture(W, H, setup))
             {

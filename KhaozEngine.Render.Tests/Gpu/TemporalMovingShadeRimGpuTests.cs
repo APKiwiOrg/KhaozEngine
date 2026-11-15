@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu
     /// The PCF filter changed the scene input. These rows measure the unchanged 21.4.0 resolve on bilinear 3x3 PCF.
     /// The signal is judged against this control, with the recorded owner-accepted Quality M 1.0 leading textured cost.
     /// </summary>
-    public sealed class TemporalMovingShadeRimGpuTests(TemporalMovingShadeRimScene scene, ITestOutputHelper output)
+    public sealed partial class TemporalMovingShadeRimGpuTests(TemporalMovingShadeRimScene scene, ITestOutputHelper output)
         : IClassFixture<TemporalMovingShadeRimScene>
     {
         [GpuFact]
@@ -55,7 +55,7 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < reused.Length; i++) Assert.Equal(control[i], reused[i]);
         }
 
-        static IEnumerable<(string, TemporalReviewFigures)> Measure(byte[][] frames, byte[][] reference, float motion)
+        static IEnumerable<(string, TemporalReviewFigures)> Measure(byte[][] frames, byte[][] reference, float motion, bool validate = true)
         {
             var regions = new[] { new ShadowEdgeRegion(), new ShadowEdgeRegion(), new ShadowEdgeRegion(),
                 new ShadowEdgeRegion() };
@@ -88,6 +88,7 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < regions.Length; i++)
             {
                 ShadowEdgeRegion r = regions[i];
+                if (validate)
                 Assert.True(r.Count >= 4000, $"{names[i]} rim has only {r.Count} samples");
                 yield return (names[i], new(r.Mean, r.Change, r.ChangeError, r.ChangeRef));
             }
@@ -98,6 +99,21 @@ namespace KhaozEngine.Tests.Gpu
     /// history and warms its own path. The parity fact compares an aged scene against a fresh one.</summary>
     public sealed class TemporalMovingShadeRimScene : IDisposable
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalDetailGate _gate;
+        readonly Dictionary<(TemporalHistoryDetail, TemporalDetailGate), TemporalMovingShadeRimScene> _variants = new();
+
+        public TemporalMovingShadeRimScene() : this(TemporalHistoryDetail.Display, TemporalDetailGate.Production) { }
+        TemporalMovingShadeRimScene(TemporalHistoryDetail detail, TemporalDetailGate gate) { _detail = detail; _gate = gate; }
+
+        internal TemporalMovingShadeRimScene For(TemporalHistoryDetail detail, TemporalDetailGate gate)
+        {
+            if (detail == _detail && gate == _gate) return this;
+            var key = (detail, gate);
+            if (!_variants.TryGetValue(key, out var scene)) _variants.Add(key, scene = new(detail, gate));
+            return scene;
+        }
+
         internal const int W = 320, H = 180, Warm = 80, Count = 8, Anchor = Warm + Count / 2;
         internal const float HalfHeight = 36f;
         const int Factor = TemporalAcceptance.SequenceReferenceFactor;
@@ -110,7 +126,13 @@ namespace KhaozEngine.Tests.Gpu
             if (reference) fx = _reference ??= new TemporalFixture(W * Factor, H * Factor);
             else
             {
-                fx = _temporal ??= new TemporalFixture(W, H);
+                if (_temporal is null)
+                {
+                    _temporal = new TemporalFixture(W, H);
+                    if (_detail == TemporalHistoryDetail.Fine && _gate != TemporalDetailGate.Production)
+                        TemporalTestResolve.Install(_temporal, source => TemporalDetailGateVariants.Rewrite(source, _gate));
+                }
+                fx = _temporal;
                 int pad = (144 - _issued % 144) % 144;
                 fx.SkipFrames(pad);
                 _issued += pad;
@@ -118,6 +140,7 @@ namespace KhaozEngine.Tests.Gpu
             var stage = new MovingShadeStage(W, H, MovingShadeKind.Object, shadow, motion, Anchor, HalfHeight);
             stage.Setup(fx.Scene, reference ? AntiAliasing.Off : AntiAliasing.Temporal, preset,
                 holdTexels: reference ? 0f : 1f);
+            fx.Scene.Post.Temporal.HistoryDetail = _detail;
             fx.Scene.CameraCut();
             int n = reference ? Warm : 0;
             void Draw(Scene3D s, int _) => stage.Draw(s, n++);
@@ -134,6 +157,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public void Dispose()
         {
+            foreach (var variant in _variants.Values) variant.Dispose();
             _temporal?.Dispose();
             _reference?.Dispose();
         }

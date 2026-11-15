@@ -15,5 +15,19 @@ namespace KhaozEngine.Tests.Gpu
             string? reason = GpuTestGate.SkipReason();
             if (reason != null) Skip = reason;
         }
+
+        /// <summary>Use the fact's existing cached capability probe and skip policy for a parameterized MSAA check.</summary>
+        public bool RequiresFourSampleMsaa
+        {
+            get => _requiresFourSampleMsaa;
+            set
+            {
+                _requiresFourSampleMsaa = value;
+                if (value && Skip == null)
+                    Skip = new GpuFactAttribute { RequiresFourSampleMsaa = true }.Skip;
+            }
+        }
+
+        bool _requiresFourSampleMsaa;
     }
 }

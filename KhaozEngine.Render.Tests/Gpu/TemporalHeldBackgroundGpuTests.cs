@@ -30,9 +30,11 @@ namespace KhaozEngine.Tests.Gpu
         /// Quality, with the share of the wall's pixels in its path whose hold was whole before it arrived, and the
         /// share on each frame. A redesign of the held share is read against it.</summary>
         [Trait("Category", "Diagnostic")]
-        [GpuFact]
-        public void A_fast_narrow_line_over_a_held_textured_wall_prints_its_energy()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void A_fast_narrow_line_over_a_held_textured_wall_prints_its_energy(TemporalHistoryDetail detail)
         {
+            runs = runs.For(detail);
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
                 foreach (bool textured in new[] { true, false })
                 {
@@ -60,6 +62,19 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalHeldBackgroundRuns
     {
+        readonly TemporalHistoryDetail _detail;
+        readonly TemporalHistoryVariants<TemporalHeldBackgroundRuns> _variants;
+
+        public TemporalHeldBackgroundRuns() : this(TemporalHistoryDetail.Display) { }
+
+        TemporalHeldBackgroundRuns(TemporalHistoryDetail detail, TemporalHistoryVariants<TemporalHeldBackgroundRuns>? variants = null)
+        {
+            _detail = detail;
+            _variants = variants ?? new TemporalHistoryVariants<TemporalHeldBackgroundRuns>(this, detail, (mode, pool) => new(mode, pool));
+        }
+
+        internal TemporalHeldBackgroundRuns For(TemporalHistoryDetail detail) => _variants.For(detail);
+
         public const int W = 320, H = 180, StillFrames = 16, Warm = StillFrames + 8, Measured = 16;
         public const float StartPixels = 60f, InternalPixelsPerFrame = 2f;
         const float OrthoSize = 4.5f, LineHeight = 3.6f, LineDepth = 0.2f, LineTilt = 0.3f;
@@ -97,6 +112,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 stage.Setup(s, AntiAliasing.Temporal, preset);
                 s.Post.Hdr.Enabled = false;
+                s.Post.Temporal.HistoryDetail = _detail;
             };
             byte[][] with = TemporalAcceptance.Sequence(W, H, setup, Draw, Warm, Measured);
             byte[][] without = TemporalAcceptance.Sequence(W, H, setup, Background, Warm, Measured);

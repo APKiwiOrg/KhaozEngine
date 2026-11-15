@@ -22,7 +22,8 @@ internal static class TexturedShadowGrainCase
         return rgba;
     }
 
-    internal static void AssertGrain(GameShadowGrainScene scene, ITestOutputHelper output)
+    internal static void AssertGrain(GameShadowGrainScene scene, ITestOutputHelper output, bool reportOnly = false,
+        Action<TemporalUpscale, double, double?>? record = null)
     {
         byte[][] reference = scene.Run(4f, 0f, AntiAliasing.Off, TemporalUpscale.Native, false,
             reference: true, textured: true).Frames;
@@ -54,14 +55,17 @@ internal static class TexturedShadowGrainCase
                 _ => 0.008
             };
             double bound = preset == TemporalUpscale.Quality ? qualityBound : 0.0113;
+            record?.Invoke(preset, m.Band.GrainOut, preset == TemporalUpscale.Balanced ? null : bound);
             output.WriteLine($"Textured grain {preset}, {scene.Backend} on {scene.DeviceName}, {TemporalDeviceClass.Name}: {m.Band.GrainOut:0.000000}, "
                 + $"error grain {m.Band.ErrorGrain:0.000000}, reference grain {m.Band.GrainRef:0.000000}, "
                 + $"change {m.Band.Change:0.000000}, bound {(preset == TemporalUpscale.Balanced ? "report only" : bound.ToString("0.000000"))}.");
             output.WriteLine($"GRAIN-EXACT|{TemporalDeviceClass.Name}|{preset}|{m.Band.GrainOut:R}");
+            if (!reportOnly)
             Assert.True(m.Band.Count > 0 && m.Contrast > 0.04, "The textured receiver must render a measured shadow edge.");
             if (preset != TemporalUpscale.Balanced && !(m.Band.GrainOut <= bound))
                 failures.Add($"{preset} grain {m.Band.GrainOut:0.000000} exceeds {bound:0.000000}.");
         }
+        if (!reportOnly)
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 }

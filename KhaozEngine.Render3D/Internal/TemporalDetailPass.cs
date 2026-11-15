@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Rendering;
 using static KhaozEngine.Render3D.Internal.FragmentPassResources;
@@ -22,7 +23,7 @@ internal sealed class TemporalDetailPass
     IGpuSampler? _sampler;
 
     internal TemporalDetailPass(IGpuDevice gd, TemporalHistory history, TemporalDetailStore store,
-        IGpuResourceLayout resolveLayout, IGpuResourceLayout fineLayout)
+        IGpuResourceLayout resolveLayout, IGpuResourceLayout fineLayout, Func<string, string>? fragmentSourceForTests)
     {
         _fineLayout = fineLayout;
         try
@@ -37,11 +38,13 @@ internal sealed class TemporalDetailPass
                 T("Mean"), T("Transport"), S("LinearClamp")));
             _sampler = f.CreateSampler(GpuSamplerDescription.Linear);
             TemporalResolvePrecision precision = TemporalResolvePrecisionPolicy.For(gd);
+            string Fragment(string source) => TemporalVisibilityGatherPolicy.ForBackend(
+                fragmentSourceForTests?.Invoke(source) ?? source, gd.Backend);
             _classifyShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalDetailClassifyFragment(precision), gd.Backend));
+                Fragment(ShaderSources.TemporalDetailClassifyFragment(precision)));
             _resolveShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalDetailResolveFragment(precision), gd.Backend));
-            _updateShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalDetailUpdateFrag);
+                Fragment(ShaderSources.TemporalDetailResolveFragment(precision)));
+            _updateShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, Fragment(ShaderSources.TemporalDetailUpdateFrag));
             _classifyPipeline = TemporalResolveRenderer.Fullscreen(f, _classifyShaders,
                 [resolveLayout, _classifyLayout], _classificationFrame.Outputs);
             _resolvePipeline = TemporalResolveRenderer.Fullscreen(f, _resolveShaders, [resolveLayout, _fineLayout],
@@ -88,6 +91,9 @@ internal sealed class TemporalDetailPass
         cl.SetGraphicsResourceSet(0, _updateSets[write]!);
         cl.Draw(3);
     }
+
+    /// <summary>Borrowed transport export for test readback. Never dispose or write it.</summary>
+    internal IGpuTexture TransportForTests => _transport!;
 
     internal IGpuResourceSet ReadSet(int write) => _fineSets[write]!;
 

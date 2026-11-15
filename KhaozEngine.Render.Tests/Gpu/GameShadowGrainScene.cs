@@ -10,6 +10,21 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>A lazy shared real-device scene for the coarse-texel shadow measurement. No window or clock.</summary>
 public sealed class GameShadowGrainScene : IDisposable
 {
+    readonly TemporalHistoryDetail _detail;
+    readonly TemporalDetailGate _gate;
+    readonly Dictionary<(TemporalHistoryDetail, TemporalDetailGate), GameShadowGrainScene> _variants = new();
+
+    public GameShadowGrainScene() : this(TemporalHistoryDetail.Display, TemporalDetailGate.Production) { }
+    GameShadowGrainScene(TemporalHistoryDetail detail, TemporalDetailGate gate) { _detail = detail; _gate = gate; }
+
+    internal GameShadowGrainScene For(TemporalHistoryDetail detail, TemporalDetailGate gate)
+    {
+        if (detail == _detail && gate == _gate) return this;
+        var key = (detail, gate);
+        if (!_variants.TryGetValue(key, out var source)) _variants.Add(key, source = new(detail, gate));
+        return source;
+    }
+
     internal const int W = 384, H = 256, Warm = 80, Count = 16, Anchor = Warm + Count / 2;
     internal const float Ortho = 0.56f, Pixel = Ortho / H, Radius = 0.23f, WallZ = -1.95f;
     const float Reach = 12f, Tilt = 15f * MathF.PI / 180f;
@@ -29,6 +44,8 @@ public sealed class GameShadowGrainScene : IDisposable
         {
             if (_fixture != null) return _fixture;
             _fixture = new TemporalFixture(W, H);
+            if (_detail == TemporalHistoryDetail.Fine && _gate != TemporalDetailGate.Production)
+                TemporalTestResolve.Install(_fixture, source => TemporalDetailGateVariants.Rewrite(source, _gate));
             _torso = _fixture.Scene.LoadMesh(Torso());
             _box = _fixture.Scene.LoadMesh(MeshPrimitives.Box(1f));
             _texturedTorso = _fixture.Scene.LoadMesh(Torso(textured: true),
@@ -63,12 +80,13 @@ public sealed class GameShadowGrainScene : IDisposable
         return new GltfMesh(vertices.ToArray(), indices.ToArray());
     }
 
-    static void Setup(Scene3D s, AntiAliasing aa, TemporalUpscale preset, float hold, int factor)
+    void Setup(Scene3D s, AntiAliasing aa, TemporalUpscale preset, float hold, int factor)
     {
         s.Post.UseSmoothPreset();
         s.Post.RenderScale = RenderScale.MatchViewport;
         s.Post.Quality.AntiAliasing = aa;
         s.Post.Temporal.Upscale = preset;
+        s.Post.Temporal.HistoryDetail = _detail;
         s.Post.Temporal.Sharpness = 0.25f;
         s.Post.MaxRenderWidth = W * factor;
         s.Post.MaxRenderHeight = H * factor;
@@ -184,5 +202,9 @@ public sealed class GameShadowGrainScene : IDisposable
         return (selected, projectedRow, threshold * 2f * Reach * MathF.Cos(Tilt) / Pixel);
     }
 
-    public void Dispose() => _fixture?.Dispose();
+    public void Dispose()
+    {
+        foreach (var variant in _variants.Values) variant.Dispose();
+        _fixture?.Dispose();
+    }
 }

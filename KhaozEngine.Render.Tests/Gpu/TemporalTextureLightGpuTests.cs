@@ -9,7 +9,7 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>Low-luma texture must keep its locks, and animated local light must not add isolated bright history.</summary>
-public sealed class TemporalTextureLightGpuTests(GameShadowGrainScene scene, ITestOutputHelper output)
+public sealed partial class TemporalTextureLightGpuTests(GameShadowGrainScene scene, ITestOutputHelper output)
     : IClassFixture<GameShadowGrainScene>
 {
     // Paired 21.4.0 hardware measurements on Metal. Error, error-image grain and temporal error, in luma 0..1.
@@ -48,9 +48,10 @@ public sealed class TemporalTextureLightGpuTests(GameShadowGrainScene scene, ITe
                 reference: true, textured: true, lighting: Light).Frames;
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
             {
-                byte[][] frames = scene.Run(0f, 0f, AntiAliasing.Temporal, preset, false,
+                byte[][] frames = ActiveScene.Run(0f, 0f, AntiAliasing.Temporal, preset, false,
                     textured: true, lighting: Light).Frames;
-                (double error, double grain, double change, double luma) = Measure(frames, reference);
+                (double error, double grain, double change, double luma) = Measure(frames, reference, validate: !_reportOnly);
+                _reported[(kind, preset)] = (error, grain, change);
                 output.WriteLine($"Texture light {kind} {preset}, {scene.Backend} on {scene.DeviceName}, {TemporalDeviceClass.Name}: error {error:0.000000}, "
                     + $"error grain {grain:0.000000}, change error {change:0.000000}, mean luma {luma:0.000000}.");
                 if (hasPairedControls)
@@ -60,9 +61,11 @@ public sealed class TemporalTextureLightGpuTests(GameShadowGrainScene scene, ITe
                     if (!(error <= 1.1 * e && grain <= 1.1 * g && change <= 1.1 * c))
                         failures.Add($"{kind} {preset} exceeds its paired detail or speckle bounds.");
                 }
+                if (!_reportOnly)
                 if (kind == "dark") Assert.InRange(luma, 0.001, 0.08);
             }
         }
+        if (!_reportOnly)
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
@@ -85,7 +88,7 @@ public sealed class TemporalTextureLightGpuTests(GameShadowGrainScene scene, ITe
         for (int i = 0; i < expected.Length; i++) Assert.Equal(expected[i], reused[i]);
     }
 
-    static (double Error, double Grain, double Change, double Luma) Measure(byte[][] frames, byte[][] reference)
+    static (double Error, double Grain, double Change, double Luma) Measure(byte[][] frames, byte[][] reference, bool validate = true)
     {
         const int W = GameShadowGrainScene.W, H = GameShadowGrainScene.H;
         double error = 0, grain = 0, change = 0, luma = 0;
@@ -111,6 +114,7 @@ public sealed class TemporalTextureLightGpuTests(GameShadowGrainScene scene, ITe
                     change += Math.Abs(e - E(t - 1, x, y));
                     steps++;
                 }
+        if (validate)
         Assert.True(count > 0 && steps > 0);
         return (error / count, grain / count, change / steps, luma / count);
     }

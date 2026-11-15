@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Gpu
     /// wall on the frame the box uncovered the pixel. HDR is off, the sharpen is at its default, and the measured
     /// values in the comments are Metal on Apple silicon.
     /// </summary>
-    public sealed class TemporalFollowCameraGpuTests(TemporalFollowCameraRuns runs, ITestOutputHelper output)
+    public sealed partial class TemporalFollowCameraGpuTests(TemporalFollowCameraRuns runs, ITestOutputHelper output)
         : IClassFixture<TemporalFollowCameraRuns>
     {
         /// <summary>The walk the table prints by age, in display pixels a frame. It lands the previous position of a

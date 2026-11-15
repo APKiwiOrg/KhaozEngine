@@ -32,6 +32,8 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalResetGpuTests(ITestOutputHelper output)
     {
+        TemporalHistoryDetail _detail;
+
         const int W = 320, H = 180, BigW = 480, BigH = 270;
 
         // The render cap of the case whose display resize keeps the internal size: Quality gives 213 by 120 at 320 by
@@ -126,7 +128,7 @@ namespace KhaozEngine.Tests.Gpu
             _ => throw new ArgumentOutOfRangeException(nameof(which), which, null),
         };
 
-        static void Apply(Scene3D s, Look look)
+        void Apply(Scene3D s, Look look)
         {
             s.Post.Quality.AntiAliasing = look.Mode switch
             {
@@ -135,6 +137,7 @@ namespace KhaozEngine.Tests.Gpu
                 _ => AntiAliasing.Off,
             };
             s.Post.Temporal.Upscale = look.Preset;
+            s.Post.Temporal.HistoryDetail = _detail;
             s.Post.Hdr.Enabled = look.Hdr;
             s.DebugView = look.MotionView ? SceneDebugView.MotionVectors : SceneDebugView.None;
             if (!look.Capped) return;
@@ -143,7 +146,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // The stage keeps a 16:9 aspect, so the camera frames the same view at both display sizes.
-        static Action<Scene3D> Setup(FrontStage stage, Look look) => s =>
+        Action<Scene3D> Setup(FrontStage stage, Look look) => s =>
         {
             stage.Setup(s, AntiAliasing.Temporal);
             Apply(s, look);
@@ -195,22 +198,23 @@ namespace KhaozEngine.Tests.Gpu
             + $"{d.Preset}, ratio {d.UpscaleRatio:0.0000}";
 
         [GpuTheory]
-        [InlineData(ResetCase.CameraCut)]
-        [InlineData(ResetCase.AutomaticCut)]
-        [InlineData(ResetCase.CameraCutPastTheCutDistance)]
-        [InlineData(ResetCase.DisplayResize)]
-        [InlineData(ResetCase.DisplayResizeUnderTheCap)]
-        [InlineData(ResetCase.DisplayResizeWithCameraCut)]
-        [InlineData(ResetCase.PresetToPerformance)]
-        [InlineData(ResetCase.PresetToUltraPerformance)]
-        [InlineData(ResetCase.PresetChangeWithDisplayResize)]
-        [InlineData(ResetCase.HdrOn)]
-        [InlineData(ResetCase.HdrOff)]
-        [InlineData(ResetCase.HdrToggleWithPresetResizeAndCut)]
-        [InlineData(ResetCase.TemporalTurnedOn)]
-        [InlineData(ResetCase.AntiAliasingChangeUnderTheMotionView)]
-        public void TheFrameAfterAResetMatchesAFromScratchRender(ResetCase which)
+        [TemporalHistoryModeData(ResetCase.CameraCut)]
+        [TemporalHistoryModeData(ResetCase.AutomaticCut)]
+        [TemporalHistoryModeData(ResetCase.CameraCutPastTheCutDistance)]
+        [TemporalHistoryModeData(ResetCase.DisplayResize)]
+        [TemporalHistoryModeData(ResetCase.DisplayResizeUnderTheCap)]
+        [TemporalHistoryModeData(ResetCase.DisplayResizeWithCameraCut)]
+        [TemporalHistoryModeData(ResetCase.PresetToPerformance)]
+        [TemporalHistoryModeData(ResetCase.PresetToUltraPerformance)]
+        [TemporalHistoryModeData(ResetCase.PresetChangeWithDisplayResize)]
+        [TemporalHistoryModeData(ResetCase.HdrOn)]
+        [TemporalHistoryModeData(ResetCase.HdrOff)]
+        [TemporalHistoryModeData(ResetCase.HdrToggleWithPresetResizeAndCut)]
+        [TemporalHistoryModeData(ResetCase.TemporalTurnedOn)]
+        [TemporalHistoryModeData(ResetCase.AntiAliasingChangeUnderTheMotionView)]
+        public void TheFrameAfterAResetMatchesAFromScratchRender(ResetCase which, TemporalHistoryDetail detail)
         {
+            _detail = detail;
             Change c = Describe(which);
             var stage = new FrontStage(W, H, 4.5f);
             void First(Scene3D s, int n) => Layout(stage, s, n, 0f, false);
@@ -238,6 +242,8 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             var (worst, mean, pixels) = Compare(reset, scratch);
+            output.WriteLine($"ACCEPT|reset|{detail}|{which}|worst={worst}|worst bound={MaxWorstStep}"
+                + $"|mean={mean:R}|mean bound={MaxMeanStep:R}");
             output.WriteLine($"{which}, expecting {c.Expected}");
             output.WriteLine($"  before the change: {Describe(before)}");
             output.WriteLine($"  reset frame:       {Describe(onReset)}");
@@ -277,9 +283,11 @@ namespace KhaozEngine.Tests.Gpu
         /// A sharpness change keeps history, and touches nothing but the sharpen after the resolve: the frame equals
         /// the same frame of a run with the new sharpness throughout, and differs from a from-scratch render.
         /// </summary>
-        [GpuFact]
-        public void ASharpnessChangeKeepsHistory()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void ASharpnessChangeKeepsHistory(TemporalHistoryDetail detail)
         {
+            _detail = detail;
             var stage = new FrontStage(W, H, 4.5f);
             void Draw(Scene3D s, int n) => Layout(stage, s, n, 0f, false);
             Action<Scene3D> setup = Setup(stage, Quality);
@@ -322,9 +330,11 @@ namespace KhaozEngine.Tests.Gpu
         /// offset samples the top mip and the largest offset, 1, the next one down: two from-scratch renders, one at
         /// each offset, differ.
         /// </summary>
-        [GpuFact]
-        public void AMipBiasOffsetChangeKeepsHistory()
+        [GpuTheory]
+        [TemporalHistoryModeData]
+        public void AMipBiasOffsetChangeKeepsHistory(TemporalHistoryDetail detail)
         {
+            _detail = detail;
             var stage = new FrontStage(W, H, 4.5f);
             void Draw(Scene3D s, int n) => Layout(stage, s, n, 0f, false);
             Action<Scene3D> setup = Setup(stage, Quality);

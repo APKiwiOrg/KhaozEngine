@@ -15,11 +15,11 @@ public sealed partial class TemporalDiagonalDetailGpuTests
     [Trait("Category", "Diagnostic")]
     public void Fine_reports_diagonal_detail_with_the_existing_control_bounds()
     {
-        var d = new TemporalDiagonalDetailGpuTests(output) { _reportOnly = true };
+        var d = new TemporalDiagonalDetailGpuTests(scene, output) { _reportOnly = true };
         d.Diagonal_sub_texel_lines_on_texture_keep_their_history_still_and_under_a_slow_pan();
         foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
         {
-            var f = new TemporalDiagonalDetailGpuTests(output)
+            var f = new TemporalDiagonalDetailGpuTests(scene, output)
                 { _reportOnly = true, _detail = TemporalHistoryDetail.Fine, _gate = gate };
             f.Diagonal_sub_texel_lines_on_texture_keep_their_history_still_and_under_a_slow_pan();
             foreach (var (name, display) in d._reported)

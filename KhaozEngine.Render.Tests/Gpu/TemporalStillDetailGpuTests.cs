@@ -21,7 +21,10 @@ namespace KhaozEngine.Tests.Gpu
         internal readonly record struct StillRun(float MaxChange, float MaxRange, float Mean, float Expected);
         internal readonly record struct TrackRun(float MeanError);
         internal readonly record struct TrailRun(float MaxTrail);
-        internal readonly record struct SettleRun(int Frames);
+        internal readonly record struct SettleRun(int Frames)
+        {
+            internal bool Settled => Frames <= Measured;
+        }
 
         [GpuTheory]
         [InlineData(TemporalUpscale.Native, TemporalHistoryDetail.Display)]
@@ -146,6 +149,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The wall steps from 0.80 to 0.40 at frame 64.
             SettleRun run = LightStep(preset);
+            Assert.True(run.Frames <= Measured, "The light step must settle inside the measured window.");
             output.WriteLine($"{preset}: {run}");
             Assert.True(run.Frames <= MainSettleFrames(preset), $"{preset}: {run}");
         }
@@ -397,7 +401,6 @@ namespace KhaozEngine.Tests.Gpu
                     if (MathF.Abs(Share(color[pixel * 4], 0.40f, 0.80f)) > 0.05f)
                         frames = n - Converge + 2;
             }
-            Assert.True(frames <= Measured, "The light step must settle inside the measured window.");
             return new SettleRun(frames);
         }
 

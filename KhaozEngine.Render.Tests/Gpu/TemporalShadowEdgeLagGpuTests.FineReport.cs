@@ -7,29 +7,35 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed partial class TemporalShadowEdgeLagGpuTests
 {
+    sealed record Measurements(Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> Values,
+        Dictionary<Case, double> Contrasts);
+    Dictionary<Case, double> _contrasts = new();
+    void AssertCaptureValidity()
+    {
+        foreach (var (c, regions) in _reported)
+        {
+            foreach (var (name, region) in regions)
+                Assert.True(region.Count > 0, $"{c.Name}: the {name} region holds no pixels");
+            Assert.True(_contrasts[c] > 0.05,
+                $"{c.Name}: the reference shows no shadow edge, contrast {_contrasts[c]:0.000}");
+        }
+    }
     bool _reportOnly;
     TemporalHistoryDetail _detail;
     TemporalDetailGate _gate;
     Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> _reported = new();
 
-    void Detail(Scene3D scene)
-    {
-        scene.Post.Temporal.HistoryDetail = _detail;
-        if (_detail == TemporalHistoryDetail.Fine && _gate != TemporalDetailGate.Production)
-            scene.InstallTemporalResolveForTests(source => TemporalDetailGateVariants.Rewrite(source, _gate));
-    }
-
     [GpuFact]
     [Trait("Category", "Diagnostic")]
     public void Fine_reports_shadow_edge_lag_and_the_recorded_still_controls()
     {
-        var d = new TemporalShadowEdgeLagGpuTests(output) { _reportOnly = true };
-        d.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate();
+        var d = new TemporalShadowEdgeLagGpuTests(scene, output) { _reportOnly = true };
+        d.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate(TemporalHistoryDetail.Display);
         foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
         {
-            var f = new TemporalShadowEdgeLagGpuTests(output)
+            var f = new TemporalShadowEdgeLagGpuTests(scene, output)
                 { _reportOnly = true, _detail = TemporalHistoryDetail.Fine, _gate = gate };
-            f.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate();
+            f.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate(TemporalHistoryDetail.Fine);
             foreach (var c in Cases())
             {
                 var dr = d._reported[c];

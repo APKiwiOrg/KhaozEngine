@@ -150,7 +150,8 @@ namespace KhaozEngine.Tests.Gpu
     /// their output grain stays at least <see cref="StillGrainShare"/> of the reference's, so texture detail is kept.
     /// </para>
     /// </summary>
-    public sealed partial class TemporalShadowEdgeLagGpuTests(ITestOutputHelper output)
+    public sealed partial class TemporalShadowEdgeLagGpuTests(TemporalShadowLagScene scene, ITestOutputHelper output)
+        : IClassFixture<TemporalShadowLagScene>
     {
         const int W = 320, H = 180;
         const int FirstMeasured = 80, Measured = 8;
@@ -217,10 +218,20 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        [GpuFact]
-        public void Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate()
+        [GpuTheory, TemporalHistoryModeData]
+        public void Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate(TemporalHistoryDetail detail)
         {
-            PrintGeometry();
+            _detail = detail;
+            if (!_reportOnly) PrintGeometry();
+            string key = $"ShadowEdge/{detail}/{_gate}";
+            if (scene.TryGet<Measurements>(key, out var cached))
+            {
+                _reported = cached!.Values;
+                _contrasts = cached.Contrasts;
+                if (!_reportOnly) AssertCaptureValidity();
+                if (!_reportOnly) AssertReleased(_reported, liveOnly: detail == TemporalHistoryDetail.Fine);
+                return;
+            }
             var references = new Dictionary<float, byte[][]>();
             var measured = new Dictionary<Case, Dictionary<string, ShadowEdgeRegion>>();
             foreach (Case c in Cases())
@@ -228,24 +239,16 @@ namespace KhaozEngine.Tests.Gpu
                 var stage = new ShadowEdgeStage(W, H, c.PixelsPerFrame, FirstMeasured);
                 if (!references.TryGetValue(c.PixelsPerFrame, out byte[][]? reference))
                 {
-                    reference = TemporalAcceptance.ReferenceSequence(W, H,
+                    reference = scene.Capture(
                         s => stage.Setup(s, AntiAliasing.Temporal, TemporalUpscale.Native, holdTexels: 0f), stage.Draw,
-                        FirstMeasured, Measured);
+                        FirstMeasured, Measured, TemporalUpscale.Native, reference: true);
                     references[c.PixelsPerFrame] = reference;
                 }
 
-                var frames = new byte[Measured][];
-                int refits = 0;
-                using (var fx = new TemporalFixture(W, H,
-                    s => { stage.Setup(s, AntiAliasing.Temporal, c.Preset, c.Hold); Detail(s); }))
-                {
-                    fx.Frames(FirstMeasured, stage.Draw);
-                    for (int i = 0; i < Measured; i++)
-                    {
-                        frames[i] = fx.Frame(stage.Draw);
-                        if (fx.Scene.LastShadowPassDiagnostics.Rendered) refits++;
-                    }
-                }
+                byte[][] frames = scene.Capture(
+                    s => stage.Setup(s, AntiAliasing.Temporal, c.Preset, c.Hold), stage.Draw,
+                    FirstMeasured, Measured, c.Preset, _detail, _gate);
+                int refits = scene.Refits;
 
                 var m = new ShadowEdgeMeasure(W, H, Receiver(stage), stage.PixelsPerFrame < 0f ? -1f : 1f, frames,
                     reference, FirstMeasured);
@@ -255,6 +258,7 @@ namespace KhaozEngine.Tests.Gpu
                     + $"{m.EdgeOffset:0.00} px off the analytic line");
                 output.WriteLine("  region          pixels   mean     p95      bias     grain out  grain ref  "
                     + "err grain");
+                _contrasts[c] = m.ReferenceContrast;
                 foreach ((string name, ShadowEdgeRegion r) in m.Regions)
                 {
                     output.WriteLine($"  {name,-15} {r.Count,6}   {r.Mean:0.0000}   {r.P95:0.0000}   {r.Bias,7:0.0000}  "
@@ -274,11 +278,12 @@ namespace KhaozEngine.Tests.Gpu
             }
             output.WriteLine($"device class {TemporalDeviceClass.Name}");
             _reported = measured;
-            if (!_reportOnly) AssertReleased(measured);
+            scene.Remember(key, new Measurements(measured, _contrasts));
+            if (!_reportOnly) AssertReleased(measured, liveOnly: detail == TemporalHistoryDetail.Fine);
         }
 
         // The acceptance bounds, checked after every case has printed, so a failure still shows the whole table.
-        static void AssertReleased(Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> measured)
+        static void AssertReleased(Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> measured, bool liveOnly = false)
         {
             var failures = new List<string>();
             foreach ((Case c, Dictionary<string, ShadowEdgeRegion> r) in measured)
@@ -286,10 +291,13 @@ namespace KhaozEngine.Tests.Gpu
                 if (c.Hold != 1f) continue;
                 if (c.PixelsPerFrame == 0f)
                 {
-                    Check(r["band textured"].Mean <= StillBand(c.Preset),
-                        $"{c.Name}: textured band {r["band textured"].Mean:0.0000} above {StillBand(c.Preset):0.0000}");
-                    Check(r["far textured"].Mean <= StillFar(c.Preset),
-                        $"{c.Name}: textured control {r["far textured"].Mean:0.0000} above {StillFar(c.Preset):0.0000}");
+                    if (!liveOnly)
+                    {
+                        Check(r["band textured"].Mean <= StillBand(c.Preset),
+                            $"{c.Name}: textured band {r["band textured"].Mean:0.0000} above {StillBand(c.Preset):0.0000}");
+                        Check(r["far textured"].Mean <= StillFar(c.Preset),
+                            $"{c.Name}: textured control {r["far textured"].Mean:0.0000} above {StillFar(c.Preset):0.0000}");
+                    }
                     foreach (string region in new[] { "band textured", "far textured" })
                         Check(r[region].GrainOut >= StillGrainShare * r[region].GrainRef,
                             $"{c.Name}: {region} grain {r[region].GrainOut:0.0000} below {StillGrainShare} of the "
@@ -301,7 +309,7 @@ namespace KhaozEngine.Tests.Gpu
                 double tail = r["tail textured"].Mean, slowTail = measured[slow]["tail textured"].Mean;
                 Check(tail <= TravelTailRatio * slowTail,
                     $"{c.Name}: textured tail {tail:0.0000} above {TravelTailRatio} times the 0.25 px tail {slowTail:0.0000}");
-                if (c.Preset == TemporalUpscale.Quality)
+                if (!liveOnly && c.Preset == TemporalUpscale.Quality)
                     Check(r["band textured"].Mean <= QualityBandLimit,
                         $"{c.Name}: textured band {r["band textured"].Mean:0.0000} above {QualityBandLimit}");
             }

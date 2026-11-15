@@ -505,6 +505,11 @@ Balanced is reported. The shared scene has an aged-versus-fresh image parity che
 
 Fine also runs the existing absolute image limits in the ghosting, fast-edge, stability and zoom,
 convergence, reset, sub-texel line and blade, follow-line, narrow-crossing and passing-box classes.
+Shadow grain retention, ordinary fast-to-slow shadow tails and moving-object tails against their own
+far region also assert in Fine with the same live image bounds. Recorded shadow limits remain Diagnostic.
+The diagonal and shadow-lag matrices reuse lazy fixture scenes with cold history and aligned jitter,
+and each has an aged-versus-fresh parity fact. Moving-shade assertions and reports use one evaluator.
+Recovery captures return an unsettled result when the window ends, so a Diagnostic row still prints it.
 Their Display rows keep their original bounds. The live fine-path export is compared with the decision
 probe's count before that probe supplies a gate study.
 

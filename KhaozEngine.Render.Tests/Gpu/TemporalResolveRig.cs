@@ -18,10 +18,10 @@ namespace KhaozEngine.Tests.Gpu
     {
         readonly GpuDeviceContext _gpu;
         readonly IGpuDevice _gd;
-        readonly TemporalResolveRenderer _renderer;
+        TemporalResolveRenderer _renderer;
         readonly TemporalHistory _history = new();
-        readonly IGpuTexture _scene, _opaque, _depth, _motion;
-        readonly int _width, _height;
+        IGpuTexture _scene, _opaque, _depth, _motion;
+        int _width, _height;
         readonly RenderResources? _outlineTargets;
         readonly PixelPostProcess? _outlinePost;
         readonly PixelPostProcessSettings? _outlineSettings;
@@ -64,6 +64,34 @@ namespace KhaozEngine.Tests.Gpu
                 }
                 _gd.UpdateTexture(_outlineTargets.NormalTex, normals, 0, 0, (uint)internalWidth, (uint)internalHeight);
             }
+        }
+
+        /// <summary>Start another synthetic capture on this device. Inputs and history are cold at its first uniform.</summary>
+        internal void ResetCapture(int width, int height, int displayWidth, int displayHeight, float ndc,
+            TemporalHistoryDetail detail, Func<string, string>? fragmentSource, bool changePrograms)
+        {
+            if (_outlineTargets is not null) throw new InvalidOperationException("An outlined rig cannot change inputs.");
+            _gd.WaitForIdle();
+            _gd.Present();
+            if (changePrograms)
+            {
+                _renderer.Dispose();
+                _renderer = new TemporalResolveRenderer(_gd, fragmentSource);
+            }
+            if (_width != width || _height != height)
+            {
+                _scene.Dispose(); _opaque.Dispose(); _depth.Dispose(); _motion.Dispose();
+                _width = width; _height = height;
+                _scene = Input(GpuPixelFormat.R16G16B16A16Float);
+                _opaque = Input(GpuPixelFormat.R16G16B16A16Float);
+                _depth = Input(GpuPixelFormat.R32Float);
+                _motion = Input(GpuPixelFormat.R16G16Float);
+            }
+            _history.EnsureTargets(_gd, displayWidth, displayHeight, width, height, detail: detail);
+            _history.Invalidate(TemporalResetReason.CameraCutRequested);
+            var depths = new float[width * height];
+            Array.Fill(depths, ndc);
+            FillDepth(depths);
         }
 
         internal IGpuDevice Device => _gd;

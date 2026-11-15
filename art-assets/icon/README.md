@@ -32,3 +32,7 @@ and links the icon into its output in the csproj:
 
 `KhaozEngine.Showcase` does exactly this. The full game-side consumer story (per-platform build wiring
 and multi-size `WindowIcons`) lives in the game-template repo's `docs/ICONS.md`.
+
+The showcase is non-packable, so these repository icons can change without an engine version bump.
+The [version rules](../../docs/CONTRIBUTOR-RULES.md#version-package-and-release-rules) require a bump
+if a package project or any props or targets file references `art-assets/` at either end of the change.

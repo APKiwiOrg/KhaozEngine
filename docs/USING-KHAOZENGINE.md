@@ -23888,8 +23888,11 @@ transaction. `ReadTextSnapshotAsync` reads one exact version's text, `TryDiscard
 draft the caller read, `RollbackTextToAsync` restores rows and strings together, and `ExportBundleAsync` writes
 format 2 once a version declares a language. `ImportTextBundleAsync` imports either format. Both it and the
 row-only `ImportBundleAsync` refuse with `DraftOpen` and `draft-open` while an open draft holds any row, text
-or language work, before staging and without changing the draft. An empty open draft does not block. Other
-row-only members refuse with `text-unrepresented` rather than drop held text.
+or language work, before staging and without changing the draft. An empty open draft does not block.
+Staging freezes the import's draft atomically. Rival draft changes refuse with `PublishInProgress` and
+`publish-in-progress` until commit or failure reset, and can be retried afterward. A failure after commit
+preserves the published version and any later draft. Other row-only members refuse with `text-unrepresented`
+rather than drop held text.
 `KhaozEngine.Catalog.Authoring/README.md` documents the limits, the legacy refusals and every
 reason token.
 

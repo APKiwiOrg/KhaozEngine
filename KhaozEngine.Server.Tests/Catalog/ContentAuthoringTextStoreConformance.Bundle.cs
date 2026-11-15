@@ -14,6 +14,70 @@ namespace KhaozEngine.Tests.Catalog;
 /// </summary>
 public abstract partial class ContentAuthoringTextStoreConformance
 {
+    /// <summary>A text seed cannot publish or discard a rival's rows, strings or language introductions.</summary>
+    public virtual async Task TextBundleImportExcludesRivalDraftIntents(ContentPublishStep? failureStep)
+    {
+        // #1252: the rival carries all three kinds of pending work in the apply-to-publish window.
+        IContentTextAuthoringStore store = await OpenAsync();
+        ContentBundle bundle = CompleteBundle();
+        Func<Task> rival = () => ApplyAsync(store, [Add("rival")], Set("rival", NameField, "de", "Rivale"));
+        var gate = new CatalogBundleImportGate(store, rival, failureStep,
+            () => store.ImportTextBundleAsync(bundle, Actor, Operator, "rival seed"));
+        CatalogFixtures.SetPublishStepHook(store, gate.OnStep, gate.BeforePublish, gate.AfterAttempt);
+
+        Exception? failure = await Record.ExceptionAsync(() => store.ImportTextBundleAsync(bundle, Actor, Operator, "seed"));
+
+        AssertTextImportHeldDraft(gate.EditRefusal, nameof(IContentTextAuthoringStore.ApplyChangesAsync));
+        AssertTextImportHeldDraft(gate.DiscardRefusal, nameof(IContentAuthoringStore.DiscardDraftAsync));
+        AssertTextImportHeldDraft(gate.ImportRefusal, nameof(IContentTextAuthoringStore.ImportTextBundleAsync));
+        CatalogFixtures.SetPublishStepHook(store, _ => { });
+        if (failureStep == ContentPublishStep.BeforeCommit)
+        {
+            Assert.IsType<CatalogBundleImportFault>(failure);
+            AssertTextImportHeldDraft(gate.CleanupRefusal, nameof(IContentTextAuthoringStore.ApplyChangesAsync));
+            Assert.Null(await store.GetOpenDraftAsync());
+            Assert.Empty(await store.ListVersionsAsync());
+            await store.ImportTextBundleAsync(bundle, Actor, Operator, "retry");
+        }
+        else if (failureStep is not null)
+        {
+            Assert.IsType<CatalogBundleImportFault>(failure);
+            Assert.Null(gate.CommittedEditFailure);
+        }
+        else
+        {
+            Assert.Null(failure);
+        }
+
+        Assert.Equal(1, await store.GetActiveVersionAsync());
+        Assert.Equal(new[] { 3, 4 }, (await store.ListRowsAsync(Item, 1, null, true, 0, 10)).Rows.Select(row => row.Id));
+        ContentVersionTextSnapshot text = await store.ReadTextSnapshotAsync(1);
+        Assert.Equal(new[] { "en-US", "fr" }, text.Languages.Select(language => language.WireTag));
+        Assert.Equal(new[] { "Old Shield", "Sword" }, text.Revisions.Select(revision => revision.Value).OrderBy(value => value, StringComparer.Ordinal));
+        if (failureStep != ContentPublishStep.DuringSweep)
+        {
+            await rival();
+        }
+
+        ContentDraft pending = (await store.GetOpenDraftAsync())!;
+        Assert.Equal("rival", Assert.Single(pending.Changes.Edits).Key.ToString());
+        Assert.Equal("Rivale", Assert.Single(pending.TextState!.Edits).Value);
+        Assert.Equal("de", Assert.Single(pending.TextState.Introductions).Language);
+        await store.PublishAsync(Request(1));
+        Assert.Equal("rival", Assert.Single((await store.ListRowsAsync(Item, 2, "rival", true, 0, 10)).Rows).Key.ToString());
+        Assert.Contains((await store.ReadTextSnapshotAsync(2)).Revisions, revision => revision.Value == "Rivale");
+        Assert.DoesNotContain((await store.ReadTextSnapshotAsync(1)).Revisions, revision => revision.Value == "Rivale");
+    }
+
+    static void AssertTextImportHeldDraft(Exception? exception, string member)
+    {
+        ContentAuthoringException refused = Assert.IsType<ContentAuthoringException>(exception);
+        Assert.Equal(ContentAuthoringRefusal.PublishInProgress, refused.Refusal);
+        Assert.Equal(ContentAuthoringException.PublishInProgressReason, refused.Reason);
+        Assert.Equal(member, refused.MemberName);
+        Assert.Equal(0, refused.FrozenForBaseVersion);
+    }
+
     [Fact]
     public virtual async Task Text13_CompanionImportLandsACompleteBundleAndRefusesBeforeStaging()
     {

@@ -244,6 +244,12 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
         => base.AnImportOverAnOpenEmptyDraftSucceeds();
 
     /// <inheritdoc />
+    [CatalogSqlServerTheory]
+    [MemberData(nameof(CatalogBundleImportCases.Outcomes), MemberType = typeof(CatalogBundleImportCases))]
+    public override Task BundleImportExcludesRivalDraftIntents(ContentPublishStep? failureStep)
+        => base.BundleImportExcludesRivalDraftIntents(failureStep);
+
+    /// <inheritdoc />
     [CatalogSqlServerFact]
     public override Task AnImportOverADraftHoldingWorkIsRefusedBeforeStaging()
         => base.AnImportOverADraftHoldingWorkIsRefusedBeforeStaging();

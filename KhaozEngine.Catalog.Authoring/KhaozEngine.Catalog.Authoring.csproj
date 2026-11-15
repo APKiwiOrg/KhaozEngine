@@ -10,6 +10,7 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <InternalsVisibleTo Include="KhaozEngine.Catalog.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Catalog.Sqlite" />
     <InternalsVisibleTo Include="KhaozEngine.Catalog.SqlServer" />
   </ItemGroup>

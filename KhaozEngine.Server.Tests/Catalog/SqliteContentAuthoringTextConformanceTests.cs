@@ -7,6 +7,7 @@ using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
 using Microsoft.Data.Sqlite;
+using Xunit;
 
 namespace KhaozEngine.Tests.Catalog;
 
@@ -19,6 +20,12 @@ public sealed class SqliteContentAuthoringTextConformanceTests : ContentAuthorin
     readonly string _root = Path.Combine(Path.GetTempPath(), "kec-text-conformance-sqlite-" + Guid.NewGuid().ToString("n"));
     readonly List<SqliteContentAuthoringStore> _stores = [];
     readonly Dictionary<IContentTextAuthoringStore, string> _connectionStrings = [];
+
+    /// <inheritdoc />
+    [Theory]
+    [MemberData(nameof(CatalogBundleImportCases.Outcomes), MemberType = typeof(CatalogBundleImportCases))]
+    public override Task TextBundleImportExcludesRivalDraftIntents(ContentPublishStep? failureStep)
+        => base.TextBundleImportExcludesRivalDraftIntents(failureStep);
 
     /// <inheritdoc />
     protected override async Task<IContentTextAuthoringStore> OpenAsync(Func<DateTimeOffset>? clock = null)

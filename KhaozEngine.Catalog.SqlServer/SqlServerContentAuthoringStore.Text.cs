@@ -129,19 +129,7 @@ public sealed partial class SqlServerContentAuthoringStore : IContentTextAuthori
                 ContentVersionTextSnapshot baselineText = await ReadTextSnapshotAtAsync(scope, active, token)
                     .ConfigureAwait(false);
 
-                await using (SqlCommand freeze = Command(
-                    scope,
-                    """
-                    UPDATE dbo.catalog_draft
-                    SET frozen_for_base_version = @base,
-                        updated_at_utc = CASE WHEN frozen_for_base_version = @base THEN updated_at_utc ELSE @now END
-                    WHERE draft_key = 1;
-                    """))
-                {
-                    BindInt(freeze, "@base", active);
-                    BindTime(freeze, "@now", _clock());
-                    await freeze.ExecuteNonQueryAsync(token).ConfigureAwait(false);
-                }
+                await MarkDraftFrozenAsync(scope, active, token).ConfigureAwait(false);
 
                 return new ContentTextPublishSnapshot(
                     await ReadEpochAsync(scope, token).ConfigureAwait(false),

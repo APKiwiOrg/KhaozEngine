@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// Bundle format 2 through the SQLite store over FILE databases a test reopens: the companion import lands
 /// rows, every declared language with its wire spelling and every value as one complete version 1, the export
 /// writes format 1 exactly when the version declares no language, refusals land before anything is staged,
-/// and a failure after staging leaves the database empty and importable again.
+/// and a pre-commit failure after staging leaves the database empty and importable again.
 /// </summary>
 public sealed partial class SqliteTextBundleTests
 {
@@ -237,8 +237,9 @@ public sealed partial class SqliteTextBundleTests
     }
 
     [Fact]
-    public async Task A_rival_arriving_during_the_staging_queues_behind_the_import_draft_and_is_kept()
+    public async Task A_rival_arriving_during_staging_is_refused_until_the_import_finishes()
     {
+        // #1000 and #1252: a rival already queued during staging must see the import's freeze.
         using var database = new TemporaryCatalogDatabase();
         Func<Task<ContentDraft>>? duringStaging = null;
         Task<ContentDraft>? rival = null;
@@ -257,23 +258,34 @@ public sealed partial class SqliteTextBundleTests
 
         // The rival introduces the same language the bundle declares. Landing between the pending-work check
         // and the import's draft, it would make the import's own introduction collide and the reset delete it.
-        duringStaging = () => ApplyAsync(
+        Func<Task<ContentDraft>> applyRival = () => ApplyAsync(
             store, new[] { Add("axe") }, ContentTextEdit.Set(Target(NameField, "en", "axe"), "Axe"));
+        duringStaging = applyRival;
         ContentPublishResult imported = await store.ImportTextBundleAsync(FamilySeed(), Actor, Operator, "seed");
 
         Assert.Equal(1, imported.VersionNumber);
         Assert.NotNull(rival);
-        Assert.Equal(0, (await rival!).BaseVersion);
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => rival!);
+        Assert.Equal(ContentAuthoringRefusal.PublishInProgress, refused.Refusal);
+        Assert.Equal(ContentAuthoringException.PublishInProgressReason, refused.Reason);
+        Assert.Equal(nameof(IContentTextAuthoringStore.ApplyChangesAsync), refused.MemberName);
+        Assert.Equal(0, refused.FrozenForBaseVersion);
 
-        // It queued behind the import's whole draft and joined it as any second editor does, so the publish
-        // queued after it carries both and nothing acknowledged was lost.
+        // The import publishes only its own rows and text. The refused intent can be retried afterward.
         Assert.Null(await store.GetOpenDraftAsync());
         ContentVersionTextSnapshot text = await store.ReadTextSnapshotAsync(1);
         Assert.Equal(new[] { "en", "fr" }, text.Languages.Select(language => language.WireTag));
         Assert.Equal(
-            new[] { "Axe", "Blade", "Sword" },
+            new[] { "Blade", "Sword" },
             text.Revisions.Select(revision => revision.Value).Order(StringComparer.Ordinal));
-        Assert.Single((await store.ListRowsAsync(Item, 1, "axe", false, 0, 1)).Rows);
+        Assert.Empty((await store.ListRowsAsync(Item, 1, "axe", false, 0, 1)).Rows);
+
+        Assert.Equal(1, (await applyRival()).BaseVersion);
+        await store.PublishAsync(Request(1));
+        ContentVersionTextSnapshot next = await store.ReadTextSnapshotAsync(2);
+        Assert.Equal(new[] { "Axe", "Blade", "Sword" },
+            next.Revisions.Select(revision => revision.Value).Order(StringComparer.Ordinal));
+        Assert.Single((await store.ListRowsAsync(Item, 2, "axe", false, 0, 1)).Rows);
     }
 
     [Fact]

@@ -13,6 +13,67 @@ namespace KhaozEngine.Tests.Catalog;
 /// </summary>
 public abstract partial class ContentAuthoringStoreConformance
 {
+    /// <summary>A seed owns its pending draft until commit or reset, and leaves later work alone.</summary>
+    public virtual async Task BundleImportExcludesRivalDraftIntents(ContentPublishStep? failureStep)
+    {
+        // #1252: place the rival after staging but before publish acquires its snapshot.
+        IContentAuthoringStore store = await ResetToEmptyAsync();
+        ContentBundle bundle = SeedBundle(FamilyKey);
+        ContentEdit rival = ContentEdit.Add(Thing, new ContentKey("rival"), CatalogFixtures.Fields(99));
+        var gate = new CatalogBundleImportGate(store, () => ApplyAsync(store, rival), failureStep,
+            () => store.ImportBundleAsync(bundle, CatalogFixtures.Actor, CatalogFixtures.Operator, "rival seed"));
+        CatalogFixtures.SetPublishStepHook(store, gate.OnStep, gate.BeforePublish, gate.AfterAttempt);
+
+        Exception? failure = await Record.ExceptionAsync(() => store.ImportBundleAsync(
+            bundle, CatalogFixtures.Actor, CatalogFixtures.Operator, "seed"));
+
+        AssertImportHeldDraft(gate.EditRefusal, nameof(IContentAuthoringStore.ApplyEditsAsync));
+        AssertImportHeldDraft(gate.DiscardRefusal, nameof(IContentAuthoringStore.DiscardDraftAsync));
+        AssertImportHeldDraft(gate.ImportRefusal, nameof(IContentAuthoringStore.ImportBundleAsync));
+        CatalogFixtures.SetPublishStepHook(store, _ => { });
+        if (failureStep == ContentPublishStep.BeforeCommit)
+        {
+            Assert.IsType<CatalogBundleImportFault>(failure);
+            AssertImportHeldDraft(gate.CleanupRefusal, nameof(IContentAuthoringStore.ApplyEditsAsync));
+            Assert.Null(await store.GetOpenDraftAsync());
+            Assert.Empty(await store.ListVersionsAsync());
+            Assert.Empty(await store.ListFamiliesAsync(default));
+            Assert.Equal(default, await Ids(store).ReadHighWaterAsync(Thing));
+            await store.ImportBundleAsync(bundle, CatalogFixtures.Actor, CatalogFixtures.Operator, "retry");
+        }
+        else if (failureStep is not null)
+        {
+            Assert.IsType<CatalogBundleImportFault>(failure);
+            Assert.Null(gate.CommittedEditFailure);
+        }
+        else
+        {
+            Assert.Null(failure);
+        }
+
+        Assert.Equal(1, await store.GetActiveVersionAsync());
+        Assert.Equal(new[] { "forty", "forty_one" }, Keys(await RowsAsync(store, includeRetired: true)));
+        Assert.Single(await RulesAsync(store));
+        if (failureStep != ContentPublishStep.DuringSweep)
+        {
+            await ApplyAsync(store, rival);
+        }
+
+        Assert.Equal("rival", Assert.Single((await DraftAsync(store)).Changes.Edits).Key.ToString());
+        await store.PublishAsync(Request(1));
+        Assert.Equal(new[] { "forty", "forty_one", "rival" }, Keys(await RowsAsync(store, includeRetired: true)));
+        Assert.Equal(new[] { 40, 41 }, Ids(await store.ListRowsAsync(Thing, 1, null, true, 0, 100)));
+    }
+
+    static void AssertImportHeldDraft(Exception? exception, string member)
+    {
+        ContentAuthoringException refused = Assert.IsType<ContentAuthoringException>(exception);
+        Assert.Equal(ContentAuthoringRefusal.PublishInProgress, refused.Refusal);
+        Assert.Equal(ContentAuthoringException.PublishInProgressReason, refused.Reason);
+        Assert.Equal(member, refused.MemberName);
+        Assert.Equal(0, refused.FrozenForBaseVersion);
+    }
+
     /// <summary>
     /// FACT 18. An import into an empty database succeeds and REPRODUCES the source ids. That is contracts
     /// 5.1's narrow exception, licensed only into an empty database because nothing is there to collide with,

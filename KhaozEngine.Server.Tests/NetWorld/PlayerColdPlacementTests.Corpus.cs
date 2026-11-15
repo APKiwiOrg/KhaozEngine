@@ -9,6 +9,18 @@ namespace KhaozEngine.Tests.NetWorld;
 
 public partial class PlayerColdPlacementTests
 {
+    // #1756. Each complete read, cold placement and history runs with and without every query cache.
+    [Theory]
+    [InlineData("dry")]
+    [InlineData("collider")]
+    [InlineData("flat-water")]
+    [InlineData("shore")]
+    [InlineData("motion")]
+    [InlineData("reconcile")]
+    [InlineData("rebase")]
+    public void CachedAndUncachedColdPlacementHistoriesPublishIdenticalBits(string history) =>
+        CompareCacheHistory(history);
+
     [Theory]
     [InlineData("flat")]
     [InlineData("shore")]

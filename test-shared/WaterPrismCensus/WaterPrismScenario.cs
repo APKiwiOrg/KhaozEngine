@@ -4,6 +4,7 @@ using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Primitives;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Physics;
 
@@ -109,6 +110,12 @@ internal sealed class WaterPrismScenario : IDisposable
         if (_contact && Simulator.LastExplicitOutcome != MovementStepOutcome.Advanced)
             throw new InvalidOperationException($"{Name}: {Simulator.LastExplicitOutcome}");
         return next;
+    }
+
+    internal void Rebase(Vector3 origin)
+    {
+        _world.Rebase(origin);
+        Simulator.Frame = WorldFrame.Nearest(origin.X, origin.Z);
     }
 
     static TileWorldDocument Document(string name, int firstZ)

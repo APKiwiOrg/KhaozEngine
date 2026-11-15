@@ -28,6 +28,7 @@ public sealed class TileWaterTraceMemoResultEnvironmentTests(ITestOutputHelper o
         {
             try
             {
+                using var controls = new StableWaterTraceControls();
                 TileWaterTraceMemoResultTests.Check(field, TileWaterTraceMemoResultTests.Query(i));
                 ready.SignalAndWait();
                 work[i] = TileWaterTraceMemoResultTests.Work(TileWaterTraceMemoResultTests.Check(field, TileWaterTraceMemoResultTests.Query(i)));
@@ -74,6 +75,7 @@ public sealed class TileWaterTraceMemoResultEnvironmentTests(ITestOutputHelper o
     [InlineData(true)]
     public void WarmFlatAndLargeReplaysAllocateNoManagedStorage(bool flat)
     {
+        using var controls = new StableWaterTraceControls();
         var field = TileWaterTraceMemoResultTests.Field(flat);
         var q = TileWaterTraceMemoResultTests.Query();
         var spans = new MovementCoverageSpan[64];
@@ -101,6 +103,7 @@ public sealed class TileWaterTraceMemoResultEnvironmentTests(ITestOutputHelper o
     [MethodImpl(MethodImplOptions.NoInlining)]
     static (WeakReference Sampler, WeakReference Table) Release(bool flat)
     {
+        using var controls = new StableWaterTraceControls();
         var field = TileWaterTraceMemoResultTests.Field(flat);
         TileWaterTraceMemoResultTests.Check(field, TileWaterTraceMemoResultTests.Query());
         var table = field.CaptureResultMemoTableForTests();

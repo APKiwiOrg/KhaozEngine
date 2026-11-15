@@ -16,6 +16,7 @@ public sealed class TileWaterTraceMemoResultTests
     [InlineData(true)]
     public void EightOwnedResultsReplayEveryBitAndTheNinthEvictsTheOldestInsertion(bool flat)
     {
+        using var controls = new StableWaterTraceControls();
         var field = Field(flat);
         var query = Query();
         var cold = Check(field, query);
@@ -34,6 +35,7 @@ public sealed class TileWaterTraceMemoResultTests
     [InlineData(true)]
     public void CapacitiesOriginAndSignedZeroAreExactKeysAndValidationStillPrecedesReplay(bool flat)
     {
+        using var controls = new StableWaterTraceControls();
         var field = Field(flat);
         var q = Query();
         Check(field, q);
@@ -68,6 +70,7 @@ public sealed class TileWaterTraceMemoResultTests
     [Fact]
     public void LargeAndFlatOwnersCannotContaminateEachOtherAndExcessIdentifiersBypassRetention()
     {
+        using var controls = new StableWaterTraceControls();
         var a = Field(false);
         var b = Field(true);
         foreach (var field in new[] { a, b })
@@ -86,6 +89,7 @@ public sealed class TileWaterTraceMemoResultTests
     [Fact]
     public void EmptyDryCapturesKeepTheCheapShortcutWithoutClaimingResultStorage()
     {
+        using var controls = new StableWaterTraceControls();
         var field = MovementWaterFieldTests.Field(TileWorldPhysicsTestData.FlatWorld());
         var q = Query();
         var first = Check(field, q);
@@ -103,6 +107,7 @@ public sealed class TileWaterTraceMemoResultTests
     [InlineData(true)]
     public void ReentrantControlReadersAndThrowingCallbacksCannotCorruptOwnedResults(bool flat)
     {
+        using var controls = new StableWaterTraceControls();
         var field = Field(flat);
         var q = Query();
         Check(field, q);
@@ -112,7 +117,7 @@ public sealed class TileWaterTraceMemoResultTests
         TileMediumSampler.ControlReaderForTests = (out ulong token) =>
         {
             if (!entered) { entered = true; nested = Check(field, Query(2)); }
-            return TileWaterFloatingPointState.TryRead(out token);
+            return StableWaterTraceControls.Read(out token);
         };
         try
         {
@@ -137,6 +142,7 @@ public sealed class TileWaterTraceMemoResultTests
     [InlineData(true)]
     public void FullSpanResultsAndTheirEarlierRefusalsMatchFrozenEvaluationAfterReplay(bool oneMore)
     {
+        using var controls = new StableWaterTraceControls();
         var field = TileMediumSampler.FromTraceForTests(WaterKernelTraceFixture.SpanPressure(oneMore), "water-world");
         var query = new MovementMediumSweepQuery(new(new(.125f, -.5f, -.75f), .125f, .25f,
             MovementWaterFieldTests.Space, null), new(.5f, 0, 0));

@@ -36,6 +36,7 @@ public sealed class WaterKernelMemoIntegrationTests
     [Fact]
     public void InterleavedMemoHitsAndRefusalsCannotContaminateTheNextMissInAnotherSampler()
     {
+        using var controls = new StableWaterTraceControls();
         var a = MovementWaterFieldTests.Field(GrazingWaterBank.Document());
         var document = GrazingWaterBank.Document();
         document.SetCornerHeightCm(110, 237, 0, -125);
@@ -93,6 +94,7 @@ public sealed class WaterKernelMemoIntegrationTests
     [Fact]
     public void RealLargeHitsAndFreshMovingMissesPreserveSmallTierCounterMeanings()
     {
+        using var controls = new StableWaterTraceControls();
         var field = TileWaterTraceMemoResultTests.Field(false);
         bool bypass = TileMediumSampler.BypassTraceMemoForTests;
         TileMediumSampler.BypassTraceMemoForTests = false;
@@ -136,6 +138,7 @@ public sealed class WaterKernelMemoIntegrationTests
     [InlineData("dry-control")]
     public void CensusFixtureMemoOracleAlsoMatchesTheFrozenEvaluator(string name)
     {
+        using var controls = new StableWaterTraceControls();
         using var scene = new WaterPrismScenario(name);
         var frozen = new FrozenWaterReference(scene.Colliders.Medium.CaptureTraceForTests());
         var queries = new List<MovementMediumSweepQuery>();

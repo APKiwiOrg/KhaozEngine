@@ -79,6 +79,13 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   any later draft ([#1252](https://github.com/APKiwiOrg/KhaozEngine/issues/1252)). The freeze names only a base
   version, so a failed ordinary publish at base 0 racing the import can still release it early
   ([#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813)).
+- Movement water traces replay flat-water results and larger shore results from a bounded per-sampler cache instead
+  of recomputing them. The eight-entry tier keys on the exact query, origin, both caller capacities and the native
+  floating-point controls, holds at most 64 spans and 256 contacts per entry within 256 KiB per thread table plus
+  16 KiB of retained identifiers, and returns the original kernel's bits with the caller's identity and space. Dry
+  paths, oversized results, a fifth thread and platforms whose controls cannot be read run uncached. The existing small
+  prism memo and its counters are unchanged, with no public API change
+  ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
 
 ## 23.13.0
 

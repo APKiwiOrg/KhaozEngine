@@ -802,6 +802,17 @@ that original behavior. Before a retained lane changes from an arbitrary writer 
 zeroed to restore the complete writer's precondition. Consumers cannot opt into the internal fact. When enabled,
 `ClearedReferences` still counts exactly the nondefault contact entries cleared, with counting before the bulk clear.
 Value-only span storage is reset before producer callbacks, so missing writes cannot reuse an earlier certificate.
+These two retained lanes are scratch, not query-result caches. They allocate their bounded arrays lazily and retain
+no published result on return. Reentrant pooled loans return their arrays instead of expanding retained storage.
+
+The ordinary adapter may receive exact numeric water replays from an immutable `TileMediumSampler`, while Bepu
+may reuse the canonical proposal rotation's Boolean. Their owners, keys and storage limits are documented in
+[TileWorld water reuse](../KhaozEngine.TileWorld.Physics/README.md#exact-water-query-reuse) and
+[Bepu support footprints](../KhaozEngine.Physics.Bepu/README.md). Neither skips fresh lease/pin authentication,
+producer-output validation, water-level consistency, selection reconstruction or cold placement. Query-result
+reuse and buffer cleanup preserve movement publication bits, including commitment state. Executed-work counters
+may decrease on hits. Sticky FP status and fresh joined-boundary string reference identity are outside the water
+replay guarantee, while FP controls remain exact numeric inputs and lookups never change the caller's environment.
 
 `MovementQueryLease.EnumerateSupport` and `TraceWater` use cleared private scratch and validate the
 complete producer result before publishing caller buffers. Refusal or a provider exception leaves
@@ -1136,7 +1147,9 @@ selection, frame, binding identity (including immutable tuning, water policy and
 exact lease. The controller authenticates the current generations and reconstructs selection before reuse.
 A default, consumed or mismatched certificate takes the regular validation path. Keep the certificate inside
 the caller's read scope, discard it on correction or replay, and never serialize it. Disposal invalidates
-its use. `StepPlayer` remains the ordinary uncached entry point.
+its use. `StepPlayer` always performs cold placement validation. Its numeric water and proposal queries may
+still reuse exact results, so it is not a switch to an uncached kernel. Those caches never authenticate a lease
+or extend a placement certificate across reads.
 
 Horizontal velocity rounds independently per axis to 1/256 m/s and clamps to +/-127 m/s. Speed scale uses the
 existing offset-from-one 1/1024 grid and 0 through 8 range. Heading and climb rate keep their existing wire grids.

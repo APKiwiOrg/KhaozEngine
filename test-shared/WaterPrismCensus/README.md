@@ -97,7 +97,7 @@ tests remain necessary. No timing assertion is installed.
 
 ## Cold and warm memo work
 
-| Case | Cold prep / eval | Cold hits / misses | Next-tick prep / eval | Next-tick hits / misses |
+| Case | Cold prep / eval | Cold small-tier hits / misses | Next-tick prep / eval | Next-tick small-tier hits / misses |
 | --- | --- | --- | --- | --- |
 | bank-across | 32 / 148 | 3 / 4 | 32 / 148 | 3 / 4 |
 | bank-along | 32 / 148 | 3 / 4 | 32 / 129 | 3 / 4 |
@@ -109,9 +109,13 @@ tests remain necessary. No timing assertion is installed.
 | flat-neighbour | 36 / 57 | 3 / 3 | 24 / 61 | 4 / 2 |
 | swim-entry | 48 / 137 | 3 / 4 | 30 / 100 | 3 / 3 |
 
-The table is the committed census baseline, not a timing estimate. All nine coverage digests and published
-span/contact counts retain their pre-optimization values. Moving bodies can miss on the next tick even with a
-warm table. Idle standing and treading reuse all four calls in this fixture.
+The table is the retained census snapshot from before flat/large-result reuse, not a current cost or timing
+estimate. Its hit/miss columns describe the original small-prism tier. Flat and large replays now have separate
+internal ResultHits, ResultMisses, ResultStores and ResultBypasses counters, while MemoHits and MemoMisses keep
+their small-tier meanings. Executed geometry counts exclude work avoided by either tier. All nine coverage
+digests and published span/contact counts retain their pre-optimization values. Moving bodies can miss despite
+warm tables. See the [current water reuse contract](../../KhaozEngine.TileWorld.Physics/README.md#exact-water-query-reuse)
+for lifetimes, bounds and diagnostic meanings. The output golden is not a claim that old kernel counts still execute.
 
 ## Frozen differential kernel contract
 

@@ -33,7 +33,8 @@ namespace KhaozEngine.Render3D
         /// colour pair uses 225 MiB at that size, plus 116.02 MiB of display-grid scratch (341.02 MiB total).
         /// A 3840 by 2160 colour pair would need 506.25 MiB and falls back to
         /// Display by default. Zero and negative values disable Fine. The device's 2D render texture dimension
-        /// limit also applies. A change that leaves the mode in effect unchanged does not reset history.</summary>
+        /// limit and a minimum of six colour attachments also apply. A change that leaves the mode in effect
+        /// unchanged does not reset history.</summary>
         public long HistoryDetailPixelLimit = 2560L * 1440;
 
         /// <summary>The largest distance, in metres, the camera eye may move between two frames and still continue the

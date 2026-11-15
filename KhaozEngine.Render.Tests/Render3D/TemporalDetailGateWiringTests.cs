@@ -12,7 +12,7 @@ public sealed class TemporalDetailGateWiringTests
 {
     [Theory]
     [InlineData("out vec4 oClassification;")]
-    [InlineData("layout(location=3) out vec4 oTransport;")]
+    [InlineData("layout(location=5) out vec4 oChild3;")]
     [InlineData("ivec2 texel = ivec2(gl_FragCoord.xy), pixel = texel / 2;")]
     public void Fine_programs_use_the_renderer_source_rewrite(string programMarker)
     {

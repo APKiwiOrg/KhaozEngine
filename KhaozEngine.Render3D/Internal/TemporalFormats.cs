@@ -33,16 +33,6 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>The two internal-resolution previous depth targets: linear view depth, background at 1e30.</summary>
         public const GpuPixelFormat PreviousDepth = GpuPixelFormat.R32Float;
 
-        /// <summary>The fine detail path's display-resolution history mean, which the update subtracts from each
-        /// single float fetch. It holds the resolve's mean unrounded. A half float mean moves three children by its
-        /// rounding error and the remainder child by three times it on every frame, so the stored mean still holds
-        /// and the stored detail does not.</summary>
-        public const GpuPixelFormat DetailMean = GpuPixelFormat.R32G32B32A32Float;
-
-        /// <summary>The fine detail path's chosen previous UV, retention and path flag. A half float UV loses
-        /// sub-pixel reprojection precision at large display coordinates.</summary>
-        public const GpuPixelFormat DetailTransport = GpuPixelFormat.R32G32B32A32Float;
-
         /// <summary>The fine detail path's trust flags: the active distrust bits and the lock bit as one integer
         /// code.</summary>
         public const GpuPixelFormat DetailClassification = GpuPixelFormat.R8UNorm;

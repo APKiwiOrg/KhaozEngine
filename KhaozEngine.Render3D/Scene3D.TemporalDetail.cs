@@ -17,7 +17,8 @@ public sealed partial class Scene3D
     }
 
     /// <summary>The history grid latched by the last frame's first render. Display before the first render,
-    /// without the temporal resolve, or when Fine exceeds its pixel budget or the device dimension limit.</summary>
+    /// without the temporal resolve, when Fine exceeds its pixel or dimension limits, or when the device has fewer
+    /// than six colour attachments.</summary>
     public TemporalHistoryDetail TemporalHistoryDetailInEffect { get; private set; }
 
     // Admission is evaluated only when Fine is requested on a resolving frame, so the default reads neither the
@@ -26,6 +27,6 @@ public sealed partial class Scene3D
         Post.Temporal.HistoryDetail == TemporalHistoryDetail.Fine && _frameResolves
             ? TemporalDetailMath.Mode(TemporalHistoryDetail.Fine, resolves: true, _latchedDisplayWidth,
                 _latchedDisplayHeight, _gd.Capabilities.MaxRenderTexture2DDimension,
-                Post.Temporal.HistoryDetailPixelLimit)
+                Post.Temporal.HistoryDetailPixelLimit, _gd.Capabilities.MaxColorAttachments)
             : TemporalHistoryDetail.Display;
 }

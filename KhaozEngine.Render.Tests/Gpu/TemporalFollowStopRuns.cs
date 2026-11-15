@@ -164,6 +164,7 @@ namespace KhaozEngine.Tests.Gpu
             else
             {
                 using var fx = new TemporalFixture(W, H, s => { scene.Setup(s, preset); Detail(s); });
+                fx.Scene.TemporalHistory.CaptureDetailPathForTests = true;
                 fx.SkipPhases(phase);
                 fx.Frames(first, scene.Draw);
                 using var probe = new TemporalDetailGateReadback(fx);

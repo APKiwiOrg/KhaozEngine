@@ -13,8 +13,8 @@ internal static partial class TemporalDetailMath
     }
 
     internal static TemporalHistoryDetail Mode(TemporalHistoryDetail requested, bool resolves, int width,
-        int height, uint deviceLimit, long pixelLimit) => requested == TemporalHistoryDetail.Fine && resolves
-            && pixelLimit > 0 && (long)width * height <= pixelLimit && Extent(width, height, deviceLimit).HasValue
+        int height, uint deviceLimit, long pixelLimit, int colorAttachments) => requested == TemporalHistoryDetail.Fine && resolves
+            && colorAttachments >= 6 && pixelLimit > 0 && (long)width * height <= pixelLimit && Extent(width, height, deviceLimit).HasValue
             ? TemporalHistoryDetail.Fine : TemporalHistoryDetail.Display;
 
     internal static (int X, int Y) DisplayPixel(int fineX, int fineY) => (fineX / 2, fineY / 2);

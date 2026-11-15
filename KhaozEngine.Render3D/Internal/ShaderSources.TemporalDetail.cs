@@ -25,8 +25,11 @@ void main() {
     oClassification = vec4((float(detailDistrust(flags) | (flags & 32u)) + 0.25) / 255.0) + vec4(vUv.x * 1.0e-30);
 }";
 
-    internal static string TemporalDetailResolveFragment(TemporalResolvePrecision precision) =>
-        TemporalDetailCore(precision, 1) + TemporalDetailMainGlsl;
+    internal static string TemporalDetailResolveFragment(TemporalResolvePrecision precision, bool capturePathForTests = false) =>
+        TemporalDetailCore(precision, 1) + TemporalDetailStoredResultGlsl + TemporalDetailChildrenGlsl
+        + (capturePathForTests ? "\nlayout(location=6) out vec4 oTransport;\n" : "")
+        + TemporalDetailMainGlsl.Replace("    // Live path observation.",
+            capturePathForTests ? "    oTransport = detailTransport;" : "", System.StringComparison.Ordinal);
 
     internal static string TemporalDetailDebugFragment(TemporalResolvePrecision precision) =>
         TemporalDetailCore(precision, 2) + "\n#define temporalResolvePixel temporalDetailPixel\n" + TemporalDebugMainGlsl;
@@ -35,7 +38,8 @@ void main() {
         TemporalDetailCore(precision, 1) + "\n#define temporalResolvePixel temporalDetailPixel\n" + TemporalProbeMainGlsl;
 
     static string TemporalDetailCore(TemporalResolvePrecision precision, int detailSet) =>
-        "#version 450\n" + DetailPrecision(precision) + TemporalResolvePreparationGlsl +
+        "#version 450\n" + DetailPrecision(precision)
+        + (precision == TemporalResolvePrecision.Half ? "#define DetailTruncateResult\n" : "") + TemporalResolvePreparationGlsl +
         "\nlayout(set=" + detailSet + @", binding=0) uniform texture2D DetailColor;
 layout(set=" + detailSet + @", binding=1) uniform texture2D DetailClassification;
 ivec2 detailPixel;
@@ -83,14 +87,18 @@ TemporalPixel temporalDetailPixel(ivec2 pixel) {
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oState;
-layout(location=2) out vec4 oMean;
-layout(location=3) out vec4 oTransport;
+layout(location=2) out vec4 oChild0;
+layout(location=3) out vec4 oChild1;
+layout(location=4) out vec4 oChild2;
+layout(location=5) out vec4 oChild3;
 void main() {
     TemporalPixel p = temporalDetailPixel(ivec2(gl_FragCoord.xy));
     oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);
     oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), p.drift, p.swing);
-    oMean = detailMean;
-    oTransport = detailTransport;
+    vec4 r = detailStoredResult(vec4(p.color, p.alpha));
+    detailChildren(r, detailMean, detailA, detailB, detailC, detailD, detailTransport.z,
+        oChild0, oChild1, oChild2, oChild3);
+    // Live path observation.
 }";
 
     internal const string TemporalDetailFetchGlsl = @"
@@ -99,11 +107,13 @@ void main() {
 " + TemporalHistorySampleGlsl + @"
 #undef sampleHistoryCatmullRom
 #undef HistoryColor
+vec4 detailA, detailB, detailC, detailD;
 vec4 detailMeanAt(vec2 uv, vec2 size) {
     vec4 a = detailFetch(uv + vec2(-0.25,-0.25) / size, size * 2.0);
     vec4 b = detailFetch(uv + vec2( 0.25,-0.25) / size, size * 2.0);
     vec4 c = detailFetch(uv + vec2(-0.25, 0.25) / size, size * 2.0);
     vec4 d = detailFetch(uv + vec2( 0.25, 0.25) / size, size * 2.0);
+    detailA = a; detailB = b; detailC = c; detailD = d;
     return ((a + b) + (c + d)) * 0.25;
 }
 ";

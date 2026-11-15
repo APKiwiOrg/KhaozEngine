@@ -7,14 +7,16 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class TemporalDetailMathTests
 {
     [Theory]
-    [InlineData(128u, true, TemporalHistoryDetail.Fine)]
-    [InlineData(127u, true, TemporalHistoryDetail.Display)]
-    [InlineData(0u, true, TemporalHistoryDetail.Display)]
-    [InlineData(128u, false, TemporalHistoryDetail.Display)]
+    [InlineData(128u, true, TemporalHistoryDetail.Fine, 8)]
+    [InlineData(128u, true, TemporalHistoryDetail.Fine, 6)]
+    [InlineData(128u, true, TemporalHistoryDetail.Display, 5)]
+    [InlineData(127u, true, TemporalHistoryDetail.Display, 8)]
+    [InlineData(0u, true, TemporalHistoryDetail.Display, 8)]
+    [InlineData(128u, false, TemporalHistoryDetail.Display, 8)]
     public void The_scene_reports_fallback_before_creating_any_fine_target(uint dimensionLimit, bool resolves,
-        TemporalHistoryDetail expected)
+        TemporalHistoryDetail expected, int attachments)
     {
-        using var rig = new HeadlessSceneRig(maxRenderTexture2DDimension: dimensionLimit);
+        using var rig = new HeadlessSceneRig(maxColorAttachments: attachments, maxRenderTexture2DDimension: dimensionLimit);
         rig.Scene.Post.Quality.AntiAliasing = resolves ? AntiAliasing.Temporal : AntiAliasing.Off;
         rig.Scene.ForceTemporalForTests = true;
         rig.Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Fine;
@@ -54,9 +56,9 @@ public sealed class TemporalDetailMathTests
         uint deviceLimit, long pixelLimit, TemporalHistoryDetail expected)
     {
         Assert.Equal(expected, TemporalDetailMath.Mode(TemporalHistoryDetail.Fine, resolves,
-            width, height, deviceLimit, pixelLimit));
+            width, height, deviceLimit, pixelLimit, 8));
         Assert.Equal(TemporalHistoryDetail.Display, TemporalDetailMath.Mode(TemporalHistoryDetail.Display,
-            resolves, width, height, deviceLimit, pixelLimit));
+            resolves, width, height, deviceLimit, pixelLimit, 8));
     }
 
     [Fact]
@@ -65,11 +67,11 @@ public sealed class TemporalDetailMathTests
         var settings = new PixelPostProcessSettings().Temporal;
         Assert.Equal(TemporalHistoryDetail.Display, settings.HistoryDetail);
         Assert.Equal(TemporalHistoryDetail.Fine, TemporalDetailMath.Mode(TemporalHistoryDetail.Fine,
-            true, 2560, 1440, 16384, settings.HistoryDetailPixelLimit));
+            true, 2560, 1440, 16384, settings.HistoryDetailPixelLimit, 8));
         Assert.Equal(TemporalHistoryDetail.Display, TemporalDetailMath.Mode(TemporalHistoryDetail.Fine,
-            true, 3840, 2160, 16384, settings.HistoryDetailPixelLimit));
+            true, 3840, 2160, 16384, settings.HistoryDetailPixelLimit, 8));
         Assert.Equal(TemporalHistoryDetail.Display, TemporalDetailMath.Mode((TemporalHistoryDetail)99,
-            true, 1, 1, 16384, long.MaxValue));
+            true, 1, 1, 16384, long.MaxValue, 8));
     }
 
     [Theory]

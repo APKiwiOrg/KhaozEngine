@@ -75,6 +75,7 @@ public sealed class TemporalMotionClarityScene : IDisposable
                 TemporalTestResolve.Install(_fixture, source => TemporalDetailGateVariants.Rewrite(source, _gate));
         }
         TemporalFixture fx = _fixture;
+        fx.Scene.TemporalHistory.CaptureDetailPathForTests = observe is not null;
         if (fx.DisplayWidth != W * factor) fx.Resize(W * factor, H * factor);
         void Draw(int frame, bool readback, out byte[] pixels)
         {

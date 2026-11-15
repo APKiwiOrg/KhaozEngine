@@ -4928,9 +4928,11 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   into the next generation while their stored mean stays within one binary16 step of the display result.
   Still pixels and distrusted footprints use the original display-history expressions and replicate their
   stored result exactly. There is no new presentation filter. The update runs before distortion, bloom and
-  tonemapping. Display-sized scratch holds R8 trust flags, an RGBA32F mean and RGBA32F chosen UV,
-  retention and path flag. The mean and the reprojection both need full precision. The temporal
-  resolve must be active, the extent must fit the device's 2D render texture dimension limit, and the display's
+  tonemapping. The resolve computes all four children once, retaining the mean and reprojection in float32
+  locals, and writes R, state and four RGBA16F children. The fine-grid pass point-loads the child selected
+  by texel parity. Display-sized scratch holds R8 trust flags and the four child targets. The temporal
+  resolve must be active, the device must allow at least six colour attachments, the extent must fit the
+  device's 2D render texture dimension limit, and the display's
   pixel count must fit the inclusive `Post.Temporal.HistoryDetailPixelLimit`. That budget defaults to 3,686,400,
   admitting 2560 by 1440 with 225 MiB for the extra pair and 116.02 MiB of scratch, 341.02 MiB total
   (97 bytes a display pixel, excluding ordinary Display targets and driver overhead).

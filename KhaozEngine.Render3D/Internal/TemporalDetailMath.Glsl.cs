@@ -15,8 +15,8 @@ bool detailUseFine(float motion, bool locked, uint distrust, uint neighbourDistr
 }
 ";
 
-    // Pure transport and trust rules. CPU mirrors are in Transport.cs. R is rounded before retention is computed,
-    // and the update point-loads that same stored R. The fourth child uses the three already-rounded values.
+    // Pure transport and trust rules. CPU mirrors are in Transport.cs. Retention keeps its nearest-even projection.
+    // Transport receives attachment-rounded R, and the fourth child uses the three already-rounded values.
     internal const string Glsl = @"
 bool detailFinite(float v) { return (floatBitsToUint(v) & 0x7f800000u) != 0x7f800000u; }
 bool detailFinite4(vec4 v) { return detailFinite(v.x) && detailFinite(v.y) && detailFinite(v.z) && detailFinite(v.w); }

@@ -150,7 +150,8 @@ The resolve keeps its original reconstruction, clipping, releases and weights. O
 colour fetch changes on admitted moving pixels. Display composes and runs the original shader programs.
 
 The first render latches `Scene3D.TemporalHistoryDetailInEffect`. Fine requires the temporal resolve,
-an extent within `GpuCapabilities.MaxRenderTexture2DDimension`, and a display pixel count at or below
+at least six `GpuCapabilities.MaxColorAttachments`, an extent within
+`GpuCapabilities.MaxRenderTexture2DDimension`, and a display pixel count at or below
 `Post.Temporal.HistoryDetailPixelLimit`. Unknown device limits refuse Fine. The pixel budget defaults to
 3,686,400, so 2560 by 1440 is admitted and 3840 by 2160 falls back to Display. The additional pair costs
 225 MiB and 506.25 MiB respectively. Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
@@ -165,34 +166,32 @@ rounds the sampled code back to an integer and uses its own unchanged chosen mot
 nor motion needs exporting. The classifier exports only the distrust observations the selected gate
 reads and the lock bit. Diagnostic attribution replays the classifier before this packing.
 
-The exported mean is RGBA32F. Hbar and retention are computed in float32 inside the resolve, and the
-update subtracts that same Hbar from each of its float32 fetches, so the four deviations sum to zero
-before rounding. The update's channel limits include the fourth child's implied deviation, and the
-remainder is computed from stored R and the first three stored children. That remainder keeps the stored
-mean within one binary16 step of R whatever the mean's precision. It does not keep the detail: a mean
-rounded by `e` moves the first three children by `-k e` and the remainder by `+3 k e` on every frame,
-an error of up to 2^-11 of the value at texel scale that the retention then carries forward. An RGBA16F
-mean was measured on MetalNative and withdrawn. With it, 553 of 1,784 captured report-only cells changed
-their `Fine` value against the full-float mean (typically by 0.2 percent, by 5 percent in the median
-follow stop cell, whose residuals sit near zero), and one direct follow stop cell crossed its bound
-(0.0103 against 0.01, 0.0040 with the full-float mean). With the full-float mean all 5,134 report-only
-records and the 36 rig cells return bit for bit. `TemporalFormats.DetailMean` is the one home of that
-format, and the
-`mean-between-halves` row of `TemporalDetailUpdateGpuTests` fails if it becomes a half format. Chosen
-previous UV, retention and the fine-path flag are RGBA32F too (`TemporalFormats.DetailTransport`). Half
-UVs would lose sub-pixel reprojection precision at large display coordinates.
-No extra backend format or target pool is introduced. The fine pair retains its history lifetime,
-and the three scratch targets remain owned by that generation's pass.
+The resolve computes each display pixel's four children once, from the four fine fetches it already
+holds. Hbar stays a float32 local through retention and transport. Rounding it to binary16 would move
+three children by `-k e` and the remainder by `+3 k e` every frame for a mean error `e`. The
+`mean-between-halves` row of `TemporalDetailUpdateGpuTests` guards this precision in the transport helper.
+No mean or reprojection target crosses the production pass boundary.
+
+The resolve writes six attachments: display colour R, state, and four display-sized RGBA16F child
+textures. The fine-grid store selects one child by texel parity and point-loads it without transport
+arithmetic. Its four outputs already contain the final stored values. Metal's half-precision entry
+emulates the RGBA16F attachment's truncation for the R the children use. Retention keeps its original
+nearest-even projection. These are separate conversions, and changing either changes history. The
+`TemporalDetailResultGpuTests` conversion oracle straddles normal and subnormal half boundaries.
+
+The fine pair and scratch targets retain the history generation's lifetime. A test-only extra RGBA32F
+output can observe the live chosen UV, retention and path flag when explicitly requested, so attribution
+and path parity still compare against the actual resolve. Production draws have no full-float attachment.
 
 Each display pixel takes one of two paths:
 
 - Coarse fetches the display-sized colour history at the shipped position with the shipped expressions.
-  Its four fine texels point-load stored R without deviation or remainder arithmetic.
+  Its four child outputs replicate stored R without deviation or remainder arithmetic.
 - Fine fetches the four fine texel centres, a quarter display pixel either side of the pixel centre on each
   axis, shifted by the chosen reprojection. Each fetch uses the shipped five-tap Catmull-Rom and its
   nearest-four clamp, in fine coordinates. Their mean Hbar replaces the central history colour. Every
-  downstream resolve rule is shared with Display. The update recomputes the same fetches and transports
-  the surviving deviations around the stored R.
+  downstream resolve rule is shared with Display. The resolve transports the surviving deviations around
+  stored R once and the fine-grid store copies the completed children.
 
 A pixel goes coarse for any of these reasons:
 
@@ -218,8 +217,9 @@ their original effects on R, the current weight and state.
 #### Bounded transport and the stored mean
 
 The scalar retention is `clamp(dot(R-c,Hbar-c)/dot(Hbar-c,Hbar-c),0,1-w)` in history colour space.
-Here R is rounded to its actual store format, c is the resolve's current reconstruction and w its current
-weight. A zero denominator keeps `1-w`. Rejected history retains zero. For each channel, alpha included,
+For this scalar, R uses the resolve's original nearest-even binary16 projection, c is the current
+reconstruction and w its current weight. The channel transport uses attachment-stored R, including
+Metal's truncation. A zero denominator keeps `1-w`. Rejected history retains zero. For each channel, alpha included,
 limit retention by `R / -deviation` for every negative deviation, and by
 `(65504-R) / deviation` for every positive deviation. This is the greatest admissible retention up to the
 scalar value that keeps the unrounded children inside the finite nonnegative binary16 range.
@@ -245,7 +245,7 @@ outside the range, clamping it moves it toward the original fourth child. The re
 most the sum of the first three rounding errors. Their spacings sum to at most 8U: for normal R, spacing is
 a power of two and three children with a larger spacing sum would already exceed 4R. Subnormal spacing is
 constant and satisfies the same bound. Half that spacing sum, divided by four for the mean, is at most U.
-The float32 remainder constraint covers both computed-Hbar residual and exported-mean rounding. The
+The float32 remainder constraint covers the computed-Hbar residual. The
 outward-rounding guard keeps limiting arithmetic on the safe side of both endpoints.
 
 Headless property checks cover the gate, scalar retention, per-channel bounds, subnormals, zero and removed
@@ -267,39 +267,44 @@ indices, mode and generation alone. Turning the temporal resolve off retires the
 
 #### Cost capture
 
-On 2026-11-15 UTC, MetalNative on an Apple M2 Max measured the existing moving thin field over its textured
+On 2026-11-15 UTC, MetalNative on an Apple M2 Max measured the moving thin field over its textured
 wall with a followed wide box at a 2560 by 1440 display. Native rendered internally at 2560 by 1440,
 Quality at 1707 by 960. Each case used four warm frames and eight measured frames on a shared machine.
-All times are native GPU timestamp medians from the on-demand `TemporalDetailCostPerfGpuTests`, never
-timing gates. `temporal.detail-classify`, `temporal.resolve` and `temporal.detail-store` have separate
-intervals. Default split Display is the engine's default entry, whose prepare and accumulate passes are P
-and A below. Fused Display is the matched kernel control for Fine's resolve.
+Times are native GPU timestamp medians from the on-demand `TemporalDetailCostPerfGpuTests`, never timing
+gates. The before capture uses the full-float mean and transport. The after capture computes the four
+children in the resolve and point-copies them in the fine-grid store.
 
-| Preset | Mode | Resolve ms | Classify ms | Update ms | Retained B/px (MiB) | Scratch B/px (MiB) | Total B/px (MiB) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Native | Display fused control | 3.599 | absent | absent | 0 (0) | 0 (0) | 0 (0) |
-| Native | Display default split | P 0.791 + A 1.985 | absent | absent | 0 (0) | 24.00000 (84.38) | 24.00000 (84.38) |
-| Native | Fine | 6.774 | 5.777 | 3.845 | 64 (225.00) | 33 (116.02) | 97 (341.02) |
-| Quality | Display fused control | 2.977 | absent | absent | 0 (0) | 0 (0) | 0 (0) |
-| Quality | Display default split | P 0.543 + A 2.108 | absent | absent | 0 (0) | 10.66875 (37.51) | 10.66875 (37.51) |
-| Quality | Fine | 6.674 | 5.491 | 3.982 | 64 (225.00) | 33 (116.02) | 97 (341.02) |
+| Preset | Mode | Pass | Before median ms (min to max) | After median ms (min to max) |
+| --- | --- | --- | --- | --- |
+| Native | DisplaySplit | `temporal.prepare` | 0.791 (0.770 to 0.847) | 0.788 (0.672 to 1.408) |
+| Native | DisplaySplit | `temporal.accumulate` | 1.985 (1.942 to 2.300) | 1.928 (1.851 to 2.045) |
+| Native | Display | `temporal.resolve` | 3.599 (2.909 to 3.896) | 3.018 (2.793 to 3.247) |
+| Native | Fine | `temporal.detail-classify` | 5.777 (5.150 to 6.278) | 5.749 (5.331 to 6.211) |
+| Native | Fine | `temporal.resolve` | 6.774 (6.474 to 7.355) | 7.918 (7.646 to 8.697) |
+| Native | Fine | `temporal.detail-store` | 3.845 (3.790 to 5.058) | 0.730 (0.703 to 1.522) |
+| Quality | DisplaySplit | `temporal.prepare` | 0.543 (0.489 to 0.978) | 0.537 (0.475 to 1.045) |
+| Quality | DisplaySplit | `temporal.accumulate` | 2.108 (1.912 to 2.873) | 1.908 (1.879 to 2.227) |
+| Quality | Display | `temporal.resolve` | 2.977 (2.814 to 3.603) | 3.153 (2.815 to 3.648) |
+| Quality | Fine | `temporal.detail-classify` | 5.491 (4.971 to 6.044) | 5.450 (5.263 to 5.910) |
+| Quality | Fine | `temporal.resolve` | 6.674 (6.429 to 7.452) | 7.712 (7.377 to 8.117) |
+| Quality | Fine | `temporal.detail-store` | 3.982 (3.870 to 4.369) | 0.700 (0.668 to 1.127) |
 
-Payload is source-derived uncompressed storage, excluding unchanged ordinary histories, scene/post
-targets, optional diagnostics, retired generations and driver overhead. Retained is the fine colour
-pair. Scratch content is transient, but its textures remain allocated with the pass: one byte of trust
-flags, sixteen of mean and sixteen of UV, retention and path flag a display pixel. Display split's
-existing internal-grid preparation workspace is included. The 341.02 MiB total is above the report-only
-260 MiB target.
+Native's median of each frame's summed fine intervals is 14.663 ms (13.761 to 15.434), against default split's 2.733 ms. The difference is 11.931 ms.
+Quality's median of each frame's summed fine intervals is 13.873 ms (13.452 to 14.562), against default split's 2.507 ms. The difference is 11.366 ms.
+The report-only aim is Fine within 3 ms of default split at Native. No timing assertion is added.
 
-The medians of each frame's summed fine intervals are 16.552 ms at Native and 16.481 ms at Quality.
-Against default split's summed intervals, 2.786 ms and 2.822 ms respectively, the differences are
-13.766 ms and 13.659 ms. This exceeds the report-only 1.5 ms target. The structure explains it: the
-classification replays the complete candidate accumulation, the resolve repeats it, and the update runs
-the four fine fetches and the four channel transports once for each of a display pixel's four children.
-Split prepare also writes ordinary depth, while Fine's separate depth store is outside these fine
-intervals. These small blocks on a shared machine are not paired causal measurements, whole-frame
-timings or a steady-state residency proof. Native Vulkan, Direct3D 11 and consumer acceptance remain
-separate proof.
+Payload remains 64 retained and 33 scratch bytes a display pixel: a fine RGBA16F pair, one R8
+classification target and four display-grid RGBA16F child targets. At 1440p these are 225.00 MiB and
+116.02 MiB, 341.02 MiB total. The source-derived payload excludes unchanged ordinary histories,
+scene/post targets, optional diagnostics, retired generations and driver overhead. It is not residency.
+Display split's existing preparation workspace is 24 bytes an internal texel.
+
+The resolve now pays transport once per display pixel using its four held fetches. The fine-grid store
+only copies a selected child. Classification still replays the complete candidate accumulation. Split
+prepare also writes ordinary depth, while Fine's separate depth and visibility stores are outside its
+three named intervals. Markers end the active Metal encoder, and each interval includes its pass
+switches. These small shared-machine blocks are not paired causal measurements, whole-frame times or
+a steady-state residency proof. Native Vulkan, Direct3D 11 and consumer acceptance remain separate proof.
 
 ## Shimmer record
 

@@ -60,10 +60,11 @@ internal sealed class TemporalMotionClarityProbe : IDisposable
                 + (fine ? " + 2.0 * detailTransport.w" : "") + " + vUv.x * 1.0e-30);");
         if (fine)
         {
-            source = Replace(source, "layout(location=2) out vec4 oMean;", "");
-            source = Replace(source, "layout(location=3) out vec4 oTransport;", "");
-            source = Replace(source, "    oMean = detailMean;", "");
-            source = Replace(source, "    oTransport = detailTransport;", "");
+            for (int child = 0; child < 4; child++)
+                source = Replace(source, $"layout(location={child + 2}) out vec4 oChild{child};", "");
+            source = Replace(source, "    vec4 r = detailStoredResult(vec4(p.color, p.alpha));\n"
+                + "    detailChildren(r, detailMean, detailA, detailB, detailC, detailD, detailTransport.z,\n"
+                + "        oChild0, oChild1, oChild2, oChild3);", "");
         }
         return Replace(source,
             "oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), p.drift, p.swing);",

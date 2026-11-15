@@ -26,7 +26,7 @@ public sealed class TemporalDetailTransportTests
                 GpuPixelFormat.R16G16Float, GpuTextureUsage.Sampled));
             using var renderer = new TemporalResolveRenderer(device);
             var inputs = new TemporalResolveInputs(history.Color(0), history.Color(0), history.PreviousDepth(0), motion);
-            factory.ThrowOnTextureFormat = GpuPixelFormat.R32G32B32A32Float;
+            factory.ThrowOnTextureFormat = TemporalFormats.HistoryColor;
             Assert.Throws<InvalidOperationException>(() => renderer.BindInputs(inputs, history));
             Assert.False(renderer.HoldsSetsForTests);
             factory.ThrowOnTextureFormat = null;

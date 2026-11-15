@@ -11990,13 +11990,18 @@ half sets `DissolveComplement = 1` to keep `mask < t` in colour and shadow. Sele
 With one active representation handoff, coincident surfaces cover each noise value exactly once.
 When the draw-radius exit band overlaps the HLOD band, its progress `e` reserves one shared gap instead:
 individuals keep `mask >= e + t * (1 - e)`, and the merged complement keeps `mask < t * (1 - e)`.
-The gap has width `e`, so the pair fades out together in colour, shadows and selected outlines. The individual
-emitter still takes the maximum of this floor and each placement's own exit fade. If the exit starts before
-the individual skip gate, the merged mesh keeps the complement past that gate and the crossfade end. Its
-threshold reaches `1 - e` at `t = 1` and fades to nothing at `DrawRadius`, without reversing the noise phase.
-Before the merged skip gate, individuals use an ordinary exit fade. Exits starting at or after the individual
-skip gate retain the ordinary merged exit. Separated bands, hard swaps and the pre-crossfade exit state also
-keep their existing draw state.
+The reserved gap has width `e`, but its location moves with `t`. Samples below `t * (1 - e)` can return on the
+merged mesh during an overlapping exit, a known limitation tracked in
+[#1810](https://github.com/APKiwiOrg/KhaozEngine/issues/1810). Colour, shadows and selected outlines use this
+same composition. The individual emitter still takes the maximum of this floor and each placement's own exit
+fade. If the exit starts before the individual skip gate, the merged mesh keeps the complement past that gate
+and the crossfade end. Its threshold reaches `1 - e` at `t = 1` and fades to nothing at `DrawRadius`, without
+reversing the noise phase.
+Before the merged skip gate, only individuals draw, keeping `mask >= e`. The exit band cannot enable the merged
+mesh before `PropHlod.DrawsHlodMerged` admits the handoff
+([#1807](https://github.com/APKiwiOrg/KhaozEngine/issues/1807)). A hard swap enables the merge at `HlodDistance`,
+where its ordinary exit fade keeps the same noise set as the individuals. Exits starting at or after the
+individual skip gate retain the ordinary merged exit, and separated bands keep their existing draw state.
 Overlapping individual LOD and HLOD bands retain their existing three-way gap composition.
 Different silhouettes can still expose holes because
 they sample different world positions (#1296). The transition remains deterministic by distance with no
@@ -23887,8 +23892,12 @@ transaction. `ReadTextSnapshotAsync` reads one exact version's text, `TryDiscard
 draft the caller read, `RollbackTextToAsync` restores rows and strings together, and `ExportBundleAsync` writes
 format 2 once a version declares a language. `ImportTextBundleAsync` imports either format. Both it and the
 row-only `ImportBundleAsync` refuse with `DraftOpen` and `draft-open` while an open draft holds any row, text
-or language work, before staging and without changing the draft. An empty open draft does not block. Other
-row-only members refuse with `text-unrepresented` rather than drop held text.
+or language work, before staging and without changing the draft. An empty open draft does not block.
+Staging freezes the import's draft atomically. Rival draft changes refuse with `PublishInProgress` and
+`publish-in-progress` until commit or failure reset, and can be retried afterward. A failure after commit
+preserves the published version and any later draft. A failed ordinary publish at base 0 racing the import can
+still release the freeze early ([#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813)). Other row-only members refuse with `text-unrepresented`
+rather than drop held text.
 `KhaozEngine.Catalog.Authoring/README.md` documents the limits, the legacy refusals and every
 reason token.
 
@@ -26991,6 +27000,11 @@ or `Dispatch`). Refusal precedes native commands, recorded operations, encoder o
 of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
 and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
 ([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+
+`SetPipeline(null)` and `SetComputePipeline(null)` throw `ArgumentNullException` with `ParamName` equal to `p`
+at the call on Metal, Vulkan and both Direct3D 11 drivers. Null is not an unbind operation. Refusal emits or records
+nothing and preserves the current binding
+([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
 
 A lost Metal or Vulkan timestamp device uses `GpuTimestampStateException` with
 `TimestampDeviceUnavailable` and `Backend`. Direct3D 11 uses `GpuTimestampDisposedException` with the

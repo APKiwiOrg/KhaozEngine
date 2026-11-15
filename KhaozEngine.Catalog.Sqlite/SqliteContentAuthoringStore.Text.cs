@@ -129,19 +129,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
         ContentVersionTextSnapshot baselineText = await ReadTextSnapshotAtAsync(active, transaction, cancellationToken)
             .ConfigureAwait(false);
 
-        using (SqliteCommand freeze = Command(
-            """
-            UPDATE catalog_draft
-            SET frozen_for_base_version = $base,
-                updated_at_utc = CASE WHEN frozen_for_base_version IS $base THEN updated_at_utc ELSE $now END
-            WHERE draft_key = 1;
-            """,
-            transaction))
-        {
-            Bind(freeze, "$base", (long)active);
-            Bind(freeze, "$now", Millis(_clock()));
-            await freeze.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
+        await MarkDraftFrozenAsync(active, transaction, cancellationToken).ConfigureAwait(false);
 
         var snapshot = new ContentTextPublishSnapshot(
             await ReadEpochAsync(transaction, cancellationToken).ConfigureAwait(false),

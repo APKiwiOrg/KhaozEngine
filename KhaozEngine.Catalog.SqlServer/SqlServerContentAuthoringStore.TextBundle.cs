@@ -16,8 +16,8 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// format is resolved first, a format 1 bundle converting explicitly to empty text, and every value's target
 /// is checked against the bundle's rows and this registry before anything is staged. The row edits, one Set
 /// per value with its audit row, and every declared language with its exact wire spelling, empty ones
-/// included, then land in ONE Serializable draft transaction, which the ordinary text publish commits as a
-/// complete version 1. Any refusal after staging began resets the database to empty.
+/// included, then land and freeze in ONE Serializable draft transaction, which the ordinary text publish commits as a
+/// complete version 1. A pre-commit refusal after staging began resets the database to empty.
 /// </para>
 /// </summary>
 public sealed partial class SqlServerContentAuthoringStore
@@ -26,7 +26,7 @@ public sealed partial class SqlServerContentAuthoringStore
     /// <remarks>
     /// A format 1 bundle imports as empty text. A format 2 bundle that lost its section, a later format, an
     /// open draft holding any work, a value naming a row the bundle does not carry and an ineligible target are
-    /// refused before anything is staged. Any refusal after staging began resets this database to empty,
+    /// refused before anything is staged. A pre-commit refusal after staging began resets this database to empty,
     /// exactly as the row import does.
     /// </remarks>
     public async Task<ContentPublishResult> ImportTextBundleAsync(

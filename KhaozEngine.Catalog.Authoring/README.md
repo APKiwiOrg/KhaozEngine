@@ -1221,6 +1221,15 @@ any row, text or language work before staging, with `Refusal` `DraftOpen`, `Reas
 `MemberName`, `RowEditCount`, `TextEditCount` and `LanguageIntroductionCount`. The draft stays unchanged.
 An open draft with no work does not block an import.
 
+The pending-work check, staging and draft freeze share one gate or transaction. The freeze then holds through
+the ordinary publish commit or the import's failure reset. Rival row or text applies, discards and imports
+refuse with `PublishInProgress` and `publish-in-progress`, carrying `MemberName` and `FrozenForBaseVersion`
+0. Retry that intent after the import ends. Version 1 contains only the bundle's work. A pre-commit failure
+resets the staged import while its draft remains frozen. Once a version commits, a later sweep or audit failure
+preserves it and any new draft, so callers read the active version before retrying a failed import. The freeze
+marker names only a base version, so an ordinary publish at base 0 that starts during the import and fails before
+commit still releases it early, a known gap tracked in [#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813).
+
 A lossless export is NOT a backup, and the difference is the version LINE. An import republishes at version
 1, so the new database's history starts there. A durable page carries the version number it was stamped
 with, and a rule applies to a stamp strictly older than its own version, so a page stamped 46 against a
@@ -1466,8 +1475,9 @@ section and any later format are refused with `bundle-format`, the later format 
 `BundleVersionUnsupported`, a value naming a row the bundle does not carry
 with `unknown-row`, and an ineligible target with `text-target-ineligible`, all before anything is reset or
 staged. An open draft holding any row, text or language work refuses the import with `draft-open` and stays as
-it was. A later refusal restores the empty store. Every declared language keeps its wire spelling, empty ones
-included.
+it was. Its draft freezes as part of staging, as on the row import. A pre-commit refusal restores the empty
+store while that freeze still holds. A failure after commit leaves the published version and later work
+intact. Every declared language keeps its wire spelling, empty ones included.
 
 `ExportBundleAsync(n)` writes format 1 when version N declares no language, so a text-free catalog's export
 stays byte-identical, and format 2 with every declared language and value otherwise, even with no value. The

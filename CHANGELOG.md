@@ -6,7 +6,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 23.13.1
 
-2026-11-15
+2026-11-16
 
 - `GridPathPlanner` skips A* when a bounded weak-component certificate proves that every admitted goal is
   disconnected and no component node improves on the start's existing physical progress score. The cached
@@ -24,6 +24,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `InvalidOperationException`, which the new exception still derives from, while Vulkan and Direct3D 11 could emit
   the draw with stale or missing state. Pipeline bindings stay separate, survive framebuffer and pass changes, and
   reset at `Begin` ([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+- `SetPipeline` and `SetComputePipeline` refuse a null pipeline with `ArgumentNullException` (`ParamName` `p`) on
+  Metal, Vulkan and both Direct3D 11 drivers, before any native call, recorded operation or bound-state change, and
+  the pipeline bound before the refused call stays usable. Deferred Direct3D 11 used to record the null bind and fail
+  only at replay after `Submit`, immediate Direct3D 11 named the parameter `pipeline`, and Vulkan threw
+  `GpuResourceOwnershipArgumentException`. A null bind was never a supported unbind
+  ([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
 - Native Vulkan `WaitForIdle` destroys the resources disposed before the call and frees the memory chunks their
   destruction releases, so a headless tool, render-to-texture service or test fixture that never presents no longer
   grows device memory without bound. `Present` still reclaims every frame. A resource that newer unfinished work
@@ -34,9 +40,15 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   HLOD crossfade. Exit progress `e` reserves one shared gap, so individuals keep `mask >= e + t * (1 - e)` and the
   merged complement keeps `mask < t * (1 - e)` in colour, shadows and selected outlines, and the pair fades out
   together with no doubled coverage. The merged mesh keeps that phase after the individuals are skipped, so no
-  surface sample disappears and reappears at the handoff gate. Separated bands, hard swaps and exits that start
-  after the individuals are skipped keep their draw state
-  ([#1542](https://github.com/APKiwiOrg/KhaozEngine/issues/1542)).
+  surface sample disappears and reappears at the handoff gate. Separated bands and exits that start after the
+  individuals are skipped keep their draw state ([#1542](https://github.com/APKiwiOrg/KhaozEngine/issues/1542)). The
+  reserved gap moves with `t`, so samples below `t * (1 - e)` can return on the merged mesh during an overlapping exit
+  ([#1810](https://github.com/APKiwiOrg/KhaozEngine/issues/1810)).
+- An exit band that starts before the HLOD handoff no longer submits the merged mesh early. Until the crossfade
+  starts, or until a hard swap reaches `HlodDistance`, only the individuals draw with their ordinary exit fade, so the
+  simplified HLOD silhouette no longer shows over the props it replaces and no surface is covered twice. A hard swap
+  turns the merged mesh on at `HlodDistance` with the same exit fade. Colour, shadows and selected outlines share the
+  decision ([#1807](https://github.com/APKiwiOrg/KhaozEngine/issues/1807)).
 - Native `MapEditSession.Mutate` callbacks keep every edit they make before or after staging a command, including
   roots outside its write set such as foliage and `DisplayName`, replaced collections and shared members the callback
   restores. The final document publishes as one validated snapshot with matching effects, undo and redo, and a
@@ -59,6 +71,14 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   still runs the live position, radius and probe length checks on every call. Other rotations, signed-zero
   variants, reference evaluation and platforms whose controls cannot be read use the original predicate. Results
   are unchanged, with no public API change ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
+- Catalog `ImportBundleAsync` and `ImportTextBundleAsync` hold the draft freeze from staging through publication on
+  the in-memory, SQLite and SQL Server stores. A rival edit, discard or import that arrives meanwhile is refused with
+  `ContentAuthoringRefusal.PublishInProgress` and can retry once the import ends. It used to join the imported draft,
+  where it shipped unreviewed inside version 1 or was lost by a failed import's reset. A failure before commit still
+  resets the store to empty, and a failure after commit, such as a pack sweep error, keeps the published version and
+  any later draft ([#1252](https://github.com/APKiwiOrg/KhaozEngine/issues/1252)). The freeze names only a base
+  version, so a failed ordinary publish at base 0 racing the import can still release it early
+  ([#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813)).
 
 ## 23.13.0
 

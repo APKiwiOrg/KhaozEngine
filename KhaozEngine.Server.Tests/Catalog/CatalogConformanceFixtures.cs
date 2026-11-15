@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
+using KhaozEngine.Catalog.Sqlite;
+using KhaozEngine.Catalog.SqlServer;
 
 namespace KhaozEngine.Tests.Catalog;
 
@@ -33,6 +36,19 @@ internal sealed record CatalogTypeSpec(
 /// </summary>
 internal static class CatalogFixtures
 {
+    /// <summary>Uses the ordinary pipeline's step hook on a store-owned import or publish.</summary>
+    internal static void SetPublishStepHook(
+        IContentAuthoringStore store, Action<ContentPublishStep> onStep, Action? beforeFreeze = null, Action? afterAttempt = null)
+    {
+        switch (store)
+        {
+            case InMemoryContentAuthoringStore memory: memory.SetPublishStepHookForTests(onStep, beforeFreeze, afterAttempt); break;
+            case SqliteContentAuthoringStore sqlite: sqlite.SetPublishStepHookForTests(onStep, beforeFreeze, afterAttempt); break;
+            case SqlServerContentAuthoringStore sql: sql.SetPublishStepHookForTests(onStep, beforeFreeze, afterAttempt); break;
+            default: throw new ArgumentException("The conformance store must expose its publish hook.", nameof(store));
+        }
+    }
+
     /// <summary>The first id the game band is entitled to, which the plain type takes.</summary>
     public const ushort ThingTypeId = 1024;
 
@@ -146,3 +162,62 @@ internal sealed class CatalogFixtureCodec(ContentTypeId type, ContentFieldSchema
     : ContentRowCodecBase(type, schema)
 {
 }
+
+/// <summary>Places rival intents at the import's staging, failure cleanup and committed sweep boundaries.</summary>
+internal sealed class CatalogBundleImportGate(
+    IContentAuthoringStore store, Func<Task> rival, ContentPublishStep? failureStep, Func<Task> rivalImport)
+{
+    internal Exception? EditRefusal { get; private set; }
+    internal Exception? DiscardRefusal { get; private set; }
+    internal Exception? ImportRefusal { get; private set; }
+    internal Exception? CleanupRefusal { get; private set; }
+    internal Exception? CommittedEditFailure { get; private set; }
+
+    internal void BeforePublish()
+    {
+        EditRefusal = Attempt(rival);
+        DiscardRefusal = Attempt(() => store.DiscardDraftAsync(CatalogFixtures.Actor, CatalogFixtures.Operator));
+        if (EditRefusal is ContentAuthoringException)
+        {
+            ImportRefusal = Attempt(rivalImport);
+        }
+    }
+
+    internal void AfterAttempt()
+    {
+        if (failureStep == ContentPublishStep.BeforeCommit)
+        {
+            CleanupRefusal = Attempt(rival);
+        }
+    }
+
+    internal void OnStep(ContentPublishStep step)
+    {
+        if (step == ContentPublishStep.DuringSweep && failureStep == step)
+        {
+            CommittedEditFailure = Attempt(rival);
+        }
+
+        if (step == failureStep)
+        {
+            throw new CatalogBundleImportFault();
+        }
+    }
+
+    static Exception? Attempt(Func<Task> call)
+        => Task.Run(async () =>
+        {
+            try
+            {
+                await call().ConfigureAwait(false);
+                return null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        }).GetAwaiter().GetResult();
+}
+
+/// <summary>A failure placed outside a provider transaction by the ordinary publish step hook.</summary>
+internal sealed class CatalogBundleImportFault : Exception;

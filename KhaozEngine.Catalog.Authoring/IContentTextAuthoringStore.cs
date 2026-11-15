@@ -120,7 +120,10 @@ public interface IContentTextAuthoringStore : IContentAuthoringStore
     /// Imports a complete bundle into an EMPTY store, rows, ids, families, rules, declarations and values
     /// together, as one complete version 1. A format 1 bundle imports as empty text. A format 2 bundle that
     /// lost its section, a later format, a value naming a row the bundle does not carry and an ineligible
-    /// target are refused before anything is reset or staged, and any later refusal restores the empty store.
+    /// target are refused before anything is reset or staged. Staging freezes the draft atomically, so rival
+    /// draft changes refuse with <see cref="ContentAuthoringRefusal.PublishInProgress"/> through commit or
+    /// failure reset. A pre-commit refusal restores the empty store. A failure after commit preserves the
+    /// version and any later draft.
     /// An open draft holding any row, text or language work refuses the import with
     /// <see cref="ContentAuthoringException.DraftOpenReason"/> before anything is staged, and stays as it was.
     /// Every declared language keeps its wire spelling, empty languages included.

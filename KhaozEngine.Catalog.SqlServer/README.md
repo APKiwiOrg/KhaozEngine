@@ -172,7 +172,9 @@ and the number is inside the hashed manifest, so such a game cannot publish its 
 version 2. It has to REPLACE the store from its committed bundle on every content release, and
 `ImportBundleAsync` refuses a store that has published anything, or an open draft holding any row, text or
 language work. Pending work reports `DraftOpen` and `draft-open` before staging and leaves the draft unchanged.
-An open draft without work does not block. `SqlServerCatalogReset` is the way back to an
+An open draft without work does not block. Staging freezes the imported draft in the same transaction.
+Rival draft changes refuse with `PublishInProgress` and `publish-in-progress` until commit or failure reset.
+A failure after commit preserves the version and any later draft. `SqlServerCatalogReset` is the way back to an
 importable store.
 
 ```csharp

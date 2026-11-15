@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
+using Xunit;
 
 namespace KhaozEngine.Tests.Catalog;
 
@@ -17,6 +18,12 @@ public sealed class InMemoryContentAuthoringTextConformanceTests : ContentAuthor
     readonly string _root = Path.Combine(Path.GetTempPath(), "kec-text-conformance-" + Guid.NewGuid().ToString("n"));
     int _packs;
     bool _faultArmed;
+
+    /// <inheritdoc />
+    [Theory]
+    [MemberData(nameof(CatalogBundleImportCases.Outcomes), MemberType = typeof(CatalogBundleImportCases))]
+    public override Task TextBundleImportExcludesRivalDraftIntents(ContentPublishStep? failureStep)
+        => base.TextBundleImportExcludesRivalDraftIntents(failureStep);
 
     /// <inheritdoc />
     protected override async Task<IContentTextAuthoringStore> OpenAsync(Func<DateTimeOffset>? clock = null)

@@ -129,15 +129,20 @@ on the merged mesh is only worth reaching for if its texture fidelity ever prove
 placement. Across the crossfade band the props draw with a uniform `dissolveFloor = t` and keep `mask >= t`.
 The merged mesh uses the same threshold with `DissolveComplement`, keeping `mask < t` in colour and shadow.
 If the draw-radius exit band overlaps this band, exit progress `e` instead gives an individual floor
-`e + t * (1 - e)` and merged complement threshold `t * (1 - e)`. Their keep sets leave exactly one gap of
-width `e`, so the handoff cannot fill the exit fade or introduce extra holes. `PropRenderer` combines the
-floor with each placement's own fade by max before composing any authored LOD pair. When the exit begins
-before the individual skip gate, the merged complement continues past that gate and the crossfade end.
+`e + t * (1 - e)` and merged complement threshold `t * (1 - e)`. Their keep sets reserve a gap of measure `e`,
+but its location moves with `t`. Samples below `t * (1 - e)` return on the merged mesh during an overlapping
+exit, a known limitation tracked in [#1810](https://github.com/APKiwiOrg/KhaozEngine/issues/1810).
+`PropRenderer` combines the floor with each placement's own fade by max before composing any authored LOD pair.
+When the exit begins before the individual skip gate, the merged complement continues past that gate and the
+crossfade end.
 At `t = 1` its threshold is `1 - e`, reaching zero at `DrawRadius`. Changing back to the ordinary phase at
 the individual gate would remove surviving samples and restore faded samples across a large noise interval.
-Before the merged skip gate, individuals use the ordinary exit fade. An exit starting at or after the
-individual gate keeps the ordinary merged exit because it begins from a solid lone merge. Separated bands,
-hard swaps and the pre-crossfade exit state retain their existing draw state.
+Before the merged skip gate, only individuals draw with the ordinary exit fade, keeping `mask >= e`.
+The exit band cannot enable the merged mesh before `PropHlod.DrawsHlodMerged` admits the handoff
+([#1807](https://github.com/APKiwiOrg/KhaozEngine/issues/1807)). A hard swap enables the merge at `HlodDistance`,
+where its ordinary exit fade preserves the noise set the individuals kept. An exit starting at or after the
+individual gate keeps the ordinary merged exit because it begins from a solid lone merge. Separated bands
+retain their existing draw state.
 
 **Golden.** No committed per-backend reference grid was baked. Coverage is a non-golden `[GpuFact]`
 (pixel-presence + `RenderFrameStats`, backend-agnostic, mirroring L2's `PropFadeBandGpuTests`): a 100-prop

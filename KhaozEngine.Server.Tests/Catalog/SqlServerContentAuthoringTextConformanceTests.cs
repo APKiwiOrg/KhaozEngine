@@ -78,6 +78,12 @@ public sealed class SqlServerContentAuthoringTextConformanceTests : ContentAutho
     /// </summary>
     SqlServerCatalogDatabase Database => _database ??= new SqlServerCatalogDatabase();
 
+    /// <inheritdoc />
+    [CatalogSqlServerTheory]
+    [MemberData(nameof(CatalogBundleImportCases.Outcomes), MemberType = typeof(CatalogBundleImportCases))]
+    public override Task TextBundleImportExcludesRivalDraftIntents(ContentPublishStep? failureStep)
+        => base.TextBundleImportExcludesRivalDraftIntents(failureStep);
+
     sealed class Disarm(SqlServerContentAuthoringTextConformanceTests owner) : IDisposable
     {
         public void Dispose() => owner.Database.Execute("DROP TRIGGER IF EXISTS catalog_audit_text_fault;");

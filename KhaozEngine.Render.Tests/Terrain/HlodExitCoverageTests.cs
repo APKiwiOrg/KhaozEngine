@@ -22,6 +22,8 @@ public sealed class HlodExitCoverageTests
     [InlineData(160f, 120f, 100f, 40f, true, true)]
     [InlineData(120f, 160f, 100f, 40f, false, true)]
     [InlineData(120f, 160f, 100f, 40f, true, false)]
+    [InlineData(110f, 90f, 100f, 40f, false, false)]
+    [InlineData(110f, 90f, 100f, 40f, true, true)]
     public void Exit_and_handoff_partition_the_surviving_coverage(
         float radius, float fadeWidth, float hlodDistance, float hlodWidth, bool shadowOnly, bool parts)
     {
@@ -63,9 +65,10 @@ public sealed class HlodExitCoverageTests
             float t = Math.Clamp((distance - handoffStart) / layer.HlodCrossfadeWidth, 0f, 1f);
             if (distance >= exitStart && distance < handoffStart)
             {
-                // Before the HLOD band, preserve the legacy exit state as well as separated profiles.
+                // Regression for #1807: the exit cannot introduce the merged mesh before its handoff.
                 Assert.True(renderer.TryGetDrawState(Key, focus, out var beforeHandoff));
-                Assert.Equal(State(true, 0f, true, exit, false), beforeHandoff);
+                Assert.Equal(State(true, 0f, false, exit, false), beforeHandoff);
+                AssertCoverage(backend.Draws, 0f, exit);
                 continue;
             }
             bool paired = t > PropHlod.HlodMergedSkipAt && t < PropHlod.HlodPropsSkipAt;
@@ -166,18 +169,69 @@ public sealed class HlodExitCoverageTests
         }
     }
 
-    [Fact]
-    public void An_exit_before_the_handoff_band_keeps_the_legacy_state()
+    [Theory]
+    [InlineData(110f, 90f, 40f, false, false)]
+    [InlineData(110f, 90f, 40f, true, true)]
+    [InlineData(40f, 20f, 40f, false, true)]
+    [InlineData(40f, 20f, 40f, true, false)]
+    [InlineData(160f, 120f, 0f, false, false)]
+    [InlineData(160f, 120f, 0f, true, true)]
+    public void Exits_before_the_handoff_submit_each_surviving_sample_once(
+        float radius, float fadeWidth, float hlodWidth, bool shadowOnly, bool parts)
     {
-        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1542.
-        PropLayer layer = Layer(40f, 20f, 100f, 40f, parts: false);
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1807.
+        PropLayer layer = Layer(radius, fadeWidth, 100f, hlodWidth, parts);
         var backend = new RecordingBackend();
         using var renderer = Create(backend, layer);
-        float start = layer.DrawRadius - layer.FadeBandWidth;
-        Assert.True(renderer.TryGetDrawState(Key, new(start, 0f, 0f), out var entering));
-        Assert.Equal(State(true, 0f, true, 0f, false), entering);
-        Assert.True(renderer.TryGetDrawState(Key, new(start + layer.FadeBandWidth * .5f, 0f, 0f), out var halfway));
-        Assert.Equal(State(true, 0f, true, .5f, false), halfway);
+        float exitStart = MathF.Max(0f, radius - fadeWidth);
+        float handoffStart = layer.HlodDistance - hlodWidth * .5f;
+        const int samples = 2048;
+
+        for (int step = 0; step <= 128; step++) CoverageAt(radius * step / 128f);
+        foreach (float boundary in new[] { exitStart, handoffStart })
+        {
+            int[] before = CoverageAt(boundary - .001f);
+            foreach (float distance in new[] { boundary, boundary + .001f })
+            {
+                int[] after = CoverageAt(distance);
+                int changed = 0;
+                for (int sample = 0; sample < samples; sample++)
+                    if (before[sample] != after[sample]) changed++;
+                // Ordinary exit progress can cross one sampled threshold, but the handoff cannot jump sets.
+                Assert.True(changed <= 1, $"At {boundary}, {changed} fixed noise samples changed ownership.");
+            }
+            int[] atBoundary = CoverageAt(boundary);
+            AssertOrdinaryExit(atBoundary, boundary);
+        }
+
+        int[] CoverageAt(float distance)
+        {
+            backend.Draws.Clear();
+            Vector3 focus = new(distance, 0f, 0f);
+            if (shadowOnly) renderer.DrawWithVisibility(focus, new Hidden());
+            else renderer.Draw(focus);
+            var owners = new int[samples];
+            for (int sample = 0; sample < samples; sample++)
+            {
+                float noise = sample / (float)samples;
+                foreach (Draw draw in backend.Draws)
+                    if (draw.Complement ? noise < draw.Dissolve : noise >= draw.Dissolve) owners[sample]++;
+                Assert.InRange(owners[sample], 0, 1);
+            }
+            if (distance < handoffStart)
+            {
+                Assert.DoesNotContain(backend.Draws, draw => draw.Merged);
+                AssertOrdinaryExit(owners, distance);
+            }
+            return owners;
+        }
+
+        void AssertOrdinaryExit(int[] owners, float distance)
+        {
+            float exit = Math.Clamp((distance - exitStart) / (radius - exitStart), 0f, 1f);
+            for (int sample = 0; sample < samples; sample++)
+                Assert.Equal(distance < radius && sample / (float)samples >= exit ? 1 : 0, owners[sample]);
+        }
     }
 
     [Theory]
@@ -203,7 +257,8 @@ public sealed class HlodExitCoverageTests
         ? new[]
         {
             (0f, State(true, 0f, false, 0f, false)),
-            (exit, State(true, 0f, true, 0f, false)),
+            // Regression for #1807: no merged draw before the hard swap.
+            (exit, State(true, 0f, false, 0f, false)),
             (start, State(false, 1f, true, .5f, false)),
             (layer.DrawRadius, State(false, 0f, false, 0f, false)),
         }

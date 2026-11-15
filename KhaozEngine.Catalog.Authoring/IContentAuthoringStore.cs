@@ -462,6 +462,9 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     /// table holds no rows, and a non-empty database is refused with nothing written.
     /// An open draft holding any row, text or language work refuses with <see cref="ContentAuthoringRefusal.DraftOpen"/>
     /// before staging, leaving the draft unchanged. An open draft without work does not block.
+    /// Staging freezes the draft atomically. Rival draft changes refuse with
+    /// <see cref="ContentAuthoringRefusal.PublishInProgress"/> through commit or failure reset.
+    /// A failure after commit preserves the published version and any later draft.
     /// <para>
     /// This route is ROW-ONLY, so it imports format 1 bundles only. A text-bearing bundle, or a later format
     /// that lost its text section, is refused before anything is staged, and imports through

@@ -456,3 +456,7 @@ sample counts and commands. Every stopwatch is opt-in. `--timers` enables whole-
 `DOTNET_TieredCompilation=0`. `--trace-timers` additionally times water traces. `--counters` independently records
 existing work counters. `--quick` is a small untimed smoke check by default. No timing value gates CI and this mode
 contains no optimization prototype or production probe API.
+The counter run also reports internal proposal admission hits, misses and bypasses. A miss performs
+the original predicate, while a bypass is outside cache eligibility. Counts include both controller
+histories and do not imply that a support result or an authenticated lease was reused. Each counter
+history resets the admission slot first so it includes its first cold miss. Timed histories retain warm state.

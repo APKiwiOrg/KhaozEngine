@@ -65,6 +65,12 @@ are history and are kept: the numbers they pin are still the numbers the goldens
 Changing a documented edge therefore means changing the matching expectation in these tests, so the graph and
 this doc cannot silently drift apart.
 
+The internal `PhysicsFloatingPointControls` reader lives in Physics, the existing common dependency of
+Physics.Bepu and TileWorld.Physics. It reads native arithmetic controls through BCL interop without a
+third-party package, public API or project edge. TileWorld.Physics's internal compatibility facade
+forwards to this single implementation. Both numeric caches can therefore key controls without a
+backend depending on the tile adapter or changing the caller's arithmetic environment.
+
 ## Every seam in the engine
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |

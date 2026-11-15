@@ -6,6 +6,7 @@ using System.Text.Json;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Tests.WaterPrismCensus;
 
 namespace KhaozEngine.Benchmarks;
@@ -60,7 +61,9 @@ internal static class ContactQueryCostBenchmark
                 contact.Field.TraceMicroseconds.Clear();
                 legacy.Field.TraceMicroseconds.Clear();
                 contact.Field.MeasureTime = legacy.Field.MeasureTime = traceTimers;
+                if (counters) SupportProposalAdmission.ResetForTests();
                 using var capture = counters ? SupportQueryCapture.Begin(name) : null;
+                using var admission = counters ? new SupportProposalAdmissionCapture() : null;
                 for (int i = 0; i < samples; i++)
                 {
                     if ((i & 1) == 0)
@@ -94,7 +97,13 @@ internal static class ContactQueryCostBenchmark
                     legacyTraceUs = traceTimers ? legacy.Field.TraceMicroseconds : null,
                     contactPosition = new[] { c.Position.X, c.Position.Y, c.Position.Z },
                     legacyPosition = new[] { l.Position.X, l.Position.Y, l.Position.Z },
-                    work
+                    work,
+                    proposalAdmission = admission is null ? null : new
+                    {
+                        admission.Hits,
+                        admission.Misses,
+                        admission.Bypasses
+                    }
                 }));
             }
         }

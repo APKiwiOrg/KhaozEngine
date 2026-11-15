@@ -10979,6 +10979,10 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   atomically with untouched spans, including after checkpoint restores. The capsule crown and
   nearest-point cylinder admission witness resolve #1487 without bypassing full admission, roof,
   proposal, axis or lowest-contact proofs. A declined certificate retains complete traversal.
+  Bepu reuses only the proposal pose admission Boolean for canonical identity rotation, with exact
+  quaternion bits and native FP controls in one thread-local slot. Live position bounds and probe
+  dimensions still run every call. Other rotations, unsupported readers/runtimes and reference
+  evaluation use the original predicate. See the backend README for its qualification and memory bound.
   See the [backend source/work contract](../KhaozEngine.Physics.Bepu/README.md#support-source-and-curved-work-contract)
   and [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,

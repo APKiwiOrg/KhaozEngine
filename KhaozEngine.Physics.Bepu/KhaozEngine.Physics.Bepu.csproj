@@ -4,7 +4,7 @@
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Description>BepuPhysics v2 backend for the KhaozEngine.Physics seam. Implements IPhysicsWorld over a single-threaded, deterministic BepuPhysics Simulation: static bodies from the seam shapes, Step, and raycast/sweep/overlap queries. Pure managed (no native libraries); the only assembly that references BepuPhysics, so consumers depend on the dependency-free seam and pick this backend like Netcode.LiteNetLib or WorldStore.Sqlite.</Description>
+    <Description>BepuPhysics v2 backend for the KhaozEngine.Physics seam. Implements IPhysicsWorld over a single-threaded, deterministic BepuPhysics Simulation: static bodies from the seam shapes, Step, and raycast/sweep/overlap queries. No bundled native libraries. The only assembly that references BepuPhysics, so consumers depend on the dependency-free seam and pick this backend like Netcode.LiteNetLib or WorldStore.Sqlite.</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="BepuPhysics" />
@@ -16,6 +16,7 @@
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Movement.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Physics.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Benchmarks" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

@@ -7,6 +7,10 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 
 The seam is included in `KhaozEngine.Foundation`, and through it in the game and server umbrellas.
 
+An internal controls-only FP reader is shared by the Bepu proposal and tile-water numeric caches.
+It uses optional operating-system fenv/CRT calls through BCL interop, without a bundled native library
+or public seam member. Unsupported platforms leave both caches on their original evaluators.
+
 ## Shared prop query geometry
 
 `ShapeRayQueries.Cast(in ShapeRay, PhysicsShape, Pose, out ShapeRayHit)` casts a double-precision

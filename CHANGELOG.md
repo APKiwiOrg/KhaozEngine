@@ -17,6 +17,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `IReadOnlyList` properties. Collection casts and `ICollection.SyncRoot` cannot expose their backing storage,
   so a caller cannot replace graph inputs after a planner caches its connectivity. Input copying, element
   identity, enumeration order and allocation-free query reads are preserved.
+- Movement queries bulk clear their water coverage contact buffers on return, instead of scanning them for
+  nondefault runs, when the writer is the engine's own `OrdinaryMovementEnvironment` pin or the validated boundary
+  copy. Both publish complete contacts or nothing, so the faster clear cannot miss a partial write. Consumer pins
+  keep the original cleanup, which also clears partial writes left by a refusal or throw, including default-equal
+  values such as negative zero. Results, refusals and allocation are unchanged, with no public API change
+  ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
 
 ## 23.13.0
 

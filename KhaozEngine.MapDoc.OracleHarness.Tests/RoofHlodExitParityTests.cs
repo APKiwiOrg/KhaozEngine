@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Runtime.Versioning;
 using System.Collections.Generic;
@@ -18,6 +19,7 @@ public sealed class RoofHlodExitParityTests
     [InlineData(true)]
     public void SourceExitBand_HasLiteralCoverageAndNativeDrawSetParity(bool overlap)
     {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1542
         using var fixture = ShippedSceneGuardFixtures.Create(overlap ? "roof-hlod-exit-overlap" : "roof-hlod", comparison =>
         {
             var probes = new JsonArray();
@@ -41,13 +43,32 @@ public sealed class RoofHlodExitParityTests
         });
         var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
         var source = LegacySceneRecorder.Record(inputs.World, inputs.Catalogs, inputs);
+        var layer = Assert.Single(inputs.SourcePolicy.Placements.Layers);
+        Assert.NotEmpty(source.Frames);
         foreach (var frame in source.Frames)
         {
             var probe = inputs.Manifest.Policy.Probes.Single(p => p.Id == frame.ProbeId);
             float distance = (float)probe.FocusX!.Value - 32;
             if (distance == 100) { Assert.Empty(frame.Draws); continue; }
+            float handoffStart = layer.HlodDistance - layer.HlodCrossfadeWidth * .5f;
+            float t = Math.Clamp((distance - handoffStart) / layer.HlodCrossfadeWidth, 0, 1);
+            if (overlap && t <= PropHlod.HlodMergedSkipAt)
+            {
+                Assert.DoesNotContain(frame.Draws, d => d.Key!.Value.PartId == "hlod");
+                continue;
+            }
             var proxy = Assert.Single(frame.Draws, d => d.Key!.Value.PartId == "hlod");
-            Assert.Equal((distance - 90) / 10, proxy.Dissolve, 5); Assert.Equal(0, proxy.Complement); Assert.False(proxy.InvertShadow);
+            if (overlap)
+            {
+                float exitStart = MathF.Max(0, layer.DrawRadius - layer.HlodCrossfadeWidth);
+                float exit = Math.Clamp((distance - exitStart) / (layer.DrawRadius - exitStart), 0, 1);
+                Assert.Equal(t * (1 - exit), proxy.Dissolve, 5); Assert.Equal(1, proxy.Complement);
+            }
+            else
+            {
+                Assert.Equal((distance - 90) / 10, proxy.Dissolve, 5); Assert.Equal(0, proxy.Complement);
+            }
+            Assert.False(proxy.InvertShadow);
         }
         PrivateOracleEntry.Run(fixture.Environment, (_, report) => ShippedSceneComparison.Compare(inputs, report));
         Assert.Empty(fixture.FailureCategories());

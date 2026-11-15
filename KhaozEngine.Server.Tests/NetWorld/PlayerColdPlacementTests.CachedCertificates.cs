@@ -21,7 +21,7 @@ public partial class PlayerColdPlacementTests
         using var work = new PlacementWork();
         ContactQueryCacheScope.SetCached(true);
         using var proposals = new SupportProposalAdmissionCapture();
-        MovementColdPlacement certificate;
+        MovementColdPlacement certificate, crossLeaseCertificate;
         MovementQueryLeaseId firstId;
         MovementQueryLease firstLease;
         using (var read = simulator.BeginExplicitRead(basis))
@@ -45,6 +45,10 @@ public partial class PlayerColdPlacementTests
             Assert.Equal(1, work.Reuses);
             KhaozEngine.Tests.Locomotion.Contacts.LocomotionStateBits.AssertEqual(first, spent,
                 KhaozEngine.Tests.Locomotion.Contacts.LocomotionStateBits.Policy.IncludeContinuityHandle);
+            // Keep a separate unspent certificate so lease rejection cannot pass merely because
+            // the certificate used above was already consumed.
+            Assert.Equal(MovementStepOutcome.Advanced,
+                simulator.Binding.CertifyPlayerPlacement(framed, queries, out crossLeaseCertificate, read.Boundary).Outcome);
         }
         using (var read = simulator.BeginExplicitRead(basis))
         {
@@ -55,7 +59,7 @@ public partial class PlayerColdPlacementTests
             var framed = new FramedMovementState(OrdinaryPlayerMovement.ToPhysics(basis.Move, queries.Frame), queries.Frame, null);
             long validations = work.Validations;
             var stale = simulator.Binding.StepPlayerWithPlacement(framed, MoveCommand.Idle,
-                WaterPrismScenario.Dt, queries, certificate, read.Boundary);
+                WaterPrismScenario.Dt, queries, crossLeaseCertificate, read.Boundary);
             Assert.Equal(validations + 1, work.Validations);
             Assert.Equal(1, work.Reuses);
             var expected = simulator.Binding.StepPlayer(framed, MoveCommand.Idle,

@@ -15,7 +15,8 @@ flushes are safe. Calling it before `Begin` or after `End` throws `InvalidOperat
   is preserved). `DrawMasked` adds independent source and alpha-mask regions, flat tint or a vertical RGBA
   gradient. `Begin` overloads for screen / `Camera2D` (world) / `IDesignViewport` (design)
   space, each with an optional `SamplerMode` (`Linear` / `Point`) and an optional `Matrix4x4` model transform
-  (tilt/scale a composed group as one). `SetScissor`/`ClearScissor` DPI-aware clipping, which NESTS: an inner
+  (tilt/scale a composed group as one). Both sampler modes are wrap-addressed, never clamped, so pad atlas
+  entries or repeat their border texels when they draw at a fractional scale. `SetScissor`/`ClearScissor` DPI-aware clipping, which NESTS: an inner
   clip is intersected with whatever is already active and its `ClearScissor` restores that outer region rather
   than the whole framebuffer (`ScissorDepth` reports how many are active). `GroupByTexture` (opt-in,
   off by default, reset by every `Begin`) groups queued quads by the complete run key at flush regardless of

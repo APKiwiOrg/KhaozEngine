@@ -23,7 +23,8 @@ public sealed class TileWaterTraceMemoResultStorageTests(ITestOutputHelper outpu
     {
         var key = Key() with { Spans = 65, Contacts = 257 };
         var spans = Enumerable.Repeat(FrozenWaterComparison.SpanSentinel, spanCount).ToArray();
-        var contacts = Enumerable.Repeat(FrozenWaterComparison.ContactSentinel, contactCount).ToArray();
+        var sample = WaterTraceMemoComparison.Read(TileWaterTraceMemoResultTests.Field(false), TileWaterTraceMemoResultTests.Query(), bypass: true);
+        var contacts = Enumerable.Repeat(sample.Contacts[0], contactCount).ToArray();
         var result = new MovementCoverageResult(MovementAvailability.Known, spanCount, spanCount,
             contactCount, contactCount, 0, MovementWaterFieldTests.Identity);
         var table = new TileWaterTraceResultMemo.Table();

@@ -155,8 +155,12 @@ per-cluster centre-distance coverage uses the complete cell area. Layer outer fa
 When the outer fade overlaps the HLOD handoff and starts before the individual skip gate, roof proxies
 use the shared composed coverage too. With handoff progress `t` and exit progress `e`, within the handoff
 band the proxy is absent at or below `PropHlod.HlodMergedSkipAt`. Above that gate it uses dissolve
-`t * (1 - e)` and `DissolveComplement = 1`, retaining that phase after individuals are skipped so surviving
-samples do not reverse. Separated bands keep the ordinary proxy exit.
+`t * (1 - e)` and `DissolveComplement = 1`, retaining that phase after individuals are skipped to avoid a
+phase reversal at their skip gate. Separated bands keep the ordinary proxy exit.
+Before the handoff begins, the outer fade submits only individuals
+([#1807](https://github.com/APKiwiOrg/KhaozEngine/issues/1807)). The overlap gap moves with `t`, so previously
+faded low-noise samples can return on the proxy during the handoff, a known limitation tracked in
+[#1810](https://github.com/APKiwiOrg/KhaozEngine/issues/1810).
 `NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, homogeneous roof roles and vertex precision before invoking
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
 Standalone cluster construction uses the same admitted merge envelope as batch construction. Its

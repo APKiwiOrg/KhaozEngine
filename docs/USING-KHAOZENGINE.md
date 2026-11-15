@@ -9044,8 +9044,9 @@ A kit with no `lodFile` (or `lodDistance: 0`) keeps its full mesh at every dista
 opt-in. The engine ships **no mesh decimator**, so `ke-propbake` does not generate the LOD mesh: author the
 low-poly glTF by hand and place it beside the full one. On the streamed path, set `PropLayer.FadeBandWidth`,
 `LodMeshes`/`LodPartMeshes`, and `LodDistance` (via the `ScatterLayer`/`CompanionLayer` factory params) and
-`Scene3DChunkSink.Draw` threads them through for you. Animated props and cluster impostors (HLOD) are later
-sub-projects.
+`Scene3DChunkSink.Draw` threads them through for you. Cluster HLOD ships through `PropLayer.WithHlod`,
+described in [Far props: HLOD merged clusters](#far-props-hlod-merged-clusters). Animated props and cluster
+impostors remain later work.
 
 ### GLB requirements for the flat kit path
 

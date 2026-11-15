@@ -305,13 +305,18 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   or doubled coverage. Overlapping individual LOD and HLOD bands retain the existing three-way gap composition.
   If the draw-radius exit band overlaps the HLOD band, exit progress `e` reserves a shared gap in the noise
   coverage: individuals keep `mask >= e + t * (1 - e)` and the merged complement keeps `mask < t * (1 - e)`.
-  The gap has width `e`, so both halves fade out together without doubled coverage or extra handoff holes.
+  The reserved gap has width `e`, but its location moves with `t`. Samples below `t * (1 - e)` can return on
+  the merged mesh during an overlapping exit, a known limitation tracked in
+  [#1810](https://github.com/APKiwiOrg/KhaozEngine/issues/1810).
   The individual emitter still takes the maximum of that floor and each placement's own exit fade. If the exit
   starts before the individual skip gate, the merged mesh keeps its complement phase past that gate and the
   crossfade end, reaching threshold `1 - e` at `t = 1` and fading to nothing at `DrawRadius`. This avoids a phase
-  reversal when individuals disappear. Before the merged skip gate, individuals use an ordinary exit fade.
-  Exits starting at or after the individual skip gate, separated bands, hard swaps and the pre-crossfade exit
-  state retain their existing draw state. Colour and shadow-only submissions share these decisions.
+  reversal when individuals disappear. Before the merged skip gate, only individuals draw, keeping `mask >= e`.
+  The exit band cannot enable the merged mesh before `PropHlod.DrawsHlodMerged` admits the handoff
+  ([#1807](https://github.com/APKiwiOrg/KhaozEngine/issues/1807)). A hard swap enables the merge at `HlodDistance`,
+  where its ordinary exit fade keeps the same noise set as the individuals. Exits starting at or after the
+  individual skip gate and separated bands retain their existing draw state. Colour and shadow-only submissions
+  share these decisions.
   Different silhouettes still sample different world positions (#1296).
   `DrawWithVisibility(focus, IPropClusterVisibility)` routes hidden placements into shadow-only submission with
   the same transforms, LOD and fades. The visibility source retains metadata for both generations reported by

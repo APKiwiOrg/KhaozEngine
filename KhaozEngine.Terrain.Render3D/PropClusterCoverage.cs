@@ -28,8 +28,9 @@ internal static class PropClusterCoverage
                     individualGeneration, mergedGeneration);
             }
             // An exit starting after the individual gate follows the solid merge's ordinary phase.
-            // Hard swaps and the pre-handoff exit state also retain their legacy draw state.
-            return new(individuals, t, true, exit, false, individualGeneration, mergedGeneration);
+            // The exit cannot enable a merged draw before the crossfade or hard swap admits it (#1807).
+            return new(individuals, t, PropHlod.DrawsHlodMerged(t), exit, false,
+                individualGeneration, mergedGeneration);
         }
         bool drawsMerged = PropHlod.DrawsHlodMerged(t);
         // Only dissolve while both halves are submitted. A lone representation stays solid.

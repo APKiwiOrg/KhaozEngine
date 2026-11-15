@@ -1226,7 +1226,9 @@ the ordinary publish commit or the import's failure reset. Rival row or text app
 refuse with `PublishInProgress` and `publish-in-progress`, carrying `MemberName` and `FrozenForBaseVersion`
 0. Retry that intent after the import ends. Version 1 contains only the bundle's work. A pre-commit failure
 resets the staged import while its draft remains frozen. Once a version commits, a later sweep or audit failure
-preserves it and any new draft, so callers read the active version before retrying a failed import.
+preserves it and any new draft, so callers read the active version before retrying a failed import. The freeze
+marker names only a base version, so an ordinary publish at base 0 that starts during the import and fails before
+commit still releases it early, a known gap tracked in [#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813).
 
 A lossless export is NOT a backup, and the difference is the version LINE. An import republishes at version
 1, so the new database's history starts there. A durable page carries the version number it was stamped

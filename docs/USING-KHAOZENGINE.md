@@ -23891,7 +23891,8 @@ row-only `ImportBundleAsync` refuse with `DraftOpen` and `draft-open` while an o
 or language work, before staging and without changing the draft. An empty open draft does not block.
 Staging freezes the import's draft atomically. Rival draft changes refuse with `PublishInProgress` and
 `publish-in-progress` until commit or failure reset, and can be retried afterward. A failure after commit
-preserves the published version and any later draft. Other row-only members refuse with `text-unrepresented`
+preserves the published version and any later draft. A failed ordinary publish at base 0 racing the import can
+still release the freeze early ([#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813)). Other row-only members refuse with `text-unrepresented`
 rather than drop held text.
 `KhaozEngine.Catalog.Authoring/README.md` documents the limits, the legacy refusals and every
 reason token.

@@ -70,7 +70,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `ContentAuthoringRefusal.PublishInProgress` and can retry once the import ends. It used to join the imported draft,
   where it shipped unreviewed inside version 1 or was lost by a failed import's reset. A failure before commit still
   resets the store to empty, and a failure after commit, such as a pack sweep error, keeps the published version and
-  any later draft ([#1252](https://github.com/APKiwiOrg/KhaozEngine/issues/1252)).
+  any later draft ([#1252](https://github.com/APKiwiOrg/KhaozEngine/issues/1252)). The freeze names only a base
+  version, so a failed ordinary publish at base 0 racing the import can still release it early
+  ([#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813)).
 
 ## 23.13.0
 

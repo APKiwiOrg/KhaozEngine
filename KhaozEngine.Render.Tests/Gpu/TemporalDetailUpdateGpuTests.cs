@@ -14,19 +14,23 @@ public sealed class TemporalDetailUpdateGpuTests
     [InlineData("hdr-overflow")]
     [InlineData("subnormal")]
     [InlineData("maximum")]
+    [InlineData("mean-between-halves")]
     public void The_gpu_update_keeps_the_mean_and_format_range_for_adversarial_stored_values(string cell)
     {
-        float r = cell switch { "removed-channel" => 1f / 1024f, "hdr-overflow" => 23008f,
+        // The last cell's four stored halves have a mean no half float holds. The update subtracts the exported
+        // mean from each fetch, so a mean target that rounded it would move every child of that cell.
+        float r = cell switch { "removed-channel" or "mean-between-halves" => 1f / 1024f, "hdr-overflow" => 23008f,
             "subnormal" => (float)Half.Epsilon, "maximum" => 65504f, _ => throw new ArgumentOutOfRangeException(nameof(cell)) };
-        Vector4 values = cell == "removed-channel" ? new Vector4(0f, 0.25f, 0.75f, 3f)
-            : new Vector4(65504f, 0f, 0f, 0f);
+        Vector4 values = cell switch { "removed-channel" => new Vector4(0f, 0.25f, 0.75f, 3f),
+            "mean-between-halves" => new Vector4(1f, 1f, 1f, (float)Half.BitIncrement((Half)1f)),
+            _ => new Vector4(65504f, 0f, 0f, 0f) };
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
         IGpuDevice gd = gpu.GpuDevice;
         IGpuResourceFactory f = gd.Factory;
         using IGpuTexture history = Texture(2, 2, GpuPixelFormat.R16G16B16A16Float);
         using IGpuTexture result = Texture(1, 1, GpuPixelFormat.R16G16B16A16Float);
-        using IGpuTexture mean = Texture(1, 1, TemporalFormats.HistoryColor);
-        using IGpuTexture transport = Texture(1, 1, GpuPixelFormat.R32G32B32A32Float);
+        using IGpuTexture mean = Texture(1, 1, TemporalFormats.DetailMean);
+        using IGpuTexture transport = Texture(1, 1, TemporalFormats.DetailTransport);
         using IGpuTexture target = Texture(2, 2, GpuPixelFormat.R16G16B16A16Float);
         using IGpuFramebuffer framebuffer = f.CreateFramebuffer(null, target);
         using IGpuShaderSet shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalDetailUpdateFrag);

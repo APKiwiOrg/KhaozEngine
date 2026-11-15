@@ -165,11 +165,22 @@ rounds the sampled code back to an integer and uses its own unchanged chosen mot
 nor motion needs exporting. The classifier exports only the distrust observations the selected gate
 reads and the lock bit. Diagnostic attribution replays the classifier before this packing.
 
-The exported mean is RGBA16F. Hbar and retention are computed in float32 inside the resolve. Only the
-update's copy of Hbar is rounded, and its channel limits include the fourth child's implied deviation.
-The remainder is computed from stored R and the first three stored children, preserving the mean
-contract independently of exported-mean precision. Chosen previous UV, retention and the fine-path
-flag remain RGBA32F. Half UVs would lose sub-pixel reprojection precision at large display coordinates.
+The exported mean is RGBA32F. Hbar and retention are computed in float32 inside the resolve, and the
+update subtracts that same Hbar from each of its float32 fetches, so the four deviations sum to zero
+before rounding. The update's channel limits include the fourth child's implied deviation, and the
+remainder is computed from stored R and the first three stored children. That remainder keeps the stored
+mean within one binary16 step of R whatever the mean's precision. It does not keep the detail: a mean
+rounded by `e` moves the first three children by `-k e` and the remainder by `+3 k e` on every frame,
+an error of up to 2^-11 of the value at texel scale that the retention then carries forward. An RGBA16F
+mean was measured on MetalNative and withdrawn. With it, 553 of 1,784 captured report-only cells changed
+their `Fine` value against the full-float mean (typically by 0.2 percent, by 5 percent in the median
+follow stop cell, whose residuals sit near zero), and one direct follow stop cell crossed its bound
+(0.0103 against 0.01, 0.0040 with the full-float mean). With the full-float mean all 5,134 report-only
+records and the 36 rig cells return bit for bit. `TemporalFormats.DetailMean` is the one home of that
+format, and the
+`mean-between-halves` row of `TemporalDetailUpdateGpuTests` fails if it becomes a half format. Chosen
+previous UV, retention and the fine-path flag are RGBA32F too (`TemporalFormats.DetailTransport`). Half
+UVs would lose sub-pixel reprojection precision at large display coordinates.
 No extra backend format or target pool is introduced. The fine pair retains its history lifetime,
 and the three scratch targets remain owned by that generation's pass.
 
@@ -256,36 +267,39 @@ indices, mode and generation alone. Turning the temporal resolve off retires the
 
 #### Cost capture
 
-On 2026-11-16, MetalNative on an Apple M2 Max measured the existing moving thin field over its textured
+On 2026-11-15 UTC, MetalNative on an Apple M2 Max measured the existing moving thin field over its textured
 wall with a followed wide box at a 2560 by 1440 display. Native rendered internally at 2560 by 1440,
 Quality at 1707 by 960. Each case used four warm frames and eight measured frames on a shared machine.
-The before capture used fused Display as a matched kernel control. The after capture also measured
-main's default split Display, whose prepare and accumulate passes are P and A below. All times are
-native GPU timestamp medians from the on-demand `TemporalDetailCostPerfGpuTests`, never timing gates.
-`temporal.detail-classify`, `temporal.resolve` and `temporal.detail-store` have separate intervals.
+All times are native GPU timestamp medians from the on-demand `TemporalDetailCostPerfGpuTests`, never
+timing gates. `temporal.detail-classify`, `temporal.resolve` and `temporal.detail-store` have separate
+intervals. Default split Display is the engine's default entry, whose prepare and accumulate passes are P
+and A below. Fused Display is the matched kernel control for Fine's resolve.
 
-| Preset | Mode | Resolve ms before / after | Classify ms before / after | Update ms before / after | Retained B/px (MiB) | Scratch B/px (MiB) before / after | Total B/px (MiB) before / after |
+| Preset | Mode | Resolve ms | Classify ms | Update ms | Retained B/px (MiB) | Scratch B/px (MiB) | Total B/px (MiB) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Native | Display fused control | 3.486 / 3.390 | absent | absent | 0 (0) | 0 (0) | 0 (0) |
-| Native | Display default split | not captured / P 0.743 + A 1.968 | absent | absent | 0 (0) | 24.00000 (84.38), unchanged | 24.00000 (84.38), unchanged |
-| Native | Fine | 6.799 / 6.932 | 5.657 / 5.998 | 3.938 / 4.023 | 64 (225.00) | 48 (168.75) / 25 (87.89) | 112 (393.75) / 89 (312.89) |
-| Quality | Display fused control | 3.151 / 2.995 | absent | absent | 0 (0) | 0 (0) | 0 (0) |
-| Quality | Display default split | not captured / P 0.548 + A 2.547 | absent | absent | 0 (0) | 10.66875 (37.51), unchanged | 10.66875 (37.51), unchanged |
-| Quality | Fine | 6.536 / 6.600 | 5.519 / 5.977 | 3.966 / 4.007 | 64 (225.00) | 48 (168.75) / 25 (87.89) | 112 (393.75) / 89 (312.89) |
+| Native | Display fused control | 3.599 | absent | absent | 0 (0) | 0 (0) | 0 (0) |
+| Native | Display default split | P 0.791 + A 1.985 | absent | absent | 0 (0) | 24.00000 (84.38) | 24.00000 (84.38) |
+| Native | Fine | 6.774 | 5.777 | 3.845 | 64 (225.00) | 33 (116.02) | 97 (341.02) |
+| Quality | Display fused control | 2.977 | absent | absent | 0 (0) | 0 (0) | 0 (0) |
+| Quality | Display default split | P 0.543 + A 2.108 | absent | absent | 0 (0) | 10.66875 (37.51) | 10.66875 (37.51) |
+| Quality | Fine | 6.674 | 5.491 | 3.982 | 64 (225.00) | 33 (116.02) | 97 (341.02) |
 
 Payload is source-derived uncompressed storage, excluding unchanged ordinary histories, scene/post
 targets, optional diagnostics, retired generations and driver overhead. Retained is the fine colour
-pair. Scratch content is transient, but its textures remain allocated with the pass. Display split's
-existing internal-grid preparation workspace is included. The fine targets fall by 23 bytes a display
-pixel, 80.86 MiB at 1440p. Their 312.89 MiB total remains above the report-only 260 MiB target.
+pair. Scratch content is transient, but its textures remain allocated with the pass: one byte of trust
+flags, sixteen of mean and sixteen of UV, retention and path flag a display pixel. Display split's
+existing internal-grid preparation workspace is included. The 341.02 MiB total is above the report-only
+260 MiB target.
 
-The capture does not establish a GPU-time saving. The after medians of each frame's summed fine
-intervals are 17.090 ms at Native and 16.656 ms at Quality. Against default split's summed intervals,
-2.916 ms and 3.135 ms respectively, the differences are 14.174 ms and 13.521 ms. This exceeds the
-report-only 1.5 ms target. Split prepare also writes ordinary depth, while Fine's separate depth store
-is outside these fine intervals. These small blocks on a shared machine are not paired causal
-measurements, whole-frame timings or a steady-state residency proof. Native Vulkan, Direct3D 11 and
-consumer acceptance remain separate proof.
+The medians of each frame's summed fine intervals are 16.552 ms at Native and 16.481 ms at Quality.
+Against default split's summed intervals, 2.786 ms and 2.822 ms respectively, the differences are
+13.766 ms and 13.659 ms. This exceeds the report-only 1.5 ms target. The structure explains it: the
+classification replays the complete candidate accumulation, the resolve repeats it, and the update runs
+the four fine fetches and the four channel transports once for each of a display pixel's four children.
+Split prepare also writes ordinary depth, while Fine's separate depth store is outside these fine
+intervals. These small blocks on a shared machine are not paired causal measurements, whole-frame
+timings or a steady-state residency proof. Native Vulkan, Direct3D 11 and consumer acceptance remain
+separate proof.
 
 ## Shimmer record
 

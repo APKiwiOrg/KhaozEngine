@@ -30,9 +30,9 @@ internal sealed class TemporalDetailPass
         try
         {
             IGpuResourceFactory f = gd.Factory;
-            _classification = Target(f, history, GpuPixelFormat.R8UNorm);
-            _mean = Target(f, history, TemporalFormats.HistoryColor);
-            _transport = Target(f, history, GpuPixelFormat.R32G32B32A32Float);
+            _classification = Target(f, history, TemporalFormats.DetailClassification);
+            _mean = Target(f, history, TemporalFormats.DetailMean);
+            _transport = Target(f, history, TemporalFormats.DetailTransport);
             _classificationFrame = f.CreateFramebuffer(null, _classification);
             _classifyLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(T("DetailColor")));
             _updateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(T("DetailColor"), T("Result"),
@@ -50,7 +50,7 @@ internal sealed class TemporalDetailPass
                 [resolveLayout, _classifyLayout], _classificationFrame.Outputs);
             _resolvePipeline = TemporalResolveRenderer.Fullscreen(f, _resolveShaders, [resolveLayout, _fineLayout],
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence,
-                    TemporalFormats.HistoryColor, GpuPixelFormat.R32G32B32A32Float));
+                    TemporalFormats.DetailMean, TemporalFormats.DetailTransport));
             _updatePipeline = TemporalResolveRenderer.Fullscreen(f, _updateShaders, _updateLayout,
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor));
             for (int write = 0; write < 2; write++)

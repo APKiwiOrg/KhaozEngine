@@ -4928,13 +4928,12 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   into the next generation while their stored mean stays within one binary16 step of the display result.
   Still pixels and distrusted footprints use the original display-history expressions and replicate their
   stored result exactly. There is no new presentation filter. The update runs before distortion, bloom and
-  tonemapping. Display-sized scratch holds R8 trust flags, an RGBA16F mean and RGBA32F chosen UV,
-  retention and path flag. Full precision remains on reprojection. The remainder uses stored R to
-  preserve the mean even though the exported mean is rounded. The temporal
+  tonemapping. Display-sized scratch holds R8 trust flags, an RGBA32F mean and RGBA32F chosen UV,
+  retention and path flag. The mean and the reprojection both need full precision. The temporal
   resolve must be active, the extent must fit the device's 2D render texture dimension limit, and the display's
   pixel count must fit the inclusive `Post.Temporal.HistoryDetailPixelLimit`. That budget defaults to 3,686,400,
-  admitting 2560 by 1440 with 225 MiB for the extra pair and 87.89 MiB of scratch, 312.89 MiB total
-  (89 bytes a display pixel, excluding ordinary Display targets and driver overhead).
+  admitting 2560 by 1440 with 225 MiB for the extra pair and 116.02 MiB of scratch, 341.02 MiB total
+  (97 bytes a display pixel, excluding ordinary Display targets and driver overhead).
   A 3840 by 2160 pair alone would need 506.25 MiB and
   falls back to Display by default. Nonpositive budgets disable Fine and unknown enum values mean Display.
   Read `Scene3D.TemporalHistoryDetailInEffect` for the selection latched by the last frame's first render,
@@ -4943,10 +4942,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   Resizes recreate the pair with history, and cuts and other resets re-seed its write side. A later render
   inside the frame, including an offscreen capture, neither reads nor advances it.
   Temporal debug views and on-request counts replay the selected mode's own history fetch and trust gate.
-  On 2026-11-16 the M2 Max Metal moving-thin-field capture at 1440p measured summed fine passes at
-  17.090 ms Native and 16.656 ms Quality, 14.174 ms and 13.521 ms above default split Display.
-  Each case used four warm and eight measured frames on a shared machine. The storage trim establishes
-  no GPU-time gain and both report-only targets remain unmet. See the [pass table and limits](design/TEMPORAL-RESOLVE.md#cost-capture).
+  On 2026-11-15 UTC the M2 Max Metal moving-thin-field capture at 1440p measured summed fine passes at
+  16.552 ms Native and 16.481 ms Quality, 13.766 ms and 13.659 ms above default split Display.
+  Each case used four warm and eight measured frames on a shared machine. Both report-only targets
+  remain unmet. See the [pass table and limits](design/TEMPORAL-RESOLVE.md#cost-capture).
 - **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.
   `Post.Temporal.Sharpness` runs from 0 (the pass does not run) to 1, default 0.25, and a value outside that range is
   clamped. It limits each pixel by its four neighbours, so it leaves an edge already at full contrast alone and

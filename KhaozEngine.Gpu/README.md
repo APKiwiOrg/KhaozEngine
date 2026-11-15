@@ -360,8 +360,8 @@ What it owns today:
   earlier work signals only once the queue has drained through that work, which is what makes it a drop-in for the
   drain that guarded deferred GPU-resource destruction (`GpuRetireQueue`, below).
 - **Full-float transport.** `GpuPixelFormat.R32G32B32A32Float` is a four-channel 32-bit float colour target
-  and sampled texture. The temporal detail passes use it for chosen reprojection UV, retention and the
-  fine-path flag between fragment passes. The exported mean uses RGBA16F. Full-float staging uses
+  and sampled texture. The temporal detail passes use it for the exported history mean and for chosen
+  reprojection UV, retention and the fine-path flag between fragment passes. Full-float staging uses
   16 bytes per texel on every backend.
 - **`GpuReadback`** - GPU-to-CPU reads. `ToRgba(gd, src, width, height)` and
   `ToRgbaMip(gd, src, mipLevel, arrayLayer, mipWidth, mipHeight)` return a tightly-packed RGBA8 buffer

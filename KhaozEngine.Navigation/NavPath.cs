@@ -31,12 +31,13 @@ public enum NavPathStatus
     /// <summary>A route to the goal was found. <see cref="NavPath.Waypoints"/> reaches it.</summary>
     Complete,
 
-    /// <summary>The search spent its whole <see cref="PathQueryBudget"/> before reaching the goal.
-    /// <see cref="NavPath.Waypoints"/> only reaches as far as the search got.</summary>
+    /// <summary>The search stopped at its budget or exhausted its frontier without reaching the goal,
+    /// but found strict physical progress. <see cref="NavPath.Waypoints"/> reaches its closest popped node.</summary>
     Partial,
 
-    /// <summary>No route exists, or the query could not be resolved (for example an endpoint failed
-    /// to snap onto a passable cell). <see cref="NavPath.Waypoints"/> is empty.</summary>
+    /// <summary>No useful progress was found, a disconnected terminal was certified without search, or
+    /// the query could not be resolved (for example an endpoint failed to snap onto a passable cell).
+    /// <see cref="NavPath.Waypoints"/> is empty.</summary>
     Unreachable,
 }
 

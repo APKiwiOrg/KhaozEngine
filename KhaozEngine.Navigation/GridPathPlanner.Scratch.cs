@@ -76,11 +76,14 @@ public sealed partial class GridPathPlanner
         /// <summary>A region query's member feet positions, in grid scan order.</summary>
         public List<Vector3> Members { get; } = new();
 
+        public List<int> MemberNodeIds { get; } = new();
+
         public PlannerRegionBounds MemberBounds { get; private set; }
 
-        public void AddMember(Vector3 feet, int x, int z)
+        public void AddMember(Vector3 feet, int x, int z, int nodeId)
         {
             Members.Add(feet);
+            MemberNodeIds.Add(nodeId);
             MemberBounds = MemberBounds.Include(x, z);
         }
 
@@ -131,6 +134,7 @@ public sealed partial class GridPathPlanner
         public void ResetMembers()
         {
             Members.Clear();
+            MemberNodeIds.Clear();
             MemberBounds = PlannerRegionBounds.Empty;
             Array.Clear(MemberLayers);
             Array.Clear(_memberBoxes);

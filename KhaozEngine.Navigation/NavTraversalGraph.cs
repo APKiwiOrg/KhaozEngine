@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.Navigation;
 
@@ -18,15 +19,15 @@ public sealed partial class NavTraversalGraph
     public float AgentHeight { get; }
 
     /// <summary>
-    /// Owned snapshot of the source space with read-only layer and original link containers.
+    /// Owned snapshot of the source space with immutable layer and original link containers.
     /// Its immutable grids are shared. Only <see cref="Links"/> authorize link traversal.
     /// </summary>
     public NavSpace Space { get; }
 
-    /// <summary>Owned read-only container of immutable traversal layers.</summary>
+    /// <summary>Owned immutable snapshot of traversal layers.</summary>
     public IReadOnlyList<NavTraversalLayer> Layers { get; }
 
-    /// <summary>Owned read-only accepted subset of the source space's links, in supplied order.</summary>
+    /// <summary>Owned immutable accepted subset of the source space's links, in supplied order.</summary>
     public IReadOnlyList<NavLink> Links { get; }
 
     /// <summary>
@@ -47,11 +48,12 @@ public sealed partial class NavTraversalGraph
         NavGrid[] grids = Copy(space.Layers);
         foreach (NavGrid grid in grids)
             if (grid is null) throw new ArgumentException("Source layers must not be null.", nameof(space));
-        Space = new NavSpace(Array.AsReadOnly(grids), Array.AsReadOnly(Copy(space.Links)));
+        Space = new NavSpace(grids, Copy(space.Links));
         AgentRadius = agentRadius;
         AgentHeight = agentHeight;
-        Layers = Array.AsReadOnly(Copy(layers));
-        Links = Array.AsReadOnly(Copy(links));
+        // Fresh copies prevent immutable inputs from lending us their backing storage.
+        Layers = ImmutableArray.CreateRange(Copy(layers));
+        Links = ImmutableArray.CreateRange(Copy(links));
 
         if (Layers.Count != grids.Length)
             throw new ArgumentException("Traversal layers must match the source space.", nameof(layers));

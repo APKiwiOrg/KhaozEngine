@@ -4,6 +4,20 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.13.1
+
+2026-11-15
+
+- `GridPathPlanner` skips A* when a bounded weak-component certificate proves that every admitted goal is
+  disconnected and no component node improves on the start's existing physical progress score. The cached
+  `Unreachable` result is unchanged for every expansion budget. Requests with possible progress keep their
+  existing search and useful `Partial` routes. Connectivity is built once per immutable graph, with no public
+  API or navigation-format change ([#1290](https://github.com/APKiwiOrg/KhaozEngine/issues/1290)).
+- `NavSpace` and `NavTraversalGraph` now own immutable layer and link snapshots behind their existing
+  `IReadOnlyList` properties. Collection casts and `ICollection.SyncRoot` cannot expose their backing storage,
+  so a caller cannot replace graph inputs after a planner caches its connectivity. Input copying, element
+  identity, enumeration order and allocation-free query reads are preserved.
+
 ## 23.13.0
 
 2026-11-15

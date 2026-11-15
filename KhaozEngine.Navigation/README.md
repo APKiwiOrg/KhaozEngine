@@ -33,9 +33,10 @@ A `NavSpace` stacks one or more `NavGrid` layers, each covering its own vertical
 `NavLink` stair connections (`FromLayer`/`FromX`/`FromZ` -> `ToLayer`/`ToX`/`ToZ`). A two-way stair is
 modeled as two links, one per direction. `NavSpace.Single(grid)` wraps a single layer with no links.
 Every link endpoint is bounds-checked against its layer at construction, else `ArgumentException`.
-The constructor copies the layer and link containers and exposes `Layers` and `Links` through read-only
-views. Later changes to the supplied arrays or lists cannot change the validated space. The immutable
-`NavGrid` instances are shared without copying their baked grids.
+The constructor copies the layer and link containers into owned immutable snapshots behind the existing
+`IReadOnlyList` properties. Generic and non-generic mutators are refused, and `ICollection.SyncRoot`
+cannot reveal backing storage. Later changes to supplied arrays or lists cannot change the validated space.
+The immutable `NavGrid` instances are shared without copying their baked grids.
 
 Each link carries a `NavLink.Kind` discriminator (`NavLinkKind`, `init`, default `Stair`). A `Stair`
 link is crossed by ordinary ground steering, the follower needs no special state. A `Hop` link is a
@@ -333,6 +334,29 @@ and Drop markers, including adjacent same-layer links and competing ordinary exi
 mandatory physical cell centers, even on the first edge. An exact goal beyond a Drop landing gets a separate Walk
 waypoint. No smoothing moves that landing. Fixed neighbor order and insertion order make ties deterministic.
 
+Before entering A*, the planner can certify a disconnected terminal request. Every admitted goal cell
+must have a different weak-component label from the actual resolved start, and no node of the start's
+component may have strictly smaller progress under the search's exact physical-distance calculation.
+Progress ties keep the start. This returns the same cached `NavPath.Unreachable` for every expansion
+budget. A disconnected request that can still make physical progress runs the existing search and can
+return `Partial`. Equal labels do not establish directed reachability and always fall through.
+
+Connectivity is built eagerly at the first planner construction for each immutable `NavSpace` or
+`NavTraversalGraph`, then shared by planners over that same graph. Its undirected labels include every
+possible ordinary directed exit and accepted Stair, Hop and Drop link. Query radius, `WalkOnly` and
+captured traversal restrictions can only remove edges from this superset. Endpoint validation, existing
+snap rules and exact region-member admission still run first. A certificate examines at most 32,768
+component nodes and 262,144 node/member distance comparisons. A larger component, comparison count or
+uncertain numeric result falls through to the unchanged search. These bounds are work caps, never
+spatial tolerances.
+
+Construction takes `O((N + L) log N)` worst-case work with union by size and path compression, where `N`
+is the total layer cell count and `L` is the accepted link count. Persistent array payload is
+`4 * (N + P + C + 1)` bytes, where `P` is the number of raw-passable profile nodes and `C` their weak
+component count. Construction temporarily adds `4 * (N + layerCount)` bytes. No feet-position cache or serialized
+metadata is added. Certified warmed queries allocate nothing, and other warmed queries still allocate
+only their returned paths. Engine-version identity still requires normal consumer rebaking.
+
 A planner allocates its search scratch on its first query and reuses it for every later one: generation
 stamped per-node g-scores, parents, incoming edge kinds and closed marks plus region flags,
 the open set and reconstruction lists, each kept at the largest query seen. A query touches only the nodes it
@@ -358,8 +382,8 @@ surface. Exit bits 0 through 7 are directed and mean `(1,0)`, `(-1,0)`, `(0,1)`,
 `NavTraversalGraph(NavSpace space, float agentRadius, float agentHeight,
 IReadOnlyList<NavTraversalLayer> layers, IReadOnlyList<NavLink> links)` copies its containers and checks
 matching source dimensions, directed exits, accepted endpoints, and source links. `AgentRadius`,
-`AgentHeight`, `Space`, `Layers`, and `Links` are immutable getters. `Space` owns a read-only snapshot of
-the source grids and original link topology. `Layers` owns copied masks. `Links` is the copied read-only
+`AgentHeight`, `Space`, `Layers`, and `Links` are immutable getters. `Space` owns an immutable snapshot of
+the source grids and original link topology. `Layers` owns copied masks. `Links` is the copied immutable
 accepted subset, in supplied order. `IsNodePassable` and `CanTraverse` return false outside bounds.
 
 `GridPathPlanner(NavSpace space, NavTraversalGraph traversal, float hopCostCells = 4f)` requires the

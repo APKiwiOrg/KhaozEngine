@@ -63,6 +63,7 @@
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
     <ProjectReference Include="../KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
+    <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Objectives/KhaozEngine.Objectives.csproj" />

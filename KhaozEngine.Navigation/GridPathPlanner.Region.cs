@@ -7,11 +7,18 @@ namespace KhaozEngine.Navigation;
 public sealed partial class GridPathPlanner
 {
     /// <summary>
-    /// Finds a reachable region member through one bounded search over surface-height grids.
+    /// Finds a route to an admitted region member over surface-height grids. A certified disconnected
+    /// terminal skips the bounded search.
     /// Membership uses actual cell-centre feet positions. Returned routes keep every cell edge and
     /// link endpoint without smoothing. Guarded starts must occupy admitted raw-passable own cells.
     /// </summary>
     public NavPath FindPath(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget)
+        => FindPathCore(start, goal, agentRadius, budget, useCertificate: true);
+
+    internal NavPath FindPathWithoutCertificateForTests(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget)
+        => FindPathCore(start, goal, agentRadius, budget, useCertificate: false);
+
+    NavPath FindPathCore(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget, bool useCertificate)
     {
         ArgumentNullException.ThrowIfNull(goal);
         ValidateTraversalRadius(agentRadius);
@@ -22,7 +29,7 @@ public sealed partial class GridPathPlanner
         SearchScratch scratch = RentScratch();
         try
         {
-            return FindPath(scratch, start, goal, agentRadius, budget);
+            return FindPath(scratch, start, goal, agentRadius, budget, useCertificate);
         }
         finally
         {
@@ -30,7 +37,7 @@ public sealed partial class GridPathPlanner
         }
     }
 
-    NavPath FindPath(SearchScratch scratch, Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget)
+    NavPath FindPath(SearchScratch scratch, Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget, bool useCertificate)
     {
         int startLayer = _space.LayerAt(start);
         NavGrid startGrid = _space.Layers[startLayer];
@@ -42,7 +49,7 @@ public sealed partial class GridPathPlanner
 
         var regionGoal = new RegionGoal(this, scratch,
             new Vector2(goal.Anchor.X, goal.Anchor.Z), goal.HorizontalExtent);
-        return RunSearch(scratch, startLayer, startPoint.Value, regionGoal, null, agentRadius, budget);
+        return RunSearch(scratch, startLayer, startPoint.Value, regionGoal, null, agentRadius, budget, useCertificate);
     }
 
     /// <summary>
@@ -73,7 +80,7 @@ public sealed partial class GridPathPlanner
                     scratch.SetMember(layer, x, z, member);
                     if (!member) continue;
                     scratch.MemberLayers[layer] = true;
-                    scratch.AddMember(feet, x, z);
+                    scratch.AddMember(feet, x, z, _layerOffset[layer] + z * _space.Layers[layer].Width + x);
                 }
         }
         return scratch.Members.Count > 0;
@@ -126,6 +133,17 @@ public sealed partial class GridPathPlanner
         Vector2 anchorXz, float horizontalExtent) : ISearchGoal
     {
         public bool IsGoal(int layer, int x, int z) => scratch.IsMember(layer, x, z);
+        public int MemberCount => scratch.Members.Count;
+
+        public bool IsDisconnected(PlannerConnectivity connectivity, int startComponent)
+        {
+            foreach (int node in scratch.MemberNodeIds)
+            {
+                int component = connectivity.ComponentOf(node);
+                if (component < 0 || component == startComponent) return false;
+            }
+            return true;
+        }
 
         public double Priority(int layer, int x, int z)
             => planner._spatialBound.Region(layer, x, z, scratch.MemberBounds, anchorXz, horizontalExtent);

@@ -45,8 +45,9 @@ internal static class CoverageInputPath
             var info = new DirectoryInfo(Path.Combine(current, component));
             if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
             {
-                var target = info.ResolveLinkTarget(true) ?? throw new IOException("Declaring directory link cannot be resolved.");
-                current = ResolveBase(target.FullName, depth + 1);
+                // Keep raw target components so nested links resolve before any following parent segment.
+                string target = info.LinkTarget ?? throw new IOException("Declaring directory link cannot be resolved.");
+                current = ResolveBase(Path.IsPathFullyQualified(target) ? target : Path.Combine(current, target), depth + 1);
             }
             else current = info.FullName;
             if ((File.GetAttributes(current) & FileAttributes.Directory) == 0)

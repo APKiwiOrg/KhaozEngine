@@ -62,18 +62,48 @@ public sealed class CoveragePackedInputPathTests
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
     public void Packed_paths_allow_a_base_directory_alias(int aliasKind)
     {
         using var files = new PathFiles();
         string link = Path.Combine(files.Folder, "alias");
-        Directory.CreateSymbolicLink(link, aliasKind == 1 ? files.Folder : aliasKind == 2 ? Path.Combine(files.Root, "poses") : files.Root);
+        string redirect = Path.Combine(files.Folder, "redirect");
+        string actualDirectory = files.Root;
+        if (aliasKind >= 3)
+        {
+            // Regression #1814: the parent segment inside the alias target follows the nested redirect.
+            actualDirectory = Path.Combine(files.Folder, "actual", "input");
+            Directory.CreateDirectory(Path.Combine(actualDirectory, "child"));
+            Directory.CreateDirectory(Path.Combine(actualDirectory, "poses"));
+            File.WriteAllBytes(Path.Combine(actualDirectory, "poses", "000000.kepp"), CoveragePackedFixture.ChunkBytes());
+            Directory.CreateSymbolicLink(redirect, Path.Combine(actualDirectory, "child"));
+            if (aliasKind == 3)
+            {
+                Directory.CreateDirectory(Path.Combine(files.Folder, "poses"));
+                File.WriteAllBytes(Path.Combine(files.Folder, "poses", "000000.kepp"), [0xff]);
+            }
+        }
+        string target = aliasKind switch
+        {
+            1 => files.Folder,
+            2 => Path.Combine(files.Root, "poses"),
+            3 or 4 => Path.Combine("redirect", ".."),
+            _ => files.Root
+        };
+        Directory.CreateSymbolicLink(link, target);
         try
         {
             string baseDirectory = aliasKind == 1 ? Path.Combine(link, "input") : aliasKind == 2 ? Path.Combine(link, "..") : link;
-            Assert.Equal(CoverageInputPath.ResolveContained(files.Root, "poses/000000.kepp", Location),
-                CoverageInputPath.ResolveContained(baseDirectory, "poses/000000.kepp", Location));
+            string resolved = CoverageInputPath.ResolveContained(baseDirectory, "poses/000000.kepp", Location);
+            Assert.Equal(CoveragePackedFixture.ChunkBytes(), File.ReadAllBytes(resolved));
+            Assert.Equal(CoverageInputPath.ResolveContained(actualDirectory, "poses/000000.kepp", Location), resolved);
         }
-        finally { Directory.Delete(link); }
+        finally
+        {
+            Directory.Delete(link);
+            if (aliasKind >= 3) Directory.Delete(redirect);
+        }
     }
 
     [DirectoryLinkTheory]

@@ -73,7 +73,11 @@ public sealed class TemporalFixture : IDisposable
         for (int i = 0; i < count; i++) Render(draw);
     }
 
-    void Render(Action<Scene3D, int> draw)
+    internal void ProfileFrame(Action<Scene3D, int> draw, GpuFrameSubmission submission,
+        Action<IGpuCommandList> begin, Action<IGpuCommandList> end) => Render(draw, submission, begin, end);
+
+    void Render(Action<Scene3D, int> draw, GpuFrameSubmission? submission = null,
+        Action<IGpuCommandList>? begin = null, Action<IGpuCommandList>? end = null)
     {
         int n = _frame++ - _skippedPhases;
         Scene.Begin();
@@ -83,10 +87,16 @@ public sealed class TemporalFixture : IDisposable
         if (TemporalDetailGateVariants.Selected != TemporalDetailGate.Production
             && Scene.TemporalResolveRendererForTests is null)
             Scene.InstallTemporalResolveForTests(source => TemporalDetailGateVariants.Rewrite(source, TemporalDetailGateVariants.Selected));
+        submission?.Begin();
         using (GpuRecording.Open(Device, _commands, "TemporalFixture.Frame"))
+        {
+            begin?.Invoke(_commands);
             Scene.RenderInternal(_commands, DisplayWidth, DisplayHeight, Target);
+            end?.Invoke(_commands);
+        }
         long submitted = Stopwatch.GetTimestamp();
-        Device.Submit(_commands);
+        if (submission is null) Device.Submit(_commands);
+        else submission.Submit(_commands);
         Device.WaitForIdle();
         LastSubmitMilliseconds = Stopwatch.GetElapsedTime(submitted).TotalMilliseconds;
         // The frame boundary a game reaches every frame. A backend runs the destroys it deferred there (Vulkan

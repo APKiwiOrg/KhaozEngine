@@ -20,7 +20,9 @@ layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oClassification;
 void main() {
     temporalResolvePixel(ivec2(gl_FragCoord.xy));
-    oClassification = detailClassification + vec4(vUv.x * 1.0e-30);
+    uint flags = uint(detailClassification.w);
+    // A quarter-code bias preserves integer flags under both truncating and nearest UNORM writes.
+    oClassification = vec4((float(detailDistrust(flags) | (flags & 32u)) + 0.25) / 255.0) + vec4(vUv.x * 1.0e-30);
 }";
 
     internal static string TemporalDetailResolveFragment(TemporalResolvePrecision precision) =>
@@ -40,18 +42,20 @@ ivec2 detailPixel;
 vec4 detailMean;
 vec4 detailTransport;
 " + TemporalDetailMath.GateGlsl + TemporalDetailMath.Glsl + TemporalDetailFetchGlsl + @"
-bool detailGate() {
+// Only the six trust/lock bits cross this pass boundary. Motion is already available in the resolve.
+uint detailFlags(ivec2 pixel) {
+    return uint(round(texelFetch(sampler2D(DetailClassification, LinearClamp), pixel, 0).r * 255.0));
+}
+bool detailGate(float motion) {
     ivec2 last = ivec2(Sizes.zw) - ivec2(1);
-    vec4 centre = texelFetch(sampler2D(DetailClassification, LinearClamp), detailPixel, 0);
-    uint distrust = 0u;
+    uint centre = detailFlags(detailPixel), distrust = 0u;
     for (int y = -1; y <= 1; y++)
         for (int x = -1; x <= 1; x++)
-            distrust |= uint(texelFetch(sampler2D(DetailClassification, LinearClamp),
-                clamp(detailPixel + ivec2(x,y), ivec2(0), last), 0).w);
-    return detailUseFine(centre.z, (uint(centre.w) & 32u) != 0u, uint(centre.w), distrust);
+            distrust |= detailFlags(clamp(detailPixel + ivec2(x,y), ivec2(0), last));
+    return detailUseFine(motion, (centre & 32u) != 0u, centre, distrust);
 }
 " + TemporalAccumulateBeforeFetchGlsl + @"
-        bool fine = detailGate();
+        bool fine = detailGate(motionPixels);
         vec4 fetched;
         if (fine) {
             detailMean = detailMeanAt(previousUv, displaySize);

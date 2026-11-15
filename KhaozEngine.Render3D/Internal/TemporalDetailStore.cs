@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Diagnostics;
 using KhaozEngine.Render3D.Rendering;
 using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
@@ -30,7 +31,8 @@ internal sealed class TemporalDetailStore(IGpuDevice gd)
 
     internal IGpuResourceSet ReadSet(int write) => _resolve!.ReadSet(write);
 
-    internal void Resolve(IGpuCommandList cl, IGpuResourceSet inputs, int write) => _resolve!.Resolve(cl, inputs, write);
+    internal void Resolve(IGpuCommandList cl, IGpuResourceSet inputs, int write, RenderPassProfiling? profiling) =>
+        _resolve!.Resolve(cl, inputs, write, profiling);
 
     internal void Update(IGpuCommandList cl, int write) => _resolve!.Update(cl, write);
 

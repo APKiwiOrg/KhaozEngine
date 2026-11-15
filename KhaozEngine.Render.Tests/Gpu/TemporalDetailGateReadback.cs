@@ -5,7 +5,7 @@ using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Tests.Gpu;
 
-/// <summary>Copies the live classifier with no feedback into history.</summary>
+/// <summary>Replays the classifier before flag packing, preserving full motion and trust observations without feedback.</summary>
 internal sealed class TemporalDetailGateReadback : IDisposable
 {
     readonly TemporalFixture _fixture;
@@ -14,6 +14,7 @@ internal sealed class TemporalDetailGateReadback : IDisposable
     readonly IGpuCommandList _commands;
     readonly IGpuResourceLayout _layout;
     readonly TemporalVisibilityPipelinePair _programs;
+    readonly IGpuResourceSet[] _sets = new IGpuResourceSet[2];
 
     internal TemporalDetailGateReadback(TemporalFixture fixture)
     {
@@ -25,21 +26,17 @@ internal sealed class TemporalDetailGateReadback : IDisposable
         _target = factory.CreateFramebuffer(null, _pixels);
         _commands = factory.CreateCommandList();
         _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-            new("DetailColor", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-            new("DetailClassification", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
+            new GpuResourceLayoutElement("DetailColor", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
         var renderer = fixture.Scene.TemporalResolveRendererForTests!;
-        string source = ShaderSources.TemporalDetailResolveFragment(TemporalResolvePrecisionPolicy.For(fixture.Device));
+        string source = ShaderSources.TemporalDetailClassifyFragment(TemporalResolvePrecisionPolicy.For(fixture.Device));
         source = source[..source.LastIndexOf("void main()", StringComparison.Ordinal)] + @"
 void main() {
-    // Keep the borrowed resolve layouts live on backends whose bindings are positional.
-    // x and y are scratch resolve output. Attribution reads the classifier's exact z and w.
-    TemporalPixel p = temporalDetailPixel(ivec2(gl_FragCoord.xy));
-    oColor = texelFetch(sampler2D(DetailClassification, LinearClamp), ivec2(gl_FragCoord.xy), 0);
-    oColor.xy = vec2(p.color.x + p.color.y, p.color.z + p.alpha + vUv.x * 1.0e-30);
+    temporalResolvePixel(ivec2(gl_FragCoord.xy));
+    oClassification = detailClassification + vec4(vUv.x * 1.0e-30);
 }";
-        foreach (string declaration in new[] { "layout(location=1) out vec4 oState;",
-            "layout(location=2) out vec4 oMean;", "layout(location=3) out vec4 oTransport;" })
-            source = source.Replace(declaration, "", StringComparison.Ordinal);
+        for (int write = 0; write < 2; write++)
+            _sets[write] = factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
+                fixture.Scene.TemporalHistory.DetailStore!.Color(1 - write)));
         _programs = new TemporalVisibilityPipelinePair(fixture.Device, source,
             [renderer.ResolveLayout, _layout], [renderer.FullyLitResolveLayout, _layout], _target.Outputs);
     }
@@ -55,8 +52,7 @@ void main() {
             _commands.SetFramebuffer(_target);
             _commands.SetPipeline(_programs.Select(false));
             _commands.SetGraphicsResourceSet(0, renderer.CurrentSet!);
-            _commands.SetGraphicsResourceSet(1, _fixture.Scene.TemporalHistory.DetailStore!.ReadSet(
-                _fixture.Scene.TemporalHistory.WriteIndex));
+            _commands.SetGraphicsResourceSet(1, _sets[_fixture.Scene.TemporalHistory.WriteIndex]);
             _commands.Draw(3);
         }
         _fixture.Device.Submit(_commands);
@@ -66,6 +62,7 @@ void main() {
 
     public void Dispose()
     {
+        foreach (var set in _sets) set.Dispose();
         _programs.Dispose(); _layout.Dispose(); _commands.Dispose(); _target.Dispose(); _pixels.Dispose();
     }
 }

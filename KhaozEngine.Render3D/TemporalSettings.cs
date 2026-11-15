@@ -22,7 +22,7 @@ namespace KhaozEngine.Render3D
     public sealed class TemporalSettings
     {
         /// <summary>The colour history grid, <see cref="TemporalHistoryDetail.Display"/> by default. Fine keeps an
-        /// additional colour pair at twice the display on each axis. Nothing reads it yet, so images are unchanged.
+        /// additional colour pair at twice the display on each axis for admitted moving history.
         /// Takes effect on the frame's first render, only while the temporal resolve runs and both the device limit
         /// and <see cref="HistoryDetailPixelLimit"/> admit it. Unknown values behave as Display. Read
         /// <see cref="Scene3D.TemporalHistoryDetailInEffect"/> for the latched selection. A change of that selection
@@ -30,7 +30,8 @@ namespace KhaozEngine.Render3D
         public TemporalHistoryDetail HistoryDetail = TemporalHistoryDetail.Display;
 
         /// <summary>Inclusive display pixel budget for Fine, default 3,686,400 (2560 by 1440). Its extra RGBA16F
-        /// colour pair uses 225 MiB at that size. A 3840 by 2160 display would need 506.25 MiB and falls back to
+        /// colour pair uses 225 MiB at that size, plus 87.89 MiB of display-grid scratch (312.89 MiB total).
+        /// A 3840 by 2160 colour pair would need 506.25 MiB and falls back to
         /// Display by default. Zero and negative values disable Fine. The device's 2D render texture dimension
         /// limit also applies. A change that leaves the mode in effect unchanged does not reset history.</summary>
         public long HistoryDetailPixelLimit = 2560L * 1440;

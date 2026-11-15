@@ -5,10 +5,13 @@ internal static partial class TemporalDetailMath
     internal const string GateGlsl = @"
 const float DetailStillEpsilon = 0.00006103515625;
 bool detailStill(float motion) { return !(motion >= DetailStillEpsilon); }
-bool detailUseFine(float motion, bool locked, uint distrust, uint neighbourDistrust) {
+uint detailDistrust(uint flags) {
     const uint distrustMask = 1u;
+    return flags & distrustMask;
+}
+bool detailUseFine(float motion, bool locked, uint distrust, uint neighbourDistrust) {
     return !detailStill(motion) && !(locked && motion <= ShimmerStillPixels)
-        && ((distrust | neighbourDistrust) & distrustMask) == 0u;
+        && detailDistrust(distrust | neighbourDistrust) == 0u;
 }
 ";
 

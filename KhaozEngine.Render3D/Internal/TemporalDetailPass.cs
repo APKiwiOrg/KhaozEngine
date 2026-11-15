@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Diagnostics;
 using KhaozEngine.Render3D.Rendering;
 using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
@@ -29,8 +30,8 @@ internal sealed class TemporalDetailPass
         try
         {
             IGpuResourceFactory f = gd.Factory;
-            _classification = Target(f, history, GpuPixelFormat.R32G32B32A32Float);
-            _mean = Target(f, history, GpuPixelFormat.R32G32B32A32Float);
+            _classification = Target(f, history, GpuPixelFormat.R8UNorm);
+            _mean = Target(f, history, TemporalFormats.HistoryColor);
             _transport = Target(f, history, GpuPixelFormat.R32G32B32A32Float);
             _classificationFrame = f.CreateFramebuffer(null, _classification);
             _classifyLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(T("DetailColor")));
@@ -49,7 +50,7 @@ internal sealed class TemporalDetailPass
                 [resolveLayout, _classifyLayout], _classificationFrame.Outputs);
             _resolvePipeline = TemporalResolveRenderer.Fullscreen(f, _resolveShaders, [resolveLayout, _fineLayout],
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence,
-                    GpuPixelFormat.R32G32B32A32Float, GpuPixelFormat.R32G32B32A32Float));
+                    TemporalFormats.HistoryColor, GpuPixelFormat.R32G32B32A32Float));
             _updatePipeline = TemporalResolveRenderer.Fullscreen(f, _updateShaders, _updateLayout,
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor));
             for (int write = 0; write < 2; write++)
@@ -70,13 +71,17 @@ internal sealed class TemporalDetailPass
         f.CreateTexture(GpuTextureDescription.Texture2D((uint)history.DisplayWidth, (uint)history.DisplayHeight,
             format, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
 
-    internal void Resolve(IGpuCommandList cl, IGpuResourceSet inputs, int write)
+    internal void Resolve(IGpuCommandList cl, IGpuResourceSet inputs, int write, RenderPassProfiling? profiling)
     {
-        cl.SetFramebuffer(_classificationFrame!);
-        cl.SetPipeline(_classifyPipeline!);
-        cl.SetGraphicsResourceSet(0, inputs);
-        cl.SetGraphicsResourceSet(1, _classifySets[write]!);
-        cl.Draw(3);
+        using (profiling?.Pass(cl, "temporal.detail-classify") ?? default)
+        {
+            cl.SetFramebuffer(_classificationFrame!);
+            cl.SetPipeline(_classifyPipeline!);
+            cl.SetGraphicsResourceSet(0, inputs);
+            cl.SetGraphicsResourceSet(1, _classifySets[write]!);
+            cl.Draw(3);
+        }
+        using var resolve = profiling?.Pass(cl, "temporal.resolve") ?? default;
         cl.SetFramebuffer(_resolveFrames[write]!);
         cl.SetPipeline(_resolvePipeline!);
         cl.SetGraphicsResourceSet(0, inputs);

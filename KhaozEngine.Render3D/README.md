@@ -440,9 +440,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
   latched on the frame's first render. Fine requires the temporal resolve, a fitting device texture dimension,
   and a display pixel count within `Post.Temporal.HistoryDetailPixelLimit` (default 3,686,400). The pair uses
-  225 MiB at 2560 by 1440. At 3840 by 2160 it would use 506.25 MiB and falls back to Display by default.
+  225 MiB at 2560 by 1440. R8 trust classification, an RGBA16F mean and RGBA32F reprojection/retention
+  scratch add 87.89 MiB, for 312.89 MiB of mode-specific target payload (89 bytes a display pixel).
+  At 3840 by 2160 the pair alone would use 506.25 MiB and falls back to Display by default.
   Nonpositive budgets disable Fine and unknown enum values mean Display. A mode change resets history once
   with `TemporalResetReason.HistoryDetail`. Later renders and captures leave the pair untouched.
+  The 2026-11-16 M2 Max Metal capture of the moving thin field at 1440p reports 17.090 ms of fine passes
+  at Native and 16.656 ms at Quality, 14.174 ms and 13.521 ms above the default split control.
+  Four warm and eight measured frames per case on a shared machine establish no timing gain.
+  Both report-only cost targets remain unmet. See the [pass table and limits](../docs/design/TEMPORAL-RESOLVE.md#cost-capture).
   Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent
   writers preserve it and cutout/dissolve discards expose the receiver below. Depth-qualified current/history
   means use relative tolerance 0.02 and finite reference/sample depths. A stored R8 difference strictly above 0.1

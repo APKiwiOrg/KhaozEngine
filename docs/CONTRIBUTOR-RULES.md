@@ -135,7 +135,7 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   for rule boundaries, baseline grammar, script modes and consumer adoption. Analyzer tests use
   `KhaozEngine.Tests.CodeHealth`.
 - `[Trait("Category", "Diagnostic")]` marks on-demand probes. Default CI excludes their timing and
-  cost workloads, including 39 renderer methods with method-level traits. Run them through the
+  cost workloads, including renderer methods with method-level traits. Run them through the
   `cross-platform-gpu` dispatch input `renderTestFilter` set to `Category=Diagnostic`, or narrow it
   with `Category=Diagnostic&FullyQualifiedName~TemporalResolveCostPerfGpuTests`. Existing GPU
   capability gates and software-adapter refusals still apply. Software runs prove correctness, not

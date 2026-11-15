@@ -25,7 +25,7 @@ public sealed class TemporalDetailUpdateGpuTests
         IGpuResourceFactory f = gd.Factory;
         using IGpuTexture history = Texture(2, 2, GpuPixelFormat.R16G16B16A16Float);
         using IGpuTexture result = Texture(1, 1, GpuPixelFormat.R16G16B16A16Float);
-        using IGpuTexture mean = Texture(1, 1, GpuPixelFormat.R32G32B32A32Float);
+        using IGpuTexture mean = Texture(1, 1, TemporalFormats.HistoryColor);
         using IGpuTexture transport = Texture(1, 1, GpuPixelFormat.R32G32B32A32Float);
         using IGpuTexture target = Texture(2, 2, GpuPixelFormat.R16G16B16A16Float);
         using IGpuFramebuffer framebuffer = f.CreateFramebuffer(null, target);

@@ -228,8 +228,7 @@ namespace KhaozEngine.Render3D.Rendering
             LastEntry = history.DetailStore is null ? Entry : TemporalResolveEntry.Fused;
             if (history.DetailStore is { } detail)
             {
-                using (Profiling?.Pass(cl, "temporal.resolve", 0) ?? default)
-                    detail.Resolve(cl, _resolveSets[history.ReadIndex]!, history.WriteIndex);
+                detail.Resolve(cl, _resolveSets[history.ReadIndex]!, history.WriteIndex, Profiling);
                 using (Profiling?.Pass(cl, "temporal.depth-store", 0) ?? default)
                 {
                     cl.SetFramebuffer(history.PreviousDepthFramebuffer(history.WriteIndex));

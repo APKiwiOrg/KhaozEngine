@@ -159,8 +159,19 @@ Fine classifies trust on the display grid, resolves on that grid, and updates th
 afterward, before distortion, bloom or tonemapping. It presents the resolve's R directly. There is no new
 presentation filter. The classification uses the candidate's own chosen reprojection and history state.
 Its one-pixel Chebyshev halo is gathered by the resolve, so no neighbour's classification is guessed from
-the centre. The classification and the two transport exports are RGBA32F. This preserves the actual
-float32 Hbar, chosen previous UV and retention across passes without another half rounding.
+the centre. Classification stores the active distrust bits and lock bit in R8 UNORM. A quarter-code
+bias before conversion preserves each integer code under truncating and nearest writes. The resolve
+rounds the sampled code back to an integer and uses its own unchanged chosen motion, so neither UV
+nor motion needs exporting. The classifier exports only the distrust observations the selected gate
+reads and the lock bit. Diagnostic attribution replays the classifier before this packing.
+
+The exported mean is RGBA16F. Hbar and retention are computed in float32 inside the resolve. Only the
+update's copy of Hbar is rounded, and its channel limits include the fourth child's implied deviation.
+The remainder is computed from stored R and the first three stored children, preserving the mean
+contract independently of exported-mean precision. Chosen previous UV, retention and the fine-path
+flag remain RGBA32F. Half UVs would lose sub-pixel reprojection precision at large display coordinates.
+No extra backend format or target pool is introduced. The fine pair retains its history lifetime,
+and the three scratch targets remain owned by that generation's pass.
 
 Each display pixel takes one of two paths:
 
@@ -223,8 +234,8 @@ outside the range, clamping it moves it toward the original fourth child. The re
 most the sum of the first three rounding errors. Their spacings sum to at most 8U: for normal R, spacing is
 a power of two and three children with a larger spacing sum would already exceed 4R. Subnormal spacing is
 constant and satisfies the same bound. Half that spacing sum, divided by four for the mean, is at most U.
-The float32 remainder constraint handles the residual from computing Hbar, and the outward-rounding guard
-keeps limiting arithmetic on the safe side of both endpoints.
+The float32 remainder constraint covers both computed-Hbar residual and exported-mean rounding. The
+outward-rounding guard keeps limiting arithmetic on the safe side of both endpoints.
 
 Headless property checks cover the gate, scalar retention, per-channel bounds, subnormals, zero and removed
 channels, the finite maximum and both cancellation/overflow regressions. Metal checks cover still colour
@@ -242,6 +253,39 @@ change, either size change or release retires the pair and its bindings through 
 and bumps the same generation. A reset keeps targets and seeds the write side from this frame's result.
 The next frame reads only the side that was written. A later render or offscreen capture leaves both sides,
 indices, mode and generation alone. Turning the temporal resolve off retires the store with history.
+
+#### Cost capture
+
+On 2026-11-16, MetalNative on an Apple M2 Max measured the existing moving thin field over its textured
+wall with a followed wide box at a 2560 by 1440 display. Native rendered internally at 2560 by 1440,
+Quality at 1707 by 960. Each case used four warm frames and eight measured frames on a shared machine.
+The before capture used fused Display as a matched kernel control. The after capture also measured
+main's default split Display, whose prepare and accumulate passes are P and A below. All times are
+native GPU timestamp medians from the on-demand `TemporalDetailCostPerfGpuTests`, never timing gates.
+`temporal.detail-classify`, `temporal.resolve` and `temporal.detail-store` have separate intervals.
+
+| Preset | Mode | Resolve ms before / after | Classify ms before / after | Update ms before / after | Retained B/px (MiB) | Scratch B/px (MiB) before / after | Total B/px (MiB) before / after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Native | Display fused control | 3.486 / 3.390 | absent | absent | 0 (0) | 0 (0) | 0 (0) |
+| Native | Display default split | not captured / P 0.743 + A 1.968 | absent | absent | 0 (0) | 24.00000 (84.38), unchanged | 24.00000 (84.38), unchanged |
+| Native | Fine | 6.799 / 6.932 | 5.657 / 5.998 | 3.938 / 4.023 | 64 (225.00) | 48 (168.75) / 25 (87.89) | 112 (393.75) / 89 (312.89) |
+| Quality | Display fused control | 3.151 / 2.995 | absent | absent | 0 (0) | 0 (0) | 0 (0) |
+| Quality | Display default split | not captured / P 0.548 + A 2.547 | absent | absent | 0 (0) | 10.66875 (37.51), unchanged | 10.66875 (37.51), unchanged |
+| Quality | Fine | 6.536 / 6.600 | 5.519 / 5.977 | 3.966 / 4.007 | 64 (225.00) | 48 (168.75) / 25 (87.89) | 112 (393.75) / 89 (312.89) |
+
+Payload is source-derived uncompressed storage, excluding unchanged ordinary histories, scene/post
+targets, optional diagnostics, retired generations and driver overhead. Retained is the fine colour
+pair. Scratch content is transient, but its textures remain allocated with the pass. Display split's
+existing internal-grid preparation workspace is included. The fine targets fall by 23 bytes a display
+pixel, 80.86 MiB at 1440p. Their 312.89 MiB total remains above the report-only 260 MiB target.
+
+The capture does not establish a GPU-time saving. The after medians of each frame's summed fine
+intervals are 17.090 ms at Native and 16.656 ms at Quality. Against default split's summed intervals,
+2.916 ms and 3.135 ms respectively, the differences are 14.174 ms and 13.521 ms. This exceeds the
+report-only 1.5 ms target. Split prepare also writes ordinary depth, while Fine's separate depth store
+is outside these fine intervals. These small blocks on a shared machine are not paired causal
+measurements, whole-frame timings or a steady-state residency proof. Native Vulkan, Direct3D 11 and
+consumer acceptance remain separate proof.
 
 ## Shimmer record
 

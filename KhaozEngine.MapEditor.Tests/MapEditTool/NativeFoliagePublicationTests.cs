@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
@@ -12,15 +13,20 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapEditTool;
 
-/// <summary>A session callback that stages a command and then changes foliage publishes one snapshot: one event, one
+/// <summary>A session callback that edits around a staged command publishes one snapshot: one event, one
 /// history entry, the effects of a generic callback making the same final edit, and a redo of exactly that snapshot.</summary>
 public sealed class NativeFoliagePublicationTests
 {
     [Theory]
-    [InlineData("display-name")]
-    [InlineData("terrain-globals")]
-    [InlineData("placements")]
-    public void LateCallbackMembers_PublishOneSnapshotEffectsAndRedo(string member)
+    [InlineData("display-name", false)]
+    [InlineData("terrain-globals", false)]
+    [InlineData("placements", false)]
+    [InlineData("foliage-removal", false)]
+    [InlineData("replaced-shared-patch", false)]
+    [InlineData("display-name", true)]
+    [InlineData("terrain-globals", true)]
+    [InlineData("foliage-removal", true)]
+    public void CallbackMembers_PublishOneSnapshotEffectsAndRedo(string member, bool beforeStaging)
     {
         // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1481
         FoliageFixture f = FoliageFixtures.Dependents();
@@ -34,8 +40,9 @@ public sealed class NativeFoliagePublicationTests
             var terrain = new MapSetCornerHeights(new("exterior", 0, 0), 9, 9, 2, 2, [-150, -150, -150, -150]);
             session.Mutate((doc, registry) =>
             {
+                if (beforeStaging) ChangeMember(doc, member);
                 session.ApplyNative(new TerrainEditCommand(terrain), doc, registry);
-                ChangeMember(doc, member);
+                if (!beforeStaging) ChangeMember(doc, member);
                 return 0;
             }, true);
             generic.Mutate((doc, _) =>
@@ -66,12 +73,48 @@ public sealed class NativeFoliagePublicationTests
     {
         switch (member)
         {
+            case "foliage-removal": document.Foliage = null; break;
+            case "replaced-shared-patch":
+                var restored = NativeDocumentSnapshot.Clone(document, MapDocRegistry.CreateDefault()).Surfaces;
+                var patch = document.Surfaces.Patches[new("exterior", 0, 0)];
+                Assert.NotEmpty(patch.Records);
+                patch.Records.Clear();
+                document.Surfaces = restored;
+                break;
             case "display-name": document.DisplayName = "Late callback name"; break;
             case "terrain-globals": document.Terrain.Seed = 94; break;
             case "placements":
                 document.Placements = [.. document.Placements, new() { Id = "late", Kind = "item", AssetId = "item", X = 12, Y = -2, Z = -6 }];
                 break;
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CommandOnlyCallback_KeepsStagedEffectsAndOneHistoryEntry(bool tiled)
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1481
+        var session = FoliageEditorFixtures.Session(FoliageFixtures.Dependents());
+        string root = Path.GetDirectoryName(session.DocumentPath)!;
+        try
+        {
+            if (tiled) session.ConvertToTiled(root);
+            var events = new List<MapNativeEditEffects>();
+            session.NativeEdited += events.Add;
+            string original = FoliageEditorFixtures.Bytes(session);
+            var terrain = new MapSetCornerHeights(new("exterior", 0, 0), 9, 9, 2, 2, [-150, -150, -150, -150]);
+            var staged = session.Mutate((doc, registry) => session.ApplyNative(new TerrainEditCommand(terrain), doc, registry), true);
+            Assert.Equal(staged.Describe(), Assert.Single(events).Describe());
+            Assert.Equal((1, 1, 1L), session.NativeHistoryState);
+            Assert.Equal((terrain.Label, (string?)null), session.NativeHistoryLabels);
+            string published = FoliageEditorFixtures.Bytes(session);
+            Assert.NotNull(session.UndoNative());
+            Assert.Equal(original, FoliageEditorFixtures.Bytes(session));
+            Assert.NotNull(session.RedoNative());
+            Assert.Equal(published, FoliageEditorFixtures.Bytes(session));
+        }
+        finally { Directory.Delete(root, true); }
     }
 
     [Fact]

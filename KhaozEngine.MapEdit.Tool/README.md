@@ -135,12 +135,15 @@ dirty state untouched. A genuine no-op creates no history entry or dirty transit
 explicit service APIs `PlacementLabel` and `PlacementRemapId` distinguish label edits from stable-ID
 remapping. These are service APIs, not additional MCP registrations.
 
-A native mutation callback may stage one command into its own detached candidate. Further edits to that
-candidate, including members outside the command's write set and replaced collections, are validated and
-restaged as one complete snapshot under the command's label. Effects, undo and redo describe that final
-snapshot, so late edits cannot disappear through an unshared member. An invalid final candidate leaves the
-session unchanged. Native asset publication, undo, redo, open, create, save, window replacement, conversion,
-retile and closure binding refuse while the callback is open, before changing session state or storage.
+A native mutation callback may stage one command into its own detached candidate. If the callback's final
+candidate differs from the command's staged snapshot, edits made before or after staging are validated and
+restaged as one complete snapshot under the command's label. This preserves edits outside the command's
+write set and replacement collections. Effects, undo and redo describe that final snapshot. A callback with
+no additional edits keeps the command's own staged effects and history entry. An invalid final candidate
+leaves the session unchanged. Native asset publication, undo, redo, open, create, save, window replacement,
+conversion, retile and closure binding refuse only while the callback is executing, before changing session
+state or storage. After acceptance, `NativeEdited` handlers may save or perform other lifecycle operations.
+Nested native mutation remains refused until the outer mutation returns.
 Native publication uses `MapDocumentException` and lifecycle work uses `MapSessionException`, both with
 `ToolPublicationDuringMutationUnsupported`, `DocumentId` and `Operation`. Staging into another document
 uses `MapDocumentException` with `ToolMutationCandidateRequired` and the known `CommandType`.

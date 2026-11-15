@@ -272,6 +272,51 @@ public sealed class SessionPublicationRefusalTests
         finally { Directory.Delete(root, true); }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AcceptedEditHandler_CanSaveButCallbackPublicationRemainsRefused(bool staged)
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1481
+        var session = PrefabEditorFixtures.Session(PrefabFixtures.Create());
+        try
+        {
+            Action<MapNativeEditEffects> save = _ =>
+            {
+                var nested = Assert.Throws<MapDocumentException>(() => session.Mutate((_, _) => 0, false));
+                Assert.Equal(MapDocumentRefusal.ToolNestedMutationUnsupported, nested.Reason);
+                session.Save();
+            };
+            session.NativeEdited += save;
+            var before = PrefabEditorFixtures.State(session);
+            string[] files = Files(Path.GetDirectoryName(session.DocumentPath)!);
+            var error = Assert.Throws<MapSessionException>(() => session.Mutate((doc, _) =>
+            {
+                doc.DisplayName = "Unpublished name";
+                save(new(null, null, [], [], [], [], MapNativeInvalidation.None));
+                return 0;
+            }, false));
+            Assert.Equal(MapDocumentRefusal.ToolPublicationDuringMutationUnsupported, error.Reason);
+            Assert.Equal(session.WithDocument((doc, _) => doc.Id), error.DocumentId);
+            Assert.Equal("Save", error.Operation);
+            Assert.Equal(before, PrefabEditorFixtures.State(session));
+            Assert.Equal(files, Files(Path.GetDirectoryName(session.DocumentPath)!));
+
+            session.Mutate((doc, registry) =>
+            {
+                if (staged) session.ApplyNative(Move(), doc, registry);
+                doc.DisplayName = "Accepted name";
+                return 0;
+            }, false);
+            Assert.False(session.IsDirty);
+            Assert.Equal("Accepted name", MapDocumentFile.Load(session.DocumentPath!).DisplayName);
+            Assert.Equal(PrefabEditorFixtures.State(session).DocumentBytes,
+                MapDocumentFile.SaveText(MapDocumentFile.Load(session.DocumentPath!)));
+            Assert.Equal((1, 1, 1L), session.NativeHistoryState);
+        }
+        finally { FoliageEditorFixtures.Delete(session); }
+    }
+
     [Fact]
     public void StagedNativeCommand_RequiresTheCallbacksDetachedCandidate()
     {

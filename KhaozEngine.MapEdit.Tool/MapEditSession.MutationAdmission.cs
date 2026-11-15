@@ -20,7 +20,7 @@ public sealed partial class MapEditSession
     // Each publication entry point checks before staging, writing storage or changing session state.
     void RequireClosedNativeMutation(string operation, bool nativePublication = false)
     {
-        if (!_nativeMutation) return;
+        if (!_nativeCallbackActive) return;
         const string message = "Publication must wait until the native mutation callback closes.";
         if (nativePublication)
             throw new MapDocumentException(MapDocumentRefusal.ToolPublicationDuringMutationUnsupported, message)

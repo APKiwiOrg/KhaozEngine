@@ -9393,9 +9393,13 @@ row-major masks. Exit bits 0 through 7 are directed and match `(1,0)`, `(-1,0)`,
 `(1,1)`, `(1,-1)`, `(-1,1)`, and `(-1,-1)`. `NavTraversalGraph(NavSpace space, float agentRadius,
 float agentHeight, IReadOnlyList<NavTraversalLayer> layers, IReadOnlyList<NavLink> links)` copies masks,
 source topology, and the accepted read-only link subset, then validates matching dimensions, exits,
-accepted endpoints, and source links. Its `Space`, `Layers`, and `Links` getters expose those owned
-snapshots, while `AgentRadius`, `AgentHeight`, `IsNodePassable`, and `CanTraverse` expose the profile
-contract. Both query methods return false outside bounds.
+accepted endpoints, and source links. Its `Space`, `Layers`, and `Links` getters expose owned immutable
+snapshots behind the existing `IReadOnlyList` properties. `NavSpace` uses the same ownership rule for its
+layers and links. Generic and non-generic collection casts refuse mutation, including backing-storage
+access through `ICollection.SyncRoot`, so cached planner connectivity cannot be invalidated by a caller.
+The immutable grids and traversal layers keep their element identity and order. `AgentRadius`,
+`AgentHeight`, `IsNodePassable`, and `CanTraverse` expose the profile contract. Both query methods return
+false outside bounds.
 
 Pass the graph to `GridPathPlanner(NavSpace space, NavTraversalGraph traversal, float hopCostCells = 4f)`.
 The supplied space must match the graph's source topology exactly, and each query radius must equal
@@ -9602,7 +9606,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.13.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.13.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10208,7 +10212,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.13.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.13.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11079,7 +11083,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.13.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.13.1" />
 ```
 
 ```csharp
@@ -21072,7 +21076,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.13.1" />
 ```
 
 ```csharp
@@ -21108,7 +21112,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.13.1" />
 ```
 
 ```csharp
@@ -21359,7 +21363,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.13.1" />
 ```
 
 ```csharp
@@ -26264,7 +26268,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.13.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.13.1" />
 </ItemGroup>
 ```
 

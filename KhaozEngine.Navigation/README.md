@@ -35,8 +35,8 @@ modeled as two links, one per direction. `NavSpace.Single(grid)` wraps a single 
 Every link endpoint is bounds-checked against its layer at construction, else `ArgumentException`.
 The constructor copies the layer and link containers into owned immutable snapshots behind the existing
 `IReadOnlyList` properties. Generic and non-generic mutators are refused, and `ICollection.SyncRoot`
-cannot reveal backing storage. Later changes to supplied arrays or lists cannot change the validated space. The immutable
-`NavGrid` instances are shared without copying their baked grids.
+cannot reveal backing storage. Later changes to supplied arrays or lists cannot change the validated space.
+The immutable `NavGrid` instances are shared without copying their baked grids.
 
 Each link carries a `NavLink.Kind` discriminator (`NavLinkKind`, `init`, default `Stair`). A `Stair`
 link is crossed by ordinary ground steering, the follower needs no special state. A `Hop` link is a

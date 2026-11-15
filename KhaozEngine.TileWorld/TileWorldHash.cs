@@ -104,6 +104,7 @@ public static class TileWorldHash
             sb.Append(m.Kind).Append(' ');
             sb.Append(m.TilesPerMetre?.ToString("R", CultureInfo.InvariantCulture) ?? "-");
             Steep(sb, m.Steep);
+            Relief(sb, m);
             sb.Append('\n');
         }
         foreach (TileObjectArchetype a in catalogs.Archetypes.Values.OrderBy(a => a.Id, StringComparer.Ordinal))
@@ -241,6 +242,22 @@ public static class TileWorldHash
     }
 
     static string OptionalFloat(float? value) => value is { } v ? Float(v) : "-";
+
+    // Default relief writes nothing, preserving existing catalog identities. Authored optional values stay
+    // distinct from omitted values, including an empty feather object and empty map paths.
+    static void Relief(StringBuilder sb, GroundMaterial material)
+    {
+        if (material.NormalTexture is null && material.RoughnessTexture is null && material.HeightTexture is null
+            && material.HeightBlendSharpness is null && material.Feather is null
+            && material.AntiTiling == GroundMaterialAntiTiling.None) return;
+        sb.Append(" r ");
+        Text(sb, material.NormalTexture);
+        Text(sb, material.RoughnessTexture);
+        Text(sb, material.HeightTexture);
+        sb.Append(OptionalFloat(material.HeightBlendSharpness)).Append(' ').Append(Inv((int)material.AntiTiling));
+        if (material.Feather is { } feather)
+            sb.Append(" f ").Append(OptionalFloat(feather.WidthMetres)).Append(' ').Append(OptionalFloat(feather.Breakup));
+    }
 
     // A LENGTH-PREFIXED string, because catalog text is authored and a delimiter that appears inside a name would
     // otherwise let two different catalogs digest the same bytes. Null and empty are distinguished, so an archetype

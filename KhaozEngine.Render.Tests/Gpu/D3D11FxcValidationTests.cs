@@ -293,13 +293,22 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         /// vertex declares, so the two signatures are the same set and there is no fragment-unused output for
         /// SPIRV-Cross to drop in the first place. That equality is asserted rather than just the contiguity,
         /// because contiguity alone would still pass a future edit that added an unused output above the live
-        /// block and then, one edit later, below it.
+        /// block and then, one edit later, below it. The relief fragments share the plain vertex shader, so they owe
+        /// the same equality.
         /// </summary>
-        [Fact]
-        public void TheTileGroundInterpolants_AreGapFreeAndEntirelyRead()
+        [Theory]
+        [InlineData("TileGround")]
+        [InlineData("TileGroundRelief")]
+        [InlineData("TileGroundReliefHex")]
+        public void TheTileGroundInterpolants_AreGapFreeAndEntirelyRead(string name)
         {
-            CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
-                ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag, "TileGround");
+            string fragment = name switch
+            {
+                "TileGroundRelief" => ShaderSources.TileGroundReliefFrag,
+                "TileGroundReliefHex" => ShaderSources.TileGroundReliefHexFrag,
+                _ => ShaderSources.TileGroundFrag,
+            };
+            CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.TileGroundVert, fragment, name);
 
             uint[] vertexOutputs = Semantics(pair.VertexSource, "SPIRV_Cross_Output");
             uint[] fragmentInputs = Semantics(pair.FragmentSource, "SPIRV_Cross_Input");

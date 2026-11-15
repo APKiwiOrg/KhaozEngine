@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Numerics;
 
 namespace KhaozEngine.Navigation;
@@ -34,15 +35,16 @@ public readonly record struct NavLink(int FromLayer, int FromX, int FromZ, int T
 /// </summary>
 public sealed class NavSpace
 {
-    /// <summary>Owned read-only container of the supplied immutable grids, in constructor order. At least one.</summary>
+    /// <summary>Owned immutable snapshot of the supplied immutable grids, in constructor order. At least one.</summary>
     public IReadOnlyList<NavGrid> Layers { get; }
 
-    /// <summary>Owned read-only container of directed links, in constructor order. Empty when none were supplied.</summary>
+    /// <summary>Owned immutable snapshot of directed links, in constructor order. Empty when none were supplied.</summary>
     public IReadOnlyList<NavLink> Links { get; }
 
     /// <summary>
     /// Builds a space from <paramref name="layers"/> and, optionally, <paramref name="links"/> between
-    /// them. Copies both containers and exposes read-only views while sharing the immutable grids.
+    /// them. Copies both containers into immutable snapshots while sharing the immutable grids.
+    /// Neither collection interfaces nor SyncRoot expose mutable backing storage.
     /// Requires at least one layer, and every link endpoint (both its layer index and its cell
     /// coordinates within that layer) must be in bounds, else throws <see cref="ArgumentException"/>.
     /// </summary>
@@ -51,8 +53,9 @@ public sealed class NavSpace
         if (layers is null) throw new ArgumentNullException(nameof(layers));
         if (layers.Count == 0) throw new ArgumentException("NavSpace requires at least one layer.", nameof(layers));
 
-        Layers = Array.AsReadOnly(CopyToArray(layers));
-        Links = Array.AsReadOnly(CopyToArray(links ?? Array.Empty<NavLink>()));
+        // Copy first, even for immutable inputs, so their backing storage is never retained.
+        Layers = ImmutableArray.CreateRange(CopyToArray(layers));
+        Links = ImmutableArray.CreateRange(CopyToArray(links ?? Array.Empty<NavLink>()));
         for (int i = 0; i < Links.Count; i++)
         {
             NavLink link = Links[i];

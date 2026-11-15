@@ -91,9 +91,9 @@ public sealed class WaterVolumeLayoutTests
         string[] litPrograms =
         [
             "Model", "Foliage", "FoliageOpaque", "FoliageOpaqueMotion", "PreparedFoliageOpaque", "PreparedFoliageOpaqueMotion", "PreparedFoliage", "PreparedFoliageMotion", "ModelDissolve", "SkinnedModel",
-            "SkinnedModelDissolve", "Splat", "TileGround", "ModelMotion", "SkinnedModelMotion",
-            "SkinnedModelDissolveMotion", "ModelCpuSkinnedMotion", "ModelCpuSkinnedDissolveMotion",
-            "FoliageMotion", "SplatMotion", "TileGroundMotion"
+            "SkinnedModelDissolve", "Splat", "TileGround", "TileGroundRelief", "TileGroundReliefHex", "ModelMotion",
+            "SkinnedModelMotion", "SkinnedModelDissolveMotion", "ModelCpuSkinnedMotion", "ModelCpuSkinnedDissolveMotion",
+            "FoliageMotion", "SplatMotion", "TileGroundMotion", "TileGroundReliefMotion", "TileGroundReliefHexMotion"
         ];
         Assert.Equal(litPrograms.SelectMany(name => new[] { name, name + "Visibility" }).Order(StringComparer.Ordinal),
             programs.Select(program => program.Name).Order(StringComparer.Ordinal));

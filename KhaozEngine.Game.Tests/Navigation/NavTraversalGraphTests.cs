@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using KhaozEngine.Navigation;
 using Xunit;
 
@@ -129,27 +130,36 @@ public class NavTraversalGraphTests
             new[] { new NavTraversalLayer(2, 1, new[] { first, second }, new[] { firstExit, secondExit }) },
             Array.Empty<NavLink>()));
 
-    [Fact]
-    public void GraphOwnsEveryContainerAndOnlyAdmitsAcceptedLinks()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GraphOwnsEveryContainerAndOnlyAdmitsAcceptedLinks(bool useList)
     {
         NavGrid lower = NavGrid.FromWalkable(1, 1, 1f, 0f, 0f, (_, _) => true, 0f, 1f);
         NavGrid upper = NavGrid.FromWalkable(1, 1, 1f, 0f, 0f, (_, _) => true, 2f, 3f);
-        var sourceLayers = new List<NavGrid> { lower, upper };
+        IList<NavGrid> sourceLayers = useList ? new List<NavGrid> { lower, upper } : new[] { lower, upper };
         var up = new NavLink(0, 0, 0, 1, 0, 0);
         var down = new NavLink(1, 0, 0, 0, 0, 0);
-        var sourceLinks = new List<NavLink> { up, down };
-        var source = new NavSpace(sourceLayers, sourceLinks);
-        var acceptedLayers = new List<NavTraversalLayer>
+        IList<NavLink> sourceLinks = useList ? new List<NavLink> { up, down } : new[] { up, down };
+        var source = new NavSpace((IReadOnlyList<NavGrid>)sourceLayers, (IReadOnlyList<NavLink>)sourceLinks);
+        var lowerLayer = new NavTraversalLayer(1, 1, new[] { true }, new byte[1]);
+        var upperLayer = new NavTraversalLayer(1, 1, new[] { true }, new byte[1]);
+        IList<NavTraversalLayer> acceptedLayers = useList
+            ? new List<NavTraversalLayer> { lowerLayer, upperLayer } : new[] { lowerLayer, upperLayer };
+        IList<NavLink> acceptedLinks = useList ? new List<NavLink> { up } : new[] { up };
+        var graph = new NavTraversalGraph(source, 0.4f, 1.7f,
+            (IReadOnlyList<NavTraversalLayer>)acceptedLayers, (IReadOnlyList<NavLink>)acceptedLinks);
+        sourceLayers[0] = upper;
+        sourceLinks[0] = down;
+        acceptedLayers[0] = upperLayer;
+        acceptedLinks[0] = down;
+        if (useList)
         {
-            new(1, 1, new[] { true }, new byte[1]),
-            new(1, 1, new[] { true }, new byte[1]),
-        };
-        var acceptedLinks = new List<NavLink> { up };
-        var graph = new NavTraversalGraph(source, 0.4f, 1.7f, acceptedLayers, acceptedLinks);
-        sourceLayers.Clear();
-        sourceLinks.Clear();
-        acceptedLayers.Clear();
-        acceptedLinks.Clear();
+            sourceLayers.Clear();
+            sourceLinks.Clear();
+            acceptedLayers.Clear();
+            acceptedLinks.Clear();
+        }
 
         Assert.Equal(0.4f, graph.AgentRadius);
         Assert.Equal(1.7f, graph.AgentHeight);
@@ -159,10 +169,40 @@ public class NavTraversalGraphTests
         Assert.Equal(2, graph.Layers.Count);
         Assert.True(graph.CanTraverse(0, 0, 0, 1, 0, 0));
         Assert.False(graph.CanTraverse(1, 0, 0, 0, 0, 0));
-        Assert.Throws<NotSupportedException>(() => ((IList<NavGrid>)graph.Space.Layers)[0] = upper);
-        Assert.Throws<NotSupportedException>(() => ((IList<NavLink>)graph.Space.Links).Clear());
-        Assert.Throws<NotSupportedException>(() => ((IList<NavTraversalLayer>)graph.Layers).Clear());
-        Assert.Throws<NotSupportedException>(() => ((IList<NavLink>)graph.Links).Clear());
+        Assert.Same(lowerLayer, graph.Layers[0]);
+        Assert.Same(upperLayer, graph.Layers[1]);
+        NavSpaceImmutabilityTests.AssertReadOnly(graph.Space.Layers, upper);
+        NavSpaceImmutabilityTests.AssertReadOnly(graph.Space.Links, down);
+        NavSpaceImmutabilityTests.AssertReadOnly(graph.Layers, upperLayer);
+        NavSpaceImmutabilityTests.AssertReadOnly(graph.Links, down);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ImmutableGraphInputsAreCopiedWithoutChangingValueOrderOrIdentity(bool includeLink)
+    {
+        NavSpace space = OpenSpace(2, 1);
+        var link = new NavLink(0, 0, 0, 0, 1, 0);
+        if (includeLink) space = new NavSpace(space.Layers, ImmutableArray.Create(link));
+        var layer = new NavTraversalLayer(2, 1, new[] { true, true }, new byte[] { 1, 0 });
+        ImmutableArray<NavTraversalLayer> layers = ImmutableArray.Create(layer);
+        ImmutableArray<NavLink> links = includeLink ? ImmutableArray.Create(link) : ImmutableArray<NavLink>.Empty;
+        var first = new NavTraversalGraph(space, 0f, 1f, layers, links);
+        var second = new NavTraversalGraph(space, 0f, 1f, layers, links);
+
+        Assert.False(first.Layers.Equals(second.Layers));
+        Assert.Equal(!includeLink, first.Links.Equals(second.Links));
+        Assert.False(first.Space.Layers.Equals(second.Space.Layers));
+        Assert.Equal(!includeLink, first.Space.Links.Equals(second.Space.Links));
+        Assert.Equal(layers, first.Layers);
+        Assert.Equal(links, first.Links);
+        Assert.Same(layer, first.Layers[0]);
+        Assert.Same(space.Layers[0], first.Space.Layers[0]);
+        // The source topology validation still accepts the original shared grids and ordered links.
+        _ = new GridPathPlanner(space, first);
+        NavSpaceImmutabilityTests.AssertReadOnly(first.Layers, layer);
+        NavSpaceImmutabilityTests.AssertReadOnly(first.Links, link);
     }
 
     [Fact]

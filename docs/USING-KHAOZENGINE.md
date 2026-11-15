@@ -9393,9 +9393,13 @@ row-major masks. Exit bits 0 through 7 are directed and match `(1,0)`, `(-1,0)`,
 `(1,1)`, `(1,-1)`, `(-1,1)`, and `(-1,-1)`. `NavTraversalGraph(NavSpace space, float agentRadius,
 float agentHeight, IReadOnlyList<NavTraversalLayer> layers, IReadOnlyList<NavLink> links)` copies masks,
 source topology, and the accepted read-only link subset, then validates matching dimensions, exits,
-accepted endpoints, and source links. Its `Space`, `Layers`, and `Links` getters expose those owned
-snapshots, while `AgentRadius`, `AgentHeight`, `IsNodePassable`, and `CanTraverse` expose the profile
-contract. Both query methods return false outside bounds.
+accepted endpoints, and source links. Its `Space`, `Layers`, and `Links` getters expose owned immutable
+snapshots behind the existing `IReadOnlyList` properties. `NavSpace` uses the same ownership rule for its
+layers and links. Generic and non-generic collection casts refuse mutation, including backing-storage
+access through `ICollection.SyncRoot`, so cached planner connectivity cannot be invalidated by a caller.
+The immutable grids and traversal layers keep their element identity and order. `AgentRadius`,
+`AgentHeight`, `IsNodePassable`, and `CanTraverse` expose the profile contract. Both query methods return
+false outside bounds.
 
 Pass the graph to `GridPathPlanner(NavSpace space, NavTraversalGraph traversal, float hopCostCells = 4f)`.
 The supplied space must match the graph's source topology exactly, and each query radius must equal
@@ -9417,6 +9421,14 @@ NavPath path = planner.FindPath(start, goal, agentRadius: 0.4f);   // PathQueryB
 // path.Status: Complete (reached the goal), Partial (ran out of budget, waypoints reach as far as it got),
 // or Unreachable (no route, or an endpoint failed to snap onto a passable cell within SnapRadius)
 ```
+
+After normal snapping and goal admission, a bounded disconnected-terminal certificate can return the
+same `Unreachable` result without A*. It requires all admitted goals outside the start's weak component
+and no strict physical progress anywhere in that component. Disconnected goals with possible progress
+still run the search and retain their useful `Partial` routes. Equal component labels, exceeded proof
+caps and uncertainty also retain the search. The
+[Navigation planner contract](../KhaozEngine.Navigation/README.md#path-planning-ipathplanner--gridpathplanner--pathquerybudget)
+owns the construction/storage bounds and exact proof limits. No public API or bake format changes.
 
 For a bounded goal region, construct `NavGoalRegion(Vector3 anchor, float horizontalExtent,
 Func<Vector3, bool> contains)` and call the additive `IRegionPathPlanner.FindPath(Vector3 start,
@@ -9594,7 +9606,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.13.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10200,7 +10212,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.13.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11071,7 +11083,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.13.1" />
 ```
 
 ```csharp
@@ -12109,7 +12121,9 @@ Without a material supplied the chunk falls back to a vertex-colour ramp of the 
 Five layers is the whole point and also the whole limit: four weights ride in `ModelVertex.Color` and the fifth is
 the remainder, so this pipeline cannot take a material palette that is content rather than a fixed set. For that
 there is a sibling, `Scene3D.LoadTileGroundMaterial` / `LoadMesh(mesh, TileGroundMaterialHandle)`: up to 64 albedo
-layers in one texture array, four material SLOTS per triangle instead of five fixed layers, and no normal maps.
+layers in one texture array, four material SLOTS per triangle instead of five fixed layers, and optional relief per
+layer (normal, roughness and height maps, height-resolved blends, feather breakup and hex-tiling, see
+`TileGroundRelief` in the Render3D README).
 It is what a tile world's ground draws through (see "Tile world rendering"), and the two are separate pipelines on
 purpose, since widening this one would move the reference consumer's live terrain path and its goldens.
 
@@ -14945,9 +14959,12 @@ lists the reasons and identifiers.
 comma list. Give those tiles the surrounding grass as their underlay and the road as their overlay.
 The renderer blends inward through 0.2 metres of the exposed full or shaped edge, including across region
 boundaries. Unmarked tiles keep hard edges, even if they use the same road material. Connected overlays of
-that material share their interior edges. Set `TileWorldViewOptions.Mesher.OverlayFeatherWidthMetres` before
-constructing the view to choose another positive finite width, capped to half a tile. This changes rendering
-only. The original terrain triangles still define the surface for picking and collision. See the
+that material share their interior edges. A material's catalog row can declare its own `feather.widthMetres` (a
+crisp dressed-stone apron beside a soft dirt track) and a `feather.breakup` that wanders the edge. Otherwise set
+`TileWorldViewOptions.Mesher.OverlayFeatherWidthMetres` before constructing the view to choose another positive
+finite default width. Either is capped to half a tile. With a height map on the material the edge also breaks up
+along its stones (see the ground catalog fields in the [TileWorld reference](../KhaozEngine.TileWorld/README.md)).
+This changes rendering only. The original terrain triangles still define the surface for picking and collision. See the
 [render package reference](../KhaozEngine.TileWorld.Render3D/README.md#ground-tilegroundmesher-itilegroundslotmap-tilecolors)
 for tessellation cost and sampling limits.
 
@@ -21059,7 +21076,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.13.1" />
 ```
 
 ```csharp
@@ -21095,7 +21112,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.13.1" />
 ```
 
 ```csharp
@@ -21346,7 +21363,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.13.1" />
 ```
 
 ```csharp
@@ -26251,7 +26268,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.12.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.13.1" />
 </ItemGroup>
 ```
 

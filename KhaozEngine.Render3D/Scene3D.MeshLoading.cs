@@ -13,7 +13,7 @@ namespace KhaozEngine.Render3D
         MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material,
             IGpuResourceSet? outlineMaterial = null, int splatMaterial = -1,
             float alphaCutoff = 0f, int tileGroundMaterial = -1, Vector3[]? outlineNormals = null,
-            IGpuTexture? cutoutAlbedo = null)
+            IGpuTexture? cutoutAlbedo = null, TileGroundProgram tileGroundProgram = TileGroundProgram.Plain)
         {
             var f = _gd.Factory;
             IGpuBuffer? vb = null, outlineNormalVb = null, ib = null;
@@ -35,7 +35,7 @@ namespace KhaozEngine.Render3D
                 ib = CreateIndexBuffer(upload.Indices, mesh.IndexFormat);
 
                 return PublishMesh(mesh, vb, outlineNormalVb, ib, material, outlineMaterial,
-                    splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
+                    splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout, tileGroundProgram: tileGroundProgram);
             }
             catch
             {

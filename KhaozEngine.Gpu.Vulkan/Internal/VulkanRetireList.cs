@@ -77,8 +77,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// Run every held destroy whose value the counter has PASSED, and leave the rest. The frame-boundary hook,
-        /// and the ordinary way this list empties.
+        /// Run every held destroy at or below the safe completion ceiling, and leave the rest. Used at the frame
+        /// boundary and after an idle wait has proved its captured allocation high-water safe.
         /// <para>
         /// IDEMPOTENT AND SAFE TO CALL AT ANY CADENCE. A second drain at the same completed value finds nothing
         /// left to do, because everything ready was removed by the first one, and a drain on an empty list touches
@@ -86,7 +86,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// </summary>
         /// <param name="completedValue">The timeline's completed value, from
-        /// <see cref="VulkanTimeline.CompletedValue"/>.</param>
+        /// <see cref="VulkanTimeline.CompletedValue"/>, or an allocation cutoff proven safe by an idle wait.</param>
         /// <returns>How many destroys ran.</returns>
         internal int Drain(ulong completedValue) => Release(completedValue);
 

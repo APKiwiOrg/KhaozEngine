@@ -817,6 +817,10 @@ dropped about 63 minutes of runner time from a full dispatch.
   on lavapipe still exhibits residual driver-side instability with delayed-corruption symptoms (a CoreCLR
   fatal, deliberately not chased), which is why the full suite runs serialized and why it measured 26m36s in
   run `32579723071`. Golden-only runs keep their months-green parallel configuration.
+  Native Vulkan `WaitForIdle` also collects resources retired before the call and the memory chunks their
+  destruction retires, so headless and render-to-texture callers can reclaim resources without `Present`.
+  Newer unfinished submissions retain their resources. Submission and fence polling do not collect the
+  unordered retire list, so a loop replacing resources still needs periodic `WaitForIdle` or `Present`.
   Two more things are its own. It
   sets **`KE_VULKAN_REQUIRED=1`**, because the rows that need a real native device go DORMANT when the
   backend's functional probe refuses the machine, and a dormant row is not a skip, so on the one leg built to

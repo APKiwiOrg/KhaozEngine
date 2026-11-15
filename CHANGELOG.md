@@ -6,7 +6,13 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 23.12.1
 
-2026-11-14
+2026-11-15
+
+- `GridPathPlanner` skips A* when a bounded weak-component certificate proves that every admitted goal is
+  disconnected and no component node improves on the start's existing physical progress score. The cached
+  `Unreachable` result is unchanged for every expansion budget. Requests with possible progress keep their
+  existing search and useful `Partial` routes. Connectivity is built once per immutable graph, with no public
+  API or navigation-format change ([#1290](https://github.com/APKiwiOrg/KhaozEngine/issues/1290)).
 
 - A `TileWorldView` can be disposed after its `Scene3D`, including after `Render3DSnapshot.CaptureWithBackend` has
   disposed the scene the view was built in. Every `Scene3D` resource unload (`UnloadMesh`, `UnloadProp`,

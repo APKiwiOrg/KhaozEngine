@@ -9418,6 +9418,14 @@ NavPath path = planner.FindPath(start, goal, agentRadius: 0.4f);   // PathQueryB
 // or Unreachable (no route, or an endpoint failed to snap onto a passable cell within SnapRadius)
 ```
 
+After normal snapping and goal admission, a bounded disconnected-terminal certificate can return the
+same `Unreachable` result without A*. It requires all admitted goals outside the start's weak component
+and no strict physical progress anywhere in that component. Disconnected goals with possible progress
+still run the search and retain their useful `Partial` routes. Equal component labels, exceeded proof
+caps and uncertainty also retain the search. The
+[Navigation planner contract](../KhaozEngine.Navigation/README.md#path-planning-ipathplanner--gridpathplanner--pathquerybudget)
+owns the construction/storage bounds and exact proof limits. No public API or bake format changes.
+
 For a bounded goal region, construct `NavGoalRegion(Vector3 anchor, float horizontalExtent,
 Func<Vector3, bool> contains)` and call the additive `IRegionPathPlanner.FindPath(Vector3 start,
 NavGoalRegion goal, float agentRadius, PathQueryBudget budget)`. The predicate is pure for the query and

@@ -125,6 +125,12 @@ the public constructors.
 - **Node budget.** Every query carries a max-explored-nodes cap. On cap or exhaustion the planner
   returns a partial path toward the closest-approach node, flagged `Partial`, so a chaser still closes
   distance to an unreachable target instead of freezing.
+- **Disconnected terminal certificate.** After endpoint resolution and exact goal admission, shared
+  immutable weak-component labels can prove that no goal is reachable and no node of the start component
+  improves the search's physical progress score. Only this combined proof skips A* and returns the existing
+  cached `Unreachable`. Possible progress, equal labels and exceeded proof caps retain the search, including
+  useful `Partial` paths. The [Navigation README](../../KhaozEngine.Navigation/README.md#path-planning-ipathplanner--gridpathplanner--pathquerybudget)
+  owns the construction, storage and query bounds.
 - **Endpoint snapping.** Off-grid or blocked endpoints snap to the nearest walkable cell within a
   bounded radius (an agent shoved into a collider, a player standing on a prop). Snap failure returns
   `Unreachable`.

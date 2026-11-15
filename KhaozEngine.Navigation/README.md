@@ -333,6 +333,29 @@ and Drop markers, including adjacent same-layer links and competing ordinary exi
 mandatory physical cell centers, even on the first edge. An exact goal beyond a Drop landing gets a separate Walk
 waypoint. No smoothing moves that landing. Fixed neighbor order and insertion order make ties deterministic.
 
+Before entering A*, the planner can certify a disconnected terminal request. Every admitted goal cell
+must have a different weak-component label from the actual resolved start, and no node of the start's
+component may have strictly smaller progress under the search's exact physical-distance calculation.
+Progress ties keep the start. This returns the same cached `NavPath.Unreachable` for every expansion
+budget. A disconnected request that can still make physical progress runs the existing search and can
+return `Partial`. Equal labels do not establish directed reachability and always fall through.
+
+Connectivity is built eagerly at the first planner construction for each immutable `NavSpace` or
+`NavTraversalGraph`, then shared by planners over that same graph. Its undirected labels include every
+possible ordinary directed exit and accepted Stair, Hop and Drop link. Query radius, `WalkOnly` and
+captured traversal restrictions can only remove edges from this superset. Endpoint validation, existing
+snap rules and exact region-member admission still run first. A certificate examines at most 32,768
+component nodes and 262,144 node/member distance comparisons. A larger component, comparison count or
+uncertain numeric result falls through to the unchanged search. These bounds are work caps, never
+spatial tolerances.
+
+Construction takes `O((N + L) log N)` worst-case work with union by size and path compression, where `N`
+is the total layer cell count and `L` is the accepted link count. Persistent array payload is
+`4 * (N + P + C + 1)` bytes, where `P` is the number of raw-passable profile nodes and `C` their weak
+component count. Construction temporarily adds `4 * (N + layerCount)` bytes. No feet-position cache or serialized
+metadata is added. Certified warmed queries allocate nothing, and other warmed queries still allocate
+only their returned paths. Engine-version identity still requires normal consumer rebaking.
+
 A planner allocates its search scratch on its first query and reuses it for every later one: generation
 stamped per-node g-scores, parents, incoming edge kinds and closed marks plus region flags,
 the open set and reconstruction lists, each kept at the largest query seen. A query touches only the nodes it

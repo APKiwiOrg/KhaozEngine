@@ -16,6 +16,8 @@ namespace KhaozEngine.Navigation;
 /// re-checked for the agent radius. The search caps its work at <see cref="PathQueryBudget.MaxExpandedNodes"/>
 /// expansions, and on an unreachable goal returns a <see cref="NavPathStatus.Partial"/> route to the
 /// closest node it reached (or <see cref="NavPath.Unreachable"/> when it never got past the start).
+/// A bounded certificate can return that same refusal before search when every admitted goal lies outside
+/// the start's weak component and no component node strictly improves its physical progress score.
 /// The raw cell chain is then string-pulled: within each same-layer run it greedily keeps only the
 /// farthest cell still in clear line of sight from the current anchor, collapsing collinear or
 /// diagonally-clear runs to a few turn waypoints. Both endpoints of every link crossing are always
@@ -108,6 +110,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
             }
             targets.Add(new(toId, costMeters, link.Kind));
         }
+        _connectivity = PlannerConnectivity.For(_space, _traversal);
     }
 
     /// <summary>
@@ -117,15 +120,22 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     /// the <see cref="NavSpace.LayerOf"/> Y band for height-less grids), snaps both onto a passable cell
     /// within <see cref="PathQueryBudget.SnapRadius"/> (failing that, returns
     /// <see cref="NavPath.Unreachable"/>), then tries the same-layer line-of-sight fast path before
-    /// falling through to the A* search, which routes within and across layers.
+    /// entering A* unless the bounded disconnected-terminal certificate proves the existing no-progress
+    /// result. The search routes within and across layers.
     /// </summary>
     public NavPath FindPath(Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
+        => FindPathCore(start, goal, agentRadius, budget, useCertificate: true);
+
+    internal NavPath FindPathWithoutCertificateForTests(Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
+        => FindPathCore(start, goal, agentRadius, budget, useCertificate: false);
+
+    NavPath FindPathCore(Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget, bool useCertificate)
     {
         ValidateTraversalRadius(agentRadius);
         SearchScratch scratch = RentScratch();
         try
         {
-            return FindPath(scratch, start, goal, agentRadius, budget);
+            return FindPath(scratch, start, goal, agentRadius, budget, useCertificate);
         }
         finally
         {
@@ -133,7 +143,7 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
         }
     }
 
-    NavPath FindPath(SearchScratch scratch, Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
+    NavPath FindPath(SearchScratch scratch, Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget, bool useCertificate)
     {
         int startLayer = _space.LayerAt(start);
         int goalLayer = _space.LayerAt(goal);
@@ -160,15 +170,15 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
         // won the snap outright. Otherwise the nearest passable cell center stands in for it.
         Vector2 goalPoint = goalSnappedOwnCell && _traversal is null ? goalXz : goalSnap.Value;
 
-        // Same layer with a clear straight shot is the trivial one-waypoint case. Everything else runs
-        // the A* search, which also carries cross-layer routing over the link edges.
+        // Same layer with a clear straight shot is the trivial one-waypoint case. Other requests try the
+        // bounded terminal certificate before A*, which also carries cross-layer routing over link edges.
         if (_traversal is null && _spatialBound.Scale == 1f && startLayer == goalLayer &&
             scratch.HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
         {
             return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });
         }
 
-        return RunAStar(scratch, startLayer, startPoint.Value, goalLayer, goalPoint, agentRadius, budget);
+        return RunAStar(scratch, startLayer, startPoint.Value, goalLayer, goalPoint, agentRadius, budget, useCertificate);
     }
 
     /// <summary>

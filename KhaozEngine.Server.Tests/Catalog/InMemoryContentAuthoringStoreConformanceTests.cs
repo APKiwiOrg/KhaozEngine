@@ -23,6 +23,12 @@ public sealed class InMemoryContentAuthoringStoreConformanceTests : ContentAutho
     bool _auditFaultArmed;
 
     /// <inheritdoc />
+    [Theory]
+    [MemberData(nameof(CatalogBundleImportCases.Outcomes), MemberType = typeof(CatalogBundleImportCases))]
+    public override Task BundleImportExcludesRivalDraftIntents(ContentPublishStep? failureStep)
+        => base.BundleImportExcludesRivalDraftIntents(failureStep);
+
+    /// <inheritdoc />
     protected override IContentAuthoringStore NewStore()
         => new InMemoryContentAuthoringStore(Registry, NewPack(), ReadTheClock);
 

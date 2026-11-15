@@ -27,7 +27,7 @@ public sealed partial class InMemoryContentAuthoringStore
     /// <inheritdoc />
     /// <remarks>
     /// The families, the id marks and the restamped rules are written BEFORE the publish, because the edits
-    /// and the baseline both need them, so the STAGING is inside the try along with everything after it. Any
+    /// and the baseline both need them, so the STAGING is inside the try along with everything after it. A pre-commit
     /// refusal resets this store to the empty state it was required to be in, so a caller that catches one is
     /// holding a store it may import into again. Files a failed attempt already wrote to the pack store are
     /// ordinary orphans and the next sweep takes them.
@@ -53,7 +53,7 @@ public sealed partial class InMemoryContentAuthoringStore
 
     /// <summary>
     /// The import trusted and operator seed routes share: the empty-store and pack-target refusals, the type agreement, the
-    /// staging of families, marks and rules, the draft and the publish, and the reset on any refusal after
+    /// staging of families, marks and rules, the draft and the publish, and the reset on any pre-commit refusal after
     /// staging began. A row-only import passes no text. A companion import passes the bundle's complete text,
     /// whose targets are checked BEFORE anything is staged, and lands it in the same draft as the rows.
     /// </summary>
@@ -101,6 +101,7 @@ public sealed partial class InMemoryContentAuthoringStore
                     throw NoPackStore(member);
                 }
 
+                RequireNotFrozen(member);
                 RequireTypesAgree(bundle);
                 ContentBundleTextCompatibility.RequireNoPendingWork(_draft, member);
                 if (text is not null)
@@ -108,29 +109,42 @@ public sealed partial class InMemoryContentAuthoringStore
                     ContentBundleTextCompatibility.RequireTargets(bundle, text, _registry);
                 }
 
-                staged = true;
-                RestoreFamilies(bundle);
-                SeedMarks(bundle);
-
-                // The edits are built BEFORE the rules are restamped, because building them is the last
-                // thing that can refuse the bundle and the restamp is the one piece of staging that APPENDS
-                // to a list this store already holds rather than assigning one. The reset below clears that
-                // list either way, so this ordering is not what makes the refusal clean, it is what keeps
-                // the append off the refusal path at all: a store whose rules doubled per refused attempt is
-                // what the defect looked like from outside.
-                IReadOnlyList<ContentEdit> edits = Edits(bundle);
-                Restamp(bundle);
-
-                // Rows and text land in ONE draft, so the publish below commits them as one complete version.
-                // Under the same gate as the pending-work check, so no rival intent can join the draft between.
-                ApplyEditsLocked(edits, actor, operatorId, note);
-                if (text is not null)
+                try
                 {
-                    ApplyImportedTextLocked(text, actor, operatorId, note);
+                    RestoreFamilies(bundle);
+                    SeedMarks(bundle);
+
+                    // The edits are built BEFORE the rules are restamped, because building them is the last
+                    // thing that can refuse the bundle and the restamp is the one piece of staging that APPENDS
+                    // to a list this store already holds rather than assigning one. The reset below clears that
+                    // list either way, so this ordering is not what makes the refusal clean, it is what keeps
+                    // the append off the refusal path at all: a store whose rules doubled per refused attempt is
+                    // what the defect looked like from outside.
+                    IReadOnlyList<ContentEdit> edits = Edits(bundle);
+                    Restamp(bundle);
+
+                    // Rows and text land in ONE draft, so the publish below commits them as one complete version.
+                    // Under the same gate as the pending-work check, so no rival intent can join the draft between.
+                    ApplyEditsLocked(edits, actor, operatorId, note);
+                    if (text is not null)
+                    {
+                        ApplyImportedTextLocked(text, actor, operatorId, note);
+                    }
+
+                    // The import owns the draft before the gate opens, including the publish's failure cleanup.
+                    ContentDraft imported = _draft!;
+                    _draft = Reframe(imported, imported.BaseVersion, imported.Changes, 0);
+                    staged = true;
+                }
+                catch
+                {
+                    // A staging failure must reset before another intent can acquire the gate.
+                    ResetToEmpty();
+                    throw;
                 }
             }
 
-            ContentPublishResult published = await PublishAsync(
+            ContentPublishResult published = await RequireCommit().PublishImportAsync(
                 new ContentPublishRequest(actor, operatorId, note, 0) { PublishPolicy = publishPolicy }, cancellationToken).ConfigureAwait(false);
 
             lock (_gate)
@@ -151,13 +165,11 @@ public sealed partial class InMemoryContentAuthoringStore
 
             return published;
         }
-        catch (Exception failure) when (staged && failure is not OperationCanceledException)
+        catch (Exception) when (staged)
         {
-            // EVERY refusal, not only a ContentAuthoringException: the staging is written before the publish
-            // and a store left holding half a bundle is the same store whichever exception got it there.
-            // The two durable providers wrap their own reset, because a database call can fail on its way to
-            // tidying up and would then replace the refusal the caller needs to read. This one is a lock and
-            // a run of Clear calls, so there is nothing for such a wrapper to catch.
+            // The import retains its freeze until this reset, including on cancellation. A committed
+            // version and any later draft stay intact. The durable providers swallow their reset failures
+            // so the original refusal survives. This reset only takes the gate and clears memory.
             ResetToEmpty();
             throw;
         }
@@ -428,6 +440,12 @@ public sealed partial class InMemoryContentAuthoringStore
     {
         lock (_gate)
         {
+            // A post-commit failure may race a new, acknowledged draft. Neither belongs to this reset.
+            if (_versions.Count > 0)
+            {
+                return;
+            }
+
             _rules.Clear();
             _published.Clear();
             _rows.Clear();

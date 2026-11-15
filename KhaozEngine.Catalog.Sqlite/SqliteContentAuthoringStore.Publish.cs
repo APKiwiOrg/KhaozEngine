@@ -574,6 +574,21 @@ public sealed partial class SqliteContentAuthoringStore
         }
     }
 
+    /// <summary>Installs the existing publish step hook for deterministic store interleavings.</summary>
+    internal void SetPublishStepHookForTests(
+        Action<ContentPublishStep> onStep, Action? beforeFreeze, Action? afterAttempt)
+    {
+        lock (_commitGate)
+        {
+            IPackStore pack = PackStore ?? throw NoPackStore(nameof(PublishAsync));
+            _commit = new ContentPublishCommit(this, pack, new ContentPublisher(this, this, _registry, onStep))
+            {
+                BeforeDraftFreezeForTests = beforeFreeze,
+                AfterPublishAttemptForTests = afterAttempt,
+            };
+        }
+    }
+
     /// <summary>The commit half, built once over the pack target this store was handed.</summary>
     ContentPublishCommit RequireCommit()
     {

@@ -34,7 +34,7 @@ public sealed partial class SqliteContentAuthoringStore
     /// <inheritdoc />
     /// <remarks>
     /// The families and the id marks are written BEFORE the publish, because the edits and the baseline both
-    /// need them, so the STAGING is inside the try along with everything after it. Any refusal takes that
+    /// need them, so the STAGING is inside the try along with everything after it. A pre-commit refusal takes that
     /// staging back, so a caller that catches one is holding a store it may import into again. It takes back
     /// the staging and NOTHING else, because the publish commits whole or not at all. Files a failed attempt
     /// already wrote to the pack store are ordinary orphans and the next sweep takes them.
@@ -60,7 +60,7 @@ public sealed partial class SqliteContentAuthoringStore
 
     /// <summary>
     /// The import trusted and operator seed routes share: the empty-store and pack-target refusals, the type agreement, the
-    /// staging of families, marks and rules, the draft and the publish, and the reset on any refusal after
+    /// staging of families, marks and rules, the draft and the publish, and the reset on any pre-commit refusal after
     /// staging began. A row-only import passes no text. A companion import passes the bundle's complete text,
     /// whose targets are checked BEFORE anything is staged, and lands it in the same draft transaction as the
     /// rows, so the ordinary text publish commits rows and text as one complete version 1.
@@ -88,17 +88,18 @@ public sealed partial class SqliteContentAuthoringStore
         // pack target) read and write nothing, and a reset for one of THOSE would empty the live catalog the
         // refusal exists to protect.
         bool staged = false;
+        IReadOnlyList<RemapRule>? ownedRules = null;
         try
         {
-            // The check, the staging and the draft run under ONE lease, so no rival intent can join or open
-            // the draft between the pending-work check and the import's own draft.
+            // The check, staging, draft and freeze share one transaction, including across store instances.
             using (SqliteStoreLease staging = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false))
             {
+                using SqliteTransaction stage = _connection.BeginTransaction();
                 int active = (int)await ReadLongAsync(
-                    "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", null, cancellationToken)
+                    "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", stage, cancellationToken)
                     .ConfigureAwait(false);
                 long already = await ReadLongAsync(
-                    "SELECT COUNT(*) FROM catalog_version;", null, cancellationToken).ConfigureAwait(false);
+                    "SELECT COUNT(*) FROM catalog_version;", stage, cancellationToken).ConfigureAwait(false);
                 if (already > 0)
                 {
                     throw new ContentAuthoringException(
@@ -116,27 +117,29 @@ public sealed partial class SqliteContentAuthoringStore
                     throw NoPackStore(member);
                 }
 
+                await RequireNotFrozenAsync(member, stage, cancellationToken).ConfigureAwait(false);
                 RequireTypesAgree(bundle);
                 ContentBundleTextCompatibility.RequireNoPendingWork(
-                    await ReadDraftAsync(null, cancellationToken).ConfigureAwait(false), member);
+                    await ReadDraftAsync(stage, cancellationToken).ConfigureAwait(false), member);
                 if (text is not null)
                 {
                     ContentBundleTextCompatibility.RequireTargets(bundle, text, _registry);
                 }
 
-                staged = true;
                 long at = Millis(_clock());
-                using SqliteTransaction stage = _connection.BeginTransaction();
                 await RestoreFamiliesAsync(bundle, at, stage, cancellationToken).ConfigureAwait(false);
                 await SeedMarksAsync(bundle, at, stage, cancellationToken).ConfigureAwait(false);
-                stage.Commit();
 
-                _importRules = Restamp(bundle);
-                IReadOnlyList<ContentEdit> edits = await EditsAsync(bundle, cancellationToken).ConfigureAwait(false);
-                await ApplyImportDraftAsync(edits, text, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
+                ownedRules = Restamp(bundle);
+                _importRules = ownedRules;
+                IReadOnlyList<ContentEdit> edits = await EditsAsync(bundle, stage, cancellationToken).ConfigureAwait(false);
+                await ApplyImportDraftAsync(edits, text, actor, operatorId, note, stage, cancellationToken).ConfigureAwait(false);
+                await MarkDraftFrozenAsync(0, stage, cancellationToken).ConfigureAwait(false);
+                stage.Commit();
+                staged = true;
             }
 
-            ContentPublishResult published = await PublishAsync(
+            ContentPublishResult published = await RequireCommit().PublishImportAsync(
                 new ContentPublishRequest(actor, operatorId, note, 0) { PublishPolicy = publishPolicy }, cancellationToken).ConfigureAwait(false);
 
             using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
@@ -158,18 +161,19 @@ public sealed partial class SqliteContentAuthoringStore
             transaction.Commit();
             return published;
         }
-        catch (Exception failure) when (staged && failure is not OperationCanceledException)
+        catch (Exception) when (staged)
         {
-            // EVERY refusal, not only a ContentAuthoringException: the families and the marks are committed
-            // before the publish, so a raw provider error inside the staging leaves exactly the half-seeded
-            // database this reset exists to undo. CancellationToken.None because the caller's token may be
-            // the reason we are here, and a reset that cancelled would leave the staging standing.
+            // The whole staging transaction committed, and its freeze remains held until this reset.
+            // Rollback already handles failures inside staging. Cleanup uses CancellationToken.None so a
+            // cancelled publish cannot leave an imported draft frozen indefinitely.
+            Interlocked.CompareExchange(ref _importRules, null, ownedRules);
             await ResetAfterFailureAsync().ConfigureAwait(false);
             throw;
         }
         finally
         {
-            _importRules = null;
+            // A refused rival never owned these rules, and a later attempt may already own a new list.
+            Interlocked.CompareExchange(ref _importRules, null, ownedRules);
         }
     }
 
@@ -419,10 +423,11 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>One <c>Add</c> per bundle row, in the bundle's own order, which is the allocation order.</summary>
-    async Task<IReadOnlyList<ContentEdit>> EditsAsync(ContentBundle bundle, CancellationToken cancellationToken)
+    async Task<IReadOnlyList<ContentEdit>> EditsAsync(
+        ContentBundle bundle, SqliteTransaction transaction, CancellationToken cancellationToken)
     {
         IReadOnlyList<ContentFamily> families = await ReadFamiliesAsync(
-            default, null, null, cancellationToken).ConfigureAwait(false);
+            default, null, transaction, cancellationToken).ConfigureAwait(false);
         var byKey = new Dictionary<(ushort Type, string Key), long>();
         for (int i = 0; i < families.Count; i++)
         {
@@ -479,6 +484,11 @@ public sealed partial class SqliteContentAuthoringStore
     {
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
+        if (await ReadLongAsync("SELECT COUNT(*) FROM catalog_version;", transaction, cancellationToken)
+            .ConfigureAwait(false) > 0)
+        {
+            return;
+        }
 
         // Child first, so no delete trips a foreign key on the way down. The edit fields go with the edits
         // through the cascade the schema declares.

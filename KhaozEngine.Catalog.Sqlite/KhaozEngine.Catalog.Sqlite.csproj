@@ -12,6 +12,7 @@
          driven by rather than a pattern written in a test, so a test that says "the schema's own rule" uses
          it. The SQL Server sibling opens itself to its own suite for the same reason. -->
     <InternalsVisibleTo Include="KhaozEngine.Catalog.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
   </ItemGroup>
 
   <ItemGroup>

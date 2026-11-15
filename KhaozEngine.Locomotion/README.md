@@ -792,10 +792,16 @@ membership or replace producer validation.
 
 Water coverage validation and the boundary resolver borrow separate bounded buffers from the interval workspace.
 They retain storage across serial queries and ticks, with the lease's thread and lifetime checks. Reentrant producer
-queries use isolated pooled fallback storage without retaining additional buffers. Producer-exposed contact slices
-are inspected on return because a refusing or throwing producer can leave partial writes. Only initialized runs are
-cleared, while validated boundary output clears its written prefix. Value-only span storage is reset before producer
-callbacks, so missing writes cannot reuse an earlier certificate.
+queries use isolated pooled fallback storage without retaining additional buffers. An internal complete-writer fact
+admits the sealed ordinary pin to runtime bulk clearing of the full producer-exposed contact slice. That pin isolates
+water-field callbacks in separate zeroed scratch, validates and reconstructs every published contact, then copies
+complete records or nothing. Boundary output is also a validated atomic copy, so its written prefix uses bulk clearing.
+Direct consumer pins retain the original nondefault-run cleanup over the entire exposed slice, because refusing or
+throwing callbacks may leave partial writes anywhere. Default-equal numeric writes, including negative zero, keep
+that original behavior. Before a retained lane changes from an arbitrary writer to a complete writer, it is fully
+zeroed to restore the complete writer's precondition. Consumers cannot opt into the internal fact. When enabled,
+`ClearedReferences` still counts exactly the nondefault contact entries cleared, with counting before the bulk clear.
+Value-only span storage is reset before producer callbacks, so missing writes cannot reuse an earlier certificate.
 
 `MovementQueryLease.EnumerateSupport` and `TraceWater` use cleared private scratch and validate the
 complete producer result before publishing caller buffers. Refusal or a provider exception leaves

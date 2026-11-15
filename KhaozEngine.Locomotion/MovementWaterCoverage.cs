@@ -63,6 +63,10 @@ public readonly record struct MovementDomainContact
     /// <summary>No-positive-overlap certificate over the closed interval of the single owning span.
     /// Tangent is a whole-path fact. Positive or uncertain overlap is Overlapping.</summary>
     public MovementContactOverlap SpanOverlap { get; }
+    // Value-taking fault seam for a callback that writes only a numeric field into zeroed scratch.
+    internal static MovementDomainContact PartialFractionForTests(float fraction) => new(default, fraction);
+    MovementDomainContact(MovementDomainContact source, float fraction) { this = source; Fraction = fraction; }
+
     public bool IsValid => Domain.IsValid && Space.IsValid && Interval.IsValid &&
         float.IsFinite(IntervalColumnXZ.X) && float.IsFinite(IntervalColumnXZ.Y) &&
         string.Equals(Domain.WorldId, Space.WorldId, StringComparison.Ordinal) &&

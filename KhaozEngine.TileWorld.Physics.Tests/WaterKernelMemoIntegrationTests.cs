@@ -20,13 +20,15 @@ public sealed class WaterKernelMemoIntegrationTests
         TileWaterQueryWork.ConvexIntersections = TileWaterQueryWork.ShapePreparations = TileWaterQueryWork.LazyCoefficientFills = 62;
         TileWaterQueryWork.BedSeamProofs = TileWaterQueryWork.BedSeamCertificates = 63;
         TileWaterQueryWork.PrismTraces = TileWaterQueryWork.MemoHits = TileWaterQueryWork.MemoMisses = 64;
+        TileWaterQueryWork.ResultHits = TileWaterQueryWork.ResultMisses = TileWaterQueryWork.ResultStores = TileWaterQueryWork.ResultBypasses = 65;
         try
         {
             TileWaterQueryWork.Reset();
             Assert.All(new[] { TileWaterQueryWork.Intersections, TileWaterQueryWork.NonuniformVisits, TileWaterQueryWork.IndexNodes,
                 TileWaterQueryWork.ConvexIntersections, TileWaterQueryWork.ShapePreparations, TileWaterQueryWork.LazyCoefficientFills,
                 TileWaterQueryWork.BedSeamProofs, TileWaterQueryWork.BedSeamCertificates,
-                TileWaterQueryWork.PrismTraces, TileWaterQueryWork.MemoHits, TileWaterQueryWork.MemoMisses }, value => Assert.Equal(0, value));
+                TileWaterQueryWork.PrismTraces, TileWaterQueryWork.MemoHits, TileWaterQueryWork.MemoMisses,
+                TileWaterQueryWork.ResultHits, TileWaterQueryWork.ResultMisses, TileWaterQueryWork.ResultStores, TileWaterQueryWork.ResultBypasses }, value => Assert.Equal(0, value));
         }
         finally { TileWaterQueryWork.Enabled = false; }
     }

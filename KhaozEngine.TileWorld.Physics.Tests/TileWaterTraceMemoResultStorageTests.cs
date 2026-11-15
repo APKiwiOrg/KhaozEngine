@@ -96,6 +96,37 @@ public sealed class TileWaterTraceMemoResultStorageTests(ITestOutputHelper outpu
         bool Read(TileWaterTraceResultMemo.Table value) => value.TryRead(key, key.Space, result.Identity, [], [], out _);
     }
 
+    [Fact]
+    public void IdentifierCapIncludesContactsAndReplacementReleasesThePreviousCharge()
+    {
+        var key = Key();
+        var result = new MovementCoverageResult(MovementAvailability.CapacityExceeded, 0, 65, 0, 257, 0, MovementWaterFieldTests.Identity);
+        var sample = new TileWaterTraceResultMemo.Table();
+        sample.Store(key, result, [], []);
+        int charge = sample.IdentifierBytes;
+        var exact = new TileWaterTraceResultMemo.Table(identifierBudget: charge);
+        exact.Store(key, result, [], []);
+        Assert.True(Read(exact, key));
+        exact.Store(key with { Dy = 1 }, result, [], []);
+        Assert.Equal(1, exact.CountForTests);
+        var full = new TileWaterTraceResultMemo.Table(identifierBudget: charge * 8);
+        for (int i = 0; i < 9; i++) full.Store(key with { Dy = i }, result, [], []);
+        Assert.Equal(8, full.CountForTests);
+        Assert.Equal(charge * 8, full.IdentifierBytes);
+        Assert.False(Read(full, key));
+        Assert.True(Read(full, key with { Dy = 8 }));
+        var c = WaterTraceMemoComparison.Read(TileWaterTraceMemoResultTests.Field(false), TileWaterTraceMemoResultTests.Query(), bypass: true).Contacts[0];
+        var huge = new MovementDomainContact(c.Domain, c.Space, c.Interval, c.IntervalColumnXZ, c.Normal,
+            c.Fraction, new string('b', TileWaterTraceResultMemo.IdentifierByteLimit), c.CoverageRegionHandle, c.Overlap, c.SpanOverlap);
+        var known = new MovementCoverageResult(MovementAvailability.Known, 1, 1, 1, 1, 0, result.Identity);
+        sample.Clear();
+        sample.Store(key, known, [new(0, 1, 0, 1, false)], [huge]);
+        Assert.False(Read(sample, key));
+        Assert.Equal(0, sample.IdentifierBytes);
+        bool Read(TileWaterTraceResultMemo.Table table, TileWaterTraceMemo.Key input) =>
+            table.TryRead(input, input.Space, result.Identity, new MovementCoverageSpan[64], new MovementDomainContact[256], out _);
+    }
+
     [Theory]
     [InlineData(MovementAvailability.Stale)]
     [InlineData(MovementAvailability.Invalid)]

@@ -26,8 +26,10 @@ namespace KhaozEngine.TileWorld.Physics;
 /// is excluded because the kernel itself can leave different status across compiled tiers for the same inputs.
 /// Work counters report executed work rather than replayed work. Entries survive ticks until oldest-insertion
 /// eviction. A hit is an optimization, never a guarantee. Readers without a table or a supported control reader
-/// run uncached, as do oversized results or space identifiers over 256 characters. Point queries and the proved
-/// flat-bed trace path do not use this memo.
+/// run uncached, as do oversized results or space identifiers over 256 characters. A separate eight-entry tier
+/// retains flat traces and larger prism results, at most 64 spans and 256 contacts each. Its four thread tables
+/// each cap owned storage at 256 KiB and independently charge at most 16 KiB of retained identifier strings.
+/// Small-tier counters keep their meanings. Cheap dry flat traces and point queries bypass the added tier.
 /// <see cref="SampleCentreWater"/>, <see cref="TraceWater"/>, <see cref="SemanticIdentity"/>, <see cref="Generation"/>,
 /// <see cref="Extent"/>, <see cref="MediumAt"/> and <see cref="MediumDelegate"/> are endorsed providers for a parallel
 /// contact navigation bake.</para>

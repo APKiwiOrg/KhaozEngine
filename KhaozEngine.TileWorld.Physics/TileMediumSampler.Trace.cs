@@ -13,8 +13,7 @@ public sealed partial class TileMediumSampler
             !float.IsFinite(physicsOrigin.Z) || query.Body.CurrentSpace.WorldId != _field.WorldId)
             return new(MovementAvailability.Invalid, 0, 0, 0, 0, 0, identity);
         if (_field.CanTraceFlat(query, physicsOrigin))
-            return TileWaterColumnCoverage.Trace(_field.FlatColumns, _field.FlatBoundaries, _field.FlatExterior, query,
-                physicsOrigin, identity, spans, contacts, _field.FlatIndex);
+            return TraceFlat(query, physicsOrigin, identity, spans, contacts);
         return TracePrisms(query, physicsOrigin, identity, spans, contacts);
     }
 }

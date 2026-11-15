@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using KhaozEngine.TileWorld.Physics;
 using KhaozEngine.Tests.TileWorld.Physics.Fixtures;
@@ -25,9 +26,9 @@ public sealed class TileWaterTraceMemoResultEnvironmentTests(ITestOutputHelper o
         {
             try
             {
-                WaterTraceMemoComparison.Check(field, TileWaterTraceMemoResultTests.Query(i));
+                TileWaterTraceMemoResultTests.Check(field, TileWaterTraceMemoResultTests.Query(i));
                 ready.SignalAndWait();
-                work[i] = TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, TileWaterTraceMemoResultTests.Query(i)));
+                work[i] = TileWaterTraceMemoResultTests.Work(TileWaterTraceMemoResultTests.Check(field, TileWaterTraceMemoResultTests.Query(i)));
             }
             catch (Exception error) { errors[i] = error; ready.RemoveParticipant(); }
         })).ToArray();
@@ -63,7 +64,28 @@ public sealed class TileWaterTraceMemoResultEnvironmentTests(ITestOutputHelper o
             Read(true);
         }
         finally { TileMediumSampler.ControlReaderForTests = previous; }
-        void Read(bool hit) => Assert.Equal(hit, TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, q)) == 0);
+        void Read(bool hit) => Assert.Equal(hit, TileWaterTraceMemoResultTests.Work(TileWaterTraceMemoResultTests.Check(field, q)) == 0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DiscardedSamplerAndResultStorageAreCollectedTogether(bool flat)
+    {
+        var references = Release(flat);
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        Assert.False(references.Sampler.IsAlive);
+        Assert.False(references.Table.IsAlive);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static (WeakReference Sampler, WeakReference Table) Release(bool flat)
+    {
+        var field = TileWaterTraceMemoResultTests.Field(flat);
+        TileWaterTraceMemoResultTests.Check(field, TileWaterTraceMemoResultTests.Query());
+        var table = field.CaptureResultMemoTableForTests();
+        Assert.NotNull(table);
+        return (new(field), table);
     }
 
     [Theory]
@@ -81,11 +103,11 @@ public sealed class TileWaterTraceMemoResultEnvironmentTests(ITestOutputHelper o
         {
             var field = TileWaterTraceMemoResultTests.Field(flat);
             var q = TileWaterTraceMemoResultTests.Query();
-            WaterTraceMemoComparison.Check(field, q);
-            Assert.Equal(0, TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, q)));
+            TileWaterTraceMemoResultTests.Check(field, q);
+            Assert.Equal(0, TileWaterTraceMemoResultTests.Work(TileWaterTraceMemoResultTests.Check(field, q)));
             if (!environment.Set(mode)) { output.WriteLine($"Unavailable independent mode {mode}"); continue; }
-            Assert.True(TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, q)) > 0);
-            Assert.Equal(0, TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, q)));
+            Assert.True(TileWaterTraceMemoResultTests.Work(TileWaterTraceMemoResultTests.Check(field, q)) > 0);
+            Assert.Equal(0, TileWaterTraceMemoResultTests.Work(TileWaterTraceMemoResultTests.Check(field, q)));
             Assert.True(environment.Set("nearest"));
         }
     }

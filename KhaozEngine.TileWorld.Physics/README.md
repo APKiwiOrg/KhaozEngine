@@ -411,8 +411,49 @@ validation around the sampler also performs arithmetic. Executed-work counters d
 work, so a hit does not count skipped kernel work. Controls remain part of the key because rounding and denormal
 handling affect numeric results. Windows x64 uses its control-only reader and can memoize. Platforms without a
 supported control reader bypass the memo.
-Entries survive ticks, but thread changes, eviction, large results and exhausted thread slots can prevent reuse.
-A hit is an optimization, never a guarantee. The flat specialization and point queries do not use the memo.
+A separate eight-entry exact-result tier retains flat traces and prism results larger than the small tier,
+with at most 64 spans and 256 contacts per entry. It uses a fixed 16-bucket index and the same exact-copy,
+full-key equality and oldest-insertion policy. Reads never refresh insertion age. The small tier is probed first
+for prisms. Its 128 slots, bounds and diagnostic meanings are unchanged. Both tiers are owned by the immutable
+sampler, with at most four permanent thread claims per tier and no waiting. A replacement sampler starts cold.
+No thread-static table root keeps a discarded sampler alive. Resetting a calling thread's memo clears both tiers.
+Reentrant control reads do not borrow caller buffers or retain active kernel scratch.
+
+The added table checks its owned-storage charge before allocating, including arrays, headers, keys, results,
+bucket links and bounded identifier-accounting workspace. The limit is 256 KiB per claimed table. On .NET 10
+arm64 one table retains 246,368 allocated bytes, conservatively charged as 246,480 bytes. The span/contact array
+payload alone is 239,616 bytes. Retained identifier strings have a separate 16 KiB cap per table. Every distinct
+string reference in a key or copied contact is charged for its aligned string allocation, even sampler-owned
+strings. Sharing across entries is charged again, so the charge bounds retention without global string tracking.
+Replacement releases the previous entry's charge and reset releases all charges and references. Accounting
+scratch is cleared after each store. Excessive space identifiers, insufficient storage or identifier budget,
+oversized output, an exhausted thread table and an unsupported controls reader run the unchanged evaluator.
+The reference-evaluation bypass skips both tiers. These are performance fallbacks, never gameplay refusals.
+
+Both tiers key all centre, delta, radius, half-height and uncombined origin bits, ordinal space values, actual
+caller capacities and the shared native FP control token. Identity remains a current-call output stamp.
+CurrentSupport is validated on every call but neither numeric kernel reads it, so it is deliberately absent
+from the key. World membership, finite origin, query and identity validation precede lookup. The immutable
+sampler owns all captured bed, level, speed and topology dependencies. Entries cannot authenticate a lease,
+reuse a placement certificate or bypass adapter validation. Numeric capacity, precision and unresolved-geometry
+refusals may replay only with this complete validated key. Caller storage stays untouched on refusal. Invalid
+inputs, producer/lifetime failures and callback exceptions are never retained in the new tier.
+
+The internal opt-in ResultHits, ResultMisses, ResultStores and ResultBypasses diagnostics describe the added tier.
+A miss counts a lookup without a replay, including a prism miss whose eventual small result stays in the small
+tier. A store counts admitted flat or large prefixes. A bypass counts ineligible lookups or refused storage
+admission. Cheap dry shortcuts never enter these counters. Existing PrismTraces counts every logical prism
+request, MemoHits still counts only small-tier replays, and MemoMisses still counts every small-tier miss even
+when the added tier then replays a large result. Actual kernel-work counters exclude work skipped by either tier.
+No public counter or API was added. Sticky FP status and fresh joined-boundary string identity retain the
+exclusions above. FP controls remain exact inputs and no lookup changes the caller's control environment.
+
+Empty captures and flat paths outside the captured water extent keep the original cheap dry shortcut. The dry
+query-cost control measures the empty-capture path, for which reading native controls, constructing a key and
+probing a table would add work to a zero-intersection result. Dry results reached through nonuniform evaluation
+still follow the existing small-tier policy. Point queries do not use either tier. Entries survive ticks, but
+thread changes, eviction, budgets and exhausted thread slots can prevent reuse. A hit is an optimization, never
+a guarantee.
 
 An owned lateral column with no reachable captured bed answers unresolved. Represented loaded rectangles use
 directed lower and upper bounds, retaining a coordinate even when the nominal region is narrower than one float step.

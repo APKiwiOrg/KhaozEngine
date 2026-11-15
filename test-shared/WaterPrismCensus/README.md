@@ -126,12 +126,25 @@ capsule intersection, flat candidate indexes and dispatch bounds. It reads copie
 never calls the production flat evaluator, index selection or numerical helpers. The older pre-index flat
 reference also uses the frozen capsule helper. It resets its own per-thread intersection count for each trace,
 so brute-force work remains measurable without changing production counters or the guarded helper snapshot.
-Prism assembly uses the frozen outward float rounding helpers.
-The prism reference still shares interval arithmetic, root uncertainty, immutable bed seams, witness lookup,
-candidate indexes, prism/face geometry and captured ground. These unchanged dependencies remain outside its frozen
-boundary. A later change to a shared helper must freeze it before changing it. The references recompute the original
-expressions and suppress production diagnostic counters. LF-pinned source hashes guard the deliberate snapshots.
-They preserve the original numerical behavior, including behavior that might later receive a reviewed correction.
+The older prism dispatch reference also uses the frozen evaluator and a fixture-owned convex evaluation count.
+Its legacy seam assertions retain the same before/after solve-count equality.
+Prism assembly uses the frozen outward float rounding helpers. For #1755, prism projections now use the same
+independent interval arithmetic as the flat oracle. Frozen copies also own ordered rank construction, prism
+and face construction, drawn-ground error arithmetic, witness lookup, root uncertainty and bed-seam certification.
+The frozen evaluators invoke no live prepared query, preparation storage, geometry terms, projection arithmetic,
+root arithmetic or seam arithmetic. The direct solver remains the oracle for both initial and retained
+preparations, so their optimizations cannot change both sides together.
+
+Authored moving-shore references rebuild prism and face geometry from captured columns, drawn triangles and
+tile coordinates. Synthetic storage and defensive fixtures instead copy their deliberate represented planes
+and basis lists, then evaluate those inputs independently. Certified seams are reconstructed from the captured
+pair of prism owners. No seam object is borrowed by the numerical oracle. The immutable candidate index and
+its path-bounds input, raw record validation, captured ground, the generic drawn-height expression, triangle
+normals, lattice addressing and triangulation remain shared input boundaries.
+A later change to those helpers must freeze them first. The references recompute the original expressions and
+suppress production diagnostic counters. LF-pinned source hashes and a separate resource roster guard every
+frozen evaluator and capture adapter. Endpoint conversions only copy bits into the other side's value type.
+The hashes preserve deliberate source snapshots, including behavior that might later receive a reviewed correction.
 
 `WaterCoverageComparison` compares every result field and refusal capacity/identity, every span byte and every
 contact field, including float sign and NaN payload bits in caller storage. Caller-owned identity and space strings

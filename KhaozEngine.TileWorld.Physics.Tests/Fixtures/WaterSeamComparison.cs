@@ -26,7 +26,8 @@ internal static class WaterSeamComparison
         {
             var before = WaterTraceReference.Trace(legacy, query, origin, token,
                 expectedSpans.AsSpan(0, spanCapacity), expectedContacts.AsSpan(0, contactCapacity));
-            int oldSolves = TileWaterQueryWork.ConvexIntersections;
+            int oldSolves = WaterTraceReference.ConvexIntersectionsForTests;
+            Assert.Equal(0, TileWaterQueryWork.ConvexIntersections);
             TileWaterQueryWork.Reset();
             var after = field.TraceWater(query, origin, token,
                 actualSpans.AsSpan(0, spanCapacity), actualContacts.AsSpan(0, contactCapacity));

@@ -165,8 +165,10 @@ and `ActualLength`, capacity failures include `Count` and inclusive `Limit`, and
 Packed path admission accepts only portable relative `/` components below the declaring directory.
 Empty, dot, parent, backslash, colon, NUL and rooted forms refuse as `PackedPathEscape`. Referenced
 symbolic links and reparse points, including leaves and links whose targets remain inside, refuse as
-`PackedPathLink`. The declaring directory itself may be an OS alias. Its link targets resolve in component
-order, applying parent components after any preceding alias. Missing referenced components use
+`PackedPathLink`. The declaring directory itself may be an OS alias. Windows resolves it through an opened
+directory handle, including volume-GUID mount targets, and refuses targets it cannot open or resolve.
+Other platforms traverse raw link targets in component order, applying parent components after any
+preceding alias. Missing referenced components use
 `PackedChunkMissing` and unresolvable metadata uses `InputIo`. Existing general asset resolution is unchanged.
 
 The configuration file requires `formatVersion`, exact `attachment` and `companion` references, and

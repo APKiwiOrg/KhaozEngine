@@ -6,7 +6,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 23.13.0
 
-2026-11-14
+2026-11-15
 
 - Tile ground can carry normal, roughness and height maps. `TileGroundLayerImage` gains `SurfaceRgba` (normal in
   rgb with the glTF convention, roughness in alpha), `NormalMapped`, `RoughnessMapped`, `HeightMapped` (height rides
@@ -71,6 +71,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   fence before reporting. One failure is rethrown unchanged and several arrive as one `AggregateException`, and a
   later frame or flush never disposes the failed resource again. `Dispose` still frees the barrier after a release
   failure ([#1760](https://github.com/APKiwiOrg/KhaozEngine/issues/1760)).
+- Native Vulkan `WaitForIdle` destroys the resources disposed before the call and frees the memory chunks their
+  destruction releases, so a headless tool, render-to-texture service or test fixture that never presents no longer
+  grows device memory without bound. `Present` still reclaims every frame. A resource that newer unfinished work
+  still uses stays held, and a failed submission no longer strands the disposals gated on its value. A loop that
+  replaces resources without presenting calls `WaitForIdle` now and then
+  ([#1199](https://github.com/APKiwiOrg/KhaozEngine/issues/1199)).
 - `TextArea` and `TextInput` keep text typed in the frame a pointer release outside them removes focus. A frame's
   edits (committed text, edit keys, paste, and `TextArea`'s Enter, Delete and caret moves) go to the field focused
   when the frame began. When a tap moves focus to another field, that frame's typing lands once, in the field that
@@ -115,6 +121,16 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Undoing a `TerrainEditCommand` that added a dependent patch no longer reports `MapNativeWriteSet.OwnerChanges` for
   that patch, which the undo removes. Undo now matches a forward edit to the same result, and surviving patches keep
   their inverted owner changes ([#1337](https://github.com/APKiwiOrg/KhaozEngine/issues/1337)).
+- Native `MapEditSession.Mutate` callbacks keep every edit they make before or after staging a command, including
+  roots outside its write set such as foliage and `DisplayName`, replaced collections and shared members the callback
+  restores. The final document publishes as one validated snapshot with matching effects, undo and redo, and a
+  callback that only stages its command keeps that command's own effects and single history entry. While the
+  callback runs, native publication, undo, redo, session lifecycle calls (open, create, save, window moves,
+  conversions, retile and closure binding), prefab publication and collider height edits refuse before changing
+  session state or writing a resource file, with `MapDocumentRefusal.ToolPublicationDuringMutationUnsupported`,
+  `DocumentId` and `Operation` on `MapDocumentException` or `MapSessionException`. `NativeEdited` handlers run after
+  the callback closes and can save. Staging a command into anything but the callback's own candidate refuses with
+  `ToolMutationCandidateRequired` ([#1481](https://github.com/APKiwiOrg/KhaozEngine/issues/1481)).
 - The native Direct3D 11 backend refuses a nonzero dynamic offset on a resource set whose layout declares no dynamic
   uniform buffer, as Metal and Vulkan do, instead of dropping the offset and drawing with the set's first window.
   `SetGraphicsResourceSet` and `SetComputeResourceSet` throw `GpuDynamicBindingException` with
@@ -135,6 +151,13 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `GpuBoundFramebufferException` with `GpuBoundFramebufferRefusal.FramebufferNotBound` and `Command` at the draw
   call, before any bind flush, on the immediate driver and on the default deferred driver, which appends nothing for
   a refused draw ([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
+- `Draw` and `DrawIndexed` require a graphics pipeline bound in the current recording, and `Dispatch` its own compute
+  pipeline, on Metal, Vulkan and both Direct3D 11 drivers. A missing pipeline throws `GpuRecordingStateException`
+  with `GpuRecordingStateRefusal.GraphicsPipelineNotBound` or `ComputePipelineNotBound`, `Backend` and `Command`
+  before any native call, recorded operation, opened pass or pending clear is spent. Metal used to throw a plain
+  `InvalidOperationException`, which the new exception still derives from, while Vulkan and Direct3D 11 could emit
+  the draw with stale or missing state. Pipeline bindings stay separate, survive framebuffer and pass changes, and
+  reset at `Begin` ([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
 - The native Direct3D 11 backend refuses a constant-buffer window whose composed offset is off the 256-byte boundary
   Direct3D 11 requires, or that runs past its ring segment, as Metal and Vulkan do, instead of rounding the offset
   down and binding the wrong slice. `SetGraphicsResourceSet` and `SetComputeResourceSet` throw
@@ -218,6 +241,13 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the point-light signature does, so flipping only the complement at a constant threshold re-renders the key-light
   atlas instead of reusing stale depth. Unchanged frames still skip the pass
   ([#1131](https://github.com/APKiwiOrg/KhaozEngine/issues/1131)).
+- Prop clusters keep individual and merged HLOD coverage complementary when the draw-radius exit band overlaps the
+  HLOD crossfade. Exit progress `e` reserves one shared gap, so individuals keep `mask >= e + t * (1 - e)` and the
+  merged complement keeps `mask < t * (1 - e)` in colour, shadows and selected outlines, and the pair fades out
+  together with no doubled coverage. The merged mesh keeps that phase after the individuals are skipped, so no
+  surface sample disappears and reappears at the handoff gate. Separated bands, hard swaps and exits that start
+  after the individuals are skipped keep their draw state
+  ([#1542](https://github.com/APKiwiOrg/KhaozEngine/issues/1542)).
 
 ## 23.12.0
 

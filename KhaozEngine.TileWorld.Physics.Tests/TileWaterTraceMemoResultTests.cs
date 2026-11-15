@@ -160,8 +160,13 @@ public sealed class TileWaterTraceMemoResultTests
         if (flat)
         {
             var columns = geometry.Nonuniform;
-            geometry = geometry with { Columns = columns, Nonuniform = [],
-                Boundaries = TileWaterBoundary.Build(columns, true), Exterior = TileWaterBoundary.Build(columns, false) };
+            geometry = geometry with
+            {
+                Columns = columns,
+                Nonuniform = [],
+                Boundaries = TileWaterBoundary.Build(columns, true),
+                Exterior = TileWaterBoundary.Build(columns, false)
+            };
         }
         return TileMediumSampler.FromTraceForTests(geometry, "water-world");
     }

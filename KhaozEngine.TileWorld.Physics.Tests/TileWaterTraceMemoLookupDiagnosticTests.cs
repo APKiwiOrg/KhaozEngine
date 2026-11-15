@@ -70,6 +70,8 @@ public class TileWaterTraceMemoLookupDiagnosticTests(ITestOutputHelper output)
             output.WriteLine($"utc={DateTime.UtcNow:O}, runtime={RuntimeInformation.FrameworkDescription}, arch={RuntimeInformation.ProcessArchitecture}, tiered={Environment.GetEnvironmentVariable("DOTNET_TieredCompilation")}");
             output.WriteLine($"entries={table.CountForTests}, samples={samples}, hit-position=last, hit-ns={hitTicks * nanoseconds / samples:R}, full-miss-ns={missTicks * nanoseconds / samples:R}, wet-trace-ns={wetTicks * nanoseconds:R}, zero-contact-trace-ns={dryTicks * nanoseconds:R}");
 
+            ReportDryShortcutAgainstExactResultLookup();
+
             bool Lookup(in MovementMediumSweepQuery query)
             {
                 if (!TileWaterFloatingPointState.TryRead(out ulong controls)) return false;
@@ -91,6 +93,64 @@ public class TileWaterTraceMemoLookupDiagnosticTests(ITestOutputHelper output)
             TileMediumSampler.BypassTraceMemoForTests = priorBypass;
             TileWaterQueryWork.Enabled = priorEnabled;
         }
+    }
+
+    void ReportDryShortcutAgainstExactResultLookup()
+    {
+        if (Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") != "0" ||
+            !TileWaterFloatingPointState.TryRead(out _))
+        {
+            output.WriteLine("Dry lookup price requires tiering disabled and a supported controls reader.");
+            return;
+        }
+        using var counters = FrozenWaterCounterScope.Suppress();
+        var field = MovementWaterFieldTests.Field(TileWorldPhysicsTestData.FlatWorld());
+        var geometry = field.CaptureTraceForTests();
+        var index = new TileWaterFlatIndex(geometry.Columns, geometry.Boundaries, geometry.Exterior);
+        var table = new TileWaterTraceResultMemo.Table();
+        var spans = new MovementCoverageSpan[64];
+        var contacts = new MovementDomainContact[256];
+        var query = TileWaterTraceMemoResultTests.Query();
+        var identity = MovementWaterFieldTests.Identity;
+        var dry = Evaluate(query);
+        Assert.Equal(MovementAvailability.Known, dry.Availability);
+        Assert.Equal(1, dry.SpansWritten);
+        Assert.Equal(0, dry.ContactsWritten);
+        for (int i = 0; i < 8; i++)
+        {
+            var key = Key(query) with { Dy = i };
+            table.Store(key, dry, spans, contacts);
+        }
+        var miss = new MovementMediumSweepQuery(query.Body, Vector3.UnitX);
+        Assert.True(Lookup(query));
+        Assert.False(Lookup(miss));
+        const int samples = 2048;
+        int hits = 0;
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < samples; i++) if (Lookup(query)) hits++;
+        long hitTicks = Stopwatch.GetTimestamp() - start;
+        Assert.Equal(samples, hits);
+        start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < samples; i++) _ = Evaluate(query);
+        long dryTicks = Stopwatch.GetTimestamp() - start;
+        start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < samples; i++)
+        {
+            if (Lookup(miss)) throw new InvalidOperationException();
+            _ = Evaluate(miss);
+        }
+        long missTicks = Stopwatch.GetTimestamp() - start;
+        double nanoseconds = 1e9 / Stopwatch.Frequency / samples;
+        output.WriteLine($"DRY_RESULT_LOOKUP samples={samples}, direct-kernel-ns={dryTicks * nanoseconds:R}, hit-ns={hitTicks * nanoseconds:R}, miss-plus-kernel-ns={missTicks * nanoseconds:R}, utc={DateTime.UtcNow:O}");
+
+        TileWaterTraceMemo.Key Key(MovementMediumSweepQuery q)
+        {
+            if (!TileWaterFloatingPointState.TryRead(out ulong token)) throw new InvalidOperationException();
+            return new(q, Vector3.Zero, spans.Length, contacts.Length, token);
+        }
+        bool Lookup(MovementMediumSweepQuery q) => table.TryRead(Key(q), q.Body.CurrentSpace, identity, spans, contacts, out _);
+        MovementCoverageResult Evaluate(MovementMediumSweepQuery q) => TileWaterColumnCoverage.Trace(geometry.Columns,
+            geometry.Boundaries, geometry.Exterior, q, Vector3.Zero, identity, spans, contacts, index);
     }
 
     static MovementMediumSweepQuery Query(int index)

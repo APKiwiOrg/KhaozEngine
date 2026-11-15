@@ -50,8 +50,8 @@ public sealed partial class TileMediumSampler
     MovementCoverageResult TraceFlat(in MovementMediumSweepQuery query, Vector3 origin,
         in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
     {
-        // Empty water captures are the measured dry control. Outside the whole water extent,
-        // the original flat shortcut is also cheaper than reading native controls and probing a key.
+        // Fresh dry queries pay lookup cost without avoiding geometry. Keep their cheap one-span
+        // construction out of the eight wet-result slots, including paths outside the water extent.
         if (_field.FlatColumns.Length == 0 || !new TileWaterPathBounds(query, origin).Meets(Extent.Minimum, Extent.Maximum))
             return ComputeTrace(true, query, origin, identity, spans, contacts);
         ulong state = 0;

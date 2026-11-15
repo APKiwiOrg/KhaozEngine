@@ -7,6 +7,9 @@ using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+#if WATER_PRISM_CENSUS
+using KhaozEngine.TileWorld.Physics;
+#endif
 using KhaozEngine.Tests.WaterPrismCensus;
 
 namespace KhaozEngine.Benchmarks;
@@ -64,6 +67,9 @@ internal static class ContactQueryCostBenchmark
                 if (counters) SupportProposalAdmission.ResetForTests();
                 using var capture = counters ? SupportQueryCapture.Begin(name) : null;
                 using var admission = counters ? new SupportProposalAdmissionCapture() : null;
+#if WATER_PRISM_CENSUS
+                if (counters) TileWaterQueryWork.Reset();
+#endif
                 for (int i = 0; i < samples; i++)
                 {
                     if ((i & 1) == 0)
@@ -98,6 +104,19 @@ internal static class ContactQueryCostBenchmark
                     contactPosition = new[] { c.Position.X, c.Position.Y, c.Position.Z },
                     legacyPosition = new[] { l.Position.X, l.Position.Y, l.Position.Z },
                     work,
+#if WATER_PRISM_CENSUS
+                    exactResultTier = counters ? new
+                    {
+                        TileWaterQueryWork.ResultHits,
+                        TileWaterQueryWork.ResultMisses,
+                        TileWaterQueryWork.ResultStores,
+                        TileWaterQueryWork.ResultBypasses,
+                        TileWaterQueryWork.PrismTraces,
+                        TileWaterQueryWork.MemoHits,
+                        TileWaterQueryWork.MemoMisses,
+                        TileWaterQueryWork.ShapePreparations
+                    } : null,
+#endif
                     proposalAdmission = admission is null ? null : new
                     {
                         admission.Hits,
@@ -105,6 +124,9 @@ internal static class ContactQueryCostBenchmark
                         admission.Bypasses
                     }
                 }));
+#if WATER_PRISM_CENSUS
+                TileWaterQueryWork.Enabled = false;
+#endif
             }
         }
     }

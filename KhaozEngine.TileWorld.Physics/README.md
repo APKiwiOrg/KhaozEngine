@@ -449,8 +449,9 @@ No public counter or API was added. Sticky FP status and fresh joined-boundary s
 exclusions above. FP controls remain exact inputs and no lookup changes the caller's control environment.
 
 Empty captures and flat paths outside the captured water extent keep the original cheap dry shortcut. The dry
-query-cost control measures the empty-capture path, for which reading native controls, constructing a key and
-probing a table would add work to a zero-intersection result. Dry results reached through nonuniform evaluation
+query-cost control measures the empty-capture path. Its warm replay can save a fraction of a microsecond, but
+fresh queries pay native-control and key lookup costs without avoiding any intersections. Bypassing them also
+preserves the eight slots for wet geometry and avoids claiming result storage for an empty capture. Dry results reached through nonuniform evaluation
 still follow the existing small-tier policy. Point queries do not use either tier. Entries survive ticks, but
 thread changes, eviction, budgets and exhausted thread slots can prevent reuse. A hit is an optimization, never
 a guarantee.

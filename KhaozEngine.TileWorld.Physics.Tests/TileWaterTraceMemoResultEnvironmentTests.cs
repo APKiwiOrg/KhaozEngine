@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Numerics;
+using KhaozEngine.Locomotion;
 using System.Threading;
 using KhaozEngine.TileWorld.Physics;
 using KhaozEngine.Tests.TileWorld.Physics.Fixtures;
@@ -65,6 +67,24 @@ public sealed class TileWaterTraceMemoResultEnvironmentTests(ITestOutputHelper o
         }
         finally { TileMediumSampler.ControlReaderForTests = previous; }
         void Read(bool hit) => Assert.Equal(hit, TileWaterTraceMemoResultTests.Work(TileWaterTraceMemoResultTests.Check(field, q)) == 0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WarmFlatAndLargeReplaysAllocateNoManagedStorage(bool flat)
+    {
+        var field = TileWaterTraceMemoResultTests.Field(flat);
+        var q = TileWaterTraceMemoResultTests.Query();
+        var spans = new MovementCoverageSpan[64];
+        var contacts = new MovementDomainContact[256];
+        var identity = MovementWaterFieldTests.Identity;
+        field.TraceWater(q, Vector3.Zero, identity, spans, contacts);
+        field.TraceWater(q, Vector3.Zero, identity, spans, contacts);
+        MovementCoverageResult result = default;
+        AllocationMeasurement.NoPerCallAllocation("a warm flat or large exact-result replay", () =>
+            result = field.TraceWater(q, Vector3.Zero, identity, spans, contacts));
+        Assert.Equal(MovementAvailability.Known, result.Availability);
     }
 
     [Theory]

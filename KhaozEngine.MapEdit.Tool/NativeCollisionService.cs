@@ -97,7 +97,7 @@ public sealed class NativeCollisionService(MapEditSession session)
                 MinimumNumber = bottom,
                 MaximumNumber = top
             };
-        return session.WithNativeAssets(context =>
+        NativeCollisionEditResult Edit(NativeAssetContext context)
         {
             HeightPlan plan = PlanHeights(context, assetId, bottom, top);
             if (dryRun || plan.Unchanged)
@@ -111,7 +111,8 @@ public sealed class NativeCollisionService(MapEditSession session)
             var command = new NativeAssetRootsCommand($"Set collider heights for {assetId}", plan.NewRoots, plan.Effects, context.Assets, assets);
             MapNativeEditEffects effects = session.ApplyNativeAssets(command, assets);
             return new NativeCollisionEditResult(true, plan.BeforeSha256, plan.AfterSha256, plan.AffectedPlacementIds, effects);
-        });
+        }
+        return dryRun ? session.WithNativeAssets(Edit) : session.WithNativePublication(nameof(SetHeights), Edit);
     }
 
     const string ColliderExtension = "coll";

@@ -58,11 +58,14 @@ namespace KhaozEngine.Tests.Gpu
 
             first.Begin();
             first.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            first.SetPipeline(D3D11BindFixtures.Pipeline());
             second.Begin();
             second.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            second.SetPipeline(D3D11BindFixtures.Pipeline());
             first.Draw(1);
             third.Begin();
             third.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            third.SetPipeline(D3D11BindFixtures.Pipeline());
             second.Draw(10);
             third.Draw(100);
             first.Draw(2);
@@ -82,12 +85,21 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     "ClearState()", "OMSetRenderTargets(r0)",
                     "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "VSSetShader(r1)", "PSSetShader(r2)",
+                    "OMSetBlendState(r3,1|1|1|1)", "OMSetDepthStencilState(r4,0)",
+                    "RSSetState(r5)", "IASetInputLayout(r6)", "IASetPrimitiveTopology(4)",
                     "DrawInstanced(100,1,0,0)", "DrawInstanced(200,1,0,0)",
-                    "ClearState()", "OMSetRenderTargets(r1)",
+                    "ClearState()", "OMSetRenderTargets(r7)",
                     "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "VSSetShader(r8)", "PSSetShader(r9)",
+                    "OMSetBlendState(r10,1|1|1|1)", "OMSetDepthStencilState(r11,0)",
+                    "RSSetState(r12)", "IASetInputLayout(r13)", "IASetPrimitiveTopology(4)",
                     "DrawInstanced(1,1,0,0)", "DrawInstanced(2,1,0,0)",
-                    "ClearState()", "OMSetRenderTargets(r2)",
+                    "ClearState()", "OMSetRenderTargets(r14)",
                     "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "VSSetShader(r15)", "PSSetShader(r16)",
+                    "OMSetBlendState(r17,1|1|1|1)", "OMSetDepthStencilState(r18,0)",
+                    "RSSetState(r19)", "IASetInputLayout(r20)", "IASetPrimitiveTopology(4)",
                     "DrawInstanced(10,1,0,0)", "DrawInstanced(20,1,0,0)",
                 },
                 log.Trace);
@@ -138,10 +150,13 @@ namespace KhaozEngine.Tests.Gpu
 
             first.Begin();
             first.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            first.SetPipeline(D3D11BindFixtures.Pipeline());
             second.Begin();
             second.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            second.SetPipeline(D3D11BindFixtures.Pipeline());
             third.Begin();
             third.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            third.SetPipeline(D3D11BindFixtures.Pipeline());
             first.Draw(1);
             second.Draw(2);
             third.Draw(3);
@@ -155,6 +170,9 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(new[] { "ClearState()", "OMSetRenderTargets(r0)",
                 "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                "VSSetShader(r1)", "PSSetShader(r2)",
+                "OMSetBlendState(r3,1|1|1|1)", "OMSetDepthStencilState(r4,0)",
+                "RSSetState(r5)", "IASetInputLayout(r6)", "IASetPrimitiveTopology(4)",
                 "DrawInstanced(1,1,0,0)" }, log.Trace);
         }
 
@@ -182,6 +200,7 @@ namespace KhaozEngine.Tests.Gpu
                 uint first = (uint)i * 1000u;
                 lists[i].Begin();
                 lists[i].SetFramebuffer(D3D11BindFixtures.Framebuffer());
+                lists[i].SetPipeline(D3D11BindFixtures.Pipeline());
                 for (uint draw = 0; draw < DrawsPerList; draw++) lists[i].Draw(first + draw + 1u);
                 lists[i].End();
             });
@@ -192,9 +211,14 @@ namespace KhaozEngine.Tests.Gpu
             for (uint i = 0; i < Lists; i++)
             {
                 expected.Add("ClearState()");
-                expected.Add($"OMSetRenderTargets(r{i})");
+                expected.Add($"OMSetRenderTargets(r{i * 7})");
                 expected.Add("RSSetViewports(1,0,0,640,480,0,1)");
                 expected.Add("RSSetScissorRects(count:1,[0,0,640,480])");
+                expected.AddRange([
+                    $"VSSetShader(r{i * 7 + 1})", $"PSSetShader(r{i * 7 + 2})",
+                    $"OMSetBlendState(r{i * 7 + 3},1|1|1|1)", $"OMSetDepthStencilState(r{i * 7 + 4},0)",
+                    $"RSSetState(r{i * 7 + 5})", $"IASetInputLayout(r{i * 7 + 6})", "IASetPrimitiveTopology(4)",
+                ]);
                 for (uint draw = 0; draw < DrawsPerList; draw++)
                     expected.Add($"DrawInstanced({(i * 1000u) + draw + 1u},1,0,0)");
             }
@@ -233,12 +257,14 @@ namespace KhaozEngine.Tests.Gpu
 
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(1);
             list.End();
             D3D11CommandDrivers.Submit(submitLock, list, ref emitter);
 
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(2);
             list.End();
             D3D11CommandDrivers.Submit(submitLock, list, ref emitter);
@@ -248,9 +274,15 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     "ClearState()", "OMSetRenderTargets(r0)",
                     "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "VSSetShader(r1)", "PSSetShader(r2)",
+                    "OMSetBlendState(r3,1|1|1|1)", "OMSetDepthStencilState(r4,0)",
+                    "RSSetState(r5)", "IASetInputLayout(r6)", "IASetPrimitiveTopology(4)",
                     "DrawInstanced(1,1,0,0)",
-                    "ClearState()", "OMSetRenderTargets(r1)",
+                    "ClearState()", "OMSetRenderTargets(r7)",
                     "RSSetViewports(1,0,0,640,480,0,1)", "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "VSSetShader(r8)", "PSSetShader(r9)",
+                    "OMSetBlendState(r10,1|1|1|1)", "OMSetDepthStencilState(r11,0)",
+                    "RSSetState(r12)", "IASetInputLayout(r13)", "IASetPrimitiveTopology(4)",
                     "DrawInstanced(2,1,0,0)",
                 },
                 log.Trace);
@@ -267,11 +299,12 @@ namespace KhaozEngine.Tests.Gpu
             {
                 list.Begin();
                 list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+                list.SetPipeline(D3D11BindFixtures.Pipeline());
                 list.Draw(3);
                 list.Draw(6);
                 list.End();
 
-                Assert.Equal(3, list.Emitter.Stream.Count);
+                Assert.Equal(4, list.Emitter.Stream.Count);
             }
         }
 

@@ -9044,8 +9044,9 @@ A kit with no `lodFile` (or `lodDistance: 0`) keeps its full mesh at every dista
 opt-in. The engine ships **no mesh decimator**, so `ke-propbake` does not generate the LOD mesh: author the
 low-poly glTF by hand and place it beside the full one. On the streamed path, set `PropLayer.FadeBandWidth`,
 `LodMeshes`/`LodPartMeshes`, and `LodDistance` (via the `ScatterLayer`/`CompanionLayer` factory params) and
-`Scene3DChunkSink.Draw` threads them through for you. Animated props and cluster impostors (HLOD) are later
-sub-projects.
+`Scene3DChunkSink.Draw` threads them through for you. Cluster HLOD ships through `PropLayer.WithHlod`,
+described in [Far props: HLOD merged clusters](#far-props-hlod-merged-clusters). Animated props and cluster
+impostors remain later work.
 
 ### GLB requirements for the flat kit path
 
@@ -11983,6 +11984,15 @@ Across `crossfadeWidth` the two crossfade - the props dissolve out and the merge
 the rigid-dissolve primitive. Both halves use the same threshold `t`: individuals keep `mask >= t`, and the merged
 half sets `DissolveComplement = 1` to keep `mask < t` in colour and shadow. Selected outlines use the same split.
 With one active representation handoff, coincident surfaces cover each noise value exactly once.
+When the draw-radius exit band overlaps the HLOD band, its progress `e` reserves one shared gap instead:
+individuals keep `mask >= e + t * (1 - e)`, and the merged complement keeps `mask < t * (1 - e)`.
+The gap has width `e`, so the pair fades out together in colour, shadows and selected outlines. The individual
+emitter still takes the maximum of this floor and each placement's own exit fade. If the exit starts before
+the individual skip gate, the merged mesh keeps the complement past that gate and the crossfade end. Its
+threshold reaches `1 - e` at `t = 1` and fades to nothing at `DrawRadius`, without reversing the noise phase.
+Before the merged skip gate, individuals use an ordinary exit fade. Exits starting at or after the individual
+skip gate retain the ordinary merged exit. Separated bands, hard swaps and the pre-crossfade exit state also
+keep their existing draw state.
 Overlapping individual LOD and HLOD bands retain their existing three-way gap composition.
 Different silhouettes can still expose holes because
 they sample different world positions (#1296). The transition remains deterministic by distance with no
@@ -12006,7 +12016,8 @@ every retained handle exactly once.
 
 Under `ShadowMode.ShadowMap`, both halves use the same complementary coverage as colour, preserving the full
 caster at coincident surfaces (#391). The HLOD handoff does not use the independent shadow-only inversion flag.
-At `DrawRadius`, the merged exit fade is an ordinary dissolve with no complementary partner.
+The merged exit keeps the complement through `DrawRadius` when the exit starts before the individual skip gate.
+An exit beginning at or after the individual skip gate uses the ordinary dissolve. Both fade to nothing.
 The `Scene3D.Draw` overload ending in `castsShadows, invertShadowDissolve` remains available for independent
 shadow-only inversion, along with `RigidInstanceDraw.InvertShadowDissolve`.
 `castsShadows: false` on the layer covers both too, so casting
@@ -16196,6 +16207,23 @@ and original cause. Refusals preserve live content and session history. MCP adap
 the original exception through `McpException.InnerException`, with an existing `McpException` passed through unchanged.
 Manifest serialization preserves a known typed JSON refusal's own reason and identifiers before using the
 ordinary `ToolManifestSerializationFailed` fallback.
+
+Native `Mutate` callbacks may stage one command into their own detached candidate. If the final candidate
+differs from the command's staged snapshot, edits made before or after staging are restaged as one validated
+complete snapshot under the command's label, including fields outside the write set and replacement
+collections. Effects, undo and redo use the final snapshot, and invalid callback edits leave the session
+unchanged. A callback with no additional edits keeps the command's own staged effects and history entry.
+Native asset publication, undo and redo refuse only while the callback is executing with
+`MapDocumentException` and `ToolPublicationDuringMutationUnsupported`. Open, create, save, window
+replacement, conversion, retile and closure binding use `MapSessionException` with the same reason. Both
+families retain `DocumentId` and `Operation`, and refuse before changing session state or storage. Staging
+into another document uses `MapDocumentException` with `ToolMutationCandidateRequired`, `DocumentId`,
+`Operation` and the known `CommandType`.
+After acceptance, `NativeEdited` handlers may save or perform other lifecycle operations. Nested native
+mutation remains refused until the outer `Mutate` returns.
+Prefab publication also refuses before writing immutable resource bytes, even when `updateOpenMap` is false.
+Collider `SetHeights` apply refuses before resource writes, while its dry run remains available inside a
+callback. Both use `MapDocumentException` with the publication reason and `Operation` `Publish` or `SetHeights`.
 
 **Native lifecycle.** A document with `ResolverIdentity` is verified completely by
 `NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,
@@ -26952,6 +26980,14 @@ from `InvalidOperationException`, with `Backend` and `Command`. `GpuRecordingSta
 `BeginWhileRecording`, `CommandOutsideRecording`, `EndWithoutRecording`, `RecordingAlreadySealed`
 and `SubmissionWithoutSeal`. End on a fresh or abandoned list uses `EndWithoutRecording`.
 End on a sealed list uses `RecordingAlreadySealed`.
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+
 A lost Metal or Vulkan timestamp device uses `GpuTimestampStateException` with
 `TimestampDeviceUnavailable` and `Backend`. Direct3D 11 uses `GpuTimestampDisposedException` with the
 same reason and `Backend`, retaining `ObjectName = "IGpuDevice"` and its `ObjectDisposedException` base.
@@ -27390,6 +27426,12 @@ keep the drain when no frame completion queue is supplied. A custom
 renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule for
 anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
 drain at all.
+
+Native Vulkan additionally collects earlier disposed resources when `WaitForIdle` returns, including memory
+chunks retired by their destruction. Headless and render-to-texture callers can therefore reclaim those
+resources without `Present`. A pool keeps its last backing chunk for reuse. Submission and fence polling do
+not collect the backend's unordered retire list, so loops replacing resources still need periodic
+`WaitForIdle` or `Present` even after their completion fences signal.
 
 **No `Scene3D` unload drains, since 17.38.0.** `UnloadMesh`, `UnloadSkinnedMesh`, `UnloadTexture`,
 `UnloadSplatMaterial` and `UnloadTileGroundMaterial` all hand their GPU resources to a `GpuRetireQueue` instead. At the next

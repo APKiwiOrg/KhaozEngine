@@ -386,26 +386,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal VulkanRingAllocator Rings => _rings;
 
-        /// <summary>
-        /// THE FRAME-BOUNDARY DRAIN of the retire list: run every held destroy the timeline has passed, and leave
-        /// the rest. Returns how many ran.
-        /// <para>
-        /// <see cref="Present"/> calls it, on the frame boundary row 17
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/527) built, right after
-        /// <see cref="VulkanRingAllocator.BeginFrame"/> and outside every lock. It was written at this row rather
-        /// than at that one so that the retire list has exactly ONE release path from the start: this method and
-        /// the teardown drain
-        /// inside <see cref="Dispose"/> both go through <see cref="VulkanRetireList"/>, and no later row has to
-        /// invent a second rule about when a deferred destroy is safe.
-        /// </para>
-        /// </summary>
-        internal int DrainRetiredResources()
-        {
-            if (_liveness.IsDead) return 0;
-
-            return _retired.Drain(_timeline.CompletedValue);
-        }
-
         /// <inheritdoc/>
         /// <remarks>Decision V-G2's <c>softwareAdapter</c> and V-G4's <c>deviceLossReason</c>, both filled from
         /// this row: the first from the chosen device's type and driver id, the second from the latch, which is
@@ -464,40 +444,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     acquireWaitCount: acquires.Count,
                     acquireWaitMs: acquires.TotalMs);
             }
-        }
-
-        /// <summary>
-        /// Block until the GPU is idle: <c>vkWaitSemaphores</c> on the last value the timeline handed to a
-        /// submission, with an infinite timeout, counted into <c>DrainCount</c> and <c>DrainMs</c> (V-F4). A SAFE
-        /// NO-OP after the device is dead (V-F10), because a destroyed device has no outstanding work left to
-        /// finish, so returning is the honest answer and waiting would wait on a counter nothing can advance.
-        /// <para>
-        /// NOT <c>vkDeviceWaitIdle</c> AND NOT <c>vkQueueWaitIdle</c>, which is the change this row made to a
-        /// method that already worked. A semaphore wait does not need the queue lock, so a drain from one thread
-        /// does not block a submit from another until it finishes, and it names a VALUE, which is what turns a
-        /// drain into something with a number attached. Teardown still uses <c>vkDeviceWaitIdle</c>, where there
-        /// is no submission left to protect and the question being asked is about the whole device.
-        /// </para>
-        /// <para>
-        /// The result of every native call on that path is checked in every configuration and a
-        /// <c>VK_ERROR_DEVICE_LOST</c> is latched at the call's own site (V-G4). See
-        /// <see cref="VulkanTimeline.WaitForIdle"/> for which cases return without counting and why.
-        /// </para>
-        /// </summary>
-        public void WaitForIdle()
-        {
-            if (_liveness.IsDead) return;
-
-            // THE EXPLICIT DRAIN IS A DEVICE-LEVEL READ, so it flushes the setup buffer first (V-M10). A caller
-            // that created a render target and then drained is entitled to find its creation-time clear executed,
-            // and the wait below is what makes that true rather than merely queued.
-            FlushSetup();
-
-            _timeline.WaitForIdle();
-
-            // The strict rung's controlled throw. Placed after the wait rather than before it, so a validation
-            // error raised by work this wait was flushing is caught by the same call that flushed it.
-            _instance?.Value.Messenger?.Pump.ThrowIfLatched("WaitForIdle");
         }
 
         /// <inheritdoc/>

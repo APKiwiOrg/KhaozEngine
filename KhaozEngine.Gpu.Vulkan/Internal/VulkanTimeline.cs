@@ -134,8 +134,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// AND A GAP DOES NOT STRAND AN ENTRY GATED ON IT, which is the obvious objection. The retire list
         /// releases on <c>completed &gt;= value</c> against a counter that steps OVER holes, so the very next
         /// successful submission's signal releases everything held at the failed value. The one case where it does
-        /// not is a device that fails a submit and never submits again, and there the teardown drain runs every
-        /// held destroy unconditionally.
+        /// not is a device that fails a submit and never submits again. The device's idle wait proves a captured
+        /// allocation high-water safe even across those gaps, and teardown drains unconditionally.
         /// </para>
         /// </summary>
         internal ulong LastAllocated => Volatile.Read(ref _issued);

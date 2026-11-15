@@ -56,6 +56,7 @@ public sealed class D3D11DrawFramebufferTests
             ? D3D11NativeCall.DrawIndexedInstanced : D3D11NativeCall.DrawInstanced));
 
         list.Begin();
+        list.SetPipeline(D3D11BindFixtures.Pipeline(layout));
         var next = Assert.Throws<GpuBoundFramebufferException>(issue);
         Assert.Equal(GpuBoundFramebufferRefusal.FramebufferNotBound, next.Reason);
         Assert.Equal(refusal.Command, next.Command);

@@ -5,7 +5,6 @@ using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
-using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapEditor;
 
@@ -15,10 +14,13 @@ public sealed partial class MapEditSession
 {
     EditorHistory _nativeHistory = new();
     NativeStagedPublication? _pendingNative;
-    // The staged candidate's semantic hash and tile index when ApplyNative staged it, so publication can tell whether
-    // the callback edited the shared candidate afterwards, and the staged command's history label.
+    // The command's staged semantic hash and tile index, plus its history label. The callback can edit
+    // unshared roots before staging, or leave shared members behind when it replaces its own roots later.
     (string Hash, MapTileIndex? Tiles, string Label)? _pendingNativeStamp;
+    // Nested mutation remains refused through accepted-edit notification. Publication admission covers only fn.
     bool _nativeMutation;
+    bool _nativeCallbackActive;
+    MapDocument? _nativeMutationCandidate;
     // The live document's legacy list canonical for the current session mutation only, cleared when it ends.
     string? _nativeLiveLists;
     long _nativeEvents;
@@ -60,6 +62,10 @@ public sealed partial class MapEditSession
         if (!_nativeMutation || _pendingNative is not null)
             throw new MapDocumentException(MapDocumentRefusal.ToolStagedMutationRequired, "Native commands require one staged session mutation.")
             { DocumentId = _doc?.Id, CommandType = command?.GetType(), Operation = nameof(ApplyNative) };
+        if (!ReferenceEquals(document, _nativeMutationCandidate))
+            throw new MapDocumentException(MapDocumentRefusal.ToolMutationCandidateRequired,
+                "Native commands must stage into the current mutation callback's detached candidate.")
+            { DocumentId = _doc?.Id, CommandType = command?.GetType(), Operation = nameof(ApplyNative) };
         _nativeHistory.Registry = registry;
         var staged = _nativeHistory.StageExecute(_doc!, command, _nativeLiveLists);
         NativeDocumentTransaction.Publish(document, staged);
@@ -82,6 +88,7 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
+            RequireClosedNativeMutation(nameof(ApplyNativeAssets), nativePublication: true);
             string liveLists = NativeLegacySpawnAdmission.LiveLists(_doc!);
             var staged = _nativeHistory.StageExecute(_doc!, command, liveLists);
             string? actualHash = staged.Assets?.Hash;
@@ -104,46 +111,53 @@ public sealed partial class MapEditSession
         string liveLists = NativeLegacySpawnAdmission.LiveLists(_doc!);
         _nativeLiveLists = liveLists;
         _nativeMutation = true;
+        _nativeCallbackActive = true;
+        _nativeMutationCandidate = candidate;
         try
         {
-            T result = fn(candidate, _registry);
+            T result;
+            try { result = fn(candidate, _registry); }
+            finally { _nativeCallbackActive = false; }
             var staged = _pendingNative;
-            // Foliage is immutable and every publication copies it, so a callback never edits foliage it shares with the
-            // staged candidate. A later foliage change on its own candidate joins the staged candidate as a late edit.
-            if (staged is not null && MapFoliageProjection.Digest(candidate.Foliage) != MapFoliageProjection.Digest(staged.Candidate.Foliage))
-                staged.Candidate.Foliage = candidate.Foliage?.Clone();
             if (staged is not null) NativeLegacySpawnAdmission.RequireAdmitted(staged.Candidate, candidate, null);
-            NativeLegacySpawnAdmission.RequireAdmitted(_doc!, staged?.Candidate ?? candidate, staged?.LegacySpawns, liveLists);
-            string published = SemanticHash(staged?.Candidate ?? candidate);
-            if (SemanticHash(before) == published) return result;
-            // fn can still edit the candidate it shares with a publication it staged. SemanticHash covers the format version, ID, globals including water, prefabs, building intent and resource
-            // transforms, the placement and spawn lists through the world hash, the native globals including surface refs,
-            // native assets and resolver identity, and every patch digest. It nulls Tiles, the storage index, which
-            // expansion never reads beyond refusing a partial document. The Tiles reference is compared as well, so a
-            // swapped index still counts as a change.
-            bool editedAfterStaging = staged is not null && (_pendingNativeStamp is not { } stamp ||
-                stamp.Hash != published || !ReferenceEquals(stamp.Tiles, staged.Candidate.Tiles));
-            // A late edit leaves the staged effects and the command's captured after state describing the staged state,
+            // Both candidates must still match the staged stamp. The callback may preserve an early unshared edit,
+            // or restore its own root after editing a shared member that remains changed in the staged candidate.
+            // Tiles is storage metadata, so its reference is checked separately from semantic roots and patch digests.
+            bool callbackEdited = staged is not null && (_pendingNativeStamp is not { } stamp ||
+                stamp.Hash != SemanticHash(candidate) || !ReferenceEquals(stamp.Tiles, candidate.Tiles) ||
+                stamp.Hash != SemanticHash(staged.Candidate) || !ReferenceEquals(stamp.Tiles, staged.Candidate.Tiles));
+            MapDocument final = callbackEdited ? candidate : staged?.Candidate ?? candidate;
+            NativeLegacySpawnAdmission.RequireAdmitted(_doc!, final, staged?.LegacySpawns, liveLists);
+            if (SemanticHash(before) == SemanticHash(final) && ReferenceEquals(before.Tiles, final.Tiles)) return result;
+            // A callback edit leaves the staged effects and the command's captured after state describing the staged state,
             // so the final candidate is staged again like a generic callback edit, as one complete snapshot from before
             // under the command's label. The published document, its effects, marker bounds and redo state then describe
             // one edit, and staging validates it again. The snapshot carries no adoption permit, so it refuses any
             // legacy list change. The staged finalization travels with it, so its unchanged before side is reused and only
             // the stale after side is captured again.
-            if (staged is null || editedAfterStaging)
+            if (staged is null || callbackEdited)
             {
                 var effects = new MapNativeEditEffects(null, null, [], [], [], [],
                     worldChanged ? MapNativeInvalidation.Terrain | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency | MapNativeInvalidation.Unbounded : MapNativeInvalidation.None);
                 string label = staged is not null && _pendingNativeStamp is { } late ? late.Label : "Native document edit";
-                var command = new NativeSessionSnapshotCommand(label, before, staged?.Candidate ?? candidate, _nativeAssets!,
+                var command = new NativeSessionSnapshotCommand(label, before, final, _nativeAssets!,
                     staged?.Assets ?? _nativeAssets!, effects, staged?.Stamp);
                 staged = _nativeHistory.StageExecute(before, command, liveLists);
             }
             PublishNative(staged, worldChanged: worldChanged, liveLists: liveLists);
             return result;
         }
-        finally { _pendingNative = null; _pendingNativeStamp = null; _nativeLiveLists = null; _nativeMutation = false; }
+        finally
+        {
+            _pendingNative = null;
+            _pendingNativeStamp = null;
+            _nativeLiveLists = null;
+            _nativeMutationCandidate = null;
+            _nativeCallbackActive = false;
+            _nativeMutation = false;
+        }
     }
-    // Staging validated the candidate against its closure, including effective water. A candidate edited after staging
+    // Staging validated the candidate against its closure, including effective water. A candidate with callback edits
     // was staged again from before, so its expansion is that of the published state.
     MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true,
         string? liveLists = null)
@@ -212,6 +226,7 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
+            RequireClosedNativeMutation(nameof(UndoNative), nativePublication: true);
             string liveLists = NativeLegacySpawnAdmission.LiveLists(_doc!);
             var staged = _nativeHistory.StageUndo(_doc!, liveLists);
             return staged is null ? null : PublishNative(staged, liveLists: liveLists);
@@ -223,6 +238,7 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
+            RequireClosedNativeMutation(nameof(RedoNative), nativePublication: true);
             string liveLists = NativeLegacySpawnAdmission.LiveLists(_doc!);
             var staged = _nativeHistory.StageRedo(_doc!, liveLists);
             return staged is null ? null : PublishNative(staged, liveLists: liveLists);

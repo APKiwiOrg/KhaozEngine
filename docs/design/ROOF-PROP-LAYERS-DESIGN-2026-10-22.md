@@ -27,7 +27,14 @@ The living API contract is in `docs/USING-KHAOZENGINE.md` and the TileWorld.Rend
 
 ## HLOD coverage correction (21.12.1)
 
-Visible and shadow-only merged roofs use the individuals' dissolve threshold with `DissolveComplement = 1`.
-Colour, shadow and selected outlines therefore keep the exact opposite noise set at coincident surfaces.
-Mixed visibility still falls back to resident individuals without the HLOD floor. The exit at `DrawRadius`
-remains an ordinary dissolve. Distance-based transitions between different silhouettes remain tracked in #1296.
+During a plain HLOD handoff, visible and shadow-only merged roofs use the individuals' dissolve threshold
+with `DissolveComplement = 1`. Colour, shadow and selected outlines therefore keep the exact opposite noise
+set at coincident surfaces.
+Mixed visibility still falls back to resident individuals without the HLOD floor. When the draw-radius exit
+starts before the individual skip gate and overlaps the handoff, it uses the shared composed rule.
+With handoff progress `t` and exit progress `e`, within the handoff band the merged proxy is absent at or below
+`PropHlod.HlodMergedSkipAt`. Above that gate it keeps `mask < t * (1 - e)` with `DissolveComplement = 1`,
+while individuals keep `mask >= e + t * (1 - e)`. The merged complement continues after individuals are skipped and through
+`DrawRadius`, avoiding a noise-phase reversal. Exits starting at or after the individual skip gate retain
+the ordinary dissolve, as do separated bands and hard swaps.
+Distance-based transitions between different silhouettes remain tracked in #1296.

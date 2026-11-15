@@ -260,7 +260,10 @@ backlog here: a follow-up recorded only in a design doc is invisible to the ledg
   cost a repair commit each time. Documentation, tooling and governance ride a released version without
   bumping it, so those pushes are not refused, and a side branch may sit at an old release untouched. The
   rule is `tag_release_window` plus `tag_version_bearing` in `scripts/tag-standard.sh`, exercised by
-  `scripts/tests/version-push-guard.test.sh`. Non-packable test projects may import literal props paths
+  `scripts/tests/version-push-guard.test.sh`. Repository artwork under `art-assets/` also rides when
+  neither committed endpoint has a reference from a packable or unknown project, or from any props
+  or targets file. The showcase's icon reference is safe because its project is proved non-packable.
+  Non-packable test projects may import literal props paths
   within `test-shared/` when the committed XML proves those files contain only false packability,
   compile items and assembly attributes. Unknown or conditional XML stays version-bearing, and both
   ends of the changed range are checked. The root `.gitattributes` is judged by its changed lines,

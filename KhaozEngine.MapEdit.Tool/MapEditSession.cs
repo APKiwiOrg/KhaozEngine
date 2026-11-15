@@ -46,6 +46,7 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
+            RequireClosedNativeMutation(nameof(BindNativeAssets));
             MapBoundDocumentValidation.Validate(_doc!, assets, _registry);
             BindNativeAssetsLocked(assets);
         }
@@ -93,6 +94,7 @@ public sealed partial class MapEditSession
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         lock (_lock)
         {
+            RequireClosedNativeMutation(nameof(Open));
             string fullPath = Path.GetFullPath(path);
             var options = new MapDocumentLoadOptions { Registry = _registry };
             MapDocument doc = LoadForOpen(fullPath, options, markerOptions, out MapTileRect? window);
@@ -134,6 +136,7 @@ public sealed partial class MapEditSession
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         lock (_lock)
         {
+            RequireClosedNativeMutation(nameof(Create));
             MapDocumentForm existingForm = MapDocumentFile.DetectForm(path);
             if (existingForm != MapDocumentForm.None && !overwrite)
                 throw new IOException($"{path}: already exists. Pass overwrite to replace it.");
@@ -190,6 +193,7 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
+            RequireClosedNativeMutation(nameof(Save));
             if (NativeDocumentService.IsNative(_doc!))
             {
                 NativeDocumentService.RequireStorage(_storagePath!, _storageForm, allowMissingFile: true);
@@ -223,6 +227,7 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
+            RequireClosedNativeMutation(nameof(SetWindow));
             if (_doc!.Tiles is not { SourceDirectory: { } directory })
                 throw new MapSessionException(MapDocumentRefusal.ToolTiledSessionRequired,
                     "set_window only applies to a tiled document opened from (or converted to) a directory. " +
@@ -296,6 +301,7 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
+            RequireClosedNativeMutation(nameof(ConvertToTiled));
             bool native = NativeDocumentService.IsNative(_doc!);
             // A native target may be a directory prepared with its relative resources, refused only once it holds a
             // map manifest. Analytic conversion keeps refusing any existing directory.
@@ -340,6 +346,7 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
+            RequireClosedNativeMutation(nameof(ConvertToSingle));
             if (MapDocumentFile.DetectForm(path) == MapDocumentForm.Tiled)
                 throw new MapDocumentException(MapDocumentRefusal.DocumentStorageFormConflict,
                     $"{path}: a tiled document (a directory) already exists there. Convert or delete it first.")
@@ -383,6 +390,7 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
+            RequireClosedNativeMutation(nameof(Retile));
             if (!(tileSize > 0f) || !float.IsFinite(tileSize))
                 throw new ArgumentOutOfRangeException(nameof(tileSize), tileSize, "tileSize must be positive and finite.");
             if (_doc!.Tiles is { IsPartial: true })

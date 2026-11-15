@@ -299,6 +299,14 @@ the draw, so a refusal escapes the draw call and leaves the stream unchanged. `B
 and `SetFramebufferWithStoreActions` supplies it through the ordinary framebuffer bind
 ([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
 
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+
 Four checks stay in the real emitter alone, because each names a type only a device can build or a Direct3D type
 the device-free trace cannot name.
 

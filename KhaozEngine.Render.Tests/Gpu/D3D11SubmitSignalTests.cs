@@ -44,6 +44,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = Recorder(immediate, emitter);
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(1);
             list.End();
 
@@ -53,6 +54,7 @@ namespace KhaozEngine.Tests.Gpu
 
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(2);
             list.End();
             D3D11CommandDrivers.Submit(submitLock, list, ref emitter, signal);
@@ -84,13 +86,14 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = Recorder(immediate, emitter);
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(1);
             list.Draw(2);
             list.End();
 
             D3D11CommandDrivers.Submit(submitLock, list, ref emitter, signal);
 
-            Assert.Equal(new[] { "Begin()", "SetFramebuffer(r0)", "Draw(1,1,0,0)", "Draw(2,1,0,0)", "End()" }, log.Trace);
+            Assert.Equal(new[] { "Begin()", "SetFramebuffer(r0)", "SetPipeline(r1)", "Draw(1,1,0,0)", "Draw(2,1,0,0)", "End()" }, log.Trace);
             Assert.Equal(log.TotalCalls, signal.EmitterCallsAtLastSignal);
         }
 
@@ -112,6 +115,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = Recorder(immediate, emitter);
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(1);
             list.End();
 
@@ -136,12 +140,13 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = Recorder(immediate, emitter);
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(7);
             list.End();
 
             D3D11CommandDrivers.Submit(new object(), list, ref emitter);
 
-            Assert.Equal(new[] { "Begin()", "SetFramebuffer(r0)", "Draw(7,1,0,0)", "End()" }, log.Trace);
+            Assert.Equal(new[] { "Begin()", "SetFramebuffer(r0)", "SetPipeline(r1)", "Draw(7,1,0,0)", "End()" }, log.Trace);
         }
 
         /// <summary>
@@ -161,6 +166,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(1);
             list.End();
 
@@ -169,8 +175,8 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(2, timeline.SignalCount);
             Assert.Equal(2UL, timeline.Issued);
-            Assert.Equal(new[] { "Begin()", "SetFramebuffer(r0)", "Draw(1,1,0,0)", "End()",
-                "Begin()", "SetFramebuffer(r0)", "Draw(1,1,0,0)", "End()" },
+            Assert.Equal(new[] { "Begin()", "SetFramebuffer(r0)", "SetPipeline(r1)", "Draw(1,1,0,0)", "End()",
+                "Begin()", "SetFramebuffer(r0)", "SetPipeline(r1)", "Draw(1,1,0,0)", "End()" },
                 log.Trace);
         }
 
@@ -187,6 +193,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList halfRecorded = D3D11CommandDrivers.CreateDeferred();
             halfRecorded.Begin();
             halfRecorded.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            halfRecorded.SetPipeline(D3D11BindFixtures.Pipeline());
             halfRecorded.Draw(1);
 
             var ex = Assert.Throws<GpuRecordingStateException>(
@@ -219,6 +226,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = Recorder(immediate, emitter);
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(1);
             list.End();
 
@@ -248,6 +256,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList earlier = Recorder(immediate, emitter);
             earlier.Begin();
             earlier.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            earlier.SetPipeline(D3D11BindFixtures.Pipeline());
             earlier.Draw(1);
             earlier.End();
             D3D11CommandDrivers.Submit(submitLock, earlier, ref emitter, fences);
@@ -255,6 +264,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList ours = Recorder(immediate, emitter);
             ours.Begin();
             ours.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            ours.SetPipeline(D3D11BindFixtures.Pipeline());
             ours.Draw(2);
             ours.End();
             D3D11CommandDrivers.Submit(submitLock, ours, ref emitter, fences, fence);

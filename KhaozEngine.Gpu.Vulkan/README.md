@@ -21,7 +21,8 @@ reasoning is what makes the code readable. Nothing selects it any more.
 > the one refcounted process `VkInstance`, with its features enabled by name, its device-loss latch armed and
 > `KE_VULKAN_VALIDATION` wired. Since [#515](https://github.com/APKiwiOrg/KhaozEngine/issues/515) that device
 > also owns its ONE timeline semaphore, a real `IGpuFence` over it, the deferred-disposal retire list, and a
-> `WaitForIdle` that is a counted `vkWaitSemaphores` rather than a device-wide wait. Since
+> `WaitForIdle` that is a counted `vkWaitSemaphores` rather than a device-wide wait and also collects retired
+> resources without requiring `Present`. Since
 > [#516](https://github.com/APKiwiOrg/KhaozEngine/issues/516) it owns the block suballocator used by its buffers
 > and textures. And since
 > [#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517) it hands out real command lists with their own
@@ -315,7 +316,9 @@ The device also implements `IGpuResourceMemoryDiagnostics`. `ReadMemorySnapshot(
 buffer bytes and texture texel payload, including mips, expanded cubemap faces, array layers and samples.
 Native image payload uses checked 64-bit arithmetic. The 32-bit mapping ceiling applies only to staging.
 Staging buffers and uniform rings report retained capacity separately, with overlap identified in the
-source. Logical payload stays counted until native resource retirement. Peak payload and resource count
+source. Logical payload stays counted until native resource retirement. `WaitForIdle` releases earlier disposed
+payload even when the caller never presents, and also frees dedicated or excess pool chunks retired by those
+destroys. Each pool still keeps its last chunk for reuse. Peak payload and resource count
 exclude backing heaps. Committed bytes count each `vkAllocateMemory` result once, including retained empty
 pool chunks and chunks awaiting retirement, until native release. Driver-owned allocations are outside
 that count. Do not add logical payload and committed bytes.
@@ -351,10 +354,19 @@ GPU already caught up is not counted, because the seam's own counter documents t
 
 **Disposal is DEFERRED behind the timeline.** Disposing a resource records the device's current timeline value
 and holds the native destroy until the counter passes it. `Present` collects completed retirements on both
-windowed and headless devices, and teardown releases the remaining entries after waiting for the device. That
+windowed and headless devices. `WaitForIdle` also destroys every resource retired before the call, including
+when there was no submission or the GPU was already caught up. It snapshots the allocation high-water under
+the short submit lock after flushing setup work, releases that lock before waiting, then drains through the
+snapshot twice. The second pass frees chunks retired by resource destruction. Failed-submit gaps cannot strand
+these entries, and resources retired against newer unfinished submissions remain held. A lost device skips
+native destruction. Teardown releases the remaining entries after waiting for the device. That
 makes "mid-life resource disposal racing queued async work" structurally impossible on this backend rather than merely
 conventionally avoided. The engine's own `WaitForIdle` calls stay where they are, because they are the seam's
 contract.
+
+Submission and fence polling do not collect retirements. Retire values can arrive out of order, so collection
+scans the list and cannot be added to those paths as a constant-cost head comparison. A render-to-texture or
+headless loop that replaces resources must periodically call `WaitForIdle` or `Present` to reclaim them.
 
 ## GPU timestamp query pools
 
@@ -443,7 +455,8 @@ cannot happen rather than gating one that can.
 
 **A chunk's memory goes back behind the timeline.** When the last allocation in a chunk is freed the chunk is
 retired rather than destroyed, and its `vkFreeMemory` runs only once the completion timeline has passed the
-value recorded at that moment. A pool keeps its last chunk, so a load-unload cycle does not become one
+value recorded at that moment, or an idle wait proves that allocation high-water safe. A pool keeps its last
+chunk, so a load-unload cycle does not become one
 `vkAllocateMemory` per iteration.
 
 **VMA is declined, and the decline is CONDITIONAL.** VMA is a C++ library with no maintained managed binding, so
@@ -1406,6 +1419,14 @@ rather than on the immediately preceding one. Both the record-time path and the 
 the copy the same way.
 
 ## Drawing: one order for five members, and the compute barriers that fall out of it
+
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
 
 Every member of `IGpuCommandList` is live. A draw does four things before its `vkCmd*` and they are written ONCE
 rather than at each of the five members, because the order is what can be wrong and a missing step renders

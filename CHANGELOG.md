@@ -17,6 +17,36 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `IReadOnlyList` properties. Collection casts and `ICollection.SyncRoot` cannot expose their backing storage,
   so a caller cannot replace graph inputs after a planner caches its connectivity. Input copying, element
   identity, enumeration order and allocation-free query reads are preserved.
+- `Draw` and `DrawIndexed` require a graphics pipeline bound in the current recording, and `Dispatch` its own compute
+  pipeline, on Metal, Vulkan and both Direct3D 11 drivers. A missing pipeline throws `GpuRecordingStateException`
+  with `GpuRecordingStateRefusal.GraphicsPipelineNotBound` or `ComputePipelineNotBound`, `Backend` and `Command`
+  before any native call, recorded operation, opened pass or pending clear is spent. Metal used to throw a plain
+  `InvalidOperationException`, which the new exception still derives from, while Vulkan and Direct3D 11 could emit
+  the draw with stale or missing state. Pipeline bindings stay separate, survive framebuffer and pass changes, and
+  reset at `Begin` ([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+- Native Vulkan `WaitForIdle` destroys the resources disposed before the call and frees the memory chunks their
+  destruction releases, so a headless tool, render-to-texture service or test fixture that never presents no longer
+  grows device memory without bound. `Present` still reclaims every frame. A resource that newer unfinished work
+  still uses stays held, and a failed submission no longer strands the disposals gated on its value. A loop that
+  replaces resources without presenting calls `WaitForIdle` now and then
+  ([#1199](https://github.com/APKiwiOrg/KhaozEngine/issues/1199)).
+- Prop clusters keep individual and merged HLOD coverage complementary when the draw-radius exit band overlaps the
+  HLOD crossfade. Exit progress `e` reserves one shared gap, so individuals keep `mask >= e + t * (1 - e)` and the
+  merged complement keeps `mask < t * (1 - e)` in colour, shadows and selected outlines, and the pair fades out
+  together with no doubled coverage. The merged mesh keeps that phase after the individuals are skipped, so no
+  surface sample disappears and reappears at the handoff gate. Separated bands, hard swaps and exits that start
+  after the individuals are skipped keep their draw state
+  ([#1542](https://github.com/APKiwiOrg/KhaozEngine/issues/1542)).
+- Native `MapEditSession.Mutate` callbacks keep every edit they make before or after staging a command, including
+  roots outside its write set such as foliage and `DisplayName`, replaced collections and shared members the callback
+  restores. The final document publishes as one validated snapshot with matching effects, undo and redo, and a
+  callback that only stages its command keeps that command's own effects and single history entry. While the
+  callback runs, native publication, undo, redo, session lifecycle calls (open, create, save, window moves,
+  conversions, retile and closure binding), prefab publication and collider height edits refuse before changing
+  session state or writing a resource file, with `MapDocumentRefusal.ToolPublicationDuringMutationUnsupported`,
+  `DocumentId` and `Operation` on `MapDocumentException` or `MapSessionException`. `NativeEdited` handlers run after
+  the callback closes and can save. Staging a command into anything but the callback's own candidate refuses with
+  `ToolMutationCandidateRequired` ([#1481](https://github.com/APKiwiOrg/KhaozEngine/issues/1481)).
 - Movement queries bulk clear their water coverage contact buffers on return, instead of scanning them for
   nondefault runs, when the writer is the engine's own `OrdinaryMovementEnvironment` pin or the validated boundary
   copy. Both publish complete contacts or nothing, so the faster clear cannot miss a partial write. Consumer pins

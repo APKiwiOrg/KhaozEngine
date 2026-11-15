@@ -135,6 +135,7 @@ namespace KhaozEngine.Tests.Terrain
         [Fact]
         public void Draw_state_and_Draw_use_the_same_exit_decision()
         {
+            // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1542.
             using var rig = new PropClusterRig();
             PropClusterKey key = new("trees", 0, 0, 0);
             PropLayer layer = PropClusterRig.ExitLayer(drawRadius: 120f, fadeWidth: 20f,
@@ -146,7 +147,7 @@ namespace KhaozEngine.Tests.Terrain
 
             Assert.Equal(1, rig.MergedDrawCount);
             Assert.True(state.DrawsMerged);
-            Assert.False(state.MergedComplement);
+            Assert.True(state.MergedComplement);
             Assert.Equal(rig.LastMergedDissolve, state.MergedDissolve, 5);
         }
 
@@ -335,11 +336,12 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Theory]
-        [InlineData(500f, true)]
-        [InlineData(120f, false)]
-        public void Merged_hlod_entrance_is_complementary_unless_the_exit_fade_overlaps(
-            float drawRadius, bool expectedComplement)
+        [InlineData(500f, .5f)]
+        [InlineData(120f, .25f)]
+        public void Merged_hlod_entrance_composes_the_complement_with_the_exit_fade(
+            float drawRadius, float expectedDissolve)
         {
+            // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1542.
             using var rig = new PropClusterRig();
             PropClusterKey key = new("trees", 0, 0, 0);
             PropLayer layer = PropClusterRig.ExitLayer(drawRadius, fadeWidth: 40f,
@@ -350,8 +352,8 @@ namespace KhaozEngine.Tests.Terrain
             rig.Renderer.Draw(Focus(100f));
 
             Assert.Equal(1, rig.MergedDrawCount);
-            Assert.Equal(0.5f, rig.LastMergedDissolve, 5);
-            Assert.Equal(expectedComplement, rig.LastMergedComplement);
+            Assert.Equal(expectedDissolve, rig.LastMergedDissolve, 5);
+            Assert.True(rig.LastMergedComplement);
         }
 
         static Vector3 Focus(float clusterDistance) => new(32f + clusterDistance, 0f, 32f);

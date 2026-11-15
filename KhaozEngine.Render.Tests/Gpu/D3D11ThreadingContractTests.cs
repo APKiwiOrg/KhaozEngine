@@ -150,6 +150,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(3);
             list.End();
 
@@ -284,6 +285,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = D3D11CommandDrivers.CreateDeferred();
             list.Begin();
             list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            list.SetPipeline(D3D11BindFixtures.Pipeline());
             list.Draw(1);
             list.End();
 

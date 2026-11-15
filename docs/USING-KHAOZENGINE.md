@@ -11974,8 +11974,12 @@ With one active representation handoff, coincident surfaces cover each noise val
 When the draw-radius exit band overlaps the HLOD band, its progress `e` reserves one shared gap instead:
 individuals keep `mask >= e + t * (1 - e)`, and the merged complement keeps `mask < t * (1 - e)`.
 The gap has width `e`, so the pair fades out together in colour, shadows and selected outlines. The individual
-emitter still takes the maximum of this floor and each placement's own exit fade. A lone representation near
-the handoff skip gates uses an ordinary exit fade. Profiles with separated bands keep their existing draw state.
+emitter still takes the maximum of this floor and each placement's own exit fade. If the exit starts before
+the individual skip gate, the merged mesh keeps the complement past that gate and the crossfade end. Its
+threshold reaches `1 - e` at `t = 1` and fades to nothing at `DrawRadius`, without reversing the noise phase.
+Before the merged skip gate, individuals use an ordinary exit fade. Exits starting at or after the individual
+skip gate retain the ordinary merged exit. Separated bands, hard swaps and the pre-crossfade exit state also
+keep their existing draw state.
 Overlapping individual LOD and HLOD bands retain their existing three-way gap composition.
 Different silhouettes can still expose holes because
 they sample different world positions (#1296). The transition remains deterministic by distance with no
@@ -11999,7 +12003,8 @@ every retained handle exactly once.
 
 Under `ShadowMode.ShadowMap`, both halves use the same complementary coverage as colour, preserving the full
 caster at coincident surfaces (#391). The HLOD handoff does not use the independent shadow-only inversion flag.
-At `DrawRadius`, the merged exit fade is an ordinary dissolve with no complementary partner.
+The merged exit keeps the complement through `DrawRadius` when the exit starts before the individual skip gate.
+An exit beginning at or after the individual skip gate uses the ordinary dissolve. Both fade to nothing.
 The `Scene3D.Draw` overload ending in `castsShadows, invertShadowDissolve` remains available for independent
 shadow-only inversion, along with `RigidInstanceDraw.InvertShadowDissolve`.
 `castsShadows: false` on the layer covers both too, so casting

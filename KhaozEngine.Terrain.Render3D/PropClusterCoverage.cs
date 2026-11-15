@@ -15,16 +15,20 @@ internal static class PropClusterCoverage
         if (layer.FadeBandWidth > 0 && distance >= start)
         {
             float exit = Math.Clamp((distance - start) / (layer.DrawRadius - start), 0, 1);
-            if (individuals && layer.HlodCrossfadeWidth > 0 &&
-                distance >= layer.HlodDistance - layer.HlodCrossfadeWidth * .5f)
+            float handoffStart = layer.HlodDistance - layer.HlodCrossfadeWidth * .5f;
+            float individualSkip = handoffStart + layer.HlodCrossfadeWidth * PropHlod.HlodPropsSkipAt;
+            if (layer.HlodCrossfadeWidth > 0 && start < individualSkip && distance >= handoffStart)
             {
-                bool paired = PropHlod.DrawsHlodMerged(t);
+                bool mergedVisible = PropHlod.DrawsHlodMerged(t);
                 // The complement keeps [0, merged), and individuals keep [exit + merged, 1).
                 // Reserve exactly one exit-sized gap while preserving each half's share of the survivors.
-                float merged = paired ? t * (1f - exit) : 0f;
-                return new(true, exit + merged, paired, merged, paired, individualGeneration, mergedGeneration);
+                // Keep the merged phase after individuals are skipped, through t = 1 and the draw radius.
+                float merged = mergedVisible ? t * (1f - exit) : 0f;
+                return new(individuals, exit + merged, mergedVisible, merged, mergedVisible,
+                    individualGeneration, mergedGeneration);
             }
-            // Preserve the legacy draw state when the bands are separate or the handoff has completed.
+            // An exit starting after the individual gate follows the solid merge's ordinary phase.
+            // Hard swaps and the pre-handoff exit state also retain their legacy draw state.
             return new(individuals, t, true, exit, false, individualGeneration, mergedGeneration);
         }
         bool drawsMerged = PropHlod.DrawsHlodMerged(t);

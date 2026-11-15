@@ -135,6 +135,7 @@ namespace KhaozEngine.Tests.Terrain
         [Fact]
         public void Draw_state_and_Draw_use_the_same_exit_decision()
         {
+            // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1542.
             using var rig = new PropClusterRig();
             PropClusterKey key = new("trees", 0, 0, 0);
             PropLayer layer = PropClusterRig.ExitLayer(drawRadius: 120f, fadeWidth: 20f,

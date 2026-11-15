@@ -45,6 +45,7 @@ public sealed class HlodExitCoverageTests
             handoffStart + layer.HlodCrossfadeWidth * (PropHlod.HlodMergedSkipAt * .5f),
             handoffStart + layer.HlodCrossfadeWidth * PropHlod.HlodPropsSkipAt,
             handoffStart + layer.HlodCrossfadeWidth * ((1f + PropHlod.HlodPropsSkipAt) * .5f),
+            handoffEnd + (layer.DrawRadius - handoffEnd) * .5f,
         };
         foreach (float distance in distances)
         {
@@ -80,6 +81,14 @@ public sealed class HlodExitCoverageTests
                 Assert.Equal(individual.Floor, individual.Dissolve);
                 AssertCoverage(backend.Draws, merged.Dissolve, individual.Dissolve);
             }
+            else if (t >= PropHlod.HlodPropsSkipAt && distance >= exitStart)
+            {
+                Draw merged = Assert.Single(backend.Draws);
+                Assert.True(merged.Merged);
+                Assert.True(merged.Complement);
+                Assert.Equal(t * (1f - exit), merged.Dissolve, 5);
+                AssertCoverage(backend.Draws, merged.Dissolve, null);
+            }
             else
             {
                 Draw single = Assert.Single(backend.Draws);
@@ -95,9 +104,72 @@ public sealed class HlodExitCoverageTests
         }
     }
 
+    [Theory]
+    [InlineData(160f, 120f, 40f, false)]
+    [InlineData(160f, 120f, 40f, true)]
+    [InlineData(160f, 60f, 40f, false)]
+    [InlineData(110f, 90f, 40f, false)]
+    [InlineData(120f, 160f, 40f, true)]
+    [InlineData(160f, 41f, 40f, false)]
+    [InlineData(160f, 120f, 0f, false)]
+    public void Exit_coverage_changes_only_by_a_skip_sliver_at_band_boundaries(
+        float radius, float fadeWidth, float hlodWidth, bool shadowOnly)
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1542.
+        PropLayer layer = Layer(radius, fadeWidth, 100f, hlodWidth, parts: shadowOnly);
+        var backend = new RecordingBackend();
+        using var renderer = Create(backend, layer);
+        float start = layer.HlodDistance - layer.HlodCrossfadeWidth * .5f;
+        float[] boundaries =
+        {
+            MathF.Max(0f, layer.DrawRadius - layer.FadeBandWidth),
+            start, start + layer.HlodCrossfadeWidth,
+            start + layer.HlodCrossfadeWidth * PropHlod.HlodMergedSkipAt,
+            start + layer.HlodCrossfadeWidth * PropHlod.HlodPropsSkipAt,
+            layer.DrawRadius,
+        };
+        const int samples = 2048;
+        float sliver = MathF.Max(PropHlod.HlodMergedSkipAt, 1f - PropHlod.HlodPropsSkipAt);
+        int allowedChanges = (int)MathF.Ceiling(samples * sliver) + 2;
+        foreach (float boundary in boundaries)
+        {
+            bool[] before = KeptAt(MathF.Max(0f, boundary - .001f));
+            foreach (float distance in new[] { boundary, boundary + .001f })
+            {
+                bool[] after = KeptAt(distance);
+                int removed = 0, restored = 0;
+                for (int sample = 0; sample < samples; sample++)
+                {
+                    if (before[sample] && !after[sample]) removed++;
+                    if (!before[sample] && after[sample]) restored++;
+                }
+                // A skip can move one sliver between phases, but cannot reverse the noise domain.
+                Assert.True(removed <= allowedChanges && restored <= allowedChanges,
+                    $"At {boundary}, removed {removed} and restored {restored} of {samples} fixed noise samples.");
+            }
+        }
+
+        bool[] KeptAt(float distance)
+        {
+            backend.Draws.Clear();
+            Vector3 focus = new(distance, 0f, 0f);
+            if (shadowOnly) renderer.DrawWithVisibility(focus, new Hidden());
+            else renderer.Draw(focus);
+            var kept = new bool[samples];
+            for (int sample = 0; sample < samples; sample++)
+            {
+                float noise = sample / (float)samples;
+                foreach (Draw draw in backend.Draws)
+                    kept[sample] |= draw.Complement ? noise < draw.Dissolve : noise >= draw.Dissolve;
+            }
+            return kept;
+        }
+    }
+
     [Fact]
     public void An_exit_before_the_handoff_band_keeps_the_legacy_state()
     {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1542.
         PropLayer layer = Layer(40f, 20f, 100f, 40f, parts: false);
         var backend = new RecordingBackend();
         using var renderer = Create(backend, layer);
@@ -109,17 +181,44 @@ public sealed class HlodExitCoverageTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Separated_bands_keep_every_draw_state_float_bit(bool shadowOnly)
+    [InlineData(500f, 40f, 40f, false)]
+    [InlineData(500f, 40f, 40f, true)]
+    [InlineData(160f, 120f, 0f, false)]
+    [InlineData(160f, 120f, 0f, true)]
+    [InlineData(160f, 41f, 40f, false)]
+    [InlineData(160f, 41f, 40f, true)]
+    public void Unpaired_exit_profiles_keep_every_draw_state_float_bit(
+        float radius, float fadeWidth, float hlodWidth, bool shadowOnly)
     {
-        PropLayer layer = Layer(500f, 40f, 100f, 40f, parts: false);
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1542.
+        PropLayer layer = Layer(radius, fadeWidth, 100f, hlodWidth, parts: false);
         var backend = new RecordingBackend();
         using var renderer = Create(backend, layer);
         float start = layer.HlodDistance - layer.HlodCrossfadeWidth * .5f;
         float end = start + layer.HlodCrossfadeWidth;
         float exit = layer.DrawRadius - layer.FadeBandWidth;
-        (float Distance, PropClusterDrawState State)[] samples =
+        // The hard swap is halfway through its exit. The late exit starts at t = 39/40,
+        // one metre before the crossfade ends, with 41 metres of exit fade remaining.
+        (float Distance, PropClusterDrawState State)[] samples = hlodWidth == 0f
+        ? new[]
+        {
+            (0f, State(true, 0f, false, 0f, false)),
+            (exit, State(true, 0f, true, 0f, false)),
+            (start, State(false, 1f, true, .5f, false)),
+            (layer.DrawRadius, State(false, 0f, false, 0f, false)),
+        }
+        : exit < end
+        ? new[]
+        {
+            (0f, State(true, 0f, false, 0f, false)),
+            (start, State(true, 0f, false, 0f, false)),
+            (layer.HlodDistance, State(true, .5f, true, .5f, true)),
+            (exit, State(false, .975f, true, 0f, false)),
+            (end, State(false, 1f, true, 1f / 41f, false)),
+            (exit + layer.FadeBandWidth * .5f, State(false, 1f, true, .5f, false)),
+            (layer.DrawRadius, State(false, 0f, false, 0f, false)),
+        }
+        : new[]
         {
             (0f, State(true, 0f, false, 0f, false)),
             (start, State(true, 0f, false, 0f, false)),
@@ -154,17 +253,18 @@ public sealed class HlodExitCoverageTests
     static PropClusterDrawState State(bool individual, float floor, bool merged, float dissolve, bool complement) =>
         new(individual, floor, merged, dissolve, complement, 1, 1) { HasIndividualGeometry = true };
 
-    static void AssertCoverage(List<Draw> draws, float lower, float upper)
+    static void AssertCoverage(List<Draw> draws, float lower, float? upper)
     {
         // Include exact boundaries, where the shader's strict complement comparison matters.
-        var noiseValues = new List<float> { lower, upper };
+        var noiseValues = new List<float> { lower };
+        if (upper is float boundary) noiseValues.Add(boundary);
         for (int sample = 0; sample < 128; sample++) noiseValues.Add(sample / 128f);
         foreach (float noise in noiseValues)
         {
             int owners = 0;
             foreach (Draw draw in draws)
                 if (draw.Complement ? noise < draw.Dissolve : noise >= draw.Dissolve) owners++;
-            Assert.Equal(noise < lower || noise >= upper ? 1 : 0, owners);
+            Assert.Equal(noise < lower || (upper is float ceiling && noise >= ceiling) ? 1 : 0, owners);
         }
     }
 

@@ -22,7 +22,7 @@ public sealed partial class Scene3D
         float alphaCutoff = source.AlphaCutoff;
         if (source.Ground)
         {
-            var handle = LoadTileGroundMaterial(groundAlbedo!, groundParams!, source.Sampler, owned);
+            var handle = LoadTileGroundMaterial(groundAlbedo!, groundParams!, source.Sampler, owned, reusableSlot: true);
             tileGround = handle.ListIndex;
         }
         else
@@ -41,19 +41,21 @@ public sealed partial class Scene3D
     }
     MeshHandle PublishMesh(GltfMesh source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
         IGpuResourceSet? material, IGpuResourceSet? outline, int splatMaterial = -1, float alphaCutoff = 0,
-        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0)
+        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0,
+        TileGroundProgram tileGroundProgram = TileGroundProgram.Plain)
         => PublishMesh(SceneUploadPublication.From(source), vertices, normals, indices, material, outline,
-            splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout, meshOrder);
+            splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout, meshOrder, tileGroundProgram);
 
     MeshHandle PublishMesh(SceneUploadPublication source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
         IGpuResourceSet? material, IGpuResourceSet? outline, int splatMaterial = -1, float alphaCutoff = 0,
-        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0)
+        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0,
+        TileGroundProgram tileGroundProgram = TileGroundProgram.Plain)
     {
         ArgumentNullException.ThrowIfNull(source.Coverage);
         int index = _slots.Alloc(out int generation, meshOrder);
         var mesh = new Mesh(vertices, normals, indices, source.IndexCount, source.IndexFormat, source.Bounds,
             material, outline, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout,
-            source.OpaqueFoliage && material is null && alphaCutoff == 0f);
+            source.OpaqueFoliage && material is null && alphaCutoff == 0f, tileGroundProgram);
         try
         {
             _coverageUploads.Add((index, generation), source.Coverage);
@@ -96,22 +98,31 @@ public sealed partial class Scene3D
             foliage.PreparedPointStream = null;
         }
     }
+    // A non-null surface array makes this a relief material: the relief programs' set beside the plain one, and the
+    // layers' program needs that pick each mesh's program. Each resource made here joins owner the moment it exists,
+    // so whoever holds that list frees it if a later step throws, the second set included: an upload's own resource
+    // list, or the public load's list of what it has not yet published.
     TileGroundMaterialHandle LoadTileGroundMaterial(IGpuTexture albedo, IGpuBuffer ubo,
-        TerrainSamplerConfig? sampler, List<IDisposable>? owned)
+        TerrainSamplerConfig? sampler, List<IDisposable> owner, bool reusableSlot, IGpuTexture? surface = null,
+        TileGroundProgram[]? layerPrograms = null)
     {
         IGpuSampler? selected = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
-        if (selected is not null) owned?.Add(selected);
+        if (selected is not null) owner.Add(selected);
         var set = selected is null ? _model.CreateTileGroundMaterialSet(ubo, albedo)
             : _model.CreateTileGroundMaterialSet(ubo, albedo, selected);
-        owned?.Add(set);
+        owner.Add(set);
+        IGpuResourceSet? reliefSet = surface is null ? null
+            : _model.CreateTileGroundReliefMaterialSet(ubo, albedo, surface, selected);
+        if (reliefSet is not null) owner.Add(reliefSet);
+        var entry = new TileGroundMaterialEntry(albedo, ubo, set, selected, surface, reliefSet, layerPrograms);
         // Only upload-owned slots are reusable. Legacy handles keep their historical indices, including
         // unloaded slots, so a stale public handle can never resolve a native resource's material.
-        if (owned is not null && _freeUploadedGroundMaterials.TryPop(out int index))
+        if (reusableSlot && _freeUploadedGroundMaterials.TryPop(out int index))
         {
-            _tileGroundMaterials[index] = new(albedo, ubo, set, selected);
+            _tileGroundMaterials[index] = entry;
             return new(index);
         }
-        _tileGroundMaterials.Add(new(albedo, ubo, set, selected));
+        _tileGroundMaterials.Add(entry);
         return new(_tileGroundMaterials.Count - 1);
     }
 }

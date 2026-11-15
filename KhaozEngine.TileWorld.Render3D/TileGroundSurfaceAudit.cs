@@ -78,19 +78,22 @@ internal sealed class TileGroundSurfaceAudit
     readonly float _tileSize, _planeHeight, _featherWidth;
     readonly int _planeCount, _plane;
 
-    readonly record struct Topology(int X, int Z, ushort Underlay, ushort Overlay, TileOverlayShape Shape,
+    // The coordinate-indexed grid supplies X and Z, so each witness stores only the values it must compare.
+    readonly record struct Topology(ushort Underlay, ushort Overlay, TileOverlayShape Shape,
         int Rotation, TileSettings Settings, GroundMaterialKind UnderlayKind, GroundMaterialKind OverlayKind,
-        byte Availability)
+        byte Availability, float? OverlayFeatherWidth)
     {
         internal static Topology Read(TileWorldDocument doc, TileWorldCatalogs catalogs, int x, int z, int plane)
         {
             ushort underlay = doc.GetUnderlay(x, z, plane), overlay = doc.GetOverlay(x, z, plane);
-            return new Topology(x, z, underlay, overlay, doc.GetOverlayShape(x, z, plane),
+            return new Topology(underlay, overlay, doc.GetOverlayShape(x, z, plane),
                 doc.GetOverlayRotation(x, z, plane),
                 doc.GetSettings(x, z, plane) & (TileSettings.NoDraw | TileSettings.Bridge | TileSettings.FeatherOverlay),
                 catalogs.Material(underlay)?.Kind ?? GroundMaterialKind.Ground,
                 catalogs.Material(overlay)?.Kind ?? GroundMaterialKind.Ground,
-                TileGroundHeightWitness.Availability(doc, RegionCoord.Of(x, z)));
+                TileGroundHeightWitness.Availability(doc, RegionCoord.Of(x, z)),
+                (doc.GetSettings(x, z, plane) & TileSettings.FeatherOverlay) != 0
+                    ? catalogs.Material(overlay)?.Feather?.WidthMetres : null);
         }
     }
 

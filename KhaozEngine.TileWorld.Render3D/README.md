@@ -107,9 +107,16 @@ so nothing in the upload path moves.
 - **Narrow overlay edges are authored per tile.** Set `TileSettings.FeatherOverlay` on the selected overlay
   tiles, leaving the surrounding ground as their underlay. `ke-tileedit` accepts `settings: "FeatherOverlay"`
   or a comma list including existing flags. Only marked tiles blend, so another use of the same material can
-  remain hard. `TileGroundMesherOptions.OverlayFeatherWidthMetres` defaults to 0.2 metres and caps at half a
-  tile. The blend runs inward from exposed edges of the connected overlay shape, including diagonal and
-  quarter cuts. Adjacent same-material overlays and uncovered same-material ground count as continuations.
+  remain hard. The width is the overlay material's own `feather.widthMetres` when its catalog row declares one,
+  else `TileGroundMesherOptions.OverlayFeatherWidthMetres` (0.2 metres by default), so a dressed-stone apron can
+  stay crisp beside a soft dirt track. Either caps at half a tile, because an overlay one tile wide must still
+  reach full strength along its centre line. A width the catalog rules refuse, which only an in-memory edit after
+  load can carry, takes the option instead. The blend runs inward from exposed edges of the connected overlay shape, including diagonal and
+  quarter cuts. It never reaches into neighbouring tiles: a vertex carries one overlay slot, so a tile beside two
+  different overlays could not carry both, and the underlay tiles' meshes, coarse cells and raycast surfaces stay
+  untouched by overlay authoring. The material's `feather.breakup` and its height map make the inward edge read
+  naturally instead: the relief program wanders the edge by world-space noise and lets the higher surface win
+  along it (`TileGroundRelief` in the Render3D README). Adjacent same-material overlays and uncovered same-material ground count as continuations.
   Mark the whole intended connected transition to avoid an abrupt change back to a hard edge.
   Feathered full overlays expose their underlay to the corner-material vote. The four underlay slots retain
   their normal weights, scaled by the inverse overlay coverage, and `Tangent.w` names the overlay slot plus
@@ -152,11 +159,24 @@ a catalog id with its layer and `MissingSlot` is that trailing layer, which is w
   catalog paths. An absolute path is taken as written. A catalog built in memory has no directory to resolve
   against, so a relative texture on one throws a `TileWorldException` with
   `TileWorldRefusal.GroundMaterialTextureSourceMissing`, `MaterialId`, `MaterialName` and `TexturePath`.
-- **One size for the whole set.** Every layer is one slice of ONE texture array, so the first textured material
-  decides the size and any other textured material of a different size throws `TileWorldException` with
-  `TileWorldRefusal.GroundMaterialTextureSizeMismatch`. It carries `MaterialId`, `MaterialName`, `Width`,
-  `Height`, `ReferenceMaterialId`, `ReferenceMaterialName`, `ExpectedWidth` and `ExpectedHeight`, rather than
-  resampling behind your back. With nothing textured the flat fills are 1x1.
+- **One size per array, two arrays.** Every layer is one slice of ONE albedo array, and the height map rides in
+  that array's alpha, so albedo textures and height maps share one size: the first decoded (ascending id, texture
+  before height) decides it. Normal and roughness maps go to the separate surface array and share their own
+  size, which may differ, so normal detail can run finer or coarser than the albedo. A map of another size in its
+  class throws `TileWorldException` with `TileWorldRefusal.GroundMaterialTextureSizeMismatch`. It carries
+  `MaterialId`, `MaterialName`, `Field` (`texture`, `heightTexture`, `normalTexture` or `roughnessTexture`),
+  `Width`, `Height`, `ReferenceMaterialId`, `ReferenceMaterialName`, `ExpectedWidth` and `ExpectedHeight`, rather
+  than resampling behind your back. The rule stays because a texture array has one size per mip level, per-size
+  arrays would multiply bindings and need non-uniform array selection, and resampling would hide memory and blur.
+  With nothing textured the flat fills are 1x1.
+- **Maps.** A height map's GREEN channel becomes its layer's albedo alpha, on a copy, so the loader's image is
+  never changed, and `HeightMapped` is set. A normal map's rgb and a roughness map's GREEN channel become the
+  layer's `SurfaceRgba` at the surface size, with (128, 128, 255) and 128 for the half a material does not author,
+  and `NormalMapped` and `RoughnessMapped` say which. `HeightBlendSharpness`, `FeatherBreakup` and `AntiTiling`
+  come from the catalog row. A material without maps keeps its albedo bytes exactly, so a catalog without any of
+  this builds the same set it always did and draws through the plain program. `TileGroundMaterialSet.SurfaceWidth`
+  and `SurfaceHeight` are 0 then. The reserved missing layer stays plain, so the magenta that marks a dangling id
+  never takes relief.
 - `TilesPerMetre` is the material's own value or `TileGroundMaterials.DefaultTilesPerMetre` (0.5, a 2 m repeat).
   A catalog larger than `TileGroundMaterialConfig.MaxMaterials - 1` materials throws `TileWorldException` with
   `TileWorldRefusal.GroundMaterialLayerLimitExceeded`, `MaterialCount` and `MaximumMaterialCount`: the set is
@@ -164,7 +184,9 @@ a catalog id with its layer and `MissingSlot` is that trailing layer, which is w
 
 Hand-build a `TileGroundMaterialSet` directly when the layers come from somewhere other than a catalog. The
 constructor takes the size, the material id of each leading slot, and one layer per id PLUS the trailing reserved
-one, and it refuses a layer that is not the size the set declares.
+one, and it refuses a layer that is not the size the set declares. The overload that also takes `surfaceWidth` and
+`surfaceHeight` accepts layers carrying `SurfaceRgba`, refuses surface texels of another size, a non-positive
+surface size and relief on the reserved layer, and runs `TileGroundRelief.Validate`, so a refusal names its slot.
 
 **A slot past the last layer clamps to the last real layer.** The tile-ground params carry the set's layer count,
 and the fragment clamps each corner slot to `min(63, layerCount - 1)` before reading the uniform block or texture
@@ -182,9 +204,14 @@ emits slots supplied by the set.
 2. Optionally give it a `tilesPerMetre` (texture repeats per world metre, floored at 0.01 by the schema). Omit it
    for `TileGroundMaterials.DefaultTilesPerMetre`, 0.5, which is a 2 m repeat and two tiles inside one copy of
    the texture.
-3. Make every textured file the SAME pixel size. The set is one texture array, so the first textured material
-   fixes the size for the whole catalog and any other of a different size throws rather than being resampled.
-4. Optionally give a material a `steep` companion, `{ "material": 14, "fromDegrees": 40, "toDegrees": 55 }`, so
+3. Make every albedo and height file the SAME pixel size, and every normal and roughness file the same size as
+   each other. Each class is one texture array, so its first file fixes the size for the whole catalog and any
+   other of a different size throws rather than being resampled.
+4. Optionally give a material relief: `normalTexture`, `roughnessTexture` and `heightTexture` (the same path rule,
+   glTF normals, GREEN for the single-channel maps), `heightBlendSharpness`, a `feather` and `antiTiling`. A height
+   map is what makes its edges break up along stones and dirt fill their joints. See the
+   [catalog fields](../KhaozEngine.TileWorld/README.md) for each one's rule and reason.
+5. Optionally give a material a `steep` companion, `{ "material": 14, "fromDegrees": 40, "toDegrees": 55 }`, so
    it blends toward that material as the ground under it steepens. `Build` turns the companion id into the slot
    that id occupies and the omitted band ends into `GroundMaterialSteep.DefaultFromDegrees` (40) and
    `DefaultToDegrees` (55). This is how a cliff whose foot corners voted for the grass below renders rock on the
@@ -203,7 +230,12 @@ marks a dangling id is never hidden or spread.
 **Every layer costs that size, textured or not.** A flat colour layer is a full-size fill, because a texture
 array's slices all match, so one 1024x1024 texture in a catalog makes each of its untextured materials a 4 MB
 layer. Keep the ground textures modest (256 is plenty at this grain) or expect a 13-material catalog to cost tens
-of megabytes for two real images.
+of megabytes for two real images. Relief adds less: a height map costs nothing (it is the albedo alpha), and the
+surface array holds only the materials with a normal or roughness map, 1.33 MiB each at 512 px with mips.
+
+**The relief cost is paid where it is painted.** Each region-plane mesh draws with the cheapest program its slots
+need, so a region that paints no relief material draws through the plain program even when the set carries
+relief. The measured costs are in the Render3D README's `TileGroundRelief` section.
 
 ## Water (`TileWaterPlanes`, `TileWaterLooks`)
 
@@ -1011,16 +1043,18 @@ its interior cut uniforms. The default frame and the frameless core query overlo
 `ArgumentOutOfRangeException`. Each carries a non-null `Reason` and preserves `ParamName` and any `ActualValue`.
 Optional identifiers are null when that reason does not use them. Messages remain developer prose.
 Shared steep-band rules forward `TileGroundSteepArgumentException` from Render3D without translation.
-Catalog companion checks in `TileGroundMaterials.Build` delegate to `GroundMaterialSteepRules` and throw
-`TileWorldException` with the core `TileWorldRefusal` reason, `SourceName` equal to `ground material set`,
-`MaterialId`, `MaterialName` and the applicable companion or band identifiers. See the
-[core refusal table](../KhaozEngine.TileWorld/README.md#refusals) for the seven steep reasons.
+Catalog companion and relief checks in `TileGroundMaterials.Build` delegate to `GroundMaterialSteepRules` and
+`GroundMaterialReliefRules` and throw `TileWorldException` with the core `TileWorldRefusal` reason, `SourceName`
+equal to `ground material set`, `MaterialId`, `MaterialName` and the applicable companion, band, `Field` and
+`Value` identifiers, before any map decodes. See the [core refusal table](../KhaozEngine.TileWorld/README.md#refusals)
+for the seven steep and five relief reasons. A hand-built set forwards `TileGroundReliefArgumentException` from
+Render3D without translation.
 
 | Reason | Refused input | Identifiers |
 |---|---|---|
 | `TileWorldRefusal.GroundMaterialLayerLimitExceeded` | a catalog with too many materials for one set including its reserved layer | `MaterialCount`, `MaximumMaterialCount` |
-| `TileWorldRefusal.GroundMaterialTextureSizeMismatch` | a texture whose dimensions differ from the first textured material | `MaterialId`, `MaterialName`, `Width`, `Height`, `ReferenceMaterialId`, `ReferenceMaterialName`, `ExpectedWidth`, `ExpectedHeight` |
-| `TileWorldRefusal.GroundMaterialTextureSourceMissing` | a relative texture on a catalog with no source file | `MaterialId`, `MaterialName`, `TexturePath` |
+| `TileWorldRefusal.GroundMaterialTextureSizeMismatch` | a map whose dimensions differ from the first map of its size class (albedo and height, or normal and roughness) | `MaterialId`, `MaterialName`, `Field`, `Width`, `Height`, `ReferenceMaterialId`, `ReferenceMaterialName`, `ExpectedWidth`, `ExpectedHeight` |
+| `TileWorldRefusal.GroundMaterialTextureSourceMissing` | a relative map path on a catalog with no source file | `MaterialId`, `MaterialName`, `TexturePath`, `Field` |
 | `TileWorldRefusal.ColourNull` | a null authored colour | none |
 | `TileWorldRefusal.ColourShapeInvalid` | a colour without the `#rrggbb` or `#rrggbbaa` shape | `ColourText` |
 | `TileWorldRefusal.ColourDigitInvalid` | a non-hex character in a correctly shaped colour | `ColourText`, `CharacterIndex`, `Character` |
@@ -1032,6 +1066,8 @@ Catalog companion checks in `TileGroundMaterials.Build` delegate to `GroundMater
 | `TileGroundMaterialSetRefusal.DuplicateMaterialId` | a material id assigned to more than one render slot | `MaterialId`, `FirstSlot`, `DuplicateSlot` |
 | `TileGroundMaterialSetRefusal.MissingLayerHasCompanion` | a steep companion on the reserved missing-material layer | `LayerIndex` |
 | `TileGroundMaterialSetRefusal.CompanionIsMissingLayer` | a steep companion referencing the reserved missing slot | `LayerIndex`, `CompanionSlot`, `MaterialSlotCount` |
+| `TileGroundMaterialSetRefusal.SurfaceByteLengthMismatch` | surface texels that are not the set's surface size | `LayerIndex`, `ActualByteLength`, `ExpectedByteLength`, `Width`, `Height` |
+| `TileGroundMaterialSetRefusal.MissingLayerHasRelief` | a relief member on the reserved missing-material layer | `LayerIndex` |
 | `TilePropLayerRefusal.DefinitionNull` | a null prop-layer definition | `LayerIndex` |
 | `TilePropLayerRefusal.LayerIdMissing` | a prop layer without an id | `LayerIndex` |
 | `TilePropLayerRefusal.LayerIdDuplicate` | duplicate prop-layer ids | `LayerId`, `LayerIndex` |

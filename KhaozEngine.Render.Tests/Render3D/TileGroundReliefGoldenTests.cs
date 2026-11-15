@@ -1,0 +1,401 @@
+using System;
+using System.Numerics;
+using KhaozEngine.Primitives;
+using KhaozEngine.Render3D;
+using KhaozEngine.Tests.Gpu;
+using KhaozEngine.Tests.TileWorld;
+using KhaozEngine.TileWorld;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace KhaozEngine.Tests.Render3D;
+
+/// <summary>
+/// The relief tile-ground pipeline on a real device, with absolute pixel assertions rather than a committed grid, so
+/// each test states the behaviour it proves: the normal map's tangent frame, the height blend's winner, a map-less
+/// material drawing as the plain pipeline draws it, the feather breakup, hex-tiling, and an overlay cut of a meshed
+/// tile world lighting its normal map as the whole tile does at every rotation. Named Golden so the
+/// cross-platform matrix runs them on every backend. Each capture builds and drops its own device, so the class
+/// needs no serial collection.
+/// <para>The view is orthographic and nearly straight down (azimuth 0, so screen +x is world +x, and the top of
+/// the image is world -z), 32 pixels to the metre. Specular is off unless a test is about it, and the fill light
+/// is black, so brightness reads as the key light's N.L.</para>
+/// </summary>
+public sealed class TileGroundReliefGoldenTests(ITestOutputHelper output)
+{
+    const int Size = 160;
+    const float PixelsPerMetre = 32f;   // Size / OrthoSize
+
+    // ---- The tangent frame -------------------------------------------------------------------------------------
+
+    [GpuFact]
+    public void A_normal_map_tilts_the_lit_ground_along_its_projection_axes_Golden()
+    {
+        // Four slots, each a uniform normal map tilted one way in tangent space: +x, -x, +y (toward the image top)
+        // and -y, laid out as four strips west to east. Under a light from the east the +x strip is lit and the -x
+        // strip is not. Under a light from the north (world -z, the image top of a top-down tap) +y is lit.
+        Vector3[] tilts = { new(0.6f, 0f, 0.8f), new(-0.6f, 0f, 0.8f), new(0f, 0.6f, 0.8f), new(0f, -0.6f, 0.8f) };
+        var layers = new TileGroundLayerImage[4];
+        for (int i = 0; i < 4; i++)
+            layers[i] = new TileGroundLayerImage
+            {
+                AlbedoRgba = Solid(4, 180, 180, 180, 255),
+                SurfaceRgba = Solid(4, Encode(tilts[i].X), Encode(tilts[i].Y), Encode(tilts[i].Z), 128),
+                NormalMapped = true,
+            };
+        GltfMesh strips = Strips(4);
+
+        byte[] east = Capture(scene => scene.LoadMesh(strips, scene.LoadTileGroundMaterial(4, 4, layers, 4, 4, 0f)),
+            light: new Vector3(-1f, -0.6f, 0f));
+        byte[] north = Capture(scene => scene.LoadMesh(strips, scene.LoadTileGroundMaterial(4, 4, layers, 4, 4, 0f)),
+            light: new Vector3(0f, -0.6f, 1f));
+
+        float[] e = new float[4], n = new float[4];
+        for (int i = 0; i < 4; i++)
+        {
+            e[i] = Luma(east, StripCentre(i), Size / 2);
+            n[i] = Luma(north, StripCentre(i), Size / 2);
+        }
+        output.WriteLine($"east light: +x {e[0]:F0} -x {e[1]:F0} +y {e[2]:F0} -y {e[3]:F0}");
+        output.WriteLine($"north light: +x {n[0]:F0} -x {n[1]:F0} +y {n[2]:F0} -y {n[3]:F0}");
+
+        Assert.True(e[0] > e[1] + 40, "tangent +x is not world +x on the top-down projection");
+        Assert.True(Math.Abs(e[2] - e[3]) < 12, "a light along x lit the two y tilts differently");
+        Assert.True(n[2] > n[3] + 40, "tangent +y (the image top) is not world -z on the top-down projection");
+        Assert.True(Math.Abs(n[0] - n[1]) < 12, "a light along z lit the two x tilts differently");
+    }
+
+    // ---- The height blend --------------------------------------------------------------------------------------
+
+    [GpuFact]
+    public void The_higher_surface_wins_where_materials_meet_Golden()
+    {
+        // Red carries a height map, high on its west half and low on its east half. Blue has none, so it sits at the
+        // neutral height. Both weigh 0.5 everywhere, which a linear blend draws purple: resolved by height, red
+        // holds the west half and blue fills the east.
+        var red = new TileGroundLayerImage
+        {
+            AlbedoRgba = HalfHeight(8, 220, 30, 30), TilesPerMetre = 0.25f, HeightMapped = true,
+        };
+        var blue = new TileGroundLayerImage { AlbedoRgba = Solid(8, 30, 30, 220, 255), TilesPerMetre = 0.25f };
+        byte[] rgba = Capture(scene => scene.LoadMesh(Quad(0f, 4f, Even(), Even(), 0f, 1f, 0f),
+            scene.LoadTileGroundMaterial(8, 8, new[] { red, blue }, 0, 0, 0f)), target: new Vector3(2f, 0f, 0f));
+
+        (int wr, int wg, int wb) = Patch(rgba, Size / 2 - (int)PixelsPerMetre, Size / 2);
+        (int er, int eg, int eb) = Patch(rgba, Size / 2 + (int)PixelsPerMetre, Size / 2);
+        output.WriteLine($"west=({wr},{wg},{wb}) east=({er},{eg},{eb})");
+        Assert.True(wr > wb + 60, $"the high red half did not win: ({wr},{wg},{wb})");
+        Assert.True(eb > er + 60, $"the map-less blue did not fill the low half: ({er},{eg},{eb})");
+    }
+
+    [GpuFact]
+    public void A_mapless_material_in_a_relief_set_draws_as_the_plain_set_draws_it_Golden()
+    {
+        // A red to blue corner ramp, lit with specular on, drawn three ways: through a plain set, through a relief set
+        // by a mesh that names no relief layer (the plain program with the relief params buffer bound), and through
+        // the relief program, by the same ramp naming the set's relief layer in two zero-weight lanes. The relief
+        // layer is an unused third one carrying a breakup, which changes nothing the drawn layers use.
+        TileGroundLayerImage Red() => new() { AlbedoRgba = Solid(4, 220, 40, 40, 255) };
+        TileGroundLayerImage Blue() => new() { AlbedoRgba = Solid(4, 40, 40, 220, 255) };
+        TileGroundLayerImage Unused() => new() { AlbedoRgba = Solid(4, 0, 255, 0, 255), FeatherBreakup = 0.5f };
+        var west = new Vector4(1f, 0f, 0f, 0f);
+        var east = new Vector4(0f, 1f, 0f, 0f);
+        GltfMesh plainRamp = Quad(-2f, 2f, west, east, 0f, 1f, 0f);
+        GltfMesh reliefRamp = Quad4(-2f, 2f, west, east, 0f, 1f, 2f, 2f, 0f);
+        var light = new Vector3(-0.4f, -0.8f, -0.45f);
+
+        byte[] plain = Capture(scene => scene.LoadMesh(plainRamp,
+            scene.LoadTileGroundMaterial(4, 4, new[] { Red(), Blue() }, 0, 0, 0.35f)), light: light);
+        byte[] reliefSetPlainProgram = Capture(scene => scene.LoadMesh(plainRamp,
+            scene.LoadTileGroundMaterial(4, 4, new[] { Red(), Blue(), Unused() }, 0, 0, 0.35f)), light: light);
+        byte[] reliefProgram = Capture(scene => scene.LoadMesh(reliefRamp,
+            scene.LoadTileGroundMaterial(4, 4, new[] { Red(), Blue(), Unused() }, 0, 0, 0.35f)), light: light);
+
+        int lit = 0;
+        for (int i = 0; i < plain.Length; i += 4)
+            if (plain[i] + plain[i + 1] + plain[i + 2] > 60) lit++;
+        int viaPlain = WorstDifference(plain, reliefSetPlainProgram), viaRelief = WorstDifference(plain, reliefProgram);
+        output.WriteLine($"lit pixels {lit}, worst channel difference: plain program {viaPlain}, relief program {viaRelief}");
+        Assert.True(lit > Size * Size / 2, "the ramp did not render");
+        Assert.True(viaPlain <= 2, $"a relief set's plain-program mesh drew differently: {viaPlain}");
+        Assert.True(viaRelief <= 2, $"a map-less material drew differently in the relief program: {viaRelief}");
+    }
+
+    static int WorstDifference(byte[] a, byte[] b)
+    {
+        int worst = 0;
+        for (int i = 0; i < a.Length; i += 4)
+            for (int c = 0; c < 3; c++) worst = Math.Max(worst, Math.Abs(a[i + c] - b[i + c]));
+        return worst;
+    }
+
+    // ---- The feather breakup -----------------------------------------------------------------------------------
+
+    [GpuFact]
+    public void Breakup_wanders_a_feathered_edge_inward_and_keeps_its_ends_Golden()
+    {
+        // A feathered overlay ramp, red underlay at the west edge (overlay weight 0) to the blue overlay at the east
+        // edge (weight 1). Down the column where the overlay weight is 0.5 a straight feather is one colour, and a
+        // broken-up one varies with the world-space noise. Near the west edge the broken edge never carries more
+        // overlay than the straight one, so the fringe at the tile boundary stays soft, and the interior stays blue.
+        (float plainSpread, int plainWestBlue, _) = Feather(0f);
+        (float brokenSpread, int brokenWestBlue, int eastRed) = Feather(1f);
+        output.WriteLine($"blue spread down the mid column: straight {plainSpread:F1}, broken {brokenSpread:F1}; " +
+                         $"west edge blue straight {plainWestBlue}, broken {brokenWestBlue}; broken east edge red {eastRed}");
+
+        Assert.True(plainSpread < 3f, $"a straight feather varies along its edge: {plainSpread}");
+        Assert.True(brokenSpread > 12f, $"the breakup did not move the edge: {brokenSpread}");
+        Assert.True(brokenWestBlue <= plainWestBlue + 3,
+            $"the breakup reached past the straight feather at the boundary: {brokenWestBlue} > {plainWestBlue}");
+        Assert.True(eastRed < 50, $"the breakup let the underlay into the overlay's interior: {eastRed}");
+    }
+
+    (float Spread, int WestBlue, int EastRed) Feather(float breakup)
+    {
+        var red = new TileGroundLayerImage { AlbedoRgba = Solid(4, 220, 30, 30, 255) };
+        var blue = new TileGroundLayerImage { AlbedoRgba = Solid(4, 30, 30, 220, 255), FeatherBreakup = breakup };
+        // Overlay slot 1 in Tangent.w (slot plus one): a ramp over x in [0, 2], underlay weights falling from 1 to 0,
+        // then the overlay's interior over [2, 4], where its weight is exactly 1.
+        GltfMesh ramp = Quad(0f, 2f, new Vector4(1f, 0f, 0f, 0f), Vector4.Zero, 0f, 0f, 2f);
+        GltfMesh interior = Quad(2f, 4f, Vector4.Zero, Vector4.Zero, 0f, 0f, 2f);
+        var mesh = new GltfMesh([.. ramp.Vertices, .. interior.Vertices], new ushort[] { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7 });
+        byte[] rgba = Capture(scene => scene.LoadMesh(mesh,
+            scene.LoadTileGroundMaterial(4, 4, new[] { red, blue }, 0, 0, 0f)), target: new Vector3(2f, 0f, 0f));
+
+        int mid = Size / 2 - (int)PixelsPerMetre, west = Size / 2 - (int)(1.85f * PixelsPerMetre);
+        int east = Size / 2 + (int)PixelsPerMetre;
+        double sum = 0, sumSq = 0; int n = 0;
+        for (int y = Size / 2 - 56; y <= Size / 2 + 56; y += 4)
+        {
+            int b = rgba[(y * Size + mid) * 4 + 2];
+            sum += b; sumSq += (double)b * b; n++;
+        }
+        double mean = sum / n;
+        return ((float)Math.Sqrt(Math.Max(0, sumSq / n - mean * mean)), Patch(rgba, west, Size / 2).B,
+            Patch(rgba, east, Size / 2).R);
+    }
+
+    // ---- Hex-tiling --------------------------------------------------------------------------------------------
+
+    [GpuTheory]
+    [InlineData(TileGroundAntiTiling.Offset)]
+    [InlineData(TileGroundAntiTiling.Rotate)]
+    public void Hex_tiling_breaks_a_visible_repeat_Golden(TileGroundAntiTiling mode)
+    {
+        // A texture that differs everywhere inside one repeat, tiled once per metre. Plain, the image matches itself
+        // one metre east. Hex-tiled, the copies one metre apart come from differently placed hexes.
+        float plain = RepeatDifference(TileGroundAntiTiling.None);
+        float hex = RepeatDifference(mode);
+        output.WriteLine($"mean difference one repeat apart: plain {plain:F1}, {mode} {hex:F1}");
+        Assert.True(plain < 4f, $"the plain texture is not periodic at its repeat: {plain}");
+        Assert.True(hex > plain + 15f, $"{mode} hex-tiling left the repeat visible: {hex}");
+    }
+
+    float RepeatDifference(TileGroundAntiTiling mode)
+    {
+        var layer = new TileGroundLayerImage { AlbedoRgba = Gradient(16), TilesPerMetre = 1f, AntiTiling = mode };
+        // A relief program for the plain capture too: a second, unused layer carrying a breakup, named in the two
+        // zero-weight lanes.
+        var selector = new TileGroundLayerImage { AlbedoRgba = Solid(16, 0, 0, 0, 255), FeatherBreakup = 0.5f };
+        byte[] rgba = Capture(scene => scene.LoadMesh(Quad4(-2f, 2f, Even1(), Even1(), 0f, 0f, 1f, 1f, 0f),
+            scene.LoadTileGroundMaterial(16, 16, new[] { layer, selector }, 0, 0, 0f)));
+        int period = (int)PixelsPerMetre;
+        long total = 0; int n = 0;
+        for (int y = Size / 2 - 50; y <= Size / 2 + 50; y += 2)
+            for (int x = Size / 2 - 60; x + period <= Size / 2 + 60; x += 2)
+                for (int c = 0; c < 3; c++)
+                {
+                    total += Math.Abs(rgba[(y * Size + x) * 4 + c] - rgba[(y * Size + x + period) * 4 + c]);
+                    n++;
+                }
+        return (float)total / n;
+    }
+
+    // ---- Overlay cuts ------------------------------------------------------------------------------------------
+
+    [GpuFact]
+    public void An_overlay_cut_at_any_rotation_lights_its_normal_map_as_the_whole_tile_does_Golden()
+    {
+        // A feathered, normal-mapped road tile meshed from a tile world: whole, then cut to a diagonal half and a
+        // three-quarter corner at all four rotations, the odd ones laying the corner fan out mirrored. The normal map
+        // tilts toward +x and the light comes from the east, so a cut that turned or flipped the tangent frame would
+        // light its road differently. Every relief input is world-anchored, so wherever a cut keeps the road at full
+        // weight it draws as the whole tile does there. The road carries no blue and the grass is all blue, so the
+        // pixels at the image's least blue (flat ground takes any fog evenly) are road at full weight.
+        var layers = new TileGroundLayerImage[TileRenderTestData.Road + 1];
+        for (int i = 0; i < layers.Length; i++) layers[i] = new TileGroundLayerImage { AlbedoRgba = Solid(4, 0, 0, 220, 255) };
+        layers[TileRenderTestData.Road] = new TileGroundLayerImage
+        {
+            AlbedoRgba = Solid(4, 200, 200, 0, 255),
+            SurfaceRgba = Solid(4, Encode(0.6f), Encode(0f), Encode(0.8f), 128),
+            NormalMapped = true,
+        };
+        var light = new Vector3(-1f, -0.6f, 0f);
+        var tile = new Vector3(10.5f, 0f, -10.5f);
+        byte[] Draw(TileOverlayShape shape, int rotation)
+        {
+            GltfMesh mesh = RoadTile(shape, rotation);
+            return Capture(scene => scene.LoadMesh(mesh, scene.LoadTileGroundMaterial(4, 4, layers, 4, 4, 0f)), light, tile);
+        }
+
+        byte[] whole = Draw(TileOverlayShape.Full, 0);
+        int floor = 255;
+        for (int i = 0; i < whole.Length; i += 4) floor = Math.Min(floor, whole[i + 2]);
+        foreach (TileOverlayShape shape in new[] { TileOverlayShape.DiagonalHalf, TileOverlayShape.CornerThreeQuarter })
+            for (int rotation = 0; rotation < 4; rotation++)
+            {
+                byte[] cut = Draw(shape, rotation);
+                int road = 0, worst = 0;
+                for (int i = 0; i < cut.Length; i += 4)
+                {
+                    if (cut[i + 2] > floor + 1 || whole[i + 2] > floor + 1) continue;
+                    road++;
+                    worst = Math.Max(worst, Math.Max(Math.Abs(cut[i] - whole[i]), Math.Abs(cut[i + 1] - whole[i + 1])));
+                }
+                output.WriteLine($"{shape} rotation {rotation}: {road} road pixels at full weight, worst difference {worst}");
+                Assert.True(road >= 100, $"{shape} at rotation {rotation} kept only {road} road pixels at full weight");
+                Assert.True(worst <= 2, $"{shape} at rotation {rotation} lit its road {worst} levels from the whole tile");
+            }
+    }
+
+    // Grass over tiles (6, 6) to (15, 15) with a feathered road on tile (10, 10) cut to the shape, meshed as a tile
+    // world meshes it. The feather is narrow, so a cut keeps a wide area at full weight, and there is no brightness
+    // jitter, which follows the triangulation.
+    static GltfMesh RoadTile(TileOverlayShape shape, int rotation)
+    {
+        var doc = new TileWorldDocument();
+        doc.GetOrCreateRegion(TileRenderTestData.Region);
+        for (int z = 6; z <= 15; z++)
+            for (int x = 6; x <= 15; x++) doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);
+        doc.SetOverlay(10, 10, 0, TileRenderTestData.Road);
+        doc.SetOverlayShape(10, 10, 0, shape);
+        doc.SetOverlayRotation(10, 10, 0, rotation);
+        doc.SetSettings(10, 10, 0, TileSettings.FeatherOverlay);
+        return TileGroundMesher.Build(doc, TileRenderTestData.Catalogs, TileRenderTestData.Region, 0,
+            new TileGroundMesherOptions { OverlayFeatherWidthMetres = 0.1f, JitterAmplitude = 0f })!;
+    }
+
+    // ---- Helpers -----------------------------------------------------------------------------------------------
+
+    byte[] Capture(Func<Scene3D, MeshHandle> setup, Vector3? light = null, Vector3? target = null)
+    {
+        MeshHandle mesh = default;
+        return Render3DSnapshot.Capture(Size, Size, setup: scene =>
+        {
+            mesh = setup(scene);
+            scene.Post.Outline = false;
+            scene.Post.LightDirection = light ?? new Vector3(-0.3f, -1f, -0.2f);
+            scene.Post.LightColor = new Color(1f, 1f, 1f, 1f);
+            scene.Post.FillLightColor = new Color(0f, 0f, 0f, 1f);
+            scene.Post.AmbientColor = new Color(0.08f, 0.08f, 0.08f, 1f);
+            scene.Camera.Azimuth = 0f;
+            scene.Camera.Elevation = 1.5f;
+            scene.Camera.Target = target ?? Vector3.Zero;
+            scene.Camera.AspectRatio = 1f;
+            scene.Camera.Zoom = 1f;
+            scene.Camera.OrthoSize = Size / PixelsPerMetre;
+        }, drawFrame: scene => scene.Draw(mesh, Matrix4x4.Identity));
+    }
+
+    // Four 1 m strips west to east across x in [-2, 2], z in [-2, 2], strip i drawn entirely with slot i.
+    static GltfMesh Strips(int count)
+    {
+        var verts = new ModelVertex[count * 4];
+        var indices = new ushort[count * 6];
+        var normal = Vector3.UnitY;
+        var weight = new Vector4(1f, 0f, 0f, 0f);
+        for (int i = 0; i < count; i++)
+        {
+            float x0 = -2f + i, x1 = x0 + 1f;
+            var uv = new Vector2(i, i);
+            var tangent = new Vector4(i, i, 1f, 0f);
+            verts[i * 4] = new ModelVertex(new Vector3(x0, 0f, -2f), normal, weight, uv, tangent);
+            verts[i * 4 + 1] = new ModelVertex(new Vector3(x1, 0f, -2f), normal, weight, uv, tangent);
+            verts[i * 4 + 2] = new ModelVertex(new Vector3(x1, 0f, 2f), normal, weight, uv, tangent);
+            verts[i * 4 + 3] = new ModelVertex(new Vector3(x0, 0f, 2f), normal, weight, uv, tangent);
+            ushort b = (ushort)(i * 4);
+            indices[i * 6] = b; indices[i * 6 + 1] = (ushort)(b + 1); indices[i * 6 + 2] = (ushort)(b + 2);
+            indices[i * 6 + 3] = b; indices[i * 6 + 4] = (ushort)(b + 2); indices[i * 6 + 5] = (ushort)(b + 3);
+        }
+        return new GltfMesh(verts, indices);
+    }
+
+    static int StripCentre(int i) => (int)(Size / 2 + (-1.5f + i) * PixelsPerMetre);
+
+    // A quad over x in [x0, x1], z in [-2, 2], with the given west and east weights over slots (slotA, slotB,
+    // slotA, slotB) and Tangent.w as given (an overlay slot plus one, or 0).
+    static GltfMesh Quad(float x0, float x1, Vector4 west, Vector4 east, float slotA, float slotB, float overlay) =>
+        Quad4(x0, x1, west, east, slotA, slotB, slotA, slotB, overlay);
+
+    // The same with all four corner lanes named.
+    static GltfMesh Quad4(float x0, float x1, Vector4 west, Vector4 east, float s0, float s1, float s2, float s3,
+        float overlay)
+    {
+        var normal = Vector3.UnitY;
+        var uv = new Vector2(s0, s1);
+        var tangent = new Vector4(s2, s3, 1f, overlay);
+        var verts = new[]
+        {
+            new ModelVertex(new Vector3(x0, 0f, -2f), normal, west, uv, tangent),
+            new ModelVertex(new Vector3(x1, 0f, -2f), normal, east, uv, tangent),
+            new ModelVertex(new Vector3(x1, 0f, 2f), normal, east, uv, tangent),
+            new ModelVertex(new Vector3(x0, 0f, 2f), normal, west, uv, tangent),
+        };
+        return new GltfMesh(verts, new ushort[] { 0, 1, 2, 0, 2, 3 });
+    }
+
+    static Vector4 Even() => new(0.5f, 0.5f, 0f, 0f);
+    static Vector4 Even1() => new(1f, 0f, 0f, 0f);
+
+    static byte Encode(float n) => (byte)Math.Clamp(MathF.Round((n * 0.5f + 0.5f) * 255f), 0f, 255f);
+
+    static byte[] Solid(int size, byte r, byte g, byte b, byte a)
+    {
+        var px = new byte[size * size * 4];
+        for (int i = 0; i < px.Length; i += 4) { px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = a; }
+        return px;
+    }
+
+    // A solid colour whose alpha, the height, is 1 on the west half of the image (u below 0.5) and 0 on the east.
+    static byte[] HalfHeight(int size, byte r, byte g, byte b)
+    {
+        byte[] px = Solid(size, r, g, b, 0);
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size / 2; x++) px[(y * size + x) * 4 + 3] = 255;
+        return px;
+    }
+
+    // Red rises with u, green with v and blue alternates per texel, so no two texels of one repeat match.
+    static byte[] Gradient(int size)
+    {
+        var px = new byte[size * size * 4];
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                int i = (y * size + x) * 4;
+                px[i] = (byte)(x * 255 / (size - 1));
+                px[i + 1] = (byte)(y * 255 / (size - 1));
+                px[i + 2] = (byte)(((x + y) & 1) * 200);
+                px[i + 3] = 255;
+            }
+        return px;
+    }
+
+    static (int R, int G, int B) Patch(byte[] rgba, int cx, int cy)
+    {
+        long r = 0, g = 0, b = 0; int n = 0;
+        for (int y = cy - 3; y <= cy + 3; y++)
+            for (int x = cx - 3; x <= cx + 3; x++)
+            {
+                int i = (y * Size + x) * 4;
+                r += rgba[i]; g += rgba[i + 1]; b += rgba[i + 2]; n++;
+            }
+        return ((int)(r / n), (int)(g / n), (int)(b / n));
+    }
+
+    static float Luma(byte[] rgba, int cx, int cy)
+    {
+        (int r, int g, int b) = Patch(rgba, cx, cy);
+        return 0.299f * r + 0.587f * g + 0.114f * b;
+    }
+}

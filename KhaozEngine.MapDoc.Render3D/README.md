@@ -84,7 +84,9 @@ deterministically at `TileGroundMaterialConfig.MaxMaterials`, keeping every cano
 together. A face that cannot fit refuses with `CapacityExceeded`. Albedo images within a set need equal
 dimensions. A textureless layer is solid white at that size with the material's base-colour tint. Terrain
 uses the ground pipeline's default tiling and base specular strength. Declared normal and roughness maps
-produce typed `MapTerrainFinding` entries, since this pipeline consumes albedo only.
+produce typed `MapTerrainFinding` entries, since this pipeline consumes albedo only. The ground pipeline's relief
+programs can draw those maps, and the scene resource upload this pipeline feeds still carries plain layers only,
+which is https://github.com/APKiwiOrg/KhaozEngine/issues/1800.
 
 `MapRenderTransform` subtracts resource anchors before local pose and focus rounding. The format-neutral
 `Scene3D.DrawAnchored` retains the integer `RenderAnchor` through rigid grouping, both shadow paths and

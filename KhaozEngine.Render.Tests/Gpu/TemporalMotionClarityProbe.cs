@@ -81,7 +81,7 @@ internal sealed class TemporalMotionClarityProbe : IDisposable
             renderer.PrepareUniforms(_commands, uniforms,
                 new TemporalDepthStoreUniforms { CurrentDepth = uniforms.CurrentDepth });
             _commands.SetFramebuffer(_target);
-            _commands.SetPipeline(_programs.Select(!_fine && renderer.LastVisibilityDecisionSkipped));
+            _commands.SetPipeline(_programs.Select(renderer.LastVisibilityDecisionSkipped));
             _commands.SetGraphicsResourceSet(0, renderer.CurrentSet!);
             if (_fine) _commands.SetGraphicsResourceSet(1, fx.Scene.TemporalHistory.DetailStore!.ReadSet(
                 fx.Scene.TemporalHistory.WriteIndex));

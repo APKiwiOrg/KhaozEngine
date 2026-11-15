@@ -171,7 +171,7 @@ namespace KhaozEngine.Render3D.Rendering
                 if (history.DetailStore is { } detail)
                 {
                     _detailLayout ??= f.CreateResourceLayout(new GpuResourceLayoutDescription(T("DetailColor"), T("DetailClassification")));
-                    detail.BindResolve(history, _resolveLayout, _detailLayout, _fragmentSourceForTests);
+                    detail.BindResolve(history, _resolveLayout, _fullyLitResolveLayout, _detailLayout, _fragmentSourceForTests);
                 }
             }
             catch { FreeSets(retired); throw; }
@@ -218,7 +218,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (_storeSet is null)
                 throw new InvalidOperationException("TemporalResolveRenderer.Run was called before BindInputs.");
             LastCurrentVisibilityFullyLit = _fullyLitFallback || currentVisibilityFullyLit;
-            LastVisibilityDecisionSkipped = history.DetailStore is null && LastCurrentVisibilityFullyLit && _readVisibilityFullyLit;
+            LastVisibilityDecisionSkipped = LastCurrentVisibilityFullyLit && _readVisibilityFullyLit;
             bool usesVisibility = history.DetailStore is null && Entry == TemporalResolveEntry.Split
                 ? _split!.UsesVisibility(TemporalSplitResolve.Upscales(LastUniforms), LastVisibilityDecisionSkipped)
                 : _resolvePrograms!.UsesVisibility(LastVisibilityDecisionSkipped);
@@ -228,7 +228,7 @@ namespace KhaozEngine.Render3D.Rendering
             LastEntry = history.DetailStore is null ? Entry : TemporalResolveEntry.Fused;
             if (history.DetailStore is { } detail)
             {
-                detail.Resolve(cl, _resolveSets[history.ReadIndex]!, history.WriteIndex, Profiling);
+                detail.Resolve(cl, _resolveSets[history.ReadIndex]!, set, history.WriteIndex, LastVisibilityDecisionSkipped, Profiling);
                 using (Profiling?.Pass(cl, "temporal.depth-store", 0) ?? default)
                 {
                     cl.SetFramebuffer(history.PreviousDepthFramebuffer(history.WriteIndex));

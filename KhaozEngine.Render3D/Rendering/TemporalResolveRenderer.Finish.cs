@@ -25,7 +25,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 (_detailDebugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, FullyLitResolveLayout,
                     targetOutput, _fragmentSourceForTests, _detailLayout)).Draw(cl, view, set, target,
-                        detailSet: detail.ReadSet(_boundHistory.WriteIndex));
+                        LastVisibilityDecisionSkipped, detailSet: detail.ReadSet(_boundHistory.WriteIndex));
                 return;
             }
             (_debugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, FullyLitResolveLayout, targetOutput, _fragmentSourceForTests)).Draw(cl, view, set, target, LastVisibilityDecisionSkipped);
@@ -57,7 +57,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (_boundHistory?.DetailStore is { } detail)
             {
                 (_detailCountProbe ??= new TemporalCountProbe(_gd, ResolveLayout, FullyLitResolveLayout,
-                    _fragmentSourceForTests, _detailLayout)).Record(cl, set,
+                    _fragmentSourceForTests, _detailLayout)).Record(cl, set, LastVisibilityDecisionSkipped,
                         detailSet: detail.ReadSet(_boundHistory.WriteIndex));
                 return;
             }

@@ -91,7 +91,9 @@ public sealed class TemporalDetailCostPerfGpuTests(ITestOutputHelper output)
         if (!ring.CompleteBlock()) throw new InvalidOperationException(ring.Failure);
         output.WriteLine($"COST|{DateTime.UtcNow:O}|{fixture.Device.Backend}|{fixture.Device.Capabilities.DeviceName}"
             + $"|{preset}|{modeLabel}|{Width}x{Height}|moving thin field|warm={Warm}|measured={Count}|shared machine"
-            + $"|internal={fixture.Scene.CurrentFrameView.Width}x{fixture.Scene.CurrentFrameView.Height}");
+            + $"|internal={fixture.Scene.CurrentFrameView.Width}x{fixture.Scene.CurrentFrameView.Height}"
+            + $"|certifiedCurrent={fixture.Scene.TemporalResolveRendererForTests!.LastCurrentVisibilityFullyLit}"
+            + $"|visibilitySkipped={fixture.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped}");
         for (int pass = 0; pass < passes.Length; pass++)
         {
             double[] times = results.Select(result =>

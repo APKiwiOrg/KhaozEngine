@@ -173,6 +173,17 @@ accumulation runs once. No candidate lock crosses the production pass boundary. 
 bias that preserves the code under truncating and nearest writes. Diagnostic gate variants and
 attribution retain the complete observation replay without changing the production gate.
 
+Display retains its emitted rule text. Fine wraps the literal lock rules in one evaluator shared by
+candidate and final lock checks. The visibility decision remains one source block because program
+specialization and diagnostic rewrites require one complete decision. A scoped shader alias preserves
+the selected visibility result's diagnostic name.
+
+Fine retains its fused entry, with no unused ordinary split targets. Its resolve, debug views and count
+probes use the existing fully-lit specialization only when both the current input and the history read
+index have the owned fully-lit certificate. The validity pass keeps the full shared input layout, and
+the resolve uses its matching checked or compact input set. An unowned white input still certifies
+nothing. Checked and certified pipelines are cached together before steady frames.
+
 The resolve computes each display pixel's four children once, from the four fine fetches it already
 holds. Hbar stays a float32 local through retention and transport. Rounding it to binary16 would move
 three children by `-k e` and the remainder by `+3 k e` every frame for a mean error `e`. The
@@ -283,21 +294,21 @@ children in the resolve, uses validity-only classification and point-copies the 
 
 | Preset | Mode | Pass | Before median ms (min to max) | After median ms (min to max) |
 | --- | --- | --- | --- | --- |
-| Native | DisplaySplit | `temporal.prepare` | 0.791 (0.770 to 0.847) | 0.822 (0.745 to 1.371) |
-| Native | DisplaySplit | `temporal.accumulate` | 1.985 (1.942 to 2.300) | 1.991 (1.935 to 2.289) |
-| Native | Display | `temporal.resolve` | 3.599 (2.909 to 3.896) | 3.007 (2.886 to 3.708) |
-| Native | Fine | `temporal.detail-classify` | 5.777 (5.150 to 6.278) | 1.915 (1.855 to 2.537) |
-| Native | Fine | `temporal.resolve` | 6.774 (6.474 to 7.355) | 8.709 (8.272 to 9.385) |
-| Native | Fine | `temporal.detail-store` | 3.845 (3.790 to 5.058) | 0.758 (0.698 to 0.964) |
-| Quality | DisplaySplit | `temporal.prepare` | 0.543 (0.489 to 0.978) | 0.561 (0.483 to 1.175) |
-| Quality | DisplaySplit | `temporal.accumulate` | 2.108 (1.912 to 2.873) | 1.998 (1.916 to 2.829) |
-| Quality | Display | `temporal.resolve` | 2.977 (2.814 to 3.603) | 2.948 (2.815 to 3.244) |
-| Quality | Fine | `temporal.detail-classify` | 5.491 (4.971 to 6.044) | 1.876 (1.849 to 2.360) |
-| Quality | Fine | `temporal.resolve` | 6.674 (6.429 to 7.452) | 8.654 (8.194 to 9.668) |
-| Quality | Fine | `temporal.detail-store` | 3.982 (3.870 to 4.369) | 0.759 (0.682 to 2.195) |
+| Native | DisplaySplit | `temporal.prepare` | 0.791 (0.770 to 0.847) | 0.775 (0.738 to 0.924) |
+| Native | DisplaySplit | `temporal.accumulate` | 1.985 (1.942 to 2.300) | 1.967 (1.948 to 2.728) |
+| Native | Display | `temporal.resolve` | 3.599 (2.909 to 3.896) | 3.037 (2.881 to 3.569) |
+| Native | Fine | `temporal.detail-classify` | 5.777 (5.150 to 6.278) | 1.869 (1.848 to 2.554) |
+| Native | Fine | `temporal.resolve` | 6.774 (6.474 to 7.355) | 5.980 (5.681 to 6.326) |
+| Native | Fine | `temporal.detail-store` | 3.845 (3.790 to 5.058) | 0.719 (0.627 to 0.761) |
+| Quality | DisplaySplit | `temporal.prepare` | 0.543 (0.489 to 0.978) | 0.562 (0.526 to 0.702) |
+| Quality | DisplaySplit | `temporal.accumulate` | 2.108 (1.912 to 2.873) | 2.361 (2.109 to 3.121) |
+| Quality | Display | `temporal.resolve` | 2.977 (2.814 to 3.603) | 2.904 (2.758 to 3.511) |
+| Quality | Fine | `temporal.detail-classify` | 5.491 (4.971 to 6.044) | 1.900 (1.815 to 2.207) |
+| Quality | Fine | `temporal.resolve` | 6.674 (6.429 to 7.452) | 5.648 (5.612 to 6.227) |
+| Quality | Fine | `temporal.detail-store` | 3.982 (3.870 to 4.369) | 0.734 (0.673 to 1.255) |
 
-Native's median of each frame's summed fine intervals is 11.507 ms (11.100 to 12.041), against default split's 2.865 ms. The difference is 8.642 ms.
-Quality's median of each frame's summed fine intervals is 11.347 ms (10.749 to 12.829), against default split's 2.683 ms. The difference is 8.664 ms.
+Native's median of each frame's summed fine intervals is 8.582 ms (8.272 to 9.622), against default split's 2.767 ms. The difference is 5.816 ms.
+Quality's median of each frame's summed fine intervals is 8.553 ms (8.182 to 8.912), against default split's 2.956 ms. The difference is 5.597 ms.
 The report-only aim is Fine within 3 ms of default split at Native. No timing assertion is added.
 
 Payload remains 64 retained and 33 scratch bytes a display pixel: a fine RGBA16F pair, one R8
@@ -313,6 +324,8 @@ prepare also writes ordinary depth, while Fine's separate depth and visibility s
 three named intervals. Markers end the active Metal encoder, and each interval includes its pass
 switches. These small shared-machine blocks are not paired causal measurements, whole-frame times or
 a steady-state residency proof. Native Vulkan, Direct3D 11 and consumer acceptance remain separate proof.
+
+Fine resolve, debug and counts follow the existing owned fully-lit certificate for both current and history inputs. The validity pass retains its shared input ABI.
 
 ## Shimmer record
 

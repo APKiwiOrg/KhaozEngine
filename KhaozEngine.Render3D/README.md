@@ -445,14 +445,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   writing them beside R and state into six attachments. Classification checks validity without colour
   accumulation. The resolve checks a slow candidate's own lock before choosing the history fetch, then accumulates once.
   The fine-grid pass point-loads its child by parity.
+  Resolve, debug views and counts follow the same two-frame fully-lit certificate as Display.
   R8 trust classification and four RGBA16F child targets add 116.02 MiB, for 341.02 MiB of mode-specific
   target payload (97 bytes a display pixel). Mean and chosen UV remain float32 locals. Rounding the mean
   would change stored detail on every frame.
   At 3840 by 2160 the pair alone would use 506.25 MiB and falls back to Display by default.
   Nonpositive budgets disable Fine and unknown enum values mean Display. A mode change resets history once
   with `TemporalResetReason.HistoryDetail`. Later renders and captures leave the pair untouched.
-  The 2026-11-15 UTC M2 Max Metal capture of the moving thin field at 1440p reports 11.507 ms of fine
-  passes at Native and 11.347 ms at Quality, 8.642 ms and 8.664 ms above the default split control,
+  The 2026-11-15 UTC M2 Max Metal capture of the moving thin field at 1440p reports 8.582 ms of fine
+  passes at Native and 8.553 ms at Quality, 5.816 ms and 5.597 ms above the default split control,
   from four warm and eight measured frames per case on a shared machine.
   Both report-only cost targets remain unmet. See the [pass table and limits](../docs/design/TEMPORAL-RESOLVE.md#cost-capture).
   Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent

@@ -13,13 +13,19 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
 {
     [GpuTheory]
-    [InlineData(TemporalUpscale.Native, 0)]
-    [InlineData(TemporalUpscale.Quality, 0)]
-    [InlineData(TemporalUpscale.Native, 1)]
-    [InlineData(TemporalUpscale.Quality, 1)]
-    [InlineData(TemporalUpscale.Native, 2)]
-    [InlineData(TemporalUpscale.Quality, 2)]
-    public void CertifiedScenesMatchTheCheckAndBothEntriesOnEveryHistoryByte(TemporalUpscale preset, int scene)
+    [InlineData(TemporalUpscale.Native, 0, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Quality, 0, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Native, 1, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Quality, 1, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Native, 2, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Quality, 2, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Native, 0, TemporalHistoryDetail.Fine)]
+    [InlineData(TemporalUpscale.Quality, 0, TemporalHistoryDetail.Fine)]
+    [InlineData(TemporalUpscale.Native, 1, TemporalHistoryDetail.Fine)]
+    [InlineData(TemporalUpscale.Quality, 1, TemporalHistoryDetail.Fine)]
+    [InlineData(TemporalUpscale.Native, 2, TemporalHistoryDetail.Fine)]
+    [InlineData(TemporalUpscale.Quality, 2, TemporalHistoryDetail.Fine)]
+    public void CertifiedScenesMatchTheCheckAndBothEntriesOnEveryHistoryByte(TemporalUpscale preset, int scene, TemporalHistoryDetail detail)
     {
         // Four independent histories must advance in lockstep. None can share the scene whose bytes it checks.
         var stages = new FrontStage[4];
@@ -33,6 +39,7 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
                 var fx = fixtures[i] = new TemporalFixture(320, 180, s =>
                 {
                     stage.Setup(s, AntiAliasing.Temporal, preset);
+                    s.Post.Temporal.HistoryDetail = detail;
                     s.Post.Quality.Shadows.Mode = ShadowMode.Off;
                     s.Post.Outline = scene == 2;
                 });
@@ -60,6 +67,13 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
                 oracle.Report(frame, "fused certified vs check", samples[0], samples[2]);
                 oracle.Report(frame, "split certified vs check", samples[1], samples[3]);
                 oracle.Report(frame, "certified fused vs split", samples[0], samples[1], entryComparison: true);
+                if (detail == TemporalHistoryDetail.Fine)
+                {
+                    byte[][] fine = Array.ConvertAll(fixtures, fx => Bytes(fx.Device,
+                        fx.Scene.TemporalHistory.DetailStore!.Color(fx.Scene.TemporalHistory.WriteIndex)));
+                    Assert.NotEmpty(fine[0]);
+                    for (int i = 1; i < fine.Length; i++) Assert.Equal(fine[0], fine[i]);
+                }
             }
             oracle.AssertComplete();
         }

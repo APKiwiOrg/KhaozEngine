@@ -14,9 +14,11 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class TemporalVisibilityFullyLitTests
 {
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    public void ReceiverEvidenceRequiresBothCurrentAndReadIndexToBeFullyLit(int choice)
+    [InlineData(0, TemporalHistoryDetail.Display)]
+    [InlineData(1, TemporalHistoryDetail.Display)]
+    [InlineData(0, TemporalHistoryDetail.Fine)]
+    [InlineData(1, TemporalHistoryDetail.Fine)]
+    public void ReceiverEvidenceRequiresBothCurrentAndReadIndexToBeFullyLit(int choice, TemporalHistoryDetail detail)
     {
         using var device = new FakeGpuDevice();
         using IGpuTexture image = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
@@ -25,6 +27,7 @@ public sealed class TemporalVisibilityFullyLitTests
         using var scene = new Scene3D(device, target.Outputs);
         scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
+        scene.Post.Temporal.HistoryDetail = detail;
         scene.TemporalResolveEntryForTests = (TemporalResolveEntry)choice;
         MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));
         using IGpuCommandList commands = device.Factory.CreateCommandList();

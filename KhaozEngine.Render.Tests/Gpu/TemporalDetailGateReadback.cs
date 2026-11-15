@@ -50,7 +50,7 @@ void main() {
             renderer.PrepareUniforms(_commands, uniforms,
                 new TemporalDepthStoreUniforms { CurrentDepth = uniforms.CurrentDepth });
             _commands.SetFramebuffer(_target);
-            _commands.SetPipeline(_programs.Select(false));
+            _commands.SetPipeline(_programs.Select(renderer.LastVisibilityDecisionSkipped));
             _commands.SetGraphicsResourceSet(0, renderer.CurrentSet!);
             _commands.SetGraphicsResourceSet(1, _sets[_fixture.Scene.TemporalHistory.WriteIndex]);
             _commands.Draw(3);

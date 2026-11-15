@@ -66,9 +66,11 @@ namespace KhaozEngine.Render3D.Rendering
                 LastEntry ?? throw new System.InvalidOperationException("the resolve recorded no entry point"),
                 TemporalResolvePrecisionPolicy.For(_gd), TemporalSplitResolve.Upscales(LastUniforms), _gd.Backend, LastVisibilityDecisionSkipped);
             TemporalResolvePrecision precision = TemporalResolvePrecisionPolicy.For(_gd);
+            string detailResolve = ShaderSources.TemporalDetailResolveFragment(precision,
+                _boundHistory.CaptureDetailPathForTests);
+            if (LastVisibilityDecisionSkipped) detailResolve = TemporalVisibilityPrograms.WithoutDecision(detailResolve);
             return [TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalDetailClassifyFragment(precision), _gd.Backend),
-                TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalDetailResolveFragment(precision), _gd.Backend),
-                ShaderSources.TemporalDepthStoreFrag];
+                TemporalVisibilityGatherPolicy.ForBackend(detailResolve, _gd.Backend), ShaderSources.TemporalDepthStoreFrag];
         }
 
         // BindInputs builds the chosen entry point's own objects after aligning visibility. A renderer used outside a scene, which

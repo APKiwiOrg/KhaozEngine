@@ -7,6 +7,18 @@ public static partial class ShippedShaderPrograms
 {
     static IEnumerable<ShippedGraphicsProgram> TemporalDetailPrograms()
     {
+        foreach (var program in TemporalDetailCheckedPrograms())
+        {
+            yield return program;
+            if (program.Name.Contains("Classify", System.StringComparison.Ordinal) || program.Name == "TemporalDetailUpdate")
+                continue;
+            yield return new(program.Name + "FullyLit", program.VertexGlsl,
+                TemporalVisibilityPrograms.WithoutDecision(program.FragmentGlsl));
+        }
+    }
+
+    static IEnumerable<ShippedGraphicsProgram> TemporalDetailCheckedPrograms()
+    {
         yield return new("TemporalDetailClassify", ShaderSources.FullscreenVert,
             ShaderSources.TemporalDetailClassifyFragment(TemporalResolvePrecision.Full));
         yield return new("TemporalDetailClassifyHalf", ShaderSources.FullscreenVert,

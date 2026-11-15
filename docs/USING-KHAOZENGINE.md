@@ -4932,7 +4932,8 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   locals, and writes R, state and four RGBA16F children. The fine-grid pass point-loads the child selected
   by texel parity. Classification computes validity without colour accumulation. The resolve checks its
   own slow candidate lock before choosing the fetch and accumulating once. Display-sized scratch holds R8 validity and
-  the four child targets. The temporal
+  the four child targets. Resolve, debug views and counts follow Display's owned two-frame fully-lit
+  certificate, while Fine retains its fused entry. The temporal
   resolve must be active, the device must allow at least six colour attachments, the extent must fit the
   device's 2D render texture dimension limit, and the display's
   pixel count must fit the inclusive `Post.Temporal.HistoryDetailPixelLimit`. That budget defaults to 3,686,400,

@@ -95,6 +95,8 @@ public sealed class TemporalDetailTransportTests
         Assert.False(TemporalDetailMath.UseFine(0f, false, 0, 0));
         Assert.False(TemporalDetailMath.UseFine(0.25f, true, 0, 0));
         Assert.True(TemporalDetailMath.UseFine(1f, false, 4 | 8 | 16, 4 | 8 | 16));
+        // Valid followed/band history is admitted by the measured colour-history gate.
+        Assert.True(TemporalDetailMath.UseFine(1f, false, 2, 2));
     }
 
     [Fact]

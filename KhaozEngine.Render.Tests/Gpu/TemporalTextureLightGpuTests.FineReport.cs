@@ -18,7 +18,7 @@ public sealed partial class TemporalTextureLightGpuTests
     {
         var d = new TemporalTextureLightGpuTests(scene, output) { _reportOnly = true };
         d.Dark_texture_and_animated_local_light_keep_detail_stable();
-        foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+        foreach (var gate in TemporalDetailGateVariants.ReportGates)
         {
             var f = new TemporalTextureLightGpuTests(scene, output)
                 { _reportOnly = true, _detail = TemporalHistoryDetail.Fine, _gate = gate };

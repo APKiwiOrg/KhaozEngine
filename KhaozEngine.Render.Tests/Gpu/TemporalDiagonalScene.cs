@@ -21,6 +21,7 @@ public sealed class TemporalDiagonalScene : IDisposable
     internal TemporalResolveRig Borrow(int iw, int ih, int width, int height, float ndc,
         TemporalHistoryDetail detail, TemporalDetailGate gate)
     {
+        if (gate == TemporalDetailGate.Production) gate = TemporalDetailGateVariants.Selected;
         string Rewrite(string source) => TemporalDetailGateVariants.Rewrite(source, gate);
         if (_rig is null) _rig = new TemporalResolveRig(iw, ih, width, height, ndc,
             fragmentSource: Rewrite, detail: detail);

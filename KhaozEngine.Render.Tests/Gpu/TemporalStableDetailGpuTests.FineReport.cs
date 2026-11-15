@@ -24,7 +24,7 @@ public sealed partial class TemporalStableDetailGpuTests
     {
         var d = new TemporalStableDetailGpuTests(output) { _reportOnly = true };
         Capture(d);
-        foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+        foreach (var gate in TemporalDetailGateVariants.ReportGates)
         {
             var f = new TemporalStableDetailGpuTests(output)
                 { _reportOnly = true, _detail = TemporalHistoryDetail.Fine, _gate = gate };

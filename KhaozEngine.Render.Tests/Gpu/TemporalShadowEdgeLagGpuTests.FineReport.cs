@@ -31,7 +31,7 @@ public sealed partial class TemporalShadowEdgeLagGpuTests
     {
         var d = new TemporalShadowEdgeLagGpuTests(scene, output) { _reportOnly = true };
         d.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate(TemporalHistoryDetail.Display);
-        foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+        foreach (var gate in TemporalDetailGateVariants.ReportGates)
         {
             var f = new TemporalShadowEdgeLagGpuTests(scene, output)
                 { _reportOnly = true, _detail = TemporalHistoryDetail.Fine, _gate = gate };

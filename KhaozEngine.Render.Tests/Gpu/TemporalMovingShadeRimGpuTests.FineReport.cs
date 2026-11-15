@@ -18,7 +18,7 @@ public sealed partial class TemporalMovingShadeRimGpuTests
                     byte[][] reference = scene.Capture(preset, shadow, motion, reference: true);
                     var display = Measure(scene.Capture(preset, shadow, motion, reference: false), reference, motion,
                         validate: false).ToDictionary(row => row.Item1, row => row.Item2);
-                    foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+                    foreach (var gate in TemporalDetailGateVariants.ReportGates)
                     {
                         var source = scene.For(TemporalHistoryDetail.Fine, gate);
                         var measured = Measure(source.Capture(preset, shadow, motion, reference: false), reference, motion,

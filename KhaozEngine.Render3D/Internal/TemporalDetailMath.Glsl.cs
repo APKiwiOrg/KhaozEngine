@@ -6,7 +6,7 @@ internal static partial class TemporalDetailMath
 const float DetailStillEpsilon = 0.00006103515625;
 bool detailStill(float motion) { return !(motion >= DetailStillEpsilon); }
 bool detailUseFine(float motion, bool locked, uint distrust, uint neighbourDistrust) {
-    const uint distrustMask = 3u;
+    const uint distrustMask = 1u;
     return !detailStill(motion) && !(locked && motion <= ShimmerStillPixels)
         && ((distrust | neighbourDistrust) & distrustMask) == 0u;
 }

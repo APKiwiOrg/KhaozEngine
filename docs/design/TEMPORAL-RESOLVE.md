@@ -179,9 +179,16 @@ A pixel goes coarse for any of these reasons:
 - Invalid, reset, offscreen or disoccluded history at the pixel or within one display pixel. Such a footprint
   cannot transport trustworthy detail from the preceding frame.
 - A positive lock with motion at or below the existing quarter-pixel still interval. This preserves the
-  jitter-only thin-detail contract on slowly moving locked coverage.
-- A current followed or band mark, or a carried band/followed mark at the chosen reprojection, at the pixel
-  or within one display pixel. Those histories can belong to the surface being followed rather than this one.
+  jitter-only thin-detail contract on slowly moving locked coverage. Removing this rule fails four Native
+  Fine rows in `JitterOnlyVisibilityDoesNotReleaseThinDetail`.
+
+Followed and band marks do not reject otherwise valid fine colour history. In the measured damped stop,
+the original mark rule sends all 114 inner pixels coarse on the turn frame. The largest error margin,
+0.23997294, arrives one frame later while every inner pixel is fine again. Retaining the lock rule and
+removing mark rejection reduces that margin to 0.00607964, against Display's 0.00915282 and the existing
+report-only control margin 0.01. Locks first send 54 of 120 inner pixels coarse at frame +6. These counts
+come from the live classifier and match the live transport flags exactly, so the earlier mark rejection
+is observable rather than inferred from the later error. Existing resolve rules still consume the marks.
 
 Variance clipping, a visibility release and reactive state do not independently force coarse. They retain
 their original effects on R, the current weight and state.
@@ -508,7 +515,10 @@ convergence, reset, sub-texel line and blade, follow-line, narrow-crossing and p
 Shadow grain retention, ordinary fast-to-slow shadow tails and moving-object tails against their own
 far region also assert in Fine with the same live image bounds. Recorded shadow limits remain Diagnostic.
 The diagonal and shadow-lag matrices reuse lazy fixture scenes with cold history and aligned jitter,
-and each has an aged-versus-fresh parity fact. Moving-shade assertions and reports use one evaluator.
+and each has an aged-versus-fresh parity fact. A shadow fixture retains one renderer and selects the
+current capture's gate through its source callback. Turning TAA off retires history and fine passes,
+while retaining that renderer. The moving-shade parity fact crosses a wider gate back to production
+before comparing complete images. Moving-shade assertions and reports use one evaluator.
 Recovery captures return an unsettled result when the window ends, so a Diagnostic row still prints it.
 Their Display rows keep their original bounds. The live fine-path export is compared with the decision
 probe's count before that probe supplies a gate study.
@@ -516,16 +526,33 @@ probe's count before that probe supplies a gate study.
 The followed-object trail, stop, phase and long-hold protocols and recorded shading/detail controls
 run in Fine as Diagnostic reports. Sharper history can move those control comparisons. Their reports
 print Display, Fine and the existing limit without assigning a new recorded limit to Fine. The
-Diagnostic gate study compares the shipped admission with untrusted-history-only admission and with
-the shipped admission plus clip, visibility-release and reactive observations. These interventions
-use the renderer's test source seam and expose no production switch.
+Diagnostic gate study compares the original gate, untrusted-history-only admission, that admission
+with the lock rule (L), that admission with followed/band marks (M), and the original gate plus clip,
+visibility-release and reactive observations. Every variant retains the still epsilon. These
+interventions use the renderer's test source seam and expose no production switch.
+`KE_TEMPORAL_DETAIL_TEST_GATE` selects a gate for asserting test processes, and
+`KE_TEMPORAL_DETAIL_REPORT_GATES` selects Diagnostic rows without repeating earlier captures.
 
-On Metal the production gate improves every Native and Quality rig cell, while Fine crosses some of
-the older follow and diagonal-detail control limits. The full follow tables can move more than the
-one or two excess pixels seen in the initial spike, and damped-stop control margins can move by much
-more than one percent. The wider gate loses the rig's detail or error improvement in some cells.
-The narrower gate matches the production rig results but changes some follow measurements. These
-observations do not establish new Fine limits or select a different production gate.
+The production gate is L. It passed all 347 focused Metal cases, including the restored live shadow
+contracts, jitter-only thin detail, cold still identity and the stored mean. The Native and Quality
+report-only cells select it by the fewest new crossings of existing limits among admissible gates.
+A new crossing means Display meets that row's old inequality and Fine does not. Fixed is the reverse.
+The inequality's recorded direction is used explicitly.
+
+| Gate | New crossings | Fixed crossings | New direct follow-stop crossings | Admissibility |
+| --- | --- | --- | --- | --- |
+| Original, lock and marks | 69 | 6 | 33 | Pass |
+| Narrower, neither lock nor marks | 27 | 9 | 0 | Fails four Native thin-detail rows |
+| L, lock only, now production | 25 | 9 | 0 | Pass |
+| M, marks only | 130 | 6 | 64 | Fails four Native thin-detail rows |
+| Wider, original plus clip, visibility release and reactive | 71 | 4 | 34 | Fails rig energy/RMS orderings |
+
+L and the original gate have identical rig energy, RMS, added change, recovery and fine-path share at
+every measured quality. L retains all Native and Quality moving-detail orderings and existing absolute
+image limits. The narrower and M gates lose the thin-detail contract, so their crossing counts cannot
+make them admissible. The wider gate loses detail or RMS improvement in some rig cells, so its added
+observations are not admission rules. Some follow and diagonal-detail comparisons still cross their
+recorded limits under L. Those remain Diagnostic and define no new Fine limit.
 
 ## Grimhollow adoption
 

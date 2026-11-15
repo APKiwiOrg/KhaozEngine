@@ -22,7 +22,7 @@ public sealed partial class TemporalMovingShadeLagGpuTests
             if (c.Kind == MovingShadeKind.Shadow ? MathF.Abs(c.Shadow) > 1f : c.Motion >= 1f)
             {
                 metric = "band grain/ref"; value = band.GrainOut / band.GrainRef; limit = BandGrainRatio; live = true;
-                Check(band.GrainOut <= BandGrainRatio * band.GrainRef,
+                Check(band.GrainOut <= limit * band.GrainRef,
                     $"{c.Name}: textured band grain {band.GrainOut:0.0000} above {BandGrainRatio} times the "
                     + $"reference's {band.GrainRef:0.0000}");
             }
@@ -45,7 +45,7 @@ public sealed partial class TemporalMovingShadeLagGpuTests
                         double baseline = OwnerAcceptedTailBaseline.TryGetValue((TemporalDeviceClass.Name, c.Name, region), out double accepted)
                             ? accepted : before;
                         metric = region + "/absolute"; value = actual; limit = baseline + 0.0000005; live = false;
-                        Check(double.IsFinite(actual) && actual <= baseline + 0.0000005,
+                        Check(double.IsFinite(actual) && actual <= limit,
                             $"{c.Name}: absolute {region} {actual:R} above baseline {baseline:R}, paired bilinear control {before:R}, "
                             + $"1 px denominator {measured[slow][region].Mean:R}, control {controls[slow][region].Mean:R}");
                     }
@@ -64,24 +64,24 @@ public sealed partial class TemporalMovingShadeLagGpuTests
                     } : FastTailRatio;
                 metric = "tail/slow"; value = tail / slowTail; limit = fastTailRatio;
                 live = c.Name != "Native S 8.0 px advancing";
-                Check(tail <= fastTailRatio * slowTail,
+                Check(tail <= limit * slowTail,
                     $"{c.Name}: textured tail {tail:0.0000} above {fastTailRatio} times the 1 px tail {slowTail:0.0000}");
             }
             else if (c.Kind == MovingShadeKind.Object && c.Motion >= 1f)
             {
                 double far = r["far textured"].Mean;
                 metric = "tail/far excess"; value = tail - far; limit = MovingTailExcess; live = true;
-                Check(tail <= far + MovingTailExcess,
+                Check(tail <= far + limit,
                     $"{c.Name}: textured tail {tail:0.0000} more than {MovingTailExcess} above its control {far:0.0000}");
             }
             else if (c.Kind == MovingShadeKind.Pan)
             {
                 (double before, double beforeTail) = Control[c.Name];
                 metric = "band recorded"; value = band.Mean; limit = (1 + ControlTolerance) * before; live = false;
-                Check(band.Mean <= (1 + ControlTolerance) * before,
+                Check(band.Mean <= limit,
                     $"{c.Name}: textured band {band.Mean:0.0000} above {before:0.0000} plus a tenth");
                 metric = "tail recorded"; value = tail; limit = (1 + ControlTolerance) * beforeTail;
-                Check(tail <= (1 + ControlTolerance) * beforeTail,
+                Check(tail <= limit,
                     $"{c.Name}: textured tail {tail:0.0000} above {beforeTail:0.0000} plus a tenth");
             }
         }

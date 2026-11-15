@@ -40,7 +40,7 @@ public sealed partial class TemporalMovingShadeLagGpuTests
     {
         var d = new TemporalMovingShadeLagGpuTests(scene, output) { _reportOnly = true };
         d.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds(TemporalHistoryDetail.Display);
-        foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+        foreach (var gate in TemporalDetailGateVariants.ReportGates)
         {
             var f = new TemporalMovingShadeLagGpuTests(scene, output)
                 { _reportOnly = true, _detail = TemporalHistoryDetail.Fine, _gate = gate };

@@ -18,7 +18,7 @@ public sealed partial class TemporalMotionClarityGpuTests
                 foreach (var preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality, TemporalUpscale.Balanced })
                 {
                     var display = scene.Run(preset, path, speed, reference: reference.Images);
-                    foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+                    foreach (var gate in TemporalDetailGateVariants.ReportGates)
                     {
                         var fine = scene.ForGate(gate).Run(preset, path, speed, TemporalHistoryDetail.Fine,
                             reference: reference.Images, collectDecisions: true);

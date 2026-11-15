@@ -80,6 +80,9 @@ public sealed class TemporalFixture : IDisposable
         Scene.EffectTimeSeconds = n / 60f;
         draw(Scene, n);
         Scene.PrepareFrame();
+        if (TemporalDetailGateVariants.Selected != TemporalDetailGate.Production
+            && Scene.TemporalResolveRendererForTests is null)
+            Scene.InstallTemporalResolveForTests(source => TemporalDetailGateVariants.Rewrite(source, TemporalDetailGateVariants.Selected));
         using (GpuRecording.Open(Device, _commands, "TemporalFixture.Frame"))
             Scene.RenderInternal(_commands, DisplayWidth, DisplayHeight, Target);
         long submitted = Stopwatch.GetTimestamp();

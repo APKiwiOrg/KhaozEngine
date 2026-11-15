@@ -36,7 +36,8 @@ namespace KhaozEngine.Tests.Gpu
             _height = internalHeight;
             _gpu = GpuDeviceContext.CreateHeadless();
             _gd = _gpu.GpuDevice;
-            _renderer = new TemporalResolveRenderer(_gd, fragmentSource);
+            _renderer = new TemporalResolveRenderer(_gd, fragmentSource
+                ?? (source => TemporalDetailGateVariants.Rewrite(source, TemporalDetailGateVariants.Selected)));
             _history.EnsureTargets(_gd, displayWidth, displayHeight, internalWidth, internalHeight, detail: detail);
             _scene = Input(GpuPixelFormat.R16G16B16A16Float);
             _opaque = Input(GpuPixelFormat.R16G16B16A16Float);
@@ -76,7 +77,10 @@ namespace KhaozEngine.Tests.Gpu
             if (changePrograms)
             {
                 _renderer.Dispose();
-                _renderer = new TemporalResolveRenderer(_gd, fragmentSource);
+                // The history owns the fine pass compiled against the preceding renderer and gate.
+                _history.ReleaseTargets();
+                _renderer = new TemporalResolveRenderer(_gd, fragmentSource
+                ?? (source => TemporalDetailGateVariants.Rewrite(source, TemporalDetailGateVariants.Selected)));
             }
             if (_width != width || _height != height)
             {

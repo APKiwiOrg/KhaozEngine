@@ -32,15 +32,16 @@ public sealed partial class TemporalMovingShadeLagGpuTests
     public void An_aged_moving_shade_scene_matches_a_fresh_scene()
     {
         byte[][] Run(TemporalShadowLagScene source, TemporalUpscale preset, MovingShadeKind kind, float speed,
-            bool reference = false, bool bilinear = false)
+            bool reference = false, bool bilinear = false, TemporalDetailGate gate = TemporalDetailGate.Production)
         {
             var stage = new MovingShadeStage(W, H, kind, 1f, speed, FirstMeasured);
             return source.Capture(s => stage.Setup(s, AntiAliasing.Temporal, preset, 1f), stage.Draw,
-                FirstMeasured, Measured, preset, TemporalHistoryDetail.Fine, reference: reference, bilinear: bilinear);
+                FirstMeasured, Measured, preset, TemporalHistoryDetail.Fine, gate, reference: reference, bilinear: bilinear);
         }
         Run(scene, TemporalUpscale.Native, MovingShadeKind.Shadow, 0f);
         Run(scene, TemporalUpscale.Quality, MovingShadeKind.Pan, 4f, reference: true);
         Run(scene, TemporalUpscale.Native, MovingShadeKind.Shadow, 0f, bilinear: true);
+        Run(scene, TemporalUpscale.Native, MovingShadeKind.Shadow, 0f, gate: TemporalDetailGate.Wider);
         var aged = Run(scene, TemporalUpscale.Quality, MovingShadeKind.Object, 2f);
         using var fresh = new TemporalShadowLagScene();
         var expected = Run(fresh, TemporalUpscale.Quality, MovingShadeKind.Object, 2f);

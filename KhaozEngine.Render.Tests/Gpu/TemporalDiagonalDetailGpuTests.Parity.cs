@@ -15,8 +15,10 @@ public sealed partial class TemporalDiagonalDetailGpuTests
         Capture(TemporalUpscale.Quality, 30, 10, 0f);
         _detail = TemporalHistoryDetail.Display;
         Capture(TemporalUpscale.Native, 30, 5, 0f);
-        _gate = TemporalDetailGate.Production;
         _detail = TemporalHistoryDetail.Fine;
+        _gate = TemporalDetailGate.Wider;
+        Capture(TemporalUpscale.Quality, 45, 5, 0.3f);
+        _gate = TemporalDetailGate.Production;
         var aged = new List<float[]>();
         var actual = Capture(TemporalUpscale.Quality, 45, 5, 0.3f, (color, state) => { aged.Add(color); aged.Add(state); });
         using var fresh = new TemporalDiagonalScene();

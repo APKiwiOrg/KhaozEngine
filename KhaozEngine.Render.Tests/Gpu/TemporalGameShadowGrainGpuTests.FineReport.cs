@@ -13,7 +13,7 @@ public sealed partial class TemporalGameShadowGrainGpuTests
         var display = new Dictionary<TemporalUpscale, (double Value, double? Bound)>();
         TexturedShadowGrainCase.AssertGrain(scene, output, reportOnly: true,
             record: (preset, value, bound) => display[preset] = (value, bound));
-        foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+        foreach (var gate in TemporalDetailGateVariants.ReportGates)
         {
             var fine = new Dictionary<TemporalUpscale, double>();
             TexturedShadowGrainCase.AssertGrain(scene.For(TemporalHistoryDetail.Fine, gate), output,

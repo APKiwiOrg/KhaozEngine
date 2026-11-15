@@ -49,7 +49,7 @@ namespace KhaozEngine.Tests.Gpu
     /// supersampled reference (<see cref="TemporalAcceptance.ReferenceSequence"/>). HDR is off and the sharpen is at
     /// its default.
     /// </summary>
-    public sealed class TemporalFollowStopRuns
+    public sealed partial class TemporalFollowStopRuns
     {
         readonly TemporalHistoryDetail _detail;
         readonly TemporalDetailGate _gate;
@@ -157,8 +157,26 @@ namespace KhaozEngine.Tests.Gpu
             if (!_references.TryGetValue(scene.Name, out byte[][]? references))
                 _references[scene.Name] = references = TemporalAcceptance.ReferenceSequence(W, H,
                     s => { scene.Setup(s, TemporalUpscale.Native); Detail(s); }, scene.Draw, first, count);
-            byte[][] frames = TemporalAcceptance.Sequence(W, H, s => { scene.Setup(s, preset); Detail(s); }, scene.Draw, first, count,
-                phase);
+            byte[][] frames;
+            if (_observe is null || scene.Still)
+                frames = TemporalAcceptance.Sequence(W, H, s => { scene.Setup(s, preset); Detail(s); }, scene.Draw, first, count,
+                    phase);
+            else
+            {
+                using var fx = new TemporalFixture(W, H, s => { scene.Setup(s, preset); Detail(s); });
+                fx.SkipPhases(phase);
+                fx.Frames(first, scene.Draw);
+                using var probe = new TemporalDetailGateReadback(fx);
+                frames = new byte[count][];
+                for (int i = 0; i < count; i++)
+                {
+                    frames[i] = fx.Frame(scene.Draw);
+                    int frame = first + i;
+                    _observe(frame, probe.Read(), TemporalTextureIo.Read(fx.Device,
+                        fx.Scene.TemporalHistory.DetailStore!.TransportForTests),
+                        Erode(scene.Mask(frame), TemporalFollowCameraRuns.SpillPixels(preset)));
+                }
+            }
             var masks = new bool[count][];
             for (int k = 0; k < count; k++) masks[k] = scene.Mask(first + k);
             int reach = TemporalFollowCameraRuns.SpillPixels(preset);

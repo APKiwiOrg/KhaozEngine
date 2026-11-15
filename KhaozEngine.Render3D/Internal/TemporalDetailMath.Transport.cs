@@ -7,10 +7,10 @@ internal static partial class TemporalDetailMath
 {
     internal const float StillEpsilon = 1f / 16384f;
     internal const float StoreMax = 65504f;
-    internal const int DistrustMask = 3;
+    internal const int DistrustMask = 1;
 
-    // Distrust is an OR of invalid/reset, offscreen, disoccluded and current/carried band marks.
-    // Still motion and a slow lock are central-only. The rejection and mark halo is one display pixel.
+    // Rejection covers invalid/reset, offscreen and disoccluded history. Followed/band marks remain observations.
+    // Still motion and a slow lock are central-only. The rejection halo is one display pixel.
     internal static bool UseFine(float motionPixels, bool locked, int distrust, int neighbourDistrust) =>
         motionPixels >= StillEpsilon && !(locked && motionPixels <= TemporalResolveTuning.ShimmerStillPixels)
         && ((distrust | neighbourDistrust) & DistrustMask) == 0;

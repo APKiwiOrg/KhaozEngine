@@ -13,9 +13,7 @@ public sealed partial class TemporalFollowPhaseGpuTests
     readonly List<(string Family, PhaseSweep Sweep)> _reported = new();
 
     [GpuTheory]
-    [InlineData(TemporalDetailGate.Production)]
-    [InlineData(TemporalDetailGate.Narrower)]
-    [InlineData(TemporalDetailGate.Wider)]
+    [TemporalDetailReportGates]
     [Trait("Category", "Diagnostic")]
     public void Fine_reports_all_follow_phase_cells_without_a_new_bound(TemporalDetailGate gate)
     {

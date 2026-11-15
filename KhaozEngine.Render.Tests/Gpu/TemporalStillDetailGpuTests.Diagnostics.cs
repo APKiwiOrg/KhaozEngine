@@ -9,7 +9,7 @@ public sealed partial class TemporalStillDetailGpuTests
     [Trait("Category", "Diagnostic")]
     public void Fine_reports_the_recorded_still_detail_controls_without_a_new_bound(TemporalUpscale preset)
     {
-        foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+        foreach (var gate in TemporalDetailGateVariants.ReportGates)
         {
             var displaySparse = SparseLine(preset);
             var fineSparse = SparseLine(preset, TemporalHistoryDetail.Fine, gate);

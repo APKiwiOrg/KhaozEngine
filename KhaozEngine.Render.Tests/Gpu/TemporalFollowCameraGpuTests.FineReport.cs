@@ -6,9 +6,7 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed partial class TemporalFollowCameraGpuTests
 {
     [GpuTheory]
-    [InlineData(TemporalDetailGate.Production)]
-    [InlineData(TemporalDetailGate.Narrower)]
-    [InlineData(TemporalDetailGate.Wider)]
+    [TemporalDetailReportGates]
     [Trait("Category", "Diagnostic")]
     public void Fine_reports_follow_camera_trails_against_the_existing_bounds(TemporalDetailGate gate)
     {

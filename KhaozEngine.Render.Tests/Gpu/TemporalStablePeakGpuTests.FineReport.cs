@@ -24,7 +24,7 @@ public sealed partial class TemporalStablePeakGpuTests
     {
         var d = new TemporalStablePeakGpuTests(output) { _reportOnly = true };
         d.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light();
-        foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+        foreach (var gate in TemporalDetailGateVariants.ReportGates)
         {
             var f = new TemporalStablePeakGpuTests(output)
                 { _reportOnly = true, _detail = TemporalHistoryDetail.Fine, _gate = gate };

@@ -16,6 +16,7 @@ public sealed class TemporalShadowLagScene : IDisposable
         return value is not null;
     }
     internal void Remember(string key, object value) => _measurements[key] = value;
+    TemporalDetailGate _gate;
     TemporalFixture? _fixture;
     long _begins;
     internal int Refits { get; private set; }
@@ -28,7 +29,12 @@ public sealed class TemporalShadowLagScene : IDisposable
     {
         const int w = 320, h = 180;
         int factor = reference ? TemporalAcceptance.SequenceReferenceFactor : 1;
-        _fixture ??= new TemporalFixture(w, h);
+        _gate = gate;
+        if (_fixture is null)
+        {
+            _fixture = new TemporalFixture(w, h);
+            _fixture.Scene.InstallTemporalResolveForTests(source => TemporalDetailGateVariants.Rewrite(source, _gate));
+        }
         TemporalFixture fx = _fixture;
         if (fx.DisplayWidth != w * factor) fx.Resize(w * factor, h * factor);
         setup(fx.Scene);
@@ -36,7 +42,7 @@ public sealed class TemporalShadowLagScene : IDisposable
         fx.Scene.Post.Quality.Shadows.ShadowLightHoldTexels = 0f;
         fx.Frames(1, (s, _) => draw(s, 0));
         _begins++;
-        // The off frame retires the old renderer before installing a source intervention.
+        // The off frame retires history and fine passes. The retained renderer uses the current capture gate.
         setup(fx.Scene);
         fx.Scene.Post.Temporal.HistoryDetail = detail;
         if (reference)
@@ -50,8 +56,6 @@ public sealed class TemporalShadowLagScene : IDisposable
             fx.Scene.ForceTemporalForTests = false;
             fx.Scene.DebugView = SceneDebugView.None;
         }
-        else if (gate != TemporalDetailGate.Production)
-            fx.Scene.InstallTemporalResolveForTests(source => TemporalDetailGateVariants.Rewrite(source, gate));
         fx.Scene.CameraCut();
         int phases = TemporalJitter.PhaseCount(reference ? 1f : TemporalSettings.DisplayOverInternal(preset));
         int pad = (int)((phases - _begins % phases) % phases);

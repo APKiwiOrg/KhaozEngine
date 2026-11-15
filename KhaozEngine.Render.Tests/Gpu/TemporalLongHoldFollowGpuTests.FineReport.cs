@@ -6,9 +6,7 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed partial class TemporalLongHoldFollowGpuTests
 {
     [GpuTheory]
-    [InlineData(TemporalDetailGate.Production)]
-    [InlineData(TemporalDetailGate.Narrower)]
-    [InlineData(TemporalDetailGate.Wider)]
+    [TemporalDetailReportGates]
     [Trait("Category", "Diagnostic")]
     public void Fine_reports_long_hold_follow_cells_without_new_bounds(TemporalDetailGate gate)
     {

@@ -8,9 +8,7 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed partial class TemporalFollowStopGpuTests
 {
     [GpuTheory]
-    [InlineData(TemporalDetailGate.Production)]
-    [InlineData(TemporalDetailGate.Narrower)]
-    [InlineData(TemporalDetailGate.Wider)]
+    [TemporalDetailReportGates]
     [Trait("Category", "Diagnostic")]
     public void Fine_reports_follow_stop_cells_against_the_existing_controls(TemporalDetailGate gate)
     {

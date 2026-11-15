@@ -17,7 +17,7 @@ public sealed partial class TemporalDiagonalDetailGpuTests
     {
         var d = new TemporalDiagonalDetailGpuTests(scene, output) { _reportOnly = true };
         d.Diagonal_sub_texel_lines_on_texture_keep_their_history_still_and_under_a_slow_pan();
-        foreach (var gate in new[] { TemporalDetailGate.Production, TemporalDetailGate.Narrower, TemporalDetailGate.Wider })
+        foreach (var gate in TemporalDetailGateVariants.ReportGates)
         {
             var f = new TemporalDiagonalDetailGpuTests(scene, output)
                 { _reportOnly = true, _detail = TemporalHistoryDetail.Fine, _gate = gate };

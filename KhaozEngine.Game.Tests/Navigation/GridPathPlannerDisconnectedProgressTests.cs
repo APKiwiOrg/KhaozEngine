@@ -223,6 +223,26 @@ public class GridPathPlannerDisconnectedProgressTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void NonFiniteProgressFallsThroughToTheUnchangedSearch(bool nanAtStart)
+    {
+        int width = nanAtStart ? 3 : 4;
+        int nanCell = nanAtStart ? 0 : 1;
+        // FromSurfaces retains a standable NaN sample. StepMask's height comparisons do not reject
+        // it, so uncertainty reaches the certificate rather than failing endpoint admission.
+        NavGrid grid = NavGrid.FromSurfaces(width, 1, 1f, 0f, 0f,
+            (x, _) => new NavSurfaceSample(x != width - 2, x == nanCell ? float.NaN : 0f, 2f),
+            0.5f, 1f);
+        Assert.True(grid.IsPassable(nanCell, 0, 0f));
+        Assert.True(float.IsNaN(grid.RestingHeightAt(nanCell, 0)!.Value));
+        var goal = new Vector3(width - 0.5f, 0f, 0.5f);
+        NavPath path = Check(new GridPathPlanner(NavSpace.Single(grid)), new Vector3(0.5f, 0f, 0.5f),
+            Member(goal), Budget(8), certified: false);
+        Assert.Same(NavPath.Unreachable, path);
+    }
+
+    [Theory]
     [InlineData(32768, 1, true)]
     [InlineData(32769, 1, false)]
     [InlineData(32768, 8, true)]

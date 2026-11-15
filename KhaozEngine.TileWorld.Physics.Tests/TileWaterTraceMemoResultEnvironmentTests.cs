@@ -1,0 +1,92 @@
+using System;
+using System.Linq;
+using System.Threading;
+using KhaozEngine.TileWorld.Physics;
+using KhaozEngine.Tests.TileWorld.Physics.Fixtures;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace KhaozEngine.Tests.TileWorld.Physics;
+
+[Collection("AllocSensitive")]
+[Trait("Category", "WaterKernelContract")]
+public sealed class TileWaterTraceMemoResultEnvironmentTests(ITestOutputHelper output)
+{
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FourClaimedThreadsReplayAndTheUnclaimedFifthRecomputes(bool flat)
+    {
+        var field = TileWaterTraceMemoResultTests.Field(flat);
+        var work = new int[5];
+        var errors = new Exception?[5];
+        using var ready = new Barrier(5);
+        var threads = Enumerable.Range(0, 5).Select(i => new Thread(() =>
+        {
+            try
+            {
+                WaterTraceMemoComparison.Check(field, TileWaterTraceMemoResultTests.Query(i));
+                ready.SignalAndWait();
+                work[i] = TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, TileWaterTraceMemoResultTests.Query(i)));
+            }
+            catch (Exception error) { errors[i] = error; ready.RemoveParticipant(); }
+        })).ToArray();
+        foreach (var thread in threads) thread.Start();
+        foreach (var thread in threads) thread.Join();
+        Assert.All(errors, Assert.Null);
+        Assert.Equal(4, work.Count(value => value == 0));
+        Assert.Single(work, value => value > 0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ControlsAreReadAfreshAndAnUnsupportedReaderNeverReplays(bool flat)
+    {
+        var field = TileWaterTraceMemoResultTests.Field(flat);
+        var q = TileWaterTraceMemoResultTests.Query();
+        var previous = TileMediumSampler.ControlReaderForTests;
+        ulong token = 7;
+        bool available = true;
+        TileMediumSampler.ControlReaderForTests = (out ulong value) => { value = token; return available; };
+        try
+        {
+            Read(false);
+            Read(true);
+            token++;
+            Read(false);
+            Read(true);
+            available = false;
+            Read(false);
+            Read(false);
+            available = true;
+            Read(true);
+        }
+        finally { TileMediumSampler.ControlReaderForTests = previous; }
+        void Read(bool hit) => Assert.Equal(hit, TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, q)) == 0);
+    }
+
+    [Theory]
+    [InlineData("up")]
+    [InlineData("down")]
+    [InlineData("zero")]
+    [InlineData("flush-output")]
+    [InlineData("flush-input")]
+    public void NativeControlChangesMatchTheIndependentFlatAndPrismEvaluators(string mode)
+    {
+        using var environment = WaterFloatingPointEnvironment.Capture();
+        if (environment is null || !TileMediumSampler.TryReadTraceControls(out _)) return;
+        Assert.True(environment.Set("nearest"));
+        foreach (bool flat in new[] { false, true })
+        {
+            var field = TileWaterTraceMemoResultTests.Field(flat);
+            var q = TileWaterTraceMemoResultTests.Query();
+            WaterTraceMemoComparison.Check(field, q);
+            Assert.Equal(0, TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, q)));
+            if (!environment.Set(mode)) { output.WriteLine($"Unavailable independent mode {mode}"); continue; }
+            Assert.True(TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, q)) > 0);
+            Assert.Equal(0, TileWaterTraceMemoResultTests.Work(WaterTraceMemoComparison.Check(field, q)));
+            Assert.True(environment.Set("nearest"));
+        }
+    }
+}

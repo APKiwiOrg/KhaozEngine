@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 internal static class WaterTraceMemoComparison
 {
     internal sealed record Observation(MovementCoverageResult Result, MovementCoverageSpan[] Spans,
-        MovementDomainContact[] Contacts, int Logical, int Hits, int Misses, int Solves);
+        MovementDomainContact[] Contacts, int Logical, int Hits, int Misses, int Solves, int FlatSolves);
 
     internal static Observation Check(TileMediumSampler field, MovementMediumSweepQuery query,
         Vector3 origin = default, int spanCapacity = 64, int contactCapacity = 256,
@@ -50,7 +50,7 @@ internal static class WaterTraceMemoComparison
             var result = field.TraceWater(query, origin, identity ?? MovementWaterFieldTests.Identity,
                 spans.AsSpan(0, spanCapacity), contacts.AsSpan(0, contactCapacity));
             return new(result, spans, contacts, TileWaterQueryWork.PrismTraces, TileWaterQueryWork.MemoHits,
-                TileWaterQueryWork.MemoMisses, TileWaterQueryWork.ConvexIntersections);
+                TileWaterQueryWork.MemoMisses, TileWaterQueryWork.ConvexIntersections, TileWaterQueryWork.Intersections);
         }
         finally
         {

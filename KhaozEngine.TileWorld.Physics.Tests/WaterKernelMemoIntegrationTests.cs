@@ -88,6 +88,39 @@ public sealed class WaterKernelMemoIntegrationTests
         }
     }
 
+    [Fact]
+    public void RealLargeHitsAndFreshMovingMissesPreserveSmallTierCounterMeanings()
+    {
+        var field = TileWaterTraceMemoResultTests.Field(false);
+        bool bypass = TileMediumSampler.BypassTraceMemoForTests;
+        TileMediumSampler.BypassTraceMemoForTests = false;
+        TileWaterQueryWork.Reset();
+        try
+        {
+            var spans = new MovementCoverageSpan[64];
+            var contacts = new MovementDomainContact[256];
+            var q = TileWaterTraceMemoResultTests.Query();
+            field.TraceWater(q, Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
+            int preparations = TileWaterQueryWork.ShapePreparations;
+            field.TraceWater(q, Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
+            Assert.Equal(1, TileWaterQueryWork.ResultHits);
+            Assert.Equal(1, TileWaterQueryWork.ResultMisses);
+            Assert.Equal(1, TileWaterQueryWork.ResultStores);
+            Assert.Equal(preparations, TileWaterQueryWork.ShapePreparations);
+            field.TraceWater(TileWaterTraceMemoResultTests.Query(1), Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
+            Assert.Equal(2, TileWaterQueryWork.ResultMisses);
+            Assert.True(TileWaterQueryWork.ShapePreparations > preparations);
+            Assert.Equal(3, TileWaterQueryWork.PrismTraces);
+            Assert.Equal(0, TileWaterQueryWork.MemoHits);
+            Assert.Equal(3, TileWaterQueryWork.MemoMisses);
+        }
+        finally
+        {
+            TileMediumSampler.BypassTraceMemoForTests = bypass;
+            TileWaterQueryWork.Enabled = false;
+        }
+    }
+
     [Theory]
     [Trait("Category", "Diagnostic")]
     [InlineData("bank-stand")]

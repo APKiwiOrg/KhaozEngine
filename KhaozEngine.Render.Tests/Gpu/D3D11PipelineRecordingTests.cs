@@ -8,6 +8,45 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class D3D11PipelineRecordingTests
 {
     [Theory]
+    [InlineData((int)D3D11RecordMode.Deferred, false)]
+    [InlineData((int)D3D11RecordMode.Deferred, true)]
+    [InlineData((int)D3D11RecordMode.Immediate, false)]
+    [InlineData((int)D3D11RecordMode.Immediate, true)]
+    public void ANullPipelineBindIsRefusedBeforeSpendingAnything(int mode, bool compute)
+    {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1808
+        var log = new D3D11NativeCallLog();
+        var state = new D3D11DeviceState();
+        var emitter = new D3D11NativeTraceEmitter(state, log);
+        using IGpuCommandList list = D3D11CommandDrivers.Create((D3D11RecordMode)mode, emitter);
+        using var target = D3D11BindFixtures.Framebuffer();
+        using var layout = D3D11BindFixtures.ShadowLayout();
+        using var graphics = D3D11BindFixtures.Pipeline(layout);
+        using var kernel = new D3D11BindFlushTests.FakeComputePipeline(layout);
+
+        list.Begin();
+        list.SetFramebuffer(target);
+        if (compute) list.SetComputePipeline(kernel);
+        else list.SetPipeline(graphics);
+        log.Reset();
+        var stream = (list as D3D11CommandRecorder<D3D11StreamEmitter>)?.Emitter.Stream;
+        int recorded = stream?.Count ?? 0;
+
+        Action bindNull = compute ? () => list.SetComputePipeline(null!) : () => list.SetPipeline(null!);
+        var refusal = Assert.Throws<ArgumentNullException>(bindNull);
+        Assert.Equal("p", refusal.ParamName);
+        Assert.Empty(log.Trace);
+        if (stream is not null) Assert.Equal(recorded, stream.Count);
+
+        // A refused bind preserves the valid binding that preceded it.
+        if (compute) list.Dispatch(1, 1, 1);
+        else list.Draw(3);
+        list.End();
+        D3D11CommandDrivers.Submit(new object(), list, ref emitter);
+        Assert.NotEmpty(log.Trace);
+    }
+
+    [Theory]
     [InlineData((int)D3D11RecordMode.Deferred, "Draw")]
     [InlineData((int)D3D11RecordMode.Deferred, "DrawSingle")]
     [InlineData((int)D3D11RecordMode.Deferred, "DrawIndexed")]

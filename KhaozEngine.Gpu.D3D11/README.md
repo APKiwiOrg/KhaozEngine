@@ -307,6 +307,11 @@ of pending clears. Graphics and compute bindings are separate, survive framebuff
 and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
 ([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
 
+`SetPipeline(null)` and `SetComputePipeline(null)` throw `ArgumentNullException` with `ParamName` equal to `p`
+at the call on both the immediate and deferred drivers. The shared recorder checks before emitting or appending
+anything and preserves the current binding. Null is not an unbind operation
+([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
+
 Four checks stay in the real emitter alone, because each names a type only a device can build or a Direct3D type
 the device-free trace cannot name.
 

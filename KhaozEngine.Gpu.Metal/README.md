@@ -902,6 +902,11 @@ its `MTLDepthStencilState`, so binding it afterwards would leave a later draw se
 live encoder. That is the one refusal on this path about memory rather than about a caller's belief: a disposed
 resource layout or resource set releases nothing at all here, where a pipeline genuinely has.
 
+`SetPipeline(null)` and `SetComputePipeline(null)` throw `ArgumentNullException` with `ParamName` equal to `p`
+at the call, before emission or bound-state changes. Null is not an unbind operation. List disposal is checked
+first, then pipeline arguments, then recording state, so a refused bind preserves the current pipeline
+([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
+
 ## The bind flush: one array call per kind per stage
 
 All four `Set*ResourceSet` overloads are live. A bind RECORDS into a per-slot `(set, offset)` array and emits

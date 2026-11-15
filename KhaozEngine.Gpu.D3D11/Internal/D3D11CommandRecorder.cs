@@ -164,8 +164,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void SetPipeline(IGpuPipeline p)
         {
             RequireRecording();
+            ArgumentNullException.ThrowIfNull(p);
             _emitter.SetPipeline(p);
-            _graphicsPipelineBound = p is not null;
+            _graphicsPipelineBound = true;
         }
 
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
@@ -306,8 +307,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void SetComputePipeline(IGpuComputePipeline p)
         {
             RequireRecording();
+            ArgumentNullException.ThrowIfNull(p);
             _emitter.SetComputePipeline(p);
-            _computePipelineBound = p is not null;
+            _computePipelineBound = true;
         }
 
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set)

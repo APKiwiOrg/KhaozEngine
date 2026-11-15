@@ -614,4 +614,9 @@ public enum MapDocumentRefusal
     WaterDomainSelfIntersects,
     /// <summary>Refuses a water domain piece whose triangulation cannot complete.</summary>
     WaterDomainTriangulationFailed,
+
+    /// <summary>Refuses native publication or session lifecycle work inside an open native mutation callback.</summary>
+    ToolPublicationDuringMutationUnsupported,
+    /// <summary>Refuses staging a native command into anything other than the current callback's detached candidate.</summary>
+    ToolMutationCandidateRequired,
 }

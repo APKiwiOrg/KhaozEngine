@@ -16196,6 +16196,23 @@ the original exception through `McpException.InnerException`, with an existing `
 Manifest serialization preserves a known typed JSON refusal's own reason and identifiers before using the
 ordinary `ToolManifestSerializationFailed` fallback.
 
+Native `Mutate` callbacks may stage one command into their own detached candidate. If the final candidate
+differs from the command's staged snapshot, edits made before or after staging are restaged as one validated
+complete snapshot under the command's label, including fields outside the write set and replacement
+collections. Effects, undo and redo use the final snapshot, and invalid callback edits leave the session
+unchanged. A callback with no additional edits keeps the command's own staged effects and history entry.
+Native asset publication, undo and redo refuse only while the callback is executing with
+`MapDocumentException` and `ToolPublicationDuringMutationUnsupported`. Open, create, save, window
+replacement, conversion, retile and closure binding use `MapSessionException` with the same reason. Both
+families retain `DocumentId` and `Operation`, and refuse before changing session state or storage. Staging
+into another document uses `MapDocumentException` with `ToolMutationCandidateRequired`, `DocumentId`,
+`Operation` and the known `CommandType`.
+After acceptance, `NativeEdited` handlers may save or perform other lifecycle operations. Nested native
+mutation remains refused until the outer `Mutate` returns.
+Prefab publication also refuses before writing immutable resource bytes, even when `updateOpenMap` is false.
+Collider `SetHeights` apply refuses before resource writes, while its dry run remains available inside a
+callback. Both use `MapDocumentException` with the publication reason and `Operation` `Publish` or `SetHeights`.
+
 **Native lifecycle.** A document with `ResolverIdentity` is verified completely by
 `NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,
 summary, conversion and retile. Its resource root is the monolithic file's directory or the tiled directory,

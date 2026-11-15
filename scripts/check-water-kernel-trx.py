@@ -6,7 +6,9 @@ import xml.etree.ElementTree as ET
 
 
 REQUIRED_CLASSES = ('ContactQueryCostOracleTests', 'WaterQueryCostMutationTests',
-                    'WaterCoverageComparisonTests', 'WaterKernelFrozenReferenceTests')
+                    'WaterCoverageComparisonTests', 'WaterKernelFrozenReferenceTests',
+                    'MovingShoreProjectionOracleTests', 'WaterProjectionWindowTests',
+                    'WaterProjectionMutationTests')
 
 
 def validate(path):

@@ -45,7 +45,9 @@ class WaterKernelTrxTests(unittest.TestCase):
 
     def test_a_positive_execution_cannot_hide_an_unselected_oracle_class(self):
         self.assertEqual(('ContactQueryCostOracleTests', 'WaterQueryCostMutationTests',
-                          'WaterCoverageComparisonTests', 'WaterKernelFrozenReferenceTests'), guard.REQUIRED_CLASSES)
+                          'WaterCoverageComparisonTests', 'WaterKernelFrozenReferenceTests',
+                          'MovingShoreProjectionOracleTests', 'WaterProjectionWindowTests',
+                          'WaterProjectionMutationTests'), guard.REQUIRED_CLASSES)
         for missing in guard.REQUIRED_CLASSES:
             with self.subTest(missing=missing), self.assertRaises(ValueError):
                 self.validate(dict(total='7', executed='7', failed='0'),

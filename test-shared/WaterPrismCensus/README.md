@@ -166,6 +166,21 @@ shore walk must publish results beyond the small memo limits. `WaterQueryCostMut
 corruption, warm stale identity, large-output truncation and stale moving output are rejected. These are evaluator
 and comparator controls. Cache-key mutation tests require the later cache implementation.
 
+`MovingShoreProjectionOracleTests` checks the bank-along outward/return path and the full shore traverse
+through swimming entry and exit. Actual authority outputs and complete bypassed, cold and warm replay buffers
+match the frozen reference. Reverse-order replays also check short span and contact refusals under every
+supported native FP mode. `WaterProjectionWindowTests` pins both signed zeros through prepared and retained
+windows and the FZ subnormal-enter and subnormal-exit regressions. Unsupported native modes are explicit
+capability cases, not substitute results from another mode.
+
+`WaterProjectionMutationTests` injects only projected Q, V and multiplier values into test-owned preparation
+buffers. Its four controls replay an old drive, projections under a different FP token, a wrong basis ordinal
+and a different shape owner. Each first passes the unmodified range comparison, then must fail
+`FrozenRangeBitsEqual`, including witness endpoints and certified error. The tests introduce no production fault
+seam. They prove propagation sensitivity. Step 3 must additionally mutate the actual G key, parent mapping and
+owner lifetime checks, demonstrate a real sharing hit, and retain these exact output assertions. Current test
+injection cannot prove routing through an owner that does not yet exist.
+
 Set `CENSUS_RESULTS` to an absolute results directory outside the checkout before running the contract command.
 
 ```bash
@@ -178,8 +193,9 @@ x64 and macos-26 arm64. Each job runs the contract with `DOTNET_TieredCompilatio
 TRX files. Its filter excludes `TileWaterPrismCensusTests`, whose pre-existing census digests remain in the
 ordinary test slice. The extended corpus still records all nine fixtures over four ticks on each runtime.
 Each TRX must execute a positive number of tests, execute its entire selected total and report zero failures.
-The TRX guard also requires the query-cost oracle, mutation, comparator and frozen-source test classes, so a
-mistyped filter that runs other old tests cannot silently omit all new controls.
+The TRX guard also requires the query-cost oracle, mutation, comparator, frozen-source and all three projection
+oracle/control classes. A mistyped filter that runs only earlier tests cannot silently omit the new controls.
+Local qualification runs the complete category, including all nine result-bearing census rows.
 It runs separately from the selective runner's Foundation/Server pass, so an affected-project selection
 cannot omit this matrix. Each execution compares frozen against production on the same runtime. The runtime
 gate asserts no single numeric digest across architectures.

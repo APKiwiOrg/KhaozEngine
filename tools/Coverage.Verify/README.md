@@ -91,6 +91,83 @@ must belong to that domain. Every declared frame and path needs a sample. Candid
 ordered and must name samples. Limits are 65536 samples or inventory items, 4096 candidates, 4194304
 candidate/sample pairs, 1024 palette matrices, four commands and 64 MiB per input or published artifact.
 
+### KEPP numeric transport
+
+The internal packed-pose codec defines KEPP version 1. This codec does not yet add a packed manifest
+route to the CLI. Format 1 above still uses inline numeric arrays. KEPP stores complete numeric poses,
+with explicit little-endian integers and binary32 words. Matrix order is M11, M12, through M44.
+No decimal conversion, binary64 conversion, normalization or quantization occurs in the codec.
+
+| Header offset | Bytes | Value |
+|---:|---:|---|
+| 0 | 4 | ASCII `KEPP` |
+| 4 | 4 | uint32 version, 1 |
+| 8 | 4 | uint32 header length, 32 |
+| 12 | 4 | uint32 endian marker, `0x01020304` |
+| 16 | 4 | uint32 palette count B, 1 through 1,024 |
+| 20 | 4 | uint32 command count C, 1 through 4 |
+| 24 | 4 | uint32 record count R, positive |
+| 28 | 4 | uint32 record stride, `64 + 64*B + 144*C` |
+
+The exact chunk length is `32 + R*stride`, at most 8,388,608 bytes inclusively. Length arithmetic is
+checked in 64 bits before decoding allocations. Header spans must contain exactly 32 bytes and record
+spans exactly one stride. Record i starts at `32 + i*stride`. Its actor matrix occupies 64 bytes,
+followed by B palette matrices in skin order. Each of its C commands then occupies 144 bytes.
+
+| Command-relative offset | Bytes | Value |
+|---:|---:|---|
+| 0 | 4 | uint32 command ID |
+| 4 | 8 | uint64 nonzero equipment instance ID, without alignment padding |
+| 12 | 64 | Equipment-world matrix |
+| 76 | 64 | Coverage-world matrix |
+| 140 | 4 | Transition weight |
+
+Commands retain their authored order and IDs are unique within a record. Configured command membership
+and host palette agreement belong to asset binding. Every numeric word must be finite. Signed zeros,
+subnormals and all other finite words are retained exactly. Transform and weight usability remain
+numerical validation concerns. The 1,024-palette transport ceiling does not raise the GLB import limit
+of 128 joints.
+
+The independent synthetic control has B=2, C=1, R=1, stride 336 and total length 368. Its header hex is
+`4b45505001000000200000000403020102000000010000000100000050010000`. This executable Python fixture
+writes the exact bytes and checks their SHA-256 before saving them:
+
+```python
+import hashlib
+import pathlib
+import struct
+
+header = bytes.fromhex("4b45505001000000200000000403020102000000010000000100000050010000")
+identity = struct.pack("<16I", 0x3f800000, 0, 0, 0, 0, 0x3f800000, 0, 0,
+                       0, 0, 0x3f800000, 0, 0, 0, 0, 0x3f800000)
+record = identity * 3 + struct.pack("<IQ", 23, 17) + identity * 2 + struct.pack("<I", 0x3f800000)
+chunk = header + record
+assert len(chunk) == 368
+assert hashlib.sha256(chunk).hexdigest() == "79e5da6535a760e62db55573fbb996c67a1b4b6edcd1649eafb751f3a0ad42a5"
+path = pathlib.Path("poses/000000.kepp")
+path.parent.mkdir(exist_ok=True)
+path.write_bytes(chunk)
+```
+
+The codec-only WordVector contains `00000000`, `80000000`, `00000001`, `80000001`, `007fffff`,
+`807fffff`, `00800000` and `3f800001`, with distinct finite words at its remaining matrix positions.
+Each word is also tested in every matrix field and the transition weight. These are storage vectors,
+not geometry inputs.
+
+Malformed bytes use `CoverageBuildDataException`. Layout errors are `PackedHeaderInvalid`, unsupported
+versions are `UnsupportedVersion`, zero record counts are `PackedCountMismatch`, excessive B/C or
+chunk lengths are `CapacityExceeded`, inconsistent lengths are `PackedChunkLengthMismatch`, and
+nonfinite words are `PackedWordNonFinite`. `Path` is the rooted manifest location. Optional `ChunkIndex`,
+`RecordIndex` and absolute chunk `ByteOffset` locate the defect. Length failures include `ExpectedLength`
+and `ActualLength`, capacity failures include `Count` and inclusive `Limit`, and version failures include
+`FormatVersion`. `Identity` is local exception context and must not be copied into exported evidence.
+
+Packed path admission accepts only portable relative `/` components below the declaring directory.
+Empty, dot, parent, backslash, colon, NUL and rooted forms refuse as `PackedPathEscape`. Referenced
+symbolic links and reparse points, including leaves and links whose targets remain inside, refuse as
+`PackedPathLink`. The declaring directory itself may be an OS alias. Missing referenced components use
+`PackedChunkMissing` and unresolvable metadata uses `InputIo`. Existing general asset resolution is unchanged.
+
 The configuration file requires `formatVersion`, exact `attachment` and `companion` references, and
 `parts`. Every part has `id`, an exact GLB `asset` reference, `hostJoint`, `socket` and `bodyAlignment`.
 The checked attachment supplies part local transforms and mesh identities. The companion supplies

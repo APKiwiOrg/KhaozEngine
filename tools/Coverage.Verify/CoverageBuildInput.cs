@@ -59,6 +59,8 @@ public sealed class CoverageBuildInput
     public const int MaxSamples = 65_536;
     public const int MaxCandidates = 4_096;
     public const int MaxPairs = 4_194_304;
+    public const int MaxPackedChunkBytes = 8_388_608;
+    public const int MaxPackedChunks = 4_096;
     readonly Matrix4x4[] inverseBind;
     internal CoverageBuildInput(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> inverseBind,
         IEnumerable<CoverageDomain> domains, IEnumerable<CoverageSample> samples, IEnumerable<string> candidates,
@@ -141,6 +143,9 @@ public enum CoverageBuildInputRefusal
     InvalidJson, DuplicateMember, UnknownMember, MissingMember, InvalidValue, NonFiniteNumber,
     UnsupportedVersion, MalformedDigest, HashMismatch, CapacityExceeded, EmptyInventory,
     InvalidOrDuplicateId, DomainMembership, MissingInventorySample, UnknownCandidate, AssetBinding, InputIo,
+    PackedPathEscape, PackedPathLink, PackedChunkMissing, PackedChunkLengthMismatch, PackedChunkHashMismatch,
+    PackedHeaderInvalid, PackedCountMismatch, PackedReferenceInvalid, PackedWordNonFinite, PackedInputChanged,
+    ArtifactPartMissing, ArtifactPartLengthMismatch, ArtifactPartHashMismatch, ArtifactSetInvalid,
 }
 
 /// <summary>Malformed input with rooted JSON Path and optional source, sample, domain, item and capacity context.
@@ -157,9 +162,21 @@ public sealed class CoverageBuildDataException : MalformedDataException
     public string? ItemId { get; init; }
     public long? Count { get; init; }
     public long? Limit { get; init; }
+    public int? ChunkIndex { get; init; }
+    public int? RecordIndex { get; init; }
+    public long? ByteOffset { get; init; }
+    public long? ExpectedLength { get; init; }
+    public long? ActualLength { get; init; }
+    public string? ExpectedSha256 { get; init; }
+    public string? ActualSha256 { get; init; }
+    public long? FormatVersion { get; init; }
 }
 
-public enum CoverageBuildValidationRefusal { ProvenanceMismatch, RepresentativeMismatch, CandidateConstruction, StateInventoryMismatch, OutputIo, OutputAlias }
+public enum CoverageBuildValidationRefusal
+{
+    ProvenanceMismatch, RepresentativeMismatch, CandidateConstruction, StateInventoryMismatch, OutputIo, OutputAlias,
+    ArtifactContentMismatch, OutputRecoveryRequired,
+}
 
 public sealed class CoverageBuildValidationException : InvalidOperationException
 {

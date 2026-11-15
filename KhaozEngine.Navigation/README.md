@@ -33,8 +33,9 @@ A `NavSpace` stacks one or more `NavGrid` layers, each covering its own vertical
 `NavLink` stair connections (`FromLayer`/`FromX`/`FromZ` -> `ToLayer`/`ToX`/`ToZ`). A two-way stair is
 modeled as two links, one per direction. `NavSpace.Single(grid)` wraps a single layer with no links.
 Every link endpoint is bounds-checked against its layer at construction, else `ArgumentException`.
-The constructor copies the layer and link containers and exposes `Layers` and `Links` through read-only
-views. Later changes to the supplied arrays or lists cannot change the validated space. The immutable
+The constructor copies the layer and link containers into owned immutable snapshots behind the existing
+`IReadOnlyList` properties. Generic and non-generic mutators are refused, and `ICollection.SyncRoot`
+cannot reveal backing storage. Later changes to supplied arrays or lists cannot change the validated space. The immutable
 `NavGrid` instances are shared without copying their baked grids.
 
 Each link carries a `NavLink.Kind` discriminator (`NavLinkKind`, `init`, default `Stair`). A `Stair`
@@ -381,8 +382,8 @@ surface. Exit bits 0 through 7 are directed and mean `(1,0)`, `(-1,0)`, `(0,1)`,
 `NavTraversalGraph(NavSpace space, float agentRadius, float agentHeight,
 IReadOnlyList<NavTraversalLayer> layers, IReadOnlyList<NavLink> links)` copies its containers and checks
 matching source dimensions, directed exits, accepted endpoints, and source links. `AgentRadius`,
-`AgentHeight`, `Space`, `Layers`, and `Links` are immutable getters. `Space` owns a read-only snapshot of
-the source grids and original link topology. `Layers` owns copied masks. `Links` is the copied read-only
+`AgentHeight`, `Space`, `Layers`, and `Links` are immutable getters. `Space` owns an immutable snapshot of
+the source grids and original link topology. `Layers` owns copied masks. `Links` is the copied immutable
 accepted subset, in supplied order. `IsNodePassable` and `CanTraverse` return false outside bounds.
 
 `GridPathPlanner(NavSpace space, NavTraversalGraph traversal, float hopCostCells = 4f)` requires the

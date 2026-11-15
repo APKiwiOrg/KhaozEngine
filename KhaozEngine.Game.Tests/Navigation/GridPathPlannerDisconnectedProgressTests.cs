@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Numerics;
 using KhaozEngine.Navigation;
 using Xunit;
@@ -8,6 +9,30 @@ namespace KhaozEngine.Tests.Navigation;
 
 public class GridPathPlannerDisconnectedProgressTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PublicCollectionStorageCannotInvalidateCachedConnectivity(bool guarded)
+    {
+        NavSpace space = NavSpace.Single(Grid(3, 2, (x, z) => z == 0 && x != 1));
+        NavGrid replacement = Grid(3, 2, (x, z) => z == 1 || x != 1);
+        NavTraversalGraph graph = Graph(space);
+        var planner = guarded ? new GridPathPlanner(space, graph) : new GridPathPlanner(space);
+        NavSpace owned = guarded ? graph.Space : space;
+        Exception? mutation = Record.Exception(() =>
+        {
+            ((NavGrid[])((ICollection)owned.Layers).SyncRoot)[0] = replacement;
+            if (guarded)
+                ((NavTraversalLayer[])((ICollection)graph.Layers).SyncRoot)[0] =
+                    Graph(NavSpace.Single(replacement)).Layers[0];
+        });
+
+        NavPath path = Check(planner, new Vector3(0.5f, 0f, 0.5f),
+            Member(new Vector3(2.5f, 0f, 0.5f)), Budget(8), certified: true);
+        Assert.IsType<NotSupportedException>(mutation);
+        Assert.Same(NavPath.Unreachable, path);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

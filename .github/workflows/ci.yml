@@ -175,6 +175,7 @@ jobs:
           sh scripts/tests/gpu-test-shards.test.sh
           sh scripts/tests/hooks-file-change-guard.test.sh
           sh scripts/tests/hooks-filesize-guard.test.sh
+          sh scripts/tests/ledger.test.sh
           sh scripts/tests/pack-local-feed.test.sh
           sh scripts/tests/pack-packages.test.sh
           sh scripts/tests/release-lock.test.sh

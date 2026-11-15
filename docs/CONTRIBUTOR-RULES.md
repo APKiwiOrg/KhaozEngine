@@ -350,6 +350,10 @@ Manual dispatch supports a task branch. It never uses a self-hosted runner or re
 `Directory.Build.props` contains the one `<KhaozEngineVersion>` for every package. SemVer is additive
 minor, fix patch and breaking major. Tooling, documentation and repository governance do not bump the
 engine version.
+Repository artwork under `art-assets/` also rides a released version when both commits prove it has
+no package consumer. The push guard checks committed project, props and targets files, allowing only
+references from projects proved non-packable. A reference from any props or targets file, or a
+packable or unknown project, makes artwork package-bearing again.
 An `InternalsVisibleTo` grant in a packable project is package content, so it is package-bearing work and plans a
 version ride.
 

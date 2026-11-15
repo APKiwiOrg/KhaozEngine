@@ -41,7 +41,7 @@ public sealed partial class SqlServerContentAuthoringStore
     /// <inheritdoc />
     /// <remarks>
     /// The families and the id marks are written BEFORE the publish, because the edits and the baseline both
-    /// need them, so the STAGING is inside the try along with everything after it. Any refusal takes that
+    /// need them, so the STAGING is inside the try along with everything after it. A pre-commit refusal takes that
     /// staging back, so a caller that catches one is holding a store it may import into again. It takes back
     /// the staging and NOTHING else, because the publish commits whole or not at all. Files a failed attempt
     /// already wrote to the pack store are ordinary orphans and the next sweep takes them.
@@ -67,7 +67,7 @@ public sealed partial class SqlServerContentAuthoringStore
 
     /// <summary>
     /// The import trusted and operator seed routes share: the empty-store and pack-target refusals, the type agreement, the
-    /// staging of families, marks and rules, the draft and the publish, and the reset on any refusal after
+    /// staging of families, marks and rules, the draft and the publish, and the reset on any pre-commit refusal after
     /// staging began. A row-only import passes no text. A companion import passes the bundle's complete text,
     /// whose targets are checked BEFORE anything is staged, and lands it in the same draft transaction as the
     /// rows, so the ordinary text publish commits rows and text as one complete version 1.
@@ -95,10 +95,10 @@ public sealed partial class SqlServerContentAuthoringStore
         // pack target) read and write nothing, and a reset for one of THOSE would empty the live catalog the
         // refusal exists to protect.
         bool staged = false;
+        IReadOnlyList<RemapRule>? ownedRules = null;
         try
         {
-            // The check, the staging and the draft run in ONE Serializable scope, so no rival intent can join
-            // or open the draft between the pending-work check and the import's own draft.
+            // The check, staging, draft and freeze share one Serializable scope.
             await WriteAsync(
                 async (scope, token) =>
                 {
@@ -122,6 +122,7 @@ public sealed partial class SqlServerContentAuthoringStore
                         throw NoPackStore(member);
                     }
 
+                    await RequireNotFrozenAsync(scope, member, token).ConfigureAwait(false);
                     RequireTypesAgree(bundle);
                     ContentBundleTextCompatibility.RequireNoPendingWork(
                         await ReadDraftAsync(scope, token).ConfigureAwait(false), member);
@@ -130,18 +131,20 @@ public sealed partial class SqlServerContentAuthoringStore
                         ContentBundleTextCompatibility.RequireTargets(bundle, text, _registry);
                     }
 
-                    staged = true;
                     DateTimeOffset at = _clock();
                     await RestoreFamiliesAsync(scope, bundle, at, token).ConfigureAwait(false);
                     await SeedMarksAsync(scope, bundle, at, token).ConfigureAwait(false);
 
-                    _importRules = Restamp(bundle);
+                    ownedRules = Restamp(bundle);
+                    _importRules = ownedRules;
                     IReadOnlyList<ContentEdit> edits = await EditsAsync(scope, bundle, token).ConfigureAwait(false);
                     await ApplyImportDraftAsync(scope, edits, text, actor, operatorId, note, token).ConfigureAwait(false);
+                    await MarkDraftFrozenAsync(scope, 0, token).ConfigureAwait(false);
                 },
                 cancellationToken).ConfigureAwait(false);
+            staged = true;
 
-            ContentPublishResult published = await PublishAsync(
+            ContentPublishResult published = await RequireCommit().PublishImportAsync(
                 new ContentPublishRequest(actor, operatorId, note, 0) { PublishPolicy = publishPolicy }, cancellationToken).ConfigureAwait(false);
 
             await WriteAsync(
@@ -162,18 +165,19 @@ public sealed partial class SqlServerContentAuthoringStore
                 cancellationToken).ConfigureAwait(false);
             return published;
         }
-        catch (Exception failure) when (staged && failure is not OperationCanceledException)
+        catch (Exception) when (staged)
         {
-            // EVERY refusal, not only a ContentAuthoringException. The staging rolls back with its own
-            // transaction when the refusal happens inside it, and the CACHED restamped rules do not, so the
-            // reset runs for both. CancellationToken.None because the caller's token may be the reason we
-            // are here, and a reset that cancelled would leave the staging standing.
+            // The whole staging transaction committed, and its freeze remains held until this reset.
+            // Rollback already handles failures inside staging. Cleanup uses CancellationToken.None so a
+            // cancelled publish cannot leave an imported draft frozen indefinitely.
+            Interlocked.CompareExchange(ref _importRules, null, ownedRules);
             await ResetAfterFailureAsync().ConfigureAwait(false);
             throw;
         }
         finally
         {
-            _importRules = null;
+            // A refused rival never owned these rules, and a later attempt may already own a new list.
+            Interlocked.CompareExchange(ref _importRules, null, ownedRules);
         }
     }
 
@@ -516,6 +520,11 @@ public sealed partial class SqlServerContentAuthoringStore
         => WriteAsync(
             async (scope, token) =>
             {
+                if (await ReadIntAsync(scope, "SELECT COUNT(*) FROM dbo.catalog_version;", token).ConfigureAwait(false) > 0)
+                {
+                    return;
+                }
+
                 // Child first, so no delete trips a foreign key on the way down. The edit fields go with the
                 // edits through the cascade the schema declares.
                 string[] statements =

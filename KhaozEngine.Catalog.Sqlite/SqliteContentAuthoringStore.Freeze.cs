@@ -50,29 +50,33 @@ public sealed partial class SqliteContentAuthoringStore
         // It OVERWRITES rather than refusing an already frozen draft. A marker a dead publish left behind
         // must not block the retry, and the retry is exactly what an operator does to recover. The row count
         // is the open-draft check, so the update time is decided inside the SET rather than in the WHERE.
-        using (SqliteCommand command = Command(
+        if (await MarkDraftFrozenAsync(baseVersion, transaction, cancellationToken).ConfigureAwait(false) == 0)
+        {
+            throw new ContentAuthoringException(
+                ContentAuthoringRefusal.NoPendingDraft,
+                "There is no open draft to freeze, so there is nothing to publish.",
+                default,
+                0,
+                ContentAuthoringException.NoOpenDraftReason);
+        }
+
+        transaction.Commit();
+    }
+
+    /// <summary>Writes the shared freeze marker inside the caller's transaction.</summary>
+    async Task<int> MarkDraftFrozenAsync(int baseVersion, SqliteTransaction transaction, CancellationToken cancellationToken)
+    {
+        using SqliteCommand command = Command(
             """
             UPDATE catalog_draft
             SET frozen_for_base_version = $base,
                 updated_at_utc = CASE WHEN frozen_for_base_version IS $base THEN updated_at_utc ELSE $now END
             WHERE draft_key = 1;
             """,
-            transaction))
-        {
-            Bind(command, "$base", (long)baseVersion);
-            Bind(command, "$now", Millis(_clock()));
-            if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
-            {
-                throw new ContentAuthoringException(
-                    ContentAuthoringRefusal.NoPendingDraft,
-                    "There is no open draft to freeze, so there is nothing to publish.",
-                    default,
-                    0,
-                    ContentAuthoringException.NoOpenDraftReason);
-            }
-        }
-
-        transaction.Commit();
+            transaction);
+        Bind(command, "$base", (long)baseVersion);
+        Bind(command, "$now", Millis(_clock()));
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

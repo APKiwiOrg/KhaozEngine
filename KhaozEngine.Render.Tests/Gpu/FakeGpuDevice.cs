@@ -72,9 +72,15 @@ namespace KhaozEngine.Tests.Gpu
             OnWaitForIdle?.Invoke();
         }
 
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged { }
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }
+        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged =>
+            OnBufferUpdate?.Invoke(b);
+        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged =>
+            OnBufferUpdate?.Invoke(b);
+        public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged =>
+            OnBufferUpdate?.Invoke(b);
+        /// <summary>Observes or refuses a device-level buffer write, as <see cref="OnTextureUpload"/> does for
+        /// textures.</summary>
+        internal Action<IGpuBuffer>? OnBufferUpdate { get; set; }
         /// <summary>Observes or refuses an upload at the device boundary without replacing resource ownership.</summary>
         internal Action<IGpuTexture, byte[]>? OnTextureUpload { get; set; }
 
@@ -129,6 +135,8 @@ namespace KhaozEngine.Tests.Gpu
             ThrowOnBufferCreate = Buffers.Count + successfulCreates + 1;
         internal void FailTextureCreationAfter(int successfulCreates) =>
             ThrowOnTextureCreate = Textures.Count + successfulCreates + 1;
+        internal void FailResourceSetCreationAfter(int successfulCreates) =>
+            ThrowOnResourceSetCreate = ResourceSets.Count + successfulCreates + 1;
 
         bool _failNextEnd;
 
@@ -149,7 +157,9 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every graphics pipeline request with the GLSL source carried by its real shader-set handle.</summary>
         internal List<FakeGraphicsPipelineRequest> GraphicsPipelines { get; } = new();
-        internal int SamplerCreateCount { get; private set; }
+        /// <summary>Every sampler this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
+        internal List<FakeSampler> Samplers { get; } = new();
+        internal int SamplerCreateCount => Samplers.Count;
         internal int ResourceLayoutCreateCount { get; private set; }
 
         /// <summary>How many of <see cref="ResourceSets"/> have been disposed.</summary>
@@ -224,8 +234,9 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuSampler CreateSampler(in GpuSamplerDescription d)
         {
-            SamplerCreateCount++;
-            return new FakeSampler(d);
+            var sampler = new FakeSampler(d);
+            Samplers.Add(sampler);
+            return sampler;
         }
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
         {

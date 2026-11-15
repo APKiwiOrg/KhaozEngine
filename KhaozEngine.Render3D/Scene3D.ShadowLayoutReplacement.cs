@@ -69,7 +69,11 @@ public sealed partial class Scene3D
         foreach (SplatMaterialEntry? material in _splatMaterials)
             if (material is not null) into.Add(material.Set);
         foreach (TileGroundMaterialEntry? material in _tileGroundMaterials)
-            if (material is not null) into.Add(material.Set);
+        {
+            if (material is null) continue;
+            into.Add(material.Set);
+            if (material.ReliefSet is { } relief) into.Add(relief);
+        }
     }
 
     void CommitMaterialSets(Func<IGpuResourceSet, IGpuResourceSet> replacementFor)
@@ -82,7 +86,7 @@ public sealed partial class Scene3D
             if (_meshes[i] is not { MaterialSet: { } oldSet } mesh) continue;
             _meshes[i] = new Mesh(mesh.Vb, mesh.OutlineNormalVb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
                 in mesh.Bounds, replacementFor(oldSet), mesh.OutlineMaterialSet, mesh.SplatMaterial, mesh.AlphaCutoff,
-                mesh.TileGroundMaterial, mesh.ShadowCutoutSet, mesh.OpaqueFoliage);
+                mesh.TileGroundMaterial, mesh.ShadowCutoutSet, mesh.OpaqueFoliage, mesh.TileGroundProgram);
         }
 
         for (int i = 0; i < _skinnedMeshes.Count; i++)
@@ -100,7 +104,7 @@ public sealed partial class Scene3D
         foreach (SplatMaterialEntry? material in _splatMaterials)
             if (material is not null) material.ReplaceSet(replacementFor(material.Set));
         foreach (TileGroundMaterialEntry? material in _tileGroundMaterials)
-            if (material is not null) material.ReplaceSet(replacementFor(material.Set));
+            material?.ReplaceSets(replacementFor);
     }
 }
 

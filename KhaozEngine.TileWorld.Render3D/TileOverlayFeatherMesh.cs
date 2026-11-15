@@ -8,10 +8,9 @@ namespace KhaozEngine.TileWorld;
 internal static class TileOverlayFeatherMesh
 {
     internal static void Add(TileGroundMesher.MeshAccumulator mesh, in TileGroundMesher.TileMeshContext context,
-        TileOverlayBoundary boundary, int overlaySlot, in TileGroundMesher.LatticePoint a,
+        TileOverlayBoundary boundary, int overlaySlot, float width, in TileGroundMesher.LatticePoint a,
         in TileGroundMesher.LatticePoint b, in TileGroundMesher.LatticePoint c)
     {
-        float width = MathF.Min(context.Options.OverlayFeatherWidthMetres, context.TileSize * 0.5f);
         Vector3 center = (a.Position + b.Position + c.Position) / 3;
         float radius = MathF.Max(Vector3.Distance(center, a.Position),
             MathF.Max(Vector3.Distance(center, b.Position), Vector3.Distance(center, c.Position)));

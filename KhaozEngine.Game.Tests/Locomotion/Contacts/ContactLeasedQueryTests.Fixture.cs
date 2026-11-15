@@ -63,6 +63,31 @@ public partial class ContactLeasedQueryTests
         public void Dispose() { Lease.Dispose(); View.Dispose(); ownedWorld?.Dispose(); }
     }
 
+    sealed class WaterBufferOrdinaryScene : IDisposable
+    {
+        readonly BepuPhysicsWorld _world = new(Vector3.Zero);
+        readonly IPhysicsWorldQueryView _view;
+        public MovementQueryLease Lease { get; }
+
+        public WaterBufferOrdinaryScene()
+        {
+            _view = _world.CreateQueryViewExcludingStatics([]);
+            var builder = OrdinaryMovementRegistration.CreateBuilder("world", _world,
+                new(new(-100), new(100), 0, 0));
+            OrdinaryMovementRegistration registration;
+            using (var read = ((IPhysicsQueryLeaseSource)_view).AcquireQueryReadLease()) registration = builder.Build(read);
+            var environment = new OrdinaryMovementEnvironment(_view, registration,
+                Tuning with { Controller = MovementControllerKind.Contact, Water = new(WaterTraversalMode.SurfaceSwimmer, 7) }, (_, _) => 0, null,
+                MovementBoundary.Rectangle(-100, -100, 100, 100));
+            var frame = new MovementFrameDescriptor(WorldFrame.Origin, Vector3.Zero, 1);
+            var context = new MovementEnvironmentContext(_view, environment, environment.Identity);
+            Assert.Equal(MovementAvailability.Known, context.TryAcquire(environment.CreateScope(frame), out var lease));
+            Lease = lease!;
+        }
+
+        public void Dispose() { Lease.Dispose(); _view.Dispose(); _world.Dispose(); }
+    }
+
     sealed class ContactQueryView(IPhysicsWorldQueryView inner) : IPhysicsWorldQueryView,
         IPhysicsQueryLeaseSource, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsCapsuleSweep, IPhysicsCapsuleContacts
     {

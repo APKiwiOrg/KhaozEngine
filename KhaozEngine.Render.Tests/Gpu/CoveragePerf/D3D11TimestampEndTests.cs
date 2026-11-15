@@ -19,6 +19,8 @@ public sealed partial class D3D11TimestampEndTests
             rig.Start();
             rig.Arm();
             rig.List.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+            rig.List.SetPipeline(D3D11BindFixtures.Pipeline());
+            rig.List.SetComputePipeline(new D3D11BindFlushTests.FakeComputePipeline());
             rig.List.Draw(3);
             rig.List.DrawIndexed(6, 2, 0, 0, 0);
             rig.List.Dispatch(1, 1, 1);
@@ -150,6 +152,7 @@ public sealed partial class D3D11TimestampEndTests
         rig.Start();
         rig.Arm();
         rig.List.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+        rig.List.SetPipeline(D3D11BindFixtures.Pipeline());
         rig.List.Draw(3);
         rig.Pool.Dispose();
         Assert.Throws<ObjectDisposedException>(rig.List.End);
@@ -174,11 +177,12 @@ public sealed partial class D3D11TimestampEndTests
     {
         using var rig = new D3D11TimestampEndFixture(deferred);
         rig.List.Begin();
+        rig.List.SetComputePipeline(new D3D11BindFlushTests.FakeComputePipeline());
         rig.List.Dispatch(1, 1, 1);
         rig.List.End();
         rig.Submit();
         Assert.Equal(new[] { "Dispatch(1,1,1)" }, rig.Api.Calls);
-        Assert.Equal(new[] { "ClearState()", "Dispatch(1,1,1)" }, rig.Log.Trace);
+        Assert.Equal(new[] { "ClearState()", "CSSetShader(r0)", "Dispatch(1,1,1)" }, rig.Log.Trace);
     }
 
     [Theory]

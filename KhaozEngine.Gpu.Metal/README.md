@@ -902,6 +902,11 @@ its `MTLDepthStencilState`, so binding it afterwards would leave a later draw se
 live encoder. That is the one refusal on this path about memory rather than about a caller's belief: a disposed
 resource layout or resource set releases nothing at all here, where a pipeline genuinely has.
 
+`SetPipeline(null)` and `SetComputePipeline(null)` throw `ArgumentNullException` with `ParamName` equal to `p`
+at the call, before emission or bound-state changes. Null is not an unbind operation. List disposal is checked
+first, then pipeline arguments, then recording state, so a refused bind preserves the current pipeline
+([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
+
 ## The bind flush: one array call per kind per stage
 
 All four `Set*ResourceSet` overloads are live. A bind RECORDS into a per-slot `(set, offset)` array and emits
@@ -1040,6 +1045,14 @@ stays owed to the next one that wants it.
 `CopyTextureSubresource`, `GenerateMipmaps` and `ResolveTexture` are live, which completes the minimal
 renderable path: a recording binds a framebuffer, clears it, binds a pipeline, binds resource sets and
 geometry, and draws.
+
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
 
 **The order inside a draw is four steps and it is written once.** The pass opens (the deferred begin, which
 folds the pending clears into load actions and emits the viewport and the scissor if either is owed), then the

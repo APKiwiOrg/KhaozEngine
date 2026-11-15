@@ -140,28 +140,29 @@ void main() { }");
             var log = new D3D11NativeCallLog();
             var emitter = new D3D11TimestampTestEmitter(log, api);
             using IGpuCommandList commands = D3D11CommandDrivers.Create(immediate ? D3D11RecordMode.Immediate : D3D11RecordMode.Deferred, emitter, fences);
-            Record(commands, pool, () => commands.Dispatch(1, 1, 1));
+            using var pipeline = new D3D11BindFlushTests.FakeComputePipeline();
+            Record(commands, pool, () => commands.Dispatch(1, 1, 1), pipeline);
             if (commands is D3D11CommandRecorder<D3D11StreamEmitter> deferred)
             {
                 Assert.Empty(api.Calls);
                 Assert.Empty(log.Trace);
                 var stream = deferred.Emitter.Stream;
-                Assert.Equal(1, stream.ReferenceCount);
-                for (int i = 0; i < stream.ReferenceCount; i++)
-                    Assert.Same(pool, stream.Reference<IGpuTimestampPool>(i));
+                Assert.Equal(2, stream.ReferenceCount);
+                Assert.Same(pipeline, stream.Reference<IGpuComputePipeline>(0));
+                Assert.Same(pool, stream.Reference<IGpuTimestampPool>(1));
             }
             if (commands is D3D11CommandRecorder<D3D11StreamEmitter> recorded)
             {
                 var counts = new D3D11EmitterCallLog();
                 var counter = new D3D11CountingEmitter(counts);
                 recorded.Emitter.Stream.Replay(ref counter);
-                Assert.Equal(new[] { "Begin()", "BeginTimestamps(r0,2)", "WriteTimestamp(r0,0)", "Dispatch(1,1,1)",
-                    "WriteTimestamp(r0,1)", "EndTimestamps(r0)", "End()" }, counts.Trace);
+                Assert.Equal(new[] { "Begin()", "SetComputePipeline(r0)", "BeginTimestamps(r1,2)", "WriteTimestamp(r1,0)", "Dispatch(1,1,1)",
+                    "WriteTimestamp(r1,1)", "EndTimestamps(r1)", "End()" }, counts.Trace);
                 Assert.Empty(api.Calls);
             }
             D3D11CommandDrivers.Submit(gate, commands, ref emitter);
             Assert.Equal(new[] { "Begin(disjoint)", "End(0)", "Dispatch(1,1,1)", "End(1)", "End(disjoint)" }, api.Calls);
-            Assert.Equal(new[] { "ClearState()", "Begin(r0)", "End(r1)", "Dispatch(1,1,1)", "End(r2)", "End(r0)" }, log.Trace);
+            Assert.Equal(new[] { "ClearState()", "CSSetShader(r0)", "Begin(r1)", "End(r2)", "Dispatch(1,1,1)", "End(r3)", "End(r1)" }, log.Trace);
             commands.Dispose();
             if (commands is D3D11CommandRecorder<D3D11StreamEmitter> disposed)
                 Assert.Equal(0, disposed.Emitter.Stream.ReferenceCount);
@@ -296,9 +297,11 @@ void main() { }");
         static D3D11CommandRecorder<D3D11NativeTraceEmitter> Recorder(D3D11FenceSubsystem fences)
             => new(new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog()), fences);
 
-        static void Record(IGpuCommandList commands, IGpuTimestampPool pool, Action? dispatch = null)
+        static void Record(IGpuCommandList commands, IGpuTimestampPool pool, Action? dispatch = null,
+            IGpuComputePipeline? pipeline = null)
         {
             commands.Begin();
+            if (pipeline is not null) commands.SetComputePipeline(pipeline);
             commands.BeginTimestamps(pool, 2);
             commands.WriteTimestamp(pool, 0);
             dispatch?.Invoke();

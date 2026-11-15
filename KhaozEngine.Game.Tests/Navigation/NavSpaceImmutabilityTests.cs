@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Immutable;
 using System.Collections.Generic;
 using KhaozEngine.Navigation;
 using Xunit;
@@ -86,18 +88,75 @@ public class NavSpaceImmutabilityTests
         Assert.Empty(space.Links);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ImmutableInputsStillBecomeDistinctOwnedSnapshots(bool includeLink)
+    {
+        NavGrid grid = MakeGrid(0f, 3f);
+        var link = new NavLink(0, 1, 1, 0, 2, 2);
+        ImmutableArray<NavGrid> layers = ImmutableArray.Create(grid);
+        ImmutableArray<NavLink> links = includeLink ? ImmutableArray.Create(link) : ImmutableArray<NavLink>.Empty;
+        var first = new NavSpace(layers, links);
+        var second = new NavSpace(layers, links);
+
+        Assert.Same(first.Layers, first.Layers);
+        Assert.False(first.Layers.Equals(second.Layers));
+        Assert.Equal(!includeLink, first.Links.Equals(second.Links));
+        Assert.Equal(layers, first.Layers);
+        Assert.Equal(links, first.Links);
+        Assert.Same(grid, first.Layers[0]);
+        AssertReadOnly(first.Layers, grid);
+        AssertReadOnly(first.Links, link);
+    }
+
     static NavGrid MakeGrid(float yMin, float yMax)
         => NavGrid.FromWalkable(4, 4, 1f, 0f, 0f, (_, _) => true, yMin, yMax);
 
-    static void AssertReadOnly<T>(IReadOnlyList<T> values, T replacement)
+    internal static void AssertReadOnly<T>(IReadOnlyList<T> values, T replacement)
     {
         Assert.False(values is T[]);
         Assert.False(values is List<T>);
-        var list = Assert.IsAssignableFrom<IList<T>>(values);
-        Assert.True(list.IsReadOnly);
-        Assert.Throws<NotSupportedException>(() => list.Add(replacement));
-        Assert.Throws<NotSupportedException>(() => list.Clear());
-        if (list.Count > 0)
-            Assert.Throws<NotSupportedException>(() => list[0] = replacement);
+        var generic = Assert.IsAssignableFrom<IList<T>>(values);
+        Assert.True(generic.IsReadOnly);
+        Assert.Throws<NotSupportedException>(() => generic.Add(replacement));
+        Assert.Throws<NotSupportedException>(() => generic.Clear());
+        Assert.Throws<NotSupportedException>(() => generic.Remove(replacement));
+        Assert.Throws<NotSupportedException>(() => generic.Insert(0, replacement));
+        if (generic.Count > 0)
+        {
+            Assert.Throws<NotSupportedException>(() => generic[0] = replacement);
+            Assert.Throws<NotSupportedException>(() => generic.RemoveAt(0));
+        }
+
+        var untyped = Assert.IsAssignableFrom<IList>(values);
+        Assert.True(untyped.IsReadOnly);
+        Assert.True(untyped.IsFixedSize);
+        Assert.Throws<NotSupportedException>(() => untyped.Add(replacement));
+        Assert.Throws<NotSupportedException>(() => untyped.Clear());
+        Assert.Throws<NotSupportedException>(() => untyped.Remove(replacement));
+        Assert.Throws<NotSupportedException>(() => untyped.Insert(0, replacement));
+        if (untyped.Count > 0)
+        {
+            Assert.Throws<NotSupportedException>(() => untyped[0] = replacement);
+            Assert.Throws<NotSupportedException>(() => untyped.RemoveAt(0));
+        }
+
+        var collection = Assert.IsAssignableFrom<ICollection>(values);
+        // A read-only wrapper can still leak its backing array through this interface.
+        Assert.Throws<NotSupportedException>(() => _ = collection.SyncRoot);
+        var genericCopy = new T[values.Count];
+        generic.CopyTo(genericCopy, 0);
+        var untypedCopy = new T[values.Count];
+        collection.CopyTo(untypedCopy, 0);
+        Assert.Equal(genericCopy, values);
+        Assert.Equal(untypedCopy, values);
+        if (values.Count > 0)
+        {
+            T original = values[0];
+            genericCopy[0] = replacement;
+            untypedCopy[0] = replacement;
+            Assert.Equal(original, values[0]);
+        }
     }
 }

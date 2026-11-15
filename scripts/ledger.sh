@@ -20,19 +20,37 @@
 # says which. An unknown answers "UNKNOWN", loudly. It never answers "0".
 #
 # Subcommands:
-#   sync [--if-stale]   refresh the mirror from GitHub. Loud and non-zero on failure.
+#   sync [--if-stale] [--full]
+#                       refresh the mirror from GitHub. Loud and non-zero on failure. With a mirror,
+#                       fetch only the issues updated since its newest update, less the overlap, and
+#                       merge them in. Without one, or with --full, refetch every issue.
 #   status              one-line backlog state for the SessionStart hook. Always exits 0.
 #   search <term>       grep the mirrored titles + bodies, open and closed. Prior-art lookup.
 #   show <number>       print one mirrored issue in full.
 #
 # Env: GH_TOKEN            a token, if `gh auth login` is not set up (Codex and CI need this).
 #      KE_LEDGER_STALE_AFTER  seconds before --if-stale refetches (default 900).
-#      KE_LEDGER_TIMEOUT      seconds before a fetch is abandoned (default 20).
+#      KE_LEDGER_TIMEOUT      seconds before a fetch is abandoned. Default 20 for an incremental
+#                             fetch and 120 for a full one.
+#      KE_LEDGER_OVERLAP      seconds an incremental fetch re-reads before the mirror's newest
+#                             update (default 3600).
+#
+# Why incremental: a full refetch carries every issue body. On 2026-11-15 it took 21 s for 1,787
+# issues, past both the old 20 s default and the 8 s the SessionStart hook allows, so the hot-path
+# refresh could never finish and the mirror went stale between manual syncs (issue #1802). The
+# REST issues list takes `since`, answers from the issue store rather than the search index (no
+# index lag and no 1,000-result cap) and returned a day of changes in under a second. The overlap
+# re-reads a window before the newest mirrored update, so an update the previous fetch could not
+# yet see is still picked up. It costs a few repeated issues per sync. A deleted or transferred
+# issue leaves no update to fetch, so it stays in the mirror until a --full refetch.
 
 set -uo pipefail
 
 STALE_AFTER=${KE_LEDGER_STALE_AFTER:-900}
-FETCH_TIMEOUT=${KE_LEDGER_TIMEOUT:-20}
+FETCH_TIMEOUT_OVERRIDE=${KE_LEDGER_TIMEOUT:-}
+FULL_FETCH_TIMEOUT=120
+DELTA_FETCH_TIMEOUT=20
+FETCH_OVERLAP=${KE_LEDGER_OVERLAP:-3600}
 FETCH_LIMIT=${KE_LEDGER_LIMIT:-2000}
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -89,9 +107,126 @@ cache_age() {
 
 # ---------------------------------------------------------------------------- sync
 
+# Reports a fetch that produced no usable payload. The caller leaves the mirror untouched: a
+# stale-but-true mirror beats a confidently-empty one.
+fetch_failed() {
+  local rc="$1" err_f="$2" reason
+  reason=$(head -3 "$err_f" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  [ -z "$reason" ] && reason="gh exited $rc with no diagnostic"
+  case "$reason" in
+    *401*|*"Bad credentials"*|*"auth login"*)
+      reason="$reason -- export GH_TOKEN or run: gh auth login" ;;
+  esac
+  printf 'ledger: sync FAILED, mirror NOT updated: %s\n' "$reason" >&2
+}
+
+# Records a good sync. The counts are read back from the mirror just written, never carried over.
+write_meta() {
+  local mode="$1" truncated="$2" repo="$3" meta_f
+  meta_f=$(mktemp) || die "mktemp failed"
+  jq -n \
+    --argjson total "$(jq 'length' "$issues")" \
+    --argjson open "$(jq '[.[] | select(.state == "OPEN")] | length' "$issues")" \
+    --argjson truncated "$truncated" \
+    --arg epoch "$(now_epoch)" \
+    --arg iso "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg repo "$repo" \
+    --arg mode "$mode" \
+    '{fetched_at_epoch: ($epoch | tonumber), fetched_at: $iso, repo: $repo, mode: $mode,
+      total: $total, open: $open, truncated: $truncated}' > "$meta_f" && mv "$meta_f" "$meta"
+}
+
+# Refetches every issue. --state all: closed issues must stay searchable, or a declined item gets
+# re-raised.
+sync_full() {
+  local out_f err_f rc count truncated
+  out_f=$(mktemp) || die "mktemp failed"
+  err_f=$(mktemp) || die "mktemp failed"
+  run_with_timeout "${FETCH_TIMEOUT_OVERRIDE:-$FULL_FETCH_TIMEOUT}" "$out_f" "$err_f" \
+    gh issue list --state all --limit "$FETCH_LIMIT" \
+      --json number,title,body,labels,url,state,updatedAt,createdAt
+  rc=$?
+
+  # A fetch counts as successful ONLY if gh said so AND the payload is really a JSON array.
+  if [ "$rc" -ne 0 ] || ! jq -e 'type == "array"' "$out_f" >/dev/null 2>&1; then
+    fetch_failed "$rc" "$err_f"
+    rm -f "$out_f" "$err_f"
+    return 1
+  fi
+
+  count=$(jq 'length' "$out_f")
+  truncated=false
+  [ "$count" -ge "$FETCH_LIMIT" ] && truncated=true
+  mv "$out_f" "$issues"
+  rm -f "$err_f"
+  write_meta full "$truncated" \
+    "$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo unknown)"
+
+  # A silent cap reads as "covered everything". Say it out loud instead.
+  if [ "$truncated" = true ]; then
+    printf 'ledger: WARNING mirror hit the %s-issue fetch cap; it may be incomplete. Raise KE_LEDGER_LIMIT.\n' \
+      "$FETCH_LIMIT" >&2
+  fi
+  return 0
+}
+
+# Fetches the issues updated since $1 and merges them into the mirror by number.
+sync_delta() {
+  local since="$1" out_f err_f delta_f merged_f rc truncated repo
+  out_f=$(mktemp) || die "mktemp failed"
+  err_f=$(mktemp) || die "mktemp failed"
+  delta_f=$(mktemp) || die "mktemp failed"
+  merged_f=$(mktemp) || die "mktemp failed"
+  run_with_timeout "${FETCH_TIMEOUT_OVERRIDE:-$DELTA_FETCH_TIMEOUT}" "$out_f" "$err_f" \
+    gh api --paginate "repos/{owner}/{repo}/issues?state=all&per_page=100&since=$since"
+  rc=$?
+
+  # --paginate prints one JSON array per page, so a good payload is one or more arrays. The REST
+  # list also returns pull requests, which the mirror never held. Each issue is reshaped to the
+  # fields and spelling a full fetch gets from `gh issue list --json`, so readers see one format.
+  if [ "$rc" -ne 0 ] || ! jq -s -e '
+        if length > 0 and all(.[]; type == "array") then add else error("not an issue list") end
+        | map(select(has("pull_request") | not)
+              | {number, title, body: (.body // ""),
+                 labels: [(.labels // [])[] | {id: .node_id, name, description: (.description // ""), color}],
+                 url: .html_url, state: (.state | ascii_upcase),
+                 updatedAt: .updated_at, createdAt: .created_at})' \
+        "$out_f" > "$delta_f" 2>/dev/null; then
+    fetch_failed "$rc" "$err_f"
+    rm -f "$out_f" "$err_f" "$delta_f" "$merged_f"
+    return 1
+  fi
+
+  # An updated issue replaces its old copy, a new one is added, and every other issue is kept.
+  if ! jq -s -e '
+        .[0] as $old | .[1] as $delta
+        | (reduce $delta[] as $i ({}; .[($i.number | tostring)] = true)) as $seen
+        | [$old[] | select($seen[(.number | tostring)] | not)] + $delta
+        | sort_by(-.number)' "$issues" "$delta_f" > "$merged_f" 2>/dev/null; then
+    rm -f "$out_f" "$err_f" "$delta_f" "$merged_f"
+    printf 'ledger: sync FAILED, mirror NOT updated: the mirror could not be merged. Run: scripts/ledger.sh sync --full\n' >&2
+    return 1
+  fi
+
+  truncated=$(meta_field truncated) || truncated=""
+  [ "$truncated" = true ] || truncated=false
+  repo=$(meta_field repo) || repo=""
+  [ -n "$repo" ] || repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo unknown)
+  mv "$merged_f" "$issues"
+  rm -f "$out_f" "$err_f" "$delta_f"
+  write_meta incremental "$truncated" "$repo"
+  return 0
+}
+
 cmd_sync() {
-  local if_stale=0
-  [ "${1:-}" = "--if-stale" ] && if_stale=1
+  local if_stale=0 full=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --if-stale) if_stale=1 ;;
+      --full) full=1 ;;
+      *) die "unknown sync option '$arg' (try: --if-stale | --full)" ;;
+    esac
+  done
 
   have_jq || die "jq is required (brew install jq)"
   command -v gh >/dev/null 2>&1 || die "gh is required (brew install gh)"
@@ -106,55 +241,22 @@ cmd_sync() {
   fi
 
   mkdir -p "$cache"
-  local out_f err_f rc
-  out_f=$(mktemp) || die "mktemp failed"
-  err_f=$(mktemp) || die "mktemp failed"
 
-  # --state all: closed issues must stay searchable, or a declined item gets re-raised.
-  run_with_timeout "$FETCH_TIMEOUT" "$out_f" "$err_f" \
-    gh issue list --state all --limit "$FETCH_LIMIT" \
-      --json number,title,body,labels,url,state,updatedAt,createdAt
-  rc=$?
-
-  # A fetch counts as successful ONLY if gh said so AND the payload is really a JSON array.
-  # Anything else leaves the previous mirror untouched: a stale-but-true mirror beats a
-  # confidently-empty one.
-  if [ "$rc" -ne 0 ] || ! jq -e 'type == "array"' "$out_f" >/dev/null 2>&1; then
-    local reason
-    reason=$(head -3 "$err_f" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
-    [ -z "$reason" ] && reason="gh exited $rc with no diagnostic"
-    case "$reason" in
-      *401*|*"Bad credentials"*|*"auth login"*)
-        reason="$reason -- export GH_TOKEN or run: gh auth login" ;;
-    esac
-    rm -f "$out_f" "$err_f"
-    printf 'ledger: sync FAILED, mirror NOT updated: %s\n' "$reason" >&2
-    return 1
+  # An incremental fetch needs a good mirror to merge into and the newest update it holds. A mirror
+  # with no recorded good sync, or one jq cannot read, takes the full refetch instead.
+  local since=""
+  if [ "$full" = 0 ] && [ -f "$issues" ] && cache_age >/dev/null; then
+    since=$(jq -r --argjson overlap "$FETCH_OVERLAP" '
+      [.[] | .updatedAt // empty] | max
+      | if . == null then empty else fromdateiso8601 - $overlap | todateiso8601 end' \
+      "$issues" 2>/dev/null) || since=""
   fi
 
-  local count truncated
-  count=$(jq 'length' "$out_f")
-  truncated=false
-  [ "$count" -ge "$FETCH_LIMIT" ] && truncated=true
-
-  mv "$out_f" "$issues"
-  jq -n \
-    --argjson total "$count" \
-    --argjson open "$(jq '[.[] | select(.state == "OPEN")] | length' "$issues")" \
-    --argjson truncated "$truncated" \
-    --arg epoch "$(now_epoch)" \
-    --arg iso "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg repo "$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo unknown)" \
-    '{fetched_at_epoch: ($epoch | tonumber), fetched_at: $iso, repo: $repo,
-      total: $total, open: $open, truncated: $truncated}' > "$meta"
-  rm -f "$err_f"
-
-  # A silent cap reads as "covered everything". Say it out loud instead.
-  if [ "$truncated" = true ]; then
-    printf 'ledger: WARNING mirror hit the %s-issue fetch cap; it may be incomplete. Raise KE_LEDGER_LIMIT.\n' \
-      "$FETCH_LIMIT" >&2
+  if [ -n "$since" ]; then
+    sync_delta "$since"
+  else
+    sync_full
   fi
-  return 0
 }
 
 # ---------------------------------------------------------------------------- status
@@ -257,6 +359,6 @@ case "$cmd" in
   search) cmd_search "$@" ;;
   show)   cmd_show "$@" ;;
   help|-h|--help)
-    sed -n '5,30p' "$0" | sed 's/^# \{0,1\}//' ;;
+    awk 'NR >= 5 && /^#/ { sub(/^# ?/, ""); print; next } NR >= 5 { exit }' "$0" ;;
   *) die "unknown subcommand '$cmd' (try: sync | status | search | show)" ;;
 esac

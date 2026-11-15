@@ -4,10 +4,133 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 23.12.1
+## 23.13.1
+
+2026-11-16
+
+- `GridPathPlanner` skips A* when a bounded weak-component certificate proves that every admitted goal is
+  disconnected and no component node improves on the start's existing physical progress score. The cached
+  `Unreachable` result is unchanged for every expansion budget. Requests with possible progress keep their
+  existing search and useful `Partial` routes. Connectivity is built once per immutable graph, with no public
+  API or navigation-format change ([#1290](https://github.com/APKiwiOrg/KhaozEngine/issues/1290)).
+- `NavSpace` and `NavTraversalGraph` now own immutable layer and link snapshots behind their existing
+  `IReadOnlyList` properties. Collection casts and `ICollection.SyncRoot` cannot expose their backing storage,
+  so a caller cannot replace graph inputs after a planner caches its connectivity. Input copying, element
+  identity, enumeration order and allocation-free query reads are preserved.
+- `Draw` and `DrawIndexed` require a graphics pipeline bound in the current recording, and `Dispatch` its own compute
+  pipeline, on Metal, Vulkan and both Direct3D 11 drivers. A missing pipeline throws `GpuRecordingStateException`
+  with `GpuRecordingStateRefusal.GraphicsPipelineNotBound` or `ComputePipelineNotBound`, `Backend` and `Command`
+  before any native call, recorded operation, opened pass or pending clear is spent. Metal used to throw a plain
+  `InvalidOperationException`, which the new exception still derives from, while Vulkan and Direct3D 11 could emit
+  the draw with stale or missing state. Pipeline bindings stay separate, survive framebuffer and pass changes, and
+  reset at `Begin` ([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+- `SetPipeline` and `SetComputePipeline` refuse a null pipeline with `ArgumentNullException` (`ParamName` `p`) on
+  Metal, Vulkan and both Direct3D 11 drivers, before any native call, recorded operation or bound-state change, and
+  the pipeline bound before the refused call stays usable. Deferred Direct3D 11 used to record the null bind and fail
+  only at replay after `Submit`, immediate Direct3D 11 named the parameter `pipeline`, and Vulkan threw
+  `GpuResourceOwnershipArgumentException`. A null bind was never a supported unbind
+  ([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
+- Native Vulkan `WaitForIdle` destroys the resources disposed before the call and frees the memory chunks their
+  destruction releases, so a headless tool, render-to-texture service or test fixture that never presents no longer
+  grows device memory without bound. `Present` still reclaims every frame. A resource that newer unfinished work
+  still uses stays held, and a failed submission no longer strands the disposals gated on its value. A loop that
+  replaces resources without presenting calls `WaitForIdle` now and then
+  ([#1199](https://github.com/APKiwiOrg/KhaozEngine/issues/1199)).
+- Prop clusters keep individual and merged HLOD coverage complementary when the draw-radius exit band overlaps the
+  HLOD crossfade. Exit progress `e` reserves one shared gap, so individuals keep `mask >= e + t * (1 - e)` and the
+  merged complement keeps `mask < t * (1 - e)` in colour, shadows and selected outlines, and the pair fades out
+  together with no doubled coverage. The merged mesh keeps that phase after the individuals are skipped, so no
+  surface sample disappears and reappears at the handoff gate. Separated bands and exits that start after the
+  individuals are skipped keep their draw state ([#1542](https://github.com/APKiwiOrg/KhaozEngine/issues/1542)). The
+  reserved gap moves with `t`, so samples below `t * (1 - e)` can return on the merged mesh during an overlapping exit
+  ([#1810](https://github.com/APKiwiOrg/KhaozEngine/issues/1810)).
+- An exit band that starts before the HLOD handoff no longer submits the merged mesh early. Until the crossfade
+  starts, or until a hard swap reaches `HlodDistance`, only the individuals draw with their ordinary exit fade, so the
+  simplified HLOD silhouette no longer shows over the props it replaces and no surface is covered twice. A hard swap
+  turns the merged mesh on at `HlodDistance` with the same exit fade. Colour, shadows and selected outlines share the
+  decision ([#1807](https://github.com/APKiwiOrg/KhaozEngine/issues/1807)).
+- Native `MapEditSession.Mutate` callbacks keep every edit they make before or after staging a command, including
+  roots outside its write set such as foliage and `DisplayName`, replaced collections and shared members the callback
+  restores. The final document publishes as one validated snapshot with matching effects, undo and redo, and a
+  callback that only stages its command keeps that command's own effects and single history entry. While the
+  callback runs, native publication, undo, redo, session lifecycle calls (open, create, save, window moves,
+  conversions, retile and closure binding), prefab publication and collider height edits refuse before changing
+  session state or writing a resource file, with `MapDocumentRefusal.ToolPublicationDuringMutationUnsupported`,
+  `DocumentId` and `Operation` on `MapDocumentException` or `MapSessionException`. `NativeEdited` handlers run after
+  the callback closes and can save. Staging a command into anything but the callback's own candidate refuses with
+  `ToolMutationCandidateRequired` ([#1481](https://github.com/APKiwiOrg/KhaozEngine/issues/1481)).
+- Movement queries bulk clear their water coverage contact buffers on return, instead of scanning them for
+  nondefault runs, when the writer is the engine's own `OrdinaryMovementEnvironment` pin or the validated boundary
+  copy. Both publish complete contacts or nothing, so the faster clear cannot miss a partial write. Consumer pins
+  keep the original cleanup, which also clears partial writes left by a refusal or throw, including default-equal
+  values such as negative zero. Results, refusals and allocation are unchanged, with no public API change
+  ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
+- Contact support proposals reuse one per-thread admission result for the canonical upright pose instead of
+  rebuilding the pose operator on every proposal. The cached Boolean is keyed by the exact quaternion bits and the
+  native floating-point controls, applies only to `(0, 0, 0, 1)` on .NET 10 x64 and arm64 with hardware SIMD, and
+  still runs the live position, radius and probe length checks on every call. Other rotations, signed-zero
+  variants, reference evaluation and platforms whose controls cannot be read use the original predicate. Results
+  are unchanged, with no public API change ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
+- Catalog `ImportBundleAsync` and `ImportTextBundleAsync` hold the draft freeze from staging through publication on
+  the in-memory, SQLite and SQL Server stores. A rival edit, discard or import that arrives meanwhile is refused with
+  `ContentAuthoringRefusal.PublishInProgress` and can retry once the import ends. It used to join the imported draft,
+  where it shipped unreviewed inside version 1 or was lost by a failed import's reset. A failure before commit still
+  resets the store to empty, and a failure after commit, such as a pack sweep error, keeps the published version and
+  any later draft ([#1252](https://github.com/APKiwiOrg/KhaozEngine/issues/1252)). The freeze names only a base
+  version, so a failed ordinary publish at base 0 racing the import can still release it early
+  ([#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813)).
+
+## 23.13.0
 
 2026-11-14
 
+- Tile ground can carry normal, roughness and height maps. `TileGroundLayerImage` gains `SurfaceRgba` (normal in
+  rgb with the glTF convention, roughness in alpha), `NormalMapped`, `RoughnessMapped`, `HeightMapped` (height rides
+  the albedo alpha), `HeightBlendSharpness`, `FeatherBreakup` and `AntiTiling`, and `Scene3D.LoadTileGroundMaterial`
+  gains an overload taking the surface array's own width and height. A set that uses any of them draws through relief
+  programs lit by the existing sun and ambient terms: per-pixel normals in a tangent frame built for each
+  world-aligned projection, roughness steering the specular lobe, with 0.5 reproducing the plain lobe exactly, and
+  height-blended corners and feathered overlays. Each mesh draws with the cheapest program the slots its vertices
+  name need, so ground naming no relief layer keeps the plain program inside a relief set, and a set with no relief
+  layer creates no relief pipeline and keeps the plain shader bytes, pixels and cost. `TileGroundRelief.Validate`
+  refuses a map flag without surface bytes, surface bytes without a map flag, a sharpness outside 1 to 64 on a
+  height-mapped layer, a breakup outside 0 to 1 and an undefined anti-tiling value with
+  `TileGroundReliefArgumentException`, `TileGroundReliefRefusal`, `LayerIndex` and `Value`, and the upload refuses
+  surface bytes of the wrong length with `TileGroundUploadRefusal.SurfaceByteLengthMismatch`. The Render3D README's
+  relief section gives the bindings, memory and measured frame cost
+  ([#1799](https://github.com/APKiwiOrg/KhaozEngine/issues/1799)).
+- Height blending resolves blended corners and feathered overlay edges along each material's height map, so stones
+  stand proud of the dirt between them instead of fading evenly. A weight of 0 stays 0, which keeps shared corners,
+  region borders and both ground LODs seamless, and materials without a height map stay exactly linear among
+  themselves. Sharpness is a per-material choice, averaged by weight over the height-mapped materials present
+  ([#1799](https://github.com/APKiwiOrg/KhaozEngine/issues/1799)).
+- `FeatherBreakup` wanders a feathered overlay's edge inward with deterministic world-space noise, so a track or
+  apron no longer fades along the tile grid. It needs no maps and never lifts the overlay at the tile boundary
+  ([#1799](https://github.com/APKiwiOrg/KhaozEngine/issues/1799)).
+- `TileGroundAntiTiling.Offset` and `Rotate` hex-tile a material's top-down taps through a third program that only
+  meshes naming such a layer pay for. It hides the repeat of stochastic textures such as grass and dirt, and breaks a
+  mosaic of discrete stones, so cobble and flagstones stay at `None` until
+  [#1803](https://github.com/APKiwiOrg/KhaozEngine/issues/1803) designs mosaic variation.
+- Ground catalog materials take `normalTexture`, `roughnessTexture`, `heightTexture`, `heightBlendSharpness`,
+  `feather` (`widthMetres`, `breakup`) and `antiTiling`, as `GroundMaterial.NormalTexture`, `RoughnessTexture`,
+  `HeightTexture`, `HeightBlendSharpness`, `GroundMaterialFeather` and `GroundMaterialAntiTiling`. The loader refuses
+  a sharpness without a height map or outside 1 to 64, a feather width that is not positive and finite, a breakup
+  outside 0 to 1 and an undefined anti-tiling value with the new `TileWorldRefusal` members
+  `GroundMaterialHeightSharpnessWithoutHeight`, `GroundMaterialHeightSharpnessOutsideRange`,
+  `GroundMaterialFeatherWidthInvalid`, `GroundMaterialFeatherBreakupOutsideRange` and
+  `GroundMaterialAntiTilingUndefined`. `TileGroundMaterials.Build` packs the maps, keeping one size per array with
+  the albedo and surface arrays independent, and refuses relief on the reserved missing layer and surface bytes of
+  the wrong length with `TileGroundMaterialSetRefusal.MissingLayerHasRelief` and `SurfaceByteLengthMismatch`. A
+  feathered overlay fades over its material's `feather.widthMetres`, else `OverlayFeatherWidthMetres`, still capped
+  at half a tile and inside its own tiles. `TileWorldHash.OfCatalogs` covers the new fields, and a catalog without
+  them digests, builds and meshes as before. Ground triangles, raycast, colliders and navigation are unchanged. MapDoc
+  native terrain stays albedo only and its scene upload refuses relief layers
+  ([#1800](https://github.com/APKiwiOrg/KhaozEngine/issues/1800)).
+- `Scene3D.LoadTileGroundMaterial` frees every resource it made when the backend refuses one partway, whether the
+  params buffer, its write, the sampler override or either resource set, before the refusal propagates, so the
+  caller owns nothing after a throw. A refused params buffer used to leave the albedo array without an owner, and a
+  refused set the buffer and sampler as well
+  ([#1799](https://github.com/APKiwiOrg/KhaozEngine/issues/1799)).
 - A `TileWorldView` can be disposed after its `Scene3D`, including after `Render3DSnapshot.CaptureWithBackend` has
   disposed the scene the view was built in. Every `Scene3D` resource unload (`UnloadMesh`, `UnloadProp`,
   `UnloadSkinnedMesh`, `UnloadTexture`, `UnloadSurfaceMaps`, `UnloadSplatMaterial`, `UnloadTileGroundMaterial` and

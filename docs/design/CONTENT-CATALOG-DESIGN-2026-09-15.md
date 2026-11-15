@@ -3493,6 +3493,15 @@ staging. The refusal carries `MemberName`, `RowEditCount`, `TextEditCount` and `
 seed cannot publish unreviewed operator work or discard it during a failed import's reset. An open draft
 with no work does not block.
 
+The pending-work check and staging freeze the complete imported draft in one gate or transaction. Rival
+draft-changing intents refuse with `PublishInProgress` and `publish-in-progress`, naming `MemberName` and
+`FrozenForBaseVersion` 0, until commit or failure reset. The ordinary publish consumes that frozen draft.
+An unfinished import retains the freeze through its reset, so no acknowledged edit can join work the reset
+removes while the freeze holds. The marker records only a base version, so an ordinary publish at base 0 that
+adopts the frozen draft and fails before commit releases it early. Import ownership of the freeze is tracked in
+[#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813). Reset checks that no version committed in the same critical section as deletion. A failure during
+the post-commit sweep or bulk-import audit therefore preserves version 1 and any subsequent draft.
+
 That single rule is the answer to the reference consumer's entire seeding class of defects, and it is worth naming them
 because the rule looks unhelpfully strict until they are on the page:
 

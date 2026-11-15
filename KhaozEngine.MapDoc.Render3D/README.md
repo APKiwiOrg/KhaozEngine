@@ -84,7 +84,9 @@ deterministically at `TileGroundMaterialConfig.MaxMaterials`, keeping every cano
 together. A face that cannot fit refuses with `CapacityExceeded`. Albedo images within a set need equal
 dimensions. A textureless layer is solid white at that size with the material's base-colour tint. Terrain
 uses the ground pipeline's default tiling and base specular strength. Declared normal and roughness maps
-produce typed `MapTerrainFinding` entries, since this pipeline consumes albedo only.
+produce typed `MapTerrainFinding` entries, since this pipeline consumes albedo only. The ground pipeline's relief
+programs can draw those maps, and the scene resource upload this pipeline feeds still carries plain layers only,
+which is https://github.com/APKiwiOrg/KhaozEngine/issues/1800.
 
 `MapRenderTransform` subtracts resource anchors before local pose and focus rounding. The format-neutral
 `Scene3D.DrawAnchored` retains the integer `RenderAnchor` through rigid grouping, both shadow paths and
@@ -150,6 +152,15 @@ The shared `PropLayer.PlacementLayer` native overload freezes the actual instanc
 caller thresholds. Both individual fallback and accepted proxies consume that shared layer. The released
 per-cluster centre-distance coverage uses the complete cell area. Layer outer fade width equals
 `HlodCrossfadeWidth`, including placement fades composed before LOD coverage. Each cell is independent.
+When the outer fade overlaps the HLOD handoff and starts before the individual skip gate, roof proxies
+use the shared composed coverage too. With handoff progress `t` and exit progress `e`, within the handoff
+band the proxy is absent at or below `PropHlod.HlodMergedSkipAt`. Above that gate it uses dissolve
+`t * (1 - e)` and `DissolveComplement = 1`, retaining that phase after individuals are skipped to avoid a
+phase reversal at their skip gate. Separated bands keep the ordinary proxy exit.
+Before the handoff begins, the outer fade submits only individuals
+([#1807](https://github.com/APKiwiOrg/KhaozEngine/issues/1807)). The overlap gap moves with `t`, so previously
+faded low-noise samples can return on the proxy during the handoff, a known limitation tracked in
+[#1810](https://github.com/APKiwiOrg/KhaozEngine/issues/1810).
 `NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, homogeneous roof roles and vertex precision before invoking
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
 Standalone cluster construction uses the same admitted merge envelope as batch construction. Its

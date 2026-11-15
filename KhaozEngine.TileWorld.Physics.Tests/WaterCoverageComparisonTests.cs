@@ -48,6 +48,82 @@ public sealed class WaterCoverageComparisonTests
         Assert.ThrowsAny<XunitException>(() => Compare(frozen, a, b, [], []));
     }
 
+    [Theory]
+    [InlineData("availability")]
+    [InlineData("written-spans")]
+    [InlineData("required-spans")]
+    [InlineData("written-contacts")]
+    [InlineData("required-contacts")]
+    [InlineData("error")]
+    [InlineData("closure")]
+    [InlineData("policy")]
+    [InlineData("scope")]
+    [InlineData("closure-reference")]
+    [InlineData("scope-reference")]
+    public void ResultAndRefusalIdentifiersCannotBeIgnoredByTheComparator(string field)
+    {
+        // #1756. Value equality alone misses the error sign bit and current caller references.
+        var id = MovementWaterFieldTests.Identity;
+        var expected = new MovementCoverageResult(MovementAvailability.Known, 1, 1, 1, 1, 0, id);
+        var changedId = new MovementQueryIdentity(
+            field == "closure" ? "other" : field == "closure-reference" ? new(id.ClosureId.ToCharArray()) : id.ClosureId,
+            field == "policy" ? id.PolicyVersion + 1 : id.PolicyVersion,
+            field == "scope" ? "other" : field == "scope-reference" ? new(id.ScopeDigest.ToCharArray()) : id.ScopeDigest);
+        bool refusal = field is "availability" or "required-spans" or "required-contacts";
+        if (refusal) expected = new(MovementAvailability.CapacityExceeded, 0, 1, 0, 1, 0, id);
+        var actual = new MovementCoverageResult(
+            field == "availability" ? MovementAvailability.Unresolved : expected.Availability,
+            field == "written-spans" ? 2 : expected.SpansWritten,
+            field is "written-spans" or "required-spans" ? 2 : expected.RequiredSpanCapacity,
+            field == "written-contacts" ? 2 : expected.ContactsWritten,
+            field is "written-contacts" or "required-contacts" ? 2 : expected.RequiredContactCapacity,
+            field == "error" ? BitConverter.Int32BitsToSingle(int.MinValue) : 0, changedId);
+        WaterCoverageComparison.Equal(expected, expected, [], [], [], []);
+        Assert.ThrowsAny<XunitException>(() => WaterCoverageComparison.Equal(expected, actual, [], [], [], []));
+    }
+
+    [Theory]
+    [InlineData("domain-world")]
+    [InlineData("domain-local")]
+    [InlineData("space-world")]
+    [InlineData("space-local")]
+    [InlineData("lower-boundary")]
+    [InlineData("upper-boundary")]
+    [InlineData("boundary")]
+    [InlineData("free-surface")]
+    [InlineData("region")]
+    [InlineData("overlap")]
+    [InlineData("span-overlap")]
+    public void CallerContactIdentifiersAndClassificationsCannotBeIgnored(string field)
+    {
+        var a = FrozenWaterComparison.ContactSentinel;
+        var b = new MovementDomainContact(
+            new(Copy("domain-world", a.Domain.WorldId), Copy("domain-local", a.Domain.LocalId)),
+            new(Copy("space-world", a.Space.WorldId), Copy("space-local", a.Space.LocalId)),
+            new(a.Interval.LowerY, a.Interval.UpperY, a.Interval.NominalSurfaceY,
+                field != "free-surface", Copy("lower-boundary", a.Interval.LowerBoundaryId),
+                Copy("upper-boundary", a.Interval.UpperBoundaryId)),
+            a.IntervalColumnXZ, a.Normal, a.Fraction, Copy("boundary", a.BoundaryId),
+            field == "region" ? a.CoverageRegionHandle + 1 : a.CoverageRegionHandle,
+            field == "overlap" ? MovementContactOverlap.Overlapping : a.Overlap,
+            field == "span-overlap" ? MovementContactOverlap.Overlapping : a.SpanOverlap);
+        Compare(false, [], [], [a], [a]);
+        Assert.ThrowsAny<XunitException>(() => Compare(false, [], [], [a], [b]));
+        string Copy(string name, string value) => field == name ? new(value.ToCharArray()) : value;
+    }
+
+    [Theory]
+    [InlineData("start")]
+    [InlineData("count")]
+    [InlineData("dry")]
+    public void CallerSpanClassificationsCannotBeIgnored(string field)
+    {
+        var a = new MovementCoverageSpan(0, 1, 0, 1, true);
+        var b = new MovementCoverageSpan(0, 1, field == "start" ? 1 : 0, field == "count" ? 2 : 1, field != "dry");
+        Compare(false, [a], [a], [], []);
+        Assert.ThrowsAny<XunitException>(() => Compare(false, [a], [b], [], []));
+    }
+
     static void Compare(bool frozen, MovementCoverageSpan[] a, MovementCoverageSpan[] b,
         MovementDomainContact[] c, MovementDomainContact[] d)
     {

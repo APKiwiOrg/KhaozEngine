@@ -38,6 +38,7 @@ public sealed record ContentPackWrite(int ObjectsWritten, long BytesWritten);
 /// supplied. Cleanup after the sweep must leave a later draft alone. A <see cref="ContentPublisher.PrepareAsync"/>
 /// driven on its own therefore leaves a frozen draft behind, deliberately: half a publish is exactly the
 /// state the marker describes, and the next baseline read or the next publish clears it.
+/// Bundle imports retain the freeze on failure until their own reset finishes.
 /// </para>
 /// </summary>
 public sealed class ContentPublishCommit
@@ -90,6 +91,12 @@ public sealed class ContentPublishCommit
     /// </summary>
     public ContentPackSweepResult? LastSweep { get; private set; }
 
+    /// <summary>Pauses an import after staging and before the publish acquires its snapshot.</summary>
+    internal Action? BeforeDraftFreezeForTests { get; set; }
+
+    /// <summary>Pauses an attempt after freeze cleanup and before the import can reset its staging.</summary>
+    internal Action? AfterPublishAttemptForTests { get; set; }
+
     /// <summary>
     /// The whole publish: steps 1 to 8 through the pipeline, then 9, 10 and 11 here.
     /// <para>
@@ -103,9 +110,21 @@ public sealed class ContentPublishCommit
     /// <param name="cancellationToken">Cancels the publish.</param>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     /// <exception cref="ContentAuthoringException">There is no open draft, the base version moved, or the candidate did not validate.</exception>
-    public async Task<ContentPublishResult> PublishAsync(
+    public Task<ContentPublishResult> PublishAsync(
         ContentPublishRequest request,
         CancellationToken cancellationToken = default)
+        => PublishCoreAsync(request, retainFreeze: false, cancellationToken);
+
+    /// <summary>An import owns the freeze through its failure reset rather than releasing it here.</summary>
+    internal Task<ContentPublishResult> PublishImportAsync(
+        ContentPublishRequest request,
+        CancellationToken cancellationToken)
+        => PublishCoreAsync(request, retainFreeze: true, cancellationToken);
+
+    async Task<ContentPublishResult> PublishCoreAsync(
+        ContentPublishRequest request,
+        bool retainFreeze,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -113,6 +132,7 @@ public sealed class ContentPublishCommit
         var freeze = new ContentDraftFreezeRelease(_store, request.ExpectedBaseVersion);
         try
         {
+            BeforeDraftFreezeForTests?.Invoke();
             // A store that implements the text companion publishes through it, row-only work included, so
             // every version it commits is text complete and no text it holds is left behind. A store that
             // does not keeps exactly the route below.
@@ -159,7 +179,11 @@ public sealed class ContentPublishCommit
         {
             // A commit consumed its own draft. A later draft may already be frozen during the sweep, so
             // cleanup is owed only before commit and is scoped to this attempt's base version.
-            await ClearTheFreezeAsync(freeze).ConfigureAwait(false);
+            if (!retainFreeze)
+            {
+                await ClearTheFreezeAsync(freeze).ConfigureAwait(false);
+            }
+            AfterPublishAttemptForTests?.Invoke();
         }
     }
 

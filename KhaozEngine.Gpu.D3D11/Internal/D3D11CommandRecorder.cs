@@ -47,6 +47,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// offset against a set with no dynamic uniform buffer, refused by the emitter at the bind call (see
     /// <see cref="D3D11BindFlush.RequireOffsetCarried"/>). Both drivers also require a framebuffer at the draw
     /// call, through <see cref="D3D11BindResolve.RequireDrawFramebuffer"/> before any bind flush or draw op.
+    /// Draws and dispatches require their own recording's pipeline before reaching either emitter.
     /// </para>
     /// </summary>
     internal sealed partial class D3D11CommandRecorder<TEmitter> : IGpuCommandList, ID3D11SwapchainBindTracking
@@ -99,6 +100,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _recording = true;
             IsSealed = false;
             _boundSwapchain = false;
+            _graphicsPipelineBound = false;
+            _computePipelineBound = false;
             _emitter.Begin();
         }
 
@@ -161,7 +164,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void SetPipeline(IGpuPipeline p)
         {
             RequireRecording();
+            ArgumentNullException.ThrowIfNull(p);
             _emitter.SetPipeline(p);
+            _graphicsPipelineBound = true;
         }
 
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
@@ -210,20 +215,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
-            RequireRecording();
+            RequirePipeline(compute: false);
             _emitter.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
         }
 
         /// <summary>One instance from vertex zero, exactly as the incumbent forwarded it.</summary>
         public void Draw(uint vertexCount)
         {
-            RequireRecording();
+            RequirePipeline(compute: false);
             _emitter.Draw(vertexCount, 1u, 0u, 0u);
         }
 
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
         {
-            RequireRecording();
+            RequirePipeline(compute: false);
             _emitter.DrawIndexed(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
         }
 
@@ -302,7 +307,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void SetComputePipeline(IGpuComputePipeline p)
         {
             RequireRecording();
+            ArgumentNullException.ThrowIfNull(p);
             _emitter.SetComputePipeline(p);
+            _computePipelineBound = true;
         }
 
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
@@ -319,7 +326,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         {
-            RequireRecording();
+            RequirePipeline(compute: true);
             _emitter.Dispatch(groupCountX, groupCountY, groupCountZ);
         }
 

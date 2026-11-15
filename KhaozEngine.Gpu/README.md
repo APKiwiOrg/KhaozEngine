@@ -777,6 +777,8 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 | `GpuRecordingStateException`, `GpuRecordingStateRefusal.EndWithoutRecording` | End before a recording has begun or after a failed recording was abandoned | `Backend`, `Command` |
 | `GpuRecordingStateException`, `GpuRecordingStateRefusal.RecordingAlreadySealed` | End when the recording is already sealed | `Backend`, `Command` |
 | `GpuRecordingStateException`, `GpuRecordingStateRefusal.SubmissionWithoutSeal` | submission of a command list without a sealed recording | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.GraphicsPipelineNotBound` | Draw or DrawIndexed without a graphics pipeline in this recording | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.ComputePipelineNotBound` | Dispatch without a compute pipeline in this recording | `Backend`, `Command` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotEnded` | resolving or awaiting a batch that has not ended | `Command`, `Count` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotRecording` | a timestamp write or tail arm before the batch begins | `Command` |
 | `GpuTimestampRangeException`, `GpuTimestampRefusal.FinalIndexRequired` | arming any index except the batch final index | `ParamName`, `ActualValue`, `FinalIndex`, `Count` |
@@ -790,6 +792,11 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 | `GpuTimestampUnsupportedException`, `GpuTimestampRefusal.TimestampUnsupported` | timestamps when the device or adapter has no timestamp capability | `Backend`, `Command`, `Detail` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.UnresolvedBatch` | beginning a batch while the preceding batch is unresolved | `Count`, `Backend` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.WrongRecording` | timestamp work on another list, command buffer or recording | `Backend`, `Command`, `RecordingId` |
+
+`IGpuCommandList.SetPipeline(null)` and `SetComputePipeline(null)` throw plain `ArgumentNullException`
+with `ParamName` equal to `p` at the call on every backend. Refusal precedes native commands, recorded
+operations and bound-state changes. Null is not an unbind operation, and the prior binding remains usable
+([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
 
 Ownership checks also cover framebuffer attachment adapters, pipeline and resource-set binds, uploads,
 completed staging-buffer reads and swapchain-copy command lists. A null slot in a pipeline's layout

@@ -9062,8 +9062,9 @@ A kit with no `lodFile` (or `lodDistance: 0`) keeps its full mesh at every dista
 opt-in. The engine ships **no mesh decimator**, so `ke-propbake` does not generate the LOD mesh: author the
 low-poly glTF by hand and place it beside the full one. On the streamed path, set `PropLayer.FadeBandWidth`,
 `LodMeshes`/`LodPartMeshes`, and `LodDistance` (via the `ScatterLayer`/`CompanionLayer` factory params) and
-`Scene3DChunkSink.Draw` threads them through for you. Animated props and cluster impostors (HLOD) are later
-sub-projects.
+`Scene3DChunkSink.Draw` threads them through for you. Cluster HLOD ships through `PropLayer.WithHlod`,
+described in [Far props: HLOD merged clusters](#far-props-hlod-merged-clusters). Animated props and cluster
+impostors remain later work.
 
 ### GLB requirements for the flat kit path
 
@@ -9411,9 +9412,13 @@ row-major masks. Exit bits 0 through 7 are directed and match `(1,0)`, `(-1,0)`,
 `(1,1)`, `(1,-1)`, `(-1,1)`, and `(-1,-1)`. `NavTraversalGraph(NavSpace space, float agentRadius,
 float agentHeight, IReadOnlyList<NavTraversalLayer> layers, IReadOnlyList<NavLink> links)` copies masks,
 source topology, and the accepted read-only link subset, then validates matching dimensions, exits,
-accepted endpoints, and source links. Its `Space`, `Layers`, and `Links` getters expose those owned
-snapshots, while `AgentRadius`, `AgentHeight`, `IsNodePassable`, and `CanTraverse` expose the profile
-contract. Both query methods return false outside bounds.
+accepted endpoints, and source links. Its `Space`, `Layers`, and `Links` getters expose owned immutable
+snapshots behind the existing `IReadOnlyList` properties. `NavSpace` uses the same ownership rule for its
+layers and links. Generic and non-generic collection casts refuse mutation, including backing-storage
+access through `ICollection.SyncRoot`, so cached planner connectivity cannot be invalidated by a caller.
+The immutable grids and traversal layers keep their element identity and order. `AgentRadius`,
+`AgentHeight`, `IsNodePassable`, and `CanTraverse` expose the profile contract. Both query methods return
+false outside bounds.
 
 Pass the graph to `GridPathPlanner(NavSpace space, NavTraversalGraph traversal, float hopCostCells = 4f)`.
 The supplied space must match the graph's source topology exactly, and each query radius must equal
@@ -9435,6 +9440,14 @@ NavPath path = planner.FindPath(start, goal, agentRadius: 0.4f);   // PathQueryB
 // path.Status: Complete (reached the goal), Partial (ran out of budget, waypoints reach as far as it got),
 // or Unreachable (no route, or an endpoint failed to snap onto a passable cell within SnapRadius)
 ```
+
+After normal snapping and goal admission, a bounded disconnected-terminal certificate can return the
+same `Unreachable` result without A*. It requires all admitted goals outside the start's weak component
+and no strict physical progress anywhere in that component. Disconnected goals with possible progress
+still run the search and retain their useful `Partial` routes. Equal component labels, exceeded proof
+caps and uncertainty also retain the search. The
+[Navigation planner contract](../KhaozEngine.Navigation/README.md#path-planning-ipathplanner--gridpathplanner--pathquerybudget)
+owns the construction/storage bounds and exact proof limits. No public API or bake format changes.
 
 For a bounded goal region, construct `NavGoalRegion(Vector3 anchor, float horizontalExtent,
 Func<Vector3, bool> contains)` and call the additive `IRegionPathPlanner.FindPath(Vector3 start,
@@ -9612,7 +9625,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.13.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10218,7 +10231,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.13.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10984,6 +10997,10 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   atomically with untouched spans, including after checkpoint restores. The capsule crown and
   nearest-point cylinder admission witness resolve #1487 without bypassing full admission, roof,
   proposal, axis or lowest-contact proofs. A declined certificate retains complete traversal.
+  Bepu reuses only the proposal pose admission Boolean for canonical identity rotation, with exact
+  quaternion bits and native FP controls in one thread-local slot. Live position bounds and probe
+  dimensions still run every call. Other rotations, unsupported readers/runtimes and reference
+  evaluation use the original predicate. See the backend README for its qualification and memory bound.
   See the [backend source/work contract](../KhaozEngine.Physics.Bepu/README.md#support-source-and-curved-work-contract)
   and [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
@@ -11089,7 +11106,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.13.1" />
 ```
 
 ```csharp
@@ -11989,6 +12006,20 @@ Across `crossfadeWidth` the two crossfade - the props dissolve out and the merge
 the rigid-dissolve primitive. Both halves use the same threshold `t`: individuals keep `mask >= t`, and the merged
 half sets `DissolveComplement = 1` to keep `mask < t` in colour and shadow. Selected outlines use the same split.
 With one active representation handoff, coincident surfaces cover each noise value exactly once.
+When the draw-radius exit band overlaps the HLOD band, its progress `e` reserves one shared gap instead:
+individuals keep `mask >= e + t * (1 - e)`, and the merged complement keeps `mask < t * (1 - e)`.
+The reserved gap has width `e`, but its location moves with `t`. Samples below `t * (1 - e)` can return on the
+merged mesh during an overlapping exit, a known limitation tracked in
+[#1810](https://github.com/APKiwiOrg/KhaozEngine/issues/1810). Colour, shadows and selected outlines use this
+same composition. The individual emitter still takes the maximum of this floor and each placement's own exit
+fade. If the exit starts before the individual skip gate, the merged mesh keeps the complement past that gate
+and the crossfade end. Its threshold reaches `1 - e` at `t = 1` and fades to nothing at `DrawRadius`, without
+reversing the noise phase.
+Before the merged skip gate, only individuals draw, keeping `mask >= e`. The exit band cannot enable the merged
+mesh before `PropHlod.DrawsHlodMerged` admits the handoff
+([#1807](https://github.com/APKiwiOrg/KhaozEngine/issues/1807)). A hard swap enables the merge at `HlodDistance`,
+where its ordinary exit fade keeps the same noise set as the individuals. Exits starting at or after the
+individual skip gate retain the ordinary merged exit, and separated bands keep their existing draw state.
 Overlapping individual LOD and HLOD bands retain their existing three-way gap composition.
 Different silhouettes can still expose holes because
 they sample different world positions (#1296). The transition remains deterministic by distance with no
@@ -12012,7 +12043,8 @@ every retained handle exactly once.
 
 Under `ShadowMode.ShadowMap`, both halves use the same complementary coverage as colour, preserving the full
 caster at coincident surfaces (#391). The HLOD handoff does not use the independent shadow-only inversion flag.
-At `DrawRadius`, the merged exit fade is an ordinary dissolve with no complementary partner.
+The merged exit keeps the complement through `DrawRadius` when the exit starts before the individual skip gate.
+An exit beginning at or after the individual skip gate uses the ordinary dissolve. Both fade to nothing.
 The `Scene3D.Draw` overload ending in `castsShadows, invertShadowDissolve` remains available for independent
 shadow-only inversion, along with `RigidInstanceDraw.InvertShadowDissolve`.
 `castsShadows: false` on the layer covers both too, so casting
@@ -12127,7 +12159,9 @@ Without a material supplied the chunk falls back to a vertex-colour ramp of the 
 Five layers is the whole point and also the whole limit: four weights ride in `ModelVertex.Color` and the fifth is
 the remainder, so this pipeline cannot take a material palette that is content rather than a fixed set. For that
 there is a sibling, `Scene3D.LoadTileGroundMaterial` / `LoadMesh(mesh, TileGroundMaterialHandle)`: up to 64 albedo
-layers in one texture array, four material SLOTS per triangle instead of five fixed layers, and no normal maps.
+layers in one texture array, four material SLOTS per triangle instead of five fixed layers, and optional relief per
+layer (normal, roughness and height maps, height-resolved blends, feather breakup and hex-tiling, see
+`TileGroundRelief` in the Render3D README).
 It is what a tile world's ground draws through (see "Tile world rendering"), and the two are separate pipelines on
 purpose, since widening this one would move the reference consumer's live terrain path and its goldens.
 
@@ -14963,9 +14997,12 @@ lists the reasons and identifiers.
 comma list. Give those tiles the surrounding grass as their underlay and the road as their overlay.
 The renderer blends inward through 0.2 metres of the exposed full or shaped edge, including across region
 boundaries. Unmarked tiles keep hard edges, even if they use the same road material. Connected overlays of
-that material share their interior edges. Set `TileWorldViewOptions.Mesher.OverlayFeatherWidthMetres` before
-constructing the view to choose another positive finite width, capped to half a tile. This changes rendering
-only. The original terrain triangles still define the surface for picking and collision. See the
+that material share their interior edges. A material's catalog row can declare its own `feather.widthMetres` (a
+crisp dressed-stone apron beside a soft dirt track) and a `feather.breakup` that wanders the edge. Otherwise set
+`TileWorldViewOptions.Mesher.OverlayFeatherWidthMetres` before constructing the view to choose another positive
+finite default width. Either is capped to half a tile. With a height map on the material the edge also breaks up
+along its stones (see the ground catalog fields in the [TileWorld reference](../KhaozEngine.TileWorld/README.md)).
+This changes rendering only. The original terrain triangles still define the surface for picking and collision. See the
 [render package reference](../KhaozEngine.TileWorld.Render3D/README.md#ground-tilegroundmesher-itilegroundslotmap-tilecolors)
 for tessellation cost and sampling limits.
 
@@ -16197,6 +16234,23 @@ and original cause. Refusals preserve live content and session history. MCP adap
 the original exception through `McpException.InnerException`, with an existing `McpException` passed through unchanged.
 Manifest serialization preserves a known typed JSON refusal's own reason and identifiers before using the
 ordinary `ToolManifestSerializationFailed` fallback.
+
+Native `Mutate` callbacks may stage one command into their own detached candidate. If the final candidate
+differs from the command's staged snapshot, edits made before or after staging are restaged as one validated
+complete snapshot under the command's label, including fields outside the write set and replacement
+collections. Effects, undo and redo use the final snapshot, and invalid callback edits leave the session
+unchanged. A callback with no additional edits keeps the command's own staged effects and history entry.
+Native asset publication, undo and redo refuse only while the callback is executing with
+`MapDocumentException` and `ToolPublicationDuringMutationUnsupported`. Open, create, save, window
+replacement, conversion, retile and closure binding use `MapSessionException` with the same reason. Both
+families retain `DocumentId` and `Operation`, and refuse before changing session state or storage. Staging
+into another document uses `MapDocumentException` with `ToolMutationCandidateRequired`, `DocumentId`,
+`Operation` and the known `CommandType`.
+After acceptance, `NativeEdited` handlers may save or perform other lifecycle operations. Nested native
+mutation remains refused until the outer `Mutate` returns.
+Prefab publication also refuses before writing immutable resource bytes, even when `updateOpenMap` is false.
+Collider `SetHeights` apply refuses before resource writes, while its dry run remains available inside a
+callback. Both use `MapDocumentException` with the publication reason and `Operation` `Publish` or `SetHeights`.
 
 **Native lifecycle.** A document with `ResolverIdentity` is verified completely by
 `NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,
@@ -21077,7 +21131,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.13.1" />
 ```
 
 ```csharp
@@ -21113,7 +21167,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.13.1" />
 ```
 
 ```csharp
@@ -21364,7 +21418,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.12.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.13.1" />
 ```
 
 ```csharp
@@ -23856,8 +23910,12 @@ transaction. `ReadTextSnapshotAsync` reads one exact version's text, `TryDiscard
 draft the caller read, `RollbackTextToAsync` restores rows and strings together, and `ExportBundleAsync` writes
 format 2 once a version declares a language. `ImportTextBundleAsync` imports either format. Both it and the
 row-only `ImportBundleAsync` refuse with `DraftOpen` and `draft-open` while an open draft holds any row, text
-or language work, before staging and without changing the draft. An empty open draft does not block. Other
-row-only members refuse with `text-unrepresented` rather than drop held text.
+or language work, before staging and without changing the draft. An empty open draft does not block.
+Staging freezes the import's draft atomically. Rival draft changes refuse with `PublishInProgress` and
+`publish-in-progress` until commit or failure reset, and can be retried afterward. A failure after commit
+preserves the published version and any later draft. A failed ordinary publish at base 0 racing the import can
+still release the freeze early ([#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813)). Other row-only members refuse with `text-unrepresented`
+rather than drop held text.
 `KhaozEngine.Catalog.Authoring/README.md` documents the limits, the legacy refusals and every
 reason token.
 
@@ -26269,7 +26327,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.12.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.13.1" />
 </ItemGroup>
 ```
 
@@ -26953,6 +27011,19 @@ from `InvalidOperationException`, with `Backend` and `Command`. `GpuRecordingSta
 `BeginWhileRecording`, `CommandOutsideRecording`, `EndWithoutRecording`, `RecordingAlreadySealed`
 and `SubmissionWithoutSeal`. End on a fresh or abandoned list uses `EndWithoutRecording`.
 End on a sealed list uses `RecordingAlreadySealed`.
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+
+`SetPipeline(null)` and `SetComputePipeline(null)` throw `ArgumentNullException` with `ParamName` equal to `p`
+at the call on Metal, Vulkan and both Direct3D 11 drivers. Null is not an unbind operation. Refusal emits or records
+nothing and preserves the current binding
+([#1808](https://github.com/APKiwiOrg/KhaozEngine/issues/1808)).
+
 A lost Metal or Vulkan timestamp device uses `GpuTimestampStateException` with
 `TimestampDeviceUnavailable` and `Backend`. Direct3D 11 uses `GpuTimestampDisposedException` with the
 same reason and `Backend`, retaining `ObjectName = "IGpuDevice"` and its `ObjectDisposedException` base.
@@ -27391,6 +27462,12 @@ keep the drain when no frame completion queue is supplied. A custom
 renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule for
 anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
 drain at all.
+
+Native Vulkan additionally collects earlier disposed resources when `WaitForIdle` returns, including memory
+chunks retired by their destruction. Headless and render-to-texture callers can therefore reclaim those
+resources without `Present`. A pool keeps its last backing chunk for reuse. Submission and fence polling do
+not collect the backend's unordered retire list, so loops replacing resources still need periodic
+`WaitForIdle` or `Present` even after their completion fences signal.
 
 **No `Scene3D` unload drains, since 17.38.0.** `UnloadMesh`, `UnloadSkinnedMesh`, `UnloadTexture`,
 `UnloadSplatMaterial` and `UnloadTileGroundMaterial` all hand their GPU resources to a `GpuRetireQueue` instead. At the next

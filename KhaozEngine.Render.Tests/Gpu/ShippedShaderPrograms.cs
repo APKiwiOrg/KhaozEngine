@@ -27,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 152 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 160 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -83,6 +83,10 @@ namespace KhaozEngine.Tests.Gpu
             // The tile-world ground pass. Same lesson applied ahead of the incident: every interpolant it emits is
             // read by the fragment, so its pixel-input block is gap-free by construction.
             yield return new("TileGround", ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag, 6);
+            // Its relief variant (TileGroundRelief): the same vertex shader, so the same interpolants, with its own
+            // fragment and material set. Built only once a relief material loads.
+            yield return new("TileGroundRelief", ShaderSources.TileGroundVert, ShaderSources.TileGroundReliefFrag, 6);
+            yield return new("TileGroundReliefHex", ShaderSources.TileGroundVert, ShaderSources.TileGroundReliefHexFrag, 6);
 
             // Temporal variants (TEMPORAL-FOUNDATIONS-DESIGN section 3). Built only against a model target that carries
             // the motion attachment. VulkanShippedVertexLayoutTests builds one to capture them.
@@ -97,6 +101,8 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("FoliageOpaqueMotion", ShaderSources.FoliageMotionVert, ShaderSources.FoliageOpaqueMotionFrag, 10);
             yield return new("SplatMotion", ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag, 6);
             yield return new("TileGroundMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, 6);
+            yield return new("TileGroundReliefMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundReliefMotionFrag, 6);
+            yield return new("TileGroundReliefHexMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundReliefHexMotionFrag, 6);
             yield return new("TexturedBillboardMotion", ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag);
             yield return new("BeamMotion", ShaderSources.BeamVert, ShaderSources.BeamMotionFrag);
             yield return new("TrailMotion", ShaderSources.TrailVert, ShaderSources.TrailMotionFrag);

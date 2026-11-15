@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.TileWorld.Physics;
+using TileCapsuleBoxPath = KhaozEngine.Tests.TileWorld.Physics.Fixtures.FrozenTileCapsuleBoxPath;
 
 namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 
@@ -11,6 +12,7 @@ internal static class FlatWaterCoverageReference
     const int SpanLimit = MovementQueryLease.MaxCoverageSpans;
     const int ContactLimit = MovementQueryLease.MaxDomainContacts;
     [ThreadStatic] static Scratch? t_scratch;
+    [ThreadStatic] internal static int Intersections;
 
     sealed class Scratch
     {
@@ -32,6 +34,7 @@ internal static class FlatWaterCoverageReference
         in MovementMediumSweepQuery query, Vector3 origin, in MovementQueryIdentity identity,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
     {
+        Intersections = 0;
         if (!query.IsValid || !identity.IsValid)
             return Refuse(MovementAvailability.Invalid, identity);
         foreach (TileWaterColumn column in columns)
@@ -68,13 +71,13 @@ internal static class FlatWaterCoverageReference
                 int first = contactCount;
                 foreach (TileWaterColumn column in columns)
                 {
-                    TileCapsuleBoxPath.Range range = TileCapsuleBoxPath.Intersect(column.Minimum, column.Maximum, query, origin, enter, exit);
+                    TileCapsuleBoxPath.Range range = Intersect(column.Minimum, column.Maximum, query, origin, enter, exit);
                     if (!range.Hit) continue;
                     bool hasFace = false;
                     foreach (TileWaterBoundary face in boundaries)
                     {
                         if (columns[face.Column] != column) continue;
-                        var contactRange = TileCapsuleBoxPath.Intersect(face.Minimum, face.Maximum, query, origin, enter, exit);
+                        var contactRange = Intersect(face.Minimum, face.Maximum, query, origin, enter, exit);
                         if (!contactRange.Hit) continue;
                         hasFace = true;
                         if (!Append(column, face, range, contactRange, enter, exit, query, origin, scratch.Contacts, ref contactCount, ref locationError))
@@ -105,7 +108,7 @@ internal static class FlatWaterCoverageReference
     static bool AddRange(Vector3 min, Vector3 max, in MovementMediumSweepQuery query, Vector3 origin,
         Span<float> cuts, ref int count, ref double error)
     {
-        var range = TileCapsuleBoxPath.Intersect(min, max, query, origin);
+        var range = Intersect(min, max, query, origin);
         double fractionError = 0;
         bool fits = !range.Hit || AddCut(range.Enter, query, cuts, ref count, ref fractionError) &&
             AddCut(range.Exit, query, cuts, ref count, ref fractionError);
@@ -179,9 +182,17 @@ internal static class FlatWaterCoverageReference
         if (!centreInside) return true;
         double squaredRadius = (double)query.Body.Radius * query.Body.Radius;
         foreach (TileWaterBoundary face in exterior)
-            if (TileCapsuleBoxPath.Intersect(face.Minimum, face.Maximum, query, origin, enter, exit).MinimumSquared < squaredRadius)
+            if (Intersect(face.Minimum, face.Maximum, query, origin, enter, exit).MinimumSquared < squaredRadius)
                 return true;
         return false;
+    }
+
+    // Reference work belongs to this fixture, independently of production diagnostics.
+    static TileCapsuleBoxPath.Range Intersect(Vector3 minimum, Vector3 maximum,
+        in MovementMediumSweepQuery query, Vector3 origin, double enter = 0, double exit = 1)
+    {
+        Intersections++;
+        return TileCapsuleBoxPath.Intersect(minimum, maximum, query, origin, enter, exit);
     }
 
     internal static float Lower(double value) { float f = (float)value; return f > value ? MathF.BitDecrement(f) : f; }

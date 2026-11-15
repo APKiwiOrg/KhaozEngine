@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Interiors;
@@ -18,8 +19,9 @@ public sealed class NativeRoofExitFadeTests
     [InlineData(95, 90, 0)]
     [InlineData(95, 95, .5f)]
     [InlineData(95, 99, .9f)]
-    public void AcceptedProxy_UsesOrdinaryExitCoverageBeforeHlodComplement(float hlod, float distance, float dissolve)
+    public void AcceptedProxy_ComposesOverlappingExitCoverageAndPreservesSeparatedBands(float hlod, float distance, float ordinaryDissolve)
     {
+        // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1542
         using var fixture = NativePresentationFixtures.Create(); var scheduler = new ResidencyScheduler();
         var state = NativeRoofHlodPolicyTests.State(fixture, NativePresentationFixtures.Scope);
         state = state with
@@ -29,11 +31,23 @@ public sealed class NativeRoofExitFadeTests
         };
         using var residency = new MapRenderResidency(state, new ResidencyDevice(), null, scheduler);
         ResidencyFixture.Complete(residency, scheduler);
+        var layer = Assert.Single(state.Policy.Placements.Layers);
+        float handoffStart = layer.HlodDistance - layer.HlodCrossfadeWidth * .5f;
+        float t = Math.Clamp((distance - handoffStart) / layer.HlodCrossfadeWidth, 0, 1);
+        float exitStart = MathF.Max(0, layer.DrawRadius - layer.HlodCrossfadeWidth);
+        float exit = Math.Clamp((distance - exitStart) / (layer.DrawRadius - exitStart), 0, 1);
+        bool composed = exitStart < handoffStart + layer.HlodCrossfadeWidth * PropHlod.HlodPropsSkipAt;
         foreach (var mode in new[] { MapRoofMode.AlwaysVisible, MapRoofMode.AlwaysHidden })
         {
             var sink = new MapDrawRecorder(); residency.Record(NativeRoofHlodRecordingTests.Frame(mode, distance), sink);
-            var proxy = Assert.Single(sink.Snapshot().Draws, d => d.Resource.Key.Kind == MapRenderKind.Roof && d.Resource.Key.PartId == "hlod");
-            Assert.Equal(dissolve, proxy.Rigid!.Value.Dissolve, 5); Assert.Equal(0, proxy.Rigid.Value.DissolveComplement);
+            if (composed && t <= PropHlod.HlodMergedSkipAt)
+                Assert.DoesNotContain(sink.Snapshot().Draws, d => d.Resource.Key.Kind == MapRenderKind.Roof && d.Resource.Key.PartId == "hlod");
+            else
+            {
+                var proxy = Assert.Single(sink.Snapshot().Draws, d => d.Resource.Key.Kind == MapRenderKind.Roof && d.Resource.Key.PartId == "hlod");
+                Assert.Equal(composed ? t * (1 - exit) : ordinaryDissolve, proxy.Rigid!.Value.Dissolve, 5);
+                Assert.Equal(composed ? 1 : 0, proxy.Rigid.Value.DissolveComplement);
+            }
             var end = new MapDrawRecorder(); residency.Record(NativeRoofHlodRecordingTests.Frame(mode, 100), end);
             Assert.DoesNotContain(end.Snapshot().Draws, d => d.Resource.Key.Kind == MapRenderKind.Roof);
         }

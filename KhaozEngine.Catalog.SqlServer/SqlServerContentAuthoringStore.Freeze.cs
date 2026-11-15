@@ -58,17 +58,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 // count is the open-draft check, so the update time is decided inside the SET rather than in
                 // the WHERE. Every SET expression reads the row as it stood, and a NULL marker is never equal to
                 // the base, so a first freeze always stamps.
-                await using SqlCommand command = Command(
-                    scope,
-                    """
-                    UPDATE dbo.catalog_draft
-                    SET frozen_for_base_version = @base,
-                        updated_at_utc = CASE WHEN frozen_for_base_version = @base THEN updated_at_utc ELSE @now END
-                    WHERE draft_key = 1;
-                    """);
-                BindInt(command, "@base", baseVersion);
-                BindTime(command, "@now", _clock());
-                if (await command.ExecuteNonQueryAsync(token).ConfigureAwait(false) == 0)
+                if (await MarkDraftFrozenAsync(scope, baseVersion, token).ConfigureAwait(false) == 0)
                 {
                     throw new ContentAuthoringException(
                         ContentAuthoringRefusal.NoPendingDraft,
@@ -79,6 +69,22 @@ public sealed partial class SqlServerContentAuthoringStore
                 }
             },
             cancellationToken);
+    }
+
+    /// <summary>Writes the shared freeze marker inside the caller's Serializable transaction.</summary>
+    async Task<int> MarkDraftFrozenAsync(SqlServerCatalogScope scope, int baseVersion, CancellationToken cancellationToken)
+    {
+        await using SqlCommand command = Command(
+            scope,
+            """
+            UPDATE dbo.catalog_draft
+            SET frozen_for_base_version = @base,
+                updated_at_utc = CASE WHEN frozen_for_base_version = @base THEN updated_at_utc ELSE @now END
+            WHERE draft_key = 1;
+            """);
+        BindInt(command, "@base", baseVersion);
+        BindTime(command, "@now", _clock());
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

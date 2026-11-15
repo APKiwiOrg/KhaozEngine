@@ -9,15 +9,16 @@ internal sealed class MovementWaterCoverageBuffers
 {
     readonly Storage _producer = new(), _boundary = new();
 
-    internal Loan Borrow(bool boundary) => (boundary ? _boundary : _producer).Borrow();
+    internal Loan Borrow(bool boundary, bool completeWriter = false) =>
+        (boundary ? _boundary : _producer).Borrow(completeWriter);
 
     internal sealed class Storage
     {
         MovementCoverageSpan[]? _spans;
         MovementDomainContact[]? _contacts;
-        bool _busy;
+        bool _busy, _contactsZeroed = true;
 
-        internal Loan Borrow()
+        internal Loan Borrow(bool completeWriter)
         {
             if (_busy)
             {
@@ -27,18 +28,22 @@ internal sealed class MovementWaterCoverageBuffers
                 var spans = ArrayPool<MovementCoverageSpan>.Shared.Rent(MovementQueryLease.MaxCoverageSpans);
                 var contacts = ArrayPool<MovementDomainContact>.Shared.Rent(MovementQueryLease.MaxDomainContacts);
                 contacts.AsSpan(0, MovementQueryLease.MaxDomainContacts).Clear();
-                return new(null, spans, contacts);
+                return new(null, spans, contacts, completeWriter);
             }
             _spans ??= new MovementCoverageSpan[MovementQueryLease.MaxCoverageSpans];
             _contacts ??= new MovementDomainContact[MovementQueryLease.MaxDomainContacts];
+            // The legacy path can retain default-equal numeric bits such as negative zero.
+            // Reestablish the complete writer's zeroed-lane precondition when ownership changes.
+            if (completeWriter && !_contactsZeroed) _contacts.AsSpan().Clear();
             _busy = true;
-            return new(this, _spans, _contacts);
+            return new(this, _spans, _contacts, completeWriter);
         }
 
-        internal void Release() => _busy = false;
+        internal void Release(bool contactsZeroed) { _contactsZeroed = contactsZeroed; _busy = false; }
     }
 
-    internal readonly struct Loan(Storage? owner, MovementCoverageSpan[] spans, MovementDomainContact[] contacts)
+    internal readonly struct Loan(Storage? owner, MovementCoverageSpan[] spans, MovementDomainContact[] contacts,
+        bool completeWriter)
     {
         readonly int _thread = Environment.CurrentManagedThreadId;
         internal Span<MovementCoverageSpan> Spans => spans.AsSpan(0, MovementQueryLease.MaxCoverageSpans);
@@ -48,19 +53,30 @@ internal sealed class MovementWaterCoverageBuffers
         {
             if (Environment.CurrentManagedThreadId != _thread)
                 throw new InvalidOperationException("Water coverage buffers belong to their borrowing thread.");
-            // A producer can partially write and then refuse or throw, so its returned count
-            // cannot delimit initialized storage. Inspect the exposed slice, clearing only
-            // nondefault runs. A validated consumer can delimit its exact written prefix.
-            int at = 0;
-            while (at < exposedContacts)
+            if (completeWriter)
             {
-                if (contacts[at] == default) { at++; continue; }
-                int first = at++;
-                while (at < exposedContacts && contacts[at] != default) at++;
-                contacts.AsSpan(first, at - first).Clear();
-                if (MovementWaterBufferWork.Enabled) MovementWaterBufferWork.ClearedReferences += at - first;
+                // Complete contacts are nondefault, and untouched slots started with zero bits.
+                // Keep the diagnostic's exact nondefault-entry count without scanning normal returns.
+                if (MovementWaterBufferWork.Enabled)
+                    for (int i = 0; i < exposedContacts; i++)
+                        if (contacts[i] != default) MovementWaterBufferWork.ClearedReferences++;
+                contacts.AsSpan(0, exposedContacts).Clear();
             }
-            if (owner is not null) owner.Release();
+            else
+            {
+                // Arbitrary producers may partially write and then refuse or throw. Their returned
+                // count cannot delimit cleanup, and default-equal numeric bits must keep the old path.
+                int at = 0;
+                while (at < exposedContacts)
+                {
+                    if (contacts[at] == default) { at++; continue; }
+                    int first = at++;
+                    while (at < exposedContacts && contacts[at] != default) at++;
+                    contacts.AsSpan(first, at - first).Clear();
+                    if (MovementWaterBufferWork.Enabled) MovementWaterBufferWork.ClearedReferences += at - first;
+                }
+            }
+            if (owner is not null) owner.Release(completeWriter);
             else
             {
                 ArrayPool<MovementCoverageSpan>.Shared.Return(spans);

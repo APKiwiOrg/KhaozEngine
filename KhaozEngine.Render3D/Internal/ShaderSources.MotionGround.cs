@@ -65,4 +65,11 @@ layout(location=9) out vec4 vPrevClip;"),
 
     /// <summary>TileGroundFrag with motion, the pair at 8 and 9.</summary>
     public static readonly string TileGroundMotionFrag = MotionFragment(TileGroundFrag, 8);
+
+    /// <summary>TileGroundReliefFrag with motion, the pair at 8 and 9. It pairs with <see cref="TileGroundMotionVert"/>,
+    /// because the relief fragment reads exactly the plain fragment's interpolants.</summary>
+    public static readonly string TileGroundReliefMotionFrag = MotionFragment(TileGroundReliefFrag, 8);
+
+    /// <summary>TileGroundReliefHexFrag with motion, the pair at 8 and 9, also with <see cref="TileGroundMotionVert"/>.</summary>
+    public static readonly string TileGroundReliefHexMotionFrag = MotionFragment(TileGroundReliefHexFrag, 8);
 }

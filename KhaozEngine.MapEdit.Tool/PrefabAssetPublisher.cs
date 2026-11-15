@@ -27,7 +27,7 @@ public sealed class PrefabAssetPublisher(MapEditSession session, IMapPrefabPubli
         ArgumentNullException.ThrowIfNull(asset);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
         ArgumentException.ThrowIfNullOrWhiteSpace(relativeDirectory);
-        return session.WithNativeAssets<MapPrefabPublishResult>(c =>
+        return session.WithNativePublication<MapPrefabPublishResult>(nameof(Publish), c =>
         {
             byte[] prefabBytes = MapPrefabFile.Write(asset);
             string sha = Convert.ToHexStringLower(SHA256.HashData(prefabBytes));

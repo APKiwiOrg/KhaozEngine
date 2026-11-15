@@ -31,6 +31,7 @@ internal sealed class WaterPrismScenario : IDisposable
         Water = new(WaterTraversalMode.SurfaceSwimmer),
     };
     readonly BepuPhysicsWorld _world = new(Vector3.Zero);
+    readonly bool _contact;
     readonly TileColliderRegistration _installed;
     internal TileWorldColliders Colliders { get; }
     internal PlayerMoveSimulator Simulator { get; }
@@ -39,10 +40,12 @@ internal sealed class WaterPrismScenario : IDisposable
     internal MoveCommand Command { get; }
     internal string Name { get; }
 
-    internal WaterPrismScenario(string name)
+    internal WaterPrismScenario(string name, MovementControllerKind controller = MovementControllerKind.Contact,
+        bool crowded = false)
     {
         if (Array.IndexOf(Names, name) < 0) throw new ArgumentOutOfRangeException(nameof(name));
         Name = name;
+        _contact = controller == MovementControllerKind.Contact;
         bool bank = name.StartsWith("bank-", StringComparison.Ordinal);
         bool deep = name.StartsWith("deep-", StringComparison.Ordinal);
         float z = bank ? 236.365f : name == "swim-entry" ? 246.23f : deep ? 260.568f : 252.85f;
@@ -54,13 +57,25 @@ internal sealed class WaterPrismScenario : IDisposable
             """, "prism-census");
         Colliders = TileWorldColliders.Build(doc, catalogs, "water-world");
         _installed = Colliders.AddTo(_world);
+        if (crowded)
+            for (int i = 0; i < 12; i++)
+                foreach (float side in new[] { -1f, 1f })
+                    _world.AddStatic(new BoxShape(new Vector3(0.2f, 0.5f, 0.2f)),
+                        Pose.At(new(108 + i * 0.6f, 0.5f, -234.5f + side * 0.75f)));
         var builder = _installed.CreateMovementRegistrationBuilder("water-world",
             new(new(63, -120, -321), new(129, 20, -191), -101, 10));
+        if (crowded)
+        {
+            var support = _world.AddStatic(new BoxShape(new Vector3(4, 0.1f, 1)), Pose.At(new(111, -0.1f, -234.5f)));
+            builder.Add(support, 0, int.MaxValue, new("water-world", "cost-platform"),
+                new(107, -0.2f, -235.5f), new(115, 0, -233.5f));
+        }
         OrdinaryMovementRegistration registration;
         using (var lease = _world.AcquireQueryReadLease()) registration = builder.Build(lease);
         Field = new(Colliders.Medium);
-        Simulator = new(Colliders.MovementGroundHeight, Tuning, Colliders.MovementGroundNormal, null,
-            _world, null, SamplerSpace.World, null, Field, registration,
+        var tuning = Tuning with { Controller = controller, Water = _contact ? Tuning.Water : default };
+        Simulator = new(Colliders.MovementGroundHeight, tuning, Colliders.MovementGroundNormal, null,
+            _world, Colliders.Medium.MediumDelegate, SamplerSpace.World, null, Field, registration,
             MovementBoundary.Rectangle(65, -319, 127, -193));
         bool swimming = deep || name is "flat-neighbour" or "flat-control";
         if (name == "dry-control") z = 234.5f;
@@ -91,7 +106,7 @@ internal sealed class WaterPrismScenario : IDisposable
     {
         using var read = Simulator.BeginExplicitRead(state);
         var next = Simulator.Step(state, command, Dt);
-        if (Simulator.LastExplicitOutcome != MovementStepOutcome.Advanced)
+        if (_contact && Simulator.LastExplicitOutcome != MovementStepOutcome.Advanced)
             throw new InvalidOperationException($"{Name}: {Simulator.LastExplicitOutcome}");
         return next;
     }

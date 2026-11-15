@@ -446,3 +446,17 @@ on the engine version line, and CI never invokes its timing loop.
 has no timing assertions. Use a normal Release build, without `WaterPrismCensus=true`, and run it with
 `DOTNET_TieredCompilation=0`. The mode refuses to run otherwise: with tiering on, a case whose kernel first
 runs during measurement is timed in unoptimized code and can read several times slower than steady state.
+
+## Contact query cost mode
+
+`--query-cost` runs dry standing, dry walking, real collider walking, flat open water, shore standing and shore
+walking. It reports fixed-basis and advancing Contact/Legacy histories from isolated worlds. The shared
+[census documentation](../test-shared/WaterPrismCensus/README.md#contact-query-cost-diagnostic) defines the fixtures,
+sample counts and commands. Every stopwatch is opt-in. `--timers` enables whole-step elapsed samples and requires
+`DOTNET_TieredCompilation=0`. `--trace-timers` additionally times water traces. `--counters` independently records
+existing work counters. `--quick` is a small untimed smoke check by default. No timing value gates CI and this mode
+contains no optimization prototype or production probe API.
+The counter run also reports internal proposal admission hits, misses and bypasses. A miss performs
+the original predicate, while a bypass is outside cache eligibility. Counts include both controller
+histories and do not imply that a support result or an authenticated lease was reused. Each counter
+history resets the admission slot first so it includes its first cold miss. Timed histories retain warm state.

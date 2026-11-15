@@ -16,8 +16,8 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// format is resolved first, a format 1 bundle converting explicitly to empty text, and every value's target
 /// is checked against the bundle's rows and this registry before anything is staged. The row edits, one Set
 /// per value with its audit row, and every declared language with its exact wire spelling, empty ones
-/// included, then land in ONE draft transaction, which the ordinary text publish commits as a complete
-/// version 1. Any refusal after staging began resets the database to empty.
+/// included, then land and freeze in ONE draft transaction, which the ordinary text publish commits as a complete
+/// version 1. A pre-commit refusal after staging began resets the database to empty.
 /// </para>
 /// </summary>
 public sealed partial class SqliteContentAuthoringStore
@@ -26,7 +26,7 @@ public sealed partial class SqliteContentAuthoringStore
     /// <remarks>
     /// A format 1 bundle imports as empty text. A format 2 bundle that lost its section, a later format, an
     /// open draft holding any work, a value naming a row the bundle does not carry and an ineligible target are
-    /// refused before anything is staged. Any refusal after staging began resets this database to empty, exactly as the row import does.
+    /// refused before anything is staged. A pre-commit refusal after staging began resets this database to empty, exactly as the row import does.
     /// </remarks>
     public async Task<ContentPublishResult> ImportTextBundleAsync(
         ContentBundle bundle,
@@ -46,7 +46,7 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>
-    /// The import's draft in ONE transaction: the row edits through the ordinary apply body, then, on the
+    /// The import's draft in the caller's transaction: the row edits through the ordinary apply body, then, on the
     /// companion route, the bundle's text. A failure rolls the whole draft back, and the caller's reset takes
     /// back the staging. The caller holds the lease it checked pending work and staged under.
     /// </summary>
@@ -55,6 +55,7 @@ public sealed partial class SqliteContentAuthoringStore
     /// <param name="actor">What the engine authenticated.</param>
     /// <param name="operatorId">The identity the console forwarded.</param>
     /// <param name="note">The operator's note.</param>
+    /// <param name="transaction">The transaction that checked pending work and staged the bundle.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     async Task ApplyImportDraftAsync(
         IReadOnlyList<ContentEdit> edits,
@@ -62,6 +63,7 @@ public sealed partial class SqliteContentAuthoringStore
         string actor,
         string operatorId,
         string note,
+        SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
         for (int i = 0; i < edits.Count; i++)
@@ -69,15 +71,12 @@ public sealed partial class SqliteContentAuthoringStore
             CheckAgainstSchema(edits[i], i);
         }
 
-        using SqliteTransaction transaction = _connection.BeginTransaction();
         await ApplyEditsInAsync(edits, actor, operatorId, note, transaction, cancellationToken).ConfigureAwait(false);
         if (text is not null)
         {
             await ApplyImportedTextAsync(text, actor, operatorId, note, transaction, cancellationToken)
                 .ConfigureAwait(false);
         }
-
-        transaction.Commit();
     }
 
     /// <summary>

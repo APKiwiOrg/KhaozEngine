@@ -121,5 +121,5 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
 
     static bool FootprintProposalDomain(in SupportFootprintProposal proposal) =>
         proposal.Probe.Radius is >= 0.01f and <= 2f && proposal.Probe.Length <= 8 &&
-        InstalledPoseOperator.TryCreateSupport(new RigidPose(proposal.Start.Position, proposal.Start.Orientation), out _);
+        SupportProposalAdmission.Admits(proposal.Start);
 }

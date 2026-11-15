@@ -16,6 +16,7 @@
     <PackageReference Include="BepuPhysics" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterFloatingPointEnvironment.cs" Link="Physics/Fixtures/WaterFloatingPointEnvironment.cs" />
     <Compile Include="../KhaozEngine.Server.Tests/NetWorld/Fixtures/ObservedPhysicsWorld.cs" Link="Game/Fixtures/ContactLifecyclePhysics.cs" />
     <!-- A captured real one-sided building collision mesh (a consumer house with eaves/overhangs), used as a
          realistic regression fixture for the swept resolver: complex one-sided geometry with eaves is exactly where
@@ -63,6 +64,7 @@
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
     <ProjectReference Include="../KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
+    <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Objectives/KhaozEngine.Objectives.csproj" />

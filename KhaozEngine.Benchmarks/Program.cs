@@ -24,6 +24,12 @@ using KhaozEngine.Simulation;
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --jpeg         (one 960x540 JpegWriter encode)
 // See KhaozEngine.Benchmarks/README.md for how to read the output.
 
+if (Array.IndexOf(args, "--query-cost") >= 0)
+{
+    ContactQueryCostBenchmark.Run(args);
+    return;
+}
+
 if (Array.IndexOf(args, "--water-prism") >= 0)
 {
     KhaozEngine.Benchmarks.WaterPrismBenchmark.Run();

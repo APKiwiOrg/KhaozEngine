@@ -817,6 +817,10 @@ dropped about 63 minutes of runner time from a full dispatch.
   on lavapipe still exhibits residual driver-side instability with delayed-corruption symptoms (a CoreCLR
   fatal, deliberately not chased), which is why the full suite runs serialized and why it measured 26m36s in
   run `32579723071`. Golden-only runs keep their months-green parallel configuration.
+  Native Vulkan `WaitForIdle` also collects resources retired before the call and the memory chunks their
+  destruction retires, so headless and render-to-texture callers can reclaim resources without `Present`.
+  Newer unfinished submissions retain their resources. Submission and fence polling do not collect the
+  unordered retire list, so a loop replacing resources still needs periodic `WaitForIdle` or `Present`.
   Two more things are its own. It
   sets **`KE_VULKAN_REQUIRED=1`**, because the rows that need a real native device go DORMANT when the
   backend's functional probe refuses the machine, and a dormant row is not a skip, so on the one leg built to
@@ -922,6 +926,14 @@ D3D11, Metal and Vulkan refuse `Draw` and `DrawIndexed` without a bound framebuf
 Its immediate and default deferred drivers refuse at the draw call, with no draw appended on refusal.
 `Begin` resets the recorded target, so every recording binds its own framebuffer
 ([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
+
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
 
 D3D11 constant-buffer binds also share Metal and Vulkan's `GpuDynamicBindingRangeException` refusals.
 `OffsetMisaligned` reports a composed offset off D3D11's required 256-byte boundary. `WindowOutsideSegment`

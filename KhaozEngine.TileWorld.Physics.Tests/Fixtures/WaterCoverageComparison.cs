@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using KhaozEngine.Locomotion;
 using Xunit;
 
@@ -12,8 +13,12 @@ internal static class WaterCoverageComparison
     {
         Assert.Equal(expected, actual);
         Bits(expected.CertifiedErrorMetres, actual.CertifiedErrorMetres);
+        Assert.Same(expected.Identity.ClosureId, actual.Identity.ClosureId);
+        Assert.Same(expected.Identity.ScopeDigest, actual.Identity.ScopeDigest);
         Assert.Equal(expectedSpans, actualSpans);
         Assert.Equal(expectedContacts, actualContacts);
+        Assert.Equal(MemoryMarshal.AsBytes(expectedSpans.AsSpan()).ToArray(),
+            MemoryMarshal.AsBytes(actualSpans.AsSpan()).ToArray());
         for (int i = 0; i < expectedSpans.Length; i++) Span(expectedSpans[i], actualSpans[i]);
         for (int i = 0; i < expectedContacts.Length; i++) Contact(expectedContacts[i], actualContacts[i]);
     }
@@ -28,6 +33,15 @@ internal static class WaterCoverageComparison
     internal static void Contact(MovementDomainContact a, MovementDomainContact b)
     {
         Assert.Equal(a, b);
+        Assert.Same(a.Domain.WorldId, b.Domain.WorldId);
+        Assert.Same(a.Domain.LocalId, b.Domain.LocalId);
+        Assert.Same(a.Space.WorldId, b.Space.WorldId);
+        Assert.Same(a.Space.LocalId, b.Space.LocalId);
+        Assert.Same(a.Interval.LowerBoundaryId, b.Interval.LowerBoundaryId);
+        Assert.Same(a.Interval.UpperBoundaryId, b.Interval.UpperBoundaryId);
+        // Joined triangle IDs are newly constructed by an uncached evaluation. Their value is the contract.
+        if (a.BoundaryId?.EndsWith("/joined-triangle", StringComparison.Ordinal) != true)
+            Assert.Same(a.BoundaryId, b.BoundaryId);
         Bits(a.Interval.LowerY, b.Interval.LowerY);
         Bits(a.Interval.UpperY, b.Interval.UpperY);
         Bits(a.Interval.NominalSurfaceY, b.Interval.NominalSurfaceY);

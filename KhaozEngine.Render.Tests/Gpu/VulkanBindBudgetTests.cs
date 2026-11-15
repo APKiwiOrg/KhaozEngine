@@ -394,7 +394,9 @@ namespace KhaozEngine.Tests.Gpu
             var counts = new VulkanCmdCallCounts();
             using VulkanCommandList list = harness.CountingList(counts);
 
+            using var graphics = VulkanPipelineFixtures.Graphics(harness.Fixture);
             list.Begin();
+            list.SetPipeline(graphics);
             list.SetFramebuffer(harness.Target());
             list.GraphicsBinds.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
 
@@ -426,7 +428,9 @@ namespace KhaozEngine.Tests.Gpu
             var counts = new VulkanCmdCallCounts();
             using VulkanCommandList list = harness.CountingList(counts, binds);
 
+            using var graphics = VulkanPipelineFixtures.Graphics(harness.Fixture);
             list.Begin();
+            list.SetPipeline(graphics);
             list.SetFramebuffer(harness.Target());
             list.GraphicsBinds.SetPipelineLayout(pipeline.Layout, pipeline.SetLayouts);
 

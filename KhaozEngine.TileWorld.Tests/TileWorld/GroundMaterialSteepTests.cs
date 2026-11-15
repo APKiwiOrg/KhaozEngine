@@ -243,6 +243,13 @@ public class GroundMaterialSteepTests
     {
         TileWorldCatalogs c = TileWorldCatalogs.LoadJson(
             Catalog("""{ "material": 14, "fromDegrees": 30 }"""), "steep.json");
+        GroundMaterial source = c.Material(1)!;
+        source.NormalTexture = "n.png";
+        source.RoughnessTexture = "r.png";
+        source.HeightTexture = "h.png";
+        source.HeightBlendSharpness = 16;
+        source.Feather = new() { WidthMetres = 0.3f, Breakup = 0.7f };
+        source.AntiTiling = GroundMaterialAntiTiling.Rotate;
         TileWorldCatalogs copy = c.CopyMaterials();
 
         c.Material(1)!.Steep!.FromDegrees = 35f;
@@ -252,6 +259,17 @@ public class GroundMaterialSteepTests
         Assert.Equal(30f, copied.FromDegrees);
         Assert.Null(copied.ToDegrees);
         Assert.Equal((ushort)14, copied.Material);
+        GroundMaterial snapshot = copy.Material(1)!;
+        Assert.Equal("n.png", snapshot.NormalTexture);
+        Assert.Equal("r.png", snapshot.RoughnessTexture);
+        Assert.Equal("h.png", snapshot.HeightTexture);
+        Assert.Equal(16f, snapshot.HeightBlendSharpness);
+        Assert.Equal(GroundMaterialAntiTiling.Rotate, snapshot.AntiTiling);
+        Assert.NotSame(source.Feather, snapshot.Feather);
+        source.Feather.WidthMetres = 0.5f;
+        source.Feather.Breakup = 0;
+        Assert.Equal(0.3f, snapshot.Feather!.WidthMetres);
+        Assert.Equal(0.7f, snapshot.Feather.Breakup);
     }
 
     [Fact]

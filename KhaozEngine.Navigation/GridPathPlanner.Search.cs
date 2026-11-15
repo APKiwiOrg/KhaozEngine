@@ -29,13 +29,13 @@ public sealed partial class GridPathPlanner
     /// </summary>
     NavPath RunAStar(SearchScratch scratch,
         int startLayer, Vector2 startPoint, int goalLayer, Vector2 goalPoint,
-        float agentRadius, PathQueryBudget budget)
+        float agentRadius, PathQueryBudget budget, bool useCertificate)
     {
         NavGrid goalGrid = _space.Layers[goalLayer];
         (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
         return RunSearch(scratch, startLayer, startPoint,
             new PointGoal(this, goalLayer, goalX, goalZ, CellFeet(goalLayer, goalX, goalZ)),
-            goalPoint, agentRadius, budget);
+            goalPoint, agentRadius, budget, useCertificate);
     }
 
     /// <summary>What one search is looking for. A struct implementation keeps the per-node calls free of
@@ -43,6 +43,8 @@ public sealed partial class GridPathPlanner
     interface ISearchGoal
     {
         bool IsGoal(int layer, int x, int z);
+        int MemberCount { get; }
+        bool IsDisconnected(PlannerConnectivity connectivity, int startComponent);
 
         /// <summary>Added to the g-score for the open-set order. Must bound the remaining route cost.</summary>
         double Priority(int layer, int x, int z);
@@ -56,6 +58,15 @@ public sealed partial class GridPathPlanner
         Vector3 goalFeet) : ISearchGoal
     {
         public bool IsGoal(int layer, int x, int z) => layer == goalLayer && x == goalX && z == goalZ;
+        public int MemberCount => 1;
+
+        public bool IsDisconnected(PlannerConnectivity connectivity, int startComponent)
+        {
+            NavGrid grid = planner._space.Layers[goalLayer];
+            if (!grid.InBounds(goalX, goalZ)) return false;
+            int component = connectivity.ComponentOf(planner._layerOffset[goalLayer] + goalZ * grid.Width + goalX);
+            return component >= 0 && component != startComponent;
+        }
 
         public double Priority(int layer, int x, int z)
             => planner._spatialBound.Point(layer, x, z, goalLayer, goalX, goalZ);
@@ -73,13 +84,19 @@ public sealed partial class GridPathPlanner
     // Priority must bound remaining route cost. Progress only chooses a partial endpoint, so region
     // queries can measure useful approach independently when a safe priority has to be zero.
     NavPath RunSearch<TGoal>(SearchScratch scratch, int startLayer, Vector2 startPoint, TGoal goal,
-        Vector2? goalPoint, float agentRadius, PathQueryBudget budget)
+        Vector2? goalPoint, float agentRadius, PathQueryBudget budget, bool useCertificate)
         where TGoal : struct, ISearchGoal
     {
         NavGrid startGrid = _space.Layers[startLayer];
         (int startX, int startZ) = startGrid.CellOf(startPoint.X, startPoint.Y);
         int startId = _layerOffset[startLayer] + startZ * startGrid.Width + startX;
 
+        if (useCertificate && TryCertifyNoProgress(startLayer, startX, startZ, startId, goal))
+        {
+            System.Threading.Interlocked.Increment(ref _certificatesForTests);
+            return NavPath.Unreachable;
+        }
+        System.Threading.Interlocked.Increment(ref _searchesForTests);
         scratch.BeginSearch();
         PriorityQueue<int, (double F, int Seq)> open = scratch.Open;
         int seq = 0;

@@ -246,6 +246,24 @@ public class GridPathPlannerRegionTests
     }
 
     [Fact]
+    public void AConnectedLaterMemberPreventsAnUnreachableCertificate()
+    {
+        NavSpace space = NavSpace.Single(SurfaceGrid(3, 1, (x, _) => x != 1));
+        var region = new NavGoalRegion(new Vector3(1.5f, 0f, 0.5f), 1f, _ => true);
+        var planner = new GridPathPlanner(space);
+        var start = new Vector3(2.5f, 0f, 0.5f);
+        // Discovery visits disconnected x=0 first, then the start's own x=2 member. Checking only
+        // the first label would falsely certify, since the start already has zero progress.
+        NavPath expected = planner.FindPathWithoutCertificateForTests(start, region, 0f, Budget);
+        NavPath actual = planner.FindPath(start, region, 0f, Budget);
+        Assert.Equal(NavPathStatus.Complete, actual.Status);
+        Assert.Equal(expected.Status, actual.Status);
+        Assert.Equal(expected.Waypoints, actual.Waypoints);
+        Assert.Equal(new[] { new NavWaypoint(new Vector2(2.5f, 0.5f), 0) }, actual.Waypoints);
+        Assert.Equal((2, 0), planner.WorkForTests);
+    }
+
+    [Fact]
     public void GuardedRegionKeepsRawClearanceAndEveryAdmittedCell()
     {
         NavSpace space = NavSpace.Single(SurfaceGrid(4, 1, (_, _) => true));

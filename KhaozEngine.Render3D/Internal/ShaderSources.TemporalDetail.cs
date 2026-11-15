@@ -15,14 +15,21 @@ vec4 detailClassification;
     uint distrust = (!useHistory ? 1u : 0u) | ((band || followed || carriedBand) ? 2u : 0u)
         | (result.clip > 0.5 ? 4u : 0u) | (visibilityReleased ? 8u : 0u) | (reactive > 0.0 ? 16u : 0u);
     detailClassification = vec4(previousUv, motionPixels, float(distrust | (result.stability > 0.0 ? 32u : 0u)));
-" + TemporalAccumulateReturnGlsl + TemporalResolvePixelGlsl + @"
+" + TemporalAccumulateReturnGlsl + TemporalResolvePixelGlsl + TemporalDetailValidityGlsl + @"
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oClassification;
 void main() {
-    temporalResolvePixel(ivec2(gl_FragCoord.xy));
+    temporalDetailClassifyPixel(ivec2(gl_FragCoord.xy));
     uint flags = uint(detailClassification.w);
     // A quarter-code bias preserves integer flags under both truncating and nearest UNORM writes.
-    oClassification = vec4((float(detailDistrust(flags) | (flags & 32u)) + 0.25) / 255.0) + vec4(vUv.x * 1.0e-30);
+    // Keep the shared resolve ABI without colour samples. Four signed-32-bit widths and the readiness bit
+    // contribute less than 1e-20, below float32 spacing at the biased code, before R8 conversion.
+    float layoutWidth = float(textureSize(sampler2D(SceneColor, LinearClamp), 0).x)
+        + float(textureSize(sampler2D(OpaqueColor, LinearClamp), 0).x)
+        + float(textureSize(sampler2D(KeyShadowVisibility, LinearClamp), 0).x)
+        + float(textureSize(sampler2D(PreviousKeyShadowVisibility, LinearClamp), 0).x) + PreviousJitter.z;
+    oClassification = vec4((float(detailDistrust(flags) | (flags & 32u)) + 0.25) / 255.0)
+        + vec4((vUv.x + layoutWidth) * 1.0e-30);
 }";
 
     internal static string TemporalDetailResolveFragment(TemporalResolvePrecision precision, bool capturePathForTests = false) =>
@@ -46,41 +53,49 @@ ivec2 detailPixel;
 vec4 detailMean;
 vec4 detailTransport;
 " + TemporalDetailMath.GateGlsl + TemporalDetailMath.Glsl + TemporalDetailFetchGlsl + @"
-// Only the six trust/lock bits cross this pass boundary. Motion is already available in the resolve.
+// The halo carries validity. Only the centre's own candidate lock can require a coarse replay.
 uint detailFlags(ivec2 pixel) {
     return uint(round(texelFetch(sampler2D(DetailClassification, LinearClamp), pixel, 0).r * 255.0));
 }
 bool detailGate(float motion) {
     ivec2 last = ivec2(Sizes.zw) - ivec2(1);
-    uint centre = detailFlags(detailPixel), distrust = 0u;
+    uint distrust = 0u;
     for (int y = -1; y <= 1; y++)
         for (int x = -1; x <= 1; x++)
             distrust |= detailFlags(clamp(detailPixel + ivec2(x,y), ivec2(0), last));
-    return detailUseFine(motion, (centre & 32u) != 0u, centre, distrust);
+    return detailUseFine(motion, false, 0u, distrust);
 }
-" + TemporalAccumulateBeforeFetchGlsl + @"
+" + TemporalAccumulateFunctionsGlsl + TemporalDetailLockGlsl + TemporalAccumulateEntryGlsl + @"
         bool fine = detailGate(motionPixels);
         vec4 fetched;
         if (fine) {
             detailMean = detailMeanAt(previousUv, displaySize);
+            if (!detailUseFine(motionPixels, true, 0u, 0u))
+                fine = !detailCandidateLocked(detailMean, fetchedState, fetchedRecord, current, motionPixels,
+                    reactive, useHistory, heldFromFarther, ridge, ownReprojected, edgeMotion, uv, centreTexel,
+                    maxTexel, previousUv, expectedDepth, surface);
+        }
+        if (fine) {
             fetched = detailMean;
             detailTransport = vec4(previousUv, 0.0, 1.0);
         } else {
+            detailMean = vec4(0.0);
             fetched = sampleHistoryCatmullRom(previousUv, displaySize);
         }
-" + TemporalAccumulateAfterFetchGlsl + @"
+" + TemporalDetailAfterFetchGlsl + @"
     if (detailTransport.w > 0.5) {
         vec4 storedR = detailRound(vec4(result.color, result.alpha));
         vec3 currentColor = fromWeighted(max(yCoCgToRgb(current.xyz), vec3(0.0)));
         detailTransport.z = detailRetention(storedR.rgb, currentColor, detailMean.rgb, currentWeight, useHistory);
     }
-" + TemporalAccumulateReturnGlsl + TemporalResolvePixelGlsl + @"
+" + TemporalAccumulateReturnGlsl + "\n#undef visibilityReleased\n" + TemporalResolvePixelGlsl + @"
 TemporalPixel temporalDetailPixel(ivec2 pixel) {
     detailPixel = pixel;
     detailMean = vec4(0.0);
     detailTransport = vec4(0.0);
     return temporalResolvePixel(pixel);
 }
+
 ";
 
     const string TemporalDetailMainGlsl = @"

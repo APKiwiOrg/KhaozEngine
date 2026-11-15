@@ -15,7 +15,9 @@ namespace KhaozEngine.Render3D.Internal
         internal const string TemporalAccumulateGlsl = TemporalAccumulateBeforeFetchGlsl + TemporalAccumulateFetchGlsl
             + TemporalAccumulateAfterFetchGlsl + TemporalAccumulateReturnGlsl;
 
-        internal const string TemporalAccumulateBeforeFetchGlsl = @"
+        internal const string TemporalAccumulateBeforeFetchGlsl = TemporalAccumulateFunctionsGlsl + TemporalAccumulateEntryGlsl;
+
+        internal const string TemporalAccumulateFunctionsGlsl = @"
 // drift and swing are the shimmer record (TemporalShimmerGlsl) the history state stores, shimmer the score read from it.
 struct TemporalPixel {
     vec3 color; float confidence; float stability; float moved; float disocclusion; float reactive; float clip;
@@ -233,7 +235,8 @@ vec2 temporalHistoryRingShift(vec2 previousUv, vec2 displaySize, float aroundLum
     return vec2((0.25 * ring - aroundLuma) * sign(side), min(shift.x, shift.y));
 }
 
-// The per-pixel resolve over a gathered 3x3 (temporalGather), its ridge (temporalRidge) and the surface its centre
+";
+        internal const string TemporalAccumulateEntryGlsl = @"// The per-pixel resolve over a gathered 3x3 (temporalGather), its ridge (temporalRidge) and the surface its centre
 // texel prepared (temporalPrepareSurface), in the display pixel at uv whose 3x3 is centred on centreTexel.
 TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel, TemporalNeighbourhood n,
     TemporalKernels kernels, bool ridge, TemporalSurface surface) {
@@ -256,215 +259,17 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     current.xyz = clamp(current.xyz, neighbourMin, neighbourMax);
     current.w = clamp(current.w, alphaMin, alphaMax);
 
-    // Steps 1 and 3: where this pixel was last frame, by the surface its centre texel prepared, the dilated nearest or
-    // beside a fast edge the centre texel's own, and the depth a static surface there had. Motion is clamped to two
-    // screens and a point behind last frame's camera is written two screens away, so any such previous position falls
-    // outside [0, 1] here and is rejected like any other off-screen one.
-    float expectedDepth = surface.expectedDepth;
-    bool depthTested = surface.depthTested;
-    bool nearerMoved = surface.nearerMoved;
-    bool band = surface.band;
-    bool followed = surface.followed;
-    bool ownReprojected = surface.ownReprojected;
-    bool narrowMoving = surface.narrowMoving;
-    bool movingEdge = surface.movingEdge;
-    float edgeMotion = surface.edgeMotion;
-    vec2 previousUv = temporalPreviousUv(uv, surface.motion, surface.background);
-    bool onScreen = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
-    float motionPixels = onScreen ? length((uv - previousUv) * displaySize) : 0.0;
-
-    // Last frame's state around the previous position, read once for steps 3 and 2: the confidence blended by the
-    // four texels' bilinear weights, and the lock as the largest of those that carry weight. A bilinear lock under
-    // motion is blended with unlocked neighbours every frame and ran out about three times faster than LockDecay, so
-    // a moving sub-texel feature lost its hold. At a texel centre only that texel carries weight, so a still lock
-    // reads back unchanged and never spreads. carriedMoved is whether any texel that carries weight stored the lock
-    // of a moving surface (temporalStoreLock), carriedBand whether any stored that of a band pixel, and
-    // carriedFollowed whether that was the followed surface's own. The shimmer record in blue and alpha is blended by
-    // the same weights.
-    vec2 fetchedState = vec2(0.0);
-    vec2 fetchedRecord = vec2(0.0);
-    bool carriedMoved = false;
-    bool carriedBand = false;
-    bool carriedFollowed = false;
-    if (historyValid && onScreen) {
-        vec2 statePosition = previousUv * displaySize - 0.5;
-        ivec2 stateBase = ivec2(floor(statePosition));
-        vec2 stateFraction = statePosition - vec2(stateBase);
-        ivec2 lastState = ivec2(displaySize) - ivec2(1);
-        vec4 s00 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase, ivec2(0), lastState), 0);
-        vec4 s10 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
-            clamp(stateBase + ivec2(1, 0), ivec2(0), lastState), 0);
-        vec4 s01 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
-            clamp(stateBase + ivec2(0, 1), ivec2(0), lastState), 0);
-        vec4 s11 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
-            clamp(stateBase + ivec2(1, 1), ivec2(0), lastState), 0);
-        vec2 g = 1.0 - stateFraction;
-        vec4 bilinear = vec4(g.x * g.y, stateFraction.x * g.y, g.x * stateFraction.y,
-            stateFraction.x * stateFraction.y);
-        vec4 carried = step(vec4(1.0e-3), bilinear);   // texels whose weight is more than rounding
-        // The least state a carrying texel stored: the moved, band and followed marks lie below every plain lock,
-        // each below the one before, so one least value answers all three, and a footprint carrying two marks
-        // answers as the lower (step 3).
-        float carriedLeast = min(min(carried.x > 0.5 ? s00.y : 0.0, carried.y > 0.5 ? s10.y : 0.0),
-            min(carried.z > 0.5 ? s01.y : 0.0, carried.w > 0.5 ? s11.y : 0.0));
-        carriedMoved = temporalStoredMoved(carriedLeast);
-        carriedBand = temporalStoredBand(carriedLeast);
-        carriedFollowed = temporalStoredFollowed(carriedLeast);
-        s00.y = temporalStoredLock(s00.y);
-        s10.y = temporalStoredLock(s10.y);
-        s01.y = temporalStoredLock(s01.y);
-        s11.y = temporalStoredLock(s11.y);
-        fetchedState = vec2(dot(bilinear, vec4(s00.x, s10.x, s01.x, s11.x)),
-            max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));
-        fetchedRecord = vec2(dot(bilinear, vec4(s00.z, s10.z, s01.z, s11.z)),
-            dot(bilinear, vec4(s00.w, s10.w, s01.w, s11.w)));
-    }
-
-    // Step 3: disocclusion, one-sided. A pixel expects the depth of the surface it reprojected, and a stored depth
-    // nearer than that means something covered it last frame. All four stored depths around the reprojected position
-    // nearer drops the history. Where the expected surface shows under less than DisocclusionVisibleShare of their
-    // bilinear weight, the pixel was mostly covered and drops it too, unless the nearest stored depth is narrow
-    // (temporalNarrowDepth), a feature narrower than a texel, or two side by side, that the jitter missed this frame,
-    // or the lock the pixel carries lies within half of LockDecay of whole. The narrow exception holds only where the
-    // state the pixel carries says no moving surface showed there last frame (temporalStoreLock): a keyed line one or
-    // two texels wide that moved on is as narrow as a missed still blade, and only that state tells them apart. A lock
-    // within half a decay of whole was refreshed by a ridge on the last frame and has lost less than that since, as a
-    // still sub-texel feature's has on the frame after the jitter showed it, and step 6 keeps its hold whole. Step 6
-    // releases a lock by motion from LockMotionStartPixels on, so a feature moving more than a sixteenth of the way
-    // from there to LockMotionEndPixels, about 1.2 display pixels a frame, leaves no such lock where it was. Where the
-    // state says a moving surface showed there, neither exception holds, and any stored depth nearer than expected that
-    // carries more than rounding of the weight drops the history: that surface's ridged pixels hold locks near whole,
-    // as an avatar the camera follows keeps its own, and a history it covered in part holds its colour in that part,
-    // which the clip leaves over a textured background. Where the state says a band pixel stored the history (step 1),
-    // a pixel whose dilated nearest surface did not move in the world (nearerMoved) drops it, unless every stored
-    // depth is farther than expected. The band followed a moving nearer surface, beside its edge or on it, and a pixel
-    // of a still surface would carry that surface's colour away with it. A pixel beside or on the moving surface, and
-    // a nearer surface reading the band where its edge was, keep it. A history the followed surface's own pixels
-    // stored (the followed mark) drops only where the pixel moved on screen more than FollowedStillDisplayPixels and
-    // one of the nine current texels around its position moves on screen otherwise than the pixel reprojected, by
-    // more than FollowedHistoryMotionFraction of that motion: the followed surface still shows there while the
-    // pixel's own surface passes, as the ground an avatar uncovers does under a camera that follows it. A background
-    // texel, whose motion is the sentinel, is never the followed surface and is left out. A surface that stopped in
-    // the world, or turned back through zero travel, reads its own pixels' history in place, whatever passes beside
-    // it, or where the same surface shows moving with it under a camera that eases on after it, and keeps it. A
-    // footprint whose carrying texels stored both marks, one the followed surface's and one the band's, reads as the
-    // followed mark, the least of them, so its band history drops only as the followed mark's does. That takes a
-    // fractional position across the outline, as under a camera that eases on. Keyed on a moving edge instead, the
-    // drop never fired on ground under a perspective camera, whose neighbouring texels move apart on screen by their
-    // depth step so that every ground pixel reads as a moving edge. Sparing a pixel whose 3x3 holds a surface farther
-    // than its centre spared every ground pixel at a grazing angle, where each ground texel lies farther than the one
-    // below it by more than the tolerance.
-    // Any farther stored depth kept a sub-pixel edge from reading as revealed, and on its own it kept the ring of
-    // pixels around a moving object's old place, whose footprint reaches past its edge, from ever being disoccluded. A
-    // background pixel expects BackgroundLinearDepth, so anything stored nearer there was covering it. A static surface
-    // on or behind last frame's camera had no history there. The footprint sits at the display pixel's previous
-    // position, where history is read, while the expected depth comes from the reprojected texel's own point, the
-    // dilated nearest in the 3x3 unless the pixel reprojected by its own. The same four depths tell step 6 whether a
-    // pixel at a moving edge reads history a farther surface left: every one of them farther than the moving surface's
-    // expected depth. That runs for a moving surface too, whose depth test is skipped, and costs no fetch beyond the
-    // four a depth-tested pixel already takes.
-    bool followedElsewhere = !carriedFollowed;
-    if (carriedFollowed && !nearerMoved && motionPixels > FollowedStillDisplayPixels) {
-        vec2 ownMotion = (uv - previousUv) * internalSize;
-        ivec2 historyTexel = ivec2(floor(previousUv * internalSize + jitter));
-        float apart = 0.0;
-        for (int y = -1; y <= 1; y++) {
-            for (int x = -1; x <= 1; x++) {
-                vec2 shown = texelFetch(sampler2D(MotionTex, LinearClamp),
-                    temporalNeighbourTexel(historyTexel, x, y, maxTexel), 0).rg;
-                if (!(abs(shown.x) > MotionSentinel)) apart = max(apart, length(shown * internalSize - ownMotion));
-            }
-        }
-        followedElsewhere = apart > FollowedHistoryMotionFraction * length(ownMotion);
-    }
-    // At Quality, a slower-decaying lock counts as refreshed for one more frame at this half-LockDecay threshold.
-    bool disoccluded = false;
-    bool heldFromFarther = false;
-    if (historyValid && onScreen && (depthTested || movingEdge)) {
-        DepthFootprint footprint = temporalDepthFootprint(previousUv, internalSize, maxTexel, expectedDepth);
-        disoccluded = depthTested && (!(expectedDepth > 1.0e-6)
-            || footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)
-            || (carriedBand && !nearerMoved && !(expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance))
-                && followedElsewhere)
-            || (carriedMoved ? footprint.visibleShare < 1.0 - 1.0e-3
-                : footprint.visibleShare < DisocclusionVisibleShare
-                    && fetchedState.y <= 1.0 - 0.5 * LockDecay
-                    && !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel, false)));
-        heldFromFarther = movingEdge && expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance);
-    }
-
-    // Step 2: Catmull-Rom history at the reprojected position. A NaN or an infinity never reaches the output, because
-    // a comparison with either is false, which survives fast math where isnan may not.
-    bool useHistory = historyValid && onScreen && !disoccluded;
-    vec4 history = vec4(0.0);
+" + TemporalAccumulateReprojectionGlsl + @"    vec4 history = vec4(0.0);
     vec2 historyState = vec2(0.0);
     vec2 historyRecord = vec2(0.0);
     if (useHistory) {
 ";
         internal const string TemporalAccumulateFetchGlsl = @"        vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);";
-        internal const string TemporalAccumulateAfterFetchGlsl = @"
-        bool finite = all(greaterThan(fetched, vec4(-HalfMax))) && all(lessThan(fetched, vec4(HalfMax)))
-            && all(greaterThan(fetchedState, vec2(-HalfMax))) && all(lessThan(fetchedState, vec2(HalfMax)))
-            && all(greaterThan(fetchedRecord, vec2(-HalfMax))) && all(lessThan(fetchedRecord, vec2(HalfMax)));
-        if (finite) {
-            history = max(fetched, vec4(0.0));
-            historyState = clamp(fetchedState, vec2(0.0), vec2(MaxStillAccumulation / MaxAccumulation, 1.0));
-            historyRecord = fetchedRecord;
-        } else {
-            useHistory = false;
-        }
-    }
-    // The history in the clip's space, and this frame's luma less it, the change the shimmer record averages.
-    vec3 historyYcc = rgbToYCoCg(toWeighted(history.rgb));
-    float lumaChange = current.x - historyYcc.x;
+        internal const string TemporalAccumulateAfterFetchGlsl = "\n" + TemporalAccumulateFiniteGlsl
+            + TemporalAccumulateHistoryGlsl + TemporalAccumulateMotionCapGlsl + TemporalAccumulateLockGlsl
+            + TemporalAccumulateAfterLockGlsl;
 
-    // Step 8, first half: the accumulated sample weight's cap, lower as motion grows. The weight itself waits for the
-    // shimmer score, after the shading release.
-    float motionCap = mix(MaxAccumulation, MovingAccumulation,
-        clamp(motionPixels / MotionAccumulationPixels, 0.0, 1.0));
-
-    // Step 6: thin features. A ridge through the centre texel refreshes the lock. Still flicker loses the jitter-cycle
-    // rate unless visibility changed, and other pixels lose LockDecay. Large motion and reactive content release it,
-    // and so does motion at an edge, where the pixel
-    // holds a moving feature's history, not its own. A pixel that reprojected by its own motion and kept its history
-    // holds its own, because where a moving surface showed last frame step 3 keeps a history only where no stored depth
-    // carrying weight lies nearer than the pixel's own surface. So a still sub-texel feature beside a fast surface
-    // keeps its lock, while one that restarted lets go of a ridge the moving surface's colour may have given it. At a
-    // moving edge whose history a farther surface left, the lock read with that history belongs to that surface, and a
-    // nearer surface crossing a held thin feature would carry it onward, so it is dropped before a ridge can refresh
-    // it. A thin feature taking a ridge keeps its own lock, and so does one beside a still nearer surface,
-    // which is no moving edge. The hold on the clip stays whole while the lock is at least 1 / LockHoldGain, so a
-    // sub-texel feature missed for a few frames keeps its luma, and it lets go over the rest of the lock.
-    float lockLoss = temporalStillLockLoss(historyRecord, lumaChange, motionPixels, reactive);
-#ifdef TemporalShimmerVisibility
-    if (lockLoss != LockDecay && temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)) lockLoss = LockDecay;
-#endif
-    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - lockLoss, 0.0) : 0.0;
-    if (ridge) lockValue = 1.0;
-    float releaseEdgeMotion = ownReprojected && useHistory ? 0.0 : edgeMotion;
-    // With positive width the ordered barriers preserve bits. Finite arguments cannot make a NaN factor:
-    // scaling may overflow, but each clamp returns [0, 1], so every keep factor and product is finite and
-    // nonnegative. The helper therefore maps +0 to +0 exactly. Test bits and the actual selected edge argument,
-    // keeping -0, nonzero locks and every non-finite argument on the unchanged ordered path.
-    // Keep this selection through SPIR-V and HLSL so FXC branches around the ordered release.
-    [[dont_flatten]] if (floatBitsToUint(lockValue) != 0u
-        || (floatBitsToUint(motionPixels) & 0x7f800000u) == 0x7f800000u
-        || (floatBitsToUint(reactive) & 0x7f800000u) == 0x7f800000u
-        || (floatBitsToUint(releaseEdgeMotion) & 0x7f800000u) == 0x7f800000u) {
-        lockValue = temporalReleaseLock(lockValue, motionPixels, reactive, releaseEdgeMotion);
-    }
-    // Preserve the colour release's carried-lock classification before visibility clears the stored lock.
-    bool carriedLock = !ridge && lockValue > 0.0;
-    // A visibility release only clears this lock and the hold it gives, so a lock whose bits are +0.0 runs no check:
-    // clearing it would store the same bits and its hold is +0.0 already. The bits are tested, not the value, so a
-    // -0.0, a denormal or a NaN lock still runs the check.
-    float signedVisibilityChange = 0.0;
-    uint visibilityPath = 0u;
-    bool visibilityReleased = floatBitsToUint(lockValue) != 0u && useHistory && !surface.background
-        && PreviousJitter.z > 0.5 && temporalVisibilityReleases(uv, centreTexel, maxTexel, previousUv, expectedDepth,
-            surface.visibilityMask, signedVisibilityChange, visibilityPath);
-    if (visibilityReleased) lockValue = 0.0;
-    float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
+        internal const string TemporalAccumulateAfterLockGlsl = @"    float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
     // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.
     // Gamma is wide for a still pixel and narrows as it moves. A locked thin feature's luma neither drives the clip

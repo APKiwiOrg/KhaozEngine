@@ -156,15 +156,22 @@ at least six `GpuCapabilities.MaxColorAttachments`, an extent within
 3,686,400, so 2560 by 1440 is admitted and 3840 by 2160 falls back to Display. The additional pair costs
 225 MiB and 506.25 MiB respectively. Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
 
-Fine classifies trust on the display grid, resolves on that grid, and updates the fine grid immediately
+Fine computes validity on the display grid, resolves on that grid, and stores the fine grid immediately
 afterward, before distortion, bloom or tonemapping. It presents the resolve's R directly. There is no new
-presentation filter. The classification uses the candidate's own chosen reprojection and history state.
-Its one-pixel Chebyshev halo is gathered by the resolve, so no neighbour's classification is guessed from
-the centre. Classification stores the active distrust bits and lock bit in R8 UNORM. A quarter-code
-bias before conversion preserves each integer code under truncating and nearest writes. The resolve
-rounds the sampled code back to an integer and uses its own unchanged chosen motion, so neither UV
-nor motion needs exporting. The classifier exports only the distrust observations the selected gate
-reads and the lock bit. Diagnostic attribution replays the classifier before this packing.
+presentation filter. Validity shares the resolve's reprojection, state, depth and strict finite-history
+checks. The finite check still fetches the candidate history, including its format-maximum refusal, but
+performs no colour accumulation, lock calculation or scene-colour neighbourhood work. The shared
+resolve resource layout remains live through bounded texture-dimension queries and its readiness bit,
+without extra colour samples. Their contribution is below float32 spacing at the biased R8 code.
+
+The resolve gathers the one-pixel Chebyshev validity halo. No neighbour's decision is inferred from the
+centre. A still or distrusted pixel takes the coarse path once. Otherwise the resolve fetches its fine
+candidate. Only motion above the still epsilon and no farther than the still interval needs a separate
+candidate-lock evaluation before choosing fine or coarse. The shared lock prefix evaluates that
+candidate without repeating neighbourhood preparation or the complete colour accumulation. The full
+accumulation runs once. No candidate lock crosses the production pass boundary. R8 UNORM stores validity with a quarter-code
+bias that preserves the code under truncating and nearest writes. Diagnostic gate variants and
+attribution retain the complete observation replay without changing the production gate.
 
 The resolve computes each display pixel's four children once, from the four fine fetches it already
 holds. Hbar stays a float32 local through retention and transport. Rounding it to binary16 would move
@@ -272,25 +279,25 @@ wall with a followed wide box at a 2560 by 1440 display. Native rendered interna
 Quality at 1707 by 960. Each case used four warm frames and eight measured frames on a shared machine.
 Times are native GPU timestamp medians from the on-demand `TemporalDetailCostPerfGpuTests`, never timing
 gates. The before capture uses the full-float mean and transport. The after capture computes the four
-children in the resolve and point-copies them in the fine-grid store.
+children in the resolve, uses validity-only classification and point-copies the completed children.
 
 | Preset | Mode | Pass | Before median ms (min to max) | After median ms (min to max) |
 | --- | --- | --- | --- | --- |
-| Native | DisplaySplit | `temporal.prepare` | 0.791 (0.770 to 0.847) | 0.788 (0.672 to 1.408) |
-| Native | DisplaySplit | `temporal.accumulate` | 1.985 (1.942 to 2.300) | 1.928 (1.851 to 2.045) |
-| Native | Display | `temporal.resolve` | 3.599 (2.909 to 3.896) | 3.018 (2.793 to 3.247) |
-| Native | Fine | `temporal.detail-classify` | 5.777 (5.150 to 6.278) | 5.749 (5.331 to 6.211) |
-| Native | Fine | `temporal.resolve` | 6.774 (6.474 to 7.355) | 7.918 (7.646 to 8.697) |
-| Native | Fine | `temporal.detail-store` | 3.845 (3.790 to 5.058) | 0.730 (0.703 to 1.522) |
-| Quality | DisplaySplit | `temporal.prepare` | 0.543 (0.489 to 0.978) | 0.537 (0.475 to 1.045) |
-| Quality | DisplaySplit | `temporal.accumulate` | 2.108 (1.912 to 2.873) | 1.908 (1.879 to 2.227) |
-| Quality | Display | `temporal.resolve` | 2.977 (2.814 to 3.603) | 3.153 (2.815 to 3.648) |
-| Quality | Fine | `temporal.detail-classify` | 5.491 (4.971 to 6.044) | 5.450 (5.263 to 5.910) |
-| Quality | Fine | `temporal.resolve` | 6.674 (6.429 to 7.452) | 7.712 (7.377 to 8.117) |
-| Quality | Fine | `temporal.detail-store` | 3.982 (3.870 to 4.369) | 0.700 (0.668 to 1.127) |
+| Native | DisplaySplit | `temporal.prepare` | 0.791 (0.770 to 0.847) | 0.822 (0.745 to 1.371) |
+| Native | DisplaySplit | `temporal.accumulate` | 1.985 (1.942 to 2.300) | 1.991 (1.935 to 2.289) |
+| Native | Display | `temporal.resolve` | 3.599 (2.909 to 3.896) | 3.007 (2.886 to 3.708) |
+| Native | Fine | `temporal.detail-classify` | 5.777 (5.150 to 6.278) | 1.915 (1.855 to 2.537) |
+| Native | Fine | `temporal.resolve` | 6.774 (6.474 to 7.355) | 8.709 (8.272 to 9.385) |
+| Native | Fine | `temporal.detail-store` | 3.845 (3.790 to 5.058) | 0.758 (0.698 to 0.964) |
+| Quality | DisplaySplit | `temporal.prepare` | 0.543 (0.489 to 0.978) | 0.561 (0.483 to 1.175) |
+| Quality | DisplaySplit | `temporal.accumulate` | 2.108 (1.912 to 2.873) | 1.998 (1.916 to 2.829) |
+| Quality | Display | `temporal.resolve` | 2.977 (2.814 to 3.603) | 2.948 (2.815 to 3.244) |
+| Quality | Fine | `temporal.detail-classify` | 5.491 (4.971 to 6.044) | 1.876 (1.849 to 2.360) |
+| Quality | Fine | `temporal.resolve` | 6.674 (6.429 to 7.452) | 8.654 (8.194 to 9.668) |
+| Quality | Fine | `temporal.detail-store` | 3.982 (3.870 to 4.369) | 0.759 (0.682 to 2.195) |
 
-Native's median of each frame's summed fine intervals is 14.663 ms (13.761 to 15.434), against default split's 2.733 ms. The difference is 11.931 ms.
-Quality's median of each frame's summed fine intervals is 13.873 ms (13.452 to 14.562), against default split's 2.507 ms. The difference is 11.366 ms.
+Native's median of each frame's summed fine intervals is 11.507 ms (11.100 to 12.041), against default split's 2.865 ms. The difference is 8.642 ms.
+Quality's median of each frame's summed fine intervals is 11.347 ms (10.749 to 12.829), against default split's 2.683 ms. The difference is 8.664 ms.
 The report-only aim is Fine within 3 ms of default split at Native. No timing assertion is added.
 
 Payload remains 64 retained and 33 scratch bytes a display pixel: a fine RGBA16F pair, one R8
@@ -300,7 +307,8 @@ scene/post targets, optional diagnostics, retired generations and driver overhea
 Display split's existing preparation workspace is 24 bytes an internal texel.
 
 The resolve now pays transport once per display pixel using its four held fetches. The fine-grid store
-only copies a selected child. Classification still replays the complete candidate accumulation. Split
+only copies a selected child. Classification retains shared validity and strict finite-history sampling without colour accumulation.
+Only slow motion needs a separate candidate-lock prefix. The full accumulation runs once. Split
 prepare also writes ordinary depth, while Fine's separate depth and visibility stores are outside its
 three named intervals. Markers end the active Metal encoder, and each interval includes its pass
 switches. These small shared-machine blocks are not paired causal measurements, whole-frame times or

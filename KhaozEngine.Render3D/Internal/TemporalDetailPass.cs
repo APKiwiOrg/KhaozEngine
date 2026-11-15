@@ -6,7 +6,7 @@ using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
 namespace KhaozEngine.Render3D.Internal;
 
-/// <summary>Display-grid classification and resolve, then the fine-grid update. Owned by the detail store, so all
+/// <summary>Display-grid validity and resolve, then the fine-grid copy. Owned by the detail store, so all
 /// sets and framebuffers retire before the history generation they borrow. No independent frame or pair index.</summary>
 internal sealed class TemporalDetailPass
 {

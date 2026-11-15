@@ -4930,7 +4930,9 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   stored result exactly. There is no new presentation filter. The update runs before distortion, bloom and
   tonemapping. The resolve computes all four children once, retaining the mean and reprojection in float32
   locals, and writes R, state and four RGBA16F children. The fine-grid pass point-loads the child selected
-  by texel parity. Display-sized scratch holds R8 trust flags and the four child targets. The temporal
+  by texel parity. Classification computes validity without colour accumulation. The resolve checks its
+  own slow candidate lock before choosing the fetch and accumulating once. Display-sized scratch holds R8 validity and
+  the four child targets. The temporal
   resolve must be active, the device must allow at least six colour attachments, the extent must fit the
   device's 2D render texture dimension limit, and the display's
   pixel count must fit the inclusive `Post.Temporal.HistoryDetailPixelLimit`. That budget defaults to 3,686,400,

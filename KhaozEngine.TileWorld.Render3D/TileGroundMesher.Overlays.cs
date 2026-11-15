@@ -22,6 +22,7 @@ public static partial class TileGroundMesher
         int lz,
         TileOverlayShape shape,
         int? overlaySlot,
+        float featherWidth,
         ReadOnlySpan<TileLatticeTriangle> triangles)
     {
         bool feather = overlaySlot.HasValue
@@ -47,7 +48,7 @@ public static partial class TileGroundMesher
             int? paint = t.Overlay ? overlaySlot : null;
             if (paint.HasValue && boundary is not null)
             {
-                TileOverlayFeatherMesh.Add(mesh, c, boundary, paint.Value,
+                TileOverlayFeatherMesh.Add(mesh, c, boundary, paint.Value, featherWidth,
                     At(t.A, sw, se, nw, ne), At(t.B, sw, se, nw, ne), At(t.C, sw, se, nw, ne));
                 continue;
             }

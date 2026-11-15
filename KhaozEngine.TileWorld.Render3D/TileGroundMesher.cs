@@ -13,7 +13,8 @@ public sealed class TileGroundMesherOptions
     float _overlayFeatherWidthMetres = 0.2f;
 
     /// <summary>Inward fade width for tiles marked <see cref="TileSettings.FeatherOverlay"/>. Positive finite
-    /// metres, capped to half the document's tile size. Unmarked overlays retain hard edges.</summary>
+    /// metres, capped to half the document's tile size. The default for materials that declare no feather width.
+    /// Unmarked overlays retain hard edges.</summary>
     public float OverlayFeatherWidthMetres
     {
         get => _overlayFeatherWidthMetres;
@@ -285,7 +286,12 @@ public static partial class TileGroundMesher
         // The overlay is a slot rather than a colour, so an id the catalogs no longer define lands on the slot
         // map's reserved slot and paints from there, the same way a dangling underlay does.
         int? overlaySlot = overlay == 0 ? null : c.Options.Slots.SlotOf(overlay);
-        AddCutTile(mesh, c, lx, lz, cell.Cut, overlaySlot, triangles[..cell.TriangleCount]);
+        // The overlay material's own feather width, else the option. A width the catalog rules refuse (a catalog
+        // edited in memory after its load) takes the option rather than a zero or NaN width the ramp divides by.
+        float? authored = c.Catalogs.Material(overlay)?.Feather?.WidthMetres;
+        float featherWidth = MathF.Min(authored is { } a && float.IsFinite(a) && a > 0f
+            ? a : c.Options.OverlayFeatherWidthMetres, c.TileSize * 0.5f);
+        AddCutTile(mesh, c, lx, lz, cell.Cut, overlaySlot, featherWidth, triangles[..cell.TriangleCount]);
     }
 
     /// <summary>Adds a triangle, replacing the three corner normals with the triangle's own when the options ask

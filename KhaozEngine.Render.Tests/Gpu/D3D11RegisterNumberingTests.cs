@@ -115,6 +115,11 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                     T("PointShadowMap"), T("PointShadowTransientMap") },
                 "b0 t0 s0 t1 s1 t2 t3"),
+            // Its relief variant puts the surface array second, the splat material's shape, so it flattens the same.
+            ("ModelRenderer._tileGroundReliefMaterialLayout",
+                new[] { U("TileGroundParams"), T("AlbedoArray"), T("SurfaceArray"), S("Sampler"), T("ShadowMap"),
+                    S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap") },
+                "b0 t0 t1 s0 t2 s1 t3 t4"),
             // The rigid temporal variant's set 1. A vertex-stage structured buffer takes the t counter like
             // any other shader resource.
             ("ModelMotionResources.RigidLayout",

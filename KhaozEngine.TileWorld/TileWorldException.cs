@@ -223,16 +223,16 @@ public sealed class TileWorldException : Exception
     /// <summary>The maximum catalog material count in one set, excluding the reserved missing layer.</summary>
     public int? MaximumMaterialCount { get; init; }
 
-    /// <summary>The first textured material's catalog id, which establishes the set's required dimensions.</summary>
+    /// <summary>The first decoded map's material id, establishing dimensions for the refused map's size class.</summary>
     public ushort? ReferenceMaterialId { get; init; }
 
-    /// <summary>The first textured material's authoring name.</summary>
+    /// <summary>The authoring name of the material that established the refused map's size class.</summary>
     public string? ReferenceMaterialName { get; init; }
 
-    /// <summary>The texture width in texels established by the first textured material.</summary>
+    /// <summary>The width in texels established by the first decoded map in the refused map's size class.</summary>
     public int? ExpectedWidth { get; init; }
 
-    /// <summary>The texture height in texels established by the first textured material.</summary>
+    /// <summary>The height in texels established by the first decoded map in the refused map's size class.</summary>
     public int? ExpectedHeight { get; init; }
 
     /// <summary>The authored relative texture path refused because its catalog has no source file.</summary>

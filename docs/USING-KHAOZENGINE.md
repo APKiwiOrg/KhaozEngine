@@ -26935,6 +26935,14 @@ from `InvalidOperationException`, with `Backend` and `Command`. `GpuRecordingSta
 `BeginWhileRecording`, `CommandOutsideRecording`, `EndWithoutRecording`, `RecordingAlreadySealed`
 and `SubmissionWithoutSeal`. End on a fresh or abandoned list uses `EndWithoutRecording`.
 End on a sealed list uses `RecordingAlreadySealed`.
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+
 A lost Metal or Vulkan timestamp device uses `GpuTimestampStateException` with
 `TimestampDeviceUnavailable` and `Backend`. Direct3D 11 uses `GpuTimestampDisposedException` with the
 same reason and `Backend`, retaining `ObjectName = "IGpuDevice"` and its `ObjectDisposedException` base.

@@ -251,6 +251,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 _list.Begin();
                 _list.SetFramebuffer(D3D11BindFixtures.Framebuffer());
+                _list.SetPipeline(D3D11BindFixtures.Pipeline());
                 foreach (byte[] bytes in writes) _list.UpdateBuffer<byte>(_buffer, 0, bytes);
                 _list.Draw(1);
                 _list.End();

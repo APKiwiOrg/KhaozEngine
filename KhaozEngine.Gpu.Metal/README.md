@@ -1041,6 +1041,14 @@ stays owed to the next one that wants it.
 renderable path: a recording binds a framebuffer, clears it, binds a pipeline, binds resource sets and
 geometry, and draws.
 
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+
 **The order inside a draw is four steps and it is written once.** The pass opens (the deferred begin, which
 folds the pending clears into load actions and emits the viewport and the scissor if either is owed), then the
 pipeline-state block, then the resource-set flush and the vertex-stream flush, then the command. It lives in

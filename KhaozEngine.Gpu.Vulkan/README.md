@@ -1420,6 +1420,14 @@ the copy the same way.
 
 ## Drawing: one order for five members, and the compute barriers that fall out of it
 
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+
 Every member of `IGpuCommandList` is live. A draw does four things before its `vkCmd*` and they are written ONCE
 rather than at each of the five members, because the order is what can be wrong and a missing step renders
 plausibly wrong rather than throwing:

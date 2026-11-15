@@ -927,6 +927,14 @@ Its immediate and default deferred drivers refuse at the draw call, with no draw
 `Begin` resets the recorded target, so every recording binds its own framebuffer
 ([#1688](https://github.com/APKiwiOrg/KhaozEngine/issues/1688)).
 
+`Draw` (both overloads) and `DrawIndexed` require a graphics pipeline bound in the current recording.
+`Dispatch` requires its own compute pipeline. Missing bindings throw `GpuRecordingStateException` with
+`GraphicsPipelineNotBound` or `ComputePipelineNotBound`, the backend and `Command` (`Draw`, `DrawIndexed`
+or `Dispatch`). Refusal precedes native commands, recorded operations, encoder or pass changes and consumption
+of pending clears. Graphics and compute bindings are separate, survive framebuffer changes and pass boundaries,
+and reset at `Begin`, so state from a prior recording cannot silently supply a forgotten pipeline
+([#1690](https://github.com/APKiwiOrg/KhaozEngine/issues/1690)).
+
 D3D11 constant-buffer binds also share Metal and Vulkan's `GpuDynamicBindingRangeException` refusals.
 `OffsetMisaligned` reports a composed offset off D3D11's required 256-byte boundary. `WindowOutsideSegment`
 reports `rangeOffset + appliedDynamicOffset + rangeBytes > segmentStride`, checked before alignment.

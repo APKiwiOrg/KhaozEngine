@@ -21,6 +21,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuFramebuffer framebuffer = Own(_fixture.Factory.CreateFramebuffer(null, target));
             _list = _fixture.CreateList();
             _list.Begin();
+            VulkanPipelineFixtures.BindBoth(_list, _fixture, _owned);
             _list.SetFramebuffer(framebuffer);
         }
 

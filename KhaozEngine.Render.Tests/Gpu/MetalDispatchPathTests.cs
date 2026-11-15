@@ -183,8 +183,12 @@ void main() { Values[gl_GlobalInvocationID.x] = Tint; }
 
             list.Begin();
 
-            Assert.Throws<InvalidOperationException>(
+            // Regression for https://github.com/APKiwiOrg/KhaozEngine/issues/1690
+            var refusal = Assert.Throws<GpuRecordingStateException>(
                 () => list.Dispatch(1, 1, 1));
+            Assert.Equal(GpuRecordingStateRefusal.ComputePipelineNotBound, refusal.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, refusal.Backend);
+            Assert.Equal("Dispatch", refusal.Command);
 
             // AND NOTHING WAS SPENT ON IT: the refusal comes before the encoder, so a dispatch that cannot happen
             // does not also cost a boundary and leave a compute encoder open behind the throw.
@@ -195,6 +199,13 @@ void main() { Values[gl_GlobalInvocationID.x] = Tint; }
             list.SetComputePipeline(ComputePipeline());
             list.Dispatch(1, 1, 1);
             Assert.Single(calls.Dispatches);
+            list.End();
+
+            list.Begin();
+            var next = Assert.Throws<GpuRecordingStateException>(() => list.Dispatch(1, 1, 1));
+            Assert.Equal(refusal.Reason, next.Reason);
+            Assert.Equal(refusal.Backend, next.Backend);
+            Assert.Equal(refusal.Command, next.Command);
             list.End();
         }
 

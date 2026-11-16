@@ -212,6 +212,7 @@ public sealed class CoverageTableBuilderTests
         Assert.Equal(table, File.ReadAllBytes(files.TablePath));
         Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
         File.WriteAllText(files.ManifestPath, original);
+        File.Delete(files.EvidencePath);
         Assert.Equal(0, Run(files, "verify-samples"));
         if (defect == "version")
         {
@@ -242,6 +243,7 @@ public sealed class CoverageTableBuilderTests
         var topology = CoverageRefinement.Build(first.Topology.Source, refined);
         Assert.NotEqual(first.Identity.RefinementSha256, CoverageBuildInputJson.RefinementHash(topology));
         Assert.Equal(0, Run(files, "build"));
+        File.Delete(files.EvidencePath);
         Assert.Equal(0, Run(files, "verify-samples"));
     }
 
@@ -265,6 +267,10 @@ public sealed class CoverageTableBuilderTests
         Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
         files.Manifest["stateSchemaSha256"] = CoverageBuildFixture.Hash;
         files.Write();
+        // Build evidence holds candidate inventories that sample verification does not construct.
+        Assert.Equal(1, Run(files, "verify-samples"));
+        Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
+        File.Delete(files.EvidencePath);
         Assert.Equal(0, Run(files, "verify-samples"));
     }
 
@@ -359,6 +365,7 @@ public sealed class CoverageTableBuilderTests
         using var files = new CoverageBuildFiles();
         Assert.Equal(0, await Execute("build"));
         byte[] bytes = File.ReadAllBytes(files.TablePath);
+        File.Delete(files.EvidencePath);
         Assert.Equal(0, await Execute("verify-samples"));
         Assert.Equal(bytes, File.ReadAllBytes(files.TablePath));
         async Task<int> Execute(string command)
@@ -401,6 +408,11 @@ public sealed class CoverageTableBuilderTests
     {
         using var files = new CoverageBuildFiles();
         Assert.Equal(0, Run(files, "build"));
+        if (command != "build")
+        {
+            File.Delete(files.EvidencePath);
+            Assert.Equal(0, Run(files, command));
+        }
         byte[] table = File.ReadAllBytes(files.TablePath), accepted = File.ReadAllBytes(files.EvidencePath);
         string json = Encoding.UTF8.GetString(accepted);
         if (defect == "truncated") json = "{";

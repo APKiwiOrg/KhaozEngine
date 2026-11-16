@@ -50,7 +50,11 @@ public sealed class CoverageDiagnosticsProcessTests
     {
         using var files = new CoverageBuildFiles("diagnostics");
         Assert.Equal(0, (await Execute(files, "build", diagnostics: false)).ExitCode);
-        if (command == "verify-samples") Assert.Equal(0, (await Execute(files, command, diagnostics: false)).ExitCode);
+        if (command == "verify-samples")
+        {
+            File.Delete(files.EvidencePath);
+            Assert.Equal(0, (await Execute(files, command, diagnostics: false)).ExitCode);
+        }
         byte[] table = File.ReadAllBytes(files.TablePath), evidence = File.ReadAllBytes(files.EvidencePath);
         File.WriteAllText(PathFor(files), "stale-refusal");
         Assert.Equal((0, "", ""), await Execute(files, command));

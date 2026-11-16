@@ -144,6 +144,16 @@ public sealed class CoverageVerifyProcessTests
         Assert.Equal(2, Program.Main(Args(files, "verify")));
         Assert.Equal(Encoding.UTF8.GetBytes("{"), File.ReadAllBytes(files.EvidencePath));
         Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        string text = Encoding.UTF8.GetString(accepted);
+        var wrongType = JsonNode.Parse(text)!;
+        wrongType["tableSha256"] = 7;
+        foreach (byte[] malformed in new[] { text.Insert(1, "\"formatVersion\":1,"), wrongType.ToJsonString() }.Select(Encoding.UTF8.GetBytes))
+        {
+            File.WriteAllBytes(files.EvidencePath, malformed);
+            Assert.Equal(2, Program.Main(Args(files, "verify")));
+            Assert.Equal(malformed, File.ReadAllBytes(files.EvidencePath));
+            Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        }
         File.WriteAllBytes(files.EvidencePath, accepted);
         Assert.Equal(0, Program.Run(Args(files, "verify"), accepted.Length));
     }

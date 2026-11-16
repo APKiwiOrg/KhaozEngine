@@ -75,6 +75,14 @@ public sealed class CoverageEvidenceManifest
     public CoverageReplayResult? Replay { get; private set; }
     public bool Complete => samplesComplete && (Replay == null || Replay.Accepted);
     internal void IncludeReplay(CoverageReplayResult replay) => Replay = replay;
+    internal CoverageArtifactHeader CreateHeader() => new(CoverageArtifactKind.Evidence, Tool, Scope, InputSha256,
+        TableSha256, Identity, ToolCodeSha256, Render3DCodeSha256, new Dictionary<string, long>(StringComparer.Ordinal)
+        {
+            ["domains"] = Domains.Count, ["samples"] = Samples.Count, ["candidateSampleIds"] = CandidateSampleIds.Count,
+            ["candidates"] = Candidates.Count, ["entries"] = Entries.Count, ["pairResults"] = PairResults.Count,
+            ["selectedClaims"] = SelectedClaims.Count, ["holes"] = Holes.Count,
+            ["denseRows"] = input.Domains.Sum(d => (long)d.DenseRows.Count), ["replayPoses"] = Replay?.PoseCount ?? 0,
+        }, Complete);
     static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -100,41 +108,10 @@ public sealed class CoverageEvidenceManifest
     /// Malformed JSON or field types retain the tool's malformed-input refusal family.</summary>
     internal void ValidateResume(byte[] bytes, byte[]? expectedBytes = null)
     {
-        try
-        {
-            CoverageBuildInputJson.CheckByteCapacity(bytes.LongLength, CoverageBuildInputJson.MaxBytes);
-            using var document = CoverageBuildInputJson.Document(bytes);
-            var root = document.RootElement;
-            using var expectedDocument = CoverageBuildInputJson.Document(expectedBytes ?? Write());
-            var expected = expectedDocument.RootElement;
-            ValidateObjectTypes(root, expected, "$");
-            foreach (string member in new[] { "formatVersion", "tool", "scope", "identity", "inputSha256", "tableSha256", "toolCodeSha256", "render3DCodeSha256" })
-            {
-                if (!JsonElement.DeepEquals(root.GetProperty(member), expected.GetProperty(member)))
-                    throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.ProvenanceMismatch, "Resumed evidence provenance differs.");
-            }
-        }
-        catch (JsonException error)
-        {
-            throw new CoverageBuildDataException(CoverageBuildInputRefusal.InvalidJson, "Malformed resumed evidence JSON.", error)
-            { Path = error.Path ?? "$" };
-        }
-    }
-
-    static void ValidateObjectTypes(JsonElement actual, JsonElement expected, string path)
-    {
-        CoverageBuildInputJson.Members(actual, path, expected.EnumerateObject().Select(p => p.Name).ToArray());
-        foreach (var member in expected.EnumerateObject())
-        {
-            var value = CoverageBuildInputJson.Get(actual, member.Name, path);
-            string memberPath = path + "." + member.Name;
-            bool boolean = value.ValueKind is JsonValueKind.True or JsonValueKind.False
-                && member.Value.ValueKind is JsonValueKind.True or JsonValueKind.False;
-            if (value.ValueKind != member.Value.ValueKind && !boolean)
-                throw new CoverageBuildDataException(CoverageBuildInputRefusal.InvalidValue, "Evidence field has the wrong JSON type.")
-                { Path = memberPath, MemberName = member.Name };
-            if (value.ValueKind == JsonValueKind.Object) ValidateObjectTypes(value, member.Value, memberPath);
-        }
+        CoverageBuildInputJson.CheckByteCapacity(bytes.LongLength, CoverageBuildInputJson.MaxBytes);
+        using var actual = new MemoryStream(bytes, writable: false);
+        using var expected = new MemoryStream(expectedBytes ?? Write(), writable: false);
+        CoverageLogicalDocumentReader.Compare(actual, expected, CoverageArtifactKind.Evidence);
     }
 
     sealed class EvidenceStream(int byteLimit) : MemoryStream

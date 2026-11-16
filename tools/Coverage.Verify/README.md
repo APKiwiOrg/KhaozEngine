@@ -16,7 +16,7 @@ Install from the configured engine package source with the same exact version as
 ```sh
 dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHAOZENGINE_VERSION"
 .tools/ke-coverage version
-.tools/ke-coverage build --manifest poses.json --table coverage.kert --evidence samples.json
+.tools/ke-coverage build --manifest poses.json --table coverage.kert --evidence build-samples.json
 .tools/ke-coverage verify-samples --manifest poses.json --table coverage.kert --evidence samples.json
 .tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json
 ```
@@ -68,9 +68,16 @@ Outputs are staged as temporary siblings before rename, with rollback if publish
 Evidence serialization and resumed file admission share one inclusive byte bound. Oversized output
 refuses with the typed capacity reason before either accepted file is replaced. Resumed JSON syntax
 and field-type errors retain the malformed-input refusal family and exit code 2.
+Resume recomputes acceptance, then compares every logical field. Whitespace and object member order
+do not matter. Matrix and weight numbers compare as binary32 words, including the sign of zero.
+Changed provenance is `ProvenanceMismatch`. Changed records with matching provenance are
+`ArtifactContentMismatch`. Malformed records retain the malformed-input refusal family.
+Use a separate evidence path when changing commands. Build evidence includes candidate construction
+inventories that sample verification does not construct, so those complete documents differ even when
+their table, scope and input identities match.
 
 ```sh
-dotnet tools/Coverage.Verify/bin/Release/net10.0/Coverage.Verify.dll build --manifest poses.json --table coverage.kert --evidence samples.json
+dotnet tools/Coverage.Verify/bin/Release/net10.0/Coverage.Verify.dll build --manifest poses.json --table coverage.kert --evidence build-samples.json
 dotnet tools/Coverage.Verify/bin/Release/net10.0/Coverage.Verify.dll verify-samples --manifest poses.json --table coverage.kert --evidence samples.json
 ```
 
@@ -293,6 +300,48 @@ only over the declared work. `build` and `verify-samples` have scope `declared-s
 no whole-skin acceptance. `verify` has scope `declared-samples-and-dense-whole-skin` and is the blocking
 consumer-CI command. These are sampled checks, never continuous proof.
 
+
+## Artifact set transport
+
+`CoverageArtifactReader.Open(rootPath, scratchDirectory)` reads legacy logical evidence and the
+`khaozengine.coverage-evidence-set/1` envelope. The returned disposable session exposes the SHA-256
+of the exact root bytes and `OpenPayload()`, which reads a private checked snapshot. Close payload
+streams before disposing the session. Every new `Open` verifies the original files again.
+
+The internal staging writer preserves legacy bytes when the complete payload fits the inclusive
+67,108,864-byte artifact limit. Larger payloads become an index plus ordered raw fragments. The index
+binds scope, completeness, input and table hashes, all six identities, both producer hashes, the logical
+payload schema, exact inventory totals, payload length and digest, part count, and every part descriptor.
+Each descriptor has `ordinal`, `path`, `byteLength` and lowercase `sha256`. Paths have the form
+`<root-file-name>.parts/<payload-sha256>/<five-digit-ordinal>-<part-sha256>.part`.
+
+Concatenating parts in ordinal order yields exactly one complete logical JSON document. Fragments
+are not separate JSON documents. A token, escape sequence, UTF-8 code point or complete record may
+cross a boundary. Non-final parts have the target length. The production target and inclusive ceiling
+are 67,108,864 bytes. There are at most 65,536 parts and the index shares the inclusive artifact limit.
+Internal tests may lower these limits. No successful staging omits a descriptor or logical record.
+
+The reader checks confined generated paths without links, contiguous ordinals, exact lengths, every
+part digest, the aggregate digest, strict typed logical fields, inventory closure and the final EOF.
+Missing, truncated and substituted parts carry `ArtifactPartMissing`, `ArtifactPartLengthMismatch`
+or `ArtifactPartHashMismatch`, with the descriptor's rooted `Path` and zero-based `ChunkIndex`.
+Other broken closure is `ArtifactSetInvalid`. A previously successful read never authenticates later
+bytes by path alone. Keep the root and the complete parts directory together when copying a set.
+Invalid UTF-8 and unpaired UTF-16 surrogate escapes retain `InvalidJson` classification.
+
+Staging uses fixed 65,536-byte copy buffers and scratch files, with no aggregate payload byte array.
+Typed reading retains one bounded token, current object field hashes and bounded inventory indices.
+The conservative payload envelope is `12*K*F + 64 GiB`, at most 3 TiB plus 64 GiB for K=4,096 and
+F=67,108,864. This fits 65,536 production parts. Index capacity is checked while writing, before
+publication. Scratch disk must hold the complete staged or checked payload. Insufficient disk refuses.
+The variable string term allows two pair inventories, each repeating bounded metadata at most K
+times with at most six JSON bytes per escaped character. The remaining bound covers fixed record
+syntax and numeric fields. At the count guards, dense poses contain at most
+`65,536*(16 + 16*1,024 + 4*33)` binary32 values. Reserving 32 JSON bytes per value and 512 fixed bytes
+for each of two 4,194,304-pair inventories leaves room within 64 GiB for all other bounded inventories
+and replay metrics. The exact index preflight includes the escaped root name and every descriptor.
+Staging owns only its private scratch directory and performs no publication. The current CLI retains
+its small-file publication path. Multi-file CLI publication is a separate integration step.
 
 ## Optional refusal diagnostics
 

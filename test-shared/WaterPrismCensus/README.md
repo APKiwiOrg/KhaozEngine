@@ -177,9 +177,23 @@ capability cases, not substitute results from another mode.
 buffers. Its four controls replay an old drive, projections under a different FP token, a wrong basis ordinal
 and a different shape owner. Each first passes the unmodified range comparison, then must fail
 `FrozenRangeBitsEqual`, including witness endpoints and certified error. The tests introduce no production fault
-seam. They prove propagation sensitivity. Step 3 must additionally mutate the actual G key, parent mapping and
-owner lifetime checks, demonstrate a real sharing hit, and retain these exact output assertions. Current test
-injection cannot prove routing through an owner that does not yet exist.
+seam. They prove propagation sensitivity.
+
+`WaterSharedProjectionTests` covers the production sharing owner. Each real face hits its parent's copied or
+borrowed rows with frozen range parity over three windows, copying exactly its mapped bases. A one-ULP change to
+any key field, a different control mode or a geometry-identical parent from another capture misses and keeps parity
+beside an unchanged-key hit. Its four mutation controls first take a real hit, then show the real key refusing an
+old drive, another control token or a stale owner, and finally hand the production evaluator rows that defeat only
+that check, or a wrong parent map, which must fail `FrozenRangeBitsEqual`. It also pins reached and resolved rows
+only, an unevaluated parent, trace-end forgetting, nested and reentrant fallbacks, a full table and the reserved
+payload. `WaterSharedProjectionCoverageTests` runs whole prism traces shared and bypassed with frozen parity, overflows
+the table, measures zero warm allocation shared, exhausted and bypassed, and collects a discarded capture after a
+sharing trace. The moving-history oracle also requires the advancing histories to copy shared projections.
+
+Setting `KHAOZENGINE_WATER_SHARED_PROJECTIONS=bypass` for a contract run forces every test that does not hold the
+bypass itself onto the original projection path, through a test-assembly module initializer. The moving-history
+oracle then requires zero shared copies. The two sharing classes keep sharing on, so a forced-off run still checks
+them. Run the corpus with and without it under both tiering settings to compare the paths on identical inputs.
 
 Set `CENSUS_RESULTS` to an absolute results directory outside the checkout before running the contract command.
 
@@ -193,8 +207,8 @@ x64 and macos-26 arm64. Each job runs the contract with `DOTNET_TieredCompilatio
 TRX files. Its filter excludes `TileWaterPrismCensusTests`, whose pre-existing census digests remain in the
 ordinary test slice. The extended corpus still records all nine fixtures over four ticks on each runtime.
 Each TRX must execute a positive number of tests, execute its entire selected total and report zero failures.
-The TRX guard also requires the query-cost oracle, mutation, comparator, frozen-source and all three projection
-oracle/control classes. A mistyped filter that runs only earlier tests cannot silently omit the new controls.
+The TRX guard also requires the query-cost oracle, mutation, comparator, frozen-source, projection oracle and
+control, projection map and both shared projection classes. A mistyped filter that runs only earlier tests cannot silently omit the new controls.
 Local qualification runs the complete category, including all nine result-bearing census rows.
 It runs separately from the selective runner's Foundation/Server pass, so an affected-project selection
 cannot omit this matrix. Each execution compares frozen against production on the same runtime. The runtime
@@ -233,6 +247,21 @@ per authority operation and per individual trace, cold-read and Step phases, the
 and the residual. Phase medians are not additive. Per-trace stopwatches are coarse enough for the millisecond
 kernel, but trace and residual measurements include clock overhead. Inner projection phases have no clocks.
 The census build refuses to run the timing mode. Shared-machine timings are indicative, with no budget gate.
+
+### Paired shared projection timing
+
+```bash
+build-slot --heavy --label shared-projection-timing -- env DOTNET_TieredCompilation=0 dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --filter 'FullyQualifiedName~WaterSharedProjectionPairedDiagnosticTests' --logger 'console;verbosity=normal'
+```
+
+`WaterSharedProjectionPairedDiagnosticTests` times the bank-along and shore-traverse advancing histories on four
+separate captures, two forced onto the original path and two sharing, so neither path warms the other. Every tick
+steps all four from the same state in alternating order and requires bit-identical next states. It prints each
+tick and, per history, side means, medians and P10/P90, the mean and median savings and each repeat floor, the larger
+relative difference between a path's two identical replicates. A saving is resolved only when it exceeds that floor.
+It lives in the test project because the shipped physics assembly grants the benchmark project no friend access
+outside the census build, which instruments the timed kernel. It is Diagnostic, refuses to time with tiering on and
+asserts no time.
 
 ## Contact query cost diagnostic
 

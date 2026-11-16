@@ -6,7 +6,7 @@ using V = KhaozEngine.TileWorld.Physics.TileWaterConvexShape.Vector;
 
 namespace KhaozEngine.TileWorld.Physics;
 
-// Constructed once with captured geometry. Evaluation does not consume these maps yet.
+// Constructed once with captured geometry. A face reads its map when it borrows shared parent projections.
 internal static class TileWaterProjectionMap
 {
     internal static int[]? Build(TileWaterConvexShape parent, ReadOnlySpan<P> planes, ReadOnlySpan<B> bases)

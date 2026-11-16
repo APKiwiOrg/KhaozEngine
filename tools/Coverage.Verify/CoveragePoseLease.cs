@@ -18,6 +18,10 @@ internal sealed class CoveragePoseLease<T> : IDisposable where T : class
 
     internal T Value => value ?? throw new ObjectDisposedException(nameof(CoveragePoseLease<T>));
 
+    /// <summary>The value a caller may keep after this lease is disposed: a copy of session storage, which the release
+    /// overwrites, or the resident value itself, which the caller already owns.</summary>
+    internal T Keep(Func<T, T> copy) => release == null ? Value : copy(Value);
+
     public void Dispose()
     {
         if (value == null) return;

@@ -15,17 +15,11 @@ namespace KhaozEngine.Tests.Tools.Coverage;
 
 /// <summary>The command line over packed campaigns. Executable runs use production limits. In-process runs use the
 /// single test entry point only where a reduced bound or a fault is the subject.</summary>
-public sealed class CoveragePackedProcessTests
+public sealed class CoveragePackedProcessTests : IDisposable
 {
-    static string Scratch
-    {
-        get
-        {
-            string path = Path.Combine(Path.GetTempPath(), "khaozengine-coverage-packed-input", "task-7");
-            Directory.CreateDirectory(path);
-            return path;
-        }
-    }
+    readonly CoverageCliScratch scratch = new();
+    string Scratch => scratch.Root;
+    public void Dispose() => scratch.Dispose();
 
     [Theory]
     [InlineData("accepted", new[] { 0, 0, 0 }, null)]
@@ -144,7 +138,7 @@ public sealed class CoveragePackedProcessTests
         var before = Snapshot(files.Folder);
         var error = new StringWriter();
         Assert.Equal(2, Program.RunForTests(verify, CoverageArtifactSet.MaxBytes, CoverageArtifactSet.MaxBytes, Scratch,
-            new() { UnreadableChunkBeforeDiagnostics = late, Error = error }));
+            new() { UnreadableChunk = new(late, CoverageRunStage.Diagnostics), Error = error }));
         // A refused run prints its own refusal first. The last line is the input refusal that ended the run.
         string[] reported = error.ToString().Trim().Split('\n')[^1].Trim().Split(' ');
         Assert.Equal(nameof(CoverageBuildInputRefusal.InputIo), reported[0]);
@@ -152,6 +146,45 @@ public sealed class CoveragePackedProcessTests
         // Neither an output failure nor a partial report: every output keeps its exact bytes.
         Assert.Equal(before, Snapshot(files.Folder));
         Assert.Equal(outcome, Run(verify, CoverageArtifactSet.MaxBytes, CoverageArtifactSet.MaxBytes));
+    }
+
+    [Theory]
+    [InlineData("build")]
+    [InlineData("verify-samples")]
+    public void A_chunk_copy_unreadable_before_numerical_work_is_the_input_refusal(string command)
+    {
+        using var files = CoverageCampaignFixture.Files();
+        CoverageCampaignFixture.Pack(files);
+        const int bound = CoverageArtifactSet.MaxBytes;
+        if (command != "build")
+            Assert.Equal(0, Run(["build", "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", Path.Combine(files.Folder, "build.json")], bound, bound));
+        string[] args = [command, "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", files.EvidencePath];
+        // Control: the same command on the same inputs is accepted.
+        Assert.Equal(0, Run(args, bound, bound));
+        var before = Snapshot(files.Folder);
+        var error = new StringWriter();
+        // Every pose comes from the session's checked copies after admission. A route that read the whole campaign
+        // into resident memory at admission would never notice the missing copy.
+        Assert.Equal(2, Program.RunForTests(args, bound, bound, Scratch,
+            new() { UnreadableChunk = new(0, CoverageRunStage.NumericalWork), Error = error }));
+        string[] reported = error.ToString().Trim().Split('\n')[^1].Trim().Split(' ');
+        Assert.Equal([nameof(CoverageBuildInputRefusal.InputIo), "$.poseChunks[0]"], reported);
+        Assert.Equal(before, Snapshot(files.Folder));
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 1)]
+    public void A_session_cleanup_failure_is_reported_without_replacing_the_exit_code(bool hole, int exit)
+    {
+        using var files = CoverageCampaignFixture.Files();
+        if (hole) files.Manifest["samples"]![1]!["stateKey"] = 1;
+        CoverageCampaignFixture.Pack(files);
+        var error = new StringWriter();
+        Assert.Equal(exit, Program.RunForTests(["build", "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", files.EvidencePath],
+            CoverageArtifactSet.MaxBytes, CoverageArtifactSet.MaxBytes, Scratch, new() { FailSessionCleanup = true, Error = error }));
+        Assert.Equal(nameof(IOException), error.ToString().Trim().Split('\n')[^1].Trim());
+        Assert.Equal(exit == 0, File.Exists(files.TablePath));
     }
 
     [Fact]
@@ -167,6 +200,8 @@ public sealed class CoveragePackedProcessTests
         Assert.Equal(368, chunk.Length);
         Assert.Equal(header, Convert.ToHexStringLower(chunk.AsSpan(0, 32)));
         Assert.Equal(digest, Convert.ToHexStringLower(SHA256.HashData(chunk)));
+        // The documented Python lines themselves must produce those bytes, so an edit to them alone fails here.
+        Assert.Equal(chunk, DocumentedChunk(readme, header));
         var manifest = JsonNode.Parse(json)!.AsObject();
         var descriptor = manifest["poseChunks"]!.AsArray().Single()!;
         Assert.Equal(digest, descriptor["sha256"]!.GetValue<string>());
@@ -183,7 +218,27 @@ public sealed class CoveragePackedProcessTests
         Assert.Equal(1, AssertComplete(files.EvidencePath).Totals["samples"]);
     }
 
-    static CoverageArtifactHeader AssertComplete(string evidence)
+    static byte[] DocumentedChunk(string readme, string header)
+    {
+        static ulong Number(string text) => text.StartsWith("0x", StringComparison.Ordinal)
+            ? Convert.ToUInt64(text[2..], 16) : ulong.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
+        var identity = Regex.Match(readme, "\nidentity = struct\\.pack\\(\"<16I\", ([^)]*)\\)\n");
+        var record = Regex.Match(readme, "\nrecord = identity \\* (\\d+) \\+ struct\\.pack\\(\"<IQ\", (\\w+), (\\w+)\\) "
+            + "\\+ identity \\* (\\d+) \\+ struct\\.pack\\(\"<I\", (\\w+)\\)\n");
+        Assert.True(identity.Success && record.Success);
+        uint[] words = identity.Groups[1].Value.Split(',').Select(w => (uint)Number(w.Trim())).ToArray();
+        Assert.Equal(16, words.Length);
+        var bytes = new List<byte>(Convert.FromHexString(header));
+        void Add(ulong value, int size) { for (int i = 0; i < size; i++) bytes.Add((byte)(value >> (8 * i))); }
+        void Identity(int count) { for (int c = 0; c < count; c++) foreach (uint word in words) Add(word, 4); }
+        Identity((int)Number(record.Groups[1].Value));
+        Add(Number(record.Groups[2].Value), 4); Add(Number(record.Groups[3].Value), 8);
+        Identity((int)Number(record.Groups[4].Value));
+        Add(Number(record.Groups[5].Value), 4);
+        return bytes.ToArray();
+    }
+
+    CoverageArtifactHeader AssertComplete(string evidence)
     {
         using var read = CoverageArtifactReader.Open(evidence, Scratch);
         Assert.Equal(CoverageArtifactSet.HashFile(evidence), read.RootSha256);
@@ -196,10 +251,10 @@ public sealed class CoveragePackedProcessTests
     static Dictionary<string, string> Snapshot(string folder) => Directory.GetFiles(folder, "*", SearchOption.AllDirectories)
         .ToDictionary(p => Path.GetRelativePath(folder, p), CoverageArtifactSet.HashFile);
 
-    static int Run(string[] args, int artifactByteLimit, int partByteLimit, TextWriter? error = null) =>
+    int Run(string[] args, int artifactByteLimit, int partByteLimit, TextWriter? error = null) =>
         Program.RunForTests(args, artifactByteLimit, partByteLimit, Scratch, new() { ReportByteLimit = partByteLimit, Error = error });
 
-    static async Task<(int ExitCode, string Error)> Execute(string[] args)
+    async Task<(int ExitCode, string Error)> Execute(string[] args)
     {
         var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         start.ArgumentList.Add(typeof(Program).Assembly.Location);

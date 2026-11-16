@@ -38,20 +38,37 @@ public sealed class CoverageSample
 {
     readonly Matrix4x4[] palette;
     readonly CoverageCommandPose[] commands;
+    Matrix4x4 actorModel;
     public CoverageSample(string id, string domainId, string? authoredFrameId, string? blendPathId,
         CoverageStateKey stateKey, Matrix4x4 actorModel, ReadOnlySpan<Matrix4x4> palette, ReadOnlySpan<CoverageCommandPose> commands)
     {
         Id = id; DomainId = domainId; AuthoredFrameId = authoredFrameId; BlendPathId = blendPathId;
-        StateKey = stateKey; ActorModel = actorModel; this.palette = palette.ToArray(); this.commands = commands.ToArray();
+        StateKey = stateKey; this.actorModel = actorModel; this.palette = palette.ToArray(); this.commands = commands.ToArray();
     }
     public string Id { get; }
     public string DomainId { get; }
     public string? AuthoredFrameId { get; }
     public string? BlendPathId { get; }
     public CoverageStateKey StateKey { get; }
-    public Matrix4x4 ActorModel { get; }
+    public Matrix4x4 ActorModel => actorModel;
     public ReadOnlySpan<Matrix4x4> Palette => palette;
     public ReadOnlySpan<CoverageCommandPose> Commands => commands;
+
+    /// <summary>An independent copy whose arrays the caller owns.</summary>
+    internal CoverageSample Copy() => new(Id, DomainId, AuthoredFrameId, BlendPathId, StateKey, actorModel, palette, commands);
+
+    /// <summary>Overwrites every numeric word with NaN. Only a packed session calls this, on a pose it decoded itself, when
+    /// the pose's lease is released. Exact arithmetic refuses the result, so a reference kept past its lease fails
+    /// loudly instead of silently holding memory.</summary>
+    internal void Invalidate()
+    {
+        var poison = new Matrix4x4(float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN,
+            float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN);
+        actorModel = poison;
+        palette.AsSpan().Fill(poison);
+        for (int i = 0; i < commands.Length; i++)
+            commands[i] = commands[i] with { EquipmentWorld = poison, CoverageWorld = poison, TransitionWeight = float.NaN };
+    }
 }
 
 /// <summary>Immutable, exact-input snapshot. Use Read for file-backed production inputs.</summary>

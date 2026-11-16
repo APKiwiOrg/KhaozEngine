@@ -68,11 +68,13 @@ internal sealed class CoverageCampaign
     {
         ensureAlive();
         var domains = Domains.Select((d, i) => new CoverageDomain(d.Id, d.Kind, d.AuthoredFrameIds, d.BlendPathIds,
-            Enumerable.Range(0, d.DenseRows.Count).Select(r => Copy(ReadDenseRow(i, r)))));
-        return new(Topology, inverseBind, domains, Enumerable.Range(0, Samples.Count).Select(i => Copy(ReadSample(i))),
+            Enumerable.Range(0, d.DenseRows.Count).Select(r => { using var row = ReadDenseRow(i, r); return row.Keep(CopyOf); })));
+        return new(Topology, inverseBind, domains, Enumerable.Range(0, Samples.Count).Select(i => { using var sample = ReadSample(i); return sample.Keep(s => s.Copy()); }),
             CandidateSampleIds, Identity, InputSha256, materializedSources);
-        static T Copy<T>(CoveragePoseLease<T> lease) where T : class { using (lease) return lease.Value; }
     }
+
+    /// <summary>A dense row whose sample arrays the caller owns, taken before the row's lease is released.</summary>
+    internal static CoverageDenseRow CopyOf(CoverageDenseRow row) => row with { Sample = row.Sample.Copy() };
 
     internal static CoverageCampaign FromSnapshot(CoverageBuildInput input)
     {

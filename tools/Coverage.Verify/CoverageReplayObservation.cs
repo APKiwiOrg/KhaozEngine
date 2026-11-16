@@ -33,10 +33,10 @@ internal sealed class CoverageReplayProjection(CoverageCampaign input, IReadOnly
     {
         get
         {
-            // The public pose is a copy the caller owns, so the decoded row is released before it is returned.
+            // The public pose holds a copy the caller owns, taken before the decoded row is released.
             var observation = observations[index];
             using var row = input.ReadDenseRow(observation.DomainIndex, observation.RowIndex);
-            return observation.Metrics.ToPose(input.Domains[observation.DomainIndex].Id, row.Value);
+            return observation.Metrics.ToPose(input.Domains[observation.DomainIndex].Id, row.Keep(CoverageCampaign.CopyOf));
         }
     }
     public IEnumerator<CoverageReplayPose> GetEnumerator()

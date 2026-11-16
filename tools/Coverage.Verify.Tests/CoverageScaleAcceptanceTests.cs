@@ -10,18 +10,12 @@ namespace KhaozEngine.Tests.Tools.Coverage;
 
 /// <summary>Real byte bounds, not reduced test limits. Each fixture is generated once and is a correctness proof, not
 /// a load or timing measurement.</summary>
-public sealed class CoverageScaleAcceptanceTests
+public sealed class CoverageScaleAcceptanceTests : IDisposable
 {
     const int RealBound = 67_108_864;
-    static string Scratch
-    {
-        get
-        {
-            string path = Path.Combine(Path.GetTempPath(), "khaozengine-coverage-packed-input", "task-7");
-            Directory.CreateDirectory(path);
-            return path;
-        }
-    }
+    readonly CoverageCliScratch scratch = new();
+    string Scratch => scratch.Root;
+    public void Dispose() => scratch.Dispose();
 
     [Fact]
     public void Ordinary_input_larger_than_the_real_json_bound_builds_and_verifies_when_packed()
@@ -128,8 +122,13 @@ public sealed class CoverageScaleAcceptanceTests
             CoverageCampaignFixture.Pack(files, perChunk);
             using var session = CoverageInputSession.Open(files.ManifestPath, files.Folder);
             var built = CoverageTableBuilder.Build(session.Campaign);
-            built.Evidence.IncludeReplay(CoverageReplay.Verify(session.Campaign, built.Table));
+            var replay = CoverageReplay.Verify(session.Campaign, built.Table);
+            built.Evidence.IncludeReplay(replay);
             Assert.True(built.Evidence.Complete);
+            // Report collection decodes candidate and dense poses on the same session, accepted and refused.
+            new CoverageDiagnosticRun { Input = session.Campaign, Table = built.Table, Evidence = built.Evidence, Replay = replay }
+                .CollectFor("verify", 0);
+            new CoverageDiagnosticRun { Input = session.Campaign, Refusal = "SampleHole" }.CollectFor("build", 1);
             using var staged = CoverageArtifactWriter.Stage(files.EvidencePath, built.Evidence.CreateHeader(), built.Evidence.WriteTo, files.Folder, 65_536, 65_536);
             CoverageArtifactFixture.Publish(staged);
             var totals = Header(files.EvidencePath, files.Folder).Totals;
@@ -161,14 +160,14 @@ public sealed class CoverageScaleAcceptanceTests
         foreach (var lease in leases) lease.Dispose();
     }
 
-    static CoverageArtifactHeader Header(string root, string? scratch = null)
+    CoverageArtifactHeader Header(string root, string? scratch = null)
     {
         using var read = CoverageArtifactReader.Open(root, scratch ?? Scratch);
         using var payload = read.OpenPayload();
         return CoverageLogicalDocumentReader.Validate(payload, CoverageArtifactKind.Evidence).Header;
     }
 
-    static int Run(string command, string manifest, string table, string evidence, TextWriter? error = null) =>
+    int Run(string command, string manifest, string table, string evidence, TextWriter? error = null) =>
         Program.RunForTests([command, "--manifest", manifest, "--table", table, "--evidence", evidence],
             RealBound, RealBound, Scratch, new() { Error = error });
 }

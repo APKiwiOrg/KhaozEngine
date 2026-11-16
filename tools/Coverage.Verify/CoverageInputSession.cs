@@ -20,7 +20,7 @@ internal sealed class CoverageInputSession : IDisposable
     CoveragePackedInputJson.Metadata metadata = null!;
     CoverageInputBinding binding = null!;
     CoverageCampaign campaign = null!;
-    bool disposed;
+    bool disposed, failCleanup;
     long snapshotBytes, liveNumericPoseBytes, maximumLiveNumericPoseBytes;
     int maximumChunkBufferBytes;
 
@@ -31,6 +31,8 @@ internal sealed class CoverageInputSession : IDisposable
 
     /// <summary>Deletes one checked private copy, as a scratch cleaner or full disk would, so a later pose read from it
     /// fails. The original chunk is untouched.</summary>
+    internal void FailCleanupForTests() => failCleanup = true;
+
     internal void MakeChunkUnreadableForTests(int chunkIndex)
     {
         EnsureAlive();
@@ -161,7 +163,8 @@ internal sealed class CoverageInputSession : IDisposable
             bound = true;
             var sample = new CoverageSample(inventory.Id, inventory.DomainId, inventory.AuthoredFrameId, inventory.BlendPathId,
                 new(inventory.StateKey), numeric.ActorModel, numeric.Palette, commands);
-            return new(sample, () => liveNumericPoseBytes -= numericBytes);
+            // A released pose is overwritten, so a holder that kept it past its lease cannot use it unnoticed.
+            return new(sample, () => { sample.Invalidate(); liveNumericPoseBytes -= numericBytes; });
         }
         catch { if (bound) liveNumericPoseBytes -= numericBytes; throw; }
         // The decoded numeric pose is released once its binding exists or binding refused.
@@ -222,5 +225,6 @@ internal sealed class CoverageInputSession : IDisposable
         if (disposed) return;
         disposed = true; document?.Dispose();
         if (Directory.Exists(scratch)) Directory.Delete(scratch, recursive: true);
+        if (failCleanup) throw new IOException("Synthetic scratch cleanup failure.");
     }
 }

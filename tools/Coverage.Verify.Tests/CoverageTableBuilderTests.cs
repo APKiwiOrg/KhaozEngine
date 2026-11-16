@@ -431,7 +431,11 @@ public sealed class CoverageTableBuilderTests
         }
         byte[] malformed = Encoding.UTF8.GetBytes(json);
         File.WriteAllBytes(files.EvidencePath, malformed);
-        Assert.Equal(2, Run(files, command));
+        var error = new StringWriter();
+        Assert.Equal(2, Program.RunForTests([command, "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", files.EvidencePath],
+            CoverageBuildInputJson.MaxBytes, CoverageBuildInputJson.MaxBytes, Path.GetTempPath(), new() { Error = error }));
+        // The command line's resume path prints the same typed reason as a later read.
+        Assert.Equal(reason.ToString(), error.ToString().Split(' ')[0]);
         Assert.Equal(table, File.ReadAllBytes(files.TablePath));
         Assert.Equal(malformed, File.ReadAllBytes(files.EvidencePath));
         // Later reads use the same strict reader as resume admission and keep its malformed-data reason.

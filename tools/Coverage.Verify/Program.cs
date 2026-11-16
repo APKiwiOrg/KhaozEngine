@@ -14,11 +14,16 @@ internal readonly record struct CoverageRunSeams
     internal int? ReportByteLimit { get; init; }
     /// <summary>A synthetic publication fault for the first transaction the run attempts.</summary>
     internal CoveragePublicationFault? PublicationFault { get; init; }
-    /// <summary>Deletes this chunk's checked private copy just before diagnostics are collected.</summary>
-    internal int? UnreadableChunkBeforeDiagnostics { get; init; }
+    /// <summary>Deletes one chunk's checked private copy at the named stage, after admission.</summary>
+    internal CoverageUnreadableChunk? UnreadableChunk { get; init; }
+    /// <summary>Makes the session's scratch cleanup fail after it ran, as a locked file would.</summary>
+    internal bool FailSessionCleanup { get; init; }
     /// <summary>Receives what the executable writes to standard error.</summary>
     internal TextWriter? Error { get; init; }
 }
+
+internal enum CoverageRunStage { NumericalWork, Diagnostics }
+internal readonly record struct CoverageUnreadableChunk(int ChunkIndex, CoverageRunStage Stage);
 
 public static class Program
 {
@@ -63,7 +68,15 @@ public static class Program
             return exit;
         }
         // The session outlives every pose read, staging and publication of this run, then removes its scratch.
-        finally { run.Session?.Dispose(); }
+        finally { DisposeSession(run, stderr); }
+    }
+
+    /// <summary>Outputs are already decided when scratch is removed, so a cleanup failure is reported on stderr and never
+    /// replaces the run's exit code. The leftover is an owner-only directory under the temporary root.</summary>
+    static void DisposeSession(RunState run, TextWriter stderr)
+    {
+        try { run.Session?.Dispose(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { stderr.WriteLine(error.GetType().Name); }
     }
 
     /// <summary>Collects the report before any output is staged. Collection decodes poses, so a pose that can no longer
@@ -72,7 +85,7 @@ public static class Program
     {
         try
         {
-            if (seams.UnreadableChunkBeforeDiagnostics is int chunk) run.Session!.MakeChunkUnreadableForTests(chunk);
+            if (seams.UnreadableChunk is { Stage: CoverageRunStage.Diagnostics } fault) run.Session!.MakeChunkUnreadableForTests(fault.ChunkIndex);
             run.Diagnostic.CollectFor(command, exit);
             return true;
         }
@@ -110,6 +123,7 @@ public static class Program
             // Every chunk is copied, hashed and scanned before any asset binding or geometry. Later poses come only from
             // the checked private copies, one decoded pose at a time.
             run.Session = CoverageInputSession.Open(manifest, limits.Scratch);
+            if (seams.FailSessionCleanup) run.Session.FailCleanupForTests();
             var input = run.Session.Campaign;
             if (diagnostic.Path != null && (input.SourcePaths.Any(p => CoverageDiagnosticName.Unsupported(p, windows))
                 || CoverageDiagnosticName.Collides(diagnostic.Path, input.SourcePaths))) return 2;
@@ -124,6 +138,7 @@ public static class Program
             // An interrupted earlier publication is finished or undone before any of its outputs is read or replaced.
             CoveragePublisher.Recover(evidencePath);
             if (diagnostic.Path != null) CoveragePublisher.Recover(diagnostic.Path);
+            if (seams.UnreadableChunk is { Stage: CoverageRunStage.NumericalWork } fault) run.Session.MakeChunkUnreadableForTests(fault.ChunkIndex);
             return Accept(args[0], input, tablePath, evidencePath, limits, seams, run, stderr);
         }
         catch (CoverageVerificationException error)

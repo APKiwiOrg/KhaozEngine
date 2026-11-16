@@ -7,7 +7,7 @@
 # family and ALSO moves the native backend's binding table, since it reads its indices
 # out of this exact text.
 #
-# Entries: 369
+# Entries: 357
 AtmosphereMultiScattering.fragment 256fe5197c94ef9bdc47fed56e6d9761944fef0d96f5010791af6b20f0184aea
 AtmosphereMultiScattering.vertex 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1
 AtmosphereSkyView.fragment 42f8d6b7546f964c94502ef63f823178402204805faefd936d74e95cf5c0eb26

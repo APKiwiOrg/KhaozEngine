@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 1368
+# Rows: 1320
 AtmosphereMultiScattering.fragment.hlsl b72754d2491a5b0fec83528f3364bc74dbf67a1e0d8a3c10fe110d3927c6aadf 18160
 AtmosphereMultiScattering.fragment.msl 256fe5197c94ef9bdc47fed56e6d9761944fef0d96f5010791af6b20f0184aea 17571
 AtmosphereMultiScattering.fragment.spirv 9cac68ce62130beb76138beb5c6a8ed98ab81d5b096fd9a183c6029275f1806b 13760

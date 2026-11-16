@@ -23,7 +23,7 @@
 # by hash. A generator word is not an optimisation level, and only one of the two is
 # a reason to re-bake a golden.
 #
-# Entries: 340
+# Entries: 328
 AtmosphereMultiScattering.fragment 9cac68ce62130beb76138beb5c6a8ed98ab81d5b096fd9a183c6029275f1806b
 AtmosphereMultiScattering.vertex 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4
 AtmosphereSkyView.fragment 2204662782e6791abb483d7886b8abeb3cb127def7c8dd3b9213e1b36c66bd2b

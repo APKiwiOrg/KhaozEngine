@@ -6,7 +6,7 @@
 # shader edit. Thirty moving at once is the options, which invalidates the shared
 # Direct3D 11 golden family and is the drift D3D11HlslByteEqualityTests exists to catch.
 #
-# Entries: 340
+# Entries: 328
 AtmosphereMultiScattering.fragment b72754d2491a5b0fec83528f3364bc74dbf67a1e0d8a3c10fe110d3927c6aadf
 AtmosphereMultiScattering.vertex a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23
 AtmosphereSkyView.fragment a1b2dc970993f4b1cb3b817628b51088cf7c3b3dd5229e7048613ea00e3a35ca

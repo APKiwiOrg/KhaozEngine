@@ -59,6 +59,20 @@ internal static class CoverageArtifactSet
     }
     internal static string Schema(CoverageArtifactKind kind) => kind == CoverageArtifactKind.Evidence
         ? "khaozengine.coverage-evidence-set/1" : "khaozengine.coverage-diagnostics-set/1";
+    /// <summary>A schema in a known set family with a version other than 1 is a future envelope, refused with its
+    /// version rather than read as a legacy diagnostic. Anything else is left to the logical reader.</summary>
+    internal static void CheckSetVersion(string schema)
+    {
+        foreach (var kind in new[] { CoverageArtifactKind.Evidence, CoverageArtifactKind.Diagnostics })
+        {
+            string current = Schema(kind), family = current[..^1];
+            if (!schema.StartsWith(family, StringComparison.Ordinal) || schema == current) continue;
+            string version = schema[family.Length..];
+            if (version.Length is < 1 or > 18 || !version.All(char.IsAsciiDigit) || version[0] == '0') throw Invalid("$.schema");
+            throw new CoverageBuildDataException(CoverageBuildInputRefusal.UnsupportedVersion, "Unsupported artifact set version.")
+            { Path = "$.schema", FormatVersion = long.Parse(version, System.Globalization.CultureInfo.InvariantCulture) };
+        }
+    }
     internal static long DescriptorCapacityBound(string rootFileName, long payloadBytes, int partBytes)
     {
         // A descriptor has four keys, three 64-character hashes (payload and part hash in its path, plus its sha256),

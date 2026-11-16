@@ -163,8 +163,8 @@ readers refuse an incomplete set. Outputs that reach an input or each other thro
 hard link refuse with `OutputAlias`. Refusal preserves existing table and evidence files. The consumer owns sampler integration and the CI call.
 Sampled evidence cannot establish safety between the poses that were checked.
 
-All three commands accept optional `--diagnostics <path>` for a separate refusal report. Schema
-`khaozengine.coverage-diagnostics/1` and scope `diagnostic-not-acceptance` explicitly exclude this file
+All three commands accept optional `--diagnostics <path>` for a separate refusal report. Logical schema
+`khaozengine.coverage-diagnostics/2` and scope `diagnostic-not-acceptance` explicitly exclude this report
 from acceptance evidence. It records candidate construction outcomes and witnesses, complete validity
 pairs, claims and holes. Blocking verification adds dense row reasons, missing domains and separate
 changed-record and inherited depth findings. A successful run replaces stale diagnostics with an
@@ -172,8 +172,12 @@ accepted outcome and zero blocking findings, while retaining inherited fit infor
 invocations or inputs leave diagnostics untouched. Its file name must differ from the file name of every
 input and accepted output of the run, in any directory, and from the target of any of them read through
 a link. The tool README lists the Windows path forms it refuses with this option.
-Exact category totals and omitted counts survive deterministic truncation at the existing
-64 MiB artifact limit. Acceptance gates, exit codes and refused-run table/evidence preservation stay
+Every collected item is exported, so each category total equals its item count and nothing is omitted.
+A report larger than the 64 MiB artifact limit becomes a `khaozengine.coverage-diagnostics-set/1` index
+with hashed parts, read whole through the strict artifact reader. The report names both producer
+assembly hashes and, in `resumedEvidenceSha256`, the hash of the exact evidence root that resume read. It
+does not prove freshness for two identical invocations. When the report cannot be published, the run
+exits 1 with `OutputIo` and the previous report stays unchanged. Acceptance gates, exit codes and refused-run table/evidence preservation stay
 unchanged within one tool build. Evidence binds the producing tool and Render3D hashes, so another build
 produces different provenance bytes and its evidence is refused on resume. Build, replay and depth
 arithmetic, ordering and refusal order are unchanged. See the

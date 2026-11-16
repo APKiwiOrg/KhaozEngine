@@ -32,7 +32,8 @@ internal static class CoveragePackedFixture
     internal static void Pack(CoverageBuildFiles files, bool mixed = false)
     {
         var samples = files.Manifest["samples"]!.AsArray().Select(s => s!.AsObject())
-            .Concat(files.Manifest["domains"]!.AsArray().SelectMany(d => d!["denseRows"]!.AsArray()).Select(r => r!["sample"]!.AsObject())).ToArray();
+            // A domain without dense rows contributes no dense records.
+            .Concat(files.Manifest["domains"]!.AsArray().SelectMany(d => d!["denseRows"]?.AsArray() ?? []).Select(r => r!["sample"]!.AsObject())).ToArray();
         var records = new List<byte[]>();
         for (int i = 0; i < samples.Length; i++)
         {

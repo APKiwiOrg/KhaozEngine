@@ -303,10 +303,13 @@ consumer-CI command. These are sampled checks, never continuous proof.
 
 ## Artifact set transport
 
-`CoverageArtifactReader.Open(rootPath, scratchDirectory)` reads legacy logical evidence and the
-`khaozengine.coverage-evidence-set/1` envelope. The returned disposable session exposes the SHA-256
-of the exact root bytes and `OpenPayload()`, which reads a private checked snapshot. Close payload
-streams before disposing the session. Every new `Open` verifies the original files again.
+`CoverageArtifactReader.Open(rootPath, scratchDirectory)` reads legacy logical evidence, a logical
+diagnostic report and the `khaozengine.coverage-evidence-set/1` and
+`khaozengine.coverage-diagnostics-set/1` envelopes. Any other version of either set schema refuses with
+`UnsupportedVersion`, `Path` `$.schema` and the version in `FormatVersion`, so a newer envelope is never
+read as a malformed report. The returned disposable session exposes the SHA-256 of the exact root bytes
+and `OpenPayload()`, which reads a private checked snapshot. Close payload streams before disposing the
+session. Every new `Open` verifies the original files again.
 
 The internal staging writer preserves legacy bytes when the complete payload fits the inclusive
 67,108,864-byte artifact limit. Larger payloads become an index plus ordered raw fragments. The index
@@ -344,7 +347,8 @@ for each of two 4,194,304-pair inventories leaves room within 64 GiB for all oth
 and replay metrics. The exact index preflight includes the escaped root name and every descriptor.
 Staging owns only its private scratch directory and performs no publication. The publisher below makes a
 staged set visible. The CLI still writes its evidence as one legacy file. Multi-file CLI evidence is a
-separate integration step.
+separate integration step. CLI diagnostics already use this transport, as described under Optional
+refusal diagnostics.
 
 ## Publication and recovery
 
@@ -414,16 +418,16 @@ with its whole `.parts` directory.
 
 ## Optional refusal diagnostics
 
-Append `--diagnostics <path>` to `build`, `verify-samples` or `verify` to export a separate
-non-acceptance JSON document. For example:
+Append `--diagnostics <path>` to `build`, `verify-samples` or `verify` to export a separate, complete
+non-acceptance report. For example:
 
 ```sh
 .tools/ke-coverage build --manifest poses.json --table coverage.kert --evidence samples.json --diagnostics diagnostics.json
 .tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json --diagnostics diagnostics.json
 ```
 
-The schema is `khaozengine.coverage-diagnostics/1`, with scope `diagnostic-not-acceptance`. This file
-is never accepted evidence and cannot replace either evidence scope. It changes no selection,
+The logical schema is `khaozengine.coverage-diagnostics/2`, with scope `diagnostic-not-acceptance`. This
+report is never accepted evidence and cannot replace either evidence scope. It changes no selection,
 certification or depth gate. Within one tool build, enabling or omitting the option produces identical
 table and evidence bytes, refusal rules, existing-output preservation, stderr and exit codes for distinct
 writable destinations. Build, replay and depth arithmetic, ordering and refusal order are unchanged.
@@ -446,12 +450,23 @@ refuse with `OutputAlias` and exit 1. Malformed input or resumed evidence also l
 For parsed work, exit 0 writes `outcome: "accepted"` and zero blocking findings, replacing stale
 refusal diagnostics. Exit 1 writes `outcome: "refused"`. Accepted artifacts and diagnostics publish
 in one transaction. A refusal publishes only diagnostics and preserves existing table and evidence bytes.
-Output I/O failure retains exit 1 and may prevent the diagnostic file itself from being published.
-No timestamps, machine names or file paths enter the document.
+If the report cannot be published, the run exits 1 with `OutputIo` and the previous report stays exactly
+as it was, or absent. A failed accepted transaction carried the report already, so no second report
+replaces the previous one. No timestamps, machine names, nonces or file paths enter the document.
 
 Top-level fields are `schema`, `scope`, `command`, `outcome`, `inputSha256`, the six-digest `identity`,
-`tableSha256` when computed, `reason`, `findingCount` and the following category objects. Each category
-has exact `total` and `omitted` counts and an `items` array, including when empty.
+`tableSha256` when computed, `reason`, `findingCount`, `toolCodeSha256`, `render3DCodeSha256`,
+`resumedEvidenceSha256` and the following category objects. Each category has `total`, `omitted` and
+`items`, including when empty. `total` equals the number of items and `omitted` is always 0.
+
+The two producer hashes are the SHA-256 of the tool and Render3D assemblies that wrote the report.
+`resumedEvidenceSha256` is the SHA-256 of the exact existing evidence root bytes that resume admission
+read, including any noncanonical whitespace. For an evidence set it is the hash of the index root, which
+binds every part, not of the joined payload. It is recorded once the root is read, so a resume refusal
+still names it. Null means no existing evidence was read. It is never the hash of newly produced
+evidence. These fields name the producer and the input it read. They do not prove that a report is fresh,
+because two identical invocations write identical reports. A consumer that needs per-invocation freshness
+uses a fresh report path or removes the old report before the run.
 
 | Category | Items |
 |---|---|
@@ -478,10 +493,16 @@ still checks the supplied table and never replaces it. Dense diagnostics continu
 work, declaration failures and unpreparable poses to report later rows. They reuse the same replay
 measurement and keep changed-record and inherited depth separate.
 
-The inclusive artifact limit remains 64 MiB. Metadata and exact totals are reserved first, then items
-are retained in the listed category order and the tool's deterministic order within each category.
-The first item that does not fit and all following items are counted as omitted. Truncation never
-changes acceptance or fails the run. Identical inputs and outcomes produce identical diagnostic bytes.
+Every collected item is exported, in the listed category order and the tool's deterministic order
+within each category. A report within the inclusive 67,108,864-byte artifact limit is one JSON file. A
+larger report becomes a `khaozengine.coverage-diagnostics-set/1` index at the requested path with hashed
+parts beside it, as described under Artifact set transport. Its index also carries
+`resumedEvidenceSha256`, `command`, `outcome` and the exact total of every category. Read either form
+with `CoverageArtifactReader`, which admits a set only with every part, the exact payload and matching
+totals, and keep the root and its `.parts` directory together. An index that cannot name every part
+refuses before publication with `OutputIo` and exit 1. Analysis that stops records a typed analysis
+refusal and the observations actually made, never work that did not run. Identical inputs and outcomes
+produce identical diagnostic bytes.
 
 
 ## Blocking dense replay and whole-skin evidence

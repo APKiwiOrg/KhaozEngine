@@ -12,8 +12,13 @@ namespace KhaozEngine.Tools.Coverage;
 /// incomplete publication refuses with <see cref="CoverageBuildValidationRefusal.OutputRecoveryRequired"/>.</summary>
 public static class CoverageArtifactReader
 {
-    public static CoverageArtifactReadSession Open(string rootPath, string scratchDirectory)
+    public static CoverageArtifactReadSession Open(string rootPath, string scratchDirectory) =>
+        Open(rootPath, scratchDirectory, CoverageArtifactSet.MaxBytes);
+
+    /// <summary>Opens with a root bound at or below the production bound, for the CLI's reduced test bound.</summary>
+    internal static CoverageArtifactReadSession Open(string rootPath, string scratchDirectory, int rootByteLimit)
     {
+        if (rootByteLimit is < 1 or > CoverageArtifactSet.MaxBytes) throw new ArgumentOutOfRangeException(nameof(rootByteLimit));
         string root = Path.GetFullPath(rootPath);
         // A root of an incomplete publication is never admitted, whichever bytes it currently holds.
         CoveragePublicationJournal.EnsureReadable(root);
@@ -24,13 +29,14 @@ public static class CoverageArtifactReader
             using (var input = File.OpenRead(root))
             using (var output = new FileStream(snapshot, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                CoverageArtifactSet.Capacity(input.Length, CoverageArtifactSet.MaxBytes);
-                Copy(input, output, CoverageArtifactSet.MaxBytes);
+                CoverageArtifactSet.Capacity(input.Length, rootByteLimit);
+                Copy(input, output, rootByteLimit);
             }
             string hash = CoverageArtifactSet.HashFile(snapshot), schema;
             using (var input = File.OpenRead(snapshot)) schema = CoverageLogicalDocumentReader.ProbeSchema(input) ?? "";
             CoverageArtifactKind kind;
             CoverageArtifactHeader? header = null;
+            CoverageArtifactSet.CheckSetVersion(schema);
             if (schema is "khaozengine.coverage-evidence-set/1" or "khaozengine.coverage-diagnostics-set/1")
             {
                 kind = schema == CoverageArtifactSet.Schema(CoverageArtifactKind.Evidence) ? CoverageArtifactKind.Evidence : CoverageArtifactKind.Diagnostics;

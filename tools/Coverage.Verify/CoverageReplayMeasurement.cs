@@ -28,8 +28,9 @@ internal sealed class CoverageReplayMeasurement
     internal CoverageReplayPose Measure(CoverageDomain domain, CoverageDenseRow row, int queryBudget,
         Action<CoverageVerificationException>? diagnosticRefusal = null)
         => Measure(domain.Id, row, queryBudget, diagnosticRefusal);
-    internal CoverageReplayPose Measure(CoverageDomainInventory domain, CoverageDenseRow row, int queryBudget)
-        => Measure(domain.Id, row, queryBudget, null);
+    internal CoverageReplayPose Measure(CoverageDomainInventory domain, CoverageDenseRow row, int queryBudget,
+        Action<CoverageVerificationException>? diagnosticRefusal = null)
+        => Measure(domain.Id, row, queryBudget, diagnosticRefusal);
     CoverageReplayPose Measure(string domainId, CoverageDenseRow row, int queryBudget,
         Action<CoverageVerificationException>? diagnosticRefusal)
     {

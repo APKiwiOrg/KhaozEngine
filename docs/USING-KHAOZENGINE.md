@@ -7578,10 +7578,13 @@ dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHA
 ```
 
 Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. All three
-commands accept optional `--diagnostics <path>` for schema `khaozengine.coverage-diagnostics/1`, scope
-`diagnostic-not-acceptance`. This separate bounded report retains exact finding and omission counts,
-including holes, candidate refusals, dense failures and changed-record versus inherited depth. It is
-never acceptance evidence and changes no acceptance gate or exit code. See the
+commands accept optional `--diagnostics <path>` for logical schema `khaozengine.coverage-diagnostics/2`,
+scope `diagnostic-not-acceptance`. This separate report exports every finding with no omissions,
+including holes, candidate refusals, dense failures and changed-record versus inherited depth, and names
+both producer hashes and the exact evidence root that resume read. A report above 64 MiB becomes a
+`khaozengine.coverage-diagnostics-set/1` index with hashed parts, so parse it through the strict artifact
+reader and keep its `.parts` directory with it. It is never acceptance evidence and changes no acceptance
+gate or exit code. It does not prove freshness for two identical invocations. See the
 [tool README](../tools/Coverage.Verify/README.md) for the schema, commands and publication rules.
 
 

@@ -13,10 +13,10 @@ internal sealed class FrozenWaterReference
     readonly FrozenTileWaterFlatIndex _flat;
     readonly string _world;
 
-    internal FrozenWaterReference(TileWaterTraceTestSnapshot geometry, string world = "water-world")
+    internal FrozenWaterReference(TileWaterTraceTestSnapshot geometry, string world = "water-world", bool rebuildGeometry = false)
     {
         _geometry = geometry;
-        _prisms = new(geometry);
+        _prisms = new(geometry, rebuildGeometry);
         _flat = new(geometry.Columns, geometry.Boundaries, geometry.Exterior);
         _world = world;
     }
@@ -38,6 +38,5 @@ internal sealed class FrozenWaterReference
 
     internal MovementCoverageResult TracePrisms(in MovementMediumSweepQuery query, Vector3 origin,
         in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts) =>
-        _prisms.Trace(_geometry.Prisms, _geometry.Faces, _geometry.Ground, _geometry.PointIndex,
-            _geometry.PrismStarts, _geometry.FaceStarts, query, origin, identity, spans, contacts);
+        _prisms.Trace(query, origin, identity, spans, contacts);
 }

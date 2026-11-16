@@ -4,6 +4,17 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 23.13.2
+
+2026-11-16
+
+- Tile water capture records, for each prism face, its parent prism and an exact map from the face's
+  projection bases to the parent's. A map exists only when the face's leading planes match the parent's
+  ordered planes bit for bit, and a face basis maps only to the parent basis with the same plane indices, so a
+  basis that uses an appended face plane stays unmapped. Nothing reads the map yet and trace outputs are
+  unchanged. It prepares exact shared projections for the moving-shore water cost
+  ([#1755](https://github.com/APKiwiOrg/KhaozEngine/issues/1755)).
+
 ## 23.13.1
 
 2026-11-16
@@ -62,9 +73,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Movement queries bulk clear their water coverage contact buffers on return, instead of scanning them for
   nondefault runs, when the writer is the engine's own `OrdinaryMovementEnvironment` pin or the validated boundary
   copy. Both publish complete contacts or nothing, so the faster clear cannot miss a partial write. Consumer pins
-  keep the original cleanup, which also clears partial writes left by a refusal or throw, including default-equal
-  values such as negative zero. Results, refusals and allocation are unchanged, with no public API change
-  ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
+  keep the original cleanup, which clears every nondefault entry a refusing or throwing callback leaves and still
+  leaves default-equal residue such as negative zero in place. Results, refusals and allocation are unchanged, with
+  no public API change ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
 - Contact support proposals reuse one per-thread admission result for the canonical upright pose instead of
   rebuilding the pose operator on every proposal. The cached Boolean is keyed by the exact quaternion bits and the
   native floating-point controls, applies only to `(0, 0, 0, 1)` on .NET 10 x64 and arm64 with hardware SIMD, and
@@ -79,6 +90,13 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   any later draft ([#1252](https://github.com/APKiwiOrg/KhaozEngine/issues/1252)). The freeze names only a base
   version, so a failed ordinary publish at base 0 racing the import can still release it early
   ([#1813](https://github.com/APKiwiOrg/KhaozEngine/issues/1813)).
+- Movement water traces replay flat-water results and larger shore results from a bounded per-sampler cache instead
+  of recomputing them. The eight-entry tier keys on the exact query, origin, both caller capacities and the native
+  floating-point controls, holds at most 64 spans and 256 contacts per entry within 256 KiB per thread table plus
+  16 KiB of retained identifiers, and returns the original kernel's bits with the caller's identity and space. Flat
+  traces with no water columns or outside the water extent skip the new tier, and oversized results, a fifth thread
+  and platforms whose controls cannot be read run uncached. The existing small prism memo and its counters are
+  unchanged, with no public API change ([#1756](https://github.com/APKiwiOrg/KhaozEngine/issues/1756)).
 
 ## 23.13.0
 

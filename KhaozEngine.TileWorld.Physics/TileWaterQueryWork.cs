@@ -20,11 +20,17 @@ internal static class TileWaterQueryWork
     [ThreadStatic] internal static int MemoHits;
     [ThreadStatic] internal static int MemoMisses;
 
+    [ThreadStatic] internal static int ResultHits;
+    [ThreadStatic] internal static int ResultMisses;
+    [ThreadStatic] internal static int ResultStores;
+    [ThreadStatic] internal static int ResultBypasses;
+
     internal static void Reset()
     {
         Intersections = NonuniformVisits = IndexNodes = ConvexIntersections = BedSeamProofs = BedSeamCertificates = 0;
         ShapePreparations = LazyCoefficientFills = 0;
         PrismTraces = MemoHits = MemoMisses = 0;
+        ResultHits = ResultMisses = ResultStores = ResultBypasses = 0;
         Enabled = true;
     }
 }

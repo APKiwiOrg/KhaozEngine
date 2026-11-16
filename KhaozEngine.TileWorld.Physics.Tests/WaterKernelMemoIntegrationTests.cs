@@ -20,13 +20,15 @@ public sealed class WaterKernelMemoIntegrationTests
         TileWaterQueryWork.ConvexIntersections = TileWaterQueryWork.ShapePreparations = TileWaterQueryWork.LazyCoefficientFills = 62;
         TileWaterQueryWork.BedSeamProofs = TileWaterQueryWork.BedSeamCertificates = 63;
         TileWaterQueryWork.PrismTraces = TileWaterQueryWork.MemoHits = TileWaterQueryWork.MemoMisses = 64;
+        TileWaterQueryWork.ResultHits = TileWaterQueryWork.ResultMisses = TileWaterQueryWork.ResultStores = TileWaterQueryWork.ResultBypasses = 65;
         try
         {
             TileWaterQueryWork.Reset();
             Assert.All(new[] { TileWaterQueryWork.Intersections, TileWaterQueryWork.NonuniformVisits, TileWaterQueryWork.IndexNodes,
                 TileWaterQueryWork.ConvexIntersections, TileWaterQueryWork.ShapePreparations, TileWaterQueryWork.LazyCoefficientFills,
                 TileWaterQueryWork.BedSeamProofs, TileWaterQueryWork.BedSeamCertificates,
-                TileWaterQueryWork.PrismTraces, TileWaterQueryWork.MemoHits, TileWaterQueryWork.MemoMisses }, value => Assert.Equal(0, value));
+                TileWaterQueryWork.PrismTraces, TileWaterQueryWork.MemoHits, TileWaterQueryWork.MemoMisses,
+                TileWaterQueryWork.ResultHits, TileWaterQueryWork.ResultMisses, TileWaterQueryWork.ResultStores, TileWaterQueryWork.ResultBypasses }, value => Assert.Equal(0, value));
         }
         finally { TileWaterQueryWork.Enabled = false; }
     }
@@ -34,6 +36,7 @@ public sealed class WaterKernelMemoIntegrationTests
     [Fact]
     public void InterleavedMemoHitsAndRefusalsCannotContaminateTheNextMissInAnotherSampler()
     {
+        using var controls = new StableWaterTraceControls();
         var a = MovementWaterFieldTests.Field(GrazingWaterBank.Document());
         var document = GrazingWaterBank.Document();
         document.SetCornerHeightCm(110, 237, 0, -125);
@@ -88,6 +91,40 @@ public sealed class WaterKernelMemoIntegrationTests
         }
     }
 
+    [Fact]
+    public void RealLargeHitsAndFreshMovingMissesPreserveSmallTierCounterMeanings()
+    {
+        using var controls = new StableWaterTraceControls();
+        var field = TileWaterTraceMemoResultTests.Field(false);
+        bool bypass = TileMediumSampler.BypassTraceMemoForTests;
+        TileMediumSampler.BypassTraceMemoForTests = false;
+        TileWaterQueryWork.Reset();
+        try
+        {
+            var spans = new MovementCoverageSpan[64];
+            var contacts = new MovementDomainContact[256];
+            var q = TileWaterTraceMemoResultTests.Query();
+            field.TraceWater(q, Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
+            int preparations = TileWaterQueryWork.ShapePreparations;
+            field.TraceWater(q, Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
+            Assert.Equal(1, TileWaterQueryWork.ResultHits);
+            Assert.Equal(1, TileWaterQueryWork.ResultMisses);
+            Assert.Equal(1, TileWaterQueryWork.ResultStores);
+            Assert.Equal(preparations, TileWaterQueryWork.ShapePreparations);
+            field.TraceWater(TileWaterTraceMemoResultTests.Query(1), Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
+            Assert.Equal(2, TileWaterQueryWork.ResultMisses);
+            Assert.True(TileWaterQueryWork.ShapePreparations > preparations);
+            Assert.Equal(3, TileWaterQueryWork.PrismTraces);
+            Assert.Equal(0, TileWaterQueryWork.MemoHits);
+            Assert.Equal(3, TileWaterQueryWork.MemoMisses);
+        }
+        finally
+        {
+            TileMediumSampler.BypassTraceMemoForTests = bypass;
+            TileWaterQueryWork.Enabled = false;
+        }
+    }
+
     [Theory]
     [Trait("Category", "Diagnostic")]
     [InlineData("bank-stand")]
@@ -101,6 +138,7 @@ public sealed class WaterKernelMemoIntegrationTests
     [InlineData("dry-control")]
     public void CensusFixtureMemoOracleAlsoMatchesTheFrozenEvaluator(string name)
     {
+        using var controls = new StableWaterTraceControls();
         using var scene = new WaterPrismScenario(name);
         var frozen = new FrozenWaterReference(scene.Colliders.Medium.CaptureTraceForTests());
         var queries = new List<MovementMediumSweepQuery>();

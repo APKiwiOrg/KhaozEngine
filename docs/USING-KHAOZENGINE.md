@@ -9639,7 +9639,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.13.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.13.2" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10245,7 +10245,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.13.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="23.13.2" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10817,6 +10817,59 @@ registration and explicitly reset the follower to resume. Bake from an authored-
 bake before admitting runtime edits. Capture and profile construction refuse attached live runtime entries, and
 Contact builds refuse a revision change even when an add and removal leave the same active set.
 
+### Contact query reuse
+
+Contact still acquires and authenticates a fresh live lease and producer pin, validates cold placement and
+producer output, checks water-level consistency, rebuilds selection and publishes the canonical movement state.
+Its opaque cold-placement certificate authorizes only one identical first Step in that same read. Copies share
+that single use. A spent copy, correction, replay or new lease validates placement again, even when numeric
+query caches hit. `EffectiveMovementBinding.StepPlayer` always validates placement but may use cached kernels.
+No numeric result is producer authority or permission to reuse a placement certificate across ticks.
+
+`TileMediumSampler` owns the original 128-entry small-prism tier and a separate eight-entry flat/large tier.
+Each claims at most four permanent thread tables without waiting. The small tier retains up to 8 spans and 48
+contacts per entry, with 692 KiB span/contact payload per table before keys, headers and strings. The added tier
+retains up to 64 spans and 256 contacts per entry, with a 256 KiB owned-storage charge cap and a separate 16 KiB
+retained-identifier charge cap per table. Storage belongs to the immutable sampler, not each player or lease.
+Tables are lazy, survive reads and ticks, and use FIFO replacement without read-age refresh. Replacing the sampler
+invalidates both tiers, so rebuild it after authored water/bed changes. Point sampling is not memoized.
+
+Keys bind every centre, delta, radius, half-height and separate physics-origin float bit, ordinal space values,
+actual received buffer lengths and current FP controls. Signed zero remains distinct. The sampler owns captured
+geometry, bed, level and speed dependencies. Query, origin, world membership and identity validation precede
+lookup. CurrentSupport is still validated even though neither numeric kernel reads it. Replay copies exact
+written prefixes, rebinds the current caller's identity and space references, and leaves suffixes untouched.
+Deterministic numeric refusals retain their capacity/error metadata and untouched caller buffers. The added tier
+never retains invalid inputs, producer/lifetime failures or callback exceptions. Misses and bypasses run the
+original evaluator. Unsupported readers, reference evaluation, excessive identifiers/output, exhausted thread
+claims and storage budgets are performance fallbacks. Cheap empty/outside-extent flat dry traces bypass lookup
+because fresh key/control work would avoid no geometry and would occupy wet-result slots.
+
+Bepu separately retains one thread-local rotational-admission Boolean with a payload under 128 bytes and no
+references. It keys all quaternion bits and the same Physics-owned native controls reader. Only exact canonical
+`(0, 0, 0, 1)` bits qualify on .NET 10 x64/arm64 with hardware SIMD. Translation cannot affect this rotation proof,
+but each call still validates finite position and the inclusive +/-2048 m bounds. Radius/length guards and fresh
+support work remain. Other rotations, unsupported runtimes/readers and reference evaluation run the original
+predicate. The slot lasts until replacement/reset and needs no world invalidation because it retains no geometry.
+
+Locomotion's two retained water scratch lanes are not result caches. Validated complete engine writers use runtime
+bulk clear. Arbitrary consumer pins keep the original full-exposed-slice nondefault-run cleanup because callbacks
+can partially write before refusing or throwing, including default-equal signed-zero bits. A lane changing to a
+complete writer is fully zeroed first. Reentrant loans use isolated pooled storage. Internal ClearedReferences
+still counts nondefault entries cleared, with its original scan performed only when diagnostics are enabled on
+the complete-writer lane. No producer validation or buffer-atomicity guarantee is weakened.
+
+Internal opt-in water counters separate small-tier hits/misses from added-tier hits/misses/stores/bypasses.
+PrismTraces remains logical requests and MemoMisses includes a large-tier replay after a small-tier miss.
+Intersection/preparation/coefficient counters measure executed work, so hits do not fabricate skipped work.
+Admission diagnostics separately report Boolean hits/misses/bypasses. No public diagnostic API is added.
+Numeric equality excludes sticky FP status and reference identity for freshly allocated joined-boundary strings.
+Controls remain exact inputs, and no lookup installs a canonical FP environment. Complete movement-state bits,
+selection, commitment, refusal and publication contracts remain unchanged. These caches establish no timing ratio.
+See [TileWorld water reuse](../KhaozEngine.TileWorld.Physics/README.md#exact-water-query-reuse),
+[Bepu support](../KhaozEngine.Physics.Bepu/README.md) and
+[Locomotion buffer ownership](../KhaozEngine.Locomotion/README.md#explicit-environment-value-contracts) for details.
+
 ### Movement medium + wading (`MovementMedium`, `KhaozEngine.Locomotion`)
 
 For leased ordinary contact movement, use `EffectiveMovementBinding.Ordinary` with an installer-authored
@@ -10840,15 +10893,6 @@ prepare each selected prism and face once per computed trace, retaining hit prep
 per-thread slab. Exhaustion uses the direct evaluator without changing capacity or precision policy. Geometry
 terms are reused only under the floating point controls that produced them. Rebuild the sampler after authored
 water or bed changes.
-
-The prism path also owns four claimed thread tables of at most 128 exact results each, retaining up to eight
-spans and 48 contacts per entry. Query float bits, uncombined physics origin, space identifiers, caller buffer
-lengths and current FP controls must match. Validation still runs on every call, and replay uses the current
-caller's identity and space references. Entries survive ticks until FIFO eviction but do not guarantee a hit
-after worker changes or for oversized results. Unsupported control readers run uncached. Every coverage value,
-error bit and refusal is preserved. Sticky FP status and the reference identity of a boundary string freshly
-allocated by recomputation are excluded. See the [TileWorld water contract](../KhaozEngine.TileWorld.Physics/README.md)
-for bounds and ownership.
 
 The separate explicit environment values use `MovementAvailability.Unresolved` by default.
 `MovementWaterPoint` requires world-qualified space/domain identity and actual vertical containment
@@ -11120,7 +11164,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.13.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.13.2" />
 ```
 
 ```csharp
@@ -21145,7 +21189,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.13.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.13.2" />
 ```
 
 ```csharp
@@ -21181,7 +21225,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.13.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.13.2" />
 ```
 
 ```csharp
@@ -21432,7 +21476,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.13.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.13.2" />
 ```
 
 ```csharp
@@ -26341,7 +26385,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.13.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="23.13.2" />
 </ItemGroup>
 ```
 

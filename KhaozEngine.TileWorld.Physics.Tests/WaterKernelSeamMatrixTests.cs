@@ -31,7 +31,8 @@ public sealed class WaterKernelSeamMatrixTests
         var drive = V.Point(0, 0, 0);
         Assert.False(seam.Covers(2, 6, -1, start, drive, I.Point(0.5), 0.25f, 0, 1));
         var shape = new TileWaterConvexShape([.. a.Planes, a.Planes[3].Opposite], seam);
-        var frozen = new FrozenTileWaterConvexShape(shape);
+        var frozen = new FrozenTileWaterConvexShape(shape, FrozenTileWaterBedSeam.Create(
+            new FrozenTileWaterPrism(a, false), new FrozenTileWaterPrism(b, false)));
         FrozenWaterComparison.Range(frozen.Intersect(start, drive, I.Point(0.5), 0.25f),
             shape.Intersect(start, drive, I.Point(0.5), 0.25f));
     }
@@ -53,10 +54,11 @@ public sealed class WaterKernelSeamMatrixTests
         if (kind == "real-side") query = new(query.Body, new(0.4f, 0.2f, 0));
         _ = FrozenWaterComparison.Check(field, new(geometry), query);
         Assert.NotEmpty(geometry.Faces);
+        var frozenGeometry = new FrozenTileWaterGeometry(geometry);
         foreach (var face in geometry.Faces)
         {
             var piece = geometry.Prisms[face.Prism];
-            var frozen = new FrozenTileWaterConvexShape(face.Shape);
+            var frozen = frozenGeometry.Faces[Array.IndexOf(geometry.Faces, face)].Shape;
             var start = piece.Start(query, Vector3.Zero);
             var drive = V.Point(query.Delta.X, query.Delta.Y, query.Delta.Z);
             var core = I.Point(query.Body.HalfHeight) - I.Point(query.Body.Radius);

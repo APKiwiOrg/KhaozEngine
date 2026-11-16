@@ -147,7 +147,14 @@ either value shifts the bit-exact result legitimately.
   and length guards, fresh lease authentication, proposal sweeps and every later certificate still run.
   A miss evaluates the original support predicate. Unsupported readers or runtimes and reference
   evaluation bypass the slot. No translated operator or selected-support result is retained by this
-  cache, whose key/result payload is under 128 bytes per thread.
+  cache, whose key/result payload is under 128 bytes per thread. The slot lasts for the calling thread
+  until replaced or reset and holds no owner, geometry, lease, pin, caller storage or translated operator.
+  It needs no world invalidation because its retained Boolean depends only on the qualified rotation
+  and controls. Internal opt-in admission diagnostics count hits, misses and original-path bypasses,
+  not completed movement steps or skipped sweeps. A hit changes none of the public footprint counters'
+  meanings. The common controls-only reader lives in Physics, shared with TileWorld.Physics, and
+  never installs a canonical FP environment. Like water replay, it excludes sticky FP status.
+  See [contact query reuse](../docs/USING-KHAOZENGINE.md#contact-query-reuse) for the combined contract.
   Immutable installed local geometry is keyed by owner, installation identity and static-geometry version.
   Static add/remove/replacement and changed rebase invalidate it. Simulation steps and dynamic mutations
   do not. Results still authenticate the global lease generation. This geometry cache retains no selected-support result.

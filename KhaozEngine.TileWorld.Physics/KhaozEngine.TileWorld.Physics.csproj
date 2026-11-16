@@ -13,6 +13,7 @@
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Benchmarks" Condition="'$(WaterPrismCensus)' == 'true'" />
   </ItemGroup>

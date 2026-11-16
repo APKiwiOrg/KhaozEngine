@@ -108,6 +108,13 @@ A point is in a column when the exact framed centre lies in X [minimum, maximum)
 feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height
 evaluation. The lower boundary follows the selected triangle at the queried axis, including sloped beds and a
 level triangle beside a lower corner. A triangle at or above the free surface contributes no positive water volume.
+Captured boundary shapes retain their parent prism shape and a read-only map from each face basis to its
+parent basis ordinal. Construction first proves that the complete ordered parent plane prefix has identical
+interval endpoint bits and height-sensitivity flags. It then matches the exact integer `(A,B,C)` plane indices,
+including the zero-active basis. Bases containing an appended face, split or lower constraint have no parent
+mapping, even when their normals are equal or nearly equal to a parent plane. Standalone shapes and unproved
+prefixes retain no parent or map. The immutable captured shapes own these references and integer arrays, so
+discarding the capture releases them together. Runtime evaluation does not read the relationship or map yet.
 The internal shape evaluator supports a query preparation with ordered, first-use projection, clip and
 post-feasibility terms. Each stored term is the original interval expression, with its operand order unchanged.
 Window clipping, minima, root clamping, seam certification and first-witness selection remain per evaluation.
@@ -392,27 +399,67 @@ the whole trace. A finite over-budget certificate reports `MovementAvailability.
 publishing spans or contacts. Unresolved geometry and unavailable evidence keep their existing refusal kinds.
 Independent readers do not share mutable scratch.
 
-Prism traces also retain exact query results in the sampler instance, collected with its captured world.
-Four thread tables are claimed without waiting. Each holds 128 entries and replaces the oldest insertion.
-A fixed 256-bucket hash index uses the same FIFO slots and full-key equality after a hash match.
-Each result retains at most 8 spans and 48 contacts. Caller space identifiers over 256 characters are not
-retained. Hits allocate nothing and a warm table adds no allocation on a miss. The key preserves every query
-float bit, including signed zero, the uncombined physics origin, both space identifiers, the received buffer
-lengths and the calling thread's floating point controls. A hit reproduces every output bit, caller-owned
-references, caller buffer contents, refusal kinds and capacities, and all validation outside the kernel.
-Identity and input validation still run per call. Replayed contacts carry the current caller's space string
-references, as recomputation would. A joined-triangle boundary id that recomputation allocates fresh is replayed
-by string value, without a new allocation or a reference-identity guarantee for that string.
-Refusals retain their reported capacities and leave caller buffers untouched. Known results copy only their
-written prefixes from owned storage. Native control reads cover rounding and denormal input/output handling
-without changing the environment. Sticky floating point status flags are outside this equivalence contract.
-Direct kernel evaluation can leave different sticky status for the same inputs across compiled tiers, and
-validation around the sampler also performs arithmetic. Executed-work counters deliberately measure actual
-work, so a hit does not count skipped kernel work. Controls remain part of the key because rounding and denormal
-handling affect numeric results. Windows x64 uses its control-only reader and can memoize. Platforms without a
-supported control reader bypass the memo.
-Entries survive ticks, but thread changes, eviction, large results and exhausted thread slots can prevent reuse.
-A hit is an optimization, never a guarantee. The flat specialization and point queries do not use the memo.
+### Exact water query reuse
+
+Each immutable sampler owns two exact-result tiers, collected with its captured world. Each tier claims at most
+four permanent thread tables without waiting. A replacement sampler starts cold. No thread-static table root
+keeps a discarded sampler alive. Entries survive reads and ticks until replacement, and resetting the calling
+thread's memo clears both tiers. Reentrant control reads complete before kernel scratch is entered and never
+retain caller buffers. Point queries use neither tier.
+
+Prisms first probe the original 128-entry tier with its fixed 256-bucket index and limits of 8 spans and 48 contacts
+per entry. Its span/contact payload is 692 KiB per claimed table, excluding keys, headers and strings. The separate
+eight-entry tier admits flat traces and larger prism results, with a 16-bucket index, at most 64 spans and 256
+contacts per entry. Both use full-key equality after a hash match and deterministic FIFO replacement. Reads never
+refresh insertion age. Neither enlarges the other's slots or changes its admission and diagnostic policy.
+
+The added table checks its owned-storage charge before allocating, including arrays, headers, keys, results,
+bucket links and bounded identifier-accounting workspace. The limit is 256 KiB per claimed table. On .NET 10
+arm64 one table retains 246,368 allocated bytes, conservatively charged as 246,480 bytes. The span/contact array
+payload alone is 239,616 bytes. Retained identifier strings have a separate 16 KiB cap per table. Every distinct
+string reference in a key or copied contact is charged for its aligned string allocation, even sampler-owned
+strings. Sharing across entries is charged again, so the charge bounds retention without global string tracking.
+Replacement releases the previous entry's charge and reset releases all charges and references. Accounting
+scratch is cleared after each store. Storage is per sampler and claimed thread, not per player.
+
+Both tiers key every centre, delta, radius, half-height and uncombined origin float bit, including signed zero,
+ordinal world/local space values, actual received span/contact lengths and the shared native FP control token.
+CurrentSupport is validated on every call but neither numeric kernel reads it, so it is deliberately absent
+from the key. World membership, finite origin, query and identity validation precede lookup. The immutable
+sampler owns all captured bed, level, speed and topology dependencies. Rebuild it after authored water or bed
+changes. Identity is a current-call output stamp, never retained authority. Replay reconstructs contacts with the
+current caller's space string references and copies only written prefixes, leaving suffixes untouched.
+A joined-triangle boundary id freshly allocated by recomputation replays by string value without a reference
+identity guarantee. No lease, pin, continuity handle, active scratch or caller array is retained.
+
+Numeric capacity, precision and unresolved-geometry refusals may replay only with this complete validated key.
+They preserve all reported capacities and leave caller storage untouched. Invalid inputs, producer/lifetime
+failures and callback exceptions are never retained in the added tier. Entries cannot authenticate a lease,
+reuse a placement certificate or bypass adapter validation. Water-level consistency, bindings, selection rebuild
+and the certificate's single-use rule still run on hits. See [contact query reuse](../docs/USING-KHAOZENGINE.md#contact-query-reuse).
+
+Space identifiers over 256 characters, excessive result sizes, exhausted thread claims, unsupported controls,
+reference evaluation and, for the added tier, insufficient owned-storage or identifier budget use the unchanged
+evaluator. These are performance fallbacks, never gameplay refusals. Misses execute the original flat/prism
+expressions in their original order. Hits allocate nothing, and warm tables add no miss allocation.
+The shared Physics reader covers rounding and denormal input/output controls without changing the environment.
+Windows x64 can memoize through its controls-only reader. Sticky FP status is excluded because compiled kernel
+tiers can leave different status for the same inputs and outer validation also performs arithmetic. FP controls
+remain exact inputs. Fresh joined-boundary string identity and executed kernel work are the other exclusions.
+
+Internal opt-in ResultHits, ResultMisses, ResultStores and ResultBypasses describe the added tier. A miss counts
+a lookup without replay, including a prism miss whose small result stays in the original tier. A store counts
+admitted flat or large prefixes. A bypass counts ineligible lookups or refused storage admission. Existing
+PrismTraces counts every logical prism request, MemoHits only small-tier replays, and MemoMisses every small-tier
+miss even when the added tier then replays. Actual intersection, preparation and coefficient counters exclude
+work skipped by either tier. Cheap dry shortcuts never enter added-tier counters. No public counter or API was added.
+
+Empty captures and flat paths outside the captured water extent keep the original cheap dry shortcut. The dry
+query-cost control measures the empty-capture path. Its warm replay can save a fraction of a microsecond, but
+fresh queries pay native-control and key lookup costs without avoiding intersections. Bypassing them also
+preserves the eight slots for wet geometry and avoids claiming result storage for an empty capture. Dry results
+reached through nonuniform evaluation still follow the original small-tier policy. Thread changes, eviction,
+budgets and exhausted thread claims can prevent reuse. A hit is an optimization, never a guarantee.
 
 An owned lateral column with no reachable captured bed answers unresolved. Represented loaded rectangles use
 directed lower and upper bounds, retaining a coordinate even when the nominal region is narrower than one float step.

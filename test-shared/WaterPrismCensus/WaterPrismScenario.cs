@@ -4,6 +4,7 @@ using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Primitives;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Physics;
 
@@ -43,13 +44,13 @@ internal sealed class WaterPrismScenario : IDisposable
     internal WaterPrismScenario(string name, MovementControllerKind controller = MovementControllerKind.Contact,
         bool crowded = false)
     {
-        if (Array.IndexOf(Names, name) < 0) throw new ArgumentOutOfRangeException(nameof(name));
+        if (Array.IndexOf(Names, name) < 0 && name != "shore-traverse") throw new ArgumentOutOfRangeException(nameof(name));
         Name = name;
         _contact = controller == MovementControllerKind.Contact;
         bool bank = name.StartsWith("bank-", StringComparison.Ordinal);
         bool deep = name.StartsWith("deep-", StringComparison.Ordinal);
-        float z = bank ? 236.365f : name == "swim-entry" ? 246.23f : deep ? 260.568f : 252.85f;
-        int firstZ = bank || name == "dry-control" ? 236 : (int)z - 4;
+        float z = name == "shore-traverse" ? 235.8f : bank ? 236.365f : name == "swim-entry" ? 246.23f : deep ? 260.568f : 252.85f;
+        int firstZ = name == "shore-traverse" || bank || name == "dry-control" ? 236 : (int)z - 4;
         var doc = Document(name, firstZ);
         var catalogs = TileWorldCatalogs.LoadJson("""
             {"materials":[{"id":1,"name":"ground","kind":"Ground","color":"#446633"},
@@ -111,6 +112,12 @@ internal sealed class WaterPrismScenario : IDisposable
         return next;
     }
 
+    internal void Rebase(Vector3 origin)
+    {
+        _world.Rebase(origin);
+        Simulator.Frame = WorldFrame.Nearest(origin.X, origin.Z);
+    }
+
     static TileWorldDocument Document(string name, int firstZ)
     {
         var doc = new TileWorldDocument { Id = "prism-census", TileSize = 1 };
@@ -118,19 +125,21 @@ internal sealed class WaterPrismScenario : IDisposable
         doc.GetOrCreateRegion(region);
         for (int z = region.OriginZ; z < region.OriginZ + 64; z++)
             for (int x = region.OriginX; x < region.OriginX + 64; x++) doc.SetUnderlay(x, z, 0, 1);
-        for (int z = firstZ; z <= firstZ + 7; z++)
+        int depth = name == "shore-traverse" ? 16 : 7;
+        for (int z = firstZ; z <= firstZ + depth; z++)
             for (int x = 106; x <= 116; x++)
             {
                 int cm = name switch
                 {
                     "bank-stand" or "bank-along" or "bank-across" or "dry-control" => z == firstZ ? -35 : -130,
+                    "shore-traverse" => -35 - 18 * (z - 236),
                     "swim-entry" => -130 - 18 * (z - 246),
                     "deep-swim" or "deep-tread" => Math.Max(-537, -369 - 44 * (z - 260)),
                     "flat-neighbour" => -237 - 7 * Math.Max(0, z - 253),
                     _ => -237,
                 };
                 doc.SetCornerHeightCm(x, z, 0, checked((short)cm));
-                if (x < 116 && z < firstZ + 7) doc.SetUnderlay(x, z, 0, 3);
+                if (x < 116 && z < firstZ + depth) doc.SetUnderlay(x, z, 0, 3);
             }
         // A distant rim corner selects the same lake level without importing a consumer world.
         doc.SetCornerHeightCm(106, firstZ, 0, -35);

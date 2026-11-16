@@ -28,7 +28,7 @@ internal static class WaterKernelTraceFixture
             "min-x", "max-x", "min-z", "max-z", "bed", "surface");
 
     internal static TileWaterPrism Piece(int x = 0, int column = 0, bool second = false, float size = 1,
-        float minimumInset = 0)
+        float minimumInset = 0, bool sloped = false)
     {
         var water = Column(column, x * size, size);
         if (minimumInset != 0) water = water with { Minimum = water.Minimum + Vector3.UnitX * minimumInset };
@@ -37,7 +37,10 @@ internal static class WaterKernelTraceFixture
                 new(0, -1, 0), new(size, -1, -size), new(0, -1, -size))
             : new DrawnGroundTriangle(TileLatticePoint.Sw, TileLatticePoint.Se, TileLatticePoint.Ne,
                 new(0, -1, 0), new(size, -1, 0), new(size, -1, -size));
+        if (sloped) triangle = triangle with { A = Tilt(triangle.A), B = Tilt(triangle.B), C = Tilt(triangle.C) };
         return new(water, triangle, x, 0, size, column);
+
+        static Vector3 Tilt(Vector3 point) => point with { Y = point.Y + 0.25f * point.X + 0.125f * point.Z };
     }
 
     internal static TileWaterTraceTestSnapshot Snapshot(TileWaterColumn[] columns, TileWaterPrism[] prisms,
@@ -97,10 +100,10 @@ internal static class WaterKernelTraceFixture
         return Snapshot([piece.Column], [piece], faces.ToArray(), Ground());
     }
 
-    internal static TileWaterTraceTestSnapshot RealFaceTypes()
+    internal static TileWaterTraceTestSnapshot RealFaceTypes(bool diagonalNeighbor = false, bool sloped = false)
     {
-        var first = Piece();
-        var second = Piece(1, 1, second: true);
+        var first = Piece(sloped: sloped);
+        var second = Piece(diagonalNeighbor ? 0 : 1, 1, second: true, sloped: sloped);
         second = new(second.Column with { Maximum = second.Column.Maximum with { Y = -0.6f } },
             second.Triangle, second.TileX, second.TileZ, second.TileSize, second.ColumnIndex);
         var pieces = new[] { first, second };

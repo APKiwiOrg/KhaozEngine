@@ -8,6 +8,9 @@ namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 // so exactly represented faces and tangencies need no artificial uncertainty band.
 internal readonly record struct FrozenTileWaterArithmetic(double Low, double High)
 {
+    public static implicit operator FrozenTileWaterArithmetic(KhaozEngine.TileWorld.Physics.TileWaterArithmetic value) => new(value.Low, value.High);
+    public static implicit operator KhaozEngine.TileWorld.Physics.TileWaterArithmetic(FrozenTileWaterArithmetic value) => new(value.Low, value.High);
+
     internal static FrozenTileWaterArithmetic Point(double value) => new(value, value);
     public static FrozenTileWaterArithmetic operator +(FrozenTileWaterArithmetic a, FrozenTileWaterArithmetic b) =>
         new(Sum(a.Low, b.Low).Low, Sum(a.High, b.High).High);

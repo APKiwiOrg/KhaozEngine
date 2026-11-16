@@ -366,17 +366,14 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalResolveRenderer fully lit debug view", ["Temporal.fullyLitResolve", "Temporal.debugMode"]),
             ("TemporalResolveRenderer fully lit count probe", ["Temporal.fullyLitResolve"]),
             ("TemporalSplitResolve fully lit accumulate", ["Temporal.fullyLitAccumulate"]),
-            // The detail history adds its own pass pipelines and pairs, and reuses the resolve layouts at set 0.
+            // The detail history adds its own pass pipelines and reuses the resolve layout at set 0. It has one checked
+            // program for every certificate state, so it has no fully lit pipeline.
             ("TemporalDetailPass classify", ["Temporal.resolve", "Temporal.detailClassify"]),
             ("TemporalDetailPass resolve", ["Temporal.resolve", "Temporal.detail"]),
-            ("TemporalDetailPass fully lit resolve", ["Temporal.fullyLitResolve", "Temporal.detail"]),
             ("TemporalDetailPass update", ["Temporal.detailUpdate"]),
             ("TemporalDetailStore replicate", ["Pixel.blit"]),
             ("TemporalResolveRenderer detail debug view", ["Temporal.resolve", "Temporal.debugMode", "Temporal.detail"]),
-            ("TemporalResolveRenderer fully lit detail debug view",
-                ["Temporal.fullyLitResolve", "Temporal.debugMode", "Temporal.detail"]),
             ("TemporalResolveRenderer detail count probe", ["Temporal.resolve", "Temporal.detail"]),
-            ("TemporalResolveRenderer fully lit detail count probe", ["Temporal.fullyLitResolve", "Temporal.detail"]),
             // Rigid dissolve pipelines add the shared interior image and sampler, with no extra uniform buffer.
             ("PointShadowRenderer", ["PointShadow"]),
             ("PointShadowRenderer prepared foliage", ["PointShadow", "SceneAnchor"]),
@@ -421,9 +418,9 @@ namespace KhaozEngine.Tests.Gpu
             // The three caustic programs each add one dense layout and pipeline row.
             // T8-R1 keeps completeness independent of the catalogs themselves.
             // The tile-ground relief variants add their material layout and their plain and motion pipelines, two each.
-            // The detail history adds three layouts and nine pipelines.
+            // The detail history adds three layouts and six pipelines.
             Assert.Equal(79, ShippedLayouts.Count);
-            Assert.Equal(101, ShippedPipelines.Count);
+            Assert.Equal(98, ShippedPipelines.Count);
             Assert.Equal(ShippedPipelines.Count,
                 ShippedPipelines.Select(p => p.Pipeline).Distinct(StringComparer.Ordinal).Count());
             Assert.Equal(ShippedLayouts.Keys.Order(StringComparer.Ordinal),

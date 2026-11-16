@@ -25,8 +25,8 @@ internal static class TemporalLockReleaseSpirv
     internal static readonly string[] DetailIncluders =
     [
         "TemporalDetailClassify", "TemporalDetailClassifyHalf",
-        .. new[] { "TemporalDetailResolve", "TemporalDetailResolveHalf", "TemporalDetailDebug", "TemporalDetailDebugHalf",
-            "TemporalDetailProbe", "TemporalDetailProbeHalf" }.SelectMany(name => new[] { name, name + "FullyLit" }),
+        "TemporalDetailResolve", "TemporalDetailResolveHalf", "TemporalDetailDebug", "TemporalDetailDebugHalf",
+        "TemporalDetailProbe", "TemporalDetailProbeHalf",
     ];
 
     /// <summary>The lock releases a program compiles: none in the detail classification, two in a detail history

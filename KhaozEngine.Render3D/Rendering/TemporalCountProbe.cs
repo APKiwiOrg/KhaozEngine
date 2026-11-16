@@ -29,7 +29,9 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuTexture _target, _staging;
         readonly IGpuFramebuffer _framebuffer;
-        readonly TemporalVisibilityPipelinePair _programs;
+        readonly TemporalVisibilityPipelinePair? _programs;
+        readonly IGpuShaderSet? _detailShaders;
+        readonly IGpuPipeline? _detailPipeline;
         readonly byte[] _row = new byte[GridWidth * 4];
         bool _recorded;
 
@@ -48,9 +50,13 @@ namespace KhaozEngine.Render3D.Rendering
                     ShaderSources.TemporalProbeFragment(TemporalResolvePrecisionPolicy.For(gd)),
                     [resolveLayout], [fullyLitLayout], _framebuffer.Outputs, rewrite);
             else
-                _programs = new TemporalVisibilityPipelinePair(gd,
-                    ShaderSources.TemporalDetailProbeFragment(TemporalResolvePrecisionPolicy.For(gd)),
-                    [resolveLayout, detailLayout], [fullyLitLayout, detailLayout], _framebuffer.Outputs, rewrite);
+            {
+                string source = ShaderSources.TemporalDetailProbeFragment(TemporalResolvePrecisionPolicy.For(gd));
+                _detailShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
+                    TemporalVisibilityGatherPolicy.ForBackend(rewrite?.Invoke(source) ?? source, gd.Backend));
+                _detailPipeline = TemporalResolveRenderer.Fullscreen(f, _detailShaders,
+                    [resolveLayout, detailLayout], _framebuffer.Outputs);
+            }
         }
 
         /// <summary>How many times the grid has been mapped for reading. For tests.</summary>
@@ -62,7 +68,7 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuResourceSet? detailSet = null)
         {
             cl.SetFramebuffer(_framebuffer);
-            cl.SetPipeline(_programs.Select(withoutVisibility));
+            cl.SetPipeline(_detailPipeline ?? _programs!.Select(withoutVisibility));
             cl.SetGraphicsResourceSet(0, resolveSet);
             if (detailSet is not null) cl.SetGraphicsResourceSet(1, detailSet);
             cl.Draw(3);
@@ -105,7 +111,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
-            _programs.Dispose();
+            _programs?.Dispose();
+            _detailPipeline?.Dispose();
+            _detailShaders?.Dispose();
             _framebuffer.Dispose();
             _staging.Dispose();
             _target.Dispose();

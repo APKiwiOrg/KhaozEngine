@@ -58,7 +58,8 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
                     fx.Frames(1, draws[i]);
                     TemporalResolveRenderer renderer = fx.Scene.TemporalResolveRendererForTests!;
                     Assert.True(renderer.LastCurrentVisibilityFullyLit);
-                    Assert.Equal(frame > 0, renderer.LastVisibilityDecisionSkipped);
+                    // Fine frames stay certified but never skip the decision: one program serves both states.
+                    Assert.Equal(frame > 0 && detail == TemporalHistoryDetail.Display, renderer.LastVisibilityDecisionSkipped);
                     Assert.All(TemporalVisibilityHistoryGpuTests.Read(fx.Device, fx.Scene.ResolvedVisibilityTarget!),
                         b => Assert.Equal(255, b));
                 }
@@ -144,7 +145,8 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
             }
             oracle.Report(frame, "debug and counts", TemporalFullyLitHistoryOracle.Snapshot.Read(selected),
                 TemporalFullyLitHistoryOracle.Snapshot.Read(checkedFx));
-            Assert.Equal(frame is 1 or 2 or 5 || frame >= 6 && frame != shadowsOn && frame != shadowsOn + 1,
+            Assert.Equal(detail == TemporalHistoryDetail.Display
+                && (frame is 1 or 2 or 5 || frame >= 6 && frame != shadowsOn && frame != shadowsOn + 1),
                 selected.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.DisoccludedPixels, checkedFx.Scene.LastTemporalDiagnostics.DisoccludedPixels);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.ReactivePixels, checkedFx.Scene.LastTemporalDiagnostics.ReactivePixels);

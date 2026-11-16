@@ -36,16 +36,6 @@ public sealed class TemporalVisibilityFullyLitCompiledTests
             TemporalVisibilityFrozenD.ToD(certified.FragmentGlsl));
         Assert.Equal(TemporalVisibilityFrozenD.ToShippedD(ordinary.FragmentGlsl),
             TemporalVisibilityFrozenD.ToShippedD(certified.FragmentGlsl));
-        // The restored forms carry the frozen decision. The detail history's form is spliced into the mode's own
-        // composition, so it must also stay a program: no text-only rewrite can pass. The other forms restore D's
-        // text for comparison only, and a restored debug view keeps views D never had.
-        foreach (string restored in new[] { TemporalVisibilityFrozenD.ToD(ordinary.FragmentGlsl),
-            TemporalVisibilityFrozenD.ToShippedD(ordinary.FragmentGlsl) })
-        {
-            Assert.Contains(TemporalVisibilityFrozenD.VisibilityGlsl, restored, StringComparison.Ordinal);
-            if (name.StartsWith("TemporalDetail", StringComparison.Ordinal))
-                Assert.NotEmpty(SpirvFrontEnd.ToSpirv(restored, GpuShaderStages.Fragment, name + " restored"));
-        }
     }
 
     [Theory]

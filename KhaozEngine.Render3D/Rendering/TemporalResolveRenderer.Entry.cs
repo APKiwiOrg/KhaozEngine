@@ -68,7 +68,6 @@ namespace KhaozEngine.Render3D.Rendering
             TemporalResolvePrecision precision = TemporalResolvePrecisionPolicy.For(_gd);
             string detailResolve = ShaderSources.TemporalDetailResolveFragment(precision,
                 _boundHistory.CaptureDetailPathForTests);
-            if (LastVisibilityDecisionSkipped) detailResolve = TemporalVisibilityPrograms.WithoutDecision(detailResolve);
             return [TemporalVisibilityGatherPolicy.ForBackend(ShaderSources.TemporalDetailClassifyFragment(precision), _gd.Backend),
                 TemporalVisibilityGatherPolicy.ForBackend(detailResolve, _gd.Backend), ShaderSources.TemporalDepthStoreFrag];
         }

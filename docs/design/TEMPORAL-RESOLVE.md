@@ -179,10 +179,31 @@ specialization and diagnostic rewrites require one complete decision. A scoped s
 the selected visibility result's diagnostic name.
 
 Fine retains its fused entry, with no unused ordinary split targets. Its resolve, debug views and count
-probes use the existing fully-lit specialization only when both the current input and the history read
-index have the owned fully-lit certificate. The validity pass keeps the full shared input layout, and
-the resolve uses its matching checked or compact input set. An unowned white input still certifies
-nothing. Checked and certified pipelines are cached together before steady frames.
+probes run one compiled program, the checked one, in every certificate state, with the full input set.
+The renderer still tracks the owned fully-lit certificate, because Display and the visibility history use
+it, but Fine never skips the visibility decision.
+
+One program is a precision contract, not a convenience. The retention reads the current reconstruction
+and its current weight as float32 values, and a separately compiled certified program does not reproduce
+those values bit for bit on every compiler. On Direct3D 11 WARP, hosted run 43844224166 (2026-11-16) found
+the checked and certified resolves agreeing on the chosen UV and path flag at every pixel while the
+retention differed on 13 to 1,338 pixels a frame. Its inputs already differed by one to two float32 steps:
+the current weight (`sampleWeight / (accumulated + sampleWeight)`) and the current colour come out of the
+shared accumulation that way. Display hides such differences because it stores only the rounded result.
+Fine stores a function of them, and the retention's projection can turn one step into a half step in a
+child or, where the projection is ill-conditioned, into a much larger change. Ordering the mode's own
+arithmetic cannot make inputs exact that the shared accumulation produces, and ordering that code would
+change Display. Quantising them only makes a flip rarer. One program for both certificate states is
+exact by construction on every backend.
+
+The price is the fully lit saving of a certified specialization, on fully lit frames only. In the
+capture below the fully lit Native Fine resolve takes 8.663 ms, where the certified program measured 6.400 ms
+in an earlier capture the same day on the same shared machine. A frame with sun shadows takes the checked
+program in both modes. The lever back to that saving is one
+program that skips the decision through a uniform rather than by compilation: it keeps a single compiled
+program and so stays exact, but it changes the checked program's source, so it can move Metal values and
+needs re-establishing the reference, it needs a slot in a uniform block the mode shares with Display, and
+it gains nothing on a shadowed frame.
 
 The resolve computes each display pixel's four children once, from the four fine fetches it already
 holds. Hbar stays a float32 local through retention and transport. Rounding it to binary16 would move
@@ -286,9 +307,8 @@ and state identity from cold prefixes, presented still frames, moving/recovery m
 replication after motion stops, thin-detail retention and a moving output that differs from Display.
 
 Fine debug views and sampled counts share the fine resolve core and its classification/read bindings.
-Both cache checked and certified pipeline pairs, selecting the full or compact resolve layout from the
-same current/history certificate as the caller's resource set. This keeps certified frames' bindings
-compatible for every debug view and armed count request.
+Each builds the one checked pipeline over the full resolve layout, matching the full set the resolve
+binds in every certificate state.
 Each sampled pixel initializes its own transport context, including the count grid's sixteen samples per cell.
 Their pipelines and staging snapshots belong to the renderer, while the borrowed fine sets follow the history
 generation. This keeps pending count readbacks valid across a mode change or resize.
@@ -304,32 +324,33 @@ indices, mode and generation alone. Turning the temporal resolve off retires the
 
 On 2026-11-16 UTC, MetalNative on an Apple M2 Max measured two moving thin-field scenes over the same
 textured wall and followed wide box at a 2560 by 1440 display. Native rendered internally at 2560 by 1440,
-Quality at 1707 by 960. The fully lit scene uses the owned certificate and skips the visibility decision.
-The shadowed scene adds a key shadow in view and uses the checked program, with `certifiedCurrent=False`
-and `visibilitySkipped=False`. A game frame with sun shadows takes this checked path. Each case used four
+Quality at 1707 by 960. The fully lit scene is certified (`certifiedCurrent=True`). Display skips the
+visibility decision there, and Fine runs its one checked program, with `visibilitySkipped=False`. The
+shadowed scene adds a key shadow in view, with `certifiedCurrent=False` and `visibilitySkipped=False` in
+every mode. A game frame with sun shadows takes this checked path. Each case used four
 warm frames and eight measured frames on a shared machine. The on-demand `TemporalDetailCostPerfGpuTests`
 reports native GPU timestamps, never timing gates. Children are computed once in resolve, classification
 checks validity, and the fine-grid store point-copies the completed children.
 
 | Preset | Mode | Pass | Fully lit median ms (min to max) | Shadowed median ms (min to max) |
 | --- | --- | --- | --- | --- |
-| Native | DisplaySplit | `temporal.prepare` | 0.835 (0.769 to 1.576) | 0.876 (0.804 to 1.419) |
-| Native | DisplaySplit | `temporal.accumulate` | 2.124 (1.975 to 2.512) | 3.851 (3.402 to 4.113) |
-| Native | Display | `temporal.resolve` | 3.136 (2.882 to 3.591) | 5.091 (4.743 to 5.976) |
-| Native | Fine | `temporal.detail-classify` | 2.057 (1.826 to 2.377) | 2.120 (1.943 to 2.424) |
-| Native | Fine | `temporal.resolve` | 6.400 (6.051 to 6.784) | 10.132 (10.043 to 10.442) |
-| Native | Fine | `temporal.detail-store` | 0.731 (0.667 to 1.161) | 0.772 (0.707 to 1.146) |
-| Quality | DisplaySplit | `temporal.prepare` | 0.624 (0.521 to 1.091) | 0.529 (0.485 to 0.569) |
-| Quality | DisplaySplit | `temporal.accumulate` | 2.058 (1.956 to 2.283) | 3.889 (3.547 to 4.634) |
-| Quality | Display | `temporal.resolve` | 2.984 (2.791 to 3.645) | 4.961 (4.332 to 5.624) |
-| Quality | Fine | `temporal.detail-classify` | 2.126 (1.957 to 2.510) | 2.218 (2.114 to 2.306) |
-| Quality | Fine | `temporal.resolve` | 6.673 (6.490 to 7.494) | 10.241 (9.498 to 10.668) |
-| Quality | Fine | `temporal.detail-store` | 0.812 (0.720 to 2.136) | 0.799 (0.704 to 1.570) |
+| Native | DisplaySplit | `temporal.prepare` | 0.929 (0.880 to 1.389) | 0.791 (0.757 to 0.850) |
+| Native | DisplaySplit | `temporal.accumulate` | 2.926 (2.520 to 3.168) | 3.320 (3.089 to 3.995) |
+| Native | Display | `temporal.resolve` | 2.934 (2.861 to 3.110) | 4.517 (4.295 to 4.755) |
+| Native | Fine | `temporal.detail-classify` | 1.885 (1.836 to 2.680) | 1.887 (1.833 to 2.188) |
+| Native | Fine | `temporal.resolve` | 8.663 (8.390 to 9.563) | 9.343 (9.169 to 9.499) |
+| Native | Fine | `temporal.detail-store` | 0.714 (0.673 to 1.137) | 0.751 (0.666 to 0.823) |
+| Quality | DisplaySplit | `temporal.prepare` | 0.649 (0.568 to 1.124) | 0.518 (0.472 to 0.565) |
+| Quality | DisplaySplit | `temporal.accumulate` | 2.638 (2.397 to 3.108) | 3.641 (3.417 to 3.924) |
+| Quality | Display | `temporal.resolve` | 2.815 (2.785 to 2.947) | 4.532 (4.309 to 4.856) |
+| Quality | Fine | `temporal.detail-classify` | 2.034 (1.949 to 2.186) | 1.865 (1.812 to 1.950) |
+| Quality | Fine | `temporal.resolve` | 8.815 (8.636 to 9.042) | 9.332 (9.110 to 9.570) |
+| Quality | Fine | `temporal.detail-store` | 0.676 (0.661 to 0.787) | 0.757 (0.656 to 0.812) |
 
-Fully-lit Native's median of each frame's summed Fine intervals is 9.331 ms (8.850 to 9.607), against default split's 3.028 ms. The difference is 6.303 ms.
-Fully-lit Quality's median of each frame's summed Fine intervals is 9.694 ms (9.301 to 11.769), against default split's 2.703 ms. The difference is 6.991 ms.
-Shadowed Native's median of each frame's summed Fine intervals is 13.080 ms (12.809 to 13.627), against default split's 4.814 ms. The difference is 8.266 ms.
-Shadowed Quality's median of each frame's summed Fine intervals is 13.182 ms (12.536 to 14.415), against default split's 4.446 ms. The difference is 8.735 ms.
+Fully-lit Native's median of each frame's summed Fine intervals is 11.477 ms (10.938 to 12.275), against default split's 3.860 ms. The difference is 7.617 ms.
+Fully-lit Quality's median of each frame's summed Fine intervals is 11.609 ms (11.353 to 11.743), against default split's 3.339 ms. The difference is 8.270 ms.
+Shadowed Native's median of each frame's summed Fine intervals is 11.994 ms (11.853 to 12.338), against default split's 4.155 ms. The difference is 7.840 ms.
+Shadowed Quality's median of each frame's summed Fine intervals is 11.894 ms (11.739 to 12.292), against default split's 4.179 ms. The difference is 7.715 ms.
 The report-only aim is Fine within 3 ms of default split at Native. No timing assertion is added.
 
 Payload remains 64 retained and 33 scratch bytes a display pixel: a fine RGBA16F pair, one R8
@@ -346,7 +367,7 @@ three named intervals. Markers end the active Metal encoder, and each interval i
 switches. These small shared-machine blocks are not paired causal measurements, whole-frame times or
 a steady-state residency proof. Native Vulkan, Direct3D 11 and consumer acceptance remain separate proof.
 
-Fine resolve, debug and counts follow the existing owned fully-lit certificate for both current and history inputs. The validity pass retains its shared input ABI.
+Fine resolve, debug and counts run the checked program in every certificate state. The validity pass retains its shared input ABI.
 
 ## Shimmer record
 

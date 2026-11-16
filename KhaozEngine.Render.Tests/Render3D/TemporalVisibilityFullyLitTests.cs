@@ -47,7 +47,9 @@ public sealed class TemporalVisibilityFullyLitTests
             scene.PrepareFrame();
             using (GpuRecording.Open(device, commands, nameof(TemporalVisibilityFullyLitTests)))
                 scene.RenderInternal(commands, 160, 90, target);
-            Assert.Equal(frame.Skip, DecisionIsAbsent(scene.TemporalResolveRendererForTests!));
+            // The detail history keeps one checked program for every certificate state, so it never drops the decision.
+            Assert.Equal(frame.Skip && detail == TemporalHistoryDetail.Display,
+                DecisionIsAbsent(scene.TemporalResolveRendererForTests!));
         }
     }
 
@@ -149,7 +151,9 @@ public sealed class TemporalVisibilityFullyLitTests
             commands.Clear();
             commands.CommandTrace!.Clear();
             rig.Frame(commands: commands);
-            bool skip = frame is 0 or 3;
+            // Frames 0 and 3 are certified. Display skips the decision there. The detail history's resolve, count and
+            // debug view keep the checked program in both certificate states.
+            bool skip = frame is 0 or 3 && detail == TemporalHistoryDetail.Display;
             var renderer = rig.Scene.TemporalResolveRendererForTests!;
             Assert.Equal(skip, renderer.LastVisibilityDecisionSkipped);
             string[] actual = commands.CommandTrace!.Where(c => c.Kind == "draw")

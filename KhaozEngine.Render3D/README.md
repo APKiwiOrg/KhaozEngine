@@ -445,7 +445,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   writing them beside R and state into six attachments. Classification checks validity without colour
   accumulation. The resolve checks a slow candidate's own lock before choosing the history fetch, then accumulates once.
   The fine-grid pass point-loads its child by parity.
-  Resolve, debug views and counts follow the same two-frame fully-lit certificate as Display.
+  Resolve, debug views and counts run one checked program in every certificate state. A certified variant
+  would read the shared accumulation's float32 values as some compilers round them differently per program,
+  and the stored detail amplifies that.
   R8 trust classification and four RGBA16F child targets add 116.02 MiB, for 341.02 MiB of mode-specific
   target payload (97 bytes a display pixel). Mean and chosen UV remain float32 locals. Rounding the mean
   would change stored detail on every frame.
@@ -453,9 +455,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Nonpositive budgets disable Fine and unknown enum values mean Display. A mode change resets history once
   with `TemporalResetReason.HistoryDetail`. Later renders and captures leave the pair untouched.
   The 2026-11-16 UTC M2 Max Metal moving-thin-field capture at 1440p reports summed Fine passes at
-  9.331 ms Native and 9.694 ms Quality for the fully-lit scene, and
-  13.080 ms Native and 13.182 ms Quality for the shadowed scene.
-  Fully lit frames use the certificate. Game frames with sun shadows take the checked path measured by the
+  11.477 ms Native and 11.609 ms Quality for the fully-lit scene, and
+  11.994 ms Native and 11.894 ms Quality for the shadowed scene.
+  Fine runs its checked program on both scenes. Game frames with sun shadows take the path measured by the
   shadowed scene. Each case used four warm and eight measured frames on a shared machine.
   Both report-only cost targets remain unmet. See the [pass table and limits](../docs/design/TEMPORAL-RESOLVE.md#cost-capture).
   Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent

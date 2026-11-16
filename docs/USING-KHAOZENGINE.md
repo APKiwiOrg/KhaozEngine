@@ -4932,8 +4932,8 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   locals, and writes R, state and four RGBA16F children. The fine-grid pass point-loads the child selected
   by texel parity. Classification computes validity without colour accumulation. The resolve checks its
   own slow candidate lock before choosing the fetch and accumulating once. Display-sized scratch holds R8 validity and
-  the four child targets. Resolve, debug views and counts follow Display's owned two-frame fully-lit
-  certificate, while Fine retains its fused entry. The temporal
+  the four child targets. Resolve, debug views and counts run one checked program in every certificate
+  state, with no certified variant, while Fine retains its fused entry. The temporal
   resolve must be active, the device must allow at least six colour attachments, the extent must fit the
   device's 2D render texture dimension limit, and the display's
   pixel count must fit the inclusive `Post.Temporal.HistoryDetailPixelLimit`. That budget defaults to 3,686,400,
@@ -4948,9 +4948,9 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   inside the frame, including an offscreen capture, neither reads nor advances it.
   Temporal debug views and on-request counts replay the selected mode's own history fetch and trust gate.
   The 2026-11-16 UTC M2 Max Metal moving-thin-field capture at 1440p reports summed Fine passes at
-  9.331 ms Native and 9.694 ms Quality for the fully-lit scene, and
-  13.080 ms Native and 13.182 ms Quality for the shadowed scene.
-  Fully lit frames use the certificate. Game frames with sun shadows take the checked path measured by the
+  11.477 ms Native and 11.609 ms Quality for the fully-lit scene, and
+  11.994 ms Native and 11.894 ms Quality for the shadowed scene.
+  Fine runs its checked program on both scenes. Game frames with sun shadows take the path measured by the
   shadowed scene. Each case used four warm and eight measured frames on a shared machine.
   Both report-only cost targets remain unmet. See the [pass table and limits](design/TEMPORAL-RESOLVE.md#cost-capture).
 - **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.

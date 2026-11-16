@@ -18,16 +18,14 @@ internal sealed class TemporalDetailPass
     IGpuTexture? _classification, _transport;
     readonly IGpuTexture?[] _children = new IGpuTexture?[4];
     IGpuFramebuffer? _classificationFrame;
-    IGpuShaderSet? _classifyShaders, _updateShaders;
-    TemporalVisibilityPipelinePair? _resolvePrograms;
+    IGpuShaderSet? _classifyShaders, _resolveShaders, _updateShaders;
     IGpuResourceLayout? _classifyLayout, _updateLayout;
     readonly IGpuResourceLayout _fineLayout;
-    IGpuPipeline? _classifyPipeline, _updatePipeline;
+    IGpuPipeline? _classifyPipeline, _resolvePipeline, _updatePipeline;
     IGpuSampler? _sampler;
 
     internal TemporalDetailPass(IGpuDevice gd, TemporalHistory history, TemporalDetailStore store,
-        IGpuResourceLayout resolveLayout, IGpuResourceLayout fullyLitResolveLayout, IGpuResourceLayout fineLayout,
-        Func<string, string>? fragmentSourceForTests)
+        IGpuResourceLayout resolveLayout, IGpuResourceLayout fineLayout, Func<string, string>? fragmentSourceForTests)
     {
         _fineLayout = fineLayout;
         try
@@ -46,6 +44,10 @@ internal sealed class TemporalDetailPass
                 fragmentSourceForTests?.Invoke(source) ?? source, gd.Backend);
             _classifyShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
                 Fragment(ShaderSources.TemporalDetailClassifyFragment(precision)));
+            // One checked resolve for every certificate state. A certified specialization rounds the shared
+            // accumulation's float32 values differently on some compilers, and the stored detail amplifies that.
+            _resolveShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
+                Fragment(ShaderSources.TemporalDetailResolveFragment(precision, _transport is not null)));
             _updateShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, Fragment(ShaderSources.TemporalDetailUpdateFrag));
             _classifyPipeline = TemporalResolveRenderer.Fullscreen(f, _classifyShaders,
                 [resolveLayout, _classifyLayout], _classificationFrame.Outputs);
@@ -55,10 +57,8 @@ internal sealed class TemporalDetailPass
                 : [TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence, TemporalFormats.HistoryColor,
                     TemporalFormats.HistoryColor, TemporalFormats.HistoryColor, TemporalFormats.HistoryColor,
                     GpuPixelFormat.R32G32B32A32Float];
-            _resolvePrograms = new TemporalVisibilityPipelinePair(gd,
-                ShaderSources.TemporalDetailResolveFragment(precision, _transport is not null),
-                [resolveLayout, _fineLayout], [fullyLitResolveLayout, _fineLayout],
-                new GpuOutputDescription(null, outputs), fragmentSourceForTests);
+            _resolvePipeline = TemporalResolveRenderer.Fullscreen(f, _resolveShaders, [resolveLayout, _fineLayout],
+                new GpuOutputDescription(null, outputs));
             _updatePipeline = TemporalResolveRenderer.Fullscreen(f, _updateShaders, _updateLayout,
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor));
             for (int write = 0; write < 2; write++)
@@ -82,20 +82,19 @@ internal sealed class TemporalDetailPass
         f.CreateTexture(GpuTextureDescription.Texture2D((uint)history.DisplayWidth, (uint)history.DisplayHeight,
             format, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
 
-    internal void Resolve(IGpuCommandList cl, IGpuResourceSet classificationInputs, IGpuResourceSet inputs, int write,
-        bool withoutVisibility, RenderPassProfiling? profiling)
+    internal void Resolve(IGpuCommandList cl, IGpuResourceSet inputs, int write, RenderPassProfiling? profiling)
     {
         using (profiling?.Pass(cl, "temporal.detail-classify") ?? default)
         {
             cl.SetFramebuffer(_classificationFrame!);
             cl.SetPipeline(_classifyPipeline!);
-            cl.SetGraphicsResourceSet(0, classificationInputs);
+            cl.SetGraphicsResourceSet(0, inputs);
             cl.SetGraphicsResourceSet(1, _classifySets[write]!);
             cl.Draw(3);
         }
         using var resolve = profiling?.Pass(cl, "temporal.resolve") ?? default;
         cl.SetFramebuffer(_resolveFrames[write]!);
-        cl.SetPipeline(_resolvePrograms!.Select(withoutVisibility));
+        cl.SetPipeline(_resolvePipeline!);
         cl.SetGraphicsResourceSet(0, inputs);
         cl.SetGraphicsResourceSet(1, _fineSets[write]!);
         cl.Draw(3);
@@ -126,9 +125,10 @@ internal sealed class TemporalDetailPass
         }
         Free(ref _classificationFrame, retired);
         Free(ref _classifyPipeline, retired);
-        Free(ref _resolvePrograms, retired);
+        Free(ref _resolvePipeline, retired);
         Free(ref _updatePipeline, retired);
         Free(ref _classifyShaders, retired);
+        Free(ref _resolveShaders, retired);
         Free(ref _updateShaders, retired);
         Free(ref _classifyLayout, retired);
         Free(ref _updateLayout, retired);

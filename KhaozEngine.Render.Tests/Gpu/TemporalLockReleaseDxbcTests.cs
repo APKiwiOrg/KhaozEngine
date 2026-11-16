@@ -46,10 +46,10 @@ public sealed class TemporalLockReleaseDxbcTests(ITestOutputHelper output)
     [Fact]
     public void DxbcCoverageIncludesEveryCheckedAndCertifiedRelease()
     {
-        // The detail history adds fourteen release programs, six of them certified.
-        Assert.Equal(34, TemporalLockReleaseDxbcPrograms.All.Length);
-        Assert.Equal(28, TemporalLockReleaseDxbcPrograms.Additional.Length);
-        Assert.Equal(16, TemporalLockReleaseDxbcPrograms.All.Count(p => p.Name.Contains("FullyLit", StringComparison.Ordinal)));
+        // The detail history adds eight release programs and no certified one.
+        Assert.Equal(28, TemporalLockReleaseDxbcPrograms.All.Length);
+        Assert.Equal(22, TemporalLockReleaseDxbcPrograms.Additional.Length);
+        Assert.Equal(10, TemporalLockReleaseDxbcPrograms.All.Count(p => p.Name.Contains("FullyLit", StringComparison.Ordinal)));
         Assert.All(TemporalLockReleaseDxbcPrograms.All,
             p => Assert.Contains("[[dont_flatten]] if", p.Source, StringComparison.Ordinal));
     }

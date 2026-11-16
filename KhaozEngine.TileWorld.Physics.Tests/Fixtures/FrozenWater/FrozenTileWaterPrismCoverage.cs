@@ -1,9 +1,8 @@
 using System;
 using System.Numerics;
-using System.Collections.Generic;
 using KhaozEngine.TileWorld.Physics;
 using KhaozEngine.Locomotion;
-using I = KhaozEngine.TileWorld.Physics.TileWaterArithmetic;
+using I = KhaozEngine.Tests.TileWorld.Physics.Fixtures.FrozenTileWaterArithmetic;
 using V = KhaozEngine.Tests.TileWorld.Physics.Fixtures.FrozenTileWaterConvexShape.Vector;
 using R = KhaozEngine.Tests.TileWorld.Physics.Fixtures.FrozenTileWaterConvexShape.Range;
 
@@ -12,18 +11,15 @@ namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 // Frozen from 85e484e87. Change only with a reviewed behavior decision, never to follow an optimisation.
 internal sealed class FrozenTileWaterPrismCoverage
 {
-    readonly Dictionary<TileWaterConvexShape, FrozenTileWaterConvexShape> _shapes = new();
-    internal FrozenTileWaterPrismCoverage(TileWaterTraceTestSnapshot geometry)
+    readonly FrozenTileWaterGeometry _geometry;
+    readonly TileWaterTraceTestSnapshot _source;
+    readonly TileWaterColumnIndex _index;
+    internal FrozenTileWaterPrismCoverage(TileWaterTraceTestSnapshot geometry, bool rebuild = false)
     {
-        foreach (var prism in geometry.Prisms) Add(prism.Shape);
-        foreach (var face in geometry.Faces) Add(face.Shape);
-        void Add(TileWaterConvexShape shape)
-        {
-            if (!_shapes.ContainsKey(shape)) _shapes.Add(shape, new(shape));
-        }
+        _geometry = new(geometry, rebuild);
+        _source = geometry;
+        _index = geometry.PointIndex;
     }
-
-    FrozenTileWaterConvexShape Shape(TileWaterConvexShape shape) => _shapes[shape];
 
     const int SpanLimit = MovementQueryLease.MaxCoverageSpans, ContactLimit = MovementQueryLease.MaxDomainContacts;
     readonly record struct Hit(int Index, R Range);
@@ -37,12 +33,13 @@ internal sealed class FrozenTileWaterPrismCoverage
         internal readonly MovementDomainContact[] Contacts = new MovementDomainContact[ContactLimit];
     }
 
-    internal MovementCoverageResult Trace(TileWaterPrism[] pieces, TileWaterPrismFace[] faces, CapturedTileGround ground,
-        TileWaterColumnIndex index, int[] prismStarts, int[] faceStarts, in MovementMediumSweepQuery query,
+    internal MovementCoverageResult Trace(in MovementMediumSweepQuery query,
         Vector3 origin, in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
     {
+        FrozenTileWaterConvexShape.EvaluationsForTests = 0;
         using var counters = FrozenWaterCounterScope.Suppress();
-        return TraceCore(pieces, faces, ground, index, prismStarts, faceStarts, query, origin, identity, spans, contacts);
+        return TraceCore(_geometry.Prisms, _geometry.Faces, _source.Ground, _index, _source.PrismStarts,
+            _source.FaceStarts, query, origin, identity, spans, contacts);
     }
 
     internal static bool AddRangeForTests(double enter, double exit, Span<float> cuts, ref int count,
@@ -51,7 +48,7 @@ internal sealed class FrozenTileWaterPrismCoverage
 
     internal static bool InsertForTests(float at, Span<float> cuts, ref int count) => Insert(at, cuts, ref count);
 
-    MovementCoverageResult TraceCore(TileWaterPrism[] pieces, TileWaterPrismFace[] faces, CapturedTileGround ground, TileWaterColumnIndex index, int[] prismStarts, int[] faceStarts,
+    MovementCoverageResult TraceCore(FrozenTileWaterPrism[] pieces, FrozenTileWaterPrismFace[] faces, CapturedTileGround ground, TileWaterColumnIndex index, int[] prismStarts, int[] faceStarts,
         in MovementMediumSweepQuery query, Vector3 origin, in MovementQueryIdentity identity,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
     {
@@ -68,9 +65,9 @@ internal sealed class FrozenTileWaterPrismCoverage
         for (int c = 0; c < candidateCount; c++)
             for (int i = prismStarts[candidates[c]]; i < prismStarts[candidates[c] + 1]; i++)
             {
-                TileWaterPrism piece = pieces[i];
+                FrozenTileWaterPrism piece = pieces[i];
                 if (!piece.Candidate(query, origin)) continue;
-                R range = Shape(piece.Shape).Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
+                R range = piece.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
                 if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
                 if (!range.Hit) continue;
                 // A certified rejection has no reported contact location. Only intersected pieces charge
@@ -83,10 +80,10 @@ internal sealed class FrozenTileWaterPrismCoverage
         for (int c = 0; c < candidateCount; c++)
             for (int i = faceStarts[candidates[c]]; i < faceStarts[candidates[c] + 1]; i++)
             {
-                TileWaterPrismFace face = faces[i];
-                TileWaterPrism piece = pieces[face.Prism];
+                FrozenTileWaterPrismFace face = faces[i];
+                FrozenTileWaterPrism piece = pieces[face.Prism];
                 if (!piece.Candidate(query, origin)) continue;
-                R range = Shape(face.Shape).Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
+                R range = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, heightError: piece.HeightError, horizontalError: piece.HorizontalError);
                 if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
                 if (!range.Hit) continue;
                 // A certified rejection has no reported contact location. Only intersected pieces charge
@@ -108,8 +105,8 @@ internal sealed class FrozenTileWaterPrismCoverage
                 {
                     Hit hit = scratch.Pieces[p];
                     if (!Overlaps(hit.Range, enter, exit)) continue;
-                    TileWaterPrism piece = pieces[hit.Index];
-                    R covered = Shape(piece.Shape).Intersect(piece.Start(query, origin), drive, core, query.Body.Radius,
+                    FrozenTileWaterPrism piece = pieces[hit.Index];
+                    R covered = piece.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius,
                         enter, exit, piece.HeightError, piece.HorizontalError);
                     if (!covered.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
                     if (!covered.Hit) continue;
@@ -118,9 +115,9 @@ internal sealed class FrozenTileWaterPrismCoverage
                     for (int f = 0; f < faceCount; f++)
                     {
                         Hit faceHit = scratch.Faces[f];
-                        TileWaterPrismFace face = faces[faceHit.Index];
+                        FrozenTileWaterPrismFace face = faces[faceHit.Index];
                         if (face.Prism != hit.Index || !face.Wet || !Overlaps(faceHit.Range, enter, exit)) continue;
-                        R located = Shape(face.Shape).Intersect(piece.Start(query, origin), drive, core, query.Body.Radius,
+                        R located = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius,
                             enter, exit, piece.HeightError, piece.HorizontalError);
                         if (!located.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
                         if (!located.Hit) continue;
@@ -152,7 +149,7 @@ internal sealed class FrozenTileWaterPrismCoverage
         finally { scratch.Contacts.AsSpan(0, contactCount).Clear(); }
     }
 
-    bool Append(TileWaterPrism piece, int face, R contact, R covered, float enter, float exit,
+    bool Append(FrozenTileWaterPrism piece, int face, R contact, R covered, float enter, float exit,
         CapturedTileGround ground, in MovementMediumSweepQuery query, Vector3 origin,
         Span<MovementDomainContact> output, ref int count, ref double error)
     {
@@ -170,7 +167,7 @@ internal sealed class FrozenTileWaterPrismCoverage
         double dx = column.X - x, dz = column.Y - z;
         error = Math.Max(error, located.Width + Math.Sqrt(dx * dx + dz * dz));
         I core = I.Point(query.Body.HalfHeight) - I.Point(query.Body.Radius);
-        R point = Shape(piece.Shape).Intersect(piece.Start(query, origin), V.Point(query.Delta.X, query.Delta.Y, query.Delta.Z),
+        R point = piece.Shape.Intersect(piece.Start(query, origin), V.Point(query.Delta.X, query.Delta.Y, query.Delta.Z),
             core, query.Body.Radius, fraction, fraction, piece.HeightError, piece.HorizontalError);
         if (!point.Resolved) return false;
         error = Math.Max(error, point.Error);
@@ -184,7 +181,7 @@ internal sealed class FrozenTileWaterPrismCoverage
         return true;
     }
 
-    bool Dry(TileWaterPrism[] pieces, TileWaterPrismFace[] faces, ReadOnlySpan<int> candidates, int[] prismStarts,
+    bool Dry(FrozenTileWaterPrism[] pieces, FrozenTileWaterPrismFace[] faces, ReadOnlySpan<int> candidates, int[] prismStarts,
         ReadOnlySpan<Hit> hits,
         in MovementMediumSweepQuery query, Vector3 origin, float enter, float exit)
     {
@@ -194,8 +191,8 @@ internal sealed class FrozenTileWaterPrismCoverage
         for (int c = 0; c < candidates.Length && !inside; c++)
             for (int p = prismStarts[candidates[c]]; p < prismStarts[candidates[c] + 1]; p++)
             {
-                TileWaterPrism piece = pieces[p];
-                if (piece.Candidate(query, origin) && Shape(piece.Shape).Contains((V)piece.Start(query, origin) + drive * I.Point(middle)))
+                FrozenTileWaterPrism piece = pieces[p];
+                if (piece.Candidate(query, origin) && piece.Shape.Contains((V)piece.Start(query, origin) + drive * I.Point(middle)))
                 { inside = true; break; }
             }
         if (!inside) return true;
@@ -203,10 +200,10 @@ internal sealed class FrozenTileWaterPrismCoverage
         I core = I.Point(query.Body.HalfHeight) - I.Point(query.Body.Radius);
         foreach (Hit hit in hits)
         {
-            TileWaterPrismFace face = faces[hit.Index];
+            FrozenTileWaterPrismFace face = faces[hit.Index];
             if (!face.Dry || !Overlaps(hit.Range, enter, exit)) continue;
-            TileWaterPrism piece = pieces[face.Prism];
-            R range = Shape(face.Shape).Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, enter, exit, piece.HeightError, piece.HorizontalError);
+            FrozenTileWaterPrism piece = pieces[face.Prism];
+            R range = face.Shape.Intersect(piece.Start(query, origin), drive, core, query.Body.Radius, enter, exit, piece.HeightError, piece.HorizontalError);
             if (!range.Resolved || range.MinimumSquared < squared) return true;
         }
         return false;

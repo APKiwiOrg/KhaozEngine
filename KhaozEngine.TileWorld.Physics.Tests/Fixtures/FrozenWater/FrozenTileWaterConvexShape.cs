@@ -1,8 +1,9 @@
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using KhaozEngine.TileWorld.Physics;
 using KhaozEngine.Locomotion;
-using I = KhaozEngine.TileWorld.Physics.TileWaterArithmetic;
+using I = KhaozEngine.Tests.TileWorld.Physics.Fixtures.FrozenTileWaterArithmetic;
 
 namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 
@@ -37,23 +38,50 @@ internal sealed class FrozenTileWaterConvexShape
         internal Plane Opposite => new(default(Vector) - Normal, I.Point(0) - Offset, HeightSensitive);
     }
 
-    readonly record struct Basis(int A, int B = -1, int C = -1);
+    internal readonly record struct Basis(int A, int B = -1, int C = -1);
     internal readonly record struct Range(bool Resolved, bool Hit, double Enter, double Exit, double MinimumSquared,
         double Error, Vector WitnessStart, Vector WitnessDrive)
     {
         internal Vector Witness(double fraction) => WitnessStart + WitnessDrive * I.Point(fraction);
     }
 
+    internal ReadOnlySpan<Plane> Planes => _planes;
+    internal ReadOnlySpan<Basis> Bases => _bases;
+
+    [ThreadStatic] internal static int EvaluationsForTests;
+
     readonly Plane[] _planes;
     readonly Basis[] _bases;
-    readonly TileWaterBedSeam? _bedSeam;
+    readonly FrozenTileWaterBedSeam? _bedSeam;
 
-    internal FrozenTileWaterConvexShape(TileWaterConvexShape source)
+    internal FrozenTileWaterConvexShape(TileWaterConvexShape source, FrozenTileWaterBedSeam? bedSeam = null)
     {
         var geometry = source.CaptureGeometryForTests();
         _planes = geometry.Planes.Select(p => new Plane(p.Normal, p.Offset, p.HeightSensitive)).ToArray();
         _bases = geometry.Bases.Select(b => new Basis(b.A, b.B, b.C)).ToArray();
-        _bedSeam = geometry.BedSeam;
+        if (geometry.BedSeam is not null && bedSeam is null)
+            throw new InvalidOperationException("A frozen seam must be rebuilt from its captured prism owners.");
+        _bedSeam = bedSeam;
+    }
+
+    internal FrozenTileWaterConvexShape(Plane[] planes, FrozenTileWaterBedSeam? bedSeam = null)
+    {
+        _planes = planes;
+        _bedSeam = bedSeam;
+        var bases = new List<Basis> { new(-1) };
+        for (int a = 0; a < planes.Length; a++)
+        {
+            if (!FrozenTileWaterLinearRank.Independent(planes, a, -1, -1)) continue;
+            bases.Add(new(a));
+            for (int b = a + 1; b < planes.Length; b++)
+            {
+                if (!FrozenTileWaterLinearRank.Independent(planes, a, b, -1)) continue;
+                bases.Add(new(a, b));
+                for (int c = b + 1; c < planes.Length; c++)
+                    if (FrozenTileWaterLinearRank.Independent(planes, a, b, c)) bases.Add(new(a, b, c));
+            }
+        }
+        _bases = bases.ToArray();
     }
 
     internal bool Contains(Vector point)
@@ -66,6 +94,7 @@ internal sealed class FrozenTileWaterConvexShape
     internal Range Intersect(Vector start, Vector drive, I core, float radius, double enter = 0, double exit = 1,
         double heightError = 0, double horizontalError = 0)
     {
+        EvaluationsForTests++;
         using var counters = FrozenWaterCounterScope.Suppress();
         return IntersectCore(start, drive, core, radius, enter, exit, heightError, horizontalError);
     }
@@ -126,7 +155,7 @@ internal sealed class FrozenTileWaterConvexShape
                 I reach = (remaining / a).Sqrt();
                 I lower = vertex - reach, upper = vertex + reach;
                 double length = Math.Sqrt(Vector.Dot(drive, drive).High);
-                var roots = TileWaterRootUncertainty.Clip(lower, upper, low, high);
+                var roots = FrozenTileWaterRootUncertainty.Clip(lower, upper, low, high);
                 low = Math.Max(low, lower.Low);
                 high = Math.Min(high, upper.High);
                 double rootError = roots.Error(length);

@@ -1,0 +1,16 @@
+<Project>
+  <!-- GHSA-p3jp-9v83-76w9 is fixed in 10.0.14:
+       https://github.com/advisories/GHSA-p3jp-9v83-76w9
+       Older SDKs bundle a vulnerable compiler, so the two non-packable AOT probes raise only
+       their net10.0 compiler pack before the SDK creates its implicit package references.
+       A patched SDK keeps its own compiler version. -->
+  <Target Name="KhaozEnsurePatchedILCompiler" BeforeTargets="ProcessFrameworkReferences"
+          Condition="'$(PublishAot)' == 'true' and '$(TargetFramework)' == 'net10.0'">
+    <ItemGroup>
+      <KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler"
+                           Condition="'%(KnownILCompilerPack.TargetFramework)' == 'net10.0' and $([MSBuild]::VersionLessThan('%(KnownILCompilerPack.ILCompilerPackVersion)', '10.0.14'))">
+        <ILCompilerPackVersion>10.0.14</ILCompilerPackVersion>
+      </KnownILCompilerPack>
+    </ItemGroup>
+  </Target>
+</Project>

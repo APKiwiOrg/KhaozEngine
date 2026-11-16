@@ -126,12 +126,25 @@ capsule intersection, flat candidate indexes and dispatch bounds. It reads copie
 never calls the production flat evaluator, index selection or numerical helpers. The older pre-index flat
 reference also uses the frozen capsule helper. It resets its own per-thread intersection count for each trace,
 so brute-force work remains measurable without changing production counters or the guarded helper snapshot.
-Prism assembly uses the frozen outward float rounding helpers.
-The prism reference still shares interval arithmetic, root uncertainty, immutable bed seams, witness lookup,
-candidate indexes, prism/face geometry and captured ground. These unchanged dependencies remain outside its frozen
-boundary. A later change to a shared helper must freeze it before changing it. The references recompute the original
-expressions and suppress production diagnostic counters. LF-pinned source hashes guard the deliberate snapshots.
-They preserve the original numerical behavior, including behavior that might later receive a reviewed correction.
+The older prism dispatch reference also uses the frozen evaluator and a fixture-owned convex evaluation count.
+Its legacy seam assertions retain the same before/after solve-count equality.
+Prism assembly uses the frozen outward float rounding helpers. For #1755, prism projections now use the same
+independent interval arithmetic as the flat oracle. Frozen copies also own ordered rank construction, prism
+and face construction, drawn-ground error arithmetic, witness lookup, root uncertainty and bed-seam certification.
+The frozen evaluators invoke no live prepared query, preparation storage, geometry terms, projection arithmetic,
+root arithmetic or seam arithmetic. The direct solver remains the oracle for both initial and retained
+preparations, so their optimizations cannot change both sides together.
+
+Authored moving-shore references rebuild prism and face geometry from captured columns, drawn triangles and
+tile coordinates. Synthetic storage and defensive fixtures instead copy their deliberate represented planes
+and basis lists, then evaluate those inputs independently. Certified seams are reconstructed from the captured
+pair of prism owners. No seam object is borrowed by the numerical oracle. The immutable candidate index and
+its path-bounds input, raw record validation, captured ground, the generic drawn-height expression, triangle
+normals, lattice addressing and triangulation remain shared input boundaries.
+A later change to those helpers must freeze them first. The references recompute the original expressions and
+suppress production diagnostic counters. LF-pinned source hashes and a separate resource roster guard every
+frozen evaluator and capture adapter. Endpoint conversions only copy bits into the other side's value type.
+The hashes preserve deliberate source snapshots, including behavior that might later receive a reviewed correction.
 
 `WaterCoverageComparison` compares every result field and refusal capacity/identity, every span byte and every
 contact field, including float sign and NaN payload bits in caller storage. Caller-owned identity and space strings
@@ -153,6 +166,21 @@ shore walk must publish results beyond the small memo limits. `WaterQueryCostMut
 corruption, warm stale identity, large-output truncation and stale moving output are rejected. These are evaluator
 and comparator controls. Cache-key mutation tests require the later cache implementation.
 
+`MovingShoreProjectionOracleTests` checks the bank-along outward/return path and the full shore traverse
+through swimming entry and exit. Actual authority outputs and complete bypassed, cold and warm replay buffers
+match the frozen reference. Reverse-order replays also check short span and contact refusals under every
+supported native FP mode. `WaterProjectionWindowTests` pins both signed zeros through prepared and retained
+windows and the FZ subnormal-enter and subnormal-exit regressions. Unsupported native modes are explicit
+capability cases, not substitute results from another mode.
+
+`WaterProjectionMutationTests` injects only projected Q, V and multiplier values into test-owned preparation
+buffers. Its four controls replay an old drive, projections under a different FP token, a wrong basis ordinal
+and a different shape owner. Each first passes the unmodified range comparison, then must fail
+`FrozenRangeBitsEqual`, including witness endpoints and certified error. The tests introduce no production fault
+seam. They prove propagation sensitivity. Step 3 must additionally mutate the actual G key, parent mapping and
+owner lifetime checks, demonstrate a real sharing hit, and retain these exact output assertions. Current test
+injection cannot prove routing through an owner that does not yet exist.
+
 Set `CENSUS_RESULTS` to an absolute results directory outside the checkout before running the contract command.
 
 ```bash
@@ -165,8 +193,9 @@ x64 and macos-26 arm64. Each job runs the contract with `DOTNET_TieredCompilatio
 TRX files. Its filter excludes `TileWaterPrismCensusTests`, whose pre-existing census digests remain in the
 ordinary test slice. The extended corpus still records all nine fixtures over four ticks on each runtime.
 Each TRX must execute a positive number of tests, execute its entire selected total and report zero failures.
-The TRX guard also requires the query-cost oracle, mutation, comparator and frozen-source test classes, so a
-mistyped filter that runs other old tests cannot silently omit all new controls.
+The TRX guard also requires the query-cost oracle, mutation, comparator, frozen-source and all three projection
+oracle/control classes. A mistyped filter that runs only earlier tests cannot silently omit the new controls.
+Local qualification runs the complete category, including all nine result-bearing census rows.
 It runs separately from the selective runner's Foundation/Server pass, so an affected-project selection
 cannot omit this matrix. Each execution compares frozen against production on the same runtime. The runtime
 gate asserts no single numeric digest across architectures.

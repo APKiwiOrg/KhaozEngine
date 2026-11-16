@@ -241,6 +241,16 @@ sh scripts/build-release-tests.sh KhaozEngine.slnx
 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket&Category!=Diagnostic"
 ```
 
+The two non-packable AOT probes, `KhaozEngine.Physics.AotProbe` and
+`KhaozEngine.Server.AotProbe`, share a
+[`Microsoft.DotNet.ILCompiler` floor](../KhaozEngine.Physics.AotProbe/PatchedILCompiler.targets) of
+10.0.14 for net10.0. This fixes [GHSA-p3jp-9v83-76w9](https://github.com/advisories/GHSA-p3jp-9v83-76w9)
+when an older SDK such as 10.0.301 supplies a vulnerable compiler. The rule compares the SDK's
+`KnownILCompilerPack` version before `ProcessFrameworkReferences` and only raises versions below the
+floor. An SDK that supplies a patched compiler keeps its own version. No other project imports the rule.
+A repository-wide SDK pin can follow when the [renderer evidence identity](CROSS-PLATFORM.md) next
+moves to a patched runtime. Its exact SDK 10.0.402 and runtime 10.0.13 gate remains unchanged.
+
 The shared Release setup builds the selected engine target without renderer tooling prerequisites.
 Renderer measurement implementation and tests live in the outside-solution
 [`Renderer.Perf.Tooling.Tests`](../tools/Renderer.Perf.Tooling.Tests/README.md) project. No engine project

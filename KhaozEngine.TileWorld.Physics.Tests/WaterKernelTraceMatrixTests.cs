@@ -140,10 +140,11 @@ public sealed class WaterKernelTraceMatrixTests
             MovementWaterFieldTests.Space, null), new(0.25f, 0.125f, -0.125f));
         _ = FrozenWaterComparison.CheckPrisms(geometry, query);
         Assert.NotEmpty(geometry.Faces);
+        var frozenGeometry = new FrozenTileWaterGeometry(geometry);
         foreach (var face in geometry.Faces)
         {
             var piece = geometry.Prisms[face.Prism];
-            var frozen = new FrozenTileWaterConvexShape(face.Shape);
+            var frozen = frozenGeometry.Faces[Array.IndexOf(geometry.Faces, face)].Shape;
             var start = piece.Start(query, Vector3.Zero);
             var drive = TileWaterConvexShape.Vector.Point(query.Delta.X, query.Delta.Y, query.Delta.Z);
             foreach (var window in new[] { (0d, 1d), (0.5d, 0.5d), (0.25d, 0.75d) })

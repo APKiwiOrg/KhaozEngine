@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Diagnostics;
 using KhaozEngine.Render3D.Internal;
@@ -22,37 +24,73 @@ public sealed class TemporalDetailCostPerfGpuTests(ITestOutputHelper output)
 
     [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
-    public void Native_display_reports_the_moving_field_at_1440p() => Run(TemporalUpscale.Native, TemporalHistoryDetail.Display);
+    public void Native_display_reports_the_moving_field_at_1440p() => Run(TemporalUpscale.Native, TemporalHistoryDetail.Display, false);
 
     [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
-    public void Native_fine_reports_the_moving_field_at_1440p() => Run(TemporalUpscale.Native, TemporalHistoryDetail.Fine);
+    public void Native_fine_reports_the_moving_field_at_1440p() => Run(TemporalUpscale.Native, TemporalHistoryDetail.Fine, false);
 
     [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
-    public void Quality_display_reports_the_moving_field_at_1440p() => Run(TemporalUpscale.Quality, TemporalHistoryDetail.Display);
+    public void Quality_display_reports_the_moving_field_at_1440p() => Run(TemporalUpscale.Quality, TemporalHistoryDetail.Display, false);
 
     [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
-    public void Quality_fine_reports_the_moving_field_at_1440p() => Run(TemporalUpscale.Quality, TemporalHistoryDetail.Fine);
+    public void Quality_fine_reports_the_moving_field_at_1440p() => Run(TemporalUpscale.Quality, TemporalHistoryDetail.Fine, false);
 
     [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
     public void Native_default_display_reports_the_moving_field_at_1440p() =>
-        Run(TemporalUpscale.Native, TemporalHistoryDetail.Display, splitDisplay: true);
+        Run(TemporalUpscale.Native, TemporalHistoryDetail.Display, false, splitDisplay: true);
 
     [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
     public void Quality_default_display_reports_the_moving_field_at_1440p() =>
-        Run(TemporalUpscale.Quality, TemporalHistoryDetail.Display, splitDisplay: true);
+        Run(TemporalUpscale.Quality, TemporalHistoryDetail.Display, false, splitDisplay: true);
 
-    void Run(TemporalUpscale preset, TemporalHistoryDetail mode, bool splitDisplay = false)
+    [Trait("Category", "Diagnostic")]
+    [GpuFact(RequiresRealGpu = true)]
+    public void Native_display_reports_the_moving_field_at_1440p_with_a_key_shadow() =>
+        Run(TemporalUpscale.Native, TemporalHistoryDetail.Display, true);
+
+    [Trait("Category", "Diagnostic")]
+    [GpuFact(RequiresRealGpu = true)]
+    public void Native_fine_reports_the_moving_field_at_1440p_with_a_key_shadow() =>
+        Run(TemporalUpscale.Native, TemporalHistoryDetail.Fine, true);
+
+    [Trait("Category", "Diagnostic")]
+    [GpuFact(RequiresRealGpu = true)]
+    public void Native_default_display_reports_the_moving_field_at_1440p_with_a_key_shadow() =>
+        Run(TemporalUpscale.Native, TemporalHistoryDetail.Display, true, splitDisplay: true);
+
+    [Trait("Category", "Diagnostic")]
+    [GpuFact(RequiresRealGpu = true)]
+    public void Quality_display_reports_the_moving_field_at_1440p_with_a_key_shadow() =>
+        Run(TemporalUpscale.Quality, TemporalHistoryDetail.Display, true);
+
+    [Trait("Category", "Diagnostic")]
+    [GpuFact(RequiresRealGpu = true)]
+    public void Quality_fine_reports_the_moving_field_at_1440p_with_a_key_shadow() =>
+        Run(TemporalUpscale.Quality, TemporalHistoryDetail.Fine, true);
+
+    [Trait("Category", "Diagnostic")]
+    [GpuFact(RequiresRealGpu = true)]
+    public void Quality_default_display_reports_the_moving_field_at_1440p_with_a_key_shadow() =>
+        Run(TemporalUpscale.Quality, TemporalHistoryDetail.Display, true, splitDisplay: true);
+
+    void Run(TemporalUpscale preset, TemporalHistoryDetail mode, bool shadowed, bool splitDisplay = false)
     {
         var stage = new FrontStage(Width, Height, 4.5f);
         using var fixture = new TemporalFixture(Width, Height, scene =>
         {
             stage.Setup(scene, AntiAliasing.Temporal, preset);
             scene.Post.Temporal.HistoryDetail = mode;
+            if (shadowed)
+            {
+                scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+                scene.Post.LightDirection = Vector3.Normalize(new Vector3(0.4f, -0.6f, -1f));
+                scene.Post.AmbientColor = new Color(0.3f, 0.3f, 0.3f, 1f);
+            }
             scene.TemporalResolveEntryForTests = splitDisplay ? null : TemporalResolveEntry.Fused;
         });
         if (TemporalResolveCostPerfGpuTests.IsSoftwareDevice(fixture.Device.Capabilities.DeviceName)) return;
@@ -64,6 +102,8 @@ public sealed class TemporalDetailCostPerfGpuTests(ITestOutputHelper output)
         Assert.Equal(mode, fixture.Scene.TemporalHistoryDetailInEffect);
         Assert.Equal(splitDisplay ? TemporalResolveEntry.Split : TemporalResolveEntry.Fused,
             fixture.Scene.TemporalResolveRendererForTests!.LastEntry);
+        Assert.Equal(!shadowed, fixture.Scene.TemporalResolveRendererForTests!.LastCurrentVisibilityFullyLit);
+        string sceneLabel = shadowed ? "shadowed" : "fully-lit";
         string modeLabel = splitDisplay ? "DisplaySplit" : mode.ToString();
         var results = new GpuPerfTimestampResult?[Count];
         uint markers = (uint)(2 * passes.Length + 2);
@@ -89,11 +129,15 @@ public sealed class TemporalDetailCostPerfGpuTests(ITestOutputHelper output)
         }
         fixture.Scene.PassObserver = null;
         if (!ring.CompleteBlock()) throw new InvalidOperationException(ring.Failure);
+        byte[] visibility = TemporalVisibilityHistoryGpuTests.Read(fixture.Device, fixture.Scene.ResolvedVisibilityTarget!);
+        int shadowPixels = visibility.Count(value => value < byte.MaxValue);
+        if (shadowed) Assert.True(shadowPixels > 0, "The shadowed cost scene must contain a visible key shadow.");
         output.WriteLine($"COST|{DateTime.UtcNow:O}|{fixture.Device.Backend}|{fixture.Device.Capabilities.DeviceName}"
-            + $"|{preset}|{modeLabel}|{Width}x{Height}|moving thin field|warm={Warm}|measured={Count}|shared machine"
+            + $"|{preset}|{modeLabel}|{Width}x{Height}|moving thin field|scene={sceneLabel}|warm={Warm}|measured={Count}|shared machine"
             + $"|internal={fixture.Scene.CurrentFrameView.Width}x{fixture.Scene.CurrentFrameView.Height}"
             + $"|certifiedCurrent={fixture.Scene.TemporalResolveRendererForTests!.LastCurrentVisibilityFullyLit}"
-            + $"|visibilitySkipped={fixture.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped}");
+            + $"|visibilitySkipped={fixture.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped}"
+            + $"|shadowPixels={shadowPixels}");
         for (int pass = 0; pass < passes.Length; pass++)
         {
             double[] times = results.Select(result =>
@@ -104,7 +148,7 @@ public sealed class TemporalDetailCostPerfGpuTests(ITestOutputHelper output)
             }).ToArray();
             double[] ordered = times.Order().ToArray();
             output.WriteLine($"PASS|{preset}|{modeLabel}|{passes[pass]}|medianMs={F((ordered[3] + ordered[4]) / 2)}"
-                + $"|minMs={F(ordered[0])}|maxMs={F(ordered[^1])}|samplesMs={string.Join(',', times.Select(F))}");
+                + $"|minMs={F(ordered[0])}|maxMs={F(ordered[^1])}|samplesMs={string.Join(',', times.Select(F))}|scene={sceneLabel}");
         }
     }
 

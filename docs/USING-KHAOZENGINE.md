@@ -4947,10 +4947,12 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   Resizes recreate the pair with history, and cuts and other resets re-seed its write side. A later render
   inside the frame, including an offscreen capture, neither reads nor advances it.
   Temporal debug views and on-request counts replay the selected mode's own history fetch and trust gate.
-  On 2026-11-15 UTC the M2 Max Metal moving-thin-field capture at 1440p measured summed fine passes at
-  16.552 ms Native and 16.481 ms Quality, 13.766 ms and 13.659 ms above default split Display.
-  Each case used four warm and eight measured frames on a shared machine. Both report-only targets
-  remain unmet. See the [pass table and limits](design/TEMPORAL-RESOLVE.md#cost-capture).
+  The 2026-11-16 UTC M2 Max Metal moving-thin-field capture at 1440p reports summed Fine passes at
+  9.331 ms Native and 9.694 ms Quality for the fully-lit scene, and
+  13.080 ms Native and 13.182 ms Quality for the shadowed scene.
+  Fully lit frames use the certificate. Game frames with sun shadows take the checked path measured by the
+  shadowed scene. Each case used four warm and eight measured frames on a shared machine.
+  Both report-only cost targets remain unmet. See the [pass table and limits](design/TEMPORAL-RESOLVE.md#cost-capture).
 - **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.
   `Post.Temporal.Sharpness` runs from 0 (the pass does not run) to 1, default 0.25, and a value outside that range is
   clamped. It limits each pixel by its four neighbours, so it leaves an edge already at full contrast alone and

@@ -302,30 +302,34 @@ indices, mode and generation alone. Turning the temporal resolve off retires the
 
 #### Cost capture
 
-On 2026-11-15 UTC, MetalNative on an Apple M2 Max measured the moving thin field over its textured
-wall with a followed wide box at a 2560 by 1440 display. Native rendered internally at 2560 by 1440,
-Quality at 1707 by 960. Each case used four warm frames and eight measured frames on a shared machine.
-Times are native GPU timestamp medians from the on-demand `TemporalDetailCostPerfGpuTests`, never timing
-gates. The before capture uses the full-float mean and transport. The after capture computes the four
-children in the resolve, uses validity-only classification and point-copies the completed children.
+On 2026-11-16 UTC, MetalNative on an Apple M2 Max measured two moving thin-field scenes over the same
+textured wall and followed wide box at a 2560 by 1440 display. Native rendered internally at 2560 by 1440,
+Quality at 1707 by 960. The fully lit scene uses the owned certificate and skips the visibility decision.
+The shadowed scene adds a key shadow in view and uses the checked program, with `certifiedCurrent=False`
+and `visibilitySkipped=False`. A game frame with sun shadows takes this checked path. Each case used four
+warm frames and eight measured frames on a shared machine. The on-demand `TemporalDetailCostPerfGpuTests`
+reports native GPU timestamps, never timing gates. Children are computed once in resolve, classification
+checks validity, and the fine-grid store point-copies the completed children.
 
-| Preset | Mode | Pass | Before median ms (min to max) | After median ms (min to max) |
+| Preset | Mode | Pass | Fully lit median ms (min to max) | Shadowed median ms (min to max) |
 | --- | --- | --- | --- | --- |
-| Native | DisplaySplit | `temporal.prepare` | 0.791 (0.770 to 0.847) | 0.775 (0.738 to 0.924) |
-| Native | DisplaySplit | `temporal.accumulate` | 1.985 (1.942 to 2.300) | 1.967 (1.948 to 2.728) |
-| Native | Display | `temporal.resolve` | 3.599 (2.909 to 3.896) | 3.037 (2.881 to 3.569) |
-| Native | Fine | `temporal.detail-classify` | 5.777 (5.150 to 6.278) | 1.869 (1.848 to 2.554) |
-| Native | Fine | `temporal.resolve` | 6.774 (6.474 to 7.355) | 5.980 (5.681 to 6.326) |
-| Native | Fine | `temporal.detail-store` | 3.845 (3.790 to 5.058) | 0.719 (0.627 to 0.761) |
-| Quality | DisplaySplit | `temporal.prepare` | 0.543 (0.489 to 0.978) | 0.562 (0.526 to 0.702) |
-| Quality | DisplaySplit | `temporal.accumulate` | 2.108 (1.912 to 2.873) | 2.361 (2.109 to 3.121) |
-| Quality | Display | `temporal.resolve` | 2.977 (2.814 to 3.603) | 2.904 (2.758 to 3.511) |
-| Quality | Fine | `temporal.detail-classify` | 5.491 (4.971 to 6.044) | 1.900 (1.815 to 2.207) |
-| Quality | Fine | `temporal.resolve` | 6.674 (6.429 to 7.452) | 5.648 (5.612 to 6.227) |
-| Quality | Fine | `temporal.detail-store` | 3.982 (3.870 to 4.369) | 0.734 (0.673 to 1.255) |
+| Native | DisplaySplit | `temporal.prepare` | 0.835 (0.769 to 1.576) | 0.876 (0.804 to 1.419) |
+| Native | DisplaySplit | `temporal.accumulate` | 2.124 (1.975 to 2.512) | 3.851 (3.402 to 4.113) |
+| Native | Display | `temporal.resolve` | 3.136 (2.882 to 3.591) | 5.091 (4.743 to 5.976) |
+| Native | Fine | `temporal.detail-classify` | 2.057 (1.826 to 2.377) | 2.120 (1.943 to 2.424) |
+| Native | Fine | `temporal.resolve` | 6.400 (6.051 to 6.784) | 10.132 (10.043 to 10.442) |
+| Native | Fine | `temporal.detail-store` | 0.731 (0.667 to 1.161) | 0.772 (0.707 to 1.146) |
+| Quality | DisplaySplit | `temporal.prepare` | 0.624 (0.521 to 1.091) | 0.529 (0.485 to 0.569) |
+| Quality | DisplaySplit | `temporal.accumulate` | 2.058 (1.956 to 2.283) | 3.889 (3.547 to 4.634) |
+| Quality | Display | `temporal.resolve` | 2.984 (2.791 to 3.645) | 4.961 (4.332 to 5.624) |
+| Quality | Fine | `temporal.detail-classify` | 2.126 (1.957 to 2.510) | 2.218 (2.114 to 2.306) |
+| Quality | Fine | `temporal.resolve` | 6.673 (6.490 to 7.494) | 10.241 (9.498 to 10.668) |
+| Quality | Fine | `temporal.detail-store` | 0.812 (0.720 to 2.136) | 0.799 (0.704 to 1.570) |
 
-Native's median of each frame's summed fine intervals is 8.582 ms (8.272 to 9.622), against default split's 2.767 ms. The difference is 5.816 ms.
-Quality's median of each frame's summed fine intervals is 8.553 ms (8.182 to 8.912), against default split's 2.956 ms. The difference is 5.597 ms.
+Fully-lit Native's median of each frame's summed Fine intervals is 9.331 ms (8.850 to 9.607), against default split's 3.028 ms. The difference is 6.303 ms.
+Fully-lit Quality's median of each frame's summed Fine intervals is 9.694 ms (9.301 to 11.769), against default split's 2.703 ms. The difference is 6.991 ms.
+Shadowed Native's median of each frame's summed Fine intervals is 13.080 ms (12.809 to 13.627), against default split's 4.814 ms. The difference is 8.266 ms.
+Shadowed Quality's median of each frame's summed Fine intervals is 13.182 ms (12.536 to 14.415), against default split's 4.446 ms. The difference is 8.735 ms.
 The report-only aim is Fine within 3 ms of default split at Native. No timing assertion is added.
 
 Payload remains 64 retained and 33 scratch bytes a display pixel: a fine RGBA16F pair, one R8

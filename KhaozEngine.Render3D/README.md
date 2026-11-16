@@ -452,9 +452,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   At 3840 by 2160 the pair alone would use 506.25 MiB and falls back to Display by default.
   Nonpositive budgets disable Fine and unknown enum values mean Display. A mode change resets history once
   with `TemporalResetReason.HistoryDetail`. Later renders and captures leave the pair untouched.
-  The 2026-11-15 UTC M2 Max Metal capture of the moving thin field at 1440p reports 8.582 ms of fine
-  passes at Native and 8.553 ms at Quality, 5.816 ms and 5.597 ms above the default split control,
-  from four warm and eight measured frames per case on a shared machine.
+  The 2026-11-16 UTC M2 Max Metal moving-thin-field capture at 1440p reports summed Fine passes at
+  9.331 ms Native and 9.694 ms Quality for the fully-lit scene, and
+  13.080 ms Native and 13.182 ms Quality for the shadowed scene.
+  Fully lit frames use the certificate. Game frames with sun shadows take the checked path measured by the
+  shadowed scene. Each case used four warm and eight measured frames on a shared machine.
   Both report-only cost targets remain unmet. See the [pass table and limits](../docs/design/TEMPORAL-RESOLVE.md#cost-capture).
   Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent
   writers preserve it and cutout/dissolve discards expose the receiver below. Depth-qualified current/history

@@ -97,7 +97,7 @@ public class HostCoverageChildRoleTests
             "role-capitalised" => Swap("\"cells\":[1,2],\"role\":\"core\"", "\"cells\":[1,2],\"role\":\"Core\""),
             "covers" => Swap("\"cells\":[1,2]", "\"cells\":[0,1,2,3]"),
             "fractional-cell" => Swap("\"cells\":[1,2]", "\"cells\":[1.5,2]"),
-            "text-cell" => Swap("\"cells\":[1,2]", "\"cells\":[\"1\",2]"),
+            "text-cell" => Swap("\"cells\":[1,2],\"role\":\"core\"", "\"cells\":[\"1\",2],\"role\":\"Core\""),
             "cell-across-entries" => Swap("\"cells\":[1,2],\"role\":\"core\"}", "\"cells\":[1,2],\"role\":\"core\"}," +
                 "{\"mesh\":0,\"primitive\":0,\"triangle\":2,\"level\":2,\"cells\":[1],\"role\":\"core\"}"),
             // Sorted record 0 is cell 1, which came from source entry 1, so the path must name entry 1.

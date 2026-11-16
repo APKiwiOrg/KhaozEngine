@@ -307,10 +307,11 @@ consumer-CI command. These are sampled checks, never continuous proof.
 diagnostic report and the `khaozengine.coverage-evidence-set/1` and
 `khaozengine.coverage-diagnostics-set/1` envelopes. Any other version of either set schema refuses with
 `UnsupportedVersion`, `Path` `$.schema` and the version in `FormatVersion`, so a newer envelope is never
-read as a malformed report. A suffix that is not a positive decimal version without leading zeros, such as
-`0`, `01` or `x`, refuses with `ArtifactSetInvalid` at `$.schema`. The returned disposable session exposes the SHA-256 of the exact root bytes
-and `OpenPayload()`, which reads a private checked snapshot. Close payload streams before disposing the
-session. Every new `Open` verifies the original files again.
+read as a malformed report. A suffix that is not a positive decimal version of at most 18 digits without
+leading zeros, such as `0`, `01`, `x` or a 19-digit number, refuses with `ArtifactSetInvalid` at `$.schema`
+and carries no `FormatVersion`. The returned disposable session exposes the SHA-256 of the exact root
+bytes and `OpenPayload()`, which reads a private checked snapshot. Close payload streams before disposing
+the session. Every new `Open` verifies the original files again.
 
 The internal staging writer preserves legacy bytes when the complete payload fits the inclusive
 67,108,864-byte artifact limit. Larger payloads become an index plus ordered raw fragments. The index

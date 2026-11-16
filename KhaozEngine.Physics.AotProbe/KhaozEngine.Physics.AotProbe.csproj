@@ -5,6 +5,7 @@
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+  <Import Project="PatchedILCompiler.targets" />
   <ItemGroup>
     <PackageReference Include="BepuPhysics" />
   </ItemGroup>

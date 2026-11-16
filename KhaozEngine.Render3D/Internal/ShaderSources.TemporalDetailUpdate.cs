@@ -17,6 +17,7 @@ void main() {
     else if (child == 1) oColor = texelFetch(sampler2D(Child1, LinearClamp), pixel, 0);
     else if (child == 2) oColor = texelFetch(sampler2D(Child2, LinearClamp), pixel, 0);
     else oColor = texelFetch(sampler2D(Child3, LinearClamp), pixel, 0);
-    oColor += vec4(vUv.x * 1.0e-30);
+    // Covered fullscreen UV x is nonnegative. Keep the interpolant live without perturbing a stored zero.
+    if (vUv.x < 0.0) oColor = vec4(0.0);
 }";
 }

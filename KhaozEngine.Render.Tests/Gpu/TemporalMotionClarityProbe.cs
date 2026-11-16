@@ -55,14 +55,14 @@ internal sealed class TemporalMotionClarityProbe : IDisposable
             + "    result.proofReleased = released ? 1.0 : 0.0;\n"
             + "    result.proofVeto = shadingFlickerVeto ? 1.0 : 0.0;\n    return result;\n}");
         source = Replace(source,
-            "oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);",
+            fine ? "oColor = r;" : "oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);",
             "oColor = vec4(p.proofMotion, p.proofWeight, p.proofReleased, p.proofVeto"
                 + (fine ? " + 2.0 * detailTransport.w" : "") + " + vUv.x * 1.0e-30);");
         if (fine)
         {
             for (int child = 0; child < 4; child++)
                 source = Replace(source, $"layout(location={child + 2}) out vec4 oChild{child};", "");
-            source = Replace(source, "    vec4 r = detailStoredResult(vec4(p.color, p.alpha));\n"
+            source = Replace(source, "    vec4 r = vec4(p.color, p.alpha + vUv.x * 1.0e-30);\n"
                 + "    detailChildren(r, detailMean, detailA, detailB, detailC, detailD, detailTransport.z,\n"
                 + "        oChild0, oChild1, oChild2, oChild3);", "");
         }

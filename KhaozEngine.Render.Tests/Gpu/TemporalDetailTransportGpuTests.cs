@@ -11,12 +11,14 @@ public sealed class TemporalDetailTransportGpuTests(TemporalDetailSceneFixture f
     : IClassFixture<TemporalDetailSceneFixture>
 {
     [GpuTheory]
-    [InlineData(TemporalUpscale.Native)]
-    [InlineData(TemporalUpscale.Quality)]
-    public void Moving_history_keeps_its_mean_and_differs_from_display_then_replicates_when_stopped(TemporalUpscale preset)
+    [InlineData(TemporalUpscale.Native, false)]
+    [InlineData(TemporalUpscale.Native, true)]
+    [InlineData(TemporalUpscale.Quality, false)]
+    [InlineData(TemporalUpscale.Quality, true)]
+    public void Moving_history_keeps_its_mean_and_differs_from_display_then_replicates_when_stopped(TemporalUpscale preset, bool nearest)
     {
-        Run(preset, true);
-        if (preset == TemporalUpscale.Quality) Run(TemporalUpscale.Balanced, false);
+        Run(preset, nearest, true);
+        if (preset == TemporalUpscale.Quality) Run(TemporalUpscale.Balanced, nearest, false);
     }
 
     [GpuTheory]
@@ -56,18 +58,19 @@ public sealed class TemporalDetailTransportGpuTests(TemporalDetailSceneFixture f
         if (assertContract) Assert.True(transported > 0, "The post-chain proof must include transported fine detail.");
     }
 
-    void Run(TemporalUpscale preset, bool assertContract)
+    void Run(TemporalUpscale preset, bool nearest, bool assertContract)
     {
-        fixture.Reset(preset);
+        fixture.Reset(preset, nearest: nearest);
+        var view = fixture.FineFor(nearest);
         long different = 0;
         long transported = 0;
         double largest = 0;
         for (int n = 0; n < 32; n++)
         {
             float pan = Math.Min(n, 23) * 1.37f;
-            byte[] display = fixture.Display.Draw(pan), fine = fixture.Fine.Draw(pan);
+            byte[] display = fixture.Display.Draw(pan), fine = view.Draw(pan);
             for (int i = 0; i < fine.Length; i++) if (fine[i] != display[i]) different++;
-            var measured = CheckMean(fixture.Fine.Frame, n >= 25, assertContract);
+            var measured = CheckMean(view.Frame, n >= 25, assertContract);
             largest = Math.Max(largest, measured.Deviation);
             transported += measured.Transported;
         }

@@ -11,11 +11,15 @@ public sealed class TemporalDetailSceneFixture : IDisposable
         internal readonly FenceScene Fence = new(96, 64);
         internal readonly TemporalFixture Frame;
 
-        public View() => Frame = new TemporalFixture(96, 64, s =>
+        public View(Func<string, string>? rewrite = null)
         {
-            Fence.Stage.Setup(s, AntiAliasing.Temporal);
-            s.Post.Quality.Shadows.Mode = ShadowMode.Off;
-        });
+            Frame = new TemporalFixture(96, 64, s =>
+            {
+                Fence.Stage.Setup(s, AntiAliasing.Temporal);
+                s.Post.Quality.Shadows.Mode = ShadowMode.Off;
+            });
+            if (rewrite is not null) TemporalTestResolve.Install(Frame, rewrite);
+        }
 
         internal byte[] Draw(float pan = 0f) => Frame.Frame((s, _) => Fence.DrawOverWall(s, pan));
         public void Dispose() => Frame.Dispose();
@@ -23,12 +27,14 @@ public sealed class TemporalDetailSceneFixture : IDisposable
 
     readonly Lazy<View> _fine = new(() => new View());
     readonly Lazy<View> _display = new(() => new View());
+    readonly Lazy<View> _nearest = new(() => new View(TemporalDetailResultTestSource.Nearest));
     internal View Fine => _fine.Value;
+    internal View FineFor(bool nearest) => nearest ? _nearest.Value : Fine;
     internal View Display => _display.Value;
 
-    internal void Reset(TemporalUpscale preset, bool hdr = true)
+    internal void Reset(TemporalUpscale preset, bool hdr = true, bool nearest = false)
     {
-        View fine = Fine, display = Display;
+        View fine = FineFor(nearest), display = Display;
         long delta = fine.Frame.Scene.CurrentFrameView.FrameIndex - display.Frame.Scene.CurrentFrameView.FrameIndex;
         if (delta > 0) display.Frame.SkipFrames(checked((int)delta));
         if (delta < 0) fine.Frame.SkipFrames(checked((int)-delta));
@@ -52,6 +58,7 @@ public sealed class TemporalDetailSceneFixture : IDisposable
     public void Dispose()
     {
         if (_fine.IsValueCreated) _fine.Value.Dispose();
+        if (_nearest.IsValueCreated) _nearest.Value.Dispose();
         if (_display.IsValueCreated) _display.Value.Dispose();
     }
 }

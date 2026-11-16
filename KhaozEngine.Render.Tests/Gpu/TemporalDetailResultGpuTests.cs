@@ -3,13 +3,15 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public sealed class TemporalDetailResultGpuTests
+public sealed class TemporalDetailResultGpuTests(ITestOutputHelper output)
 {
+    [Trait("Category", "Diagnostic")]
     [GpuFact]
-    public void Local_result_conversion_matches_the_history_attachment()
+    public void History_attachment_reports_its_binary16_conversion()
     {
         using var gpu = GpuDeviceContext.CreateHeadless();
         var gd = gpu.GpuDevice;
@@ -19,7 +21,8 @@ public sealed class TemporalDetailResultGpuTests
         using var rounded = Texture(TemporalFormats.HistoryColor, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled);
         using var target = f.CreateFramebuffer(null, raw, rounded);
         using var shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-            "#version 450\n" + (gd.Backend.IsMetal() ? "#define DetailTruncateResult\n" : "") + @"
+            @"#version 450
+
 layout(set=0,binding=0) uniform texture2D Input;
 layout(set=0,binding=1) uniform sampler LinearClamp;
 layout(location=0) in vec2 vUv;
@@ -54,8 +57,20 @@ void main() {
         gd.Submit(cl);
         gd.WaitForIdle();
         float[] actual = TemporalTextureIo.Read(gd, raw), local = TemporalTextureIo.Read(gd, rounded);
-        Assert.Equal(values.Length, actual.Length);
-        Assert.Equal(actual, local);
+        int truncation = 0, nearest = 0, other = 0, discriminating = 0;
+        for (int i = 0; i < actual.Length; i++)
+        {
+            float even = (float)(Half)values[i];
+            if (actual[i] == local[i]) truncation++;
+            if (actual[i] == even) nearest++;
+            if (actual[i] != local[i] && actual[i] != even) other++;
+            if (local[i] != even) discriminating++;
+        }
+        string rule = truncation == actual.Length ? "toward-zero"
+            : nearest == actual.Length ? "nearest-even" : "mixed-or-other";
+        output.WriteLine($"ATTACHMENT|{gd.Backend}|{gd.Capabilities.DeviceName}|RGBA16F|rule={rule}"
+            + $"|values={actual.Length}|towardZero={truncation}|nearestEven={nearest}"
+            + $"|other={other}|discriminating={discriminating}");
 
         IGpuTexture Texture(GpuPixelFormat format, GpuTextureUsage usage) =>
             f.CreateTexture(GpuTextureDescription.Texture2D(1024, 1, format, usage));

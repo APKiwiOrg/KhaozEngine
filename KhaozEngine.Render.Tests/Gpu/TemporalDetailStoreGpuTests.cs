@@ -36,20 +36,22 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
     }
 
     [GpuTheory]
-    [InlineData(TemporalUpscale.Native, false)]
-    [InlineData(TemporalUpscale.Quality, false)]
+    [InlineData(TemporalUpscale.Native, false, false)]
+    [InlineData(TemporalUpscale.Native, false, true)]
+    [InlineData(TemporalUpscale.Quality, false, false)]
+    [InlineData(TemporalUpscale.Quality, false, true)]
     // Moving history is covered by TemporalDetailTransportGpuTests, including mean and activation checks.
     public void Fine_presents_every_still_fence_frame_identically_and_replicates_history(
-        TemporalUpscale preset, bool moving)
+        TemporalUpscale preset, bool moving, bool nearest)
     {
-        Compare(preset, moving, assertIdentity: true);
-        if (preset == TemporalUpscale.Quality) Compare(TemporalUpscale.Balanced, moving, assertIdentity: false);
+        Compare(preset, moving, nearest, assertIdentity: true);
+        if (preset == TemporalUpscale.Quality) Compare(TemporalUpscale.Balanced, moving, nearest, assertIdentity: false);
     }
 
-    void Compare(TemporalUpscale preset, bool moving, bool assertIdentity)
+    void Compare(TemporalUpscale preset, bool moving, bool nearest, bool assertIdentity)
     {
-        fixture.Reset(preset);
-        var fine = fixture.Fine;
+        fixture.Reset(preset, nearest: nearest);
+        var fine = fixture.FineFor(nearest);
         var display = fixture.Display;
         int frames = TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)) + 1;
         int different = 0;

@@ -192,10 +192,23 @@ No mean or reprojection target crosses the production pass boundary.
 
 The resolve writes six attachments: display colour R, state, and four display-sized RGBA16F child
 textures. The fine-grid store selects one child by texel parity and point-loads it without transport
-arithmetic. Its four outputs already contain the final stored values. Metal's half-precision entry
-emulates the RGBA16F attachment's truncation for the R the children use. Retention keeps its original
-nearest-even projection. These are separate conversions, and changing either changes history. The
-`TemporalDetailResultGpuTests` conversion oracle straddles normal and subnormal half boundaries.
+arithmetic. The copy keeps its interpolant live through a branch outside the nonnegative fullscreen UV
+domain, leaving the stored child unchanged. Adding an epsilon would make an exact zero inexact, allowing a
+different half under [Vulkan format conversion](https://docs.vulkan.org/spec/latest/chapters/fundamentals.html#fundamentals-fp-conversion).
+
+A pixel that retains no detail sends the same float32 R to colour and all four child targets.
+Their identical format conversion preserves exact replication without predicting the backend's rounding.
+A pixel that retains detail explicitly truncates R toward zero to a representable binary16 value, in both
+precision entries on every backend, and writes that value to colour and uses it to balance the children.
+Every value the transport relies on is therefore stored unchanged. Retention keeps its original nearest-even
+projection, which is a separate scalar limit.
+
+On a backend whose attachment rounds to nearest, detail-bearing pixels truncate while their still neighbours
+round to nearest. The paths can differ in tone by the half-float accumulation stall described by
+[`TemporalFormats`](../../KhaozEngine.Render3D/Internal/TemporalFormats.cs). This consequence is measured rather
+than hidden by another backend guess. The report-only `TemporalDetailResultGpuTests` row records the running
+backend and device's attachment rule over normal and subnormal half boundaries. Replication and moving-mean
+facts also vary the local rule through the test source seam, so neither contract relies on that observation.
 
 The fine pair and scratch targets retain the history generation's lifetime. A test-only extra RGBA32F
 output can observe the live chosen UV, retention and path flag when explicitly requested, so attribution
@@ -236,8 +249,8 @@ their original effects on R, the current weight and state.
 
 The scalar retention is `clamp(dot(R-c,Hbar-c)/dot(Hbar-c,Hbar-c),0,1-w)` in history colour space.
 For this scalar, R uses the resolve's original nearest-even binary16 projection, c is the current
-reconstruction and w its current weight. The channel transport uses attachment-stored R, including
-Metal's truncation. A zero denominator keeps `1-w`. Rejected history retains zero. For each channel, alpha included,
+reconstruction and w its current weight. The channel transport chooses a representable R by truncation
+toward zero and writes it to the colour target. A zero denominator keeps `1-w`. Rejected history retains zero. For each channel, alpha included,
 limit retention by `R / -deviation` for every negative deviation, and by
 `(65504-R) / deviation` for every positive deviation. This is the greatest admissible retention up to the
 scalar value that keeps the unrounded children inside the finite nonnegative binary16 range.
@@ -247,7 +260,8 @@ case, retention takes the next smaller float. The fourth deviation implied by th
 constrained: rounding the four-fetch mean can otherwise leave a residual in the independent deviations,
 especially when the reconstructed R is very small. This extra constraint protects the actual remainder.
 A non-finite R, fetch or Hbar, or R outside the store range, instead point-copies R to all four children.
-Zero retention bypasses every multiplication.
+Zero retention bypasses every multiplication. If no channel retains a deviation, preserve the original
+float32 R for all five targets as on the coarse path.
 
 Round the first three children to binary16, including subnormals. Store the fourth as rounded
 `clamp(4*R-((a+b)+c),0,65504)`, using the three already-rounded values. No child can be negative or overflow.

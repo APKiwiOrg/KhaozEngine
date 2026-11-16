@@ -10,12 +10,17 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class TemporalDetailUpdateGpuTests
 {
     [GpuTheory]
-    [InlineData("removed-channel")]
-    [InlineData("hdr-overflow")]
-    [InlineData("subnormal")]
-    [InlineData("maximum")]
-    [InlineData("mean-between-halves")]
-    public void The_gpu_update_keeps_the_mean_and_format_range_for_adversarial_stored_values(string cell)
+    [InlineData("removed-channel", false)]
+    [InlineData("removed-channel", true)]
+    [InlineData("hdr-overflow", false)]
+    [InlineData("hdr-overflow", true)]
+    [InlineData("subnormal", false)]
+    [InlineData("subnormal", true)]
+    [InlineData("maximum", false)]
+    [InlineData("maximum", true)]
+    [InlineData("mean-between-halves", false)]
+    [InlineData("mean-between-halves", true)]
+    public void The_gpu_update_keeps_the_mean_and_format_range_for_adversarial_stored_values(string cell, bool upward)
     {
         // The last cell's four stored halves have a mean no half float holds. The update subtracts the float32
         // mean from each fetch before writing its four outputs, so rounding it would move every child of that cell.
@@ -39,7 +44,8 @@ public sealed class TemporalDetailUpdateGpuTests
         using IGpuFramebuffer children = f.CreateFramebuffer(null, child0, child1, child2, child3);
         using IGpuFramebuffer framebuffer = f.CreateFramebuffer(null, target);
         using IGpuShaderSet shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, TransportFragment);
-        using IGpuShaderSet copy = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalDetailUpdateFrag);
+        using IGpuShaderSet copy = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, upward
+            ? TemporalDetailResultTestSource.CopyUp(ShaderSources.TemporalDetailUpdateFrag) : ShaderSources.TemporalDetailUpdateFrag);
         using IGpuResourceLayout layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
             T("DetailColor"), T("Result"), T("Mean"), T("Transport"),
             new GpuResourceLayoutElement("LinearClamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
@@ -106,14 +112,16 @@ layout(location=0) out vec4 oChild0;
 layout(location=1) out vec4 oChild1;
 layout(location=2) out vec4 oChild2;
 layout(location=3) out vec4 oChild3;
-" + TemporalDetailMath.Glsl + ShaderSources.TemporalDetailFetchGlsl + ShaderSources.TemporalDetailChildrenGlsl + @"
+" + TemporalDetailMath.Glsl + ShaderSources.TemporalDetailFetchGlsl + ShaderSources.TemporalDetailStoredResultGlsl
+        + ShaderSources.TemporalDetailChildrenGlsl + @"
 void main() {
     vec4 r = texelFetch(sampler2D(Result, LinearClamp), ivec2(0), 0);
     vec4 mean = texelFetch(sampler2D(Mean, LinearClamp), ivec2(0), 0);
     vec4 t = texelFetch(sampler2D(Transport, LinearClamp), ivec2(0), 0);
     detailMeanAt(t.xy, vec2(1.0));
     detailChildren(r, mean, detailA, detailB, detailC, detailD, t.z, oChild0, oChild1, oChild2, oChild3);
-    oChild0 += vec4(vUv.x * 1.0e-30);
+    // The fixture also preserves exact halves under either adjacent format conversion.
+    if (vUv.x < 0.0) oChild0 = vec4(0.0);
 }";
 
     static GpuResourceLayoutElement T(string name) => new(name, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);

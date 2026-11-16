@@ -2,8 +2,8 @@ namespace KhaozEngine.Render3D.Internal;
 
 internal static partial class ShaderSources
 {
-    // Metal's half-precision entry writes RGBA16F attachments with truncation, unlike the nearest-even
-    // rounding used inside the transport. Preserve both conversions where the old pass boundary applied them.
+    // Choose a representable result for detail-bearing pixels. Every attachment stores it unchanged,
+    // independently of its conversion rule. Retention keeps its separate nearest-even projection.
     internal const string TemporalDetailStoredResultGlsl = @"
 float detailStoredHalf(float v) {
     if (abs(v) < 0.00006103515625)
@@ -11,10 +11,6 @@ float detailStoredHalf(float v) {
     return uintBitsToFloat(floatBitsToUint(v) & 0xffffe000u);
 }
 vec4 detailStoredResult(vec4 v) {
-#ifdef DetailTruncateResult
     return vec4(detailStoredHalf(v.x), detailStoredHalf(v.y), detailStoredHalf(v.z), detailStoredHalf(v.w));
-#else
-    return detailRound(v);
-#endif
 }";
 }

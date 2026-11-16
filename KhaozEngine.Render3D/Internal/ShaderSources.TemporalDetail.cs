@@ -45,8 +45,7 @@ void main() {
         TemporalDetailCore(precision, 1) + "\n#define temporalResolvePixel temporalDetailPixel\n" + TemporalProbeMainGlsl;
 
     static string TemporalDetailCore(TemporalResolvePrecision precision, int detailSet) =>
-        "#version 450\n" + DetailPrecision(precision)
-        + (precision == TemporalResolvePrecision.Half ? "#define DetailTruncateResult\n" : "") + TemporalResolvePreparationGlsl +
+        "#version 450\n" + DetailPrecision(precision) + TemporalResolvePreparationGlsl +
         "\nlayout(set=" + detailSet + @", binding=0) uniform texture2D DetailColor;
 layout(set=" + detailSet + @", binding=1) uniform texture2D DetailClassification;
 ivec2 detailPixel;
@@ -108,11 +107,11 @@ layout(location=4) out vec4 oChild2;
 layout(location=5) out vec4 oChild3;
 void main() {
     TemporalPixel p = temporalDetailPixel(ivec2(gl_FragCoord.xy));
-    oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);
-    oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), p.drift, p.swing);
-    vec4 r = detailStoredResult(vec4(p.color, p.alpha));
+    vec4 r = vec4(p.color, p.alpha + vUv.x * 1.0e-30);
     detailChildren(r, detailMean, detailA, detailB, detailC, detailD, detailTransport.z,
         oChild0, oChild1, oChild2, oChild3);
+    oColor = r;
+    oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), p.drift, p.swing);
     // Live path observation.
 }";
 

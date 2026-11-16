@@ -147,7 +147,9 @@ public sealed class CoverageSourceTopology
     {
         if (childRoles.Count == 0) return [];
         var ordinals = new Dictionary<(int Mesh, int Primitive, int Triangle), int>(Triangles.Count);
-        for (int i = 0; i < Triangles.Count; i++) ordinals.Add((Triangles[i].Mesh, Triangles[i].Primitive, Triangles[i].Triangle), i);
+        // A mesh placed on several nodes repeats its triangle ordinals. Its placements share surface IDs, so a region
+        // that owned two of them would repeat its faces and refuse. The first placement is the only one a valid map uses.
+        for (int i = 0; i < Triangles.Count; i++) ordinals.TryAdd((Triangles[i].Mesh, Triangles[i].Primitive, Triangles[i].Triangle), i);
         return childRoles.Select(role => ordinals[(role.Mesh, role.Primitive, role.Triangle)]).ToArray();
     }
 

@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -104,6 +105,61 @@ public class CoverageChildRoleRefinementTests
         Assert.Equal(((int?)0, (int?)0, (int?)TriangleA), (refusal.Mesh, refusal.Primitive, refusal.FirstTriangle));
         Assert.Equal(((int?)4, (int?)CoreCellsA[0]), (refusal.Level, refusal.Cell));
     }
+
+    [Fact]
+    public void Child_cell_lookup_refuses_an_index_outside_the_refined_faces()
+    {
+        var topology = CoverageRefinement.Build(Source(), Map(CoverageTriangleRole.Collar, CoreCells()));
+        Assert.InRange(topology.GetChildCell(topology.TriangleCount - 1), 0, CoverageChildCells.CellCount(4) - 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => topology.GetChildCell(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => topology.GetChildCell(topology.TriangleCount));
+    }
+
+    // Level 2 and 4 weights are exact halves and quarters. Level 3 sums such as fl(4/12) + fl(8/12) round to 1f. Each row
+    // also splits the shared diagonal at the neighbour's points: weight 3 from level 4, and 4 and 8 from level 3.
+    [Theory]
+    [InlineData(2, 4)]
+    [InlineData(3, 4)]
+    [InlineData(4, 3)]
+    public void Refined_core_strength_is_exactly_one(int levelA, int levelB)
+    {
+        var topology = CoverageRefinement.Build(Source(), Map(CoverageTriangleRole.Core, [], levelA: levelA, levelB: levelB));
+        var core = Enumerable.Range(0, topology.TriangleCount).Where(face => topology.Triangles[face].Role == CoverageTriangleRole.Core).ToArray();
+        Assert.All(core, face => Assert.Contains(topology.Triangles[face].SourceTriangle, new[] { TriangleA, TriangleB }));
+        Assert.NotEmpty(core);
+        uint[] indices = topology.Indices.ToArray();
+        Assert.All(core.SelectMany(face => new[] { face * 3, face * 3 + 1, face * 3 + 2 }),
+            index => Assert.Equal(1f, topology.Vertices[(int)indices[index]].Strength));
+    }
+
+    [Fact]
+    public void Child_roles_resolve_when_another_mesh_is_placed_on_two_nodes()
+    {
+        var map = Map(CoverageTriangleRole.Collar, CoreCells());
+        var expected = CoreFaces(CoverageRefinement.Build(Source(), map));
+        Assert.Equal(CoreCellsA.Length + CoreCellsB.Length, expected.Length);
+
+        // Mesh 1 is one triangle placed on nodes 0 and 1 at the same rest position, outside every region, so its
+        // triangle ordinal repeats across the two placements.
+        CoverageSourceTopology single = Source();
+        Vector3[] corners = [new(10, 0, 0), new(11, 0, 0), new(10, 1, 0)];
+        int first = single.Vertices.Count;
+        var source = new CoverageSourceTopology(single.Identity, single.SourceSha256,
+            single.Positions.ToArray().Concat(corners).Concat(corners).ToArray(),
+            single.Vertices.Concat(Enumerable.Range(0, 6).Select(i => new CoverageSourceVertex(1, 0, i % 3, i / 3, 0, first + i))),
+            single.Triangles.Concat(Enumerable.Range(0, 2).Select(node =>
+                new CoverageSourceTriangle(1, 0, 0, node, 0, first + node * 3, first + node * 3 + 1, first + node * 3 + 2))),
+            single.SkinVertices.ToArray().Concat(Enumerable.Range(0, 6).Select(i => single.SkinVertices[0] with { Position = corners[i % 3] })).ToArray());
+        var placedTwice = new HostCoverageMap(map.HostSha256,
+            map.Topology.Concat(Enumerable.Range(0, 3).Select(v => new CoverageTopologyEntry(1, 0, v, 16 + v))),
+            map.Regions, map.Refinement, map.Authoring);
+
+        Assert.Equal(expected, CoreFaces(CoverageRefinement.Build(source, placedTwice)));
+    }
+
+    static (int SourceTriangle, int Cell)[] CoreFaces(CoverageRefinement topology) => Enumerable.Range(0, topology.TriangleCount)
+        .Where(face => topology.Triangles[face].Role == CoverageTriangleRole.Core)
+        .Select(face => (topology.Triangles[face].SourceTriangle, topology.GetChildCell(face))).Order().ToArray();
 
     static Vector2 PlanePoint(Vector3[] corners, CoverageLatticePoint weights) => new(
         (corners[0].X * weights.A + corners[1].X * weights.B + corners[2].X * weights.C) / CoverageChildCells.Denominator,

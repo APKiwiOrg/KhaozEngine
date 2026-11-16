@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Render3D;
 using Xunit;
@@ -34,10 +33,8 @@ public sealed class ExactChildCoreTests
         Assert.Equal(8, rig.Topology.Triangles.Count(t => t.Role == CoverageTriangleRole.Core));
         Assert.Equal(9, Enumerable.Range(0, rig.Topology.VertexCount).Count(rig.Topology.IsCoreVertex));
         var before = rig.Before();
-        var centre = Enumerable.Range(0, before.Length)
-            .Where(v => new Vector2(before[v].Position.X, before[v].Position.Y).Length() < 1e-4f).ToArray();
-        Assert.NotEmpty(centre);
-        Assert.All(centre, v => Assert.True(final[v].Position.Z < before[v].Position.Z));
+        Assert.All(Enumerable.Range(0, before.Length).Where(rig.Topology.IsCoreVertex),
+            v => Assert.True(final[v].Position.Z < before[v].Position.Z));
 
         // Ta cell 5 has its corner (1, 0.5) outside the support, so that one position group escapes.
         var escaping = new ExactChildCoreRig(CoverageChildCoreFixture.Map(CoverageTriangleRole.Collar,

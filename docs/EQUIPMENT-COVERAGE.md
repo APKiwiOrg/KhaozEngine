@@ -151,7 +151,8 @@ validates all sample claims and replays every supplied 240 Hz pose against the k
 inside a held phase tick. Explicit loop/clamp flags admit consumer remapping without inventing policy.
 Evidence records those flags, poses, ticks and keys. Dense replay continues after holes or selected-entry
 failures so the report does not hide later work. Sample and dense evidence scopes cannot resume each
-other, and provenance must match the exact input, table, source and tool identities.
+other, and provenance must match the exact input, table, source and tool identities. Build and sample
+verification evidence differ in their candidate inventories, so each command needs its own evidence path.
 
 Whole-skin depth checking is mandatory in addition to exact geometry validation. It examines all
 triangles against every current closed equipment solid, including triangles outside a command's

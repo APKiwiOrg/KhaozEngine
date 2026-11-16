@@ -617,13 +617,19 @@ positive changed-record depth block publication. `CoverageVerificationException.
 rule. The CLI emits a JSON refusal containing that public reason and applicable domain, dense index,
 sample, state key, entry, command, equipment and exact-failure identifiers, then exits 1. Malformed
 JSON retains `CoverageBuildDataException`, its rooted path and exit 2. Accepted evidence reuses the
-same bounded serialization, provenance checks and atomic publication as sample-only commands.
+same streamed serialization, provenance checks and recoverable publication as sample-only commands.
 
 ## Headless tooling CI
 
 The free `tooling-validation.yml` suite `coverage` builds this executable and its test project explicitly
 on hosted Ubuntu. It requires a nonempty inventory, executed CLI process tests and zero skips, with
-`KE_GPU_TESTS=0`. Coverage format, carry and tooling changes select the suite. This is deterministic
+`KE_GPU_TESTS=0`. Coverage format, carry and tooling changes select the suite. `CoveragePackageProcessTests` runs
+`version`, `build`, `verify-samples` and `verify` over format 1 and the documented format 2 campaign, checks
+every evidence and report root through the strict reader, and resumes a multipart evidence set with a
+substituted part and with the intact part. In CI it starts the source-built tool. A candidate package runs the
+same assertions when `KE_COVERAGE_TOOL_EXECUTABLE` names its installed `ke-coverage` by absolute path, and the
+test refuses a relative or missing path. The installed tool must report the engine version the tests were built
+with. This is deterministic
 headless verification, not native correctness or cost acceptance. The Diagnostic hardware cost fact
 requires its separate exact `KE_COVERAGE_COST_UNIT` opt-in and owner-approved invocation, documented in
 [performance evidence](../../docs/RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).

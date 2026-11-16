@@ -4,9 +4,57 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 23.13.2
+## 24.0.0
 
-2026-11-16
+2026-11-17
+
+A major, because the `KhaozEngine.Coverage.Tool` executable changes two published behaviours. No runtime package
+API changes. The tool now reads packed exact poses and writes evidence and diagnostics of any size as complete,
+hashed sets ([#1814](https://github.com/APKiwiOrg/KhaozEngine/issues/1814)).
+
+**Breaking, and what a consumer does about it.**
+
+- Running `build` and then `verify-samples` against one evidence path is refused with `ArtifactContentMismatch`
+  and exit 1, and the build table and evidence are both kept. It used to be accepted and to overwrite the build
+  evidence. Resume now compares every logical record, and build evidence holds candidate construction
+  inventories that sample verification never constructs. Give each command its own evidence path.
+- `--diagnostics` writes logical schema `khaozengine.coverage-diagnostics/2` for every run, and schema 1 is never
+  written again. A reader accepts schema 2 and three new top-level members after `findingCount`:
+  `toolCodeSha256`, `render3DCodeSha256` and `resumedEvidenceSha256` (a string or null). A reader that rejects
+  unknown members or depends on member order changes. A report above 67,108,864 bytes is a
+  `khaozengine.coverage-diagnostics-set/1` index with no category objects, so read it through
+  `CoverageArtifactReader.Open` and copy its `<name>.parts` directory with it. `omitted` is always 0 and `items`
+  always holds `total` entries, so a reader sized for the old 64 MiB cap handles larger documents. When an
+  accepted transaction fails, the previous report stays, so the exit code and standard error are the authority
+  for that run. No field is removed and no retained field changes type or meaning. Diagnostics are still never
+  acceptance evidence.
+
+**Packed coverage input and complete evidence.**
+
+- Format 2 manifests reference exact binary32 poses in fixed-stride KEPP 1 chunks through `poseChunks` and
+  `poseRef`, beside or instead of inline poses. Every chunk is confined to the manifest directory, refused
+  through links, checked for length and SHA-256, copied privately and scanned for finite words before any
+  geometry, with typed `Packed*` refusals. Each record has exactly one owner. Format 1 manifests are unchanged.
+  The tool README documents the layout with a checked synthetic fixture.
+- The executable streams poses from those private copies one at a time, so memory follows the declared counts
+  and the 8,388,608-byte chunk bound rather than campaign JSON size. A pose released by its reader is
+  overwritten with NaN, so later numerical use refuses. Packed and inline campaigns build byte-identical tables
+  and reach the same decisions.
+- Evidence within 67,108,864 bytes stays one legacy file. Larger evidence is a
+  `khaozengine.coverage-evidence-set/1` index with hashed parts, and no record is omitted. Resume and every later
+  read check every part and refuse with `ArtifactPartMissing`, `ArtifactPartLengthMismatch` or
+  `ArtifactPartHashMismatch`.
+- The table, diagnostics and evidence publish through one journaled transaction. A handled failure restores
+  every previous byte, and an interrupted one is recovered by the next run or refused as
+  `OutputRecoveryRequired`. Outputs are told apart from each other and from every checked input by operating
+  system file identity, so linked parent directories and hard links refuse as `OutputAlias`
+  ([#1767](https://github.com/APKiwiOrg/KhaozEngine/issues/1767)).
+- Diagnostics record both producer code hashes and the exact evidence root a resume read
+  ([#1779](https://github.com/APKiwiOrg/KhaozEngine/issues/1779)).
+- `version` still reports `engineVersion` and carry arithmetic contract version 2. Earlier tables need no
+  rebuild.
+
+**Tile water projection maps.**
 
 - Tile water capture records, for each prism face, its parent prism and an exact map from the face's
   projection bases to the parent's. A map exists only when the face's leading planes match the parent's

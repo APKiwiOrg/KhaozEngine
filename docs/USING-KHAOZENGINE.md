@@ -7577,7 +7577,10 @@ dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHA
 .tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json
 ```
 
-Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. Manifest format
+Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. Give each
+command its own evidence path. Resume compares every logical record, and build evidence holds candidate
+inventories that `verify-samples` never constructs, so reusing one path refuses with `ArtifactContentMismatch`
+and keeps both outputs. Manifest format
 2 may reference exact binary32 poses in hashed KEPP chunks instead of inline matrices, which keeps large
 ordinary inventories within the 64 MiB manifest bound. Evidence above 64 MiB becomes a
 `khaozengine.coverage-evidence-set/1` index with hashed parts, never a truncated document. Archive the
@@ -9614,7 +9617,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.0.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10220,7 +10223,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.0.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11139,7 +11142,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.0.0" />
 ```
 
 ```csharp
@@ -21164,7 +21167,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.0.0" />
 ```
 
 ```csharp
@@ -21200,7 +21203,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.0.0" />
 ```
 
 ```csharp
@@ -21451,7 +21454,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.0.0" />
 ```
 
 ```csharp
@@ -26360,7 +26363,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.13.2" />
+  <PackageReference Include="KhaozEngine.Automation" Version="24.0.0" />
 </ItemGroup>
 ```
 

@@ -193,8 +193,6 @@ public sealed class CoveragePackedProcessTests : IDisposable
         string readme = KhaozEngine.Tests.CoverageTooling.CoverageUnitSelectionTests.Checkout("tools/Coverage.Verify/README.md");
         string header = Regex.Match(readme, "bytes\\.fromhex\\(\"([0-9a-f]{64})\"\\)").Groups[1].Value;
         string digest = Regex.Match(readme, "hexdigest\\(\\) == \"([0-9a-f]{64})\"").Groups[1].Value;
-        string json = Regex.Match(readme, "```json\n(\\{\n  \"formatVersion\": 2,.*?)```", RegexOptions.Singleline).Groups[1].Value;
-        Assert.NotEmpty(json);
         // Independent generation, never the production codec.
         byte[] chunk = CoveragePackedFixture.ChunkBytes();
         Assert.Equal(368, chunk.Length);
@@ -202,20 +200,34 @@ public sealed class CoveragePackedProcessTests : IDisposable
         Assert.Equal(digest, Convert.ToHexStringLower(SHA256.HashData(chunk)));
         // The documented Python lines themselves must produce those bytes, so an edit to them alone fails here.
         Assert.Equal(chunk, DocumentedChunk(readme, header));
-        var manifest = JsonNode.Parse(json)!.AsObject();
+        var manifest = DocumentedManifest(readme);
         var descriptor = manifest["poseChunks"]!.AsArray().Single()!;
         Assert.Equal(digest, descriptor["sha256"]!.GetValue<string>());
         Assert.Equal(chunk.Length, descriptor["byteLength"]!.GetValue<int>());
         using var files = new CoverageBuildFiles(scratchDirectory: Scratch);
-        // The documented host, map and configuration references stand for a consumer's own checked assets.
-        foreach (string name in new[] { "host", "map", "configuration" }) manifest[name] = files.Manifest[name]!.DeepClone();
-        string chunkPath = Path.Combine(files.Folder, descriptor["path"]!.GetValue<string>());
-        Directory.CreateDirectory(Path.GetDirectoryName(chunkPath)!);
-        File.WriteAllBytes(chunkPath, chunk);
-        File.WriteAllText(files.ManifestPath, manifest.ToJsonString());
+        WriteDocumentedCampaign(files, manifest);
         var result = await Execute(["build", "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", files.EvidencePath]);
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(1, AssertComplete(files.EvidencePath).Totals["samples"]);
+    }
+
+    /// <summary>The README's format 2 manifest, read from the checked-out file.</summary>
+    internal static JsonObject DocumentedManifest(string readme)
+    {
+        string json = Regex.Match(readme, "```json\n(\\{\n  \"formatVersion\": 2,.*?)```", RegexOptions.Singleline).Groups[1].Value;
+        Assert.NotEmpty(json);
+        return JsonNode.Parse(json)!.AsObject();
+    }
+
+    /// <summary>Writes the documented campaign and its independently generated chunk. The documented host, map and
+    /// configuration references stand for a consumer's own checked assets.</summary>
+    internal static void WriteDocumentedCampaign(CoverageBuildFiles files, JsonObject manifest)
+    {
+        foreach (string name in new[] { "host", "map", "configuration" }) manifest[name] = files.Manifest[name]!.DeepClone();
+        string chunkPath = Path.Combine(files.Folder, manifest["poseChunks"]![0]!["path"]!.GetValue<string>());
+        Directory.CreateDirectory(Path.GetDirectoryName(chunkPath)!);
+        File.WriteAllBytes(chunkPath, CoveragePackedFixture.ChunkBytes());
+        File.WriteAllText(files.ManifestPath, manifest.ToJsonString());
     }
 
     static byte[] DocumentedChunk(string readme, string header)

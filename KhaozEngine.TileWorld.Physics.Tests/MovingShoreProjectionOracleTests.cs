@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.TileWorld.Physics;
 using KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 using KhaozEngine.Tests.WaterPrismCensus;
 using Xunit;
@@ -25,9 +26,11 @@ public sealed class MovingShoreProjectionOracleTests(ITestOutputHelper output)
         using var scene = new WaterPrismScenario(name);
         var frozen = new FrozenWaterReference(scene.Colliders.Medium.CaptureTraceForTests(), rebuildGeometry: true);
         var queries = new List<MovementMediumSweepQuery>();
-        int known = 0, refusals = 0, contacts = 0;
+        int known = 0, refusals = 0, contacts = 0, shared = 0;
         scene.Field.Recorded = (query, actual, spans, touches) =>
         {
+            // Read before the comparisons below trace again. A memo hit repeats an earlier trace's count.
+            shared += TileWaterPrismCoverage.CaptureSharedProjectionsForTests().Copies;
             queries.Add(query);
             var expectedSpans = new MovementCoverageSpan[spans.Length];
             var expectedContacts = new MovementDomainContact[touches.Length];
@@ -59,6 +62,8 @@ public sealed class MovingShoreProjectionOracleTests(ITestOutputHelper output)
         }
         Assert.True(known > 0);
         Assert.True(contacts > 0);
+        // The advancing history must reach the shared path, unless the corpus run forces the original one.
+        Assert.Equal(!TileWaterSharedProjections.BypassForTests, shared > 0);
         Assert.True(queries.Distinct().Count() > 32);
         var history = queries.Distinct().Reverse().ToArray();
         foreach (string mode in new[] { "nearest", "up", "down", "zero", "flush-output", "flush-input" })
@@ -79,6 +84,6 @@ public sealed class MovingShoreProjectionOracleTests(ITestOutputHelper output)
             refusals += modeRefusals;
         }
         Assert.True(refusals > 0);
-        output.WriteLine($"MOVING_PROJECTION {name}: traces={queries.Count}, distinct={queries.Distinct().Count()}, known={known}, contacts={contacts}, refusals={refusals}, swam={swam}, exited={exited}");
+        output.WriteLine($"MOVING_PROJECTION {name}: traces={queries.Count}, distinct={queries.Distinct().Count()}, known={known}, contacts={contacts}, shared={shared}, refusals={refusals}, swam={swam}, exited={exited}");
     }
 }

@@ -47,7 +47,8 @@ class WaterKernelTrxTests(unittest.TestCase):
         self.assertEqual(('ContactQueryCostOracleTests', 'WaterQueryCostMutationTests',
                           'WaterCoverageComparisonTests', 'WaterKernelFrozenReferenceTests',
                           'MovingShoreProjectionOracleTests', 'WaterProjectionWindowTests',
-                          'WaterProjectionMutationTests', 'WaterProjectionMapTests'), guard.REQUIRED_CLASSES)
+                          'WaterProjectionMutationTests', 'WaterProjectionMapTests',
+                          'WaterSharedProjectionTests', 'WaterSharedProjectionCoverageTests'), guard.REQUIRED_CLASSES)
         for missing in guard.REQUIRED_CLASSES:
             with self.subTest(missing=missing), self.assertRaises(ValueError):
                 self.validate(dict(total='7', executed='7', failed='0'),

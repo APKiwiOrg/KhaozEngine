@@ -53,6 +53,7 @@ internal ref struct TileWaterPreparedQuery
     readonly Span<BasisState> _states;
     readonly Span<ClipTerm> _clips;
     readonly Span<PlaneState> _planeTerms;
+    TileWaterProjectionSource _source;
     Header _header;
     int Stride => _shape.Planes.Length + 3;
 
@@ -218,6 +219,13 @@ internal ref struct TileWaterPreparedQuery
     }
 
     internal bool CanRetain => _header.HasControlToken;
+    internal readonly TileWaterConvexShape Shape => _shape;
+    internal readonly Header SharingKey => _header;
+
+    internal readonly bool HasSharedSource => !_source.IsEmpty;
+
+    // Attaches the face's lent parent projections. Restored preparations never carry a source.
+    internal void Share(TileWaterProjectionSource source) => _source = source;
     internal int StorageBytes => Unsafe.SizeOf<Header>() +
         _states.Length * Unsafe.SizeOf<BasisState>() + _clips.Length * Unsafe.SizeOf<ClipTerm>() +
         _planeTerms.Length * Unsafe.SizeOf<PlaneState>();

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using System.Linq;
@@ -186,7 +187,7 @@ public sealed class CoverageTableBuilderTests
         {
             "duplicate" => original.Replace("\"formatVersion\":1", "\"formatVersion\":1,\"formatVersion\":1", StringComparison.Ordinal),
             "unknown" => original.Insert(1, "\"unknown\":0,"),
-            "version" => original.Replace("\"formatVersion\":1", "\"formatVersion\":2", StringComparison.Ordinal),
+            "version" => original.Replace("\"formatVersion\":1", "\"formatVersion\":3", StringComparison.Ordinal),
             _ => original,
         };
         if (defect == "nonfinite")
@@ -212,7 +213,15 @@ public sealed class CoverageTableBuilderTests
         Assert.Equal(table, File.ReadAllBytes(files.TablePath));
         Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
         File.WriteAllText(files.ManifestPath, original);
+        File.Delete(files.EvidencePath);
         Assert.Equal(0, Run(files, "verify-samples"));
+        if (defect == "version")
+        {
+            files.Manifest["formatVersion"] = 2;
+            files.Manifest["poseChunks"] = new JsonArray();
+            files.Write();
+            Assert.Equal(2, CoverageBuildInput.Read(files.ManifestPath).Samples.Count);
+        }
     }
 
     [Fact]
@@ -235,6 +244,12 @@ public sealed class CoverageTableBuilderTests
         var topology = CoverageRefinement.Build(first.Topology.Source, refined);
         Assert.NotEqual(first.Identity.RefinementSha256, CoverageBuildInputJson.RefinementHash(topology));
         Assert.Equal(0, Run(files, "build"));
+        byte[] table = File.ReadAllBytes(files.TablePath), evidence = File.ReadAllBytes(files.EvidencePath);
+        // A second run of the same command recomputes the same provenance and records, so resume accepts it.
+        Assert.Equal(0, Run(files, "build"));
+        Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
+        File.Delete(files.EvidencePath);
         Assert.Equal(0, Run(files, "verify-samples"));
     }
 
@@ -258,6 +273,10 @@ public sealed class CoverageTableBuilderTests
         Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
         files.Manifest["stateSchemaSha256"] = CoverageBuildFixture.Hash;
         files.Write();
+        // Build evidence holds candidate inventories that sample verification does not construct.
+        Assert.Equal(1, Run(files, "verify-samples"));
+        Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
+        File.Delete(files.EvidencePath);
         Assert.Equal(0, Run(files, "verify-samples"));
     }
 
@@ -352,6 +371,7 @@ public sealed class CoverageTableBuilderTests
         using var files = new CoverageBuildFiles();
         Assert.Equal(0, await Execute("build"));
         byte[] bytes = File.ReadAllBytes(files.TablePath);
+        File.Delete(files.EvidencePath);
         Assert.Equal(0, await Execute("verify-samples"));
         Assert.Equal(bytes, File.ReadAllBytes(files.TablePath));
         async Task<int> Execute(string command)
@@ -394,6 +414,11 @@ public sealed class CoverageTableBuilderTests
     {
         using var files = new CoverageBuildFiles();
         Assert.Equal(0, Run(files, "build"));
+        if (command != "build")
+        {
+            File.Delete(files.EvidencePath);
+            Assert.Equal(0, Run(files, command));
+        }
         byte[] table = File.ReadAllBytes(files.TablePath), accepted = File.ReadAllBytes(files.EvidencePath);
         string json = Encoding.UTF8.GetString(accepted);
         if (defect == "truncated") json = "{";
@@ -406,11 +431,15 @@ public sealed class CoverageTableBuilderTests
         }
         byte[] malformed = Encoding.UTF8.GetBytes(json);
         File.WriteAllBytes(files.EvidencePath, malformed);
-        Assert.Equal(2, Run(files, command));
+        var error = new StringWriter();
+        Assert.Equal(2, Program.RunForTests([command, "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", files.EvidencePath],
+            CoverageBuildInputJson.MaxBytes, CoverageBuildInputJson.MaxBytes, Path.GetTempPath(), new() { Error = error }));
+        // The command line's resume path prints the same typed reason as a later read.
+        Assert.Equal(reason.ToString(), error.ToString().Split(' ')[0]);
         Assert.Equal(table, File.ReadAllBytes(files.TablePath));
         Assert.Equal(malformed, File.ReadAllBytes(files.EvidencePath));
-        var evidence = CoverageTableBuilder.Build(CoverageBuildInput.Read(files.ManifestPath)).Evidence;
-        Assert.Equal(reason, Assert.Throws<CoverageBuildDataException>(() => evidence.ValidateResume(malformed)).Reason);
+        // Later reads use the same strict reader as resume admission and keep its malformed-data reason.
+        Assert.Equal(reason, Assert.Throws<CoverageBuildDataException>(() => CoverageArtifactReader.Open(files.EvidencePath, files.Folder)).Reason);
         File.WriteAllBytes(files.EvidencePath, accepted);
         Assert.Equal(0, Run(files, command));
     }
@@ -422,24 +451,43 @@ public sealed class CoverageTableBuilderTests
     {
         using var files = new CoverageBuildFiles();
         Assert.Equal(0, Run(files, "build"));
-        byte[] table = File.ReadAllBytes(files.TablePath), accepted = File.ReadAllBytes(files.EvidencePath);
+        byte[] table = File.ReadAllBytes(files.TablePath);
         var input = CoverageBuildInput.Read(files.ManifestPath);
         var evidence = command == "build" ? CoverageTableBuilder.Build(input).Evidence
             : CoverageSampleVerifier.Verify(input, CoverageRecessionTableBinary.Read(table, "accepted"));
         byte[] candidate = evidence.Write();
         int limit = candidate.Length - 1;
         string[] args = [command, "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", files.EvidencePath];
+        // The inclusive bound keeps one legacy file, admits it on resume and republishes it unchanged.
+        File.WriteAllBytes(files.EvidencePath, candidate);
+        Assert.Equal(0, Program.Run(args, candidate.Length));
+        Assert.Equal(0, Program.Run(args, candidate.Length));
+        Assert.Equal(candidate, File.ReadAllBytes(files.EvidencePath));
+        // One byte over a reduced root bound is malformed resume admission, and both outputs are preserved.
         Assert.Equal(2, Program.Run(args, limit));
         Assert.Equal(table, File.ReadAllBytes(files.TablePath));
-        Assert.Equal(accepted, File.ReadAllBytes(files.EvidencePath));
+        Assert.Equal(candidate, File.ReadAllBytes(files.EvidencePath));
+        // Without an old root the same bound partitions the complete document rather than refusing it.
+        File.Delete(files.EvidencePath);
+        Assert.Equal(0, Program.Run(args, limit));
+        byte[] index = File.ReadAllBytes(files.EvidencePath);
+        Assert.InRange(index.Length, 1, limit);
+        using (var set = JsonDocument.Parse(index))
+        {
+            var parts = set.RootElement.GetProperty("parts").EnumerateArray().Select(p => p.GetProperty("byteLength").GetInt64()).ToArray();
+            Assert.True(parts.Length >= 2);
+            Assert.All(parts, length => Assert.InRange(length, 1, limit));
+            Assert.Equal(candidate.Length, parts.Sum());
+        }
+        using (var read = CoverageArtifactReader.Open(files.EvidencePath, files.Folder))
+        using (var payload = read.OpenPayload()) Assert.Equal(candidate, CoverageArtifactFixture.Bytes(payload));
+        Assert.Equal(0, Program.Run(args, limit));
+        Assert.Equal(index, File.ReadAllBytes(files.EvidencePath));
+        // The public byte array API keeps its inclusive legacy bound.
         var refusal = Assert.Throws<CoverageBuildDataException>(() => evidence.Write(limit));
         Assert.Equal(CoverageBuildInputRefusal.CapacityExceeded, refusal.Reason);
         Assert.Equal(limit, refusal.Limit);
         Assert.True(refusal.Count > limit);
-        // The inclusive bound admits and republishes its own exact output without a large fixture.
-        File.WriteAllBytes(files.EvidencePath, candidate);
-        Assert.Equal(0, Program.Run(args, candidate.Length));
-        Assert.Equal(0, Program.Run(args, candidate.Length));
         byte[] oversized = [.. candidate, (byte)' '];
         File.WriteAllBytes(files.EvidencePath, oversized);
         Assert.Equal(2, Program.Run(args, candidate.Length));

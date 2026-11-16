@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -37,20 +38,37 @@ public sealed class CoverageSample
 {
     readonly Matrix4x4[] palette;
     readonly CoverageCommandPose[] commands;
+    Matrix4x4 actorModel;
     public CoverageSample(string id, string domainId, string? authoredFrameId, string? blendPathId,
         CoverageStateKey stateKey, Matrix4x4 actorModel, ReadOnlySpan<Matrix4x4> palette, ReadOnlySpan<CoverageCommandPose> commands)
     {
         Id = id; DomainId = domainId; AuthoredFrameId = authoredFrameId; BlendPathId = blendPathId;
-        StateKey = stateKey; ActorModel = actorModel; this.palette = palette.ToArray(); this.commands = commands.ToArray();
+        StateKey = stateKey; this.actorModel = actorModel; this.palette = palette.ToArray(); this.commands = commands.ToArray();
     }
     public string Id { get; }
     public string DomainId { get; }
     public string? AuthoredFrameId { get; }
     public string? BlendPathId { get; }
     public CoverageStateKey StateKey { get; }
-    public Matrix4x4 ActorModel { get; }
+    public Matrix4x4 ActorModel => actorModel;
     public ReadOnlySpan<Matrix4x4> Palette => palette;
     public ReadOnlySpan<CoverageCommandPose> Commands => commands;
+
+    /// <summary>An independent copy whose arrays the caller owns.</summary>
+    internal CoverageSample Copy() => new(Id, DomainId, AuthoredFrameId, BlendPathId, StateKey, actorModel, palette, commands);
+
+    /// <summary>Overwrites every numeric word with NaN. Only a packed session calls this, on a pose it decoded itself, when
+    /// the pose's lease is released. Exact arithmetic refuses the result, so a reference kept past its lease fails
+    /// loudly instead of silently holding memory.</summary>
+    internal void Invalidate()
+    {
+        var poison = new Matrix4x4(float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN,
+            float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN);
+        actorModel = poison;
+        palette.AsSpan().Fill(poison);
+        for (int i = 0; i < commands.Length; i++)
+            commands[i] = commands[i] with { EquipmentWorld = poison, CoverageWorld = poison, TransitionWeight = float.NaN };
+    }
 }
 
 /// <summary>Immutable, exact-input snapshot. Use Read for file-backed production inputs.</summary>
@@ -59,6 +77,8 @@ public sealed class CoverageBuildInput
     public const int MaxSamples = 65_536;
     public const int MaxCandidates = 4_096;
     public const int MaxPairs = 4_194_304;
+    public const int MaxPackedChunkBytes = 8_388_608;
+    public const int MaxPackedChunks = 4_096;
     readonly Matrix4x4[] inverseBind;
     internal CoverageBuildInput(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> inverseBind,
         IEnumerable<CoverageDomain> domains, IEnumerable<CoverageSample> samples, IEnumerable<string> candidates,
@@ -73,6 +93,7 @@ public sealed class CoverageBuildInput
         if (denseCount > MaxSamples) throw Capacity(denseCount);
         ValidateInventories();
     }
+    /// <summary>Eagerly materializes every inline or packed pose into an independent resident snapshot.</summary>
     public static CoverageBuildInput Read(string manifestPath) => CoverageBuildInputJson.Read(manifestPath);
     public CoverageRefinement Topology { get; }
     public ReadOnlySpan<Matrix4x4> InverseBind => inverseBind;
@@ -141,6 +162,9 @@ public enum CoverageBuildInputRefusal
     InvalidJson, DuplicateMember, UnknownMember, MissingMember, InvalidValue, NonFiniteNumber,
     UnsupportedVersion, MalformedDigest, HashMismatch, CapacityExceeded, EmptyInventory,
     InvalidOrDuplicateId, DomainMembership, MissingInventorySample, UnknownCandidate, AssetBinding, InputIo,
+    PackedPathEscape, PackedPathLink, PackedChunkMissing, PackedChunkLengthMismatch, PackedChunkHashMismatch,
+    PackedHeaderInvalid, PackedCountMismatch, PackedReferenceInvalid, PackedWordNonFinite, PackedInputChanged,
+    ArtifactPartMissing, ArtifactPartLengthMismatch, ArtifactPartHashMismatch, ArtifactSetInvalid,
 }
 
 /// <summary>Malformed input with rooted JSON Path and optional source, sample, domain, item and capacity context.
@@ -157,9 +181,21 @@ public sealed class CoverageBuildDataException : MalformedDataException
     public string? ItemId { get; init; }
     public long? Count { get; init; }
     public long? Limit { get; init; }
+    public int? ChunkIndex { get; init; }
+    public int? RecordIndex { get; init; }
+    public long? ByteOffset { get; init; }
+    public long? ExpectedLength { get; init; }
+    public long? ActualLength { get; init; }
+    public string? ExpectedSha256 { get; init; }
+    public string? ActualSha256 { get; init; }
+    public long? FormatVersion { get; init; }
 }
 
-public enum CoverageBuildValidationRefusal { ProvenanceMismatch, RepresentativeMismatch, CandidateConstruction, StateInventoryMismatch, OutputIo, OutputAlias }
+public enum CoverageBuildValidationRefusal
+{
+    ProvenanceMismatch, RepresentativeMismatch, CandidateConstruction, StateInventoryMismatch, OutputIo, OutputAlias,
+    ArtifactContentMismatch, OutputRecoveryRequired,
+}
 
 public sealed class CoverageBuildValidationException : InvalidOperationException
 {
@@ -168,4 +204,8 @@ public sealed class CoverageBuildValidationException : InvalidOperationException
     public string? SampleId { get; init; }
     public int? GroupIndex { get; init; }
     public CoverageFailure? Failure { get; init; }
+    /// <summary>On <see cref="CoverageBuildValidationRefusal.OutputIo"/>, every rollback step that also failed, in the
+    /// order attempted. The original failure is the inner exception. Empty when rollback completed.</summary>
+    public IReadOnlyList<Exception> RollbackFailures { get => rollbackFailures; init => rollbackFailures = ImmutableArray.CreateRange(value.ToArray()); }
+    ImmutableArray<Exception> rollbackFailures = ImmutableArray<Exception>.Empty;
 }

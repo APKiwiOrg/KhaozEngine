@@ -9,12 +9,13 @@ internal sealed class CoverageReplayMeasurement
 {
     readonly CoverageRecessionTable table;
     readonly CoverageRefinement topology;
-    readonly CoverageBuildInput input;
+    readonly CoverageCampaign input;
     readonly CoverageCarryUniforms uniforms;
     readonly CoverageCarryScratch carry;
     readonly CoverageScratch certification;
     readonly ModelVertex[] raw, final;
-    internal CoverageReplayMeasurement(CoverageBuildInput input, CoverageRecessionTable table)
+    internal CoverageReplayMeasurement(CoverageBuildInput input, CoverageRecessionTable table) : this(CoverageCampaign.FromSnapshot(input), table) { }
+    internal CoverageReplayMeasurement(CoverageCampaign input, CoverageRecessionTable table)
     {
         this.input = input; this.table = table;
         topology = input.Topology;
@@ -26,6 +27,12 @@ internal sealed class CoverageReplayMeasurement
     }
     internal CoverageReplayPose Measure(CoverageDomain domain, CoverageDenseRow row, int queryBudget,
         Action<CoverageVerificationException>? diagnosticRefusal = null)
+        => Measure(domain.Id, row, queryBudget, diagnosticRefusal);
+    internal CoverageReplayPose Measure(CoverageDomainInventory domain, CoverageDenseRow row, int queryBudget,
+        Action<CoverageVerificationException>? diagnosticRefusal = null)
+        => Measure(domain.Id, row, queryBudget, diagnosticRefusal);
+    CoverageReplayPose Measure(string domainId, CoverageDenseRow row, int queryBudget,
+        Action<CoverageVerificationException>? diagnosticRefusal)
     {
         var sample = row.Sample;
         CoverageSampleVerifier.CheckRepresentatives(CoverageSampleVerifier.Representatives(topology, sample), table.Representatives, sample.Id);
@@ -35,7 +42,7 @@ internal sealed class CoverageReplayMeasurement
         // A missing raw pose cannot be measured. Refuse instead of reusing the preceding row's buffers.
         if (!prepared)
             throw new CoverageVerificationException(CoverageVerificationRefusal.SelectedReplayFailure, "Current raw pose could not be prepared.") { Failure = failure }
-                .At(domain.Id, row, entry);
+                .At(domainId, row, entry);
         raw.CopyTo(final, 0);
         bool carried = !selected || CoverageCarryReference.TryCarry(topology, uniforms.ComposedPalette, table, entry, uniforms.Commands, carry, final, out failure);
         bool valid = selected && carried
@@ -58,12 +65,12 @@ internal sealed class CoverageReplayMeasurement
             }
             catch (CoverageVerificationException error)
             {
-                var contextual = error.At(domain.Id, row, entry, command.Id, command.EquipmentInstanceId);
+                var contextual = error.At(domainId, row, entry, command.Id, command.EquipmentInstanceId);
                 if (diagnosticRefusal == null) throw contextual;
                 diagnosticRefusal(contextual);
             }
         }
-        return new(domain.Id, row, entry, valid, failure, classes.ChangedTriangleCount, classes.InheritedTriangleCount,
+        return new(domainId, row, entry, valid, failure, classes.ChangedTriangleCount, classes.InheritedTriangleCount,
             Count(classes.PositionsChanged), Count(classes.AttributesOnly), equipmentDepths.AsReadOnly(), changed, rawChanged, inherited);
     }
 

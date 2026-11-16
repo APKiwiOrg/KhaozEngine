@@ -137,12 +137,27 @@ dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHA
 Set `KHAOZENGINE_VERSION` to the engine release used by the consumer. The `version` command (also
 `--version`) prints JSON containing `engineVersion` and `carryArithmeticContractVersion` and exits 0.
 Record both with the verification evidence. The installed `build`, `verify-samples` and `verify`
-commands use the same arguments, exit codes and atomic output preservation as the source executable.
+commands use the same arguments, exit codes and recoverable output publication as the source executable.
 
 Its strict manifest names exact assets, domains, every authored clip frame and the consumer's real
 blend paths. Only authored-clip domains may provide an empty `blendPathIds` array, and the strict reader
 still requires the property. Every declared frame and
 path must occur in the sample inventory. The consumer supplies the poses and resolved state keys.
+
+Manifest format 1 carries every pose inline. Format 2 keeps the same metadata and may reference exact
+binary32 poses in KEPP chunks of at most 8 MiB each, so an ordinary inventory whose inline form would
+exceed the 64 MiB manifest bound still builds and verifies. Each chunk is bound by length, SHA-256 and
+record count, copied privately and scanned completely before any asset or geometry work. Later poses come
+only from those checked copies, one decoded pose at a time. Equivalent inline and packed campaigns
+produce byte-identical tables and identical outcomes. Their evidence differs only through the exact
+manifest hash. The [tool README](../tools/Coverage.Verify/README.md#kepp-numeric-transport) documents
+the byte layout, an executable synthetic fixture and the memory bound.
+
+Evidence is complete at any size. A logical document within the 64 MiB artifact bound stays one JSON
+file. A larger one becomes a `khaozengine.coverage-evidence-set/1` index whose hashed parts live in
+`<evidence-file-name>.parts/` beside it. Archive and copy the root together with its whole parts
+directory, because reading the root alone is insufficient. Resume and every later read verify every part,
+so a missing, truncated or substituted part refuses with exit 2 and leaves all outputs unchanged.
 
 `build` constructs full unweighted scalar candidates, requires one canonical representative vector,
 deduplicates rows by binary32 words and checks every candidate against every declared sample. Repeated
@@ -166,7 +181,8 @@ validates all sample claims and replays every supplied 240 Hz pose against the k
 inside a held phase tick. Explicit loop/clamp flags admit consumer remapping without inventing policy.
 Evidence records those flags, poses, ticks and keys. Dense replay continues after holes or selected-entry
 failures so the report does not hide later work. Sample and dense evidence scopes cannot resume each
-other, and provenance must match the exact input, table, source and tool identities.
+other, and provenance must match the exact input, table, source and tool identities. Build and sample
+verification evidence differ in their candidate inventories, so each command needs its own evidence path.
 
 Whole-skin depth checking is mandatory in addition to exact geometry validation. It examines all
 triangles against every current closed equipment solid, including triangles outside a command's
@@ -187,12 +203,14 @@ continuous enclosures.
 Exit 0 means complete accepted declared work. Exit 1 means validation or output-publication failure.
 Exit 2 means malformed input or invalid invocation. Selected failures, holes, missing dense work and
 positive or unresolved changed-record depth block `verify`. Typed refusals retain domain, sample,
-state, entry and applicable command/equipment identifiers. Output publication is bounded and atomic,
-and refusal preserves existing output files. The consumer owns sampler integration and the CI call.
+state, entry and applicable command/equipment identifiers. Output publication is bounded and recoverable.
+A handled failure restores the previous outputs, the next run finishes or undoes an interrupted one, and
+readers refuse an incomplete set. Outputs that reach an input or each other through any spelling, link or
+hard link refuse with `OutputAlias`. Refusal preserves existing table and evidence files. The consumer owns sampler integration and the CI call.
 Sampled evidence cannot establish safety between the poses that were checked.
 
-All three commands accept optional `--diagnostics <path>` for a separate refusal report. Schema
-`khaozengine.coverage-diagnostics/1` and scope `diagnostic-not-acceptance` explicitly exclude this file
+All three commands accept optional `--diagnostics <path>` for a separate refusal report. Logical schema
+`khaozengine.coverage-diagnostics/2` and scope `diagnostic-not-acceptance` explicitly exclude this report
 from acceptance evidence. It records candidate construction outcomes and witnesses, complete validity
 pairs, claims and holes. Blocking verification adds dense row reasons, missing domains and separate
 changed-record and inherited depth findings. A successful run replaces stale diagnostics with an
@@ -200,8 +218,12 @@ accepted outcome and zero blocking findings, while retaining inherited fit infor
 invocations or inputs leave diagnostics untouched. Its file name must differ from the file name of every
 input and accepted output of the run, in any directory, and from the target of any of them read through
 a link. The tool README lists the Windows path forms it refuses with this option.
-Exact category totals and omitted counts survive deterministic truncation at the existing
-64 MiB artifact limit. Acceptance gates, exit codes and refused-run table/evidence preservation stay
+Every collected item is exported, so each category total equals its item count and nothing is omitted.
+A report larger than the 64 MiB artifact limit becomes a `khaozengine.coverage-diagnostics-set/1` index
+with hashed parts, read whole through the strict artifact reader. The report names both producer
+assembly hashes and, in `resumedEvidenceSha256`, the hash of the exact evidence root that resume read. It
+does not prove freshness for two identical invocations. When the report cannot be published, the run
+exits 1 with `OutputIo` and the previous report stays unchanged. Acceptance gates, exit codes and refused-run table/evidence preservation stay
 unchanged within one tool build. Evidence binds the producing tool and Render3D hashes, so another build
 produces different provenance bytes and its evidence is refused on resume. Build, replay and depth
 arithmetic, ordering and refusal order are unchanged. See the

@@ -17,5 +17,6 @@
     <Compile Include="../../KhaozEngine.Render.Tests/Render3D/CoverageFixture.cs" Link="CoverageFixture.cs" />
     <Compile Include="../../KhaozEngine.Render.Tests/Render3D/CoverageChildCoreFixture.cs" Link="CoverageChildCoreFixture.cs" />
     <Compile Include="../../test-shared/SkinnedAttachmentGlbFixture.cs" Link="SkinnedAttachmentGlbFixture.cs" />
+    <None Update="Fixtures/*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

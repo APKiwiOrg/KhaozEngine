@@ -14,12 +14,16 @@ namespace KhaozEngine.Tests.Tools.Coverage;
 
 public sealed class CoverageDiagnosticsProcessTests
 {
-    [Fact]
-    public async Task Holed_build_exports_all_witnesses_without_publishing_acceptance_and_is_deterministic()
+    // Inline and packed campaigns report the same complete diagnostics without changing the original outcome.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Holed_build_exports_all_witnesses_without_publishing_acceptance_and_is_deterministic(bool packed)
     {
         using var files = new CoverageBuildFiles("diagnostics");
         files.Manifest["samples"]![1]!["stateKey"] = 1;
         files.Write();
+        if (packed) CoveragePackedFixture.Pack(files);
         File.WriteAllText(files.TablePath, "table-sentinel");
         File.WriteAllText(files.EvidencePath, "evidence-sentinel");
         var legacy = await Execute(files, "build", diagnostics: false);
@@ -44,13 +48,20 @@ public sealed class CoverageDiagnosticsProcessTests
     }
 
     [Theory]
-    [InlineData("build")]
-    [InlineData("verify-samples")]
-    public async Task Accepted_sample_commands_replace_stale_diagnostics_and_preserve_same_build_output_bytes(string command)
+    [InlineData("build", false)]
+    [InlineData("verify-samples", false)]
+    [InlineData("build", true)]
+    [InlineData("verify-samples", true)]
+    public async Task Accepted_sample_commands_replace_stale_diagnostics_and_preserve_same_build_output_bytes(string command, bool packed)
     {
         using var files = new CoverageBuildFiles("diagnostics");
+        if (packed) CoveragePackedFixture.Pack(files);
         Assert.Equal(0, (await Execute(files, "build", diagnostics: false)).ExitCode);
-        if (command == "verify-samples") Assert.Equal(0, (await Execute(files, command, diagnostics: false)).ExitCode);
+        if (command == "verify-samples")
+        {
+            File.Delete(files.EvidencePath);
+            Assert.Equal(0, (await Execute(files, command, diagnostics: false)).ExitCode);
+        }
         byte[] table = File.ReadAllBytes(files.TablePath), evidence = File.ReadAllBytes(files.EvidencePath);
         File.WriteAllText(PathFor(files), "stale-refusal");
         Assert.Equal((0, "", ""), await Execute(files, command));
@@ -61,12 +72,15 @@ public sealed class CoverageDiagnosticsProcessTests
         Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
     }
 
-    [Fact]
-    public async Task Candidate_refusal_keeps_its_reason_and_witness_without_hiding_later_candidates()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Candidate_refusal_keeps_its_reason_and_witness_without_hiding_later_candidates(bool packed)
     {
         using var files = new CoverageBuildFiles("diagnostics");
         files.Manifest["samples"]![0]!["actorModel"] = CoverageBuildFiles.Matrix(Matrix4x4.CreateScale(4));
         files.Write();
+        if (packed) CoveragePackedFixture.Pack(files);
         var legacy = await Execute(files, "build", diagnostics: false);
         Assert.Equal(1, legacy.ExitCode);
         Assert.Equal(legacy, await Execute(files, "build"));
@@ -111,11 +125,14 @@ public sealed class CoverageDiagnosticsProcessTests
             && d.GetProperty("depth").GetProperty("upperEstimateMm").GetDouble() > 0);
     }
 
-    [Fact]
-    public async Task Accepted_verify_keeps_inherited_contact_separate_from_acceptance_findings()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Accepted_verify_keeps_inherited_contact_separate_from_acceptance_findings(bool packed)
     {
         using var files = CoverageVerifyProcessTests.Files();
         AddInheritedTriangle(files);
+        if (packed) CoveragePackedFixture.Pack(files);
         Assert.Equal(0, (await Execute(files, "build", diagnostics: false)).ExitCode);
         File.Delete(files.EvidencePath);
         Assert.Equal(0, (await Execute(files, "verify")).ExitCode);
@@ -240,9 +257,11 @@ public sealed class CoverageDiagnosticsProcessTests
     }
 
     [Theory]
-    [InlineData("gap", "DenseSequence")]
-    [InlineData("raw-pose", "SelectedReplayFailure")]
-    public async Task Early_replay_refusal_does_not_hide_later_dense_work(string defect, string reason)
+    [InlineData("gap", "DenseSequence", false)]
+    [InlineData("raw-pose", "SelectedReplayFailure", false)]
+    [InlineData("gap", "DenseSequence", true)]
+    [InlineData("raw-pose", "SelectedReplayFailure", true)]
+    public async Task Early_replay_refusal_does_not_hide_later_dense_work(string defect, string reason, bool packed)
     {
         using var files = CoverageVerifyProcessTests.Files();
         Assert.Equal(0, (await Execute(files, "build", diagnostics: false)).ExitCode);
@@ -251,6 +270,8 @@ public sealed class CoverageDiagnosticsProcessTests
         else rows[1]!["sample"]!["actorModel"] = CoverageBuildFiles.Matrix(Matrix4x4.CreateScale(0));
         rows[4]!["resolvedStateKey"] = 999;
         files.Write();
+        // The table built from the inline campaign is the packed campaign's table too, since only the manifest differs.
+        if (packed) CoveragePackedFixture.Pack(files);
         var legacy = await Execute(files, "verify", diagnostics: false);
         Assert.Equal(1, legacy.ExitCode);
         Assert.Equal(legacy, await Execute(files, "verify"));
@@ -260,28 +281,6 @@ public sealed class CoverageDiagnosticsProcessTests
             && f.GetProperty("reason").GetString() == reason);
         Assert.Contains(failures.EnumerateArray(), f => f.GetProperty("denseIndex").GetInt32() == 4
             && f.GetProperty("resolvedStateKey").GetUInt64() == 999 && f.GetProperty("reason").GetString() == "ReplayHole");
-    }
-
-    [Fact]
-    public void Diagnostic_bound_keeps_exact_totals_and_explicit_omissions()
-    {
-        using var files = new CoverageBuildFiles("diagnostics");
-        files.Manifest["samples"]![1]!["stateKey"] = 1;
-        files.Write();
-        string[] args = ["build", "--manifest", files.ManifestPath, "--table", files.TablePath, "--evidence", files.EvidencePath, "--diagnostics", PathFor(files)];
-        // The existing internal artifact bound is injected here. Process cases exercise the public executable above.
-        Assert.Equal(1, Program.Run(args, 4096));
-        byte[] bytes = File.ReadAllBytes(PathFor(files));
-        Assert.True(bytes.Length <= 4096);
-        using var json = Read(files, "build", "refused");
-        Assert.Equal(1, json.RootElement.GetProperty("holes").GetProperty("total").GetInt32());
-        Assert.Equal(4, json.RootElement.GetProperty("candidatePairs").GetProperty("total").GetInt32());
-        Assert.True(json.RootElement.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.Object
-            && p.Value.TryGetProperty("omitted", out _)).Sum(p => p.Value.GetProperty("omitted").GetInt32()) > 0);
-        foreach (var category in json.RootElement.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.Object
-            && p.Value.TryGetProperty("omitted", out _)))
-            Assert.Equal(category.Value.GetProperty("total").GetInt32(), category.Value.GetProperty("omitted").GetInt32()
-                + category.Value.GetProperty("items").GetArrayLength());
     }
 
     static JsonElement Category(JsonElement root, string name, int count)
@@ -294,8 +293,11 @@ public sealed class CoverageDiagnosticsProcessTests
     }
     static JsonDocument Read(CoverageBuildFiles files, string command, string outcome)
     {
-        var json = JsonDocument.Parse(File.ReadAllBytes(PathFor(files)));
-        Assert.Equal("khaozengine.coverage-diagnostics/1", json.RootElement.GetProperty("schema").GetString());
+        // The strict reader admits a single file or a complete set and proves zero omissions in every category.
+        using var session = CoverageArtifactReader.Open(PathFor(files), files.Folder);
+        using var payload = session.OpenPayload();
+        var json = JsonDocument.Parse(payload);
+        Assert.Equal("khaozengine.coverage-diagnostics/2", json.RootElement.GetProperty("schema").GetString());
         Assert.Equal("diagnostic-not-acceptance", json.RootElement.GetProperty("scope").GetString());
         Assert.Equal(command, json.RootElement.GetProperty("command").GetString());
         Assert.Equal(outcome, json.RootElement.GetProperty("outcome").GetString());

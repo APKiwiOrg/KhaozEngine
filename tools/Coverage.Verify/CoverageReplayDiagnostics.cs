@@ -8,7 +8,7 @@ namespace KhaozEngine.Tools.Coverage;
 /// <summary>Completes independent row observations after acceptance preflight or measurement refuses.</summary>
 internal static class CoverageReplayDiagnostics
 {
-    internal static void Collect(CoverageDiagnosticDocument document, CoverageBuildInput input,
+    internal static void Collect(CoverageDiagnosticDocument document, CoverageCampaign input,
         CoverageRecessionTable table, CoverageReplayResult? replay)
     {
         var failures = new List<CoverageDenseFailureDiagnostic>();
@@ -17,11 +17,15 @@ internal static class CoverageReplayDiagnostics
         var measurement = replay == null ? new CoverageReplayMeasurement(input, table) : null;
         int poseIndex = 0;
         document.Add("missingDenseWork", input.Domains.Where(d => d.DenseRows.Count == 0)
-            .Select(d => new { DomainId = d.Id, Reason = "MissingDenseRows" }));
-        foreach (var domain in input.Domains)
+            .Select(d => new { DomainId = d.Id, Reason = "MissingDenseRows" }).ToArray());
+        for (int domainIndex = 0; domainIndex < input.Domains.Count; domainIndex++)
+        {
+            var domain = input.Domains[domainIndex];
             for (int index = 0; index < domain.DenseRows.Count; index++)
             {
-                var row = domain.DenseRows[index];
+                // One dense pose is decoded at a time. Only the observations below outlive it.
+                using var lease = input.ReadDenseRow(domainIndex, index);
+                var row = lease.Value;
                 // This projection only labels diagnostic work. CoverageReplay.ValidateRows remains the acceptance gate.
                 var sample = row.Sample;
                 CoverageVerificationRefusal? declaration = row.DenseIndex != index ? CoverageVerificationRefusal.DenseSequence
@@ -37,7 +41,8 @@ internal static class CoverageReplayDiagnostics
                 {
                     pose = replay == null ? measurement!.Measure(domain, row, CoverageWholeSkinDepth.DefaultQueryBudget,
                     error => failures.Add(new(domain.Id, row.DenseIndex, row.ResolvedStateKey, sample.Id, error.Reason.ToString(),
-                        error.EntryIndex, error.CommandId, error.EquipmentInstanceId, error.Failure))) : replay.Poses[poseIndex++];
+                        error.EntryIndex, error.CommandId, error.EquipmentInstanceId, error.Failure)))
+                        : replay.Observations[poseIndex++].Metrics.ToPose(domain.Id, row);
                 }
                 catch (CoverageVerificationException error)
                 {
@@ -63,6 +68,7 @@ internal static class CoverageReplayDiagnostics
                     if (Finding(equipment.Inherited)) inherited.Add(Depth(pose, equipment, equipment.Inherited, null, pose.InheritedTriangleCount));
                 }
             }
+        }
         document.Add("replayFailures", failures);
         document.Add("changedRecordDepth", changed);
         document.Add("inheritedDepth", inherited);
@@ -71,7 +77,7 @@ internal static class CoverageReplayDiagnostics
     static CoverageDepthDiagnostic Depth(CoverageReplayPose pose, CoverageEquipmentDepth equipment,
         CoverageDepthResult depth, CoverageDepthResult? raw, int count) => new(pose.DomainId, pose.DenseIndex,
             pose.ResolvedStateKey, pose.SampleId, pose.EntryIndex, equipment.CommandId, equipment.EquipmentInstanceId, count, depth, raw);
-    static CoverageDenseFailureDiagnostic Failure(CoverageDomain domain, CoverageDenseRow row, string reason, CoverageFailure? failure = null)
+    static CoverageDenseFailureDiagnostic Failure(CoverageDomainInventory domain, CoverageDenseRow row, string reason, CoverageFailure? failure = null)
         => new(domain.Id, row.DenseIndex, row.ResolvedStateKey, row.Sample.Id, reason, null, null, null, failure);
 }
 

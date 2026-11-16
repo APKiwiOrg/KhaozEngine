@@ -5,6 +5,7 @@
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+  <Import Project="../KhaozEngine.Physics.AotProbe/PatchedILCompiler.targets" />
   <ItemGroup>
     <!-- The server-tick surface: the shard host (Sharding), the per-tick capture/delta replicator
          (Replication), and the ECS World they run over (Ecs). Simulation flows in transitively via

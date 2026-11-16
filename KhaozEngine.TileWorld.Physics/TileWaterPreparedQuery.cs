@@ -113,8 +113,11 @@ internal ref struct TileWaterPreparedQuery
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Projecting = true;
 #endif
-                state.Projected = Project(ordinal, basis, start, drive, core, heightError, horizontalError,
-                    state.Lambda, state.Velocity, out state.Q, out state.V);
+                // A face copies its parent's identical, already resolved projection when one was lent.
+                // Every other basis runs the original expression at its original place in the order.
+                if (!_source.TryCopy(ordinal, ref state))
+                    state.Projected = Project(ordinal, basis, start, drive, core, heightError, horizontalError,
+                        state.Lambda, state.Velocity, out state.Q, out state.V);
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Projecting = false;
 #endif

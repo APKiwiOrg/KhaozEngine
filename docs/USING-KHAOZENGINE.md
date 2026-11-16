@@ -7566,6 +7566,8 @@ See [equipment coverage](EQUIPMENT-COVERAGE.md) and the exact
 three fallback paths, slot ownership, partial-weight and whole-skin checks, allocation conditions and
 the blocking offline `verify` command. Sample verification is not a continuous proof. The native
 correctness and cost units have accepted evidence, which that guide records with its limits.
+A host map can end a core region inside a source triangle with child cell roles, described under
+[host coverage sidecars](../KhaozEngine.Render3D/README.md#host-coverage-sidecars) in the Render3D README.
 
 The verifier ships as the `KhaozEngine.Coverage.Tool` dotnet tool, command `ke-coverage`, from the same
 engine feed. Install the exact engine version, then record its engine and carry arithmetic contract

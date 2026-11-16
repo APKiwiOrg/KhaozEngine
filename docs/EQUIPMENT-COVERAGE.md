@@ -92,6 +92,35 @@ The consumer owns phase bins, blend bins, clip semantics and their schema digest
 up the unsigned key, including key zero. It does not sample animation, infer bins from geometry or pick
 a nearby row. An unknown key and an explicit entry -1 are both `TableHole`.
 
+### Core and collar roles
+
+Each host region range gives its source triangles one role. A core position group must lie under the
+support and recedes fully. A collar group recedes by its strength and, outside the support, fades out
+across the command's collar width. A region may also give the other role to single cells of a source
+triangle's refinement lattice with `CoverageChildRole` overrides, so a core region can end inside a source
+triangle instead of at a source edge. A triangle at level `n` has `n * n` cells, so the finest lattice is
+16 cells at level 4, and a core boundary follows the support no closer than one level 4 cell.
+
+An override that repeats its parent role, or a set that overrides every cell of a triangle, refuses. Each
+meaning then has one spelling, so one authored map has one identity. Overrides only change roles inside
+triangles the region already owns. Protection stays a property of zero strength and region membership,
+so no override can create or remove a protected face and the certification protected check is unchanged.
+A core cell needs all three corners of its source triangle at strength 1.
+
+A map with overrides is host coverage format 2 and has its own semantic identity. An equipment companion
+built against the same map without overrides refuses to bind with `CoverageFailureCode.IdentityMismatch`,
+and such a recession table with `CoverageTableRefusal.HostIdentityMismatch`, until each is rebuilt
+against the new map. See
+[host coverage sidecars](../KhaozEngine.Render3D/README.md#host-coverage-sidecars) for the format, the
+cell numbering and the refusals.
+
+The exact constructor and validator need no change for child roles, because construction, correction and
+certification already read each refined face's role. A synthetic panel test proves it. A core centre made
+of whole source triangles refuses `CoreEscaped`, because no source triangle fits under the small support.
+The same centre as collar with level 4 core cells under the support constructs and passes
+`CoverageCertification.ValidateGeometry` with real recession. One more core cell reaching outside the
+support refuses `CoreEscaped` for its single escaping position group.
+
 ## Offline construction and blocking verification
 
 [`Coverage.Verify`](../tools/Coverage.Verify/README.md) is outside the engine solution and umbrellas.

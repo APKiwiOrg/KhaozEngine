@@ -17,6 +17,7 @@ public class HostCoverageChildRoleTests
     [InlineData("level-0", HostCoverageRefusal.RefinementLevel, "$.childRoles[0].level", null, 1, null, null)]
     [InlineData("level-5", HostCoverageRefusal.RefinementLevel, "$.childRoles[0].level", null, 1, null, null)]
     [InlineData("level-3", HostCoverageRefusal.ChildRoleLevelMismatch, "$.regions[0].childRoles[0].level", "r0", 1, 3, null)]
+    [InlineData("unrefined", HostCoverageRefusal.ChildRoleLevelMismatch, "$.regions[0].childRoles[0].level", "r0", 4, 2, null)]
     [InlineData("cell-4", HostCoverageRefusal.ChildRoleCell, "$.childRoles[0].cell", "r0", 1, 2, 4)]
     [InlineData("cell-minus-1", HostCoverageRefusal.ChildRoleCell, "$.childRoles[0].cell", "r0", 1, 2, -1)]
     [InlineData("duplicate", HostCoverageRefusal.DuplicateChildRole, "$.childRoles[1].cell", "r0", 1, null, 0)]
@@ -35,6 +36,7 @@ public class HostCoverageChildRoleTests
             "level-0" => [BaseOverride with { Level = 0 }],
             "level-5" => [BaseOverride with { Level = 5 }],
             "level-3" => [BaseOverride with { Level = 3 }],
+            "unrefined" => [BaseOverride with { Triangle = 4 }],
             "cell-4" => [BaseOverride with { Cell = 4 }],
             "cell-minus-1" => [BaseOverride with { Cell = -1 }],
             "duplicate" => [BaseOverride, BaseOverride],
@@ -76,10 +78,11 @@ public class HostCoverageChildRoleTests
         Assert.Equal((65_537L, 65_536L), (perMap.Count, perMap.Limit));
     }
 
-    // r0 owns triangles 0 to 2 as collar and 3 as core, and triangles 0 to 3 refine at level 2.
+    // r0 owns triangles 0 to 2 and 4 as collar and 3 as core. Triangles 0 to 3 refine at level 2, and triangle 4 has no
+    // refinement range, so its effective level is 1.
     static HostCoverageMap BaseMap(IEnumerable<CoverageChildRole> childRoles) => new(Hash, [new(0, 0, 0, 0)],
-        [new HostCoverageRegion("r0", [new(new(0, 0, 0, 3), CoverageTriangleRole.Collar), new(new(0, 0, 3, 1), CoverageTriangleRole.Core)],
-            [new(0, 0f)], childRoles)],
+        [new HostCoverageRegion("r0", [new(new(0, 0, 0, 3), CoverageTriangleRole.Collar), new(new(0, 0, 3, 1), CoverageTriangleRole.Core),
+            new(new(0, 0, 4, 1), CoverageTriangleRole.Collar)], [new(0, 0f)], childRoles)],
         [new HostCoverageRefinement(new(0, 0, 0, 4), 2)], new("synthetic-exporter", "r1"));
 
     static IEnumerable<CoverageChildRole> Cells(int triangle, int count) =>

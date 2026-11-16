@@ -27,9 +27,10 @@ public class CoverageChildCellTests
                     Assert.True(corner.A >= 0 && corner.B >= 0 && corner.C >= 0);
                     Assert.True(corner.B % step == 0 && corner.C % step == 0);
                 }
+                // Each cell is an upright or inverted unit triangle of the level grid, in source winding. Those grid
+                // triangles have disjoint interiors, so distinct cells whose areas sum to the whole tile it once.
+                Assert.True(IsUnitGridCell(child, step), $"level {level} cell {cell}");
                 int signed = (child.B.B - child.A.B) * (child.C.C - child.A.C) - (child.B.C - child.A.C) * (child.C.B - child.A.B);
-                // Distinct unit cells of the level lattice inside the triangle never overlap, so equal unit areas that
-                // sum to the whole prove the cells tile it once.
                 Assert.Equal(whole / (level * level), signed);
                 Assert.True(seen.Add(Canonical(child)));
                 area += signed;
@@ -50,6 +51,16 @@ public class CoverageChildCellTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CoverageChildCells.Get(3, -1));
         Assert.Throws<ArgumentOutOfRangeException>(() => CoverageChildCells.Get(3, 9));
         Assert.Equal(new CoverageChildCell(new(4, 8, 0), new(0, 12, 0), new(0, 8, 4)), CoverageChildCells.Get(3, 8));
+    }
+
+    // In (B, C) weight space an upright cell is (p, p + (s, 0), p + (0, s)) and an inverted cell is
+    // (p + (s, 0), p + (s, s), p + (0, s)), both in corner order A, B, C.
+    static bool IsUnitGridCell(CoverageChildCell cell, int step)
+    {
+        (int B, int C) a = (cell.A.B, cell.A.C), b = (cell.B.B, cell.B.C), c = (cell.C.B, cell.C.C);
+        bool upright = b == (a.B + step, a.C) && c == (a.B, a.C + step);
+        bool inverted = b == (a.B, a.C + step) && c == (a.B - step, a.C + step);
+        return upright || inverted;
     }
 
     static (CoverageLatticePoint, CoverageLatticePoint, CoverageLatticePoint) Canonical(CoverageChildCell cell)

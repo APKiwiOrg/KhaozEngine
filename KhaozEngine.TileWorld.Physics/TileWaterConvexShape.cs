@@ -58,6 +58,8 @@ internal sealed class TileWaterConvexShape
     internal ReadOnlySpan<Plane> Planes => _planes;
     internal ReadOnlySpan<Basis> Bases => _bases;
     internal TileWaterBedSeam? BedSeam => _bedSeam;
+    internal TileWaterConvexShape? ProjectionParent => null;
+    internal ReadOnlySpan<int> ProjectionBasisMap => [];
 
     internal TileWaterPreparedQuery Prepare(TileWaterPreparationWorkspace workspace, Vector start, Vector drive,
         I core, float radius, double heightError = 0, double horizontalError = 0) =>
@@ -88,7 +90,8 @@ internal sealed class TileWaterConvexShape
         return entries is null ? null : Volatile.Read(ref entries[ordinal])?.Token;
     }
 
-    internal TileWaterConvexShape(Plane[] planes, TileWaterBedSeam? bedSeam = null)
+    internal TileWaterConvexShape(Plane[] planes, TileWaterBedSeam? bedSeam = null,
+        TileWaterConvexShape? projectionParent = null)
     {
         _planes = planes;
         _bedSeam = bedSeam;

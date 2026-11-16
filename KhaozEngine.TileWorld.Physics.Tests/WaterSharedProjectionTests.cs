@@ -205,12 +205,6 @@ public sealed class WaterSharedProjectionTests(ITestOutputHelper output) : IDisp
             Assert.Equal(1, map[active]);
             map[active] = 0; // The parent's zero-active projection.
         }
-        if (fault == "wrong-control")
-        {
-            Assert.True(environment.Set("flush-output"));
-            Assert.False(frozen.Intersect(start, drive, I.Point(0), 0.25f).Resolved);
-        }
-
         // The real key refuses each published fault, so the original expressions keep parity.
         if (fault != "wrong-prefix-map")
         {
@@ -218,14 +212,20 @@ public sealed class WaterSharedProjectionTests(ITestOutputHelper output) : IDisp
             try
             {
                 var stale = storage.Prepare(source, start, oldDrive, I.Point(0), 0.25f);
-                if (fault != "wrong-control") Assert.True(stale.Evaluate().Resolved);
+                Assert.True(stale.Evaluate().Resolved);
                 storage.DiscardMiss(ref stale);
+                if (fault == "wrong-control") Assert.True(environment.Set("flush-output"));
                 var refused = storage.Prepare(face, start, drive, I.Point(0), 0.25f);
                 Assert.False(refused.HasSharedSource);
                 FrozenWaterComparison.Range(frozen.Intersect(start, drive, I.Point(0), 0.25f), refused.Evaluate());
                 storage.DiscardMiss(ref refused);
             }
             finally { storage.EndTrace(); }
+        }
+        if (fault == "wrong-control")
+        {
+            Assert.True(environment.Set("flush-output"));
+            Assert.False(frozen.Intersect(start, drive, I.Point(0), 0.25f).Resolved);
         }
 
         // Defeat only that check: the face's production evaluator copies the refused rows.

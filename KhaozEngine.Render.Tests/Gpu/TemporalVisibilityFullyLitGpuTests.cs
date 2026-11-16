@@ -81,16 +81,21 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
     }
 
     [GpuTheory]
-    [InlineData(TemporalUpscale.Native, 0)]
-    [InlineData(TemporalUpscale.Quality, 0)]
-    [InlineData(TemporalUpscale.Native, 1)]
-    [InlineData(TemporalUpscale.Quality, 1)]
-    public void DebugViewsAndCountReevaluationMatchTheForcedCheck(TemporalUpscale preset, int choice)
+    [InlineData(TemporalUpscale.Native, 0, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Native, 0, TemporalHistoryDetail.Fine)]
+    [InlineData(TemporalUpscale.Quality, 0, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Quality, 0, TemporalHistoryDetail.Fine)]
+    [InlineData(TemporalUpscale.Native, 1, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Native, 1, TemporalHistoryDetail.Fine)]
+    [InlineData(TemporalUpscale.Quality, 1, TemporalHistoryDetail.Display)]
+    [InlineData(TemporalUpscale.Quality, 1, TemporalHistoryDetail.Fine)]
+    public void DebugViewsAndCountReevaluationMatchTheForcedCheck(TemporalUpscale preset, int choice, TemporalHistoryDetail detail)
     {
         var a = new FrontStage(160, 90, 4.5f);
         var b = new FrontStage(160, 90, 4.5f);
         using var selected = new TemporalFixture(160, 90, s => a.Setup(s, AntiAliasing.Temporal, preset));
         using var checkedFx = new TemporalFixture(160, 90, s => b.Setup(s, AntiAliasing.Temporal, preset));
+        selected.Scene.Post.Temporal.HistoryDetail = checkedFx.Scene.Post.Temporal.HistoryDetail = detail;
         TemporalTestResolve.Install(checkedFx, ForceCheck);
         selected.Scene.TemporalResolveEntryForTests = checkedFx.Scene.TemporalResolveEntryForTests = (TemporalResolveEntry)choice;
         var drawA = TemporalResolveCostPerfGpuTests.FieldScene(a);

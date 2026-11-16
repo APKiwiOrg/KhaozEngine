@@ -123,11 +123,14 @@ public sealed class TemporalVisibilityFullyLitTests
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    public void ResolveDebugAndCountUseCachedProgramsForTheSameCertificate(int choice)
+    [InlineData(0, TemporalHistoryDetail.Display)]
+    [InlineData(1, TemporalHistoryDetail.Display)]
+    [InlineData(0, TemporalHistoryDetail.Fine)]
+    [InlineData(1, TemporalHistoryDetail.Fine)]
+    public void ResolveDebugAndCountUseCachedProgramsForTheSameCertificate(int choice, TemporalHistoryDetail detail)
     {
         using var rig = new HeadlessSceneRig();
+        rig.Scene.Post.Temporal.HistoryDetail = detail;
         rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         rig.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
         rig.Scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
@@ -151,7 +154,8 @@ public sealed class TemporalVisibilityFullyLitTests
             Assert.Equal(skip, renderer.LastVisibilityDecisionSkipped);
             string[] actual = commands.CommandTrace!.Where(c => c.Kind == "draw")
                 .Select(c => (c.Pipeline as FakePipeline)?.Request?.FragmentGlsl)
-                .Where(s => s is not null && s.Contains("bool visibilityReleased = ", StringComparison.Ordinal))
+                .Where(s => s is not null && !s.Contains("out vec4 oClassification;", StringComparison.Ordinal)
+                    && s.Contains("bool visibilityReleased = ", StringComparison.Ordinal))
                 .Select(s => s!).ToArray();
             Assert.Equal(3, actual.Length); // Resolve, sampled count and debug re-evaluation.
             Assert.All(actual, source => Assert.Equal(skip,

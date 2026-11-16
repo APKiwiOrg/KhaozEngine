@@ -286,6 +286,9 @@ and state identity from cold prefixes, presented still frames, moving/recovery m
 replication after motion stops, thin-detail retention and a moving output that differs from Display.
 
 Fine debug views and sampled counts share the fine resolve core and its classification/read bindings.
+Both cache checked and certified pipeline pairs, selecting the full or compact resolve layout from the
+same current/history certificate as the caller's resource set. This keeps certified frames' bindings
+compatible for every debug view and armed count request.
 Each sampled pixel initializes its own transport context, including the count grid's sixteen samples per cell.
 Their pipelines and staging snapshots belong to the renderer, while the borrowed fine sets follow the history
 generation. This keeps pending count readbacks valid across a mode change or resize.

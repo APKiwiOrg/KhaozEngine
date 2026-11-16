@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -27,12 +28,16 @@ internal sealed class CoverageCampaign
         Action ensureAlive, IReadOnlyList<string>? materializedSources = null)
     {
         Topology = topology; this.inverseBind = inverseBind.ToArray(); Identity = identity; InputSha256 = inputSha256;
-        Domains = Array.AsReadOnly(domains.ToArray()); Samples = Array.AsReadOnly(samples.ToArray());
+        Domains = Snapshot(domains.Select(d => d with
+        {
+            AuthoredFrameIds = Snapshot(d.AuthoredFrameIds), BlendPathIds = Snapshot(d.BlendPathIds), DenseRows = Snapshot(d.DenseRows),
+        }));
+        Samples = Snapshot(samples);
         if (candidates.Count > CoverageBuildInput.MaxCandidates)
             throw new CoverageBuildDataException(CoverageBuildInputRefusal.CapacityExceeded, "Candidate inventory exceeds capacity.")
             { Count = candidates.Count, Limit = CoverageBuildInput.MaxCandidates };
-        CandidateSampleIds = Array.AsReadOnly(candidates.ToArray()); SourcePaths = Array.AsReadOnly(sourcePaths.ToArray());
-        this.materializedSources = Array.AsReadOnly((materializedSources ?? sourcePaths).ToArray());
+        CandidateSampleIds = Snapshot(candidates); SourcePaths = Snapshot(sourcePaths);
+        this.materializedSources = Snapshot(materializedSources ?? sourcePaths);
         this.readSample = readSample; this.readDenseRow = readDenseRow; this.ensureAlive = ensureAlive;
         ValidateInventories();
     }
@@ -69,11 +74,13 @@ internal sealed class CoverageCampaign
         ArgumentNullException.ThrowIfNull(input);
         static CoverageSampleInventory Inventory(CoverageSample s) => new(s.Id, s.DomainId, s.AuthoredFrameId, s.BlendPathId, s.StateKey.Value);
         var domains = input.Domains.Select(d => new CoverageDomainInventory(d.Id, d.Kind, d.AuthoredFrameIds, d.BlendPathIds,
-            Array.AsReadOnly(d.DenseRows.Select(r => new CoverageDenseRowInventory(r.DenseIndex, r.PrecedingPhaseTick,
-                r.ResolvedStateKey, Inventory(r.Sample), r.Looped, r.Clamped)).ToArray()))).ToArray();
+            Snapshot(d.DenseRows.Select(r => new CoverageDenseRowInventory(r.DenseIndex, r.PrecedingPhaseTick,
+                r.ResolvedStateKey, Inventory(r.Sample), r.Looped, r.Clamped))))).ToArray();
         return new(input.Topology, input.InverseBind, domains, input.Samples.Select(Inventory).ToArray(), input.CandidateSampleIds,
             input.Identity, input.InputSha256, input.SourcePaths, i => input.Samples[i], (d, r) => input.Domains[d].DenseRows[r], () => { });
     }
+
+    static IReadOnlyList<T> Snapshot<T>(IEnumerable<T> values) => ImmutableArray.CreateRange(values.ToArray());
 
     void ValidateInventories()
     {

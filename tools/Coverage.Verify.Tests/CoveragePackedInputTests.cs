@@ -12,6 +12,37 @@ namespace KhaozEngine.Tests.Tools.Coverage;
 
 public sealed class CoveragePackedInputTests
 {
+    [Theory]
+    [InlineData(false, "palette", "$.samples[0].palette")]
+    [InlineData(false, "unknown-command", "$.samples[0].commands.id")]
+    [InlineData(false, "command-count", "$.samples[0].commands")]
+    [InlineData(true, "palette", "$.domains[0].denseRows[0].sample.palette")]
+    [InlineData(true, "unknown-command", "$.domains[0].denseRows[0].sample.commands.id")]
+    [InlineData(true, "command-count", "$.domains[0].denseRows[0].sample.commands")]
+    public void Format_one_binding_refusals_keep_the_predecessor_field_paths(bool dense, string defect, string expectedPath)
+    {
+        // Field paths are the separate binding branches in the c7423c5fb reader.
+        using var files = CoveragePackedFixture.Files();
+        var sample = dense ? files.Manifest["domains"]![0]!["denseRows"]![0]!["sample"]! : files.Manifest["samples"]![0]!;
+        string accepted = files.Manifest.ToJsonString();
+        Assert.Equal(2, CoverageBuildInput.Read(files.ManifestPath).Samples.Count);
+        switch (defect)
+        {
+            case "palette": sample["palette"]!.AsArray().RemoveAt(1); break;
+            case "unknown-command": sample["commands"]![0]!["id"] = 99; break;
+            case "command-count": sample["commands"] = new JsonArray(); break;
+        }
+        files.Write();
+        var error = Assert.Throws<CoverageBuildDataException>(() => CoverageBuildInput.Read(files.ManifestPath));
+        Assert.Equal(CoverageBuildInputRefusal.AssetBinding, error.Reason);
+        Assert.Equal(expectedPath, error.Path);
+        Assert.Equal("a", error.SampleId);
+        Assert.Null(error.ChunkIndex); Assert.Null(error.RecordIndex);
+        File.WriteAllText(files.ManifestPath, accepted);
+        var control = CoverageBuildInput.Read(files.ManifestPath);
+        Assert.Equal(2, control.Samples.Count); Assert.Equal(5, control.Domains[0].DenseRows.Count);
+    }
+
     [Fact]
     public void Packed_and_mixed_manifests_materialize_the_same_input_words()
     {

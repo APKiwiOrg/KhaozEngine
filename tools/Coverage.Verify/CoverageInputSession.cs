@@ -141,18 +141,18 @@ internal sealed class CoverageInputSession : IDisposable
         int numericBytes = checked(64 + 64 * numeric.Palette.Length + 144 * numeric.Commands.Length);
         // Binding copies the one decoded pose into the returned immutable sample. Both coexist here.
         maximumLiveNumericPoseBytes = Math.Max(maximumLiveNumericPoseBytes, checked(2 * numericBytes));
-        if (numeric.Palette.Length != binding.InverseBind.Length || numeric.Commands.Length != binding.Commands.Length)
-            throw BindingError(slot);
+        if (numeric.Palette.Length != binding.InverseBind.Length) throw BindingError(slot, ".palette");
         var commands = new CoverageCommandPose[numeric.Commands.Length];
         for (int i = 0; i < commands.Length; i++)
         {
             var pose = numeric.Commands[i];
             var config = binding.Commands.SingleOrDefault(c => c.Definition.Id == pose.Id);
-            if (config == null) throw BindingError(slot);
+            if (config == null) throw BindingError(slot, ".commands.id");
             var definition = config.Definition;
             commands[i] = new(pose.Id, pose.EquipmentInstanceId, binding.Topology, config.Region, config.Support, pose.EquipmentWorld, pose.CoverageWorld,
                 definition.MinZ, definition.MaxZ, definition.CollarWidth, definition.Clearance, definition.MaxWorldRecession, pose.TransitionWeight);
         }
+        if (commands.Length != binding.Commands.Length) throw BindingError(slot, ".commands");
         var inventory = slot.Inventory;
         return new(inventory.Id, inventory.DomainId, inventory.AuthoredFrameId, inventory.BlendPathId, new(inventory.StateKey),
             numeric.ActorModel, numeric.Palette, commands);
@@ -163,9 +163,9 @@ internal sealed class CoverageInputSession : IDisposable
         var row = metadata.Domains[domainIndex].DenseRows[rowIndex];
         return new(row.DenseIndex, row.PrecedingPhaseTick, row.ResolvedStateKey, Read(metadata.DenseRows[domainIndex][rowIndex]), row.Looped, row.Clamped);
     }
-    static CoverageBuildDataException BindingError(CoveragePackedInputJson.Slot slot) =>
+    static CoverageBuildDataException BindingError(CoveragePackedInputJson.Slot slot, string field) =>
         new(CoverageBuildInputRefusal.AssetBinding, "Pose shape or command identity differs from its bound configuration.")
-        { Path = slot.Path, SampleId = slot.Inventory.Id, ChunkIndex = slot.Reference?.ChunkIndex, RecordIndex = slot.Reference?.RecordIndex };
+        { Path = slot.Path + field, SampleId = slot.Inventory.Id, ChunkIndex = slot.Reference?.ChunkIndex, RecordIndex = slot.Reference?.RecordIndex };
     static CoverageBuildDataException Length(CoverageInputLocation location, long expected, long actual) =>
         new(CoverageBuildInputRefusal.PackedChunkLengthMismatch, "Packed chunk length differs from its descriptor.")
         { Path = location.Path, Identity = location.Identity, ChunkIndex = location.ChunkIndex, ExpectedLength = expected, ActualLength = actual };

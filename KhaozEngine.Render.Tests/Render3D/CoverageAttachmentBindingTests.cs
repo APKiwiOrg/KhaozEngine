@@ -70,6 +70,20 @@ public sealed class CoverageAttachmentBindingTests
         Assert.True(f.Prepare(binding, out _, out _));
     }
 
+    [Fact]
+    public void Equipment_pinned_to_the_map_without_its_child_roles_refuses()
+    {
+        using var f = new CoverageBindingFixture(childRoles: true);
+        using var binding = f.Binding();
+        Assert.True(binding.TrySetEquipment([f.Equipment()], out _));
+        var definition = f.Coverage.Definition;
+        string hash = f.Source.Add("plain-map-coverage.json", KhaozEngine.Attachments.EquipmentCoverageJson.Write(
+            new(definition.AttachmentSha256, f.MapSha256WithoutChildRoles, definition.Commands)));
+        var stale = new CoveredAttachmentInstance(19, f.Bound, f.Cache.GetCoverage(f.Loaded, "plain-map-coverage.json", hash));
+        Assert.False(binding.TrySetEquipment([stale], out var failure));
+        Assert.Equal(CoverageFailureCode.IdentityMismatch, failure.Code);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

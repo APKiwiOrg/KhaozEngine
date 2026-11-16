@@ -8,16 +8,24 @@ using System.Text.Json;
 namespace KhaozEngine.Render3D;
 
 /// <summary>
-/// Strict host coverage JSON format 1. Reading refuses unknown or duplicate members, other versions, nonfinite numbers
-/// and over-limit arrays before allocating for them, and reports the caller's asset identity in every refusal. Writing is
-/// canonical: fixed member order, sorted entries, normalized negative zero and no whitespace. The semantic digest hashes
-/// a domain prefix and the canonical bytes, so it never equals the exact byte hash of a fetched file.
+/// Strict host coverage JSON, formats 1 and 2. Format 2 adds an optional <c>childRoles</c> member per region and is
+/// otherwise format 1. Reading refuses unknown or duplicate members, other versions, nonfinite numbers and over-limit
+/// arrays before allocating for them, refuses a format 2 document that declares no child roles, and reports the
+/// caller's asset identity in every refusal. Writing is canonical: fixed member order, sorted entries, normalized negative
+/// zero and no whitespace, and it writes format 1 unless some region has child roles. The semantic digest hashes the
+/// written version's domain prefix and the canonical bytes, so it never equals the exact byte hash of a fetched file, and
+/// a map without child roles keeps its format 1 bytes and identity.
 /// </summary>
 public static class HostCoverageMapJson
 {
+    /// <summary>The format a map without child roles is written in. Compiled into consumers, so it never changes.</summary>
     public const int FormatVersion = 1;
 
+    /// <summary>The format a map with child roles is written in.</summary>
+    public const int ChildRolesFormatVersion = 2;
+
     static readonly byte[] SemanticDomain = Encoding.UTF8.GetBytes("KhaozEngine.HostCoverageMap/1\n");
+    static readonly byte[] ChildRolesSemanticDomain = Encoding.UTF8.GetBytes("KhaozEngine.HostCoverageMap/2\n");
 
     public static HostCoverageMap Read(ReadOnlySpan<byte> json, string identity)
     {
@@ -30,7 +38,7 @@ public static class HostCoverageMapJson
             JsonElement root = document.RootElement;
             Members(root, "$", "formatVersion", "hostSha256", "topology", "regions", "refinement", "authoring");
             JsonElement version = Required(root, "formatVersion", "$");
-            if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int number) || number != FormatVersion)
+            if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int number) || number is not (FormatVersion or ChildRolesFormatVersion))
                 throw new HostCoverageDataException(HostCoverageRefusal.UnsupportedVersion, "Unsupported formatVersion.")
                 { Path = "$.formatVersion", FormatVersion = version.TryGetInt32(out int actual) ? actual : null };
             string hostSha256 = Text(root, "hostSha256", "$");
@@ -50,7 +58,7 @@ public static class HostCoverageMapJson
             var regions = new HostCoverageRegion[regionArray.GetArrayLength()];
             index = 0;
             foreach (JsonElement item in regionArray.EnumerateArray())
-                regions[index] = ReadRegion(item, $"$.regions[{index++}]");
+                regions[index] = ReadRegion(item, $"$.regions[{index++}]", number);
 
             JsonElement refinementArray = BoundedArray(root, "refinement", "$", HostCoverageMap.MaxTriangles);
             var refinement = new HostCoverageRefinement[refinementArray.GetArrayLength()];
@@ -65,12 +73,18 @@ public static class HostCoverageMapJson
             JsonElement authoring = Required(root, "authoring", "$");
             Members(authoring, "$.authoring", "exporter", "revision");
             HostCoverageAuthoring labels = new(Text(authoring, "exporter", "$.authoring"), Text(authoring, "revision", "$.authoring"));
-            try { return new HostCoverageMap(hostSha256, topology, regions, refinement, labels); }
+            HostCoverageMap map;
+            try { map = new HostCoverageMap(hostSha256, topology, regions, refinement, labels); }
             catch (HostCoverageDataException error) when (error.Reason is HostCoverageRefusal.UnknownSurface or HostCoverageRefusal.PositiveStrengthOverlap)
             {
                 // Region constructors canonicalize strengths. Diagnostics name the source JSON position.
                 throw error.WithContext(path: SourceStrengthPath(regionArray, error));
             }
+            // A format 2 document without child roles would write back as format 1, so it has no canonical form.
+            if (number == ChildRolesFormatVersion && !HasChildRoles(map))
+                throw new HostCoverageDataException(HostCoverageRefusal.UnnecessaryFormatVersion, "Format 2 requires child roles.")
+                { Path = "$.formatVersion", FormatVersion = number };
+            return map;
         }
         catch (HostCoverageDataException error)
         {
@@ -90,7 +104,7 @@ public static class HostCoverageMapJson
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("formatVersion", FormatVersion);
+            writer.WriteNumber("formatVersion", HasChildRoles(map) ? ChildRolesFormatVersion : FormatVersion);
             writer.WriteString("hostSha256", map.HostSha256);
             writer.WriteStartArray("topology");
             foreach (CoverageTopologyEntry entry in map.Topology)
@@ -113,7 +127,7 @@ public static class HostCoverageMapJson
                 {
                     writer.WriteStartObject();
                     WriteRange(writer, entry.Triangles);
-                    writer.WriteString("role", entry.Role == CoverageTriangleRole.Core ? "core" : "collar");
+                    writer.WriteString("role", RoleText(entry.Role));
                     writer.WriteEndObject();
                 }
                 writer.WriteEndArray();
@@ -126,6 +140,7 @@ public static class HostCoverageMapJson
                     writer.WriteEndObject();
                 }
                 writer.WriteEndArray();
+                HostCoverageChildRoleJson.Write(writer, region.ChildRoles);
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();
@@ -158,9 +173,10 @@ public static class HostCoverageMapJson
     internal static string ComputeSemanticSha256(HostCoverageMap map)
     {
         byte[] canonical = Write(map);
-        byte[] prefixed = new byte[SemanticDomain.Length + canonical.Length];
-        SemanticDomain.CopyTo(prefixed, 0);
-        canonical.CopyTo(prefixed, SemanticDomain.Length);
+        byte[] domain = HasChildRoles(map) ? ChildRolesSemanticDomain : SemanticDomain;
+        byte[] prefixed = new byte[domain.Length + canonical.Length];
+        domain.CopyTo(prefixed, 0);
+        canonical.CopyTo(prefixed, domain.Length);
         return Convert.ToHexStringLower(SHA256.HashData(prefixed));
     }
 
@@ -184,9 +200,10 @@ public static class HostCoverageMapJson
         return error.Path;
     }
 
-    static HostCoverageRegion ReadRegion(JsonElement item, string context)
+    static HostCoverageRegion ReadRegion(JsonElement item, string context, int version)
     {
-        Members(item, context, "key", "triangles", "strengths");
+        if (version == ChildRolesFormatVersion) Members(item, context, "key", "triangles", "strengths", HostCoverageChildRoleJson.Member);
+        else Members(item, context, "key", "triangles", "strengths");
         string key = Text(item, "key", context);
 
         JsonElement triangleArray = BoundedArray(item, "triangles", context, HostCoverageMap.MaxTriangles);
@@ -196,12 +213,7 @@ public static class HostCoverageMapJson
         {
             string entryContext = $"{context}.triangles[{index}]";
             Members(entry, entryContext, "mesh", "primitive", "firstTriangle", "count", "role");
-            CoverageTriangleRole role = Text(entry, "role", entryContext) switch
-            {
-                "core" => CoverageTriangleRole.Core,
-                "collar" => CoverageTriangleRole.Collar,
-                _ => throw new HostCoverageDataException(HostCoverageRefusal.InvalidRole, "Expected core or collar role.") { Path = entryContext + ".role", RegionKey = key },
-            };
+            CoverageTriangleRole role = Role(entry, entryContext, key);
             triangles[index++] = new(Range(entry, entryContext), role);
         }
         JsonElement strengthArray = BoundedArray(item, "strengths", context, HostCoverageMap.MaxSurfaceVertices);
@@ -213,9 +225,29 @@ public static class HostCoverageMapJson
             Members(entry, entryContext, "surfaceId", "strength");
             strengths[index++] = new(Integer(entry, "surfaceId", entryContext), Single(entry, "strength", entryContext));
         }
-        try { return new HostCoverageRegion(key, triangles, strengths); }
+        (CoverageChildRole[] childRoles, Func<int, CoverageChildRoleField, string> childRolePath) =
+            item.TryGetProperty(HostCoverageChildRoleJson.Member, out _)
+                ? HostCoverageChildRoleJson.Read(BoundedArray(item, HostCoverageChildRoleJson.Member, context, HostCoverageMap.MaxTriangles), context, key)
+                : ([], HostCoverageChildRoleRules.ProgrammaticPath);
+        try { return new HostCoverageRegion(key, triangles, strengths, childRoles, childRolePath); }
         catch (HostCoverageDataException error) { throw error.WithContext(prefix: context); }
     }
+
+    static bool HasChildRoles(HostCoverageMap map)
+    {
+        foreach (HostCoverageRegion region in map.Regions)
+            if (region.ChildRoles.Count > 0) return true;
+        return false;
+    }
+
+    internal static CoverageTriangleRole Role(JsonElement value, string context, string regionKey) => Text(value, "role", context) switch
+    {
+        "core" => CoverageTriangleRole.Core,
+        "collar" => CoverageTriangleRole.Collar,
+        _ => throw new HostCoverageDataException(HostCoverageRefusal.InvalidRole, "Expected core or collar role.") { Path = context + ".role", RegionKey = regionKey },
+    };
+
+    internal static string RoleText(CoverageTriangleRole role) => role == CoverageTriangleRole.Core ? "core" : "collar";
 
     static CoverageTriangleRange Range(JsonElement value, string context) => new(Integer(value, "mesh", context),
         Integer(value, "primitive", context), Integer(value, "firstTriangle", context), Integer(value, "count", context));
@@ -228,7 +260,7 @@ public static class HostCoverageMapJson
         writer.WriteNumber("count", range.Count);
     }
 
-    static void Members(JsonElement value, string context, params string[] allowed)
+    internal static void Members(JsonElement value, string context, params string[] allowed)
     {
         if (value.ValueKind != JsonValueKind.Object)
             throw new HostCoverageDataException(HostCoverageRefusal.ExpectedObject, "Expected an object.") { Path = context };
@@ -248,7 +280,7 @@ public static class HostCoverageMapJson
         ? result : throw new HostCoverageDataException(HostCoverageRefusal.MissingMember, "Missing coverage member.")
         { Path = HostCoverageJsonPreflight.Property(context, name), MemberName = name };
 
-    static JsonElement BoundedArray(JsonElement value, string name, string context, int limit)
+    internal static JsonElement BoundedArray(JsonElement value, string name, string context, int limit)
     {
         JsonElement member = Required(value, name, context);
         if (member.ValueKind != JsonValueKind.Array)
@@ -273,7 +305,7 @@ public static class HostCoverageMapJson
         }
     }
 
-    static int Integer(JsonElement value, string name, string context)
+    internal static int Integer(JsonElement value, string name, string context)
     {
         JsonElement member = Required(value, name, context);
         if (member.ValueKind != JsonValueKind.Number || !member.TryGetInt32(out int result))

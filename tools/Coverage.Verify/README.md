@@ -83,6 +83,9 @@ binary32 values in row-major order. Duplicate and unknown members, invalid diges
 invalid membership and over-capacity inventories refuse with `CoverageBuildDataException.Reason` and a
 rooted `Path`. Wrapped asset refusals retain their typed inner exception.
 
+The `map` reference is read by `HostCoverageMapJson.Read`, so it may be a host coverage map in format 1
+or, when its regions carry child cell roles, format 2.
+
 Each domain has `id`, `kind` (`authored-clip` or `blend-path`), `authoredFrameIds` and `blendPathIds`.
 Authored frames are nonempty in every domain. Only an authored-clip domain can have no blend paths.
 Each sample declares `id`, `domainId`, `stateKey` (an unsigned 64-bit number), `actorModel`, `palette`

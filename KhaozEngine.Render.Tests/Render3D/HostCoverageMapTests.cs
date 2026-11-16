@@ -15,7 +15,7 @@ public class HostCoverageMapTests
     const string Hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     // Surface 1 is a welded logical vertex shared by two render vertices on different primitives.
-    const string Canonical =
+    internal const string Canonical =
         "{\"formatVersion\":1,\"hostSha256\":\"" + Hash + "\"," +
         "\"topology\":[{\"mesh\":0,\"primitive\":0,\"vertex\":0,\"surfaceId\":0},{\"mesh\":0,\"primitive\":0,\"vertex\":1,\"surfaceId\":1}," +
         "{\"mesh\":0,\"primitive\":1,\"vertex\":0,\"surfaceId\":1},{\"mesh\":0,\"primitive\":1,\"vertex\":1,\"surfaceId\":2}]," +
@@ -97,7 +97,7 @@ public class HostCoverageMapTests
     [InlineData("duplicate-region-member", HostCoverageRefusal.DuplicateMember, "$.regions[0].key")]
     [InlineData("missing-authoring", HostCoverageRefusal.MissingMember, "$.authoring")]
     [InlineData("missing-surface", HostCoverageRefusal.MissingMember, "$.topology[3].surfaceId")]
-    [InlineData("version-2", HostCoverageRefusal.UnsupportedVersion, "$.formatVersion")]
+    [InlineData("version-3", HostCoverageRefusal.UnsupportedVersion, "$.formatVersion")]
     [InlineData("version-text", HostCoverageRefusal.UnsupportedVersion, "$.formatVersion")]
     [InlineData("uppercase-hash", HostCoverageRefusal.MalformedDigest, "$.hostSha256")]
     [InlineData("short-hash", HostCoverageRefusal.MalformedDigest, "$.hostSha256")]
@@ -353,6 +353,8 @@ public class HostCoverageMapTests
     [InlineData("total-triangles", HostCoverageRefusal.TotalTriangleCapacity, 65536)]
     [InlineData("refinement-ranges", HostCoverageRefusal.RefinementRangeCapacity, 65536)]
     [InlineData("refinement-triangles", HostCoverageRefusal.RefinementTriangleCapacity, 65536)]
+    [InlineData("child-role-entries", HostCoverageRefusal.ChildRoleCapacity, 65536)]
+    [InlineData("child-role-cells", HostCoverageRefusal.ChildRoleCapacity, 15)]
     public void Every_capacity_reports_its_witness_and_accepts_its_inclusive_limit(string kind, HostCoverageRefusal reason, int limit)
     {
         var refusal = Assert.Throws<HostCoverageDataException>(() => HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(CapacityFixture(kind, limit + 1)), "bounded"));
@@ -476,20 +478,32 @@ public class HostCoverageMapTests
             "triangle-ranges" => Ranges(count, false),
             "region-triangles" => $$$"""{"mesh":0,"primitive":0,"firstTriangle":0,"count":{{{count}}},"role":"core"}""",
             "total-triangles" => $$$"""{"mesh":0,"primitive":0,"firstTriangle":0,"count":{{{count - 1}}},"role":"core"}""",
+            // Format 2: each entry needs its own owned level 2 triangle, and a cell list needs one level 4 triangle.
+            "child-role-entries" => $$$"""{"mesh":0,"primitive":0,"firstTriangle":0,"count":{{{Math.Min(count, HostCoverageMap.MaxTriangles)}}},"role":"collar"}""",
+            "child-role-cells" => "{\"mesh\":0,\"primitive\":0,\"firstTriangle\":0,\"count\":1,\"role\":\"collar\"}",
             _ => "{\"mesh\":0,\"primitive\":0,\"firstTriangle\":0,\"count\":1,\"role\":\"core\"}",
         };
         string strengths = kind == "strengths" ? string.Join(',', Enumerable.Range(0, count).Select(index =>
             $$$"""{"surfaceId":{{{index}}},"strength":1}""")) : "{\"surfaceId\":0,\"strength\":1}";
-        string regions = $$$"""{"key":"region","triangles":[{{{triangles}}}],"strengths":[{{{strengths}}}]}""";
+        string childRoles = kind switch
+        {
+            "child-role-entries" => ",\"childRoles\":[" + string.Join(',', Enumerable.Range(0, count).Select(index =>
+                $$$"""{"mesh":0,"primitive":0,"triangle":{{{index}}},"level":2,"cells":[0],"role":"core"}""")) + "]",
+            "child-role-cells" => $$$""","childRoles":[{"mesh":0,"primitive":0,"triangle":0,"level":4,"cells":[{{{string.Join(',', Enumerable.Range(0, count))}}}],"role":"core"}]""",
+            _ => "",
+        };
+        string regions = $$$"""{"key":"region","triangles":[{{{triangles}}}],"strengths":[{{{strengths}}}]{{{childRoles}}}}""";
         if (kind == "total-triangles")
             regions += ",{\"key\":\"other\",\"triangles\":[{\"mesh\":0,\"primitive\":1,\"firstTriangle\":0,\"count\":1,\"role\":\"collar\"}],\"strengths\":[{\"surfaceId\":0,\"strength\":0}]}";
         string refinement = kind switch
         {
             "refinement-ranges" => Ranges(count, true),
             "refinement-triangles" => $$$"""{"mesh":0,"primitive":0,"firstTriangle":0,"count":{{{count}}},"level":1}""",
+            "child-role-entries" => $$$"""{"mesh":0,"primitive":0,"firstTriangle":0,"count":{{{Math.Min(count, HostCoverageMap.MaxTriangles)}}},"level":2}""",
+            "child-role-cells" => "{\"mesh\":0,\"primitive\":0,\"firstTriangle\":0,\"count\":1,\"level\":4}",
             _ => "",
         };
-        return $$$"""{"formatVersion":1,"hostSha256":"{{{Hash}}}","topology":[{{{topology}}}],"regions":[{{{regions}}}],"refinement":[{{{refinement}}}],"authoring":{"exporter":"synthetic-exporter","revision":"r1"}}""";
+        return $$$"""{"formatVersion":{{{(childRoles.Length > 0 ? 2 : 1)}}},"hostSha256":"{{{Hash}}}","topology":[{{{topology}}}],"regions":[{{{regions}}}],"refinement":[{{{refinement}}}],"authoring":{"exporter":"synthetic-exporter","revision":"r1"}}""";
     }
 
     static string Swap(string from, string to) => Canonical.Replace(from, to, StringComparison.Ordinal);
@@ -524,7 +538,7 @@ public class HostCoverageMapTests
         "duplicate-region-member" => Swap("{\"key\":\"back\",", "{\"key\":\"back\",\"key\":\"back\","),
         "missing-authoring" => Swap(",\"authoring\":{\"exporter\":\"synthetic-exporter\",\"revision\":\"r1\"}", ""),
         "missing-surface" => Swap(",\"surfaceId\":2}]", "}]"),
-        "version-2" => Swap("\"formatVersion\":1", "\"formatVersion\":2"),
+        "version-3" => Swap("\"formatVersion\":1", "\"formatVersion\":3"),
         "version-text" => Swap("\"formatVersion\":1", "\"formatVersion\":\"1\""),
         "uppercase-hash" => Swap(Hash, Hash.ToUpperInvariant()),
         "short-hash" => Swap(Hash, Hash[..63]),

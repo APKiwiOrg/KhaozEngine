@@ -1,16 +1,113 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using KhaozEngine.Render3D;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
-/// <summary>Programmatic child role overrides on host coverage regions: each rule refuses with its own reason and
-/// promised identifiers beside a passing control, and each capacity accepts its inclusive limit. All data is synthetic.</summary>
+/// <summary>Child role overrides on host coverage regions, programmatic and in JSON format 2: each rule refuses with its
+/// own reason and promised identifiers beside a passing control, and each capacity accepts its inclusive limit. All data
+/// is synthetic.</summary>
 public class HostCoverageChildRoleTests
 {
     const string Hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     static readonly CoverageChildRole BaseOverride = new(0, 0, 1, 2, 0, CoverageTriangleRole.Core);
+
+    const string ChestStrengths = "{\"surfaceId\":0,\"strength\":1},{\"surfaceId\":1,\"strength\":0}]";
+    const string ChildRolesMember = "\"childRoles\":[{\"mesh\":0,\"primitive\":0,\"triangle\":2,\"level\":2,\"cells\":[1,2],\"role\":\"core\"}]";
+
+    // Chest owns triangle 2 as collar at refinement level 2, and two of its four cells take the core role.
+    static readonly string Format2Canonical = HostCoverageMapTests.Canonical
+        .Replace("\"formatVersion\":1", "\"formatVersion\":2", StringComparison.Ordinal)
+        .Replace(ChestStrengths, ChestStrengths + "," + ChildRolesMember, StringComparison.Ordinal);
+
+    // The same map with childRoles first, other member orders, triangle 2 split over two entries and extra whitespace.
+    static readonly string Format2Reordered = " " + HostCoverageMapTests.Canonical
+        .Replace("\"formatVersion\":1", "\"formatVersion\" : 2", StringComparison.Ordinal)
+        .Replace("{\"key\":\"chest\",", "{\"key\":\"chest\", \"childRoles\" : [ {\"role\":\"core\",\"cells\":[ 2 ],\"level\":2," +
+            "\"triangle\":2,\"primitive\":0,\"mesh\":0}, {\"mesh\":0,\"triangle\":2,\"primitive\":0,\"cells\":[1],\"role\":\"core\",\"level\":2} ],",
+            StringComparison.Ordinal) + "\n";
+
+    [Fact]
+    public void Format_two_roundtrips_canonically_in_its_own_digest_domain()
+    {
+        byte[] canonical = Encoding.UTF8.GetBytes(Format2Canonical);
+        HostCoverageMap map = HostCoverageMapJson.Read(canonical, "host");
+        Assert.Equal(canonical, HostCoverageMapJson.Write(map));
+        Assert.Equal(Format2Canonical, Encoding.UTF8.GetString(HostCoverageMapJson.Write(
+            HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(Format2Reordered), "host-reordered"))));
+
+        string semantic = HostCoverageMapJson.SemanticSha256(map);
+        Assert.Equal("1ef068fdea3ce00b7a8d7283af0d050776d9527b56a9904fb515d9e512b4e89d", semantic);
+        Assert.Equal(Digest("KhaozEngine.HostCoverageMap/2\n", canonical), semantic);
+        Assert.NotEqual(Digest("KhaozEngine.HostCoverageMap/1\n", canonical), semantic);
+
+        // Without its child roles the map writes format 1 again and keeps the frozen format 1 identity.
+        var plain = new HostCoverageMap(map.HostSha256, map.Topology,
+            map.Regions.Select(region => new HostCoverageRegion(region.Key, region.Triangles, region.Strengths)), map.Refinement, map.Authoring);
+        Assert.Equal(HostCoverageMapTests.Canonical, Encoding.UTF8.GetString(HostCoverageMapJson.Write(plain)));
+        Assert.Equal("bbdfafa0b5d5e25dfc4210093bf8d0857a275362f72834ca8d080198a92de607", HostCoverageMapJson.SemanticSha256(plain));
+
+        CoverageChildRole[] cells = [new(0, 0, 2, 2, 2, CoverageTriangleRole.Core), new(0, 0, 2, 2, 1, CoverageTriangleRole.Core)];
+        var programmatic = new HostCoverageMap(plain.HostSha256, plain.Topology, plain.Regions.Select(region => region.Key == "chest"
+            ? new HostCoverageRegion(region.Key, region.Triangles, region.Strengths, cells) : region), plain.Refinement, plain.Authoring);
+        Assert.Equal(Format2Canonical, Encoding.UTF8.GetString(HostCoverageMapJson.Write(programmatic)));
+    }
+
+    [Theory]
+    [InlineData("format-one", HostCoverageRefusal.UnknownMember, "$.regions[1].childRoles", null, null, null, null, null)]
+    [InlineData("no-child-roles", HostCoverageRefusal.UnnecessaryFormatVersion, "$.formatVersion", null, null, null, null, null)]
+    [InlineData("empty-child-roles", HostCoverageRefusal.ChildRoleCapacity, "$.regions[1].childRoles", "chest", null, null, null, null)]
+    [InlineData("empty-cells", HostCoverageRefusal.ChildRoleCapacity, "$.regions[1].childRoles[0].cells", "chest", null, null, null, null)]
+    [InlineData("outside-region", HostCoverageRefusal.ChildRoleOutsideRegion, "$.regions[1].childRoles[0]", "chest", 1, 0, null, 1)]
+    [InlineData("level-3", HostCoverageRefusal.ChildRoleLevelMismatch, "$.regions[1].childRoles[0].level", "chest", 0, 2, 3, null)]
+    [InlineData("level-5", HostCoverageRefusal.RefinementLevel, "$.regions[1].childRoles[0].level", null, 0, 2, null, null)]
+    [InlineData("cell-4", HostCoverageRefusal.ChildRoleCell, "$.regions[1].childRoles[0].cells[1]", "chest", 0, 2, 2, 4)]
+    [InlineData("duplicate-cell", HostCoverageRefusal.DuplicateChildRole, "$.regions[1].childRoles[0].cells[1]", "chest", 0, 2, null, 1)]
+    [InlineData("role-collar", HostCoverageRefusal.ChildRoleSameAsParent, "$.regions[1].childRoles[0].role", "chest", 0, 2, null, 1)]
+    [InlineData("role-capitalised", HostCoverageRefusal.InvalidRole, "$.regions[1].childRoles[0].role", "chest", null, null, null, null)]
+    [InlineData("covers", HostCoverageRefusal.ChildRoleCoversTriangle, "$.regions[1].childRoles[0]", "chest", 0, 2, 2, null)]
+    [InlineData("fractional-cell", HostCoverageRefusal.InvalidInteger, "$.regions[1].childRoles[0].cells[0]", null, null, null, null, null)]
+    [InlineData("unknown-entry-member", HostCoverageRefusal.UnknownMember, "$.regions[1].childRoles[0].extra", null, null, null, null, null)]
+    public void Format_two_refusals_name_their_source_position_beside_a_passing_control(string row, HostCoverageRefusal reason,
+        string path, string? regionKey, int? primitive, int? triangle, int? level, int? cell)
+    {
+        Assert.Equal(2, HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(Format2Canonical), "control").Regions[1].ChildRoles.Count);
+
+        string Swap(string from, string to) => Format2Canonical.Replace(from, to, StringComparison.Ordinal);
+        string json = row switch
+        {
+            "format-one" => Swap("\"formatVersion\":2", "\"formatVersion\":1"),
+            "no-child-roles" => HostCoverageMapTests.Canonical.Replace("\"formatVersion\":1", "\"formatVersion\":2", StringComparison.Ordinal),
+            "empty-child-roles" => Swap(ChildRolesMember, "\"childRoles\":[]"),
+            "empty-cells" => Swap("\"cells\":[1,2]", "\"cells\":[]"),
+            "outside-region" => Swap("\"primitive\":0,\"triangle\":2", "\"primitive\":1,\"triangle\":0"),
+            "level-3" => Swap("\"level\":2,\"cells\"", "\"level\":3,\"cells\""),
+            "level-5" => Swap("\"level\":2,\"cells\"", "\"level\":5,\"cells\""),
+            "cell-4" => Swap("\"cells\":[1,2]", "\"cells\":[1,4]"),
+            "duplicate-cell" => Swap("\"cells\":[1,2]", "\"cells\":[1,1]"),
+            "role-collar" => Swap("\"cells\":[1,2],\"role\":\"core\"", "\"cells\":[1,2],\"role\":\"collar\""),
+            "role-capitalised" => Swap("\"cells\":[1,2],\"role\":\"core\"", "\"cells\":[1,2],\"role\":\"Core\""),
+            "covers" => Swap("\"cells\":[1,2]", "\"cells\":[0,1,2,3]"),
+            "fractional-cell" => Swap("\"cells\":[1,2]", "\"cells\":[1.5,2]"),
+            "unknown-entry-member" => Swap("\"cells\":[1,2],\"role\":\"core\"", "\"cells\":[1,2],\"role\":\"core\",\"extra\":0"),
+            _ => throw new ArgumentOutOfRangeException(nameof(row)),
+        };
+        Assert.NotEqual(Format2Canonical, json);
+        string identity = row + ".coverage.json";
+        var refusal = Assert.Throws<HostCoverageDataException>(() => HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(json), identity));
+        Assert.Equal((reason, path, identity, regionKey), (refusal.Reason, refusal.Path, refusal.Identity, refusal.RegionKey));
+        int? mesh = triangle is null ? null : 0;
+        Assert.Equal((mesh, primitive, triangle), (refusal.Mesh, refusal.Primitive, refusal.FirstTriangle));
+        Assert.Equal((level, cell), (refusal.Level, refusal.Cell));
+        (long?, long?) bound = row switch { "empty-child-roles" => (0, HostCoverageMap.MaxTriangles), "empty-cells" => (0, 15), _ => (null, null) };
+        Assert.Equal(bound, (refusal.Count, refusal.Limit));
+        Assert.Equal(row == "no-child-roles" ? 2 : (int?)null, refusal.FormatVersion);
+        if (reason == HostCoverageRefusal.UnknownMember) Assert.Equal(path[(path.LastIndexOf('.') + 1)..], refusal.MemberName);
+    }
 
     [Theory]
     [InlineData("triangle-7", HostCoverageRefusal.ChildRoleOutsideRegion, "$.childRoles[0]", "r0", 7, null, 0)]
@@ -84,6 +181,9 @@ public class HostCoverageChildRoleTests
         [new HostCoverageRegion("r0", [new(new(0, 0, 0, 3), CoverageTriangleRole.Collar), new(new(0, 0, 3, 1), CoverageTriangleRole.Core),
             new(new(0, 0, 4, 1), CoverageTriangleRole.Collar)], [new(0, 0f)], childRoles)],
         [new HostCoverageRefinement(new(0, 0, 0, 4), 2)], new("synthetic-exporter", "r1"));
+
+    static string Digest(string domain, byte[] canonical) =>
+        Convert.ToHexStringLower(SHA256.HashData([.. Encoding.UTF8.GetBytes(domain), .. canonical]));
 
     static IEnumerable<CoverageChildRole> Cells(int triangle, int count) =>
         Enumerable.Range(0, count).Select(cell => new CoverageChildRole(0, 0, triangle, 4, cell, CoverageTriangleRole.Core));

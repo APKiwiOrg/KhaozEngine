@@ -1914,7 +1914,7 @@ SharpGLTF) are confined to this package via
 
 ## Host coverage sidecars
 
-`HostCoverageMapJson.Read(utf8, identity)` reads strict host coverage format 1. `HostCoverageMap`
+`HostCoverageMapJson.Read(utf8, identity)` reads strict host coverage format 1 or 2. `HostCoverageMap`
 owns the exact host GLB SHA-256, welded surface topology, region triangle roles and strengths,
 fixed refinement levels from 1 to 4, and authoring labels. It snapshots and canonically sorts its
 collections. Limits are 32 regions, 65536 source render vertices and 65536 referenced triangles.
@@ -1933,9 +1933,24 @@ a region or map at most 65536. The rules refuse with `ChildRoleCapacity`, `Child
 `ChildRoleCoversTriangle`, with the declared `Level` and `Cell` among their identifiers. The
 three argument constructor means no overrides.
 
-`Write(map)` emits canonical UTF-8 with fixed member order and normalized signed zero.
-`SemanticSha256(map)` hashes `KhaozEngine.HostCoverageMap/1\n` followed by the canonical bytes,
-independently of source whitespace, member order or array order.
+Format 2 is format 1 plus an optional region member `childRoles`, written after `strengths`. Each
+entry groups the cells of one source triangle:
+`{"mesh":0,"primitive":0,"triangle":2,"level":2,"cells":[1,2],"role":"core"}`. The reader accepts
+entries in any order and a triangle split over several entries, and refusal paths name the source
+entry and cell position, such as `$.regions[1].childRoles[0].cells[1]`. `childRoles` in a format 1
+document refuses `UnknownMember`. An empty `childRoles` or `cells` array refuses `ChildRoleCapacity`
+with `Count` 0, and preflight bounds a region at 65536 entries and an entry at 15 cells. A format 2
+document with no child roles refuses `UnnecessaryFormatVersion`, because it would write back as
+format 1. `FormatVersion` stays 1 and `ChildRolesFormatVersion` is 2.
+
+`Write(map)` emits canonical UTF-8 with fixed member order and normalized signed zero. It writes
+format 1 unless some region has child roles, and then format 2 with one `childRoles` entry per
+triangle in ascending order, cells ascending. `SemanticSha256(map)` hashes
+`KhaozEngine.HostCoverageMap/1\n` or, for format 2, `KhaozEngine.HostCoverageMap/2\n`, followed
+by the canonical bytes, independently of source whitespace, member order or array order. A map
+without child roles keeps its format 1 bytes and identity. A map with child roles has a different
+identity from the same map without them, so a recession table or equipment companion pinned to one
+does not bind to the other.
 
 `HostCoverageDataException` derives from `MalformedDataException` and exposes the public
 `HostCoverageRefusal Reason`, caller `Identity` and rooted JSON `Path`. Count refusals include

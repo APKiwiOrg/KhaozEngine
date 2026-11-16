@@ -137,8 +137,8 @@ public sealed class HostCoverageRegion
 
 /// <summary>
 /// Immutable optional coverage metadata beside one exact host GLB, the in-memory form of strict host coverage JSON
-/// format 1 (<see cref="HostCoverageMapJson"/>). It names welded surface topology, authored regions, fixed render
-/// refinement and authoring labels. The constructor validates every rule that does not need the host source, snapshots
+/// (<see cref="HostCoverageMapJson"/>), format 1, or format 2 when a region has child roles. It names welded surface
+/// topology, authored regions, fixed render refinement and authoring labels. The constructor validates every rule that does not need the host source, snapshots
 /// the caller's collections and stores them in canonical order. Source-dependent checks (ranges inside the actual
 /// primitives, manifold affected topology, core strengths) belong to the importer that also holds the GLB.
 /// </summary>

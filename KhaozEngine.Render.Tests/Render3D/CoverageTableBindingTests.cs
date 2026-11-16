@@ -73,9 +73,10 @@ public sealed class CoverageTableBindingTests
     [InlineData("refinement")]
     [InlineData("arithmetic")]
     [InlineData("version-one")]
+    [InlineData("child-roles")]
     public void Stale_table_source_identity_refuses(string field)
     {
-        using var f = new CoverageBindingFixture();
+        using var f = new CoverageBindingFixture(childRoles: field == "child-roles");
         string different = new('b', 64);
         var identity = field switch
         {
@@ -83,6 +84,8 @@ public sealed class CoverageTableBindingTests
             "map" => f.Table.Identity with { HostMapSha256 = different },
             "refinement" => f.Table.Identity with { RefinementSha256 = different },
             "version-one" => f.Table.Identity with { ArithmeticSha256 = CoverageArithmeticContractTests.V1Digest },
+            // A table baked for the same map without its child roles.
+            "child-roles" => f.Table.Identity with { HostMapSha256 = f.MapSha256WithoutChildRoles },
             _ => f.Table.Identity with { ArithmeticSha256 = different },
         };
         var error = Assert.Throws<CoverageTableDataException>(() => f.Scene.CreateHostCoverage(f.Skeleton, f.Hosts, f.WithIdentity(identity)));

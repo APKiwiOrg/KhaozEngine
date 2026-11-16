@@ -143,18 +143,24 @@ This equation is not a fixed process RSS guarantee. It describes the executable'
 
 Snapshot admission uses one 65,536-byte copy/hash buffer and one numeric record buffer, bounded by C.
 A campaign hands out each decoded pose as a lease. The session's live pose count is the numeric bytes of
-every pose it decoded that is still held: a pose is counted while it is decoded and bound, and while its
-lease is undisposed. When a lease over a pose the packed session decoded is disposed, the session overwrites
-that pose's actor, palette and command words with NaN, so exact arithmetic refuses a reference kept past its
-lease and any outcome comparison fails. The overwrite writes `64 + 64*B + 132*C` bytes per released pose.
-A lease over a resident snapshot is non-owning, and disposing it never changes the caller's arrays.
-`Materialize`, dense evidence and replay `Poses` deep copy each session pose before its lease is released, so
-what they return is caller owned, stays valid and is not counted. Over a resident snapshot they return the
-caller's own rows. Every production reader releases one pose
-before it reads the next, so decoding and immutable binding hold at most two numeric poses. That property
-is enforced, not only reviewed: a reader that kept a released pose would read NaN and break the packed and
-inline parity tests, and one that kept its leases would exceed the deterministic two-pose assertion, which
-covers building, verification, replay, evidence writing and report collection. The maximum numeric pose is
+the pose it is decoding and binding, plus every pose whose lease is undisposed. It counts nothing else.
+When a lease over a pose the packed session decoded is disposed, the session overwrites that pose's actor,
+palette and command words with NaN, so exact arithmetic refuses any numerical use of a reference kept past
+its lease. The overwrite writes `64 + 64*B + 132*C` bytes per released pose and allocates nothing. A lease
+over a resident snapshot is non-owning, and disposing it never changes the caller's arrays.
+
+A released pose that something still references keeps its memory, and that memory is not counted, although
+its pose words are no longer usable. Copies a caller makes are caller owned and are also outside the count.
+`Materialize` and replay `Poses` deep copy each session pose before its lease is released, so what they
+return stays valid. Over a resident snapshot those two return the caller's own rows. Dense evidence always
+projects fresh caller owned numeric arrays, whatever the input.
+
+Every production reader releases one pose before it reads the next, so decoding and immutable binding hold
+at most two numeric poses. Two guards back that property. A reader that kept its leases would exceed the
+deterministic two-pose assertion, which covers building, verification, replay, evidence writing and report
+collection. A reader that used a pose after releasing it would be refused, which the packed and inline
+parity tests would show. Neither guard counts a released pose that is kept and never used again, so the
+bound is on leased and transient storage, not on everything a reader could retain. The maximum numeric pose is
 `64 + 64*1024 + 144*4 = 66,176` bytes, calculated from the transport guards. Object headers and static
 command binding references add bounded overhead. Writing flushes individual records and matrices,
 without a campaign-sized JSON buffer. Staging records its largest payload write and copy buffer, at most

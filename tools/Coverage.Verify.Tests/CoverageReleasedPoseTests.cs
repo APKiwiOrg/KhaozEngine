@@ -8,8 +8,9 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Tools.Coverage;
 
-/// <summary>A pose the packed session decoded is usable only while its lease is held, so the live pose count sees every
-/// holder. Resident data is never touched, and public projections hand out caller owned copies.</summary>
+/// <summary>A pose the packed session decoded is numerically usable only while its lease is held. A released pose is
+/// overwritten, so later numerical use is refused. The live pose count covers undisposed leases and transient decoding
+/// only. Resident data is never touched, and public projections hand out caller owned copies.</summary>
 public sealed class CoverageReleasedPoseTests
 {
     [Fact]

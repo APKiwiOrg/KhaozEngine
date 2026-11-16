@@ -46,9 +46,10 @@ public sealed class TemporalLockReleaseDxbcTests(ITestOutputHelper output)
     [Fact]
     public void DxbcCoverageIncludesEveryCheckedAndCertifiedRelease()
     {
-        Assert.Equal(20, TemporalLockReleaseDxbcPrograms.All.Length);
-        Assert.Equal(14, TemporalLockReleaseDxbcPrograms.Additional.Length);
-        Assert.Equal(10, TemporalLockReleaseDxbcPrograms.All.Count(p => p.Name.Contains("FullyLit", StringComparison.Ordinal)));
+        // The detail history adds fourteen release programs, six of them certified.
+        Assert.Equal(34, TemporalLockReleaseDxbcPrograms.All.Length);
+        Assert.Equal(28, TemporalLockReleaseDxbcPrograms.Additional.Length);
+        Assert.Equal(16, TemporalLockReleaseDxbcPrograms.All.Count(p => p.Name.Contains("FullyLit", StringComparison.Ordinal)));
         Assert.All(TemporalLockReleaseDxbcPrograms.All,
             p => Assert.Contains("[[dont_flatten]] if", p.Source, StringComparison.Ordinal));
     }
@@ -56,34 +57,47 @@ public sealed class TemporalLockReleaseDxbcTests(ITestOutputHelper output)
     void CheckBarriers(string program, string listing, bool conditional)
     {
         var instructions = TemporalVisibilityDxbc.Parse(listing);
-        var shift = Assert.Single(instructions, i => i.Opcode == "ushr" && i.Sources.Length == 2
-            && i.Sources[0].StartsWith("cb", StringComparison.Ordinal) && i.Sources[1] == "l(31)");
-        string sign = Assert.Single(shift.Destinations);
-        int branches = 0, scalarOrs = 0, orInstructions = 0;
-        bool tracking = false;
-        foreach (var instruction in instructions)
+        // FXC may hoist the integer sign shift or keep one per inlined release. Either way every barrier OR reads one
+        // of them, and the program carries twelve conditional scalar barriers for each release it compiles.
+        int[] shifts = Enumerable.Range(0, instructions.Count).Where(n => instructions[n].Opcode == "ushr"
+            && instructions[n].Sources.Length == 2 && instructions[n].Sources[0].StartsWith("cb", StringComparison.Ordinal)
+            && instructions[n].Sources[1] == "l(31)").ToArray();
+        int releases = Render3D.TemporalLockReleaseSpirv.Releases(program[..^"Frag".Length]);
+        Assert.Equal(releases > 0, shifts.Length > 0);
+        // A program with one release keeps its one shift, as every program did before the detail history.
+        if (releases == 1) Assert.Single(shifts);
+        int total = 0;
+        foreach (int shift in shifts)
         {
-            if (instruction.Opcode is "if_nz" or "if_z") branches++;
-            if (instruction.Opcode == "endif") branches--;
-            if (instruction.Equals(shift))
+            string sign = Assert.Single(instructions[shift].Destinations);
+            int branches = 0, scalarOrs = 0, orInstructions = 0;
+            bool tracking = false;
+            for (int n = 0; n < instructions.Count; n++)
             {
-                // FXC may hoist the shared integer sign shift. Every ordered barrier OR must stay conditional.
-                tracking = true;
-                continue;
+                var instruction = instructions[n];
+                if (instruction.Opcode is "if_nz" or "if_z") branches++;
+                if (instruction.Opcode == "endif") branches--;
+                if (n == shift)
+                {
+                    // Every ordered barrier OR after its shift must stay conditional.
+                    tracking = true;
+                    continue;
+                }
+                if (!tracking) continue;
+                if (instruction.Opcode == "or" && instruction.Sources.Any(s => Reads(s, sign)))
+                {
+                    string destination = Assert.Single(instruction.Destinations);
+                    scalarOrs += destination.Length - destination.IndexOf('.', StringComparison.Ordinal) - 1;
+                    orInstructions++;
+                    Assert.True(conditional ? branches > 0 : branches == 0,
+                        $"{program}: barrier OR at conditional depth {branches}");
+                }
+                if (instruction.Destinations.Any(s => Reads(s, sign))) break;
             }
-            if (!tracking) continue;
-            if (instruction.Opcode == "or" && instruction.Sources.Any(s => Reads(s, sign)))
-            {
-                string destination = Assert.Single(instruction.Destinations);
-                scalarOrs += destination.Length - destination.IndexOf('.', StringComparison.Ordinal) - 1;
-                orInstructions++;
-                Assert.True(conditional ? branches > 0 : branches == 0,
-                    $"{program}: barrier OR at conditional depth {branches}");
-            }
-            if (instruction.Destinations.Any(s => Reads(s, sign))) break;
+            output.WriteLine($"{program} {(conditional ? "shipped" : "D")}: {orInstructions} OR instructions, {scalarOrs} scalar barriers");
+            total += scalarOrs;
         }
-        output.WriteLine($"{program} {(conditional ? "shipped" : "D")}: {orInstructions} OR instructions, {scalarOrs} scalar barriers");
-        Assert.Equal(12, scalarOrs);
+        Assert.Equal(12 * releases, total);
     }
 
     static bool Reads(string operand, string scalar)

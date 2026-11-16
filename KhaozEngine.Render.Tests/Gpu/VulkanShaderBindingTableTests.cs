@@ -219,6 +219,22 @@ namespace KhaozEngine.Tests.Gpu
                 ["TemporalAccumulateHalfFullyLit"] = "TemporalSplitResolve fully lit accumulate",
                 ["TemporalAccumulateAtDisplaySizeFullyLit"] = "TemporalSplitResolve fully lit accumulate",
                 ["TemporalAccumulateAtDisplaySizeHalfFullyLit"] = "TemporalSplitResolve fully lit accumulate",
+                // The detail history's programs, both precisions binding alike.
+                ["TemporalDetailClassify"] = "TemporalDetailPass classify",
+                ["TemporalDetailClassifyHalf"] = "TemporalDetailPass classify",
+                ["TemporalDetailResolve"] = "TemporalDetailPass resolve",
+                ["TemporalDetailResolveHalf"] = "TemporalDetailPass resolve",
+                ["TemporalDetailResolveFullyLit"] = "TemporalDetailPass fully lit resolve",
+                ["TemporalDetailResolveHalfFullyLit"] = "TemporalDetailPass fully lit resolve",
+                ["TemporalDetailUpdate"] = "TemporalDetailPass update",
+                ["TemporalDetailDebug"] = "TemporalResolveRenderer detail debug view",
+                ["TemporalDetailDebugHalf"] = "TemporalResolveRenderer detail debug view",
+                ["TemporalDetailDebugFullyLit"] = "TemporalResolveRenderer fully lit detail debug view",
+                ["TemporalDetailDebugHalfFullyLit"] = "TemporalResolveRenderer fully lit detail debug view",
+                ["TemporalDetailProbe"] = "TemporalResolveRenderer detail count probe",
+                ["TemporalDetailProbeHalf"] = "TemporalResolveRenderer detail count probe",
+                ["TemporalDetailProbeFullyLit"] = "TemporalResolveRenderer fully lit detail count probe",
+                ["TemporalDetailProbeHalfFullyLit"] = "TemporalResolveRenderer fully lit detail count probe",
             };
 
         static readonly IReadOnlyDictionary<string, ShippedGraphicsProgram> GraphicsByName =

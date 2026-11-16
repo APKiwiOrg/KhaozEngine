@@ -18,6 +18,22 @@ internal static class TemporalLockReleaseSpirv
     /// <summary>The barriers one lock release compiles to, one per <c>temporalOrdered</c> call.</summary>
     internal const int BarriersPerRelease = 12;
 
+    /// <summary>The detail history programs that include the release, written out rather than discovered. Its
+    /// classification carries the accumulation's text but keeps only validity, so its unused lock compiles away. Its
+    /// resolve, debug view and count probe evaluate the lock twice, for the candidate prefix and for the history the
+    /// pixel takes, so each compiles two releases.</summary>
+    internal static readonly string[] DetailIncluders =
+    [
+        "TemporalDetailClassify", "TemporalDetailClassifyHalf",
+        .. new[] { "TemporalDetailResolve", "TemporalDetailResolveHalf", "TemporalDetailDebug", "TemporalDetailDebugHalf",
+            "TemporalDetailProbe", "TemporalDetailProbeHalf" }.SelectMany(name => new[] { name, name + "FullyLit" }),
+    ];
+
+    /// <summary>The lock releases a program compiles: none in the detail classification, two in a detail history
+    /// program that evaluates the lock for its candidate prefix, one in every other includer.</summary>
+    internal static int Releases(string programName) => !DetailIncluders.Contains(programName) ? 1
+        : programName.Contains("Classify", StringComparison.Ordinal) ? 0 : 2;
+
     const int OpTypeInt = 21, OpConstant = 43, OpDecorate = 71, OpShiftRightLogical = 194, OpBitwiseOr = 197;
     const int NoContraction = 42;
 
@@ -64,8 +80,8 @@ internal static class TemporalLockReleaseSpirv
 /// No <c>precise</c> survives in any shipped temporal program, on any backend, and every program with the lock release
 /// carries its twelve barriers (Task 7g.3a). The GLSL holds no <c>precise</c>, the SPIR-V no <c>NoContraction</c>, the
 /// emitted HLSL no <c>precise</c> and the emitted MSL none of the <c>spvF</c> wrappers SPIRV-Cross writes for it. The twenty
-/// programs that include the release compile exactly twelve barrier ORs each, all inside the non-bypass branch
-/// since Task 7h Z. TemporalPrepare includes none. <see cref="TemporalLockZeroBypassTests"/> checks the branch.
+/// ordinary programs that include the release compile exactly twelve barrier ORs each, all inside the non-bypass branch
+/// since Task 7h Z, and the detail history's programs twelve for each release they evaluate. TemporalPrepare includes none. <see cref="TemporalLockZeroBypassTests"/> checks the branch.
 /// Device-free.
 /// </summary>
 public sealed class TemporalLockReleaseCompiledTests
@@ -75,7 +91,7 @@ public sealed class TemporalLockReleaseCompiledTests
         "TemporalResolve", "TemporalResolveHalf", "TemporalAccumulate", "TemporalAccumulateHalf",
         "TemporalAccumulateAtDisplaySize", "TemporalAccumulateAtDisplaySizeHalf", "TemporalCountProbe",
         "TemporalCountProbeHalf", "TemporalDebugView", "TemporalDebugViewHalf",
-    }.SelectMany(name => new[] { name, name + "FullyLit" }).ToArray();
+    }.SelectMany(name => new[] { name, name + "FullyLit" }).Concat(TemporalLockReleaseSpirv.DetailIncluders).ToArray();
 
     static IEnumerable<ShippedGraphicsProgram> Temporal() => ShippedShaderPrograms.GraphicsPrograms()
         .Where(p => p.Name.Contains("Temporal", StringComparison.Ordinal));
@@ -156,7 +172,7 @@ public sealed class TemporalLockReleaseCompiledTests
             .Where(p => Includers.Contains(p.Name)))
         {
             int barriers = TemporalLockReleaseSpirv.Barriers(TemporalLockReleaseSpirv.Fragment(program.FragmentGlsl));
-            Assert.True(barriers == TemporalLockReleaseSpirv.BarriersPerRelease,
+            Assert.True(barriers == TemporalLockReleaseSpirv.BarriersPerRelease * TemporalLockReleaseSpirv.Releases(program.Name),
                 $"{program.Name}: {barriers} barrier ORs compiled");
         }
         Assert.Equal(0, TemporalLockReleaseSpirv.Barriers(TemporalLockReleaseSpirv.Fragment(ShaderSources.TemporalPrepareFrag)));

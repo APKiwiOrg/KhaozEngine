@@ -5,7 +5,8 @@ using R = KhaozEngine.TileWorld.Physics.TileWaterConvexShape.Range;
 
 namespace KhaozEngine.TileWorld.Physics;
 
-/// <summary>Optional hit preparations in one 4 MiB slab, plus one 176-basis, 10-plane workspace.</summary>
+/// <summary>Optional hit preparations in one 4 MiB slab, one 176-basis, 10-plane workspace and the trace's
+/// shared parent projections.</summary>
 internal sealed class TileWaterPreparationStorage
 {
     internal const int ByteBudget = 4 * 1024 * 1024;
@@ -31,9 +32,14 @@ internal sealed class TileWaterPreparationStorage
         Shared.EndTrace();
     }
 
+    /// <summary>Prepares a shape in the workspace. A face also borrows its parent's published projections.</summary>
     internal TileWaterPreparedQuery Prepare(TileWaterConvexShape shape, V start, V drive, I core, float radius,
-        double heightError = 0, double horizontalError = 0) =>
-        Workspace.Prepare(shape, start, drive, core, radius, heightError, horizontalError);
+        double heightError = 0, double horizontalError = 0)
+    {
+        var prepared = Workspace.Prepare(shape, start, drive, core, radius, heightError, horizontalError);
+        if (shape.ProjectionParent is not null) prepared.Share(Shared.Lend(shape, prepared.SharingKey, _slab));
+        return prepared;
+    }
 
     internal void DiscardMiss(ref TileWaterPreparedQuery prepared)
     {

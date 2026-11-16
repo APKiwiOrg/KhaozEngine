@@ -221,6 +221,7 @@ internal ref struct TileWaterPreparedQuery
     internal bool CanRetain => _header.HasControlToken;
     internal readonly TileWaterConvexShape Shape => _shape;
     internal readonly Header SharingKey => _header;
+    internal readonly ReadOnlySpan<BasisState> States => _states;
 
     internal readonly bool HasSharedSource => !_source.IsEmpty;
 
@@ -251,6 +252,15 @@ internal ref struct TileWaterPreparedQuery
             MemoryMarshal.Cast<byte, BasisState>(source.Slice(headerBytes, stateBytes)),
             MemoryMarshal.Cast<byte, ClipTerm>(source.Slice(headerBytes + stateBytes, clipBytes)),
             MemoryMarshal.Cast<byte, PlaneState>(source.Slice(headerBytes + stateBytes + clipBytes, shape.Planes.Length * Unsafe.SizeOf<PlaneState>())));
+    }
+
+    // Read-only view of a retained preparation's header and basis states, in the layout CopyTo writes.
+    internal static ReadOnlySpan<BasisState> RetainedStates(TileWaterConvexShape shape, ReadOnlySpan<byte> source,
+        out Header header)
+    {
+        header = MemoryMarshal.Read<Header>(source);
+        return MemoryMarshal.Cast<byte, BasisState>(source.Slice(Unsafe.SizeOf<Header>(),
+            shape.Bases.Length * Unsafe.SizeOf<BasisState>()));
     }
 
     TileWaterPreparedQuery(TileWaterConvexShape shape, Header header, Span<BasisState> states, Span<ClipTerm> clips, Span<PlaneState> planeTerms)

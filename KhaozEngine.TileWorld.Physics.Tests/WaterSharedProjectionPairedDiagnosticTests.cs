@@ -28,6 +28,10 @@ public sealed class WaterSharedProjectionPairedDiagnosticTests(ITestOutputHelper
     [Trait("Category", "Diagnostic")]
     public void ReportPairedSharedProjectionSteps()
     {
+#if WATER_PRISM_CENSUS
+        // The census build counts work inside the kernel being timed, so it is refused before any scene or clock.
+        output.WriteLine("Paired shared projection timing refuses the census build, which instruments the kernel. Nothing measured.");
+#else
         if (Environment.GetEnvironmentVariable("DOTNET_TieredCompilation") != "0")
         {
             output.WriteLine("Paired shared projection timing requires DOTNET_TieredCompilation=0. Nothing measured.");
@@ -45,6 +49,7 @@ public sealed class WaterSharedProjectionPairedDiagnosticTests(ITestOutputHelper
             architecture = RuntimeInformation.ProcessArchitecture.ToString()
         }));
         foreach (string name in new[] { "bank-along", "shore-traverse" }) Measure(name);
+#endif
     }
 
     void Measure(string name)

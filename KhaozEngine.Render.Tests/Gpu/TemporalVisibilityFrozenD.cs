@@ -134,7 +134,8 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
     /// <see cref="TemporalVisibilityFrozenDMask.Restore"/>. Production's lock release helper stays. A program that holds
     /// none of them, such as the depth store, comes back unchanged, and the split's first pass takes only the mask
     /// restore. One that holds only some of the release pieces, or holds one twice, or holds the release without the
-    /// mask's pieces, throws, so a production change cannot leave the D program half rewritten.</summary>
+    /// mask's pieces, throws, so a production change cannot leave the D program half rewritten. A detail history
+    /// program keeps its own composition and takes only the frozen decision (<see cref="RewriteDetail"/>).</summary>
     internal static string ToD(string program) => Rewrite(program, VisibilityGlsl, CallSiteGlsl, HoldReleaseGlsl);
 
     /// <summary>A production fragment program as the program D shipped: <see cref="ToD"/>, then production's lock
@@ -171,6 +172,7 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
     {
         // Test pipelines compile both members. Restore omitted resources before applying the frozen decision.
         program = TemporalVisibilityFullyLitGpuTests.ForceCheck(program);
+        if (RewriteDetail(program, visibility, callSite, holdRelease) is string detail) return detail;
         // Production changes after D outside its frozen pieces come out first, so the anchors below see D's program.
         program = TemporalVisibilityFrozenDLaterChanges.Restore(program);
         string released = RewriteRelease(program, visibility, callSite, holdRelease);
@@ -179,6 +181,42 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
             throw new InvalidOperationException("the D rewrite found the visibility release without the current mask's "
                 + "pieces");
         return restored;
+    }
+
+    // Where the production decision statement starts and ends, the span the certified specialization replaces.
+    const string ProductionDecisionFirst = "    bool visibilityReleased = ";
+    const string ProductionDecisionLast = "    if (visibilityReleased) lockValue = 0.0;";
+
+    /// <summary>THE DETAIL HISTORY'S COMPOSITION. <c>Post.Temporal.HistoryDetail = Fine</c> came after D, so no D
+    /// program exists for it to restore. Its resolve evaluates the shared lock in one function that both the
+    /// candidate prefix and the final history call, so the call-site span and the later-change undo, which assume
+    /// one inline accumulation with one history fetch, cannot apply. Its D form keeps the mode's composition and
+    /// replaces only the decision: the frozen visibility helper, and D's release statement in place of the production
+    /// one. A program that holds any piece of the composition must hold the lock function, the final history block,
+    /// the visibility helper, the decision and the hold release once each, or this throws. A program that holds none
+    /// returns null and takes the ordinary rewrite with its own whole-or-none rules.</summary>
+    static string? RewriteDetail(string program, string visibility, string callSite, string holdRelease)
+    {
+        int locks = Count(program, ShaderSources.TemporalDetailLockGlsl);
+        int finals = Count(program, ShaderSources.TemporalDetailAfterFetchGlsl);
+        if (locks == 0 && finals == 0) return null;
+        int helpers = Count(program, ShaderSources.TemporalVisibilityGlsl);
+        int decisions = Count(program, ProductionDecisionFirst);
+        int holds = Count(program, ProductionHoldRelease);
+        if (locks != 1 || finals != 1 || helpers != 1 || decisions != 1 || holds != 1)
+            throw new InvalidOperationException($"the detail D rewrite found {locks} lock functions, {finals} final "
+                + $"history blocks, {helpers} visibility blocks, {decisions} decisions and {holds} hold releases, one "
+                + "of each expected");
+        int dFirst = callSite.IndexOf(ProductionDecisionFirst, StringComparison.Ordinal);
+        int dLast = callSite.IndexOf(ProductionDecisionLast, dFirst, StringComparison.Ordinal);
+        string decision = callSite[dFirst..(dLast + ProductionDecisionLast.Length)];
+        int start = program.IndexOf(ProductionDecisionFirst, StringComparison.Ordinal);
+        int end = program.IndexOf(ProductionDecisionLast, start, StringComparison.Ordinal);
+        if (end < 0) throw new InvalidOperationException("the detail D rewrite found no end to the production decision");
+        string rewritten = program[..start] + decision + program[(end + ProductionDecisionLast.Length)..];
+        rewritten = rewritten.Replace(ShaderSources.TemporalVisibilityGlsl, visibility, StringComparison.Ordinal);
+        int hold = rewritten.IndexOf(ProductionHoldRelease, StringComparison.Ordinal);
+        return rewritten[..hold] + holdRelease + rewritten[(hold + ProductionHoldRelease.Length)..];
     }
 
     static string RewriteRelease(string program, string visibility, string callSite, string holdRelease)

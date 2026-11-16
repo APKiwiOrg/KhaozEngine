@@ -153,6 +153,35 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Throws<InvalidOperationException>(() => TemporalVisibilityFrozenD.ToD(lostMask));
         }
 
+        [Theory]
+        [InlineData("none", false)]
+        [InlineData("lock", false)]
+        [InlineData("lock", true)]
+        [InlineData("final history", false)]
+        [InlineData("final history", true)]
+        [InlineData("visibility", false)]
+        [InlineData("visibility", true)]
+        public void TheDRewriteRefusesAPartialOrDuplicatedDetailComposition(string piece, bool duplicate)
+        {
+            string program = ShaderSources.TemporalDetailResolveFragment(TemporalResolvePrecision.Full);
+            if (piece == "none")
+            {
+                Assert.Contains(TemporalVisibilityFrozenD.VisibilityGlsl, TemporalVisibilityFrozenD.ToD(program),
+                    StringComparison.Ordinal);
+                return;
+            }
+            string text = piece switch
+            {
+                "lock" => ShaderSources.TemporalDetailLockGlsl,
+                "final history" => ShaderSources.TemporalDetailAfterFetchGlsl,
+                "visibility" => ShaderSources.TemporalVisibilityGlsl,
+                _ => throw new ArgumentOutOfRangeException(nameof(piece)),
+            };
+            Assert.Equal(1, Count(program, text));
+            string mutant = program.Replace(text, duplicate ? text + text : "\n", StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => TemporalVisibilityFrozenD.ToD(mutant));
+        }
+
         [Fact]
         public void TheMutantRewriteChangesOnlyTheCallSite()
         {

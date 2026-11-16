@@ -186,7 +186,10 @@ beside an unchanged-key hit. Its four mutation controls first take a real hit, t
 old drive, another control token or a stale owner, and finally hand the production evaluator rows that defeat only
 that check, or a wrong parent map, which must fail `FrozenRangeBitsEqual`. It also pins reached and resolved rows
 only, an unevaluated parent, trace-end forgetting, nested and reentrant fallbacks, a full table and the reserved
-payload. `WaterSharedProjectionCoverageTests` runs whole prism traces shared and bypassed with frozen parity, overflows
+payload. Three stale-source rows hold a lent source past the point its storage stopped belonging to it: through a
+reentrant trace that retains another parent with the same raw inputs at the same slab offset, past its trace's end
+and a later republish into its slot, and past its own settle and another face's lend. Each must copy nothing, count
+every basis as stale and keep frozen output. `WaterSharedProjectionCoverageTests` runs whole prism traces shared and bypassed with frozen parity, overflows
 the table, measures zero warm allocation shared, exhausted and bypassed, and collects a discarded capture after a
 sharing trace. The moving-history oracle also requires the advancing histories to copy shared projections.
 
@@ -260,8 +263,8 @@ steps all four from the same state in alternating order and requires bit-identic
 tick and, per history, side means, medians and P10/P90, the mean and median savings and each repeat floor, the larger
 relative difference between a path's two identical replicates. A saving is resolved only when it exceeds that floor.
 It lives in the test project because the shipped physics assembly grants the benchmark project no friend access
-outside the census build, which instruments the timed kernel. It is Diagnostic, refuses to time with tiering on and
-asserts no time.
+outside the census build, which instruments the timed kernel. It is Diagnostic, refuses the census build at compile
+time before any scene or clock, refuses to time with tiering on and asserts no time.
 
 ## Contact query cost diagnostic
 

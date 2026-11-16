@@ -11,18 +11,33 @@ internal sealed class CoverageDiagnosticRun
 {
     CoverageDiagnosticDocument? document;
     (string Command, int Exit) collected;
+    CoverageRecessionTable? table;
+    CoverageEvidenceManifest? evidence;
+    CoverageReplayResult? replay;
+    string? refusal, resumedEvidenceSha256;
     internal string? Path { get; set; }
     internal CoverageCampaign? Input { get; set; }
-    internal CoverageRecessionTable? Table { get; set; }
-    internal CoverageEvidenceManifest? Evidence { get; set; }
-    internal CoverageReplayResult? Replay { get; set; }
-    internal string? Refusal { get; set; }
+    // The run is sealed once collected, so state that would never reach the report cannot be set after it.
+    internal CoverageRecessionTable? Table { get => table; set => table = Sealed(value); }
+    internal CoverageEvidenceManifest? Evidence { get => evidence; set => evidence = Sealed(value); }
+    internal CoverageReplayResult? Replay { get => replay; set => replay = Sealed(value); }
+    internal string? Refusal { get => refusal; set => refusal = Sealed(value); }
     /// <summary>SHA-256 of the exact evidence root bytes resume admission read, recorded as soon as they are read so a
     /// later resume refusal still names them. Null means no existing evidence was read.</summary>
-    internal string? ResumedEvidenceSha256 { get; set; }
+    internal string? ResumedEvidenceSha256 { get => resumedEvidenceSha256; set => resumedEvidenceSha256 = Sealed(value); }
     /// <summary>True once a transaction carrying this report was attempted. A failed attempt leaves the previous report
     /// in place, so no second report replaces it.</summary>
     internal bool PublicationAttempted { get; set; }
+
+    /// <summary>Records the run refusal for a report not yet attempted. A report that a failed transaction already
+    /// carried is final, and the previous report stays in place.</summary>
+    internal void Refuse(string reason)
+    {
+        if (!PublicationAttempted) Refusal = reason;
+    }
+
+    T Sealed<T>(T value) => document == null ? value
+        : throw new InvalidOperationException("Diagnostic state cannot change after the report was collected.");
 
     internal CoverageArtifactHeader CreateHeader(string command, int exit) => CoverageDiagnosticWriter.Header(Collect(command, exit));
     internal void WriteTo(Stream destination, string command, int exit) => Collect(command, exit).WriteTo(destination);

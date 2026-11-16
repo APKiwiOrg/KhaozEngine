@@ -15,16 +15,21 @@ namespace KhaozEngine.Tests.Tools.Coverage;
 public sealed class CoverageDiagnosticSetTests
 {
     static readonly string Scratch = Path.Combine(Path.GetTempPath(), "khaozengine-coverage-packed-input", "task-6");
+    const int ProductionBound = 67_108_864;
     static readonly string[] Blocking = ["holes", "selectedFailures", "replayFailures", "missingDenseWork", "analysisRefusals", "runRefusals"];
 
-    // A future version of a known set envelope is an unsupported version, not a malformed legacy diagnostic.
+    // A future version of a known set envelope is an unsupported version, not a malformed legacy diagnostic. A suffix
+    // that is not a version number, including 0, is a malformed envelope.
     [Theory]
-    [InlineData("evidence", null)]
-    [InlineData("diagnostics", null)]
-    [InlineData("legacy-diagnostics", null)]
-    [InlineData("evidence", 2L)]
-    [InlineData("diagnostics", 2L)]
-    public void Unknown_versions_of_known_set_schemas_refuse_as_unsupported(string root, long? version)
+    [InlineData("evidence", null, null)]
+    [InlineData("diagnostics", null, null)]
+    [InlineData("legacy-diagnostics", null, null)]
+    [InlineData("evidence", "2", CoverageBuildInputRefusal.UnsupportedVersion)]
+    [InlineData("diagnostics", "2", CoverageBuildInputRefusal.UnsupportedVersion)]
+    [InlineData("evidence", "01", CoverageBuildInputRefusal.ArtifactSetInvalid)]
+    [InlineData("diagnostics", "x", CoverageBuildInputRefusal.ArtifactSetInvalid)]
+    [InlineData("evidence", "0", CoverageBuildInputRefusal.ArtifactSetInvalid)]
+    public void Known_set_schemas_refuse_unknown_and_malformed_versions(string root, string? version, CoverageBuildInputRefusal? reason)
     {
         using var fixture = new CoveragePublicationFixture();
         fixture.Publish(fixture.Stage("schema"));
@@ -37,7 +42,7 @@ public sealed class CoverageDiagnosticSetTests
             using var legacy = File.Create(path);
             payload.CopyTo(legacy);
         }
-        if (version is not { } value)
+        if (version is not { } suffix)
         {
             using var read = CoverageArtifactReader.Open(path, fixture.Scratch);
             Assert.Equal(CoverageArtifactSet.HashFile(path), read.RootSha256);
@@ -46,11 +51,12 @@ public sealed class CoverageDiagnosticSetTests
         var index = JsonNode.Parse(File.ReadAllBytes(path))!;
         string schema = (string)index["schema"]!;
         Assert.EndsWith("-set/1", schema, StringComparison.Ordinal);
-        index["schema"] = schema[..^1] + value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        index["schema"] = schema[..^1] + suffix;
         File.WriteAllText(path, index.ToJsonString());
         var error = Assert.Throws<CoverageBuildDataException>(() => CoverageArtifactReader.Open(path, fixture.Scratch));
-        Assert.Equal(CoverageBuildInputRefusal.UnsupportedVersion, error.Reason);
-        Assert.Equal(value, error.FormatVersion);
+        Assert.Equal(reason, error.Reason);
+        Assert.Equal(reason == CoverageBuildInputRefusal.UnsupportedVersion ? long.Parse(suffix, System.Globalization.CultureInfo.InvariantCulture) : null,
+            error.FormatVersion);
         Assert.Equal("$.schema", error.Path);
     }
 
@@ -78,18 +84,21 @@ public sealed class CoverageDiagnosticSetTests
         Assert.Equal(4, Category(control.RootElement, "candidatePairs").GetArrayLength());
     }
 
-    // An index that cannot name every part refuses before publication. Nothing is truncated or replaced.
+    // An index that cannot name every part refuses before publication. Nothing is truncated or replaced. The campaign
+    // is accepted and the evidence bound is the production one, so exit 1 can only be the output refusal.
     [Fact]
     public void Diagnostic_index_bound_refuses_without_replacing_prior_diagnostics()
     {
-        using var files = Holed();
+        using var files = new CoverageBuildFiles(scratchDirectory: Scratch);
         File.WriteAllText(PathFor(files), "prior-report");
-        Assert.Equal(1, Program.Run(Args(files, "build"), 1024));
+        Assert.Equal(1, Program.RunForTests(Args(files, "build"), ProductionBound, 1024, null));
         Assert.Equal("prior-report", File.ReadAllText(PathFor(files)));
         Assert.False(Directory.Exists(PathFor(files) + ".parts"));
-        Assert.Equal(1, Program.Run(Args(files, "build"), 4096));
-        using var control = Read(files, "build", "refused");
-        Assert.Equal(1, Category(control.RootElement, "holes").GetArrayLength());
+        Assert.False(File.Exists(files.TablePath));
+        Assert.False(File.Exists(files.EvidencePath));
+        Assert.Equal(0, Program.RunForTests(Args(files, "build"), ProductionBound, 4096, null));
+        using var control = Read(files, "build", "accepted");
+        Assert.Equal(0, control.RootElement.GetProperty("findingCount").GetInt32());
     }
 
     // Producer hashes name the loaded assemblies. The resumed hash names the exact root bytes read, never the payload.
@@ -122,6 +131,8 @@ public sealed class CoverageDiagnosticSetTests
         Assert.Equal(root, set.RootElement.GetProperty("resumedEvidenceSha256").GetString());
     }
 
+    // The fault fails only the first transaction. Both accepted rows therefore also guard that a failed accepted
+    // transaction is not followed by a second report over the previous one.
     [Theory]
     [InlineData(true, "ReplaceDiagnostic", 0, true)]
     [InlineData(true, "ReplaceEvidence", 0, true)]
@@ -142,9 +153,9 @@ public sealed class CoverageDiagnosticSetTests
         }
         if (prior) File.WriteAllText(PathFor(files), "prior-report");
         // The refused report spans parts at the reduced bound, so a late part can fail.
-        int limit = accepted ? 67_108_864 : 4096;
+        int limit = accepted ? ProductionBound : 4096;
         var fault = new CoveragePublicationFault(Enum.Parse<CoveragePublicationStep>(step), ordinal);
-        Assert.Equal(1, Program.RunForTests(Args(files, "build"), limit, fault));
+        Assert.Equal(1, Program.RunForTests(Args(files, "build"), limit, limit, fault));
         if (prior) Assert.Equal("prior-report", File.ReadAllText(PathFor(files)));
         else Assert.False(File.Exists(PathFor(files)));
         Assert.Equal(table, File.Exists(files.TablePath) ? File.ReadAllBytes(files.TablePath) : null);
@@ -154,6 +165,49 @@ public sealed class CoverageDiagnosticSetTests
         using var control = Read(files, "build", accepted ? "accepted" : "refused");
         Assert.Equal(accepted ? 0 : 1, control.RootElement.GetProperty("findingCount").GetInt32());
         if (accepted) foreach (string name in Blocking) Assert.Equal(0, Category(control.RootElement, name).GetArrayLength());
+    }
+
+    // A resume that reads the old root and then refuses still names the exact bytes it read. The accepted resume
+    // rows above are its passing control.
+    [Fact]
+    public void Refused_resume_names_the_evidence_root_it_read()
+    {
+        using var files = new CoverageBuildFiles(scratchDirectory: Scratch);
+        Assert.Equal(0, Program.Main(Args(files, "build", diagnostics: false)));
+        byte[] evidence = File.ReadAllBytes(files.EvidencePath);
+        // Sample verification of the same table writes different records, so this resume refuses after reading.
+        Assert.Equal(1, Program.Main(Args(files, "verify-samples")));
+        Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
+        using var report = Read(files, "verify-samples", "refused");
+        Assert.Equal(nameof(CoverageBuildValidationRefusal.ArtifactContentMismatch), report.RootElement.GetProperty("reason").GetString());
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(evidence)), report.RootElement.GetProperty("resumedEvidenceSha256").GetString());
+    }
+
+    // Collection runs once per outcome, so state set after it would never reach the report. Setting it is refused.
+    [Theory]
+    [InlineData("Refusal")]
+    [InlineData("ResumedEvidenceSha256")]
+    [InlineData("Evidence")]
+    [InlineData("Replay")]
+    [InlineData("Table")]
+    public void Collected_diagnostic_state_cannot_change(string property)
+    {
+        var run = new CoverageDiagnosticRun { Input = CoverageCampaign.FromSnapshot(CoverageBuildFixture.Input()) };
+        void Set()
+        {
+            switch (property)
+            {
+                case "Refusal": run.Refusal = "SampleHole"; break;
+                case "ResumedEvidenceSha256": run.ResumedEvidenceSha256 = CoverageBuildFixture.Hash; break;
+                case "Evidence": run.Evidence = null; break;
+                case "Replay": run.Replay = null; break;
+                default: run.Table = null; break;
+            }
+        }
+        Set();
+        var header = run.CreateHeader("build", 1);
+        if (property == "ResumedEvidenceSha256") Assert.Equal(CoverageBuildFixture.Hash, header.ResumedEvidenceSha256);
+        Assert.Throws<InvalidOperationException>(Set);
     }
 
     // An independent roster of the schema's categories, in order.

@@ -12,27 +12,32 @@ public static class Program
     /// <summary>0 complete accepted work, 1 validation/output failure, 2 malformed input.</summary>
     public static int Main(string[] args) => Run(args, CoverageBuildInputJson.MaxBytes);
 
-    internal static int Run(string[] args, int evidenceByteLimit) => Run(args, evidenceByteLimit, null);
+    internal static int Run(string[] args, int evidenceByteLimit) => Run(args, evidenceByteLimit, evidenceByteLimit, null);
 
-    /// <summary>Runs with one synthetic publication fault, through the same staging and publisher as production.</summary>
-    internal static int RunForTests(string[] args, int artifactByteLimit, CoveragePublicationFault fault) => Run(args, artifactByteLimit, fault);
+    /// <summary>Runs through the same staging and publisher as production, with a separate reduced report bound and an
+    /// optional synthetic fault. The fault applies to the first transaction only, so a second publication after a
+    /// failed one is never masked by the same fault.</summary>
+    internal static int RunForTests(string[] args, int evidenceByteLimit, int diagnosticByteLimit, CoveragePublicationFault? fault) =>
+        Run(args, evidenceByteLimit, diagnosticByteLimit, fault);
 
-    static int Run(string[] args, int evidenceByteLimit, CoveragePublicationFault? fault)
+    static int Run(string[] args, int evidenceByteLimit, int diagnosticByteLimit, CoveragePublicationFault? fault)
     {
         var diagnostic = new CoverageDiagnosticRun();
         List<string> protectedInputs = [], acceptedOutputs = [];
-        int exit = RunAccepted(args, evidenceByteLimit, fault, diagnostic, protectedInputs, acceptedOutputs);
+        int exit = RunAccepted(args, evidenceByteLimit, diagnosticByteLimit, fault, diagnostic, protectedInputs, acceptedOutputs);
         // A failed transaction that already carried the report leaves the previous report in place.
         if (exit == 1 && diagnostic.Path != null && diagnostic.Input != null && !diagnostic.PublicationAttempted)
         {
             // A refusal replaces only diagnostics, so the accepted table and evidence are protected like inputs.
-            try { Publish([], null, (diagnostic, args[0], exit), [.. protectedInputs, .. acceptedOutputs], evidenceByteLimit, fault); }
+            // An injected fault belongs to the first transaction this run attempts.
+            var first = diagnostic.PublicationAttempted ? null : fault;
+            try { Publish([], null, (diagnostic, args[0], exit), [.. protectedInputs, .. acceptedOutputs], diagnosticByteLimit, first); }
             catch (CoverageBuildValidationException error) { Console.Error.WriteLine(error.Reason); return 1; }
         }
         return exit;
     }
 
-    static int RunAccepted(string[] args, int evidenceByteLimit, CoveragePublicationFault? fault, CoverageDiagnosticRun diagnostic,
+    static int RunAccepted(string[] args, int evidenceByteLimit, int diagnosticByteLimit, CoveragePublicationFault? fault, CoverageDiagnosticRun diagnostic,
         List<string> protectedInputs, List<string> acceptedOutputs)
     {
         try
@@ -121,12 +126,12 @@ public static class Program
             (string Path, byte[] Bytes)[] outputs = tableBytes == null ? [] : [(tablePath, tableBytes)];
             diagnostic.PublicationAttempted = diagnostic.Path != null;
             Publish(outputs, (evidencePath, evidence, evidenceBytes), diagnostic.Path == null ? null : (diagnostic, args[0], 0),
-                protectedInputs, evidenceByteLimit, fault);
+                protectedInputs, diagnosticByteLimit, fault);
             return 0;
         }
         catch (CoverageVerificationException error)
         {
-            diagnostic.Refusal = error.Reason.ToString();
+            diagnostic.Refuse(error.Reason.ToString());
             Console.Error.WriteLine(JsonSerializer.Serialize(new
             {
                 Reason = error.Reason.ToString(),
@@ -141,8 +146,8 @@ public static class Program
             }));
             return 1;
         }
-        catch (CoverageToolStateException error) { diagnostic.Refusal = error.Reason.ToString(); Console.Error.WriteLine(error.Reason); return 1; }
-        catch (CoverageBuildValidationException error) { diagnostic.Refusal = error.Reason.ToString(); Console.Error.WriteLine(error.Reason); return 1; }
+        catch (CoverageToolStateException error) { diagnostic.Refuse(error.Reason.ToString()); Console.Error.WriteLine(error.Reason); return 1; }
+        catch (CoverageBuildValidationException error) { diagnostic.Refuse(error.Reason.ToString()); Console.Error.WriteLine(error.Reason); return 1; }
         catch (CoverageBuildDataException error) { Console.Error.WriteLine($"{error.Reason} {error.Path}"); return 2; }
         catch (MalformedDataException error) { Console.Error.WriteLine(error.GetType().Name); return 2; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
@@ -162,9 +167,9 @@ public static class Program
 
     /// <summary>Stages outputs and hands them to the common publisher. The evidence root is published last as the commit
     /// point. It stays one legacy file because its bytes already fit the evidence bound. The diagnostic report is staged
-    /// complete, as one file or as a set split at <paramref name="artifactByteLimit"/>.</summary>
+    /// complete, as one file or as a set split at <paramref name="diagnosticByteLimit"/>.</summary>
     static void Publish((string Path, byte[] Bytes)[] files, (string Path, CoverageEvidenceManifest Manifest, byte[] Bytes)? evidence,
-        (CoverageDiagnosticRun Run, string Command, int Exit)? diagnostics, IReadOnlyList<string> protectedInputs, int artifactByteLimit,
+        (CoverageDiagnosticRun Run, string Command, int Exit)? diagnostics, IReadOnlyList<string> protectedInputs, int diagnosticByteLimit,
         CoveragePublicationFault? fault)
     {
         string? scratch = null;
@@ -180,7 +185,7 @@ public static class Program
                 plain.Add(new(path, stage, bytes.LongLength, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))));
             }
             if (diagnostics is { } report)
-                staged.Add(report.Run.Stage(report.Command, report.Exit, scratch, artifactByteLimit, artifactByteLimit));
+                staged.Add(report.Run.Stage(report.Command, report.Exit, scratch, diagnosticByteLimit, diagnosticByteLimit));
             if (evidence is { } value)
                 staged.Add(CoverageArtifactWriter.Stage(value.Path, value.Manifest.CreateHeader(), s => s.Write(value.Bytes), scratch));
             if (fault is { } injected) CoveragePublisher.PublishForTests(plain, staged, protectedInputs, injected);

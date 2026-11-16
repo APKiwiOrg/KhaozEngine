@@ -4,9 +4,18 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 23.13.2
+## 23.14.0
 
-2026-11-16
+2026-11-17
+
+- Host coverage regions can give the other role to individual refinement cells, so a core region can end
+  inside a source triangle. `CoverageChildCells` defines numbering and corners, `HostCoverageRegion` takes
+  `CoverageChildRole` overrides, and `CoverageRefinement.GetChildCell` identifies each refined face's origin
+  cell. Conforming split pieces keep that cell's role. Host coverage JSON format 2 adds optional region
+  `childRoles` with its own semantic digest domain. Maps without overrides keep format 1 bytes, semantic
+  SHA-256 and refinement SHA-256. Nine `HostCoverageRefusal` members are appended, and
+  `HostCoverageDataException` gains `Level` and `Cell`
+  ([#1817](https://github.com/APKiwiOrg/KhaozEngine/issues/1817)).
 
 - Tile water capture records, for each prism face, its parent prism and an exact map from the face's
   projection bases to the parent's. A map exists only when the face's leading planes match the parent's

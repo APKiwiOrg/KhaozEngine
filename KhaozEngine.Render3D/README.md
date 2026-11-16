@@ -2003,10 +2003,10 @@ neighbour cuts a cell into pieces, and every piece keeps its origin cell. A refi
 its origin cell's child role when the region overrides that cell, and its parent range role
 otherwise. Overrides change only these role words. Vertices, indices, position recipes and edge
 splits are those of the same map without overrides, and a map without overrides keeps its
-refinement identity. Every lattice cell touches all three corners of its source triangle, so a core
-cell has full interpolated strength only when all three corners have strength exactly 1. Binding
-refuses a core child role on any other parent with `ChildCoreStrength`, naming the region, the first
-such corner's `SurfaceId`, the triangle ordinals, `Level` and `Cell`.
+refinement identity. Each source corner contributes nonzero barycentric weight to at least one vertex
+of every lattice cell, so a core cell has full interpolated strength only when all three corners have
+strength exactly 1. Binding refuses a core child role on any other parent with `ChildCoreStrength`,
+naming the region, the first such corner's `SurfaceId`, the triangle ordinals, `Level` and `Cell`.
 
 The internal headless `CoverageCarryReference.TryCarry` applies a selected recession table row to
 the current source-skinned, fixed-refinement surface. `CoverageCarryUniforms` composes inverse

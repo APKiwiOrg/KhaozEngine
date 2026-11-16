@@ -99,7 +99,7 @@ support and recedes fully. A collar group recedes by its strength and, outside t
 across the command's collar width. A region may also give the other role to single cells of a source
 triangle's refinement lattice with `CoverageChildRole` overrides, so a core region can end inside a source
 triangle instead of at a source edge. A triangle at level `n` has `n * n` cells, so the finest lattice is
-16 cells at level 4, and a core boundary follows the support no closer than one level 4 cell.
+16 cells at level 4. Core boundaries follow cell edges. Finer boundaries need smaller source triangles.
 
 An override that repeats its parent role, or a set that overrides every cell of a triangle, refuses. Each
 meaning then has one spelling, so one authored map has one identity. Overrides only change roles inside
@@ -118,8 +118,9 @@ The exact constructor and validator need no change for child roles, because cons
 certification already read each refined face's role. A synthetic panel test proves it. A core centre made
 of whole source triangles refuses `CoreEscaped`, because no source triangle fits under the small support.
 The same centre as collar with level 4 core cells under the support constructs and passes
-`CoverageCertification.ValidateGeometry` with real recession. One more core cell reaching outside the
-support refuses `CoreEscaped` for its single escaping position group.
+`CoverageCertification.ValidateGeometry` with every core vertex receding, including the core and collar
+boundary ring. One more core cell reaching outside the support refuses `CoreEscaped` for its single
+escaping position group.
 
 ## Offline construction and blocking verification
 

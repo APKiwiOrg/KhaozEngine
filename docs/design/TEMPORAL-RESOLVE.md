@@ -230,6 +230,9 @@ round to nearest. The paths can differ in tone by the half-float accumulation st
 than hidden by another backend guess. The report-only `TemporalDetailResultGpuTests` row records the running
 backend and device's attachment rule over normal and subnormal half boundaries. Replication and moving-mean
 facts also vary the local rule through the test source seam, so neither contract relies on that observation.
+On 2026-11-16 every device it has run on truncated toward zero on all 4,096 boundary values: Direct3D 11
+WARP, Vulkan llvmpipe (LLVM 20.1.2) and the hosted Apple Paravirtual device in run 43844224166, and an Apple
+M2 Max on MetalNative. No measured device yet shows the nearest-rounding tone difference above.
 
 The fine pair and scratch targets retain the history generation's lifetime. A test-only extra RGBA32F
 output can observe the live chosen UV, retention and path flag when explicitly requested, so attribution
@@ -305,6 +308,12 @@ Headless property checks cover the gate, scalar retention, per-channel bounds, s
 channels, the finite maximum and both cancellation/overflow regressions. Metal checks cover still colour
 and state identity from cold prefixes, presented still frames, moving/recovery means, return to exact
 replication after motion stops, thin-detail retention and a moving output that differs from Display.
+
+Still identity holds colour, confidence and lock exactly on every backend. On llvmpipe the Fine and Display
+programs contract the shimmer record's averages differently, as the two entry points do, so there drift and
+swing alone go through `TemporalEntryStateComparison` and its existing llvmpipe limits. Hosted run 43844224166
+measured at most 2 half steps on at most 0.0343% of record values, against limits of 9,100 and 500 steps and
+shares of 1.02% and 0.51%.
 
 Fine debug views and sampled counts share the fine resolve core and its classification/read bindings.
 Each builds the one checked pipeline over the full resolve layout, matching the full set the resolve

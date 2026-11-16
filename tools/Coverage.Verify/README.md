@@ -64,7 +64,7 @@ The executable supports three offline commands. They use a consumer-authored pos
 an animation or infer a key. Exit codes are 0 for complete accepted work, 1 for validation or output
 publication failure, and 2 for malformed input. Holes are explicit in the in-memory build result, but a
 CLI run containing a hole publishes neither table nor evidence. Refused runs preserve existing outputs.
-Outputs are staged as temporary siblings before rename, with rollback if publishing the pair fails.
+Outputs publish through one recoverable transaction, described under Publication and recovery.
 Evidence serialization and resumed file admission share one inclusive byte bound. Oversized output
 refuses with the typed capacity reason before either accepted file is replaced. Resumed JSON syntax
 and field-type errors retain the malformed-input refusal family and exit code 2.
@@ -342,8 +342,61 @@ syntax and numeric fields. At the count guards, dense poses contain at most
 `65,536*(16 + 16*1,024 + 4*33)` binary32 values. Reserving 32 JSON bytes per value and 512 fixed bytes
 for each of two 4,194,304-pair inventories leaves room within 64 GiB for all other bounded inventories
 and replay metrics. The exact index preflight includes the escaped root name and every descriptor.
-Staging owns only its private scratch directory and performs no publication. The current CLI retains
-its small-file publication path. Multi-file CLI publication is a separate integration step.
+Staging owns only its private scratch directory and performs no publication. The publisher below makes a
+staged set visible. The CLI still writes its evidence as one legacy file. Multi-file CLI evidence is a
+separate integration step.
+
+## Publication and recovery
+
+One publisher makes the table, diagnostics and evidence visible as a set. The output directory holds that
+set: the roots, the table and every `.parts` directory belong together.
+
+Before the first write, every output is identified by the operating system, never by comparing spellings.
+An existing file is its volume and file identity, so a hard link, a linked parent directory, a dot segment
+after a link and an alias such as `/tmp` on macOS all reach one identity. An absent destination is the
+identity of its existing parent plus its final name, folded for case and Unicode composition because a
+volume may merge such names. Two outputs with one identity, or an output with the identity of the
+manifest, a checked source, a pose chunk or a table being verified, refuse with `OutputAlias` and exit 1.
+A destination the OS cannot identify, such as a dangling or looping link, refuses the same way. An absent
+output parent refuses with `OutputIo`. Generated part paths must contain no link. Deliberate concurrent
+renaming by another process is outside this check.
+
+Publication then runs in this order:
+
+1. Parts are copied beside their final names, flushed, checked against their descriptors and moved in
+   without replacing anything. Parts are immutable and content addressed. An existing part with the same
+   name is reused only when its bytes match. Otherwise publication refuses and leaves it untouched.
+   Missing generation directories are created beneath the existing output parent.
+2. Each mutable output is copied to a sibling `<name>.<transaction>.tmp` and checked.
+3. A journal `<commit-root>.coverage-journal` is written beside the commit root with owner-only
+   permissions. It records each output's old and new length and SHA-256, or that it did not exist, and
+   the parts and directories this transaction created. A marker `<name>.coverage-incomplete` is created
+   beside every mutable output, then byte-for-byte backups `<name>.<transaction>.bak` of existing outputs.
+   These local recovery files name local paths and are never evidence.
+4. The table, then the diagnostics, then the evidence root are replaced. The last replacement is the
+   commit point. A refusal publishes diagnostics only, and the diagnostic root is then the commit root.
+5. Backups, markers and the journal are removed. Older generations stay, because a reader may still hold
+   an older root.
+
+A handled failure before the commit point attempts every restore in reverse order, removes only files this
+transaction created and keeps every pre-existing byte. One failed restore never skips the rest. The refusal
+is `OutputIo`. Its inner exception is the original failure and `RollbackFailures` lists every rollback step
+that also failed. When anything could not be undone, the journal, markers and remaining backups stay. A
+cleanup failure after the commit point also keeps them and reports `OutputIo`.
+
+Readers refuse an output that has a marker or journal with `OutputRecoveryRequired`, whichever bytes it
+holds. The next run on the same evidence and diagnostics paths recovers first. Recovery reads and checks
+the whole journal before touching any path. When every output holds its new bytes and every part
+verifies, it only removes recovery files. Otherwise it restores each output that holds its new bytes from
+its checked backup, or removes it when it did not exist before. An output holding neither recorded state,
+for example after an independent edit, refuses with `OutputRecoveryRequired` and nothing is overwritten.
+
+The guarantee is the complete dependency closure at the commit point and exact preservation after a
+handled failure. Independently named files cannot be renamed atomically together, so a concurrent reader
+may briefly see a new table beside an old evidence root and must refuse the hash mismatch. Process
+interruption leaves a recoverable transaction or an unreferenced generation. Durability after power loss
+is not claimed. Old generations are never deleted automatically. Copy or remove a set as a root together
+with its whole `.parts` directory.
 
 ## Optional refusal diagnostics
 
@@ -373,12 +426,12 @@ name, so diagnostics are refused for those forms. A link whose target cannot be 
 same way, because its target name is unknown. Each such invocation exits 2 before publication and leaves
 existing files untouched. This guards against accidental aliases. It is not a security boundary against
 a caller who constructs one, for example with a second hard link under another name. The
-accepted-output checks are unchanged: they compare normalized path spellings and refuse with
-`OutputAlias` and exit 1. Malformed input or resumed evidence also leaves existing diagnostics untouched.
+accepted-output checks compare OS identities instead, as described under Publication and recovery, and
+refuse with `OutputAlias` and exit 1. Malformed input or resumed evidence also leaves existing diagnostics untouched.
 
 For parsed work, exit 0 writes `outcome: "accepted"` and zero blocking findings, replacing stale
-refusal diagnostics. Exit 1 writes `outcome: "refused"`. Accepted artifacts and diagnostics stage
-atomically. A refusal publishes only diagnostics and preserves existing table and evidence bytes.
+refusal diagnostics. Exit 1 writes `outcome: "refused"`. Accepted artifacts and diagnostics publish
+in one transaction. A refusal publishes only diagnostics and preserves existing table and evidence bytes.
 Output I/O failure retains exit 1 and may prevent the diagnostic file itself from being published.
 No timestamps, machine names or file paths enter the document.
 

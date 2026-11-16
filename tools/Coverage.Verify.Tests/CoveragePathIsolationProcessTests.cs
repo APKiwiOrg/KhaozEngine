@@ -208,6 +208,32 @@ public sealed class CoveragePathIsolationProcessTests
         AssertPreserved(files, before);
     }
 
+    // #1767: accepted outputs are compared by the identity the OS resolves. Every spelling here reaches a checked
+    // input or the other output, and none of them is caught by comparing path strings.
+    [DirectoryLinkTheory]
+    [InlineData("table", "manifest.json", "linked")]
+    [InlineData("evidence", "manifest.json", "dot-segment")]
+    [InlineData("table", "manifest.json", "hard")]
+    [InlineData("table", "host.glb", "temp-alias")]
+    [InlineData("evidence", "host.glb", "hard")]
+    [InlineData("table", "poses.kepp", "linked")]
+    [InlineData("evidence", "poses.kepp", "hard")]
+    [InlineData("evidence", "table.bin", "temp-alias")]
+    public async Task Linked_accepted_outputs_cannot_replace_any_checked_input(string output, string input, string spelling)
+    {
+        using var files = input == "poses.kepp" ? CoveragePackedFixture.Files() : new CoverageBuildFiles("path-isolation");
+        if (input == "poses.kepp") CoveragePackedFixture.Pack(files);
+        Assert.Equal(0, (await Execute(files)).ExitCode);
+        string alias = CoveragePathSpelling.Create(files.Folder, input, spelling);
+        var before = Snapshot(files);
+
+        var result = await Execute(files, table: output == "table" ? alias : null, evidence: output == "evidence" ? alias : null);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(nameof(CoverageBuildValidationRefusal.OutputAlias), result.Error.Trim());
+        AssertPreserved(files, before);
+    }
+
     static Dictionary<string, byte[]> Snapshot(CoverageBuildFiles files) => Directory.GetFiles(files.Folder)
         .ToDictionary(p => Path.GetFileName(p)!, File.ReadAllBytes);
 

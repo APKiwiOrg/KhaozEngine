@@ -8,12 +8,16 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tools.Coverage;
 
-/// <summary>Opens legacy evidence or a complete hashed set. Every open verifies fresh bytes to EOF.</summary>
+/// <summary>Opens legacy evidence or a complete hashed set. Every open verifies fresh bytes to EOF. A root with an
+/// incomplete publication refuses with <see cref="CoverageBuildValidationRefusal.OutputRecoveryRequired"/>.</summary>
 public static class CoverageArtifactReader
 {
     public static CoverageArtifactReadSession Open(string rootPath, string scratchDirectory)
     {
-        string root = Path.GetFullPath(rootPath), scratch = CoverageArtifactSet.Scratch(scratchDirectory);
+        string root = Path.GetFullPath(rootPath);
+        // A root of an incomplete publication is never admitted, whichever bytes it currently holds.
+        CoveragePublicationJournal.EnsureReadable(root);
+        string scratch = CoverageArtifactSet.Scratch(scratchDirectory);
         try
         {
             string snapshot = Path.Combine(scratch, "root"), payload = Path.Combine(scratch, "payload");

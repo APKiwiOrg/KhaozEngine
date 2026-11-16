@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -186,4 +187,8 @@ public sealed class CoverageBuildValidationException : InvalidOperationException
     public string? SampleId { get; init; }
     public int? GroupIndex { get; init; }
     public CoverageFailure? Failure { get; init; }
+    /// <summary>On <see cref="CoverageBuildValidationRefusal.OutputIo"/>, every rollback step that also failed, in the
+    /// order attempted. The original failure is the inner exception. Empty when rollback completed.</summary>
+    public IReadOnlyList<Exception> RollbackFailures { get => rollbackFailures; init => rollbackFailures = ImmutableArray.CreateRange(value.ToArray()); }
+    ImmutableArray<Exception> rollbackFailures = ImmutableArray<Exception>.Empty;
 }

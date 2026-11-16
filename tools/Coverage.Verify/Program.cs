@@ -15,16 +15,19 @@ public static class Program
     internal static int Run(string[] args, int evidenceByteLimit)
     {
         var diagnostic = new CoverageDiagnosticRun();
-        int exit = RunAccepted(args, evidenceByteLimit, diagnostic);
+        List<string> protectedInputs = [], acceptedOutputs = [];
+        int exit = RunAccepted(args, evidenceByteLimit, diagnostic, protectedInputs, acceptedOutputs);
         if (exit == 1 && diagnostic.Path != null && diagnostic.Input != null)
         {
-            try { Publish([(diagnostic.Path, diagnostic.Write(args[0], exit, evidenceByteLimit))]); }
+            // A refusal replaces only diagnostics, so the accepted table and evidence are protected like inputs.
+            try { Publish([(diagnostic.Path, diagnostic.Write(args[0], exit, evidenceByteLimit))], null, [.. protectedInputs, .. acceptedOutputs]); }
             catch (CoverageBuildValidationException error) { Console.Error.WriteLine(error.Reason); return 1; }
         }
         return exit;
     }
 
-    static int RunAccepted(string[] args, int evidenceByteLimit, CoverageDiagnosticRun diagnostic)
+    static int RunAccepted(string[] args, int evidenceByteLimit, CoverageDiagnosticRun diagnostic, List<string> protectedInputs,
+        List<string> acceptedOutputs)
     {
         try
         {
@@ -37,19 +40,27 @@ public static class Program
                 || !options.ContainsKey("--table") || !options.ContainsKey("--evidence"))) return 2;
             if (args.Length == 7 && options.ContainsKey("--diagnostics")) return 2;
             string manifest = options["--manifest"], tablePath = options["--table"], evidencePath = options["--evidence"];
-            var comparer = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
             diagnostic.Path = options.GetValueOrDefault("--diagnostics");
             bool windows = OperatingSystem.IsWindows();
             if (diagnostic.Path != null && (new[] { diagnostic.Path, manifest, tablePath, evidencePath }.Any(p => CoverageDiagnosticName.Unsupported(p, windows))
                 || CoverageDiagnosticName.Collides(diagnostic.Path, [manifest, tablePath, evidencePath]))) return 2;
-            if (comparer.Equals(manifest, tablePath) || comparer.Equals(manifest, evidencePath) || comparer.Equals(tablePath, evidencePath))
+            // Outputs are compared by the identity the OS resolves, so links, aliases and hard links cannot hide a collision.
+            if (CoveragePathIdentity.SameDestination(manifest, tablePath) || CoveragePathIdentity.SameDestination(manifest, evidencePath)
+                || CoveragePathIdentity.SameDestination(tablePath, evidencePath))
                 throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputAlias, "Output paths must be distinct from inputs and each other.");
             var input = CoverageBuildInput.Read(manifest);
             if (diagnostic.Path != null && (input.SourcePaths.Any(p => CoverageDiagnosticName.Unsupported(p, windows))
                 || CoverageDiagnosticName.Collides(diagnostic.Path, input.SourcePaths))) return 2;
             diagnostic.Input = input;
-            if (input.SourcePaths.Any(p => comparer.Equals(p, tablePath) || comparer.Equals(p, evidencePath)))
+            if (input.SourcePaths.Any(p => CoveragePathIdentity.SameDestination(p, tablePath) || CoveragePathIdentity.SameDestination(p, evidencePath)))
                 throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputAlias, "Outputs cannot overwrite checked inputs.");
+            protectedInputs.AddRange([manifest, .. input.SourcePaths]);
+            if (args[0] == "build") acceptedOutputs.Add(tablePath);
+            else protectedInputs.Add(tablePath);
+            acceptedOutputs.Add(evidencePath);
+            // An interrupted earlier publication is finished or undone before any of its outputs is read or replaced.
+            CoveragePublisher.Recover(evidencePath);
+            if (diagnostic.Path != null) CoveragePublisher.Recover(diagnostic.Path);
             CoverageEvidenceManifest evidence;
             byte[]? tableBytes = null;
             CoverageRecessionTable? suppliedTable = null;
@@ -62,6 +73,7 @@ public static class Program
             }
             else
             {
+                CoveragePublicationJournal.EnsureReadable(tablePath);
                 suppliedTable = CoverageRecessionTableBinary.Read(CoverageBuildInputJson.ReadBytes(tablePath), tablePath);
                 diagnostic.Table = suppliedTable;
                 evidence = CoverageSampleVerifier.Verify(input, suppliedTable);
@@ -94,9 +106,9 @@ public static class Program
             if (!evidence.Complete) return 1;
             byte[] evidenceBytes = evidence.Write(evidenceByteLimit);
             if (File.Exists(evidencePath)) evidence.ValidateResume(CoverageBuildInputJson.ReadBytes(evidencePath, evidenceByteLimit), evidenceBytes);
-            (string Path, byte[] Bytes)[] outputs = tableBytes == null ? [(evidencePath, evidenceBytes)] : [(tablePath, tableBytes), (evidencePath, evidenceBytes)];
+            (string Path, byte[] Bytes)[] outputs = tableBytes == null ? [] : [(tablePath, tableBytes)];
             if (diagnostic.Path != null) outputs = [.. outputs, (diagnostic.Path, diagnostic.Write(args[0], 0, evidenceByteLimit))];
-            Publish(outputs);
+            Publish(outputs, (evidencePath, evidence, evidenceBytes), protectedInputs);
             return 0;
         }
         catch (CoverageVerificationException error)
@@ -124,39 +136,35 @@ public static class Program
         { Console.Error.WriteLine(error.GetType().Name); return 2; }
     }
 
-    static void Publish((string Path, byte[] Bytes)[] outputs)
+    /// <summary>Stages buffered outputs and hands them to the common publisher. The evidence root is published last as
+    /// the commit point. It stays one legacy file because its bytes already fit the evidence bound.</summary>
+    static void Publish((string Path, byte[] Bytes)[] files, (string Path, CoverageEvidenceManifest Manifest, byte[] Bytes)? evidence,
+        IReadOnlyList<string> protectedInputs)
     {
-        var staged = new List<(string Path, string Temp, string Backup, bool Existed)>();
-        int committed = 0;
+        string? scratch = null;
+        CoverageStagedArtifact? staged = null;
         try
         {
-            foreach (var output in outputs)
+            scratch = CoverageArtifactSet.Scratch(Path.GetTempPath());
+            var plain = new List<CoverageStagedFile>();
+            foreach (var (path, bytes) in files)
             {
-                string nonce = Guid.NewGuid().ToString("N");
-                var item = (output.Path, Temp: output.Path + "." + nonce + ".tmp", Backup: output.Path + "." + nonce + ".bak", Existed: File.Exists(output.Path));
-                staged.Add(item);
-                File.WriteAllBytes(item.Temp, output.Bytes);
-                if (item.Existed) File.Copy(item.Path, item.Backup);
+                string stage = Path.Combine(scratch, "file-" + plain.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                File.WriteAllBytes(stage, bytes);
+                plain.Add(new(path, stage, bytes.LongLength, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))));
             }
-            foreach (var item in staged) { File.Move(item.Temp, item.Path, true); committed++; }
+            if (evidence is { } value)
+                staged = CoverageArtifactWriter.Stage(value.Path, value.Manifest.CreateHeader(), s => s.Write(value.Bytes), scratch);
+            CoveragePublisher.Publish(plain, staged == null ? [] : [staged], protectedInputs);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            for (int i = committed - 1; i >= 0; i--)
-            {
-                var item = staged[i];
-                if (item.Existed) File.Move(item.Backup, item.Path, true);
-                else File.Delete(item.Path);
-            }
-            throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputIo, "Output publication refused.", error);
+            throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputIo, "Output staging refused.", error);
         }
         finally
         {
-            foreach (var item in staged)
-            {
-                if (File.Exists(item.Temp)) File.Delete(item.Temp);
-                if (File.Exists(item.Backup)) File.Delete(item.Backup);
-            }
+            staged?.Dispose();
+            if (scratch != null && Directory.Exists(scratch)) Directory.Delete(scratch, true);
         }
     }
 }

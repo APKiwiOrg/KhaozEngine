@@ -107,7 +107,7 @@ dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHA
 Set `KHAOZENGINE_VERSION` to the engine release used by the consumer. The `version` command (also
 `--version`) prints JSON containing `engineVersion` and `carryArithmeticContractVersion` and exits 0.
 Record both with the verification evidence. The installed `build`, `verify-samples` and `verify`
-commands use the same arguments, exit codes and atomic output preservation as the source executable.
+commands use the same arguments, exit codes and recoverable output publication as the source executable.
 
 Its strict manifest names exact assets, domains, every authored clip frame and the consumer's real
 blend paths. Only authored-clip domains may provide an empty `blendPathIds` array, and the strict reader
@@ -157,8 +157,10 @@ continuous enclosures.
 Exit 0 means complete accepted declared work. Exit 1 means validation or output-publication failure.
 Exit 2 means malformed input or invalid invocation. Selected failures, holes, missing dense work and
 positive or unresolved changed-record depth block `verify`. Typed refusals retain domain, sample,
-state, entry and applicable command/equipment identifiers. Output publication is bounded and atomic,
-and refusal preserves existing output files. The consumer owns sampler integration and the CI call.
+state, entry and applicable command/equipment identifiers. Output publication is bounded and recoverable.
+A handled failure restores the previous outputs, the next run finishes or undoes an interrupted one, and
+readers refuse an incomplete set. Outputs that reach an input or each other through any spelling, link or
+hard link refuse with `OutputAlias`. Refusal preserves existing table and evidence files. The consumer owns sampler integration and the CI call.
 Sampled evidence cannot establish safety between the poses that were checked.
 
 All three commands accept optional `--diagnostics <path>` for a separate refusal report. Schema

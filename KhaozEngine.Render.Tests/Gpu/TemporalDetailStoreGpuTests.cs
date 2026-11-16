@@ -55,6 +55,9 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         var display = fixture.Display;
         int frames = TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)) + 1;
         int different = 0;
+        // llvmpipe contracts the shimmer record's averages differently in two programs. Its owner bounds only drift
+        // and swing there. Colour, confidence and lock stay exact on every backend.
+        var state = new TemporalEntryStateComparison(TemporalDeviceClass.IsLavapipe(fine.Frame.Device));
         for (int n = 0; n < frames; n++)
         {
             float pan = moving ? n * 0.35f : 0f;
@@ -66,12 +69,15 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
             Assert.Equal(expected, actual);
             var a = fine.Frame.Scene.TemporalHistory;
             var b = display.Frame.Scene.TemporalHistory;
-            Assert.Equal(TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
+            TemporalHistorySample.Exact(n, "Display vs Fine history colour",
+                TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
                 TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex)));
-            Assert.Equal(TemporalTextureIo.Read(display.Frame.Device, b.Confidence(b.WriteIndex)),
+            state.Compare(n, "Display vs Fine history state",
+                TemporalTextureIo.Read(display.Frame.Device, b.Confidence(b.WriteIndex)),
                 TemporalTextureIo.Read(fine.Frame.Device, a.Confidence(a.WriteIndex)));
             AssertReplicated(fine.Frame);
         }
+        if (assertIdentity) state.AssertComplete(output, $"{preset} Display vs Fine still");
         output.WriteLine($"{preset}, moving {moving}, {frames} frames, differing presented bytes {different}");
     }
 

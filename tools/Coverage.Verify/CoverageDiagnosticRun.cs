@@ -37,7 +37,7 @@ internal sealed class CoverageDiagnosticRun
                     ? CoverageSampleVerifier.Verify(input, CoverageRecessionTable.Create(input.Identity,
                         CoverageSampleVerifier.Representatives(input.Topology, input.Samples[0]), [],
                         input.Samples.Select(s => s.StateKey.Value).Distinct().Order().Select(k => new CoverageStateEntry(new(k), -1)).ToArray()))
-                    : CoverageTableBuilder.Build(new(input.Topology, input.InverseBind, input.Domains, input.Samples, ids,
+                    : CoverageTableBuilder.Build(new CoverageBuildInput(input.Topology, input.InverseBind, input.Domains, input.Samples, ids,
                         input.Identity, input.InputSha256)).Evidence;
             }
             catch (CoverageBuildValidationException error) { document.Add("analysisRefusals", new[] { new { Reason = error.Reason.ToString(), error.SampleId, error.GroupIndex, error.Failure } }); }

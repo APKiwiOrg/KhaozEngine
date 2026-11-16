@@ -111,6 +111,36 @@ checked chunk copies, decoding a pose on ordinal access. Its temporary directory
 and disposal removes only that directory. A session-backed campaign expires when its session closes.
 Materializing it returns an independent snapshot whose pose access needs no temporary files.
 
+The builder, sample verifier and replay share their numerical cores between resident snapshots and
+internal campaigns. Candidate lookup and grouping use metadata ordinals. Pairs retain IDs and failures,
+and replay observations retain metrics and dense-row ordinals. Dense evidence and replay `Poses` are
+read-only projections that reconstruct actual input on access without caching decoded rows. Resident
+results keep their input alive. Internal session-backed projections must be consumed before disposal.
+Replay summaries and acceptance checks use metrics without decoding poses. Internal `WriteTo(Stream)`
+writes the complete logical evidence row by row. Public `Write()` still returns a byte array subject
+to the inclusive 67,108,864-byte legacy limit.
+
+For the internal streaming path, the controlled storage bound is
+`O(T + F + C + P + S + D + K*G)`, with no `(S+D)*B` retained matrix term and no total-evidence-byte
+term. Here F is at most 67,108,864 manifest bytes, C is at most 8,388,608 chunk bytes, P is at most
+4,194,304 pairs, S and D are each at most 65,536 ordinary samples and dense rows, K is at most 4,096
+candidates, and G is the admitted topology's position-group count. T covers topology, support, table
+copies and exact/depth scratch. Metadata DOM, strings and indices add runtime-dependent O(F) overhead.
+This equation is not a fixed process RSS guarantee and does not describe the executable's current eager
+input route.
+
+Snapshot admission uses one 65,536-byte copy/hash buffer and one numeric record buffer, bounded by C.
+Decoding and immutable binding coexist for at most two numeric poses. The maximum numeric pose is
+`64 + 64*1024 + 144*4 = 66,176` bytes, calculated from the transport guards. Object headers and static
+command binding references add bounded overhead. Writing flushes individual records and matrices,
+without a campaign-sized JSON buffer. A single escaped metadata token remains bounded by F. The
+session's deterministic storage seam records snapshot bytes and buffer/pose high-water reservations.
+
+Scratch disk grows with checked raw pose bytes and, when artifacts are staged, logical output and
+rollback backups. The palette-only maximum is 8 GiB, calculated at the 1,024-matrix input guard. The
+independent GLB importer admits at most 128 joints. Disk exhaustion refuses as `InputIo` during
+snapshotting or `OutputIo` during publication. It never permits omitted records.
+
 Admission first checks manifest syntax, duplicate/unknown members, field types and bounded inventories,
 then exact reference closure and every chunk path. It copies and hashes one chunk at a time, checks
 length and digest before inspecting the header or any record, and scans all numeric words before

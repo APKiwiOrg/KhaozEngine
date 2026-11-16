@@ -28,18 +28,24 @@ public sealed record CoverageDomainEvidence(string Id, CoverageDomainKind Kind, 
 public sealed class CoverageEvidenceManifest
 {
     readonly bool samplesComplete;
+    readonly CoverageCampaign input;
     internal CoverageEvidenceManifest(CoverageBuildInput input, CoverageRecessionTable table,
         IEnumerable<CoveragePairResult> pairs, IEnumerable<CoverageSelectedClaim> claims,
         IEnumerable<CoverageHole> holes, IEnumerable<CoverageCandidateEvidence>? candidates = null, IEnumerable<CoverageEntryEvidence>? entries = null)
+        : this(CoverageCampaign.FromSnapshot(input), table, pairs, claims, holes, candidates, entries) { }
+
+    internal CoverageEvidenceManifest(CoverageCampaign input, CoverageRecessionTable table,
+        IEnumerable<CoveragePairResult> pairs, IEnumerable<CoverageSelectedClaim> claims,
+        IEnumerable<CoverageHole> holes, IEnumerable<CoverageCandidateEvidence>? candidates = null, IEnumerable<CoverageEntryEvidence>? entries = null)
     {
+        this.input = input;
         Identity = input.Identity; InputSha256 = input.InputSha256;
         TableSha256 = CoverageBuildInputJson.Hash(CoverageRecessionTableBinary.Write(table));
         ToolCodeSha256 = CoverageBuildInputJson.CodeHash();
         Render3DCodeSha256 = CoverageBuildInputJson.Render3DCodeHash();
-        Domains = Array.AsReadOnly(input.Domains.Select(d => new CoverageDomainEvidence(d.Id, d.Kind, d.AuthoredFrameIds,
-            d.BlendPathIds, Array.AsReadOnly(d.DenseRows.Select(DenseEvidence).ToArray()))).ToArray());
+        Domains = CoverageEvidenceProjection.Domains(input);
         CandidateSampleIds = input.CandidateSampleIds;
-        Samples = Array.AsReadOnly(input.Samples.Select(s => new CoverageSampleInventory(s.Id, s.DomainId, s.AuthoredFrameId, s.BlendPathId, s.StateKey.Value)).ToArray());
+        Samples = input.Samples;
         PairResults = Array.AsReadOnly(pairs.ToArray());
         SelectedClaims = Array.AsReadOnly(claims.ToArray());
         Holes = Array.AsReadOnly(holes.ToArray());
@@ -69,15 +75,6 @@ public sealed class CoverageEvidenceManifest
     public CoverageReplayResult? Replay { get; private set; }
     public bool Complete => samplesComplete && (Replay == null || Replay.Accepted);
     internal void IncludeReplay(CoverageReplayResult replay) => Replay = replay;
-    static CoverageDenseRowEvidence DenseEvidence(CoverageDenseRow row)
-    {
-        var pose = row.Sample;
-        return new(row.DenseIndex, row.PrecedingPhaseTick, row.ResolvedStateKey,
-            new(pose.Id, pose.DomainId, pose.AuthoredFrameId, pose.BlendPathId, CoverageBuildInputJson.Values(pose.ActorModel),
-                Array.AsReadOnly(pose.Palette.ToArray().Select(CoverageBuildInputJson.Values).ToArray()),
-                Array.AsReadOnly(pose.Commands.ToArray().Select(c => new CoverageCommandPoseEvidence(c.Id, c.EquipmentInstanceId,
-                    CoverageBuildInputJson.Values(c.EquipmentWorld), CoverageBuildInputJson.Values(c.CoverageWorld), c.TransitionWeight)).ToArray())), row.Looped, row.Clamped);
-    }
     static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -85,10 +82,17 @@ public sealed class CoverageEvidenceManifest
     };
     public byte[] Write() => Write(CoverageBuildInputJson.MaxBytes);
 
+    internal void WriteTo(Stream destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        using var writer = new Utf8JsonWriter(destination);
+        CoverageEvidenceProjection.WriteTo(writer, this, input, Options);
+    }
+
     internal byte[] Write(int byteLimit)
     {
         using var stream = new EvidenceStream(byteLimit);
-        JsonSerializer.Serialize(stream, this, Options);
+        WriteTo(stream);
         return stream.ToArray();
     }
 

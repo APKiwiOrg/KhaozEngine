@@ -11,13 +11,19 @@ public static class CoverageSampleVerifier
     public static CoverageEvidenceManifest Verify(CoverageBuildInput input, CoverageRecessionTable table)
     {
         ArgumentNullException.ThrowIfNull(input); ArgumentNullException.ThrowIfNull(table);
+        return Verify(CoverageCampaign.FromSnapshot(input), table);
+    }
+
+    internal static CoverageEvidenceManifest Verify(CoverageCampaign input, CoverageRecessionTable table)
+    {
+        ArgumentNullException.ThrowIfNull(input); ArgumentNullException.ThrowIfNull(table);
         if (input.Identity != table.Identity)
             throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.ProvenanceMismatch, "Table provenance differs from the checked inputs.");
-        int[] expected = Representatives(input.Topology, input.Samples[0]);
+        int[] expected = Representatives(input.Topology, input.ReadSample(0));
         CheckRepresentatives(expected, table.Representatives);
-        foreach (var sample in input.Samples)
-            CheckRepresentatives(expected, Representatives(input.Topology, sample), sample.Id);
-        var keys = input.Samples.Select(s => s.StateKey.Value).Distinct().Order().ToArray();
+        for (int i = 0; i < input.Samples.Count; i++)
+            CheckRepresentatives(expected, Representatives(input.Topology, input.ReadSample(i)), input.Samples[i].Id);
+        var keys = input.Samples.Select(s => s.StateKey).Distinct().Order().ToArray();
         if (!keys.SequenceEqual(table.States.ToArray().Select(s => s.Key.Value)))
             throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.StateInventoryMismatch, "Table state inventory differs.");
         if ((long)table.EntryCount * input.Samples.Count > CoverageBuildInput.MaxPairs)
@@ -27,7 +33,7 @@ public static class CoverageSampleVerifier
         var byPair = pairs.ToDictionary(p => (p.EntryIndex, p.SampleId));
         var claims = new List<CoverageSelectedClaim>();
         var holes = new List<CoverageHole>();
-        foreach (var group in input.Samples.GroupBy(s => s.StateKey.Value).OrderBy(g => g.Key))
+        foreach (var group in input.Samples.GroupBy(s => s.StateKey).OrderBy(g => g.Key))
         {
             if (!table.TrySelect(new(group.Key), out int entry))
             {
@@ -44,6 +50,9 @@ public static class CoverageSampleVerifier
     }
 
     internal static CoveragePairResult[] Pairs(CoverageBuildInput input, CoverageRecessionTable table)
+        => Pairs(CoverageCampaign.FromSnapshot(input), table);
+
+    internal static CoveragePairResult[] Pairs(CoverageCampaign input, CoverageRecessionTable table)
     {
         var topology = input.Topology;
         var uniforms = new CoverageCarryUniforms(topology, input.InverseBind.Length);
@@ -52,8 +61,12 @@ public static class CoverageSampleVerifier
         var before = new ModelVertex[topology.VertexCount];
         var after = new ModelVertex[topology.VertexCount];
         var pairs = new List<CoveragePairResult>();
-        foreach (var sample in input.Samples)
+        for (int i = 0; i < input.Samples.Count; i++) CheckSample(i);
+        return pairs.OrderBy(p => p.EntryIndex).ThenBy(p => p.SampleId, StringComparer.Ordinal).ToArray();
+
+        void CheckSample(int ordinal)
         {
+            var sample = input.ReadSample(ordinal);
             bool prepared = uniforms.TryPrepare(sample.Palette, input.InverseBind, sample.ActorModel, sample.Commands, out var preparationFailure);
             if (prepared) prepared = CoverageCarryReference.TryCarry(topology, uniforms.ComposedPalette, table, -1, uniforms.Commands, carry, before, out preparationFailure);
             for (int entry = 0; entry < table.EntryCount; entry++)
@@ -65,7 +78,6 @@ public static class CoverageSampleVerifier
                 pairs.Add(new(entry, sample.Id, valid, failure));
             }
         }
-        return pairs.OrderBy(p => p.EntryIndex).ThenBy(p => p.SampleId, StringComparer.Ordinal).ToArray();
     }
 
     internal static int[] Representatives(CoverageRefinement topology, CoverageSample sample)

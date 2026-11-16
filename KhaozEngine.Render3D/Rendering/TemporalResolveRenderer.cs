@@ -218,11 +218,12 @@ namespace KhaozEngine.Render3D.Rendering
             if (_storeSet is null)
                 throw new InvalidOperationException("TemporalResolveRenderer.Run was called before BindInputs.");
             LastCurrentVisibilityFullyLit = _fullyLitFallback || currentVisibilityFullyLit;
-            // The detail history never skips the decision: one checked program serves every certificate state.
+            // The detail history never skips the decision: one checked program serves every certificate state. Its
+            // pipelines are built over the full layout, so it takes the full set whatever Display's programs use.
             LastVisibilityDecisionSkipped = history.DetailStore is null && LastCurrentVisibilityFullyLit && _readVisibilityFullyLit;
-            bool usesVisibility = history.DetailStore is null && Entry == TemporalResolveEntry.Split
+            bool usesVisibility = history.DetailStore is not null || (Entry == TemporalResolveEntry.Split
                 ? _split!.UsesVisibility(TemporalSplitResolve.Upscales(LastUniforms), LastVisibilityDecisionSkipped)
-                : _resolvePrograms!.UsesVisibility(LastVisibilityDecisionSkipped);
+                : _resolvePrograms!.UsesVisibility(LastVisibilityDecisionSkipped));
             IGpuResourceSet set = (usesVisibility ? _resolveSets : _fullyLitResolveSets)[history.ReadIndex]
                 ?? throw new InvalidOperationException("TemporalResolveRenderer.Run was called before BindInputs.");
             CurrentSet = set;

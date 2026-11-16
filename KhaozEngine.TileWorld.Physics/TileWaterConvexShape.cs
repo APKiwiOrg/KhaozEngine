@@ -53,13 +53,14 @@ internal sealed class TileWaterConvexShape
     readonly Plane[] _planes;
     readonly Basis[] _bases;
     readonly TileWaterBedSeam? _bedSeam;
+    readonly int[]? _projectionBasisMap;
     TileWaterGeometryTerms.Entry?[]? _geometryTerms;
 
     internal ReadOnlySpan<Plane> Planes => _planes;
     internal ReadOnlySpan<Basis> Bases => _bases;
     internal TileWaterBedSeam? BedSeam => _bedSeam;
-    internal TileWaterConvexShape? ProjectionParent => null;
-    internal ReadOnlySpan<int> ProjectionBasisMap => [];
+    internal TileWaterConvexShape? ProjectionParent { get; }
+    internal ReadOnlySpan<int> ProjectionBasisMap => _projectionBasisMap;
 
     internal TileWaterPreparedQuery Prepare(TileWaterPreparationWorkspace workspace, Vector start, Vector drive,
         I core, float radius, double heightError = 0, double horizontalError = 0) =>
@@ -109,6 +110,11 @@ internal sealed class TileWaterConvexShape
             }
         }
         _bases = bases.ToArray();
+        if (projectionParent is not null)
+        {
+            _projectionBasisMap = TileWaterProjectionMap.Build(projectionParent, _planes, _bases);
+            if (_projectionBasisMap is not null) ProjectionParent = projectionParent;
+        }
     }
 
     internal TileWaterConvexShape WithoutBedSeamForTests() => new(_planes);

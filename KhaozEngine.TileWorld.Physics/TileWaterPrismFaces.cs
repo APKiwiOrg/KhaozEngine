@@ -103,6 +103,6 @@ internal static class TileWaterPrismFaces
             planes.Add(new(default(V) - direction, I.Point(0) - origin - length * I.Point(start)));
         }
         if (float.IsFinite(lower)) planes.Add(P.Point(0, -1, 0, -lower));
-        return new(planes.ToArray(), bedSeam);
+        return new(planes.ToArray(), bedSeam, prism.Shape);
     }
 }

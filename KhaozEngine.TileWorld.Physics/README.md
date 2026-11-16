@@ -108,6 +108,13 @@ A point is in a column when the exact framed centre lies in X [minimum, maximum)
 feet in [bed, surface). Support and water share captured drawn triangles, triangle selection and anchored height
 evaluation. The lower boundary follows the selected triangle at the queried axis, including sloped beds and a
 level triangle beside a lower corner. A triangle at or above the free surface contributes no positive water volume.
+Captured boundary shapes retain their parent prism shape and a read-only map from each face basis to its
+parent basis ordinal. Construction first proves that the complete ordered parent plane prefix has identical
+interval endpoint bits and height-sensitivity flags. It then matches the exact integer `(A,B,C)` plane indices,
+including the zero-active basis. Bases containing an appended face, split or lower constraint have no parent
+mapping, even when their normals are equal or nearly equal to a parent plane. Standalone shapes and unproved
+prefixes retain no parent or map. The immutable captured shapes own these references and integer arrays, so
+discarding the capture releases them together. Runtime evaluation does not read the relationship or map yet.
 The internal shape evaluator supports a query preparation with ordered, first-use projection, clip and
 post-feasibility terms. Each stored term is the original interval expression, with its operand order unchanged.
 Window clipping, minima, root clamping, seam certification and first-witness selection remain per evaluation.

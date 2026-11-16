@@ -229,6 +229,11 @@ public enum HostCoverageRefusal
     /// <summary>Every cell of a source triangle is overridden, so the parent range role should change instead. RegionKey,
     /// the triangle ordinals and Level identify it.</summary>
     ChildRoleCoversTriangle,
+
+    /// <summary>A core child role's parent source triangle has a corner whose strength is not exactly 1. Every lattice
+    /// cell touches all three parent corners, so a cell's interpolated strength is 1 only when all three are. Identity,
+    /// RegionKey, SurfaceId of the first such corner in source order, the triangle ordinals, Level and Cell identify it.</summary>
+    ChildCoreStrength,
 }
 
 /// <summary>Structured malformed-data refusal for host coverage. Messages are developer prose.</summary>

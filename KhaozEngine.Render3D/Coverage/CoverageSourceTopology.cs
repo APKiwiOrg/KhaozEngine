@@ -126,7 +126,7 @@ public sealed class CoverageSourceTopology
 
     internal HostCoverageDataException Error(HostCoverageRefusal reason, string message, int? mesh = null,
         int? primitive = null, int? vertex = null, int? firstTriangle = null, int? materialSlice = null,
-        int? surfaceId = null, string? regionKey = null) =>
+        int? surfaceId = null, string? regionKey = null, int? level = null, int? cell = null) =>
         new(reason, $"Coverage asset '{Identity}': {message}")
         {
             Identity = Identity,
@@ -136,8 +136,20 @@ public sealed class CoverageSourceTopology
             FirstTriangle = firstTriangle,
             MaterialSlice = materialSlice,
             SurfaceId = surfaceId,
-            RegionKey = regionKey
+            RegionKey = regionKey,
+            Level = level,
+            Cell = cell
         };
+
+    /// <summary>Source triangle index of each child role, in list order. Binding has already checked that every role
+    /// names a triangle its region's ranges select, so each lookup succeeds.</summary>
+    internal int[] ChildRoleTriangles(IReadOnlyList<CoverageChildRole> childRoles)
+    {
+        if (childRoles.Count == 0) return [];
+        var ordinals = new Dictionary<(int Mesh, int Primitive, int Triangle), int>(Triangles.Count);
+        for (int i = 0; i < Triangles.Count; i++) ordinals.Add((Triangles[i].Mesh, Triangles[i].Primitive, Triangles[i].Triangle), i);
+        return childRoles.Select(role => ordinals[(role.Mesh, role.Primitive, role.Triangle)]).ToArray();
+    }
 
     internal int[] Select(ReadOnlySpan<CoverageTriangleRange> ranges)
     {

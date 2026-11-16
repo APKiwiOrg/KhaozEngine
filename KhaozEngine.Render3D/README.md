@@ -1922,8 +1922,8 @@ Regions are disjoint, and a surface may have positive strength in only one regio
 checks, including core and collar strength requirements, belong to the binding layer with the GLB.
 
 A region built with the `childRoles` overload holds `CoverageChildRole` overrides, exposed sorted by
-source triangle and cell as `ChildRoles`. Each declares the opposite of its parent range role for one
-cell of a triangle the region owns. `CoverageChildCells` is the only definition of cell numbering: a
+source triangle and cell as `ChildRoles`. Each gives the opposite of its parent range role to one cell
+of a triangle the region owns. `CoverageChildCells` is the only definition of cell numbering: a
 triangle at level `n` has `n * n` cells, and `Get(level, cell)` returns their corners as integer
 barycentric weights over 12 in the source corner order. A level must equal the triangle's effective
 refinement level, which is 1 when no refinement range names it. Overriding every cell of a triangle
@@ -1981,6 +1981,17 @@ including protected vertices. Shared position groups use one canonical recipe. A
 `TryInterpolate` leaves its destination untouched and returns `CoverageFailure`. The checked
 `Interpolate` wrapper throws `CoverageInterpolationStateException` with the same `Failure` and
 public `Reason`, preserving its `InvalidOperationException` base.
+
+Each refined triangle starts as one cell of its source triangle's level lattice. `GetChildCell(t)`
+returns that origin cell in `CoverageChildCells` numbering. A conforming split from a finer
+neighbour cuts a cell into pieces, and every piece keeps its origin cell. A refined triangle takes
+its origin cell's child role when the region overrides that cell, and its parent range role
+otherwise. Overrides change only these role words. Vertices, indices, position recipes and edge
+splits are those of the same map without overrides, and a map without overrides keeps its
+refinement identity. Every lattice cell touches all three corners of its source triangle, so a core
+cell has full interpolated strength only when all three corners have strength exactly 1. Binding
+refuses a core child role on any other parent with `ChildCoreStrength`, naming the region, the first
+such corner's `SurfaceId`, the triangle ordinals, `Level` and `Cell`.
 
 The internal headless `CoverageCarryReference.TryCarry` applies a selected recession table row to
 the current source-skinned, fixed-refinement surface. `CoverageCarryUniforms` composes inverse

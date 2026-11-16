@@ -20,16 +20,17 @@ internal sealed class TileWaterPreparationStorage
 
     internal void BeginTrace()
     {
-        _used = _retained = _misses = _exhausted = _fallbacks = 0;
+        // Invalidate every outstanding projection source before a reentrant trace can reuse slab offsets.
         Shared.BeginTrace();
+        _used = _retained = _misses = _exhausted = _fallbacks = 0;
     }
 
     internal void EndTrace()
     {
         Last = new(ByteBudget, _used, Workspace.PayloadBytes, _retained, _misses, _exhausted, _fallbacks);
+        Shared.EndTrace();
         // Every offset belongs to this trace. The bytes contain no references and are not observable afterward.
         _used = 0;
-        Shared.EndTrace();
     }
 
     /// <summary>Prepares a shape in the workspace. A face also borrows its parent's published projections.</summary>

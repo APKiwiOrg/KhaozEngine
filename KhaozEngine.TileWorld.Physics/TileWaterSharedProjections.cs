@@ -39,7 +39,11 @@ internal sealed class TileWaterSharedProjections
     readonly Row[] _rows = new Row[Slots * Rows];
     int _count, _depth;
     bool _suspended, _lent;
-    int _published, _borrowed, _duplicates, _exhausted, _lends, _misses, _nested, _unsupported, _bypassed, _copies, _fresh;
+    // Every returned source carries the generation it was lent under. Advancing it whenever the storage a source may
+    // read stops belonging to that lend makes every older source copy nothing, before it reads any span.
+    ulong _generation;
+    int _published, _borrowed, _duplicates, _exhausted, _lends, _misses, _nested, _unsupported, _bypassed, _copies, _fresh,
+        _stale;
 
     internal Snapshot Last { get; private set; }
     internal static int ReservedPayloadBytes => Slots * Rows * Unsafe.SizeOf<Row>();
@@ -54,15 +58,12 @@ internal sealed class TileWaterSharedProjections
         }
     }
 
+    /// <summary>Called before the storage resets its slab, so a reentrant trace invalidates every outstanding
+    /// source before any of its storage can be reused.</summary>
     internal void BeginTrace()
     {
-        if (_depth++ == 0)
-        {
-            _published = _borrowed = _duplicates = _exhausted = _lends = _misses = 0;
-            _nested = _unsupported = _bypassed = _copies = _fresh = 0;
-            return;
-        }
-        // A reentrant trace reuses the workspace and the retained slab, so nothing published before it
+        if (_depth++ == 0) return;
+        // A reentrant trace reuses the workspace and the retained slab, so nothing published or lent before it
         // remains trustworthy for the rest of the outer trace.
         _suspended = true;
         Clear();
@@ -74,13 +75,18 @@ internal sealed class TileWaterSharedProjections
         Clear();
         _suspended = false;
         Last = new(ReservedPayloadBytes, _published, _borrowed, _duplicates, _exhausted, _lends, _misses,
-            _nested, _unsupported, _bypassed, _copies, _fresh, 0);
+            _nested, _unsupported, _bypassed, _copies, _fresh, _stale);
+        // Reset after publishing, so a stale source evaluated between traces is reported with the next trace.
+        _published = _borrowed = _duplicates = _exhausted = _lends = _misses = 0;
+        _nested = _unsupported = _bypassed = _copies = _fresh = _stale = 0;
     }
 
     /// <summary>Releases any lend on the workspace and publishes a settled parent preparation. A retained
     /// parent is borrowed from the storage slab at <paramref name="retainedOffset"/>, any other copies rows.</summary>
     internal void Settle(ref TileWaterPreparedQuery prepared, int retainedOffset)
     {
+        // The settled workspace no longer belongs to any lend, so a source it held must not copy again.
+        _generation++;
         _lent = false;
         TileWaterConvexShape shape = prepared.Shape;
         if (shape.ProjectionParent is not null || _depth == 0) return;
@@ -120,14 +126,14 @@ internal sealed class TileWaterSharedProjections
             {
                 _lent = true;
                 _lends++;
-                return new(shape.ProjectionBasisMap, _rows.AsSpan(i * Rows, parent.Bases.Length), default, this);
+                return new(shape.ProjectionBasisMap, _rows.AsSpan(i * Rows, parent.Bases.Length), default, this, _generation);
             }
             var states = TileWaterPreparedQuery.RetainedStates(parent, slab[offset..], out H stored);
             // The slab offset belongs to this trace. Rechecking its header keeps a reused slab from lending.
             if (!Same(stored, key)) break;
             _lent = true;
             _lends++;
-            return new(shape.ProjectionBasisMap, default, states, this);
+            return new(shape.ProjectionBasisMap, default, states, this, _generation);
         }
         _misses++;
         return default;
@@ -149,6 +155,11 @@ internal sealed class TileWaterSharedProjections
         }
     }
 
+    /// <summary>True only for a source lent under the current generation while sharing is not suspended.</summary>
+    internal bool Accepts(ulong generation) => generation == _generation && !_suspended;
+
+    internal void RejectStale() => _stale++;
+
     internal void Count(bool copied)
     {
         if (copied) _copies++;
@@ -157,6 +168,7 @@ internal sealed class TileWaterSharedProjections
 
     void Clear()
     {
+        _generation++;
         _owners.AsSpan(0, _count).Clear();
         _count = 0;
         _lent = false;
@@ -179,24 +191,32 @@ internal readonly ref struct TileWaterProjectionSource
     readonly ReadOnlySpan<TileWaterSharedProjections.Row> _rows;
     readonly ReadOnlySpan<S> _retained;
     readonly TileWaterSharedProjections? _owner;
+    readonly ulong _generation;
 
     /// <summary>Either <paramref name="rows"/> or <paramref name="retained"/> holds the parent's values,
     /// indexed by parent basis ordinal through the face's capture-owned <paramref name="map"/>.</summary>
     internal TileWaterProjectionSource(ReadOnlySpan<int> map, ReadOnlySpan<TileWaterSharedProjections.Row> rows,
-        ReadOnlySpan<S> retained, TileWaterSharedProjections? owner = null)
+        ReadOnlySpan<S> retained, TileWaterSharedProjections? owner = null, ulong generation = 0)
     {
         _map = map;
         _rows = rows;
         _retained = retained;
         _owner = owner;
+        _generation = generation;
     }
 
     internal bool IsEmpty => _map.IsEmpty;
 
-    /// <summary>Copies the mapped parent projection by value. False leaves the state untouched for Project.</summary>
+    /// <summary>Copies the mapped parent projection by value. False leaves the state untouched for Project. A lent
+    /// source whose generation is no longer current is rejected before any span is read.</summary>
     internal bool TryCopy(int ordinal, ref S state)
     {
         if (_map.IsEmpty) return false;
+        if (_owner is not null && !_owner.Accepts(_generation))
+        {
+            _owner.RejectStale();
+            return false;
+        }
         int parent = _map[ordinal];
         bool copied = parent >= 0 && (_rows.IsEmpty ? From(in _retained[parent], ref state) : From(in _rows[parent], ref state));
         _owner?.Count(copied);

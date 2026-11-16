@@ -356,17 +356,19 @@ An existing file is its volume and file identity, so a hard link, a linked paren
 target contains dot segments and an alias such as `/tmp` on macOS all reach one identity. An absent
 destination is the identity of its existing parent plus its final name, folded for case and Unicode
 composition because a volume may merge such names. Two absent outputs that differ only in letter case or
-composition are therefore refused on every volume, including a case-sensitive one. Two outputs with one identity, or an output with the identity of the
-manifest, a checked source, a pose chunk or a table being verified, refuse with `OutputAlias` and exit 1.
-A destination the OS cannot identify, such as a dangling or looping link, refuses the same way. An absent
-output parent refuses with `OutputIo`. An input-side path the OS cannot identify, such as a manifest in a
-missing directory, reaches no output, so input admission reports it with exit 2 as before.
+composition are therefore refused on every volume, including a case-sensitive one. Two outputs with one
+identity, or an output with the identity of the manifest, a checked source, a pose chunk or a table being
+verified, refuse with `OutputAlias` and exit 1. A destination the OS cannot identify, such as a dangling
+or looping link, refuses the same way. An absent output parent refuses with `OutputIo`. An input-side
+path the OS cannot identify, such as a manifest in a missing directory, reaches no output, so input
+admission reports it with exit 2.
 
 Identity uses `stat` on Linux and macOS and the file id on Windows. The C library is bound at run time:
 `stat` on glibc 2.33 and later, on musl and on macOS, and `__xstat` on older glibc. Linux and macOS are
 covered on 64-bit x86 and Arm. On any other host, or when the C library or its entry point cannot be
-bound, every output is unidentifiable and the run refuses with `OutputAlias` and exit 1 before writing. Generated part paths must contain no link. Deliberate concurrent
-renaming by another process is outside this check.
+bound, every output is unidentifiable and the run refuses with `OutputAlias` and exit 1 before writing.
+Generated part paths must contain no link. Deliberate concurrent renaming by another process is outside
+this check.
 
 Publication then runs in this order:
 
@@ -376,21 +378,21 @@ Publication then runs in this order:
    Missing generation directories are created beneath the existing output parent.
 2. Each mutable output is copied to a sibling `<name>.<transaction>.tmp` and checked.
 3. A journal `<commit-root>.coverage-journal` is written beside the commit root with owner-only
-   permissions on Unix. It records each output's old and new length, SHA-256 and Unix mode, or that it did
-   not exist, and
-   the parts and directories this transaction created. A marker `<name>.coverage-incomplete` is created
-   beside every mutable output, then byte-for-byte backups `<name>.<transaction>.bak` of existing outputs.
-   These local recovery files name local paths and are never evidence. On Windows they inherit the
-   directory's permissions.
+   permissions on Unix. It records each output's old and new length, SHA-256 and Unix mode, or that it
+   did not exist, and the parts and directories this transaction created. A marker
+   `<name>.coverage-incomplete` is created beside every mutable output, then byte-for-byte backups
+   `<name>.<transaction>.bak` of existing outputs. These local recovery files name local paths and are
+   never evidence. On Windows they inherit the directory's permissions.
 4. The table, then the diagnostics, then the evidence root are replaced. The last replacement is the
    commit point. A refusal publishes diagnostics only, and the diagnostic root is then the commit root.
 5. Backups, markers and the journal are removed. Older generations stay, because a reader may still hold
    an older root.
 
-A handled failure before the commit point attempts every restore in reverse order, removes only files this
-transaction created and keeps every pre-existing byte. One failed restore never skips the rest. A restored
-output gets back its old Unix mode. Hard links to a replaced or restored output are not preserved, because
-replacement and restore both rename another file into place. The refusal is `OutputIo`. Its inner exception is the original failure and `RollbackFailures` lists every rollback step
+A handled failure before the commit point attempts every restore in reverse order, removes only files
+this transaction created and keeps every pre-existing byte. One failed restore never skips the rest. A
+restored output gets back its old Unix mode. Hard links to a replaced or restored output are not
+preserved, because replacement and restore both rename another file into place. The refusal is
+`OutputIo`. Its inner exception is the original failure and `RollbackFailures` lists every rollback step
 that also failed. When anything could not be undone, the journal, markers and remaining backups stay. A
 cleanup failure after the commit point also keeps them and reports `OutputIo`.
 

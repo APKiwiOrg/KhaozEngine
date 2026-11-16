@@ -243,8 +243,8 @@ public sealed class CoveragePathIsolationProcessTests
         AssertPreserved(files, before);
     }
 
-    // A manifest the OS cannot identify is an input problem. Admission reports it as malformed input, exactly as
-    // before outputs were compared by identity, and the accepted control publishes from the real manifest.
+    // A manifest the OS cannot identify is an input problem. Admission reports it as malformed input, and the
+    // accepted control publishes from the real manifest.
     [Fact]
     public async Task Unidentifiable_manifest_keeps_its_input_refusal()
     {

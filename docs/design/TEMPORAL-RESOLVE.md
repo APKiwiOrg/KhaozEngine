@@ -274,7 +274,12 @@ their original effects on R, the current weight and state.
 The scalar retention is `clamp(dot(R-c,Hbar-c)/dot(Hbar-c,Hbar-c),0,1-w)` in history colour space.
 For this scalar, R uses the resolve's original nearest-even binary16 projection, c is the current
 reconstruction and w its current weight. The channel transport chooses a representable R by truncation
-toward zero and writes it to the colour target. A zero denominator keeps `1-w`. Rejected history retains zero. For each channel, alpha included,
+toward zero and writes it to the colour target. A zero denominator keeps `1-w`. Rejected history retains zero.
+The quotient compares R, already rounded to binary16, with the current colour and Hbar. Where Hbar lies within
+about half a binary16 step of the current colour, that rounding dominates the numerator and the retention lands
+at either end of its clamp. A last-bit difference in the current colour or weight can then become a large
+retention difference, which is how WARP's certified and checked programs came to store different detail. The
+formula is left as it is, since changing it would move every stored value. For each channel, alpha included,
 limit retention by `R / -deviation` for every negative deviation, and by
 `(65504-R) / deviation` for every positive deviation. This is the greatest admissible retention up to the
 scalar value that keeps the unrounded children inside the finite nonnegative binary16 range.
@@ -309,11 +314,23 @@ channels, the finite maximum and both cancellation/overflow regressions. Metal c
 and state identity from cold prefixes, presented still frames, moving/recovery means, return to exact
 replication after motion stops, thin-detail retention and a moving output that differs from Display.
 
-Still identity holds colour, confidence and lock exactly on every backend. On llvmpipe the Fine and Display
-programs contract the shimmer record's averages differently, as the two entry points do, so there drift and
-swing alone go through `TemporalEntryStateComparison` and its existing llvmpipe limits. Hosted run 43844224166
-measured at most 2 half steps on at most 0.0343% of record values, against limits of 9,100 and 500 steps and
-shares of 1.02% and 0.51%.
+Still identity holds colour byte for byte Display's on every backend, in the presented frame and in the colour
+history, and every child replicates stored R exactly. The state is byte for byte Display's wherever both modes
+ran the same decision path, with one exception on llvmpipe below. Fine runs one checked program, so on a
+certified frame Display's certified program meets Fine's checked one. That is the certified-against-checked
+comparison `TemporalFullyLitHistoryOracle` already rules on, and the still fact hands those frames to it with
+the rule it selects for the device: on WARP colour, confidence, drift and swing follow
+`TemporalSoftwareCompileDivergenceRule` while locks, marks, R8 and depth stay exact, NVIDIA hardware Direct3D 11
+takes its reporting oracle, and every other device stays exact. The fact still pins colour exactly on those
+frames, so the rule covers only the state. Hosted run 43870310625 (2026-11-17) found drift one half step apart
+on frames 2, 3 and 6 on WARP with colour equal. It is the same divergence Display shows across its own
+certificate there.
+
+On llvmpipe the Fine and Display programs contract the shimmer record's averages differently, as the two entry
+points do, so there drift and swing go through `TemporalEntryStateComparison` and its existing llvmpipe limits on
+every frame, and confidence and lock stay exact. The certified-against-checked owner holds that device exact, so
+the two rules never apply to the same channel. Hosted run 43844224166 measured at most 2 half steps on at most
+0.0343% of record values, against limits of 9,100 and 500 steps and shares of 1.02% and 0.51%.
 
 Fine debug views and sampled counts share the fine resolve core and its classification/read bindings.
 Each builds the one checked pipeline over the full resolve layout, matching the full set the resolve

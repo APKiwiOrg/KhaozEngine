@@ -207,8 +207,7 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
         throw new InvalidOperationException("The forced check requires a known certified temporal program.");
     }
 
-    TemporalFullyLitHistoryOracle Oracle(IGpuDevice device) => new(output, TemporalDeviceClass.IsLavapipe(device),
-        TemporalDeviceClass.IsWarp(device), TemporalDeviceClass.IsHardwareNvidiaD3D11(device));
+    TemporalFullyLitHistoryOracle Oracle(IGpuDevice device) => TemporalFullyLitHistoryOracle.For(output, device);
 
     internal static byte[] Bytes(IGpuDevice device, IGpuTexture source)
     {

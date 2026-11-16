@@ -7,6 +7,9 @@ namespace KhaozEngine.Tests.Gpu;
 // Only llvmpipe's continuous record takes a software arithmetic bound. Existing stored state never does.
 internal sealed class TemporalEntryStateComparison(bool softwareVulkan)
 {
+    /// <summary>Whether this owner bounds the drift and swing record on the running device.</summary>
+    internal bool BoundsRecordChannels => softwareVulkan;
+
     internal RecordChannel Drift { get; } = new();
     internal RecordChannel Swing { get; } = new();
 

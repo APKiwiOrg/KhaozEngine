@@ -58,6 +58,11 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         // llvmpipe contracts the shimmer record's averages differently in two programs. Its owner bounds only drift
         // and swing there. Colour, confidence and lock stay exact on every backend.
         var state = new TemporalEntryStateComparison(TemporalDeviceClass.IsLavapipe(fine.Frame.Device));
+        // Fine runs one checked program for every certificate state. Where Display skipped the decision, a frame
+        // compares Display's certified program with Fine's checked one, which is the certified-against-checked
+        // comparison its owner already rules on for the device. On llvmpipe that owner holds the pair exact, so the
+        // record channels stay with the owner above, which already bounds them between these two programs.
+        var certificate = TemporalFullyLitHistoryOracle.For(output, fine.Frame.Device);
         for (int n = 0; n < frames; n++)
         {
             float pan = moving ? n * 0.35f : 0f;
@@ -72,13 +77,21 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
             TemporalHistorySample.Exact(n, "Display vs Fine history colour",
                 TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
                 TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex)));
-            state.Compare(n, "Display vs Fine history state",
-                TemporalTextureIo.Read(display.Frame.Device, b.Confidence(b.WriteIndex)),
-                TemporalTextureIo.Read(fine.Frame.Device, a.Confidence(a.WriteIndex)));
+            bool mismatched = display.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped
+                != fine.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped;
+            if (mismatched && !state.BoundsRecordChannels)
+                certificate.Report(n, $"{preset} Display certified vs Fine checked still",
+                    TemporalFullyLitHistoryOracle.Snapshot.Read(display.Frame), TemporalFullyLitHistoryOracle.Snapshot.Read(fine.Frame));
+            else
+                state.Compare(n, "Display vs Fine history state",
+                    TemporalTextureIo.Read(display.Frame.Device, b.Confidence(b.WriteIndex)),
+                    TemporalTextureIo.Read(fine.Frame.Device, a.Confidence(a.WriteIndex)));
             AssertReplicated(fine.Frame);
         }
-        if (assertIdentity) state.AssertComplete(output, $"{preset} Display vs Fine still");
         output.WriteLine($"{preset}, moving {moving}, {frames} frames, differing presented bytes {different}");
+        if (!assertIdentity) return;
+        state.AssertComplete(output, $"{preset} Display vs Fine still");
+        certificate.AssertComplete();
     }
 
     [GpuTheory]

@@ -11,6 +11,10 @@ namespace KhaozEngine.Tests.Gpu;
 // Measure the whole walk before asserting. A colour mismatch must not hide later state or later frames.
 internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bool softwareVulkan, bool warp = false, bool nvidia = false)
 {
+    /// <summary>The owner with the certified-against-checked rule it selects for <paramref name="device"/>.</summary>
+    internal static TemporalFullyLitHistoryOracle For(ITestOutputHelper output, IGpuDevice device) => new(output,
+        TemporalDeviceClass.IsLavapipe(device), TemporalDeviceClass.IsWarp(device), TemporalDeviceClass.IsHardwareNvidiaD3D11(device));
+
     internal sealed record Snapshot(int Width, int InternalWidth, byte[] Colour, byte[] State, byte[] Visibility, byte[] Depth)
     {
         internal static Snapshot Read(TemporalFixture fx)

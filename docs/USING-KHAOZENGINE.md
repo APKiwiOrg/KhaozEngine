@@ -4927,7 +4927,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   resolve from the mean of four reprojected fine-history fetches. Their finite, nonnegative deviations survive
   into the next generation while their stored mean stays within one binary16 step of the display result.
   Still pixels and distrusted footprints use the original display-history expressions and replicate their
-  stored result exactly. There is no new presentation filter. The update runs before distortion, bloom and
+  stored result exactly. Their colour is byte for byte Display's on every backend, and so is their state wherever
+  both modes ran the same decision path. On a fully lit certified frame Display skips the visibility decision and
+  Fine does not, so the state there matches Display's within the rule Display itself keeps across its certificate
+  on that device. There is no new presentation filter. The update runs before distortion, bloom and
   tonemapping. The resolve computes all four children once, retaining the mean and reprojection in float32
   locals, and writes R, state and four RGBA16F children. The fine-grid pass point-loads the child selected
   by texel parity. Classification computes validity without colour accumulation. The resolve checks its

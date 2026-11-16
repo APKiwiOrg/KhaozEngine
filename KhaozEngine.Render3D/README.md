@@ -436,7 +436,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. Opt-in `Fine` keeps an extra
   RGBA16F colour pair at twice the display on each axis. Moving pixels can read its four reprojected texels,
   retain bounded sub-pixel deviations and preserve the resolved mean. Still and distrusted pixels use the
-  original display history and replicate the resolved colour. Both paths present the resolve directly, before
+  original display history and replicate the resolved colour. Still colour is byte for byte Display's on every
+  backend. Still state is too wherever both modes ran the same decision path, and on a certified frame,
+  where Display skips the decision and Fine does not, it follows Display's own certified-against-checked rule
+  for the device. Both paths present the resolve directly, before
   distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
   latched on the frame's first render. Fine requires the temporal resolve, six colour attachments, a fitting
   device texture dimension,

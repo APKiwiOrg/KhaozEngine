@@ -197,8 +197,9 @@ change Display. Quantising them only makes a flip rarer. One program for both ce
 exact by construction on every backend.
 
 The price is the fully lit saving of a certified specialization, on fully lit frames only. In the
-capture below the fully lit Native Fine resolve takes 8.663 ms, where the certified program measured 6.400 ms
-in an earlier capture the same day on the same shared machine. A frame with sun shadows takes the checked
+capture below the fully lit Native Fine resolve takes 8.663 ms. The certified program measured 6.400 ms for
+that fully lit scene earlier the same day, in the last capture taken before the certified detail programs were
+removed, on the same shared machine with the same four warm and eight measured frames. A frame with sun shadows takes the checked
 program in both modes. The lever back to that saving is one
 program that skips the decision through a uniform rather than by compilation: it keeps a single compiled
 program and so stays exact, but it changes the checked program's source, so it can move Metal values and
@@ -314,17 +315,18 @@ channels, the finite maximum and both cancellation/overflow regressions. Metal c
 and state identity from cold prefixes, presented still frames, moving/recovery means, return to exact
 replication after motion stops, thin-detail retention and a moving output that differs from Display.
 
-Still identity holds colour byte for byte Display's on every backend, in the presented frame and in the colour
-history, and every child replicates stored R exactly. The state is byte for byte Display's wherever both modes
-ran the same decision path, with one exception on llvmpipe below. Fine runs one checked program, so on a
-certified frame Display's certified program meets Fine's checked one. That is the certified-against-checked
-comparison `TemporalFullyLitHistoryOracle` already rules on, and the still fact hands those frames to it with
-the rule it selects for the device: on WARP colour, confidence, drift and swing follow
+Still identity holds wherever both modes ran the same decision path: the presented frame and the colour
+history are byte for byte Display's, and so is the state, with one exception on llvmpipe below. Every child
+replicates stored R exactly on every device and frame. Fine runs one checked program, so on a certified frame
+Display's certified program meets Fine's checked one. That is the certified-against-checked comparison
+`TemporalFullyLitHistoryOracle` already rules on, and the still fact hands those frames to it with the rule it
+selects for the device, colour included: on WARP colour, confidence, drift and swing follow
 `TemporalSoftwareCompileDivergenceRule` while locks, marks, R8 and depth stay exact, NVIDIA hardware Direct3D 11
-takes its reporting oracle, and every other device stays exact. The fact still pins colour exactly on those
-frames, so the rule covers only the state. Hosted run 43870310625 (2026-11-17) found drift one half step apart
-on frames 2, 3 and 6 on WARP with colour equal. It is the same divergence Display shows across its own
-certificate there.
+takes its reporting oracle, and every other device stays exact. Where the owner holds the pair exact the fact
+also pins the presented frame and the colour history byte for byte on those frames. Hosted run 43870310625
+(2026-11-16) found drift one half step apart on frames 2, 3 and 6 on WARP with colour equal. Equal colour there
+is a measurement of that scene and not a guarantee: two compiles of the shared accumulation round its float32
+values differently on that device, which is the same divergence Display shows across its own certificate.
 
 On llvmpipe the Fine and Display programs contract the shimmer record's averages differently, as the two entry
 points do, so there drift and swing go through `TemporalEntryStateComparison` and its existing llvmpipe limits on

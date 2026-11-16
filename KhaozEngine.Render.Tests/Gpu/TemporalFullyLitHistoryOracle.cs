@@ -77,6 +77,10 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
     }
 
     enum Rule { Exact, SoftwareBound, SoftwareRecordBound, NvidiaReport }
+
+    /// <summary>Whether a certified program and a checked one store every byte alike on this device. Where they do
+    /// not, <see cref="Report"/> applies the device's rule to colour, confidence, drift and swing.</summary>
+    internal bool HoldsCertifiedAgainstCheckedExact => !warp && !nvidia;
     readonly Dictionary<(string Pair, string Channel, Rule Rule), Difference> _totals = [];
     readonly TemporalNvidiaHistoryOracle? _nvidia = nvidia ? new(output) : null;
 

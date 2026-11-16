@@ -60,8 +60,9 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         var state = new TemporalEntryStateComparison(TemporalDeviceClass.IsLavapipe(fine.Frame.Device));
         // Fine runs one checked program for every certificate state. Where Display skipped the decision, a frame
         // compares Display's certified program with Fine's checked one, which is the certified-against-checked
-        // comparison its owner already rules on for the device. On llvmpipe that owner holds the pair exact, so the
-        // record channels stay with the owner above, which already bounds them between these two programs.
+        // comparison its owner already rules on for the device, colour included. On llvmpipe that owner holds the
+        // pair exact, so the record channels stay with the owner above, which already bounds them between these two
+        // programs. Presented and stored colour are pinned exactly wherever the owner holds the pair exact.
         var certificate = TemporalFullyLitHistoryOracle.For(output, fine.Frame.Device);
         for (int n = 0; n < frames; n++)
         {
@@ -71,15 +72,18 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
             Assert.Null(display.Frame.Scene.TemporalHistory.DetailStore);
             for (int i = 0; i < actual.Length; i++) if (actual[i] != expected[i]) different++;
             if (!assertIdentity) continue;
-            Assert.Equal(expected, actual);
             var a = fine.Frame.Scene.TemporalHistory;
             var b = display.Frame.Scene.TemporalHistory;
-            TemporalHistorySample.Exact(n, "Display vs Fine history colour",
-                TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
-                TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex)));
-            bool mismatched = display.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped
-                != fine.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped;
-            if (mismatched && !state.BoundsRecordChannels)
+            bool displaySkipped = display.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped;
+            Assert.False(fine.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped);
+            if (!displaySkipped || certificate.HoldsCertifiedAgainstCheckedExact)
+            {
+                Assert.Equal(expected, actual);
+                TemporalHistorySample.Exact(n, "Display vs Fine history colour",
+                    TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
+                    TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex)));
+            }
+            if (displaySkipped && !state.BoundsRecordChannels)
                 certificate.Report(n, $"{preset} Display certified vs Fine checked still",
                     TemporalFullyLitHistoryOracle.Snapshot.Read(display.Frame), TemporalFullyLitHistoryOracle.Snapshot.Read(fine.Frame));
             else

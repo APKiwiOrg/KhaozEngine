@@ -24,9 +24,9 @@ hashed sets ([#1814](https://github.com/APKiwiOrg/KhaozEngine/issues/1814)).
   unknown members or depends on member order changes. A report above 67,108,864 bytes is a
   `khaozengine.coverage-diagnostics-set/1` index with no category objects, so read it through
   `CoverageArtifactReader.Open` and copy its `<name>.parts` directory with it. `omitted` is always 0 and `items`
-  always holds `total` entries, so a reader sized for the old 64 MiB cap handles larger documents. When an
-  accepted transaction fails, the previous report stays, so the exit code and standard error are the authority
-  for that run. No field is removed and no retained field changes type or meaning. Diagnostics are still never
+  always holds `total` entries. A reader sized for the old 64 MiB cap must handle larger logical documents. When
+  an accepted transaction fails, the previous report stays, so the exit code and standard error are the
+  authority for that run. No field is removed and no retained field changes type or meaning. Diagnostics are still never
   acceptance evidence.
 
 **Packed coverage input and complete evidence.**

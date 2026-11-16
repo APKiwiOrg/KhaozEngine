@@ -249,7 +249,8 @@ This complete minimal format 2 manifest references that chunk. Its `host`, `map`
 references stand for the consumer's own checked assets: a two-joint host with identity inverse binds and
 a configuration whose only command is 23. Every other member is literal, including the chunk's real
 digest. A deterministic tooling test reads this block and the fixture above from this file, regenerates
-the 368 bytes independently of the codec, and builds the campaign through the executable.
+the 368 bytes independently of the codec, and builds the campaign through the executable. The example
+declares no dense rows, so it is a `build` example: `verify` refuses it with `MissingDenseRows`.
 
 ```json
 {
@@ -624,12 +625,12 @@ same streamed serialization, provenance checks and recoverable publication as sa
 The free `tooling-validation.yml` suite `coverage` builds this executable and its test project explicitly
 on hosted Ubuntu. It requires a nonempty inventory, executed CLI process tests and zero skips, with
 `KE_GPU_TESTS=0`. Coverage format, carry and tooling changes select the suite. `CoveragePackageProcessTests` runs
-`version`, `build`, `verify-samples` and `verify` over format 1 and the documented format 2 campaign, checks
-every evidence and report root through the strict reader, and resumes a multipart evidence set with a
-substituted part and with the intact part. In CI it starts the source-built tool. A candidate package runs the
-same assertions when `KE_COVERAGE_TOOL_EXECUTABLE` names its installed `ke-coverage` by absolute path, and the
-test refuses a relative or missing path. The installed tool must report the engine version the tests were built
-with. This is deterministic
-headless verification, not native correctness or cost acceptance. The Diagnostic hardware cost fact
+`build`, `verify-samples` and `verify` over a format 1 campaign and over the same campaign packed as format 2,
+builds the documented format 2 campaign, reports `version`, checks every evidence and report root through the
+strict reader, and resumes a multipart evidence set with a substituted part and with the intact part. In CI it
+starts the source-built tool. A candidate package runs the same assertions when `KE_COVERAGE_TOOL_EXECUTABLE`
+names its installed `ke-coverage` by absolute path, and the test refuses a relative or missing path. The
+installed tool must report the engine version the tests were built with. This is deterministic headless
+verification, not native correctness or cost acceptance. The Diagnostic hardware cost fact
 requires its separate exact `KE_COVERAGE_COST_UNIT` opt-in and owner-approved invocation, documented in
 [performance evidence](../../docs/RENDERER-PERFORMANCE.md#equipment-coverage-cost-evidence).

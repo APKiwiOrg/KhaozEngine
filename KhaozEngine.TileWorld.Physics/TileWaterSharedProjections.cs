@@ -27,7 +27,7 @@ internal sealed class TileWaterSharedProjections
     }
 
     internal readonly record struct Snapshot(int ReservedBytes, int Published, int Borrowed, int Duplicates,
-        int Exhausted, int Lends, int Misses, int Nested, int Unsupported, int Bypassed, int Copies, int Fresh);
+        int Exhausted, int Lends, int Misses, int Nested, int Unsupported, int Bypassed, int Copies, int Fresh, int Stale);
 
     // Written only by tests, the test module's forced-off corpus switch and the paired benchmark. The bypass
     // runs the original expressions on identical inputs, so it changes counts and time, never output.
@@ -74,7 +74,7 @@ internal sealed class TileWaterSharedProjections
         Clear();
         _suspended = false;
         Last = new(ReservedPayloadBytes, _published, _borrowed, _duplicates, _exhausted, _lends, _misses,
-            _nested, _unsupported, _bypassed, _copies, _fresh);
+            _nested, _unsupported, _bypassed, _copies, _fresh, 0);
     }
 
     /// <summary>Releases any lend on the workspace and publishes a settled parent preparation. A retained

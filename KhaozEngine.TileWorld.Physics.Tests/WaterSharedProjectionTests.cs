@@ -378,6 +378,85 @@ public sealed class WaterSharedProjectionTests(ITestOutputHelper output) : IDisp
         finally { storage.EndTrace(); }
     }
 
+    // #1755 review R1. A nested trace resets the slab and may retain another parent with the same raw inputs where
+    // an outstanding borrowed source still points. A source must never supply a value its lend no longer owns.
+    [Theory]
+    [InlineData("borrowed")]
+    [InlineData("copied")]
+    public void OutstandingBorrowIsInvalidatedByReentrantTrace(string path)
+    {
+        using var environment = Nearest();
+        var (parent, other, face) = Opposed();
+        bool borrowed = path == "borrowed";
+        var storage = new TileWaterPreparationStorage();
+        storage.BeginTrace();
+        PublishShifted(storage, parent, borrowed);
+        var outstanding = Shifted(storage, face);
+        Assert.True(outstanding.HasSharedSource);
+        storage.BeginTrace();
+        PublishElsewhere(storage, other, borrowed);
+        storage.EndTrace();
+        var actual = outstanding.Evaluate();
+        storage.EndTrace();
+        FrozenWaterComparison.Range(ShiftedFrozen(face), actual);
+        Assert.Equal(0, storage.Shared.Last.Copies);
+        Assert.Equal(face.Bases.Length, storage.Shared.Last.Stale);
+    }
+
+    [Theory]
+    [InlineData("borrowed", "between-traces")]
+    [InlineData("copied", "between-traces")]
+    [InlineData("borrowed", "next-trace")]
+    [InlineData("copied", "next-trace")]
+    [InlineData("borrowed", "republished")]
+    [InlineData("copied", "republished")]
+    public void ASourceOutlivingItsTraceCopiesNothing(string path, string when)
+    {
+        using var environment = Nearest();
+        var (parent, other, face) = Opposed();
+        bool borrowed = path == "borrowed";
+        var storage = new TileWaterPreparationStorage();
+        storage.BeginTrace();
+        PublishShifted(storage, parent, borrowed);
+        var stale = Shifted(storage, face);
+        Assert.True(stale.HasSharedSource);
+        storage.EndTrace();
+        TileWaterConvexShape.Range actual = default;
+        if (when == "between-traces") actual = stale.Evaluate();
+        storage.BeginTrace();
+        // A later trace republishes another parent with the same raw inputs into the stale source's row block or slab offset.
+        if (when == "republished") PublishElsewhere(storage, other, borrowed);
+        if (when != "between-traces") actual = stale.Evaluate();
+        storage.EndTrace();
+        FrozenWaterComparison.Range(ShiftedFrozen(face), actual);
+        Assert.Equal(0, storage.Shared.Last.Copies);
+        Assert.Equal(face.Bases.Length, storage.Shared.Last.Stale);
+    }
+
+    [Theory]
+    [InlineData("borrowed")]
+    [InlineData("copied")]
+    public void ASettledSourceCopiesNothingAfterAnotherLend(string path)
+    {
+        using var environment = Nearest();
+        var (parent, _, face) = Opposed();
+        var storage = new TileWaterPreparationStorage();
+        storage.BeginTrace();
+        PublishShifted(storage, parent, path == "borrowed");
+        var settled = Shifted(storage, face);
+        Assert.True(settled.HasSharedSource);
+        storage.DiscardMiss(ref settled);
+        var current = Shifted(storage, face);
+        Assert.True(current.HasSharedSource);
+        var actual = settled.Evaluate();
+        storage.DiscardMiss(ref current);
+        storage.EndTrace();
+        FrozenWaterComparison.Range(ShiftedFrozen(face), actual);
+        Assert.Equal(2, storage.Shared.Last.Lends);
+        Assert.Equal(0, storage.Shared.Last.Copies);
+        Assert.Equal(face.Bases.Length, storage.Shared.Last.Stale);
+    }
+
     [Fact]
     public void AFullTableRefusesFurtherParentsWithIdenticalOutput()
     {
@@ -420,6 +499,41 @@ public sealed class WaterSharedProjectionTests(ITestOutputHelper output) : IDisp
         Assert.InRange(payload, 1, (int)(0.54 * 1024 * 1024));
         Assert.InRange(bytes, payload, payload + 16 * 1024);
         output.WriteLine($"SHARED_PROJECTION_MEMORY row={Unsafe.SizeOf<Row>()}, payload={payload}, allocated={bytes}");
+    }
+
+    static readonly V ShiftStart = V.Point(2, 0, 0), ShiftDrive = V.Point(-3, 0, 0);
+
+    // Parents on opposite planes x = 1/3 and x = -1/3, and a face of the first with a far parallel plane. With the
+    // same raw inputs their headers match, so only storage ownership can tell their projections apart.
+    static (TileWaterConvexShape Parent, TileWaterConvexShape Other, TileWaterConvexShape Face) Opposed()
+    {
+        var parent = new TileWaterConvexShape([P.Point(3, 0, 0, 1)]);
+        var face = new TileWaterConvexShape([.. parent.Planes.ToArray(), P.Point(1, 0, 0, 100)], null, parent);
+        Assert.Same(parent, face.ProjectionParent);
+        return (parent, new TileWaterConvexShape([P.Point(3, 0, 0, -1)]), face);
+    }
+
+    static TileWaterPreparedQuery Shifted(TileWaterPreparationStorage storage, TileWaterConvexShape shape) =>
+        storage.Prepare(shape, ShiftStart, ShiftDrive, I.Point(0), 0.25f);
+
+    static FrozenTileWaterConvexShape.Range ShiftedFrozen(TileWaterConvexShape shape) =>
+        new FrozenTileWaterConvexShape(shape).Intersect(ShiftStart, ShiftDrive, I.Point(0), 0.25f);
+
+    static void PublishShifted(TileWaterPreparationStorage storage, TileWaterConvexShape parent, bool borrowed)
+    {
+        var prepared = Shifted(storage, parent);
+        Assert.True(prepared.Evaluate().Resolved);
+        if (borrowed) Assert.Equal(0, storage.Retain(ref prepared));
+        else storage.DiscardMiss(ref prepared);
+    }
+
+    // Prepared on its own workspace, so only the storage's slab and rows change under an outstanding face.
+    static void PublishElsewhere(TileWaterPreparationStorage storage, TileWaterConvexShape parent, bool borrowed)
+    {
+        var prepared = new TileWaterPreparationWorkspace().Prepare(parent, ShiftStart, ShiftDrive, I.Point(0), 0.25f);
+        Assert.True(prepared.Evaluate().Resolved);
+        if (borrowed) Assert.Equal(0, storage.Retain(ref prepared));
+        else storage.DiscardMiss(ref prepared);
     }
 
     static WaterFloatingPointEnvironment Nearest()

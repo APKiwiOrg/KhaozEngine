@@ -1921,6 +1921,18 @@ collections. Limits are 32 regions, 65536 source render vertices and 65536 refer
 Regions are disjoint, and a surface may have positive strength in only one region. Source-dependent
 checks, including core and collar strength requirements, belong to the binding layer with the GLB.
 
+A region built with the `childRoles` overload holds `CoverageChildRole` overrides, exposed sorted by
+source triangle and cell as `ChildRoles`. Each gives the opposite of its parent range role to one cell
+of a triangle the region owns. `CoverageChildCells` is the only definition of cell numbering: a
+triangle at level `n` has `n * n` cells, and `Get(level, cell)` returns their corners as integer
+barycentric weights over 12 in the source corner order. A level must equal the triangle's effective
+refinement level, which is 1 when no refinement range names it. Overriding every cell of a triangle
+refuses, because the parent role should change instead, so a triangle takes at most 15 overrides and
+a region or map at most 65536. The rules refuse with `ChildRoleCapacity`, `ChildRoleOutsideRegion`,
+`ChildRoleLevelMismatch`, `ChildRoleCell`, `DuplicateChildRole`, `ChildRoleSameAsParent` and
+`ChildRoleCoversTriangle`, with the declared `Level` and `Cell` among their identifiers. The
+three argument constructor means no overrides.
+
 `Write(map)` emits canonical UTF-8 with fixed member order and normalized signed zero.
 `SemanticSha256(map)` hashes `KhaozEngine.HostCoverageMap/1\n` followed by the canonical bytes,
 independently of source whitespace, member order or array order.

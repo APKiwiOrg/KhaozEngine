@@ -318,6 +318,15 @@ public class HostCoverageMapTests
         Assert.False(region.Triangles is HostCoverageRegionTriangles[] || region.Strengths is CoverageSurfaceStrength[]);
         Assert.False(map.Refinement is HostCoverageRefinement[]);
         Assert.Throws<NotSupportedException>(() => ((IList<CoverageTopologyEntry>)map.Topology)[0] = default);
+        Assert.Empty(region.ChildRoles);
+
+        var childRoles = new List<CoverageChildRole> { new(0, 0, 1, 2, 3, CoverageTriangleRole.Core), new(0, 0, 0, 2, 1, CoverageTriangleRole.Core) };
+        var overridden = new HostCoverageRegion("r0", [new(new(0, 0, 0, 2), CoverageTriangleRole.Collar)], [new(0, 0f)], childRoles);
+        childRoles[0] = new(0, 0, 1, 2, 2, CoverageTriangleRole.Core);
+        childRoles.Clear();
+        Assert.Equal(new CoverageChildRole[] { new(0, 0, 0, 2, 1, CoverageTriangleRole.Core), new(0, 0, 1, 2, 3, CoverageTriangleRole.Core) }, overridden.ChildRoles);
+        Assert.False(overridden.ChildRoles is CoverageChildRole[] || overridden.ChildRoles is List<CoverageChildRole>);
+        Assert.Throws<NotSupportedException>(() => ((IList<CoverageChildRole>)overridden.ChildRoles)[0] = default);
     }
 
     [Fact]
@@ -418,6 +427,8 @@ public class HostCoverageMapTests
             MaterialSlice = 8,
             HandleIndex = 12,
             HandleGeneration = 13,
+            Level = 14,
+            Cell = 15,
             MissingMaterialSlices = missing,
         };
         var refusal = original.WithContext(identity: "outer", prefix: "$.regions[1]");
@@ -425,13 +436,14 @@ public class HostCoverageMapTests
         Assert.Equal(original.Reason, refusal.Reason);
         Assert.Equal("outer", refusal.Identity);
         Assert.Equal("$.regions[1].triangles[2]", refusal.Path);
-        Assert.Equal(new[] { "Count", "FirstTriangle", "FormatVersion", "HandleGeneration", "HandleIndex", "Identity", "Limit", "MaterialSlice", "MemberName", "MemberNameOmitted", "Mesh", "MissingMaterialSlices", "Path", "Primitive", "Reason", "RegionKey", "SurfaceId", "Vertex" },
+        Assert.Equal(new[] { "Cell", "Count", "FirstTriangle", "FormatVersion", "HandleGeneration", "HandleIndex", "Identity", "Level", "Limit", "MaterialSlice", "MemberName", "MemberNameOmitted", "Mesh", "MissingMaterialSlices", "Path", "Primitive", "Reason", "RegionKey", "SurfaceId", "Vertex" },
             typeof(HostCoverageDataException).GetProperties().Where(property => property.DeclaringType == typeof(HostCoverageDataException))
                 .Select(property => property.Name).Order(StringComparer.Ordinal));
         missing[0] = 99;
         Assert.Equal(new[] { 1, 2 }, refusal.MissingMaterialSlices);
         Assert.Throws<NotSupportedException>(() => ((IList<int>)refusal.MissingMaterialSlices)[0] = 3);
         Assert.Equal(original.MaterialSlice, refusal.MaterialSlice);
+        Assert.Equal((original.Level, original.Cell), (refusal.Level, refusal.Cell));
         Assert.Equal((original.HandleIndex, original.HandleGeneration), (refusal.HandleIndex, refusal.HandleGeneration));
         Assert.Equal(original.MissingMaterialSlices, refusal.MissingMaterialSlices);
         Assert.Equal(original.MemberNameOmitted, refusal.MemberNameOmitted);

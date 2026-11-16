@@ -30,8 +30,8 @@ public sealed class CoveragePackedPathIdentityTests : IDisposable
         Assert.False(CoveragePathIdentity.SameDestination(original, copy));
     }
 
-    // Each spelling reaches the folder through something only the OS resolves. A dot segment after a link names
-    // the link target's parent on disk, while a lexical resolver would name the alias's own parent.
+    // Each spelling reaches the folder through something only the OS resolves. A link whose target contains dot
+    // segments names a directory on disk that a lexical resolver would place elsewhere.
     [DirectoryLinkTheory]
     [InlineData("linked")]
     [InlineData("dot-segment")]
@@ -57,6 +57,26 @@ public sealed class CoveragePackedPathIdentityTests : IDisposable
     public void Absent_names_a_folding_volume_could_merge_are_one_destination(string left, string right, bool same)
         => Assert.Equal(same, CoveragePathIdentity.SameDestination(Path.Combine(folder, left), Path.Combine(folder, right)));
 
+    // The C library decides which stat entry point exists: stat on glibc 2.33 and later, musl and macOS, only
+    // __xstat on older glibc. A library or entry point the runtime cannot bind is an unidentifiable destination,
+    // never an untyped crash. Found stat is the passing control.
+    [Theory]
+    [InlineData("Stat", "Stat")]
+    [InlineData("XStatOnly", "XStat")]
+    [InlineData("Neither", null)]
+    [InlineData("LoadFailed", null)]
+    public void Stat_binding_follows_the_exports_and_refuses_when_none_binds(string lookup, string? binding)
+    {
+        var found = System.Enum.Parse<CoverageStatLookup>(lookup);
+        if (binding != null)
+        {
+            Assert.Equal(System.Enum.Parse<CoverageStatBinding>(binding), CoveragePathIdentity.SelectStatBinding(found));
+            return;
+        }
+        var error = Assert.Throws<CoverageBuildValidationException>(() => CoveragePathIdentity.SelectStatBinding(found));
+        Assert.Equal(CoverageBuildValidationRefusal.OutputAlias, error.Reason);
+    }
+
     [DirectoryLinkTheory]
     [InlineData("dangling", CoverageBuildValidationRefusal.OutputAlias)]
     [InlineData("loop", CoverageBuildValidationRefusal.OutputAlias)]
@@ -74,7 +94,7 @@ public sealed class CoveragePackedPathIdentityTests : IDisposable
     }
 }
 
-/// <summary>Spells an entry of a folder through a link, a dot segment after a link, the system temporary
+/// <summary>Spells an entry of a folder through a link, a link whose target contains dot segments, the system temporary
 /// directory alias, or a hard link. Returns the new spelling.</summary>
 internal static class CoveragePathSpelling
 {

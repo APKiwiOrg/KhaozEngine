@@ -30,6 +30,7 @@ public sealed class CoverageArtifactPublicationTests
         using var set = new CoveragePublicationFixture();
         var old = set.Stage("old");
         if (existing) set.Publish(old);
+        if (existing) set.SetDistinctModes();
         var before = set.Snapshot();
         var directories = set.Directories().ToArray();
         var next = set.Stage("new", partBytes: 4096);
@@ -41,7 +42,7 @@ public sealed class CoverageArtifactPublicationTests
         Assert.Empty(error.RollbackFailures);
         Assert.Equal(before, set.Snapshot());
         Assert.Equal(directories, set.Directories());
-        if (existing) set.AssertPublished(old);
+        if (existing) { set.AssertPublished(old); set.AssertDistinctModes(); }
 
         set.Publish(next);
         set.AssertPublished(next);
@@ -56,6 +57,7 @@ public sealed class CoverageArtifactPublicationTests
         using var set = new CoveragePublicationFixture();
         var old = set.Stage("old");
         set.Publish(old);
+        set.SetDistinctModes();
         var before = set.Snapshot();
         var next = set.Stage("new", partBytes: 4096);
 
@@ -84,6 +86,7 @@ public sealed class CoverageArtifactPublicationTests
         CoveragePublisher.Recover(set.Evidence);
         Assert.Equal(before, set.Snapshot());
         set.AssertPublished(old);
+        set.AssertDistinctModes();
     }
 
     // Each state is built deterministically by a failing rollback or cleanup, standing in for an interrupted
@@ -164,10 +167,14 @@ public sealed class CoverageArtifactPublicationTests
 
     // The publisher checks identities itself, so a caller that skipped its own checks still cannot replace a
     // checked input. The protected input is the existing table through another spelling.
+    [Fact]
+    public void Publication_refuses_an_output_that_is_a_hard_linked_protected_input() => AssertProtectedInputRefused("hard");
+
     [DirectoryLinkTheory]
-    [InlineData("hard")]
     [InlineData("linked")]
-    public void Publication_refuses_an_output_that_is_a_protected_input(string spelling)
+    public void Publication_refuses_an_output_that_is_a_protected_input(string spelling) => AssertProtectedInputRefused(spelling);
+
+    static void AssertProtectedInputRefused(string spelling)
     {
         using var set = new CoveragePublicationFixture();
         var old = set.Stage("old");

@@ -6,9 +6,12 @@ using Microsoft.Win32.SafeHandles;
 
 namespace KhaozEngine.Tools.Coverage;
 
+internal enum CoverageStatLookup { Stat, XStatOnly, Neither, LoadFailed }
+internal enum CoverageStatBinding { Stat, XStat }
+
 /// <summary>Answers whether two output spellings reach one destination by the identity the OS resolves, never by
-/// comparing strings. Links in any component, dot segments after a link, system aliases such as /tmp on macOS
-/// and hard links all resolve to the same identity.</summary>
+/// comparing strings. Links in any component, a link whose target contains dot segments, system aliases such as
+/// /tmp on macOS and hard links all resolve to the same identity.</summary>
 internal static class CoveragePathIdentity
 {
     /// <summary>An existing entry is its volume and file identity. An absent entry is its existing parent's
@@ -17,13 +20,31 @@ internal static class CoveragePathIdentity
 
     internal static bool SameDestination(string left, string right) => Of(left) == Of(right);
 
+    /// <summary>The identity of an input-side path, or null when the OS cannot identify it. Such an input reaches no
+    /// output destination, and input admission reports it in its own refusal family.</summary>
+    internal static Destination? TryOf(string path)
+    {
+        try { return Of(path); }
+        catch (CoverageBuildValidationException) { return null; }
+    }
+
+    /// <summary>Chooses how stat is called from what the C library exports. stat itself on glibc 2.33 and later, on
+    /// musl and on macOS. glibc's __xstat on older glibc. A library or entry point that cannot be bound makes every
+    /// destination unidentifiable, which refuses with OutputAlias.</summary>
+    internal static CoverageStatBinding SelectStatBinding(CoverageStatLookup lookup) => lookup switch
+    {
+        CoverageStatLookup.Stat => CoverageStatBinding.Stat,
+        CoverageStatLookup.XStatOnly => CoverageStatBinding.XStat,
+        _ => throw Unidentifiable(null),
+    };
+
     /// <summary>Refuses with OutputAlias when the OS cannot identify an existing entry, such as a dangling or looping
     /// link, and with OutputIo when the parent of an absent entry does not exist.</summary>
     internal static Destination Of(string path)
     {
         string full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
         if (TryIdentify(full, out var existing)) return existing;
-        if (IsLink(full)) throw Unidentifiable(full, null);
+        if (IsLink(full)) throw Unidentifiable(null);
         string? parent = Path.GetDirectoryName(full);
         if (parent == null || !TryIdentify(parent, out var folder))
             throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputIo, "An output parent directory does not exist.");
@@ -41,54 +62,84 @@ internal static class CoveragePathIdentity
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
     }
 
-    static CoverageBuildValidationException Unidentifiable(string path, int? error) =>
+    static CoverageBuildValidationException Unidentifiable(int? error, Exception? inner = null) =>
         new(CoverageBuildValidationRefusal.OutputAlias, "The operating system cannot identify an output destination.",
-            error is { } code ? new IOException("Identity lookup failed with system error " + code + ".") : null);
+            inner ?? (error is { } code ? new IOException("Identity lookup failed with system error " + code + ".") : null));
 
-    /// <summary>False only when the entry does not exist. Every other lookup failure refuses.</summary>
+    /// <summary>False only when the entry does not exist. Every other lookup failure refuses, including a native
+    /// library or entry point the runtime cannot bind, so no untyped interop exception escapes.</summary>
     static bool TryIdentify(string path, out Destination identity)
     {
         identity = default;
-        if (OperatingSystem.IsWindows()) return Windows.TryIdentify(path, out identity);
-        if (!Environment.Is64BitProcess || !(OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())) throw Unidentifiable(path, null);
-        return Unix.TryIdentify(path, out identity);
+        try
+        {
+            if (OperatingSystem.IsWindows()) return Windows.TryIdentify(path, out identity);
+            // The stat layouts below are stated for 64-bit x86 and Arm only.
+            if (RuntimeInformation.ProcessArchitecture is not (Architecture.X64 or Architecture.Arm64)
+                || !(OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())) throw Unidentifiable(null);
+            return Unix.TryIdentify(path, out identity);
+        }
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException
+            or MarshalDirectiveException)
+        { throw Unidentifiable(null, error); }
     }
 
     /// <summary>stat(2) resolves every component, links included, as the kernel does for an open. On 64-bit Linux
-    /// (x86_64 and aarch64) struct stat begins with 64-bit st_dev then 64-bit st_ino. On macOS the 64-bit inode
-    /// struct stat begins with 32-bit st_dev, 16-bit st_mode, 16-bit st_nlink, then 64-bit st_ino at offset 8.
-    /// Intel macOS exports that layout as stat$INODE64, Apple silicon as stat.</summary>
+    /// (x86_64 and aarch64) struct stat begins with 64-bit st_dev then 64-bit st_ino, for glibc and musl alike. On
+    /// macOS the 64-bit inode struct stat begins with 32-bit st_dev, 16-bit st_mode, 16-bit st_nlink, then 64-bit
+    /// st_ino at offset 8. Intel macOS exports that layout as stat$INODE64, Apple silicon as stat. The C library is
+    /// bound once through the runtime's own name resolution for "libc" and its exports are looked up at run time,
+    /// because glibc before 2.33 exports only __xstat.</summary>
     static class Unix
     {
         const int NoEntry = 2, NotDirectory = 20; // ENOENT and ENOTDIR share these values on Linux and macOS.
         // Larger than struct stat on every supported platform (144 bytes on x86_64 Linux and on macOS).
         const int StatBufferBytes = 256;
+        static readonly Lazy<Binding> Bound = new(Bind);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl, SetLastError = true)]
+        delegate int StatFunction([MarshalAs(UnmanagedType.LPUTF8Str)] string path, byte[] buffer);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl, SetLastError = true)]
+        delegate int XStatFunction(int version, [MarshalAs(UnmanagedType.LPUTF8Str)] string path, byte[] buffer);
+
+        sealed record Binding(CoverageStatLookup Lookup, StatFunction? Stat, XStatFunction? XStat);
 
         internal static bool TryIdentify(string path, out Destination identity)
         {
             identity = default;
+            var bound = Bound.Value;
             byte[] buffer = new byte[StatBufferBytes];
-            int result = OperatingSystem.IsLinux() ? LinuxStat(path, buffer)
-                : RuntimeInformation.ProcessArchitecture == Architecture.X64 ? MacStatInode64(path, buffer) : MacStat(path, buffer);
+            // glibc's _STAT_VER for this struct stat layout is 1 on x86_64 and 0 on aarch64.
+            int result = SelectStatBinding(bound.Lookup) == CoverageStatBinding.Stat ? bound.Stat!(path, buffer)
+                : bound.XStat!(RuntimeInformation.ProcessArchitecture == Architecture.X64 ? 1 : 0, path, buffer);
             if (result != 0)
             {
                 int error = Marshal.GetLastPInvokeError();
                 if (error is NoEntry or NotDirectory) return false;
-                throw Unidentifiable(path, error);
+                throw Unidentifiable(error);
             }
             ulong device = OperatingSystem.IsLinux() ? MemoryMarshal.Read<ulong>(buffer) : MemoryMarshal.Read<uint>(buffer);
             identity = new(device, 0, MemoryMarshal.Read<ulong>(buffer.AsSpan(8)), null);
             return true;
         }
 
-        [DllImport("libc.so.6", EntryPoint = "stat", SetLastError = true)]
-        static extern int LinuxStat([MarshalAs(UnmanagedType.LPUTF8Str)] string path, byte[] buffer);
-
-        [DllImport("libSystem.dylib", EntryPoint = "stat", SetLastError = true)]
-        static extern int MacStat([MarshalAs(UnmanagedType.LPUTF8Str)] string path, byte[] buffer);
-
-        [DllImport("libSystem.dylib", EntryPoint = "stat$INODE64", SetLastError = true)]
-        static extern int MacStatInode64([MarshalAs(UnmanagedType.LPUTF8Str)] string path, byte[] buffer);
+        static Binding Bind()
+        {
+            string statName = OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.X64 ? "stat$INODE64" : "stat";
+            try
+            {
+                if (!NativeLibrary.TryLoad("libc", typeof(CoveragePathIdentity).Assembly, null, out IntPtr library))
+                    return new(CoverageStatLookup.LoadFailed, null, null);
+                if (NativeLibrary.TryGetExport(library, statName, out IntPtr stat))
+                    return new(CoverageStatLookup.Stat, Marshal.GetDelegateForFunctionPointer<StatFunction>(stat), null);
+                if (OperatingSystem.IsLinux() && NativeLibrary.TryGetExport(library, "__xstat", out IntPtr xstat))
+                    return new(CoverageStatLookup.XStatOnly, null, Marshal.GetDelegateForFunctionPointer<XStatFunction>(xstat));
+                return new(CoverageStatLookup.Neither, null, null);
+            }
+            catch (Exception error) when (error is DllNotFoundException or BadImageFormatException or ArgumentException)
+            { return new(CoverageStatLookup.LoadFailed, null, null); }
+        }
     }
 
     /// <summary>CreateFileW with FILE_FLAG_BACKUP_SEMANTICS opens files and directories and follows reparse points.
@@ -108,7 +159,7 @@ internal static class CoveragePathIdentity
             {
                 int error = Marshal.GetLastPInvokeError();
                 if (error is FileNotFound or PathNotFound) return false;
-                throw Unidentifiable(path, error);
+                throw Unidentifiable(error);
             }
             byte[] id = new byte[FileIdInfoBytes];
             if (GetFileInformationByHandleEx(handle, FileIdInfo, id, FileIdInfoBytes))
@@ -117,7 +168,7 @@ internal static class CoveragePathIdentity
                 return true;
             }
             byte[] info = new byte[HandleInfoBytes];
-            if (!GetFileInformationByHandle(handle, info)) throw Unidentifiable(path, Marshal.GetLastPInvokeError());
+            if (!GetFileInformationByHandle(handle, info)) throw Unidentifiable(Marshal.GetLastPInvokeError());
             identity = new(MemoryMarshal.Read<uint>(info.AsSpan(28)), MemoryMarshal.Read<uint>(info.AsSpan(44)), MemoryMarshal.Read<uint>(info.AsSpan(48)), null);
             return true;
         }

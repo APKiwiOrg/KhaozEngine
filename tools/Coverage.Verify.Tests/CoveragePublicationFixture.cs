@@ -68,6 +68,27 @@ internal sealed class CoveragePublicationFixture : IDisposable
         }
     }
 
+    // Restored outputs must come back with the Unix mode they had, not the backup's owner-only mode. Modes do
+    // not exist on Windows, where these two helpers do nothing.
+    static readonly (string Name, UnixFileMode Mode)[] DistinctModes =
+    [
+        ("table.bin", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead),
+        ("diagnostics.json", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupWrite),
+        ("evidence.json", UnixFileMode.UserRead | UnixFileMode.GroupRead),
+    ];
+
+    internal void SetDistinctModes()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        foreach (var (name, mode) in DistinctModes) File.SetUnixFileMode(Path.Combine(Output, name), mode);
+    }
+
+    internal void AssertDistinctModes()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        foreach (var (name, mode) in DistinctModes) Assert.Equal(mode, File.GetUnixFileMode(Path.Combine(Output, name)));
+    }
+
     internal static bool IsRecoveryFile(string relative) => relative.EndsWith(CoveragePublicationJournal.JournalSuffix, StringComparison.Ordinal)
         || relative.EndsWith(CoveragePublicationJournal.MarkerSuffix, StringComparison.Ordinal)
         || relative.EndsWith(".bak", StringComparison.Ordinal) || relative.EndsWith(".tmp", StringComparison.Ordinal);

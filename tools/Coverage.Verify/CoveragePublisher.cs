@@ -114,13 +114,7 @@ internal static class CoveragePublisher
                 if (outputs.Contains(identity)) throw Alias();
                 outputs.Add(identity);
             }
-            var inputs = new List<CoveragePathIdentity.Destination>();
-            foreach (string input in protectedInputPaths)
-            {
-                // An input whose own location cannot be identified has no destination an output could reach.
-                try { inputs.Add(CoveragePathIdentity.Of(input)); }
-                catch (CoverageBuildValidationException) { }
-            }
+            var inputs = protectedInputPaths.Select(CoveragePathIdentity.TryOf).OfType<CoveragePathIdentity.Destination>().ToList();
             if (outputs.Any(inputs.Contains)) throw Alias();
             foreach (var part in descriptors)
             {
@@ -198,7 +192,8 @@ internal static class CoveragePublisher
             {
                 if (Directory.Exists(entries[i].Destination)) throw new IOException("An output destination is a directory.");
                 var state = CoveragePublicationJournal.State(entries[i].Destination);
-                entries[i] = entries[i] with { OldLength = state?.Length, OldSha256 = state?.Sha256 };
+                int? mode = state != null && !OperatingSystem.IsWindows() ? (int)File.GetUnixFileMode(entries[i].Destination) : null;
+                entries[i] = entries[i] with { OldLength = state?.Length, OldSha256 = state?.Sha256, OldMode = mode };
             }
             var record = Record();
             using (var output = CoveragePublicationJournal.CreatePrivate(record.JournalPath))
@@ -244,11 +239,7 @@ internal static class CoveragePublisher
             for (int i = replaced - 1; i >= 0; i--)
             {
                 var entry = entries[i];
-                bool done = Attempt(failures, entry.Step, () =>
-                {
-                    if (entry.OldSha256 == null) File.Delete(entry.Destination);
-                    else File.Move(entry.Backup, entry.Destination, true);
-                });
+                bool done = Attempt(failures, entry.Step, () => CoveragePublicationJournal.Restore(entry));
                 if (!done) restored = false;
                 else if (entry.OldSha256 != null) backups.Remove(entry.Backup);
             }

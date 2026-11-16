@@ -7,9 +7,10 @@ using System.Text.Json;
 
 namespace KhaozEngine.Tools.Coverage;
 
-/// <summary>One mutable output of a transaction. Old fields are null when the destination did not exist.</summary>
+/// <summary>One mutable output of a transaction. Old fields are null when the destination did not exist. The old Unix
+/// mode is also null on Windows.</summary>
 internal sealed record CoveragePublicationEntry(CoveragePublicationStep Step, string Destination, string Stage, string Backup,
-    string Marker, long? OldLength, string? OldSha256, long NewLength, string NewSha256);
+    string Marker, long? OldLength, string? OldSha256, long NewLength, string NewSha256, int? OldMode = null);
 internal sealed record CoveragePublicationPart(string Destination, long ByteLength, string Sha256, bool Created);
 
 /// <summary>The local recovery record written beside the commit root before any mutable output is replaced. It
@@ -57,6 +58,7 @@ internal static class CoveragePublicationJournal
             if (entry.OldSha256 == null) { writer.WriteNull("oldLength"); writer.WriteNull("oldSha256"); }
             else { writer.WriteNumber("oldLength", entry.OldLength!.Value); writer.WriteString("oldSha256", entry.OldSha256); }
             writer.WriteNumber("newLength", entry.NewLength); writer.WriteString("newSha256", entry.NewSha256);
+            if (entry.OldMode is { } mode) writer.WriteNumber("oldMode", mode); else writer.WriteNull("oldMode");
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
@@ -96,15 +98,18 @@ internal static class CoveragePublicationJournal
                 || transaction.Any(c => !char.IsAsciiHexDigitLower(c) && !char.IsAsciiDigit(c))) throw Required("Unknown publication journal.");
             var entries = Array(value, "entries").Select(e =>
             {
-                CoverageBuildInputJson.Members(e, "$.entries", "step", "destination", "oldLength", "oldSha256", "newLength", "newSha256");
+                CoverageBuildInputJson.Members(e, "$.entries", "step", "destination", "oldLength", "oldSha256", "newLength", "newSha256", "oldMode");
                 var step = Enum.Parse<CoveragePublicationStep>(CoverageBuildInputJson.Text(e, "step", "$.entries"));
                 if (step is not (CoveragePublicationStep.ReplaceTable or CoveragePublicationStep.ReplaceDiagnostic or CoveragePublicationStep.ReplaceEvidence))
                     throw Required("Unknown publication step.");
                 bool absent = CoverageBuildInputJson.Get(e, "oldSha256", "$.entries").ValueKind == JsonValueKind.Null;
                 if (absent != (CoverageBuildInputJson.Get(e, "oldLength", "$.entries").ValueKind == JsonValueKind.Null)) throw Required("Inconsistent old state.");
+                var modeValue = CoverageBuildInputJson.Get(e, "oldMode", "$.entries");
+                int? mode = modeValue.ValueKind == JsonValueKind.Null ? null : modeValue.GetInt32();
+                if (mode is < 0 or > 4095 || absent && mode != null) throw Required("Invalid old mode.");
                 return Entry(step, Owned(CoverageBuildInputJson.Text(e, "destination", "$.entries")), transaction,
                     absent ? null : e.GetProperty("oldLength").GetInt64(), absent ? null : CoverageBuildInputJson.Digest(e.GetProperty("oldSha256"), "$.entries"),
-                    e.GetProperty("newLength").GetInt64(), CoverageBuildInputJson.Digest(e.GetProperty("newSha256"), "$.entries"));
+                    e.GetProperty("newLength").GetInt64(), CoverageBuildInputJson.Digest(e.GetProperty("newSha256"), "$.entries")) with { OldMode = mode };
             }).ToArray();
             if (entries.Length == 0 || entries[^1].Destination != Path.GetFullPath(root)
                 || entries.Select(e => e.Destination).Distinct(StringComparer.Ordinal).Count() != entries.Length) throw Required("Journal does not belong to this root.");
@@ -170,9 +175,7 @@ internal static class CoveragePublicationJournal
                 for (int i = restore.Length - 1; i >= 0; i--)
                 {
                     if (!restore[i]) continue;
-                    var entry = record.Entries[i];
-                    if (entry.OldSha256 == null) File.Delete(entry.Destination);
-                    else File.Move(entry.Backup, entry.Destination, true);
+                    Restore(record.Entries[i]);
                 }
                 foreach (var part in record.Parts.Where(p => p.Created && Matches(State(p.Destination), p.ByteLength, p.Sha256))) File.Delete(part.Destination);
                 foreach (string directory in record.Directories.Reverse())
@@ -185,6 +188,15 @@ internal static class CoveragePublicationJournal
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         { throw Required("Recovery could not finish. Its journal and backups are kept.", error); }
+    }
+
+    /// <summary>Puts an output back as it was before the transaction. The backup waits with owner-only permissions,
+    /// so the old Unix mode is reapplied before it moves into place. Hard links to the old file are not restored.</summary>
+    internal static void Restore(CoveragePublicationEntry entry)
+    {
+        if (entry.OldSha256 == null) { File.Delete(entry.Destination); return; }
+        if (entry.OldMode is { } mode && !OperatingSystem.IsWindows()) File.SetUnixFileMode(entry.Backup, (UnixFileMode)mode);
+        File.Move(entry.Backup, entry.Destination, true);
     }
 
     internal static void Remove(string path)

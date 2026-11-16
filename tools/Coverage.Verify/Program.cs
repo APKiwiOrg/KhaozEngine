@@ -45,17 +45,23 @@ public static class Program
             if (diagnostic.Path != null && (new[] { diagnostic.Path, manifest, tablePath, evidencePath }.Any(p => CoverageDiagnosticName.Unsupported(p, windows))
                 || CoverageDiagnosticName.Collides(diagnostic.Path, [manifest, tablePath, evidencePath]))) return 2;
             // Outputs are compared by the identity the OS resolves, so links, aliases and hard links cannot hide a collision.
-            if (CoveragePathIdentity.SameDestination(manifest, tablePath) || CoveragePathIdentity.SameDestination(manifest, evidencePath)
-                || CoveragePathIdentity.SameDestination(tablePath, evidencePath))
+            // Output identities are strict. An input-side path the OS cannot identify reaches no output, and input
+            // admission reports it as malformed input.
+            bool verifiesTable = args[0] != "build";
+            var evidenceIdentity = CoveragePathIdentity.Of(evidencePath);
+            var tableIdentity = verifiesTable ? CoveragePathIdentity.TryOf(tablePath) : CoveragePathIdentity.Of(tablePath);
+            var manifestIdentity = CoveragePathIdentity.TryOf(manifest);
+            bool Reaches(CoveragePathIdentity.Destination? input) => input is { } value && (value == evidenceIdentity || value == tableIdentity);
+            if (Reaches(manifestIdentity) || tableIdentity is { } table && table == evidenceIdentity)
                 throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputAlias, "Output paths must be distinct from inputs and each other.");
             var input = CoverageBuildInput.Read(manifest);
             if (diagnostic.Path != null && (input.SourcePaths.Any(p => CoverageDiagnosticName.Unsupported(p, windows))
                 || CoverageDiagnosticName.Collides(diagnostic.Path, input.SourcePaths))) return 2;
             diagnostic.Input = input;
-            if (input.SourcePaths.Any(p => CoveragePathIdentity.SameDestination(p, tablePath) || CoveragePathIdentity.SameDestination(p, evidencePath)))
+            if (input.SourcePaths.Any(p => Reaches(CoveragePathIdentity.TryOf(p))))
                 throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.OutputAlias, "Outputs cannot overwrite checked inputs.");
             protectedInputs.AddRange([manifest, .. input.SourcePaths]);
-            if (args[0] == "build") acceptedOutputs.Add(tablePath);
+            if (!verifiesTable) acceptedOutputs.Add(tablePath);
             else protectedInputs.Add(tablePath);
             acceptedOutputs.Add(evidencePath);
             // An interrupted earlier publication is finished or undone before any of its outputs is read or replaced.

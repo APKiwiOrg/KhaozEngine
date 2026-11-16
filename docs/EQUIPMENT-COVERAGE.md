@@ -114,6 +114,21 @@ blend paths. Only authored-clip domains may provide an empty `blendPathIds` arra
 still requires the property. Every declared frame and
 path must occur in the sample inventory. The consumer supplies the poses and resolved state keys.
 
+Manifest format 1 carries every pose inline. Format 2 keeps the same metadata and may reference exact
+binary32 poses in KEPP chunks of at most 8 MiB each, so an ordinary inventory whose inline form would
+exceed the 64 MiB manifest bound still builds and verifies. Each chunk is bound by length, SHA-256 and
+record count, copied privately and scanned completely before any asset or geometry work. Later poses come
+only from those checked copies, one decoded pose at a time. Equivalent inline and packed campaigns
+produce byte-identical tables and identical outcomes. Their evidence differs only through the exact
+manifest hash. The [tool README](../tools/Coverage.Verify/README.md#kepp-numeric-transport) documents
+the byte layout, an executable synthetic fixture and the memory bound.
+
+Evidence is complete at any size. A logical document within the 64 MiB artifact bound stays one JSON
+file. A larger one becomes a `khaozengine.coverage-evidence-set/1` index whose hashed parts live in
+`<evidence-file-name>.parts/` beside it. Archive and copy the root together with its whole parts
+directory, because reading the root alone is insufficient. Resume and every later read verify every part,
+so a missing, truncated or substituted part refuses with exit 2 and leaves all outputs unchanged.
+
 `build` constructs full unweighted scalar candidates, requires one canonical representative vector,
 deduplicates rows by binary32 words and checks every candidate against every declared sample. Repeated
 keys intersect validity across all their occurrences. Deterministic greedy selection retains rows that

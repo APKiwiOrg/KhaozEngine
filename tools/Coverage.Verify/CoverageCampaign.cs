@@ -16,15 +16,16 @@ internal sealed record CoverageDomainInventory(string Id, CoverageDomainKind Kin
 internal sealed class CoverageCampaign
 {
     readonly Matrix4x4[] inverseBind;
-    readonly Func<int, CoverageSample> readSample;
-    readonly Func<int, int, CoverageDenseRow> readDenseRow;
+    readonly Func<int, CoveragePoseLease<CoverageSample>> readSample;
+    readonly Func<int, int, CoveragePoseLease<CoverageDenseRow>> readDenseRow;
     readonly Action ensureAlive;
     readonly IReadOnlyList<string> materializedSources;
 
     internal CoverageCampaign(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> inverseBind,
         IReadOnlyList<CoverageDomainInventory> domains, IReadOnlyList<CoverageSampleInventory> samples,
         IReadOnlyList<string> candidates, CoverageRecessionIdentity identity, string inputSha256,
-        IReadOnlyList<string> sourcePaths, Func<int, CoverageSample> readSample, Func<int, int, CoverageDenseRow> readDenseRow,
+        IReadOnlyList<string> sourcePaths, Func<int, CoveragePoseLease<CoverageSample>> readSample,
+        Func<int, int, CoveragePoseLease<CoverageDenseRow>> readDenseRow,
         Action ensureAlive, IReadOnlyList<string>? materializedSources = null)
     {
         Topology = topology; this.inverseBind = inverseBind.ToArray(); Identity = identity; InputSha256 = inputSha256;
@@ -50,8 +51,10 @@ internal sealed class CoverageCampaign
     internal CoverageRecessionIdentity Identity { get; }
     internal string InputSha256 { get; }
     internal IReadOnlyList<string> SourcePaths { get; }
-    internal CoverageSample ReadSample(int sampleIndex) { ensureAlive(); return readSample(sampleIndex); }
-    internal CoverageDenseRow ReadDenseRow(int domainIndex, int rowIndex) { ensureAlive(); return readDenseRow(domainIndex, rowIndex); }
+    /// <summary>Hands out one decoded pose. Dispose the lease before reading the next pose, so a session's live-pose
+    /// account measures what callers actually hold.</summary>
+    internal CoveragePoseLease<CoverageSample> ReadSample(int sampleIndex) { ensureAlive(); return readSample(sampleIndex); }
+    internal CoveragePoseLease<CoverageDenseRow> ReadDenseRow(int domainIndex, int rowIndex) { ensureAlive(); return readDenseRow(domainIndex, rowIndex); }
 
     internal CoverageCampaign WithCandidates(IReadOnlyList<string> candidateSampleIds)
     {
@@ -60,13 +63,15 @@ internal sealed class CoverageCampaign
             SourcePaths, readSample, readDenseRow, ensureAlive, materializedSources);
     }
 
+    /// <summary>The explicit eager snapshot. Each pose leaves its lease as a copy the snapshot owns.</summary>
     internal CoverageBuildInput Materialize()
     {
         ensureAlive();
         var domains = Domains.Select((d, i) => new CoverageDomain(d.Id, d.Kind, d.AuthoredFrameIds, d.BlendPathIds,
-            Enumerable.Range(0, d.DenseRows.Count).Select(r => ReadDenseRow(i, r))));
-        return new(Topology, inverseBind, domains, Enumerable.Range(0, Samples.Count).Select(ReadSample),
+            Enumerable.Range(0, d.DenseRows.Count).Select(r => Copy(ReadDenseRow(i, r)))));
+        return new(Topology, inverseBind, domains, Enumerable.Range(0, Samples.Count).Select(i => Copy(ReadSample(i))),
             CandidateSampleIds, Identity, InputSha256, materializedSources);
+        static T Copy<T>(CoveragePoseLease<T> lease) where T : class { using (lease) return lease.Value; }
     }
 
     internal static CoverageCampaign FromSnapshot(CoverageBuildInput input)
@@ -77,7 +82,8 @@ internal sealed class CoverageCampaign
             Snapshot(d.DenseRows.Select(r => new CoverageDenseRowInventory(r.DenseIndex, r.PrecedingPhaseTick,
                 r.ResolvedStateKey, Inventory(r.Sample), r.Looped, r.Clamped))))).ToArray();
         return new(input.Topology, input.InverseBind, domains, input.Samples.Select(Inventory).ToArray(), input.CandidateSampleIds,
-            input.Identity, input.InputSha256, input.SourcePaths, i => input.Samples[i], (d, r) => input.Domains[d].DenseRows[r], () => { });
+            input.Identity, input.InputSha256, input.SourcePaths, i => new(input.Samples[i]),
+            (d, r) => new(input.Domains[d].DenseRows[r]), () => { });
     }
 
     static IReadOnlyList<T> Snapshot<T>(IEnumerable<T> values) => ImmutableArray.CreateRange(values.ToArray());

@@ -7577,7 +7577,11 @@ dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHA
 .tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json
 ```
 
-Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. All three
+Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. Manifest format
+2 may reference exact binary32 poses in hashed KEPP chunks instead of inline matrices, which keeps large
+ordinary inventories within the 64 MiB manifest bound. Evidence above 64 MiB becomes a
+`khaozengine.coverage-evidence-set/1` index with hashed parts, never a truncated document. Archive the
+evidence root with its whole `.parts` directory, because resume and later reads verify every part. All three
 commands accept optional `--diagnostics <path>` for logical schema `khaozengine.coverage-diagnostics/2`,
 scope `diagnostic-not-acceptance`. This separate report exports every finding with no omissions,
 including holes, candidate refusals, dense failures and changed-record versus inherited depth, and names

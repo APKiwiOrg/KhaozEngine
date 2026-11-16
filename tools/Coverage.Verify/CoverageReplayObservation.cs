@@ -11,6 +11,11 @@ internal sealed record CoverageReplayMetrics(int EntryIndex, bool ExactValid, Co
     int AttributesOnlyTriangleCount, IReadOnlyList<CoverageEquipmentDepth> Equipment,
     CoverageDepthResult ChangedRecord, CoverageDepthResult ChangedRecordRaw, CoverageDepthResult Inherited)
 {
+    /// <summary>Rejoins captured metrics with a row its caller holds.</summary>
+    internal CoverageReplayPose ToPose(string domainId, CoverageDenseRow row) => new(domainId, row, EntryIndex, ExactValid,
+        Failure, ChangedTriangleCount, InheritedTriangleCount, PositionChangedTriangleCount, AttributesOnlyTriangleCount,
+        Equipment, ChangedRecord, ChangedRecordRaw, Inherited);
+
     internal static CoverageReplayMetrics Capture(CoverageReplayPose pose) => new(pose.EntryIndex, pose.ExactValid,
         pose.Failure, pose.ChangedTriangleCount, pose.InheritedTriangleCount, pose.PositionChangedTriangleCount,
         pose.AttributesOnlyTriangleCount, ImmutableArray.CreateRange(pose.Equipment.ToArray()),
@@ -28,11 +33,10 @@ internal sealed class CoverageReplayProjection(CoverageCampaign input, IReadOnly
     {
         get
         {
+            // The public pose is a copy the caller owns, so the decoded row is released before it is returned.
             var observation = observations[index];
-            var m = observation.Metrics;
-            return new(input.Domains[observation.DomainIndex].Id, input.ReadDenseRow(observation.DomainIndex, observation.RowIndex),
-                m.EntryIndex, m.ExactValid, m.Failure, m.ChangedTriangleCount, m.InheritedTriangleCount,
-                m.PositionChangedTriangleCount, m.AttributesOnlyTriangleCount, m.Equipment, m.ChangedRecord, m.ChangedRecordRaw, m.Inherited);
+            using var row = input.ReadDenseRow(observation.DomainIndex, observation.RowIndex);
+            return observation.Metrics.ToPose(input.Domains[observation.DomainIndex].Id, row.Value);
         }
     }
     public IEnumerator<CoverageReplayPose> GetEnumerator()

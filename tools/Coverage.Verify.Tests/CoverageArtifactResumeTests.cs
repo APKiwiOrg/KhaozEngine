@@ -15,8 +15,8 @@ public sealed class CoverageArtifactResumeTests
         var input = CoverageBuildFixture.Input();
         var build = CoverageTableBuilder.Build(input);
         var verification = CoverageSampleVerifier.Verify(input, build.Table);
-        verification.ValidateResume(verification.Write());
-        var error = Assert.Throws<CoverageBuildValidationException>(() => verification.ValidateResume(build.Evidence.Write()));
+        Resume(verification, verification.Write());
+        var error = Assert.Throws<CoverageBuildValidationException>(() => Resume(verification, build.Evidence.Write()));
         Assert.Equal(CoverageBuildValidationRefusal.ArtifactContentMismatch, error.Reason);
     }
     [Theory]
@@ -72,7 +72,25 @@ public sealed class CoverageArtifactResumeTests
         var reordered = new JsonObject();
         foreach (var member in System.Linq.Enumerable.Reverse(root)) reordered[member.Key] = member.Value?.DeepClone();
         byte[] bytes = Encoding.UTF8.GetBytes(reordered.ToJsonString(new() { WriteIndented = true }));
-        fixture.Evidence.ValidateResume(bytes);
+        Resume(fixture.Evidence, bytes);
+    }
+
+    /// <summary>The CLI's resume path: the strict reader admits the existing root, then every logical record is
+    /// compared with the current document.</summary>
+    static void Resume(CoverageEvidenceManifest current, byte[] existing)
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "khaozengine-coverage-packed-input", "resume-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            string root = Path.Combine(folder, "evidence.json");
+            File.WriteAllBytes(root, existing);
+            using var read = CoverageArtifactReader.Open(root, folder);
+            using var actual = read.OpenPayload();
+            using var expected = new MemoryStream(current.Write());
+            CoverageLogicalDocumentReader.Compare(actual, expected, CoverageArtifactKind.Evidence);
+        }
+        finally { Directory.Delete(folder, true); }
     }
 
     [Theory]

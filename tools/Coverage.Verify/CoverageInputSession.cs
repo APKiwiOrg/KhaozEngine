@@ -21,12 +21,21 @@ internal sealed class CoverageInputSession : IDisposable
     CoverageInputBinding binding = null!;
     CoverageCampaign campaign = null!;
     bool disposed;
-    long snapshotBytes;
-    int maximumChunkBufferBytes, maximumLiveNumericPoseBytes;
+    long snapshotBytes, liveNumericPoseBytes, maximumLiveNumericPoseBytes;
+    int maximumChunkBufferBytes;
 
     CoverageInputSession(string scratchDirectory) => scratch = Path.Combine(Path.GetFullPath(scratchDirectory), "coverage-input-" + Guid.NewGuid().ToString("N"));
     internal CoverageCampaign Campaign { get { EnsureAlive(); return campaign; } }
-    internal CoverageInputStorageUsage StorageForTests => new(snapshotBytes, maximumChunkBufferBytes, maximumLiveNumericPoseBytes);
+    internal CoverageInputStorageUsage StorageForTests =>
+        new(snapshotBytes, maximumChunkBufferBytes, (int)Math.Min(int.MaxValue, maximumLiveNumericPoseBytes));
+
+    /// <summary>Deletes one checked private copy, as a scratch cleaner or full disk would, so a later pose read from it
+    /// fails. The original chunk is untouched.</summary>
+    internal void MakeChunkUnreadableForTests(int chunkIndex)
+    {
+        EnsureAlive();
+        File.Delete(snapshots[chunkIndex].Path);
+    }
 
     internal static CoverageInputSession Open(string manifestPath, string scratchDirectory)
     {
@@ -69,8 +78,8 @@ internal sealed class CoverageInputSession : IDisposable
             metadata.Candidates, binding.Identity, CoverageBuildInputJson.Hash(bytes), sources.Concat(snapshots.Select(s => s.Path)).ToArray(),
             i => Read(metadata.Samples[i]), ReadDense, EnsureAlive, sources);
         // Bind every admitted record without retaining any decoded pose. Replay policy stays in verification.
-        foreach (var sample in metadata.Samples) _ = Read(sample);
-        foreach (var domain in metadata.DenseRows) foreach (var sample in domain) _ = Read(sample);
+        foreach (var sample in metadata.Samples) Read(sample).Dispose();
+        foreach (var domain in metadata.DenseRows) foreach (var sample in domain) Read(sample).Dispose();
     }
 
     void SnapshotChunk(CoveragePackedChunkReference descriptor, string sourcePath, int index)
@@ -124,45 +133,77 @@ internal sealed class CoverageInputSession : IDisposable
         { throw new CoverageBuildDataException(CoverageBuildInputRefusal.InputIo, "Cannot snapshot a packed input.", e) { Path = location.Path, Identity = sourcePath, ChunkIndex = index }; }
     }
 
-    CoverageSample Read(CoveragePackedInputJson.Slot slot)
+    /// <summary>Decodes one pose and hands it out as a lease. The decoded numeric pose and its immutable binding are
+    /// both counted while they coexist, and the binding stays counted until its holder disposes the lease.</summary>
+    CoveragePoseLease<CoverageSample> Read(CoveragePackedInputJson.Slot slot)
     {
         EnsureAlive();
-        CoverageNumericPose numeric;
-        if (slot.Reference is { } reference)
-        {
-            var snapshot = snapshots[reference.ChunkIndex];
-            using var stream = File.OpenRead(snapshot.Path);
-            stream.Position = checked(32L + (long)reference.RecordIndex * snapshot.Header.RecordStride);
-            byte[] bytes = new byte[snapshot.Header.RecordStride]; stream.ReadExactly(bytes);
-            maximumChunkBufferBytes = Math.Max(maximumChunkBufferBytes, bytes.Length);
-            numeric = CoveragePackedPoseCodec.ReadRecord(bytes, snapshot.Header, snapshot.Location with { RecordIndex = reference.RecordIndex });
-        }
-        else numeric = CoveragePackedInputJson.ReadInline(slot.Value, slot.Path);
+        var numeric = Decode(slot);
         int numericBytes = checked(64 + 64 * numeric.Palette.Length + 144 * numeric.Commands.Length);
-        // Binding copies the one decoded pose into the returned immutable sample. Both coexist here.
-        maximumLiveNumericPoseBytes = Math.Max(maximumLiveNumericPoseBytes, checked(2 * numericBytes));
-        if (numeric.Palette.Length != binding.InverseBind.Length) throw BindingError(slot, ".palette");
-        var commands = new CoverageCommandPose[numeric.Commands.Length];
-        for (int i = 0; i < commands.Length; i++)
+        Acquire(numericBytes);
+        bool bound = false;
+        try
         {
-            var pose = numeric.Commands[i];
-            var config = binding.Commands.SingleOrDefault(c => c.Definition.Id == pose.Id);
-            if (config == null) throw BindingError(slot, ".commands.id");
-            var definition = config.Definition;
-            commands[i] = new(pose.Id, pose.EquipmentInstanceId, binding.Topology, config.Region, config.Support, pose.EquipmentWorld, pose.CoverageWorld,
-                definition.MinZ, definition.MaxZ, definition.CollarWidth, definition.Clearance, definition.MaxWorldRecession, pose.TransitionWeight);
+            if (numeric.Palette.Length != binding.InverseBind.Length) throw BindingError(slot, ".palette");
+            var commands = new CoverageCommandPose[numeric.Commands.Length];
+            for (int i = 0; i < commands.Length; i++)
+            {
+                var pose = numeric.Commands[i];
+                var config = binding.Commands.SingleOrDefault(c => c.Definition.Id == pose.Id);
+                if (config == null) throw BindingError(slot, ".commands.id");
+                var definition = config.Definition;
+                commands[i] = new(pose.Id, pose.EquipmentInstanceId, binding.Topology, config.Region, config.Support, pose.EquipmentWorld, pose.CoverageWorld,
+                    definition.MinZ, definition.MaxZ, definition.CollarWidth, definition.Clearance, definition.MaxWorldRecession, pose.TransitionWeight);
+            }
+            if (commands.Length != binding.Commands.Length) throw BindingError(slot, ".commands");
+            var inventory = slot.Inventory;
+            Acquire(numericBytes);
+            bound = true;
+            var sample = new CoverageSample(inventory.Id, inventory.DomainId, inventory.AuthoredFrameId, inventory.BlendPathId,
+                new(inventory.StateKey), numeric.ActorModel, numeric.Palette, commands);
+            return new(sample, () => liveNumericPoseBytes -= numericBytes);
         }
-        if (commands.Length != binding.Commands.Length) throw BindingError(slot, ".commands");
-        var inventory = slot.Inventory;
-        return new(inventory.Id, inventory.DomainId, inventory.AuthoredFrameId, inventory.BlendPathId, new(inventory.StateKey),
-            numeric.ActorModel, numeric.Palette, commands);
+        catch { if (bound) liveNumericPoseBytes -= numericBytes; throw; }
+        // The decoded numeric pose is released once its binding exists or binding refused.
+        finally { liveNumericPoseBytes -= numericBytes; }
     }
 
-    CoverageDenseRow ReadDense(int domainIndex, int rowIndex)
+    CoveragePoseLease<CoverageDenseRow> ReadDense(int domainIndex, int rowIndex)
     {
         var row = metadata.Domains[domainIndex].DenseRows[rowIndex];
-        return new(row.DenseIndex, row.PrecedingPhaseTick, row.ResolvedStateKey, Read(metadata.DenseRows[domainIndex][rowIndex]), row.Looped, row.Clamped);
+        var sample = Read(metadata.DenseRows[domainIndex][rowIndex]);
+        return new(new(row.DenseIndex, row.PrecedingPhaseTick, row.ResolvedStateKey, sample.Value, row.Looped, row.Clamped), sample.Dispose);
     }
+
+    /// <summary>Reads one record from its checked private copy. A copy that can no longer be read is the input failure
+    /// it is, never an output failure, and names the chunk and record.</summary>
+    CoverageNumericPose Decode(CoveragePackedInputJson.Slot slot)
+    {
+        if (slot.Reference is not { } reference) return CoveragePackedInputJson.ReadInline(slot.Value, slot.Path);
+        var snapshot = snapshots[reference.ChunkIndex];
+        var location = snapshot.Location with { RecordIndex = reference.RecordIndex };
+        byte[] bytes = new byte[snapshot.Header.RecordStride];
+        try
+        {
+            using var stream = File.OpenRead(snapshot.Path);
+            stream.Position = checked(32L + (long)reference.RecordIndex * snapshot.Header.RecordStride);
+            stream.ReadExactly(bytes);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new CoverageBuildDataException(CoverageBuildInputRefusal.InputIo, "Cannot read a checked pose copy.", e)
+            { Path = location.Path, Identity = snapshot.Path, ChunkIndex = location.ChunkIndex, RecordIndex = location.RecordIndex };
+        }
+        maximumChunkBufferBytes = Math.Max(maximumChunkBufferBytes, bytes.Length);
+        return CoveragePackedPoseCodec.ReadRecord(bytes, snapshot.Header, location);
+    }
+
+    void Acquire(int bytes)
+    {
+        liveNumericPoseBytes += bytes;
+        maximumLiveNumericPoseBytes = Math.Max(maximumLiveNumericPoseBytes, liveNumericPoseBytes);
+    }
+
     static CoverageBuildDataException BindingError(CoveragePackedInputJson.Slot slot, string field) =>
         new(CoverageBuildInputRefusal.AssetBinding, "Pose shape or command identity differs from its bound configuration.")
         { Path = slot.Path + field, SampleId = slot.Inventory.Id, ChunkIndex = slot.Reference?.ChunkIndex, RecordIndex = slot.Reference?.RecordIndex };

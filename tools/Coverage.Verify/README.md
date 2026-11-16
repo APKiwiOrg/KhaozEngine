@@ -65,9 +65,12 @@ an animation or infer a key. Exit codes are 0 for complete accepted work, 1 for 
 publication failure, and 2 for malformed input. Holes are explicit in the in-memory build result, but a
 CLI run containing a hole publishes neither table nor evidence. Refused runs preserve existing outputs.
 Outputs publish through one recoverable transaction, described under Publication and recovery.
-Evidence serialization and resumed file admission share one inclusive byte bound. Oversized output
-refuses with the typed capacity reason before either accepted file is replaced. Resumed JSON syntax
-and field-type errors retain the malformed-input refusal family and exit code 2.
+Every evidence root and part has one inclusive 67,108,864-byte bound. A logical document within it
+stays one legacy JSON file. A larger one is published as a hashed `khaozengine.coverage-evidence-set/1`
+set, described under Artifact set transport, so no record is ever omitted. Resume opens the existing
+root through the strict artifact reader, which checks every part before any record is compared. A
+legacy root over the bound refuses with `CapacityExceeded`. Resumed JSON syntax, field-type and part
+errors retain the malformed-input refusal family and exit code 2.
 Resume recomputes acceptance, then compares every logical field. Whitespace and object member order
 do not matter. Matrix and weight numbers compare as binary32 words, including the sign of zero.
 Changed provenance is `ProvenanceMismatch`. Changed records with matching provenance are
@@ -112,11 +115,14 @@ at most 8,388,608 bytes, and at most 131,072 referenced records across both samp
 and global dense counts each remain at most 65,536. These transport limits do not increase work limits.
 
 `CoverageBuildInput.Read` and `CoverageBuildInputJson.Read` eagerly materialize both formats into
-independent resident snapshots. They retain every decoded pose. The executable currently uses this
-eager route. Internal `CoverageInputSession` instead owns a disposable metadata campaign and private
-checked chunk copies, decoding a pose on ordinal access. Its temporary directory is private on Unix
-and disposal removes only that directory. A session-backed campaign expires when its session closes.
-Materializing it returns an independent snapshot whose pose access needs no temporary files.
+independent resident snapshots. They retain every decoded pose. The executable does not use this eager
+route. It opens an internal `CoverageInputSession`, which owns a disposable metadata campaign and private
+checked chunk copies, decoding a pose on ordinal access. Its temporary directory is created under the OS
+temporary root, is private on Unix, and is removed after publication. Disposal removes only that
+directory. A session-backed campaign expires when its session closes. Materializing it returns an
+independent snapshot whose pose access needs no temporary files. A pose that can no longer be read from
+its private copy, for example after a scratch cleaner removed it, refuses as `InputIo` with `ChunkIndex`
+and `RecordIndex`, exit code 2.
 
 The builder, sample verifier and replay share their numerical cores between resident snapshots and
 internal campaigns. Candidate lookup and grouping use metadata ordinals. Pairs retain IDs and failures,
@@ -133,15 +139,21 @@ term. Here F is at most 67,108,864 manifest bytes, C is at most 8,388,608 chunk 
 4,194,304 pairs, S and D are each at most 65,536 ordinary samples and dense rows, K is at most 4,096
 candidates, and G is the admitted topology's position-group count. T covers topology, support, table
 copies and exact/depth scratch. Metadata DOM, strings and indices add runtime-dependent O(F) overhead.
-This equation is not a fixed process RSS guarantee and does not describe the executable's current eager
-input route.
+This equation is not a fixed process RSS guarantee. It describes the executable's input route.
 
 Snapshot admission uses one 65,536-byte copy/hash buffer and one numeric record buffer, bounded by C.
-Decoding and immutable binding coexist for at most two numeric poses. The maximum numeric pose is
+A campaign hands out each decoded pose as a lease. The session counts a pose's numeric bytes while it is
+decoded, and while its holder keeps the lease, and releases them when the holder disposes the lease. Every
+production reader releases one pose before it reads the next, so decoding and immutable binding hold at
+most two numeric poses. A consumer that kept every lease would raise the count past that budget, which a
+deterministic test proves. Public dense evidence and replay `Poses` projections return copies the caller
+owns and release their lease before returning. The maximum numeric pose is
 `64 + 64*1024 + 144*4 = 66,176` bytes, calculated from the transport guards. Object headers and static
 command binding references add bounded overhead. Writing flushes individual records and matrices,
-without a campaign-sized JSON buffer. A single escaped metadata token remains bounded by F. The
-session's deterministic storage seam records snapshot bytes and buffer/pose high-water reservations.
+without a campaign-sized JSON buffer. Staging records its largest payload write and copy buffer, at most
+65,536 bytes for the evidence writer whatever the document length. A single escaped metadata token
+remains bounded by F. The session's deterministic storage seam records snapshot bytes, the buffer
+high-water and the live-pose high-water.
 
 Scratch disk grows with checked raw pose bytes and, when artifacts are staged, logical output and
 rollback backups. The palette-only maximum is 8 GiB, calculated at the 1,024-matrix input guard. The
@@ -218,6 +230,29 @@ assert hashlib.sha256(chunk).hexdigest() == "79e5da6535a760e62db55573fbb996c67a1
 path = pathlib.Path("poses/000000.kepp")
 path.parent.mkdir(exist_ok=True)
 path.write_bytes(chunk)
+```
+
+This complete minimal format 2 manifest references that chunk. Its `host`, `map` and `configuration`
+references stand for the consumer's own checked assets: a two-joint host with identity inverse binds and
+a configuration whose only command is 23. Every other member is literal, including the chunk's real
+digest. A deterministic tooling test reads this block and the fixture above from this file, regenerates
+the 368 bytes independently of the codec, and builds the campaign through the executable.
+
+```json
+{
+  "formatVersion": 2,
+  "host": {"path": "host.glb", "sha256": "<host sha256>"},
+  "map": {"path": "map.json", "sha256": "<map sha256>"},
+  "configuration": {"path": "configuration.json", "sha256": "<configuration sha256>"},
+  "inverseBind": [[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1], [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]],
+  "stateSchemaSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "domains": [{"id": "clip", "kind": "authored-clip", "authoredFrameIds": ["frame-a"], "blendPathIds": []}],
+  "candidateSampleIds": ["a"],
+  "samples": [{"id": "a", "domainId": "clip", "authoredFrameId": "frame-a", "stateKey": 1,
+               "poseRef": {"chunk": 0, "record": 0}}],
+  "poseChunks": [{"path": "poses/000000.kepp", "byteLength": 368,
+                  "sha256": "79e5da6535a760e62db55573fbb996c67a1b4b6edcd1649eafb751f3a0ad42a5", "recordCount": 1}]
+}
 ```
 
 The codec-only WordVector contains `00000000`, `80000000`, `00000001`, `80000001`, `007fffff`,
@@ -348,9 +383,9 @@ syntax and numeric fields. At the count guards, dense poses contain at most
 for each of two 4,194,304-pair inventories leaves room within 64 GiB for all other bounded inventories
 and replay metrics. The exact index preflight includes the escaped root name and every descriptor.
 Staging owns only its private scratch directory and performs no publication. The publisher below makes a
-staged set visible. The CLI still writes its evidence as one legacy file. Multi-file CLI evidence is a
-separate integration step. CLI diagnostics already use this transport, as described under Optional
-refusal diagnostics.
+staged set visible. The CLI stages both its evidence and its diagnostics through this transport. Evidence
+within the bound stays one legacy file and larger evidence becomes a set. Diagnostics are described under
+Optional refusal diagnostics.
 
 ## Publication and recovery
 
@@ -454,7 +489,10 @@ refusal diagnostics. Exit 1 writes `outcome: "refused"`. Accepted artifacts and 
 in one transaction. A refusal publishes only diagnostics and preserves existing table and evidence bytes.
 If the report cannot be published, the run exits 1 with `OutputIo` and the previous report stays exactly
 as it was, or absent. A failed accepted transaction carried the report already, so no second report
-replaces the previous one. No timestamps, machine names, nonces or file paths enter the document.
+replaces the previous one. The report is collected in full before any output is staged. Collection
+decodes poses, so a pose that can no longer be read during collection refuses as `InputIo` with exit
+code 2, never as `OutputIo`, and every output and the previous report keep their exact bytes. No
+timestamps, machine names, nonces or file paths enter the document.
 
 Top-level fields are `schema`, `scope`, `command`, `outcome`, `inputSha256`, the six-digest `identity`,
 `tableSha256` when computed, `reason`, `findingCount`, `toolCodeSha256`, `render3DCodeSha256`,

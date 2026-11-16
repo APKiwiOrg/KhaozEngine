@@ -21,11 +21,16 @@ internal static class CoverageArtifactWriter
             long capacity = Math.Min((long)CoverageArtifactSet.MaxArtifactParts * partByteLimit,
                 CoverageArtifactSet.MaximumPayloadBytes(CoverageArtifactSet.MaxBytes,
                     (int)Math.Min(4096, entries)));
-            using (var output = BoundedOutput.Create(payload, Math.Max(artifactByteLimit, capacity))) writePayload(output);
+            int buffer;
+            using (var output = BoundedOutput.Create(payload, Math.Max(artifactByteLimit, capacity)))
+            {
+                writePayload(output);
+                buffer = output.MaximumWrite;
+            }
             long length = new FileInfo(payload).Length;
             string payloadHash = CoverageArtifactSet.HashFile(payload);
             using (var check = File.OpenRead(payload)) CoverageLogicalDocumentReader.Validate(check, header.Kind).Match(header);
-            if (length <= artifactByteLimit) return CoverageStagedArtifact.Create(destination, payload, scratch, header, []);
+            if (length <= artifactByteLimit) return CoverageStagedArtifact.Create(destination, payload, scratch, header, [], buffer);
             CoverageArtifactSet.Capacity((length + partByteLimit - 1) / partByteLimit, CoverageArtifactSet.MaxArtifactParts);
             int count = checked((int)((length + partByteLimit - 1) / partByteLimit));
             string placeholder = new('0', 64);
@@ -37,7 +42,7 @@ internal static class CoverageArtifactWriter
             using (var output = BoundedOutput.Create(root, artifactByteLimit))
                 WriteIndex(output, header, length, payloadHash, parts.Count, parts);
             File.Delete(payload);
-            return CoverageStagedArtifact.Create(destination, root, scratch, header, parts);
+            return CoverageStagedArtifact.Create(destination, root, scratch, header, parts, Math.Max(buffer, CoverageArtifactSet.BufferBytes));
         }
         catch { Directory.Delete(scratch, true); throw; }
     }
@@ -87,6 +92,7 @@ internal static class CoverageArtifactWriter
     sealed class BoundedOutput(Stream inner, long limit) : Stream
     {
         long length;
+        internal int MaximumWrite { get; private set; }
         internal static BoundedOutput Create(string path, long limit) =>
             new(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None), limit);
         public override bool CanRead => false;
@@ -100,6 +106,7 @@ internal static class CoverageArtifactWriter
         {
             CoverageArtifactSet.Capacity(length + buffer.Length, limit);
             inner.Write(buffer); length += buffer.Length;
+            MaximumWrite = Math.Max(MaximumWrite, buffer.Length);
         }
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();

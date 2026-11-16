@@ -91,12 +91,12 @@ public sealed class CoverageDiagnosticSetTests
     {
         using var files = new CoverageBuildFiles(scratchDirectory: Scratch);
         File.WriteAllText(PathFor(files), "prior-report");
-        Assert.Equal(1, Program.RunForTests(Args(files, "build"), ProductionBound, 1024, null));
+        Assert.Equal(1, Program.RunForTests(Args(files, "build"), ProductionBound, ProductionBound, Path.GetTempPath(), new() { ReportByteLimit = 1024 }));
         Assert.Equal("prior-report", File.ReadAllText(PathFor(files)));
         Assert.False(Directory.Exists(PathFor(files) + ".parts"));
         Assert.False(File.Exists(files.TablePath));
         Assert.False(File.Exists(files.EvidencePath));
-        Assert.Equal(0, Program.RunForTests(Args(files, "build"), ProductionBound, 4096, null));
+        Assert.Equal(0, Program.RunForTests(Args(files, "build"), ProductionBound, ProductionBound, Path.GetTempPath(), new() { ReportByteLimit = 4096 }));
         using var control = Read(files, "build", "accepted");
         Assert.Equal(0, control.RootElement.GetProperty("findingCount").GetInt32());
     }
@@ -155,7 +155,7 @@ public sealed class CoverageDiagnosticSetTests
         // The refused report spans parts at the reduced bound, so a late part can fail.
         int limit = accepted ? ProductionBound : 4096;
         var fault = new CoveragePublicationFault(Enum.Parse<CoveragePublicationStep>(step), ordinal);
-        Assert.Equal(1, Program.RunForTests(Args(files, "build"), limit, limit, fault));
+        Assert.Equal(1, Program.RunForTests(Args(files, "build"), limit, limit, Path.GetTempPath(), new() { ReportByteLimit = limit, PublicationFault = fault }));
         if (prior) Assert.Equal("prior-report", File.ReadAllText(PathFor(files)));
         else Assert.False(File.Exists(PathFor(files)));
         Assert.Equal(table, File.Exists(files.TablePath) ? File.ReadAllBytes(files.TablePath) : null);

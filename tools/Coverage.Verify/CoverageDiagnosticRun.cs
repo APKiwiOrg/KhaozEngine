@@ -39,6 +39,8 @@ internal sealed class CoverageDiagnosticRun
     T Sealed<T>(T value) => document == null ? value
         : throw new InvalidOperationException("Diagnostic state cannot change after the report was collected.");
 
+    /// <summary>Runs the report's numerical analysis now, so staging later only serializes collected records.</summary>
+    internal void CollectFor(string command, int exit) => Collect(command, exit);
     internal CoverageArtifactHeader CreateHeader(string command, int exit) => CoverageDiagnosticWriter.Header(Collect(command, exit));
     internal void WriteTo(Stream destination, string command, int exit) => Collect(command, exit).WriteTo(destination);
     internal CoverageStagedArtifact Stage(string command, int exit, string scratchDirectory, int artifactByteLimit, int partByteLimit) =>
@@ -66,7 +68,7 @@ internal sealed class CoverageDiagnosticRun
             {
                 constructed = ids.Length == 0
                     ? CoverageSampleVerifier.Verify(input, CoverageRecessionTable.Create(input.Identity,
-                        CoverageSampleVerifier.Representatives(input.Topology, input.ReadSample(0)), [],
+                        CoverageSampleVerifier.Representatives(input), [],
                         input.Samples.Select(s => s.StateKey).Distinct().Order().Select(k => new CoverageStateEntry(new(k), -1)).ToArray()))
                     : CoverageTableBuilder.Build(input.WithCandidates(ids)).Evidence;
             }
@@ -91,7 +93,7 @@ internal sealed class CoverageDiagnosticRun
     {
         var constructor = new CoverageExactConstructor(input.Topology, input.InverseBind);
         var results = new List<CoverageCandidateDiagnostic>();
-        int[] expected = CoverageSampleVerifier.Representatives(input.Topology, input.ReadSample(0));
+        int[] expected = CoverageSampleVerifier.Representatives(input);
         var ordinals = input.Samples.Select((sample, index) => (sample.Id, index)).ToDictionary(s => s.Id, s => s.index, StringComparer.Ordinal);
         foreach (string id in input.CandidateSampleIds)
         {
@@ -100,7 +102,8 @@ internal sealed class CoverageDiagnosticRun
             try
             {
                 // One candidate pose is decoded at a time and released before the next.
-                var sample = input.ReadSample(ordinals[id]);
+                using var lease = input.ReadSample(ordinals[id]);
+                var sample = lease.Value;
                 if (!constructor.TryConstruct(sample.Palette, sample.ActorModel, sample.Commands,
                     new ModelVertex[input.Topology.VertexCount], scalars, reps, out var failure))
                 {

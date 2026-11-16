@@ -34,7 +34,7 @@ public sealed class CoverageInputSessionTests
         var sources = resident.SourcePaths.ToArray();
         var materializedSources = resident.SourcePaths.ToArray();
         var campaign = new CoverageCampaign(input.Topology, input.InverseBind, domains, samples, candidates, input.Identity,
-            input.InputSha256, sources, i => input.Samples[i], (d, r) => input.Domains[d].DenseRows[r], () => { }, materializedSources);
+            input.InputSha256, sources, i => new(input.Samples[i]), (d, r) => new(input.Domains[d].DenseRows[r]), () => { }, materializedSources);
         if (mutation == "sources")
         {
             frames[0] = "changed"; paths[0] = "changed"; rows[0] = rows[0] with { DenseIndex = 99 };
@@ -59,14 +59,16 @@ public sealed class CoverageInputSessionTests
         Assert.Equal(2, campaign.Samples.Count);
         for (int i = 0; i < campaign.Samples.Count; i++)
         {
-            var pose = campaign.ReadSample(i);
+            using var lease = campaign.ReadSample(i);
+            var pose = lease.Value;
             Assert.Equal(new CoverageSampleInventory(pose.Id, pose.DomainId, pose.AuthoredFrameId, pose.BlendPathId, pose.StateKey.Value), campaign.Samples[i]);
             Assert.Equal(CoveragePackedFixture.SampleBytes(input.Samples[i]), CoveragePackedFixture.SampleBytes(pose));
         }
         Assert.Equal(5, campaign.Domains[0].DenseRows.Count);
         for (int i = 0; i < campaign.Domains[0].DenseRows.Count; i++)
         {
-            var pose = campaign.ReadDenseRow(0, i); var inventory = campaign.Domains[0].DenseRows[i];
+            using var lease = campaign.ReadDenseRow(0, i);
+            var pose = lease.Value; var inventory = campaign.Domains[0].DenseRows[i];
             Assert.Equal((pose.DenseIndex, pose.PrecedingPhaseTick, pose.ResolvedStateKey, pose.Looped, pose.Clamped),
                 (inventory.DenseIndex, inventory.PrecedingPhaseTick, inventory.ResolvedStateKey, inventory.Looped, inventory.Clamped));
             Assert.Equal(new CoverageSampleInventory(pose.Sample.Id, pose.Sample.DomainId, pose.Sample.AuthoredFrameId,
@@ -123,8 +125,10 @@ public sealed class CoverageInputSessionTests
             File.Delete(chunk);
             File.WriteAllBytes(chunk, replacement);
         }
-        Assert.Equal(CoveragePackedFixture.SampleBytes(expected.Samples[0]), CoveragePackedFixture.SampleBytes(campaign.ReadSample(0)));
-        Assert.Equal(CoveragePackedFixture.SampleBytes(expected.Domains[0].DenseRows[4].Sample), CoveragePackedFixture.SampleBytes(campaign.ReadDenseRow(0, 4).Sample));
+        using (var sample = campaign.ReadSample(0))
+            Assert.Equal(CoveragePackedFixture.SampleBytes(expected.Samples[0]), CoveragePackedFixture.SampleBytes(sample.Value));
+        using (var row = campaign.ReadDenseRow(0, 4))
+            Assert.Equal(CoveragePackedFixture.SampleBytes(expected.Domains[0].DenseRows[4].Sample), CoveragePackedFixture.SampleBytes(row.Value.Sample));
         var materialized = campaign.Materialize();
         Assert.Equal(expected.InputSha256, materialized.InputSha256);
         Assert.Equal(expected.Identity, materialized.Identity);
@@ -155,8 +159,10 @@ public sealed class CoverageInputSessionTests
         Assert.Equal(snapshot.Identity, selected.Identity);
         Assert.Equal(snapshot.InputSha256, selected.InputSha256);
         Assert.Equal(snapshot.Samples.Select(s => s.Id), selected.Samples.Select(s => s.Id));
-        Assert.Equal(CoveragePackedFixture.SampleBytes(snapshot.Samples[1]), CoveragePackedFixture.SampleBytes(selected.ReadSample(1)));
-        Assert.Equal(CoveragePackedFixture.SampleBytes(snapshot.Domains[0].DenseRows[4].Sample), CoveragePackedFixture.SampleBytes(selected.ReadDenseRow(0, 4).Sample));
+        using (var sample = selected.ReadSample(1))
+            Assert.Equal(CoveragePackedFixture.SampleBytes(snapshot.Samples[1]), CoveragePackedFixture.SampleBytes(sample.Value));
+        using (var row = selected.ReadDenseRow(0, 4))
+            Assert.Equal(CoveragePackedFixture.SampleBytes(snapshot.Domains[0].DenseRows[4].Sample), CoveragePackedFixture.SampleBytes(row.Value.Sample));
         Assert.Equal(CoverageBuildInputRefusal.UnknownCandidate,
             Assert.Throws<CoverageBuildDataException>(() => campaign.WithCandidates(new[] { "missing" })).Reason);
         Assert.Equal(new[] { "b" }, selected.Materialize().CandidateSampleIds);

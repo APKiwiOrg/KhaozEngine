@@ -18,7 +18,11 @@ internal static class CoverageEvidenceProjection
     sealed class DenseRows(CoverageCampaign input, int domainIndex) : IReadOnlyList<CoverageDenseRowEvidence>
     {
         public int Count => input.Domains[domainIndex].DenseRows.Count;
-        public CoverageDenseRowEvidence this[int index] => DenseEvidence(input.ReadDenseRow(domainIndex, index));
+        // The public projection is a copy the caller owns, so the decoded row is released before it is returned.
+        public CoverageDenseRowEvidence this[int index]
+        {
+            get { using var row = input.ReadDenseRow(domainIndex, index); return DenseEvidence(row.Value); }
+        }
         public IEnumerator<CoverageDenseRowEvidence> GetEnumerator()
         {
             for (int i = 0; i < Count; i++) yield return this[i];
@@ -82,10 +86,11 @@ internal static class CoverageEvidenceProjection
         }
     }
 
-    // A method boundary releases each decoded row before the next read. No numeric evidence copy is needed.
+    // Each decoded row is released before the next read. No numeric evidence copy is needed.
     static void WriteDenseRow(Utf8JsonWriter writer, CoverageCampaign input, int domainIndex, int rowIndex)
     {
-        var row = input.ReadDenseRow(domainIndex, rowIndex);
+        using var lease = input.ReadDenseRow(domainIndex, rowIndex);
+        var row = lease.Value;
         var pose = row.Sample;
         writer.WriteStartObject();
         writer.WriteNumber("denseIndex", row.DenseIndex); writer.WriteNumber("precedingPhaseTick", row.PrecedingPhaseTick);

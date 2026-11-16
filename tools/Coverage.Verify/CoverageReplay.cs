@@ -39,6 +39,8 @@ public sealed class CoverageReplayResult
         QueryBudgetPerClassEquipmentPose = queryBudget;
     }
     public int QueryBudgetPerClassEquipmentPose { get; }
+    /// <summary>Metrics by dense-row ordinal, so internal consumers never decode a row twice.</summary>
+    internal IReadOnlyList<CoverageReplayObservation> Observations => observations;
     public double DepthResolutionMm => CoverageWholeSkinDepth.ResolutionMm;
     public string ArithmeticLimitations => "Double transforms, winding and distance estimates over sampled poses. No certified continuous enclosure.";
     public IReadOnlyList<CoverageReplayPose> Poses { get; }
@@ -127,8 +129,17 @@ public static class CoverageReplay
                 results.Add(Measure(domain, row));
         return new(input, results, queryBudget);
 
-        CoverageReplayObservation Measure(int domain, int row) => new(domain, row,
-            CoverageReplayMetrics.Capture(measurement.Measure(input.Domains[domain], input.ReadDenseRow(domain, row), queryBudget)));
+        CoverageReplayObservation Measure(int domain, int row)
+        {
+            using var lease = input.ReadDenseRow(domain, row);
+            return new(domain, row, CoverageReplayMetrics.Capture(measurement.Measure(input.Domains[domain], lease.Value, queryBudget)));
+        }
+    }
+
+    static bool MissingEquipment(CoverageCampaign input, int domainIndex, int rowIndex)
+    {
+        using var row = input.ReadDenseRow(domainIndex, rowIndex);
+        return row.Value.Sample.Commands.Length == 0;
     }
 
     static void ValidateRows(CoverageCampaign input)
@@ -148,9 +159,12 @@ public static class CoverageReplay
                     : sample.DomainId != domain.Id || sample.AuthoredFrameId == null && sample.BlendPathId == null
                         || sample.AuthoredFrameId != null && !domain.AuthoredFrameIds.Contains(sample.AuthoredFrameId, StringComparer.Ordinal)
                         || sample.BlendPathId != null && !domain.BlendPathIds.Contains(sample.BlendPathId, StringComparer.Ordinal) ? CoverageVerificationRefusal.DenseDomainMembership
-                    : input.ReadDenseRow(domainIndex, index).Sample.Commands.Length == 0 ? CoverageVerificationRefusal.MissingEquipment : null;
-                if (reason.HasValue) throw new CoverageVerificationException(reason.Value, "Dense replay declaration was refused.")
-                    .At(domain.Id, input.ReadDenseRow(domainIndex, index));
+                    : MissingEquipment(input, domainIndex, index) ? CoverageVerificationRefusal.MissingEquipment : null;
+                if (reason.HasValue)
+                {
+                    using var refused = input.ReadDenseRow(domainIndex, index);
+                    throw new CoverageVerificationException(reason.Value, "Dense replay declaration was refused.").At(domain.Id, refused.Value);
+                }
             }
         }
     }

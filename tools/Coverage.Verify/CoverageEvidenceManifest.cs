@@ -104,16 +104,6 @@ public sealed class CoverageEvidenceManifest
         return stream.ToArray();
     }
 
-    /// <summary>A resumed output must bind the same exact inputs, tool, arithmetic and serialized table.
-    /// Malformed JSON or field types retain the tool's malformed-input refusal family.</summary>
-    internal void ValidateResume(byte[] bytes, byte[]? expectedBytes = null)
-    {
-        CoverageBuildInputJson.CheckByteCapacity(bytes.LongLength, CoverageBuildInputJson.MaxBytes);
-        using var actual = new MemoryStream(bytes, writable: false);
-        using var expected = new MemoryStream(expectedBytes ?? Write(), writable: false);
-        CoverageLogicalDocumentReader.Compare(actual, expected, CoverageArtifactKind.Evidence);
-    }
-
     sealed class EvidenceStream(int byteLimit) : MemoryStream
     {
         public override void Write(byte[] buffer, int offset, int count)

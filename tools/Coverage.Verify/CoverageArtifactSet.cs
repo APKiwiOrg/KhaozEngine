@@ -30,16 +30,24 @@ internal sealed class CoverageStagedArtifact : IDisposable
     internal string RootSha256 { get; }
     internal IReadOnlyList<CoverageArtifactPart> Parts { get; }
     internal CoverageArtifactHeader Header { get; }
+    /// <summary>The largest single payload write or copy buffer staging used. A producer that buffered its whole
+    /// document would show its full length here.</summary>
+    internal int MaximumBufferBytesForTests { get; }
     private CoverageStagedArtifact(string destination, string root, string hash, string scratch,
-        CoverageArtifactHeader header, IEnumerable<CoverageArtifactPart> parts)
+        CoverageArtifactHeader header, IEnumerable<CoverageArtifactPart> parts, int maximumBufferBytes)
     {
         RootDestinationPath = destination; RootStagePath = root; RootSha256 = hash; this.scratch = scratch;
+        MaximumBufferBytesForTests = maximumBufferBytes;
         Header = header with { Totals = header.Totals.ToImmutableDictionary(StringComparer.Ordinal) };
         Parts = ImmutableArray.CreateRange(parts.ToArray());
     }
     internal static CoverageStagedArtifact Create(string destination, string root, string scratch,
-        CoverageArtifactHeader header, IEnumerable<CoverageArtifactPart> parts) =>
-        new(destination, root, CoverageArtifactSet.HashFile(root), scratch, header, parts);
+        CoverageArtifactHeader header, IEnumerable<CoverageArtifactPart> parts, int maximumBufferBytes) =>
+        new(destination, root, CoverageArtifactSet.HashFile(root), scratch, header, parts, maximumBufferBytes);
+
+    /// <summary>The complete staged logical document: the root itself, or its parts in ordinal order.</summary>
+    internal Stream OpenPayload() => Parts.Count == 0 ? File.OpenRead(RootStagePath)
+        : new CoverageConcatenatedStream(Parts.Select(p => p.StagePath).ToArray());
     public void Dispose() { if (Directory.Exists(scratch)) Directory.Delete(scratch, true); }
 }
 

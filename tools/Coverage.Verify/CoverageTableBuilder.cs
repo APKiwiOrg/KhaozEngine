@@ -25,7 +25,7 @@ public static class CoverageTableBuilder
         var constructor = new CoverageExactConstructor(topology, input.InverseBind);
         var candidates = new List<Candidate>();
         var candidateEvidence = new List<CoverageCandidateEvidence>();
-        int[] representatives = CoverageSampleVerifier.Representatives(topology, input.ReadSample(0));
+        int[] representatives = CoverageSampleVerifier.Representatives(input);
         var ordinals = input.Samples.Select((sample, index) => (sample.Id, index)).ToDictionary(s => s.Id, s => s.index, StringComparer.Ordinal);
         foreach (string id in input.CandidateSampleIds)
         {
@@ -69,7 +69,8 @@ public static class CoverageTableBuilder
 
     static float[] Construct(CoverageCampaign input, CoverageExactConstructor constructor, int ordinal, int[] representatives)
     {
-        var sample = input.ReadSample(ordinal);
+        using var lease = input.ReadSample(ordinal);
+        var sample = lease.Value;
         var topology = input.Topology;
         var scalars = new float[topology.PositionGroupCount];
         var reps = new int[topology.PositionGroupCount];

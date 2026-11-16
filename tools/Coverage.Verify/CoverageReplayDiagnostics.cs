@@ -24,7 +24,8 @@ internal static class CoverageReplayDiagnostics
             for (int index = 0; index < domain.DenseRows.Count; index++)
             {
                 // One dense pose is decoded at a time. Only the observations below outlive it.
-                var row = input.ReadDenseRow(domainIndex, index);
+                using var lease = input.ReadDenseRow(domainIndex, index);
+                var row = lease.Value;
                 // This projection only labels diagnostic work. CoverageReplay.ValidateRows remains the acceptance gate.
                 var sample = row.Sample;
                 CoverageVerificationRefusal? declaration = row.DenseIndex != index ? CoverageVerificationRefusal.DenseSequence
@@ -40,7 +41,8 @@ internal static class CoverageReplayDiagnostics
                 {
                     pose = replay == null ? measurement!.Measure(domain, row, CoverageWholeSkinDepth.DefaultQueryBudget,
                     error => failures.Add(new(domain.Id, row.DenseIndex, row.ResolvedStateKey, sample.Id, error.Reason.ToString(),
-                        error.EntryIndex, error.CommandId, error.EquipmentInstanceId, error.Failure))) : replay.Poses[poseIndex++];
+                        error.EntryIndex, error.CommandId, error.EquipmentInstanceId, error.Failure)))
+                        : replay.Observations[poseIndex++].Metrics.ToPose(domain.Id, row);
                 }
                 catch (CoverageVerificationException error)
                 {

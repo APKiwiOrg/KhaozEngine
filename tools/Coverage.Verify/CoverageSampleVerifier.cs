@@ -19,10 +19,13 @@ public static class CoverageSampleVerifier
         ArgumentNullException.ThrowIfNull(input); ArgumentNullException.ThrowIfNull(table);
         if (input.Identity != table.Identity)
             throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.ProvenanceMismatch, "Table provenance differs from the checked inputs.");
-        int[] expected = Representatives(input.Topology, input.ReadSample(0));
+        int[] expected = Representatives(input);
         CheckRepresentatives(expected, table.Representatives);
         for (int i = 0; i < input.Samples.Count; i++)
-            CheckRepresentatives(expected, Representatives(input.Topology, input.ReadSample(i)), input.Samples[i].Id);
+        {
+            using var sample = input.ReadSample(i);
+            CheckRepresentatives(expected, Representatives(input.Topology, sample.Value), input.Samples[i].Id);
+        }
         var keys = input.Samples.Select(s => s.StateKey).Distinct().Order().ToArray();
         if (!keys.SequenceEqual(table.States.ToArray().Select(s => s.Key.Value)))
             throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.StateInventoryMismatch, "Table state inventory differs.");
@@ -66,7 +69,8 @@ public static class CoverageSampleVerifier
 
         void CheckSample(int ordinal)
         {
-            var sample = input.ReadSample(ordinal);
+            using var lease = input.ReadSample(ordinal);
+            var sample = lease.Value;
             bool prepared = uniforms.TryPrepare(sample.Palette, input.InverseBind, sample.ActorModel, sample.Commands, out var preparationFailure);
             if (prepared) prepared = CoverageCarryReference.TryCarry(topology, uniforms.ComposedPalette, table, -1, uniforms.Commands, carry, before, out preparationFailure);
             for (int entry = 0; entry < table.EntryCount; entry++)
@@ -78,6 +82,13 @@ public static class CoverageSampleVerifier
                 pairs.Add(new(entry, sample.Id, valid, failure));
             }
         }
+    }
+
+    /// <summary>The topology-owned representatives, taken from the first sample and released before any other read.</summary>
+    internal static int[] Representatives(CoverageCampaign input)
+    {
+        using var first = input.ReadSample(0);
+        return Representatives(input.Topology, first.Value);
     }
 
     internal static int[] Representatives(CoverageRefinement topology, CoverageSample sample)

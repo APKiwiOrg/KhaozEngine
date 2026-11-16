@@ -72,7 +72,9 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
                     byte[][] fine = Array.ConvertAll(fixtures, fx => Bytes(fx.Device,
                         fx.Scene.TemporalHistory.DetailStore!.Color(fx.Scene.TemporalHistory.WriteIndex)));
                     Assert.NotEmpty(fine[0]);
-                    for (int i = 1; i < fine.Length; i++) Assert.Equal(fine[0], fine[i]);
+                    string[] names = ["fused certified", "split certified", "fused check", "split check"];
+                    for (int i = 1; i < fine.Length; i++)
+                        TemporalHistorySample.Exact(frame, $"{names[0]} vs {names[i]} fine store", fine[0], fine[i]);
                 }
             }
             oracle.AssertComplete();

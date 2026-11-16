@@ -61,7 +61,8 @@ internal static class CoverageArtifactSet
         ? "khaozengine.coverage-evidence-set/1" : "khaozengine.coverage-diagnostics-set/1";
     internal static long DescriptorCapacityBound(string rootFileName, long payloadBytes, int partBytes)
     {
-        // A descriptor has four keys, two 64-character hashes, a five-digit ordinal and bounded decimal lengths.
+        // A descriptor has four keys, three 64-character hashes (payload and part hash in its path, plus its sha256),
+        // a five-digit ordinal and bounded decimal lengths.
         // 512 bytes covers all fixed syntax and widths. Only the escaped root name varies with the caller.
         int rootBytes = System.Text.Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(rootFileName));
         return checked(((payloadBytes + partBytes - 1) / partBytes) * (rootBytes + 512L));

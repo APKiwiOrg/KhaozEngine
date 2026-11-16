@@ -333,7 +333,9 @@ Staging uses fixed 65,536-byte copy buffers and scratch files, with no aggregate
 Typed reading retains one bounded token, current object field hashes and bounded inventory indices.
 The conservative payload envelope is `12*K*F + 64 GiB`, at most 3 TiB plus 64 GiB for K=4,096 and
 F=67,108,864. This fits 65,536 production parts. Index capacity is checked while writing, before
-publication. Scratch disk must hold the complete staged or checked payload. Insufficient disk refuses.
+publication. Staging needs scratch space for about twice the logical payload, because the complete
+payload is written and checked once and then copied into parts. A checked read needs space for one
+payload snapshot. Insufficient disk refuses.
 The variable string term allows two pair inventories, each repeating bounded metadata at most K
 times with at most six JSON bytes per escaped character. The remaining bound covers fixed record
 syntax and numeric fields. At the count guards, dense poses contain at most

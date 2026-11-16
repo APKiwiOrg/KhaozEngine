@@ -46,6 +46,21 @@ public sealed class CoverageArtifactResumeTests
         var error = Assert.Throws<CoverageBuildDataException>(() => CoverageLogicalDocumentReader.Validate(input, CoverageArtifactKind.Evidence));
         Assert.Equal(reason, error.Reason);
     }
+    // The frozen synthetic document pins the admitted legacy evidence shape. A change to that shape must replace
+    // Fixtures/legacy-evidence-v1.json on purpose, together with the README and a version decision, because
+    // evidence written by earlier tools would then refuse.
+    [Fact]
+    public void Frozen_legacy_evidence_keeps_its_admitted_shape()
+    {
+        byte[] frozen = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "legacy-evidence-v1.json"));
+        using (var stream = new MemoryStream(frozen)) CoverageLogicalDocumentReader.Validate(stream, CoverageArtifactKind.Evidence);
+        using var fixture = new CoverageArtifactFixture();
+        File.WriteAllBytes(fixture.Root, frozen);
+        using var read = CoverageArtifactReader.Open(fixture.Root, fixture.Folder);
+        using var payload = read.OpenPayload();
+        Assert.Equal(frozen, CoverageArtifactFixture.Bytes(payload));
+    }
+
     [Fact]
     public void Legacy_whitespace_and_object_member_order_are_semantically_equal()
     {

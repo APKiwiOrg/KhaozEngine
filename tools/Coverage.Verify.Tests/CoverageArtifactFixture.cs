@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Tools.Coverage;
 
 internal sealed class CoverageArtifactFixture : IDisposable
 {
-    internal string Folder { get; } = Path.Combine(OperatingSystem.IsWindows() ? Path.GetTempPath() : "/tmp",
+    internal string Folder { get; } = Path.Combine(Path.GetTempPath(),
         "khaozengine-coverage-packed-input", "artifact-" + Guid.NewGuid().ToString("N"));
     internal string Root => Path.Combine(Folder, "evidence.json");
     internal CoverageEvidenceManifest Evidence { get; }

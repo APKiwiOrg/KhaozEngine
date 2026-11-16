@@ -254,20 +254,37 @@ public sealed class CoverageArtifactSetTests
         Assert.Equal(expected, File.ReadAllBytes(single.RootStagePath));
     }
 
-    [Fact]
-    public void Payload_capacity_covers_every_stream_write_path()
+    [Theory]
+    [InlineData("byte")]
+    [InlineData("array")]
+    [InlineData("async")]
+    public void Payload_capacity_covers_every_stream_write_path(string path)
     {
         using var fixture = new CoverageArtifactFixture();
         byte[] logical = fixture.Evidence.Write();
-        // One-byte artifact and part limits allow at most 65,536 payload bytes, one per descriptor.
+        // With part limit P and artifact limit 65,536*P the descriptor cap and the artifact limit coincide,
+        // so a payload of exactly that length stays one legacy file and one more byte must refuse.
+        int part = (logical.Length + CoverageArtifactSet.MaxArtifactParts - 1) / CoverageArtifactSet.MaxArtifactParts;
+        int bound = CoverageArtifactSet.MaxArtifactParts * part;
+        byte[] over = new byte[bound + 1], exact = new byte[bound];
+        over.AsSpan().Fill((byte)' ');
+        exact.AsSpan().Fill((byte)' ');
+        logical.CopyTo(exact, 0);
         var error = Assert.Throws<CoverageBuildDataException>(() => CoverageArtifactWriter.Stage(fixture.Root, fixture.Evidence.CreateHeader(),
-            s => { for (int i = 0; i <= 65_536; i++) s.WriteByte((byte)' '); }, fixture.Folder, 1, 1));
+            s => Write(s, over, path), fixture.Folder, bound, part));
         Assert.Equal(CoverageBuildInputRefusal.CapacityExceeded, error.Reason);
-        Assert.Equal(65_536, error.Limit);
+        Assert.Equal(bound, error.Limit);
         Assert.False(File.Exists(fixture.Root));
         using var control = CoverageArtifactWriter.Stage(fixture.Root, fixture.Evidence.CreateHeader(),
-            s => { foreach (byte value in logical) s.WriteByte(value); }, fixture.Folder, logical.Length, logical.Length);
+            s => Write(s, exact, path), fixture.Folder, bound, part);
         Assert.Empty(control.Parts);
-        Assert.Equal(logical, File.ReadAllBytes(control.RootStagePath));
+        Assert.Equal(exact, File.ReadAllBytes(control.RootStagePath));
+    }
+
+    static void Write(Stream stream, byte[] bytes, string path)
+    {
+        if (path == "byte") foreach (byte value in bytes) stream.WriteByte(value);
+        else if (path == "array") stream.Write(bytes, 0, bytes.Length);
+        else stream.WriteAsync(bytes.AsMemory()).AsTask().GetAwaiter().GetResult();
     }
 }

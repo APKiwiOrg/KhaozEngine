@@ -243,6 +243,11 @@ public sealed class CoverageTableBuilderTests
         var topology = CoverageRefinement.Build(first.Topology.Source, refined);
         Assert.NotEqual(first.Identity.RefinementSha256, CoverageBuildInputJson.RefinementHash(topology));
         Assert.Equal(0, Run(files, "build"));
+        byte[] table = File.ReadAllBytes(files.TablePath), evidence = File.ReadAllBytes(files.EvidencePath);
+        // A second run of the same command recomputes the same provenance and records, so resume accepts it.
+        Assert.Equal(0, Run(files, "build"));
+        Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
         File.Delete(files.EvidencePath);
         Assert.Equal(0, Run(files, "verify-samples"));
     }

@@ -143,7 +143,7 @@ internal static class CoverageLogicalDocumentReader
             var identity = fields["identity"].Members!;
             string Text(string name) => (string)fields[name].Scalar!;
             string Digest(string name) => (string)identity[name].Scalar!;
-            var header = new CoverageArtifactHeader(kind, kind == CoverageArtifactKind.Evidence ? "KhaozEngine.Coverage.Verify/1" : Text("schema"),
+            var header = new CoverageArtifactHeader(kind, kind == CoverageArtifactKind.Evidence ? Text("tool") : Text("schema"),
                 Text("scope"), Text("inputSha256"), (string?)fields["tableSha256"].Scalar,
                 new(Digest("hostSha256"), Digest("hostMapSha256"), Digest("configurationSha256"), Digest("refinementSha256"), Digest("arithmeticSha256"), Digest("stateSchemaSha256")),
                 Text("toolCodeSha256"), Text("render3DCodeSha256"), totals, kind == CoverageArtifactKind.Evidence ? (bool)fields["complete"].Scalar! : true,

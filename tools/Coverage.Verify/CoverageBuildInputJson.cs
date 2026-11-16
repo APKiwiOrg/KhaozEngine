@@ -10,7 +10,7 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tools.Coverage;
 
-/// <summary>Strict format 1 reader. Relative references resolve beside the document that declares them.</summary>
+/// <summary>Strict manifest reader with an eager, independent snapshot result. Relative references resolve beside the document that declares them.</summary>
 public static class CoverageBuildInputJson
 {
     internal const int MaxBytes = 64 * 1024 * 1024;
@@ -18,44 +18,28 @@ public static class CoverageBuildInputJson
 
     public static CoverageBuildInput Read(string manifestPath)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);
-        string path = System.IO.Path.GetFullPath(manifestPath);
-        try
-        {
-            var sourcePaths = new List<string> { path };
-            byte[] bytes = ReadBytes(path);
-            using var doc = Document(bytes);
-            var root = doc.RootElement;
-            Members(root, "$", "formatVersion", "host", "map", "configuration", "inverseBind", "stateSchemaSha256", "domains", "candidateSampleIds", "samples");
-            Version(root);
-            string folder = System.IO.Path.GetDirectoryName(path)!;
-            byte[] hostBytes = Asset(root, "host", folder, "$", sourcePaths);
-            byte[] mapBytes = Asset(root, "map", folder, "$", sourcePaths);
-            var map = HostCoverageMapJson.Read(mapBytes, "map");
-            var parts = GltfLoader.LoadSkinnedPartsWithMaterials(hostBytes, "host", map);
-            GltfSkinnedMeshPart.ValidateCoverageParts(parts[0].Mesh.Coverage!, parts.Select(p => p.Mesh).ToArray());
-            var topology = CoverageRefinement.Build(parts[0].Mesh.Coverage!.Source, map);
-            var binds = Matrices(Get(root, "inverseBind", "$"), "$.inverseBind", 1024);
-            if (binds.Length != parts[0].Mesh.InverseBind.Length || !binds.AsSpan().SequenceEqual(parts[0].Mesh.InverseBind))
-                throw Error(CoverageBuildInputRefusal.AssetBinding, "$.inverseBind");
-            byte[] configurationBytes = Asset(root, "configuration", folder, "$", sourcePaths);
-            string configurationPath = Resolve(Get(root, "configuration", "$"), folder, "$.configuration");
-            var (commands, configurationItem) = Configuration(configurationBytes, System.IO.Path.GetDirectoryName(configurationPath)!, topology, sourcePaths);
-            var domains = Array(root, "domains", "$", CoverageBuildInput.MaxSamples).EnumerateArray().Select((d, i) => Domain(d, $"$.domains[{i}]", topology, commands, binds.Length)).ToArray();
-            var samples = Array(root, "samples", "$", CoverageBuildInput.MaxSamples).EnumerateArray()
-                .Select((s, i) => Sample(s, $"$.samples[{i}]", topology, commands, binds.Length)).ToArray();
-            string stateHash = Digest(Get(root, "stateSchemaSha256", "$"), "$.stateSchemaSha256");
-            var identity = new CoverageRecessionIdentity(Hash(hostBytes), map.SemanticSha256,
-                CoverageConfigurationIdentity.Compute([configurationItem], binds), RefinementHash(topology), ArithmeticHash(), stateHash);
-            return new(topology, binds, domains, samples, Strings(root, "candidateSampleIds", "$", CoverageBuildInput.MaxCandidates), identity, Hash(bytes), sourcePaths);
-        }
-        catch (CoverageBuildDataException) { throw; }
-        catch (MalformedDataException e) { throw new CoverageBuildDataException(CoverageBuildInputRefusal.AssetBinding, "An input asset was refused.", e) { Identity = path }; }
-        catch (Exception e) when (e is InvalidOperationException or FormatException or OverflowException)
-        { throw new CoverageBuildDataException(CoverageBuildInputRefusal.InvalidValue, "Invalid input value.", e) { Identity = path }; }
-        catch (JsonException e) { throw new CoverageBuildDataException(CoverageBuildInputRefusal.InvalidJson, "Malformed input JSON.", e) { Identity = path, Path = e.Path ?? "$" }; }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        { throw new CoverageBuildDataException(CoverageBuildInputRefusal.InputIo, "Cannot read an input.", e) { Identity = path }; }
+        using var session = CoverageInputSession.Open(manifestPath, Path.GetTempPath());
+        return session.Campaign.Materialize();
+    }
+
+    internal static CoverageInputBinding ReadBinding(JsonElement root, string folder, List<string> sourcePaths)
+    {
+        byte[] hostBytes = Asset(root, "host", folder, "$", sourcePaths);
+        byte[] mapBytes = Asset(root, "map", folder, "$", sourcePaths);
+        var map = HostCoverageMapJson.Read(mapBytes, "map");
+        var parts = GltfLoader.LoadSkinnedPartsWithMaterials(hostBytes, "host", map);
+        GltfSkinnedMeshPart.ValidateCoverageParts(parts[0].Mesh.Coverage!, parts.Select(p => p.Mesh).ToArray());
+        var topology = CoverageRefinement.Build(parts[0].Mesh.Coverage!.Source, map);
+        var binds = Matrices(Get(root, "inverseBind", "$"), "$.inverseBind", 1024);
+        if (binds.Length != parts[0].Mesh.InverseBind.Length || !binds.AsSpan().SequenceEqual(parts[0].Mesh.InverseBind))
+            throw Error(CoverageBuildInputRefusal.AssetBinding, "$.inverseBind");
+        byte[] configurationBytes = Asset(root, "configuration", folder, "$", sourcePaths);
+        string configurationPath = Resolve(Get(root, "configuration", "$"), folder, "$.configuration");
+        var (commands, configurationItem) = Configuration(configurationBytes, Path.GetDirectoryName(configurationPath)!, topology, sourcePaths);
+        string stateHash = Digest(Get(root, "stateSchemaSha256", "$"), "$.stateSchemaSha256");
+        var identity = new CoverageRecessionIdentity(Hash(hostBytes), map.SemanticSha256,
+            CoverageConfigurationIdentity.Compute([configurationItem], binds), RefinementHash(topology), ArithmeticHash(), stateHash);
+        return new(topology, binds, commands, identity);
     }
 
     static (Command[], CoverageConfigurationItem) Configuration(byte[] bytes, string folder, CoverageRefinement topology, List<string> sourcePaths)
@@ -112,80 +96,6 @@ public static class CoverageBuildInputJson
         return (commands, new(Hash(attachmentBytes), Hash(companionBytes), configurationParts.ToArray()));
     }
 
-    static CoverageDomain Domain(JsonElement value, string path, CoverageRefinement topology, Command[] commands, int bones)
-    {
-        Members(value, path, "id", "kind", "authoredFrameIds", "blendPathIds", "denseRows");
-        var kind = Text(value, "kind", path) switch
-        {
-            "authored-clip" => CoverageDomainKind.AuthoredClip,
-            "blend-path" => CoverageDomainKind.BlendPath,
-            _ => throw Error(CoverageBuildInputRefusal.InvalidValue, path + ".kind"),
-        };
-        var dense = value.TryGetProperty("denseRows", out _) ? Array(value, "denseRows", path, CoverageBuildInput.MaxSamples)
-            .EnumerateArray().Select((row, i) => Dense(row, $"{path}.denseRows[{i}]", topology, commands, bones)).ToArray() : [];
-        return new(Text(value, "id", path), kind, Strings(value, "authoredFrameIds", path), Strings(value, "blendPathIds", path), dense);
-    }
-
-    static CoverageDenseRow Dense(JsonElement value, string path, CoverageRefinement topology, Command[] commands, int bones)
-    {
-        Members(value, path, "denseIndex", "precedingPhaseTick", "resolvedStateKey", "sample", "looped", "clamped");
-        int Integer(string name)
-        {
-            var item = Get(value, name, path);
-            if (item.ValueKind != JsonValueKind.Number || !item.TryGetInt32(out int number) || number < 0)
-                throw Error(CoverageBuildInputRefusal.InvalidValue, path + "." + name);
-            return number;
-        }
-        bool Flag(string name)
-        {
-            var item = Get(value, name, path);
-            if (item.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                throw Error(CoverageBuildInputRefusal.InvalidValue, path + "." + name);
-            return item.GetBoolean();
-        }
-        var key = Get(value, "resolvedStateKey", path);
-        if (key.ValueKind != JsonValueKind.Number || !key.TryGetUInt64(out ulong stateKey))
-            throw Error(CoverageBuildInputRefusal.InvalidValue, path + ".resolvedStateKey");
-        return new(Integer("denseIndex"), Integer("precedingPhaseTick"), stateKey,
-            Sample(Get(value, "sample", path), path + ".sample", topology, commands, bones, stateKey), Flag("looped"), Flag("clamped"));
-    }
-
-    static CoverageSample Sample(JsonElement value, string path, CoverageRefinement topology, Command[] configuration, int bones, ulong? resolvedKey = null)
-    {
-        Members(value, path, resolvedKey.HasValue
-            ? ["id", "domainId", "authoredFrameId", "blendPathId", "actorModel", "palette", "commands"]
-            : ["id", "domainId", "authoredFrameId", "blendPathId", "stateKey", "actorModel", "palette", "commands"]);
-        ulong stateKey = resolvedKey.GetValueOrDefault();
-        if (!resolvedKey.HasValue)
-        {
-            var key = Get(value, "stateKey", path);
-            if (key.ValueKind != JsonValueKind.Number || !key.TryGetUInt64(out stateKey))
-                throw Error(CoverageBuildInputRefusal.InvalidValue, path + ".stateKey");
-        }
-        var palette = Matrices(Get(value, "palette", path), path + ".palette", 1024);
-        if (palette.Length != bones) throw Error(CoverageBuildInputRefusal.AssetBinding, path + ".palette");
-        var commands = new List<CoverageCommandPose>();
-        var ids = new HashSet<uint>();
-        foreach (var pose in Array(value, "commands", path, EquipmentCoverageDefinition.MaxCommands).EnumerateArray())
-        {
-            string cp = path + ".commands";
-            Members(pose, cp, "id", "equipmentInstanceId", "equipmentWorld", "coverageWorld", "transitionWeight");
-            uint id = UInt(pose, "id", cp);
-            Command? config = configuration.SingleOrDefault(c => c.Definition.Id == id);
-            if (config == null || !ids.Add(id)) throw Error(CoverageBuildInputRefusal.AssetBinding, cp + ".id");
-            var d = config.Definition;
-            var equipment = Get(pose, "equipmentInstanceId", cp);
-            if (equipment.ValueKind != JsonValueKind.Number || !equipment.TryGetUInt64(out ulong instance) || instance == 0) throw Error(CoverageBuildInputRefusal.InvalidValue, cp + ".equipmentInstanceId");
-            commands.Add(new(id, instance, topology, config.Region, config.Support,
-                Matrix(Get(pose, "equipmentWorld", cp), cp + ".equipmentWorld"), Matrix(Get(pose, "coverageWorld", cp), cp + ".coverageWorld"),
-                d.MinZ, d.MaxZ, d.CollarWidth, d.Clearance, d.MaxWorldRecession, Single(Get(pose, "transitionWeight", cp), cp + ".transitionWeight")));
-        }
-        if (commands.Count != configuration.Length) throw Error(CoverageBuildInputRefusal.AssetBinding, path + ".commands");
-        string? Optional(string name) => value.TryGetProperty(name, out var item) && item.ValueKind != JsonValueKind.Null ? String(item, path + "." + name) : null;
-        return new(Text(value, "id", path), Text(value, "domainId", path), Optional("authoredFrameId"), Optional("blendPathId"), new(stateKey),
-            Matrix(Get(value, "actorModel", path), path + ".actorModel"), palette, commands.ToArray());
-    }
-
     internal static JsonDocument Document(byte[] bytes)
     {
         // Bound every array and member diagnostic before allocating the DOM. Sidecars retain their own stricter preflight.
@@ -213,7 +123,8 @@ public static class CoverageBuildInputJson
         }
         else if (reader.TokenType == JsonTokenType.StartArray)
         {
-            int limit = path.EndsWith(".candidateSampleIds", StringComparison.Ordinal) ? CoverageBuildInput.MaxCandidates
+            int limit = path == "$.poseChunks" ? CoverageBuildInput.MaxPackedChunks
+                : path.EndsWith(".candidateSampleIds", StringComparison.Ordinal) ? CoverageBuildInput.MaxCandidates
                 : path.EndsWith(".commands", StringComparison.Ordinal) ? EquipmentCoverageDefinition.MaxCommands
                 : path.EndsWith(".inverseBind", StringComparison.Ordinal) || path.EndsWith(".palette", StringComparison.Ordinal) ? 1024
                 : path.EndsWith(".pairResults", StringComparison.Ordinal) ? CoverageBuildInput.MaxPairs : CoverageBuildInput.MaxSamples;
@@ -242,7 +153,7 @@ public static class CoverageBuildInputJson
         var value = Get(root, "formatVersion", "$");
         if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out int version) || version != 1) throw Error(CoverageBuildInputRefusal.UnsupportedVersion, "$.formatVersion");
     }
-    static JsonElement Array(JsonElement root, string name, string path, int limit)
+    internal static JsonElement Array(JsonElement root, string name, string path, int limit)
     {
         var value = Get(root, name, path);
         if (value.ValueKind != JsonValueKind.Array) throw Error(CoverageBuildInputRefusal.InvalidValue, path + "." + name);
@@ -250,33 +161,33 @@ public static class CoverageBuildInputJson
         { Path = path + "." + name, Count = value.GetArrayLength(), Limit = limit };
         return value;
     }
-    static string[] Strings(JsonElement root, string name, string path, int limit = CoverageBuildInput.MaxSamples) =>
+    internal static string[] Strings(JsonElement root, string name, string path, int limit = CoverageBuildInput.MaxSamples) =>
         Array(root, name, path, limit).EnumerateArray().Select((x, i) => String(x, $"{path}.{name}[{i}]")).ToArray();
-    static string Text(JsonElement root, string name, string path) => String(Get(root, name, path), path + "." + name);
-    static string String(JsonElement value, string path, bool allowEmpty = false) => value.ValueKind == JsonValueKind.String
+    internal static string Text(JsonElement root, string name, string path) => String(Get(root, name, path), path + "." + name);
+    internal static string String(JsonElement value, string path, bool allowEmpty = false) => value.ValueKind == JsonValueKind.String
         && (allowEmpty && value.GetString() == string.Empty || !string.IsNullOrWhiteSpace(value.GetString()))
         ? value.GetString()! : throw Error(CoverageBuildInputRefusal.InvalidValue, path);
-    static uint UInt(JsonElement value, string name, string path)
+    internal static uint UInt(JsonElement value, string name, string path)
     {
         var item = Get(value, name, path);
         return item.ValueKind == JsonValueKind.Number && item.TryGetUInt32(out uint result) ? result
             : throw Error(CoverageBuildInputRefusal.InvalidValue, path + "." + name);
     }
-    static float Single(JsonElement value, string path) => value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out float result) && float.IsFinite(result)
+    internal static float Single(JsonElement value, string path) => value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out float result) && float.IsFinite(result)
         ? result : throw Error(CoverageBuildInputRefusal.NonFiniteNumber, path);
-    static Matrix4x4[] Matrices(JsonElement array, string path, int limit)
+    internal static Matrix4x4[] Matrices(JsonElement array, string path, int limit)
     {
         if (array.ValueKind != JsonValueKind.Array) throw Error(CoverageBuildInputRefusal.InvalidValue, path);
         if (array.GetArrayLength() > limit) throw new CoverageBuildDataException(CoverageBuildInputRefusal.CapacityExceeded, "Palette exceeds capacity.") { Path = path, Count = array.GetArrayLength(), Limit = limit };
         return array.EnumerateArray().Select((x, i) => Matrix(x, $"{path}[{i}]")).ToArray();
     }
-    static Matrix4x4 Matrix(JsonElement value, string path)
+    internal static Matrix4x4 Matrix(JsonElement value, string path)
     {
         if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() != 16) throw Error(CoverageBuildInputRefusal.InvalidValue, path);
         float[] v = value.EnumerateArray().Select((x, i) => Single(x, $"{path}[{i}]")).ToArray();
         return new(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11], v[12], v[13], v[14], v[15]);
     }
-    static string Digest(JsonElement value, string path)
+    internal static string Digest(JsonElement value, string path)
     {
         string result = String(value, path);
         if (result.Length != 64 || result.Any(c => c is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
@@ -320,3 +231,6 @@ public static class CoverageBuildInputJson
     internal static float[] Values(Matrix4x4 m) => [m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24, m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44];
     static CoverageBuildDataException Error(CoverageBuildInputRefusal reason, string path) => new(reason, "Coverage input was refused.") { Path = path };
 }
+
+internal sealed record CoverageInputBinding(CoverageRefinement Topology, Matrix4x4[] InverseBind,
+    CoverageBuildInputJson.Command[] Commands, CoverageRecessionIdentity Identity);

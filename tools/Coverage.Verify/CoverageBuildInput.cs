@@ -75,6 +75,7 @@ public sealed class CoverageBuildInput
         if (denseCount > MaxSamples) throw Capacity(denseCount);
         ValidateInventories();
     }
+    /// <summary>Eagerly materializes every inline or packed pose into an independent resident snapshot.</summary>
     public static CoverageBuildInput Read(string manifestPath) => CoverageBuildInputJson.Read(manifestPath);
     public CoverageRefinement Topology { get; }
     public ReadOnlySpan<Matrix4x4> InverseBind => inverseBind;

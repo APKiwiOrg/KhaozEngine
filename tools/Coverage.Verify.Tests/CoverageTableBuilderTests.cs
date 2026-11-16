@@ -186,7 +186,7 @@ public sealed class CoverageTableBuilderTests
         {
             "duplicate" => original.Replace("\"formatVersion\":1", "\"formatVersion\":1,\"formatVersion\":1", StringComparison.Ordinal),
             "unknown" => original.Insert(1, "\"unknown\":0,"),
-            "version" => original.Replace("\"formatVersion\":1", "\"formatVersion\":2", StringComparison.Ordinal),
+            "version" => original.Replace("\"formatVersion\":1", "\"formatVersion\":3", StringComparison.Ordinal),
             _ => original,
         };
         if (defect == "nonfinite")
@@ -213,6 +213,13 @@ public sealed class CoverageTableBuilderTests
         Assert.Equal(evidence, File.ReadAllBytes(files.EvidencePath));
         File.WriteAllText(files.ManifestPath, original);
         Assert.Equal(0, Run(files, "verify-samples"));
+        if (defect == "version")
+        {
+            files.Manifest["formatVersion"] = 2;
+            files.Manifest["poseChunks"] = new JsonArray();
+            files.Write();
+            Assert.Equal(2, CoverageBuildInput.Read(files.ManifestPath).Samples.Count);
+        }
     }
 
     [Fact]

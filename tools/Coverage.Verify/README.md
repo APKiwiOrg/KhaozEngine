@@ -91,10 +91,44 @@ must belong to that domain. Every declared frame and path needs a sample. Candid
 ordered and must name samples. Limits are 65536 samples or inventory items, 4096 candidates, 4194304
 candidate/sample pairs, 1024 palette matrices, four commands and 64 MiB per input or published artifact.
 
+Format 2 keeps those root fields and requires `poseChunks`. Each descriptor has exactly `path`,
+`byteLength`, lowercase `sha256` and positive integral `recordCount`. A sample, including a dense row's
+sample, contains either all three inline pose fields (`actorModel`, `palette`, `commands`) or exactly
+`poseRef: {"chunk":0,"record":0}` in their place. Both indices are nonnegative integral numbers within
+the actual chunk and record inventories. Mixed inline and referenced samples are valid. An all-inline
+format 2 manifest uses an empty `poseChunks` array. Format 1 refuses these new members.
+
+Each chunk record must have exactly one ordinary or dense owner. Duplicate references, unused records
+and unused descriptors refuse as `PackedReferenceInvalid`. Chunk order does not select geometry order.
+The manifest still determines ordinary and dense order. There are at most 4,096 nonempty chunks, each
+at most 8,388,608 bytes, and at most 131,072 referenced records across both sample inventories. Ordinary
+and global dense counts each remain at most 65,536. These transport limits do not increase work limits.
+
+`CoverageBuildInput.Read` and `CoverageBuildInputJson.Read` eagerly materialize both formats into
+independent resident snapshots. They retain every decoded pose. The executable currently uses this
+eager route. Internal `CoverageInputSession` instead owns a disposable metadata campaign and private
+checked chunk copies, decoding a pose on ordinal access. Its temporary directory is private on Unix
+and disposal removes only that directory. A session-backed campaign expires when its session closes.
+Materializing it returns an independent snapshot whose pose access needs no temporary files.
+
+Admission first checks manifest syntax, duplicate/unknown members, field types and bounded inventories,
+then exact reference closure and every chunk path. It copies and hashes one chunk at a time, checks
+length and digest before inspecting the header or any record, and scans all numeric words before
+binding host, map, configuration or support geometry. Hash mismatch therefore wins over nonfinite words
+in the same chunk. Only the checked private copies supply later poses. Observable source length changes
+during copying refuse as `PackedInputChanged`. A source replaced after admission cannot alter a pose.
+Palette and command agreement with the checked configuration is validated before the session opens.
+Dense replay phase policy remains a verification gate. Configuration manifests still require version 1.
+
+`InputSha256` hashes exact manifest bytes. Format 2 descriptors transitively bind all checked pose bytes.
+Changing a pose and refreshing its descriptor changes this input identity, while the six runtime table
+identities retain their existing meanings. Original chunk paths and private copies are included among
+the session's protected inputs. Public resident snapshots retain only original input paths.
+
 ### KEPP numeric transport
 
-The internal packed-pose codec defines KEPP version 1. This codec does not yet add a packed manifest
-route to the CLI. Format 1 above still uses inline numeric arrays. KEPP stores complete numeric poses,
+The packed-pose codec defines KEPP version 1 for format 2 references. Format 1 above still uses inline
+numeric arrays. KEPP stores complete numeric poses,
 with explicit little-endian integers and binary32 words. Matrix order is M11, M12, through M44.
 No decimal conversion, binary64 conversion, normalization or quantization occurs in the codec.
 
@@ -161,6 +195,8 @@ nonfinite words are `PackedWordNonFinite`. `Path` is the rooted manifest locatio
 `RecordIndex` and absolute chunk `ByteOffset` locate the defect. Length failures include `ExpectedLength`
 and `ActualLength`, capacity failures include `Count` and inclusive `Limit`, and version failures include
 `FormatVersion`. `Identity` is local exception context and must not be copied into exported evidence.
+Missing chunks use `PackedChunkMissing`, descriptor/header count disagreement uses `PackedCountMismatch`,
+and digest disagreement uses `PackedChunkHashMismatch` with `ExpectedSha256` and `ActualSha256`.
 
 Packed path admission accepts only portable relative `/` components below the declaring directory.
 Empty, dot, parent, backslash, colon, NUL and rooted forms refuse as `PackedPathEscape`. Referenced

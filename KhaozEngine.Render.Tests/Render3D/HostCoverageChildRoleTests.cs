@@ -72,10 +72,14 @@ public class HostCoverageChildRoleTests
     [InlineData("covers", HostCoverageRefusal.ChildRoleCoversTriangle, "$.regions[1].childRoles[0]", "chest", 0, 2, 2, null)]
     [InlineData("fractional-cell", HostCoverageRefusal.InvalidInteger, "$.regions[1].childRoles[0].cells[0]", null, null, null, null, null)]
     [InlineData("unknown-entry-member", HostCoverageRefusal.UnknownMember, "$.regions[1].childRoles[0].extra", null, null, null, null, null)]
+    [InlineData("text-cell", HostCoverageRefusal.InvalidInteger, "$.regions[1].childRoles[0].cells[0]", null, null, null, null, null)]
+    [InlineData("cell-across-entries", HostCoverageRefusal.DuplicateChildRole, "$.regions[1].childRoles[1].cells[0]", "chest", 0, 2, null, 1)]
+    [InlineData("reordered-level-3", HostCoverageRefusal.ChildRoleLevelMismatch, "$.regions[1].childRoles[1].level", "chest", 0, 2, 3, null)]
     public void Format_two_refusals_name_their_source_position_beside_a_passing_control(string row, HostCoverageRefusal reason,
         string path, string? regionKey, int? primitive, int? triangle, int? level, int? cell)
     {
         Assert.Equal(2, HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(Format2Canonical), "control").Regions[1].ChildRoles.Count);
+        Assert.Equal(2, HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(Format2Reordered), "split-control").Regions[1].ChildRoles.Count);
 
         string Swap(string from, string to) => Format2Canonical.Replace(from, to, StringComparison.Ordinal);
         string json = row switch
@@ -93,6 +97,11 @@ public class HostCoverageChildRoleTests
             "role-capitalised" => Swap("\"cells\":[1,2],\"role\":\"core\"", "\"cells\":[1,2],\"role\":\"Core\""),
             "covers" => Swap("\"cells\":[1,2]", "\"cells\":[0,1,2,3]"),
             "fractional-cell" => Swap("\"cells\":[1,2]", "\"cells\":[1.5,2]"),
+            "text-cell" => Swap("\"cells\":[1,2]", "\"cells\":[\"1\",2]"),
+            "cell-across-entries" => Swap("\"cells\":[1,2],\"role\":\"core\"}", "\"cells\":[1,2],\"role\":\"core\"}," +
+                "{\"mesh\":0,\"primitive\":0,\"triangle\":2,\"level\":2,\"cells\":[1],\"role\":\"core\"}"),
+            // Sorted record 0 is cell 1, which came from source entry 1, so the path must name entry 1.
+            "reordered-level-3" => Format2Reordered.Replace("\"role\":\"core\",\"level\":2}", "\"role\":\"core\",\"level\":3}", StringComparison.Ordinal),
             "unknown-entry-member" => Swap("\"cells\":[1,2],\"role\":\"core\"", "\"cells\":[1,2],\"role\":\"core\",\"extra\":0"),
             _ => throw new ArgumentOutOfRangeException(nameof(row)),
         };

@@ -205,7 +205,8 @@ public enum HostCoverageRefusal
     HostHandleOwnershipMismatch,
 
     /// <summary>A child role collection is empty or over its bound, a source triangle has more than 15 overridden cells,
-    /// or a map has more than 65536. Count and Limit identify the bound. RegionKey names the region except at map level.</summary>
+    /// or a map has more than 65536. Count and Limit identify the bound. RegionKey names the region except at map level and
+    /// in preflight over-limit refusals, where Path names the region by index.</summary>
     ChildRoleCapacity,
 
     /// <summary>A child role names a source triangle outside its region's ranges. RegionKey, the triangle ordinals and

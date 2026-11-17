@@ -44,6 +44,7 @@
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Draws.cs" Link="Shared/Gpu/RecordingGpuCommandList.Draws.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Reads.cs" Link="Shared/Gpu/RecordingGpuCommandList.Reads.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.cs" Link="Shared/Gpu/RecordingGpuCommandList.cs" />
+    <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.TemporalDetail.cs" Link="Shared/Gpu/ShippedShaderPrograms.TemporalDetail.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.Visibility.cs" Link="Shared/Gpu/ShippedShaderPrograms.Visibility.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs" Link="Shared/Gpu/ShippedShaderPrograms.cs" />
     <Compile Include="$(RendererPerfRepositoryRoot)/KhaozEngine.Render.Tests/Gpu/SpyGpuDevice.cs" Link="Shared/Gpu/SpyGpuDevice.cs" />

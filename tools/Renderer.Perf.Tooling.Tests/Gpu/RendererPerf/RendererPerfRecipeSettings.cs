@@ -14,11 +14,18 @@ internal static class RendererPerfRecipeSettings
         resolver.Modifiers.Add(static info =>
         {
             // The recipe pins the historical one-texel workload. Other holds remain authored settings.
+            // The display history grid and its default pixel budget preserve the frozen encoding. An explicit
+            // fine grid or another budget remains an authored input.
             if (info.Type == typeof(TemporalSettings))
             {
                 foreach (var property in info.Properties)
                     if (property.Name == nameof(TemporalSettings.ShadowLightHoldTexels))
                         property.ShouldSerialize = static (_, field) => field is float hold && hold != 1f;
+                    else if (property.Name == nameof(TemporalSettings.HistoryDetail))
+                        property.ShouldSerialize = static (_, field) =>
+                            field is TemporalHistoryDetail detail && detail != TemporalHistoryDetail.Display;
+                    else if (property.Name == nameof(TemporalSettings.HistoryDetailPixelLimit))
+                        property.ShouldSerialize = static (_, field) => field is long budget && budget != 2560L * 1440;
                 return;
             }
             if (info.Type == typeof(RigidInstanceDraw))

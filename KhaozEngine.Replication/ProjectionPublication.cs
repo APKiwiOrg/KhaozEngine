@@ -19,7 +19,7 @@ namespace KhaozEngine.Replication;
 /// </list>
 /// Presentation buffers shift once and take fresh copies of sampled payloads, so they never reference a retained
 /// backing array. Interpolation timestamps stay with the ingest path, which calls
-/// <see cref="ClientReplicationView.RecordInterpolationSample"/> once after acceptance.
+/// <see cref="ClientReplicationView.RecordInterpolationSample(double, long?)"/> once after acceptance.
 /// </summary>
 internal sealed class ProjectionPublication
 {

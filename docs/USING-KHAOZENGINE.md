@@ -518,15 +518,22 @@ window mode and everything else are unaffected, and a mistyped override does not
 window is then still wherever the game itself put it.
 
 **Networked-movement presentation (NetWorld).** `WorldClient` renders remotes on a fixed interpolation delay
-(`WorldClientConfig.InterpolationDelayTicks`, default 2) - a timestamped snapshot buffer lerped by true timestamps,
-so remotes glide with no holds or catch-up snaps at any render:tick ratio - and the local predicted avatar is
-C1-continuous across reconciliation, including across velocity transitions (10.7.0 removed the decel-to-stop shake
+(`WorldClientConfig.InterpolationDelayTicks`, default 2). Samples are stamped with the client render clock at
+ingest, so their spacing can vary with arrival jitter and render cadence. If the render time passes the last
+sample, the remote holds at that sample. The local predicted avatar is C1-continuous across reconciliation,
+including across velocity transitions (10.7.0 removed the decel-to-stop shake
 where a backward-dipping authority basis dragged the render back). The reconciliation render offset is
 critically-damped on BOTH the planar and the vertical axes (vertical since 10.33.0), so the surface-swim buoyancy
 spring's continuous stream of small vertical corrections eases with inertia instead of jerking the camera bob.
 For debugging movement smoothness set `WorldClientConfig.PresentationTraceEnabled`
 and dump `WorldClient.PresentationTrace.WriteCsv(path)` (render time, delay, seconds-since-snapshot, per-remote hold
 flag, snapshot arrivals, local reconcile-error, rendered positions).
+Direct replication consumers can record a tick using
+`ClientReplicationView.RecordInterpolationSample(timeSeconds, excludeNetId, serverTick)`, then call
+`TryGetInterpolationSegment<T>` after `InterpolateAt` to read the drawn bracket. The endpoint ticks are nullable.
+There is no bracket on clamped, held or single-sample frames. Converting tick differences to time assumes a
+host that ticks once per configured simulation step.
+
 Set `WorldClientConfig.ReceiveServerTick` to read the server's tick on the client. `WorldClient.LatestServerTick` is
 the newest applied frame's `ServerTick`, and `WorldClient.RemoteRenderTick` is the fractional server tick the remotes
 are drawn at, bracketed at the remote render time exactly as the remote samples are. Both read `-1` while unknown,

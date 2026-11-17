@@ -86,10 +86,14 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   Invalid or nonpositive frame times leave that prediction pending. Either overload consumes it on the next
   valid positive frame. This changes no remote timing or correction decay, and the one-argument overload keeps
   its existing behavior.
-  Remote interpolation is a **fixed-delay snapshot buffer** (since 9.23.0): each render frame renders remotes at
-  `latest - interpolationDelay` and lerps the two buffered snapshots bracketing that time by their true timestamps,
-  so presentation is decoupled from both the tick cadence and the render fps - no hold frames, no catch-up snaps at
-  a non-integer render:tick ratio (the pre-9.23.0 estimate-the-interval-and-ramp-alpha scheme drifted and stuttered).
+  Remote interpolation uses a **fixed-delay snapshot buffer**. Each frame lerps the buffered snapshots that bracket
+  the client render clock minus the delay. Sample stamps are the render-clock readings at ingest, so arrival jitter
+  and non-integer render-to-tick ratios can vary the speed along the drawn path. When the buffer runs out, the
+  remote holds at the newest sample.
+  Direct replication consumers can pass a server tick to `ClientReplicationView.RecordInterpolationSample`.
+  After `InterpolateAt`, `TryGetInterpolationSegment<T>` reads the same two values and their optional ticks while
+  the component is bracketed. It returns false for a clamp, hold or single sample. Converting tick differences to
+  time assumes a host that ticks once per configured simulation step.
   Tune the delay with **`WorldClientConfig.InterpolationDelayTicks`** (default 2 ticks); lower it for less latency,
   raise it for a rougher network. A **remote teleport is a hard cut for observers too** (since 10.67.0): when a
   remote's replicated `MovementState.TeleportEpoch` advances, its interpolation buffer is flushed to the newest sample

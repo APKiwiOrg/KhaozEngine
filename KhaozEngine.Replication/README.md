@@ -127,6 +127,11 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   `TileComponentCodecDataException` instead of the sealed `InvalidDataException`. The three `TryApply` variants
   still return false and an error for those faults. A built-in payload resolver invoked by `SnapshotBlobReader`
   preserves such a fault as the inner exception of its `InvalidOperationException`.
+- To keep the tick that produced a sample, call `RecordInterpolationSample(timeSeconds, excludeNetId, serverTick)`.
+  `TryGetInterpolationSegment<T>` reads the two typed endpoints and nullable ticks used by the most recent
+  `InterpolateAt` for a component. It returns false for clamped, held, single-sample or excluded components, and
+  the read is invalidated by the next record or snap. Ticks are metadata. Converting their difference to time
+  assumes a host that ticks once per configured simulation step.
 - **`SnapshotBlobReader` / `SnapshotBlobWriter`** (since 9.33.0) - walk and rebuild the snapshot wire format
   (`[count][per entity: netId + (typeId,[len],payload).. + 0]`) into structured entities/components, so a cell-blob
   migration can map / drop / transform per-component payloads without hand-parsing the stream. Extension frames

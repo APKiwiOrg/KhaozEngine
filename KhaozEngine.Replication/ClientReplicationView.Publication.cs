@@ -52,7 +52,7 @@ public sealed partial class ClientReplicationView
     {
         foreach (byte[] bytes in currentBytes.Values) yield return bytes;
         foreach (byte[] bytes in previousBytes.Values) yield return bytes;
-        foreach (List<(double t, byte[] bytes)> history in sampleHistory.Values)
-            foreach ((double t, byte[] bytes) sample in history) yield return sample.bytes;
+        foreach (InterpolationSampleHistory history in sampleHistory.Values)
+            foreach (var sample in history.Samples) yield return sample.Bytes;
     }
 }

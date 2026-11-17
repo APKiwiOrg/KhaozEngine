@@ -142,7 +142,7 @@ public sealed class ReplicationRegistry
         if (discreteSample)
             setFromBytes = (w, e, bytes) => w.Set(e, read(new BinaryReader(new MemoryStream(bytes))));
 
-        var codec = new ComponentCodec(typeId, typeof(T), lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, setFromBytes, CaptureInto, RemoveComponent, CopyComponent, HasComponent);
+        var codec = new ComponentCodec(typeId, typeof(T), lengthPrefixed, channels, TrySerialize, Deserialize, read, lerpFromBytes, setFromBytes, CaptureInto, RemoveComponent, CopyComponent, HasComponent);
         ordered.Add(codec);
         byId[typeId] = codec;
     }
@@ -190,7 +190,8 @@ internal sealed class ComponentCodec
 {
     public ComponentCodec(ushort typeId, Type componentType, bool lengthPrefixed, ReplicationChannels channels,
         Func<World, Entity, BinaryWriter, bool> trySerialize,
-        Action<World, Entity, BinaryReader> deserialize, Action<World, Entity, byte[], byte[], float>? lerpFromBytes,
+        Action<World, Entity, BinaryReader> deserialize, Delegate readComponent,
+        Action<World, Entity, byte[], byte[], float>? lerpFromBytes,
         Action<World, Entity, byte[]>? setFromBytes,
         Func<World, Entity, BinaryWriter, bool> captureInto, Action<World, Entity> removeComponent,
         Action<World, Entity, World, Entity> copyComponent, Func<World, Entity, bool> hasComponent)
@@ -201,6 +202,7 @@ internal sealed class ComponentCodec
         Channels = channels;
         TrySerialize = trySerialize;
         Deserialize = deserialize;
+        ReadComponent = readComponent;
         LerpFromBytes = lerpFromBytes;
         SetFromBytes = setFromBytes;
         CaptureInto = captureInto;
@@ -247,6 +249,8 @@ internal sealed class ComponentCodec
     /// <summary>Reads the component data and sets it on the entity.</summary>
     public Action<World, Entity, BinaryReader> Deserialize { get; }
 
+    internal Delegate ReadComponent { get; }
+
     /// <summary>Writes just the component's raw payload bytes (no type id, no length prefix) to the writer and returns
     /// true if the entity has the component, else writes nothing and returns false. Used for delta capture into the
     /// shared per-tick capture buffer.</summary>
@@ -282,7 +286,7 @@ internal sealed class ComponentCodec
     public bool Discrete => SetFromBytes is not null;
 
     /// <summary>True when this component is time-buffered for fixed-delay presentation (either interpolated or
-    /// nearest-sampled) - the components <see cref="ClientReplicationView.RecordInterpolationSample"/> captures and
+    /// nearest-sampled) - the components <see cref="ClientReplicationView.RecordInterpolationSample(double, long?)"/> captures and
     /// <see cref="ClientReplicationView.InterpolateAt"/> writes.</summary>
     public bool FixedDelaySampled => Interpolatable || Discrete;
 }

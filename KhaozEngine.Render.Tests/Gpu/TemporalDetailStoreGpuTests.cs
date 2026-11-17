@@ -71,7 +71,8 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         bool large = (long)width * height > 96L * 64;
         int frames = large ? LargeStillFrames : TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)) + 1;
         int different = 0;
-        // Display's resolve and Fine's are two compiled programs, held to main's rules for such a pair on each device.
+        // Display's resolve and Fine's are two compiled programs, held to the rules the suite keeps for Display's own
+        // program pairs on each device.
         var comparison = new TemporalStillHistoryComparison(output, fine.Frame.Device, $"{preset} {width}x{height} Display vs Fine");
         for (int n = 0; n < frames; n++)
         {

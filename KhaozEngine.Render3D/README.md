@@ -447,9 +447,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   through a different compiled program, so its colour and state are byte for byte Display's wherever the device
   computes the two programs alike.
   The suite asserts that exactly on every hardware device, except that a certified frame on hardware NVIDIA
-  Direct3D 11 is reported, not asserted. On the software rasterizers it follows the rules main holds its own
-  program pairs to: llvmpipe's entry pair rules for colour and the shimmer record, and WARP's certificate rule on a
-  certified frame.
+  Direct3D 11 is reported, not asserted. On the software rasterizers it follows the rules Display's own program
+  pairs keep there: llvmpipe's entry pair rules for colour and the shimmer record, and WARP's certificate rule on
+  a certified frame.
   Both paths present the resolve directly, before
   distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
   latched on the frame's first render. Fine requires the temporal resolve, six colour attachments, a fitting

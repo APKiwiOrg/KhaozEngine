@@ -8,11 +8,13 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
 /// A still walk's stored history from one compiled temporal program against another's, frame by frame, held to what
-/// main asserts between two compiled programs on the running device (<see cref="TemporalEntryIdentityGpuTests"/>).
+/// the suite asserts between Display's own compiled entries on the running device
+/// (<see cref="TemporalEntryIdentityGpuTests"/>).
 /// On llvmpipe that is the entry pair's rules: <see cref="TemporalEntryStateComparison"/> bounds drift and swing and
 /// keeps confidence, locks and marks exact, and the colour history is held to
-/// <see cref="TemporalSoftwareCompileDivergenceRule"/> over the walk. Main asserts no presented frame between its
-/// entries there, so neither does this: the stored history is the contract and the picture is a function of it.
+/// <see cref="TemporalSoftwareCompileDivergenceRule"/> over the walk. The suite asserts no presented frame between
+/// Display's entries there, so neither does this: the stored history is the contract and the picture is a function
+/// of it.
 /// Where the expected side skipped the visibility decision, a frame compares a certified program with a checked one,
 /// which <see cref="TemporalFullyLitHistoryOracle"/> rules on for the device, colour included. Every other frame on
 /// every other device compares colour, state and any presented frame exactly.

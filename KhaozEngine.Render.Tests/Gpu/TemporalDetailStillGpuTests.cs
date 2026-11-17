@@ -37,7 +37,8 @@ public sealed class TemporalDetailStillGpuTests(ITestOutputHelper output) : Temp
             detail: TemporalHistoryDetail.Fine);
         float[] motion = Pairs(iw, ih, (_, _) => Vector2.Zero);
         int different = 0;
-        // Display's resolve and Fine's are two compiled programs, held to main's rules for such a pair on each device.
+        // Display's resolve and Fine's are two compiled programs, held to the rules the suite keeps for Display's own
+        // program pairs on each device.
         // The rig never marks its visibility history valid, so Display never skips the visibility decision here and
         // no frame takes the comparison's certificate rule.
         var comparison = new TemporalStillHistoryComparison(output, fine.Device, $"{preset} {scene} Display vs Fine");

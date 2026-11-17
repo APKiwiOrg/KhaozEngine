@@ -405,9 +405,8 @@ programs alike. Two facts assert it through one per-device comparison, `Temporal
 `TemporalDetailStillGpuTests` on the resolve rig's cold still prefixes, and
 `TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` on the
 scene's still fence, its presented frame included. The comparison asserts exactly on every hardware device the
-suite runs. On the software rasterizers it asserts what main already holds its own program pairs to there. On
-llvmpipe that is the entry
-pair's rules of `TemporalEntryIdentityGpuTests`: the colour history within
+suite runs. On the software rasterizers it asserts what Display's own program pairs already keep there. On
+llvmpipe that is the entry pair's rules of `TemporalEntryIdentityGpuTests`: the colour history within
 `TemporalSoftwareCompileDivergenceRule` over the walk, drift and swing within `TemporalEntryStateComparison`'s
 llvmpipe limits, confidence, locks and marks exact, and no presented frame, since the stored history is the
 contract and the picture is a function of it. On WARP a certified frame, where Display ran its certified

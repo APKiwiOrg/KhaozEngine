@@ -197,7 +197,8 @@ class SelectionTests(unittest.TestCase):
                 self.assertIn(f"      - '{pattern}'", pr)
 
     def test_coverage_selects_headless_tools_and_runtime_dependencies_only(self):
-        for path in ['tools/Coverage.Verify/Program.cs', 'tools/Coverage.Verify.Tests/CoverageVerifyProcessTests.cs',
+        for path in ['build/FloatUlp.cs', 'build/FloatUlp.targets',
+                     'tools/Coverage.Verify/Program.cs', 'tools/Coverage.Verify.Tests/CoverageVerifyProcessTests.cs',
                      'KhaozEngine.Render3D/Coverage/Table/CoverageRecessionTableBinary.cs',
                      'KhaozEngine.Render3D/Coverage/Gpu/CoverageCarryBatch.cs',
                      'KhaozEngine.Render3D/Models/GltfLoader.Coverage.cs',

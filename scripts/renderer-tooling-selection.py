@@ -51,6 +51,7 @@ NAV_WATCHED = (
 )
 COVERAGE_WATCHED = (
     'tools/Coverage.Verify/**', 'tools/Coverage.Verify.Tests/**',
+    'build/FloatUlp.cs', 'build/FloatUlp.targets',
     'KhaozEngine.Render3D/Coverage/**', 'KhaozEngine.Render3D/Scene3D.Coverage*.cs',
     'KhaozEngine.Render3D/Models/GltfLoader*.cs',
     'KhaozEngine.Attachments/EquipmentCoverage*.cs',

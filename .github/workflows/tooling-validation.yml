@@ -7,6 +7,8 @@ on:
     paths:
       - 'tools/Coverage.Verify/**'
       - 'tools/Coverage.Verify.Tests/**'
+      - 'build/FloatUlp.cs'
+      - 'build/FloatUlp.targets'
       - 'KhaozEngine.Render3D/Coverage/**'
       - 'KhaozEngine.Render3D/Models/GltfLoader*.cs'
       - 'KhaozEngine.Render3D/Scene3D.Coverage*.cs'
@@ -114,6 +116,8 @@ on:
     paths:
       - 'tools/Coverage.Verify/**'
       - 'tools/Coverage.Verify.Tests/**'
+      - 'build/FloatUlp.cs'
+      - 'build/FloatUlp.targets'
       - 'KhaozEngine.Render3D/Coverage/**'
       - 'KhaozEngine.Render3D/Models/GltfLoader*.cs'
       - 'KhaozEngine.Render3D/Scene3D.Coverage*.cs'

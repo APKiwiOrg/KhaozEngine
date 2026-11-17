@@ -131,7 +131,7 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   from their zero branch, and the JIT folds a subnormal constant through the flush mode of the thread that first
   optimizes the method, so one call from a thread an audio or graphics library left in flush to zero changed
   collider bounds and tile ground extents for every thread (#1832). `FloatUlp` steps in the integer domain and
-  reads its two subnormal results from mutable statics, with bits identical to the BCL steps. It is an internal
+  reads the two zero-argument results from mutable statics, with bits identical to the BCL steps. It is an internal
   copy per assembly: a project sets `<KhaozFloatUlp>true</KhaozFloatUlp>` and `build/FloatUlp.targets` compiles
   `build/FloatUlp.cs` in under its own namespace, so no project gains a dependency edge or public API.
   `KhaozSubnormalFloatRule` in `Directory.Build.props` turns KEFP001 on as an error for every engine compilation
@@ -334,8 +334,8 @@ remain in Movement.Tests and default engine CI. Fixture validation authorizes no
 The outside-solution `Coverage.Verify` executable and `Coverage.Verify.Tests` project own synthetic
 recession-table construction, replay, depth and CLI process verification. The free tooling workflow selects
 suite `coverage` on hosted Ubuntu, explicitly builds both projects and requires a nonempty inventory,
-executed process tests and zero skips. Coverage formats, carry code and the tooling itself trigger this
-suite. `KE_GPU_TESTS=0` stays explicit. Native correctness and the Diagnostic body-size cost fact remain
+executed process tests and zero skips. Coverage formats, carry code, the FloatUlp template and targets that
+Coverage.Verify compiles with, and the tooling itself trigger this suite. `KE_GPU_TESTS=0` stays explicit. Native correctness and the Diagnostic body-size cost fact remain
 separately approved units, outside this headless validation.
 The cost fact also requires `KE_COVERAGE_COST_UNIT` equal to its exact method name. The hosted bench
 forwards the optional `coverage-cost-unit` dispatch input to that variable. A local approved invocation

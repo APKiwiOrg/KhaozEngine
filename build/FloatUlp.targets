@@ -15,10 +15,12 @@
   </PropertyGroup>
   <ItemGroup Condition="'$(KhaozFloatUlp)' == 'true'">
     <None Include="$(_KhaozFloatUlpTemplate)" Link="FloatSteps/FloatUlp.template.cs" Visible="false" Pack="false" />
+    <UpToDateCheckInput Include="$(_KhaozFloatUlpTemplate)" />
   </ItemGroup>
 
+  <!-- SourceLink collects untracked Compile items before CoreCompile. Make this source available by BeforeCompile. -->
   <Target Name="KhaozWriteFloatUlp" Condition="'$(KhaozFloatUlp)' == 'true'"
-          DependsOnTargets="PrepareForBuild" BeforeTargets="CoreCompile">
+          DependsOnTargets="PrepareForBuild" BeforeTargets="BeforeCompile;CoreCompile">
     <PropertyGroup>
       <_KhaozFloatUlpSource>$([System.IO.File]::ReadAllText('$(_KhaozFloatUlpTemplate)'))</_KhaozFloatUlpSource>
       <_KhaozFloatUlpCopy>$(_KhaozFloatUlpSource.Replace('namespace KhaozEngine.FloatSteps', 'namespace $(_KhaozFloatUlpNamespace)'))</_KhaozFloatUlpCopy>

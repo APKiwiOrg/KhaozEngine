@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 namespace KhaozEngine.FloatSteps;
 
 /// <summary>
-/// One-ULP float steps that never put a subnormal float constant in front of the JIT.
+/// One-ULP float steps that keep the BCL zero-step subnormal constants away from the JIT.
 /// </summary>
 /// <remarks>
 /// The JIT folds float constants through the floating point controls of the thread that compiles the method. An
@@ -17,7 +17,9 @@ namespace KhaozEngine.FloatSteps;
 /// as <c>-0f</c>, and that machine code then serves every thread. These steps compute in the integer domain without
 /// branches and take the subnormal results of a zero argument from storage the JIT cannot fold. The bits
 /// match <see cref="MathF.BitDecrement(float)"/> and <see cref="MathF.BitIncrement(float)"/> for every input, NaN
-/// payloads and signed zeros included.
+/// payloads and signed zeros included. A JIT-known smallest normal or subnormal argument can still fold to a
+/// subnormal on the integer path. Arithmetic folds under a rounding or flush mode and constants in third-party
+/// or BCL code also remain exposed.
 /// </remarks>
 internal static class FloatUlp
 {

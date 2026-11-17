@@ -38,6 +38,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
             context.RegisterOperationAction(run.CheckConstant, ConstantKinds);
             context.RegisterOperationAction(run.CheckInvocation, OperationKind.Invocation);
             context.RegisterOperationAction(run.CheckMethodReference, OperationKind.MethodReference);
+            context.RegisterOperationAction(run.CheckObjectCreation, OperationKind.ObjectCreation);
+            context.RegisterOperationAction(run.CheckPropertyReference, OperationKind.PropertyReference);
             context.RegisterOperationAction(run.RecordFieldInitializer, OperationKind.FieldInitializer);
             context.RegisterCompilationEndAction(run.ReportDeferred);
         }

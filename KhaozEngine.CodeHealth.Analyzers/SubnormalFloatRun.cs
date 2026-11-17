@@ -1,8 +1,5 @@
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -19,13 +16,10 @@ namespace KhaozEngine.CodeHealth.Analyzers
         private readonly INamedTypeSymbol? _bitConverter;
         private readonly INamedTypeSymbol? _unsafe;
         private readonly INamedTypeSymbol? _ieee754;
-        private readonly ConcurrentDictionary<ISymbol, Location> _subnormalBitFields =
-            new ConcurrentDictionary<ISymbol, Location>(SymbolEqualityComparer.Default);
-        private readonly ConcurrentDictionary<ISymbol, byte> _fieldsReadAsFloat =
-            new ConcurrentDictionary<ISymbol, byte>(SymbolEqualityComparer.Default);
-        private readonly ConcurrentDictionary<ISymbol, byte> _steppedTypeParameters =
-            new ConcurrentDictionary<ISymbol, byte>(SymbolEqualityComparer.Default);
-        private readonly ConcurrentBag<GenericUse> _genericUses = new ConcurrentBag<GenericUse>();
+        private readonly INamedTypeSymbol? _helper;
+        private readonly INamedTypeSymbol? _helperTemplate;
+        private readonly SubnormalFloatFieldReads _fieldReads = new SubnormalFloatFieldReads();
+        private readonly SubnormalFloatGenericUses _genericUses;
 
         public SubnormalFloatRun(Compilation compilation)
         {
@@ -33,6 +27,11 @@ namespace KhaozEngine.CodeHealth.Analyzers
             _bitConverter = compilation.GetTypeByMetadataName("System.BitConverter");
             _unsafe = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.Unsafe");
             _ieee754 = compilation.GetTypeByMetadataName("System.Numerics.IFloatingPointIeee754`1");
+            // Match the namespace written by FloatUlp.targets, or the unmodified template used as source.
+            var assemblyNamespace = Regex.Replace(compilation.AssemblyName ?? "", "[^A-Za-z0-9_.]", "_");
+            _helper = compilation.Assembly.GetTypeByMetadataName(assemblyNamespace + ".FloatSteps.FloatUlp");
+            _helperTemplate = compilation.Assembly.GetTypeByMetadataName("KhaozEngine.FloatSteps.FloatUlp");
+            _genericUses = new SubnormalFloatGenericUses(compilation.Assembly);
         }
 
         public void CheckConstant(OperationAnalysisContext context)
@@ -51,6 +50,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             var invocation = (IInvocationOperation)context.Operation;
             CheckMethod(context, invocation.TargetMethod, invocation.Syntax);
             CheckBitsReadAsFloat(context, invocation);
+            CheckConstantHelperStep(context, invocation);
         }
 
         public void CheckMethodReference(OperationAnalysisContext context)
@@ -59,54 +59,31 @@ namespace KhaozEngine.CodeHealth.Analyzers
             CheckMethod(context, reference.Method, reference.Syntax);
         }
 
-        public void RecordFieldInitializer(OperationAnalysisContext context)
+        public void CheckObjectCreation(OperationAnalysisContext context)
         {
-            var initializer = (IFieldInitializerOperation)context.Operation;
-            var constant = initializer.Value.ConstantValue;
-            if (!constant.HasValue || !SubnormalBits.TryGetSingleBits(constant.Value, out var bits)
-                || !SubnormalBits.IsSubnormal(bits)) return;
-            foreach (var field in initializer.InitializedFields)
-            {
-                // The JIT folds a static readonly field once its class is initialized. A mutable static stays a load.
-                if (field.IsStatic && field.IsReadOnly && !field.IsConst && field.Locations.Length > 0)
-                    _subnormalBitFields.TryAdd(field.OriginalDefinition, field.Locations[0]);
-            }
+            var creation = (IObjectCreationOperation)context.Operation;
+            _genericUses.RecordUse(context, creation.Constructor);
         }
+
+        public void CheckPropertyReference(OperationAnalysisContext context)
+        {
+            var reference = (IPropertyReferenceOperation)context.Operation;
+            var target = (reference.Parent as IAssignmentOperation)?.Target ??
+                (reference.Parent as IIncrementOrDecrementOperation)?.Target;
+            var property = reference.Property;
+            bool invokesSetter = target == reference && !property.ReturnsByRef;
+            if (!invokesSetter || !(reference.Parent is ISimpleAssignmentOperation))
+                _genericUses.RecordUse(context, property.GetMethod);
+            if (invokesSetter)
+                _genericUses.RecordUse(context, property.SetMethod);
+        }
+
+        public void RecordFieldInitializer(OperationAnalysisContext context) => _fieldReads.RecordInitializer(context);
 
         public void ReportDeferred(CompilationAnalysisContext context)
         {
-            foreach (var field in _subnormalBitFields)
-            {
-                if (!_fieldsReadAsFloat.ContainsKey(field.Key)) continue;
-                context.ReportDiagnostic(Diagnostic.Create(SubnormalFloatDiagnostics.SubnormalFloatConstant, field.Value,
-                    $"The static readonly field '{field.Key.Name}' holds the bits of a subnormal float that are read as a float"));
-            }
-
-            if (_steppedTypeParameters.IsEmpty) return;
-            var stepped = new HashSet<ISymbol>(_steppedTypeParameters.Keys, SymbolEqualityComparer.Default);
-            var uses = _genericUses.ToArray();
-            // A generic that passes its own type parameter on to a stepping generic steps that parameter too.
-            for (bool grew = true; grew;)
-            {
-                grew = false;
-                foreach (var use in uses)
-                {
-                    foreach (var pair in use.Pairs)
-                    {
-                        if (pair.Argument is ITypeParameterSymbol forwarded && stepped.Contains(pair.Parameter)
-                            && stepped.Add(forwarded.OriginalDefinition)) grew = true;
-                    }
-                }
-            }
-            foreach (var use in uses)
-            {
-                var floatStep = use.Pairs.FirstOrDefault(pair =>
-                    pair.Argument.SpecialType == SpecialType.System_Single && stepped.Contains(pair.Parameter));
-                if (floatStep.Parameter is null) continue;
-                context.ReportDiagnostic(Diagnostic.Create(SubnormalFloatDiagnostics.SubnormalFloatConstant, use.Location,
-                    $"'{floatStep.Parameter.ContainingSymbol.Name}' steps its type parameter '{floatStep.Parameter.Name}' " +
-                    "with BitDecrement or BitIncrement and is used here with float"));
-            }
+            _fieldReads.Report(context);
+            _genericUses.Report(context);
         }
 
         private void CheckMethod(OperationAnalysisContext context, IMethodSymbol method, SyntaxNode syntax)
@@ -121,9 +98,9 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     return;
                 }
                 if (IsIeee754(owner) && owner.TypeArguments[0] is ITypeParameterSymbol self)
-                    _steppedTypeParameters.TryAdd(self.OriginalDefinition, 0);
+                    _genericUses.RecordStep(context.ContainingSymbol, self);
             }
-            RecordGenericUse(method, syntax);
+            _genericUses.RecordUse(context, method);
         }
 
         private void CheckBitsReadAsFloat(OperationAnalysisContext context, IInvocationOperation invocation)
@@ -138,33 +115,35 @@ namespace KhaozEngine.CodeHealth.Analyzers
                         $"{method.ContainingType.Name}.{method.Name} reads constant bits that are a subnormal float");
                 return;
             }
-            RecordFieldsReadAsFloat(argument);
+            _fieldReads.RecordRead(argument);
         }
 
-        // Follows the paths a value takes into the read: conversions and the branches of a conditional, a switch
-        // expression or a coalesce. A field that only feeds arithmetic, such as a mask, is not read as a float.
-        private void RecordFieldsReadAsFloat(IOperation value)
+        private void CheckConstantHelperStep(OperationAnalysisContext context, IInvocationOperation invocation)
         {
-            switch (value)
+            var method = invocation.TargetMethod;
+            if ((method.Name != "Up" && method.Name != "Down") || !method.IsStatic || invocation.Arguments.Length != 1
+                || method.ReturnType.SpecialType != SpecialType.System_Single
+                || method.Parameters[0].Type.SpecialType != SpecialType.System_Single) return;
+            var owner = method.ContainingType;
+            if (!SymbolEqualityComparer.Default.Equals(owner, _helper)
+                && !SymbolEqualityComparer.Default.Equals(owner, _helperTemplate)) return;
+            if (!TryGetConstantBits(invocation.Arguments[0].Value, out var bits)
+                || !SubnormalBits.StepFoldsToSubnormal(bits, up: method.Name == "Up")) return;
+            Report(context, invocation.Syntax.GetLocation(),
+                $"FloatUlp.{method.Name} steps a constant argument to a subnormal float");
+        }
+
+        private bool TryGetConstantBits(IOperation value, out uint bits)
+        {
+            bits = 0;
+            if (value.ConstantValue is { HasValue: true, Value: float constant })
             {
-                case IConversionOperation conversion:
-                    RecordFieldsReadAsFloat(conversion.Operand);
-                    break;
-                case IConditionalOperation conditional:
-                    RecordFieldsReadAsFloat(conditional.WhenTrue);
-                    if (conditional.WhenFalse != null) RecordFieldsReadAsFloat(conditional.WhenFalse);
-                    break;
-                case ICoalesceOperation coalesce:
-                    RecordFieldsReadAsFloat(coalesce.Value);
-                    RecordFieldsReadAsFloat(coalesce.WhenNull);
-                    break;
-                case ISwitchExpressionOperation switchExpression:
-                    foreach (var arm in switchExpression.Arms) RecordFieldsReadAsFloat(arm.Value);
-                    break;
-                case IFieldReferenceOperation field:
-                    _fieldsReadAsFloat.TryAdd(field.Field.OriginalDefinition, 0);
-                    break;
+                bits = BitConverter.ToUInt32(BitConverter.GetBytes(constant), 0);
+                return true;
             }
+            return value is IInvocationOperation invocation && ReadsBitsAsFloat(invocation.TargetMethod)
+                && invocation.Arguments.Length > 0 && invocation.Arguments[0].Value.ConstantValue is { HasValue: true } input
+                && SubnormalBits.TryGetSingleBits(input.Value, out bits);
         }
 
         private bool ReadsBitsAsFloat(IMethodSymbol method)
@@ -176,31 +155,6 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 && (method.Name == "BitCast" || method.Name == "As")
                 && method.TypeArguments.Length == 2
                 && method.TypeArguments[1].SpecialType == SpecialType.System_Single;
-        }
-
-        private void RecordGenericUse(IMethodSymbol method, SyntaxNode syntax)
-        {
-            List<TypeArgumentPair>? pairs = null;
-            if (method.IsGenericMethod)
-                AddPairs(ref pairs, method.OriginalDefinition.TypeParameters, method.TypeArguments);
-            for (var type = method.ContainingType; type != null; type = type.ContainingType)
-            {
-                if (type.IsGenericType)
-                    AddPairs(ref pairs, type.OriginalDefinition.TypeParameters, type.TypeArguments);
-            }
-            if (pairs != null) _genericUses.Add(new GenericUse(pairs.ToArray(), syntax.GetLocation()));
-        }
-
-        private static void AddPairs(ref List<TypeArgumentPair>? pairs,
-            ImmutableArray<ITypeParameterSymbol> parameters, ImmutableArray<ITypeSymbol> arguments)
-        {
-            for (int i = 0; i < parameters.Length && i < arguments.Length; i++)
-            {
-                var argument = arguments[i];
-                if (argument.SpecialType != SpecialType.System_Single && !(argument is ITypeParameterSymbol)) continue;
-                if (SymbolEqualityComparer.Default.Equals(argument, parameters[i])) continue;
-                (pairs ??= new List<TypeArgumentPair>()).Add(new TypeArgumentPair(parameters[i], argument));
-            }
         }
 
         private bool IsFloatStepOwner(INamedTypeSymbol owner) =>
@@ -218,30 +172,6 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         private static void Report(OperationAnalysisContext context, Location location, string form) =>
             context.ReportDiagnostic(Diagnostic.Create(SubnormalFloatDiagnostics.SubnormalFloatConstant, location, form));
-
-        private readonly struct TypeArgumentPair
-        {
-            public TypeArgumentPair(ITypeParameterSymbol parameter, ITypeSymbol argument)
-            {
-                Parameter = parameter;
-                Argument = argument;
-            }
-
-            public ITypeParameterSymbol Parameter { get; }
-            public ITypeSymbol Argument { get; }
-        }
-
-        private sealed class GenericUse
-        {
-            public GenericUse(TypeArgumentPair[] pairs, Location location)
-            {
-                Pairs = pairs;
-                Location = location;
-            }
-
-            public TypeArgumentPair[] Pairs { get; }
-            public Location Location { get; }
-        }
     }
 
     /// <summary>Subnormal tests on a float value and on 32-bit patterns read as a float.</summary>
@@ -253,6 +183,15 @@ namespace KhaozEngine.CodeHealth.Analyzers
         public static bool IsSubnormal(float value) => value != 0f && Math.Abs(value) < SmallestNormal;
 
         public static bool IsSubnormal(uint bits) => (bits & 0x7F800000u) == 0 && (bits & 0x007FFFFFu) != 0;
+
+        public static bool StepFoldsToSubnormal(uint bits, bool up)
+        {
+            uint magnitude = bits & 0x7FFFFFFFu;
+            // Both zero signs take the mutable field path. Only nearby nonzero values can step into a subnormal.
+            if (magnitude == 0 || magnitude > 0x00800000u) return false;
+            bool towardZero = (bits >> 31 != 0) == up;
+            return IsSubnormal(towardZero ? magnitude - 1 : magnitude + 1);
+        }
 
         public static bool TryGetSingleBits(object? value, out uint bits)
         {

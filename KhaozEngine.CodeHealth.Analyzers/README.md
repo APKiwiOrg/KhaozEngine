@@ -3,7 +3,7 @@
 Compile-time file-size and test-health ratchets in the build and IDE, and an opt-in floating point rule.
 The semantic authority for the file-size ratchet (the god-class guard) is `scripts/check-file-size.sh` in
 game-template. The test-health ratchet counts brittle assertions and non-public reflection against a
-separate baseline. KEFP001 keeps subnormal `float` constants away from the JIT, see
+separate baseline. KEFP001 checks for source-visible subnormal `float` constants that can reach the JIT. See
 [Subnormal float constants](#subnormal-float-constants).
 
 ## Diagnostics
@@ -148,7 +148,7 @@ workflow's `renderTestFilter` dispatch input set to `Category=Diagnostic`.
 
 ## Subnormal float constants
 
-KEFP001 keeps subnormal `float` constants away from the JIT. The JIT folds a float constant through the
+KEFP001 flags source-visible subnormal `float` constants that can reach the JIT. The JIT folds a float constant through the
 floating point controls of the thread that compiles the method, and that machine code then serves every
 thread. An optimized compile on a thread with flush to zero set, such as an audio or graphics library thread
 that calls into the game, turns a subnormal constant into zero for the life of the process. Probes on macOS
@@ -160,17 +160,21 @@ The rule flags:
 - A call or method group that resolves to `MathF.BitDecrement`, `MathF.BitIncrement`, `float.BitDecrement`
   or `float.BitIncrement`, including `T.BitDecrement` on a type parameter constrained to
   `IFloatingPointIeee754<float>`. The zero branch of each holds `float.Epsilon`.
-- A use with `float` of a generic from the same compilation whose body steps its type parameter with
-  `BitDecrement` or `BitIncrement`, directly or through another generic that forwards the parameter.
+- A method, property or constructor used with `float` when that member steps its generic type parameter
+  with `BitDecrement` or `BitIncrement`, directly or through a member that forwards the parameter in the
+  same compilation.
 - Any `float` expression whose compile-time constant is subnormal: a literal, `float.Epsilon`, a `const`, a
   folded expression of normal operands, a cast, and a default parameter value at each call that omits it. The
   compiler emits the outermost constant, so `(double)float.Epsilon` is a normal double and stays allowed.
 - `BitConverter.Int32BitsToSingle`, `BitConverter.UInt32BitsToSingle`, `Unsafe.BitCast<_, float>` and
   `Unsafe.As<_, float>` of constant bits that are a subnormal float.
-- A `static readonly` integer field initialized to the bits of a subnormal float and read as a float through
-  one of those calls, directly or through a conditional, switch or coalesce branch. The JIT folds a static
-  readonly field once its class is initialized. A `static readonly float` holding a subnormal is flagged at
-  its constant.
+- A `static readonly` integer field with a constant initializer whose value is reinterpreted as a subnormal
+  float by one of those calls. The analysis applies integral conversions before classifying the bits and
+  follows conditional, switch and coalesce branches. The JIT folds a static readonly field once its class is
+  initialized. A `static readonly float` holding a subnormal is flagged at its constant.
+- A `FloatUlp.Down` or `FloatUlp.Up` call that can fold to a subnormal result when the argument is a
+  compile-time constant or a recognized constant bit reinterpretation. Both signs of zero take the helper's
+  protected path and are allowed.
 
 Doubles stay allowed. The `-double.Epsilon` literal kept its bits under every control and compile kind in the
 probes, so `Math.BitDecrement` and `double.BitIncrement` are not flagged.
@@ -190,7 +194,9 @@ What the rule cannot see:
 - Folded arithmetic under a directed rounding mode, for `float` and `double`, and `double` folds with a
   subnormal operand or result under a flush mode. No constant rule can detect those.
 - Bits read as a float from constant `ReadOnlySpan<byte>` data, through a pointer cast, or from a field set in
-  a static constructor.
+  a static constructor. It does not follow a readonly bit field through a local or another readonly field
+  into the reinterpretation.
+- Generated code, which KEFP001 skips.
 - Constants inside BCL or third-party code, such as Bepu, that the JIT inlines into the calling method.
 - A stepping generic defined in another assembly.
 

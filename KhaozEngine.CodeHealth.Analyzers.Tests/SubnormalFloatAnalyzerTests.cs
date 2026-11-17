@@ -39,6 +39,21 @@ public sealed class SubnormalFloatAnalyzerTests
             "float F(float x) => Outer(x);",
             ["Outer(x)"]
         },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public static T Next => T.BitIncrement(T.Zero); }\n" +
+            "float F() => Stepper<float>.Next;",
+            ["Stepper<float>.Next"]
+        },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public Stepper() => _ = T.BitIncrement(T.Zero); }\n" +
+            "object F() => new Stepper<float>();",
+            ["new Stepper<float>()"]
+        },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { private static T Up(T x) => T.BitIncrement(x); " +
+            "public static T Next => Up(T.Zero); }\nfloat F() => Stepper<float>.Next;",
+            ["Stepper<float>.Next"]
+        },
         { "float F() => 1e-45f;", ["1e-45f"] },
         { "float F() => float.Epsilon;", ["float.Epsilon"] },
         { "float F() => -float.Epsilon;", ["-float.Epsilon"] },
@@ -59,6 +74,15 @@ public sealed class SubnormalFloatAnalyzerTests
         // The JIT folds a static readonly field, so bits held in one and read as a float bake like a literal.
         {
             "static readonly uint Bits = 0x80000001u;\nfloat F() => BitConverter.UInt32BitsToSingle(Bits);",
+            ["Bits"]
+        },
+        {
+            "static readonly uint Bits = 0x00800001u;\nfloat F() => BitConverter.UInt32BitsToSingle((byte)Bits);",
+            ["Bits"]
+        },
+        {
+            "static readonly ulong Bits = 0x1_0000_0081ul;\n" +
+            "float F() => BitConverter.Int32BitsToSingle((byte)(sbyte)(uint)Bits);",
             ["Bits"]
         },
     };
@@ -85,11 +109,26 @@ public sealed class SubnormalFloatAnalyzerTests
     [InlineData("static uint s_bits = 0x00000001u;\nfloat F() => BitConverter.UInt32BitsToSingle(s_bits);")]
     [InlineData("static readonly uint Mask = 0x007FFFFFu;\nfloat F(uint x) => BitConverter.UInt32BitsToSingle(x & Mask);")]
     [InlineData("static T Step<T>(T x) where T : IFloatingPointIeee754<T> => T.BitDecrement(x);\ndouble F(double x) => Step(x);")]
+    [InlineData("sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public T Up(T x) => T.BitIncrement(x); public static int Dimension() => 3; }\nint F() => Stepper<float>.Dimension();")]
+    [InlineData("static readonly uint Bits = 0x100u;\nfloat F() => BitConverter.UInt32BitsToSingle((byte)Bits);")]
+    [InlineData("static readonly uint Bits = 0x101u;\nfloat F() => BitConverter.UInt32BitsToSingle(checked((byte)Bits));")]
     public async Task DoublesNormalFloatsAndRunTimeBitsAreNotFlagged(string members)
     {
         var diagnostics = await Run("on", withXunit: false, warningsAsErrors: false, Members(members));
 
         Assert.Empty(diagnostics);
+    }
+
+    [Theory]
+    [InlineData("FloatUlp.Down(1.17549435E-38f)")]
+    [InlineData("FloatUlp.Up(BitConverter.UInt32BitsToSingle(0x80800000u))")]
+    [InlineData("FloatUlp.Down(Unsafe.BitCast<uint, float>(0x00800000u))")]
+    public async Task AConstantHelperStepIntoASubnormalIsFlagged(string expression)
+    {
+        var diagnostics = await Run("on", withXunit: false, warningsAsErrors: false, HelperTemplate(),
+            "using KhaozEngine.FloatSteps;\n" + Members($"float F() => {expression};"));
+
+        Assert.Equal(new[] { expression }, Flagged(diagnostics));
     }
 
     // The engine's one constant-argument site, SnapStripGeometry's float.MaxValue step, after the move to FloatUlp.
@@ -100,7 +139,8 @@ public sealed class SubnormalFloatAnalyzerTests
             "    (double)float.MaxValue + ((double)float.MaxValue - FloatUlp.Down(float.MaxValue)) / 2d;";
 
         var diagnostics = await Run("on", withXunit: false, warningsAsErrors: false, HelperTemplate(),
-            "using KhaozEngine.FloatSteps;\n" + Members(site));
+            "using KhaozEngine.FloatSteps;\n" + Members(site +
+                "\nfloat Zeros() => FloatUlp.Up(-0f) + FloatUlp.Down(0f);"));
 
         Assert.Empty(diagnostics);
     }

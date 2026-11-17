@@ -26357,21 +26357,20 @@ non-determinism that comes from JIT *codegen* differences:
 - **Code compiled under a changed control.** The .NET JIT folds constants through the compiling thread's FP
   register. An engine method optimized on a thread with a flush or directed rounding mode set can keep a changed
   value in machine code that serves every thread after the register is restored, until the method is recompiled,
-  which for an `AggressiveOptimization` method is never. What is closed and what is not:
-  - Closed in the engine: subnormal `float` constants. `MathF.BitDecrement(0f)` and `MathF.BitIncrement(0f)`
-    return one from their zero branch, and engine methods inlined them, so a method first optimized under flush
-    changed collider bounds and tile ground extents for every thread. Engine code now steps with an internal
-    `FloatUlp` helper. It computes in the integer domain and reads its two subnormal results from mutable statics
-    the JIT cannot fold, and its bits match the BCL steps for every input. The probes found it exact under every
-    flush and rounding mode and every compile kind on all three platforms. The
-    [KEFP001 analyzer rule](../KhaozEngine.CodeHealth.Analyzers/README.md#subnormal-float-constants) keeps every
-    other JIT-visible subnormal `float` constant out of engine code.
-  - Still exposed: folded arithmetic under a changed mode. Rounding up, down or toward zero changes folded `float`
-    and `double` arithmetic, among them `float` `1/3` and `1.1*1.3` and `double` `0.1+0.2` and `sqrt(2)`. Flush
-    turns a `double` fold whose operand or result is subnormal into zero, and so a `float` value the JIT folds
-    into a subnormal from operands it learns after inlining. A fold appears where constant operands meet after
-    inlining, so an engine method whose callee inlines with constant arguments is exposed. Constants inside
-    third-party code, such as Bepu, or the BCL that the JIT inlines into an engine method are exposed as well.
+  which for an `AggressiveOptimization` method is never.
+  - The migrated engine float steps close the BCL zero-step exposure. `MathF.BitDecrement(0f)` and
+    `MathF.BitIncrement(0f)` return a subnormal from the zero branch, and inlining them under flush could
+    change collider bounds and tile ground extents for every thread. The internal `FloatUlp` helper computes
+    in the integer domain and reads its zero-argument results from mutable statics the JIT cannot fold. Its
+    bits match the BCL steps at the default controls. The
+    [KEFP001 analyzer rule](../KhaozEngine.CodeHealth.Analyzers/README.md#subnormal-float-constants) catches
+    source-visible hazards in opted-in compilations and skips generated code.
+  - When the JIT learns that a `FloatUlp` argument is the smallest normal of either sign or a subnormal, the
+    integer path can still fold to a subnormal. Arithmetic folds also remain exposed. Directed rounding
+    changes folded `float` and `double` arithmetic, among them `float` `1/3` and `1.1*1.3` and `double`
+    `0.1+0.2` and `sqrt(2)`. Flush turns a `double` fold whose operand or result is subnormal into zero,
+    and can zero a `float` subnormal folded from operands learned after inlining. Constants in third-party
+    code such as Bepu or in the BCL remain exposed when the JIT inlines them into an engine method.
     A literal `double` constant kept its value.
   - The probes showed both effects for `AggressiveOptimization` and on-stack replacement on macOS arm64, Linux
     arm64 and Linux x64 under Rosetta. With tiered compilation off they bake wherever the constant reaches the

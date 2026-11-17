@@ -19,10 +19,10 @@ namespace KhaozEngine.Tests.Sharding;
 /// can actually be checked. They never set a control on a thread-pool thread themselves: the corruption is always on
 /// the calling thread and always restored in a finally, mirroring the discipline in
 /// <c>DeterministicFpHarnessTests</c>. The scheduler test still hands work to the pool while the calling thread's
-/// rounding is changed, and where thread creation copies the controls (shown for the flush bit on Linux arm64) a pool
-/// thread created then can start with it. That, and the engine tick code the shard host test runs under the changed
-/// mode, is why this class runs in KhaozEngine.FloatingPoint.Tests, whose guard fails any test that starts on such a
-/// thread.</para>
+/// rounding is changed. On Linux arm64 a probe showed pool threads created by such a fan-out start with that rounding
+/// and keep it after the caller is restored, so a later test that runs on one starts with a changed control. That,
+/// and the engine tick code the shard host test runs under the changed mode, is why this class runs in
+/// KhaozEngine.FloatingPoint.Tests, whose guard fails any test that starts on such a thread.</para>
 /// </summary>
 public class FannedOutDeterminismTests
 {

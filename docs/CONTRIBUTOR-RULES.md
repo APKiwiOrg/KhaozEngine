@@ -107,8 +107,9 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   a control is changed, a test runs only the code under test, its reference evaluator and its assertions, writes no
   test output and starts no thread or task of its own, then restores the control on the same thread. The scheduler
   fan-out test is the exception by design: it checks that the job scheduler enters the canonical scope on its
-  workers, so it hands work to pool threads while the calling thread's rounding is changed, and a pool thread created
-  then can start with that rounding where thread creation copies the controls. `KhaozEngine.TileWorld.Physics.Tests`
+  workers, so it hands work to pool threads while the calling thread's rounding is changed. On Linux arm64 a pool
+  thread created then starts with that rounding and keeps it after the caller is restored, as a probe of that fan-out
+  shape showed, so a later test in that process can start on such a thread. `KhaozEngine.TileWorld.Physics.Tests`
   and both floating point test assemblies fail any test that starts or ends with a changed control, and the guard
   states what it cannot see. The probes behind this are in the consumer guide's deterministic floating point
   section.

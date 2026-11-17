@@ -90,9 +90,13 @@ can absorb another contributor's staged files. Never use the shared stash for wo
 - A test that changes the thread's rounding or flush controls runs in a floating point test assembly, one whose
   assembly name ends in `.FloatingPoint.Tests`, never beside tests that assume the default environment, because two
   effects outlive the test that set the control and no restore inside a test can undo them. Machine code the JIT
-  optimizes on a thread with a flush control set (shown for on-stack replacement and `AggressiveOptimization`) keeps
-  flushed float subnormal constants for every thread until the method is recompiled, and that includes the code
-  under test. A thread created under a changed control can start with it, as on Linux arm64. There are two such
+  optimizes on a thread with a changed control keeps the changed value for every thread until the method is
+  recompiled, and that includes the code under test. A flush control turns subnormal float constants, and `double`
+  folds with a subnormal operand or result, into zero. A directed rounding mode changes folded `float` and `double`
+  arithmetic. Probes showed both for on-stack replacement and `AggressiveOptimization` on macOS arm64, Linux arm64
+  and Linux x64 under Rosetta, and for tiered compilation off wherever the constant reaches the optimized compile.
+  Native x64 is inferred. Tier-0 compiles and tier-1 promotions changed nothing. A thread created under a changed
+  control can start with it, as on Linux arm64. There are two such
   assemblies. `KhaozEngine.TileWorld.Physics.FloatingPoint.Tests` holds the water kernel's changed-control tests. It
   is a corpus assembly that the water kernel differential job checks class by class, so it takes no other test.
   `KhaozEngine.FloatingPoint.Tests` holds every other one: the determinism scope's tests that start from a changed
@@ -107,9 +111,11 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   a control is changed, a test runs only the code under test, its reference evaluator and its assertions, writes no
   test output and starts no thread or task of its own, then restores the control on the same thread. The scheduler
   fan-out test is the exception by design: it checks that the job scheduler enters the canonical scope on its
-  workers, so it hands work to pool threads while the calling thread's rounding is changed. On Linux arm64 a pool
-  thread created then starts with that rounding and keeps it after the caller is restored, as a probe of that fan-out
-  shape showed, so a later test in that process can start on such a thread. `KhaozEngine.TileWorld.Physics.Tests`
+  workers, so it hands work to pool threads while the calling thread's rounding is changed. The scheduler also makes
+  its calling thread canonical for the fan-out, so a pool thread created for it starts canonical. Before it did, on
+  Linux arm64, a fan-out that was a process's first thread pool use left every pool thread with the caller's
+  rounding. A test host's pool has always run work, so `ThreadPoolJobSchedulerPoolThreadTests` runs that case in a
+  child process of the test assembly, which has an entry point for that. `KhaozEngine.TileWorld.Physics.Tests`
   and both floating point test assemblies fail any test that starts or ends with a changed control, and the guard
   states what it cannot see. The probes behind this are in the consumer guide's deterministic floating point
   section.

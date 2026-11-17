@@ -15,8 +15,9 @@ namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 /// instead of a later test that reads it.
 /// <para>Limits. It reads only the thread that runs the test method, once before and once after it. Class
 /// constructors, fixtures and test-class Dispose run outside that window, and work a test hands to other threads is
-/// unchecked. It cannot see machine code the JIT compiled while a control was changed, which serves every thread until
-/// the method is recompiled. That is why tests that change controls run in their own test process.</para></summary>
+/// unchecked. It cannot see machine code the JIT optimized while a flush or directed rounding mode was set, which can
+/// keep a changed constant or folded value for every thread until the method is recompiled. That is why tests that
+/// change controls run in their own test process.</para></summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class DefaultFloatingPointEnvironmentAttribute : BeforeAfterTestAttribute
 {

@@ -65,14 +65,21 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         bool large = (long)width * height > 96L * 64;
         int frames = large ? LargeStillFrames : TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)) + 1;
         int different = 0;
-        // llvmpipe contracts the shimmer record's averages differently in two programs. Its owner bounds only drift
-        // and swing there. Colour, confidence and lock stay exact on every backend.
+        // Display's resolve and Fine's are two compiled programs, so the still fact asserts what main asserts between
+        // its own two compiled entries on each device (TemporalEntryIdentityGpuTests). On llvmpipe that is the entry
+        // pair's rules: the record owner below bounds drift and swing and keeps confidence, locks and marks exact,
+        // and the colour history is held to TemporalSoftwareCompileDivergenceRule over the walk. Main asserts no
+        // presented frame between its entries there, and neither does this fact: the stored history is the
+        // contract and the picture is a function of it. Every other device compares exactly.
         var state = new TemporalEntryStateComparison(TemporalDeviceClass.IsLavapipe(fine.Frame.Device));
+        bool entryPairRules = state.BoundsRecordChannels;
+        var colour = new TemporalEntryDifference("Display vs Fine colour");
+        long colourCompared = 0;
         // Fine runs one checked program for every certificate state. Where Display skipped the decision, a frame
         // compares Display's certified program with Fine's checked one, which is the certified-against-checked
         // comparison its owner already rules on for the device, colour included. On llvmpipe that owner holds the
-        // pair exact, so the record channels stay with the owner above, which already bounds them between these two
-        // programs. Presented and stored colour are pinned exactly wherever the owner holds the pair exact.
+        // pair exact, so llvmpipe stays with the entry pair's rules above. The presented frame and the colour
+        // history are pinned exactly wherever the owner holds the pair exact.
         var certificate = TemporalFullyLitHistoryOracle.For(output, fine.Frame.Device);
         for (int n = 0; n < frames; n++)
         {
@@ -87,13 +94,20 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
             var b = display.Frame.Scene.TemporalHistory;
             bool displaySkipped = display.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped;
             Assert.False(fine.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped);
-            if (!displaySkipped || certificate.HoldsCertifiedAgainstCheckedExact)
+            if (entryPairRules)
             {
-                Assert.Equal(expected, actual);
                 float[] displayColour = TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
                     fineColour = TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex));
-                ReportColourDifference(n, preset, width, height, displayColour, fineColour);
-                TemporalHistorySample.Exact(n, "Display vs Fine history colour", displayColour, fineColour);
+                Assert.Equal(displayColour.Length, fineColour.Length);
+                for (int i = 0; i < displayColour.Length; i++) colour.Add(n, displayColour[i], fineColour[i]);
+                colourCompared += displayColour.Length;
+            }
+            else if (!displaySkipped || certificate.HoldsCertifiedAgainstCheckedExact)
+            {
+                Assert.Equal(expected, actual);
+                TemporalHistorySample.Exact(n, "Display vs Fine history colour",
+                    TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
+                    TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex)));
             }
             if (displaySkipped && !state.BoundsRecordChannels)
                 certificate.Report(n, $"{preset} Display certified vs Fine checked still",
@@ -106,6 +120,16 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         }
         output.WriteLine($"{preset}, moving {moving}, {width}x{height}, {frames} frames, differing presented bytes {different}");
         if (!assertIdentity) return;
+        if (entryPairRules)
+        {
+            double share = TemporalSoftwareCompileDivergenceRule.ShareOf(colour.Values, colourCompared);
+            output.WriteLine($"  software Vulkan: {colour}, within {TemporalSoftwareCompileDivergenceRule.AbsoluteBound}"
+                + $" on {share:P4} of {colourCompared} values");
+            Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(colour.Worst, colour.Values, colourCompared),
+                $"{preset} {width}x{height}: the still colour on a software Vulkan device left its bound "
+                + $"({TemporalSoftwareCompileDivergenceRule.AbsoluteBound}, "
+                + $"{TemporalSoftwareCompileDivergenceRule.DifferingShareBound:P2} of values): {colour}");
+        }
         state.AssertComplete(output, $"{preset} Display vs Fine still");
         certificate.AssertComplete();
     }
@@ -240,28 +264,6 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
     }
 
     static void AssertReplicated(TemporalFixture h) => AssertReplicated(h.Device, h.Scene.TemporalHistory);
-
-    // Before the exact assertion stops the run, say how far a colour history that differs lies apart: how many
-    // values, the worst in absolute value and in half steps, and how it stands against the software compile
-    // divergence rule main holds two compiled temporal programs to on a software Vulkan device.
-    void ReportColourDifference(int frame, TemporalUpscale preset, int width, int height, float[] display, float[] fine)
-    {
-        if (display.Length != fine.Length) return;
-        int differing = 0, steps = 0;
-        float worst = 0f;
-        for (int i = 0; i < display.Length; i++)
-        {
-            if (BitConverter.SingleToUInt32Bits(display[i]) == BitConverter.SingleToUInt32Bits(fine[i])) continue;
-            differing++;
-            worst = MathF.Max(worst, MathF.Abs(display[i] - fine[i]));
-            steps = Math.Max(steps, TemporalHistoryDifference.HalfSteps(display[i], fine[i]));
-        }
-        if (differing == 0) return;
-        output.WriteLine($"{preset} {width}x{height} frame {frame}: Display vs Fine colour history differs in {differing} "
-            + $"of {display.Length} values ({TemporalSoftwareCompileDivergenceRule.ShareOf(differing, display.Length):P4}), "
-            + $"worst {worst:R} or {steps} half steps, within the software compile divergence rule: "
-            + TemporalSoftwareCompileDivergenceRule.Allows(worst, differing, display.Length));
-    }
 
     // How much still motion the frame's own motion target carries, in least RG16F steps of UV.
     static string StillMotionResidual(Scene3D scene)

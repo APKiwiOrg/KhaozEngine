@@ -438,11 +438,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   retain bounded sub-pixel deviations and preserve the resolved mean. Still and distrusted pixels use the
   original display history and replicate the resolved colour. A pixel is still when its chosen motion is below a
   128th of a display pixel, which clears the rounding a still surface's motion carries at every admitted display
-  size. A still frame's colour and state are byte for
-  byte Display's wherever both modes ran the same decision path. On a certified frame Display skips the
-  decision and Fine does not, so that frame compares two compiled programs and follows Display's own
-  certified-against-checked rule for the device: exact on Metal, bounded on the software Direct3D device.
-  On llvmpipe the shimmer record follows that driver's existing limits. Both paths present the resolve directly, before
+  size. A still frame runs Display's expressions through a different compiled program, so its colour and state
+  are byte for byte Display's wherever the device computes the two programs alike, which the suite asserts exactly
+  on every hardware device. On the software rasterizers it follows the rules main holds its own program pairs to:
+  llvmpipe's entry pair rules for colour and the shimmer record, and WARP's certificate rule on a certified frame.
+  Both paths present the resolve directly, before
   distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
   latched on the frame's first render. Fine requires the temporal resolve, six colour attachments, a fitting
   device texture dimension,

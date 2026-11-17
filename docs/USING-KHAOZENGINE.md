@@ -4930,11 +4930,11 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   stored result exactly. A pixel is still when its chosen motion is below a 128th of a display pixel. A still
   surface's motion is not always exactly zero, since the motion target stores whole steps of 2^-24 UV and its
   two clip positions can round apart, and that gate clears the residual at every display size Fine admits.
-  Wherever both modes ran the same decision path their colour is byte for byte Display's,
-  and so is their state. On a fully lit certified frame Display skips the visibility decision and Fine does not,
-  so that frame's colour and state match Display's within the rule Display itself keeps across its certificate
-  on that device: exact on Metal, bounded on the software Direct3D device. On llvmpipe the shimmer record's drift
-  and swing follow that driver's existing limits on every frame. There is no new presentation filter. The update runs before distortion, bloom and
+  A still frame runs Display's expressions through a different compiled program, so its colour and state are byte
+  for byte Display's wherever the device computes the two programs alike, which the suite asserts exactly on
+  every hardware device. On the software rasterizers they follow the rules Display's own program pairs keep there:
+  on llvmpipe the entry pair's rules for colour and the shimmer record, on WARP the certificate rule on a fully
+  lit certified frame. There is no new presentation filter. The update runs before distortion, bloom and
   tonemapping. The resolve computes all four children once, retaining the mean and reprojection in float32
   locals, and writes R, state and four RGBA16F children. The fine-grid pass point-loads the child selected
   by texel parity. Classification computes validity without colour accumulation. The resolve checks its

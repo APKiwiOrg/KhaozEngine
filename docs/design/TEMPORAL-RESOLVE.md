@@ -355,24 +355,29 @@ channels, the finite maximum and both cancellation/overflow regressions. Metal c
 and state identity from cold prefixes, presented still frames, moving/recovery means, return to exact
 replication after motion stops, thin-detail retention and a moving output that differs from Display.
 
-Still identity holds wherever both modes ran the same decision path: the presented frame and the colour
-history are byte for byte Display's, and so is the state, with one exception on llvmpipe below. Every child
-replicates stored R exactly on every device and frame. Fine runs one checked program, so on a certified frame
-Display's certified program meets Fine's checked one. That is the certified-against-checked comparison
-`TemporalFullyLitHistoryOracle` already rules on, and the still fact hands those frames to it with the rule it
-selects for the device, colour included: on WARP colour, confidence, drift and swing follow
-`TemporalSoftwareCompileDivergenceRule` while locks, marks, R8 and depth stay exact, NVIDIA hardware Direct3D 11
-takes its reporting oracle, and every other device stays exact. Where the owner holds the pair exact the fact
-also pins the presented frame and the colour history byte for byte on those frames. Hosted run 43870310625
-(2026-11-16) found drift one half step apart on frames 2, 3 and 6 on WARP with colour equal. Equal colour there
-is a measurement of that scene and not a guarantee: two compiles of the shared accumulation round its float32
-values differently on that device, which is the same divergence Display shows across its own certificate.
+On a still frame Fine runs Display's own expressions through a different compiled program: Fine's one checked
+resolve for every certificate state, against Display's resolve in its own entry, and its certified program on
+a fully lit frame. Stored colour and state are byte for byte Display's wherever the device computes the two
+programs alike.
+`TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` asserts
+that exactly, the presented frame included, on every hardware device the suite runs. On the software
+rasterizers it asserts what main already holds its own program pairs to there. On llvmpipe that is the entry
+pair's rules of `TemporalEntryIdentityGpuTests`: the colour history within
+`TemporalSoftwareCompileDivergenceRule` over the walk, drift and swing within `TemporalEntryStateComparison`'s
+llvmpipe limits, confidence, locks and marks exact, and no presented frame, since the stored history is the
+contract and the picture is a function of it. On WARP a certified frame, where Display ran its certified
+program, follows the certificate pair's rule through `TemporalFullyLitHistoryOracle`: colour, confidence,
+drift and swing within `TemporalSoftwareCompileDivergenceRule`, locks, marks, R8 and depth exact. Hardware
+NVIDIA Direct3D 11 takes that oracle's reporting rule on a certified frame. Every child replicates stored R
+exactly on every device and frame, since replication does not cross a program pair.
 
-On llvmpipe the Fine and Display programs contract the shimmer record's averages differently, as the two entry
-points do, so there drift and swing go through `TemporalEntryStateComparison` and its existing llvmpipe limits on
-every frame, and confidence and lock stay exact. The certified-against-checked owner holds that device exact, so
-the two rules never apply to the same channel. Hosted run 43844224166 measured at most 2 half steps on at most
-0.0343% of record values, against limits of 9,100 and 500 steps and shares of 1.02% and 0.51%.
+Equal values on a software rasterizer are measurements of a scene, not guarantees. Hosted run 43870310625
+(2026-11-16) found WARP's drift one half step apart on certified still frames 2, 3 and 6 with colour equal.
+Hosted run 43844224166 (2026-11-16) found llvmpipe's record at most 2 half steps apart on at most 0.0343% of
+values, against limits of 9,100 and 500 steps and shares of 1.02% and 0.51%. Hosted run 44003391743
+(2026-11-17) found llvmpipe's colour history 3 of 6,535,828 values one half step apart at Quality 1591 by
+1027, on the reset frame where every pixel takes the coarse path, after the fact's 96 by 64 rows had shown it
+equal.
 
 Fine debug views and sampled counts share the fine resolve core and its classification/read bindings.
 Each builds the one checked pipeline over the full resolve layout, matching the full set the resolve

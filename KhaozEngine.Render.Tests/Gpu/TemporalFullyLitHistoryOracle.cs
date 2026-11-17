@@ -78,9 +78,23 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
 
     enum Rule { Exact, SoftwareBound, SoftwareRecordBound, NvidiaReport }
 
-    /// <summary>Whether a certified program and a checked one store every byte alike on this device. Where they do
-    /// not, <see cref="Report"/> applies the device's rule to colour, confidence, drift and swing.</summary>
-    internal bool HoldsCertifiedAgainstCheckedExact => !warp && !nvidia;
+    static readonly string[] Channels = ["colour", "confidence", "lock", "mark", "drift", "swing", "R8", "depth"];
+
+    /// <summary>Whether a certified program and a checked one store every byte alike on this device: the rule
+    /// <see cref="Report"/> applies to every channel of a certified-against-checked pair is exact.</summary>
+    internal bool HoldsCertifiedAgainstCheckedExact => Array.TrueForAll(Channels, name => RuleFor(name, false) == Rule.Exact);
+
+    // The one selection of each channel's rule on this device, for a certified-against-checked pair or, with
+    // entryComparison, the two entry points of one program.
+    Rule RuleFor(string name, bool entryComparison)
+    {
+        bool record = name is "drift" or "swing";
+        bool arithmetic = name is "colour" or "confidence" || record;
+        return !entryComparison && nvidia && arithmetic ? Rule.NvidiaReport
+            : entryComparison && softwareVulkan && record ? Rule.SoftwareRecordBound
+            : !entryComparison && warp && arithmetic
+                || softwareVulkan && entryComparison && name == "colour" ? Rule.SoftwareBound : Rule.Exact;
+    }
     readonly Dictionary<(string Pair, string Channel, Rule Rule), Difference> _totals = [];
     readonly TemporalNvidiaHistoryOracle? _nvidia = nvidia ? new(output) : null;
 
@@ -114,13 +128,9 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
                     bytes == 2 && !mark);
             }
             output.WriteLine($"history-frame {frame} {pair} {name}: {difference}");
-            bool record = name is "drift" or "swing";
-            bool arithmetic = name is "colour" or "confidence" || record;
-            Rule rule = !entryComparison && nvidia && arithmetic ? Rule.NvidiaReport
-                : entryComparison && softwareVulkan && record ? Rule.SoftwareRecordBound
-                : !entryComparison && warp && arithmetic
-                    || softwareVulkan && entryComparison && name == "colour" ? Rule.SoftwareBound : Rule.Exact;
-            var key = (pair, name, rule);
+            // A channel the exactness property does not know about would leave it stale.
+            if (Array.IndexOf(Channels, name) < 0) throw new InvalidOperationException($"unlisted channel {name}");
+            var key = (pair, name, RuleFor(name, entryComparison));
             if (!_totals.TryGetValue(key, out Difference? total)) _totals.Add(key, total = new());
             total.Include(difference);
         }

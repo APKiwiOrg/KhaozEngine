@@ -4,9 +4,93 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 23.13.2
+## 24.0.0
 
 2026-11-17
+
+A major, because the `KhaozEngine.Coverage.Tool` executable changes published behaviour. Runtime package
+changes are additive. The tool now reads packed exact poses and writes evidence and diagnostics of any size as
+complete, hashed sets ([#1814](https://github.com/APKiwiOrg/KhaozEngine/issues/1814)), and host coverage regions
+can end a core inside a source triangle ([#1817](https://github.com/APKiwiOrg/KhaozEngine/issues/1817)).
+
+**Breaking, and what a consumer does about it.**
+
+- Running `build` and then `verify-samples` against one evidence path is refused with `ArtifactContentMismatch`
+  and exit 1, and the build table and evidence are both kept. It used to be accepted and to overwrite the build
+  evidence. Resume now compares every logical record, and build evidence holds candidate construction
+  inventories that sample verification never constructs. Give each command its own evidence path.
+- `--diagnostics` writes logical schema `khaozengine.coverage-diagnostics/2` for every run, and schema 1 is never
+  written again. A reader accepts schema 2 and three new top-level members after `findingCount`:
+  `toolCodeSha256`, `render3DCodeSha256` and `resumedEvidenceSha256` (a string or null). A reader that rejects
+  unknown members or depends on member order changes. A report above 67,108,864 bytes is a
+  `khaozengine.coverage-diagnostics-set/1` index with no category objects, so read it through
+  `CoverageArtifactReader.Open` and copy its `<name>.parts` directory with it. `omitted` is always 0 and `items`
+  always holds `total` entries. A reader sized for the old 64 MiB cap must handle larger logical documents. When
+  an accepted transaction fails, the report on disk can be the previous one, so the exit code and standard
+  error are the authority for that run. No field is removed and no retained field changes type or meaning.
+  Diagnostics are still never acceptance evidence.
+- Every output is now identified through the operating system and every run stages its work in a temporary
+  directory, so three things an earlier version accepted are refused before the table or evidence is written.
+  - A host other than Windows, or Linux or macOS on 64-bit x86 or Arm, cannot identify an output, so every
+    `build`, `verify-samples` and `verify` refuses with `OutputAlias` and exit 1. Run the tool on one of
+    those hosts.
+  - A `build` table and evidence path that do not exist yet and differ only by case or Unicode normalization
+    are one destination on every volume, a case-sensitive one included, and refuse with `OutputAlias`. Give
+    the outputs distinct names.
+  - Every run, format 1 included, needs a writable operating system temporary root with room for the checked
+    pose chunks and about twice the logical evidence, plus about twice the logical report when
+    `--diagnostics` is given. Without it the run refuses with `InputIo` and exit 2 when it opens the campaign
+    or reads existing evidence for resume, or with `OutputIo` and exit 1 when it stages output. Give the
+    temporary root that space.
+
+Two smaller changes need no action from most consumers. A table or evidence path whose parent directory does
+not exist refuses with `OutputIo` before any work, and no diagnostics file is written for that refusal. An
+earlier version wrote one. New files can appear beside the outputs: a `<name>.parts` directory for large
+evidence as well as large diagnostics, and, during a run and after an interrupted run or a publication that
+left recovery work, a `<commit-root>.coverage-journal` beside the evidence root (the diagnostics root for a
+refusal), `<name>.coverage-incomplete` markers and `<name>.<transaction>.bak` and
+`<name>.<transaction>.tmp` files. Copy a `.parts` directory with its root, and never treat the recovery files
+as evidence.
+
+**Packed coverage input and complete evidence.**
+
+- Format 2 manifests reference exact binary32 poses in fixed-stride KEPP 1 chunks through `poseChunks` and
+  `poseRef`, beside or instead of inline poses. Every chunk is confined to the manifest directory, refused
+  through links, checked for length and SHA-256, copied privately and scanned for finite words before any
+  geometry, with typed `Packed*` refusals. Each record has exactly one owner. Format 1 manifests are unchanged.
+  The tool README documents the layout with a checked synthetic fixture.
+- The executable streams poses from those private copies one at a time, so memory follows the declared counts
+  and the 8,388,608-byte chunk bound rather than campaign JSON size. A pose released by its reader is
+  overwritten with NaN, so later numerical use refuses. Packed and inline campaigns build byte-identical tables
+  and reach the same decisions.
+- Evidence within 67,108,864 bytes stays one legacy file. Larger evidence is a
+  `khaozengine.coverage-evidence-set/1` index with hashed parts, and no record is omitted. Resume and every later
+  read check every part and refuse with `ArtifactPartMissing`, `ArtifactPartLengthMismatch` or
+  `ArtifactPartHashMismatch`.
+- The table, diagnostics and evidence publish through one journaled transaction. A handled failure before the
+  commit point restores every previous byte, or keeps its recovery files when a restore itself fails. A
+  cleanup failure after the commit point reports `OutputIo` with the new outputs in place, and readers refuse
+  them as `OutputRecoveryRequired` until the next run recovers. An interrupted run is recovered by the next run
+  or refused the same way. Outputs are told apart from each other and from every checked input by operating
+  system file identity, so linked parent directories and hard links refuse as `OutputAlias`
+  ([#1767](https://github.com/APKiwiOrg/KhaozEngine/issues/1767)).
+- Diagnostics record both producer code hashes and the exact evidence root a resume read
+  ([#1779](https://github.com/APKiwiOrg/KhaozEngine/issues/1779)).
+- `version` still reports `engineVersion` and carry arithmetic contract version 2. Earlier tables need no
+  rebuild.
+
+**Child cell coverage roles.**
+
+- Host coverage regions can give the other role to individual refinement cells, so a core region can end
+  inside a source triangle. `CoverageChildCells` defines numbering and corners, `HostCoverageRegion` takes
+  `CoverageChildRole` overrides, and `CoverageRefinement.GetChildCell` identifies each refined face's origin
+  cell. Conforming split pieces keep that cell's role. Host coverage JSON format 2 adds optional region
+  `childRoles` with its own semantic digest domain. Maps without overrides keep format 1 bytes, semantic
+  SHA-256 and refinement SHA-256. Nine `HostCoverageRefusal` members are appended, and
+  `HostCoverageDataException` gains `Level` and `Cell`
+  ([#1817](https://github.com/APKiwiOrg/KhaozEngine/issues/1817)).
+
+**Tile water shared projections.**
 
 - Within one tile water trace, each prism face now copies the basis projections its parent prism already
   computed, where it used to recompute them. A copy needs the exact parent object and an exact key: every bit

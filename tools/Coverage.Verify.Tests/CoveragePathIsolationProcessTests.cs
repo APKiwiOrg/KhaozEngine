@@ -208,6 +208,55 @@ public sealed class CoveragePathIsolationProcessTests
         AssertPreserved(files, before);
     }
 
+    // #1767: accepted outputs are compared by the identity the OS resolves. Every spelling here reaches a checked
+    // input or the other output, and none of them is caught by comparing path strings.
+    [DirectoryLinkTheory]
+    [InlineData("table", "manifest.json", "linked")]
+    [InlineData("evidence", "manifest.json", "dot-segment")]
+    [InlineData("table", "host.glb", "temp-alias")]
+    [InlineData("evidence", "host.glb", "linked")]
+    [InlineData("table", "poses.kepp", "linked")]
+    [InlineData("evidence", "table.bin", "temp-alias")]
+    public Task Linked_accepted_outputs_cannot_replace_any_checked_input(string output, string input, string spelling)
+        => AssertAliasRefused(output, input, spelling);
+
+    // Hard links need no link-creation privilege, so these rows run wherever the tests run.
+    [Theory]
+    [InlineData("table", "manifest.json")]
+    [InlineData("evidence", "host.glb")]
+    [InlineData("evidence", "poses.kepp")]
+    public Task Hard_linked_accepted_outputs_cannot_replace_any_checked_input(string output, string input)
+        => AssertAliasRefused(output, input, "hard");
+
+    static async Task AssertAliasRefused(string output, string input, string spelling)
+    {
+        using var files = input == "poses.kepp" ? CoveragePackedFixture.Files() : new CoverageBuildFiles("path-isolation");
+        if (input == "poses.kepp") CoveragePackedFixture.Pack(files);
+        Assert.Equal(0, (await Execute(files)).ExitCode);
+        string alias = CoveragePathSpelling.Create(files.Folder, input, spelling);
+        var before = Snapshot(files);
+
+        var result = await Execute(files, table: output == "table" ? alias : null, evidence: output == "evidence" ? alias : null);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(nameof(CoverageBuildValidationRefusal.OutputAlias), result.Error.Trim());
+        AssertPreserved(files, before);
+    }
+
+    // A manifest the OS cannot identify is an input problem. Admission reports it as malformed input, and the
+    // accepted control publishes from the real manifest.
+    [Fact]
+    public async Task Unidentifiable_manifest_keeps_its_input_refusal()
+    {
+        using var files = new CoverageBuildFiles("path-isolation");
+        string missing = Path.Combine(files.Folder, "missing", "manifest.json");
+
+        Assert.Equal(2, (await Execute(files, manifest: missing)).ExitCode);
+        Assert.False(File.Exists(files.TablePath));
+        Assert.False(File.Exists(files.EvidencePath));
+        Assert.Equal(0, (await Execute(files)).ExitCode);
+    }
+
     static Dictionary<string, byte[]> Snapshot(CoverageBuildFiles files) => Directory.GetFiles(files.Folder)
         .ToDictionary(p => Path.GetFileName(p)!, File.ReadAllBytes);
 

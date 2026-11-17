@@ -2,6 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using System.Numerics;
+using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using KhaozEngine.Attachments;
 using KhaozEngine.Gpu;
@@ -31,11 +32,13 @@ internal sealed class CoverageBindingFixture : IDisposable
     internal readonly CoverageRecessionTable Table;
     internal static RigidInstanceDraw Template => MixedAttachmentSubmissionFixture.Template;
 
-    internal CoverageBindingFixture(bool mixed = false, bool materialSlices = false, IGpuDevice? device = null)
+    /// <summary><paramref name="childRoles"/> swaps the host for the child core grid, whose map gives one cell the core role.</summary>
+    internal CoverageBindingFixture(bool mixed = false, bool materialSlices = false, IGpuDevice? device = null, bool childRoles = false)
     {
         harness = new(device);
-        byte[] host = CoverageImportTests.HostFixture().Build();
-        Meshes = GltfLoader.LoadSkinnedPartsWithMaterials(host, "binding-host", CoverageImportTests.Map(host)).Select(p => p.Mesh).ToArray();
+        byte[] host = (childRoles ? CoverageImportTests.ChildCoreHostFixture() : CoverageImportTests.HostFixture()).Build();
+        Meshes = GltfLoader.LoadSkinnedPartsWithMaterials(host, "binding-host", childRoles ? ChildRoleMap(host) : CoverageImportTests.Map(host))
+            .Select(p => p.Mesh).ToArray();
         Skeleton = Meshes[0].Skeleton!;
         Palette = Skeleton.ComposeRestPose();
         Map = new(Skeleton, new SkeletonContract([
@@ -54,7 +57,7 @@ internal sealed class CoverageBindingFixture : IDisposable
         Loaded = Cache.Get("equipment.json", attachment);
         Bound = Loaded.Bind(Map, Meshes[0]);
         string companion = Source.Add("coverage.json", EquipmentCoverageJson.Write(new(attachment,
-            HostCoverageMapJson.SemanticSha256(Meshes[0].Coverage!.Map), [new(23, 1, "patch", Matrix4x4.Identity,
+            HostCoverageMapJson.SemanticSha256(Meshes[0].Coverage!.Map), [new(23, 1, Meshes[0].Coverage!.Map.Regions[0].Key, Matrix4x4.Identity,
                 [new(0, 0, 0, 4)], .4f, -2, 2, .02f, .8f)])));
         Coverage = Cache.GetCoverage(Loaded, "coverage.json", companion);
         var configuration = new System.Collections.Generic.List<CoverageConfigurationPart>
@@ -78,8 +81,27 @@ internal sealed class CoverageBindingFixture : IDisposable
     internal bool Prepare(HostCoverageBinding binding, out SkinnedCoverageFrame frame, out CoverageFailure failure,
         ulong key = 10) => binding.TryPrepare(Skeleton, Palette, Matrix4x4.Identity, new(key), Template, out frame, out failure);
 
+    /// <summary>Semantic identity of the host map with every child role removed.</summary>
+    internal string MapSha256WithoutChildRoles
+    {
+        get
+        {
+            HostCoverageMap map = Meshes[0].Coverage!.Map;
+            return HostCoverageMapJson.SemanticSha256(new HostCoverageMap(map.HostSha256, map.Topology,
+                map.Regions.Select(region => new HostCoverageRegion(region.Key, region.Triangles, region.Strengths)), map.Refinement, map.Authoring));
+        }
+    }
+
     internal CoverageRecessionTable WithIdentity(CoverageRecessionIdentity identity) =>
         CoverageRecessionTable.Create(identity, Table.Representatives, new float[Table.PositionGroupCount], [new(new(10), 0)]);
+
+    // Ta refines at level 2 and its cell 0 takes the core role inside a collar range. Ta's corners all have full strength.
+    static HostCoverageMap ChildRoleMap(byte[] glb)
+    {
+        HostCoverageMap map = CoverageChildCoreFixture.Map(CoverageTriangleRole.Collar,
+            [new(0, 0, CoverageChildCoreFixture.TriangleA, 2, 0, CoverageTriangleRole.Core)], levelA: 2, levelB: 2);
+        return new(Convert.ToHexStringLower(SHA256.HashData(glb)), map.Topology, map.Regions, map.Refinement, map.Authoring);
+    }
 
     static byte[] Solid(Vector3[] positions, uint[] indices, bool materials)
     {

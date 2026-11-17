@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 
 namespace KhaozEngine.Render3D;
@@ -32,14 +33,37 @@ public readonly record struct HostCoverageRefinement(CoverageTriangleRange Trian
 public readonly record struct HostCoverageAuthoring(string Exporter, string Revision);
 
 /// <summary>One authored coverage region of a host map. Its key is compared ordinally. Triangle ranges are sorted by
-/// source ordinal and disjoint, strengths are sorted by surface ID and unique. Collections are owned snapshots.</summary>
+/// source ordinal and disjoint, strengths are sorted by surface ID and unique, and child role overrides are sorted by
+/// source triangle and cell. Collections are owned snapshots.</summary>
 public sealed class HostCoverageRegion
 {
+    readonly int[] childRoleInputIndex;
+    readonly Func<int, CoverageChildRoleField, string> childRolePath;
+
+    /// <summary>Create a region with no child role overrides.</summary>
     public HostCoverageRegion(string key, IEnumerable<HostCoverageRegionTriangles> triangles, IEnumerable<CoverageSurfaceStrength> strengths)
+        : this(key, triangles, strengths, Array.Empty<CoverageChildRole>())
+    {
+    }
+
+    /// <summary>Create a region whose <paramref name="childRoles"/> give the opposite role to individual lattice cells of
+    /// triangles the region owns. Refusal paths name the caller's input index.</summary>
+    public HostCoverageRegion(string key, IEnumerable<HostCoverageRegionTriangles> triangles, IEnumerable<CoverageSurfaceStrength> strengths,
+        IEnumerable<CoverageChildRole> childRoles)
+        : this(key, triangles, strengths, childRoles, HostCoverageChildRoleRules.ProgrammaticPath)
+    {
+    }
+
+    /// <summary>Reader overload. <paramref name="childRolePath"/> maps an input index and field to a region-rooted source
+    /// path, so refusals name source JSON positions.</summary>
+    internal HostCoverageRegion(string key, IEnumerable<HostCoverageRegionTriangles> triangles, IEnumerable<CoverageSurfaceStrength> strengths,
+        IEnumerable<CoverageChildRole> childRoles, Func<int, CoverageChildRoleField, string> childRolePath)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(triangles);
         ArgumentNullException.ThrowIfNull(strengths);
+        ArgumentNullException.ThrowIfNull(childRoles);
+        ArgumentNullException.ThrowIfNull(childRolePath);
         if (!HostCoverageMap.IsWellFormedLabel(key))
             throw new HostCoverageDataException(HostCoverageRefusal.InvalidLabel, "A region key must be non-blank, well-formed UTF-16.")
             { Path = $"$.key", RegionKey = key };
@@ -89,21 +113,32 @@ public sealed class HostCoverageRegion
         }
         Array.Sort(ownedStrengths, (left, right) => left.SurfaceId.CompareTo(right.SurfaceId));
 
+        (CoverageChildRole[] ownedChildRoles, childRoleInputIndex) =
+            HostCoverageChildRoleRules.ValidateRegion(key, childRoles, ownedTriangles, childRolePath);
+        this.childRolePath = childRolePath;
+
         Key = key;
         Triangles = Array.AsReadOnly(ownedTriangles);
         Strengths = Array.AsReadOnly(ownedStrengths);
+        ChildRoles = ImmutableArray.Create(ownedChildRoles);
     }
 
     public string Key { get; }
     public IReadOnlyList<HostCoverageRegionTriangles> Triangles { get; }
     public IReadOnlyList<CoverageSurfaceStrength> Strengths { get; }
+
+    /// <summary>Child cell role overrides sorted by (Mesh, Primitive, Triangle, Cell). Empty when the region has none.</summary>
+    public IReadOnlyList<CoverageChildRole> ChildRoles { get; }
     internal long TriangleCount { get; }
+
+    /// <summary>Region-rooted source path of the sorted child role at <paramref name="sortedIndex"/>, for map-level refusals.</summary>
+    internal string ChildRolePath(int sortedIndex, CoverageChildRoleField field) => childRolePath(childRoleInputIndex[sortedIndex], field);
 }
 
 /// <summary>
 /// Immutable optional coverage metadata beside one exact host GLB, the in-memory form of strict host coverage JSON
-/// format 1 (<see cref="HostCoverageMapJson"/>). It names welded surface topology, authored regions, fixed render
-/// refinement and authoring labels. The constructor validates every rule that does not need the host source, snapshots
+/// (<see cref="HostCoverageMapJson"/>), format 1, or format 2 when a region has child roles. It names welded surface
+/// topology, authored regions, fixed render refinement and authoring labels. The constructor validates every rule that does not need the host source, snapshots
 /// the caller's collections and stores them in canonical order. Source-dependent checks (ranges inside the actual
 /// primitives, manifold affected topology, core strengths) belong to the importer that also holds the GLB.
 /// </summary>
@@ -114,6 +149,12 @@ public sealed class HostCoverageMap
     public const int MaxTriangles = 65_536;
     public const int MinRefinementLevel = 1;
     public const int MaxRefinementLevel = 4;
+
+    /// <summary>Inclusive bound of overridden cells on one source triangle. Sixteen level 4 cells would cover it.</summary>
+    public const int MaxChildCellsPerTriangle = 15;
+
+    /// <summary>Inclusive bound of overridden cells in one region and in one map, equal to the refined triangle cap.</summary>
+    public const int MaxChildCells = 65_536;
 
     readonly string semanticSha256;
 
@@ -207,6 +248,7 @@ public sealed class HostCoverageMap
         if (ownedRefinement.Sum(entry => (long)entry.Triangles.Count) > MaxTriangles)
             throw new HostCoverageDataException(HostCoverageRefusal.RefinementTriangleCapacity, $"Refinement references more than {MaxTriangles} triangles.")
             { Path = $"$.refinement", Count = ownedRefinement.Sum(entry => (long)entry.Triangles.Count), Limit = MaxTriangles };
+        HostCoverageChildRoleRules.ValidateMap(ownedRegions, ownedRefinement);
 
         Array.Sort(ownedRegions, (left, right) => string.CompareOrdinal(left.Key, right.Key));
         HostSha256 = hostSha256;

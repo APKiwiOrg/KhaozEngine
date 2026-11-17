@@ -27,18 +27,19 @@ public readonly record struct CoverageRefinedMaterialRange(int MaterialSlice, in
 /// <summary>Immutable, fixed, conforming render topology. Compile once, then skin original vertices before interpolation.</summary>
 public sealed class CoverageRefinement
 {
-    const int Denominator = 12; // Common denominator for every permitted edge subdivision count.
+    const int Denominator = CoverageChildCells.Denominator;
     readonly CoverageSourceTopology source;
     readonly uint[] indices;
+    readonly int[] childCells;
     readonly PositionRecipe[] positionRecipes;
     readonly int[] positionRepresentatives;
     readonly bool[] coreVertices;
 
     CoverageRefinement(CoverageSourceTopology source, HostCoverageMap map, uint[] indices, CoverageRefinedVertex[] vertices,
         CoverageRefinedTriangle[] triangles, CoverageRefinedMaterialRange[] materials,
-        CoverageEdgeSplit[] splits, CoverageSourceAlias[] aliases, PositionRecipe[] recipes)
+        CoverageEdgeSplit[] splits, CoverageSourceAlias[] aliases, PositionRecipe[] recipes, int[] childCells)
     {
-        this.source = source; Map = map; this.indices = indices; positionRecipes = recipes;
+        this.source = source; Map = map; this.indices = indices; positionRecipes = recipes; this.childCells = childCells;
         coreVertices = new bool[vertices.Length];
         for (int t = 0; t < triangles.Length; t++)
             if (triangles[t].Role == CoverageTriangleRole.Core && triangles[t].RegionIndex >= 0)
@@ -94,6 +95,10 @@ public sealed class CoverageRefinement
         }
         var regionIndices = Enumerable.Repeat(-1, source.Triangles.Count).ToArray();
         var roles = new CoverageTriangleRole[source.Triangles.Count];
+        // Bit c of overrideCells[i] marks cell c of source triangle i as taking overrideRoles[i]. Levels stop at 4, so
+        // 16 bits suffice.
+        var overrideCells = new int[source.Triangles.Count];
+        var overrideRoles = new CoverageTriangleRole[source.Triangles.Count];
         var strengths = new Dictionary<int, (int Region, float Strength)>();
         var sourceOwners = Enumerable.Repeat(-1, source.Vertices.Count).ToArray();
         for (int i = 0; i < source.Triangles.Count; i++)
@@ -107,12 +112,20 @@ public sealed class CoverageRefinement
         {
             foreach (var entry in map.Regions[r].Triangles)
                 foreach (int i in source.Select([entry.Triangles])) { regionIndices[i] = r; roles[i] = entry.Role; }
+            var childRoles = map.Regions[r].ChildRoles;
+            int[] childTriangles = source.ChildRoleTriangles(childRoles);
+            for (int k = 0; k < childTriangles.Length; k++)
+            {
+                overrideCells[childTriangles[k]] |= 1 << childRoles[k].Cell;
+                overrideRoles[childTriangles[k]] = childRoles[k].Role;
+            }
             foreach (var s in map.Regions[r].Strengths)
                 if (s.Strength > 0) strengths.Add(s.SurfaceId, (r, s.Strength));
         }
         // Cold compilation uses bounded plans. Final vertex/index arrays are allocated only after both counts pass.
         var vertexPlan = new List<CoverageRefinedVertex>();
         var trianglePlan = new List<CoverageRefinedTriangle>();
+        var childCellPlan = new List<int>();
         var indexPlan = new List<uint>();
         var materialPlan = new List<CoverageRefinedMaterialRange>();
         var renderKeys = new Dictionary<VertexKey, int>();
@@ -129,14 +142,19 @@ public sealed class CoverageRefinement
                 var t = source.Triangles[i];
                 if (t.MaterialSlice != slice) continue;
                 var children = Subdivide(levels[i]);
+                // Origin cell of each child face. A split replaces a face in place and appends its second piece, and
+                // both pieces keep the face's origin.
+                var origins = Enumerable.Range(0, children.Count).ToList();
                 SplitBoundary(t.A, t.B, new(Denominator, 0, 0), new(0, Denominator, 0));
                 SplitBoundary(t.B, t.C, new(0, Denominator, 0), new(0, 0, Denominator));
                 SplitBoundary(t.C, t.A, new(0, 0, Denominator), new(Denominator, 0, 0));
-                foreach (var child in children)
+                for (int j = 0; j < children.Count; j++)
                 {
+                    var child = children[j];
                     Check(trianglePlan.Count + 1, HostCoverageMap.MaxTriangles, CoverageGeometryRefusal.RefinedTriangleCapacity);
                     indexPlan.Add((uint)Vertex(child.A)); indexPlan.Add((uint)Vertex(child.B)); indexPlan.Add((uint)Vertex(child.C));
-                    trianglePlan.Add(new(i, regionIndices[i], roles[i]));
+                    trianglePlan.Add(new(i, regionIndices[i], (overrideCells[i] >> origins[j] & 1) != 0 ? overrideRoles[i] : roles[i]));
+                    childCellPlan.Add(origins[j]);
                 }
                 void SplitBoundary(int a, int b, Bary start, Bary end)
                 {
@@ -154,7 +172,7 @@ public sealed class CoverageRefinement
                             bool TrySplit(Bary x, Bary y, Bary opposite)
                             {
                                 if (!StrictlyBetween(point, x, y)) return false;
-                                children[j] = new(x, point, opposite); children.Add(new(point, y, opposite));
+                                children[j] = new(x, point, opposite); children.Add(new(point, y, opposite)); origins.Add(origins[j]);
                                 return true;
                             }
                         }
@@ -190,7 +208,7 @@ public sealed class CoverageRefinement
             int gcd = Gcd(k, Denominator);
             return new CoverageEdgeSplit(p.Key.A, p.Key.B, k / gcd, Denominator / gcd);
         })).ToArray();
-        return new(source, map, indexPlan.ToArray(), vertexPlan.ToArray(), trianglePlan.ToArray(), materialPlan.ToArray(), splits, aliases.ToArray(), recipes.ToArray());
+        return new(source, map, indexPlan.ToArray(), vertexPlan.ToArray(), trianglePlan.ToArray(), materialPlan.ToArray(), splits, aliases.ToArray(), recipes.ToArray(), childCellPlan.ToArray());
 
         float Strength(int v) => strengths.TryGetValue(surfaces[v], out var s) ? s.Strength : 0;
         int Original(int v)
@@ -290,7 +308,16 @@ public sealed class CoverageRefinement
 
     CoverageFailure Refusal(CoverageFailureCode code) => new(code, HostIdentity, 0, 0, 0, 0);
 
-    /// <summary>True for every vertex of an authored core triangle, whose region strength is exactly one.</summary>
+    /// <summary>Origin cell of <paramref name="refinedTriangle"/> in its source triangle's level lattice, numbered by
+    /// <see cref="CoverageChildCells"/>. Both pieces of a conforming split report the cell they were cut from.</summary>
+    public int GetChildCell(int refinedTriangle)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(refinedTriangle);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(refinedTriangle, childCells.Length);
+        return childCells[refinedTriangle];
+    }
+
+    /// <summary>True for every vertex of a core refined triangle, whose region strength is exactly one.</summary>
     internal bool IsCoreVertex(int vertex) => coreVertices[vertex];
 
     internal CoveragePositionRecipe GetPositionRecipe(int positionGroup)
@@ -348,18 +375,18 @@ public sealed class CoverageRefinement
         int x = b.B - a.B, y = b.C - a.C, px = p.B - a.B, py = p.C - a.C;
         return x * py == y * px && px * x + py * y > 0 && px * x + py * y < x * x + y * y;
     }
+    // Child faces in cell order, so a face's list index is its cell until conforming splits append pieces.
     static List<Face> Subdivide(int level)
     {
-        var faces = new List<Face>(level * level);
-        int step = Denominator / level;
-        Bary At(int x, int y) => new(Denominator - (x + y) * step, x * step, y * step);
-        for (int x = 0; x < level; x++)
-            for (int y = 0; y < level - x; y++)
-            {
-                faces.Add(new(At(x, y), At(x + 1, y), At(x, y + 1)));
-                if (x + y < level - 1) faces.Add(new(At(x + 1, y), At(x + 1, y + 1), At(x, y + 1)));
-            }
+        int count = CoverageChildCells.CellCount(level);
+        var faces = new List<Face>(count);
+        for (int cell = 0; cell < count; cell++)
+        {
+            CoverageChildCell child = CoverageChildCells.Get(level, cell);
+            faces.Add(new(Point(child.A), Point(child.B), Point(child.C)));
+        }
         return faces;
+        static Bary Point(CoverageLatticePoint p) => new(p.A, p.B, p.C);
     }
     readonly record struct Bary(int A, int B, int C);
     readonly record struct Face(Bary A, Bary B, Bary C);

@@ -366,6 +366,30 @@ public sealed class CoverageImportTests
         return fixture;
     }
 
+    /// <summary>One primitive carrying <see cref="CoverageChildCoreFixture"/>'s grid, so a host map can own interior
+    /// triangles whose corners all have full strength.</summary>
+    internal static SkinnedAttachmentGlbFixture ChildCoreHostFixture()
+    {
+        CoverageSourceTopology grid = CoverageChildCoreFixture.Source();
+        var fixture = new SkinnedAttachmentGlbFixture();
+        fixture.Root["materials"] = new JsonArray(new JsonObject());
+        JsonObject prim = fixture.Primitives[0]!.AsObject();
+        prim["material"] = 0;
+        int count = grid.Positions.Length, position = fixture.Accessors.Count;
+        Attribute(fixture, prim, "POSITION", "VEC3", grid.Positions.ToArray().Select(p => new[] { p.X, p.Y, p.Z }).ToArray());
+        fixture.Accessors[position]!["min"] = new JsonArray(-3f, -3f, 0f);
+        fixture.Accessors[position]!["max"] = new JsonArray(3f, 3f, 1f);
+        Attribute(fixture, prim, "NORMAL", "VEC3", Enumerable.Repeat(new[] { 0f, 0, 1 }, count).ToArray());
+        Attribute(fixture, prim, "JOINTS_0", "VEC4", Enumerable.Repeat(new[] { 0f, 1, 2, 3 }, count).ToArray());
+        Attribute(fixture, prim, "WEIGHTS_0", "VEC4", Enumerable.Repeat(new[] { .1f, .2f, .3f, .4f }, count).ToArray());
+        uint[] indices = grid.Triangles.SelectMany(t => new[] { (uint)t.A, (uint)t.B, (uint)t.C }).ToArray();
+        byte[] bytes = new byte[indices.Length * 4];
+        for (int i = 0; i < indices.Length; i++) BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(i * 4), indices[i]);
+        prim["indices"] = fixture.Accessors.Count;
+        fixture.Accessors.Add(new JsonObject { ["bufferView"] = fixture.AddView(bytes), ["componentType"] = 5125, ["count"] = indices.Length, ["type"] = "SCALAR" });
+        return fixture;
+    }
+
     internal static HostCoverageMap Map(byte[] glb, float boundary = 0, bool core = false, bool invalidRange = false)
     {
         var topology = Enumerable.Range(0, 2).SelectMany(p => Enumerable.Range(0, 5).Select(v => new CoverageTopologyEntry(0, p, v, v))).ToArray();

@@ -28,18 +28,24 @@ public sealed record CoverageDomainEvidence(string Id, CoverageDomainKind Kind, 
 public sealed class CoverageEvidenceManifest
 {
     readonly bool samplesComplete;
+    readonly CoverageCampaign input;
     internal CoverageEvidenceManifest(CoverageBuildInput input, CoverageRecessionTable table,
         IEnumerable<CoveragePairResult> pairs, IEnumerable<CoverageSelectedClaim> claims,
         IEnumerable<CoverageHole> holes, IEnumerable<CoverageCandidateEvidence>? candidates = null, IEnumerable<CoverageEntryEvidence>? entries = null)
+        : this(CoverageCampaign.FromSnapshot(input), table, pairs, claims, holes, candidates, entries) { }
+
+    internal CoverageEvidenceManifest(CoverageCampaign input, CoverageRecessionTable table,
+        IEnumerable<CoveragePairResult> pairs, IEnumerable<CoverageSelectedClaim> claims,
+        IEnumerable<CoverageHole> holes, IEnumerable<CoverageCandidateEvidence>? candidates = null, IEnumerable<CoverageEntryEvidence>? entries = null)
     {
+        this.input = input;
         Identity = input.Identity; InputSha256 = input.InputSha256;
         TableSha256 = CoverageBuildInputJson.Hash(CoverageRecessionTableBinary.Write(table));
         ToolCodeSha256 = CoverageBuildInputJson.CodeHash();
         Render3DCodeSha256 = CoverageBuildInputJson.Render3DCodeHash();
-        Domains = Array.AsReadOnly(input.Domains.Select(d => new CoverageDomainEvidence(d.Id, d.Kind, d.AuthoredFrameIds,
-            d.BlendPathIds, Array.AsReadOnly(d.DenseRows.Select(DenseEvidence).ToArray()))).ToArray());
+        Domains = CoverageEvidenceProjection.Domains(input);
         CandidateSampleIds = input.CandidateSampleIds;
-        Samples = Array.AsReadOnly(input.Samples.Select(s => new CoverageSampleInventory(s.Id, s.DomainId, s.AuthoredFrameId, s.BlendPathId, s.StateKey.Value)).ToArray());
+        Samples = input.Samples;
         PairResults = Array.AsReadOnly(pairs.ToArray());
         SelectedClaims = Array.AsReadOnly(claims.ToArray());
         Holes = Array.AsReadOnly(holes.ToArray());
@@ -69,15 +75,14 @@ public sealed class CoverageEvidenceManifest
     public CoverageReplayResult? Replay { get; private set; }
     public bool Complete => samplesComplete && (Replay == null || Replay.Accepted);
     internal void IncludeReplay(CoverageReplayResult replay) => Replay = replay;
-    static CoverageDenseRowEvidence DenseEvidence(CoverageDenseRow row)
-    {
-        var pose = row.Sample;
-        return new(row.DenseIndex, row.PrecedingPhaseTick, row.ResolvedStateKey,
-            new(pose.Id, pose.DomainId, pose.AuthoredFrameId, pose.BlendPathId, CoverageBuildInputJson.Values(pose.ActorModel),
-                Array.AsReadOnly(pose.Palette.ToArray().Select(CoverageBuildInputJson.Values).ToArray()),
-                Array.AsReadOnly(pose.Commands.ToArray().Select(c => new CoverageCommandPoseEvidence(c.Id, c.EquipmentInstanceId,
-                    CoverageBuildInputJson.Values(c.EquipmentWorld), CoverageBuildInputJson.Values(c.CoverageWorld), c.TransitionWeight)).ToArray())), row.Looped, row.Clamped);
-    }
+    internal CoverageArtifactHeader CreateHeader() => new(CoverageArtifactKind.Evidence, Tool, Scope, InputSha256,
+        TableSha256, Identity, ToolCodeSha256, Render3DCodeSha256, new Dictionary<string, long>(StringComparer.Ordinal)
+        {
+            ["domains"] = Domains.Count, ["samples"] = Samples.Count, ["candidateSampleIds"] = CandidateSampleIds.Count,
+            ["candidates"] = Candidates.Count, ["entries"] = Entries.Count, ["pairResults"] = PairResults.Count,
+            ["selectedClaims"] = SelectedClaims.Count, ["holes"] = Holes.Count,
+            ["denseRows"] = input.Domains.Sum(d => (long)d.DenseRows.Count), ["replayPoses"] = Replay?.PoseCount ?? 0,
+        }, Complete);
     static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -85,52 +90,18 @@ public sealed class CoverageEvidenceManifest
     };
     public byte[] Write() => Write(CoverageBuildInputJson.MaxBytes);
 
+    internal void WriteTo(Stream destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        using var writer = new Utf8JsonWriter(destination);
+        CoverageEvidenceProjection.WriteTo(writer, this, input, Options);
+    }
+
     internal byte[] Write(int byteLimit)
     {
         using var stream = new EvidenceStream(byteLimit);
-        JsonSerializer.Serialize(stream, this, Options);
+        WriteTo(stream);
         return stream.ToArray();
-    }
-
-    /// <summary>A resumed output must bind the same exact inputs, tool, arithmetic and serialized table.
-    /// Malformed JSON or field types retain the tool's malformed-input refusal family.</summary>
-    internal void ValidateResume(byte[] bytes, byte[]? expectedBytes = null)
-    {
-        try
-        {
-            CoverageBuildInputJson.CheckByteCapacity(bytes.LongLength, CoverageBuildInputJson.MaxBytes);
-            using var document = CoverageBuildInputJson.Document(bytes);
-            var root = document.RootElement;
-            using var expectedDocument = CoverageBuildInputJson.Document(expectedBytes ?? Write());
-            var expected = expectedDocument.RootElement;
-            ValidateObjectTypes(root, expected, "$");
-            foreach (string member in new[] { "formatVersion", "tool", "scope", "identity", "inputSha256", "tableSha256", "toolCodeSha256", "render3DCodeSha256" })
-            {
-                if (!JsonElement.DeepEquals(root.GetProperty(member), expected.GetProperty(member)))
-                    throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.ProvenanceMismatch, "Resumed evidence provenance differs.");
-            }
-        }
-        catch (JsonException error)
-        {
-            throw new CoverageBuildDataException(CoverageBuildInputRefusal.InvalidJson, "Malformed resumed evidence JSON.", error)
-            { Path = error.Path ?? "$" };
-        }
-    }
-
-    static void ValidateObjectTypes(JsonElement actual, JsonElement expected, string path)
-    {
-        CoverageBuildInputJson.Members(actual, path, expected.EnumerateObject().Select(p => p.Name).ToArray());
-        foreach (var member in expected.EnumerateObject())
-        {
-            var value = CoverageBuildInputJson.Get(actual, member.Name, path);
-            string memberPath = path + "." + member.Name;
-            bool boolean = value.ValueKind is JsonValueKind.True or JsonValueKind.False
-                && member.Value.ValueKind is JsonValueKind.True or JsonValueKind.False;
-            if (value.ValueKind != member.Value.ValueKind && !boolean)
-                throw new CoverageBuildDataException(CoverageBuildInputRefusal.InvalidValue, "Evidence field has the wrong JSON type.")
-                { Path = memberPath, MemberName = member.Name };
-            if (value.ValueKind == JsonValueKind.Object) ValidateObjectTypes(value, member.Value, memberPath);
-        }
     }
 
     sealed class EvidenceStream(int byteLimit) : MemoryStream

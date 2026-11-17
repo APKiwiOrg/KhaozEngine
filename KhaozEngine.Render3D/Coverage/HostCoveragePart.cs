@@ -137,6 +137,7 @@ public sealed class HostCoveragePart
                     }
                     Edge(a, b); Edge(b, c); Edge(c, a);
                 }
+            ValidateChildCores(region, source, ids, strengths);
             foreach (var pair in edges)
             {
                 if (pair.Value.Count > 2 || pair.Value.Count == 2 && pair.Value.Direction != 0)
@@ -174,6 +175,23 @@ public sealed class HostCoveragePart
         {
             if (!links.TryGetValue(vertex, out var list)) links.Add(vertex, list = new());
             list.Add((a, b));
+        }
+    }
+
+    // Every lattice cell touches all three parent corners, so a core cell keeps full interpolated strength only when
+    // every parent corner has strength exactly 1. Records are sorted by triangle and cell, so the first refusal is stable.
+    static void ValidateChildCores(HostCoverageRegion region, CoverageSourceTopology source, int[] ids, Dictionary<int, float> strengths)
+    {
+        int[] parents = source.ChildRoleTriangles(region.ChildRoles);
+        for (int k = 0; k < parents.Length; k++)
+        {
+            CoverageChildRole child = region.ChildRoles[k];
+            if (child.Role != CoverageTriangleRole.Core) continue;
+            CoverageSourceTriangle parent = source.Triangles[parents[k]];
+            foreach (int id in new[] { ids[parent.A], ids[parent.B], ids[parent.C] })
+                if (strengths[id] != 1) throw source.Error(HostCoverageRefusal.ChildCoreStrength,
+                    "A core child cell's parent corner strength must equal one.", mesh: child.Mesh, primitive: child.Primitive,
+                    firstTriangle: child.Triangle, surfaceId: id, regionKey: region.Key, level: child.Level, cell: child.Cell);
         }
     }
 

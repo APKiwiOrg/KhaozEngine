@@ -15,27 +15,28 @@ public static class CoverageTableBuilder
     public static CoverageBuildResult Build(CoverageBuildInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
+        return Build(CoverageCampaign.FromSnapshot(input));
+    }
+
+    internal static CoverageBuildResult Build(CoverageCampaign input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
         var topology = input.Topology;
         var constructor = new CoverageExactConstructor(topology, input.InverseBind);
         var candidates = new List<Candidate>();
         var candidateEvidence = new List<CoverageCandidateEvidence>();
-        int[] representatives = CoverageSampleVerifier.Representatives(topology, input.Samples[0]);
+        int[] representatives = CoverageSampleVerifier.Representatives(input);
+        var ordinals = input.Samples.Select((sample, index) => (sample.Id, index)).ToDictionary(s => s.Id, s => s.index, StringComparer.Ordinal);
         foreach (string id in input.CandidateSampleIds)
         {
-            var sample = input.Samples.Single(s => s.Id == id);
-            var scalars = new float[topology.PositionGroupCount];
-            var reps = new int[topology.PositionGroupCount];
-            if (!constructor.TryConstruct(sample.Palette, sample.ActorModel, sample.Commands,
-                new ModelVertex[topology.VertexCount], scalars, reps, out var failure))
-                throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.CandidateConstruction, "Exact candidate construction refused.") { SampleId = id, Failure = failure };
-            CoverageSampleVerifier.CheckRepresentatives(representatives, reps, id);
+            float[] scalars = Construct(input, constructor, ordinals[id], representatives);
             byte[] bytes = ScalarBytes(scalars);
             string hash = CoverageBuildInputJson.Hash(bytes);
             candidateEvidence.Add(new(id, hash));
             if (!candidates.Any(c => c.Bytes.AsSpan().SequenceEqual(bytes))) candidates.Add(new(scalars, bytes, hash));
         }
         candidates.Sort((a, b) => { int h = StringComparer.Ordinal.Compare(a.Hash, b.Hash); return h != 0 ? h : a.Bytes.AsSpan().SequenceCompareTo(b.Bytes); });
-        var states = input.Samples.GroupBy(s => s.StateKey.Value).OrderBy(g => g.Key).ToArray();
+        var states = input.Samples.GroupBy(s => s.StateKey).OrderBy(g => g.Key).ToArray();
         var all = CoverageRecessionTable.Create(input.Identity, representatives, candidates.SelectMany(c => c.Scalars).ToArray(),
             states.Select(g => new CoverageStateEntry(new(g.Key), -1)).ToArray());
         var pairs = CoverageSampleVerifier.Pairs(input, all);
@@ -64,6 +65,21 @@ public static class CoverageTableBuilder
         var verified = CoverageSampleVerifier.Verify(input, serialized);
         var entries = candidates.Select((c, i) => new CoverageEntryEvidence(i, c.Hash, remap.GetValueOrDefault(i, -1)));
         return new(serialized, new(input, serialized, pairs, verified.SelectedClaims, verified.Holes, candidateEvidence, entries));
+    }
+
+    static float[] Construct(CoverageCampaign input, CoverageExactConstructor constructor, int ordinal, int[] representatives)
+    {
+        using var lease = input.ReadSample(ordinal);
+        var sample = lease.Value;
+        var topology = input.Topology;
+        var scalars = new float[topology.PositionGroupCount];
+        var reps = new int[topology.PositionGroupCount];
+        if (!constructor.TryConstruct(sample.Palette, sample.ActorModel, sample.Commands,
+            new ModelVertex[topology.VertexCount], scalars, reps, out var failure))
+            throw new CoverageBuildValidationException(CoverageBuildValidationRefusal.CandidateConstruction, "Exact candidate construction refused.")
+            { SampleId = sample.Id, Failure = failure };
+        CoverageSampleVerifier.CheckRepresentatives(representatives, reps, sample.Id);
+        return scalars;
     }
 
     internal static byte[] ScalarBytes(float[] scalars)

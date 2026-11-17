@@ -53,6 +53,7 @@ internal ref struct TileWaterPreparedQuery
     readonly Span<BasisState> _states;
     readonly Span<ClipTerm> _clips;
     readonly Span<PlaneState> _planeTerms;
+    TileWaterProjectionSource _source;
     Header _header;
     int Stride => _shape.Planes.Length + 3;
 
@@ -112,8 +113,11 @@ internal ref struct TileWaterPreparedQuery
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Projecting = true;
 #endif
-                state.Projected = Project(ordinal, basis, start, drive, core, heightError, horizontalError,
-                    state.Lambda, state.Velocity, out state.Q, out state.V);
+                // A face copies its parent's identical, already resolved projection when one was lent.
+                // Every other basis runs the original expression at its original place in the order.
+                if (!_source.TryCopy(ordinal, ref state))
+                    state.Projected = Project(ordinal, basis, start, drive, core, heightError, horizontalError,
+                        state.Lambda, state.Velocity, out state.Q, out state.V);
 #if WATER_PRISM_CENSUS
                 TileWaterCensus.Projecting = false;
 #endif
@@ -218,6 +222,14 @@ internal ref struct TileWaterPreparedQuery
     }
 
     internal bool CanRetain => _header.HasControlToken;
+    internal readonly TileWaterConvexShape Shape => _shape;
+    internal readonly Header SharingKey => _header;
+    internal readonly ReadOnlySpan<BasisState> States => _states;
+
+    internal readonly bool HasSharedSource => !_source.IsEmpty;
+
+    // Attaches the face's lent parent projections. Restored preparations never carry a source.
+    internal void Share(TileWaterProjectionSource source) => _source = source;
     internal int StorageBytes => Unsafe.SizeOf<Header>() +
         _states.Length * Unsafe.SizeOf<BasisState>() + _clips.Length * Unsafe.SizeOf<ClipTerm>() +
         _planeTerms.Length * Unsafe.SizeOf<PlaneState>();
@@ -243,6 +255,15 @@ internal ref struct TileWaterPreparedQuery
             MemoryMarshal.Cast<byte, BasisState>(source.Slice(headerBytes, stateBytes)),
             MemoryMarshal.Cast<byte, ClipTerm>(source.Slice(headerBytes + stateBytes, clipBytes)),
             MemoryMarshal.Cast<byte, PlaneState>(source.Slice(headerBytes + stateBytes + clipBytes, shape.Planes.Length * Unsafe.SizeOf<PlaneState>())));
+    }
+
+    // Read-only view of a retained preparation's header and basis states, in the layout CopyTo writes.
+    internal static ReadOnlySpan<BasisState> RetainedStates(TileWaterConvexShape shape, ReadOnlySpan<byte> source,
+        out Header header)
+    {
+        header = MemoryMarshal.Read<Header>(source);
+        return MemoryMarshal.Cast<byte, BasisState>(source.Slice(Unsafe.SizeOf<Header>(),
+            shape.Bases.Length * Unsafe.SizeOf<BasisState>()));
     }
 
     TileWaterPreparedQuery(TileWaterConvexShape shape, Header header, Span<BasisState> states, Span<ClipTerm> clips, Span<PlaneState> planeTerms)

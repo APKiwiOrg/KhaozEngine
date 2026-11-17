@@ -59,14 +59,14 @@ internal sealed class CoverageBuildFiles : IDisposable
     internal readonly JsonObject Configuration;
     internal string TablePath => Path.Combine(Folder, "table.bin");
     internal string EvidencePath => Path.Combine(Folder, "evidence.json");
-    internal CoverageBuildFiles(string task = "task6")
+    internal CoverageBuildFiles(string task = "task6", string? scratchDirectory = null, int jointCount = 2)
     {
-        Folder = Path.Combine(OperatingSystem.IsWindows() ? Path.GetTempPath() : "/tmp", "khaozengine-equipment-fit-" + task, Guid.NewGuid().ToString("N"));
+        Folder = Path.Combine(scratchDirectory ?? Path.Combine(OperatingSystem.IsWindows() ? Path.GetTempPath() : "/tmp", "khaozengine-equipment-fit-" + task), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Folder);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(Folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         ManifestPath = Path.Combine(Folder, "manifest.json");
         var panel = new ExactPanelFixture(seams: false);
-        byte[] host = Mesh(panel.Data.Source.Positions.ToArray(), panel.Data.Source.Triangles.SelectMany(t => new uint[] { (uint)t.A, (uint)t.B, (uint)t.C }).ToArray(), panel.Data.Source.SkinVertices.ToArray());
+        byte[] host = Mesh(panel.Data.Source.Positions.ToArray(), panel.Data.Source.Triangles.SelectMany(t => new uint[] { (uint)t.A, (uint)t.B, (uint)t.C }).ToArray(), panel.Data.Source.SkinVertices.ToArray(), jointCount);
         byte[] solid = Mesh(panel.Data.RigidPositions, panel.Data.RigidIndices, null);
         string hostHash = CoverageBuildInputJson.Hash(host), solidHash = CoverageBuildInputJson.Hash(solid);
         var map = new HostCoverageMap(hostHash, panel.Data.Map.Topology, panel.Data.Map.Regions, panel.Data.Map.Refinement, panel.Data.Map.Authoring);
@@ -87,13 +87,15 @@ internal sealed class CoverageBuildFiles : IDisposable
             ["host"] = Save("host.glb", host),
             ["map"] = Save("map.json", HostCoverageMapJson.Write(map)),
             ["configuration"] = Save("configuration.json", Encoding.UTF8.GetBytes(Configuration.ToJsonString())),
-            ["inverseBind"] = new JsonArray(Matrix(Matrix4x4.Identity), Matrix(Matrix4x4.Identity)),
+            ["inverseBind"] = new JsonArray(Enumerable.Range(0, jointCount).Select(_ => (JsonNode)Matrix(Matrix4x4.Identity)).ToArray()),
             ["stateSchemaSha256"] = CoverageBuildFixture.Hash,
             ["domains"] = new JsonArray(new JsonObject
             { ["id"] = "clip", ["kind"] = "authored-clip", ["authoredFrameIds"] = new JsonArray("frame-a", "frame-b"), ["blendPathIds"] = new JsonArray() }),
             ["candidateSampleIds"] = new JsonArray("a", "b"),
             ["samples"] = new JsonArray(Pose("a", "frame-a", 1, Matrix4x4.Identity, panel.Palette), Pose("b", "frame-b", 2, Matrix4x4.CreateScale(1, 1, 2), panel.Palette)),
         };
+        foreach (var sample in Manifest["samples"]!.AsArray())
+            sample!["palette"] = new JsonArray(Enumerable.Range(0, jointCount).Select(i => (JsonNode)Matrix(i < panel.Palette.Length ? panel.Palette[i] : Matrix4x4.Identity)).ToArray());
         Write();
     }
     internal void Write() => File.WriteAllText(ManifestPath, Manifest.ToJsonString());
@@ -119,9 +121,9 @@ internal sealed class CoverageBuildFiles : IDisposable
         { ["id"] = 23, ["equipmentInstanceId"] = 17, ["equipmentWorld"] = Matrix(equipment), ["coverageWorld"] = Matrix(equipment), ["transitionWeight"] = 1 }),
     };
     internal static JsonArray Matrix(Matrix4x4 m) => new(new float[] { m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24, m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44 }.Select(v => (JsonNode)JsonValue.Create(v)!).ToArray());
-    internal static byte[] Mesh(Vector3[] positions, uint[] indices, SkinnedVertex[]? skin)
+    internal static byte[] Mesh(Vector3[] positions, uint[] indices, SkinnedVertex[]? skin, int jointCount = 2)
     {
-        var fixture = new SkinnedAttachmentGlbFixture(jointCount: 2);
+        var fixture = new SkinnedAttachmentGlbFixture(jointCount: jointCount);
         var prim = fixture.Primitives[0]!.AsObject();
         prim["attributes"] = new JsonObject();
         Attribute("POSITION", "VEC3", positions.Select(p => new float[] { p.X, p.Y, p.Z }).ToArray());

@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace KhaozEngine.Render3D;
 
-/// <summary>Stable format 1 host coverage refusal reasons.</summary>
+/// <summary>Stable host coverage refusal reasons for JSON formats 1 and 2 and the in-memory map.</summary>
 public enum HostCoverageRefusal
 {
     /// <summary>The input is not one complete strict JSON value.</summary>
@@ -22,13 +22,13 @@ public enum HostCoverageRefusal
     /// <summary>A required member is absent.</summary>
     MissingMember,
 
-    /// <summary>A member is outside format 1.</summary>
+    /// <summary>A member is outside the document's format. <c>childRoles</c> exists only in format 2.</summary>
     UnknownMember,
 
     /// <summary>A member appears more than once, including escaped spellings.</summary>
     DuplicateMember,
 
-    /// <summary>Only format version 1 is supported.</summary>
+    /// <summary>Only format versions 1 and 2 are supported.</summary>
     UnsupportedVersion,
 
     /// <summary>A digest is not 64 lowercase hexadecimal characters.</summary>
@@ -204,7 +204,40 @@ public enum HostCoverageRefusal
     /// <summary>Coverage requires a live handle issued by this exact scene. HandleIndex and HandleGeneration identify it.</summary>
     HostHandleOwnershipMismatch,
 
+    /// <summary>A child role collection is empty or over its bound, a source triangle has more than 15 overridden cells,
+    /// or a map has more than 65536. Count and Limit identify the bound. RegionKey names the region except at map level and
+    /// in preflight over-limit refusals, where Path names the region by index.</summary>
+    ChildRoleCapacity,
 
+    /// <summary>A child role names a source triangle outside its region's ranges. RegionKey, the triangle ordinals and
+    /// Cell identify it.</summary>
+    ChildRoleOutsideRegion,
+
+    /// <summary>A child role level differs from its triangle's effective refinement level, which is 1 when no refinement
+    /// range names the triangle. RegionKey, the triangle ordinals and the declared Level identify it.</summary>
+    ChildRoleLevelMismatch,
+
+    /// <summary>A child role cell is outside <c>[0, level * level)</c>. RegionKey, the triangle ordinals, Level and Cell
+    /// identify it.</summary>
+    ChildRoleCell,
+
+    /// <summary>The same triangle and cell are overridden twice. RegionKey, the triangle ordinals and Cell identify it.</summary>
+    DuplicateChildRole,
+
+    /// <summary>A child role equals its parent range role. RegionKey, the triangle ordinals and Cell identify it.</summary>
+    ChildRoleSameAsParent,
+
+    /// <summary>Every cell of a source triangle is overridden, so the parent range role should change instead. RegionKey,
+    /// the triangle ordinals and Level identify it.</summary>
+    ChildRoleCoversTriangle,
+
+    /// <summary>A core child role's parent source triangle has a corner whose strength is not exactly 1. Every lattice
+    /// cell touches all three parent corners, so a cell's interpolated strength is 1 only when all three are. Identity,
+    /// RegionKey, SurfaceId of the first such corner in source order, the triangle ordinals, Level and Cell identify it.</summary>
+    ChildCoreStrength,
+
+    /// <summary>A format 2 document declares no child roles, so it must be written as format 1. FormatVersion holds 2.</summary>
+    UnnecessaryFormatVersion,
 }
 
 /// <summary>Structured malformed-data refusal for host coverage. Messages are developer prose.</summary>
@@ -262,6 +295,10 @@ public sealed class HostCoverageDataException : MalformedDataException
     public int? HandleIndex { get; init; }
     /// <summary>Generation of a refused coverage host handle.</summary>
     public int? HandleGeneration { get; init; }
+    /// <summary>Declared child role level.</summary>
+    public int? Level { get; init; }
+    /// <summary>Child cell index in <see cref="CoverageChildCells"/> numbering.</summary>
+    public int? Cell { get; init; }
 
     IReadOnlyList<int> missingMaterialSlices = Array.Empty<int>();
     /// <summary>Owned snapshot of every required but absent material slice, in ascending order.</summary>
@@ -290,6 +327,8 @@ public sealed class HostCoverageDataException : MalformedDataException
             MaterialSlice = MaterialSlice,
             HandleIndex = HandleIndex,
             HandleGeneration = HandleGeneration,
+            Level = Level,
+            Cell = Cell,
             MissingMaterialSlices = MissingMaterialSlices,
         };
 }

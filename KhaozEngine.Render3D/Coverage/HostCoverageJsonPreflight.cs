@@ -6,7 +6,7 @@ namespace KhaozEngine.Render3D;
 /// <summary>Validates the bounded schema before allocating a DOM or collecting entries.</summary>
 internal static class HostCoverageJsonPreflight
 {
-    enum Kind { Root, Topology, Region, Triangle, Strength, Refinement, Authoring, Number, String }
+    enum Kind { Root, Topology, Region, Triangle, Strength, Refinement, Authoring, ChildRole, Number, String }
 
     readonly record struct Member(int Slot, string? Name, Kind Type, int Limit = 0);
 
@@ -71,7 +71,14 @@ internal static class HostCoverageJsonPreflight
             if (count == member.Limit)
                 throw new HostCoverageDataException(CapacityReason(member.Name!), "Coverage array exceeds its capacity.")
                 { Path = path, Count = (long)count + 1, Limit = member.Limit };
-            Object(ref reader, member.Type, $"{path}[{count}]");
+            // A number array holds integers. Any other token would allocate a nested value the reader never uses.
+            if (member.Type == Kind.Number)
+            {
+                if (reader.TokenType != JsonTokenType.Number)
+                    throw new HostCoverageDataException(HostCoverageRefusal.InvalidInteger, "Expected a 32-bit integer.") { Path = $"{path}[{count}]" };
+            }
+            else
+                Object(ref reader, member.Type, $"{path}[{count}]");
             count++;
         }
     }
@@ -83,6 +90,7 @@ internal static class HostCoverageJsonPreflight
         "triangles" => HostCoverageRefusal.RegionTriangleCapacity,
         "strengths" => HostCoverageRefusal.StrengthCapacity,
         "refinement" => HostCoverageRefusal.RefinementRangeCapacity,
+        "childRoles" or "cells" => HostCoverageRefusal.ChildRoleCapacity,
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
@@ -110,6 +118,15 @@ internal static class HostCoverageJsonPreflight
                 if (reader.ValueTextEquals("key"u8)) return new(0, "key", Kind.String);
                 if (reader.ValueTextEquals("triangles"u8)) return new(1, "triangles", Kind.Triangle, HostCoverageMap.MaxTriangles);
                 if (reader.ValueTextEquals("strengths"u8)) return new(2, "strengths", Kind.Strength, HostCoverageMap.MaxSurfaceVertices);
+                if (reader.ValueTextEquals("childRoles"u8)) return new(3, "childRoles", Kind.ChildRole, HostCoverageMap.MaxTriangles);
+                break;
+            case Kind.ChildRole:
+                if (reader.ValueTextEquals("mesh"u8)) return new(0, "mesh", Kind.Number);
+                if (reader.ValueTextEquals("primitive"u8)) return new(1, "primitive", Kind.Number);
+                if (reader.ValueTextEquals("triangle"u8)) return new(2, "triangle", Kind.Number);
+                if (reader.ValueTextEquals("level"u8)) return new(3, "level", Kind.Number);
+                if (reader.ValueTextEquals("cells"u8)) return new(4, "cells", Kind.Number, HostCoverageMap.MaxChildCellsPerTriangle);
+                if (reader.ValueTextEquals("role"u8)) return new(5, "role", Kind.String);
                 break;
             case Kind.Strength:
                 if (reader.ValueTextEquals("surfaceId"u8)) return new(0, "surfaceId", Kind.Number);

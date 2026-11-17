@@ -138,14 +138,34 @@ public sealed class CoverageVerifyProcessTests
         File.Delete(files.EvidencePath);
         Assert.Equal(0, Program.Main(Args(files, "verify")));
         byte[] table = File.ReadAllBytes(files.TablePath), accepted = File.ReadAllBytes(files.EvidencePath);
+        // An old legacy root one byte over a reduced root bound is malformed resume admission.
         Assert.Equal(2, Program.Run(Args(files, "verify"), accepted.Length - 1));
         Assert.Equal(accepted, File.ReadAllBytes(files.EvidencePath));
+        Assert.Equal(table, File.ReadAllBytes(files.TablePath));
         File.WriteAllText(files.EvidencePath, "{");
         Assert.Equal(2, Program.Main(Args(files, "verify")));
         Assert.Equal(Encoding.UTF8.GetBytes("{"), File.ReadAllBytes(files.EvidencePath));
         Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        string text = Encoding.UTF8.GetString(accepted);
+        var wrongType = JsonNode.Parse(text)!;
+        wrongType["tableSha256"] = 7;
+        foreach (byte[] malformed in new[] { text.Insert(1, "\"formatVersion\":1,"), wrongType.ToJsonString() }.Select(Encoding.UTF8.GetBytes))
+        {
+            File.WriteAllBytes(files.EvidencePath, malformed);
+            Assert.Equal(2, Program.Main(Args(files, "verify")));
+            Assert.Equal(malformed, File.ReadAllBytes(files.EvidencePath));
+            Assert.Equal(table, File.ReadAllBytes(files.TablePath));
+        }
         File.WriteAllBytes(files.EvidencePath, accepted);
         Assert.Equal(0, Program.Run(Args(files, "verify"), accepted.Length));
+        Assert.Equal(accepted, File.ReadAllBytes(files.EvidencePath));
+        // Without an old root, the reduced bound partitions the complete dense document into a hashed set.
+        File.Delete(files.EvidencePath);
+        Assert.Equal(0, Program.Run(Args(files, "verify"), accepted.Length - 1));
+        Assert.InRange(new FileInfo(files.EvidencePath).Length, 1, accepted.Length - 1);
+        using (var read = CoverageArtifactReader.Open(files.EvidencePath, files.Folder))
+        using (var payload = read.OpenPayload()) Assert.Equal(accepted, CoverageArtifactFixture.Bytes(payload));
+        Assert.Equal(table, File.ReadAllBytes(files.TablePath));
     }
 
     [Fact]

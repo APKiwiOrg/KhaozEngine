@@ -2,77 +2,42 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tools.Coverage;
 
-/// <summary>Deterministic, bounded diagnostic lists with exact totals even when no item fits.</summary>
-internal sealed class CoverageDiagnosticDocument(string command, int exit, CoverageBuildInput input, string? tableSha256, string? refusal)
+/// <summary>Every collected diagnostic observation with exact category counts. Categories borrow bounded result
+/// inventories and are serialized once, in full, by <see cref="CoverageDiagnosticWriter"/>.</summary>
+internal sealed class CoverageDiagnosticDocument(string command, int exit, CoverageCampaign input, string? tableSha256, string? refusal,
+    string? resumedEvidenceSha256)
 {
-    static readonly string[] Names = ["domains", "samples", "candidates", "candidateEntries", "candidatePairs", "entries", "pairResults",
-        "selectedClaims", "holes", "selectedFailures", "replayFailures", "missingDenseWork", "changedRecordDepth", "inheritedDepth", "analysisRefusals", "runRefusals"];
-    static readonly JsonSerializerOptions Options = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower) },
-    };
-    readonly Dictionary<string, object[]> categories = new(StringComparer.Ordinal);
-    internal void Add<T>(string name, IEnumerable<T> values) => categories[name] = values.Cast<object>().ToArray();
+    readonly Dictionary<string, CoverageDiagnosticCategory> categories = new(StringComparer.Ordinal);
+    int refusedCandidates;
 
-    internal byte[] Write(int byteLimit)
-    {
-        var retained = Names.ToDictionary(n => n, _ => new List<byte[]>(), StringComparer.Ordinal);
-        foreach (string name in Names) categories.TryAdd(name, []);
-        // Reserve all metadata and exact omitted counts before admitting items. Omitted counts only shrink.
-        int remaining = byteLimit - Serialize(retained).Length;
-        bool full = false;
-        foreach (string name in Names)
-        {
-            foreach (object item in categories[name])
-            {
-                if (full) break;
-                byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(item, Options);
-                int cost = bytes.Length + (retained[name].Count == 0 ? 0 : 1);
-                if (cost > remaining) { full = true; break; }
-                retained[name].Add(bytes);
-                remaining -= cost;
-            }
-        }
-        return Serialize(retained);
-    }
+    internal string Command => command;
+    internal string Outcome => exit == 0 ? "accepted" : "refused";
+    internal string InputSha256 => input.InputSha256;
+    internal CoverageRecessionIdentity Identity => input.Identity;
+    internal string? TableSha256 => tableSha256;
+    internal string? Refusal => refusal;
+    internal string ToolCodeSha256 { get; } = CoverageBuildInputJson.CodeHash();
+    internal string Render3DCodeSha256 { get; } = CoverageBuildInputJson.Render3DCodeHash();
+    /// <summary>SHA-256 of the exact evidence root bytes that resume admission read, or null when none was read.</summary>
+    internal string? ResumedEvidenceSha256 => resumedEvidenceSha256;
 
-    byte[] Serialize(Dictionary<string, List<byte[]>> retained)
+    internal void Add<T>(string name, IReadOnlyCollection<T> values) => categories[name] = CoverageDiagnosticCategory.Of(values);
+    internal void Add(string name, CoverageDiagnosticCategory values) => categories[name] = values;
+    internal void AddCandidates(IReadOnlyCollection<CoverageCandidateDiagnostic> candidates)
     {
-        using var stream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(stream))
-        {
-            writer.WriteStartObject();
-            writer.WriteString("schema", "khaozengine.coverage-diagnostics/1");
-            writer.WriteString("scope", "diagnostic-not-acceptance");
-            writer.WriteString("command", command);
-            writer.WriteString("outcome", exit == 0 ? "accepted" : "refused");
-            writer.WriteString("inputSha256", input.InputSha256);
-            writer.WritePropertyName("identity"); JsonSerializer.Serialize(writer, input.Identity, Options);
-            writer.WriteString("tableSha256", tableSha256);
-            writer.WriteString("reason", refusal);
-            int findings = categories.GetValueOrDefault("holes", []).Length + categories.GetValueOrDefault("selectedFailures", []).Length
-                + categories.GetValueOrDefault("replayFailures", []).Length + categories.GetValueOrDefault("missingDenseWork", []).Length
-                + categories.GetValueOrDefault("analysisRefusals", []).Length + categories.GetValueOrDefault("runRefusals", []).Length
-                + categories.GetValueOrDefault("candidates", []).OfType<CoverageCandidateDiagnostic>().Count(c => c.Outcome == "refused");
-            writer.WriteNumber("findingCount", exit == 0 ? 0 : findings);
-            foreach (string name in Names)
-            {
-                writer.WritePropertyName(name);
-                writer.WriteStartObject();
-                writer.WriteNumber("total", categories.GetValueOrDefault(name, []).Length);
-                writer.WriteNumber("omitted", categories.GetValueOrDefault(name, []).Length - retained[name].Count);
-                writer.WriteStartArray("items");
-                foreach (byte[] item in retained[name]) writer.WriteRawValue(item, skipInputValidation: true);
-                writer.WriteEndArray(); writer.WriteEndObject();
-            }
-            writer.WriteEndObject();
-        }
-        return stream.ToArray();
+        Add("candidates", candidates);
+        refusedCandidates = candidates.Count(c => c.Outcome == "refused");
     }
+    internal CoverageDiagnosticCategory Category(string name) => categories.GetValueOrDefault(name, CoverageDiagnosticCategory.Empty);
+
+    /// <summary>Blocking findings of a refused run. An accepted run reports zero, whatever it observed.</summary>
+    internal long FindingCount => exit == 0 ? 0 : (long)Category("holes").Count + Category("selectedFailures").Count
+        + Category("replayFailures").Count + Category("missingDenseWork").Count + Category("analysisRefusals").Count
+        + Category("runRefusals").Count + refusedCandidates;
+
+    internal void WriteTo(Stream destination) => CoverageDiagnosticWriter.Write(destination, this);
 }

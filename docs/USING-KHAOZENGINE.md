@@ -7610,6 +7610,8 @@ See [equipment coverage](EQUIPMENT-COVERAGE.md) and the exact
 three fallback paths, slot ownership, partial-weight and whole-skin checks, allocation conditions and
 the blocking offline `verify` command. Sample verification is not a continuous proof. The native
 correctness and cost units have accepted evidence, which that guide records with its limits.
+A host map can end a core region inside a source triangle with child cell roles, described under
+[host coverage sidecars](../KhaozEngine.Render3D/README.md#host-coverage-sidecars) in the Render3D README.
 
 The verifier ships as the `KhaozEngine.Coverage.Tool` dotnet tool, command `ke-coverage`, from the same
 engine feed. Install the exact engine version, then record its engine and carry arithmetic contract
@@ -7621,11 +7623,20 @@ dotnet tool install --tool-path .tools KhaozEngine.Coverage.Tool --version "$KHA
 .tools/ke-coverage verify --manifest poses.json --table coverage.kert --evidence verified.json
 ```
 
-Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. All three
-commands accept optional `--diagnostics <path>` for schema `khaozengine.coverage-diagnostics/1`, scope
-`diagnostic-not-acceptance`. This separate bounded report retains exact finding and omission counts,
-including holes, candidate refusals, dense failures and changed-record versus inherited depth. It is
-never acceptance evidence and changes no acceptance gate or exit code. See the
+Set `KHAOZENGINE_VERSION` to that engine release. Existing outputs survive a refused run. Give each
+command its own evidence path. Resume compares every logical record, and build evidence holds candidate
+inventories that `verify-samples` never constructs, so reusing one path refuses with `ArtifactContentMismatch`
+and keeps both outputs. Manifest format 2 may reference exact binary32 poses in hashed KEPP chunks instead of
+inline matrices, which keeps large ordinary inventories within the 64 MiB manifest bound. Evidence above 64 MiB becomes a
+`khaozengine.coverage-evidence-set/1` index with hashed parts, never a truncated document. Archive the
+evidence root with its whole `.parts` directory, because resume and later reads verify every part. All three
+commands accept optional `--diagnostics <path>` for logical schema `khaozengine.coverage-diagnostics/2`,
+scope `diagnostic-not-acceptance`. This separate report exports every finding with no omissions,
+including holes, candidate refusals, dense failures and changed-record versus inherited depth, and names
+both producer hashes and the exact evidence root that resume read. A report above 64 MiB becomes a
+`khaozengine.coverage-diagnostics-set/1` index with hashed parts, so parse it through the strict artifact
+reader and keep its `.parts` directory with it. It is never acceptance evidence and changes no acceptance
+gate or exit code. It does not prove freshness for two identical invocations. See the
 [tool README](../tools/Coverage.Verify/README.md) for the schema, commands and publication rules.
 
 
@@ -9651,7 +9662,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.0.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10257,7 +10268,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.0.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11176,7 +11187,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.0.0" />
 ```
 
 ```csharp
@@ -21201,7 +21212,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.0.0" />
 ```
 
 ```csharp
@@ -21237,7 +21248,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.0.0" />
 ```
 
 ```csharp
@@ -21488,7 +21499,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="23.13.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.0.0" />
 ```
 
 ```csharp
@@ -26397,7 +26408,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="23.13.2" />
+  <PackageReference Include="KhaozEngine.Automation" Version="24.0.0" />
 </ItemGroup>
 ```
 

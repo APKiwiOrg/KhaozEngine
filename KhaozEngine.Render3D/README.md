@@ -1951,16 +1951,44 @@ SharpGLTF) are confined to this package via
 
 ## Host coverage sidecars
 
-`HostCoverageMapJson.Read(utf8, identity)` reads strict host coverage format 1. `HostCoverageMap`
+`HostCoverageMapJson.Read(utf8, identity)` reads strict host coverage format 1 or 2. `HostCoverageMap`
 owns the exact host GLB SHA-256, welded surface topology, region triangle roles and strengths,
 fixed refinement levels from 1 to 4, and authoring labels. It snapshots and canonically sorts its
 collections. Limits are 32 regions, 65536 source render vertices and 65536 referenced triangles.
 Regions are disjoint, and a surface may have positive strength in only one region. Source-dependent
 checks, including core and collar strength requirements, belong to the binding layer with the GLB.
 
-`Write(map)` emits canonical UTF-8 with fixed member order and normalized signed zero.
-`SemanticSha256(map)` hashes `KhaozEngine.HostCoverageMap/1\n` followed by the canonical bytes,
-independently of source whitespace, member order or array order.
+A region built with the `childRoles` overload holds `CoverageChildRole` overrides, exposed sorted by
+source triangle and cell as `ChildRoles`. Each gives the opposite of its parent range role to one cell
+of a triangle the region owns. `CoverageChildCells` is the only definition of cell numbering: a
+triangle at level `n` has `n * n` cells, and `Get(level, cell)` returns their corners as integer
+barycentric weights over 12 in the source corner order. A level must equal the triangle's effective
+refinement level, which is 1 when no refinement range names it. Overriding every cell of a triangle
+refuses, because the parent role should change instead, so a triangle takes at most 15 overrides and
+a region or map at most 65536. The rules refuse with `ChildRoleCapacity`, `ChildRoleOutsideRegion`,
+`ChildRoleLevelMismatch`, `ChildRoleCell`, `DuplicateChildRole`, `ChildRoleSameAsParent` and
+`ChildRoleCoversTriangle`, with the declared `Level` and `Cell` among their identifiers. The
+three argument constructor means no overrides.
+
+Format 2 is format 1 plus an optional region member `childRoles`, written after `strengths`. Each
+entry groups the cells of one source triangle:
+`{"mesh":0,"primitive":0,"triangle":2,"level":2,"cells":[1,2],"role":"core"}`. The reader accepts
+entries in any order and a triangle split over several entries, and refusal paths name the source
+entry and cell position, such as `$.regions[1].childRoles[0].cells[1]`. A well formed `childRoles`
+in a format 1 document refuses `UnknownMember`, and preflight bounds and shape checks on its contents run
+first. An empty `childRoles` or `cells` array refuses `ChildRoleCapacity`
+with `Count` 0, and preflight bounds a region at 65536 entries and an entry at 15 cells. A format 2
+document with no child roles refuses `UnnecessaryFormatVersion`, because it would write back as
+format 1. `FormatVersion` stays 1 and `ChildRolesFormatVersion` is 2.
+
+`Write(map)` emits canonical UTF-8 with fixed member order and normalized signed zero. It writes
+format 1 unless some region has child roles, and then format 2 with one `childRoles` entry per
+triangle in ascending order, cells ascending. `SemanticSha256(map)` hashes
+`KhaozEngine.HostCoverageMap/1\n` or, for format 2, `KhaozEngine.HostCoverageMap/2\n`, followed
+by the canonical bytes, independently of source whitespace, member order or array order. A map
+without child roles keeps its format 1 bytes and identity. A map with child roles has a different
+identity from the same map without them, so a recession table or equipment companion pinned to one
+does not bind to the other.
 
 `HostCoverageDataException` derives from `MalformedDataException` and exposes the public
 `HostCoverageRefusal Reason`, caller `Identity` and rooted JSON `Path`. Count refusals include
@@ -2006,6 +2034,17 @@ including protected vertices. Shared position groups use one canonical recipe. A
 `TryInterpolate` leaves its destination untouched and returns `CoverageFailure`. The checked
 `Interpolate` wrapper throws `CoverageInterpolationStateException` with the same `Failure` and
 public `Reason`, preserving its `InvalidOperationException` base.
+
+Each refined triangle starts as one cell of its source triangle's level lattice. `GetChildCell(t)`
+returns that origin cell in `CoverageChildCells` numbering. A conforming split from a finer
+neighbour cuts a cell into pieces, and every piece keeps its origin cell. A refined triangle takes
+its origin cell's child role when the region overrides that cell, and its parent range role
+otherwise. Overrides change only these role words. Vertices, indices, position recipes and edge
+splits are those of the same map without overrides, and a map without overrides keeps its
+refinement identity. Each source corner contributes nonzero barycentric weight to at least one vertex
+of every lattice cell, so a core cell has full interpolated strength only when all three corners have
+strength exactly 1. Binding refuses a core child role on any other parent with `ChildCoreStrength`,
+naming the region, the first such corner's `SurfaceId`, the triangle ordinals, `Level` and `Cell`.
 
 The internal headless `CoverageCarryReference.TryCarry` applies a selected recession table row to
 the current source-skinned, fixed-refinement surface. `CoverageCarryUniforms` composes inverse

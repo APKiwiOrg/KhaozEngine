@@ -34,6 +34,7 @@
     <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterTraceMemoComparison.cs" Link="Fixtures/WaterTraceMemoComparison.cs" />
     <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/TileWorldPhysicsTestData.cs" Link="Fixtures/TileWorldPhysicsTestData.cs" />
     <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/AllocSensitiveCollection.cs" Link="Fixtures/AllocSensitiveCollection.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/DefaultFloatingPointEnvironmentGuardTests.cs" Link="DefaultFloatingPointEnvironmentGuardTests.cs" />
     <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/*.Shared.cs" Link="Shared/%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

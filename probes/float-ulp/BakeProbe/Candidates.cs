@@ -84,32 +84,14 @@ struct OpaqueSteps : IStep
     public static bool AtLeastEpsilon(float x) => x >= BitConverter.UInt32BitsToSingle(OpaqueBits.s_positiveEpsilon);
 }
 
-// Candidate C: integer domain with the zero case taken from opaque storage, so a JIT-known zero argument
-// cannot fold the result either. The comparison is restated with a normal constant: x > 0 is x >= Epsilon.
+// Candidate C (recommended): integer domain with the zero case from opaque storage, so a JIT-known zero argument
+// cannot fold the result either. It delegates to the prototype file so the proof covers that exact source.
+// The comparison is restated with a normal constant: x > 0 is x >= Epsilon.
 struct HybridSteps : IStep
 {
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static float Down(float x)
-    {
-        uint bits = BitConverter.SingleToUInt32Bits(x);
-        uint next = bits + ((bits >> 31) << 1) - 1u;
-        bool keep = ((bits & 0x7FFFFFFFu) > 0x7F800000u) | (bits == 0xFF800000u);
-        uint result = keep ? bits : next;
-        return BitConverter.UInt32BitsToSingle(bits == 0 ? OpaqueBits.s_negativeEpsilon : result);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static float Up(float x)
-    {
-        uint bits = BitConverter.SingleToUInt32Bits(x);
-        uint next = bits + 1u - ((bits >> 31) << 1);
-        bool keep = ((bits & 0x7FFFFFFFu) > 0x7F800000u) | (bits == 0x7F800000u);
-        uint result = keep ? bits : next;
-        return BitConverter.UInt32BitsToSingle(bits == 0x80000000u ? OpaqueBits.s_positiveEpsilon : result);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool AtLeastEpsilon(float x) => x > 0f;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static float Down(float x) => KhaozEngine.Numerics.FloatUlp.Down(x);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static float Up(float x) => KhaozEngine.Numerics.FloatUlp.Up(x);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static bool AtLeastEpsilon(float x) => x > 0f;
 }
 
 static class ReadonlyBits

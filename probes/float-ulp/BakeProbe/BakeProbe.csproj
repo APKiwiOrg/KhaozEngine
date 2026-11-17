@@ -4,4 +4,7 @@
     <Optimize>true</Optimize>
     <TieredPGO>true</TieredPGO>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Prototype/FloatUlp.cs" Link="Prototype/FloatUlp.cs" />
+  </ItemGroup>
 </Project>

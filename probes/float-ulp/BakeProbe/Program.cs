@@ -36,6 +36,7 @@ static class Program
             $"osr-hit={Environment.GetEnvironmentVariable("DOTNET_OSR_HitLimit")}");
         RuntimeHelpers.RunClassConstructor(typeof(OpaqueBits).TypeHandle);
         RuntimeHelpers.RunClassConstructor(typeof(ReadonlyBits).TypeHandle);
+        RuntimeHelpers.RunClassConstructor(typeof(KhaozEngine.Numerics.FloatUlp).TypeHandle);
         FloatEnvironment.Save();
         Console.WriteLine($"# start controls=0x{FloatEnvironment.Current:X}");
         switch (args[0])

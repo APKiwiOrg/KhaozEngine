@@ -15,8 +15,8 @@ namespace KhaozEngine.Tests.Simulation;
 /// <summary>
 /// Where threads inherit their creator's controls, a fan-out that is the first thread pool use in a process creates
 /// the pool's threads from the calling thread. A Linux arm64 probe showed every pool thread then kept a caller's
-/// round toward zero after the caller was restored, while a pool that had already run work created its threads from
-/// its own threads and leaked nothing. So <see cref="ThreadPoolJobScheduler"/> makes its calling thread canonical for
+/// round toward zero after the caller was restored, while a pool that had already run work leaked nothing in the same
+/// probe. So <see cref="ThreadPoolJobScheduler"/> makes its calling thread canonical for
 /// the fan-out, and this test runs the fan-out in a child process whose pool is still cold.
 /// </summary>
 public sealed class ThreadPoolJobSchedulerPoolThreadTests

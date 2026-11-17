@@ -95,10 +95,12 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   folds with a subnormal operand or result, into zero. A directed rounding mode changes folded `float` and `double`
   arithmetic. Probes showed both for on-stack replacement and `AggressiveOptimization` on macOS arm64, Linux arm64
   and Linux x64 under Rosetta, and for tiered compilation off wherever the constant reaches the optimized compile.
-  Native x64 is inferred. Tier-0 compiles and tier-1 promotions changed nothing. A thread created under a changed
-  control can start with it, as on Linux arm64. There are two such
-  assemblies. `KhaozEngine.TileWorld.Physics.FloatingPoint.Tests` holds the water kernel's changed-control tests. It
-  is a corpus assembly that the water kernel differential job checks class by class, so it takes no other test.
+  Native x64 is inferred. Tier-0 compiles changed nothing. Tier-1 promotions changed nothing either, because
+  the background compiler thread had the default controls in those runs. One created from a thread with changed
+  controls would start with them on Linux (inferred). A thread created under a changed control can start with it, as
+  on Linux arm64. There are two such assemblies. `KhaozEngine.TileWorld.Physics.FloatingPoint.Tests` holds the water
+  kernel's changed-control tests. It is a corpus assembly that the water kernel differential job checks class by
+  class, so it takes no other test.
   `KhaozEngine.FloatingPoint.Tests` holds every other one: the determinism scope's tests that start from a changed
   rounding mode, the fan-out determinism tests and support proposal admission under changed controls. Only the
   floating point test assemblies compile the mode half of `WaterFloatingPointEnvironment` and the `FpPoke` rounding
@@ -108,17 +110,19 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   point test project whose directory holds a control-setting source, any other tracked file whose `Compile` item
   names one (props, targets and projitems included, in either quote style), and a floating point test project that
   does not compile the default-environment guard and its registration test. It reads a declaration split across
-  lines. A `Compile` path built on a property it cannot resolve is matched by the part after the property, so the
-  check widens rather than passes. What remains outside it: item lists and metadata in a `Compile` path are not
-  expanded, and machine code a test writes and runs itself is not recognised. CI runs it on every event, and the
-  pre-commit hook runs it when a C# or MSBuild file is staged. A class with both kinds of test keeps its name in both assemblies, its default tests in
-  one and its changed-control tests in the other, and a body or helper both need is one file linked into both. While
-  a control is changed, a test runs only the code under test, its reference evaluator and its assertions, writes no
+  lines. A `Compile` path built on a property it cannot resolve is matched by the part after the property, with
+  anything before it. What remains outside it: item lists, metadata and a raw `>` inside an attribute before
+  `Include` are not seen, so a link written that way can pass, a project's own `Compile Remove` is not honoured,
+  Markdown files are not read, and machine code a test writes and runs itself is not recognised. CI runs it on every
+  event, and the pre-commit hook runs it when a C#, `.csproj`, `.props`, `.targets` or `.projitems` file is staged.
+  A class with both kinds of test keeps its name in both assemblies, its default tests in one and its
+  changed-control tests in the other, and a body or helper both need is one file linked into both. While a control is
+  changed, a test runs only the code under test, its reference evaluator and its assertions, writes no
   test output and starts no thread or task of its own, then restores the control on the same thread. The scheduler
   fan-out test is the exception by design: it checks that the job scheduler enters the canonical scope on its
   workers, so it hands work to pool threads while the calling thread's rounding is changed. The scheduler also makes
-  its calling thread canonical for the fan-out, so a pool thread created for it starts canonical. Before it did, on
-  Linux arm64, a fan-out that was a process's first thread pool use left every pool thread with the caller's
+  its calling thread canonical for the fan-out, so a pool thread created for it starts canonical. Without that scope,
+  on Linux arm64, a fan-out that was a process's first thread pool use left every pool thread with the caller's
   rounding. A test host's pool has always run work, so `ThreadPoolJobSchedulerPoolThreadTests` runs that case in a
   child process of the test assembly, which has an entry point for that. `KhaozEngine.TileWorld.Physics.Tests`
   and both floating point test assemblies fail any test that starts or ends with a changed control, and the guard
@@ -364,7 +368,8 @@ Convention, instruction budget and doc-version checks run before both paths. See
 
 The whole-tree convention checks are `scripts/check-dashes.sh`, `scripts/check-prose.sh`,
 `scripts/check-file-size.sh`, `scripts/check-agent-instructions.sh`, `scripts/check-scratch.sh`,
-`scripts/check-home-paths.sh` and `scripts/check-fp-control-tests.sh`, each run with `--tree`. The pre-commit hook runs the staged checks.
+`scripts/check-home-paths.sh` and `scripts/check-fp-control-tests.sh`, each run with `--tree`. The pre-commit hook
+runs the staged checks.
 The home-path guard checks added staged lines by default and all tracked text with `--tree`, including
 escaped Windows paths and memory project identifiers. Use repo-relative paths, or `~/` for paths
 outside the repo. Generic `runner`, `Shared` and angle-bracket placeholder names pass. Exceptional

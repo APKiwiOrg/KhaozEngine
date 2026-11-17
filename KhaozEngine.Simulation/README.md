@@ -99,7 +99,7 @@ policy, and cancellation. A restart uses the configured day length and resets ti
   also runs inside a scope on the calling thread, so a pool thread created for it starts canonical rather than
   with the caller's controls, and the caller's controls are back when `For` returns. On Linux arm64, without it,
   a fan-out that was the process's first thread pool use, from a caller rounding toward zero, left every pool
-  thread rounding toward zero. Both scopes are allocation-free (one save plus one restore of that register per
-  slice, and one more pair per multi-job call) and nest harmlessly.
+  thread rounding toward zero. Both scopes are allocation-free (each saves the register, writes the canonical
+  state and restores the saved one, once per job and once more per multi-job call) and nest harmlessly.
 
 Part of the MMO netcode stack (sub-project 0B). Depends on `KhaozEngine.Determinism` and nothing else.

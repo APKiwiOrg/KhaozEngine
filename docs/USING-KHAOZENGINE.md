@@ -26364,7 +26364,9 @@ non-determinism that comes from JIT *codegen* differences:
     Linux x64 under Rosetta. With tiered compilation off they bake wherever the constant reaches the optimized
     compile: a constant in the method itself, or a step the JIT inlined. Plain tiering off left the BCL step
     out of line in every probe. With ReadyToRun also off, `MathF.BitDecrement` itself is compiled on its first
-    call and bakes for every caller in the process. Tier-0 compiles and tier-1 promotions changed nothing.
+    call and bakes for every caller in the process. Tier-0 compiles changed nothing. Tier-1 promotions changed
+    nothing either, because the background compiler thread had the default controls in those runs. One created from
+    a thread with changed controls would start with them on Linux (inferred).
     Native x64 is inferred, not shown: the x64 runs were emulated, and denormals-are-zero alone could not be
     set there.
   - A changed result was shown for collider bounds and tile ground extents, so a method first optimized on a
@@ -26374,7 +26376,7 @@ non-determinism that comes from JIT *codegen* differences:
   - A thread created under a changed control started with it on Linux arm64, for flush and for rounding toward
     zero. On macOS the flush bit was not inherited, and Rosetta could not show it. `ThreadPoolJobScheduler`
     makes its calling thread canonical for the length of a fan-out, so a pool thread created for it starts
-    canonical. Before it did, on Linux arm64, a fan-out that was the process's first thread pool use, from a
+    canonical. Without that scope, on Linux arm64, a fan-out that was the process's first thread pool use, from a
     caller rounding toward zero, left every pool thread rounding toward zero. Other pool work or threads you
     start from a thread with changed controls get no such scope from the engine.
 

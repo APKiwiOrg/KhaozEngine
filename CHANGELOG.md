@@ -113,8 +113,9 @@ as evidence.
   own controls are restored when it returns. Each job body still runs in its own scope, and a single job still
   runs inline in one. Before, on Linux arm64, a fan-out that was the process's first thread pool use, from a
   caller rounding toward zero, left every pool thread rounding toward zero after the call, for whatever code and
-  JIT compiles ran on them next. A pool that had already run work did not leak in the same probe. The cost is one
-  more save and restore of the control register per multi-job call
+  JIT compiles ran on them next. A pool that had already run work did not leak in the same probe. Each scope
+  saves the register, writes the canonical state and restores the saved one, once per job and once more per
+  multi-job call
   ([#1830](https://github.com/APKiwiOrg/KhaozEngine/issues/1830)).
 
 ## 23.13.1

@@ -49,9 +49,10 @@ public sealed class ThreadPoolJobScheduler : IJobScheduler
     /// run work leaked nothing in the same probe. The outer scope makes the calling thread canonical while the pool may
     /// create threads for this call. The scope around each body stays, because a worker that already existed can hold
     /// anything.</para>
-    /// <para>Both scopes are allocation-free. The cost is one save plus one restore of that register per slice, and
-    /// one more pair per call. They nest harmlessly: an outer scope (the shard host installs one around each cell
-    /// tick) is restored to exactly the canonical state the inner one found.</para>
+    /// <para>Both scopes are allocation-free. Each scope saves the register, writes the canonical state and
+    /// restores the saved one, once per job and once more per multi-job call. They nest harmlessly: an outer scope (the
+    /// shard host installs one around each cell tick) is restored to exactly the canonical state the inner one
+    /// found.</para>
     /// </remarks>
     public void For(int count, Action<int> body)
     {

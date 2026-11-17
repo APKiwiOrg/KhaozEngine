@@ -162,8 +162,9 @@ one flag, two interval vectors and six interval multipliers, for a 563,200-byte 
 Construction allocates 566,472 bytes on .NET 10 arm64 including keys, references, the generation and array headers.
 Internal diagnostics snapshot each trace's published, borrowed, duplicate, exhausted, lent, missed, nested,
 unsupported and bypassed parents with copied, freshly projected and stale-rejected face bases. Counters reset after
-each snapshot, so a stale source used between traces is reported with the next one. Sharing filled prefix plane and clip terms was not
-built because its gain over projection sharing stayed inside the measured repeat floor on both moving histories.
+each snapshot, so a stale source used between traces is reported with the next one. Sharing filled prefix plane and
+clip terms was not built because its gain over projection sharing stayed inside the measured repeat floor on both
+moving histories.
 Skipping a parent-certified rejecting prefix also stays research: its increment resolved only on one history and
 needs its own exact-window certificate. A specialized fixed-arity clip evaluator measured slower and is not built.
 Trace coverage uses water prisms bounded by those triangles and clipped at the body's free surface, including

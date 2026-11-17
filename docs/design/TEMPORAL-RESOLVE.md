@@ -762,18 +762,25 @@ probe's count before that probe supplies a gate study.
 The followed-object trail, stop, phase and long-hold protocols and recorded shading/detail controls
 run in Fine as Diagnostic reports. Sharper history can move those control comparisons. Their reports
 print Display, Fine and the existing limit without assigning a new recorded limit to Fine. The
-Diagnostic gate study compares the original gate, untrusted-history-only admission, that admission
-with the lock rule (L), that admission with followed/band marks (M), and the original gate plus clip,
-visibility-release and reactive observations. Every variant retains the still epsilon. These
+Diagnostic gate study compares the original gate (`TemporalDetailGate.Original`: untrusted history and the
+followed and band marks, with the lock rule), untrusted-history-only admission (`Narrower`), that admission
+with the lock rule (L, `Production`), that admission with followed/band marks (M, `MarksOnly`), and the
+original gate plus clip, visibility-release and reactive observations (`Wider`). Every variant retains the
+still epsilon. These
 interventions use the renderer's test source seam and expose no production switch.
 `KE_TEMPORAL_DETAIL_TEST_GATE` selects a gate for asserting test processes, and
 `KE_TEMPORAL_DETAIL_REPORT_GATES` selects Diagnostic rows without repeating earlier captures.
 
 The production gate is L. It passed all 347 focused Metal cases, including the restored live shadow
-contracts, jitter-only thin detail, cold still identity and the stored mean. The Native and Quality
+contracts, jitter-only thin detail, cold still identity and the stored mean (Apple M2 Max, MetalNative,
+2026-11-15 UTC). The Native and Quality
 report-only cells select it by the fewest new crossings of existing limits among admissible gates.
 A new crossing means Display meets that row's old inequality and Fine does not. Fixed is the reverse.
-The inequality's recorded direction is used explicitly.
+The inequality's recorded direction is used explicitly. The five rows were measured on an Apple M2 Max
+with MetalNative on 2026-11-15 UTC, 5,134 report records and 2,416 bounded Native and Quality cells a gate.
+The study ran again for `Original` and `Production` on 2026-11-17 UTC and reproduced both rows: every L
+record identical, every original-gate record identical but one follow-stop value that moved by 0.00016 on
+the same side of its bound.
 
 | Gate | New crossings | Fixed crossings | New direct follow-stop crossings | Admissibility |
 | --- | --- | --- | --- | --- |

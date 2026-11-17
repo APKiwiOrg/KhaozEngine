@@ -6,7 +6,9 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public enum TemporalDetailGate { Production, Narrower, Wider, LockOnly, MarksOnly }
+// Original is the first production gate: it also distrusted the followed and band marks (mask 3) and kept the lock
+// rule, so the gate study can regenerate that gate's row.
+public enum TemporalDetailGate { Production, Narrower, Wider, Original, MarksOnly }
 
 /// <summary>Diagnostic interventions in the test source seam. The shipped gate and setting stay unchanged.</summary>
 internal static class TemporalDetailGateVariants
@@ -35,8 +37,8 @@ internal static class TemporalDetailGateVariants
             TemporalDetailGate.Narrower => TemporalDetailMath.GateGlsl
                 .Replace($"const uint distrustMask = {TemporalDetailMath.DistrustMask}u;", "const uint distrustMask = 1u;", StringComparison.Ordinal)
                 .Replace(" && !(locked && motion <= ShimmerStillPixels)", "", StringComparison.Ordinal),
-            TemporalDetailGate.LockOnly => TemporalDetailMath.GateGlsl
-                .Replace($"const uint distrustMask = {TemporalDetailMath.DistrustMask}u;", "const uint distrustMask = 1u;", StringComparison.Ordinal),
+            TemporalDetailGate.Original => TemporalDetailMath.GateGlsl
+                .Replace($"const uint distrustMask = {TemporalDetailMath.DistrustMask}u;", "const uint distrustMask = 3u;", StringComparison.Ordinal),
             TemporalDetailGate.MarksOnly => TemporalDetailMath.GateGlsl
                 .Replace($"const uint distrustMask = {TemporalDetailMath.DistrustMask}u;", "const uint distrustMask = 3u;", StringComparison.Ordinal)
                 .Replace(" && !(locked && motion <= ShimmerStillPixels)", "", StringComparison.Ordinal),

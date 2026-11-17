@@ -13,8 +13,7 @@ internal static partial class TemporalReviewBaseline
         bool found = kind == "rim" ? TemporalShadowFilterBaseline.TryGetValue(TemporalDeviceClass.Name, name, out before)
             : Before.TryGetValue((TemporalDeviceClass.Name, kind, name), out before);
         if (!found) throw new InvalidOperationException("The diagnostic cell has no existing control.");
-        return new((before.Error + Rounding) * (1 + Tolerance),
-            kind == "diagonal" ? (before.Change + Rounding) * (1 + Tolerance) : null,
-            (before.Temporal + Rounding) * (1 + Tolerance), before.Reference, 2 * Rounding);
+        return new(Limit(before.Error), kind == "diagonal" ? Limit(before.Change) : null, Limit(before.Temporal),
+            before.Reference, ReferenceTolerance);
     }
 }

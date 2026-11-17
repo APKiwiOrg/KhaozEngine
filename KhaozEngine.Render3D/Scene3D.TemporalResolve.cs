@@ -288,6 +288,10 @@ namespace KhaozEngine.Render3D
             bool postSafe = postReleased || _temporalPost?.DisposalSafeForDependants == true;
             if (postReleased) _temporalPost = null;
             // The resolve's sets borrow history targets. Keep those targets if that owner retains its sets.
+            // The resolve also owns the layouts the detail store's sets and pipelines were built over, and it goes
+            // first. That is safe on every backend: a layout's Dispose only marks it (Vulkan's set layout handles
+            // live in a device cache until teardown), it is checked only when a set or pipeline is created from it,
+            // and releasing what was built over it reads nothing of it.
             bool resolveReleased = postSafe && disposal.Release("temporal.resolve", () => _temporalResolve?.Dispose());
             if (resolveReleased) _temporalResolve = null;
             if (disposal.Release("temporal.laterPost", () => _laterRenderPost?.Dispose())) _laterRenderPost = null;

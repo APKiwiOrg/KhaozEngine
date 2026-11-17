@@ -454,26 +454,21 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
   latched on the frame's first render. Fine requires the temporal resolve, six colour attachments, a fitting
   device texture dimension,
-  and a display pixel count within `Post.Temporal.HistoryDetailPixelLimit` (default 3,686,400). The pair uses
-  225 MiB at 2560 by 1440. The resolve computes the four children once from its float32 mean and fetches,
-  writing them beside R and state into six attachments. Classification checks validity without colour
-  accumulation. The resolve checks a slow candidate's own lock before choosing the history fetch, then accumulates once.
-  The fine-grid pass point-loads its child by parity.
-  Resolve, debug views and counts run one checked program in every certificate state. A certified variant
-  would read the shared accumulation's float32 values as some compilers round them differently per program,
-  and the stored detail amplifies that.
-  R8 trust classification and four RGBA16F child targets add 116.02 MiB, for 341.02 MiB of mode-specific
-  target payload (97 bytes a display pixel). Mean and chosen UV remain float32 locals. Rounding the mean
-  would change stored detail on every frame.
+  and a display pixel count within `Post.Temporal.HistoryDetailPixelLimit` (default 3,686,400). At the default
+  budget's 2560 by 1440 it adds 341.02 MiB of mode-specific targets (97 bytes a display pixel): 225 MiB for the
+  pair and 116.02 MiB of display-grid scratch.
   At 3840 by 2160 the pair alone would use 506.25 MiB and falls back to Display by default.
   Nonpositive budgets disable Fine and unknown enum values mean Display. A mode change resets history once
   with `TemporalResetReason.HistoryDetail`. Later renders and captures leave the pair untouched.
-  The 2026-11-16 UTC M2 Max Metal moving-thin-field capture at 1440p reports summed Fine passes at
-  11.477 ms Native and 11.609 ms Quality for the fully-lit scene, and
-  11.994 ms Native and 11.894 ms Quality for the shadowed scene.
-  Fine runs its checked program on both scenes. Game frames with sun shadows take the path measured by the
-  shadowed scene. Each case used four warm and eight measured frames on a shared machine.
-  Both report-only cost targets remain unmet. See the [pass table and limits](../docs/design/TEMPORAL-RESOLVE.md#cost-capture).
+  A failure to allocate the admitted pair or its scratch is not a fallback. It throws from the render as a
+  failure of the display-sized history does, the mode stays Fine, and each later frame retries until it
+  succeeds or the setting or the display size changes.
+  Fine costs about 7.6 to 8.3 ms more GPU time a frame than the default split resolve at 1440p, Native and
+  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), three to three and a half times the
+  default resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
+  report-only aim, Fine within 3 ms of the default split resolve at Native, is not met.
+  The passes, their measured times and the precision reasons for their structure are in the
+  [resolve design](../docs/design/TEMPORAL-RESOLVE.md#cost-capture).
   Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent
   writers preserve it and cutout/dissolve discards expose the receiver below. Depth-qualified current/history
   means use relative tolerance 0.02 and finite reference/sample depths. A stored R8 difference strictly above 0.1

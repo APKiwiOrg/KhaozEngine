@@ -155,6 +155,13 @@ at least six `GpuCapabilities.MaxColorAttachments`, an extent within
 `Post.Temporal.HistoryDetailPixelLimit`. Unknown device limits refuse Fine. The pixel budget defaults to
 3,686,400, so 2560 by 1440 is admitted and 3840 by 2160 falls back to Display. The additional pair costs
 225 MiB and 506.25 MiB respectively. Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
+A failure to allocate the admitted pair or its scratch is not a fallback. The pair is created in
+`TemporalHistory.EnsureTargets` and the scratch with the fine pass when the resolve binds, and either failure
+throws from the render, as a failure of the display-sized history does. The latch still reads Fine, so each
+later frame retries: a history whose pair failed has no recorded display size and is released and rebuilt,
+and a store without its pass builds it again. That continues until an allocation succeeds or the setting or the
+display size changes. Catching the failure and latching Display with its own reason would be a behaviour change
+with its own fact.
 
 Fine computes validity on the display grid, resolves on that grid, and stores the fine grid immediately
 afterward, before distortion, bloom or tonemapping. It presents the resolve's R directly. There is no new
@@ -259,13 +266,15 @@ A pixel goes coarse for any of these reasons:
   jitter-only thin-detail contract on slowly moving locked coverage. Removing this rule fails four Native
   Fine rows in `JitterOnlyVisibilityDoesNotReleaseThinDetail`.
 
-Followed and band marks do not reject otherwise valid fine colour history. In the measured damped stop,
-the original mark rule sends all 114 inner pixels coarse on the turn frame. The largest error margin,
-0.23997294, arrives one frame later while every inner pixel is fine again. Retaining the lock rule and
-removing mark rejection reduces that margin to 0.00607964, against Display's 0.00915282 and the existing
-report-only control margin 0.01. Locks first send 54 of 120 inner pixels coarse at frame +6. These counts
-come from the live classifier and match the live transport flags exactly, so the earlier mark rejection
-is observable rather than inferred from the later error. Existing resolve rules still consume the marks.
+Followed and band marks do not reject otherwise valid fine colour history. In the measured damped stop
+(Native, perspective Away at pitch 0.35, one display pixel a frame, Apple M2 Max with MetalNative, 2026-11-15
+UTC, every figure below measured again with the same value on 2026-11-17 UTC), the original mark rule sends
+all 114 inner pixels coarse on the turn frame. The largest error margin, 0.23997294, arrives one frame later
+while every inner pixel is fine again. Retaining the lock rule and removing mark rejection reduces that margin
+to 0.00607964, against Display's 0.00915282 and the existing report-only control margin 0.01. Locks first send
+54 of 120 inner pixels coarse at frame +6. These counts come from the live classifier and match the live
+transport flags exactly, so the earlier mark rejection is observable rather than inferred from the later
+error. Existing resolve rules still consume the marks.
 
 Variance clipping, a visibility release and reactive state do not independently force coarse. They retain
 their original effects on R, the current weight and state.
@@ -461,7 +470,7 @@ Fully-lit Native's median of each frame's summed Fine intervals is 11.477 ms (10
 Fully-lit Quality's median of each frame's summed Fine intervals is 11.609 ms (11.353 to 11.743), against default split's 3.339 ms. The difference is 8.270 ms.
 Shadowed Native's median of each frame's summed Fine intervals is 11.994 ms (11.853 to 12.338), against default split's 4.155 ms. The difference is 7.840 ms.
 Shadowed Quality's median of each frame's summed Fine intervals is 11.894 ms (11.739 to 12.292), against default split's 4.179 ms. The difference is 7.715 ms.
-The report-only aim is Fine within 3 ms of default split at Native. No timing assertion is added.
+The report-only aim is Fine within 3 ms of default split at Native. It is not met. No timing assertion is added.
 
 Payload remains 64 retained and 33 scratch bytes a display pixel: a fine RGBA16F pair, one R8
 classification target and four display-grid RGBA16F child targets. At 1440p these are 225.00 MiB and

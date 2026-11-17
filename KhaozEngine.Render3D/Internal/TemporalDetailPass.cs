@@ -51,12 +51,11 @@ internal sealed class TemporalDetailPass
             _updateShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, Fragment(ShaderSources.TemporalDetailUpdateFrag));
             _classifyPipeline = TemporalResolveRenderer.Fullscreen(f, _classifyShaders,
                 [resolveLayout, _classifyLayout], _classificationFrame.Outputs);
-            GpuPixelFormat[] outputs = _transport is null
-                ? [TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence, TemporalFormats.HistoryColor,
-                    TemporalFormats.HistoryColor, TemporalFormats.HistoryColor, TemporalFormats.HistoryColor]
-                : [TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence, TemporalFormats.HistoryColor,
-                    TemporalFormats.HistoryColor, TemporalFormats.HistoryColor, TemporalFormats.HistoryColor,
-                    GpuPixelFormat.R32G32B32A32Float];
+            // R, state and the four children, then the test-only transport after them.
+            var outputs = new GpuPixelFormat[TemporalDetailMath.ResolveAttachments + (_transport is null ? 0 : 1)];
+            Array.Fill(outputs, TemporalFormats.HistoryColor);
+            outputs[1] = TemporalFormats.HistoryConfidence;
+            if (_transport is not null) outputs[^1] = GpuPixelFormat.R32G32B32A32Float;
             _resolvePipeline = TemporalResolveRenderer.Fullscreen(f, _resolveShaders, [resolveLayout, _fineLayout],
                 new GpuOutputDescription(null, outputs));
             _updatePipeline = TemporalResolveRenderer.Fullscreen(f, _updateShaders, _updateLayout,
@@ -66,9 +65,11 @@ internal sealed class TemporalDetailPass
                 _classifySets[write] = f.CreateResourceSet(new GpuResourceSetDescription(_classifyLayout, store.Color(1 - write)));
                 _fineSets[write] = f.CreateResourceSet(new GpuResourceSetDescription(_fineLayout,
                     store.Color(1 - write), _classification));
-                IGpuTexture[] targets = _transport is null
-                    ? [history.Color(write), history.Confidence(write), _children[0]!, _children[1]!, _children[2]!, _children[3]!]
-                    : [history.Color(write), history.Confidence(write), _children[0]!, _children[1]!, _children[2]!, _children[3]!, _transport];
+                var targets = new IGpuTexture[outputs.Length];
+                targets[0] = history.Color(write);
+                targets[1] = history.Confidence(write);
+                for (int child = 0; child < 4; child++) targets[2 + child] = _children[child]!;
+                if (_transport is not null) targets[^1] = _transport;
                 _resolveFrames[write] = f.CreateFramebuffer(null, targets);
                 _updateFrames[write] = f.CreateFramebuffer(null, store.Color(write));
                 _updateSets[write] = f.CreateResourceSet(new GpuResourceSetDescription(_updateLayout,

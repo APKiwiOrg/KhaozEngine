@@ -49,7 +49,8 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 
         /// <summary><c>MTLPixelFormatRGBA16Float</c>: the HDR internal colour target.</summary>
         RGBA16Float = 115,
-        /// <summary><c>MTLPixelFormatRGBA32Float</c>: lossless temporal pass exports.</summary>
+        /// <summary><c>MTLPixelFormatRGBA32Float</c>: four 32-bit float channels. Filterable only where the device
+        /// reports <c>supports32BitFloatFiltering</c>.</summary>
         RGBA32Float = 125,
 
         /// <summary><c>MTLPixelFormatDepth32Float</c>: what <see cref="GpuPixelFormat.R32Float"/> becomes on a

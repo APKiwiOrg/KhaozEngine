@@ -4944,31 +4944,29 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   asserted. On the software rasterizers they follow the rules Display's own program pairs keep there:
   on llvmpipe the entry pair's rules for colour and the shimmer record, on WARP the certificate rule on a fully
   lit certified frame. There is no new presentation filter. The update runs before distortion, bloom and
-  tonemapping. The resolve computes all four children once, retaining the mean and reprojection in float32
-  locals, and writes R, state and four RGBA16F children. The fine-grid pass point-loads the child selected
-  by texel parity. Classification computes validity without colour accumulation. The resolve checks its
-  own slow candidate lock before choosing the fetch and accumulating once. Display-sized scratch holds R8 validity and
-  the four child targets. Resolve, debug views and counts run one checked program in every certificate
-  state, with no certified variant, while Fine retains its fused entry. The temporal
+  tonemapping. The temporal
   resolve must be active, the device must allow at least six colour attachments, the extent must fit the
   device's 2D render texture dimension limit, and the display's
   pixel count must fit the inclusive `Post.Temporal.HistoryDetailPixelLimit`. That budget defaults to 3,686,400,
-  admitting 2560 by 1440 with 225 MiB for the extra pair and 116.02 MiB of scratch, 341.02 MiB total
+  admitting 2560 by 1440 with 225 MiB for the extra pair and 116.02 MiB of display-grid scratch, 341.02 MiB total
   (97 bytes a display pixel, excluding ordinary Display targets and driver overhead).
   A 3840 by 2160 pair alone would need 506.25 MiB and
   falls back to Display by default. Nonpositive budgets disable Fine and unknown enum values mean Display.
+  A failure to allocate the admitted pair or its scratch is not a fallback. It throws from the render as a
+  failure of the display-sized history does, the mode stays Fine, and each later frame retries until it
+  succeeds or the setting or the display size changes.
   Read `Scene3D.TemporalHistoryDetailInEffect` for the selection latched by the last frame's first render,
   Display before rendering. A change of that selection resets history for one frame with
   `TemporalResetReason.HistoryDetail`. A settings change within the frame waits for the next frame.
   Resizes recreate the pair with history, and cuts and other resets re-seed its write side. A later render
   inside the frame, including an offscreen capture, neither reads nor advances it.
   Temporal debug views and on-request counts replay the selected mode's own history fetch and trust gate.
-  The 2026-11-16 UTC M2 Max Metal moving-thin-field capture at 1440p reports summed Fine passes at
-  11.477 ms Native and 11.609 ms Quality for the fully-lit scene, and
-  11.994 ms Native and 11.894 ms Quality for the shadowed scene.
-  Fine runs its checked program on both scenes. Game frames with sun shadows take the path measured by the
-  shadowed scene. Each case used four warm and eight measured frames on a shared machine.
-  Both report-only cost targets remain unmet. See the [pass table and limits](design/TEMPORAL-RESOLVE.md#cost-capture).
+  Fine costs about 7.6 to 8.3 ms more GPU time a frame than the default split resolve at 1440p, Native and
+  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), three to three and a half times the
+  default resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
+  report-only aim, Fine within 3 ms of the default split resolve at Native, is not met. The passes, their
+  measured times and the precision reasons for their structure are in the
+  [resolve design](design/TEMPORAL-RESOLVE.md#cost-capture).
 - **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.
   `Post.Temporal.Sharpness` runs from 0 (the pass does not run) to 1, default 0.25, and a value outside that range is
   clamped. It limits each pixel by its four neighbours, so it leaves an edge already at full contrast alone and

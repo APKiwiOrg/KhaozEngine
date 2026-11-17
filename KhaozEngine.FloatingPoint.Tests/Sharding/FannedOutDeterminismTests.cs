@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
@@ -16,13 +19,13 @@ namespace KhaozEngine.Tests.Sharding;
 /// thread. Without a scope at the scheduling boundary the register is whatever the pool last left it at, and two
 /// servers - or two runs on one machine - can silently diverge in the low bits over thousands of ticks.
 /// <para>These tests observe the rounding mode from INSIDE the fanned-out body, which is the only place the claim
-/// can actually be checked. They never set a control on a thread-pool thread themselves: the corruption is always on
-/// the calling thread and always restored in a finally, mirroring the discipline in
-/// <c>DeterministicFpHarnessTests</c>. The scheduler test still hands work to the pool while the calling thread's
-/// rounding is changed. On Linux arm64 a probe showed pool threads created by such a fan-out start with that rounding
-/// and keep it after the caller is restored, so a later test that runs on one starts with a changed control. That,
-/// and the engine tick code the shard host test runs under the changed mode, is why this class runs in
-/// KhaozEngine.FloatingPoint.Tests, whose guard fails any test that starts on such a thread.</para>
+/// can actually be checked, and on the pool afterwards. They never set a control on a thread-pool thread themselves:
+/// the corruption is always on the calling thread and always restored in a finally, mirroring the discipline in
+/// <c>DeterministicFpHarnessTests</c>. The scheduler makes its calling thread canonical for the length of the
+/// fan-out, so a pool thread created for it does not start with the caller's rounding, which on Linux arm64 it
+/// otherwise did and kept after the caller was restored. The shard host test runs engine tick code inline under the
+/// changed mode. Both are why this class runs in KhaozEngine.FloatingPoint.Tests, whose guard fails any test that
+/// starts or ends with a changed control.</para>
 /// </summary>
 public class FannedOutDeterminismTests
 {
@@ -54,6 +57,46 @@ public class FannedOutDeterminismTests
         {
             FpRounding.SetToNearest();
         }
+    }
+
+    // Every body waits until all have started, so the fan-out needs a thread per job and the pool grows while the
+    // caller rounds toward zero. Then plain pool work, outside any scope, reads the rounding on every pool thread.
+    // macOS threads did not inherit their creator's controls, so this passes there with or without the scheduler's
+    // outer scope.
+    [Fact]
+    public async Task ThreadPoolJobScheduler_leaves_the_pool_threads_it_creates_at_the_default_rounding()
+    {
+        if (!IsFpObservable) return;
+
+        int jobs = Environment.ProcessorCount + 2;
+        try
+        {
+            FpRounding.SetTowardZero();
+            using var started = new CountdownEvent(jobs);
+            new ThreadPoolJobScheduler().For(jobs, _ => { started.Signal(); started.Wait(); });
+        }
+        finally
+        {
+            FpRounding.SetToNearest();
+        }
+
+        // One blocking item per pool thread, so each idle pool thread, including those just created, takes one.
+        int probes = ThreadPool.ThreadCount;
+        var observed = new ConcurrentDictionary<int, int>();
+        using (var all = new CountdownEvent(probes))
+        {
+            Task[] work = new Task[probes];
+            for (int i = 0; i < probes; i++)
+                work[i] = Task.Run(() =>
+                {
+                    observed[Environment.CurrentManagedThreadId] = FpRounding.Get();
+                    all.Signal();
+                    all.Wait();
+                });
+            await Task.WhenAll(work);
+        }
+        Assert.NotEmpty(observed);
+        Assert.All(observed.Values, r => Assert.Equal(FpRounding.ToNearest, r));
     }
 
     [Fact]

@@ -30,11 +30,14 @@ import() { printf '[DllImport("libm.so.6", EntryPoint = %s%s%s)] static extern i
 CORE=KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterFloatingPointEnvironment.cs
 MODES=KhaozEngine.TileWorld.Physics.FloatingPoint.Tests/Fixtures/WaterFloatingPointEnvironment.Modes.cs
 POKE=KhaozEngine.FloatingPoint.Tests/Fixtures/FpPoke.cs
+GUARD_ATTRIBUTE=KhaozEngine.TileWorld.Physics.Tests/Fixtures/DefaultFloatingPointEnvironmentAttribute.cs
+GUARD_TEST=KhaozEngine.TileWorld.Physics.Tests/DefaultFloatingPointEnvironmentGuardTests.cs
 project() { put "$1" "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup>$2</ItemGroup></Project>"; }
 link() { printf '<Compile Include="%s" Link="L/%s" />' "$1" "$(basename -- "$1")"; }
 
 # The real layout in miniature: both production setters, the core half, the mode half in the water floating point
-# assembly, the rounding poke in the other one, and default projects that link the core half.
+# assembly, the rounding poke in the other one, default projects that link the core half, and floating point projects
+# that link the default-environment guard and its registration test.
 fresh() {
   case_no=$((case_no+1))
   mkdir "$TMPROOT/case$case_no"
@@ -45,10 +48,13 @@ fresh() {
   put "$CORE" "internal sealed partial class WaterFloatingPointEnvironment { $(import "$set_env") }"
   put "$MODES" 'internal sealed partial class WaterFloatingPointEnvironment { }'
   put "$POKE" "$(import "$set_round")"
+  put "$GUARD_ATTRIBUTE" 'public sealed class DefaultFloatingPointEnvironmentAttribute { }'
+  put "$GUARD_TEST" 'public sealed class DefaultFloatingPointEnvironmentGuardTests { }'
+  guard="$(link "../$GUARD_ATTRIBUTE")$(link "../$GUARD_TEST")"
   project KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj ''
   project KhaozEngine.TileWorld.Physics.FloatingPoint.Tests/KhaozEngine.TileWorld.Physics.FloatingPoint.Tests.csproj \
-    "$(link "../$CORE")"
-  project KhaozEngine.FloatingPoint.Tests/KhaozEngine.FloatingPoint.Tests.csproj "$(link "../$CORE")$(link "../$MODES")"
+    "$(link "../$CORE")$guard"
+  project KhaozEngine.FloatingPoint.Tests/KhaozEngine.FloatingPoint.Tests.csproj "$(link "../$CORE")$(link "../$MODES")$guard"
   project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj "$(link "../$CORE")"
   put KhaozEngine.Game.Tests/Physics/Reader.cs '[DllImport("libm.so.6", EntryPoint = "fegetenv")] static extern int Get(ref long env);'
   git add -A
@@ -103,6 +109,25 @@ run --tree; said "test-shared/Modes.props: compiles $MODES"; check props_link 1
 fresh; put KhaozEngine.FloatingPoint.Tests/KhaozEngine.FloatingPoint.Tests.csproj \
   "<Project><PropertyGroup><AssemblyName>KhaozEngine.Other.Tests</AssemblyName></PropertyGroup><ItemGroup>$(link "../$MODES")</ItemGroup></Project>"
 stage; run --tree; said "compiles $MODES"; check renamed_assembly 1
+
+# Forms that cannot be resolved or that split a declaration still fail.
+fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj \
+  '<PropertyGroup><Root>..</Root></PropertyGroup><Compile Include="$(Root)/KhaozEngine.FloatingPoint.Tests/Fixtures/FpPoke.cs" />'
+stage; run --tree; said "compiles $POKE"; check custom_property_link 1
+fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj "<Compile Include='../$MODES' />"; stage
+run --tree; said "compiles $MODES"; check single_quoted_link 1
+fresh; put test-shared/Fp.projitems "<Project><ItemGroup><Compile Include=\"\$(MSBuildThisFileDirectory)../$MODES\" /></ItemGroup></Project>"
+stage; run --tree; said "test-shared/Fp.projitems: compiles $MODES"; check projitems_link 1
+fresh; printf '[DllImport("libm.so.6")]\nstatic extern int\n%s(int mode);\n' "$set_round" > KhaozEngine.Game.Tests/Split.cs; stage
+run --tree; said 'KhaozEngine.Game.Tests/Split.cs: declares a native floating point control setter'; check split_import 1
+fresh; printf 'internal sealed partial\nclass WaterFloatingPointEnvironment { }\n' > KhaozEngine.Game.Tests/Split.cs; stage
+run --tree; said 'KhaozEngine.Game.Tests/Split.cs: a WaterFloatingPointEnvironment half outside'; check split_half 1
+fresh; put KhaozEngine.Game.Tests/Bsd.cs "[DllImport(\"libc\")] static extern int fp$(printf setround)(int mode);"; stage
+run --tree; said 'KhaozEngine.Game.Tests/Bsd.cs'; check bsd_setter_name 1
+# A floating point test project must carry the default-environment guard and its registration test.
+fresh; project KhaozEngine.Render.FloatingPoint.Tests/KhaozEngine.Render.FloatingPoint.Tests.csproj "$(link "../$MODES")"; stage
+run --tree; said "KhaozEngine.Render.FloatingPoint.Tests/KhaozEngine.Render.FloatingPoint.Tests.csproj: a floating point test project that does not compile $GUARD_ATTRIBUTE"
+said "does not compile $GUARD_TEST"; check floating_point_project_without_guard 1
 
 echo "check-fp-control-tests.test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

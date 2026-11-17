@@ -104,9 +104,14 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   floating point test assemblies compile the mode half of `WaterFloatingPointEnvironment` and the `FpPoke` rounding
   poke, so a default assembly such as `KhaozEngine.TileWorld.Physics.Tests` has no API to set a control.
   `scripts/check-fp-control-tests.sh` keeps it that way. It fails a native control setter declared outside its
-  allow-list, another half of that class outside the floating point test projects, and any other project or props
-  file that compiles a control-setting source. CI runs it on every event, and the pre-commit hook runs it when a C#
-  or MSBuild file is staged. A class with both kinds of test keeps its name in both assemblies, its default tests in
+  allow-list, another half of that class outside the floating point test projects, a project other than a floating
+  point test project whose directory holds a control-setting source, any other tracked file whose `Compile` item
+  names one (props, targets and projitems included, in either quote style), and a floating point test project that
+  does not compile the default-environment guard and its registration test. It reads a declaration split across
+  lines. A `Compile` path built on a property it cannot resolve is matched by the part after the property, so the
+  check widens rather than passes. What remains outside it: item lists and metadata in a `Compile` path are not
+  expanded, and machine code a test writes and runs itself is not recognised. CI runs it on every event, and the
+  pre-commit hook runs it when a C# or MSBuild file is staged. A class with both kinds of test keeps its name in both assemblies, its default tests in
   one and its changed-control tests in the other, and a body or helper both need is one file linked into both. While
   a control is changed, a test runs only the code under test, its reference evaluator and its assertions, writes no
   test output and starts no thread or task of its own, then restores the control on the same thread. The scheduler
@@ -358,8 +363,8 @@ Convention, instruction budget and doc-version checks run before both paths. See
 [`design/CI-SELECTIVE-TESTS.md`](design/CI-SELECTIVE-TESTS.md).
 
 The whole-tree convention checks are `scripts/check-dashes.sh`, `scripts/check-prose.sh`,
-`scripts/check-file-size.sh`, `scripts/check-agent-instructions.sh`, `scripts/check-scratch.sh` and
-`scripts/check-home-paths.sh`, each run with `--tree`. The pre-commit hook runs the staged checks.
+`scripts/check-file-size.sh`, `scripts/check-agent-instructions.sh`, `scripts/check-scratch.sh`,
+`scripts/check-home-paths.sh` and `scripts/check-fp-control-tests.sh`, each run with `--tree`. The pre-commit hook runs the staged checks.
 The home-path guard checks added staged lines by default and all tracked text with `--tree`, including
 escaped Windows paths and memory project identifiers. Use repo-relative paths, or `~/` for paths
 outside the repo. Generic `runner`, `Shared` and angle-bracket placeholder names pass. Exceptional

@@ -90,9 +90,10 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
             if (!displaySkipped || certificate.HoldsCertifiedAgainstCheckedExact)
             {
                 Assert.Equal(expected, actual);
-                TemporalHistorySample.Exact(n, "Display vs Fine history colour",
-                    TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
-                    TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex)));
+                float[] displayColour = TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
+                    fineColour = TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex));
+                ReportColourDifference(n, preset, width, height, displayColour, fineColour);
+                TemporalHistorySample.Exact(n, "Display vs Fine history colour", displayColour, fineColour);
             }
             if (displaySkipped && !state.BoundsRecordChannels)
                 certificate.Report(n, $"{preset} Display certified vs Fine checked still",
@@ -239,6 +240,28 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
     }
 
     static void AssertReplicated(TemporalFixture h) => AssertReplicated(h.Device, h.Scene.TemporalHistory);
+
+    // Before the exact assertion stops the run, say how far a colour history that differs lies apart: how many
+    // values, the worst in absolute value and in half steps, and how it stands against the software compile
+    // divergence rule main holds two compiled temporal programs to on a software Vulkan device.
+    void ReportColourDifference(int frame, TemporalUpscale preset, int width, int height, float[] display, float[] fine)
+    {
+        if (display.Length != fine.Length) return;
+        int differing = 0, steps = 0;
+        float worst = 0f;
+        for (int i = 0; i < display.Length; i++)
+        {
+            if (BitConverter.SingleToUInt32Bits(display[i]) == BitConverter.SingleToUInt32Bits(fine[i])) continue;
+            differing++;
+            worst = MathF.Max(worst, MathF.Abs(display[i] - fine[i]));
+            steps = Math.Max(steps, TemporalHistoryDifference.HalfSteps(display[i], fine[i]));
+        }
+        if (differing == 0) return;
+        output.WriteLine($"{preset} {width}x{height} frame {frame}: Display vs Fine colour history differs in {differing} "
+            + $"of {display.Length} values ({TemporalSoftwareCompileDivergenceRule.ShareOf(differing, display.Length):P4}), "
+            + $"worst {worst:R} or {steps} half steps, within the software compile divergence rule: "
+            + TemporalSoftwareCompileDivergenceRule.Allows(worst, differing, display.Length));
+    }
 
     // How much still motion the frame's own motion target carries, in least RG16F steps of UV.
     static string StillMotionResidual(Scene3D scene)

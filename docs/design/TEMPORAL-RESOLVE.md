@@ -279,9 +279,10 @@ previous clip positions come from two vertex products that can round apart, and 
 those steps. On Metal at 1591 by 1027 the engine's own still orthographic cameras store them on 2,400 to
 12,000 drawn texels a frame, with or without a far render origin or motion keys: one or two an axis over a box
 field under the default isometric view, and up to four on about 5,100 texels of the still identity fact's
-fence stage at Native. A still perspective camera stores none. A consumer capture at the same size, camera
-still for 120 frames with the effect clock frozen, measured chosen motion from 0 to 0.000291 display pixels:
-three steps on one axis and one on the other.
+fence stage at Native. A still perspective camera stores none, and so does the fence stage on Vulkan llvmpipe,
+so the residual depends on how a compiler evaluates the two products. A consumer capture at the same size,
+camera still for 120 frames with the effect clock frozen, measured chosen motion from 0 to 0.000291 display
+pixels: three steps on one axis and one on the other.
 
 A step is a fixed share of the display, so in display pixels it grows with the display. A gate of 2^-14
 display pixels, which the mode first used, lies below a single step on any display wider or taller than 1024
@@ -303,8 +304,11 @@ value (`TemporalDetailMath.StillEpsilon`) and the shader's `DetailStillEpsilon` 
 `TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` runs
 the fence stage at 1591 by 1027 for six frames at Native and Quality, printing the motion target's still
 residual each frame, beside its 96 by 64 rows. With the 2^-14 gate both large rows failed on the first frame
-with history. `A_still_motion_residual_takes_the_coarse_path_at_every_admitted_display_size` holds the gate
-against those step patterns at 96 by 64, 1591 by 1027, 2560 by 1440 and the largest admitted square.
+with history. Raising the gate moved no value of the report-only capture: on 2026-11-17 all 5,134 protocol
+records and 36 rig cells matched the capture taken under 2^-14, so no value those scenes report depends on a
+pixel whose motion lies between the two gates.
+`A_still_motion_residual_takes_the_coarse_path_at_every_admitted_display_size` holds the gate against those
+step patterns at 96 by 64, 1591 by 1027, 2560 by 1440 and the largest admitted square.
 
 #### Bounded transport and the stored mean
 

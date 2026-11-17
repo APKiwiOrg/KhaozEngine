@@ -7,7 +7,10 @@
        floating point test assemblies. See docs/CONTRIBUTOR-RULES.md. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <OutputType>Library</OutputType>
+    <!-- An executable with its own entry point (Program.cs), so a test can run this assembly as a child process
+         whose thread pool has not run anything yet. -->
+    <OutputType>Exe</OutputType>
+    <GenerateProgramFile>false</GenerateProgramFile>
     <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.*, per AGENTS.md. -->
     <RootNamespace>KhaozEngine.Tests</RootNamespace>
   </PropertyGroup>

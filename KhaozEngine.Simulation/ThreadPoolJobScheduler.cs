@@ -40,14 +40,15 @@ public sealed class ThreadPoolJobScheduler : IJobScheduler
     /// machines, or between two runs on one machine, which is the exact class of bug the scope exists to remove,
     /// reintroduced one layer up at the job-scheduling boundary. Applying it here rather than at each call site means
     /// a consumer does not have to remember to.
-    /// <para>The fan-out itself also runs inside a scope on the calling thread, entered before
-    /// <see cref="Parallel.For(int, int, ParallelOptions, Action{int})"/> and left when it returns, so the caller's
-    /// own controls are back when this call returns. A thread the pool creates while the work is queued can start with
-    /// the controls of the thread that created it: on Linux arm64 a pool worker created during a fan-out from a
-    /// caller rounding toward zero started with that rounding, and the scope around each body then restored the worker
-    /// to it, so it went back to the pool still holding the caller's controls, where other code runs and the JIT
-    /// compiles. The outer scope makes the calling thread canonical while it can create workers. The
-    /// scope around each body stays, because a worker that already existed can hold anything.</para>
+    /// <para>The fan-out itself also runs inside a scope on the calling thread, entered before <see
+    /// cref="Parallel.For(int, int, ParallelOptions, Action{int})"/> and left when it returns, so the caller's own
+    /// controls are back when this call returns. A thread can start with the controls of the thread that creates it. In
+    /// a Linux arm64 probe, a fan-out that was the process's first thread pool use, from a caller rounding toward zero,
+    /// left every pool thread rounding toward zero after the caller was restored, because the scope around each body
+    /// restored each worker to what it found. Those threads then serve other code and the JIT. A pool that had already
+    /// run work leaked nothing in the same probe. The outer scope makes the calling thread canonical while the pool may
+    /// create threads for this call. The scope around each body stays, because a worker that already existed can hold
+    /// anything.</para>
     /// <para>Both scopes are allocation-free. The cost is one save plus one restore of that register per slice, and
     /// one more pair per call. They nest harmlessly: an outer scope (the shard host installs one around each cell
     /// tick) is restored to exactly the canonical state the inner one found.</para>

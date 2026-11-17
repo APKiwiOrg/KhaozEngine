@@ -81,7 +81,7 @@ public sealed class TemporalDetailTransportTests
     [Fact]
     public void Adding_distrust_never_admits_a_fine_pixel()
     {
-        foreach (float motion in new[] { 0f, 0.00003f, 0.0001f, 0.25f, 0.5f, 8f })
+        foreach (float motion in new[] { 0f, 0.00003f, 0.0001f, TemporalDetailMath.StillEpsilon, 0.25f, 0.5f, 8f })
             foreach (bool locked in new[] { false, true })
                 for (int before = 0; before < 32; before++)
                     for (int added = 0; added < 32; added++)
@@ -93,6 +93,9 @@ public sealed class TemporalDetailTransportTests
                     }
         Assert.True(TemporalDetailMath.UseFine(1f, false, 0, 0));
         Assert.False(TemporalDetailMath.UseFine(0f, false, 0, 0));
+        // The still gate is inclusive at its threshold, on a trusted unlocked pixel.
+        Assert.True(TemporalDetailMath.UseFine(TemporalDetailMath.StillEpsilon, false, 0, 0));
+        Assert.False(TemporalDetailMath.UseFine(MathF.BitDecrement(TemporalDetailMath.StillEpsilon), false, 0, 0));
         Assert.False(TemporalDetailMath.UseFine(0.25f, true, 0, 0));
         Assert.True(TemporalDetailMath.UseFine(1f, false, 4 | 8 | 16, 4 | 8 | 16));
         // Valid followed/band history is admitted by the measured colour-history gate.
@@ -100,10 +103,12 @@ public sealed class TemporalDetailTransportTests
     }
 
     // A still surface whose two clip positions round apart stores whole least steps of the RG16F motion target,
-    // 2^-24 UV each. The still orthographic stage of TemporalDetailStoreGpuTests stores up to four an axis on Metal
-    // at 1591 by 1027, and a consumer capture at that size measured three on one axis and one on the other. A step is
-    // a fixed share of the display, so its size in pixels grows with the display, up to the largest extent admission
-    // accepts on a device that allows 16384 or 32768 texels a side.
+    // 2^-24 UV each. With camera-relative rendering in force the still orthographic stage of
+    // TemporalDetailStoreGpuTests stores up to four an axis on Metal at 1591 by 1027, and a consumer capture at that
+    // size measured three on one axis and one on the other. A step is a fixed share of the display, so its size in
+    // pixels grows with the display, up to the largest extent admission accepts on a device that allows 16384 or
+    // 32768 texels a side. Far from the origin with the render origin opted out the residual is larger and the gate
+    // does not hold (TemporalDetailStillResidualProbeGpuTests).
     [Fact]
     public void A_still_motion_residual_takes_the_coarse_path_at_every_admitted_display_size()
     {

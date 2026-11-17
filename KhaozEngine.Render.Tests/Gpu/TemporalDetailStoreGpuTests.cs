@@ -39,25 +39,31 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
     const int LargeStillFrames = 6;
 
     [GpuTheory]
-    [InlineData(TemporalUpscale.Native, false, false, 96, 64)]
-    [InlineData(TemporalUpscale.Native, false, true, 96, 64)]
-    [InlineData(TemporalUpscale.Quality, false, false, 96, 64)]
-    [InlineData(TemporalUpscale.Quality, false, true, 96, 64)]
+    [InlineData(TemporalUpscale.Native, 0f, false, 96, 64)]
+    [InlineData(TemporalUpscale.Native, 0f, true, 96, 64)]
+    [InlineData(TemporalUpscale.Quality, 0f, false, 96, 64)]
+    [InlineData(TemporalUpscale.Quality, 0f, true, 96, 64)]
     // A consumer's display size. The stage's still orthographic camera stores whole least steps of the RG16F motion
     // target (2^-24 UV) on part of the frame. A display taller than 1024 pixels makes one step more than 2^-14
     // display pixels, so a still gate there sends still pixels down the fine path. Each frame prints the residual.
-    [InlineData(TemporalUpscale.Native, false, false, 1591, 1027)]
-    [InlineData(TemporalUpscale.Quality, false, false, 1591, 1027)]
-    // Moving history is covered by TemporalDetailTransportGpuTests, including mean and activation checks.
+    [InlineData(TemporalUpscale.Native, 0f, false, 1591, 1027)]
+    [InlineData(TemporalUpscale.Quality, 0f, false, 1591, 1027)]
+    // A steady pan of a 256th of a display pixel a frame: real motion every backend stores, far above any still
+    // residual at this size and below the still gate, so the frame is still Display's. The pan just above the gate
+    // is Fine_takes_its_fine_path_for_a_pan_just_above_the_still_gate.
+    [InlineData(TemporalUpscale.Native, 0.00390625f, false, 96, 64)]
+    [InlineData(TemporalUpscale.Quality, 0.00390625f, false, 96, 64)]
+    // Faster moving history is covered by TemporalDetailTransportGpuTests, including mean and activation checks.
     public void Fine_presents_every_still_fence_frame_identically_and_replicates_history(
-        TemporalUpscale preset, bool moving, bool nearest, int width, int height)
+        TemporalUpscale preset, float panPixels, bool nearest, int width, int height)
     {
-        Compare(preset, moving, nearest, width, height, assertIdentity: true);
+        Assert.True(panPixels < TemporalDetailMath.StillEpsilon, $"a pan of {panPixels} pixels a frame is not still");
+        Compare(preset, panPixels, nearest, width, height, assertIdentity: true);
         if (preset == TemporalUpscale.Quality)
-            Compare(TemporalUpscale.Balanced, moving, nearest, width, height, assertIdentity: false);
+            Compare(TemporalUpscale.Balanced, panPixels, nearest, width, height, assertIdentity: false);
     }
 
-    void Compare(TemporalUpscale preset, bool moving, bool nearest, int width, int height, bool assertIdentity)
+    void Compare(TemporalUpscale preset, float panPixels, bool nearest, int width, int height, bool assertIdentity)
     {
         fixture.Reset(preset, nearest: nearest, width: width, height: height);
         var fine = fixture.FineFor(nearest);
@@ -83,7 +89,7 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         var certificate = TemporalFullyLitHistoryOracle.For(output, fine.Frame.Device);
         for (int n = 0; n < frames; n++)
         {
-            float pan = moving ? n * 0.35f : 0f;
+            float pan = n * panPixels;
             byte[] expected = display.Draw(pan), actual = fine.Draw(pan);
             if (large) output.WriteLine($"{preset} {width}x{height} frame {n}: {StillMotionResidual(fine.Frame.Scene)}");
             Assert.Equal(TemporalHistoryDetail.Fine, fine.Frame.Scene.TemporalHistoryDetailInEffect);
@@ -118,7 +124,8 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
                     TemporalTextureIo.Read(fine.Frame.Device, a.Confidence(a.WriteIndex)));
             AssertReplicated(fine.Frame);
         }
-        output.WriteLine($"{preset}, moving {moving}, {width}x{height}, {frames} frames, differing presented bytes {different}");
+        output.WriteLine($"{preset}, pan {panPixels} pixels a frame, {width}x{height}, {frames} frames, "
+            + $"differing presented bytes {different}");
         if (!assertIdentity) return;
         if (entryPairRules)
         {
@@ -132,6 +139,50 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         }
         state.AssertComplete(output, $"{preset} Display vs Fine still");
         certificate.AssertComplete();
+    }
+
+    // The same fence a little above the still gate, a pan of three 256ths of a display pixel a frame. The mode takes
+    // its fine path on every frame with history, read through the live path flags, and each pixel that stayed coarse
+    // (the locked bars) still replicates R into its four children. With the pan rows of the still fact below the gate
+    // this exercises the gate with real motion on every backend, which a still frame does only where the motion
+    // target stores a residual.
+    [GpuTheory]
+    [InlineData(TemporalUpscale.Native)]
+    [InlineData(TemporalUpscale.Quality)]
+    public void Fine_takes_its_fine_path_for_a_pan_just_above_the_still_gate(TemporalUpscale preset)
+    {
+        PanAboveGate(preset, assertPath: true);
+        if (preset == TemporalUpscale.Quality) PanAboveGate(TemporalUpscale.Balanced, assertPath: false);
+    }
+
+    void PanAboveGate(TemporalUpscale preset, bool assertPath)
+    {
+        const float PanPixels = 3f / 256f;
+        Assert.True(PanPixels >= TemporalDetailMath.StillEpsilon, $"a pan of {PanPixels} pixels a frame is still");
+        // Its own view, so the extra path target never enters the shared views' programs.
+        using var view = new TemporalDetailSceneFixture.View();
+        Scene3D scene = view.Frame.Scene;
+        scene.Post.Temporal.Upscale = preset;
+        scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Fine;
+        scene.Post.Temporal.HistoryDetailPixelLimit = 96L * 64;
+        scene.TemporalHistory.CaptureDetailPathForTests = true;
+        int frames = TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)) + 1;
+        var shares = new double[frames];
+        for (int n = 0; n < frames; n++)
+        {
+            view.Draw(n * PanPixels);
+            Assert.Equal(TemporalHistoryDetail.Fine, scene.TemporalHistoryDetailInEffect);
+            float[] transport = TemporalTextureIo.Read(view.Frame.Device, scene.TemporalHistory.DetailStore!.TransportForTests);
+            int fine = 0;
+            for (int p = 3; p < transport.Length; p += 4) if (transport[p] > 0.5f) fine++;
+            shares[n] = fine / (double)(transport.Length / 4);
+            AssertReplicated(view.Frame.Device, scene.TemporalHistory,
+                (x, y, width) => !(transport[(y * width + x) * 4 + 3] > 0.5f));
+            if (assertPath && n > 0)
+                Assert.True(fine > 0, $"{preset} frame {n}: no pixel panning {PanPixels} pixels a frame took the fine path");
+        }
+        output.WriteLine($"{preset}, pan {PanPixels} pixels a frame, fine path share by frame: "
+            + string.Join(", ", Array.ConvertAll(shares, v => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))));
     }
 
     [GpuTheory]
@@ -282,7 +333,8 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         return $"{nonzero} of {drawn} drawn texels carry still motion, at most {steps} least motion steps an axis";
     }
 
-    static void AssertReplicated(IGpuDevice device, TemporalHistory history)
+    // Replication on every display pixel, or only where coarse(x, y, display width) holds.
+    static void AssertReplicated(IGpuDevice device, TemporalHistory history, Func<int, int, int, bool>? coarse = null)
     {
         var store = history.DetailStore;
         Assert.NotNull(store);
@@ -296,6 +348,7 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
             for (int x = 0; x < target.Width; x++)
                 for (int c = 0; c < 4; c++)
                 {
+                    if (coarse is not null && !coarse(x / 2, y / 2, (int)source.Width)) continue;
                     int pixel = checked(((y / 2) * (int)source.Width + x / 2) * 4 + c);
                     int texel = checked((y * (int)target.Width + x) * 4 + c);
                     Assert.Equal(BitConverter.HalfToInt16Bits((Half)display[pixel]),

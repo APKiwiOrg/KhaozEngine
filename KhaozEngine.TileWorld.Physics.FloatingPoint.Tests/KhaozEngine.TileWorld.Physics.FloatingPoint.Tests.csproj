@@ -1,8 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Every TileWorld.Physics test that runs engine code under a changed rounding or flush control. Machine code the
        JIT compiles while a control is changed, and threads created then, outlive the test that changed it, so these
-       tests run in their own test process instead of beside tests that assume the default environment. Only this
-       assembly compiles the mode half of WaterFloatingPointEnvironment. See docs/CONTRIBUTOR-RULES.md. -->
+       tests run in their own test process instead of beside tests that assume the default environment. Only the
+       floating point test assemblies compile the mode half of WaterFloatingPointEnvironment. It is a water kernel
+       corpus assembly, so a changed-control test outside that corpus goes in KhaozEngine.FloatingPoint.Tests. See
+       docs/CONTRIBUTOR-RULES.md. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <OutputType>Library</OutputType>

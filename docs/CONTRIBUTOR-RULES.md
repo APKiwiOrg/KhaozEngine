@@ -87,21 +87,31 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one
   leg and an earlier one on another. Use exact normal float32 values with the arithmetic written out in a
   comment, or a narrow value-taking fault seam beside the guard.
-- A test that changes the thread's rounding or flush controls runs in a test assembly of its own, never beside
-  tests that assume the default environment, because two effects outlive the test that set the control and no
-  restore inside a test can undo them. Machine code the JIT optimizes on a thread with a flush control set, by
-  on-stack replacement, `AggressiveOptimization` or with tiered compilation off, keeps flushed float subnormal
-  constants for every thread for the rest of the process, and that includes the code under test. A thread created
-  under a changed control can start with it, as on Linux arm64. For TileWorld.Physics that assembly is
-  `KhaozEngine.TileWorld.Physics.FloatingPoint.Tests`. Only it compiles the mode half of
-  `WaterFloatingPointEnvironment`, so `KhaozEngine.TileWorld.Physics.Tests` cannot set a control. A class with both
-  kinds of row keeps its name in both assemblies, its default rows in the first and its changed-control rows in the
-  second, and runs one shared body linked into both. While a control is changed, a test runs only the code under
-  test, its reference evaluator and its assertions, writes no test output and starts no thread or task, then restores
-  the control on the same thread. Both assemblies fail any test that starts or ends with a changed control, and the
-  guard states what it cannot see. `SupportProposalAdmissionFloatingPointTests` in `KhaozEngine.Game.Tests` still
-  changes controls beside default tests and links the mode half for it. The probes behind this are in the consumer
-  guide's deterministic floating point section.
+- A test that changes the thread's rounding or flush controls runs in a floating point test assembly, one whose
+  assembly name ends in `.FloatingPoint.Tests`, never beside tests that assume the default environment, because two
+  effects outlive the test that set the control and no restore inside a test can undo them. Machine code the JIT
+  optimizes on a thread with a flush control set (shown for on-stack replacement and `AggressiveOptimization`) keeps
+  flushed float subnormal constants for every thread until the method is recompiled, and that includes the code
+  under test. A thread created under a changed control can start with it, as on Linux arm64. There are two such
+  assemblies. `KhaozEngine.TileWorld.Physics.FloatingPoint.Tests` holds the water kernel's changed-control tests. It
+  is a corpus assembly that the water kernel differential job checks class by class, so it takes no other test.
+  `KhaozEngine.FloatingPoint.Tests` holds every other one: the determinism scope's tests that start from a changed
+  rounding mode, the fan-out determinism tests and support proposal admission under changed controls. Only the
+  floating point test assemblies compile the mode half of `WaterFloatingPointEnvironment` and the `FpPoke` rounding
+  poke, so a default assembly such as `KhaozEngine.TileWorld.Physics.Tests` has no API to set a control.
+  `scripts/check-fp-control-tests.sh` keeps it that way. It fails a native control setter declared outside its
+  allow-list, another half of that class outside the floating point test projects, and any other project or props
+  file that compiles a control-setting source. CI runs it on every event, and the pre-commit hook runs it when a C#
+  or MSBuild file is staged. A class with both kinds of test keeps its name in both assemblies, its default tests in
+  one and its changed-control tests in the other, and a body or helper both need is one file linked into both. While
+  a control is changed, a test runs only the code under test, its reference evaluator and its assertions, writes no
+  test output and starts no thread or task of its own, then restores the control on the same thread. The scheduler
+  fan-out test is the exception by design: it checks that the job scheduler enters the canonical scope on its
+  workers, so it hands work to pool threads while the calling thread's rounding is changed, and a pool thread created
+  then can start with that rounding where thread creation copies the controls. `KhaozEngine.TileWorld.Physics.Tests`
+  and both floating point test assemblies fail any test that starts or ends with a changed control, and the guard
+  states what it cannot see. The probes behind this are in the consumer guide's deterministic floating point
+  section.
 - A test that needs private state uses an internal `<Thing>ForTests` seam beside the type, never reflection.
   A seam returns the narrowest thing the test reads: a value, a count, an identity predicate or token, a
   snapshot copy or a genuine read-only view. It never returns a live mutable collection behind an

@@ -16,9 +16,13 @@ namespace KhaozEngine.Tests.Sharding;
 /// thread. Without a scope at the scheduling boundary the register is whatever the pool last left it at, and two
 /// servers - or two runs on one machine - can silently diverge in the low bits over thousands of ticks.
 /// <para>These tests observe the rounding mode from INSIDE the fanned-out body, which is the only place the claim
-/// can actually be checked. They never corrupt a thread-pool thread (it is reused, and a leaked rounding mode would
-/// break unrelated FP-sensitive tests): the corruption is always on the calling thread and always restored in a
-/// finally, mirroring the discipline in <c>DeterministicFpHarnessTests</c>.</para>
+/// can actually be checked. They never set a control on a thread-pool thread themselves: the corruption is always on
+/// the calling thread and always restored in a finally, mirroring the discipline in
+/// <c>DeterministicFpHarnessTests</c>. The scheduler test still hands work to the pool while the calling thread's
+/// rounding is changed, and where thread creation copies the controls (shown for the flush bit on Linux arm64) a pool
+/// thread created then can start with it. That, and the engine tick code the shard host test runs under the changed
+/// mode, is why this class runs in KhaozEngine.FloatingPoint.Tests, whose guard fails any test that starts on such a
+/// thread.</para>
 /// </summary>
 public class FannedOutDeterminismTests
 {

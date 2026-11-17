@@ -10,5 +10,6 @@ public sealed class DefaultFloatingPointEnvironmentGuardTests
     // of this test's body, so a registered guard has counted at least this test.
     [Fact]
     public void TheAssemblyGuardCheckedThisTestBeforeItRan() =>
-        Assert.True(DefaultFloatingPointEnvironmentAttribute.BeforeCountForTests > 0);
+        Assert.True(DefaultFloatingPointEnvironmentAttribute.BeforeCountForTests > 0,
+            "The DefaultFloatingPointEnvironment assembly attribute is not registered on this test assembly.");
 }

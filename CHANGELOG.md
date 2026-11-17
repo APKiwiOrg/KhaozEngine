@@ -106,6 +106,17 @@ as evidence.
   basis that uses an appended face plane stays unmapped. The shared projections above read this map
   ([#1755](https://github.com/APKiwiOrg/KhaozEngine/issues/1755)).
 
+**Job scheduler floating point controls.**
+
+- `ThreadPoolJobScheduler.For` now also enters `DeterministicFpScope` on the calling thread for the length of a
+  multi-job fan-out, so a thread the pool creates for the call starts with canonical controls, and the caller's
+  own controls are restored when it returns. Each job body still runs in its own scope, and a single job still
+  runs inline in one. Before, on Linux arm64, a fan-out that was the process's first thread pool use, from a
+  caller rounding toward zero, left every pool thread rounding toward zero after the call, for whatever code and
+  JIT compiles ran on them next. A pool that had already run work did not leak in the same probe. The cost is one
+  more save and restore of the control register per multi-job call
+  ([#1830](https://github.com/APKiwiOrg/KhaozEngine/issues/1830)).
+
 ## 23.13.1
 
 2026-11-16

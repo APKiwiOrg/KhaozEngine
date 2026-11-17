@@ -172,8 +172,8 @@ largest write is one record or one domain's identifier lists, bounded by F and n
 A single escaped metadata token remains bounded by F. The session's deterministic storage seam records snapshot bytes, the buffer
 high-water and the live-pose high-water.
 
-Scratch disk grows with checked raw pose bytes and, when artifacts are staged, logical output and
-rollback backups. The palette-only maximum is 8 GiB, calculated at the 1,024-matrix input guard. The
+Scratch disk grows with checked raw pose bytes and, when artifacts are staged, logical output. Rollback
+backups and `.tmp` copies are written beside the outputs, on the output volume. The palette-only maximum is 8 GiB, calculated at the 1,024-matrix input guard. The
 independent GLB importer admits at most 128 joints. Disk exhaustion refuses as `InputIo` during
 snapshotting or `OutputIo` during publication. It never permits omitted records.
 
@@ -507,8 +507,10 @@ refuse with `OutputAlias` and exit 1. Malformed input or resumed evidence also l
 For parsed work, exit 0 writes `outcome: "accepted"` and zero blocking findings, replacing stale
 refusal diagnostics. Exit 1 writes `outcome: "refused"`. Accepted artifacts and diagnostics publish
 in one transaction. A refusal publishes only diagnostics and preserves existing table and evidence bytes.
-If the report cannot be published, the run exits 1 with `OutputIo` and the previous report stays exactly
-as it was, or absent. A failed accepted transaction carried the report already, so no second report
+If the report cannot be published, the run exits 1 with `OutputIo` and the previous report normally stays
+exactly as it was, or absent. When a restore fails, or cleanup fails after the commit point, the recovery
+files stay and readers refuse the report as `OutputRecoveryRequired` until the next run recovers. A failed
+accepted transaction carried the report already, so no second report
 replaces the previous one. The report is collected in full before any output is staged. Collection
 decodes poses, so a pose that can no longer be read during collection refuses as `InputIo` with exit
 code 2, never as `OutputIo`, and every output and the previous report keep their exact bytes. No

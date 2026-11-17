@@ -30,23 +30,25 @@ can end a core inside a source triangle ([#1817](https://github.com/APKiwiOrg/Kh
   error are the authority for that run. No field is removed and no retained field changes type or meaning.
   Diagnostics are still never acceptance evidence.
 - Every output is now identified through the operating system and every run stages its work in a temporary
-  directory, so three things an earlier version accepted are refused before any output is written.
+  directory, so three things an earlier version accepted are refused before the table or evidence is written.
   - A host other than Windows, or Linux or macOS on 64-bit x86 or Arm, cannot identify an output, so every
     `build`, `verify-samples` and `verify` refuses with `OutputAlias` and exit 1. Run the tool on one of
     those hosts.
-  - Two output names that do not exist yet and differ only by case or Unicode normalization are one
-    destination on every volume, a case-sensitive one included, and refuse with `OutputAlias`. Give the
-    outputs distinct names.
+  - A `build` table and evidence path that do not exist yet and differ only by case or Unicode normalization
+    are one destination on every volume, a case-sensitive one included, and refuse with `OutputAlias`. Give
+    the outputs distinct names.
   - Every run, format 1 included, needs a writable operating system temporary root with room for the checked
-    pose chunks and about twice the logical evidence. Without it the run refuses with `InputIo` and exit 2
-    when it opens the campaign, or with `OutputIo` and exit 1 when it stages output. Give the temporary root
-    that space.
+    pose chunks and about twice the logical evidence, plus about twice the logical report when
+    `--diagnostics` is given. Without it the run refuses with `InputIo` and exit 2 when it opens the campaign
+    or reads existing evidence for resume, or with `OutputIo` and exit 1 when it stages output. Give the
+    temporary root that space.
 
-Two smaller changes need no action from most consumers. An output whose parent directory does not exist
-refuses with `OutputIo` before any work, and no diagnostics file is written for that refusal. An earlier
-version wrote one. New files can appear beside the outputs: a `<name>.parts` directory for large evidence as
-well as large diagnostics, and, during a run or after a failure that could not be undone, a
-`<name>.coverage-journal`, `<name>.coverage-incomplete` markers and `<name>.<transaction>.bak` and
+Two smaller changes need no action from most consumers. A table or evidence path whose parent directory does
+not exist refuses with `OutputIo` before any work, and no diagnostics file is written for that refusal. An
+earlier version wrote one. New files can appear beside the outputs: a `<name>.parts` directory for large
+evidence as well as large diagnostics, and, during a run and after an interrupted run or a publication that
+left recovery work, a `<commit-root>.coverage-journal` beside the evidence root (the diagnostics root for a
+refusal), `<name>.coverage-incomplete` markers and `<name>.<transaction>.bak` and
 `<name>.<transaction>.tmp` files. Copy a `.parts` directory with its root, and never treat the recovery files
 as evidence.
 

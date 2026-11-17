@@ -204,9 +204,9 @@ Exit 0 means complete accepted declared work. Exit 1 means validation or output-
 Exit 2 means malformed input or invalid invocation. Selected failures, holes, missing dense work and
 positive or unresolved changed-record depth block `verify`. Typed refusals retain domain, sample,
 state, entry and applicable command/equipment identifiers. Output publication is bounded and recoverable.
-A handled failure before the commit point restores the previous outputs, a cleanup failure after it keeps the
-new ones behind a recovery refusal, the next run finishes or undoes an interrupted one, and readers refuse an
-incomplete set. Outputs that reach an input or each other through any spelling, link or
+A handled failure before the commit point restores the previous outputs, or keeps recovery files when a
+restore itself fails. A cleanup failure after it keeps the new outputs behind a recovery refusal. The next run
+finishes or undoes an interrupted or unrecovered publication, and readers refuse an incomplete set. Outputs that reach an input or each other through any spelling, link or
 hard link refuse with `OutputAlias`. Refusal preserves existing table and evidence files. The consumer owns sampler integration and the CI call.
 Sampled evidence cannot establish safety between the poses that were checked.
 
@@ -224,7 +224,9 @@ A report larger than the 64 MiB artifact limit becomes a `khaozengine.coverage-d
 with hashed parts, read whole through the strict artifact reader. The report names both producer
 assembly hashes and, in `resumedEvidenceSha256`, the hash of the exact evidence root that resume read. It
 does not prove freshness for two identical invocations. When the report cannot be published, the run
-exits 1 with `OutputIo` and the previous report stays unchanged. Acceptance gates, exit codes and refused-run table/evidence preservation stay
+exits 1 with `OutputIo` and the report on disk is normally the previous one. After a failed restore or a
+cleanup failure past the commit point, readers refuse it as `OutputRecoveryRequired` until the next run
+recovers. Acceptance gates, exit codes and refused-run table/evidence preservation stay
 unchanged within one tool build. Evidence binds the producing tool and Render3D hashes, so another build
 produces different provenance bytes and its evidence is refused on resume. Build, replay and depth
 arithmetic, ordering and refusal order are unchanged. See the

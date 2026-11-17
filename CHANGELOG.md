@@ -8,7 +8,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-17
 
-A major, because the `KhaozEngine.Coverage.Tool` executable changes two published behaviours. Runtime package
+A major, because the `KhaozEngine.Coverage.Tool` executable changes published behaviour. Runtime package
 changes are additive. The tool now reads packed exact poses and writes evidence and diagnostics of any size as
 complete, hashed sets ([#1814](https://github.com/APKiwiOrg/KhaozEngine/issues/1814)), and host coverage regions
 can end a core inside a source triangle ([#1817](https://github.com/APKiwiOrg/KhaozEngine/issues/1817)).
@@ -26,9 +26,29 @@ can end a core inside a source triangle ([#1817](https://github.com/APKiwiOrg/Kh
   `khaozengine.coverage-diagnostics-set/1` index with no category objects, so read it through
   `CoverageArtifactReader.Open` and copy its `<name>.parts` directory with it. `omitted` is always 0 and `items`
   always holds `total` entries. A reader sized for the old 64 MiB cap must handle larger logical documents. When
-  an accepted transaction fails, the previous report stays, so the exit code and standard error are the
-  authority for that run. No field is removed and no retained field changes type or meaning. Diagnostics are still never
-  acceptance evidence.
+  an accepted transaction fails, the report on disk can be the previous one, so the exit code and standard
+  error are the authority for that run. No field is removed and no retained field changes type or meaning.
+  Diagnostics are still never acceptance evidence.
+- Every output is now identified through the operating system and every run stages its work in a temporary
+  directory, so three things an earlier version accepted are refused before any output is written.
+  - A host other than Windows, or Linux or macOS on 64-bit x86 or Arm, cannot identify an output, so every
+    `build`, `verify-samples` and `verify` refuses with `OutputAlias` and exit 1. Run the tool on one of
+    those hosts.
+  - Two output names that do not exist yet and differ only by case or Unicode normalization are one
+    destination on every volume, a case-sensitive one included, and refuse with `OutputAlias`. Give the
+    outputs distinct names.
+  - Every run, format 1 included, needs a writable operating system temporary root with room for the checked
+    pose chunks and about twice the logical evidence. Without it the run refuses with `InputIo` and exit 2
+    when it opens the campaign, or with `OutputIo` and exit 1 when it stages output. Give the temporary root
+    that space.
+
+Two smaller changes need no action from most consumers. An output whose parent directory does not exist
+refuses with `OutputIo` before any work, and no diagnostics file is written for that refusal. An earlier
+version wrote one. New files can appear beside the outputs: a `<name>.parts` directory for large evidence as
+well as large diagnostics, and, during a run or after a failure that could not be undone, a
+`<name>.coverage-journal`, `<name>.coverage-incomplete` markers and `<name>.<transaction>.bak` and
+`<name>.<transaction>.tmp` files. Copy a `.parts` directory with its root, and never treat the recovery files
+as evidence.
 
 **Packed coverage input and complete evidence.**
 
@@ -45,9 +65,11 @@ can end a core inside a source triangle ([#1817](https://github.com/APKiwiOrg/Kh
   `khaozengine.coverage-evidence-set/1` index with hashed parts, and no record is omitted. Resume and every later
   read check every part and refuse with `ArtifactPartMissing`, `ArtifactPartLengthMismatch` or
   `ArtifactPartHashMismatch`.
-- The table, diagnostics and evidence publish through one journaled transaction. A handled failure restores
-  every previous byte, and an interrupted one is recovered by the next run or refused as
-  `OutputRecoveryRequired`. Outputs are told apart from each other and from every checked input by operating
+- The table, diagnostics and evidence publish through one journaled transaction. A handled failure before the
+  commit point restores every previous byte, or keeps its recovery files when a restore itself fails. A
+  cleanup failure after the commit point reports `OutputIo` with the new outputs in place, and readers refuse
+  them as `OutputRecoveryRequired` until the next run recovers. An interrupted run is recovered by the next run
+  or refused the same way. Outputs are told apart from each other and from every checked input by operating
   system file identity, so linked parent directories and hard links refuse as `OutputAlias`
   ([#1767](https://github.com/APKiwiOrg/KhaozEngine/issues/1767)).
 - Diagnostics record both producer code hashes and the exact evidence root a resume read

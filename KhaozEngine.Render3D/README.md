@@ -1937,8 +1937,9 @@ Format 2 is format 1 plus an optional region member `childRoles`, written after 
 entry groups the cells of one source triangle:
 `{"mesh":0,"primitive":0,"triangle":2,"level":2,"cells":[1,2],"role":"core"}`. The reader accepts
 entries in any order and a triangle split over several entries, and refusal paths name the source
-entry and cell position, such as `$.regions[1].childRoles[0].cells[1]`. `childRoles` in a format 1
-document refuses `UnknownMember`. An empty `childRoles` or `cells` array refuses `ChildRoleCapacity`
+entry and cell position, such as `$.regions[1].childRoles[0].cells[1]`. A well formed `childRoles`
+in a format 1 document refuses `UnknownMember`, and preflight bounds and shape checks on its contents run
+first. An empty `childRoles` or `cells` array refuses `ChildRoleCapacity`
 with `Count` 0, and preflight bounds a region at 65536 entries and an entry at 15 cells. A format 2
 document with no child roles refuses `UnnecessaryFormatVersion`, because it would write back as
 format 1. `FormatVersion` stays 1 and `ChildRolesFormatVersion` is 2.

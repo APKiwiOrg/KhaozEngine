@@ -93,8 +93,8 @@ binary32 values in row-major order. Duplicate and unknown members, invalid diges
 invalid membership and over-capacity inventories refuse with `CoverageBuildDataException.Reason` and a
 rooted `Path`. Wrapped asset refusals retain their typed inner exception.
 
-The `map` reference is read by `HostCoverageMapJson.Read`, so it may be a host coverage map in format 1
-or, when its regions carry child cell roles, format 2.
+In both manifest formats the `map` reference is read by `HostCoverageMapJson.Read`, so it may be host
+coverage format 1 or, when its regions carry child cell roles, host coverage format 2.
 
 Each domain has `id`, `kind` (`authored-clip` or `blend-path`), `authoredFrameIds` and `blendPathIds`.
 Authored frames are nonempty in every domain. Only an authored-clip domain can have no blend paths.
@@ -166,9 +166,10 @@ parity tests would show. Neither guard counts a released pose that is kept and n
 bound is on leased and transient storage, not on everything a reader could retain. The maximum numeric pose is
 `64 + 64*1024 + 144*4 = 66,176` bytes, calculated from the transport guards. Object headers and static
 command binding references add bounded overhead. Writing flushes individual records and matrices,
-without a campaign-sized JSON buffer. Staging records its largest payload write and copy buffer, at most
-65,536 bytes for the evidence writer whatever the document length. A single escaped metadata token
-remains bounded by F. The session's deterministic storage seam records snapshot bytes, the buffer
+without a campaign-sized JSON buffer. Staging records its largest payload write and copy buffer. Copy
+buffers are 65,536 bytes. The evidence writer flushes once per collection item and once per domain, so its
+largest write is one record or one domain's identifier lists, bounded by F and not by the document length.
+A single escaped metadata token remains bounded by F. The session's deterministic storage seam records snapshot bytes, the buffer
 high-water and the live-pose high-water.
 
 Scratch disk grows with checked raw pose bytes and, when artifacts are staged, logical output and
@@ -432,7 +433,9 @@ Publication then runs in this order:
 
 1. Parts are copied beside their final names, flushed, checked against their descriptors and moved in
    without replacing anything. Parts are immutable and content addressed. An existing part with the same
-   name is reused only when its bytes match. Otherwise publication refuses and leaves it untouched.
+   name is reused only when its bytes match. Otherwise publication refuses with `OutputIo` and leaves it
+   untouched, on this run and on every later one, until the damaged
+   `<root-file-name>.parts/<payload-sha256>` directory is deleted.
    Missing generation directories are created beneath the existing output parent.
 2. Each mutable output is copied to a sibling `<name>.<transaction>.tmp` and checked.
 3. A journal `<commit-root>.coverage-journal` is written beside the commit root with owner-only

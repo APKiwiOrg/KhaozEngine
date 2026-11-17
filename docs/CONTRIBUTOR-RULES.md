@@ -87,6 +87,13 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   arm64, whose fused multiply-add, SIMD and denormal modes differ, so the same input can pass one check on one
   leg and an earlier one on another. Use exact normal float32 values with the arithmetic written out in a
   comment, or a narrow value-taking fault seam beside the guard.
+- A test that changes the thread's rounding or flush controls runs only the code under test while they are
+  changed, then restores them on the same thread before anything else. It writes no test output, starts no
+  thread or task and builds no fixture under them. The JIT keeps flushed float subnormal constants in any method
+  it optimizes on that thread, for every later caller, and on Linux a thread created under a changed control
+  inherits it. Test output counts because `SerializedReportingTestFramework` delivers it on the test's own
+  thread. The 23.13.2 gate failed this way (#1830). `KhaozEngine.TileWorld.Physics.Tests` fails any test that
+  starts or ends with a changed control.
 - A test that needs private state uses an internal `<Thing>ForTests` seam beside the type, never reflection.
   A seam returns the narrowest thing the test reads: a value, a count, an identity predicate or token, a
   snapshot copy or a genuine read-only view. It never returns a live mutable collection behind an

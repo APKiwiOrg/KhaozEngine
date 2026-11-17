@@ -76,6 +76,8 @@ public sealed class WaterProjectionMutationTests(ITestOutputHelper output)
             };
         }
         var actual = broken.Evaluate();
+        // Test output runs runner code on this thread, so it is written only under the default controls.
+        Assert.True(environment.Set("nearest"));
         output.WriteLine($"PROJECTION_CONTROL {fault}: FrozenRangeBitsEqual");
         Assert.ThrowsAny<XunitException>(() => FrozenRangeBitsEqual(expected, actual));
     }

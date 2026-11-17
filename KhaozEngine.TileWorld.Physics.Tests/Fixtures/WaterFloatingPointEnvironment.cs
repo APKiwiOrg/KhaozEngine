@@ -40,6 +40,18 @@ internal sealed class WaterFloatingPointEnvironment : IDisposable
         catch (EntryPointNotFoundException) { return null; }
     }
 
+    /// <summary>The rounding and flush controls <see cref="Set"/> can change on the calling thread. Zero is the
+    /// default environment. Null where no native reader exists.</summary>
+    internal static ulong? CurrentModes() => Capture()?.Modes();
+
+    ulong? Modes()
+    {
+        if (_windows) return WindowsControl(out uint controls, 0, 0) == 0 ? controls & 0x03000300u : null;
+        if (_arm) return (_mac ? _saved.MacFpcr : _saved.First) & 0x01c00000ul;
+        uint mxcsr = _mac ? _saved.MacMxcsr : _saved.LinuxMxcsr;
+        return (mxcsr & 0xe040u) | ((ulong)(_saved.First & 0xc00u) << 32);
+    }
+
     internal bool Set(string mode)
     {
         if (_windows)

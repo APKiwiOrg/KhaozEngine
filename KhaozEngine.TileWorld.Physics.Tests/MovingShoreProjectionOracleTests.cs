@@ -69,17 +69,20 @@ public sealed class MovingShoreProjectionOracleTests(ITestOutputHelper output)
         foreach (string mode in new[] { "nearest", "up", "down", "zero", "flush-output", "flush-input" })
         {
             bool supported = environment.Set(mode);
+            int modeRefusals = 0;
+            if (supported)
+                foreach (var query in history)
+                {
+                    _ = FrozenWaterComparison.Check(scene.Colliders.Medium, frozen, query);
+                    if (FrozenWaterComparison.Check(scene.Colliders.Medium, frozen, query, spanCapacity: 0).Availability ==
+                        MovementAvailability.CapacityExceeded) modeRefusals++;
+                    if (FrozenWaterComparison.Check(scene.Colliders.Medium, frozen, query, contactCapacity: 0).Availability ==
+                        MovementAvailability.CapacityExceeded) modeRefusals++;
+                }
+            // Test output runs runner code on this thread, so it is written only under the default controls.
+            Assert.True(environment.Set("nearest"));
             output.WriteLine($"PROJECTION_FP {mode}: supported={supported}");
             if (!supported) continue;
-            int modeRefusals = 0;
-            foreach (var query in history)
-            {
-                _ = FrozenWaterComparison.Check(scene.Colliders.Medium, frozen, query);
-                if (FrozenWaterComparison.Check(scene.Colliders.Medium, frozen, query, spanCapacity: 0).Availability ==
-                    MovementAvailability.CapacityExceeded) modeRefusals++;
-                if (FrozenWaterComparison.Check(scene.Colliders.Medium, frozen, query, contactCapacity: 0).Availability ==
-                    MovementAvailability.CapacityExceeded) modeRefusals++;
-            }
             Assert.True(modeRefusals > 0);
             refusals += modeRefusals;
         }

@@ -26337,6 +26337,16 @@ non-determinism that comes from JIT *codegen* differences:
 - **Auto-vectorization / reduction order.** A horizontal sum over a `System.Numerics.Vector<T>` can
   add lanes in a different order than a scalar loop, which changes rounding. Keep state that must be
   bit-identical on a fixed, scalar accumulation order.
+- **Code compiled under a flush mode.** The .NET JIT converts float constants through the compiling
+  thread's FP register. A method it optimizes on a thread with flush-to-zero or denormals-are-zero set
+  stores every subnormal float constant as a signed zero, and that machine code serves every thread
+  after the register is restored. `MathF.BitDecrement(0f)` and `MathF.BitIncrement(0f)` return such a
+  constant, and engine methods inline them (collider bounds, tile ground extents, water capture). So the
+  first engine call on a thread that a native audio or graphics library left in a flush mode can change
+  later results on every thread, including results the engine pins for replay. Double constants are not
+  affected. Enter `DeterministicFpScope` before such a thread calls the engine, and never call the engine
+  from a callback that runs under a library's flush mode. On Linux a thread also inherits the register of
+  the thread that created it.
 
 Rule of thumb: integers and `DeterministicRng` are already bit-stable; for the float math in a
 deterministic tick, wrap it in `DeterministicFpScope`, keep operation order fixed, and avoid fused

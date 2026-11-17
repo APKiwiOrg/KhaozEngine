@@ -233,6 +233,8 @@ public sealed class WaterSharedProjectionTests(ITestOutputHelper output) : IDisp
         var broken = Direct(face, new S[TileWaterPreparedQuery.MaxBases], start, drive);
         broken.Share(new TileWaterProjectionSource(map, rows.AsSpan(0, source.Bases.Length), default));
         var actual = broken.Evaluate();
+        // Test output runs runner code on this thread, so it is written only under the default controls.
+        Assert.True(environment.Set("nearest"));
         output.WriteLine($"SHARED_PROJECTION_CONTROL {fault}: FrozenRangeBitsEqual");
         Assert.ThrowsAny<XunitException>(() => FrozenWaterComparison.Range(expected, actual));
     }

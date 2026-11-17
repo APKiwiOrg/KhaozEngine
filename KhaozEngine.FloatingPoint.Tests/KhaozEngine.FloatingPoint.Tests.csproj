@@ -15,6 +15,10 @@
     <RootNamespace>KhaozEngine.Tests</RootNamespace>
     <!-- Its own copy of build/FloatUlp.cs, for FloatUlpBakeTests, which compiles the steps under a flush mode. -->
     <KhaozFloatUlp>true</KhaozFloatUlp>
+    <!-- KEFP001 covers this test compilation too (#1832). Its tests run engine code and helpers under changed
+         controls, and an optimized compile there keeps a folded subnormal for the whole process, so nothing compiled
+         here may hold a BCL float step or a subnormal float constant. -->
+    <KhaozSubnormalFloatRule>all</KhaozSubnormalFloatRule>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

@@ -145,6 +145,11 @@ A later change to those helpers must freeze them first. The references recompute
 suppress production diagnostic counters. LF-pinned source hashes and a separate resource roster guard every
 frozen evaluator and capture adapter. Endpoint conversions only copy bits into the other side's value type.
 The hashes preserve deliberate source snapshots, including behavior that might later receive a reviewed correction.
+Frozen code steps floats with `FrozenTileWaterUlp`, its own hash-pinned copy of the one-ULP steps, never the BCL
+steps and never the production `FloatUlp` (#1832). The floating point test assembly runs the frozen reference under
+flush modes, where a BCL step first optimized under flush to zero keeps a signed zero for the whole process. The
+copy returns the BCL's bits for every input, so moving to it changed no frozen result, and
+`WaterKernelFrozenReferenceTests` checks it against the BCL at the default controls.
 
 `WaterCoverageComparison` compares every result field and refusal capacity/identity, every span byte and every
 contact field, including float sign and NaN payload bits in caller storage. Caller-owned identity and space strings

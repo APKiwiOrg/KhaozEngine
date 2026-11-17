@@ -54,7 +54,7 @@ public sealed partial class WaterSharedProjectionTests : IDisposable
                 case "drive-y-low": drive = drive with { Y = new(Math.BitDecrement(drive.Y.Low), drive.Y.High) }; break;
                 case "core-low": core = new(Math.BitDecrement(core.Low), core.High); break;
                 case "core-high": core = new(core.Low, Math.BitIncrement(core.High)); break;
-                case "radius": radius = MathF.BitIncrement(radius); break;
+                case "radius": radius = FrozenTileWaterUlp.Up(radius); break;
                 case "height-error": height = Math.BitIncrement(height); break;
                 case "horizontal-error": horizontal = Math.BitIncrement(horizontal); break;
             }

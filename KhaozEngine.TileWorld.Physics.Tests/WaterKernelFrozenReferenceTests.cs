@@ -19,9 +19,9 @@ public sealed class WaterKernelFrozenReferenceTests
     [InlineData("FrozenTileWaterArithmetic.cs", "6D55ACA2452FD70E0C76FBC0FB137CA15B174652396EBC14EE565BA613D87D84")]
     [InlineData("FrozenTileWaterBedSeam.cs", "4873FFF8EDEAD6D5CC441883C8236F015835D3D4F3F0A875E77E9AFC25D7EF39")]
     [InlineData("FrozenTileWaterBoxIndex.cs", "14809E5CFABB4284A2F8304446C413945F064349EA8A025FDF36FC65201A631C")]
-    [InlineData("FrozenTileWaterColumnCoverage.cs", "5DC3D7470AF2DEE4011E867FEBDE5A2329825B99BDF9F0BC17CE1EF4CAB4F18F")]
+    [InlineData("FrozenTileWaterColumnCoverage.cs", "558F15929DE0C608BC3DDB9C5C2AD0D05E34BE9507D2B28017AC6E5550DDD564")]
     [InlineData("FrozenTileWaterConvexShape.cs", "5DFF6B316578CC8B3DA9BE5870F01E0159C5943F29803C435AAB97DC77B5B756")]
-    [InlineData("FrozenTileWaterDrawnGroundRounding.cs", "C9487DDFC966B7B9E85347286C4AB34AE65C22CCBC3F04E9068D684D17F052DD")]
+    [InlineData("FrozenTileWaterDrawnGroundRounding.cs", "98F029CD7B28DC030F1C2A09A7919525ABE931DDE3633583902D34779C1127B0")]
     [InlineData("FrozenTileWaterFlatIndex.cs", "96D58E66A2461ED88DEF0B35EAB0F2453EA4E7C664C6DC4588D44DB56E8F46CC")]
     [InlineData("FrozenTileWaterGeometry.cs", "25AED25A7F03F0455D54D8708C98E0D702C7D31ABA72165656CDA356A4642C31")]
     [InlineData("FrozenTileWaterLinearRank.cs", "C08A8DD42C643E55947C77E50E231882067A64CE415B14104258570474AA270C")]
@@ -30,7 +30,8 @@ public sealed class WaterKernelFrozenReferenceTests
     [InlineData("FrozenTileWaterPrismCoverage.cs", "9C7A9CAC0602712EE1EFC3A9573E9C534D81DC5F6DDD08450E943E47F49C4B41")]
     [InlineData("FrozenTileWaterPrismFaces.cs", "85DDFFE0118075565B55074E935F8DBC86157D319A18801246919D570A20D1CB")]
     [InlineData("FrozenTileWaterRootUncertainty.cs", "7193FDD99FB0FB677F1C673357DA7005B024CEBB2DC7CE187EFE3EC08F7A1EEC")]
-    [InlineData("FrozenTileWaterWitness.cs", "BB62D480E7519277AEB9E07F48785CFF4D58B18A5F9AD146B295A323B964C23B")]
+    [InlineData("FrozenTileWaterUlp.cs", "B252C72956846257754418A5A48E5D0204C09B7B731F84448BA98058DC35B20A")]
+    [InlineData("FrozenTileWaterWitness.cs", "3772BF624518CB9F0CBE96EE4779B1A6956790F8F50021709670ABA574353883")]
     public void FrozenSourceIsAnExplicitReviewedSnapshot(string file, string expected)
     {
         // #1755. This reference is deliberate. Change its hash only with a reviewed behavior decision.
@@ -49,11 +50,39 @@ public sealed class WaterKernelFrozenReferenceTests
             "FrozenTileWaterDrawnGroundRounding.cs", "FrozenTileWaterFlatIndex.cs", "FrozenTileWaterGeometry.cs",
             "FrozenTileWaterLinearRank.cs", "FrozenTileWaterPathBounds.cs", "FrozenTileWaterPrism.cs",
             "FrozenTileWaterPrismCoverage.cs", "FrozenTileWaterPrismFaces.cs", "FrozenTileWaterRootUncertainty.cs",
-            "FrozenTileWaterWitness.cs"];
+            "FrozenTileWaterUlp.cs", "FrozenTileWaterWitness.cs"];
         string prefix = "KhaozEngine.Tests.Fixtures.FrozenWater.";
         Assert.Equal(expected.Order(StringComparer.Ordinal), typeof(WaterKernelFrozenReferenceTests).Assembly
             .GetManifestResourceNames().Where(name => name.StartsWith(prefix, StringComparison.Ordinal))
             .Select(name => name[prefix.Length..]).Order(StringComparer.Ordinal));
+    }
+
+    // #1832. The frozen reference steps floats with FrozenTileWaterUlp, never the BCL steps, so its results stay those
+    // of the reviewed snapshot only while that copy returns the BCL's bits. This assembly runs at the default controls,
+    // where the BCL steps are the reference.
+    [Fact]
+    public void FrozenFloatStepsMatchTheBclSteps()
+    {
+        uint[] boundaries = [
+            0x00000000u, 0x80000000u, 0x00000001u, 0x80000001u, 0x007FFFFFu, 0x807FFFFFu, 0x00800000u, 0x80800000u,
+            0x3F800000u, 0xBF800000u, 0x7F7FFFFFu, 0xFF7FFFFFu, 0x7F800000u, 0xFF800000u, 0x7FC00000u, 0xFFC00000u,
+            0x7F800001u, 0xFF800001u];
+        int checkedCount = 0;
+        foreach (uint boundary in boundaries)
+        {
+            for (int offset = -16; offset <= 16; offset++, checkedCount++) Check(unchecked(boundary + (uint)offset));
+        }
+        for (ulong bits = 0; bits <= uint.MaxValue; bits += 65537, checkedCount++) Check((uint)bits);
+        Assert.Equal(boundaries.Length * 33 + 65536, checkedCount);
+
+        static void Check(uint bits)
+        {
+            float x = BitConverter.UInt32BitsToSingle(bits);
+            Assert.Equal(BitConverter.SingleToUInt32Bits(MathF.BitDecrement(x)),
+                BitConverter.SingleToUInt32Bits(FrozenTileWaterUlp.Down(x)));
+            Assert.Equal(BitConverter.SingleToUInt32Bits(MathF.BitIncrement(x)),
+                BitConverter.SingleToUInt32Bits(FrozenTileWaterUlp.Up(x)));
+        }
     }
 
     [Fact]

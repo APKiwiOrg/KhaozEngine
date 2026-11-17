@@ -206,7 +206,8 @@ KEFP001 reports nothing unless the compilation sets the MSBuild property `KhaozS
 | Unset or any other value | Nothing. |
 
 The engine sets `on` for every project in its `Directory.Build.props`, so KEFP001 is an error in every
-engine compilation that does not reference xunit. A consumer opts in by setting the property in its own
+engine compilation that does not reference xunit. Its two floating point test assemblies set `all`, because they
+run engine code, frozen reference copies and test helpers under changed controls. A consumer opts in by setting the property in its own
 `Directory.Build.props`, for example
 `<KhaozSubnormalFloatRule>on</KhaozSubnormalFloatRule>`. The package's buildTransitive props hands the value
 to the analyzer. `FloatUlp` is internal to each engine assembly, so a consumer that opts in copies the shape of

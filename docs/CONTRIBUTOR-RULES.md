@@ -135,7 +135,10 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   copy per assembly: a project sets `<KhaozFloatUlp>true</KhaozFloatUlp>` and `build/FloatUlp.targets` compiles
   `build/FloatUlp.cs` in under its own namespace, so no project gains a dependency edge or public API.
   `KhaozSubnormalFloatRule` in `Directory.Build.props` turns KEFP001 on as an error for every engine compilation
-  that does not reference xunit. Default test projects compare against the BCL steps and stay outside it. See the
+  that does not reference xunit. Default test projects compare against the BCL steps and stay outside it. Both
+  floating point test assemblies set it to `all`, because their tests run engine code, frozen copies and helpers
+  under changed controls, so no code they compile may inline a BCL step. Their frozen water reference steps with
+  `FrozenTileWaterUlp`, a hash-pinned test-side copy that never follows the production helper. See the
   [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#subnormal-float-constants) for what the rule
   flags and cannot see.
 - A test that needs private state uses an internal `<Thing>ForTests` seam beside the type, never reflection.

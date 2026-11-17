@@ -21,13 +21,13 @@ internal sealed class FrozenTileWaterWitness
     internal FrozenTileWaterWitness(FrozenTileWaterPrism prism)
     {
         _reference = prism.Reference;
-        _minX = MathF.BitIncrement(prism.Column.Minimum.X);
-        _maxX = MathF.BitDecrement(prism.Column.Maximum.X);
-        _minZ = MathF.BitIncrement(prism.Column.Minimum.Z);
-        _maxZ = MathF.BitDecrement(prism.Column.Maximum.Z);
+        _minX = FrozenTileWaterUlp.Up(prism.Column.Minimum.X);
+        _maxX = FrozenTileWaterUlp.Down(prism.Column.Maximum.X);
+        _minZ = FrozenTileWaterUlp.Up(prism.Column.Minimum.Z);
+        _maxZ = FrozenTileWaterUlp.Down(prism.Column.Maximum.Z);
         var planes = new List<P>(8) { prism.Planes[0], prism.Planes[1], prism.Planes[2] };
         P cut = prism.Planes[5];
-        I retreat = I.Point(prism.Column.Maximum.Y) - I.Point(MathF.BitDecrement(prism.Column.Maximum.Y)) + I.Point(prism.HeightError);
+        I retreat = I.Point(prism.Column.Maximum.Y) - I.Point(FrozenTileWaterUlp.Down(prism.Column.Maximum.Y)) + I.Point(prism.HeightError);
         planes.Add(new(cut.Normal, cut.Offset - retreat));
         planes.Add(new(V.Point(-1, 0, 0), _reference.X - I.Point(_minX)));
         planes.Add(new(V.Point(1, 0, 0), I.Point(_maxX) - _reference.X));

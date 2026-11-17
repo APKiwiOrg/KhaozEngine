@@ -106,6 +106,14 @@ run --tree; said "compiles $POKE"; check property_rooted_link 1
 fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj \
   '<Compile Include="../$(SolutionName).FloatingPoint.Tests/Fixtures/FpPoke.cs" />'; stage
 run --tree; said "compiles $POKE"; check property_ending_inside_a_segment 1
+fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj '<Compile Include="$(FpDir)FpPoke.cs" />'; stage
+run --tree; said "compiles $POKE"; check property_directly_before_name 1
+# A property followed by a separator is matched from a path boundary, so a name that only ends the same way passes.
+fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj '<Compile Include="$(Fixtures)/Poke.cs" />'; stage
+run --tree; check property_then_separator_other_name 0
+fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj \
+  '<Compile Include="$(Fixtures)/Environment.Modes.cs" />'; stage
+run --tree; check property_then_separator_other_modes_name 0
 fresh; put docs/HOWTO.md 'Add <Compile Include="$(GeneratedFile)" /> to your project.'; stage
 run --tree; check markdown_example_is_not_read 0
 fresh; put test-shared/Modes.props "<Project><ItemGroup>$(link "../$MODES")</ItemGroup></Project>"; stage
@@ -133,6 +141,10 @@ run --tree; said 'KhaozEngine.Game.Tests/Bsd.cs'; check bsd_setter_name 1
 fresh; project KhaozEngine.Render.FloatingPoint.Tests/KhaozEngine.Render.FloatingPoint.Tests.csproj "$(link "../$MODES")"; stage
 run --tree; said "KhaozEngine.Render.FloatingPoint.Tests/KhaozEngine.Render.FloatingPoint.Tests.csproj: a floating point test project that does not compile $GUARD_ATTRIBUTE"
 said "does not compile $GUARD_TEST"; check floating_point_project_without_guard 1
+# A property then a separator and a name that only ends like the registration test does not stand in for it.
+fresh; project KhaozEngine.Render.FloatingPoint.Tests/KhaozEngine.Render.FloatingPoint.Tests.csproj \
+  "$(link "../$GUARD_ATTRIBUTE")"'<Compile Include="$(Shared)/GuardTests.cs" />'; stage
+run --tree; said "does not compile $GUARD_TEST"; check floating_point_project_with_lookalike_guard_test 1
 
 echo "check-fp-control-tests.test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

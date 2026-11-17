@@ -11,7 +11,8 @@
 #      allow-list entry marked fp): no project by its own directory, and no tracked file of any kind by a Compile
 #      item, so .props, .targets and .projitems imports count. Double or single quotes. A path is resolved against
 #      its file's directory, with $(MSBuildThisFileDirectory) and $(MSBuildProjectDirectory) understood. Any other
-#      property cannot be resolved here, so the part after its last ) is matched as a suffix, with anything before it.
+#      property cannot be resolved here, so the part after its last ) is matched from a path boundary when a separator
+#      follows the property, and from anywhere when the property ends inside a path segment.
 #   4. Every floating point test project compiles the default-environment guard and its registration test, so a test
 #      that leaves a control changed fails itself instead of a later test.
 # A .cs file that names a setter or the fixture class anywhere is read with its lines joined, so a declaration split
@@ -136,8 +137,8 @@ done < "$TMP/halves"
 
 # Rule 3. A project compiles every source under its own directory, and each Compile item, resolved against its
 # file's directory with .. and . folded and matched as a shell pattern, so * and ** both match across directories.
-# A path with any other property becomes * plus the part after its last ), so a property ending inside a segment still
-# matches.
+# A path with any other property is matched by the part after its last ). That part is matched from a path boundary
+# when a separator follows the property, and from anywhere when the property ends inside a path segment.
 compiles() { violation "$1: compiles $2, which can set a non-default floating point control"; }
 # Writes the pattern of every Compile item in $1 to $TMP/items.
 items_of() {
@@ -167,10 +168,11 @@ items_of() {
         if (index(item, "$(") > 0) {
           rest = item
           while ((at = index(rest, ")")) > 0) rest = substr(rest, at + 1)
-          while ((at = index(rest, "../")) > 0) rest = substr(rest, at + 3)
+          edge = (rest ~ /^(\.)?\//)
+          while ((at = index(rest, "../")) > 0) { rest = substr(rest, at + 3); edge = 1 }
           rest = fold(rest)
           if (rest == "") { print "*"; continue }
-          print "*" rest
+          if (edge) { print rest; print "*/" rest } else print "*" rest
           continue
         }
         print fold(dir "/" item)

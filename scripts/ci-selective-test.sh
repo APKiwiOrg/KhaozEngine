@@ -29,6 +29,8 @@ SLNX="KhaozEngine.slnx"
 ZERO_SHA="0000000000000000000000000000000000000000"
 DEFAULT_TEST_FILTER="Category!=LiveSocket&Category!=Diagnostic"
 FOUNDATION_TESTS="KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj"
+FLOATING_POINT_TESTS="KhaozEngine.FloatingPoint.Tests/KhaozEngine.FloatingPoint.Tests.csproj"
+FLOATING_POINT_DETERMINISM="FullyQualifiedName~DeterministicFp|FullyQualifiedName~FannedOutDeterminism"
 # dotnet-affected's exit code for "no affected projects were found". It is not an error, it is the
 # docs-only fast path, so the script maps it to a clean skip rather than a failure.
 AFFECTED_NONE_RC=166
@@ -45,12 +47,15 @@ run_full() {
   sh scripts/build-release-tests.sh KhaozEngine.slnx --no-restore || fail "build failed"
   dotnet test -c Release --no-build --filter "$DEFAULT_TEST_FILTER" || fail "test failed"
   # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes. The
-  # DeterministicFp tests live in KhaozEngine.Foundation.Tests, so the pass is scoped to that project
-  # (the workflow's tag path scopes it the same way).
+  # DeterministicFp tests that keep the default environment live in KhaozEngine.Foundation.Tests, and the ones
+  # that start from a changed rounding mode, with the fan-out tests, in KhaozEngine.FloatingPoint.Tests, so the
+  # pass is scoped to those two projects (the workflow's tag path scopes it the same way).
   for tc in 0 1; do
     echo "DOTNET_TieredCompilation=$tc"
     DOTNET_TieredCompilation="$tc" dotnet test "$FOUNDATION_TESTS" -c Release --no-build \
       --filter "FullyQualifiedName~DeterministicFp" || fail "determinism (tiering=$tc) failed"
+    DOTNET_TieredCompilation="$tc" dotnet test "$FLOATING_POINT_TESTS" -c Release --no-build \
+      --filter "$FLOATING_POINT_DETERMINISM" || fail "determinism (tiering=$tc) failed"
   done
 }
 
@@ -169,12 +174,19 @@ while IFS= read -r proj; do
   dotnet test "$proj" -c Release --no-build --filter "$DEFAULT_TEST_FILTER" || fail "test failed for $proj"
 done < "$TMP/affected_tests.txt"
 
-# Determinism double-pass, only when the DeterministicFp owner is itself in the affected set.
+# Determinism double-pass, for each project holding determinism tests that is itself in the affected set.
 if grep -qF "$FOUNDATION_TESTS" "$TMP/affected_tests.txt"; then
   for tc in 0 1; do
     echo "DOTNET_TieredCompilation=$tc"
     DOTNET_TieredCompilation="$tc" dotnet test "$FOUNDATION_TESTS" -c Release --no-build \
       --filter "FullyQualifiedName~DeterministicFp" || fail "determinism (tiering=$tc) failed"
+  done
+fi
+if grep -qF "$FLOATING_POINT_TESTS" "$TMP/affected_tests.txt"; then
+  for tc in 0 1; do
+    echo "DOTNET_TieredCompilation=$tc"
+    DOTNET_TieredCompilation="$tc" dotnet test "$FLOATING_POINT_TESTS" -c Release --no-build \
+      --filter "$FLOATING_POINT_DETERMINISM" || fail "determinism (tiering=$tc) failed"
   done
 fi
 

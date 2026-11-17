@@ -26394,6 +26394,37 @@ non-determinism that comes from JIT *codegen* differences:
 - **Auto-vectorization / reduction order.** A horizontal sum over a `System.Numerics.Vector<T>` can
   add lanes in a different order than a scalar loop, which changes rounding. Keep state that must be
   bit-identical on a fixed, scalar accumulation order.
+- **Code compiled under a changed control.** Enter the scope before a thread's first engine call and keep
+  its engine calls inside it, because the scope cannot undo machine code the JIT has already produced. The
+  .NET JIT folds constants through the compiling thread's FP register. An engine method optimized on a thread
+  with a flush or directed rounding mode set can keep a changed value in machine code that serves every thread
+  after the register is restored, until the method is recompiled, which for an `AggressiveOptimization`
+  method is never. What the probes showed:
+  - Flush: each subnormal `float` constant becomes a signed zero, and a `double` fold whose operand or result
+    is subnormal becomes zero. `MathF.BitDecrement(0f)` and `MathF.BitIncrement(0f)` return such a constant,
+    and engine methods inline them. A literal `double` constant kept its value.
+  - Rounding up, down or toward zero changes folded `float` and `double` arithmetic, among them `float` `1/3`
+    and `1.1*1.3` and `double` `0.1+0.2` and `sqrt(2)`. A fold appears where constant operands meet after
+    inlining, so an engine method whose callee inlines with constant arguments is exposed.
+  - Both were shown for `AggressiveOptimization` and on-stack replacement on macOS arm64, Linux arm64 and
+    Linux x64 under Rosetta. With tiered compilation off they bake wherever the constant reaches the optimized
+    compile: a constant in the method itself, or a step the JIT inlined. Plain tiering off left the BCL step
+    out of line in every probe. With ReadyToRun also off, `MathF.BitDecrement` itself is compiled on its first
+    call and bakes for every caller in the process. Tier-0 compiles changed nothing. Tier-1 promotions changed nothing
+    either, presumably because the background compiler thread had the default controls in those runs. One created from a
+    thread with changed controls would start with them on Linux (inferred).
+    Native x64 is inferred, not shown: the x64 runs were emulated, and denormals-are-zero alone could not be
+    set there.
+  - A changed result was shown for collider bounds and tile ground extents, so a method first optimized on a
+    thread that a native audio or graphics library left in a changed mode can change later results on every
+    thread, including results the engine pins for replay. Water capture inlines the same calls, but no change
+    there was shown. Never call the engine from a callback that runs under a library's changed mode.
+  - A thread created under a changed control started with it on Linux arm64, for flush and for rounding toward
+    zero. On macOS the flush bit was not inherited, and Rosetta could not show it. `ThreadPoolJobScheduler`
+    makes its calling thread canonical for the length of a fan-out, so a pool thread created for it starts
+    canonical. Without that scope, on Linux arm64, a fan-out that was the process's first thread pool use, from a
+    caller rounding toward zero, left every pool thread rounding toward zero. Other pool work or threads you
+    start from a thread with changed controls get no such scope from the engine.
 
 Rule of thumb: integers and `DeterministicRng` are already bit-stable; for the float math in a
 deterministic tick, wrap it in `DeterministicFpScope`, keep operation order fixed, and avoid fused

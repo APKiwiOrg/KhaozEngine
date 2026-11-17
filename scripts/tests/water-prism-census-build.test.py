@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -23,6 +24,24 @@ def run(root, *args, code=0, env=None, diagnostic=None):
     if diagnostic:
         assert f'error {diagnostic}:' in result.stdout, result.stdout
     return result.stdout
+
+
+# The engine assemblies a build of KhaozEngine.TileWorld.Physics grants internals to. The research build adds only the
+# benchmark harness, and the shipped package takes the normal build.
+NORMAL_FRIENDS = {'KhaozEngine.Server.Tests', 'KhaozEngine.TileWorld.Physics.Tests',
+                  'KhaozEngine.TileWorld.Physics.FloatingPoint.Tests'}
+CENSUS_FRIENDS = NORMAL_FRIENDS | {'KhaozEngine.Benchmarks'}
+
+
+def friends(data):
+    """Engine names in the DLL's one-string attribute blobs, apart from its own name, which its title and product
+    attributes carry. A blob is prolog 01 00, a one-byte length, the UTF-8 string and no named arguments. In this
+    assembly the only such engine names are its InternalsVisibleTo friends."""
+    names = set()
+    for match in re.finditer(rb'\x01\x00([\x01-\x7f])(KhaozEngine\.[\x21-\x7e]+?)\x00\x00', data):
+        if match.group(1)[0] == len(match.group(2)):
+            names.add(match.group(2).decode())
+    return names - {'KhaozEngine.TileWorld.Physics'}
 
 
 with tempfile.TemporaryDirectory(prefix='khaozengine-census-build-') as temporary:
@@ -117,6 +136,7 @@ if options.artifact_proof:
     run(ROOT, 'dotnet', 'build', str(project), '-c', 'Release')
     normal_bytes = normal_dll.read_bytes()
     assert b'TileWaterCensus' not in normal_bytes and b'KhaozEngine.Benchmarks' not in normal_bytes
+    assert friends(normal_bytes) == NORMAL_FRIENDS, friends(normal_bytes)
     normal_hash = hashlib.sha256(normal_bytes).hexdigest()
     normal_time = normal_dll.stat().st_mtime_ns
     run(ROOT, 'dotnet', 'build', str(project), '-c', 'Release', '-p:WaterPrismCensus=true')
@@ -124,6 +144,7 @@ if options.artifact_proof:
     assert normal_dll.stat().st_mtime_ns == normal_time
     research = census_dll.read_bytes()
     assert b'TileWaterCensus' in research and b'KhaozEngine.Benchmarks' in research
+    assert friends(research) == CENSUS_FRIENDS, friends(research)
     with tempfile.TemporaryDirectory(prefix='khaozengine-census-package-') as temporary:
         output = Path(temporary).resolve()
         run(ROOT, 'dotnet', 'pack', str(project), '-c', 'Release', '--no-build', '--no-restore', '-o', str(output),
@@ -134,5 +155,6 @@ if options.artifact_proof:
             data = package.read('lib/net10.0/KhaozEngine.TileWorld.Physics.dll')
             assert data == normal_bytes
             assert b'TileWaterCensus' not in data and b'KhaozEngine.Benchmarks' not in data
+            assert friends(data) == NORMAL_FRIENDS, friends(data)
     print(json.dumps({'artifactProofSeconds': round(time.monotonic() - start, 3),
                       'normalDllSha256': normal_hash, 'normalDllUnchanged': True, 'normalPackageClean': True}))

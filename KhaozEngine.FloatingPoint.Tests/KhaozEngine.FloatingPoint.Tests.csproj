@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Every test outside the water kernel corpus that changes a rounding or flush control. Machine code the JIT
+       compiles while a control is changed, and threads created then, outlive the test that changed it, so these
+       tests run in their own test process instead of beside tests that assume the default environment. The water
+       kernel's changed-control tests are in KhaozEngine.TileWorld.Physics.FloatingPoint.Tests, a corpus assembly
+       that CI checks class by class. scripts/check-fp-control-tests.sh keeps every control-setting source in the
+       floating point test assemblies. See docs/CONTRIBUTOR-RULES.md. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- An executable with its own entry point (Program.cs), so a test can run this assembly as a child process
+         whose thread pool has not run anything yet. -->
+    <OutputType>Exe</OutputType>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.*, per AGENTS.md. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Determinism and Primitives: the scope's own tests and the mini-sim's integer stream. -->
+    <ProjectReference Include="../KhaozEngine.Determinism/KhaozEngine.Determinism.csproj" />
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <!-- Simulation, Ecs, Replication and Sharding: the fan-out tests run the job scheduler and a shard host. -->
+    <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+    <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
+    <!-- Physics and Physics.Bepu: support proposal admission under changed controls. -->
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Linked from their owners, never copied. Both halves of the native fixture, the default-environment guard and
+         its registration test, the AllocSensitive collection the admission test joins, and the admission check. -->
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterFloatingPointEnvironment.cs" Link="Fixtures/WaterFloatingPointEnvironment.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.FloatingPoint.Tests/Fixtures/WaterFloatingPointEnvironment.Modes.cs" Link="Fixtures/WaterFloatingPointEnvironment.Modes.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/DefaultFloatingPointEnvironmentAttribute.cs" Link="Fixtures/DefaultFloatingPointEnvironmentAttribute.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/DefaultFloatingPointEnvironmentGuardTests.cs" Link="DefaultFloatingPointEnvironmentGuardTests.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/AllocSensitiveCollection.cs" Link="Fixtures/AllocSensitiveCollection.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/Physics/SupportProposalAdmissionTests.Shared.cs" Link="Physics/SupportProposalAdmissionTests.Shared.cs" />
+  </ItemGroup>
+</Project>

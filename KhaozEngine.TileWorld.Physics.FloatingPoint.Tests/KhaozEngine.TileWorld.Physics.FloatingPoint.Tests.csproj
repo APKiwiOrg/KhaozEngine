@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Every TileWorld.Physics test that runs engine code under a changed rounding or flush control. Machine code the
+       JIT compiles while a control is changed, and threads created then, outlive the test that changed it, so these
+       tests run in their own test process instead of beside tests that assume the default environment. Only the
+       floating point test assemblies compile the mode half of WaterFloatingPointEnvironment. It is a water kernel
+       corpus assembly, so a changed-control test outside that corpus goes in KhaozEngine.FloatingPoint.Tests. See
+       docs/CONTRIBUTOR-RULES.md. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.TileWorld.Physics.*, per AGENTS.md. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+    <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Shared with KhaozEngine.TileWorld.Physics.Tests, which owns these files. Its split classes keep their default
+         rows there and their changed-control rows here, under the same test names. -->
+    <Compile Include="../test-shared/WaterPrismCensus/*.cs" Link="Fixtures/WaterPrismCensus/%(Filename)%(Extension)" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/FrozenWater/*.cs" Link="Fixtures/FrozenWater/%(Filename)%(Extension)" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterFloatingPointEnvironment.cs" Link="Fixtures/WaterFloatingPointEnvironment.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/DefaultFloatingPointEnvironmentAttribute.cs" Link="Fixtures/DefaultFloatingPointEnvironmentAttribute.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/SharedProjectionEnvironment.cs" Link="Fixtures/SharedProjectionEnvironment.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/SharedProjectionBypass.cs" Link="Fixtures/SharedProjectionBypass.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/GrazingWaterBank.cs" Link="Fixtures/GrazingWaterBank.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterCoverageComparison.cs" Link="Fixtures/WaterCoverageComparison.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterKernelTraceFixture.cs" Link="Fixtures/WaterKernelTraceFixture.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterTraceMemoComparison.cs" Link="Fixtures/WaterTraceMemoComparison.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/TileWorldPhysicsTestData.cs" Link="Fixtures/TileWorldPhysicsTestData.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/AllocSensitiveCollection.cs" Link="Fixtures/AllocSensitiveCollection.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/DefaultFloatingPointEnvironmentGuardTests.cs" Link="DefaultFloatingPointEnvironmentGuardTests.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Physics.Tests/*.Shared.cs" Link="Shared/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

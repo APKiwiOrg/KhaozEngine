@@ -3,8 +3,11 @@ using System.Runtime.InteropServices;
 
 namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 
-// Test-owned native scope. Production never sets a caller's FP state.
-internal sealed class WaterFloatingPointEnvironment : IDisposable
+// Test-owned native scope. Production never sets a caller's FP state. This half reads the controls, restores the
+// captured ones and returns to the default. Every other mode is in WaterFloatingPointEnvironment.Modes.cs, which only
+// test assemblies whose tests change controls compile. Compiled code and created threads outlive a changed control,
+// so an assembly whose tests assume the default environment cannot set one.
+internal sealed partial class WaterFloatingPointEnvironment : IDisposable
 {
     readonly Buffer _saved;
     readonly bool _mac, _windows, _arm;
@@ -40,60 +43,45 @@ internal sealed class WaterFloatingPointEnvironment : IDisposable
         catch (EntryPointNotFoundException) { return null; }
     }
 
-    internal bool Set(string mode)
+    /// <summary>The rounding and flush controls the mode half's <c>Set</c> can change on the calling thread. Zero is
+    /// the default environment. Null where no native reader exists.</summary>
+    internal static ulong? CurrentModes() => Capture()?.Modes();
+
+    ulong? Modes()
     {
-        if (_windows)
-        {
-            uint value = mode switch
-            {
-                "up" => 0x200,
-                "down" => 0x100,
-                "zero" => 0x300,
-                "flush-output" => 0x03000000,
-                "flush-input" => 0x02000000,
-                _ => 0,
-            };
-            return WindowsControl(out _, value, 0x03000300) == 0;
-        }
+        if (_windows) return WindowsControl(out uint controls, 0, 0) == 0 ? controls & 0x03000300u : null;
+        if (_arm) return (_mac ? _saved.MacFpcr : _saved.First) & 0x01c00000ul;
+        uint mxcsr = _mac ? _saved.MacMxcsr : _saved.LinuxMxcsr;
+        return (mxcsr & 0xe040u) | ((ulong)(_saved.First & 0xc00u) << 32);
+    }
+
+    /// <summary>Round to nearest with no flush, the default environment.</summary>
+    internal bool SetNearest() => Apply(windows: 0, arm: 0, mxcsr: 0, x87: 0);
+
+    /// <summary>The control change a shared test body receives in an assembly whose tests assume the default
+    /// environment. It returns to the default controls and refuses every other mode.</summary>
+    internal static bool NearestOnly(WaterFloatingPointEnvironment environment, string mode) =>
+        mode == "nearest" ? environment.SetNearest() : throw new InvalidOperationException(
+            $"Mode {mode} changes a floating point control, so its test runs in KhaozEngine.TileWorld.Physics.FloatingPoint.Tests.");
+
+    // Writes the given rounding and flush bits over the saved environment. Only this half's default and the mode
+    // half compiled into the floating point test assemblies pass nonzero bits.
+    bool Apply(uint windows, ulong arm, uint mxcsr, uint x87)
+    {
+        if (_windows) return WindowsControl(out _, windows, 0x03000300) == 0;
         Buffer buffer = _saved;
         if (_arm)
         {
-            // ARM's FZ controls both operands and results. Independent FIZ is optional on newer
-            // cores, so the input-only case is exercised on x64 where DAZ is independent of FTZ.
-            if (mode == "flush-input") return false;
-            ulong controls = (_mac ? buffer.MacFpcr : buffer.First) & ~0x01c00000ul;
-            controls |= mode switch
-            {
-                "up" => 0x400000ul,
-                "down" => 0x800000ul,
-                "zero" => 0xc00000ul,
-                "flush-output" => 0x1000000ul,
-                _ => 0ul,
-            };
+            ulong controls = ((_mac ? buffer.MacFpcr : buffer.First) & ~0x01c00000ul) | arm;
             if (_mac) buffer.MacFpcr = controls;
             else buffer.First = (uint)controls;
         }
         else
         {
-            uint controls = (_mac ? buffer.MacMxcsr : buffer.LinuxMxcsr) & ~0xe040u;
-            controls |= mode switch
-            {
-                "up" => 0x4000u,
-                "down" => 0x2000u,
-                "zero" => 0x6000u,
-                "flush-output" => 0x8000u,
-                "flush-input" => 0x40u,
-                _ => 0u,
-            };
+            uint controls = ((_mac ? buffer.MacMxcsr : buffer.LinuxMxcsr) & ~0xe040u) | mxcsr;
             if (_mac) buffer.MacMxcsr = controls;
             else buffer.LinuxMxcsr = controls;
-            buffer.First = (buffer.First & ~0xc00u) | (mode switch
-            {
-                "up" => 0x800u,
-                "down" => 0x400u,
-                "zero" => 0xc00u,
-                _ => 0u,
-            });
+            buffer.First = (buffer.First & ~0xc00u) | x87;
         }
         return (_mac ? MacSet(ref buffer) : LinuxSet(ref buffer)) == 0;
     }

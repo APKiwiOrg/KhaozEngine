@@ -230,7 +230,9 @@ directly.
 ## In the repository but not packed
 
 - Tests: one `KhaozEngine.<Area>.Tests` project per area, `KhaozEngine.Tests` for cross-cutting tests, and the
-  `KhaozEngine.TestSupport` helpers they share.
+  `KhaozEngine.TestSupport` helpers they share. Tests that change floating point controls run in their own
+  process, in `KhaozEngine.TileWorld.Physics.FloatingPoint.Tests` for the water kernel and
+  `KhaozEngine.FloatingPoint.Tests` for every other area.
 - Samples: [KhaozEngine.Showcase](../KhaozEngine.Showcase/README.md), the feature tour and capture testbed,
   [SnapshotTool](../SnapshotTool/README.md), the headless snapshot runner, and `MmoServerSample`, a reference
   dedicated MMO server.

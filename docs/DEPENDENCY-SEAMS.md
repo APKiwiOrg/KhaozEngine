@@ -583,7 +583,7 @@ The floating-origin major added one edge, acyclic, and it cost `KhaozEngine.Simu
 status:
 
 ```
-KhaozEngine.Simulation -> KhaozEngine.Determinism   (DeterministicFpScope, around each ThreadPoolJobScheduler body)
+KhaozEngine.Simulation -> KhaozEngine.Determinism   (DeterministicFpScope, around each ThreadPoolJobScheduler body and fan-out)
 ```
 
 `DeterministicFp` pins the floating-point control register (rounding mode, FTZ/DAZ, trap masks) on the CALLING
@@ -591,7 +591,10 @@ THREAD only, by its own contract. `ThreadPoolJobScheduler.For` hands its body to
 which are neither the calling thread nor a dedicated sim thread, so their register is whatever the pool last left
 it at - which is the exact class of bug the scope exists to remove, reintroduced one layer up at the
 job-scheduling boundary (issue #197). Applying the scope there rather than at each call site means a consumer's own
-`For()` is covered too. `ShardHost.Tick` installs the same scope around each cell's step, so the guarantee holds
+`For()` is covered too. The scheduler also enters the scope on the calling thread for the length of a multi-job
+fan-out, because a thread the pool creates for the call can start with its creator's controls: on Linux arm64 a
+fan-out that was the process's first thread pool use, from a caller rounding toward zero, left every pool thread
+rounding toward zero. `ShardHost.Tick` installs the same scope around each cell's step, so the guarantee holds
 whichever scheduler is in use. Entering twice is harmless, since the inner scope restores exactly what the outer
 one had already made canonical.
 

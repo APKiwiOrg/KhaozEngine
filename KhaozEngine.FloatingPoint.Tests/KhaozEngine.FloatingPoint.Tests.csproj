@@ -3,7 +3,8 @@
        compiles while a control is changed, and threads created then, outlive the test that changed it, so these
        tests run in their own test process instead of beside tests that assume the default environment. The water
        kernel's changed-control tests are in KhaozEngine.TileWorld.Physics.FloatingPoint.Tests, a corpus assembly
-       that CI checks class by class. See docs/CONTRIBUTOR-RULES.md. -->
+       that CI checks class by class. scripts/check-fp-control-tests.sh keeps every control-setting source in the
+       floating point test assemblies. See docs/CONTRIBUTOR-RULES.md. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <OutputType>Library</OutputType>

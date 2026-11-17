@@ -94,6 +94,12 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   After `InterpolateAt`, `TryGetInterpolationSegment<T>` reads the same two values and their optional ticks while
   the component is bracketed. It returns false for a clamp, hold or single sample. Converting tick differences to
   time assumes a host that ticks once per configured simulation step.
+  Read `EntityRenderState.PlanarVelocity` when `HasPlanarVelocity` is true. The vector is world X and Z
+  in metres per second. For remotes, enable `WorldClientConfig.ReceiveServerTick` and use ticked frames from a host
+  that ticks once per `TickSeconds`. Velocity measures the displayed bracket over its server ticks and averages
+  over any skipped ticks. For the local entry it comes from the latest predicted step, like `LocalHorizontalSpeed`.
+  The flag is false on remote clamps, holds, single samples such as teleport cuts, unticked frames, and format 2.
+  Consumers can keep their last valid speed or use their own fallback when the flag is false.
   Tune the delay with **`WorldClientConfig.InterpolationDelayTicks`** (default 2 ticks); lower it for less latency,
   raise it for a rougher network. A **remote teleport is a hard cut for observers too** (since 10.67.0): when a
   remote's replicated `MovementState.TeleportEpoch` advances, its interpolation buffer is flushed to the newest sample

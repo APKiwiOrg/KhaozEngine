@@ -14,10 +14,9 @@ public sealed partial class WorldClientConfig
     /// <summary>Smooth remote players between the discrete (~tick-rate) replicated snapshots by rendering them on a
     /// fixed interpolation delay (see <see cref="InterpolationDelayTicks"/>) and lerping the two buffered snapshots
     /// bracketing that render time by their true timestamps, instead of teleporting one snapshot-step per ingest.
-    /// Default <c>true</c>: every remote glides, decoupled from both the tick cadence and the render fps (no hold
-    /// frames, no catch-up snaps at a non-integer render:tick ratio), at the cost of <see cref="InterpolationDelayTicks"/>
-    /// ticks of remote render latency. Set <c>false</c> to restore the raw-latest-position behaviour (no delay, but
-    /// steppy remotes).</summary>
+    /// Default <c>true</c>. Samples are stamped on arrival, so the drawn speed can vary with arrival jitter and
+    /// render cadence. The client holds the newest sample if the render time passes it. Set <c>false</c> to
+    /// render the latest position immediately.</summary>
     public bool InterpolateRemotes { get; init; } = true;
 
     /// <summary>Fixed remote-interpolation delay, in ticks: remotes are rendered this far behind the newest received

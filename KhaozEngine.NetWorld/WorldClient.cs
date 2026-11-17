@@ -536,6 +536,7 @@ public sealed partial class WorldClient : IDisposable
             // Local-only signals: a remote receives neither (see EntityRenderState).
             float stepCumulativeY = 0f;
             float landingImpact = 0f;
+            Vector2? planarVelocity = null;
             if (isLocal)
             {
                 // The local avatar's exact movement state is the predicted/reconciled state, converted to ABSOLUTE
@@ -554,6 +555,7 @@ public sealed partial class WorldClient : IDisposable
                 // the continuous glide renders raw. Read from the predictor (not the rendered state, whose Move.StepDeltaY
                 // is a per-tick event, not the running sum). Remotes leave it 0 (their singles ride position interpolation).
                 stepCumulativeY = prediction.StepCumulativeY;
+                planarVelocity = prediction.PredictedHorizontalVelocity;
             }
             else
             {
@@ -573,9 +575,10 @@ public sealed partial class WorldClient : IDisposable
                 waterExcursion = ms.WaterExcursion;
                 climbRate = hasMs ? MovementState.DecodeClimbRate(ms.ClimbRateQ) : 0f;
                 facingYaw = hasMs ? MovementState.DecodeFacingYaw(ms.FacingYawQ) : 0f;
+                if (serverTicks is not null) planarVelocity = RemotePresentationVelocity.Read(view, kv.Key, tickSeconds);
             }
             string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY, landingImpact, facingYaw, waterExcursion));
+            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY, landingImpact, facingYaw, waterExcursion, planarVelocity));
         }
         return list;
     }
@@ -689,7 +692,8 @@ public sealed partial class WorldClient : IDisposable
             // wasted, and buffering-then-InterpolateAt would clobber its ReplicatedPosition (the reconcile basis read
             // just below) with a stale fixed-delay value - the post-teleport-slide bug. A reconnect that re-ids the
             // local player drops the new id's stale buffer inside RecordInterpolationSample.
-            view.RecordInterpolationSample(presentationClock, localNetId);
+            view.RecordInterpolationSample(presentationClock, localNetId,
+                serverTicks is not null && serverTick >= 0 ? serverTick : null);
             // Remote teleport hard-cut: AFTER the post-teleport sample is buffered above, snap any remote whose
             // authoritative teleport epoch advanced this ingest to that newest sample, dropping the pre-teleport ones -
             // otherwise the buffer straddles the jump and InterpolateAt streaks the remote across the world.

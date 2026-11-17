@@ -121,6 +121,12 @@ public sealed class ClientPrediction<TState, TCommand>
     /// </summary>
     public float PredictedHorizontalSpeed => predictedHorizontalSpeed;
 
+    /// <summary>The planar displacement of the latest <see cref="Predict"/> step divided by its tick duration,
+    /// in position units per second. Follows the same commanded path as <see cref="PredictedHorizontalSpeed"/>,
+    /// excluding correction offsets. Null until a step is predicted or after <see cref="Reset"/>,
+    /// <see cref="ResetForTransition"/> or <see cref="Reseed"/> clears it.</summary>
+    public Vector2? PredictedHorizontalVelocity { get; private set; }
+
     /// <summary>
     /// The client-local, session-monotonic running sum of DISCRETE-STEP vertical impulses committed on the predicted
     /// ticks (see <see cref="IPredictedState{TSelf}.StepDeltaY"/>): a step-up seat / first riser adds its rise, a
@@ -207,6 +213,7 @@ public sealed class ClientPrediction<TState, TCommand>
         verticalRenderOffset = 0f;
         verticalRenderOffsetVelocity = 0f;
         predictedHorizontalSpeed = 0f;
+        PredictedHorizontalVelocity = null;
         stepCumulativeY = 0f;
         // Capture the basis epoch and arm one placement signal for the join or explicit transition.
         lastTeleportEpoch = basis.TeleportEpoch;
@@ -284,6 +291,7 @@ public sealed class ClientPrediction<TState, TCommand>
         renderOffsetVelocity = Vector2.Zero;
         verticalRenderOffsetVelocity = 0f;
         predictedHorizontalSpeed = 0f;
+        PredictedHorizontalVelocity = null;
         stepCumulativeY = 0f;
         // nextSeq intentionally preserved (monotonic across the reconnect); pendingCommands intentionally kept
         // (the following Reconcile drops acked / replays unacked against the new server's ack).
@@ -326,6 +334,7 @@ public sealed class ClientPrediction<TState, TCommand>
         // collision clamp) over the tick duration. IPredictedState.Position is planar, so this is horizontal for free.
         Vector2 step = predictedState.Position - previousSimulationPosition;
         predictedHorizontalSpeed = settings.TickSeconds > 0f ? step.Length() / settings.TickSeconds : 0f;
+        PredictedHorizontalVelocity = settings.TickSeconds > 0f ? step / settings.TickSeconds : null;
         if (pendingCommands.Count > settings.MaxPendingCommands)
         {
             // Bound memory if acknowledgements stop arriving (sustained loss); drop the oldest.

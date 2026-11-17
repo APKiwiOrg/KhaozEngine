@@ -5,7 +5,7 @@ namespace KhaozEngine.NetWorld;
 
 public sealed partial class WorldClient
 {
-    // The view's sample history cap (ClientReplicationView.MaxHistorySamples): the timeline holds no more history
+    // The view's sample history cap (InterpolationSampleHistory.MaxHistorySamples): the timeline holds no more history
     // than the samples it brackets alongside.
     private const int ServerTickHistory = 600;
 

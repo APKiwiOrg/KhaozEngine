@@ -4,12 +4,11 @@ public sealed partial class WorldClient
 {
     /// <summary>Advances render-time smoothing (call once per render frame): the local avatar's inter-tick
     /// prediction smoothing, plus - when <see cref="WorldClientConfig.InterpolateRemotes"/> is set - remote
-    /// interpolation. Remotes render on a fixed delay (<see cref="WorldClientConfig.InterpolationDelayTicks"/> ticks
-    /// behind the newest snapshot): the monotonic render clock advances by <paramref name="dt"/>, and the two buffered
-    /// snapshots bracketing (clock - delay) are lerped by their true timestamps, so between the discrete ~tick-rate
-    /// snapshots they glide rather than teleport. A snapshot stall past the buffer holds the remote at the newest value
-    /// (no extrapolation) until the next arrives. Idempotent within a frame: it rewrites the same interpolated state,
-    /// so multiple <see cref="Snapshot"/> reads per frame are consistent.</summary>
+    /// interpolation. Remotes render at the monotonic client render clock less the fixed delay
+    /// (<see cref="WorldClientConfig.InterpolationDelayTicks"/>). Snapshots are stamped on that clock at ingest
+    /// and the samples bracketing the delayed time are lerped by those stamps. A stall past the buffer holds the
+    /// remote at the newest value until another sample arrives. Idempotent within a frame,
+    /// with consistent <see cref="Snapshot"/> reads.</summary>
     /// <param name="dt">Seconds since the last render frame. Anything that is not a finite positive number of
     /// seconds (negative, zero, infinite, or not a number) is treated as zero and advances nothing.</param>
     public void AdvancePresentation(float dt) => PresentFrame(dt, commandPhaseSeconds: null);
@@ -46,12 +45,7 @@ public sealed partial class WorldClient
         UpdateNetStatsWindow(step);
         presentationClock += step;                            // monotonic render clock (snapshots are stamped against it)
         if (interpolateRemotes)
-            // Render remotes on a fixed delay: pick the render time interpolationDelaySeconds behind the newest snapshot
-            // (which arrived at ~presentationClock), then lerp the two buffered snapshots bracketing it. Because
-            // renderTime advances smoothly with the render dt - not by ramping alpha off an estimated interval - there
-            // is no phase drift, so no hold frames and no catch-up snaps at a non-integer render:tick ratio. The LOCAL
-            // avatar (LocalNetId) is excluded: it renders from prediction, and its client-world ReplicatedPosition must
-            // stay the last-received authoritative value (the reconcile basis), not a fixed-delay interpolated one.
+            // The local avatar is excluded so its replicated position stays the latest authoritative basis.
             view.InterpolateAt(world, presentationClock - interpolationDelaySeconds, LocalNetId);
         PresentServerTick();
         if (presentationTrace is not null) RecordTraceFrame(step);

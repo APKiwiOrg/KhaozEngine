@@ -97,9 +97,9 @@ area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledge
   last two snapshots (the legacy estimate-and-ramp path), and the preferred **fixed-delay buffer** (since 9.23.0):
   `RecordInterpolationSample(t, excludeNetId?)` stamps each applied snapshot's interpolatable bytes into a per-component
   timestamped history, and `InterpolateAt(world, renderTime, excludeNetId?)` renders every component at `renderTime` by
-  lerping the two buffered samples bracketing it by their true timestamps (clamp to the oldest before the buffer; HOLD
-  at the newest past it, flagged via `WasHeldAtLastInterpolation(netId)`; single-sample renders that sample). This
-  decouples presentation from the tick cadence and the render fps. The optional `excludeNetId` skips one entity in both
+  lerping the two buffered samples bracketing it by their timestamps. Before the buffer it clamps to the oldest.
+  Past the buffer it holds at the newest and flags `WasHeldAtLastInterpolation(netId)`. A single sample renders
+  on its own. Sample spacing follows the stamps supplied by the caller. The optional `excludeNetId` skips one entity in both
   calls (the local, predicted avatar): it renders from prediction, so its client-world position must stay the
   last-received authoritative value (the reconcile basis), never a fixed-delay interpolated one - passing the local net
   id keeps a post-teleport static local player from feeding a stale basis back into reconcile. When it changes (a

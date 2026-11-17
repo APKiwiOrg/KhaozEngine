@@ -62,6 +62,16 @@ public readonly struct EntityRenderState
     }
 
     public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity, bool swimming, float climbRate, float stepCumulativeY, float landingImpactSpeed, float facingYaw, WaterExcursionState waterExcursion)
+        : this(id, position, isLocal, displayName, grounded, verticalVelocity, swimming, climbRate,
+            stepCumulativeY, landingImpactSpeed, facingYaw, waterExcursion, planarVelocity: null)
+    {
+    }
+
+    /// <summary>Creates an entity render state with an optional world X/Z velocity in metres per second.
+    /// Pass null when this frame has no velocity sample.</summary>
+    public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded,
+        float verticalVelocity, bool swimming, float climbRate, float stepCumulativeY, float landingImpactSpeed,
+        float facingYaw, WaterExcursionState waterExcursion, Vector2? planarVelocity)
     {
         Id = id;
         Position = position;
@@ -75,6 +85,8 @@ public readonly struct EntityRenderState
         LandingImpactSpeed = landingImpactSpeed;
         FacingYaw = facingYaw;
         WaterExcursion = waterExcursion;
+        PlanarVelocity = planarVelocity.GetValueOrDefault();
+        HasPlanarVelocity = planarVelocity.HasValue;
     }
 
     /// <summary>The entity's network identity (stable server/client).</summary>
@@ -82,6 +94,16 @@ public readonly struct EntityRenderState
 
     /// <summary>World position to render the capsule at.</summary>
     public Vector3 Position { get; }
+
+    /// <summary>World X and Z velocity in metres per second, or zero when <see cref="HasPlanarVelocity"/> is false.
+    /// The local value is from the latest predicted step. The remote value is the mean over the drawn segment
+    /// measured in server time, which assumes the host ticks once per <c>WorldClientConfig.TickSeconds</c>.</summary>
+    public Vector2 PlanarVelocity { get; }
+
+    /// <summary>True for a local predicted step or a remote interpolation segment with two advancing server ticks.
+    /// False for remotes when interpolation is off, the sample is clamped or held, only one sample is available,
+    /// or either endpoint lacks a tick, as with unticked and format 2 frames. Consumers choose their fallback.</summary>
+    public bool HasPlanarVelocity { get; }
 
     /// <summary>True for the local player (predicted + reconciled); false for replicated remotes.</summary>
     public bool IsLocal { get; }

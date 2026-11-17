@@ -158,6 +158,8 @@ horizontal for free). It is computed **only** on the commanded `Predict` path, n
 reconciliation rebase/snap never registers as movement - a clean steady value for a speed HUD, footstep audio,
 or a locomotion blend, unlike differencing `RenderedState.Position` (which carries the decaying render offset
 and wobbles under lag). Zero until the first `Predict`. `Reset`, `ResetForTransition` and `Reseed` zero it.
+`PredictedHorizontalVelocity` exposes the planar vector from that same step. It is null until a step is
+predicted and after any of those resets.
 
 For an explicit world transition, call `ResetForTransition(authoritativeState)` after accepting the new basis.
 It preserves the next command sequence, discards all pending commands and installs the new state immediately.

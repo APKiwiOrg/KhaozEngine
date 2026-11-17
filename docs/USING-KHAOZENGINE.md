@@ -534,6 +534,14 @@ Direct replication consumers can record a tick using
 There is no bracket on clamped, held or single-sample frames. Converting tick differences to time assumes a
 host that ticks once per configured simulation step.
 
+Use `EntityRenderState.PlanarVelocity` when `HasPlanarVelocity` is true. The vector is world X and Z in
+metres per second. For remotes, enable `WorldClientConfig.ReceiveServerTick` and use ticked frames from a
+host that ticks once per `TickSeconds`. Each value is the displacement of the drawn bracket over the server
+time it spans, including any skipped ticks. Remote clamps, holds, single samples, unticked frames, format 2,
+and disabled interpolation have no velocity. Choose a fallback such as retaining the last valid speed.
+The local entry gets its value from `ClientPrediction.PredictedHorizontalVelocity` on the latest predicted
+step, with the same magnitude as `WorldClient.LocalHorizontalSpeed`.
+
 Set `WorldClientConfig.ReceiveServerTick` to read the server's tick on the client. `WorldClient.LatestServerTick` is
 the newest applied frame's `ServerTick`, and `WorldClient.RemoteRenderTick` is the fractional server tick the remotes
 are drawn at, bracketed at the remote render time exactly as the remote samples are. Both read `-1` while unknown,

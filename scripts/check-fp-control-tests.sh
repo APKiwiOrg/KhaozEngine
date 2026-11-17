@@ -11,14 +11,16 @@
 #      allow-list entry marked fp): no project by its own directory, and no tracked file of any kind by a Compile
 #      item, so .props, .targets and .projitems imports count. Double or single quotes. A path is resolved against
 #      its file's directory, with $(MSBuildThisFileDirectory) and $(MSBuildProjectDirectory) understood. Any other
-#      property cannot be resolved here, so the part after its last ) is matched as a suffix.
+#      property cannot be resolved here, so the part after its last ) is matched as a suffix, with anything before it.
 #   4. Every floating point test project compiles the default-environment guard and its registration test, so a test
 #      that leaves a control changed fails itself instead of a later test.
 # A .cs file that names a setter or the fixture class anywhere is read with its lines joined, so a declaration split
-# across lines still matches. Matching only ever widens, so a form the script cannot parse fails rather than passes.
+# across lines still matches.
 # Default: read the index. --tree: read tracked files in the work tree, for CI.
-# Limits: an item list (@(...)) or metadata (%(...)) in a Compile path is not expanded, a project's own Compile Remove
-# is not honoured (both can only widen), and machine code a test writes and runs itself is not recognised.
+# Limits: an item list (@(...)) or metadata (%(...)) in a Compile path is not expanded, and a raw > inside an attribute
+# before Include cuts the tag short, so a link written in one of those forms can pass. A project's own Compile Remove
+# is not honoured, which only widens. Markdown files are not read, as MSBuild never imports documentation. Machine
+# code a test writes and runs itself is not recognised.
 # Exit 0 clean, 1 on a violation, 2 on bad usage or a git error.
 set -eu
 
@@ -76,7 +78,7 @@ while IFS= read -r file; do
 done < "$TMP/candidates"
 g ls-files -- '*.csproj' > "$TMP/csprojs"
 grep_ -l '<AssemblyName>' -- '*.csproj' > "$TMP/renamed" || true
-grep_ -l '<Compile' -- . ':(exclude)*.cs' ":(exclude)$SELF_TEST" > "$TMP/compiling" || true
+grep_ -l '<Compile' -- . ':(exclude)*.cs' ':(exclude)*.md' ":(exclude)$SELF_TEST" > "$TMP/compiling" || true
 dir_of() { case "$1" in */*) printf '%s\n' "${1%/*}" ;; *) printf '.\n' ;; esac; }
 
 # Floating point test project directories, named by assembly name: the AssemblyName property, else the file name.
@@ -134,7 +136,8 @@ done < "$TMP/halves"
 
 # Rule 3. A project compiles every source under its own directory, and each Compile item, resolved against its
 # file's directory with .. and . folded and matched as a shell pattern, so * and ** both match across directories.
-# A path with any other property becomes * plus the part after its last ). That can only widen a match.
+# A path with any other property becomes * plus the part after its last ), so a property ending inside a segment still
+# matches.
 compiles() { violation "$1: compiles $2, which can set a non-default floating point control"; }
 # Writes the pattern of every Compile item in $1 to $TMP/items.
 items_of() {
@@ -167,8 +170,7 @@ items_of() {
           while ((at = index(rest, "../")) > 0) rest = substr(rest, at + 3)
           rest = fold(rest)
           if (rest == "") { print "*"; continue }
-          print rest
-          print "*/" rest
+          print "*" rest
           continue
         }
         print fold(dir "/" item)

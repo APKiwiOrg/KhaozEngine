@@ -54,7 +54,7 @@ fi
 # 1f) Floating point control tests stay in a floating point test assembly. Only when the commit stages a C# or
 #     MSBuild file, because the check reads the whole index.
 if [ -f scripts/check-fp-control-tests.sh ] &&
-   git diff --cached --name-only -- '*.cs' '*.csproj' '*.props' '*.targets' | grep -q .; then
+   git diff --cached --name-only -- '*.cs' '*.csproj' '*.props' '*.targets' '*.projitems' | grep -q .; then
   if ! sh scripts/check-fp-control-tests.sh; then
     fail=1
   fi

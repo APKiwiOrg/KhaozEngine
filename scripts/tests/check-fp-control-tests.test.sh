@@ -103,6 +103,11 @@ run --tree; said "compiles $MODES"; check glob_link 1
 fresh; project KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj \
   '<Compile Include="$(MSBuildThisFileDirectory)../KhaozEngine.FloatingPoint.Tests/Fixtures/FpPoke.cs" />'; stage
 run --tree; said "compiles $POKE"; check property_rooted_link 1
+fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj \
+  '<Compile Include="../$(SolutionName).FloatingPoint.Tests/Fixtures/FpPoke.cs" />'; stage
+run --tree; said "compiles $POKE"; check property_ending_inside_a_segment 1
+fresh; put docs/HOWTO.md 'Add <Compile Include="$(GeneratedFile)" /> to your project.'; stage
+run --tree; check markdown_example_is_not_read 0
 fresh; put test-shared/Modes.props "<Project><ItemGroup>$(link "../$MODES")</ItemGroup></Project>"; stage
 run --tree; said "test-shared/Modes.props: compiles $MODES"; check props_link 1
 # The name that counts is the assembly name, not the folder.

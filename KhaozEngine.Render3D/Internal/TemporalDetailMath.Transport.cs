@@ -5,7 +5,16 @@ namespace KhaozEngine.Render3D.Internal;
 
 internal static partial class TemporalDetailMath
 {
-    internal const float StillEpsilon = 1f / 16384f;
+    /// <summary>Chosen motion below this many display pixels a frame is still and takes the coarse path, which is
+    /// Display's own. A still surface is not always exactly still: its two clip positions can round apart, and the
+    /// RG16F motion target then stores whole least steps of 2^-24 UV, up to four an axis under the engine's own
+    /// orthographic test stage and three in a consumer capture at 1591 by 1027. A step is a share of the display,
+    /// so in pixels it grows with the display: 2^-14 would lie below a single step on any display wider or taller
+    /// than 1024 pixels. A 128th of a pixel holds eight steps at 16384 pixels a side, the largest extent admission
+    /// accepts on a device with 32768 texels a side, sixteen at 8192 and 51 at 2560. It is far below anything the
+    /// fine path exists for: one Catmull-Rom resample at that offset keeps 99.964 percent of a pattern that
+    /// alternates every pixel.</summary>
+    internal const float StillEpsilon = 1f / 128f;
     internal const float StoreMax = 65504f;
     internal const int DistrustMask = 1;
 

@@ -4927,7 +4927,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   resolve from the mean of four reprojected fine-history fetches. Their finite, nonnegative deviations survive
   into the next generation while their stored mean stays within one binary16 step of the display result.
   Still pixels and distrusted footprints use the original display-history expressions and replicate their
-  stored result exactly. Wherever both modes ran the same decision path their colour is byte for byte Display's,
+  stored result exactly. A pixel is still when its chosen motion is below a 128th of a display pixel. A still
+  surface's motion is not always exactly zero, since the motion target stores whole steps of 2^-24 UV and its
+  two clip positions can round apart, and that gate clears the residual at every display size Fine admits.
+  Wherever both modes ran the same decision path their colour is byte for byte Display's,
   and so is their state. On a fully lit certified frame Display skips the visibility decision and Fine does not,
   so that frame's colour and state match Display's within the rule Display itself keeps across its certificate
   on that device: exact on Metal, bounded on the software Direct3D device. On llvmpipe the shimmer record's drift

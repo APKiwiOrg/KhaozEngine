@@ -35,25 +35,35 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         finally { history.ReleaseTargets(); }
     }
 
+    // Six frames at a large size, as the large-frame entry identity takes, keep the software devices affordable.
+    const int LargeStillFrames = 6;
+
     [GpuTheory]
-    [InlineData(TemporalUpscale.Native, false, false)]
-    [InlineData(TemporalUpscale.Native, false, true)]
-    [InlineData(TemporalUpscale.Quality, false, false)]
-    [InlineData(TemporalUpscale.Quality, false, true)]
+    [InlineData(TemporalUpscale.Native, false, false, 96, 64)]
+    [InlineData(TemporalUpscale.Native, false, true, 96, 64)]
+    [InlineData(TemporalUpscale.Quality, false, false, 96, 64)]
+    [InlineData(TemporalUpscale.Quality, false, true, 96, 64)]
+    // A consumer's display size. The stage's still orthographic camera stores whole least steps of the RG16F motion
+    // target (2^-24 UV) on part of the frame. A display taller than 1024 pixels makes one step more than 2^-14
+    // display pixels, so a still gate there sends still pixels down the fine path. Each frame prints the residual.
+    [InlineData(TemporalUpscale.Native, false, false, 1591, 1027)]
+    [InlineData(TemporalUpscale.Quality, false, false, 1591, 1027)]
     // Moving history is covered by TemporalDetailTransportGpuTests, including mean and activation checks.
     public void Fine_presents_every_still_fence_frame_identically_and_replicates_history(
-        TemporalUpscale preset, bool moving, bool nearest)
+        TemporalUpscale preset, bool moving, bool nearest, int width, int height)
     {
-        Compare(preset, moving, nearest, assertIdentity: true);
-        if (preset == TemporalUpscale.Quality) Compare(TemporalUpscale.Balanced, moving, nearest, assertIdentity: false);
+        Compare(preset, moving, nearest, width, height, assertIdentity: true);
+        if (preset == TemporalUpscale.Quality)
+            Compare(TemporalUpscale.Balanced, moving, nearest, width, height, assertIdentity: false);
     }
 
-    void Compare(TemporalUpscale preset, bool moving, bool nearest, bool assertIdentity)
+    void Compare(TemporalUpscale preset, bool moving, bool nearest, int width, int height, bool assertIdentity)
     {
-        fixture.Reset(preset, nearest: nearest);
+        fixture.Reset(preset, nearest: nearest, width: width, height: height);
         var fine = fixture.FineFor(nearest);
         var display = fixture.Display;
-        int frames = TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)) + 1;
+        bool large = (long)width * height > 96L * 64;
+        int frames = large ? LargeStillFrames : TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)) + 1;
         int different = 0;
         // llvmpipe contracts the shimmer record's averages differently in two programs. Its owner bounds only drift
         // and swing there. Colour, confidence and lock stay exact on every backend.
@@ -68,6 +78,7 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         {
             float pan = moving ? n * 0.35f : 0f;
             byte[] expected = display.Draw(pan), actual = fine.Draw(pan);
+            if (large) output.WriteLine($"{preset} {width}x{height} frame {n}: {StillMotionResidual(fine.Frame.Scene)}");
             Assert.Equal(TemporalHistoryDetail.Fine, fine.Frame.Scene.TemporalHistoryDetailInEffect);
             Assert.Null(display.Frame.Scene.TemporalHistory.DetailStore);
             for (int i = 0; i < actual.Length; i++) if (actual[i] != expected[i]) different++;
@@ -92,7 +103,7 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
                     TemporalTextureIo.Read(fine.Frame.Device, a.Confidence(a.WriteIndex)));
             AssertReplicated(fine.Frame);
         }
-        output.WriteLine($"{preset}, moving {moving}, {frames} frames, differing presented bytes {different}");
+        output.WriteLine($"{preset}, moving {moving}, {width}x{height}, {frames} frames, differing presented bytes {different}");
         if (!assertIdentity) return;
         state.AssertComplete(output, $"{preset} Display vs Fine still");
         certificate.AssertComplete();
@@ -228,6 +239,23 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
     }
 
     static void AssertReplicated(TemporalFixture h) => AssertReplicated(h.Device, h.Scene.TemporalHistory);
+
+    // How much still motion the frame's own motion target carries, in least RG16F steps of UV.
+    static string StillMotionResidual(Scene3D scene)
+    {
+        MotionTargetReadback motion = scene.ReadMotionTargetForTests();
+        int drawn = 0, nonzero = 0;
+        float steps = 0f;
+        foreach (Vector2 m in motion.Motion)
+        {
+            if (MotionMath.IsBackground(m)) continue;
+            drawn++;
+            if (m == Vector2.Zero) continue;
+            nonzero++;
+            steps = MathF.Max(steps, MathF.Max(MathF.Abs(m.X), MathF.Abs(m.Y)) / (float)Half.Epsilon);
+        }
+        return $"{nonzero} of {drawn} drawn texels carry still motion, at most {steps} least motion steps an axis";
+    }
 
     static void AssertReplicated(IGpuDevice device, TemporalHistory history)
     {

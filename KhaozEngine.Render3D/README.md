@@ -436,7 +436,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. Opt-in `Fine` keeps an extra
   RGBA16F colour pair at twice the display on each axis. Moving pixels can read its four reprojected texels,
   retain bounded sub-pixel deviations and preserve the resolved mean. Still and distrusted pixels use the
-  original display history and replicate the resolved colour. A still frame's colour and state are byte for
+  original display history and replicate the resolved colour. A pixel is still when its chosen motion is below a
+  128th of a display pixel, which clears the rounding a still surface's motion carries at every admitted display
+  size. A still frame's colour and state are byte for
   byte Display's wherever both modes ran the same decision path. On a certified frame Display skips the
   decision and Fine does not, so that frame compares two compiled programs and follows Display's own
   certified-against-checked rule for the device: exact on Metal, bounded on the software Direct3D device.

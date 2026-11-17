@@ -32,7 +32,10 @@ public sealed class TemporalDetailSceneFixture : IDisposable
     internal View FineFor(bool nearest) => nearest ? _nearest.Value : Fine;
     internal View Display => _display.Value;
 
-    internal void Reset(TemporalUpscale preset, bool hdr = true, bool nearest = false)
+    /// <summary>Align the two views' frame indices, size both to <paramref name="width"/> by
+    /// <paramref name="height"/> with a pixel budget that admits exactly that size, and draw one frame without the
+    /// temporal resolve, so the next frame starts a fresh history in the requested modes.</summary>
+    internal void Reset(TemporalUpscale preset, bool hdr = true, bool nearest = false, int width = 96, int height = 64)
     {
         View fine = FineFor(nearest), display = Display;
         long delta = fine.Frame.Scene.CurrentFrameView.FrameIndex - display.Frame.Scene.CurrentFrameView.FrameIndex;
@@ -40,12 +43,12 @@ public sealed class TemporalDetailSceneFixture : IDisposable
         if (delta < 0) fine.Frame.SkipFrames(checked((int)-delta));
         foreach (View view in new[] { fine, display })
         {
-            if (view.Frame.DisplayWidth != 96 || view.Frame.DisplayHeight != 64) view.Frame.Resize(96, 64);
+            if (view.Frame.DisplayWidth != width || view.Frame.DisplayHeight != height) view.Frame.Resize(width, height);
             Scene3D scene = view.Frame.Scene;
             scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
             scene.Post.Hdr.Enabled = hdr;
             scene.Post.Bloom.Enabled = false;
-            scene.Post.Temporal.HistoryDetailPixelLimit = 96L * 64;
+            scene.Post.Temporal.HistoryDetailPixelLimit = (long)width * height;
             scene.Post.Temporal.Upscale = preset;
             scene.CameraOverride = null;
             view.Draw();

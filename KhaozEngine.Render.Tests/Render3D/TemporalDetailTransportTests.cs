@@ -99,6 +99,38 @@ public sealed class TemporalDetailTransportTests
         Assert.True(TemporalDetailMath.UseFine(1f, false, 2, 2));
     }
 
+    // A still surface whose two clip positions round apart stores whole least steps of the RG16F motion target,
+    // 2^-24 UV each. The still orthographic stage of TemporalDetailStoreGpuTests stores up to four an axis on Metal
+    // at 1591 by 1027, and a consumer capture at that size measured three on one axis and one on the other. A step is
+    // a fixed share of the display, so its size in pixels grows with the display, up to the largest extent admission
+    // accepts on a device that allows 16384 or 32768 texels a side.
+    [Fact]
+    public void A_still_motion_residual_takes_the_coarse_path_at_every_admitted_display_size()
+    {
+        float step = (float)Half.Epsilon;
+        int checkedSizes = 0;
+        foreach (uint deviceLimit in new uint[] { 16384, 32768 })
+        {
+            int largest = checked((int)(deviceLimit / 2));
+            Assert.NotNull(TemporalDetailMath.Extent(largest, largest, deviceLimit));
+            Assert.Null(TemporalDetailMath.Extent(largest + 1, largest, deviceLimit));
+            foreach ((int width, int height) in new[] { (96, 64), (1591, 1027), (2560, 1440), (largest, largest) })
+            {
+                Assert.Equal(TemporalHistoryDetail.Fine, TemporalDetailMath.Mode(TemporalHistoryDetail.Fine, true,
+                    width, height, deviceLimit, (long)width * height, 6));
+                foreach ((int x, int y) in new[] { (1, 0), (0, 1), (1, 1), (3, 1), (1, 3), (4, 0), (0, 4), (4, 4) })
+                {
+                    // The resolve's length((uv - previousUv) * displaySize).
+                    float motion = new Vector2(x * step * width, y * step * height).Length();
+                    Assert.False(TemporalDetailMath.UseFine(motion, false, 0, 0),
+                        $"{width}x{height}, {x} and {y} least motion steps ({motion} display pixels) took the fine path");
+                }
+                checkedSizes++;
+            }
+        }
+        Assert.Equal(8, checkedSizes);
+    }
+
     [Fact]
     public void Retention_is_bounded_and_rejected_history_has_no_share()
     {

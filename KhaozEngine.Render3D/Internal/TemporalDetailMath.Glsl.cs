@@ -1,9 +1,12 @@
+using System.Globalization;
+
 namespace KhaozEngine.Render3D.Internal;
 
 internal static partial class TemporalDetailMath
 {
-    internal const string GateGlsl = @"
-const float DetailStillEpsilon = 0.00006103515625;
+    // The shader's still epsilon is the CPU mirror's, written out exactly, so the two cannot drift.
+    internal static readonly string GateGlsl = @"
+const float DetailStillEpsilon = " + StillEpsilon.ToString("R", CultureInfo.InvariantCulture) + @";
 bool detailStill(float motion) { return !(motion >= DetailStillEpsilon); }
 uint detailDistrust(uint flags) {
     const uint distrustMask = 1u;

@@ -251,8 +251,8 @@ Each display pixel takes one of two paths:
 
 A pixel goes coarse for any of these reasons:
 
-- Chosen motion below 2^-14 display pixels. This excludes still reprojection roundoff while staying far
-  below the existing quarter-pixel still interval.
+- Chosen motion below a 128th of a display pixel, the still gate (`TemporalDetailMath.StillEpsilon`, whose
+  value the shader's `DetailStillEpsilon` is written from). See the still gate below.
 - Invalid, reset, offscreen or disoccluded history at the pixel or within one display pixel. Such a footprint
   cannot transport trustworthy detail from the preceding frame.
 - A positive lock with motion at or below the existing quarter-pixel still interval. This preserves the
@@ -269,6 +269,42 @@ is observable rather than inferred from the later error. Existing resolve rules 
 
 Variance clipping, a visibility release and reactive state do not independently force coarse. They retain
 their original effects on R, the current weight and state.
+
+#### The still gate
+
+A pixel whose chosen motion is below a 128th of a display pixel is still and takes the coarse path, so a still
+frame is Display's. The gate is sized by what a still surface's motion actually holds, which is not always
+zero. The motion target is RG16F, so it stores whole least steps of 2^-24 UV. A still surface's current and
+previous clip positions come from two vertex products that can round apart, and then it stores one or more of
+those steps. On Metal at 1591 by 1027 the engine's own still orthographic cameras store them on 2,400 to
+12,000 drawn texels a frame, with or without a far render origin or motion keys: one or two an axis over a box
+field under the default isometric view, and up to four on about 5,100 texels of the still identity fact's
+fence stage at Native. A still perspective camera stores none. A consumer capture at the same size, camera
+still for 120 frames with the effect clock frozen, measured chosen motion from 0 to 0.000291 display pixels:
+three steps on one axis and one on the other.
+
+A step is a fixed share of the display, so in display pixels it grows with the display. A gate of 2^-14
+display pixels, which the mode first used, lies below a single step on any display wider or taller than 1024
+pixels, and the engine's own still facts ran at 160 by 90 and smaller, where a step is ten times smaller in
+pixels. In the consumer capture 179,734 pixels were at or above that gate and 110,638 took the fine path. The
+presented still frame differed from Display by one or two steps of 255 in 1,133 to 4,173 pixels against a
+repeat floor of one. Pixels below the gate differed too: a pixel that took the fine path on an earlier frame
+keeps its slightly different R in the display history, and later coarse frames and neighbouring Catmull-Rom
+fetches read it.
+
+A 128th of a pixel holds eight steps on an axis at 16384 pixels a side, the largest extent admission accepts
+on a device with 32768 texels a side, sixteen at 8192, the largest on a device with 16384, and 51 at the
+default budget's 2560 by 1440. A 256th would put the fence stage's four steps exactly on the gate at 16384.
+The gate stays far below the quarter-pixel still interval and anything the fine path exists for: one
+Catmull-Rom resample at that offset keeps 99.964 percent of a pattern that alternates every pixel. The
+residual cannot be removed at its source, since the motion programs are Display's. The CPU mirror holds the
+value (`TemporalDetailMath.StillEpsilon`) and the shader's `DetailStillEpsilon` is written from it.
+
+`TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` runs
+the fence stage at 1591 by 1027 for six frames at Native and Quality, printing the motion target's still
+residual each frame, beside its 96 by 64 rows. With the 2^-14 gate both large rows failed on the first frame
+with history. `A_still_motion_residual_takes_the_coarse_path_at_every_admitted_display_size` holds the gate
+against those step patterns at 96 by 64, 1591 by 1027, 2560 by 1440 and the largest admitted square.
 
 #### Bounded transport and the stored mean
 

@@ -4962,8 +4962,8 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   inside the frame, including an offscreen capture, neither reads nor advances it.
   Temporal debug views and on-request counts replay the selected mode's own history fetch and trust gate.
   Fine costs about 7.6 to 8.3 ms more GPU time a frame than the default split resolve at 1440p, Native and
-  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), three to three and a half times the
-  default resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
+  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), about 2.9 to 3.5 times the default
+  resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
   report-only aim, Fine within 3 ms of the default split resolve at Native, is not met. The passes, their
   measured times and the precision reasons for their structure are in the
   [resolve design](design/TEMPORAL-RESOLVE.md#cost-capture).

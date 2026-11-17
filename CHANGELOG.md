@@ -90,13 +90,20 @@ as evidence.
   `HostCoverageDataException` gains `Level` and `Cell`
   ([#1817](https://github.com/APKiwiOrg/KhaozEngine/issues/1817)).
 
-**Tile water projection maps.**
+**Tile water shared projections.**
 
+- Within one tile water trace, each prism face now copies the basis projections its parent prism already
+  computed, where it used to recompute them. A copy needs the exact parent object and an exact key: every bit
+  of the start, drive, core, radius and error inputs and the floating-point control token. Every trace output
+  is bit-identical. A miss, an unmapped basis, a full sixteen-parent table or a nested trace runs the original
+  expression in its original place, and a source lent earlier can never supply a value once its storage has
+  been reused. The table reserves 563,200 bytes per coverage thread. In one local arm64 paired run the two
+  moving-shore Contact histories, bank-along and shore-traverse, used about 30 percent less time. Consumer
+  tail timing is not measured yet ([#1755](https://github.com/APKiwiOrg/KhaozEngine/issues/1755)).
 - Tile water capture records, for each prism face, its parent prism and an exact map from the face's
   projection bases to the parent's. A map exists only when the face's leading planes match the parent's
   ordered planes bit for bit, and a face basis maps only to the parent basis with the same plane indices, so a
-  basis that uses an appended face plane stays unmapped. Nothing reads the map yet and trace outputs are
-  unchanged. It prepares exact shared projections for the moving-shore water cost
+  basis that uses an appended face plane stays unmapped. The shared projections above read this map
   ([#1755](https://github.com/APKiwiOrg/KhaozEngine/issues/1755)).
 
 ## 23.13.1

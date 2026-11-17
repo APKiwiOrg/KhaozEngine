@@ -44,6 +44,12 @@ internal static class TileWaterPrismCoverage
     internal static TileWaterPreparationStorage.Snapshot CapturePreparationForTests() =>
         t_scratch?.Preparations.Last ?? default;
 
+    internal static TileWaterSharedProjections.Snapshot CaptureSharedProjectionsForTests() =>
+        t_scratch?.Preparations.Shared.Last ?? default;
+
+    // Counts shape references the thread's projection owner holds right now. Zero after every trace.
+    internal static int HeldSharedProjectionOwnersForTests() => t_scratch?.Preparations.Shared.HeldOwnersForTests ?? 0;
+
     static MovementCoverageResult TracePrepared(Scratch scratch, TileWaterPrism[] pieces, TileWaterPrismFace[] faces,
         CapturedTileGround ground, TileWaterColumnIndex index, int[] prismStarts, int[] faceStarts,
         in MovementMediumSweepQuery query, Vector3 origin, in MovementQueryIdentity identity,
@@ -67,11 +73,11 @@ internal static class TileWaterPrismCoverage
                 TileWaterCensus.Phase = "select-prism";
                 TileWaterCensus.Selected?.Invoke(piece, piece.Shape, -1);
 #endif
-                var prepared = piece.Shape.Prepare(scratch.Preparations.Workspace, piece.Start(query, origin), drive,
+                var prepared = scratch.Preparations.Prepare(piece.Shape, piece.Start(query, origin), drive,
                     core, query.Body.Radius, piece.HeightError, piece.HorizontalError);
                 R range = prepared.Evaluate();
                 if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
-                if (!range.Hit) { scratch.Preparations.DiscardMiss(); continue; }
+                if (!range.Hit) { scratch.Preparations.DiscardMiss(ref prepared); continue; }
                 // A certified rejection has no reported contact location. Only intersected pieces charge
                 // their projection and representation uncertainty to the published trace certificate.
                 error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));
@@ -92,11 +98,11 @@ internal static class TileWaterPrismCoverage
                 TileWaterCensus.Phase = "select-face";
                 TileWaterCensus.Selected?.Invoke(piece, face.Shape, face.Plane);
 #endif
-                var prepared = face.Shape.Prepare(scratch.Preparations.Workspace, piece.Start(query, origin), drive,
+                var prepared = scratch.Preparations.Prepare(face.Shape, piece.Start(query, origin), drive,
                     core, query.Body.Radius, piece.HeightError, piece.HorizontalError);
                 R range = prepared.Evaluate();
                 if (!range.Resolved) return Refuse(MovementAvailability.Unresolved, identity);
-                if (!range.Hit) { scratch.Preparations.DiscardMiss(); continue; }
+                if (!range.Hit) { scratch.Preparations.DiscardMiss(ref prepared); continue; }
                 // A certified rejection has no reported contact location. Only intersected pieces charge
                 // their projection and representation uncertainty to the published trace certificate.
                 error = Math.Max(error, Math.Max(range.Error, piece.RepresentationError));

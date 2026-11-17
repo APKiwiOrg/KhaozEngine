@@ -114,7 +114,7 @@ interval endpoint bits and height-sensitivity flags. It then matches the exact i
 including the zero-active basis. Bases containing an appended face, split or lower constraint have no parent
 mapping, even when their normals are equal or nearly equal to a parent plane. Standalone shapes and unproved
 prefixes retain no parent or map. The immutable captured shapes own these references and integer arrays, so
-discarding the capture releases them together. Runtime evaluation does not read the relationship or map yet.
+discarding the capture releases them together. Coverage reads them to share projections, described below.
 The internal shape evaluator supports a query preparation with ordered, first-use projection, clip and
 post-feasibility terms. Each stored term is the original interval expression, with its operand order unchanged.
 Window clipping, minima, root clamping, seam certification and first-witness selection remain per evaluation.
@@ -133,6 +133,40 @@ Geometry-only basis terms are filled on first use and cached on the shape under 
 token. A different control domain computes them directly and never replaces the original entry. Unsupported
 control domains use direct evaluation. Immutable entries are published atomically, so parallel readers cannot
 see a partially initialized entry. Determinant failures retain their original basis ordinal and predicate.
+Within one trace a face reuses the basis projections its parent prism already executed. Face construction
+copies the parent's planes before appending its own, so a mapped basis runs the same projection expressions on the
+same operand bits. The per-thread preparation storage owns the sharing table. A settled parent preparation is
+entered under its exact parent object and a key over both endpoint bits of every raw start and drive component, both
+core endpoints, the radius bits, both error scalars and the floating point control token. A retained hit is borrowed
+read-only from the slab, after its stored header is rechecked. Any other selected parent copies only its reached and
+resolved rows (Q, V and both multiplier sets) into fixed scratch. A face prepared in the same trace with an equal key
+borrows those rows until it settles and copies each mapped value by value before its own evaluation. It still
+visits every basis in its own order, clips, checks failure and computes its distance, roots, uncertainty and seam.
+Appended-plane bases, unreached or unresolved parent rows, a missing entry, an unknown or different control
+domain, a full table, a second outstanding borrow, a reentrant trace and the internal test bypass all run the
+original projection expression in its original place. These are performance fallbacks, never refusals, so output
+is identical with sharing on or off. The outermost trace end clears every shape reference and entry. No
+thread-static or global field holds a capture, so a replaced or discarded sampler cannot be reused or retained.
+Every lent source carries the lend generation it was issued under, and a copy is refused before any row is read
+unless that generation is still current and sharing is not suspended. The generation advances when the borrowing
+workspace settles, when a reentrant trace begins and when the outermost trace ends, because each is the point where
+the rows or slab bytes a source reads may stop belonging to its lend. The storage invalidates sources before it
+resets its slab offset, so a reentrant trace that retains another parent with the same raw inputs at the same
+offset cannot be read through an older source. A stale source therefore never supplies a value, and new lends stay
+off from a reentrant trace's start until the outermost trace ends. A rejected basis projects afresh and is counted
+as stale. This does not make coverage reentrant. Its workspace, retained slab and cut, piece and face arrays are one
+set per thread, and a nested trace on the same thread overwrites them, as it did before projections were shared.
+Sharing only guarantees that it adds no stale value of its own.
+The table holds 16 parents, four times the most any census trace selects. Each reserves 176 rows of 200 bytes,
+one flag, two interval vectors and six interval multipliers, for a 563,200-byte payload reserved with the storage.
+Construction allocates 566,472 bytes on .NET 10 arm64 including keys, references, the generation and array headers.
+Internal diagnostics snapshot each trace's published, borrowed, duplicate, exhausted, lent, missed, nested,
+unsupported and bypassed parents with copied, freshly projected and stale-rejected face bases. Counters reset after
+each snapshot, so a stale source used between traces is reported with the next one. Sharing filled prefix plane and
+clip terms was not built because its gain over projection sharing stayed inside the measured repeat floor on both
+moving histories.
+Skipping a parent-certified rejecting prefix also stays research: its increment resolved only on one history and
+needs its own exact-window certificate. A specialized fixed-arity clip evaluator measured slower and is not built.
 Trace coverage uses water prisms bounded by those triangles and clipped at the body's free surface, including
 exposed patches and dry volume. Internal triangle and same-body tile edges contribute no dry wall.
 For the canonical coplanar triangle pair in one raw column, a grazing bed-diagonal root can partition an

@@ -36,7 +36,8 @@ Pulls in:
 - `KhaozEngine.Particles.Render3D` - the 3D draw layer for the deterministic particle sim.
 - `KhaozEngine.Physics` - the dependency-free physics seam (already in Foundation, referenced
   here so the seam is explicit for 3D character/world collision wiring).
-- `KhaozEngine.CodeHealth.Analyzers` - the KESIZE file-size and KETEST test-health ratchets. The direct
+- `KhaozEngine.CodeHealth.Analyzers` - the KESIZE file-size and KETEST test-health ratchets, and the
+  KEFP001 subnormal float rule, silent until opted in. The direct
   dependency uses `PrivateAssets="none"` so its analyzer assembly and `buildTransitive` baseline
   discovery props both flow through the packed umbrella and run in the consuming project's build.
 

@@ -21,5 +21,7 @@
     <!-- Surfaces the cap override to the analyzer as build_property.KhaozFileSizeCap. -->
     <CompilerVisibleProperty Include="KhaozFileSizeCap" />
     <CompilerVisibleProperty Include="KhaozTestHealthMode" />
+    <!-- KEFP001 scope: on, all, or unset for silence. A consumer opts in by setting it. -->
+    <CompilerVisibleProperty Include="KhaozSubnormalFloatRule" />
   </ItemGroup>
 </Project>

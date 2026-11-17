@@ -1,0 +1,36 @@
+<Project>
+  <!-- Compiles the internal FloatUlp steps (build/FloatUlp.cs) into a project that sets KhaozFloatUlp to true.
+       KEFP001 sends every engine float step here (see the KhaozEngine.CodeHealth.Analyzers README).
+
+       Each assembly gets its own copy under <AssemblyName>.FloatSteps, plus a global alias named FloatUlp. One
+       shared full name would collide: a project that sees another assembly's internal FloatUlp through
+       InternalsVisibleTo and compiles its own gets CS0436, and the engine's projects grant each other internals.
+       The copy adds no dependency edge and no public API.
+
+       The None item names the template at evaluation, so a change to it reads as a change to every project that
+       compiles it. -->
+  <PropertyGroup Condition="'$(KhaozFloatUlp)' == 'true'">
+    <_KhaozFloatUlpTemplate>$(MSBuildThisFileDirectory)FloatUlp.cs</_KhaozFloatUlpTemplate>
+    <_KhaozFloatUlpNamespace>$([System.Text.RegularExpressions.Regex]::Replace('$(AssemblyName)', '[^A-Za-z0-9_.]', '_')).FloatSteps</_KhaozFloatUlpNamespace>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(KhaozFloatUlp)' == 'true'">
+    <None Include="$(_KhaozFloatUlpTemplate)" Link="FloatSteps/FloatUlp.template.cs" Visible="false" Pack="false" />
+  </ItemGroup>
+
+  <Target Name="KhaozWriteFloatUlp" Condition="'$(KhaozFloatUlp)' == 'true'"
+          DependsOnTargets="PrepareForBuild" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <_KhaozFloatUlpSource>$([System.IO.File]::ReadAllText('$(_KhaozFloatUlpTemplate)'))</_KhaozFloatUlpSource>
+      <_KhaozFloatUlpCopy>$(_KhaozFloatUlpSource.Replace('namespace KhaozEngine.FloatSteps', 'namespace $(_KhaozFloatUlpNamespace)'))</_KhaozFloatUlpCopy>
+      <_KhaozFloatUlpFile>$(IntermediateOutputPath)KhaozFloatUlp.cs</_KhaozFloatUlpFile>
+    </PropertyGroup>
+    <Error Code="KEFLOATULP001" Condition="!$(_KhaozFloatUlpSource.Contains('namespace KhaozEngine.FloatSteps'))"
+           Text="build/FloatUlp.cs no longer declares 'namespace KhaozEngine.FloatSteps', so build/FloatUlp.targets cannot give $(AssemblyName) its own FloatUlp copy." />
+    <WriteLinesToFile File="$(_KhaozFloatUlpFile)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="$([MSBuild]::Escape('global using FloatUlp = $(_KhaozFloatUlpNamespace).FloatUlp;'));$([MSBuild]::Escape($(_KhaozFloatUlpCopy)))" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)KhaozFloatUlp.cs" />
+      <FileWrites Include="$(_KhaozFloatUlpFile)" />
+    </ItemGroup>
+  </Target>
+</Project>

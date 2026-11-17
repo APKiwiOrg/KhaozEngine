@@ -20,4 +20,8 @@
     <ProjectReference Include="../KhaozEngine.CodeHealth.Analyzers/KhaozEngine.CodeHealth.Analyzers.csproj"
                       ReferenceOutputAssembly="true" OutputItemType="" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The tracked FloatUlp template, so KEFP001's tests run the rule over the helper exactly as it ships. -->
+    <EmbeddedResource Include="../build/FloatUlp.cs" LogicalName="FloatUlp.template.cs" />
+  </ItemGroup>
 </Project>

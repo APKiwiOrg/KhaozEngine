@@ -3569,6 +3569,12 @@ real, as local tables and test-owned case helpers look possibly empty to a synta
 [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet) owns rule details,
 report mode, baseline grammar and the owner-approved exemption path.
 
+KEFP001, from the same package, reports a `float` step or constant that puts a subnormal value where the JIT can
+fold it under a flush mode. It is silent in your build until you set `KhaozSubnormalFloatRule` to `on` (every
+non-test compilation) or `all` (test projects too). The
+[analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#subnormal-float-constants) lists what it flags and
+what it cannot see.
+
 ## In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)
 
 Renders a game's player-facing `docs/PLAY_CHANGELOG.md` (the shared changelog style, `docs/CHANGELOG-STYLE.md`)

@@ -141,8 +141,9 @@ encapsulated in `scripts/ci-selective-test.sh` so it is runnable and testable lo
    test and pack slice. Whole-workflow water gates still run as described below.
 5. Non-empty: restore + build the affected test projects (their references pull in exactly the needed
    slice), then `dotnet test --no-build` each, with the `Category!=LiveSocket&Category!=Diagnostic` filter. The
-   determinism step runs only when `KhaozEngine.Foundation.Tests` (owner of the `DeterministicFp`
-   tests) is affected, scoped to that project instead of the whole solution.
+   determinism step runs for each of `KhaozEngine.Foundation.Tests` and `KhaozEngine.FloatingPoint.Tests`
+   (between them the owners of the `DeterministicFp` and fan-out determinism tests) that is affected, scoped
+   to that project instead of the whole solution.
 6. No distribution pack in the selective slice. Pack requires a full build, and its regression window is bounded by the
    next tag run, which in this repo is hours. Tag runs still pack and publish exactly as today.
 

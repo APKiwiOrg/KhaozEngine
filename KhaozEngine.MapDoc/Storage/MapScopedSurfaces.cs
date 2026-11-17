@@ -210,7 +210,7 @@ public sealed class MapScopedSurfaces
     {
         float value = coordinate;
         int comparison = MapExactValue.FromSingle(value).CompareTo(new(coordinate, 1));
-        return lower && comparison > 0 ? MathF.BitDecrement(value) : !lower && comparison < 0 ? MathF.BitIncrement(value) : value;
+        return lower && comparison > 0 ? FloatUlp.Down(value) : !lower && comparison < 0 ? FloatUlp.Up(value) : value;
     }
     public MapPatchRead Patch(MapPatchKey key)
     {

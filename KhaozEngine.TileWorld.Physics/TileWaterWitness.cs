@@ -19,13 +19,13 @@ internal sealed class TileWaterWitness
     internal TileWaterWitness(TileWaterPrism prism)
     {
         _reference = prism.Reference;
-        _minX = MathF.BitIncrement(prism.Column.Minimum.X);
-        _maxX = MathF.BitDecrement(prism.Column.Maximum.X);
-        _minZ = MathF.BitIncrement(prism.Column.Minimum.Z);
-        _maxZ = MathF.BitDecrement(prism.Column.Maximum.Z);
+        _minX = FloatUlp.Up(prism.Column.Minimum.X);
+        _maxX = FloatUlp.Down(prism.Column.Maximum.X);
+        _minZ = FloatUlp.Up(prism.Column.Minimum.Z);
+        _maxZ = FloatUlp.Down(prism.Column.Maximum.Z);
         var planes = new List<P>(8) { prism.Planes[0], prism.Planes[1], prism.Planes[2] };
         P cut = prism.Planes[5];
-        I retreat = I.Point(prism.Column.Maximum.Y) - I.Point(MathF.BitDecrement(prism.Column.Maximum.Y)) + I.Point(prism.HeightError);
+        I retreat = I.Point(prism.Column.Maximum.Y) - I.Point(FloatUlp.Down(prism.Column.Maximum.Y)) + I.Point(prism.HeightError);
         planes.Add(new(cut.Normal, cut.Offset - retreat));
         planes.Add(new(V.Point(-1, 0, 0), _reference.X - I.Point(_minX)));
         planes.Add(new(V.Point(1, 0, 0), I.Point(_maxX) - _reference.X));

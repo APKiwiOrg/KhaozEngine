@@ -13,6 +13,8 @@
     <GenerateProgramFile>false</GenerateProgramFile>
     <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.*, per AGENTS.md. -->
     <RootNamespace>KhaozEngine.Tests</RootNamespace>
+    <!-- Its own copy of build/FloatUlp.cs, for FloatUlpBakeTests, which compiles the steps under a flush mode. -->
+    <KhaozFloatUlp>true</KhaozFloatUlp>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

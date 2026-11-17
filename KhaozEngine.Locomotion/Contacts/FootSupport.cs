@@ -342,7 +342,7 @@ internal static class FootSupport
         static float RoundUp(double value)
         {
             float rounded = (float)value;
-            return rounded < value ? MathF.BitIncrement(rounded) : rounded;
+            return rounded < value ? FloatUlp.Up(rounded) : rounded;
         }
     }
 }

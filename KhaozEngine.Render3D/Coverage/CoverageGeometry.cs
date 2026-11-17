@@ -179,11 +179,11 @@ internal static class CoverageGeometry
     static float Lower(CoverageCoordinate value)
     {
         float rounded = (float)value.Value;
-        return Compare(CoverageCoordinate.FromDouble(rounded), value) > 0 ? MathF.BitDecrement(rounded) : rounded;
+        return Compare(CoverageCoordinate.FromDouble(rounded), value) > 0 ? FloatUlp.Down(rounded) : rounded;
     }
     static float Upper(CoverageCoordinate value)
     {
         float rounded = (float)value.Value;
-        return Compare(CoverageCoordinate.FromDouble(rounded), value) < 0 ? MathF.BitIncrement(rounded) : rounded;
+        return Compare(CoverageCoordinate.FromDouble(rounded), value) < 0 ? FloatUlp.Up(rounded) : rounded;
     }
 }

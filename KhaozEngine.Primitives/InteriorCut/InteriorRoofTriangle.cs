@@ -21,7 +21,7 @@ internal static class InteriorRoofTriangle
         foreach (Point point in polygon[..count]) minimum = Math.Min(minimum, point.Y);
         float result = (float)minimum;
         // A rounded-up float would violate the conservative bound before centimetre packing.
-        return result > minimum ? MathF.BitDecrement(result) : result;
+        return result > minimum ? FloatUlp.Down(result) : result;
     }
 
     static int Clip(ReadOnlySpan<Point> input, Span<Point> output, double edge, bool xAxis, bool lower)

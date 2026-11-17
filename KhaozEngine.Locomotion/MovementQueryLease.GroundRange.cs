@@ -23,9 +23,9 @@ public sealed partial class MovementQueryLease
         float feet = body.Position.Y - tuning.CapsuleHalfHeight;
         // Outward axes include float position addition and the rounding in substep/shell paths. This is proof
         // enclosure only. It never widens a movement, support, medium or reach decision.
-        float margin = MathF.BitIncrement(travel + 2 * CoverageSkinMetres);
-        Vector2 min = new(MathF.BitDecrement(body.Position.X - margin), MathF.BitDecrement(body.Position.Z - margin));
-        Vector2 max = new(MathF.BitIncrement(body.Position.X + margin), MathF.BitIncrement(body.Position.Z + margin));
+        float margin = FloatUlp.Up(travel + 2 * CoverageSkinMetres);
+        Vector2 min = new(FloatUlp.Down(body.Position.X - margin), FloatUlp.Down(body.Position.Z - margin));
+        Vector2 max = new(FloatUlp.Up(body.Position.X + margin), FloatUlp.Up(body.Position.Z + margin));
         float footRadius = tuning.FootRadiusFraction * tuning.CapsuleRadius;
         float cosine = MathF.Cos(CharacterMovement.TractionGate(true, tuning));
         bool flat = _pin is IMovementFlatRangeSupportPin flatPin &&
@@ -54,11 +54,11 @@ public sealed partial class MovementQueryLease
             flat && (support.Normal != Vector3.UnitY || support.Height != feet) || support.HeightError != 0) return false;
 
         float radius = MathF.Max(tuning.CapsuleRadius, footRadius);
-        Vector3 lower = new(MathF.BitDecrement(min.X - radius),
-            flat ? feet : MathF.BitDecrement(minimumFeet - 2 * CoverageSkinMetres), MathF.BitDecrement(min.Y - radius));
-        Vector3 upper = new(MathF.BitIncrement(max.X + radius),
-            MathF.BitIncrement(maximumFeet + 2 * tuning.CapsuleHalfHeight + tuning.StepHeight + 2 * CoverageSkinMetres),
-            MathF.BitIncrement(max.Y + radius));
+        Vector3 lower = new(FloatUlp.Down(min.X - radius),
+            flat ? feet : FloatUlp.Down(minimumFeet - 2 * CoverageSkinMetres), FloatUlp.Down(min.Y - radius));
+        Vector3 upper = new(FloatUlp.Up(max.X + radius),
+            FloatUlp.Up(maximumFeet + 2 * tuning.CapsuleHalfHeight + tuning.StepHeight + 2 * CoverageSkinMetres),
+            FloatUlp.Up(max.Y + radius));
         // The complete support query includes proposal paths and the slope-dependent admission column.
         // Enclose it at the four extreme axes as well as every shell recovery/lift/seat along the interval.
         for (int corner = 0; corner < (flat ? 4 : 8); corner++)

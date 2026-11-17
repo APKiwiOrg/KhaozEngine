@@ -73,8 +73,8 @@ public sealed partial class OrdinaryMovementEnvironment
         float result = (float)((double)value - origin);
         if (!float.IsFinite(result)) return result;
         int side = ExactSign(result, -value, origin);
-        if (up && side < 0) return MathF.BitIncrement(result);
-        return !up && side > 0 ? MathF.BitDecrement(result) : result;
+        if (up && side < 0) return FloatUlp.Up(result);
+        return !up && side > 0 ? FloatUlp.Down(result) : result;
     }
 
     static double Displacement(float local, float value, float origin) => Math.Abs((double)local - ((double)value - origin));

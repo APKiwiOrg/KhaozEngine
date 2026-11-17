@@ -71,7 +71,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
     internal static float NotAbove(double value)
     {
         float rounded = (float)value;
-        return rounded > value ? MathF.BitDecrement(rounded) : rounded;
+        return rounded > value ? FloatUlp.Down(rounded) : rounded;
     }
 
     /// <summary>The smallest float not below <paramref name="value"/>, the mirror of <see cref="NotAbove"/>. A step
@@ -79,7 +79,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
     internal static float NotBelow(double value)
     {
         float rounded = (float)value;
-        return rounded < value ? MathF.BitIncrement(rounded) : rounded;
+        return rounded < value ? FloatUlp.Up(rounded) : rounded;
     }
 
     // A touching shell is clear.

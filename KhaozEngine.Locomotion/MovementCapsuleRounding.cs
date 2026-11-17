@@ -53,7 +53,7 @@ internal static class MovementCapsuleRounding
                 enclosed = new(body.Centre, radius, halfHeight, body.CurrentSpace, body.CurrentSupport);
                 return true;
             }
-            halfHeight = MathF.BitIncrement(halfHeight);
+            halfHeight = FloatUlp.Up(halfHeight);
         }
         return false;
     }
@@ -88,12 +88,12 @@ internal static class MovementCapsuleRounding
         double error = Math.Max(sum - Math.BitDecrement(sum), Math.BitIncrement(sum) - sum);
         return Up(Up(Math.Abs(sum - stored)) + error);
     }
-    static double Spacing(float value) => Math.Max((double)MathF.BitIncrement(value) - value,
-        (double)value - MathF.BitDecrement(value));
+    static double Spacing(float value) => Math.Max((double)FloatUlp.Up(value) - value,
+        (double)value - FloatUlp.Down(value));
     static double Up(double value) => value == 0 ? 0 : Math.BitIncrement(value);
     static float UpperFloat(double value)
     {
         float result = (float)value;
-        return result < value ? MathF.BitIncrement(result) : result;
+        return result < value ? FloatUlp.Up(result) : result;
     }
 }

@@ -43,12 +43,12 @@ public sealed partial class InteriorHeightField
         float candidate = Math.Clamp((float)exact, start, end);
         if (Crossed(candidate))
         {
-            float previous = MathF.BitDecrement(candidate);
+            float previous = FloatUlp.Down(candidate);
             if (previous <= start || !Crossed(previous)) return candidate;
         }
         else
         {
-            float next = MathF.BitIncrement(candidate);
+            float next = FloatUlp.Up(candidate);
             if (next <= end && Crossed(next)) return next;
         }
         // Float position arithmetic can keep several adjacent t values on an inclusive edge. Refine the

@@ -91,7 +91,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts, IPhysics
         // The bounded selection still needs representable coordinates. An empty selection never runs
         // capsule/hull face selection and therefore carries no narrow-phase error allowance.
         if (candidates.Count == 0)
-            return 8f * (MathF.BitIncrement(scale) - scale) <= MaximumContactErrorMetres
+            return 8f * (FloatUlp.Up(scale) - scale) <= MaximumContactErrorMetres
                 ? new CapsuleContactResult(true, 0, 0, 0f) : Uncertified();
         foreach (CollidableReference candidate in candidates)
         {
@@ -125,7 +125,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts, IPhysics
         // Capsule/hull face selection uses an epsilon no greater than 1e-3 * capsule radius in the
         // pinned backend. Reserve additional local float spacing for transforms and subtraction.
         // A frame/shape outside the 1 mm operating budget is refused rather than reported clear.
-        float error = 0.001f * capsule.Radius + 8f * (MathF.BitIncrement(scale) - scale);
+        float error = 0.001f * capsule.Radius + 8f * (FloatUlp.Up(scale) - scale);
         if (!float.IsFinite(error) || error > MaximumContactErrorMetres) return Uncertified();
         float margin = maxSeparationMetres + error;
         collector.Margin = margin;

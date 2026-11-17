@@ -61,7 +61,7 @@ internal static class CapsuleCompoundSweep
         {
             double span = (double)upper - lower;
             float enclosure = (float)span;
-            if (enclosure < span) enclosure = MathF.BitIncrement(enclosure);
+            if (enclosure < span) enclosure = FloatUlp.Up(enclosure);
             error = MathF.Max(error, enclosure);
             return error <= CapsuleGeneralSweepPolicy.MaximumErrorMetres ? new(CapsuleSweepStatus.Hit, lower, upper, error) : default;
         }

@@ -99,6 +99,6 @@ internal static class MapRoofPolicyAcquisition
             minX = Math.Min(minX, x); minZ = Math.Min(minZ, z); maxX = Math.Max(maxX, x); maxZ = Math.Max(maxZ, z);
         }
     }
-    static float Lower(double value) { float f = (float)value; return f > value ? MathF.BitDecrement(f) : f; }
-    static float Upper(double value) { float f = (float)value; return f < value ? MathF.BitIncrement(f) : f; }
+    static float Lower(double value) { float f = (float)value; return f > value ? FloatUlp.Down(f) : f; }
+    static float Upper(double value) { float f = (float)value; return f < value ? FloatUlp.Up(f) : f; }
 }

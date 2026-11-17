@@ -172,7 +172,7 @@ public static class MapFoliageSupport
     internal static float Outward(double value, bool lower)
     {
         float rounded = (float)value;
-        return lower ? (rounded > value ? MathF.BitDecrement(rounded) : rounded) : (rounded < value ? MathF.BitIncrement(rounded) : rounded);
+        return lower ? (rounded > value ? FloatUlp.Down(rounded) : rounded) : (rounded < value ? FloatUlp.Up(rounded) : rounded);
     }
 
     /// <summary>The chunk's world rectangle. Rows advance positive world Z.</summary>

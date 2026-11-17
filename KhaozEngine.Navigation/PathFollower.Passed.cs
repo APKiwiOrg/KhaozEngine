@@ -38,7 +38,7 @@ public sealed partial class PathFollower
 
         double lateral = Math.Abs(px * dz - pz * dx) / Math.Sqrt(dx * dx + dz * dz);
         float m = MathF.Max(MaxAbs(w), MathF.Max(MaxAbs(n), MaxAbs(feetXz)));
-        double u = (double)MathF.BitIncrement(m) - m;
+        double u = (double)FloatUlp.Up(m) - m;
         return lateral <= _config.AcceptRadius + PassedLateralFloatSteps * u;
     }
 

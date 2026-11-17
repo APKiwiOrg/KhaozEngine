@@ -76,7 +76,7 @@ internal sealed class GroundRangePreview(MovementQueryLease queries, MoveState l
         // by that exact kernel execution, including the final frame mapping, rather than the endpoint's Y.
         if (supported is not null) return _supportedPosition == body.Position;
         Vector3 position = body.Position - queries.Frame.PhysicsOrigin;
-        float margin = MathF.BitIncrement(travel + 2 * MovementQueryLease.CoverageSkinMetres);
+        float margin = FloatUlp.Up(travel + 2 * MovementQueryLease.CoverageSkinMetres);
         return body.Position.Y == predicted.Position.Y && Math.Abs((double)position.X - local.Position.X) <= margin &&
             Math.Abs((double)position.Z - local.Position.Z) <= margin;
     }

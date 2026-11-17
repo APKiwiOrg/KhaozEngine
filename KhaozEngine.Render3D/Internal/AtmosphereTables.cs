@@ -60,7 +60,7 @@ internal sealed class AtmosphereTables
         float roundedCosine = (float)cosine;
         // Mapping parameters round to floats. Keep a tangent endpoint on the unblocked side
         // after rounding both direction components and normalizing them in Transmittance.
-        if (cosine <= horizon + 1e-7 && horizon < 0) roundedCosine = MathF.BitIncrement(roundedCosine);
+        if (cosine <= horizon + 1e-7 && horizon < 0) roundedCosine = FloatUlp.Up(roundedCosine);
         return new Vector3((float)Math.Sqrt(Math.Max(1 - (double)roundedCosine * roundedCosine, 0)), roundedCosine, 0);
     }
 

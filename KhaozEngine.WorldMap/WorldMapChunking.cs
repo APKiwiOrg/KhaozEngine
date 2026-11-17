@@ -64,7 +64,7 @@ public static class WorldMapChunking
         if (area.Width <= 0f || area.Height <= 0f) yield break;
 
         WorldMapChunkCoord first = ChunkAt(new Vector2(area.X, area.Y), chunkMetres, level);
-        WorldMapChunkCoord last = ChunkAt(new Vector2(MathF.BitDecrement(area.Right), MathF.BitDecrement(area.Top)), chunkMetres, level);
+        WorldMapChunkCoord last = ChunkAt(new Vector2(FloatUlp.Down(area.Right), FloatUlp.Down(area.Top)), chunkMetres, level);
         // Widen the counters so the last representable chunk cannot wrap to the opposite edge.
         for (long y = first.Y; y <= last.Y; y++)
             for (long x = first.X; x <= last.X; x++)

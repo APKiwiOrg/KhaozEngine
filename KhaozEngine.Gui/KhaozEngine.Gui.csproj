@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- FloatUlp steps without a JIT-visible subnormal constant (#1832, KEFP001). -->
+    <KhaozFloatUlp>true</KhaozFloatUlp>
     <PackageId>KhaozEngine.Gui</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <Description>Screen stack and widgets for KhaozEngine. ScreenStack routes input top-to-bottom (input-consumption + modal layering, the click-through model) and draws bottom-to-top with transitions; Screen is the base surface; the widgets (Button, Label, Panel, Slider, Toggle, Dropdown, TextInput, Tooltip, PopupPanel, ScrollablePanel) are bounds-aware over Windowing.Pointer + Render2D, with text wrap/align via Render2D.TextLayout, scissor clipping for scroll, and headless key-mapped text entry (TextEntry). Also a PannableCanvas (pan/wheel viewport over world-space content, scissor-clipped, click-through-safe tap) and an immediate-mode GuiSurface (one call site per widget over Pointer + a SpriteBatch, click-through gate, hover-enter exposure for hover sounds/highlight).</Description>

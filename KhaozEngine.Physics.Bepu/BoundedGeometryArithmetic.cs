@@ -32,7 +32,7 @@ internal readonly struct GeometryInterval
         if (!IsResolved) return default;
         float lower = (float)Lower, upper = (float)Upper;
         if (!float.IsFinite(lower) || !float.IsFinite(upper)) return default;
-        return Enclose(Math.Min(Lower, MathF.BitDecrement(lower)), Math.Max(Upper, MathF.BitIncrement(upper)));
+        return Enclose(Math.Min(Lower, FloatUlp.Down(lower)), Math.Max(Upper, FloatUlp.Up(upper)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

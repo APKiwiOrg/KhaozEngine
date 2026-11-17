@@ -34,7 +34,7 @@ internal static class CapsuleConvexSweep
         float lower = MathF.Min(forward.ClearThroughDistance, local.ClearThroughDistance), upper = MathF.Max(a, b);
         double span = (double)upper - lower;
         float error = (float)span;
-        if (error < span) error = MathF.BitIncrement(error);
+        if (error < span) error = FloatUlp.Up(error);
         return error <= maximumErrorMetres ? new(CapsuleSweepStatus.Hit, lower, upper, error) : default;
     }
 

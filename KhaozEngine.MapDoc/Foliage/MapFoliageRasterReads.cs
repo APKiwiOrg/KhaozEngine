@@ -57,7 +57,7 @@ internal static class MapFoliageRasterReads
 
     static (int Min, int Max)? Samples(MapFoliageLayer layer, int chunk, bool x)
     {
-        float first = Edge(layer, chunk, x), last = MathF.BitDecrement(Edge(layer, (long)chunk + 1, x));
+        float first = Edge(layer, chunk, x), last = FloatUlp.Down(Edge(layer, (long)chunk + 1, x));
         if (!float.IsFinite(first) || !float.IsFinite(last) || first > last) return null;
         float low = Coordinate(layer, first, x), high = Coordinate(layer, last, x);
         int end = (x ? layer.Width : layer.Depth) - 1;
@@ -70,7 +70,7 @@ internal static class MapFoliageRasterReads
         long min = 32L * density;
         long max = Math.Min(min + 31, (x ? layer.Width : layer.Depth) - 1L);
         if (min < 0 || min > max) yield break;
-        long first = First(i => MathF.Floor(Coordinate(layer, MathF.BitDecrement(Edge(layer, i + 1, x)), x)) + 1 >= min);
+        long first = First(i => MathF.Floor(Coordinate(layer, FloatUlp.Down(Edge(layer, i + 1, x)), x)) + 1 >= min);
         long after = First(i => MathF.Floor(Coordinate(layer, Edge(layer, i, x), x)) > max);
         for (long i = first; i < after && i <= int.MaxValue;)
         {

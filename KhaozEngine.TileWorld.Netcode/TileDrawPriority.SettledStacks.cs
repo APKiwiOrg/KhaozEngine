@@ -70,8 +70,8 @@ public sealed partial class TileDrawPriority
     static bool WithinSettleUlps(float value, float settled)
     {
         if (!float.IsFinite(value)) return false;
-        float lower = float.BitDecrement(float.BitDecrement(settled));
-        float upper = float.BitIncrement(float.BitIncrement(settled));
+        float lower = FloatUlp.Down(FloatUlp.Down(settled));
+        float upper = FloatUlp.Up(FloatUlp.Up(settled));
         return value >= lower && value <= upper;
     }
 

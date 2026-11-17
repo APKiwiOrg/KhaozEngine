@@ -78,13 +78,13 @@ internal struct CoverageBox
     static float Lower(double value)
     {
         float rounded = (float)value;
-        return rounded > value ? MathF.BitDecrement(rounded) : rounded;
+        return rounded > value ? FloatUlp.Down(rounded) : rounded;
     }
 
     static float Upper(double value)
     {
         float rounded = (float)value;
-        return rounded < value ? MathF.BitIncrement(rounded) : rounded;
+        return rounded < value ? FloatUlp.Up(rounded) : rounded;
     }
 }
 

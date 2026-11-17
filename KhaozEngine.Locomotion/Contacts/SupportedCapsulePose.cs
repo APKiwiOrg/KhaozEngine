@@ -16,7 +16,7 @@ internal static class SupportedCapsulePose
     {
         float local = height - origin;
         return float.IsFinite(local) && OrdinaryMovementEnvironment.ExactSign(local, origin, -height) < 0
-            ? MathF.BitIncrement(local) : local;
+            ? FloatUlp.Up(local) : local;
     }
 
     internal static float Centre(float feet, float halfHeight, float placementOffset = 0,
@@ -27,7 +27,7 @@ internal static class SupportedCapsulePose
         // A nearest-rounded sum can place exact feet below support. The sign expansion also retains
         // addends too small for binary64, so the upward decision is exact rather than a rounding-error guess.
         if (float.IsFinite(centre) && OrdinaryMovementEnvironment.ExactSign(centre, -halfHeight, -feet) < 0)
-            centre = MathF.BitIncrement(centre);
+            centre = FloatUlp.Up(centre);
         if (!float.IsFinite(centre) || !translation.IsValid)
             throw new ContactQueryFailure(MovementAvailability.Unresolved);
         // The fixed composition offset is intentional. All numerical displacement, including the

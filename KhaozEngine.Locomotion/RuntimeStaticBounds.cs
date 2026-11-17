@@ -161,8 +161,8 @@ internal static class RuntimeStaticBounds
             double partial = sum - a;
             double residual = (a - (sum - partial)) + (b - partial);
             float result = (float)sum;
-            if (upper && (result < sum || result == sum && residual > 0)) result = MathF.BitIncrement(result);
-            if (!upper && (result > sum || result == sum && residual < 0)) result = MathF.BitDecrement(result);
+            if (upper && (result < sum || result == sum && residual > 0)) result = FloatUlp.Up(result);
+            if (!upper && (result > sum || result == sum && residual < 0)) result = FloatUlp.Down(result);
             RuntimeStaticGeometry.Require(float.IsFinite(result));
             return result;
         }
@@ -175,8 +175,8 @@ internal static class RuntimeStaticBounds
         internal static Range Enclose(double lower, double upper)
         {
             float lo = (float)lower, hi = (float)upper;
-            if (lo > lower) lo = MathF.BitDecrement(lo);
-            if (hi < upper) hi = MathF.BitIncrement(hi);
+            if (lo > lower) lo = FloatUlp.Down(lo);
+            if (hi < upper) hi = FloatUlp.Up(hi);
             RuntimeStaticGeometry.Require(float.IsFinite(lo) && float.IsFinite(hi));
             return new(lo, hi);
         }

@@ -177,14 +177,16 @@ probes, so `Math.BitDecrement` and `double.BitIncrement` are not flagged.
 
 The fix for a step is `FloatUlp.Down` or `FloatUlp.Up`. An engine project compiles that internal helper in by
 setting `KhaozFloatUlp` to `true` (`build/FloatUlp.targets`). It steps in the integer domain without branches
-and reads its two subnormal results, the zero cases, from mutable statics the JIT cannot fold. Its bits match
+and reads the results for a zero argument, both subnormal, from mutable statics the JIT cannot fold. Its bits match
 the BCL steps for every input. It needs no suppression. Its statics stay mutable on purpose: making them
 `readonly`, as an IDE suggests, lets the JIT fold them, and this rule reports that.
 
 What the rule cannot see:
 
-- Subnormal values the JIT folds after inlining from operands the compiler never saw as one constant, such as
-  a step whose argument becomes a known constant only after inlining.
+- Subnormal values the JIT folds after inlining from operands the compiler never saw as one constant.
+  `FloatUlp` reads the result for a zero argument of either sign from a static, so a zero the JIT learns only
+  after inlining stays exact. A step that turns the smallest normal into a subnormal, or steps a subnormal,
+  still folds when the JIT learns the argument after inlining.
 - Folded arithmetic under a directed rounding mode, for `float` and `double`, and `double` folds with a
   subnormal operand or result under a flush mode. No constant rule can detect those.
 - Bits read as a float from constant `ReadOnlySpan<byte>` data, through a pointer cast, or from a field set in
@@ -203,7 +205,9 @@ KEFP001 reports nothing unless the compilation sets the MSBuild property `KhaozS
 | `all` | Every compilation, test projects included. |
 | Unset or any other value | Nothing. |
 
-A consumer opts in by setting the property in its own `Directory.Build.props`, for example
+The engine sets `on` for every project in its `Directory.Build.props`, so KEFP001 is an error in every
+engine compilation that does not reference xunit. A consumer opts in by setting the property in its own
+`Directory.Build.props`, for example
 `<KhaozSubnormalFloatRule>on</KhaozSubnormalFloatRule>`. The package's buildTransitive props hands the value
 to the analyzer. `FloatUlp` is internal to each engine assembly, so a consumer that opts in copies the shape of
 `build/FloatUlp.cs` into its own code.

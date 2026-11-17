@@ -109,7 +109,7 @@ internal static class InstalledSweepBounds
     static double Spacing(double value)
     {
         float represented = (float)value;
-        return float.IsFinite(represented) ? (double)MathF.BitIncrement(represented) - MathF.BitDecrement(represented) : double.PositiveInfinity;
+        return float.IsFinite(represented) ? (double)FloatUlp.Up(represented) - FloatUlp.Down(represented) : double.PositiveInfinity;
     }
 
     internal static bool TryCreate(InstalledSweepGeometry geometry, RigidPose pose,
@@ -223,11 +223,11 @@ internal static class InstalledSweepBounds
     internal static float Down(double value)
     {
         float result = (float)value;
-        return result > value ? MathF.BitDecrement(result) : result;
+        return result > value ? FloatUlp.Down(result) : result;
     }
     internal static float Up(double value)
     {
         float result = (float)value;
-        return result < value ? MathF.BitIncrement(result) : result;
+        return result < value ? FloatUlp.Up(result) : result;
     }
 }

@@ -92,7 +92,7 @@ internal static class CoverageReferencePredicates
         else
         {
             bool odd = (BitConverter.SingleToInt32Bits(rounded) & 1) != 0;
-            float previous = MathF.BitDecrement(rounded), next = MathF.BitIncrement(rounded);
+            float previous = FloatUlp.Down(rounded), next = FloatUlp.Up(rounded);
             int lower = CompareMagnitude(expansion, sign, ((double)previous + rounded) * .5);
             int upper = CompareMagnitude(expansion, sign, ((double)rounded + next) * .5);
             if (lower < 0 || lower == 0 && odd) rounded = previous;

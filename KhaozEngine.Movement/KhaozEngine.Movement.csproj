@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- FloatUlp steps without a JIT-visible subnormal constant (#1832, KEFP001). -->
+    <KhaozFloatUlp>true</KhaozFloatUlp>
     <PackageId>KhaozEngine.Movement</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <Description>Opt-in composition of locomotion, navigation and physics with exact 3D body reach geometry.</Description>

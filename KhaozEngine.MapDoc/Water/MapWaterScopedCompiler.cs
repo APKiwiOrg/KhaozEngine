@@ -263,7 +263,7 @@ public static class MapWaterScopedCompiler
     {
         float result = (float)value;
         if (!float.IsFinite(result)) throw new MapExactOverflowException();
-        return lower && result > value ? MathF.BitDecrement(result) : !lower && result < value ? MathF.BitIncrement(result) : result;
+        return lower && result > value ? FloatUlp.Down(result) : !lower && result < value ? FloatUlp.Up(result) : result;
     }
 
     static bool Intersects(MapWaterResourceCell cell, MapBox3 window, MapWaterWorkBudget pairs, MapSceneAdmission admission)

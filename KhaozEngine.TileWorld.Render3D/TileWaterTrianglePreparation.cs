@@ -403,13 +403,13 @@ internal static class TileWaterTrianglePreparation
     static float Down(double value)
     {
         float f = (float)value;
-        return f > value ? MathF.BitDecrement(f) : f;
+        return f > value ? FloatUlp.Down(f) : f;
     }
 
     static float Up(double value)
     {
         float f = (float)value;
-        return f < value ? MathF.BitIncrement(f) : f;
+        return f < value ? FloatUlp.Up(f) : f;
     }
 
     // The projected cross product as six binary32 products, each exact in binary64. A sum clear of its rounding

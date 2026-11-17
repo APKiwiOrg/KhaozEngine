@@ -38,12 +38,12 @@ internal readonly struct TileGroundBounds
     static float AtOrAbove(double value)
     {
         float rounded = (float)value;
-        return rounded < value ? MathF.BitIncrement(rounded) : rounded;
+        return rounded < value ? FloatUlp.Up(rounded) : rounded;
     }
 
     static float Before(double exclusive)
     {
         float rounded = (float)exclusive;
-        return rounded >= exclusive ? MathF.BitDecrement(rounded) : rounded;
+        return rounded >= exclusive ? FloatUlp.Down(rounded) : rounded;
     }
 }

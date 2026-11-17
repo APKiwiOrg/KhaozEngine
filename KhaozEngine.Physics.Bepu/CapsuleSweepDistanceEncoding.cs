@@ -60,12 +60,12 @@ internal static class CapsuleSweepDistanceEncoding
     static float Down(double value)
     {
         float encoded = (float)value;
-        return float.IsFinite(encoded) && encoded > value ? MathF.BitDecrement(encoded) : encoded;
+        return float.IsFinite(encoded) && encoded > value ? FloatUlp.Down(encoded) : encoded;
     }
 
     static float Up(double value)
     {
         float encoded = (float)value;
-        return float.IsFinite(encoded) && encoded < value ? MathF.BitIncrement(encoded) : encoded;
+        return float.IsFinite(encoded) && encoded < value ? FloatUlp.Up(encoded) : encoded;
     }
 }

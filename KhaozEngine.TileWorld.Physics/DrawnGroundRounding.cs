@@ -61,7 +61,7 @@ internal static class DrawnGroundRounding
     {
         if (magnitude == 0) return 0;
         float upper = (float)Math.Abs(magnitude);
-        if (upper < magnitude) upper = MathF.BitIncrement(upper);
-        return ((double)MathF.BitIncrement(upper) - upper) * 0.5;
+        if (upper < magnitude) upper = FloatUlp.Up(upper);
+        return ((double)FloatUlp.Up(upper) - upper) * 0.5;
     }
 }

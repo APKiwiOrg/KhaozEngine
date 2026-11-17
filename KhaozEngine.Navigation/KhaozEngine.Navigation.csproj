@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- FloatUlp steps without a JIT-visible subnormal constant (#1832, KEFP001). -->
+    <KhaozFloatUlp>true</KhaozFloatUlp>
     <PackageId>KhaozEngine.Navigation</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <Description>Engine-owned NPC navigation: clearance-grid walkability (one bake serves every agent radius), grid A* pathfinding behind an IPathPlanner seam with string-pulled waypoints, node budgets and partial paths, and a PathFollower that turns a moving goal into a per-tick steering direction for CharacterMovement.StepTowards. Render-free, deterministic.</Description>

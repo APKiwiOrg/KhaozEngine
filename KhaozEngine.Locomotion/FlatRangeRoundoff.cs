@@ -27,6 +27,6 @@ internal static class FlatRangeRoundoff
     static double Spacing(float value)
     {
         value = MathF.Abs(value);
-        return (double)MathF.BitIncrement(value) - value;
+        return (double)FloatUlp.Up(value) - value;
     }
 }

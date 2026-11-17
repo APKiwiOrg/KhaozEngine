@@ -40,7 +40,7 @@ internal static class TileWaterUniformBed
         {
             // Every distinct represented input is checked once. The resulting ranges can include extra inputs,
             // making this proof stronger, while never omitting a coordinate the actual sampler can reach.
-            for (float coordinate = low; ; coordinate = MathF.BitIncrement(coordinate))
+            for (float coordinate = low; ; coordinate = FloatUlp.Up(coordinate))
             {
                 if (!Coordinate(ground, minimum, xAxis, coordinate, out int cell, out float local)) return false;
                 if (cells.TryGetValue(cell, out F range)) cells[cell] = new(MathF.Min(range.Low, local), MathF.Max(range.High, local));

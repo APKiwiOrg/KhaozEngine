@@ -126,6 +126,18 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   in a child process of the test assembly, which has an entry point for that. `KhaozEngine.TileWorld.Physics.Tests` and
   both floating point test assemblies fail any test that starts or ends with a changed control, and the guard states
   what it cannot see. The probes behind this are in the consumer guide's deterministic floating point section.
+- Engine code steps a `float` by one ULP with `FloatUlp.Down` and `FloatUlp.Up`, never `MathF` or `float`
+  `BitDecrement` and `BitIncrement`, and holds no subnormal `float` constant. The BCL steps return `float.Epsilon`
+  from their zero branch, and the JIT folds a subnormal constant through the flush mode of the thread that first
+  optimizes the method, so one call from a thread an audio or graphics library left in flush to zero changed
+  collider bounds and tile ground extents for every thread (#1832). `FloatUlp` steps in the integer domain and
+  reads its two subnormal results from mutable statics, with bits identical to the BCL steps. It is an internal
+  copy per assembly: a project sets `<KhaozFloatUlp>true</KhaozFloatUlp>` and `build/FloatUlp.targets` compiles
+  `build/FloatUlp.cs` in under its own namespace, so no project gains a dependency edge or public API.
+  `KhaozSubnormalFloatRule` in `Directory.Build.props` turns KEFP001 on as an error for every engine compilation
+  that does not reference xunit. Default test projects compare against the BCL steps and stay outside it. See the
+  [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#subnormal-float-constants) for what the rule
+  flags and cannot see.
 - A test that needs private state uses an internal `<Thing>ForTests` seam beside the type, never reflection.
   A seam returns the narrowest thing the test reads: a value, a count, an identity predicate or token, a
   snapshot copy or a genuine read-only view. It never returns a live mutable collection behind an

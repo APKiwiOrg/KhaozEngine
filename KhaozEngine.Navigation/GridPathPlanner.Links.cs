@@ -25,7 +25,7 @@ public sealed partial class GridPathPlanner
                 throw new ArgumentException("Stair cost must be representable.", nameof(link));
             float rounded = (float)minimum;
             // Rounding down would discount the metric and weaken the construction-time bound.
-            return rounded < minimum ? MathF.BitIncrement(rounded) : rounded;
+            return rounded < minimum ? FloatUlp.Up(rounded) : rounded;
         }
         float sourceY = from.RestingHeightAt(link.FromX, link.FromZ) ??
             throw new ArgumentException("Drop endpoints require physical heights.", nameof(link));

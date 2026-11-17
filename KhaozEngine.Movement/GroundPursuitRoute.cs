@@ -91,8 +91,8 @@ internal sealed class GroundPursuitRoute
         double lateral = Math.Abs(px * dz - pz * dx) / Math.Sqrt(squared);
         // Match the follower's float-step slack so an on-line controller step survives world-coordinate rounding.
         float magnitude = MathF.Max(MaxAbsXz(from), MathF.Max(MaxAbsXz(Active), MaxAbsXz(position)));
-        double ulp = magnitude == float.MaxValue ? (double)magnitude - MathF.BitDecrement(magnitude)
-            : (double)MathF.BitIncrement(magnitude) - magnitude;
+        double ulp = magnitude == float.MaxValue ? (double)magnitude - FloatUlp.Down(magnitude)
+            : (double)FloatUlp.Up(magnitude) - magnitude;
         return lateral <= radius + 4 * ulp;
     }
 

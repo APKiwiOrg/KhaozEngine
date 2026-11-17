@@ -39,6 +39,11 @@
          on public member": suppressed so partial coverage doesn't fail the build. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
+
+    <!-- KEFP001 (#1832): no JIT-visible subnormal float constant in engine code. "on" checks every compilation
+         that does not reference xunit. The floating point test assemblies set "all". Engine code steps with
+         FloatUlp (build/FloatUlp.targets), see the KhaozEngine.CodeHealth.Analyzers README. -->
+    <KhaozSubnormalFloatRule Condition="'$(KhaozSubnormalFloatRule)' == ''">on</KhaozSubnormalFloatRule>
   </PropertyGroup>
 
   <Import Project="$(MSBuildThisFileDirectory)build/WaterPrismCensus.props" />
@@ -63,5 +68,6 @@
     <AdditionalFiles Include="$(MSBuildThisFileDirectory).testhealth-baseline"
                      Condition="Exists('$(MSBuildThisFileDirectory).testhealth-baseline')" />
     <CompilerVisibleProperty Include="KhaozTestHealthMode" />
+    <CompilerVisibleProperty Include="KhaozSubnormalFloatRule" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- FloatUlp steps without a JIT-visible subnormal constant (#1832, KEFP001). -->
+    <KhaozFloatUlp>true</KhaozFloatUlp>
     <PackageId>KhaozEngine.Render3D</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <Description>Stylized 3D rendering through KhaozEngine.Gpu, with System.Numerics math. Orthographic IsoCamera3D (+ IsoCameraController: cursor-anchored scroll-zoom and grab-pan), runtime glTF lit/cel model draw with optional per-mesh albedo textures (UV sampling, 1x1 white default), a procedural starfield, and a PixelPostProcess chain (smooth or retro: swappable palette quantization, Bayer dither, depth/normal edge outline, point-or-linear upscale). Default look is smooth stylized space; retro/pixel is a toggle. All GPU work routes through KhaozEngine.Gpu; SharpGLTF handles model loading.</Description>

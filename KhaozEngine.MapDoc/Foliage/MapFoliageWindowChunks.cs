@@ -15,8 +15,8 @@ internal static class MapFoliageWindowChunks
         double radius = MapSceneResourceBounds.FoliageRadius(layer, assets);
         int x0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(bounds.MinX - radius, true), true);
         int z0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(bounds.MinZ - radius, true), false);
-        int x1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(bounds.MaxX + radius, false)), true);
-        int z1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(bounds.MaxZ + radius, false)), false);
+        int x1 = MapFoliageRasterReads.Owner(layer, FloatUlp.Down(MapFoliageSupport.Outward(bounds.MaxX + radius, false)), true);
+        int z1 = MapFoliageRasterReads.Owner(layer, FloatUlp.Down(MapFoliageSupport.Outward(bounds.MaxZ + radius, false)), false);
         foreach (int z in MapFoliageRasterReads.Chunks(layer, z0, z1, false))
             foreach (int x in MapFoliageRasterReads.Chunks(layer, x0, x1, true))
                 // Empty candidates count too, so a broad model cannot scan an unbounded off-raster range.

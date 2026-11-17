@@ -139,7 +139,7 @@ public sealed class PhysicsColumnProbe
             float nextY = hit.Point.Y - DescendEpsilon;
             // At large local heights the nudge can round back to the hit. Every recast must move
             // strictly down and consume range, or the sweep stops with the surfaces already found.
-            if (nextY >= hit.Point.Y) nextY = MathF.BitDecrement(hit.Point.Y);
+            if (nextY >= hit.Point.Y) nextY = FloatUlp.Down(hit.Point.Y);
             if (!float.IsFinite(nextY) || !(nextY < castY)) break;
             float nextRemaining = remaining - (castY - nextY);
             if (!(nextRemaining < remaining)) break;

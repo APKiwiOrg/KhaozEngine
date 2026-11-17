@@ -39,7 +39,7 @@ internal static class CapsuleCylinderSweep
         float lo = MathF.Min(forward.ClearThroughDistance, local.ClearThroughDistance), hi = MathF.Max(a, b);
         double span = (double)hi - lo;
         float error = (float)span;
-        if (error < span) error = MathF.BitIncrement(error);
+        if (error < span) error = FloatUlp.Up(error);
         return error <= CapsuleGeneralSweepPolicy.MaximumErrorMetres ? new(CapsuleSweepStatus.Hit, lo, hi, error) : default;
     }
 
@@ -67,7 +67,7 @@ internal static class CapsuleCylinderSweep
         for (int candidate = 0; candidate < 3; candidate++)
         {
             float t = length == 0 ? 0 : (float)Math.Min(1, candidate == 1 ? ((double)lower + upper) / (2 * length) : upper / length);
-            if (candidate == 2) t = MathF.BitIncrement(t);
+            if (candidate == 2) t = FloatUlp.Up(t);
             if (!CapsuleSweepSourceSample.TryCreate(leaf, centre, delta, t, out var sample)) continue;
             CapsuleCylinderFrame sampled = frame with
             {

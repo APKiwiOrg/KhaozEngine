@@ -111,13 +111,13 @@ internal static class WaterOpticsTriangleMath
     {
         if (bin == 0) return 0;
         double bound = (double)size * bin / count - size * (4.0 / 16777216);
-        return MathF.Max(0, float.BitDecrement((float)Math.Max(0, bound)));
+        return MathF.Max(0, FloatUlp.Down((float)Math.Max(0, bound)));
     }
 
     internal static float BinMaximum(float size, int bin, int count)
     {
         if (bin == count - 1) return size;
         double bound = (double)size * (bin + 1) / count + size * (4.0 / 16777216);
-        return MathF.Min(size, float.BitIncrement((float)Math.Min(size, bound)));
+        return MathF.Min(size, FloatUlp.Up((float)Math.Min(size, bound)));
     }
 }

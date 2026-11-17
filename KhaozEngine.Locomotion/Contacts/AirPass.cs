@@ -188,7 +188,7 @@ internal static class AirPass
                 // clearance ordinate, not a climb or a second placement skin, and earns the placement proof.
                 float floorHeight = buoyant
                     ? GroundPlacement.NotBelow((double)support.Height + support.HeightError) : support.Height;
-                var seat = new GroundSeatResult(SeatOutcome.Seated, MathF.BitIncrement(floorHeight), support, 0, Vector3.Zero);
+                var seat = new GroundSeatResult(SeatOutcome.Seated, FloatUlp.Up(floorHeight), support, 0, Vector3.Zero);
                 GroundPlacement bed = GroundPlacement.Try(queries, NoSupport, high, axis, Vector2.Zero,
                     seat, footRadius, tuning, cosMaxSlope, budget, ref route);
                 // An unraised fallback cannot clear a bank above the whole travelled span. Refuse this tick

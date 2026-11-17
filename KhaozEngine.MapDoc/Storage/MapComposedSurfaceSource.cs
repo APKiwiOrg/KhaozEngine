@@ -216,8 +216,8 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
         }).ToArray();
         // Frozen vertices can move by half a tick. Expand discovery only, never the final exact query.
         double halo = 1.0 / MapResourceTransform.Quantum / pose.Scale;
-        float Lower(double value) => MathF.BitDecrement((float)(value - halo));
-        float Upper(double value) => MathF.BitIncrement((float)(value + halo));
+        float Lower(double value) => FloatUlp.Down((float)(value - halo));
+        float Upper(double value) => FloatUlp.Up((float)(value + halo));
         return new(WorldFrame.Origin, new(Lower(points.Min(p => p.Item1)), Lower(points.Min(p => p.Item2))),
             new(Upper(points.Max(p => p.Item1)), Upper(points.Max(p => p.Item2))), null, null, scope.Roles, scope.SpaceIds, scope.Limits);
     }

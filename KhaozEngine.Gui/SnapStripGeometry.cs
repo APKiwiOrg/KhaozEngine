@@ -157,13 +157,13 @@ namespace KhaozEngine.Gui
 
             // Invert both float roundings: placement rounds the left edge, then Rect.Right
             // rounds its sum with the item width. A real-valued intersection can be edge contact.
-            double rightThreshold = FloatLowerBoundary(MathF.BitIncrement(bounds.X));
+            double rightThreshold = FloatLowerBoundary(FloatUlp.Up(bounds.X));
             float firstLeft = (float)(rightThreshold - metrics.ItemWidth);
             if (firstLeft + metrics.ItemWidth <= bounds.X)
-                firstLeft = MathF.BitIncrement(firstLeft);
+                firstLeft = FloatUlp.Up(firstLeft);
             else
             {
-                float previousLeft = MathF.BitDecrement(firstLeft);
+                float previousLeft = FloatUlp.Down(firstLeft);
                 if (previousLeft + metrics.ItemWidth > bounds.X) firstLeft = previousLeft;
             }
 
@@ -189,10 +189,10 @@ namespace KhaozEngine.Gui
         static double FloatLowerBoundary(float value)
         {
             if (float.IsPositiveInfinity(value))
-                return (double)float.MaxValue + ((double)float.MaxValue - MathF.BitDecrement(float.MaxValue)) / 2d;
-            float previous = MathF.BitDecrement(value);
+                return (double)float.MaxValue + ((double)float.MaxValue - FloatUlp.Down(float.MaxValue)) / 2d;
+            float previous = FloatUlp.Down(value);
             if (float.IsNegativeInfinity(previous))
-                return (double)value - ((double)MathF.BitIncrement(value) - value) / 2d;
+                return (double)value - ((double)FloatUlp.Up(value) - value) / 2d;
             return ((double)previous + value) / 2d;
         }
 

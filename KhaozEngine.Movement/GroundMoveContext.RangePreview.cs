@@ -38,8 +38,8 @@ public sealed partial class GroundMoveContext
             if (!MovementFrameRebinding.TryRebind(framed, framed.Frame, out _)) return null;
             // Each normalized component is at most one and the speed fraction is at most one. Round each
             // product upward to bound every float command fraction, including subnormal commands.
-            float speed = MathF.BitIncrement((run ? tuning.RunSpeed : tuning.WalkSpeed) * body.SpeedScale);
-            float travel = MathF.BitIncrement(speed * dt);
+            float speed = FloatUlp.Up((run ? tuning.RunSpeed : tuning.WalkSpeed) * body.SpeedScale);
+            float travel = FloatUlp.Up(speed * dt);
             if (!queries.CertifyGroundRange(new(local, _contactFrame, null), tuning, travel,
                 MovementRegistration!, binding.CaptureOrdinaryBoundary(_contactFrame), out var supported)) return null;
             EnsureOrigin();

@@ -53,7 +53,7 @@ internal static class RuntimeStaticHullBounds
             Math.BitDecrement(lower - volumeError));
         double bound = Sum(Math.BitIncrement(Sum(magnitude, error) / (1 - Math.ScaleB(1d, -24))), Math.ScaleB(1d, -149));
         float result = (float)bound;
-        if (result < bound) result = MathF.BitIncrement(result);
+        if (result < bound) result = FloatUlp.Up(result);
         if (!float.IsFinite(result)) throw new NotSupportedException("The hull recentring bound is not finite.");
         return result;
     }

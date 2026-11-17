@@ -63,7 +63,7 @@ public static partial class MapFoliageDistribution
                 throw new ArgumentException("foliage query area must be finite and ordered", nameof(area));
             if (area.MinX == area.MaxX || area.MinZ == area.MaxZ) return new(MapFoliageStatus.Complete, [], meter.Work());
             int x0 = ChunkIndex(layer, area.MinX, true), z0 = ChunkIndex(layer, area.MinZ, false);
-            int x1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxX), true), z1 = ChunkIndex(layer, MathF.BitDecrement(area.MaxZ), false);
+            int x1 = ChunkIndex(layer, FloatUlp.Down(area.MaxX), true), z1 = ChunkIndex(layer, FloatUlp.Down(area.MaxZ), false);
             int[] xs = QueryChunks(layer, x0, x1, true, admitted.MaxQueryChunks);
             int[] zs = QueryChunks(layer, z0, z1, false, admitted.MaxQueryChunks);
             if (DemandDiagnostics.Check(context, "MapFoliageDistribution.MaxQueryChunks.1", "MaxQueryChunks", 0, (decimal)xs.Length * zs.Length, admitted.MaxQueryChunks, (long)xs.Length * zs.Length > admitted.MaxQueryChunks, CapacityDemandLifetime.Cumulative, allowanceSource: admitted)) throw Refuse(MapFoliageStatus.CapacityExceeded, "query chunks");
@@ -134,7 +134,7 @@ public static partial class MapFoliageDistribution
     internal static bool KnownOffRaster(MapFoliageLayer layer, RectArea chunk)
     {
         if (!(layer.CellSize > 0)) return false;
-        float lastX = MathF.BitDecrement(chunk.MaxX), lastZ = MathF.BitDecrement(chunk.MaxZ);
+        float lastX = FloatUlp.Down(chunk.MaxX), lastZ = FloatUlp.Down(chunk.MaxZ);
         if (!(chunk.MinX <= lastX && chunk.MinZ <= lastZ)) return false;
         return MapFoliageSupport.RasterCoordinate(lastX, layer.OriginX, layer.CellSize) < 0 ||
             MapFoliageSupport.RasterCoordinate(chunk.MinX, layer.OriginX, layer.CellSize) > layer.Width - 1 ||

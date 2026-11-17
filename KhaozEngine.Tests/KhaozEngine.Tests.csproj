@@ -2,6 +2,8 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <OutputType>Library</OutputType>
+    <!-- Its own copy of build/FloatUlp.cs, for FloatUlpIdentityTests. A compiled-in source, not an engine reference. -->
+    <KhaozFloatUlp>true</KhaozFloatUlp>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

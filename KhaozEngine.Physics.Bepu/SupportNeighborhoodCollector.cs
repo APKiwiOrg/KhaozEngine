@@ -101,10 +101,10 @@ internal sealed class SupportNeighborhoodCollector
     }
 
     static float Down(float centre, GeometryInterval extent) =>
-        MathF.BitDecrement((float)GeometryInterval.Exact(centre).Subtract(GeometryInterval.Exact(extent.Upper)).Lower);
+        FloatUlp.Down((float)GeometryInterval.Exact(centre).Subtract(GeometryInterval.Exact(extent.Upper)).Lower);
 
     static float Up(float centre, GeometryInterval extent) =>
-        MathF.BitIncrement((float)GeometryInterval.Exact(centre).Add(GeometryInterval.Exact(extent.Upper)).Upper);
+        FloatUlp.Up((float)GeometryInterval.Exact(centre).Add(GeometryInterval.Exact(extent.Upper)).Upper);
 
     /// <summary>Considers every element of one selected static: the faces of its box and hull leaves and the tangent
     /// elements of its sphere, capsule and cylinder leaves, or the triangles of its mesh near the probe. A capture

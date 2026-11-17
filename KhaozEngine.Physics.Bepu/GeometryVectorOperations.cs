@@ -92,7 +92,7 @@ internal static class GeometryVectorOperations
         GeometryInterval error = GeometryInterval.Enclose(0, Math.Max(0, squaredError.Upper)).Sqrt();
         if (!error.IsResolved) return default;
         float publishedError = (float)error.Upper;
-        if ((double)publishedError < error.Upper) publishedError = MathF.BitIncrement(publishedError);
+        if ((double)publishedError < error.Upper) publishedError = FloatUlp.Up(publishedError);
         if (!float.IsFinite(publishedError)) return default;
         return new(representative, publishedError);
     }

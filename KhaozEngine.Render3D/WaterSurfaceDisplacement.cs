@@ -50,10 +50,10 @@ public static class WaterSurfaceDisplacement
         }
         if (steepness == 0) return 0;
         float upper = (float)largest;
-        if ((double)upper < largest) upper = MathF.BitIncrement(upper);
+        if ((double)upper < largest) upper = FloatUlp.Up(upper);
         // Outward binary32 allowance covers the bounded component generation and eight-term accumulation.
         // The separate clip epsilon accounts for local submission and domain-boundary comparisons.
-        for (int i = 0; i < RoundingGuardUlps; i++) upper = MathF.BitIncrement(upper);
+        for (int i = 0; i < RoundingGuardUlps; i++) upper = FloatUlp.Up(upper);
         if (!float.IsFinite(upper)) throw new ArgumentException("Water displacement exceeds its finite envelope.", nameof(look));
         return upper;
     }

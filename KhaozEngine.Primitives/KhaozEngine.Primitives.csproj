@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- FloatUlp steps without a JIT-visible subnormal constant (#1832, KEFP001). -->
+    <KhaozFloatUlp>true</KhaozFloatUlp>
     <PackageId>KhaozEngine.Primitives</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <!-- Multi-targeted below net10.0 because KhaozEngine.ServerStatus (which references this leaf)

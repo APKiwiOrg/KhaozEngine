@@ -30,7 +30,7 @@ internal sealed class GroundPursuitGoal
         if (!MovementBody.IsFinite(anchor) || extent > float.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(target), "Goal extent and feet must be finite.");
         float outward = (float)extent;
-        if (outward < extent) outward = MathF.BitIncrement(outward);
+        if (outward < extent) outward = FloatUlp.Up(outward);
         Region = new NavGoalRegion(anchor, outward, Contains);
     }
 

@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- FloatUlp steps without a JIT-visible subnormal constant (#1832, KEFP001). -->
+    <KhaozFloatUlp>true</KhaozFloatUlp>
     <PackageId>KhaozEngine.Locomotion</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <Description>Render-free character locomotion core for KhaozEngine. CharacterMovement.Step is shared by the local controller, authoritative server sim, and client prediction. The vertical-physics overload resolves 3D collision via a substepped swept collide-and-slide (SweepCapsule) plus a step-up probe wiring StepHeight, so fast moves cannot tunnel through thin meshes and the capsule cannot be trapped inside closed meshes. Walkable contacts are followed; steep contacts block and redirect. Depends on KhaozEngine.Physics; no input, no render, no netcode.</Description>

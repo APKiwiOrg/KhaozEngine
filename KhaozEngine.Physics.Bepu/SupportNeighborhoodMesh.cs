@@ -64,10 +64,10 @@ internal static class SupportNeighborhoodMesh
         GeometryInterval y = GeometryVectorOperations.Dot(transform.InverseTransposeY.Bounds, offset);
         GeometryInterval z = GeometryVectorOperations.Dot(transform.InverseTransposeZ.Bounds, offset);
         if (!x.IsResolved || !y.IsResolved || !z.IsResolved) return CapsuleFeatureStatus.Unsupported;
-        Vector3 min = new(MathF.BitDecrement((float)x.Lower), MathF.BitDecrement((float)y.Lower),
-            MathF.BitDecrement((float)z.Lower));
-        Vector3 max = new(MathF.BitIncrement((float)x.Upper), MathF.BitIncrement((float)y.Upper),
-            MathF.BitIncrement((float)z.Upper));
+        Vector3 min = new(FloatUlp.Down((float)x.Lower), FloatUlp.Down((float)y.Lower),
+            FloatUlp.Down((float)z.Lower));
+        Vector3 max = new(FloatUlp.Up((float)x.Upper), FloatUlp.Up((float)y.Upper),
+            FloatUlp.Up((float)z.Upper));
         if (!float.IsFinite(min.X) || !float.IsFinite(min.Y) || !float.IsFinite(min.Z) ||
             !float.IsFinite(max.X) || !float.IsFinite(max.Y) || !float.IsFinite(max.Z))
             return CapsuleFeatureStatus.Unsupported;
@@ -188,8 +188,8 @@ internal static class SupportNeighborhoodMesh
             GeometryInterval below = GeometryInterval.Exact(Math.Min(first.Lower, second.Lower)).Subtract(inflation);
             GeometryInterval above = GeometryInterval.Exact(Math.Max(first.Upper, second.Upper)).Add(inflation);
             if (!first.IsResolved || !second.IsResolved || !below.IsResolved || !above.IsResolved) return false;
-            low[axis] = MathF.BitDecrement((float)below.Lower);
-            high[axis] = MathF.BitIncrement((float)above.Upper);
+            low[axis] = FloatUlp.Down((float)below.Lower);
+            high[axis] = FloatUlp.Up((float)above.Upper);
             if (!float.IsFinite(low[axis]) || !float.IsFinite(high[axis])) return false;
         }
         min = new Vector3(low[0], low[1], low[2]);

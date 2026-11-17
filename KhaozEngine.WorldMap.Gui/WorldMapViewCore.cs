@@ -193,7 +193,7 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         Vector2 center = ToCanvas(_canvas.Camera.Position);
         WorldMapChunkCoord first = WorldMapChunking.ChunkAt(new Vector2(visible.X, visible.Y), _cache.Style.ChunkMetres, CurrentLevel);
         WorldMapChunkCoord last = WorldMapChunking.ChunkAt(
-            new Vector2(MathF.BitDecrement(visible.Right), MathF.BitDecrement(visible.Top)), _cache.Style.ChunkMetres, CurrentLevel);
+            new Vector2(FloatUlp.Down(visible.Right), FloatUlp.Down(visible.Top)), _cache.Style.ChunkMetres, CurrentLevel);
         // Enumerate canonical half-open edges without allocating the core's traversal iterator each frame.
         for (long y = first.Y; y <= last.Y; y++)
         {

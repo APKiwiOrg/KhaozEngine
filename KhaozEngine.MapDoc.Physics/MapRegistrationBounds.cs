@@ -85,8 +85,8 @@ internal static class MapRegistrationBounds
         if (!float.IsFinite(bound)) throw new MapDocumentException(MapDocumentRefusal.GeometryNotRepresentable,
             "Registration bounds are not representable.")
         { Operation = "RegistrationBounds", FieldPath = "Magnitude", ActualNumber = magnitude };
-        if (bound < magnitude) bound = MathF.BitIncrement(bound);
-        return (double)MathF.BitIncrement(bound) - bound;
+        if (bound < magnitude) bound = FloatUlp.Up(bound);
+        return (double)FloatUlp.Up(bound) - bound;
     }
 
     static bool Aligned(double value, double quantum) => value / quantum == Math.Truncate(value / quantum);

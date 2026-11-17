@@ -212,8 +212,8 @@ internal static class TileWaterColumnCoverage
         return false;
     }
 
-    internal static float Lower(double value) { float f = (float)value; return f > value ? MathF.BitDecrement(f) : f; }
-    internal static float Upper(double value) { float f = (float)value; return f < value ? MathF.BitIncrement(f) : f; }
+    internal static float Lower(double value) { float f = (float)value; return f > value ? FloatUlp.Down(f) : f; }
+    internal static float Upper(double value) { float f = (float)value; return f < value ? FloatUlp.Up(f) : f; }
     static MovementCoverageResult Refuse(MovementAvailability status, MovementQueryIdentity identity,
         int spans = 0, int contacts = 0, float error = 0) => new(status, 0, spans, 0, contacts, error, identity);
 }

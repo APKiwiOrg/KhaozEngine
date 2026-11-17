@@ -15,7 +15,7 @@ namespace KhaozEngine.FloatSteps;
 /// The JIT folds float constants through the floating point controls of the thread that compiles the method. An
 /// optimized compile on a thread with flush to zero set stores the <c>-float.Epsilon</c> of <c>MathF.BitDecrement(0f)</c>
 /// as <c>-0f</c>, and that machine code then serves every thread. These steps compute in the integer domain without
-/// branches and take the only subnormal results they need, the zero cases, from storage the JIT cannot fold. The bits
+/// branches and take the subnormal results of a zero argument from storage the JIT cannot fold. The bits
 /// match <see cref="MathF.BitDecrement(float)"/> and <see cref="MathF.BitIncrement(float)"/> for every input, NaN
 /// payloads and signed zeros included.
 /// </remarks>
@@ -37,7 +37,9 @@ internal static class FloatUlp
         // NaN keeps its payload and negative infinity stays.
         bool keep = ((bits & 0x7FFFFFFFu) > 0x7F800000u) | (bits == 0xFF800000u);
         uint result = keep ? bits : next;
-        return BitConverter.UInt32BitsToSingle(bits == 0u ? s_negativeEpsilonBits : result);
+        // Both zeros step to -float.Epsilon. Taking -0 through the static too, not only +0, keeps a zero argument
+        // the JIT already knows from folding the integer result into a subnormal constant.
+        return BitConverter.UInt32BitsToSingle((bits << 1) == 0u ? s_negativeEpsilonBits : result);
     }
 
     /// <summary>The next float toward positive infinity, bit-identical to <see cref="MathF.BitIncrement(float)"/>.</summary>
@@ -50,6 +52,7 @@ internal static class FloatUlp
         // NaN keeps its payload and positive infinity stays.
         bool keep = ((bits & 0x7FFFFFFFu) > 0x7F800000u) | (bits == 0x7F800000u);
         uint result = keep ? bits : next;
-        return BitConverter.UInt32BitsToSingle(bits == 0x80000000u ? s_positiveEpsilonBits : result);
+        // Both zeros step to float.Epsilon, read from the static for the same reason.
+        return BitConverter.UInt32BitsToSingle((bits << 1) == 0u ? s_positiveEpsilonBits : result);
     }
 }

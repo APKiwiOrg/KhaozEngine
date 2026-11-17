@@ -41,8 +41,8 @@ internal sealed class TileMovementSnapshot
                     min = MathF.Min(min, height);
                     max = MathF.Max(max, height);
                 }
-        MinimumY = MathF.BitDecrement(min);
-        MaximumY = MathF.BitIncrement(max);
+        MinimumY = FloatUlp.Down(min);
+        MaximumY = FloatUlp.Up(max);
     }
 
     internal float Height(float x, float z) => Resident(x, z) ? _ground.HeightAt(x, z) : float.NaN;

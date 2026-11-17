@@ -225,7 +225,7 @@ public static class MapScopedWorldBuilder
         static float Outward(double value, bool upper)
         {
             float result = (float)value;
-            return upper && result < value ? MathF.BitIncrement(result) : !upper && result > value ? MathF.BitDecrement(result) : result;
+            return upper && result < value ? FloatUlp.Up(result) : !upper && result > value ? FloatUlp.Down(result) : result;
         }
     }
 

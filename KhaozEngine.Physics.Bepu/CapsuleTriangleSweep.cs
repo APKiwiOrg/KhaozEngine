@@ -53,7 +53,7 @@ internal static class CapsuleTriangleSweep
         float lower = MathF.Min(original.ClearThroughDistance, rounded.ClearThroughDistance), upper = MathF.Max(a, b);
         double span = (double)upper - lower;
         float error = (float)span;
-        if (error < span) error = MathF.BitIncrement(error);
+        if (error < span) error = FloatUlp.Up(error);
         return error <= maximumError ? new(CapsuleSweepStatus.Hit, lower, upper, error) : default;
     }
 

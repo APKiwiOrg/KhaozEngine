@@ -41,7 +41,7 @@ internal sealed class CoverageActorBounds
         double wx = bx * Math.Abs(model.M11) + by * Math.Abs(model.M21) + bz * Math.Abs(model.M31);
         double wy = bx * Math.Abs(model.M12) + by * Math.Abs(model.M22) + bz * Math.Abs(model.M32);
         double wz = bx * Math.Abs(model.M13) + by * Math.Abs(model.M23) + bz * Math.Abs(model.M33);
-        float radius = MathF.BitIncrement((float)(Math.Sqrt(wx * wx + wy * wy + wz * wz) * 1.00001));
+        float radius = FloatUlp.Up((float)(Math.Sqrt(wx * wx + wy * wy + wz * wz) * 1.00001));
         return new(new(model.M41, model.M42, model.M43), radius);
     }
 }

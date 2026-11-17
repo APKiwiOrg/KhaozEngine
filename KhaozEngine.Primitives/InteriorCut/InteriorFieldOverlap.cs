@@ -29,8 +29,8 @@ public sealed partial class InteriorHeightField
         // These are the literal shader operations, not decoded world heights. Float32 subtraction and
         // multiplication are monotone, so their endpoint values bound every point in the box. Widen one
         // represented code value outwards as well, preserving equality at rounded endpoints.
-        float low = MathF.BitDecrement((min.Y - heights.X) * heights.Y);
-        float high = MathF.BitIncrement((max.Y - heights.X) * heights.Y);
+        float low = FloatUlp.Down((min.Y - heights.X) * heights.Y);
+        float high = FloatUlp.Up((max.Y - heights.X) * heights.Y);
         return _overlap.MayIntersect(firstX, lastX, firstZ, lastZ, low, high);
     }
 }

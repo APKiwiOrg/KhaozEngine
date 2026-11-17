@@ -81,12 +81,12 @@ public readonly record struct SupportFootprintBounds(Vector3 Minimum, Vector3 Ma
     static float Lower(double value)
     {
         float result = (float)value;
-        return result > value ? MathF.BitDecrement(result) : result;
+        return result > value ? FloatUlp.Down(result) : result;
     }
     static float Upper(double value)
     {
         float result = (float)value;
-        return result < value ? MathF.BitIncrement(result) : result;
+        return result < value ? FloatUlp.Up(result) : result;
     }
     static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 }

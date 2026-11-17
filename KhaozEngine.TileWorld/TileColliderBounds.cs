@@ -55,6 +55,6 @@ internal static class TileColliderBounds
     /// <summary>The bounds widened outward by one representable value on every side, so a backend's own rounding of
     /// the same transform never puts a point outside them. A bound on the float range's edge widens to an infinity.</summary>
     internal static (Vector3 Minimum, Vector3 Maximum) Widened(Vector3 min, Vector3 max) =>
-        (new(MathF.BitDecrement(min.X), MathF.BitDecrement(min.Y), MathF.BitDecrement(min.Z)),
-         new(MathF.BitIncrement(max.X), MathF.BitIncrement(max.Y), MathF.BitIncrement(max.Z)));
+        (new(FloatUlp.Down(min.X), FloatUlp.Down(min.Y), FloatUlp.Down(min.Z)),
+         new(FloatUlp.Up(max.X), FloatUlp.Up(max.Y), FloatUlp.Up(max.Z)));
 }

@@ -68,7 +68,7 @@ internal static class CapsuleSweepSourceWitness
         // existence witnesses only. The operational pass still proves every earlier cell.
         for (int candidate = 0; candidate < 3; candidate++)
         {
-            float fraction = candidate == 0 ? upper : candidate == 1 ? middle : MathF.BitIncrement(upper);
+            float fraction = candidate == 0 ? upper : candidate == 1 ? middle : FloatUlp.Up(upper);
             if (fraction > 1 || (candidate > 0 && fraction == upper)) continue;
             if (!CapsuleSweepSourceSample.TryCreate(leaf, centre, delta, fraction, out var sample)) return null;
             for (int feature = 0; feature < (cylindricalSide ? 1 : leaf.Geometry.FeatureCount); feature++)

@@ -90,12 +90,12 @@ public static class MapFoliageEffects
     internal static float Down(double value)
     {
         float rounded = (float)value;
-        return rounded > value ? MathF.BitDecrement(rounded) : rounded;
+        return rounded > value ? FloatUlp.Down(rounded) : rounded;
     }
 
     internal static float Up(double value)
     {
         float rounded = (float)value;
-        return rounded < value ? MathF.BitIncrement(rounded) : rounded;
+        return rounded < value ? FloatUlp.Up(rounded) : rounded;
     }
 }

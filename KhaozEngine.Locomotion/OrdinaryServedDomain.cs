@@ -59,12 +59,12 @@ internal static class OrdinaryServedDomain
     internal static float Lower(double value)
     {
         float result = (float)value;
-        return result > value ? MathF.BitDecrement(result) : result;
+        return result > value ? FloatUlp.Down(result) : result;
     }
 
     internal static float Upper(double value)
     {
         float result = (float)value;
-        return result < value ? MathF.BitIncrement(result) : result;
+        return result < value ? FloatUlp.Up(result) : result;
     }
 }

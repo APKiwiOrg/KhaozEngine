@@ -436,12 +436,16 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. Opt-in `Fine` keeps an extra
   RGBA16F colour pair at twice the display on each axis. Moving pixels can read its four reprojected texels,
   retain bounded sub-pixel deviations and preserve the resolved mean. Still and distrusted pixels use the
-  original display history and replicate the resolved colour. A pixel is still when its chosen motion is below a
-  128th of a display pixel, which clears the rounding a still surface's motion carries at every admitted display
-  size. A still frame runs Display's expressions through a different compiled program, so its colour and state
-  are byte for byte Display's wherever the device computes the two programs alike, which the suite asserts exactly
-  on every hardware device. On the software rasterizers it follows the rules main holds its own program pairs to:
-  llvmpipe's entry pair rules for colour and the shimmer record, and WARP's certificate rule on a certified frame.
+  original display history and replicate the resolved colour. A pixel is still when its stored motion is below a
+  128th of a display pixel. With camera-relative rendering in force a still surface stores a few least motion steps,
+  far below that at every display size Fine admits. With the render origin opted out, a still view about 1,000 m
+  or more from the world origin can store more, and there the still guarantee does not apply, as Display's own
+  reprojection carries the same residual. A still frame runs Display's expressions through a different compiled
+  program, so its colour and state are byte for byte Display's wherever the device computes the two programs alike.
+  The suite asserts that exactly on every hardware device, except that a certified frame on hardware NVIDIA
+  Direct3D 11 is reported, not asserted. On the software rasterizers it follows the rules main holds its own
+  program pairs to: llvmpipe's entry pair rules for colour and the shimmer record, and WARP's certificate rule on a
+  certified frame.
   Both paths present the resolve directly, before
   distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
   latched on the frame's first render. Fine requires the temporal resolve, six colour attachments, a fitting

@@ -4927,12 +4927,17 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   resolve from the mean of four reprojected fine-history fetches. Their finite, nonnegative deviations survive
   into the next generation while their stored mean stays within one binary16 step of the display result.
   Still pixels and distrusted footprints use the original display-history expressions and replicate their
-  stored result exactly. A pixel is still when its chosen motion is below a 128th of a display pixel. A still
+  stored result exactly. A pixel is still when its stored motion is below a 128th of a display pixel. A still
   surface's motion is not always exactly zero, since the motion target stores whole steps of 2^-24 UV and its
-  two clip positions can round apart, and that gate clears the residual at every display size Fine admits.
+  two clip positions can round apart. With camera-relative rendering in force (the default render origin) that is
+  a few steps, far below the gate at every display size Fine admits. With `RenderOrigin = Vector3.Zero`, or a
+  camera without `IRenderOriginAware`, a still view about 1,000 m or more from the world origin can store more than
+  the gate, and there the still guarantee does not apply. Display's own reprojection carries the same residual
+  there, so keep camera-relative rendering on for a world far from the origin.
   A still frame runs Display's expressions through a different compiled program, so its colour and state are byte
-  for byte Display's wherever the device computes the two programs alike, which the suite asserts exactly on
-  every hardware device. On the software rasterizers they follow the rules Display's own program pairs keep there:
+  for byte Display's wherever the device computes the two programs alike. The suite asserts that exactly on every
+  hardware device, except that a fully lit certified frame on hardware NVIDIA Direct3D 11 is reported, not
+  asserted. On the software rasterizers they follow the rules Display's own program pairs keep there:
   on llvmpipe the entry pair's rules for colour and the shimmer record, on WARP the certificate rule on a fully
   lit certified frame. There is no new presentation filter. The update runs before distortion, bloom and
   tonemapping. The resolve computes all four children once, retaining the mean and reprojection in float32

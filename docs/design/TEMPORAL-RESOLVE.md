@@ -196,15 +196,15 @@ arithmetic cannot make inputs exact that the shared accumulation produces, and o
 change Display. Quantising them only makes a flip rarer. One program for both certificate states is
 exact by construction on every backend.
 
-The price is the fully lit saving of a certified specialization, on fully lit frames only. In the
-capture below the fully lit Native Fine resolve takes 8.663 ms. The certified program measured 6.400 ms for
-that fully lit scene earlier the same day, in the last capture taken before the certified detail programs were
-removed, on the same shared machine with the same four warm and eight measured frames. A frame with sun shadows takes the checked
-program in both modes. The lever back to that saving is one
-program that skips the decision through a uniform rather than by compilation: it keeps a single compiled
-program and so stays exact, but it changes the checked program's source, so it can move Metal values and
-needs re-establishing the reference, it needs a slot in a uniform block the mode shares with Display, and
-it gains nothing on a shadowed frame.
+The price is the fully lit saving of a certified specialization, on fully lit frames only. In the capture
+below the fully lit Native Fine resolve takes 8.663 ms. The certified program measured 6.400 ms for that fully
+lit scene earlier the same day, in the last capture taken before the certified detail programs were removed,
+on build `b240b4d52`, on the same shared machine with the same four warm and eight measured frames. A frame
+with sun shadows takes the checked program in both modes. The lever back to that saving is one program that
+skips the decision through a uniform rather than by compilation: it keeps a single compiled program and so
+stays exact, but it changes the checked program's source, so it can move Metal values and needs
+re-establishing the reference, it needs a slot in a uniform block the mode shares with Display, and it gains
+nothing on a shadowed frame.
 
 The resolve computes each display pixel's four children once, from the four fine fetches it already
 holds. Hbar stays a float32 local through retention and transport. Rounding it to binary16 would move
@@ -272,43 +272,67 @@ their original effects on R, the current weight and state.
 
 #### The still gate
 
-A pixel whose chosen motion is below a 128th of a display pixel is still and takes the coarse path, so a still
-frame is Display's. The gate is sized by what a still surface's motion actually holds, which is not always
-zero. The motion target is RG16F, so it stores whole least steps of 2^-24 UV. A still surface's current and
-previous clip positions come from two vertex products that can round apart, and then it stores one or more of
-those steps. On Metal at 1591 by 1027 the engine's own still orthographic cameras store them on 2,400 to
-12,000 drawn texels a frame, with or without a far render origin or motion keys: one or two an axis over a box
-field under the default isometric view, and up to four on about 5,100 texels of the still identity fact's
-fence stage at Native. A still perspective camera stores none, and so does the fence stage on Vulkan llvmpipe,
-so the residual depends on how a compiler evaluates the two products. A consumer capture at the same size,
-camera still for 120 frames with the effect clock frozen, measured chosen motion from 0 to 0.000291 display
-pixels: three steps on one axis and one on the other.
+A pixel whose stored motion is below a 128th of a display pixel a frame is still and takes the coarse path,
+Display's own expressions. The threshold is set by what the coarse path loses, not by any residual: one
+Catmull-Rom resample at that offset keeps 99.964 percent of a pattern that alternates every pixel, so nothing
+the fine path exists for lies below it, and the gate stays far below the quarter-pixel still interval. The CPU
+mirror holds the value (`TemporalDetailMath.StillEpsilon`) and the shader's `DetailStillEpsilon` is written
+from it.
 
-A step is a fixed share of the display, so in display pixels it grows with the display. A gate of 2^-14
-display pixels, which the mode first used, lies below a single step on any display wider or taller than 1024
-pixels, and the engine's own still facts ran at 160 by 90 and smaller, where a step is ten times smaller in
-pixels. In the consumer capture 179,734 pixels were at or above that gate and 110,638 took the fine path. The
-presented still frame differed from Display by one or two steps of 255 in 1,133 to 4,173 pixels against a
-repeat floor of one. Pixels below the gate differed too: a pixel that took the fine path on an earlier frame
-keeps its slightly different R in the display history, and later coarse frames and neighbouring Catmull-Rom
-fetches read it.
+Whether a still frame is Display's then depends on what a still surface's stored motion holds, which is not
+always zero. The motion target is RG16F, so it stores whole least steps of 2^-24 UV. A still surface's current
+and previous clip positions come from two vertex products that can round apart by a few float32 steps of their
+largest term, and then it stores that many steps or more. A step is a fixed share of the display, so in
+display pixels it grows with the display, and the largest term grows with the scene's render-relative
+coordinates. A gate of 2^-14 display pixels, which the mode first used, lies below a single step on any
+display wider or taller than 1024 pixels. The residual cannot be removed at its source, since the motion
+programs are Display's.
 
-A 128th of a pixel holds eight steps on an axis at 16384 pixels a side, the largest extent admission accepts
-on a device with 32768 texels a side, sixteen at 8192, the largest on a device with 16384, and 51 at the
-default budget's 2560 by 1440. A 256th would put the fence stage's four steps exactly on the gate at 16384.
-The gate stays far below the quarter-pixel still interval and anything the fine path exists for: one
-Catmull-Rom resample at that offset keeps 99.964 percent of a pattern that alternates every pixel. The
-residual cannot be removed at its source, since the motion programs are Display's. The CPU mirror holds the
-value (`TemporalDetailMath.StillEpsilon`) and the shader's `DetailStillEpsilon` is written from it.
+Measured with `TemporalDetailStillResidualProbeGpuTests` on an Apple M2 Max on Metal at 1591 by 1027
+(2026-11-16 and 2026-11-17 UTC): with camera-relative rendering in force, the default isometric view of a box
+field stores one step an axis on 2,900 to 8,200 texels a frame, near the world origin and 4,096 m from it
+alike, and the still identity fact's front orthographic fence stage up to four on about 5,100 texels at
+Native. A still perspective camera stores none. On the hosted devices of runs 43993423746 and 44013257225
+(2026-11-17) WARP and Vulkan llvmpipe store none for the fence stage either, while the hosted Apple
+paravirtual device stores the same four steps, so the residual depends on how a compiler evaluates the two
+products. A consumer capture at 1591 by 1027 (2026-11-16), camera still for 120 frames with the effect clock
+frozen, measured stored motion from 0 to 0.000291 display pixels, three steps on one axis and one on the
+other. There 179,734 pixels were at or above the 2^-14 gate and 110,638 took the fine path, and the presented
+still frame differed from Display by one or two steps of 255 in 1,133 to 4,173 pixels against a repeat floor
+of one. Pixels below the gate differed too: a pixel that took the fine path on an earlier frame keeps its
+slightly different R in the display history, and later coarse frames and neighbouring Catmull-Rom fetches read
+it.
+
+So the still guarantee holds under a condition. With camera-relative rendering in force, the default
+`Scene3D.RenderOrigin`, a still surface stores a few steps, and a 128th of a pixel holds eight steps on an
+axis at 16384 pixels a side, the largest extent admission accepts on a device with 32768 texels a side,
+sixteen at 8192, the largest on a device with 16384, and 51 at the default budget's 2560 by 1440. That is at
+least twice the largest measured residual on an axis, and 1.41 times for four steps on both axes at 16384.
+With the render origin opted out (`RenderOrigin = Vector3.Zero`, or a consumer camera without
+`IRenderOriginAware`) the largest term is the absolute coordinate. The probe's opted-out isometric view
+(2026-11-17) stores 32 steps an axis 256 m from the world origin, 64 at 1,024 m, 153 at 2,048 m and 309 at
+4,096 m. At 1,024 m that is 0.0072 display pixels at 1591 by 1027, just under the gate, and 0.011 at 2560 by
+1440, where about 8,800 texels a frame reach it. From about 1,000 m on, a still view opted out of
+camera-relative rendering can store more than the gate, and there the still guarantee does not apply. The same
+residual is in Display's own reprojection there, so the remedy is the one the consumer guide gives for
+precision far from the origin: keep camera-relative rendering on. The threshold is not raised to chase that
+configuration, since its reason does not depend on the residual.
 
 `TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` runs
 the fence stage at 1591 by 1027 for six frames at Native and Quality, printing the motion target's still
-residual each frame, beside its 96 by 64 rows. With the 2^-14 gate both large rows failed on the first frame
-with history. Raising the gate moved no value of the report-only capture: on 2026-11-17 all 5,134 protocol
-records and 36 rig cells matched the capture taken under 2^-14, so no value those scenes report depends on a
-pixel whose motion lies between the two gates.
-`A_still_motion_residual_takes_the_coarse_path_at_every_admitted_display_size` holds the gate against those
-step patterns at 96 by 64, 1591 by 1027, 2560 by 1440 and the largest admitted square.
+residual each frame, beside its 96 by 64 rows. With the 2^-14 gate both large rows failed on Metal on the
+first frame with history (2026-11-16). Those rows exercise the gate only where the motion target stores a
+residual, so two more rows pan the 96 by 64 stage by a 256th of a display pixel a frame, real motion every
+backend stores, and hold that frame to Display's as a still one, and
+`Fine_takes_its_fine_path_for_a_pan_just_above_the_still_gate` pans it by three 256ths and requires the fine
+path on every frame with history, read through the live path flags (a share of 0.33 to 0.84 on Metal), with
+every coarse pixel still replicating R. On Metal (2026-11-17) the pan rows failed against a 2^-14 gate and the
+fine path fact against a 64th, each set by a test-only shader seam. Raising the gate moved no value of the
+report-only capture: on 2026-11-17 all 5,134 protocol records and 36 rig cells matched the capture taken under
+2^-14, so no value those scenes report depends on a pixel whose motion lies between the two gates.
+`A_still_motion_residual_takes_the_coarse_path_at_every_admitted_display_size` holds the gate against measured
+step patterns at 96 by 64, 1591 by 1027, 2560 by 1440 and the largest admitted square, and
+`Adding_distrust_never_admits_a_fine_pixel` pins it inclusive at its threshold.
 
 #### Bounded transport and the stored mean
 
@@ -376,8 +400,9 @@ Equal values on a software rasterizer are measurements of a scene, not guarantee
 Hosted run 43844224166 (2026-11-16) found llvmpipe's record at most 2 half steps apart on at most 0.0343% of
 values, against limits of 9,100 and 500 steps and shares of 1.02% and 0.51%. Hosted run 44003391743
 (2026-11-17) found llvmpipe's colour history 3 of 6,535,828 values one half step apart at Quality 1591 by
-1027, on the reset frame where every pixel takes the coarse path, after the fact's 96 by 64 rows had shown it
-equal.
+1027, on the reset frame where every pixel takes the coarse path. Which values differ depends on the scene and
+its jitter phase, so `TemporalDetailSceneFixture.Reset` starts every row at phase 0 of its preset's jitter
+cycle, and a row's inputs do not depend on the rows before it.
 
 Fine debug views and sampled counts share the fine resolve core and its classification/read bindings.
 Each builds the one checked pipeline over the full resolve layout, matching the full set the resolve

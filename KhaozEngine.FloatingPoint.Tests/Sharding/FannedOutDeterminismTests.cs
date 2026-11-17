@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
@@ -107,48 +105,20 @@ public class FannedOutDeterminismTests
 }
 
 /// <summary>
-/// Test-only native poke at the FP rounding mode, so a test can observe the environment from inside a fanned-out
-/// worker. Declares its own P/Invoke (test infrastructure, not a production seam). The sibling in
-/// <c>KhaozEngine.Foundation.Tests</c> (<c>FpPoke</c>) does the same for the scope's own unit tests. They are kept
-/// separate rather than shared so neither test project takes a reference on the other.
+/// The rounding-mode reads and writes these tests make, so a test can observe the environment from inside a
+/// fanned-out worker. It goes through <see cref="FpPoke"/>, the assembly's one rounding poke, because an assembly
+/// takes a single native library resolver. Writes ignore the native status, as they always have.
 /// </summary>
 internal static class FpRounding
 {
-    private const string Lib = "ke_fpround";
-
     /// <summary>FE_TONEAREST, which is 0 on glibc, musl, macOS and ucrt alike.</summary>
-    public const int ToNearest = 0;
+    public const int ToNearest = FpPoke.RoundToNearest;
 
     /// <summary>FE_TOWARDZERO, whose encoding differs by C runtime rather than only by architecture: ucrt abstracts
     /// the register write (0x300 on every arch), while glibc/musl/macOS pass the pre-shifted control bits.</summary>
-    public static int TowardZero =>
-        OperatingSystem.IsWindows() ? 0x300
-        : RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 0xC00000
-        : 0xC00;
+    public static int TowardZero => FpPoke.RoundTowardZero;
 
-    [ModuleInitializer]
-    internal static void Init() => NativeLibrary.SetDllImportResolver(typeof(FpRounding).Assembly, Resolve);
-
-    private static IntPtr Resolve(string name, Assembly asm, DllImportSearchPath? path)
-    {
-        if (name != Lib) return IntPtr.Zero;
-        string[] candidates = OperatingSystem.IsMacOS()
-            ? new[] { "libSystem.dylib", "libc" }
-            : OperatingSystem.IsWindows()
-                ? new[] { "ucrtbase.dll", "ucrtbase" }
-                : new[] { "libm.so.6", "libc.so.6", "libm", "libc" };
-        foreach (string c in candidates)
-            if (NativeLibrary.TryLoad(c, out IntPtr h)) return h;
-        return IntPtr.Zero;
-    }
-
-    public static int Get() => FeGetRound();
-    public static void SetToNearest() => FeSetRound(ToNearest);
-    public static void SetTowardZero() => FeSetRound(TowardZero);
-
-    [DllImport(Lib, EntryPoint = "fesetround")]
-    private static extern int FeSetRound(int round);
-
-    [DllImport(Lib, EntryPoint = "fegetround")]
-    private static extern int FeGetRound();
+    public static int Get() => FpPoke.GetRound();
+    public static void SetToNearest() => FpPoke.FeSetRound(ToNearest);
+    public static void SetTowardZero() => FpPoke.FeSetRound(TowardZero);
 }

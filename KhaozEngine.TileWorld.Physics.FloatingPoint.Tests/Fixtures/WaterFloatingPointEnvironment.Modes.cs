@@ -1,7 +1,7 @@
 namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 
-// The half of the test-owned native scope that changes rounding and flush controls. Only test assemblies whose
-// tests change controls compile it. KhaozEngine.TileWorld.Physics.Tests does not, so it cannot set one.
+// The half of the test-owned native scope that changes rounding and flush controls. Only the floating point test
+// assemblies compile it. KhaozEngine.TileWorld.Physics.Tests does not, so it cannot set one.
 internal sealed partial class WaterFloatingPointEnvironment
 {
     internal bool Set(string mode)

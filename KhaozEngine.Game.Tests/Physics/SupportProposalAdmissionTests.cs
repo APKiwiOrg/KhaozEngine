@@ -1,13 +1,12 @@
 using System;
 using System.Numerics;
-using BepuPhysics;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Physics;
 
-public sealed class SupportProposalAdmissionTests : IDisposable
+public sealed partial class SupportProposalAdmissionTests : IDisposable
 {
     readonly SupportProposalAdmission.ControlRead? _reader = SupportProposalAdmission.ControlReaderForTests;
     readonly bool _bypass = SupportProposalAdmission.BypassForTests;
@@ -91,14 +90,6 @@ public sealed class SupportProposalAdmissionTests : IDisposable
         Assert.True(Check(Pose.Identity));
         Assert.Equal(2, capture.Bypasses);
         Assert.Equal(0, capture.Hits + capture.Misses);
-    }
-
-    internal static bool Check(Pose pose)
-    {
-        bool expected = InstalledPoseOperator.TryCreateSupport(new RigidPose(pose.Position, pose.Orientation), out _);
-        bool actual = SupportProposalAdmission.Admits(pose);
-        Assert.Equal(expected, actual);
-        return actual;
     }
 
     static bool Read(out ulong controls) { controls = 0; return true; }

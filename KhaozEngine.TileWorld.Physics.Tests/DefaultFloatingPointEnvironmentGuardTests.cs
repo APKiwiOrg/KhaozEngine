@@ -3,7 +3,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.TileWorld.Physics;
 
-// Linked into KhaozEngine.TileWorld.Physics.FloatingPoint.Tests, which carries the same guard.
+// Linked into both floating point test assemblies, which carry the same guard.
 public sealed class DefaultFloatingPointEnvironmentGuardTests
 {
     // The guard is an assembly attribute, so removing it would leave every other test green. Its Before runs ahead

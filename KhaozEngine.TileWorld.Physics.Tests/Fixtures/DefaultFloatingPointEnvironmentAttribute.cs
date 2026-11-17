@@ -10,8 +10,9 @@ namespace KhaozEngine.Tests.TileWorld.Physics.Fixtures;
 /// <summary>Fails any test in this assembly that starts or ends with a changed rounding or flush control on its
 /// thread, naming the test, the controls and the thread. KhaozEngine.TileWorld.Physics.Tests cannot set a control,
 /// so there it must never trip, and a failure names a thread that reached a test with a control nothing in that
-/// process set. In KhaozEngine.TileWorld.Physics.FloatingPoint.Tests, whose tests change controls on purpose, it
-/// fails the test that left one changed instead of a later test that reads it.
+/// process set. In the floating point test assemblies, KhaozEngine.TileWorld.Physics.FloatingPoint.Tests and
+/// KhaozEngine.FloatingPoint.Tests, whose tests change controls on purpose, it fails the test that left one changed
+/// instead of a later test that reads it.
 /// <para>Limits. It reads only the thread that runs the test method, once before and once after it. Class
 /// constructors, fixtures and test-class Dispose run outside that window, and work a test hands to other threads is
 /// unchecked. It cannot see machine code the JIT compiled while a control was changed, which serves every thread for

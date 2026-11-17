@@ -14,6 +14,7 @@ namespace KhaozEngine.Game
     /// (no leak on disconnect); planar speed / vertical velocity / facing are derived from the position displacement
     /// averaged over a short window (so a plateauing / zero-delta position stream does not strobe the state; the
     /// exact grounded flag + vertical velocity are used instead when the sample <see cref="CharacterSample.HasMovement"/>,
+    /// the sample's planar speed drives locomotion and speed-synced playback when <see cref="CharacterSample.HasPlanarSpeed"/> is true,
     /// and the facing is taken from the sample's explicit <see cref="CharacterSample.FacingYaw"/> when supplied - which
     /// turns the character in place at rest and overrides the derived heading while moving);
     /// the swim flag is exact-only (<see cref="CharacterSample.Swimming"/>, the replicated <c>MovementState.Swimming</c>
@@ -308,15 +309,13 @@ namespace KhaozEngine.Game
                 float derivedVertical = e.Velocity.Y;
                 float derivedPlanarSpeed = planarVel.Length();
 
-                // Exact movement (local player) wins over the derived signals when present.
+                // Exact movement wins over the derived signals when present.
                 float verticalVelocity = s.HasMovement ? s.VerticalVelocity : derivedVertical;
                 bool grounded = s.HasMovement
                     ? s.Grounded
                     : MathF.Abs(verticalVelocity) < _tuning.GroundedVerticalEpsilon;
-                // Locomotion state + clip-speed sync run off the exact planar speed when supplied (the clean commanded
-                // speed), so a decel-to-stop does not strobe walk<->idle off the finite-differenced render position.
-                // Facing still takes its DIRECTION from the derived heading (exact speed is magnitude-only), but gates
-                // on the exact speed too (see below) so it holds through the post-stop settle instead of spinning.
+                // Local prediction and remote segments can supply planar speed directly. Keep the derived window
+                // warm for frames without a speed and for facing when the sample supplies no explicit yaw.
                 float locomotionSpeed = s.HasPlanarSpeed ? MathF.Max(0f, s.PlanarSpeed) : derivedPlanarSpeed;
 
                 // Swim is an EXACT flag only (the replicated MovementState.Swimming bit): it cannot be derived from
@@ -336,10 +335,9 @@ namespace KhaozEngine.Game
                 // the entity is genuinely moving. The derived heading (from the render-position delta) swings around
                 // during the post-stop render settle - the local avatar's rendered position sags backward then recovers,
                 // so the delta briefly points backward/sideways - and chasing it spins the model for a few frames before
-                // it corrects. So gate on the EXACT planar speed too when it is supplied (the local player): at a real
-                // stop it is 0, holding the yaw through the settle. Remotes (no exact speed) gate on the derived speed
-                // alone as before. The derived magnitude is still required so there is a valid heading direction for the
-                // Atan2. Below the threshold the yaw holds (no spin at rest).
+                // it corrects. Gate on the exact planar speed when supplied. At a real stop it is zero and yaw holds.
+                // Samples without exact speed gate on the derived speed alone, which is still required to get a
+                // valid heading direction for Atan2. Below the threshold yaw holds.
                 if (s.FacingYaw.HasValue)
                 {
                     float target = s.FacingYaw.Value + _tuning.FacingYawOffset;

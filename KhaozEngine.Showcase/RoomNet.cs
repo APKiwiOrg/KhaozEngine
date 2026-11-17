@@ -223,7 +223,7 @@ namespace KhaozEngine.Showcase
 
             _clientTransport = new LiteNetLibClientTransport("127.0.0.1", _port);
             _client = new WorldClient(_clientTransport, _terrain.GroundHeight, MoveTuning.Default,
-                new WorldClientConfig { TickSeconds = TickSeconds },
+                new WorldClientConfig { TickSeconds = TickSeconds, ReceiveServerTick = true },
                 token: Encoding.UTF8.GetBytes("player"),
                 groundNormal: _terrain.GroundNormal);
             _clientClock = new FixedTickHost(TickSeconds);
@@ -296,20 +296,21 @@ namespace KhaozEngine.Showcase
 
             foreach (NetBot b in _bots) b.Step(dt);
 
-            // Map the replicated render states to engine-neutral samples and advance the avatar bridge once per
-            // frame. Every entity carries its EXACT grounded flag + vertical velocity + swimming flag (local is
-            // predicted, remote is replicated MovementState surfaced via EntityRenderState), so jump/fall/swim read
-            // true for remotes too. The local player ALSO carries its exact planar speed (the clean commanded speed)
-            // so its walk/run/idle state does not strobe off the finite-differenced render position when it
-            // decelerates to a stop; remotes have only a replicated position, so they keep the position-derived speed.
-            // Feet position (centre minus the capsule half-height) so the model's feet sit on the ground.
+            // Feed movement flags from prediction or replication. Use the local step speed and each remote's
+            // segment speed when available so uneven render displacements do not drive the clip rate.
             _samples.Clear();
             foreach (EntityRenderState e in _client.Snapshot())
             {
                 var feet = new Vector3(e.Position.X, e.Position.Y - CapsuleHalfHeight, e.Position.Z);
-                _samples.Add(e.IsLocal
-                    ? new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity, _client.LocalHorizontalSpeed, e.Swimming)
-                    : new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming));
+                if (e.IsLocal)
+                    _samples.Add(new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity,
+                        _client.LocalHorizontalSpeed, e.Swimming));
+                else if (e.HasPlanarVelocity)
+                    _samples.Add(new CharacterSample(e.Id.Value, feet, e.Grounded, e.VerticalVelocity,
+                        e.PlanarVelocity.Length(), e.Swimming));
+                else
+                    _samples.Add(new CharacterSample(e.Id.Value, feet, isLocal: false, e.Grounded, e.VerticalVelocity,
+                        e.Swimming));
             }
             _animators?.Update(_samples, dt);
 

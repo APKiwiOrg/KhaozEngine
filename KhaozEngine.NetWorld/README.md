@@ -100,6 +100,8 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   over any skipped ticks. For the local entry it comes from the latest predicted step, like `LocalHorizontalSpeed`.
   The flag is false on remote clamps, holds, single samples such as teleport cuts, unticked frames, and format 2.
   Consumers can keep their last valid speed or use their own fallback when the flag is false.
+  For character animation, pass `PlanarVelocity.Length()` to the remote `CharacterSample` constructor when
+  available. On a frame without velocity, a sample that omits speed uses the animator's windowed position derivation.
   Tune the delay with **`WorldClientConfig.InterpolationDelayTicks`** (default 2 ticks); lower it for less latency,
   raise it for a rougher network. A **remote teleport is a hard cut for observers too** (since 10.67.0): when a
   remote's replicated `MovementState.TeleportEpoch` advances, its interpolation buffer is flushed to the newest sample

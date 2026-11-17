@@ -133,8 +133,10 @@ replicated `MovementState` is available) pass exact signals it already knows: `(
 verticalVelocity)` for the exact grounded flag + vertical velocity, and `(id, position, isLocal, grounded,
 verticalVelocity, planarSpeed)` to ALSO drive the idle/walk/run state and clip-speed sync off the exact planar speed
 (`WorldClient.LocalHorizontalSpeed`) instead of the finite-differenced render position - so the local avatar's
-animation does not flicker walk&lt;-&gt;idle when it decelerates to a stop. A trailing `swimming` argument on the
-exact-movement constructors (from the replicated `MovementState.Swimming` bit, surfaced on `EntityRenderState.Swimming`)
+animation stays steady as it comes to a stop. For remotes, use
+`(id, position, grounded, verticalVelocity, planarSpeed)` with the magnitude of the drawn segment velocity
+when available. Omitting speed selects the windowed position derivation for that frame. A trailing `swimming`
+argument on the exact-movement constructors (from the replicated `MovementState.Swimming` bit, surfaced on `EntityRenderState.Swimming`)
 plays the forward `Swim` / tread `SwimIdle` clips; swim is exact-only, never derived (a swimmer glides horizontally
 like a walker, so position cannot tell them apart). Facing still takes its DIRECTION from the derived heading but
 gates on the exact speed too (when supplied), so the model holds its yaw through the post-stop render settle instead

@@ -9,7 +9,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Game
 {
-    public class ReplicatedCharacterAnimatorsTests
+    public partial class ReplicatedCharacterAnimatorsTests
     {
         // Minimal predicted state + simulator: integrate a constant velocity command. Isolates
         // ClientPrediction's rendered-position behaviour (the bridge's real input) from movement physics.

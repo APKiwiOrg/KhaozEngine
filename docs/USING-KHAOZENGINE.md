@@ -7024,25 +7024,21 @@ bone palettes:
 var animators = new ReplicatedCharacterAnimators(skeleton, clips, CharacterAnimatorTuning.Default);
 // ...or full control per brain: new ReplicatedCharacterAnimators(() => new AnimatedCharacter(skeleton, clips), tuning);
 
-// Each frame: map the netcode's render states to engine-neutral samples (keeps Game.Render3D off NetWorld).
-// Feed the EXACT grounded + vertical velocity + swimming flag for EVERY entity (EntityRenderState carries them
-// for remotes too - local from prediction, remote from the replicated MovementState). Horizontal speed + facing
-// are still derived from the position stream. Do NOT derive air state for remotes from position: a remote's
-// vertical motion is mostly terrain-following, so the faster it moves over a slope the more a position delta reads
-// "falling". Swim is exact-only: a swimmer glides horizontally like a walker, so position cannot tell them apart.
+// Map the netcode's render states to engine-neutral samples each frame.
 var samples = new List<CharacterSample>();
 foreach (EntityRenderState e in client.Snapshot())
 {
-    // Anchor the sample at the FEET (capsule centre minus its half-height on Y) so the model's feet sit on the
-    // ground rather than its waist - EntityRenderState.Position is the capsule centre. Use your own capsule half-height.
+    // Anchor the model at the feet, below the render state's capsule centre.
     var feet = new Vector3(e.Position.X, e.Position.Y - capsuleHalfHeight, e.Position.Z);
-    samples.Add(e.IsLocal
-        // Local player: also pass the EXACT planar speed so idle/walk/run is driven off the clean commanded
-        // speed, not finite-differenced from the render position (no walk<->idle flicker on a decel-to-stop).
-        // Pass e.ClimbRate so the stair glide drives off the sim's exported climb signal, and e.StepCumulativeY LAST so
-        // the discrete-step mesh smoother eases an isolated doorstep/curb the glide renders raw (local-only; 0 on remotes).
-        ? new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed, e.Swimming, e.ClimbRate, e.StepCumulativeY)
-        : new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming, e.ClimbRate));
+    if (e.IsLocal)
+        samples.Add(new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity,
+            client.LocalHorizontalSpeed, e.Swimming, e.ClimbRate, e.StepCumulativeY));
+    else if (e.HasPlanarVelocity)
+        samples.Add(new CharacterSample(e.Id.Value, feet, e.Grounded, e.VerticalVelocity,
+            e.PlanarVelocity.Length(), e.Swimming, e.ClimbRate));
+    else
+        samples.Add(new CharacterSample(e.Id.Value, feet, isLocal: false, e.Grounded, e.VerticalVelocity,
+            e.Swimming, e.ClimbRate));
 }
 animators.Update(samples, dt);
 
@@ -7174,8 +7170,13 @@ off that clean speed instead of the finite-differenced render position, so the a
 walk&lt;-&gt;idle when the player decelerates to a stop (where the render, even after the 10.7.0 smoothing fix,
 settles with a tiny residual sag). Facing takes its DIRECTION from the derived heading (the exact speed is
 magnitude-only) but gates on the exact speed too (since 10.7.1), so at a real stop the model holds its yaw through
-that residual sag instead of spinning to chase the settling delta. Remotes still derive from the (windowed) position
-stream above.
+that residual sag instead of spinning to chase the settling delta.
+
+For a remote with `EntityRenderState.HasPlanarVelocity`, pass `PlanarVelocity.Length()` to the remote
+`CharacterSample(id, position, grounded, verticalVelocity, planarSpeed, swimming, climbRate)` constructor.
+The animator uses that speed for locomotion state and clip speed. If a frame has no velocity, omit speed
+to use the same windowed position derivation. Use the server tick opt-in with a host that ticks once per
+`TickSeconds` to obtain those segment velocities.
 
 **Explicit server-authoritative facing.** By default facing is derived from the position delta, so a STATIONARY
 character can never turn in place (below `MinPlanarSpeedForFacing` the yaw holds). When the server owns an entity's
@@ -9633,7 +9634,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.1.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10239,7 +10240,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.1.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11158,7 +11159,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.1.0" />
 ```
 
 ```csharp
@@ -21183,7 +21184,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.1.0" />
 ```
 
 ```csharp
@@ -21219,7 +21220,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.1.0" />
 ```
 
 ```csharp
@@ -21470,7 +21471,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.1.0" />
 ```
 
 ```csharp
@@ -26410,7 +26411,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="24.0.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="24.1.0" />
 </ItemGroup>
 ```
 

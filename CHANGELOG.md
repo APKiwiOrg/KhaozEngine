@@ -4,6 +4,15 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.1.0
+
+2026-11-18
+
+- Replication can retain a server tick with each interpolation sample and read the typed bracket drawn for
+  a component. NetWorld exposes the planar velocity of ticked remote segments and the local predicted step
+  on `EntityRenderState`. Remote character animation can use that speed for locomotion state and clip playback.
+  Sample stamps still follow arrival on the client render clock. [#1834](https://github.com/APKiwiOrg/KhaozEngine/issues/1834)
+
 ## 24.0.0
 
 2026-11-17

@@ -11,11 +11,9 @@ namespace KhaozEngine.Game
     /// The only universally-available signal is <see cref="Position"/> over time, so by default the bridge DERIVES
     /// planar speed, vertical velocity, and facing from successive samples (averaged over a short window - see
     /// <see cref="CharacterAnimatorTuning.VelocityWindowSeconds"/> - so a plateauing position stream does not strobe
-    /// the state). For the local player (whose exact movement the client already knows) pass the exact-movement
-    /// constructor so <see cref="HasMovement"/> is set and the grounded flag + vertical velocity are taken verbatim
-    /// instead of derived; the fullest constructor additionally takes the exact planar speed
-    /// (<see cref="CharacterSample.PlanarSpeed"/>) so the locomotion state is driven by the clean commanded speed, not
-    /// finite-differenced from the render position (no walk&lt;-&gt;idle flicker on a decel-to-stop).
+    /// the state). Use the exact-movement constructor to supply the grounded flag and vertical velocity.
+    /// Local prediction and remote interpolation can also supply <see cref="PlanarSpeed"/> to drive locomotion
+    /// state and clip speed directly. Use an overload without speed when the current sample has none.
     ///
     /// Facing is derived from the position delta by default, but a sample may carry an EXPLICIT server-authoritative
     /// facing yaw (<see cref="FacingYaw"/>, set via the position+facing constructor or <see cref="WithFacingYaw"/>).
@@ -91,9 +89,9 @@ namespace KhaozEngine.Game
             Sector = MoveSector.Forward;
         }
 
-        /// <summary>Fullest sample (the local player): exact <see cref="Grounded"/>, <see cref="VerticalVelocity"/>,
+        /// <summary>Fullest sample: exact <see cref="Grounded"/>, <see cref="VerticalVelocity"/>,
         /// AND exact planar <paramref name="planarSpeed"/> (m/s). The planar speed drives the locomotion state and the
-        /// clip-speed sync DIRECTLY instead of being finite-differenced from the rendered position. Pass the clean
+        /// clip-speed sync directly. For the local player, pass the clean
         /// commanded speed (<c>WorldClient.LocalHorizontalSpeed</c> / <c>ClientPrediction.PredictedHorizontalSpeed</c>):
         /// it is computed only on the prediction's commanded path, so it does not carry the reconciliation render offset
         /// and does not strobe walk&lt;-&gt;idle when the player decelerates to a stop (where the rendered position, even
@@ -118,6 +116,16 @@ namespace KhaozEngine.Game
             StepCumulativeY = stepCumulativeY;
             Downed = false;
             Sector = MoveSector.Forward;
+        }
+
+        /// <summary>Remote sample with exact movement and planar speed in metres per second. When NetWorld
+        /// reports a drawn segment's velocity, pass its magnitude. That velocity assumes the server ticks once
+        /// per configured simulation step. Use an overload without speed when a segment velocity is unavailable.
+        /// A negative speed is treated as zero by the animator.</summary>
+        public CharacterSample(long id, Vector3 position, bool grounded, float verticalVelocity, float planarSpeed,
+            bool swimming = false, float climbRate = 0f)
+            : this(id, position, isLocal: false, grounded, verticalVelocity, planarSpeed, swimming, climbRate)
+        {
         }
 
         /// <summary>Position + EXPLICIT facing sample: the position drives the derived planar speed / air state as the

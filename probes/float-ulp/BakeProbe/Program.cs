@@ -45,6 +45,7 @@ static class Program
             case "fold": FoldMatrix(); break;
             case "identity": Identity.Run(args.Length > 1 ? args[1] : "stride"); break;
             case "sites": SitesRun(); break;
+            case "runtime": RuntimeSemantics(); break;
             default: Console.WriteLine("unknown mode"); return 2;
         }
         return 0;
@@ -220,6 +221,36 @@ static class Program
         Fold<S>.Aggressive(a); Fold<S>.Osr(b, 1); Fold<S>.Plain(c);
         return new[] { a, b, c };
     }
+
+    // Compiled at the default, then called with each control set: the run-time semantics of each candidate.
+    static void RuntimeSemantics()
+    {
+        var controls = FloatEnvironment.RoundingAndFlushControls;
+        foreach (var c in Candidates) Generic(nameof(RuntimeRow), c).Invoke(null, new object[] { "compile" });
+        for (int s = 0; s < controls.Length; s++)
+        {
+            ulong back = FloatEnvironment.Apply(controls[s]);
+            var rows = new List<string>();
+            foreach (var c in Candidates) rows.Add((string)Generic(nameof(RuntimeRow), c).Invoke(null, new object[] { controls[s].Name })!);
+            FloatEnvironment.Restore();
+            Console.WriteLine($"# control {controls[s].Name} read back 0x{back:X}");
+            foreach (string row in rows) Console.WriteLine(row);
+        }
+    }
+
+    // Declared before its reader: static initializers run in declaration order.
+    static uint s_epsilonInputBits = 1;
+    static readonly float s_epsilonInput = BitConverter.UInt32BitsToSingle(Volatile.Read(ref s_epsilonInputBits));
+
+    static string RuntimeRow<C>(string control) where C : struct, IStep
+    {
+        uint down = U(Bake<C, S6>.AggDown(s_positiveZero)), up = U(Bake<C, S6>.AggUp(s_negativeZero));
+        uint cmpZero = Bake<C, S6>.AggCompare(s_positiveZero), cmpEps = Bake<C, S6>.AggCompare(s_epsilonInput);
+        uint downTimesOne = U(Bake<C, S6>.AggDown(s_positiveZero) * Volatile.Read(ref s_one));
+        return $"RUNTIME\t{Platform}\t{control}\t{typeof(C).Name}\tDown(+0)=0x{down:X8}\tUp(-0)=0x{up:X8}\tAtLeastEpsilon(+0)={cmpZero}\tAtLeastEpsilon(eps)={cmpEps}\tDown(+0)*1=0x{downTimesOne:X8}";
+    }
+
+    static float s_one = 1f;
 
     static void SitesRun()
     {

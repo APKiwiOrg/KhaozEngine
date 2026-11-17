@@ -14,7 +14,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// optionally foliage, at a consumer's display size, under orthographic and perspective cameras, near the world
 /// origin and far from it, with camera-relative rendering in force or opted out (<c>RenderOrigin = Vector3.Zero</c>,
 /// which this fixture starts with). Each frame after the first prints the texels that store any motion, the most
-/// least RG16F steps (2^-24 UV) on an axis, and the texels whose motion reaches the gate in display pixels.
+/// least RG16F steps (2^-24 UV) on an axis, the texels whose motion reaches the gate in display pixels, and the
+/// render origin the frame latched.
 /// </summary>
 public sealed class TemporalDetailStillResidualProbeGpuTests(ITestOutputHelper output)
 {
@@ -25,6 +26,10 @@ public sealed class TemporalDetailStillResidualProbeGpuTests(ITestOutputHelper o
     [InlineData("fly", 0f, 1591, 1027)]
     [InlineData("foliage", 0f, 1591, 1027)]
     [InlineData("iso-relative", 4096f, 1591, 1027)]
+    [InlineData("iso-default", 4156f, 1591, 1027)]
+    [InlineData("iso-default", 4001f, 1591, 1027)]
+    [InlineData("iso-default", 4001f, 2560, 1440)]
+    [InlineData("fly-default", 4027f, 1591, 1027)]
     [InlineData("iso-optout", 256f, 1591, 1027)]
     [InlineData("iso-optout", 1024f, 1591, 1027)]
     [InlineData("iso-optout", 2048f, 1591, 1027)]
@@ -33,8 +38,11 @@ public sealed class TemporalDetailStillResidualProbeGpuTests(ITestOutputHelper o
     [InlineData("iso-optout", 4096f, 2560, 1440)]
     public void Still_motion_residual(string kind, float distance, int width, int height)
     {
-        // Camera-relative rows take the nearest point of the 128 m frame grid as their origin, as the engine's
-        // automatic default does. Opt-out rows keep the fixture's zero origin.
+        // iso-relative anchors on the frame grid point nearest the stage, the best case of camera-relative rendering.
+        // The default rows clear the explicit origin, so the engine anchors on the grid point nearest the eye, and
+        // their distances put the stage well off that point: 68 m on both axes at 4156, 95 m at 4001 (the farthest
+        // the iso eye offset allows), and about 60 m and 70 m under the fly camera at 4027. Opt-out rows keep the
+        // fixture's zero origin.
         Vector3 centre = new(distance, 0f, distance);
         using var fx = new TemporalFixture(width, height, s =>
         {
@@ -46,7 +54,8 @@ public sealed class TemporalDetailStillResidualProbeGpuTests(ITestOutputHelper o
             s.Camera.Target = centre;
             if (kind == "front-ortho") { s.Camera.Azimuth = 0f; s.Camera.Elevation = 0f; }
             if (kind == "iso-relative") s.RenderOrigin = WorldFrame.Nearest(centre).Anchor;
-            if (kind == "fly")
+            if (kind is "iso-default" or "fly-default") s.RenderOrigin = null;
+            if (kind is "fly" or "fly-default")
                 s.CameraOverride = new FlyCamera3D
                 {
                     Position = centre + new Vector3(4f, 5f, 9f), Yaw = 0.4f, Pitch = -0.45f,
@@ -106,7 +115,8 @@ public sealed class TemporalDetailStillResidualProbeGpuTests(ITestOutputHelper o
                     if (displayPixels >= TemporalDetailMath.StillEpsilon) atGate++;
                 }
                 output.WriteLine($"RESIDUAL|{kind}|{distance}|{width}x{height}|frame {n}|drawn {drawn}|nonzero {nonzero}"
-                    + $"|max steps {steps}|max display pixels {pixels:R}|at or above the gate {atGate}");
+                    + $"|max steps {steps}|max display pixels {pixels:R}|at or above the gate {atGate}"
+                    + $"|origin {fx.Scene.RenderOrigin}");
             }
         }
         finally { batch?.Dispose(); }

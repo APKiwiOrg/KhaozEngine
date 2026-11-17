@@ -103,17 +103,19 @@ public sealed class TemporalDetailTransportTests
     }
 
     // A still surface whose two clip positions round apart stores whole least steps of the RG16F motion target,
-    // 2^-24 UV each. With camera-relative rendering in force the still orthographic stage of
-    // TemporalDetailStoreGpuTests stores up to four an axis on Metal at 1591 by 1027, and a consumer capture at that
-    // size measured three on one axis and one on the other. A step is a fixed share of the display, so its size in
-    // pixels grows with the display, up to the largest extent admission accepts on a device that allows 16384 or
-    // 32768 texels a side. Far from the origin with the render origin opted out the residual is larger and the gate
-    // does not hold (TemporalDetailStillResidualProbeGpuTests).
+    // 2^-24 UV each, and a step is a fixed share of the display, so its size in pixels grows with the display.
+    // Measured on Metal with camera-relative rendering in force (TemporalDetailStillResidualProbeGpuTests): a scene
+    // at its render origin stores up to four an axis (the still stage of TemporalDetailStoreGpuTests at 1591 by
+    // 1027, and three and one in a consumer capture at that size), which the gate holds up to the largest extent
+    // admission accepts on a device that allows 16384 or 32768 texels a side. A scene 95 m off its render origin
+    // stores up to 13, which the gate holds within the default pixel budget and not at those largest extents. Far
+    // from the world origin with the render origin opted out the residual is larger still and the gate does not hold.
     [Fact]
-    public void A_still_motion_residual_takes_the_coarse_path_at_every_admitted_display_size()
+    public void A_measured_still_residual_takes_the_coarse_path_at_the_display_sizes_it_was_cleared_for()
     {
         float step = (float)Half.Epsilon;
-        int checkedSizes = 0;
+        long defaultBudget = new TemporalSettings().HistoryDetailPixelLimit;
+        int checkedSizes = 0, checkedInBudget = 0;
         foreach (uint deviceLimit in new uint[] { 16384, 32768 })
         {
             int largest = checked((int)(deviceLimit / 2));
@@ -131,9 +133,18 @@ public sealed class TemporalDetailTransportTests
                         $"{width}x{height}, {x} and {y} least motion steps ({motion} display pixels) took the fine path");
                 }
                 checkedSizes++;
+                if ((long)width * height > defaultBudget) continue;
+                foreach ((int x, int y) in new[] { (8, 8), (12, 12), (13, 0), (0, 13), (13, 13) })
+                {
+                    float motion = new Vector2(x * step * width, y * step * height).Length();
+                    Assert.False(TemporalDetailMath.UseFine(motion, false, 0, 0),
+                        $"{width}x{height}, {x} and {y} least motion steps ({motion} display pixels) took the fine path");
+                }
+                checkedInBudget++;
             }
         }
         Assert.Equal(8, checkedSizes);
+        Assert.Equal(6, checkedInBudget);
     }
 
     [Fact]

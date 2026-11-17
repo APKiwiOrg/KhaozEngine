@@ -437,11 +437,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   RGBA16F colour pair at twice the display on each axis. Moving pixels can read its four reprojected texels,
   retain bounded sub-pixel deviations and preserve the resolved mean. Still and distrusted pixels use the
   original display history and replicate the resolved colour. A pixel is still when its stored motion is below a
-  128th of a display pixel. With camera-relative rendering in force a still surface stores a few least motion steps,
-  far below that at every display size Fine admits. With the render origin opted out, a still view about 1,000 m
-  or more from the world origin can store more, and there the still guarantee does not apply, as Display's own
-  reprojection carries the same residual. A still frame runs Display's expressions through a different compiled
-  program, so its colour and state are byte for byte Display's wherever the device computes the two programs alike.
+  128th of a display pixel. A still surface can store a few least motion steps of rounding. With camera-relative
+  rendering in force the most measured is a quarter of that gate at the default budget's 2560 by 1440, and it can
+  reach the gate only on a display above about 7,000 pixels a side. With the render origin opted out, a still view
+  about 1,000 m or more along a horizontal axis from the world origin can store more than the gate at 2560 by
+  1440, and nearer in proportion on a larger display. Where it does, the still guarantee does not apply, as
+  Display's own reprojection carries the same residual. The measurements are in the
+  [resolve design](../docs/design/TEMPORAL-RESOLVE.md#the-still-gate). A still frame runs Display's expressions
+  through a different compiled program, so its colour and state are byte for byte Display's wherever the device
+  computes the two programs alike.
   The suite asserts that exactly on every hardware device, except that a certified frame on hardware NVIDIA
   Direct3D 11 is reported, not asserted. On the software rasterizers it follows the rules main holds its own
   program pairs to: llvmpipe's entry pair rules for colour and the shimmer record, and WARP's certificate rule on a

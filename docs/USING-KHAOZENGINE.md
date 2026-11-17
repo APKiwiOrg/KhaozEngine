@@ -4929,11 +4929,15 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   Still pixels and distrusted footprints use the original display-history expressions and replicate their
   stored result exactly. A pixel is still when its stored motion is below a 128th of a display pixel. A still
   surface's motion is not always exactly zero, since the motion target stores whole steps of 2^-24 UV and its
-  two clip positions can round apart. With camera-relative rendering in force (the default render origin) that is
-  a few steps, far below the gate at every display size Fine admits. With `RenderOrigin = Vector3.Zero`, or a
-  camera without `IRenderOriginAware`, a still view about 1,000 m or more from the world origin can store more than
-  the gate, and there the still guarantee does not apply. Display's own reprojection carries the same residual
-  there, so keep camera-relative rendering on for a world far from the origin.
+  two clip positions can round apart. With camera-relative rendering in force (the default render origin) the
+  most measured is about a dozen steps, a quarter of the gate at the default budget's 2560 by 1440. It can reach
+  the gate only when `HistoryDetailPixelLimit` is raised for a display above about 7,000 pixels a side and a still
+  orthographic view sits far from its render origin. With `RenderOrigin = Vector3.Zero`, or a camera without
+  `IRenderOriginAware`, a still view about 1,000 m or more along a horizontal axis from the world origin can store
+  more than the gate at 2560 by 1440, and nearer in proportion on a larger display. Where stored motion reaches
+  the gate the still guarantee does not apply. Display's own reprojection carries the same residual there, so
+  keep camera-relative rendering on for a world far from the origin. The measurements are in the
+  [resolve design](design/TEMPORAL-RESOLVE.md#the-still-gate).
   A still frame runs Display's expressions through a different compiled program, so its colour and state are byte
   for byte Display's wherever the device computes the two programs alike. The suite asserts that exactly on every
   hardware device, except that a fully lit certified frame on hardware NVIDIA Direct3D 11 is reported, not

@@ -289,33 +289,41 @@ display wider or taller than 1024 pixels. The residual cannot be removed at its 
 programs are Display's.
 
 Measured with `TemporalDetailStillResidualProbeGpuTests` on an Apple M2 Max on Metal at 1591 by 1027
-(2026-11-16 and 2026-11-17 UTC): with camera-relative rendering in force, the default isometric view of a box
-field stores one step an axis on 2,900 to 8,200 texels a frame, near the world origin and 4,096 m from it
-alike, and the still identity fact's front orthographic fence stage up to four on about 5,100 texels at
-Native. A still perspective camera stores none. On the hosted devices of runs 43993423746 and 44013257225
-(2026-11-17) WARP and Vulkan llvmpipe store none for the fence stage either, while the hosted Apple
-paravirtual device stores the same four steps, so the residual depends on how a compiler evaluates the two
-products. A consumer capture at 1591 by 1027 (2026-11-16), camera still for 120 frames with the effect clock
-frozen, measured stored motion from 0 to 0.000291 display pixels, three steps on one axis and one on the
-other. There 179,734 pixels were at or above the 2^-14 gate and 110,638 took the fine path, and the presented
-still frame differed from Display by one or two steps of 255 in 1,133 to 4,173 pixels against a repeat floor
-of one. Pixels below the gate differed too: a pixel that took the fine path on an earlier frame keeps its
-slightly different R in the display history, and later coarse frames and neighbouring Catmull-Rom fetches read
-it.
+(2026-11-16 and 2026-11-17 UTC): with camera-relative rendering in force and the scene at its render origin,
+the default isometric view of a box field stores one step an axis on 2,900 to 8,200 texels a frame, at the
+world origin and 4,096 m along each horizontal axis from it alike, and the still identity fact's front
+orthographic fence stage up to four on about 5,100 texels at Native. The engine's default origin is the frame
+grid point nearest the eye, which can leave a scene well off it. With the box field 68 m and 95 m from that
+point on both axes, the second being the farthest the default isometric eye offset allows, the same view
+stores 12 and 13 steps an axis on 11,000 to 41,000 texels a frame, and 8 at 2560 by 1440, at most 0.0014
+display pixels. A still perspective camera stores none, at its origin or 60 m to 70 m off it. On the hosted
+devices of runs 43993423746 and 44013257225 (2026-11-17) WARP and Vulkan llvmpipe store none for the fence
+stage either, while the hosted Apple paravirtual device stores the same four steps, so the residual depends on
+how a compiler evaluates the two products. A consumer capture at 1591 by 1027 on the same machine
+(2026-11-16), camera still for 120 frames with the effect clock frozen, measured stored motion from 0 to
+0.000291 display pixels, three steps on one axis and one on the other. There 179,734 pixels were at or above
+the 2^-14 gate and 110,638 took the fine path, and the presented still frame differed from Display by one or
+two steps of 255 in 1,133 to 4,173 pixels against a repeat floor of one. Pixels below the gate differed too: a
+pixel that took the fine path on an earlier frame keeps its slightly different R in the display history, and
+later coarse frames and neighbouring Catmull-Rom fetches read it.
 
-So the still guarantee holds under a condition. With camera-relative rendering in force, the default
-`Scene3D.RenderOrigin`, a still surface stores a few steps, and a 128th of a pixel holds eight steps on an
-axis at 16384 pixels a side, the largest extent admission accepts on a device with 32768 texels a side,
-sixteen at 8192, the largest on a device with 16384, and 51 at the default budget's 2560 by 1440. That is at
-least twice the largest measured residual on an axis, and 1.41 times for four steps on both axes at 16384.
-With the render origin opted out (`RenderOrigin = Vector3.Zero`, or a consumer camera without
-`IRenderOriginAware`) the largest term is the absolute coordinate. The probe's opted-out isometric view
-(2026-11-17) stores 32 steps an axis 256 m from the world origin, 64 at 1,024 m, 153 at 2,048 m and 309 at
-4,096 m. At 1,024 m that is 0.0072 display pixels at 1591 by 1027, just under the gate, and 0.011 at 2560 by
-1440, where about 8,800 texels a frame reach it. From about 1,000 m on, a still view opted out of
-camera-relative rendering can store more than the gate, and there the still guarantee does not apply. The same
+So the still guarantee holds under a condition: the stored steps stay below the gate. A 128th of a pixel holds
+51 steps on an axis at the default budget's 2560 by 1440, sixteen at 8192, the largest extent admission
+accepts on a device with 16384 texels a side, and eight at 16384, the largest on a device with 32768. With
+camera-relative rendering in force, the default `Scene3D.RenderOrigin`, the most measured is 13 steps an axis,
+a quarter of the gate at 2560 by 1440, where the measured 0.0014 display pixels is under a fifth of it.
+Thirteen steps reach the gate at about 10,000 pixels a side on one axis and about 7,100 on both, so only a
+consumer who raises `HistoryDetailPixelLimit` for a display above that can see a still orthographic view far
+from its render origin take the fine path. With the render origin opted out (`RenderOrigin = Vector3.Zero`, or
+a consumer camera without `IRenderOriginAware`) the largest term is the absolute coordinate. The probe's
+opted-out isometric view (2026-11-17) stores 32 steps an axis 256 m along each horizontal axis from the world
+origin, 64 at 1,024 m, 153 at 2,048 m and 309 at 4,096 m. At 1,024 m that is 0.0072 display pixels at 1591 by
+1027, just under the gate, and 0.011 at 2560 by 1440, where about 8,800 texels a frame reach it. So from about
+1,000 m on an axis, a still view opted out of camera-relative rendering can store more than the gate at 2560
+by 1440, and the distance shrinks in proportion on a larger display: the 32 steps of 256 m equal the gate at
+4,096 pixels a side. Where stored motion reaches the gate the still guarantee does not apply. The same
 residual is in Display's own reprojection there, so the remedy is the one the consumer guide gives for
-precision far from the origin: keep camera-relative rendering on. The threshold is not raised to chase that
+precision far from the origin: keep camera-relative rendering on. The threshold is not raised to chase either
 configuration, since its reason does not depend on the residual.
 
 `TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` runs
@@ -325,13 +333,15 @@ first frame with history (2026-11-16). Those rows exercise the gate only where t
 residual, so two more rows pan the 96 by 64 stage by a 256th of a display pixel a frame, real motion every
 backend stores, and hold that frame to Display's as a still one, and
 `Fine_takes_its_fine_path_for_a_pan_just_above_the_still_gate` pans it by three 256ths and requires the fine
-path on every frame with history, read through the live path flags (a share of 0.33 to 0.84 on Metal), with
-every coarse pixel still replicating R. On Metal (2026-11-17) the pan rows failed against a 2^-14 gate and the
-fine path fact against a 64th, each set by a test-only shader seam. Raising the gate moved no value of the
-report-only capture: on 2026-11-17 all 5,134 protocol records and 36 rig cells matched the capture taken under
-2^-14, so no value those scenes report depends on a pixel whose motion lies between the two gates.
-`A_still_motion_residual_takes_the_coarse_path_at_every_admitted_display_size` holds the gate against measured
-step patterns at 96 by 64, 1591 by 1027, 2560 by 1440 and the largest admitted square, and
+path on every frame with history, read through the live path flags (a share of 0.33 to 0.84 at Native and
+Quality on every backend of hosted run 44035806221, 2026-11-17), with every coarse pixel still replicating R.
+On Metal (2026-11-17) the pan rows failed against a 2^-14 gate and the fine path fact against a 64th, each set
+by a test-only shader seam. Raising the gate moved no value of the report-only capture: on 2026-11-17 all
+5,134 protocol records and 36 rig cells matched the capture taken under 2^-14, so no value those scenes report
+depends on a pixel whose motion lies between the two gates.
+`A_measured_still_residual_takes_the_coarse_path_at_the_display_sizes_it_was_cleared_for` holds the gate
+against the step patterns measured at the render origin at 96 by 64, 1591 by 1027, 2560 by 1440 and the
+largest admitted square, and against those measured off it at the sizes within the default budget, and
 `Adding_distrust_never_admits_a_fine_pixel` pins it inclusive at its threshold.
 
 #### Bounded transport and the stored mean

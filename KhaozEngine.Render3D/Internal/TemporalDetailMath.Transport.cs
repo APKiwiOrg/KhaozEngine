@@ -9,13 +9,15 @@ internal static partial class TemporalDetailMath
     /// Display's own. The value is set by what the coarse path loses, not by any residual: one Catmull-Rom resample at
     /// a 128th of a pixel keeps 99.964 percent of a pattern that alternates every pixel, so nothing the fine path
     /// exists for lies below it. A still surface's stored motion is not always zero: its two clip positions can round
-    /// apart, and the RG16F motion target stores whole least steps of 2^-24 UV, a share of the display that grows in
-    /// pixels with the display and with the scene's render-relative coordinates. With camera-relative rendering in
-    /// force a still view stores one to four steps an axis (Metal, 1591 by 1027), far below this at every display
-    /// size Fine admits: eight steps an axis at 16384 pixels a side and 51 at 2560. With the render origin opted out,
-    /// a still view 1,024 m from the world origin stores 64 steps, above this at 2560 by 1440, and from there on the
-    /// still guarantee does not apply, as Display's own reprojection carries the same residual. 2^-14 would lie below
-    /// a single step on any display wider or taller than 1024 pixels.</summary>
+    /// apart, and the RG16F motion target stores whole least steps of 2^-24 UV. A step is a share of the display, so
+    /// it grows in pixels with the display, and the count of steps grows with the scene's render-relative
+    /// coordinates. This value holds 51 steps an axis at 2560 pixels a side, 16 at 8192 and eight at 16384. With
+    /// camera-relative rendering in force a still view stores one step an axis at its render origin and up to 13
+    /// with the scene 95 m from it (Metal, 1591 by 1027): a quarter of this value at the default budget's 2560 by
+    /// 1440, and equal to it near 10,000 pixels a side. With the render origin opted out, a still view 1,024 m along
+    /// each horizontal axis from the world origin stores 64 steps, above this value at 2560 by 1440. Where the
+    /// stored steps reach it the still guarantee does not apply, as Display's own reprojection carries the same
+    /// residual. 2^-14 would lie below a single step on any display wider or taller than 1024 pixels.</summary>
     internal const float StillEpsilon = 1f / 128f;
     internal const float StoreMax = 65504f;
     internal const int DistrustMask = 1;

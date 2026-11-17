@@ -37,6 +37,10 @@ public sealed class TemporalDetailStillGpuTests(ITestOutputHelper output) : Temp
             detail: TemporalHistoryDetail.Fine);
         float[] motion = Pairs(iw, ih, (_, _) => Vector2.Zero);
         int different = 0;
+        // Display's resolve and Fine's are two compiled programs, held to main's rules for such a pair on each device.
+        var comparison = new TemporalStillHistoryComparison(output, fine.Device, $"{preset} {scene} Display vs Fine");
+        var expectedSide = new TemporalStillHistoryComparison.Side(display.Device, display.History, display.Renderer);
+        var actualSide = new TemporalStillHistoryComparison.Side(fine.Device, fine.History, fine.Renderer);
         const int frames = TemporalStillDetailGpuTests.Converge + TemporalStillDetailGpuTests.Measured;
         for (int n = 0; n < frames; n++)
         {
@@ -67,11 +71,9 @@ public sealed class TemporalDetailStillGpuTests(ITestOutputHelper output) : Temp
             Assert.NotEmpty(actual);
             for (int i = 0; i < actual.Length; i++) if (actual[i] != expected[i]) different++;
             if (!assertIdentity) continue;
-            Assert.Equal(HalfBits(expected), HalfBits(actual));
-            Assert.Equal(HalfBits(display.ReadState()), HalfBits(fine.ReadState()));
+            comparison.Frame(n, expectedSide, actualSide);
         }
         output.WriteLine($"{preset}, {scene}: {frames} cold frames, differing colour components={different}");
+        if (assertIdentity) comparison.AssertComplete();
     }
-
-    static short[] HalfBits(float[] values) => Array.ConvertAll(values, v => BitConverter.HalfToInt16Bits((Half)v));
 }

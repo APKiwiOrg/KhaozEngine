@@ -71,22 +71,8 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
         bool large = (long)width * height > 96L * 64;
         int frames = large ? LargeStillFrames : TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)) + 1;
         int different = 0;
-        // Display's resolve and Fine's are two compiled programs, so the still fact asserts what main asserts between
-        // its own two compiled entries on each device (TemporalEntryIdentityGpuTests). On llvmpipe that is the entry
-        // pair's rules: the record owner below bounds drift and swing and keeps confidence, locks and marks exact,
-        // and the colour history is held to TemporalSoftwareCompileDivergenceRule over the walk. Main asserts no
-        // presented frame between its entries there, and neither does this fact: the stored history is the
-        // contract and the picture is a function of it. Every other device compares exactly.
-        var state = new TemporalEntryStateComparison(TemporalDeviceClass.IsLavapipe(fine.Frame.Device));
-        bool entryPairRules = state.BoundsRecordChannels;
-        var colour = new TemporalEntryDifference("Display vs Fine colour");
-        long colourCompared = 0;
-        // Fine runs one checked program for every certificate state. Where Display skipped the decision, a frame
-        // compares Display's certified program with Fine's checked one, which is the certified-against-checked
-        // comparison its owner already rules on for the device, colour included. On llvmpipe that owner holds the
-        // pair exact, so llvmpipe stays with the entry pair's rules above. The presented frame and the colour
-        // history are pinned exactly wherever the owner holds the pair exact.
-        var certificate = TemporalFullyLitHistoryOracle.For(output, fine.Frame.Device);
+        // Display's resolve and Fine's are two compiled programs, held to main's rules for such a pair on each device.
+        var comparison = new TemporalStillHistoryComparison(output, fine.Frame.Device, $"{preset} {width}x{height} Display vs Fine");
         for (int n = 0; n < frames; n++)
         {
             float pan = n * panPixels;
@@ -96,49 +82,13 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
             Assert.Null(display.Frame.Scene.TemporalHistory.DetailStore);
             for (int i = 0; i < actual.Length; i++) if (actual[i] != expected[i]) different++;
             if (!assertIdentity) continue;
-            var a = fine.Frame.Scene.TemporalHistory;
-            var b = display.Frame.Scene.TemporalHistory;
-            bool displaySkipped = display.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped;
-            Assert.False(fine.Frame.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped);
-            if (entryPairRules)
-            {
-                float[] displayColour = TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
-                    fineColour = TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex));
-                Assert.Equal(displayColour.Length, fineColour.Length);
-                for (int i = 0; i < displayColour.Length; i++) colour.Add(n, displayColour[i], fineColour[i]);
-                colourCompared += displayColour.Length;
-            }
-            else if (!displaySkipped || certificate.HoldsCertifiedAgainstCheckedExact)
-            {
-                Assert.Equal(expected, actual);
-                TemporalHistorySample.Exact(n, "Display vs Fine history colour",
-                    TemporalTextureIo.Read(display.Frame.Device, b.Color(b.WriteIndex)),
-                    TemporalTextureIo.Read(fine.Frame.Device, a.Color(a.WriteIndex)));
-            }
-            if (displaySkipped && !state.BoundsRecordChannels)
-                certificate.Report(n, $"{preset} Display certified vs Fine checked still",
-                    TemporalFullyLitHistoryOracle.Snapshot.Read(display.Frame), TemporalFullyLitHistoryOracle.Snapshot.Read(fine.Frame));
-            else
-                state.Compare(n, "Display vs Fine history state",
-                    TemporalTextureIo.Read(display.Frame.Device, b.Confidence(b.WriteIndex)),
-                    TemporalTextureIo.Read(fine.Frame.Device, a.Confidence(a.WriteIndex)));
+            comparison.Frame(n, TemporalStillHistoryComparison.Side.Of(display.Frame),
+                TemporalStillHistoryComparison.Side.Of(fine.Frame), expected, actual);
             AssertReplicated(fine.Frame);
         }
         output.WriteLine($"{preset}, pan {panPixels} pixels a frame, {width}x{height}, {frames} frames, "
             + $"differing presented bytes {different}");
-        if (!assertIdentity) return;
-        if (entryPairRules)
-        {
-            double share = TemporalSoftwareCompileDivergenceRule.ShareOf(colour.Values, colourCompared);
-            output.WriteLine($"  software Vulkan: {colour}, within {TemporalSoftwareCompileDivergenceRule.AbsoluteBound}"
-                + $" on {share:P4} of {colourCompared} values");
-            Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(colour.Worst, colour.Values, colourCompared),
-                $"{preset} {width}x{height}: the still colour on a software Vulkan device left its bound "
-                + $"({TemporalSoftwareCompileDivergenceRule.AbsoluteBound}, "
-                + $"{TemporalSoftwareCompileDivergenceRule.DifferingShareBound:P2} of values): {colour}");
-        }
-        state.AssertComplete(output, $"{preset} Display vs Fine still");
-        certificate.AssertComplete();
+        if (assertIdentity) comparison.AssertComplete();
     }
 
     // The same fence a little above the still gate, a pan of three 256ths of a display pixel a frame. The mode takes

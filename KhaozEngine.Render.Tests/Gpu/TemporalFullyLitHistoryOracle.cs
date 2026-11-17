@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -18,12 +19,14 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
     internal sealed record Snapshot(int Width, int InternalWidth, byte[] Colour, byte[] State, byte[] Visibility, byte[] Depth)
     {
         internal static Snapshot Read(TemporalFixture fx)
+            => Read(fx.Device, fx.Scene.TemporalHistory, fx.Scene.TemporalResolveRendererForTests!);
+
+        internal static Snapshot Read(IGpuDevice device, TemporalHistory h, TemporalResolveRenderer renderer)
         {
-            TemporalHistory h = fx.Scene.TemporalHistory;
-            byte[] ReadTexture(IGpuTexture texture) => TemporalVisibilityFullyLitGpuTests.Bytes(fx.Device, texture);
+            byte[] ReadTexture(IGpuTexture texture) => TemporalVisibilityFullyLitGpuTests.Bytes(device, texture);
             return new((int)h.Color(h.WriteIndex).Width, (int)h.PreviousDepth(h.WriteIndex).Width, ReadTexture(h.Color(h.WriteIndex)),
                 ReadTexture(h.Confidence(h.WriteIndex)),
-                ReadTexture(fx.Scene.TemporalResolveRendererForTests!.VisibilityHistory.Texture(h.WriteIndex)),
+                ReadTexture(renderer.VisibilityHistory.Texture(h.WriteIndex)),
                 ReadTexture(h.PreviousDepth(h.WriteIndex)));
         }
 

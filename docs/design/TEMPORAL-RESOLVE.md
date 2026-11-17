@@ -392,10 +392,12 @@ replication after motion stops, thin-detail retention and a moving output that d
 On a still frame Fine runs Display's own expressions through a different compiled program: Fine's one checked
 resolve for every certificate state, against Display's resolve in its own entry, and its certified program on
 a fully lit frame. Stored colour and state are byte for byte Display's wherever the device computes the two
-programs alike.
-`TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` asserts
-that exactly, the presented frame included, on every hardware device the suite runs. On the software
-rasterizers it asserts what main already holds its own program pairs to there. On llvmpipe that is the entry
+programs alike. Two facts assert it through one per-device comparison, `TemporalStillHistoryComparison`:
+`TemporalDetailStillGpuTests` on the resolve rig's cold still prefixes, and
+`TemporalDetailStoreGpuTests.Fine_presents_every_still_fence_frame_identically_and_replicates_history` on the
+scene's still fence, its presented frame included. The comparison asserts exactly on every hardware device the
+suite runs. On the software rasterizers it asserts what main already holds its own program pairs to there. On
+llvmpipe that is the entry
 pair's rules of `TemporalEntryIdentityGpuTests`: the colour history within
 `TemporalSoftwareCompileDivergenceRule` over the walk, drift and swing within `TemporalEntryStateComparison`'s
 llvmpipe limits, confidence, locks and marks exact, and no presented frame, since the stored history is the

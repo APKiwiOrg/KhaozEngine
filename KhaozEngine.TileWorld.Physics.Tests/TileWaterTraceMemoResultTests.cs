@@ -9,7 +9,7 @@ using Xunit;
 namespace KhaozEngine.Tests.TileWorld.Physics;
 
 [Trait("Category", "WaterKernelContract")]
-public sealed class TileWaterTraceMemoResultTests
+public sealed partial class TileWaterTraceMemoResultTests
 {
     [Theory]
     [InlineData(false)]
@@ -154,35 +154,4 @@ public sealed class TileWaterTraceMemoResultTests
         Check(field, query, spanCapacity: 0, contactCapacity: 0);
         Assert.Equal(0, Work(Check(field, query, spanCapacity: 0, contactCapacity: 0)));
     }
-
-    internal static WaterTraceMemoComparison.Observation Check(TileMediumSampler field, MovementMediumSweepQuery query,
-        Vector3 origin = default, int spanCapacity = 64, int contactCapacity = 256, MovementQueryIdentity? identity = null) =>
-        WaterTraceMemoComparison.Check(field, query, origin, spanCapacity, contactCapacity, identity,
-            new FrozenWaterReference(field.CaptureTraceForTests()));
-
-    internal static TileMediumSampler Field(bool flat)
-    {
-        var geometry = WaterKernelTraceFixture.RepeatedFaces(64, wet: true);
-        if (flat)
-        {
-            var columns = geometry.Nonuniform;
-            geometry = geometry with
-            {
-                Columns = columns,
-                Nonuniform = [],
-                Boundaries = TileWaterBoundary.Build(columns, true),
-                Exterior = TileWaterBoundary.Build(columns, false)
-            };
-        }
-        return TileMediumSampler.FromTraceForTests(geometry, "water-world");
-    }
-
-    internal static MovementMediumSweepQuery Query(int i = 0)
-    {
-        var q = WaterKernelTraceFixture.Query();
-        return new(new(q.Body.Centre + new Vector3(0, i * .0001f, 0), q.Body.Radius, q.Body.HalfHeight,
-            q.Body.CurrentSpace, null), q.Delta);
-    }
-
-    internal static int Work(WaterTraceMemoComparison.Observation read) => read.Solves + read.FlatSolves;
 }

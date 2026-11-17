@@ -49,21 +49,27 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
-      - name: Verify architecture and build the headless water project
+      - name: Verify architecture and build the headless water projects
         shell: bash
         run: |
           test '${{ runner.arch }}' = '${{ matrix.arch }}'
           mkdir -p local-feed
           dotnet build KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release
+          dotnet build KhaozEngine.TileWorld.Physics.FloatingPoint.Tests/KhaozEngine.TileWorld.Physics.FloatingPoint.Tests.csproj -c Release
+      # The corpus spans two assemblies, because tests that change floating point controls run in their own process.
+      # The TRX guard takes both files of a tiering setting and requires each assembly's classes exactly once.
       - name: Frozen differential corpus under JIT tiering 0 and 1
         shell: bash
         run: |
           results='${{ runner.temp }}/water-kernel-${{ matrix.arch }}'
           for tc in 0 1; do
-            DOTNET_TieredCompilation=$tc dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --no-build --no-restore \
-              --filter 'Category=WaterKernelContract&FullyQualifiedName!~TileWaterPrismCensusTests' --logger "trx;LogFileName=water-kernel-tier-$tc.trx" \
-              --results-directory "$results"
-            python3 scripts/check-water-kernel-trx.py "$results/water-kernel-tier-$tc.trx"
+            for project in KhaozEngine.TileWorld.Physics.Tests KhaozEngine.TileWorld.Physics.FloatingPoint.Tests; do
+              DOTNET_TieredCompilation=$tc dotnet test "$project/$project.csproj" -c Release --no-build --no-restore \
+                --filter 'Category=WaterKernelContract&FullyQualifiedName!~TileWaterPrismCensusTests' \
+                --logger "trx;LogFileName=water-kernel-$project-tier-$tc.trx" --results-directory "$results"
+            done
+            python3 scripts/check-water-kernel-trx.py "$results/water-kernel-KhaozEngine.TileWorld.Physics.Tests-tier-$tc.trx" \
+              "$results/water-kernel-KhaozEngine.TileWorld.Physics.FloatingPoint.Tests-tier-$tc.trx"
           done
       - name: Collect water kernel differential results
         if: always()

@@ -195,24 +195,31 @@ and bypassed, and collects a discarded capture after a sharing trace. The moving
 advancing histories to copy shared projections.
 
 Setting `KHAOZENGINE_WATER_SHARED_PROJECTIONS=bypass` for a contract run forces every test that does not hold the
-bypass itself onto the original projection path, through a test-assembly module initializer. The moving-history
+bypass itself onto the original projection path, through a module initializer both corpus assemblies carry. The moving-history
 oracle then requires zero shared copies. The two sharing classes keep sharing on, so a forced-off run still checks
 them. Run the corpus with and without it under both tiering settings to compare the paths on identical inputs.
 
 Set `CENSUS_RESULTS` to an absolute results directory outside the checkout before running the contract command.
 
+The corpus spans two test assemblies. Tests that change floating point controls run in
+`KhaozEngine.TileWorld.Physics.FloatingPoint.Tests`, in their own process, and a class split between the two keeps its
+name in both.
+
 ```bash
 build-slot --label water-kernel-contract -- dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --filter 'Category=WaterKernelContract' --logger 'trx;LogFileName=water-kernel.trx' --results-directory "$CENSUS_RESULTS"
-python3 scripts/check-water-kernel-trx.py "$CENSUS_RESULTS/water-kernel.trx"
+build-slot --label water-kernel-contract -- dotnet test KhaozEngine.TileWorld.Physics.FloatingPoint.Tests/KhaozEngine.TileWorld.Physics.FloatingPoint.Tests.csproj -c Release --filter 'Category=WaterKernelContract' --logger 'trx;LogFileName=water-kernel-fp.trx' --results-directory "$CENSUS_RESULTS"
+python3 scripts/check-water-kernel-trx.py "$CENSUS_RESULTS/water-kernel.trx" "$CENSUS_RESULTS/water-kernel-fp.trx"
 ```
 
-The independent `water-kernel-contract` CI job builds only this headless test project on hosted ubuntu-26.04
-x64 and macos-26 arm64. Each job runs the contract with `DOTNET_TieredCompilation=0` and `1` and retains both
-TRX files. Its filter excludes `TileWaterPrismCensusTests`, whose pre-existing census digests remain in the
+The independent `water-kernel-contract` CI job builds only these two headless test projects on hosted ubuntu-26.04
+x64 and macos-26 arm64. Each job runs the contract with `DOTNET_TieredCompilation=0` and `1` and retains every
+TRX file. Its filter excludes `TileWaterPrismCensusTests`, whose pre-existing census digests remain in the
 ordinary test slice. The extended corpus still records all nine fixtures over four ticks on each runtime.
-Each TRX must execute a positive number of tests, execute its entire selected total and report zero failures.
-The TRX guard also requires the query-cost oracle, mutation, comparator, frozen-source, projection oracle and
-control, projection map and both shared projection classes. A mistyped filter that runs only earlier tests cannot silently omit the new controls.
+The TRX guard takes both assemblies' files for one setting. Each must execute a positive number of tests, execute
+its entire selected total and report zero failures, and each assembly must arrive exactly once. The guard also
+requires the query-cost oracle, mutation, comparator, frozen-source, projection map and both shared projection
+classes, the projection oracle in the floating point assembly, and the window, mutation and shared projection
+classes in both. A mistyped filter that runs only earlier tests cannot silently omit the new controls.
 Local qualification runs the complete category, including all nine result-bearing census rows.
 It runs separately from the selective runner's Foundation/Server pass, so an affected-project selection
 cannot omit this matrix. Each execution compares frozen against production on the same runtime. The runtime

@@ -151,6 +151,7 @@
   <Project Path="KhaozEngine.TileWorld.Tests/KhaozEngine.TileWorld.Tests.csproj" />
   <Project Path="KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj" />
   <Project Path="KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj" />
+  <Project Path="KhaozEngine.TileWorld.Physics.FloatingPoint.Tests/KhaozEngine.TileWorld.Physics.FloatingPoint.Tests.csproj" />
   <Project Path="KhaozEngine.TileWorld.WorldMap.Tests/KhaozEngine.TileWorld.WorldMap.Tests.csproj" />
   <Project Path="KhaozEngine.TileEdit.Tests/KhaozEngine.TileEdit.Tests.csproj" />
   <Project Path="KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj" />

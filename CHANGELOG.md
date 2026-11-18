@@ -13,7 +13,7 @@ frame down when its own targets cannot be created.
 
 **Fine colour history creation fallback.**
 
-- When the fine colour pair, its seed blit, the fine layout or the fine resolve pass cannot be created, the frame
+- When the fine colour pair, the fine layout or the fine resolve pass cannot be created, the frame
   resolves through the display-sized history. It keeps the display targets it already created and releases the
   failed Fine store. In 24.1.0 every resolving frame threw for as long as Fine stayed admitted and the creation
   kept failing.
@@ -32,6 +32,9 @@ frame down when its own targets cannot be created.
 - Proof. The frame that fell back is Display's frame byte for byte over a moving camera, on Apple Metal hardware
   and on the hosted Direct3D 11 and Vulkan software rasterizers. Fine has not run on Direct3D 11 or Vulkan
   hardware.
+- Fine history seeds through its normal update pass after a reset, removing a separate blit and its resources
+  (#1838). The reset writes the same colour bits on Apple Metal hardware and on the Direct3D 11 WARP and
+  Vulkan lavapipe software rasterizers.
 
 ## 24.1.0
 

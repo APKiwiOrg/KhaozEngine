@@ -11,8 +11,9 @@ namespace KhaozEngine.Render3D.Internal;
 /// with them. Formats are <see cref="TemporalFormats"/>'s. Created while the resolve
 /// runs, reused while both sizes hold, recreated when either changes, released when the resolve stops. A reset
 /// (<see cref="Invalidate"/>) keeps them, since <see cref="IsValid"/> already stops every read.
-/// Fine also owns a <see cref="TemporalDetailStore"/> on the same generation and pair indices. A change between
-/// Display and Fine recreates the target family and retires every binding with it.
+/// Fine also owns a <see cref="TemporalDetailStore"/> on the same generation and pair indices. Its update
+/// copies the resolve's four children into the write side on every resolving frame, including a reset.
+/// A change between Display and Fine recreates the target family and retires every binding with it.
 /// <para><b>A NEW GENERATION IS A RESET.</b> Every creation bumps <see cref="TargetGeneration"/>, a recreation at the
 /// same sizes after <see cref="ReleaseTargets"/> included, and so does every release of allocated targets, so a consumer
 /// holding sets over released targets sees the change even when nothing replaces them. New targets hold nothing, so a
@@ -109,7 +110,7 @@ internal sealed partial class TemporalHistory
         if (detail == TemporalHistoryDetail.Fine)
         {
             DetailStore = new TemporalDetailStore(gd);
-            try { DetailStore.Allocate(this, dw, dh); }
+            try { DetailStore.Allocate(dw, dh); }
             catch (Exception failure) when (TemporalDetailStore.CanFallbackFromCreationFailure(failure))
             {
                 ReleaseDetail(retired);

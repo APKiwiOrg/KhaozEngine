@@ -623,7 +623,9 @@ shimmer from frame to frame. The bands a river shows sit short of focus, where t
 - The consumer can read the refusal, and the scene logs it once.
 
 The cascade shadow layout, point shadow atlas, material anisotropy sampler and fine temporal history
-follow this rule. Each defines which request changes allow a retry.
+follow this rule. Each defines which request changes allow a retry. Fine can fall back while allocating
+its colour pair or binding the Fine resolve and update passes. See the
+[Fine colour store](design/TEMPORAL-RESOLVE.md#fine-colour-store) for the retry conditions.
 
 ## Where to look in the code
 

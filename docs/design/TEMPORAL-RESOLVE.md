@@ -160,8 +160,8 @@ and allocates no fine store. The budget defaults to 3,686,400, so 2560 by 1440 c
 runs Display. The additional pair would cost 225 MiB and 506.25 MiB respectively.
 Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
 
-Creation of the Fine pair and seed blit, and binding of the Fine layout and pass (scratch, shaders, pipelines,
-sets and framebuffers), absorb any exception except `OutOfMemoryException`. The GPU seam has no portable
+Creation of the Fine colour pair, and binding of the Fine layout and pass (scratch, shaders, pipelines, sets
+and framebuffers), absorb any exception except `OutOfMemoryException`. The GPU seam has no portable
 creation refusal type, and a driver can refuse a descriptor or pipeline as well as an allocation. Display
 history, post targets, ordinary resolve sets and entry-point objects still throw on creation failure.
 Recording, submission, debug views and count probes are outside those boundaries. A lost device can still fail
@@ -446,7 +446,12 @@ generation. This keeps pending count readbacks valid across a mode change or res
 A change of the mode in effect resets history once with `TemporalResetReason.HistoryDetail`. Existing
 settings and resize reasons outrank it, since they can cause the fallback. It outranks camera cuts. A mode
 change, either size change or release retires the pair and its bindings through the history owner's queue
-and bumps the same generation. A reset keeps targets and seeds the write side from this frame's result.
+and bumps the same generation. A reset keeps targets. Invalid history makes every pixel coarse, so the
+resolve writes the same colour to all four child targets and the regular fine-grid update seeds the write
+side. The [three-backend proof](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/44275447969) verified
+bit-exact replication on Metal, Direct3D 11 WARP and Vulkan lavapipe. The Direct3D 11 and Vulkan legs
+used software rasterizers. Local Metal validation ran on Apple hardware.
+
 The next frame reads only the side that was written. A later render or offscreen capture leaves both sides,
 indices, mode and generation alone. Turning the temporal resolve off retires the store with history.
 

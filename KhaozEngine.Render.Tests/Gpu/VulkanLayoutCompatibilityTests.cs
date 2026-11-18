@@ -46,8 +46,8 @@ namespace KhaozEngine.Tests.Gpu
             IReadOnlyList<(string Name, string[] Slots, VulkanBoundPipeline Bound)> pipelines = Build(harness);
 
             // Includes the four certified temporal and four relief tile-ground pipeline shapes, and the detail
-            // history's six.
-            Assert.Equal(98, pipelines.Count);
+            // history's five.
+            Assert.Equal(97, pipelines.Count);
 
             int pairs = 0;
             var seen = new HashSet<int>();
@@ -72,7 +72,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
 
-            Assert.Equal(98 * 98, pairs);
+            Assert.Equal(97 * 97, pairs);
 
             // AND THE GUARD IS NOT VACUOUS. A walk over pairs that were all incompatible would pass an
             // always-answer-zero implementation, so the shipped table has to actually contain compatible pairs.

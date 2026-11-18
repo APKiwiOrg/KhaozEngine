@@ -166,7 +166,6 @@ namespace KhaozEngine.Render3D
             _temporalPost.Ensure(_res, TemporalHistory, displayWidth, displayHeight, Post.Bloom.Enabled, _retired);
 
             TemporalHistory.BeginResolve(current.FrameIndex);
-            TemporalHistory.DetailStore?.Prepare(cl);
             IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
                 "The temporal resolve runs only while temporal rendering is active, which allocates the motion target.");
             _temporalResolve.SelectEntry(ChooseTemporalEntry(), _retired);   // TemporalEntry

@@ -12,10 +12,8 @@ public sealed partial class Scene3D
     {
         if (TemporalHistory.DetailStore is not { } detail) return;
         using (ProfilePass(cl, "temporal.detail-store"))
-        {
             detail.Update(cl, TemporalHistory.WriteIndex);
-        }
-        _frameStats.DrawCalls += 2;   // classification and update, beyond the ordinary resolve and depth store
+        _frameStats.DrawCalls += 2;   // Fine classification and fine-grid copy
     }
 
     /// <summary>The history grid used by the last frame's first render. Fine is requested by default and takes effect

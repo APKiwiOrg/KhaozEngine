@@ -371,7 +371,6 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalDetailPass classify", ["Temporal.resolve", "Temporal.detailClassify"]),
             ("TemporalDetailPass resolve", ["Temporal.resolve", "Temporal.detail"]),
             ("TemporalDetailPass update", ["Temporal.detailUpdate"]),
-            ("TemporalDetailStore replicate", ["Pixel.blit"]),
             ("TemporalResolveRenderer detail debug view", ["Temporal.resolve", "Temporal.debugMode", "Temporal.detail"]),
             ("TemporalResolveRenderer detail count probe", ["Temporal.resolve", "Temporal.detail"]),
             // Rigid dissolve pipelines add the shared interior image and sampler, with no extra uniform buffer.
@@ -418,9 +417,9 @@ namespace KhaozEngine.Tests.Gpu
             // The three caustic programs each add one dense layout and pipeline row.
             // T8-R1 keeps completeness independent of the catalogs themselves.
             // The tile-ground relief variants add their material layout and their plain and motion pipelines, two each.
-            // The detail history adds three layouts and six pipelines.
+            // The detail history adds three layouts and five pipelines.
             Assert.Equal(79, ShippedLayouts.Count);
-            Assert.Equal(98, ShippedPipelines.Count);
+            Assert.Equal(97, ShippedPipelines.Count);
             Assert.Equal(ShippedPipelines.Count,
                 ShippedPipelines.Select(p => p.Pipeline).Distinct(StringComparer.Ordinal).Count());
             Assert.Equal(ShippedLayouts.Keys.Order(StringComparer.Ordinal),

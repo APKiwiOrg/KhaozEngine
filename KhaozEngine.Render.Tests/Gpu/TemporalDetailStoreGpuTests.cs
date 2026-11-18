@@ -37,25 +37,31 @@ public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixtu
     [GpuFact]
     public void Replication_copies_hdr_channels_and_each_alpha_marker_without_arithmetic()
     {
-        using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
-        var history = new TemporalHistory();
-        try
-        {
-            history.EnsureTargets(gpu.GpuDevice, 2, 2, 2, 2, detail: TemporalHistoryDetail.Fine);
-            TemporalTextureIo.Upload(gpu.GpuDevice, history.Color(history.WriteIndex),
-                [0.125f, 4f, 0.5f, 0f, 2f, 0.25f, 0.75f, 0.25f,
-                 8f, 0.5f, 0.125f, 0.5f, 16f, 0.25f, 1f, 1f]);
-            using IGpuCommandList cl = gpu.GpuDevice.Factory.CreateCommandList();
-            using (GpuRecording.Open(gpu.GpuDevice, cl, "TemporalDetailStoreGpuTests.Replication"))
-            {
-                history.DetailStore!.Prepare(cl);
-                history.DetailStore.Replicate(cl, history.WriteIndex);
-            }
-            gpu.GpuDevice.Submit(cl);
-            gpu.GpuDevice.WaitForIdle();
-            AssertReplicated(gpu.GpuDevice, history);
-        }
-        finally { history.ReleaseTargets(); }
+        const int Size = 2;
+        float[] markers = [0.125f, 4f, 0.5f, 0f, 2f, 0.25f, 0.75f, 0.25f,
+            8f, 0.5f, 0.125f, 0.5f, 16f, 0.25f, 1f, 1f];
+        // Supply exact stored markers at the input to the real coarse child writer. The normal resolve
+        // determines its own alpha. The fixture leaves classification, retention and the fine copy intact.
+        using var rig = new TemporalResolveRig(Size, Size, Size, Size, 0.5f,
+            fragmentSource: source => source.Replace(
+                "vec4 r = vec4(p.color, p.alpha + vUv.x * 1.0e-30);",
+                """
+                vec4 r = texelFetch(sampler2D(SceneColor, LinearClamp), ivec2(gl_FragCoord.xy), 0);
+                    if (vUv.x < 0.0) r = vec4(0.0);
+                """, StringComparison.Ordinal),
+            detail: TemporalHistoryDetail.Fine);
+        var view = new TemporalViewInput(Matrix4x4.Identity,
+            Matrix4x4.CreatePerspectiveFieldOfView(1f, 1f, 0.1f, 100f));
+        var uniforms = TemporalResolveMath.BuildUniforms(view, null, Vector2.Zero,
+            Size, Size, Size, Size, historyValid: false);
+
+        rig.BeginFrame();
+        rig.Fill(markers, markers, new float[Size * Size * 2]);
+        Assert.False(rig.History.IsValid);
+        rig.Resolve(uniforms);
+
+        Assert.Equal(markers, rig.ReadColor());
+        AssertReplicated(rig.Device, rig.History);
     }
 
     // Six frames at a large size, as the large-frame entry identity takes, keep the software devices affordable.

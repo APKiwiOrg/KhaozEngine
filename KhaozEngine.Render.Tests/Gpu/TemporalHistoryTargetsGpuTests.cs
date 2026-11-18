@@ -93,7 +93,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void Fine_targets_share_the_history_generation_and_retire_once_with_their_bindings()
+        public void Fine_targets_share_the_history_generation_and_retire_once()
         {
             using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = gpu.GpuDevice;
@@ -110,17 +110,17 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.NotSame(detail.Color(0), detail.Color(1));
                 Assert.False(history.EnsureTargets(gd, 96, 54, 64, 36, retired, TemporalHistoryDetail.Fine));
                 Assert.Equal(generation, history.TargetGeneration);
-                // The unchanged ten history resources, plus two fine textures, two framebuffers, two borrowed
-                // source sets and the replication program, layout, pipeline, sampler and parameter buffer.
+                // This creates the target family without binding the resolve pass. Fine adds only its two textures.
+                const int FineResourcesPerCreation = ResourcesPerCreation + 2;
                 Assert.True(history.EnsureTargets(gd, 96, 54, 80, 45, retired, TemporalHistoryDetail.Fine));
-                Assert.Equal(21, retired.PendingCount);
+                Assert.Equal(FineResourcesPerCreation, retired.PendingCount);
                 Assert.Equal(generation + 1, history.TargetGeneration);
                 Assert.NotSame(detail, history.DetailStore);
                 history.ReleaseTargets(retired);
-                Assert.Equal(42, retired.PendingCount);
+                Assert.Equal(2 * FineResourcesPerCreation, retired.PendingCount);
                 Assert.Null(history.DetailStore);
                 history.ReleaseTargets(retired);
-                Assert.Equal(42, retired.PendingCount);
+                Assert.Equal(2 * FineResourcesPerCreation, retired.PendingCount);
             }
             finally { history.ReleaseTargets(); }
         }

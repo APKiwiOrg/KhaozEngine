@@ -20,8 +20,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('foliage-conformance-pr-{0}', github.event.pull_request.number) || format('foliage-conformance-{0}-{1}', github.event_name, github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: >-
+    ${{ github.event_name == 'pull_request' && github.run_attempt == 1 &&
+        format('foliage-conformance-pr-{0}', github.event.pull_request.number) ||
+        format('foliage-conformance-{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}
 
 jobs:
   scope:

@@ -511,8 +511,9 @@ that reach the Render or MapEditor test project through its reference graph, or 
 inputs such as shared assets, project definitions, the GPU build and shard scripts, or unknown
 paths. The Scope summary states why the matrix was selected or skipped. Off-scope runs use
 one hosted reporting row because GitHub requires a nonempty matrix. All GPU test steps
-skip in that row. A newer run cancels the previous run for the same pull request. Main push
-runs are independent.
+skip in that row. A new first attempt cancels the previous first attempt for the same pull
+request. A rerun uses its own run group, so it cannot cancel validation of the current pull
+request head. Main push runs are independent.
 
 The Sunday 18:00 UTC schedule still runs all backends in full, including both Vulkan validation
 tiers. The matrix reports its own result independently of Product CI.
@@ -1223,8 +1224,8 @@ headless tests. The native GPU matrix runs in its own workflow.
 Foliage, terrain format and Windows console correctness use the same dependency scope as the
 GPU matrix on pull requests and main pushes. Changes outside a workflow's inputs leave a
 Scope result explaining the skip. Each workflow runs its full check weekly and remains
-available by manual dispatch. For pull requests, a newer run cancels the previous one.
-Each main push keeps its own run.
+available by manual dispatch. For pull requests, a newer first attempt cancels the previous
+first attempt. Reruns and pushes to main each use their own run group.
 
 | Workflow | Sunday UTC | Hosted check |
 | --- | --- | --- |

@@ -264,8 +264,16 @@ Release and local test setup use `scripts/build-release-tests.sh`. The explicit 
 process prerequisite. Other solution files acquire that prerequisite only when their resolved roots
 include this checkout's actual tooling project. Product CI includes the verifier as a compile-only
 root without calling that setup script. `tooling-validation.yml` owns test execution for the renderer
-tooling suite. Its explicit path inventory, manual and reusable entrypoints keep that validation
-separate and gate paid renderer allocation.
+tooling suite. Its `select` job is bounded at five minutes, and its Scope step selects suites
+independently from the changed paths. The automatic push and pull request filters are exactly the
+selector's inputs, including sources linked by `RendererPerfShared.props`, and the selector fixture
+fails when a filter misses an input or lists a path no suite reads. A base commit that is missing
+from the checkout selects all four suites. General scripts and hooks select Product CI's tooling
+stage. Changes to the tooling workflow itself select all four suites. Manual dispatch and the
+reusable prerequisite validate the requested suite. A new commit on a pull request supersedes that
+pull request's older run. Main pushes, manual dispatches, reusable calls and reruns use run-specific
+groups to preserve each result and protect the renderer prerequisite for paid runs. A rerun stays
+out of the pull request group because it keeps its old commit and would cancel the current one.
 
 The same selector routes Items benchmark inputs to the explicit outside-solution
 `tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj` suite on hosted Ubuntu. Dispatch selects
@@ -282,3 +290,8 @@ also accepts `nav`. All three named Release facts must pass with zero skips befo
 approved capture or restoration campaign. The seven SupportQueryCapture methods and both enabled
 and disabled theory rows stay in Movement.Tests and default engine CI. Other production Movement
 edits retain their ordinary engine tests without automatically selecting the research suite.
+
+The `coverage` route builds `Coverage.Verify.Tests` once on hosted Ubuntu. The project reference
+builds `Coverage.Verify` and makes its executable assembly available to the synthetic CLI process
+tests. The workflow checks the inventory and verifies the TRX contains passing process tests and
+zero skips.

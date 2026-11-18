@@ -12,8 +12,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('windows-console-pr-{0}', github.event.pull_request.number) || format('windows-console-{0}-{1}', github.event_name, github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: >-
+    ${{ github.event_name == 'pull_request' && github.run_attempt == 1 &&
+        format('windows-console-pr-{0}', github.event.pull_request.number) ||
+        format('windows-console-{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}
 
 jobs:
   scope:

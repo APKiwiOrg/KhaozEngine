@@ -7,20 +7,24 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class TemporalDetailMathTests
 {
     [Theory]
-    [InlineData(128u, true, TemporalHistoryDetail.Fine, 8)]
-    [InlineData(128u, true, TemporalHistoryDetail.Fine, 6)]
-    [InlineData(128u, true, TemporalHistoryDetail.Display, 5)]
-    [InlineData(127u, true, TemporalHistoryDetail.Display, 8)]
-    [InlineData(0u, true, TemporalHistoryDetail.Display, 8)]
-    [InlineData(128u, false, TemporalHistoryDetail.Display, 8)]
-    public void The_scene_reports_fallback_before_creating_any_fine_target(uint dimensionLimit, bool resolves,
-        TemporalHistoryDetail expected, int attachments)
+    [InlineData(128u, true, TemporalHistoryDetail.Fine, 8, TemporalHistoryDetail.Fine, 64, 48)]
+    [InlineData(128u, true, TemporalHistoryDetail.Fine, 6, TemporalHistoryDetail.Fine, 64, 48)]
+    [InlineData(128u, true, TemporalHistoryDetail.Display, 5, TemporalHistoryDetail.Fine, 64, 48)]
+    [InlineData(127u, true, TemporalHistoryDetail.Display, 8, TemporalHistoryDetail.Fine, 64, 48)]
+    [InlineData(0u, true, TemporalHistoryDetail.Display, 8, TemporalHistoryDetail.Fine, 64, 48)]
+    [InlineData(128u, false, TemporalHistoryDetail.Display, 8, TemporalHistoryDetail.Fine, 64, 48)]
+    [InlineData(16384u, true, TemporalHistoryDetail.Fine, 8, null, 2560, 1440)]
+    [InlineData(16384u, true, TemporalHistoryDetail.Display, 8, null, 3840, 2160)]
+    [InlineData(16384u, false, TemporalHistoryDetail.Display, 8, null, 2560, 1440)]
+    public void The_scene_latches_the_admitted_history_before_creating_fine_targets(uint dimensionLimit, bool resolves,
+        TemporalHistoryDetail expected, int attachments, TemporalHistoryDetail? requested, int width, int height)
     {
-        using var rig = new HeadlessSceneRig(maxColorAttachments: attachments, maxRenderTexture2DDimension: dimensionLimit);
+        using var rig = new HeadlessSceneRig(maxColorAttachments: attachments,
+            maxRenderTexture2DDimension: dimensionLimit, historyDetail: requested);
         rig.Scene.Post.Quality.AntiAliasing = resolves ? AntiAliasing.Temporal : AntiAliasing.Off;
-        rig.Scene.ForceTemporalForTests = true;
-        rig.Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Fine;
-        rig.Frame();
+        rig.Scene.ForceTemporalForTests = requested.HasValue;
+        rig.Frame(width, height);
+        Assert.Equal(resolves, rig.Scene.ResolvedLastRenderForTests);
         Assert.Equal(expected, rig.Scene.TemporalHistoryDetailInEffect);
         Assert.Equal(expected == TemporalHistoryDetail.Fine, rig.Scene.TemporalHistory.DetailStore is not null);
     }
@@ -65,10 +69,10 @@ public sealed class TemporalDetailMathTests
     public void The_default_budget_admits_1440p_and_refuses_2160p_and_unknown_modes_are_display()
     {
         var settings = new PixelPostProcessSettings().Temporal;
-        Assert.Equal(TemporalHistoryDetail.Display, settings.HistoryDetail);
-        Assert.Equal(TemporalHistoryDetail.Fine, TemporalDetailMath.Mode(TemporalHistoryDetail.Fine,
+        Assert.Equal(TemporalHistoryDetail.Fine, settings.HistoryDetail);
+        Assert.Equal(TemporalHistoryDetail.Fine, TemporalDetailMath.Mode(settings.HistoryDetail,
             true, 2560, 1440, 16384, settings.HistoryDetailPixelLimit, 8));
-        Assert.Equal(TemporalHistoryDetail.Display, TemporalDetailMath.Mode(TemporalHistoryDetail.Fine,
+        Assert.Equal(TemporalHistoryDetail.Display, TemporalDetailMath.Mode(settings.HistoryDetail,
             true, 3840, 2160, 16384, settings.HistoryDetailPixelLimit, 8));
         Assert.Equal(TemporalHistoryDetail.Display, TemporalDetailMath.Mode((TemporalHistoryDetail)99,
             true, 1, 1, 16384, long.MaxValue, 8));
@@ -88,7 +92,7 @@ public sealed class TemporalDetailMathTests
     [Fact]
     public void A_live_mode_change_resets_once_and_later_renders_keep_the_latched_mode()
     {
-        using var rig = new HeadlessSceneRig();
+        using var rig = new HeadlessSceneRig(historyDetail: TemporalHistoryDetail.Display);
         rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         rig.Frame();
         rig.Frame();

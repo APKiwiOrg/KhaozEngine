@@ -433,9 +433,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   single-sample and never combines with MSAA. Moving draws
   pass a `MotionKey` through `RigidInstanceDraw` or `SkinnedInstanceDraw`, camera jumps call `Scene3D.CameraCut()`,
   and `Scene3D.DebugView`, `Scene3D.RequestTemporalCounts()` and `LastTemporalDiagnostics` show what the resolve did.
-  `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. Opt-in `Fine` keeps an extra
-  RGBA16F colour pair at twice the display on each axis. Moving pixels can read its four reprojected texels,
-  retain bounded sub-pixel deviations and preserve the resolved mean. Still and distrusted pixels use the
+  `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Fine`. It takes effect on resolving frames within
+  the limits below. Set `Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display` to use the display-sized history.
+  Fine keeps an extra RGBA16F colour pair at twice the display on each axis. Moving pixels can read its four
+  reprojected texels, retain bounded sub-pixel deviations and preserve the resolved mean. Still and distrusted pixels use the
   original display history and replicate the resolved colour. A pixel is still when its stored motion is below a
   128th of a display pixel. A still surface can store a few least motion steps of rounding. With camera-relative
   rendering in force the most measured is a quarter of that gate at the default budget's 2560 by 1440, and it can
@@ -452,21 +453,20 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   a certified frame.
   Both paths present the resolve directly, before
   distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
-  latched on the frame's first render. Fine requires the temporal resolve, six colour attachments, a fitting
-  device texture dimension,
-  and a display pixel count within `Post.Temporal.HistoryDetailPixelLimit` (default 3,686,400). At the default
-  budget's 2560 by 1440 it adds 341.02 MiB of mode-specific targets (97 bytes a display pixel): 225 MiB for the
-  pair and 116.02 MiB of display-grid scratch.
-  At 3840 by 2160 the pair alone would use 506.25 MiB and falls back to Display by default.
-  Nonpositive budgets disable Fine and unknown enum values mean Display. A mode change resets history once
-  with `TemporalResetReason.HistoryDetail`. Later renders and captures leave the pair untouched.
-  A failure to allocate the admitted pair or its scratch is not a fallback. It throws from the render as a
-  failure of the display-sized history does, the mode stays Fine, and each later frame retries until it
-  succeeds or the setting or the display size changes.
-  Fine costs about 7.6 to 8.3 ms more GPU time a frame than the default split resolve at 1440p, Native and
-  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), about 2.9 to 3.5 times the default
-  resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
-  report-only aim, Fine within 3 ms of the default split resolve at Native, is not met.
+  latched on the frame's first render. Fine requires the temporal resolve, at least six colour attachments,
+  a device texture dimension that fits twice the display, and a display pixel count within
+  `Post.Temporal.HistoryDetailPixelLimit` (default 3,686,400). A resolving frame uses Display if the device or
+  pixel limits refuse Fine. At 3840 by 2160 the resolve uses Display under the default budget. At 2560 by 1440,
+  Fine adds 341.02 MiB of mode-specific targets (97 bytes a display pixel): 225 MiB for the pair and 116.02 MiB
+  of display-grid scratch. Nonpositive budgets disable Fine and unknown enum values mean Display.
+  A mode change resets history once with `TemporalResetReason.HistoryDetail`. Later renders and captures
+  leave the pair untouched. If the admitted pair or its scratch fails to allocate, the mode stays Fine and each
+  frame throws until allocation succeeds or the setting or display size changes.
+  Fine costs about 7.6 to 8.3 ms more GPU time a frame than the Display split resolve at 1440p, Native and
+  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), about 2.9 to 3.5 times the Display
+  split resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
+  measured gap exceeds the report-only 3 ms target at Native. The suite asserts its moving-detail protocols
+  for Display and reports them for Fine.
   The passes, their measured times and the precision reasons for their structure are in the
   [resolve design](../docs/design/TEMPORAL-RESOLVE.md#cost-capture).
   Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent

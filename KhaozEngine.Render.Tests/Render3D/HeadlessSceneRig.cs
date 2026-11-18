@@ -20,7 +20,7 @@ internal sealed class HeadlessSceneRig : IDisposable
     readonly IGpuCommandList _commands;
 
     internal HeadlessSceneRig(GpuBackendKind backend = GpuBackendKind.Vulkan, int maxColorAttachments = 8,
-        uint maxRenderTexture2DDimension = 16384)
+        uint maxRenderTexture2DDimension = 16384, TemporalHistoryDetail? historyDetail = TemporalHistoryDetail.Display)
     {
         Device = new FakeGpuDevice(backend, maxColorAttachments: maxColorAttachments,
             maxRenderTexture2DDimension: maxRenderTexture2DDimension);
@@ -29,8 +29,8 @@ internal sealed class HeadlessSceneRig : IDisposable
         _target = Device.Factory.CreateFramebuffer(null, _color);
         _commands = Device.Factory.CreateCommandList();
         Scene = new Scene3D(Device, _target.Outputs);
-        // Keep existing frame contracts on Display.
-        Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
+        // Existing frame contracts use Display. Null exercises the scene's own default.
+        if (historyDetail is { } detail) Scene.Post.Temporal.HistoryDetail = detail;
         Scene.Post.Starfield = false;
         Scene.Post.RenderScale = RenderScale.MatchViewport;
     }

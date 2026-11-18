@@ -16,13 +16,13 @@ public sealed partial class Scene3D
         _frameStats.DrawCalls += 2;   // classification and update, beyond the ordinary resolve and depth store
     }
 
-    /// <summary>The history grid latched by the last frame's first render. Display before the first render,
-    /// without the temporal resolve, when Fine exceeds its pixel or dimension limits, or when the device has fewer
-    /// than six colour attachments.</summary>
+    /// <summary>The history grid latched by the last frame's first render. Fine is requested by default and
+    /// takes effect on resolving frames within the device and pixel limits. The value is Display before the first
+    /// render, without a resolve, with an explicit opt-out, or when admission fails.</summary>
     public TemporalHistoryDetail TemporalHistoryDetailInEffect { get; private set; }
 
-    // Admission is evaluated only when Fine is requested on a resolving frame, so the default reads neither the
-    // device limit nor the budget. Leaving Fine still latches Display here, which is what resets the history.
+    // Check device limits and budget only when a resolving frame requests Fine, the default request.
+    // Latching a different grid resets history through the frame key.
     void LatchTemporalDetail() => TemporalHistoryDetailInEffect =
         Post.Temporal.HistoryDetail == TemporalHistoryDetail.Fine && _frameResolves
             ? TemporalDetailMath.Mode(TemporalHistoryDetail.Fine, resolves: true, _latchedDisplayWidth,

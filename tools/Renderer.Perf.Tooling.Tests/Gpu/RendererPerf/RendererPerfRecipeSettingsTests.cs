@@ -36,7 +36,9 @@ public sealed class RendererPerfRecipeSettingsTests
     [Theory, InlineData(false), InlineData(true)]
     public void Legacy_settings_keep_the_frozen_field_encoding(bool temporal)
     {
-        object settings = temporal ? new TemporalSettings { ShadowLightHoldTexels = 1f } : new AtmosphereSettings();
+        object settings = temporal
+            ? new TemporalSettings { ShadowLightHoldTexels = 1f, HistoryDetail = TemporalHistoryDetail.Display }
+            : new AtmosphereSettings();
         var legacy = JsonSerializer.SerializeToNode(settings, LegacyOptions)!.AsObject();
         legacy.Remove(temporal ? nameof(TemporalSettings.ShadowLightHoldTexels) : nameof(AtmosphereSettings.AerialShadowSamples));
         if (temporal)
@@ -51,13 +53,16 @@ public sealed class RendererPerfRecipeSettingsTests
     [Theory, InlineData(true), InlineData(false)]
     public void An_explicit_history_detail_or_pixel_budget_is_captured_in_the_identity(bool detail)
     {
-        var frozen = new TemporalSettings { ShadowLightHoldTexels = 1f };
-        var settings = new TemporalSettings { ShadowLightHoldTexels = 1f };
+        var frozen = new TemporalSettings { ShadowLightHoldTexels = 1f, HistoryDetail = TemporalHistoryDetail.Display };
+        var settings = new TemporalSettings { ShadowLightHoldTexels = 1f, HistoryDetail = TemporalHistoryDetail.Display };
         if (detail) settings.HistoryDetail = TemporalHistoryDetail.Fine;
         else settings.HistoryDetailPixelLimit = frozen.HistoryDetailPixelLimit - 1;
         var encoded = JsonSerializer.SerializeToNode(settings, RendererPerfRecipe.Json)!.AsObject();
 
-        Assert.True(encoded.ContainsKey(detail ? nameof(TemporalSettings.HistoryDetail) : nameof(TemporalSettings.HistoryDetailPixelLimit)));
+        if (detail)
+            Assert.Equal(nameof(TemporalHistoryDetail.Fine), encoded[nameof(TemporalSettings.HistoryDetail)]!.GetValue<string>());
+        else
+            Assert.True(encoded.ContainsKey(nameof(TemporalSettings.HistoryDetailPixelLimit)));
         Assert.NotEqual(RendererPerfRecipe.Digest(frozen), RendererPerfRecipe.Digest(settings));
     }
 

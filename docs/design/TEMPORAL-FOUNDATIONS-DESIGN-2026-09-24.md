@@ -127,7 +127,7 @@ distortion toggle or a bloom change, no longer discard temporal state. History r
   `Resize`,
 - a device or backend reset,
 - a change of the colour history grid in effect, reported as `HistoryDetail`
-  ([fine colour store](TEMPORAL-RESOLVE.md#optional-fine-colour-store)),
+  ([fine colour store](TEMPORAL-RESOLVE.md#fine-colour-store)),
 - `Scene3D.CameraCut()`, for teleports, loading screens and cutscene cuts,
 - an automatic cut when the camera moves further than `Post.Temporal.CutDistanceMetres` (default 16) or turns more
   than `Post.Temporal.CutAngleDegrees` (default 60) in one frame.

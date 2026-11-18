@@ -140,21 +140,25 @@ follow that owner's read/write indices and target generation. A separate 16-byte
 jitter and readiness without changing the 256-byte resolve uniform contract. Amendment 35 specifies the
 copy, invalidation and retirement rules.
 
-### Optional fine colour store
+### Fine colour store
 
-`Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. `Fine` adds a pair of colour
+`Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Fine`. Set
+`Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display` to opt out. Fine adds a pair of colour
 targets at exactly twice the display on each axis, in the history's RGBA16F format. `TemporalDetailStore`
 belongs to `TemporalHistory`, shares its target generation and read/write indices, and exists only while
 Fine is in effect. State, previous depth, visibility, jitter and internal size keep their original grids.
 The resolve keeps its original reconstruction, clipping, releases and weights. Only its central history
 colour fetch changes on admitted moving pixels. Display composes and runs the original shader programs.
+The suite asserts the moving-detail protocols for Display and reports them for Fine.
 
 The first render latches `Scene3D.TemporalHistoryDetailInEffect`. Fine requires the temporal resolve,
 at least six `GpuCapabilities.MaxColorAttachments`, an extent within
 `GpuCapabilities.MaxRenderTexture2DDimension`, and a display pixel count at or below
-`Post.Temporal.HistoryDetailPixelLimit`. Unknown device limits refuse Fine. The pixel budget defaults to
-3,686,400, so 2560 by 1440 is admitted and 3840 by 2160 falls back to Display. The additional pair costs
-225 MiB and 506.25 MiB respectively. Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
+`Post.Temporal.HistoryDetailPixelLimit`. A resolving frame uses Display when the device limits refuse Fine,
+when they are unknown, or when the display exceeds its pixel budget. A frame without a resolve reports Display
+and allocates no fine store. The budget defaults to 3,686,400, so 2560 by 1440 can run Fine and 3840 by 2160
+runs Display. The additional pair would cost 225 MiB and 506.25 MiB respectively.
+Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
 A failure to allocate the admitted pair or its scratch is not a fallback. The pair is created in
 `TemporalHistory.EnsureTargets` and the scratch with the fine pass when the resolve binds, and either failure
 throws from the render, as a failure of the display-sized history does. The latch still reads Fine, so each
@@ -465,11 +469,11 @@ checks validity, and the fine-grid store point-copies the completed children.
 | Quality | Fine | `temporal.resolve` | 8.815 (8.636 to 9.042) | 9.332 (9.110 to 9.570) |
 | Quality | Fine | `temporal.detail-store` | 0.676 (0.661 to 0.787) | 0.757 (0.656 to 0.812) |
 
-Fully-lit Native's median of each frame's summed Fine intervals is 11.477 ms (10.938 to 12.275), against default split's 3.860 ms. The difference is 7.617 ms.
-Fully-lit Quality's median of each frame's summed Fine intervals is 11.609 ms (11.353 to 11.743), against default split's 3.339 ms. The difference is 8.270 ms.
-Shadowed Native's median of each frame's summed Fine intervals is 11.994 ms (11.853 to 12.338), against default split's 4.155 ms. The difference is 7.840 ms.
-Shadowed Quality's median of each frame's summed Fine intervals is 11.894 ms (11.739 to 12.292), against default split's 4.179 ms. The difference is 7.715 ms.
-The report-only aim is Fine within 3 ms of default split at Native. It is not met. No timing assertion is added.
+Fully-lit Native's median of each frame's summed Fine intervals is 11.477 ms (10.938 to 12.275), against Display split's 3.860 ms. The difference is 7.617 ms.
+Fully-lit Quality's median of each frame's summed Fine intervals is 11.609 ms (11.353 to 11.743), against Display split's 3.339 ms. The difference is 8.270 ms.
+Shadowed Native's median of each frame's summed Fine intervals is 11.994 ms (11.853 to 12.338), against Display split's 4.155 ms. The difference is 7.840 ms.
+Shadowed Quality's median of each frame's summed Fine intervals is 11.894 ms (11.739 to 12.292), against Display split's 4.179 ms. The difference is 7.715 ms.
+The report-only aim is Fine within 3 ms of Display split at Native. It is not met. No timing assertion is added.
 
 Payload remains 64 retained and 33 scratch bytes a display pixel: a fine RGBA16F pair, one R8
 classification target and four display-grid RGBA16F child targets. At 1440p these are 225.00 MiB and
@@ -718,7 +722,7 @@ unchanged.
   nullable `Post.Temporal.UpscaleRatio` that overrides it, `Post.Temporal.Sharpness` and
   `Post.Temporal.MipBiasOffset`, beside the foundations' cut thresholds.
 - `Post.Temporal.HistoryDetail`, `Post.Temporal.HistoryDetailPixelLimit` and the read-only
-  `Scene3D.TemporalHistoryDetailInEffect` select and report the [optional fine colour store](#optional-fine-colour-store).
+  `Scene3D.TemporalHistoryDetailInEffect` select and report the [fine colour store](#fine-colour-store).
 - `Scene3D.LastTemporalDiagnostics` gains the internal and display sizes, the preset, and per-frame counts of
   disoccluded, reactive and clipped pixels, sampled on a coarse grid so reading them costs nothing measurable.
 - `Scene3D.DebugView` includes `History`, `Disocclusion`, `Reactive` and `Shimmer`.
@@ -740,9 +744,9 @@ paths.
    upscaled, on a resolution chart golden.
 7. **Mip bias.** A textured checkerboard at `Performance` keeps the native reference's detail within tolerance.
 8. **Byte identity off.** With temporal off, every committed golden is unchanged.
-9. **Cost.** On the Grimhollow town and meadow paths on Apple silicon, the resolve and sharpen together cost under
-   1.0 ms at 2560x1440 display. The default preset's whole frame beats MSAA 4x's frame time, measured in the
-   Grimhollow probe and confirmed by the owner's windowed playtest.
+9. **Display cost baseline.** On town and meadow paths on Apple silicon, the Display resolve and sharpen
+   together cost under 1.0 ms at 2560x1440 display. At the default upscale preset, Display's whole-frame time
+   was lower than MSAA 4x in the same probe. For Fine, see the [cost capture](#cost-capture).
 10. **No steady allocation** with temporal active.
 
 The accepted still-detail source is pinned like any other shader edit, by the composed-source and emission

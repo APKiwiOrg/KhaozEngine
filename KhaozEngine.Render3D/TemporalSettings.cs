@@ -21,16 +21,15 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public sealed class TemporalSettings
     {
-        /// <summary>The colour history grid, <see cref="TemporalHistoryDetail.Display"/> by default. Fine keeps an
-        /// additional colour pair at twice the display on each axis for admitted moving history.
-        /// Takes effect on the frame's first render, only while the temporal resolve runs and both the device limit
-        /// and <see cref="HistoryDetailPixelLimit"/> admit it. Unknown values behave as Display. Read
-        /// <see cref="Scene3D.TemporalHistoryDetailInEffect"/> for the latched selection. A change of that selection
-        /// resets history for one frame with <see cref="TemporalResetReason.HistoryDetail"/>. A failure to allocate
-        /// the admitted pair or its scratch is not a fallback: it throws from the render, as a failure of the
-        /// display-sized history does, the mode stays Fine and each later frame retries until it succeeds or the
-        /// setting or the display size changes.</summary>
-        public TemporalHistoryDetail HistoryDetail = TemporalHistoryDetail.Display;
+        /// <summary>The colour history grid, <see cref="TemporalHistoryDetail.Fine"/> by default. Fine keeps an
+        /// additional colour pair at twice the display on each axis for admitted moving history. The frame's first
+        /// render admits Fine when the temporal resolve runs and the device limits and <see cref="HistoryDetailPixelLimit"/>
+        /// allow it. Otherwise the selection is <see cref="TemporalHistoryDetail.Display"/>, which also serves as the
+        /// explicit opt-out and the selection for unknown values. Read <see cref="Scene3D.TemporalHistoryDetailInEffect"/>
+        /// for the latched selection. A change resets history for one frame with <see cref="TemporalResetReason.HistoryDetail"/>.
+        /// If the pair or its scratch fails to allocate, the mode stays Fine and each frame throws until allocation
+        /// succeeds or the setting or display size changes.</summary>
+        public TemporalHistoryDetail HistoryDetail = TemporalHistoryDetail.Fine;
 
         /// <summary>Inclusive display pixel budget for Fine, default 3,686,400 (2560 by 1440). Its extra RGBA16F
         /// colour pair uses 225 MiB at that size, plus 116.02 MiB of display-grid scratch (341.02 MiB total).

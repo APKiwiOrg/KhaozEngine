@@ -8,17 +8,16 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-18
 
-A minor: additive runtime API in `KhaozEngine.Render3D` and `KhaozEngine.Gpu`. The default temporal resolve
-is unchanged, and nothing an existing consumer does changes.
+A minor with additive runtime API in `KhaozEngine.Render3D` and `KhaozEngine.Gpu`. When temporal anti-aliasing
+is enabled, it now requests the fine colour history by default.
 
-**Optional fine colour history for temporal anti-aliasing.**
+**Fine colour history for temporal anti-aliasing.**
 
-- `Post.Temporal.HistoryDetail` selects the colour history grid of the temporal resolve. The default,
-  `TemporalHistoryDetail.Display`, is the resolve as it was: no existing shader program, pass, target or
-  binding changes. Opt-in `TemporalHistoryDetail.Fine` keeps an extra RGBA16F colour pair at twice the display
-  on each axis. An admitted moving pixel reads its four reprojected texels and keeps their bounded sub-pixel
-  deviations around its resolved colour, so detail under camera motion is not blurred by repeated resampling
-  of a display-sized history. A still pixel, whose stored motion is below a 128th of a display pixel a frame,
+- `Post.Temporal.HistoryDetail` selects the colour history grid of the temporal resolve. The default request,
+  `TemporalHistoryDetail.Fine`, keeps an extra RGBA16F colour pair at twice the display on each axis.
+  Set `Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display` for the display-sized history. An admitted
+  moving pixel reads its four reprojected texels and keeps their bounded sub-pixel deviations around its resolved
+  colour, preserving detail under camera motion across repeated resampling. A still pixel, whose stored motion is below a 128th of a display pixel a frame,
   and a distrusted one take `Display`'s path.
 - Fine needs the temporal resolve, six colour attachments, a device 2D render texture dimension that holds
   twice the display, and a display pixel count within the new `Post.Temporal.HistoryDetailPixelLimit`
@@ -27,15 +26,15 @@ is unchanged, and nothing an existing consumer does changes.
   `Scene3D.TemporalHistoryDetailInEffect` reports the selection latched on the frame's first render, and a
   change of it resets history for one frame with the new `TemporalResetReason.HistoryDetail`.
 - Cost. At 2560 by 1440 Fine adds 341.02 MiB of targets, 225 MiB for the pair and 116.02 MiB of display-grid
-  scratch, and about 7.6 to 8.3 ms of GPU time a frame over the default resolve on an Apple M2 Max
-  (2026-11-16 UTC), about 2.9 to 3.5 times its cost. A failure to allocate the pair or its scratch is not a
-  fallback: it throws from the render, as a failure of the display-sized history does.
+  scratch, and about 7.6 to 8.3 ms of GPU time a frame over the Display split resolve on an Apple M2 Max
+  (2026-11-16 UTC), about 2.9 to 3.5 times its cost. If the admitted pair or its scratch fails to allocate, the
+  mode stays Fine and each frame throws until allocation succeeds or the setting or display size changes.
 - Limits. A still frame in Fine is `Display`'s byte for byte where the device computes the two compiled
   programs alike and a still surface's stored motion stays below the gate. With camera-relative rendering in
   force that holds at displays within the default budget. With the render origin opted out it stops holding
   about 1,000 m along a horizontal axis from the world origin at 2560 by 1440. The
   [temporal resolve design](docs/design/TEMPORAL-RESOLVE.md#the-still-gate) has the measurements and the
-  per-device rules the suite asserts.
+  per-device still rules. The suite asserts the moving-detail protocols for Display and reports them for Fine.
 
 **GPU seam.**
 

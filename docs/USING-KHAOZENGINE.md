@@ -4922,7 +4922,8 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   loss at `Performance` is open in [#1212](https://github.com/APKiwiOrg/KhaozEngine/issues/1212). A pixel just after a
   reset takes the rebuild at the internal resolution, and a moving pixel shifts towards it, wholly at 2 display pixels
   a frame, so fast motion reads softer until it settles.
-- **History grid.** `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Display`. Opt-in `Fine`
+- **History grid.** `Post.Temporal.HistoryDetail` defaults to `TemporalHistoryDetail.Fine`. Set
+  `Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display` to use the display-sized history. Fine
   allocates an extra RGBA16F colour pair at exactly twice the display on each axis. Admitted moving pixels
   resolve from the mean of four reprojected fine-history fetches. Their finite, nonnegative deviations survive
   into the next generation while their stored mean stays within one binary16 step of the display result.
@@ -4944,28 +4945,27 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   asserted. On the software rasterizers they follow the rules Display's own program pairs keep there:
   on llvmpipe the entry pair's rules for colour and the shimmer record, on WARP the certificate rule on a fully
   lit certified frame. There is no new presentation filter. The update runs before distortion, bloom and
-  tonemapping. The temporal
-  resolve must be active, the device must allow at least six colour attachments, the extent must fit the
-  device's 2D render texture dimension limit, and the display's
-  pixel count must fit the inclusive `Post.Temporal.HistoryDetailPixelLimit`. That budget defaults to 3,686,400,
-  admitting 2560 by 1440 with 225 MiB for the extra pair and 116.02 MiB of display-grid scratch, 341.02 MiB total
-  (97 bytes a display pixel, excluding ordinary Display targets and driver overhead).
-  A 3840 by 2160 pair alone would need 506.25 MiB and
-  falls back to Display by default. Nonpositive budgets disable Fine and unknown enum values mean Display.
-  A failure to allocate the admitted pair or its scratch is not a fallback. It throws from the render as a
-  failure of the display-sized history does, the mode stays Fine, and each later frame retries until it
-  succeeds or the setting or the display size changes.
-  Read `Scene3D.TemporalHistoryDetailInEffect` for the selection latched by the last frame's first render,
-  Display before rendering. A change of that selection resets history for one frame with
-  `TemporalResetReason.HistoryDetail`. A settings change within the frame waits for the next frame.
+  tonemapping. Fine requires the temporal resolve, at least six colour attachments, a device 2D render texture
+  dimension that fits twice the display, and a display pixel count within the inclusive
+  `Post.Temporal.HistoryDetailPixelLimit`. When the device or pixel limits refuse Fine, the resolve uses Display.
+  The budget defaults to 3,686,400, so 3840 by 2160 uses Display. At 2560 by 1440, Fine adds 225 MiB for the
+  pair and 116.02 MiB of display-grid scratch, 341.02 MiB total (97 bytes a display pixel, excluding ordinary
+  Display targets and driver overhead). Nonpositive budgets disable Fine and unknown enum values mean Display. If the admitted pair or its
+  scratch fails to allocate, the mode stays Fine and each frame throws until allocation succeeds or the setting
+  or display size changes.
+  Read `Scene3D.TemporalHistoryDetailInEffect` for the selection latched by the last frame's first render.
+  It reports Display before rendering and on frames without a resolve. Those frames allocate no fine store.
+  A change of that selection resets history for one frame with `TemporalResetReason.HistoryDetail`.
+  A settings change within the frame waits for the next frame.
   Resizes recreate the pair with history, and cuts and other resets re-seed its write side. A later render
   inside the frame, including an offscreen capture, neither reads nor advances it.
   Temporal debug views and on-request counts replay the selected mode's own history fetch and trust gate.
-  Fine costs about 7.6 to 8.3 ms more GPU time a frame than the default split resolve at 1440p, Native and
-  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), about 2.9 to 3.5 times the default
-  resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
-  report-only aim, Fine within 3 ms of the default split resolve at Native, is not met. The passes, their
-  measured times and the precision reasons for their structure are in the
+  Fine costs about 7.6 to 8.3 ms more GPU time a frame than the Display split resolve at 1440p, Native and
+  Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), about 2.9 to 3.5 times the Display
+  split resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The
+  measured gap exceeds the report-only 3 ms target at Native. The suite asserts its moving-detail protocols
+  for Display and reports them for Fine. The passes, their measured times and the precision reasons for their
+  structure are in the
   [resolve design](design/TEMPORAL-RESOLVE.md#cost-capture).
 - **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.
   `Post.Temporal.Sharpness` runs from 0 (the pass does not run) to 1, default 0.25, and a value outside that range is

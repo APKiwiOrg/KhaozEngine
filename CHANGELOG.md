@@ -9,7 +9,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 2026-11-18
 
 A minor with additive runtime API in `KhaozEngine.Render3D`. The fine temporal colour history no longer takes the
-frame down when its own targets cannot be created.
+frame down when its own targets cannot be created. Long routes cost far less to straighten, with identical results.
 
 **Fine colour history creation fallback.**
 
@@ -32,6 +32,20 @@ frame down when its own targets cannot be created.
 - Proof. The frame that fell back is Display's frame byte for byte over a moving camera, on Apple Metal hardware
   and on the hosted Direct3D 11 and Vulkan software rasterizers. Fine has not run on Direct3D 11 or Vulkan
   hardware.
+
+**Route footprint scan.**
+
+- The swept footprint check behind route straightening in `KhaozEngine.Movement` visits only the columns its
+  segment can touch in each row, instead of every column of the segment's bounding rectangle. Every accepted and
+  refused segment and every route is bit for bit what it was: the exact predicate, the row then column order
+  and each column decision are unchanged, and the full rectangle is still scanned wherever the exclusion cannot
+  be certified. No public API and no setting changes.
+- Measured on one capture per revision, Apple M2 Max, Release with tiered compilation off, 2026-11-18 UTC. A long
+  player route on a 1,536 by 1,280 cell profile took a warmed median of 186.2 ms before and 18.1 ms after, with
+  the same 14 waypoints. Across the 27 recorded routes and 4,790 footprint inputs of three shipped profiles,
+  exact geometry calls fell from 9,951,198 to 788,102 with the same 625,407 hits. A request whose goal is
+  unreachable did not change, since it never reaches straightening
+  ([#1290](https://github.com/APKiwiOrg/KhaozEngine/issues/1290)).
 
 ## 24.1.0
 

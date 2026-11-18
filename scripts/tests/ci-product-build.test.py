@@ -10,6 +10,7 @@ import runpy
 import subprocess
 import sys
 import tempfile
+import textwrap
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -98,6 +99,32 @@ def check_native_reference_growth(matcher, rules, manifest):
     raise AssertionError('Native scope audit accepted a stale render closure after adding a reference')
 
 
+def check_gpu_skip(scratch):
+    workflow = (ROOT / '.github/workflows/cross-platform-gpu.yml').read_text()
+    selector = workflow.split('      - id: pick\n', 1)[1].split('\n  gpu-golden:', 1)[0]
+    command = textwrap.dedent(selector.split('        run: |\n', 1)[1])
+    output = scratch / 'gpu-skip-output'
+    subprocess.run(
+        ['bash', '-c', command],
+        env={**os.environ, 'SELECTED': 'false', 'GITHUB_OUTPUT': str(output)},
+        check=True,
+    )
+    values = dict(line.split('=', 1) for line in output.read_text().splitlines())
+    matrix = json.loads(values['matrix'])
+    assert len(matrix.get('include', [])) == 1, 'Off-scope GPU must have one report row'
+    row = matrix['include'][0]
+    assert row['skip'] is True and row['runner'].startswith('ubuntu-')
+    assert values['sharded'] == '[]' and values['vulkan_native'] == 'false'
+
+    golden = workflow.split('\n  gpu-golden:\n', 1)[1].split('\n  gpu-full-suite:\n', 1)[0]
+    steps = re.split(r'^      - ', golden.split('    steps:\n', 1)[1], flags=re.M)[1:]
+    report, *gpu_steps = steps
+    assert re.search(r'^        if: matrix.skip == true$', report, re.M)
+    assert gpu_steps
+    for step in gpu_steps:
+        assert re.search(r'^        if: matrix.skip != true(?: && .+)?$', step, re.M), step.splitlines()[0]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--matcher', required=True, type=Path)
@@ -128,6 +155,7 @@ def main():
     canonical = projects(ROOT / 'KhaozEngine.slnx')
     with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as scratch:
         scratch = Path(scratch)
+        check_gpu_skip(scratch)
         full = plan(True, [], scratch)
         roots = projects(scratch / 'product.slnx')
         tests = projects(scratch / 'tests.slnx')

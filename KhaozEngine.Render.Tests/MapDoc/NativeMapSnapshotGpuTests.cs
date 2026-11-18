@@ -24,6 +24,7 @@ public sealed class NativeMapSnapshotGpuTests
         var request = CaptureDependencyFixtures.Request();
         var positive = NativeMapSnapshot.Capture(request, scene =>
         {
+            PinDisplayHistory(scene);
             Assert.Equal(TemporalUpscale.Quality, scene.Post.Temporal.Upscale);
             var lights = scene.LightsForTests;
             var point = Assert.Single(lights.Cast<KhaozEngine.Render3D.Rendering.ModelRenderer.PointLightData>());
@@ -45,7 +46,7 @@ public sealed class NativeMapSnapshotGpuTests
         // The actual tool wire counterpart lives in MapEditor.Tests.NativeMapCaptureWireTests.
         // It is required in that project's existing backend shard, with no capability skip.
         var request = CaptureDependencyFixtures.Request(1) with { Requirement = MapCaptureRequirement.Preview };
-        var result = NativeMapSnapshot.Capture(request);
+        var result = NativeMapSnapshot.Capture(request, PinDisplayHistory);
         Assert.NotNull(result.Image); Assert.Equal(MapSceneStatus.Incomplete, result.Status);
         Assert.True(result.Witness.Capped); Assert.False(result.Witness.Scene.CompleteForScope); Assert.False(result.Witness.Scene.WholeWorldComplete);
         Assert.Equal(0, result.Readiness.Pending); Assert.Equal(1, result.Readiness.Ready);
@@ -119,6 +120,9 @@ public sealed class NativeMapSnapshotGpuTests
         Assert.Null(result.Image); Assert.Null(result.Backend);
     }
 
+    // Keep the comparison captures on the display-grid history.
+    static void PinDisplayHistory(Scene3D scene) => scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
+
     static Render3DCapture CaptureOmittingCaster(MapSnapshotRequest request, string omitted)
     {
         var prepared = MapCapturePreparation.Prepare(request); NativeMapView? view = null;
@@ -129,6 +133,7 @@ public sealed class NativeMapSnapshotGpuTests
             Render3DSnapshot.CaptureSequence(640, 480, scene =>
             {
                 NativeMapSnapshot.Configure(scene, request);
+                PinDisplayHistory(scene);
                 var state = new MapRenderSourceState(request.Source, request.Closure, request.Source.RenderExtents!, request.Policy.Render, prepared.Witness.AcquiredScopes);
                 sink = new MapScene3DSink(scene) { Restriction = new(request.Scope.DrawBounds) };
                 residency = new(state, sink); view = new(scene, residency);

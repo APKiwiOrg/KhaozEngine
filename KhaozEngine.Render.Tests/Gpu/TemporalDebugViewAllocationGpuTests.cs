@@ -34,6 +34,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuFramebuffer captureFb = gd.Factory.CreateFramebuffer(null, capture);
             using IGpuCommandList cl = gd.Factory.CreateCommandList();
             using var scene = new Scene3D(gd, displayFb.Outputs);
+            scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
             scene.Post.UseSmoothPreset();
             scene.Post.Bloom.Enabled = true;
             scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;

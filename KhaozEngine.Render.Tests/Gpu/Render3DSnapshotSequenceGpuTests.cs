@@ -132,6 +132,7 @@ public sealed class Render3DSnapshotSequenceGpuTests
     static void SetupTemporal(Scene3D scene, out MeshHandle box)
     {
         Configure(scene);
+        scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         scene.Post.Temporal.Upscale = TemporalUpscale.Native;
         scene.Camera.Frame(Vector3.Zero, new Vector3(3f));

@@ -31,7 +31,8 @@ internal sealed class DaylightShadowStage(bool ridges)
         scene.Post.UseSmoothPreset();
         scene.Post.RenderScale = RenderScale.MatchViewport;
         scene.Post.Quality.AntiAliasing = aa;
-        scene.Post.Temporal = new TemporalSettings { Upscale = preset };
+        // Keep the daylight shadow reference on the display-grid history.
+        scene.Post.Temporal = new TemporalSettings { Upscale = preset, HistoryDetail = TemporalHistoryDetail.Display };
         scene.Post.TransparentBackground = false;
         scene.Post.BackgroundColor = new Color(0.04f, 0.05f, 0.07f, 1f);
         scene.Post.AmbientColor = new Color(0.03f, 0.03f, 0.03f, 1f);

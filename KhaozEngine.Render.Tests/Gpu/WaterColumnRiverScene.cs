@@ -232,6 +232,8 @@ public sealed class WaterColumnRiverScene : IDisposable
         if (_scene is not null) return;
         _scene = new Scene3D(device, _target.Outputs,
             new ShadowSettings { ShadowMapResolution = 2048, ShadowCascadeCount = 1 });
+        // Keep the temporal river captures on the display-grid history.
+        _scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         _plane = _scene.LoadMesh(MeshPrimitives.Plane());
         _box = _scene.LoadMesh(MeshPrimitives.Box());
     }

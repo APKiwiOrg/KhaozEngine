@@ -29,6 +29,8 @@ internal sealed class HeadlessSceneRig : IDisposable
         _target = Device.Factory.CreateFramebuffer(null, _color);
         _commands = Device.Factory.CreateCommandList();
         Scene = new Scene3D(Device, _target.Outputs);
+        // Keep existing frame contracts on Display.
+        Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         Scene.Post.Starfield = false;
         Scene.Post.RenderScale = RenderScale.MatchViewport;
     }

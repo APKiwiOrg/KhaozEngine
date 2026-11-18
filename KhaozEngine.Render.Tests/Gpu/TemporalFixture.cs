@@ -40,6 +40,8 @@ public sealed class TemporalFixture : IDisposable
         Scene.Post.RenderScale = RenderScale.MatchViewport;
         Scene.RenderOrigin = Vector3.Zero;
         Scene.Camera.Target = Vector3.Zero;
+        // Keep the fixture on Display unless the caller selects a mode.
+        Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         setup?.Invoke(Scene);
     }
 

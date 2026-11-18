@@ -89,6 +89,7 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
                 using var compileScope = compileDiagnostics.Use();
                 var result = NativeMapSnapshot.Capture(request, scene =>
                 {
+                    scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
                     // The first callback follows setup, SettleForCapture and the first view.Draw.
                     if (frame == 0) Stamp($"capture {current} setup/resources ready (first pre-render callback)");
                     if (frame == 1) Stamp($"capture {current} first frame complete (second pre-render callback)");
@@ -145,6 +146,7 @@ public sealed partial class NativeMapCaptureWireTests(ITestOutputHelper testOutp
             int submitted = 0;
             harness.Services.GetRequiredService<RenderService>().NativeCapture = request => NativeMapSnapshot.Capture(request, scene =>
             {
+                scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
                 if (request.StyleId == "windy") { AssertSubmittedFocus(scene, request); submitted++; }
                 else Assert.Empty(scene.FoliageUniformsForTests.ToArray());
             });

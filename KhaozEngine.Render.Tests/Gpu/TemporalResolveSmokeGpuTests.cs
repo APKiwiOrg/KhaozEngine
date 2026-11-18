@@ -35,6 +35,8 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     scene.Post.UseSmoothPreset();
                     scene.Post.RenderScale = RenderScale.MatchViewport;   // 1:1 unless temporal forces its own scale
+                    // Keep the smoke comparisons on the display-grid history.
+                    scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
                     scene.Post.Quality.AntiAliasing = aa;
                     scene.Post.Temporal.Upscale = upscale;
                     scene.Post.TransparentBackground = false;

@@ -44,6 +44,7 @@ namespace KhaozEngine.Tests.Gpu
                 160, 90, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             using IGpuFramebuffer target = factory.CreateFramebuffer(null, targetTexture);
             using var scene = new Scene3D(device, target.Outputs, new ShadowSettings { Mode = ShadowMode.Off });
+            scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
             scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
             scene.Post.Bloom.Enabled = bloom;
@@ -181,6 +182,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList cl = gd.Factory.CreateCommandList();
             using var scene = new Scene3D(gd, swapchain.Outputs);
             var stage = new FrontStage(w, h, 4.5f);
+            scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
             stage.Setup(scene, AntiAliasing.Temporal, TemporalUpscale.Quality);
             scene.Post.Bloom.Enabled = bloom;
             scene.RenderOrigin = Vector3.Zero;

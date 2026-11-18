@@ -26,6 +26,8 @@ internal sealed class MotionTestScene : IDisposable
             Width, Height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
         Target = _device.Factory.CreateFramebuffer(null, _colour);
         Scene = new Scene3D(_device, Target.Outputs);
+        // Keep the resolve used by the motion allocation checks on Display.
+        Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         Scene.Post.Starfield = false;
         Scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
         Scene.Camera.Frame(Vector3.Zero, new Vector3(4f, 3f, 4f));

@@ -330,6 +330,8 @@ public sealed class AtmosphereGoldenScene : IDisposable
         // Copy every public settings field so later fixture users cannot leak an unrelated post knob.
         // Private CPU caches remain owned by the scene and refresh from the new live settings.
         var defaults = new PixelPostProcessSettings();
+        // Keep the temporal goldens on the display-grid history.
+        defaults.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         foreach (var field in PostFields) field.SetValue(scene.Post, field.GetValue(defaults));
         scene.Post.AtmosphereCycle = null;
         scene.Post.UseSmoothPreset();

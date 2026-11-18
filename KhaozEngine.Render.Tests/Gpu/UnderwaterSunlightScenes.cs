@@ -296,6 +296,8 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         _commands = device.Factory.CreateCommandList();
         _scene = new Scene3D(device, _target.Outputs,
             new ShadowSettings { ShadowCascadeCount = _cascadeCount, ShadowMapResolution = 2048 }, requestLitVisibility: true);
+        // Keep the temporal sunlight captures on the display-grid history.
+        _scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
         _plane = _scene.LoadMesh(MeshPrimitives.Plane());
         _box = _scene.LoadMesh(MeshPrimitives.Box());
     }

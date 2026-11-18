@@ -261,7 +261,7 @@ In this repository:
   value from prose, so a rule 9 value moves onto a structured member of the thrown exception (the refusal
   bullet under "Engine code and test contracts") and the test asserts that member. It is never a deleted
   assertion and never an exemption.
-- Rule 12's category is excluded by every default filter (`scripts/ci-selective-test.sh`, `ci.yml`,
+- Rule 12's category is excluded by every default filter (`product-ci.yml`, `ci.yml`,
   `cross-platform-gpu.yml`). Run it on demand with the cross-platform-gpu `renderTestFilter` input set to
   `Category=Diagnostic`. Issue #491 is the precedent: a wall-clock bound that flaked on a loaded shared runner.
 - Rule 14's reference is `tools/Renderer.Perf.Tooling.Tests`, outside `KhaozEngine.slnx`. It runs on the free
@@ -317,23 +317,16 @@ references it. Build it explicitly with
 before its `dotnet test -c Release --no-build` run. This target, and foreign or reduced solutions whose
 resolved roots include this exact project, also build the offline verifier required by process tests.
 Canonical project selection uses actual file identity, never a basename match. Ordinary engine CI and
-native engine shards never run or discover the tooling suite. A csproj-only edit still selects the
-architecture rump when dotnet-affected reports no affected roots. `tooling-validation.yml` owns its free
+native engine shards never run or discover the tooling suite. `tooling-validation.yml` owns its free
 three-OS validation and the prerequisite gate for separately authorized renderer campaigns.
 
-Ordinary engine CI does compile every tracked project the solution does not list, through
-`scripts/outside-solution-projects.py`, and stops there. Those projects compile engine code by project
-reference and by source files linked from other projects' folders, and no solution build sees them, so an
-engine change could stop one compiling and stay green on every run a branch gets. A dispatch of `ci` and a
-tag that does not reuse the hosted gate compile all of them. A push to `main` and a pull request compile the
-ones dotnet-affected names, plus one whose own project file is in the diff. The tool names a project for a
-changed source it links, for a changed props or targets file it imports and for a project it references
-(measured with dotnet-affected 6.2.0 on 2026-11-18). The selective path used to lose them only because it
-intersects the tool's answer with the solution, which still decides what is tested. The script finds the
-projects itself, and `scripts/tests/outside-solution-projects.test.py` compares what it finds with a roster
-written by hand, so a new project outside the solution is named there once. A compile says nothing about a
-suite's tests. A branch that changes what a tooling suite reads still dispatches that suite's own workflow
-before it lands.
+Product CI includes solution projects and the tracked projects outside the solution in one Linux
+Release build. The outside inventory comes from `scripts/outside-solution-projects.py`, which also
+serves release CI. The compile-only segments ensure an engine dependency or linked source can
+break the product check even when no solution test project reaches the affected tool. A full run
+builds every outside project. A selective run builds the ones its scope reaches. The tooling suites
+still run in their own workflows. Changes to project definitions run full so architecture tests see
+the updated graph.
 
 The outside-solution [`Items.Benchmark.Tests`](../tools/Items.Benchmark.Tests/README.md) project owns
 the process-memory-sensitive Items quick acceptance fact. Its only direct reference is Benchmarks.
@@ -388,14 +381,19 @@ The default CI filter is `Category!=LiveSocket&Category!=Diagnostic`. LiveSocket
 network peer, and Diagnostic tests report on demand rather than gate. A `.testhealth-baseline` change
 forces a FULL selective CI run.
 
-Ordinary pushes and pull requests run `scripts/ci-selective-test.sh`. Manual runs use the full
-restore, Release build, test, determinism and pack path plus the three SQL Server jobs, and never
-publish. A tag push reuses the hosted pre-tag gate when `scripts/ci-prior-gate.sh` finds a successful
-manual run of `ci` at the tag's exact commit. It then restores, builds, packs and publishes, skips the
-full test, the determinism pass and the SQL Server jobs, and cites the reused run's URL. Without such a
-run, or on any lookup doubt, the tag runs the whole manual path and publishes. Only tag pushes publish.
-Convention, instruction budget and doc-version checks run before both paths. See
-[`design/CI-SELECTIVE-TESTS.md`](design/CI-SELECTIVE-TESTS.md).
+`Product CI` handles main pushes, pull requests into main, the nightly schedule and manual
+validation. Its dependency map selects Release build roots and the corresponding headless, live SQL
+Server and water tests. The Linux job runs convention and doc-version guards even on a prose-only
+change. It shares its build with the selected tests. The ARM64 water differential has its own native
+build. `CI passed` reports the verdict. A main push or nightly can reuse a recent compatible full pass
+on the exact tree. A manual Product CI run forces full validation.
+
+The release workflow `ci` retains its manual and tag paths. A manual run restores, builds, tests
+and packs, executes the three SQL Server jobs and never publishes. A tag push reuses the hosted
+pre-tag gate when `scripts/ci-prior-gate.sh` finds a successful manual run of `ci` at the tag's exact
+commit. It restores, builds, packs and publishes, skips the full test, determinism and SQL Server
+jobs, and cites the reused run's URL. Without such a run, or on lookup doubt, the tag runs the whole
+manual path and publishes. See [CI selection and release design](design/CI-SELECTIVE-TESTS.md).
 
 The whole-tree convention checks are `scripts/check-dashes.sh`, `scripts/check-prose.sh`,
 `scripts/check-file-size.sh`, `scripts/check-agent-instructions.sh`, `scripts/check-scratch.sh`,

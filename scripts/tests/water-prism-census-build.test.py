@@ -15,7 +15,11 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--artifact-proof', action='store_true', help='Also build the real physics project in both modes and inspect a private package.')
+parser.add_argument('--prebuilt-normal-since', type=Path, metavar='BUILD_STAMP',
+                    help='Use the normal Release DLL created after this build started.')
 options = parser.parse_args()
+if options.prebuilt_normal_since and not options.artifact_proof:
+    parser.error('--prebuilt-normal-since requires --artifact-proof')
 
 
 def run(root, *args, code=0, env=None, diagnostic=None):
@@ -133,7 +137,13 @@ if options.artifact_proof:
     normal_dll = project.parent / 'bin/Release/net10.0/KhaozEngine.TileWorld.Physics.dll'
     census_dll = project.parent / 'bin/water-prism-census/Release/net10.0/KhaozEngine.TileWorld.Physics.dll'
     (ROOT / 'local-feed').mkdir(exist_ok=True)
-    run(ROOT, 'dotnet', 'build', str(project), '-c', 'Release')
+    if options.prebuilt_normal_since:
+        evaluated_dll = (project.parent / normal['TargetPath']).resolve()
+        assert evaluated_dll == normal_dll.resolve() and not normal_dll.is_symlink(), evaluated_dll
+        assert normal_dll.stat().st_mtime_ns >= options.prebuilt_normal_since.stat().st_mtime_ns, normal_dll
+        print('Using the normal Release DLL from the product build')
+    else:
+        run(ROOT, 'dotnet', 'build', str(project), '-c', 'Release')
     normal_bytes = normal_dll.read_bytes()
     assert b'TileWaterCensus' not in normal_bytes and b'KhaozEngine.Benchmarks' not in normal_bytes
     assert friends(normal_bytes) == NORMAL_FRIENDS, friends(normal_bytes)

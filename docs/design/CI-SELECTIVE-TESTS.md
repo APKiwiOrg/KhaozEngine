@@ -1,6 +1,6 @@
 # CI Selective Tests Design
 
-Status: complete, shipped in 13.0.3. Program issue: [#207](https://github.com/APKiwiOrg/KhaozEngine/issues/207)
+The per-area test split shipped in 13.0.3. Program issue: [#207](https://github.com/APKiwiOrg/KhaozEngine/issues/207)
 (which also records the rejected alternatives: per-area workflow files, consumer smoke leg).
 
 ## Problem
@@ -102,65 +102,54 @@ point of the split: selection precision comes from honest reference sets. The ru
 graph edge to do its job. That is the opposite of the prediction above: the rump ran only when its own
 files change, not on nearly every selective run, which under-selected it for a csproj-only change
 elsewhere that its rules would have caught. Fixed under #212 by a targeted rule in
-`ci-selective-test.sh`: whenever the diff touches any `*.csproj`, the rump is forced into the affected
-set alongside the dotnet-affected output (see Decision 5). It parses XML, so running it is cheap.
+Product CI: whenever the diff touches any `*.csproj`, the rump is included in the full
+run (see Decision 4). It parses XML, so running it is cheap.
 
 `KhaozEngine.TestSupport` is `IsPackable=false`, ships nothing, and is exempt from the README catalog
 and `check-doc-versions.sh` (the guard checks packable projects only, verified during
 implementation). Not to be confused with `KhaozEngine.Localization.TestKit`, which is a shipped
 package and stays one.
 
-## Decision 4: selection mechanism is dotnet-affected
+## Decision 4: project dependency scope
 
-`dotnet-affected` 6.2.0 spiked green against this repo on net10: it discovered the full project set,
-walked the graph, and correctly amplified a `Directory.Build.props` change to everything (the 13.0.1
-release commit). It lands as a committed local tool manifest (`.config/dotnet-tools.json`).
+Product CI runs on main pushes, pull requests targeting main, the nightly schedule at 03:17 UTC and
+manual dispatch. A newer run cancels its pull request's previous run. Pushes and other events each
+have their own concurrency group. The pull request checks out GitHub's test merge commit.
 
-The affected universe it reports is intersected with the test projects that are members of
-`KhaozEngine.slnx` (7 today, ~16 after the split), which is exactly what root `dotnet test` runs. The
-tool discovers by directory scan, the slnx is the authority, the intersection guards any future
-divergence.
+Scope compares a pull request with its base and a main push with the last passing run of this workflow
+on an ancestor. It considers both paths of a rename. The rules in `.github/ci-scope.txt` follow the
+transitive `ProjectReference` directories and preserve path case. A project graph change, linked
+source, shared build input, missing or malformed rules, or an unknown path requests a full run.
+Project-file changes also run the architecture tests that inspect the solution and project XML (#212).
+The build helper checks the segment inventory and rules against the actual graph, including
+conditional references. A valid rule set with a stale project mapping fails the check. Files known
+to be prose may skip compilation and still run whole-tree convention guards.
 
-## Decision 5: ci.yml event split
+## Decision 5: product and release validation
 
-Tag pushes and `workflow_dispatch` keep the current full path unchanged: restore, build, full test,
-determinism double-pass, pack, publish (Decision 7 later let a tag reuse a prior dispatch's tests). Push (main) and `pull_request` take a selective path,
-encapsulated in `scripts/ci-selective-test.sh` so it is runnable and testable locally:
+`product-ci.yml` builds one Release solution on hosted Linux x64. The solution combines selected
+test and compile-only roots. A full run includes every canonical solution root and every tracked
+project outside it, found by `scripts/outside-solution-projects.py` (#1847). Two selected segments
+that share a root compile it once. The temporary test solution uses only canonical test roots, keeps
+solution-level parallelism and writes one TRX per assembly. The Release build refuses Debug
+outputs. The default filter excludes LiveSocket and Diagnostic. Foundation and FloatingPoint
+determinism rerun under tiering 0 and 1 when their assemblies are selected.
 
-1. Diff base: `github.event.before` for pushes, merge-base against the base branch for PRs. A zero or
-   unknown before-sha falls back to FULL.
-2. Force-FULL file classes (belt and braces over the tool's own handling): `.github/workflows/**`,
-   `scripts/**`, `Directory.Build.props`, `.testhealth-baseline`, `nuget.config`, `*.slnx`,
-   `.config/dotnet-tools.json`. The test-health baseline forces FULL because its allowances apply across
-   test projects.
-3. Otherwise run `dotnet affected`, intersect with slnx test projects. Then, if the diff touched any
-   `*.csproj`, add the architecture-test rump (`KhaozEngine.Tests`) to that set: it has zero
-   `ProjectReference`s so dotnet-affected never reaches it, yet its rules validate csproj XML, so a
-   csproj-only violation would otherwise slip to the next full run (#212, see Decision 3).
-4. Empty affected set (including docs-only pushes): the selective script skips its restore, build,
-   test and pack slice. Whole-workflow water gates still run as described below. The projects outside
-   the solution that the affected set names are compiled first, as the section on outside-solution
-   tooling below describes. A docs-only diff names none.
-5. Non-empty: restore + build the affected test projects (their references pull in exactly the needed
-   slice), then `dotnet test --no-build` each, with the `Category!=LiveSocket&Category!=Diagnostic` filter. The
-   determinism step runs for each of `KhaozEngine.Foundation.Tests` and `KhaozEngine.FloatingPoint.Tests`
-   (between them the owners of the `DeterministicFp` and fan-out determinism tests) that is affected, scoped
-   to that project instead of the whole solution.
-6. No distribution pack in the selective slice. Pack requires a full build, and its regression window is bounded by the
-   next tag run, which in this repo is hours. Tag runs still pack and publish exactly as today.
+Live catalog, account and journal/world-store/commerce tests use the same build and one disposable
+SQL Server. Each suite has its own database environment, with separate journal and commerce
+databases for the server suite. Each selected filter must execute every fact. The water segment
+checks the same frozen differential corpus in both tiering modes on Linux x64 and macOS ARM64,
+with one two-root Release build on ARM64. Linux also checks census output isolation against its
+already built ordinary physics DLL, a separate census build and a private test package. The
+package verifies that the normal DLL stays unchanged and free of census code.
 
-The water-kernel differential matrix and census build-isolation proof are unconditional exceptions.
-Keeping them independent of affected-project selection prevents a kernel or category change from silently
-omitting the oracle. The matrix adds one headless physics-test build on hosted x64 and one on hosted arm64,
-with the differential corpus under tiering 0 and 1 on each. Every TRX must contain a positive executed count
-equal to its total, with zero failures. The isolation proof adds normal and census physics builds and one
-private normal no-build package inspection before selective testing starts. These jobs therefore run even
-on docs-only changes, with no publishing. Their hosted durations are not measured here, so there is no
-whole-workflow completion-time promise for that path.
+The last job, `CI passed`, covers Scope, Linux and ARM64 and writes the run summary. A passing full
+run records its tested tree. A main push or nightly can reuse a trusted, unexpired full pass for
+the same tree. A recent conflicting full failure or inconclusive lookup blocks reuse. A reuse or
+partial run creates no new full-pass marker. Manual Product CI dispatch always runs the full suite.
 
-Known and accepted: release pushes carry the version bump in `Directory.Build.props`, so they run
-FULL by rule 2. Correct (a shared-props change genuinely affects everything), and the tag run that
-follows within minutes is full anyway. The selective win is the non-bump push.
+`ci.yml` retains the pre-tag dispatch and tag paths. Its release gate uses an exact-commit dispatch
+as described in Decision 7. The product tree marker has no role in releasing packages.
 
 ## Decision 6: cross-platform-gpu.yml touches paths only
 
@@ -214,41 +203,9 @@ on every gate run without changing what the gate runs. A wiring bug that makes t
 The reuse rule rests on one invariant inside this file: a `workflow_dispatch` of `ci` runs the full
 sequence. Matching on `head_sha` means the reused run executed this same `ci.yml`, so the invariant is
 checked by reading the file at the tag's commit. An edit that makes dispatches skip work must revisit
-this decision. The cost is one short serial job before `build-test-pack` on tags and dispatches. Push and
-pull request runs skip `prior-gate` and do not wait on it. Covered by `scripts/tests/ci-prior-gate.test.sh`
+this decision. The cost is one short serial job before `build-test-pack` on tags and dispatches. Covered by `scripts/tests/ci-prior-gate.test.sh`
 with a stubbed `gh` (match, no match, failed, cancelled and in-progress runs, other event, commit,
 workflow or repository, API error, pagination gap, malformed responses, report-only and usage errors).
-
-## Execution order
-
-One commit per stage, full `dotnet build` + root `dotnet test` green after each:
-
-1. `KhaozEngine.TestSupport` + `KhaozEngine.Foundation.Tests` extracted (proves the pattern).
-2. Remaining clusters, roughly bottom-up (Simulation, Server, Render, Gui, MapEditor, Game, Audio,
-   Particles). IVT retargets ride each cluster's commit. The gpu workflow path update rides the
-   Render commit.
-3. Selection: tool manifest, `scripts/ci-selective-test.sh`, ci.yml rewiring.
-4. Docs sweep (AGENTS.md test-location rule, README repo layout, workflow headers), CHANGELOG,
-   single version bump (patch, no package API changes).
-
-## Risks
-
-- Full-run test time rises slightly (per-assembly runner overhead, ~16 assemblies). Accepted,
-  measured at the green gates. Knob if it ever hurts: `dotnet test` per-project parallelism.
-- Latent test-ordering assumptions surface when collections split across assemblies. The green gates
-  catch the loud ones, the weekly full hosted legs the rest.
-- `dotnet-affected` abandonment or breakage: the script isolates it, the fallback is a ~150-line
-  engine-owned tool on `Microsoft.Build.Graph` with the same contract.
-- A future test project added without minimal references quietly degrades selection (everything
-  affects it). The rump is the sanctioned place for that. AGENTS.md carries the rule.
-
-## Verification
-
-Each stage gates on a local full suite. After merge and release: the main push run must take the
-selective path (expected FULL, the bump is in the diff), the tag run must run full and publish (under
-Decision 7 a tag run with a green dispatch at its commit reuses it instead), and
-the next natural docs-only push demonstrates the fast path. All three watched to green before the
-issue closes.
 
 ## As implemented
 
@@ -283,36 +240,18 @@ Two known selection imprecisions surfaced after the split, both verified, both n
   the `assets/dungeon/**` kit straight into its own output instead of getting it transitively from the
   Showcase reference. Render.Tests no longer references Showcase, so an Audio change now flags
   {Audio.Tests, Showcase.Tests}, not the heavy Render.Tests.
-- **#212, under-selection (fixed).** The rump ended with zero `ProjectReference`s (see the Decision 3
-  correction above), so a csproj-only change elsewhere that `ArchitectureTests` would flag did not mark
-  the rump affected, and was caught only at the next full run. Fix: `ci-selective-test.sh` now adds the
-  rump to the affected set whenever the diff touches any `*.csproj` (Decision 5, step 3).
+- **#212, under-selection (fixed).** The architecture tests inspect project definitions independently
+  of their project-reference graph. Product CI handles this by selecting full coverage on project-file
+  changes.
 
+Release and local test setup use `scripts/build-release-tests.sh`. The explicit outside-solution
+`tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj` target owns its offline verifier
+process prerequisite. Other solution files acquire that prerequisite only when their resolved roots
+include this checkout's actual tooling project. Product CI includes the verifier as a compile-only
+root without calling that setup script. `tooling-validation.yml` owns test execution for the renderer
+tooling suite. Its explicit path inventory, manual and reusable entrypoints keep that validation
+separate and gate paid renderer allocation.
 
-Release test setup uses `scripts/build-release-tests.sh` in ordinary CI and local contributor commands.
-Engine targets retain their solution-owned selection and do not build renderer tooling. The explicit
-outside-solution `tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj` target owns its
-offline verifier process prerequisite. Other solution files acquire that prerequisite only when their
-resolved roots include this checkout's actual tooling project. A matching basename is insufficient.
-
-The affected set still intersects `KhaozEngine.slnx` for tests, so no outside-solution suite is run or
-discovered even when dotnet-affected names its project. A tooling csproj edit still adds the architecture
-rump, including when the graph walker reports no affected projects, and a baseline
-edit still forces FULL. `tooling-validation.yml` selects the renderer suite from an explicit watched
-path inventory and offers explicit manual and reusable entrypoints. Its free validation gates paid
-renderer allocation without adding a tooling test to ordinary engine CI. Missing or failed prerequisites
-refuse tests.
-
-Ordinary engine CI compiles the projects outside the solution and runs none of their tests
-(`scripts/outside-solution-projects.py`). FULL and the dispatch sequence compile every one after the
-solution build. SELECTIVE compiles, before any test, the ones dotnet-affected names and one whose own
-project file is in the diff. Nothing else is needed, because the tool already follows the edges that
-matter: on 2026-11-18, dotnet-affected 6.2.0 named the three renderer tooling projects for a changed
-source they link from `test-shared`, the same three for a changed props file they import, a project
-outside the solution for an edit of its own file, and six of the eleven for a changed render source. The
-projects were lost only at the intersection with `KhaozEngine.slnx`, which is right for tests and wrong
-for a compile. The watched path inventory above selects which suites RUN. It is not what decides a
-compile: a hand-kept inventory is how a new partial of a linked class went unwatched.
 The same selector routes Items benchmark inputs to the explicit outside-solution
 `tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj` suite on hosted Ubuntu. Dispatch selects
 `items` independently of renderer. The nine retained Items structural and resident-memory instrument

@@ -1,0 +1,249 @@
+name: Product CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('product-ci-pr-{0}', github.event.pull_request.number) || format('product-ci-{0}-{1}-{2}', github.event_name, github.sha, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    name: Scope
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+      segments: ${{ steps.scope.outputs.segments }}
+      reason: ${{ steps.plan.outputs.reason }}
+      reuse: ${{ steps.plan.outputs.reuse }}
+      build: ${{ steps.plan.outputs.build }}
+      water: ${{ steps.plan.outputs.water }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        uses: APKiwiOrg/ci-workflows/.github/actions/ci-scope@34620461681142889c750bee8f16b15a766289e0
+      - id: tested
+        if: >-
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          !startsWith(steps.scope.outputs.reason, 'Full run: the last full run') &&
+          !startsWith(steps.scope.outputs.reason, 'Full run: the last passing run could not be read') &&
+          !startsWith(steps.scope.outputs.reason, 'Full run: cannot tell which workflow')
+        uses: APKiwiOrg/ci-workflows/.github/actions/ci-tested-tree@34620461681142889c750bee8f16b15a766289e0
+        with:
+          workflow: .github/workflows/product-ci.yml
+      - name: Resolve build and test roots
+        id: plan
+        env:
+          FULL: ${{ steps.scope.outputs.full }}
+          SEGMENTS: ${{ steps.scope.outputs.segments }}
+          SCOPE_REASON: ${{ steps.scope.outputs.reason }}
+          TESTED: ${{ steps.tested.outputs.reuse }}
+          TESTED_RUN: ${{ steps.tested.outputs.run-url }}
+        run: |
+          plan=$(python3 -B scripts/ci-product-build.py "$FULL" "$SEGMENTS")
+          echo "$SCOPE_REASON"
+          jq . <<< "$plan"
+          if [[ "$TESTED" == true ]] && jq -e .valid_rules <<< "$plan" > /dev/null; then
+            echo "reuse=true" >> "$GITHUB_OUTPUT"
+            echo "reason=$SCOPE_REASON. Reused full pass at $TESTED_RUN." >> "$GITHUB_OUTPUT"
+          else
+            echo "reuse=false" >> "$GITHUB_OUTPUT"
+            counts=$(jq -r '"\(.build_roots | length) build roots, \(.test_roots | length) test roots, \(.outside_roots | length) outside roots"' <<< "$plan")
+            if [[ "$FULL" == false ]]; then
+              roots=$(jq -r '[.build_roots[] | split("/")[-1]] | join(", ")' <<< "$plan")
+              if [[ -n "$roots" ]]; then counts="$counts ($roots)"; fi
+            fi
+            echo "reason=$SCOPE_REASON. $counts." >> "$GITHUB_OUTPUT"
+          fi
+          echo "build=$(jq -r '.build_roots | length > 0' <<< "$plan")" >> "$GITHUB_OUTPUT"
+          echo "water=$(jq -r '.overlays | index("water-kernel") != null' <<< "$plan")" >> "$GITHUB_OUTPUT"
+
+  linux:
+    name: Linux x64 product
+    needs: scope
+    if: needs.scope.outputs.reuse == 'false'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 75
+    env:
+      GITHUB_PACKAGES_PAT: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 'Test: conventions'
+        run: |
+          test -f .prose-baseline
+          test -f .filesize-baseline
+          sh scripts/check-dashes.sh --tree
+          sh scripts/check-prose.sh --tree
+          sh scripts/check-home-paths.sh --tree
+          sh scripts/check-file-size.sh --tree
+          sh scripts/check-agent-instructions.sh --tree
+          sh scripts/check-scratch.sh --tree
+          sh scripts/check-fp-control-tests.sh --tree
+          bash scripts/check-doc-versions.sh
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: needs.scope.outputs.build == 'true'
+        with:
+          dotnet-version: '10.0.x'
+      - name: Prepare the selected solutions
+        id: plan
+        env:
+          FULL: ${{ needs.scope.outputs.full }}
+          SEGMENTS: ${{ needs.scope.outputs.segments }}
+        run: |
+          mkdir -p obj/ci-product
+          plan=obj/ci-product/selection.json
+          python3 -B scripts/ci-product-build.py "$FULL" "$SEGMENTS" \
+            --solutions obj/ci-product > "$plan"
+          echo "test=$(jq -r '.test_roots | length > 0' "$plan")" >> "$GITHUB_OUTPUT"
+          for name in sql-catalog sql-accounts sql-server; do
+            echo "$name=$(jq -r --arg name "$name" '.overlays | index($name) != null' "$plan")" >> "$GITHUB_OUTPUT"
+          done
+          for name in Foundation FloatingPoint; do
+            echo "$name=$(jq -r --arg name "KhaozEngine.$name.Tests" \
+              '.test_roots | any(startswith($name + "/"))' "$plan")" >> "$GITHUB_OUTPUT"
+          done
+      - name: Build
+        id: build
+        if: needs.scope.outputs.build == 'true'
+        run: |
+          test "$RUNNER_ARCH" = X64
+          mkdir -p local-feed
+          touch obj/ci-product/build-start
+          dotnet restore obj/ci-product/product.slnx
+          dotnet build obj/ci-product/product.slnx -c Release --no-restore -p:ShouldUnsetParentConfigurationAndPlatform=false
+          debug_outputs=$(find . -type d -path '*/bin/Debug' -prune -print)
+          if [[ -n "$debug_outputs" ]]; then
+            printf 'Unexpected Debug outputs:\n%s\n' "$debug_outputs" >&2
+            exit 1
+          fi
+      - name: 'Test: product'
+        if: steps.plan.outputs.test == 'true'
+        run: bash scripts/ci-product-test.sh product
+      - name: 'Test: foundation-determinism'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.plan.outputs.Foundation == 'true' }}
+        run: bash scripts/ci-product-test.sh determinism KhaozEngine.Foundation.Tests
+      - name: 'Test: floating-point-determinism'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.plan.outputs.FloatingPoint == 'true' }}
+        run: bash scripts/ci-product-test.sh determinism KhaozEngine.FloatingPoint.Tests
+      - name: 'Test: water-kernel'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && needs.scope.outputs.water == 'true' }}
+        run: bash scripts/ci-product-test.sh water-kernel
+      - name: 'Test: water-census'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && needs.scope.outputs.water == 'true' }}
+        run: |
+          python3 -B scripts/tests/water-prism-census-build.test.py --artifact-proof \
+            --prebuilt-normal-since obj/ci-product/build-start
+          python3 -B scripts/tests/regenerate-water-prism-census.test.py
+          python3 -B scripts/tests/check-water-kernel-trx.test.py
+      - name: Start disposable SQL Server
+        id: sql
+        if: >-
+          !cancelled() && steps.build.outcome == 'success' &&
+          (steps.plan.outputs.sql-catalog == 'true' || steps.plan.outputs.sql-accounts == 'true' || steps.plan.outputs.sql-server == 'true')
+        timeout-minutes: 10
+        run: bash scripts/ci-product-sql.sh start
+      - name: 'Test: sql-catalog'
+        if: ${{ !cancelled() && steps.sql.outcome == 'success' && steps.plan.outputs.sql-catalog == 'true' }}
+        run: bash scripts/ci-product-sql.sh sql-catalog
+      - name: 'Test: sql-accounts'
+        if: ${{ !cancelled() && steps.sql.outcome == 'success' && steps.plan.outputs.sql-accounts == 'true' }}
+        run: bash scripts/ci-product-sql.sh sql-accounts
+      - name: 'Test: sql-server'
+        if: ${{ !cancelled() && steps.sql.outcome == 'success' && steps.plan.outputs.sql-server == 'true' }}
+        run: bash scripts/ci-product-sql.sh sql-server
+      - name: Collect SQL diagnostics
+        if: failure() && steps.sql.outcome != 'skipped'
+        run: |
+          mkdir -p "$RUNNER_TEMP/product-ci-results"
+          docker logs product-ci-sql > "$RUNNER_TEMP/product-ci-results/sql-server.log" 2>&1 || true
+      - name: Collect Linux test results
+        if: ${{ !cancelled() && needs.scope.outputs.build == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        timeout-minutes: 5
+        with:
+          name: product-ci-linux-x64
+          path: ${{ runner.temp }}/product-ci-results
+          if-no-files-found: ignore
+
+  water-arm64:
+    name: macOS ARM64 water
+    needs: scope
+    if: needs.scope.outputs.reuse == 'false' && needs.scope.outputs.water == 'true'
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      GITHUB_PACKAGES_PAT: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        env:
+          FULL: ${{ needs.scope.outputs.full }}
+          SEGMENTS: ${{ needs.scope.outputs.segments }}
+        run: |
+          echo "Runner architecture $RUNNER_ARCH, machine architecture $(uname -m)"
+          test "$RUNNER_ARCH" = ARM64
+          test "$(uname -m)" = arm64
+          mkdir -p local-feed
+          python3 -B scripts/ci-product-build.py "$FULL" "$SEGMENTS" \
+            --solutions obj/ci-product > /dev/null
+          dotnet restore obj/ci-product/water.slnx
+          dotnet build obj/ci-product/water.slnx -c Release --no-restore -p:ShouldUnsetParentConfigurationAndPlatform=false
+          debug_outputs=$(find . -type d -path '*/bin/Debug' -prune -print)
+          if [[ -n "$debug_outputs" ]]; then
+            printf 'Unexpected Debug outputs:\n%s\n' "$debug_outputs" >&2
+            exit 1
+          fi
+      - name: 'Test: water-kernel'
+        run: bash scripts/ci-product-test.sh water-kernel
+      - name: Collect ARM64 water test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        timeout-minutes: 5
+        with:
+          name: product-ci-macos-arm64
+          path: ${{ runner.temp }}/product-ci-results
+          if-no-files-found: ignore
+
+  ci-passed:
+    name: CI passed
+    needs: [scope, linux, water-arm64]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: APKiwiOrg/ci-workflows/.github/actions/ci-finish@34620461681142889c750bee8f16b15a766289e0
+        with:
+          needs: ${{ toJSON(needs) }}
+          allow-skipped: ${{ needs.scope.result == 'success' && (needs.scope.outputs.reuse == 'true' && 'linux water-arm64' || (needs.scope.outputs.water == 'false' && 'water-arm64' || '')) || '' }}
+          full: ${{ needs.scope.result == 'success' && needs.scope.outputs.reuse == 'true' && 'false' || needs.scope.outputs.full }}
+          segments: ${{ needs.scope.outputs.segments }}
+          scope-reason: ${{ needs.scope.outputs.reason }}

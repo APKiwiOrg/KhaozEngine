@@ -37,7 +37,9 @@ namespace KhaozEngine.CodeHealth.Analyzers
             var run = new SubnormalFloatRun(context.Compilation);
             context.RegisterOperationAction(run.CheckConstant, ConstantKinds);
             context.RegisterOperationAction(run.CheckInvocation, OperationKind.Invocation);
+            context.RegisterOperationAction(run.CheckDynamicInvocation, OperationKind.DynamicInvocation);
             context.RegisterOperationAction(run.CheckMethodReference, OperationKind.MethodReference);
+            context.RegisterOperationAction(run.CheckEpsilon, OperationKind.PropertyReference);
             context.RegisterOperationAction(run.RecordFieldInitializer, OperationKind.FieldInitializer);
             context.RegisterCompilationEndAction(run.ReportReadonlyFields);
         }

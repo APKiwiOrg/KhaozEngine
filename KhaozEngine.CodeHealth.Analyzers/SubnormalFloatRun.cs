@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -22,10 +23,15 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         public SubnormalFloatRun(Compilation compilation)
         {
-            _mathF = compilation.GetTypeByMetadataName("System.MathF");
-            _bitConverter = compilation.GetTypeByMetadataName("System.BitConverter");
-            _unsafe = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.Unsafe");
-            _ieee754 = compilation.GetTypeByMetadataName("System.Numerics.IFloatingPointIeee754`1");
+            var single = compilation.GetSpecialType(SpecialType.System_Single);
+            var coreLibrary = single.ContainingAssembly;
+            _mathF = ResolveBclType(compilation, coreLibrary, "System.MathF");
+            _bitConverter = ResolveBclType(compilation, coreLibrary, "System.BitConverter");
+            _unsafe = ResolveBclType(compilation, coreLibrary, "System.Runtime.CompilerServices.Unsafe");
+            // Start from float's own interfaces so a same-named source declaration cannot hide the BCL slot.
+            _ieee754 = single.AllInterfaces.FirstOrDefault(static type =>
+                type.Name == "IFloatingPointIeee754" && type.Arity == 1 &&
+                type.ContainingNamespace.ToDisplayString() == "System.Numerics")?.OriginalDefinition;
             // Match the namespace written by FloatUlp.targets, or the unmodified template used as source.
             var assemblyNamespace = Regex.Replace(compilation.AssemblyName ?? "", "[^A-Za-z0-9_.]", "_");
             _helper = compilation.Assembly.GetTypeByMetadataName(assemblyNamespace + ".FloatSteps.FloatUlp");
@@ -47,41 +53,81 @@ namespace KhaozEngine.CodeHealth.Analyzers
         public void CheckInvocation(OperationAnalysisContext context)
         {
             var invocation = (IInvocationOperation)context.Operation;
-            CheckMethod(context, invocation.TargetMethod, invocation.Syntax);
+            CheckMethod(context, invocation.TargetMethod);
             CheckBitsReadAsFloat(context, invocation);
             CheckConstantHelperStep(context, invocation);
+        }
+
+        public void CheckDynamicInvocation(OperationAnalysisContext context)
+        {
+            var invocation = (IDynamicInvocationOperation)context.Operation;
+            if (invocation.Operation is not IDynamicMemberReferenceOperation member || !IsStepName(member.MemberName))
+                return;
+            if (invocation.SemanticModel is not { } model) return;
+
+            // A singleton target can still be late-bound. Roslyn puts it in Symbol instead of CandidateSymbols.
+            var binding = model.GetSymbolInfo(invocation.Syntax, context.CancellationToken);
+            if (binding.Symbol is IMethodSymbol method && CheckMethod(context, method)) return;
+            foreach (var candidate in binding.CandidateSymbols)
+            {
+                if (candidate is IMethodSymbol target && CheckMethod(context, target)) return;
+            }
         }
 
         public void CheckMethodReference(OperationAnalysisContext context)
         {
             var reference = (IMethodReferenceOperation)context.Operation;
-            CheckMethod(context, reference.Method, reference.Syntax);
+            CheckMethod(context, reference.Method);
+        }
+
+        public void CheckEpsilon(OperationAnalysisContext context)
+        {
+            var property = ((IPropertyReferenceOperation)context.Operation).Property;
+            if (property.Name != "Epsilon" || !IsIeee754(property.ContainingType)) return;
+
+            var argument = property.ContainingType.TypeArguments[0];
+            if (argument is ITypeParameterSymbol parameter)
+            {
+                Report(context, context.Operation.Syntax.GetLocation(),
+                    $"Epsilon reads through the type parameter '{parameter.Name}'. Closing it over float reads " +
+                    "the subnormal constant float.Epsilon");
+            }
+            else if (argument.SpecialType == SpecialType.System_Single)
+            {
+                Report(context, context.Operation.Syntax.GetLocation(),
+                    "IFloatingPointIeee754<float>.Epsilon reads the subnormal constant float.Epsilon");
+            }
         }
 
         public void RecordFieldInitializer(OperationAnalysisContext context) => _fieldReads.RecordInitializer(context);
 
         public void ReportReadonlyFields(CompilationAnalysisContext context) => _fieldReads.Report(context);
 
-        private void CheckMethod(OperationAnalysisContext context, IMethodSymbol method, SyntaxNode syntax)
+        private bool CheckMethod(OperationAnalysisContext context, IMethodSymbol method)
         {
-            if (method.Name == "BitDecrement" || method.Name == "BitIncrement")
+            if (!IsStepName(method.Name)) return false;
+
+            var owner = method.ContainingType;
+            if (IsFloatStepOwner(owner))
             {
-                var owner = method.ContainingType;
-                if (IsFloatStepOwner(owner))
-                {
-                    Report(context, syntax.GetLocation(),
-                        $"{Describe(owner)}.{method.Name} is a BCL float step whose zero case holds a subnormal constant");
-                    return;
-                }
-                if (IsIeee754(owner) && owner.TypeArguments[0] is ITypeParameterSymbol parameter)
-                {
-                    Report(context, syntax.GetLocation(),
-                        $"{method.Name} steps the type parameter '{parameter.Name}'. Closing it over float can inline " +
-                        "the BCL float step with its subnormal zero-case constant. For a concrete double step, use " +
-                        "Math.BitDecrement or Math.BitIncrement");
-                }
+                Report(context, context.Operation.Syntax.GetLocation(),
+                    $"{Describe(owner)}.{method.Name} is a BCL float step whose zero case holds a subnormal constant");
+                return true;
             }
+            if (!IsIeee754(owner) || owner.TypeArguments[0] is not ITypeParameterSymbol parameter) return false;
+
+            Report(context, context.Operation.Syntax.GetLocation(),
+                $"{method.Name} steps the type parameter '{parameter.Name}'. Closing it over float can inline " +
+                "the BCL float step with its subnormal zero-case constant. For a concrete double step, use " +
+                "Math.BitDecrement or Math.BitIncrement");
+            return true;
         }
+
+        private static bool IsStepName(string name) => name is "BitDecrement" or "BitIncrement";
+
+        private static INamedTypeSymbol? ResolveBclType(Compilation compilation, IAssemblySymbol? coreLibrary,
+            string metadataName) =>
+            coreLibrary?.GetTypeByMetadataName(metadataName) ?? compilation.GetTypeByMetadataName(metadataName);
 
         private void CheckBitsReadAsFloat(OperationAnalysisContext context, IInvocationOperation invocation)
         {

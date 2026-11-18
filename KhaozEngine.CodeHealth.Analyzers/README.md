@@ -160,11 +160,14 @@ The rule flags:
 - A call or method group that resolves to `MathF.BitDecrement`, `MathF.BitIncrement`, `float.BitDecrement`
   or `float.BitIncrement`, including `T.BitDecrement` on a type parameter constrained to
   `IFloatingPointIeee754<float>`. The zero branch of each holds `float.Epsilon`.
-- A `BitDecrement` or `BitIncrement` call or method group on an `IFloatingPointIeee754<T>` type parameter.
-  The rule reports where the step is written, even if the generic is unused or instantiated only with
-  `double`, because a `float` specialization can inline the BCL step with its subnormal zero-case constant.
+  A step with a `dynamic` argument reports at the call when the compiler identifies the BCL step as a
+  target or candidate.
+- A `BitDecrement` or `BitIncrement` call or method group, or an `Epsilon` reference, on an
+  `IFloatingPointIeee754<T>` type parameter. These report where written, even in an unused generic or one
+  instantiated only with `double`, because a `float` specialization can expose the subnormal constant
+  `float.Epsilon`. An `Epsilon` reference through an `IFloatingPointIeee754<float>` constraint also reports.
   Step a concrete type with `FloatUlp.Down` or `FloatUlp.Up` for `float`, or `Math.BitDecrement` or
-  `Math.BitIncrement` for `double`.
+  `Math.BitIncrement` for `double`. Read a needed subnormal from a mutable static the JIT cannot fold.
 - Any `float` expression whose compile-time constant is subnormal: a literal, `float.Epsilon`, a `const`, a
   folded expression of normal operands, a cast, and a default parameter value at each call that omits it. The
   compiler emits the outermost constant, so `(double)float.Epsilon` is a normal double and stays allowed.
@@ -199,7 +202,9 @@ What the rule cannot see:
   a static constructor. It does not follow a readonly bit field through a local or another readonly field
   into the reinterpretation. A conversion chain that leaves the integral and enum domain, such as
   `(uint)(double)Bits`, stays unknown. The analyzer does not evaluate arithmetic on readonly bit fields
-  before reinterpretation.
+  before reinterpretation. Native-sized integral conversions through `nint` or `nuint` are not evaluated.
+- A step or `Epsilon` reached by name without a bound symbol, such as through reflection, `UnsafeAccessor` or
+  emitted IL.
 - Generated code and hidden source regions that Roslyn excludes from analysis.
 - Constants inside BCL or third-party code, such as Bepu, that the JIT inlines into the calling method.
 - A stepping generic defined in another assembly, including the BCL, and instantiated with `float` here.

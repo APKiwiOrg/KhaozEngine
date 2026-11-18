@@ -123,6 +123,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Absolute 1-based texture creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnTextureCreate { get; set; }
         internal GpuPixelFormat? ThrowOnTextureFormat { get; set; }
+        // A description-based fault returns null to let that creation proceed.
+        internal Func<GpuTextureDescription, Exception?>? TextureCreationFailure { get; set; }
+        internal Func<GpuPipelineDescription, Exception?>? PipelineCreationFailure { get; set; }
         internal int ThrowOnFramebufferCreate { get; set; }
         internal int ThrowOnResourceSetCreate { get; set; }
         /// <summary>Absolute 1-based buffer creation to fail, or zero for no injected failure.</summary>
@@ -207,6 +210,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
         {
+            if (TextureCreationFailure?.Invoke(d) is { } failure) throw failure;
             if (ThrowOnTextureCreate == Textures.Count + 1 || ThrowOnTextureFormat == d.Format)
                 throw new InvalidOperationException("planned texture creation failure");
             var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format, d.Usage, d.ArrayLayers,
@@ -270,6 +274,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
         {
+            if (PipelineCreationFailure?.Invoke(d) is { } failure) throw failure;
             if (d.Outputs.Colour.Length > _maxColorAttachments) throw new InvalidOperationException("Pipeline exceeds attachment capability.");
             if (d.ShaderSet is not FakeShaderSet shaders) return new FakePipeline();
             var request = new FakeGraphicsPipelineRequest(shaders.VertexGlsl, shaders.FragmentGlsl, d);

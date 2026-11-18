@@ -159,14 +159,21 @@ when they are unknown, or when the display exceeds its pixel budget. A frame wit
 and allocates no fine store. The budget defaults to 3,686,400, so 2560 by 1440 can run Fine and 3840 by 2160
 runs Display. The additional pair would cost 225 MiB and 506.25 MiB respectively.
 Nonpositive budgets disable Fine. Unknown enum values resolve to Display.
-A failure to allocate the admitted pair or its scratch is not a fallback. The pair is created in
-`TemporalHistory.EnsureTargets` and the scratch with the fine pass when the resolve binds, and either failure
-throws from the render, as a failure of the display-sized history does. The latch still reads Fine, so each
-later frame retries: a history whose pair failed has no recorded display size and is released and rebuilt,
-and a store without its pass builds it again. That continues on every resolving frame for as long as Fine
-stays admitted and the allocation keeps failing: a change of the setting or the display size ends it only if
-Fine is then no longer admitted or the allocation then succeeds. Catching the failure and latching Display
-with its own reason would be a behaviour change with its own fact.
+
+Creation of the Fine pair and seed blit, and binding of the Fine layout and pass (scratch, shaders, pipelines,
+sets and framebuffers), absorb any exception except `OutOfMemoryException`. The GPU seam has no portable
+creation refusal type, and a driver can refuse a descriptor or pipeline as well as an allocation. Display
+history, post targets, ordinary resolve sets and entry-point objects still throw on creation failure.
+Recording, submission, debug views and count probes are outside those boundaries. A lost device can still fail
+in Display on the same device. Fine has run on Apple Metal hardware and on hosted software rasterizers only.
+
+The frame releases the failed Fine store, resolves through Display using the display targets it already
+created and records Display in the history key. Creation failure can reset history for that frame. The key
+lets the next frame continue it. `Scene3D.TemporalHistoryDetailFallback` reports `CreationFailed` and the
+scene logs the size and exception once per run of refusals. Fine retries when the display size changes,
+Display is requested for a frame or the resolve stops for a frame. Device and budget refusals report their own
+`TemporalHistoryDetailFallback` reason. This follows the
+[render resource creation rule](../RENDER-PIPELINE.md#render-resource-creation-failures).
 
 Fine computes validity on the display grid, resolves on that grid, and stores the fine grid immediately
 afterward, before distortion, bloom or tonemapping. It presents the resolve's R directly. There is no new
@@ -722,8 +729,9 @@ unchanged.
 - `Post.Temporal.Upscale` (`TemporalUpscale.Native`, `Quality`, `Balanced`, `Performance` or `UltraPerformance`), the
   nullable `Post.Temporal.UpscaleRatio` that overrides it, `Post.Temporal.Sharpness` and
   `Post.Temporal.MipBiasOffset`, beside the foundations' cut thresholds.
-- `Post.Temporal.HistoryDetail`, `Post.Temporal.HistoryDetailPixelLimit` and the read-only
-  `Scene3D.TemporalHistoryDetailInEffect` select and report the [fine colour store](#fine-colour-store).
+- `Post.Temporal.HistoryDetail` and `Post.Temporal.HistoryDetailPixelLimit` select the
+  [fine colour store](#fine-colour-store). The read-only `Scene3D.TemporalHistoryDetailInEffect` and
+  `Scene3D.TemporalHistoryDetailFallback` report the selected grid and the reason Fine was refused.
 - `Scene3D.LastTemporalDiagnostics` gains the internal and display sizes, the preset, and per-frame counts of
   disoccluded, reactive and clipped pixels, sampled on a coarse grid so reading them costs nothing measurable.
 - `Scene3D.DebugView` includes `History`, `Disocclusion`, `Reactive` and `Shimmer`.

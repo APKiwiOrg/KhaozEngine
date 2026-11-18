@@ -614,6 +614,17 @@ covers a texel centre, so a deep slice's mean holds 1 only on average over the r
 A ripple aligned with the grid measured 0.68 to 1.16 across phases at 8 m, and the moving phase can make deep bands
 shimmer from frame to frame. The bands a river shows sit short of focus, where the mean measured within 0.4% of 1.
 
+## Render resource creation failures
+
+- Creation failures propagate when the frame needs the resource to draw.
+- An optional quality tier or reconfiguration with a correct image available tries its own creation at
+  one boundary. A refusal releases the candidate resources, keeps the working path and reports the failure.
+- A refused request stays latched until the request changes, so a steady frame never retries it.
+- The consumer can read the refusal, and the scene logs it once.
+
+The cascade shadow layout, point shadow atlas, material anisotropy sampler and fine temporal history
+follow this rule. Each defines which request changes allow a retry.
+
 ## Where to look in the code
 
 | Box | Type / file |

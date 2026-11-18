@@ -166,14 +166,7 @@ namespace KhaozEngine.Render3D.Rendering
             }
             _storeSet = f.CreateResourceSet(new GpuResourceSetDescription(_storeLayout,
                 inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer));
-            try
-            {
-                if (history.DetailStore is { } detail)
-                {
-                    _detailLayout ??= f.CreateResourceLayout(new GpuResourceLayoutDescription(T("DetailColor"), T("DetailClassification")));
-                    detail.BindResolve(history, _resolveLayout, _detailLayout, _fragmentSourceForTests);
-                }
-            }
+            try { BindDetail(history); }
             catch { FreeSets(retired); throw; }
             _boundInputs = inputs;
             _boundTargets = history.TargetGeneration;

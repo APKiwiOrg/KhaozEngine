@@ -11,6 +11,29 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class TemporalDetailStoreGpuTests(TemporalDetailSceneFixture fixture, ITestOutputHelper output)
     : IClassFixture<TemporalDetailSceneFixture>
 {
+    // #1839: a refused Fine pair must render the same bytes as a scene that requested Display.
+    [GpuFact]
+    public void A_refused_fine_pair_presents_the_same_moving_frames_as_display()
+    {
+        using var display = new TemporalDetailSceneFixture.View();
+        var device = new TextureRefusalGpuDevice(display.Frame.Device,
+            2u * (uint)display.Frame.DisplayWidth, 2u * (uint)display.Frame.DisplayHeight);
+        using var refused = new TemporalDetailSceneFixture.View(null, device);
+        display.Frame.Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Display;
+        refused.Frame.Scene.Post.Temporal.HistoryDetail = TemporalHistoryDetail.Fine;
+        for (int frame = 0; frame < 4; frame++)
+        {
+            float pan = frame * 0.35f;
+            byte[] expected = display.Draw(pan);
+            byte[] actual = refused.Draw(pan);
+            Assert.Equal(TemporalHistoryDetail.Display, refused.Frame.Scene.TemporalHistoryDetailInEffect);
+            Assert.Equal(TemporalHistoryDetailFallback.CreationFailed, refused.Frame.Scene.TemporalHistoryDetailFallback);
+            Assert.NotEmpty(expected);
+            output.WriteLine($"{refused.Frame.Device.Backend}, moving frame {frame}");
+            Assert.Equal(expected, actual);
+        }
+    }
+
     [GpuFact]
     public void Replication_copies_hdr_channels_and_each_alpha_marker_without_arithmetic()
     {

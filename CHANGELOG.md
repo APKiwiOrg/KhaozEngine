@@ -4,6 +4,35 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 24.2.0
+
+2026-11-18
+
+A minor with additive runtime API in `KhaozEngine.Render3D`. The fine temporal colour history no longer takes the
+frame down when its own targets cannot be created.
+
+**Fine colour history creation fallback.**
+
+- When the fine colour pair, its seed blit, the fine layout or the fine resolve pass cannot be created, the frame
+  resolves through the display-sized history. It keeps the display targets it already created and releases the
+  failed Fine store. In 24.1.0 every resolving frame threw for as long as Fine stayed admitted and the creation
+  kept failing.
+- The new `TemporalHistoryDetailFallback` enum and the read-only `Scene3D.TemporalHistoryDetailFallback` property
+  say why Display is in effect while Fine is requested: `NoResolve`, `ColorAttachments`, `PixelBudget`,
+  `TextureSize` or `CreationFailed`, and `None` otherwise. They are latched with
+  `Scene3D.TemporalHistoryDetailInEffect` on the frame's first render.
+- A refused creation is held for the display size it failed at. Fine is tried again only when the display size
+  changes, Display is requested for a frame, or the temporal resolve stops for a frame. A device or budget limit
+  on the same frame is the reason reported and leaves the hold in place. The scene logs the size and the
+  exception once per run of refusals.
+- What is caught. Any exception from creating Fine's own objects except `OutOfMemoryException`, because the GPU
+  seam has no portable creation refusal type and a driver can refuse a descriptor or a pipeline as well as an
+  allocation. The display-sized history, the post targets, the ordinary resolve sets, recording, submission,
+  debug views and count probes throw as before.
+- Proof. The frame that fell back is Display's frame byte for byte over a moving camera, on Apple Metal hardware
+  and on the hosted Direct3D 11 and Vulkan software rasterizers. Fine has not run on Direct3D 11 or Vulkan
+  hardware.
+
 ## 24.1.0
 
 2026-11-18

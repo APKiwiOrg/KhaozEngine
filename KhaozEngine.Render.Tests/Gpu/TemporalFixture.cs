@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu;
 /// </summary>
 public sealed class TemporalFixture : IDisposable
 {
-    readonly GpuDeviceContext _gpu;
+    readonly GpuDeviceContext? _ownedGpu;
     readonly IGpuCommandList _commands;
     IGpuTexture _targetTexture;
     int _frame, _skippedPhases;
@@ -27,15 +27,19 @@ public sealed class TemporalFixture : IDisposable
     /// <summary>A fixture presenting at <paramref name="displayWidth"/> x <paramref name="displayHeight"/>.
     /// <paramref name="setup"/> runs once after the defaults. Temporal rendering stays off unless it asks.</summary>
     public TemporalFixture(int displayWidth, int displayHeight, Action<Scene3D>? setup = null)
+        : this(displayWidth, displayHeight, setup, null) { }
+
+    // An injected device is borrowed. The caller keeps it alive until this fixture finishes disposing.
+    internal TemporalFixture(int displayWidth, int displayHeight, Action<Scene3D>? setup, IGpuDevice? device)
     {
-        _gpu = GpuDeviceContext.CreateHeadless();
-        IGpuResourceFactory f = _gpu.GpuDevice.Factory;
+        Device = device ?? (_ownedGpu = GpuDeviceContext.CreateHeadless()).GpuDevice;
+        IGpuResourceFactory f = Device.Factory;
         _targetTexture = CreateTarget(f, displayWidth, displayHeight);
         Target = f.CreateFramebuffer(null, _targetTexture);
         _commands = f.CreateCommandList();
         DisplayWidth = displayWidth;
         DisplayHeight = displayHeight;
-        Scene = new Scene3D(_gpu.GpuDevice, Target.Outputs);
+        Scene = new Scene3D(Device, Target.Outputs);
         Scene.Post.UseSmoothPreset();
         Scene.Post.RenderScale = RenderScale.MatchViewport;
         Scene.RenderOrigin = Vector3.Zero;
@@ -45,7 +49,7 @@ public sealed class TemporalFixture : IDisposable
         setup?.Invoke(Scene);
     }
 
-    public IGpuDevice Device => _gpu.GpuDevice;
+    public IGpuDevice Device { get; }
 
     public Scene3D Scene { get; }
 
@@ -159,6 +163,6 @@ public sealed class TemporalFixture : IDisposable
         _commands.Dispose();
         Target.Dispose();
         _targetTexture.Dispose();
-        _gpu.Dispose();
+        _ownedGpu?.Dispose();
     }
 }

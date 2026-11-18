@@ -28,8 +28,11 @@ namespace KhaozEngine.Render3D
         /// explicit opt-out and the selection for unknown values. Read <see cref="Scene3D.TemporalHistoryDetailInEffect"/>
         /// for the latched selection. A change of it resets history for one frame, reported as
         /// <see cref="TemporalResetReason.HistoryDetail"/> unless a higher-ranking reason such as a resize applies to
-        /// the same frame. If the pair or its scratch fails to allocate, each resolving frame throws for as long as
-        /// Fine stays admitted and the allocation keeps failing.</summary>
+        /// the same frame. When Fine's own targets cannot be created the frame uses Display, and Fine is not tried
+        /// again until the display size changes, Display is requested for a frame or the resolve stops.
+        /// <see cref="Scene3D.TemporalHistoryDetailFallback"/> reports
+        /// <see cref="TemporalHistoryDetailFallback.CreationFailed"/> while that hold stands, except on a frame a
+        /// device or budget limit also refuses, which reports that limit and leaves the hold in place.</summary>
         public TemporalHistoryDetail HistoryDetail = TemporalHistoryDetail.Fine;
 
         /// <summary>Inclusive display pixel budget for Fine, default 3,686,400 (2560 by 1440). Its extra RGBA16F

@@ -158,9 +158,7 @@ namespace KhaozEngine.Render3D
             _temporalPost ??= new TemporalPostTargets(_gd);
             // New targets hold nothing. A new display or internal size already reset the history through the frame key,
             // so this catches a replacement the key cannot see, and the resolve never reads new targets as history.
-            if (TemporalHistory.EnsureTargets(_gd, displayWidth, displayHeight, _res.Width, _res.Height, _retired,
-                TemporalHistoryDetailInEffect)
-                && TemporalHistory.IsValid)
+            if (EnsureTemporalHistoryTargets(_temporalResolve, displayWidth, displayHeight) && TemporalHistory.IsValid)
             {
                 TemporalHistory.Invalidate(TemporalResetReason.Resize);
                 _lastTemporalDiagnostics = _lastTemporalDiagnostics.WithHistoryReset(TemporalHistory.LastReset);

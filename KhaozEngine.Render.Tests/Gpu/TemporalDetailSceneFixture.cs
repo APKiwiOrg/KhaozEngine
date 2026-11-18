@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 
@@ -12,13 +13,15 @@ public sealed class TemporalDetailSceneFixture : IDisposable
         internal readonly FenceScene Fence = new(96, 64);
         internal readonly TemporalFixture Frame;
 
-        public View(Func<string, string>? rewrite = null)
+        public View(Func<string, string>? rewrite = null) : this(rewrite, null) { }
+
+        internal View(Func<string, string>? rewrite, IGpuDevice? device)
         {
             Frame = new TemporalFixture(96, 64, s =>
             {
                 Fence.Stage.Setup(s, AntiAliasing.Temporal);
                 s.Post.Quality.Shadows.Mode = ShadowMode.Off;
-            });
+            }, device);
             if (rewrite is not null) TemporalTestResolve.Install(Frame, rewrite);
         }
 

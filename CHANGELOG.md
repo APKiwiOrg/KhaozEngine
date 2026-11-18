@@ -9,7 +9,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 2026-11-18
 
 A minor with additive runtime API in `KhaozEngine.Render3D` and `KhaozEngine.Gpu`. When temporal anti-aliasing
-is enabled, it now requests the fine colour history by default.
+is enabled, it now requests the fine colour history by default. Engine `float` steps no longer hold a constant
+the JIT can fold wrongly under a flush mode.
 
 **Fine colour history for temporal anti-aliasing.**
 
@@ -44,6 +45,29 @@ is enabled, it now requests the fine colour history by default.
 - `GpuPixelFormat.R32G32B32A32Float` is a four-channel 32-bit float colour target and sampled texture on
   Metal, Direct3D 11 and Vulkan, 16 bytes a texel in staging. Linear filtering of it is not guaranteed on
   every device.
+
+**Float steps under a flush mode.**
+
+- Engine code no longer calls `MathF.BitDecrement`, `MathF.BitIncrement` or their `float` forms. Every one-ULP
+  `float` step in 16 engine projects and the tools goes through an internal `FloatUlp` helper, which steps in the
+  integer domain and reads the two results for a zero argument from mutable statics. Its bits equal the BCL
+  steps for every input, so no result changes at the default controls. Before, the zero branch of the BCL step
+  held `float.Epsilon`, and the JIT folds a subnormal constant through the flush mode of the thread that first
+  optimizes the calling method. One engine call from a thread an audio or graphics library had left in flush
+  to zero could make a step from zero return zero for every thread, which changed collider bounds and tile
+  ground extents ([#1832](https://github.com/APKiwiOrg/KhaozEngine/issues/1832)).
+- The new analyzer rule KEFP001 in `KhaozEngine.CodeHealth.Analyzers` reports source that puts a subnormal
+  `float` where the JIT can fold it: a subnormal constant, a BCL float step, `BitDecrement`, `BitIncrement` or
+  `Epsilon` on an `IFloatingPointIeee754<T>` type parameter, and constant bits read as a subnormal `float`. It
+  arrives with the umbrella packages and reports nothing until a project sets `KhaozSubnormalFloatRule` to `on`
+  or `all`. The engine builds with it as an error. The
+  [analyzer README](KhaozEngine.CodeHealth.Analyzers/README.md#subnormal-float-constants) lists what it flags
+  and what it cannot see.
+- Still exposed: values the JIT folds only after inlining, arithmetic folded under a directed rounding mode, and
+  constants inside the BCL or third-party code. Keeping a thread's engine calls inside `DeterministicFpScope`
+  stays the defence, as
+  [Deterministic floating point](docs/USING-KHAOZENGINE.md#deterministic-floating-point-khaozenginedeterminism)
+  describes.
 
 ## 24.0.0
 

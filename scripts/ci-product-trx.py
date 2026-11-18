@@ -6,17 +6,22 @@ import xml.etree.ElementTree as ET
 
 
 def validate(paths, expected, require_all):
+    # The VSTest logger lowercases storage paths on every platform.
+    expected_by_storage = {name.lower(): name for name in expected}
+    if len(expected_by_storage) != len(expected):
+        raise ValueError('Expected test assemblies must have distinct lowercase storage names')
     seen = set()
     for path in paths:
         root = ET.parse(path)
-        assemblies = {PurePosixPath(test.attrib['storage'].replace('\\', '/')).stem
+        assemblies = {PurePosixPath(test.attrib['storage'].replace('\\', '/')).stem.lower()
                       for test in root.findall('.//{*}UnitTest')}
         counters = root.findall('.//{*}Counters')
         if len(assemblies) != 1 or len(counters) != 1:
             raise ValueError(f'{path.name}: expected one test assembly and one set of TRX counters')
-        assembly, = assemblies
-        if assembly not in expected or assembly in seen:
-            raise ValueError(f'{path.name}: unexpected or repeated test assembly {assembly}')
+        storage_name, = assemblies
+        assembly = expected_by_storage.get(storage_name)
+        if assembly is None or assembly in seen:
+            raise ValueError(f'{path.name}: unexpected or repeated test assembly {storage_name}')
         seen.add(assembly)
         values = counters[0].attrib
         total, executed, passed, failed = (int(values[key]) for key in ('total', 'executed', 'passed', 'failed'))

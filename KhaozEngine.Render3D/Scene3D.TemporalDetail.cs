@@ -13,8 +13,7 @@ public sealed partial class Scene3D
         if (TemporalHistory.DetailStore is not { } detail) return;
         using (ProfilePass(cl, "temporal.detail-store"))
         {
-            if (TemporalHistory.IsValid) detail.Update(cl, TemporalHistory.WriteIndex);
-            else detail.Replicate(cl, TemporalHistory.WriteIndex);
+            detail.Update(cl, TemporalHistory.WriteIndex);
         }
         _frameStats.DrawCalls += 2;   // classification and update, beyond the ordinary resolve and depth store
     }

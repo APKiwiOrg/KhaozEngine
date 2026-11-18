@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace KhaozEngine.CodeHealth.Analyzers
@@ -39,7 +40,9 @@ namespace KhaozEngine.CodeHealth.Analyzers
             context.RegisterOperationAction(run.CheckInvocation, OperationKind.Invocation);
             context.RegisterOperationAction(run.CheckMethodReference, OperationKind.MethodReference);
             context.RegisterOperationAction(run.CheckObjectCreation, OperationKind.ObjectCreation);
-            context.RegisterOperationAction(run.CheckPropertyReference, OperationKind.PropertyReference);
+            context.RegisterOperationAction(run.CheckMemberReference,
+                OperationKind.PropertyReference, OperationKind.FieldReference, OperationKind.EventReference);
+            context.RegisterSyntaxNodeAction(run.CheckBaseType, SyntaxKind.SimpleBaseType, SyntaxKind.PrimaryConstructorBaseType);
             context.RegisterOperationAction(run.RecordFieldInitializer, OperationKind.FieldInitializer);
             context.RegisterCompilationEndAction(run.ReportDeferred);
         }

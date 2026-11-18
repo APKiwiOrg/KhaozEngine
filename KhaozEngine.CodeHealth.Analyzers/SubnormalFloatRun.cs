@@ -1,6 +1,7 @@
 using System;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -18,7 +19,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
         private readonly INamedTypeSymbol? _ieee754;
         private readonly INamedTypeSymbol? _helper;
         private readonly INamedTypeSymbol? _helperTemplate;
-        private readonly SubnormalFloatFieldReads _fieldReads = new SubnormalFloatFieldReads();
+        private readonly SubnormalFloatFieldReads _fieldReads;
         private readonly SubnormalFloatGenericUses _genericUses;
 
         public SubnormalFloatRun(Compilation compilation)
@@ -31,6 +32,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             var assemblyNamespace = Regex.Replace(compilation.AssemblyName ?? "", "[^A-Za-z0-9_.]", "_");
             _helper = compilation.Assembly.GetTypeByMetadataName(assemblyNamespace + ".FloatSteps.FloatUlp");
             _helperTemplate = compilation.Assembly.GetTypeByMetadataName("KhaozEngine.FloatSteps.FloatUlp");
+            _fieldReads = new SubnormalFloatFieldReads(compilation.Options.CheckOverflow);
             _genericUses = new SubnormalFloatGenericUses(compilation.Assembly);
         }
 
@@ -65,17 +67,14 @@ namespace KhaozEngine.CodeHealth.Analyzers
             _genericUses.RecordUse(context, creation.Constructor);
         }
 
-        public void CheckPropertyReference(OperationAnalysisContext context)
+        public void CheckMemberReference(OperationAnalysisContext context) =>
+            _genericUses.RecordUse(context, ((IMemberReferenceOperation)context.Operation).Member);
+
+        public void CheckBaseType(SyntaxNodeAnalysisContext context)
         {
-            var reference = (IPropertyReferenceOperation)context.Operation;
-            var target = (reference.Parent as IAssignmentOperation)?.Target ??
-                (reference.Parent as IIncrementOrDecrementOperation)?.Target;
-            var property = reference.Property;
-            bool invokesSetter = target == reference && !property.ReturnsByRef;
-            if (!invokesSetter || !(reference.Parent is ISimpleAssignmentOperation))
-                _genericUses.RecordUse(context, property.GetMethod);
-            if (invokesSetter)
-                _genericUses.RecordUse(context, property.SetMethod);
+            var syntax = (BaseTypeSyntax)context.Node;
+            var type = context.SemanticModel.GetTypeInfo(syntax.Type, context.CancellationToken).Type;
+            _genericUses.RecordUse(type, syntax);
         }
 
         public void RecordFieldInitializer(OperationAnalysisContext context) => _fieldReads.RecordInitializer(context);
@@ -98,7 +97,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     return;
                 }
                 if (IsIeee754(owner) && owner.TypeArguments[0] is ITypeParameterSymbol self)
-                    _genericUses.RecordStep(context.ContainingSymbol, self);
+                    _genericUses.RecordStep(self);
             }
             _genericUses.RecordUse(context, method);
         }

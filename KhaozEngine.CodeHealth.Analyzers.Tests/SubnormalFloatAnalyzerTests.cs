@@ -54,6 +54,69 @@ public sealed class SubnormalFloatAnalyzerTests
             "public static T Next => Up(T.Zero); }\nfloat F() => Stepper<float>.Next;",
             ["Stepper<float>.Next"]
         },
+        // #1832. Every reference closes the stepped parameter, even if the named member never steps it.
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { private static readonly T Next; " +
+            "static Stepper() => Next = T.BitIncrement(T.Zero); public static T Read() => Next; }\n" +
+            "float F() => Stepper<float>.Read();",
+            ["Stepper<float>.Read()"]
+        },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { private static readonly T Next = T.BitIncrement(T.Zero); " +
+            "public static T Read() => Next; }\nfloat F() => Stepper<float>.Read();",
+            ["Stepper<float>.Read()"]
+        },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public T this[int index] " +
+            "{ get => T.Zero; set => _ = T.BitIncrement(value); } }\n" +
+            "void F(Stepper<float> stepper) { (stepper[0], _) = (0f, 0); }",
+            ["stepper[0]"]
+        },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public T this[int index] " +
+            "{ get => T.BitIncrement(T.Zero); set { } } }\n" +
+            "void F(Stepper<float> stepper) { (stepper[0], _) = (0f, 0); }",
+            ["stepper[0]"]
+        },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public static T Up(T x) => T.BitIncrement(x); " +
+            "public static int Count = 1; }\nint F() => Stepper<float>.Count;",
+            ["Stepper<float>.Count"]
+        },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public static T Up(T x) => T.BitIncrement(x); " +
+            "public static event Action Changed { add { } remove { } } }\n" +
+            "void F() => Stepper<float>.Changed += () => { };",
+            ["Stepper<float>.Changed"]
+        },
+        {
+            "class Stepper<T> where T : IFloatingPointIeee754<T> { public static T Up(T x) => T.BitIncrement(x); }\n" +
+            "sealed class Derived : Stepper<float> { }",
+            ["Stepper<float>"]
+        },
+        {
+            "interface IStepper<T> where T : IFloatingPointIeee754<T> { static T Up(T x) => T.BitIncrement(x); }\n" +
+            "sealed class Derived : IStepper<float> { }",
+            ["IStepper<float>"]
+        },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public T Up(T x) => T.BitIncrement(x); " +
+            "public static int Dimension() => 3; }\nint F() => Stepper<float>.Dimension();",
+            ["Stepper<float>.Dimension()"]
+        },
+        {
+            "static T Inner<T>(T x) where T : IFloatingPointIeee754<T> => T.BitIncrement(x);\n" +
+            "static U Middle<U>(U x) where U : IFloatingPointIeee754<U> => Inner(x);\n" +
+            "static V Outer<V>(V x) where V : IFloatingPointIeee754<V> => Middle(x);\n" +
+            "float F(float x) => Outer(x);",
+            ["Outer(x)"]
+        },
+        {
+            "sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public static class Nested " +
+            "{ public static T Up(T x) => T.BitIncrement(x); public static int Dimension() => 3; } }\n" +
+            "int F() => Stepper<float>.Nested.Dimension();",
+            ["Stepper<float>.Nested.Dimension()"]
+        },
         { "float F() => 1e-45f;", ["1e-45f"] },
         { "float F() => float.Epsilon;", ["float.Epsilon"] },
         { "float F() => -float.Epsilon;", ["-float.Epsilon"] },
@@ -85,6 +148,11 @@ public sealed class SubnormalFloatAnalyzerTests
             "float F() => BitConverter.Int32BitsToSingle((byte)(sbyte)(uint)Bits);",
             ["Bits"]
         },
+        {
+            "enum Word : uint { }\nstatic readonly uint Bits = 1u;\n" +
+            "float F() => BitConverter.UInt32BitsToSingle((uint)(Word)Bits);",
+            ["Bits"]
+        },
     };
 
     [Theory]
@@ -109,9 +177,14 @@ public sealed class SubnormalFloatAnalyzerTests
     [InlineData("static uint s_bits = 0x00000001u;\nfloat F() => BitConverter.UInt32BitsToSingle(s_bits);")]
     [InlineData("static readonly uint Mask = 0x007FFFFFu;\nfloat F(uint x) => BitConverter.UInt32BitsToSingle(x & Mask);")]
     [InlineData("static T Step<T>(T x) where T : IFloatingPointIeee754<T> => T.BitDecrement(x);\ndouble F(double x) => Step(x);")]
-    [InlineData("sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public T Up(T x) => T.BitIncrement(x); public static int Dimension() => 3; }\nint F() => Stepper<float>.Dimension();")]
+    [InlineData("sealed class Stepper<T> where T : IFloatingPointIeee754<T> { public static T Up(T x) => T.BitIncrement(x); }\ndouble F() => Stepper<double>.Up(0d);")]
+    [InlineData("sealed class Identity<T> { public static T Read(T value) => value; }\nfloat F() => Identity<float>.Read(0f);")]
+    [InlineData("static T Step<T, TOther>(T x) where T : IFloatingPointIeee754<T> => T.BitIncrement(x);\ndouble F() => Step<double, float>(0d);")]
     [InlineData("static readonly uint Bits = 0x100u;\nfloat F() => BitConverter.UInt32BitsToSingle((byte)Bits);")]
     [InlineData("static readonly uint Bits = 0x101u;\nfloat F() => BitConverter.UInt32BitsToSingle(checked((byte)Bits));")]
+    [InlineData("enum Word : byte { }\nstatic readonly uint Bits = 0x100u;\nfloat F() => BitConverter.UInt32BitsToSingle(unchecked((uint)(Word)Bits));")]
+    [InlineData("enum Word : byte { }\nstatic readonly uint Bits = 0x101u;\nfloat F() => BitConverter.UInt32BitsToSingle(checked((uint)(Word)Bits));")]
+    [InlineData("static readonly uint Bits = 1u;\nfloat F() => BitConverter.UInt32BitsToSingle((uint)(double)Bits);")]
     public async Task DoublesNormalFloatsAndRunTimeBitsAreNotFlagged(string members)
     {
         var diagnostics = await Run("on", withXunit: false, warningsAsErrors: false, Members(members));

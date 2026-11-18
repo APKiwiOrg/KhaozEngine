@@ -160,18 +160,21 @@ The rule flags:
 - A call or method group that resolves to `MathF.BitDecrement`, `MathF.BitIncrement`, `float.BitDecrement`
   or `float.BitIncrement`, including `T.BitDecrement` on a type parameter constrained to
   `IFloatingPointIeee754<float>`. The zero branch of each holds `float.Epsilon`.
-- A method, property or constructor used with `float` when that member steps its generic type parameter
-  with `BitDecrement` or `BitIncrement`, directly or through a member that forwards the parameter in the
-  same compilation.
+- A reference that closes a stepped generic parameter over `float` in the same compilation. A
+  `BitDecrement` or `BitIncrement` on a parameter marks its declaration, including in initializers, nested
+  types and local functions. Forwarding to a stepped parameter marks the forwarded parameter too. Calls,
+  method groups, constructions, property and indexer accesses, fields, events and base lists are checked,
+  even when the named member is unrelated to the step. Move the stepping member to its own type to keep
+  unrelated uses with `float` allowed.
 - Any `float` expression whose compile-time constant is subnormal: a literal, `float.Epsilon`, a `const`, a
   folded expression of normal operands, a cast, and a default parameter value at each call that omits it. The
   compiler emits the outermost constant, so `(double)float.Epsilon` is a normal double and stays allowed.
 - `BitConverter.Int32BitsToSingle`, `BitConverter.UInt32BitsToSingle`, `Unsafe.BitCast<_, float>` and
   `Unsafe.As<_, float>` of constant bits that are a subnormal float.
 - A `static readonly` integer field with a constant initializer whose value is reinterpreted as a subnormal
-  float by one of those calls. The analysis applies integral conversions before classifying the bits and
-  follows conditional, switch and coalesce branches. The JIT folds a static readonly field once its class is
-  initialized. A `static readonly float` holding a subnormal is flagged at its constant.
+  float by one of those calls. The analysis applies fixed-width integral and enum conversions before
+  classifying the bits and follows conditional, switch and coalesce branches. The JIT folds a static readonly
+  field once its class is initialized. A `static readonly float` holding a subnormal is flagged at its constant.
 - A `FloatUlp.Down` or `FloatUlp.Up` call that can fold to a subnormal result when the argument is a
   compile-time constant or a recognized constant bit reinterpretation. Both signs of zero take the helper's
   protected path and are allowed.
@@ -195,7 +198,8 @@ What the rule cannot see:
   subnormal operand or result under a flush mode. No constant rule can detect those.
 - Bits read as a float from constant `ReadOnlySpan<byte>` data, through a pointer cast, or from a field set in
   a static constructor. It does not follow a readonly bit field through a local or another readonly field
-  into the reinterpretation.
+  into the reinterpretation. A conversion chain that leaves the integral and enum domain, such as
+  `(uint)(double)Bits`, stays unknown.
 - Generated code, which KEFP001 skips.
 - Constants inside BCL or third-party code, such as Bepu, that the JIT inlines into the calling method.
 - A stepping generic defined in another assembly.

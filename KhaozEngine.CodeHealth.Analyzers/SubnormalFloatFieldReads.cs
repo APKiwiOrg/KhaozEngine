@@ -2,17 +2,21 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
 namespace KhaozEngine.CodeHealth.Analyzers
 {
-    /// <summary>Classifies readonly field values at the float reinterpretation, after any integral conversions.</summary>
+    /// <summary>Classifies readonly field values at the float reinterpretation, after integral and enum conversions.</summary>
     internal sealed class SubnormalFloatFieldReads
     {
+        private readonly bool _checkOverflow;
         private readonly ConcurrentDictionary<IFieldSymbol, decimal> _initializers =
             new ConcurrentDictionary<IFieldSymbol, decimal>(SymbolEqualityComparer.Default);
         private readonly ConcurrentBag<FieldRead> _reads = new ConcurrentBag<FieldRead>();
+
+        public SubnormalFloatFieldReads(bool checkOverflow) => _checkOverflow = checkOverflow;
 
         public void RecordInitializer(OperationAnalysisContext context)
         {
@@ -50,7 +54,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         private static bool CanFold(IFieldSymbol field) => field.IsStatic && field.IsReadOnly && !field.IsConst;
 
-        // Follow value branches and integral casts. A field that only feeds arithmetic is not read directly as a float.
+        // Follow value branches and casts within the integral and enum domain. Arithmetic breaks this chain.
         // The traversal goes from the read to the field, so the conversions are applied in reverse order.
         private void RecordRead(IOperation value, ImmutableArray<IntegralConversion> conversions)
         {
@@ -60,7 +64,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     if (TryGetIntegralType(conversion.Operand.Type, out _) &&
                         TryGetIntegralType(conversion.Type, out var target))
                     {
-                        RecordRead(conversion.Operand, conversions.Add(new IntegralConversion(target, conversion.IsChecked)));
+                        RecordRead(conversion.Operand, conversions.Add(new IntegralConversion(target, IsChecked(conversion))));
                     }
                     break;
                 case IConditionalOperation conditional:
@@ -84,10 +88,30 @@ namespace KhaozEngine.CodeHealth.Analyzers
             }
         }
 
+        private bool IsChecked(IConversionOperation conversion)
+        {
+            if (conversion.IsChecked) return true;
+            // Roslyn's IsChecked omits enum casts. The nearest overflow context applies to their underlying types.
+            for (var syntax = conversion.Syntax; syntax != null; syntax = syntax.Parent)
+            {
+                switch (syntax.Kind())
+                {
+                    case SyntaxKind.CheckedExpression:
+                    case SyntaxKind.CheckedStatement:
+                        return true;
+                    case SyntaxKind.UncheckedExpression:
+                    case SyntaxKind.UncheckedStatement:
+                        return false;
+                }
+            }
+            return _checkOverflow;
+        }
+
         private static bool TryGetIntegralType(ITypeSymbol? type, out SpecialType result)
         {
             if (type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
                 type = named.TypeArguments[0];
+            type = (type as INamedTypeSymbol)?.EnumUnderlyingType ?? type;
             result = type?.SpecialType ?? SpecialType.None;
             return result is SpecialType.System_SByte or SpecialType.System_Byte or SpecialType.System_Char
                 or SpecialType.System_Int16 or SpecialType.System_UInt16 or SpecialType.System_Int32

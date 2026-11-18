@@ -4,6 +4,7 @@ import json
 import importlib.util
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -185,17 +186,22 @@ class SelectionTests(unittest.TestCase):
                                         cwd=directory, capture_output=True, text=True, check=False)
                 self.assertEqual(result.returncode == 0, success, result.stderr)
 
-    def test_workflow_push_and_pr_watch_every_selector_input(self):
+    def test_workflow_push_and_pr_filters_are_exactly_the_selector_inputs(self):
         spec = importlib.util.spec_from_file_location('selector', SCRIPT)
         selector = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(selector)
         workflow = (ROOT / '.github/workflows/tooling-validation.yml').read_text()
         push = workflow.split('  push:\n', 1)[1].split('  pull_request:\n', 1)[0]
         pr = workflow.split('  pull_request:\n', 1)[1].split('  workflow_dispatch:\n', 1)[0]
+        inputs = set()
         for suite in ['renderer', 'items', 'nav', 'coverage']:
-            for pattern in selector.watched_paths(suite):
-                self.assertIn(f"      - '{pattern}'", push)
-                self.assertIn(f"      - '{pattern}'", pr)
+            watched = set(selector.watched_paths(suite))
+            self.assertTrue(watched, suite)
+            inputs |= watched
+        # A missing path leaves a suite untriggered. An extra one starts a run that selects nothing.
+        for event, block in [('push', push), ('pull_request', pr)]:
+            paths = re.findall(r"^      - '(.+)'$", block, flags=re.M)
+            self.assertEqual(sorted(paths), sorted(inputs), event)
 
     def test_coverage_selects_headless_tools_and_runtime_dependencies_only(self):
         for path in ['build/FloatUlp.cs', 'build/FloatUlp.targets',

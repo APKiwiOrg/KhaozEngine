@@ -249,8 +249,10 @@ permissions:
 
 concurrency:
   # Use a dedicated prefix because a reusable workflow sees the caller's github.workflow.
-  group: ${{ github.event_name == 'pull_request' && inputs.trusted-ref == '' && format('tooling-validation-pr-{0}', github.event.pull_request.number) || format('tooling-validation-run-{0}', github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && inputs.trusted-ref == '' }}
+  # Only the first attempt of a direct pull request run joins the pull request group. A rerun keeps
+  # its old commit, so in that group it would cancel the run for the pull request's current commit.
+  group: ${{ github.event_name == 'pull_request' && inputs.ref == '' && inputs.trusted-ref == '' && github.run_attempt == 1 && format('tooling-validation-pr-{0}', github.event.pull_request.number) || format('tooling-validation-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && inputs.ref == '' && inputs.trusted-ref == '' && github.run_attempt == 1 }}
 
 jobs:
   select:

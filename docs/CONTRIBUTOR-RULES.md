@@ -320,10 +320,11 @@ resolved roots include this exact project, also build the offline verifier requi
 Canonical project selection uses actual file identity, never a basename match. Ordinary engine CI and
 native engine shards never run or discover the tooling suite. `tooling-validation.yml` owns its free
 three-OS validation and the prerequisite gate for separately authorized renderer campaigns.
-Its five-minute selector watches the inputs of the four free tooling suites on main pushes and pull
-requests. An update to the same pull request cancels its older run. Main pushes, manual dispatches
-and reusable calls each have their own run group so newer events cannot interrupt a renderer
-prerequisite. Product CI runs the generic script and hook fixtures when their inputs change.
+Its `select` job is bounded at five minutes and watches the inputs of the four free tooling suites
+on main pushes and pull requests. A new commit on a pull request cancels that pull request's older
+run. Main pushes, manual dispatches, reusable calls and reruns each have their own run group, so no
+later event can interrupt a renderer prerequisite and a retried older run cannot cancel the current
+commit's run. Product CI runs its registered tooling fixtures on a full or tooling selection.
 
 Product CI includes solution projects and the tracked projects outside the solution in one Linux
 Release build. The outside inventory comes from `scripts/outside-solution-projects.py`, which also

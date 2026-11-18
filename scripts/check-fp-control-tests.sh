@@ -12,7 +12,9 @@
 #      item, so .props, .targets and .projitems imports count. Double or single quotes. A path is resolved against
 #      its file's directory, with $(MSBuildThisFileDirectory) and $(MSBuildProjectDirectory) understood. Any other
 #      property cannot be resolved here, so the part after its last ) is matched from a path boundary when a separator
-#      follows the property, and from anywhere when the property ends inside a path segment.
+#      follows the property, and from anywhere when the property ends inside a path segment. A parent segment after
+#      the property folds the folder before it. One that consumes the first name after the property, or climbs
+#      above it, leaves a rest that is matched from a path boundary.
 #   4. Every floating point test project compiles the default-environment guard and its registration test, so a test
 #      that leaves a control changed fails itself instead of a later test.
 # A .cs file that names a setter or the fixture class anywhere is read with its lines joined, so a declaration split
@@ -144,10 +146,11 @@ compiles() { violation "$1: compiles $2, which can set a non-default floating po
 items_of() {
   read_ "$1" | tr '\n\r' '  ' | grep -oE '<Compile[^>]*>' | awk -v dir="$(dir_of "$1")" -v q="'" '
     function fold(path,    n, m, i, part, kept, out) {
-      n = split(path, part, "/"); m = 0
+      n = split(path, part, "/"); m = 0; climbed = 0
       for (i = 1; i <= n; i++) {
         if (part[i] == "" || part[i] == ".") continue
-        if (part[i] == "..") { if (m > 0) m--; continue }
+        # climbed: a parent segment consumed the first kept name or went above it, so the rest starts at a boundary.
+        if (part[i] == "..") { if (m > 0) m--; if (m == 0) climbed = 1; continue }
         kept[++m] = part[i]
       }
       out = ""
@@ -169,8 +172,8 @@ items_of() {
           rest = item
           while ((at = index(rest, ")")) > 0) rest = substr(rest, at + 1)
           edge = (rest ~ /^(\.)?\//)
-          if (rest ~ /(^|\/)\.\.\//) edge = 1
           rest = fold(rest)
+          if (climbed) edge = 1
           if (rest == "") { print "*"; continue }
           if (edge) { print rest; print "*/" rest } else print "*" rest
           continue

@@ -18,8 +18,8 @@ class ProductTrxTests(unittest.TestCase):
         self.result = Path(temporary.name) / 'suite.trx'
         self.enterContext(redirect_stdout(io.StringIO()))
 
-    def write_result(self, assembly='engine.tests', *, total=1, executed=1):
-        self.result.write_text(
+    def write_result(self, assembly='engine.tests', *, path=None, total=1, executed=1):
+        (path or self.result).write_text(
             '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">'
             f'<TestDefinitions><UnitTest storage="bin/release/{assembly}.dll" /></TestDefinitions>'
             f'<ResultSummary><Counters total="{total}" executed="{executed}" passed="{executed}" failed="0" /></ResultSummary>'
@@ -30,15 +30,22 @@ class ProductTrxTests(unittest.TestCase):
         self.write_result()
         validate([self.result], {'Engine.Tests'}, require_all=True)
 
-    def test_refuses_case_collisions_in_the_expected_roster(self):
-        self.write_result()
-        with self.assertRaises(ValueError):
-            validate([self.result], {'Engine.Tests', 'engine.tests'}, require_all=True)
+    def test_refuses_case_collisions_before_reading_results(self):
+        def read_result():
+            self.fail('A case collision must be refused before reading results')
 
-    def test_refuses_an_unexpected_or_missing_assembly(self):
-        self.write_result()
         with self.assertRaises(ValueError):
-            validate([self.result], {'Other.Tests'}, require_all=True)
+            validate(iter(read_result, None), {'Engine.Tests', 'engine.tests'}, require_all=True)
+
+    def test_refuses_an_unexpected_assembly_alongside_the_complete_roster(self):
+        self.write_result()
+        unexpected = self.result.with_name('extra.trx')
+        self.write_result('extra.tests', path=unexpected)
+        with self.assertRaises(ValueError):
+            validate([self.result, unexpected], {'Engine.Tests'}, require_all=True)
+
+    def test_refuses_a_missing_assembly_when_all_reported_assemblies_are_expected(self):
+        self.write_result()
         with self.assertRaises(ValueError):
             validate([self.result], {'Engine.Tests', 'Other.Tests'}, require_all=True)
 

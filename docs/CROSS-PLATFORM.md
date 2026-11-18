@@ -1204,8 +1204,8 @@ PASSED:
   artifact instead, kept a week ([#1461](https://github.com/APKiwiOrg/KhaozEngine/issues/1461)). Retention is three days. Explicit dumps use the same directory and can be read
   with `dotnet-dump analyze`, `threadpool` and `clrstack -all`.
 
-The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
-untouched.
+[Product CI](../.github/workflows/product-ci.yml) is the inner-loop check for dependency-selected builds and
+headless tests. The native GPU matrix runs in its own workflow.
 
 ## Authoring shaders that pass on all three backends
 

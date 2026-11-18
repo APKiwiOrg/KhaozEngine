@@ -117,7 +117,8 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   a separator follows the property, and from anywhere when the property ends inside a path segment. What remains outside
   it: item lists, metadata and a raw `>` inside an attribute before `Include` are not seen, so a link written that way
   can pass, a project's own `Compile Remove` is not honoured, Markdown files are not read, and machine code a test
-  writes and runs itself is not recognised. CI runs it on every event, and the pre-commit hook runs it when a C#,
+  writes and runs itself is not recognised. Product CI runs this source guard with its validation work.
+  A validated same-tree reuse skips that work, including this guard. The pre-commit hook runs the guard when a C#,
   `.csproj`, `.props`, `.targets` or `.projitems` file is staged. A class with both kinds of test keeps its name in both
   assemblies, its default tests in one and its changed-control tests in the other, and a body or helper both need is one
   file linked into both. While a control is changed, a test runs only the code under test, its reference evaluator and
@@ -384,8 +385,11 @@ forces a FULL selective CI run.
 `Product CI` handles main pushes, pull requests into main, the nightly schedule and manual
 validation. Its dependency map selects Release build roots and the corresponding headless, live SQL
 Server and water tests. The Linux job runs convention and doc-version guards even on a prose-only
-change. It shares its build with the selected tests. The ARM64 water differential has its own native
-build. `CI passed` reports the verdict. A main push or nightly can reuse a recent compatible full pass
+change. It shares its build with the selected tests. Both the Linux x64 and macOS ARM64 water legs run on
+full runs and changes that reach the water inputs. A change to ignored prose omits both legs. The
+ARM64 differential has its own native build. The script and hook fixtures run on full runs and
+changes that reach their inputs. `CI passed` reports the verdict. A main push or nightly can reuse
+a recent compatible full pass
 on the exact tree. A manual Product CI run forces full validation.
 
 The release workflow `ci` retains its manual and tag paths. A manual run restores, builds, tests

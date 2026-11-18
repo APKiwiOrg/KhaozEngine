@@ -37,14 +37,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: scope
-        uses: APKiwiOrg/ci-workflows/.github/actions/ci-scope@34620461681142889c750bee8f16b15a766289e0
+        uses: APKiwiOrg/ci-workflows/.github/actions/ci-scope@b1bed5d207afb9174432e91af30548f2c1e12143
       - id: tested
         if: >-
           (github.event_name == 'push' || github.event_name == 'schedule') &&
           !startsWith(steps.scope.outputs.reason, 'Full run: the last full run') &&
           !startsWith(steps.scope.outputs.reason, 'Full run: the last passing run could not be read') &&
           !startsWith(steps.scope.outputs.reason, 'Full run: cannot tell which workflow')
-        uses: APKiwiOrg/ci-workflows/.github/actions/ci-tested-tree@34620461681142889c750bee8f16b15a766289e0
+        uses: APKiwiOrg/ci-workflows/.github/actions/ci-tested-tree@b1bed5d207afb9174432e91af30548f2c1e12143
         with:
           workflow: .github/workflows/product-ci.yml
       - name: Resolve build and test roots
@@ -98,6 +98,29 @@ jobs:
           sh scripts/check-scratch.sh --tree
           sh scripts/check-fp-control-tests.sh --tree
           bash scripts/check-doc-versions.sh
+      - name: 'Test: tooling'
+        if: ${{ needs.scope.outputs.full == 'true' || contains(fromJSON(needs.scope.outputs.segments), 'tooling') }}
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          sh scripts/tests/check-home-paths.test.sh
+          sh scripts/tests/check-scratch.test.sh
+          sh scripts/tests/check-test-health.test.sh
+          sh scripts/tests/check-fp-control-tests.test.sh
+          sh scripts/tests/check-agent-instructions.test.sh
+          sh scripts/tests/ci-prior-gate.test.sh
+          sh scripts/tests/build-release-tests.test.sh
+          python3 scripts/tests/renderer-tooling-selection.test.py
+          python3 scripts/tests/outside-solution-projects.test.py
+          sh scripts/tests/gpu-test-shards.test.sh
+          sh scripts/tests/hooks-file-change-guard.test.sh
+          sh scripts/tests/hooks-filesize-guard.test.sh
+          sh scripts/tests/ledger.test.sh
+          sh scripts/tests/pack-local-feed.test.sh
+          sh scripts/tests/pack-packages.test.sh
+          sh scripts/tests/release-lock.test.sh
+          sh scripts/tests/tag-collision-guard.test.sh
+          sh scripts/tests/version-push-guard.test.sh
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         if: needs.scope.outputs.build == 'true'
         with:
@@ -240,7 +263,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: APKiwiOrg/ci-workflows/.github/actions/ci-finish@34620461681142889c750bee8f16b15a766289e0
+      - uses: APKiwiOrg/ci-workflows/.github/actions/ci-finish@b1bed5d207afb9174432e91af30548f2c1e12143
         with:
           needs: ${{ toJSON(needs) }}
           allow-skipped: ${{ needs.scope.result == 'success' && (needs.scope.outputs.reuse == 'true' && 'linux water-arm64' || (needs.scope.outputs.water == 'false' && 'water-arm64' || '')) || '' }}

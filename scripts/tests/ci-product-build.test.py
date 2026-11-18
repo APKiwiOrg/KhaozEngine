@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,42 @@ def projects(path):
             for item in ET.parse(path).iter('Project')]
 
 
+def check_tooling_and_census_routes(matcher, rules):
+    legacy = (ROOT / '.github/workflows/ci.yml').read_text()
+    legacy = legacy.split('      - name: Repo convention checks', 1)[1].split(
+        '      - uses: actions/setup-dotnet', 1)[0]
+    command = re.compile(r'^          ((?:sh|python3) scripts/tests/\S+\.test\.(?:sh|py))$', re.M)
+    expected = command.findall(legacy)
+    assert len(expected) == 18, 'Expected eighteen legacy tooling registrations'
+    workflow = (ROOT / '.github/workflows/product-ci.yml').read_text()
+    stage = workflow.partition("      - name: 'Test: tooling'\n")[2].split('\n      - ', 1)[0]
+    problems = []
+    if command.findall(stage) != expected:
+        problems.append('Test: tooling must execute the eighteen legacy fixture commands in order')
+
+    for path in (
+        'scripts/ci-prior-gate.sh', 'scripts/hooks/file-change-guard.pl', '.githooks/pre-push',
+        '.claude/settings.json', '.codex/hooks.json', 'AGENTS.md', 'CLAUDE.md',
+        '.github/workflows/tooling-validation.yml', '.github/workflows/ci.yml',
+        'KhaozEngine.Showcase/KhaozEngine.Showcase.csproj',
+        'KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj', 'test-shared/AllocationMeasurement.props',
+    ):
+        full, segments, _ = matcher.select(rules, [path])
+        if not (full or 'tooling' in segments):
+            problems.append(f'{path} must select the tooling fixtures')
+
+    for path in (
+        'scripts/pack-packages.sh', 'scripts/pack-local-feed.sh', 'scripts/pack-standard.sh',
+        'scripts/tag-standard.sh', 'build/WaterPrismCensus.props', 'build/WaterPrismCensus.targets',
+        'scripts/regenerate-water-prism-census.py', 'scripts/check-water-kernel-trx.py',
+        'KhaozEngine.TileWorld.Physics.Tests/Fixtures/WaterPrismCensusBaseline.json',
+    ):
+        full, segments, _ = matcher.select(rules, [path])
+        if not (full or 'water-kernel' in segments):
+            problems.append(f'{path} must select the census and water proof')
+    assert not problems, '\n'.join(problems)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--matcher', required=True, type=Path)
@@ -48,6 +85,7 @@ def main():
     assert not rules.error, rules.error
     manifest = json.loads((ROOT / '.github/ci-projects.json').read_text())
     assert set(rules.segments) == set(manifest)
+    check_tooling_and_census_routes(matcher, rules)
 
     for path in ('README.md', 'docs/CONTRIBUTOR-RULES.md'):
         assert matcher.select(rules, [path])[:2] == (False, []), path

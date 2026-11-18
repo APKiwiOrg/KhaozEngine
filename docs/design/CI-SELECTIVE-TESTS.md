@@ -3,13 +3,14 @@
 The per-area test split shipped in 13.0.3. Program issue: [#207](https://github.com/APKiwiOrg/KhaozEngine/issues/207)
 (which also records the rejected alternatives: per-area workflow files, consumer smoke leg).
 
-## Problem
+## Historical baseline
 
-`ci.yml` has grown from ~2 min (its own header comment) to ~4.5-5 min per push. Measured steps on run
-29624878784: restore 22s, build 108s, test 78s, determinism 27s, pack 22s. The suite is 5,610 tests in
-the `KhaozEngine.Tests` monolith (plus four small satellite test projects), and the engine keeps
-growing. Every push pays the full cost regardless of what changed, and the monolith gives the build
-graph no information to select with.
+Before the per-area split, a typical push through `ci.yml` took about 4.5 to 5 minutes.
+[Run 29624878784](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/29624878784) recorded 22 seconds
+for restore, 108 for build, 78 for tests, 27 for determinism and 22 for pack. The monolithic
+`KhaozEngine.Tests` project held 5,610 tests, alongside four small satellite projects.
+Every push ran the whole suite. Splitting the test assemblies gave CI dependency boundaries
+it could use to select the affected tests.
 
 Goals:
 
@@ -142,6 +143,10 @@ checks the same frozen differential corpus in both tiering modes on Linux x64 an
 with one two-root Release build on ARM64. Linux also checks census output isolation against its
 already built ordinary physics DLL, a separate census build and a private test package. The
 package verifies that the normal DLL stays unchanged and free of census code.
+
+The Linux `Test: tooling` stage runs the script and hook fixtures on full runs and changes that
+reach their inputs. Package wrappers and their shared policy scripts force a full run because the
+census proof exercises their refusal to pack a census build.
 
 The last job, `CI passed`, covers Scope, Linux and ARM64 and writes the run summary. A passing full
 run records its tested tree. A main push or nightly can reuse a trusted, unexpired full pass for

@@ -313,9 +313,23 @@ references it. Build it explicitly with
 before its `dotnet test -c Release --no-build` run. This target, and foreign or reduced solutions whose
 resolved roots include this exact project, also build the offline verifier required by process tests.
 Canonical project selection uses actual file identity, never a basename match. Ordinary engine CI and
-native engine shards do not build or discover the tooling suite. A csproj-only edit still selects the
+native engine shards never run or discover the tooling suite. A csproj-only edit still selects the
 architecture rump when dotnet-affected reports no affected roots. `tooling-validation.yml` owns its free
 three-OS validation and the prerequisite gate for separately authorized renderer campaigns.
+
+Ordinary engine CI does compile every tracked project the solution does not list, through
+`scripts/outside-solution-projects.py`, and stops there. Those projects compile engine code by project
+reference and by source files linked from other projects' folders, and no solution build sees them, so an
+engine change could stop one compiling and stay green on every run a branch gets. A dispatch of `ci` and a
+tag that does not reuse the hosted gate compile all of them. A push to `main` and a pull request compile the
+ones dotnet-affected names, plus one whose own project file is in the diff. The tool names a project for a
+changed source it links, for a changed props or targets file it imports and for a project it references
+(measured with dotnet-affected 6.2.0 on 2026-11-18). The selective path used to lose them only because it
+intersects the tool's answer with the solution, which still decides what is tested. The script finds the
+projects itself, and `scripts/tests/outside-solution-projects.test.py` compares what it finds with a roster
+written by hand, so a new project outside the solution is named there once. A compile says nothing about a
+suite's tests. A branch that changes what a tooling suite reads still dispatches that suite's own workflow
+before it lands.
 
 The outside-solution [`Items.Benchmark.Tests`](../tools/Items.Benchmark.Tests/README.md) project owns
 the process-memory-sensitive Items quick acceptance fact. Its only direct reference is Benchmarks.

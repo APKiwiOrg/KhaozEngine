@@ -36,7 +36,13 @@ case "$*" in *Renderer.Perf.Verify.csproj*) exit "${PREREQUISITE_FAIL:-0}" ;; es
 STUB
 cat > "$task_tmp/bin/git" <<'STUB'
 #!/bin/sh
-case "$1" in cat-file) exit 0 ;; diff) printf '%s\n' "${PREREQUISITE_CHANGED:-tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfUnit.cs}" ;; *) exit 2 ;; esac
+case "$1" in
+  cat-file) exit 0 ;;
+  diff) printf '%s\n' "${PREREQUISITE_CHANGED:-tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfUnit.cs}" ;;
+  # The sandbox holds exactly the tracked project files, so a scan of it is the tracked list.
+  ls-files) find . -name '*.csproj' | sed 's#^\./##' ;;
+  *) exit 2 ;;
+esac
 STUB
 chmod +x "$task_tmp/bin/dotnet" "$task_tmp/bin/git"
 export PATH="$task_tmp/bin:$PATH"
@@ -54,12 +60,28 @@ run_build() {
   : > "$PREREQUISITE_COMMANDS"
   sh scripts/build-release-tests.sh "$1" --no-restore
 }
+# Ordinary CI compiles a project outside the solution with this exact command and never tests one.
+outside_compile() { printf 'dotnet build %s -c Release -p:EnableWindowsTargeting=true' "$1"; }
+compiled() { grep -qxF "$(outside_compile "$1")" "$PREREQUISITE_COMMANDS"; }
+outside_compiles() { grep -c -- ' -p:EnableWindowsTargeting=true$' "$PREREQUISITE_COMMANDS" || true; }
+no_outside_test() { ! grep -Eq '^dotnet test .*(tools/|OracleHarness)' "$PREREQUISITE_COMMANDS"; }
+outside_total=$(python3 scripts/outside-solution-projects.py list | grep -c .)
+[ "$outside_total" -gt 1 ]
 workflow_build=$(awk '/- name: Build \(full\)/ {found=1;next} found && /run:/ {sub(/^.*run: /, "");print;exit}' .github/workflows/ci.yml)
 [ -n "$workflow_build" ]
 : > "$PREREQUISITE_COMMANDS"
 sh -c "$workflow_build"
 ! grep -q Renderer.Perf.Verify "$PREREQUISITE_COMMANDS"
 printf 'workflow full build excludes tooling verifier\n'
+workflow_outside=$(awk '/- name: Build projects outside the solution \(full\)/ {found=1;next} found && /run:/ {sub(/^.*run: /, "");print;exit}' .github/workflows/ci.yml)
+[ -n "$workflow_outside" ]
+: > "$PREREQUISITE_COMMANDS"
+sh -c "$workflow_outside"
+[ "$(outside_compiles)" -eq "$outside_total" ]
+compiled "$tool"
+compiled tools/Renderer.Perf.Verify/Renderer.Perf.Verify.csproj
+! grep -q '^dotnet test ' "$PREREQUISITE_COMMANDS"
+printf 'workflow full sequence compiles every project outside the solution and tests none\n'
 for target in KhaozEngine.slnx ./KhaozEngine.slnx "$root/KhaozEngine.slnx" \
   KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj KhaozEngine.Attachments.Tests/KhaozEngine.Attachments.Tests.csproj; do
   run_build "$target"
@@ -71,28 +93,44 @@ for affected in KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj KhaozEn
   : > "$PREREQUISITE_COMMANDS"
   bash scripts/ci-selective-test.sh base head > "$task_tmp/output" 2>&1
   ! grep -q Renderer.Perf.Verify "$PREREQUISITE_COMMANDS"
-  if [ "$affected" = "$tool" ]; then ! grep -q '^dotnet test ' "$PREREQUISITE_COMMANDS"
-  else [ "$(grep -c '^dotnet test ' "$PREREQUISITE_COMMANDS")" -eq 1 ]; fi
+  no_outside_test
+  # The project the affected set names is compiled and never tested. A solution test project names none.
+  if [ "$affected" = "$tool" ]; then
+    ! grep -q '^dotnet test ' "$PREREQUISITE_COMMANDS"
+    compiled "$tool"
+    [ "$(outside_compiles)" -eq 1 ]
+  else
+    [ "$(grep -c '^dotnet test ' "$PREREQUISITE_COMMANDS")" -eq 1 ]
+    [ "$(outside_compiles)" -eq 0 ]
+  fi
 done
-printf 'selective engine tests stay bounded and outside-solution tooling is omitted\n'
+printf 'selective engine tests stay bounded, and a named outside-solution project is compiled and never tested\n'
 export PREREQUISITE_CHANGED=$tool PREREQUISITE_AFFECTED=$tool
 : > "$PREREQUISITE_COMMANDS"
 bash scripts/ci-selective-test.sh base head > "$task_tmp/output" 2>&1
 grep -q '^dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj ' "$PREREQUISITE_COMMANDS"
 [ "$(grep -c '^dotnet test ' "$PREREQUISITE_COMMANDS")" -eq 1 ]
+compiled "$tool"
+# The graph walker reports nothing here, so the project file in the diff is what selects the compile.
 export PREREQUISITE_AFFECTED_NONE=1
 : > "$PREREQUISITE_COMMANDS"
 bash scripts/ci-selective-test.sh base head > "$task_tmp/output" 2>&1
 grep -q '^dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj ' "$PREREQUISITE_COMMANDS"
 [ "$(grep -c '^dotnet test ' "$PREREQUISITE_COMMANDS")" -eq 1 ]
+compiled "$tool"
+[ "$(outside_compiles)" -eq 1 ]
 unset PREREQUISITE_AFFECTED_NONE
+# FULL compiles every project outside the solution, the verifier among them as a project in its own right,
+# and still tests none of them.
 export PREREQUISITE_CHANGED=.testhealth-baseline
 : > "$PREREQUISITE_COMMANDS"
 bash scripts/ci-selective-test.sh base head > "$task_tmp/output" 2>&1
 grep -q 'FULL' "$task_tmp/output"
-! grep -q Renderer.Perf.Verify "$PREREQUISITE_COMMANDS"
+[ "$(outside_compiles)" -eq "$outside_total" ]
+compiled tools/Renderer.Perf.Verify/Renderer.Perf.Verify.csproj
+no_outside_test
 unset PREREQUISITE_CHANGED
-printf 'tool csproj changes select architecture rump and baseline changes force FULL\n'
+printf 'tool csproj changes select architecture rump and compile that project, and baseline changes force FULL with every outside compile\n'
 mkdir -p "$task_tmp/no-python"
 printf '#!/bin/sh\nexit 97\n' > "$task_tmp/no-python/python3"
 chmod +x "$task_tmp/no-python/python3"

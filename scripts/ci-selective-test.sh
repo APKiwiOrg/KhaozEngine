@@ -19,6 +19,12 @@
 #              projects in KhaozEngine.slnx, and only those are restored, built, and tested. An empty
 #              intersection (the common docs-only push) skips build and test entirely.
 #
+# Both outcomes also COMPILE the projects KhaozEngine.slnx does not list, through
+# scripts/outside-solution-projects.py: all of them on FULL, the ones dotnet-affected names on SELECTIVE.
+# No solution build sees those projects, and they compile engine code by reference and by linked source
+# file, so without this an engine change can stop one compiling and stay green here (#1847). They are
+# compiled and never tested: their suites keep their own workflow and trigger.
+#
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -45,6 +51,7 @@ run_full() {
   echo "ci-selective-test: FULL ($1)"
   dotnet restore || fail "restore failed"
   sh scripts/build-release-tests.sh KhaozEngine.slnx --no-restore || fail "build failed"
+  python3 scripts/outside-solution-projects.py build || fail "a project outside the solution no longer compiles"
   dotnet test -c Release --no-build --filter "$DEFAULT_TEST_FILTER" || fail "test failed"
   # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes. The
   # DeterministicFp tests that keep the default environment live in KhaozEngine.Foundation.Tests, and the ones
@@ -114,6 +121,12 @@ fi
 if [ "$affected_rc" -ne 0 ]; then
   fail "dotnet affected exited ${affected_rc}"
 fi
+
+# Compile the projects outside the solution that this diff reaches, before any test: a project that no
+# longer compiles is a build failure. The intersection below keeps their tests out, and this is the only
+# place the selective path sees them. With nothing reached it builds nothing.
+python3 scripts/outside-solution-projects.py build --changed "$TMP/changed.txt" --affected "$TMP/affected.txt" \
+  || fail "a project outside the solution no longer compiles"
 
 # Intersect the affected project list with the slnx test projects. The two globs *.Tests.csproj and
 # *Tests.csproj select every real test assembly and, by name, leave out the TestSupport helper libs.

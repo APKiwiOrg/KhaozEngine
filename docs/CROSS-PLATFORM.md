@@ -511,8 +511,9 @@ that reach the Render or MapEditor test project through its reference graph, or 
 inputs such as shared assets, project definitions, the GPU build and shard scripts, or unknown
 paths. The Scope summary states why the matrix was selected or skipped. Off-scope runs use
 one hosted reporting row because GitHub requires a nonempty matrix. All GPU test steps
-skip in that row. A newer run cancels the previous run for the same pull request. Main push
-runs are independent.
+skip in that row. A new first attempt cancels the previous first attempt for the same pull
+request. A rerun uses its own run group, so it cannot cancel validation of the current pull
+request head. Main push runs are independent.
 
 The Sunday 18:00 UTC schedule still runs all backends in full, including both Vulkan validation
 tiers. The matrix reports its own result independently of Product CI.

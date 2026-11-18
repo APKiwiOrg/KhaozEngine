@@ -2,31 +2,46 @@ name: Windows console regression
 
 on:
   push:
-    branches: [main, fix/windows-console-1322]
-    paths: &console-paths
-      - 'tools/WindowsConsoleProbe/**'
-      - 'scripts/tests/windows-console-smoke.ps1'
-      - '.github/workflows/windows-console.yml'
-      - 'KhaozEngine.Platform/**'
-      - 'KhaozEngine.Foundation.Tests/Platform/WindowsConsole*.cs'
-      - 'KhaozEngine.CodeHealth.Analyzers/**'
-      - 'Directory.Build.props'
-      - 'Directory.Build.targets'
-      - 'Directory.Packages.props'
-      - '.filesize-baseline'
+    branches: [main]
   pull_request:
-    paths: *console-paths
+  schedule:
+    - cron: '51 18 * * 0'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-console-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'pull_request' && format('windows-console-pr-{0}', github.event.pull_request.number) || format('windows-console-{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scope:
+    name: Scope
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: |
+            /.github/actions/native-ci-scope/
+            /.github/ci-scope.txt
+          sparse-checkout-cone-mode: false
+      - id: scope
+        uses: ./.github/actions/native-ci-scope
+        with:
+          segments: '["compile-windows-console-driver", "compile-windows-console-probe"]'
+
   native-console:
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
     runs-on: windows-2025
     timeout-minutes: 25
     env:
@@ -37,7 +52,7 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
-      - name: Native WinExe console regression
+      - name: Build and test
         shell: pwsh
         env:
           NUGET_PACKAGES: ${{ runner.temp }}/windows-console-nuget-${{ github.run_id }}-${{ github.run_attempt }}

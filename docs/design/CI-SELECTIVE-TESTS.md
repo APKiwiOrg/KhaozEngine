@@ -126,13 +126,15 @@ The build helper checks the segment inventory and rules against the actual graph
 conditional references. A valid rule set with a stale project mapping fails the check. Files known
 to be prose may skip compilation and still run whole-tree convention guards.
 
-GPU correctness uses the same scope rules on pull requests and main pushes. It selects the
-`render` and `map-editor` segments or any full scope. External inputs such as shared assets and
-GPU build scripts are full overrides. The build helper audits the closure rows against the project
-graph, so an added reference with a stale row fails validation. A pull request uses its own base,
-and a main push uses the last passing ancestor of the GPU workflow where available. The Scope
-summary records the reason when a change skips the matrix. The weekly full and manual GPU paths run
-independently of Product CI.
+Native correctness uses the same scope rules on pull requests and main pushes. GPU selects
+`render` and `map-editor`, foliage selects `map-doc` and `render`, terrain selects
+`tile-world-physics`, and Windows console selects its two probe compile roots. Every full scope
+selects all four workflows. Full overrides cover external inputs such as shared assets, GPU build
+scripts and the console smoke script. The build helper audits the closure rows against the project
+graph, so an added reference with a stale row fails validation. Each native workflow compares a
+pull request with its own base and a main push with its last passing ancestor where available.
+The Scope summary records the reason when a change skips native jobs. The weekly full and manual
+paths run independently of Product CI.
 
 ## Decision 5: product and release validation
 

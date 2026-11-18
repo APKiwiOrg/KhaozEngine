@@ -392,10 +392,10 @@ changes that reach their inputs. `CI passed` reports the verdict. A main push or
 a recent compatible full pass
 on the exact tree. A manual Product CI run forces full validation.
 
-The hosted [GPU correctness matrix](CROSS-PLATFORM.md#ci-matrix-githubworkflowscross-platform-gpuyml)
-uses the same dependency scope on pull requests and main pushes and runs in full each Sunday.
-Its Scope summary explains a skipped matrix. Product CI reports the only `CI passed` check and
-does not wait for the GPU workflow.
+The hosted [native correctness workflows](CROSS-PLATFORM.md#other-native-correctness-workflows)
+use the same dependency scope on pull requests and main pushes. Scope explains skipped work, and
+staggered Sunday runs check all native cases. Product CI reports the only `CI passed` check and
+does not wait for native correctness.
 
 The release workflow `ci` retains its manual and tag paths. A manual run restores, builds, tests
 and packs, executes the three SQL Server jobs and never publishes. A tag push reuses the hosted

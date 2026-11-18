@@ -1216,6 +1216,21 @@ PASSED:
 [Product CI](../.github/workflows/product-ci.yml) is the inner-loop check for dependency-selected builds and
 headless tests. The native GPU matrix runs in its own workflow.
 
+## Other native correctness workflows
+
+Foliage, terrain format and Windows console correctness use the same dependency scope as the
+GPU matrix on pull requests and main pushes. Changes outside a workflow's inputs leave a
+Scope result explaining the skip. Each workflow runs its full check weekly and remains
+available by manual dispatch. For pull requests, a newer run cancels the previous one.
+Each main push keeps its own run.
+
+| Workflow | Sunday UTC | Hosted check |
+| --- | --- | --- |
+| `cross-platform-gpu.yml` | 18:00 | Full GPU suites on Metal, Direct3D 11 and Vulkan, including Vulkan sync validation |
+| `foliage-conformance.yml` | 18:17 | One Release build of the MapDoc and Render test roots per OS. Both conformance filters must execute and pass every test on Linux, macOS and Windows |
+| `terrain-format.yml` | 18:34 | One Release build per OS followed by the committed terrain certificate fixture on Linux, macOS and Windows |
+| `windows-console.yml` | 18:51 | Build the probe and driver from source and verify subsystem and console behavior on Windows |
+
 ## Authoring shaders that pass on all three backends
 
 The GLSL shaders cross-compile through SPIRV-Cross to MSL (Metal), HLSL→FXC (Direct3D11), and SPIR-V (Vulkan).

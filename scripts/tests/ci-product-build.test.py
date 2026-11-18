@@ -148,6 +148,12 @@ def main():
         assert all(token.startswith('compile-') for token in tokens)
         assert plan(False, [], scratch)['build_roots'] == []
 
+        foliage_segments = ['map-doc', 'render']
+        foliage_roots = sorted(root for segment in foliage_segments for root in manifest[segment]['roots'])
+        foliage = plan(False, foliage_segments, scratch)
+        assert sorted(projects(scratch / 'product.slnx')) == foliage_roots
+        assert foliage['test_roots'] == foliage_roots
+
     if args.replay:
         paths = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
         totals = {'full': 0, 'selected': 0, 'ignored': 0}

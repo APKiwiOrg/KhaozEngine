@@ -3,27 +3,53 @@ name: foliage-conformance
 # public pins once: FoliagePlatformPinsTests over the invented MapDoc fixture and GroundCoverTraceTests over the
 # released ground cover kernel. Each leg checks the same source literals. Nothing is regenerated per operating system.
 #
-# The repository is public, so the three legs run on GitHub-hosted runners only. No leg uses a self-hosted label,
-# the dev machine's build-slot, a private harness, a secret or a repeat loop. Exact keys, decisions, models and the
-# scale and rank bits compare exactly. Positions compare within 0.00001 m and orientations within 0.000001 rad.
+# The three legs run on GitHub-hosted runners. Keys, decisions, models and the scale and rank bits compare exactly. Positions compare within 0.00001 m and orientations within 0.000001 rad.
 #
 # A leg passes only when both result files exist and report a nonzero total with every test executed and passed. A
 # skipped xunit fact leaves executed below total, so a run that skipped anything fails here too. A filter that matches
 # nothing reports a zero total and fails.
 on:
   push:
+    branches: [main]
   pull_request:
+  schedule:
+    - cron: '17 18 * * 0'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: foliage-conformance-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'pull_request' && format('foliage-conformance-pr-{0}', github.event.pull_request.number) || format('foliage-conformance-{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scope:
+    name: Scope
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: |
+            /.github/actions/native-ci-scope/
+            /.github/ci-scope.txt
+          sparse-checkout-cone-mode: false
+      - id: scope
+        uses: ./.github/actions/native-ci-scope
+        with:
+          segments: '["map-doc", "render"]'
+
   conformance:
+    needs: scope
+    if: needs.scope.outputs.selected == 'true'
     name: ${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
@@ -40,21 +66,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # local-feed is git-ignored. Creating it lets the nuget.config local source resolve. No KhaozEngine package is
-      # restored here, since every engine edge of these projects is a ProjectReference.
-      - name: Create the local feed
-        shell: bash
-        run: mkdir -p local-feed
-
-      - name: Restore and build the area test projects
+      - name: Build
         shell: bash
         run: |
-          for project in KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj; do
-            dotnet restore "$project"
-            dotnet build "$project" -c Release --no-restore
-          done
+          mkdir -p local-feed
+          union=.ci-build/foliage
+          python3 -B scripts/ci-product-build.py false '["map-doc", "render"]' --solutions "$union"
+          dotnet restore "$union/product.slnx"
+          dotnet build "$union/product.slnx" -c Release --no-restore -p:ShouldUnsetParentConfigurationAndPlatform=false
 
-      - name: Run the platform pins and the ground cover trace once
+      - name: 'Test: foliage'
         shell: bash
         run: |
           dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --no-build \

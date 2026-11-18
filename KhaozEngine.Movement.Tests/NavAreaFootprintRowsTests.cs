@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using Xunit;
+using FloatUlp = KhaozEngine.Movement.FloatSteps.FloatUlp;
 
 namespace KhaozEngine.Tests.Movement;
 
@@ -39,14 +40,28 @@ public class NavAreaFootprintRowsTests
         for (int z = 0; z < Size; z++)
             for (int x = 0; x < Size; x++)
             {
-                PhysicsNavColumns columns = Columns(options, (x, z));
-                bool expected = Rectangle(columns, tuning, from, to, excluded: UpperArea);
-                var footprint = Footprint(columns, tuning).ExcludingAreas(UpperArea);
-                Assert.Equal(expected, footprint.AcceptsSegment(from, to));
-                Assert.Equal(expected, footprint.AcceptsExclusions(from, to));
-                if (!expected) refusals++;
+                if (!CompareExcludedColumn(options, tuning, from, to, (x, z))) refusals++;
             }
         Assert.InRange(refusals, 1, Size * Size - 1);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(-1, true)]
+    public void PrunedRowsPreserveAdjacentFloatCornerTangency(int zStep, bool accepted)
+    {
+        float Step(float z) => zStep > 0 ? FloatUlp.Up(z) : zStep < 0 ? FloatUlp.Down(z) : z;
+        var options = Options();
+        var tuning = MoveTuning.Default with { CapsuleRadius = 1.25f };
+        Vector3 from = new(3.75f, 0f, Step(2.25f)), to = new(13.75f, 0f, Step(9.75f));
+        // At t = 0.5, (8.75, 6) is exactly 1.25 m from the marked column's corner (8, 7).
+        Assert.Equal(accepted, CompareExcludedColumn(options, tuning, from, to, (7, 7)));
+
+        // The unmarked control scans to completion with a 14 by 11 legacy rectangle in all three cases.
+        using var work = new NavFootprintDiagnostics();
+        Assert.True(Footprint(Columns(options), tuning).AcceptsSegment(from, to));
+        Assert.InRange(work.CandidateCells, 1, 14 * 11 - 1);
     }
 
     [Theory]
@@ -86,9 +101,10 @@ public class NavAreaFootprintRowsTests
         var columns = Columns(Options());
         Vector3 from = new(1.5f, 0f, 1.5f), to = new(14.5f, 0f, 14.5f);
         Assert.True(Rectangle(columns, tuning, from, to));
-        Assert.True(Footprint(columns, tuning).AcceptsSegmentForTests(from, to, out long candidates));
+        using var work = new NavFootprintDiagnostics();
+        Assert.True(Footprint(columns, tuning).AcceptsSegment(from, to));
         // The legacy 14 by 14 rectangle is mostly corner cells far from the swept line.
-        Assert.InRange(candidates, 1, 14 * 14 / 2 - 1);
+        Assert.InRange(work.CandidateCells, 1, 14 * 14 / 2 - 1);
     }
 
     [Fact]
@@ -99,8 +115,31 @@ public class NavAreaFootprintRowsTests
         var columns = Columns(Options(size: cellSize));
         Vector3 from = new(1.5f * cellSize, 0f, 1.5f * cellSize), to = new(14.5f * cellSize, 0f, 14.5f * cellSize);
         Assert.True(Rectangle(columns, tuning, from, to));
-        Assert.True(Footprint(columns, tuning).AcceptsSegmentForTests(from, to, out long candidates));
-        Assert.Equal(14L * 14, candidates);
+        using var work = new NavFootprintDiagnostics();
+        Assert.True(Footprint(columns, tuning).AcceptsSegment(from, to));
+        Assert.Equal(14L * 14, work.CandidateCells);
+    }
+
+    [Fact]
+    public void EmptyFallbackRowsDoNotCountCandidates()
+    {
+        var tuning = MoveTuning.Default with { CapsuleRadius = -2f };
+        Vector3 from = new(8f, 0f, 2f), to = new(8f, 0f, 13f);
+        // This unsupported internal input has eight rows with inverted X bounds and no geometry calls.
+        using var work = new NavFootprintDiagnostics();
+        Assert.True(Footprint(Columns(Options()), tuning).AcceptsSegment(from, to));
+        Assert.Equal(0L, work.CandidateCells);
+    }
+
+    private static bool CompareExcludedColumn(PhysicsNavBakeOptions options, MoveTuning tuning, Vector3 from,
+        Vector3 to, (int X, int Z) marked)
+    {
+        PhysicsNavColumns columns = Columns(options, marked);
+        bool expected = Rectangle(columns, tuning, from, to, excluded: UpperArea);
+        var footprint = Footprint(columns, tuning).ExcludingAreas(UpperArea);
+        Assert.Equal(expected, footprint.AcceptsSegment(from, to));
+        Assert.Equal(expected, footprint.AcceptsExclusions(from, to));
+        return expected;
     }
 
     internal static PhysicsNavBakeOptions Options(float x = 0f, float z = 0f, float size = 1f)

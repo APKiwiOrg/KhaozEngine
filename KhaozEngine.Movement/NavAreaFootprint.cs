@@ -64,19 +64,14 @@ internal sealed class NavAreaFootprint
 
     internal bool Accepts(Vector3 feet) => AcceptsSegment(feet, feet);
 
-    internal bool AcceptsSegment(Vector3 from, Vector3 to) => AcceptsSegment(from, to, onlyExclusions: false, out _);
-
-    /// <summary>Counts calls to the exact geometry predicate, up to and including the first refused column.</summary>
-    internal bool AcceptsSegmentForTests(Vector3 from, Vector3 to, out long candidates)
-        => AcceptsSegment(from, to, onlyExclusions: false, out candidates);
+    internal bool AcceptsSegment(Vector3 from, Vector3 to) => AcceptsSegment(from, to, onlyExclusions: false);
 
     // The graph already owns support and clearance proofs, including non-walking links. Applying those
     // checks to a link's straight chord would reject an otherwise permitted dry Drop or Hop.
-    internal bool AcceptsExclusions(Vector3 from, Vector3 to) => AcceptsSegment(from, to, onlyExclusions: true, out _);
+    internal bool AcceptsExclusions(Vector3 from, Vector3 to) => AcceptsSegment(from, to, onlyExclusions: true);
 
-    private bool AcceptsSegment(Vector3 from, Vector3 to, bool onlyExclusions, out long candidates)
+    private bool AcceptsSegment(Vector3 from, Vector3 to, bool onlyExclusions)
     {
-        candidates = 0;
         if (!Finite(from) || !Finite(to)) return false;
         double minX = Math.Min(from.X, to.X) - _radius, maxX = Math.Max(from.X, to.X) + _radius;
         double minZ = Math.Min(from.Z, to.Z) - _radius, maxZ = Math.Max(from.Z, to.Z) + _radius;
@@ -86,6 +81,7 @@ internal sealed class NavAreaFootprint
         int z0 = Cell(minZ, _options.MinZ), z1 = Cell(maxZ, _options.MinZ);
         double lowY = Math.Min(from.Y, to.Y), highY = Math.Max(from.Y, to.Y);
         var rows = new NavFootprintRows(from, to, _options, _radius, x0, x1, z0, z1);
+        NavFootprintDiagnostics? diagnostics = NavFootprintDiagnostics.Current;
         for (int z = z0; z <= z1; z++)
         {
             double bottom = _options.MinZ + z * (double)_options.CellSize;
@@ -96,11 +92,11 @@ internal sealed class NavAreaFootprint
                 if (!NavFootprintGeometry.Touches(from, to, left, bottom, _options.CellSize, _radius)) continue;
                 if (!AcceptsColumn(x, z, lowY, highY, onlyExclusions))
                 {
-                    candidates += (long)x - first + 1;
+                    diagnostics?.CountRow(first, x);
                     return false;
                 }
             }
-            candidates += (long)last - first + 1;
+            diagnostics?.CountRow(first, last);
         }
         return true;
     }

@@ -56,14 +56,18 @@ namespace KhaozEngine.Render3D.Rendering
         int _boundTargets = int.MinValue;
         TemporalHistory? _boundHistory;
         readonly Func<string, string>? _fragmentSourceForTests;
+        readonly TemporalDetailPassProbe _detailProbe;
+        readonly IGpuFramebuffer?[] _detailProbeDepthFrames = new IGpuFramebuffer?[2];
 
         /// <summary>A renderer on <paramref name="gd"/>. <paramref name="fragmentSourceForTests"/> is for tests alone:
         /// it rewrites the text of every fragment program this renderer and its split compile, so an oracle can run a
         /// frozen copy of the rules through the same objects. Null everywhere else.</summary>
-        public TemporalResolveRenderer(IGpuDevice gd, Func<string, string>? fragmentSourceForTests = null)
+        public TemporalResolveRenderer(IGpuDevice gd, Func<string, string>? fragmentSourceForTests = null,
+            TemporalDetailPassProbe detailProbe = default)
         {
             _gd = gd;
             _fragmentSourceForTests = fragmentSourceForTests;
+            _detailProbe = detailProbe;
             IGpuResourceFactory f = gd.Factory;
             _resolveLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
@@ -73,7 +77,9 @@ namespace KhaozEngine.Render3D.Rendering
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
                 T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve")));
             _storeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
-                T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore")));
+                detailProbe.AttachVisibility && !detailProbe.AttachDepth
+                    ? [T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore"), T("KeyShadowVisibility")]
+                    : [T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore")]));
             _resolveBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalResolveUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _storeBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalDepthStoreUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _visibilityBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalVisibilityUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
@@ -93,7 +99,8 @@ namespace KhaozEngine.Render3D.Rendering
             _storeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
                 FragmentSource(ShaderSources.TemporalDepthStoreFrag));
             _storePipeline = Fullscreen(f, _storeShaders, _storeLayout,
-                new GpuOutputDescription(null, TemporalFormats.PreviousDepth));
+                new GpuOutputDescription(null, _detailProbe.AttachVisibility && !_detailProbe.AttachDepth
+                    ? [TemporalFormats.PreviousDepth, ShadowVisibilityTargets.Format] : [TemporalFormats.PreviousDepth]));
         }
 
         // Apply fixture rewrites before selecting this backend's current visibility reads.
@@ -165,7 +172,9 @@ namespace KhaozEngine.Render3D.Rendering
                     history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer));
             }
             _storeSet = f.CreateResourceSet(new GpuResourceSetDescription(_storeLayout,
-                inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer));
+                _detailProbe.AttachVisibility && !_detailProbe.AttachDepth
+                    ? [inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer, effective.KeyShadowVisibility!]
+                    : [inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer]));
             try { BindDetail(history); }
             catch { FreeSets(retired); throw; }
             _boundInputs = inputs;
@@ -223,10 +232,16 @@ namespace KhaozEngine.Render3D.Rendering
             LastEntry = history.DetailStore is null ? Entry : TemporalResolveEntry.Fused;
             if (history.DetailStore is { } detail)
             {
-                detail.Resolve(cl, set, history.WriteIndex, Profiling);
-                using (Profiling?.Pass(cl, "temporal.depth-store", 0) ?? default)
+                int write = history.WriteIndex;
+                detail.Resolve(cl, set, write, Profiling, _detailProbe.AttachDepth && _detailProbe.AttachVisibility
+                    ? VisibilityHistory.Texture(write) : null);
+                if (!_detailProbe.AttachDepth)
                 {
-                    cl.SetFramebuffer(history.PreviousDepthFramebuffer(history.WriteIndex));
+                    using var depth = Profiling?.Pass(cl, "temporal.depth-store", 0) ?? default;
+                    cl.SetFramebuffer(_detailProbe.AttachVisibility
+                        ? _detailProbeDepthFrames[write] ??= _gd.Factory.CreateFramebuffer(null,
+                            history.PreviousDepth(write), VisibilityHistory.Texture(write))
+                        : history.PreviousDepthFramebuffer(write));
                     cl.SetPipeline(_storePipeline!);
                     cl.SetGraphicsResourceSet(0, _storeSet!);
                     cl.Draw(3);
@@ -261,6 +276,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 Free(ref _resolveSets[i], retired);
                 Free(ref _fullyLitResolveSets[i], retired);
+                Free(ref _detailProbeDepthFrames[i], retired);
             }
             Free(ref _storeSet, retired);
             ForgetBinding();

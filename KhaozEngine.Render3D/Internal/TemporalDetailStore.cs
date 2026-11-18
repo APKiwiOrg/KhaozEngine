@@ -26,16 +26,19 @@ internal sealed class TemporalDetailStore(IGpuDevice gd)
     internal static bool CanFallbackFromCreationFailure(Exception failure) => failure is not OutOfMemoryException;
 
     internal void BindResolve(TemporalHistory history, IGpuResourceLayout layout, IGpuResourceLayout fineLayout,
-        Func<string, string>? fragmentSourceForTests = null) =>
-        _resolve ??= new TemporalDetailPass(gd, history, this, layout, fineLayout, fragmentSourceForTests);
+        Func<string, string>? fragmentSourceForTests = null, TemporalDetailPassProbe probe = default) =>
+        _resolve ??= new TemporalDetailPass(gd, history, this, layout, fineLayout, fragmentSourceForTests, probe);
 
     /// <summary>Borrowed live resolve transport for the path-count parity test. Never dispose or mutate.</summary>
     internal IGpuTexture TransportForTests => _resolve!.TransportForTests;
+    internal IGpuTexture ClassificationForTests => _resolve!.ClassificationForTests;
+    internal IGpuTexture ChildForTests(int child) => _resolve!.ChildForTests(child);
 
     internal IGpuResourceSet ReadSet(int write) => _resolve!.ReadSet(write);
 
-    internal void Resolve(IGpuCommandList cl, IGpuResourceSet inputs, int write, RenderPassProfiling? profiling) =>
-        _resolve!.Resolve(cl, inputs, write, profiling);
+    internal void Resolve(IGpuCommandList cl, IGpuResourceSet inputs, int write, RenderPassProfiling? profiling,
+        IGpuTexture? visibilityForTests = null) =>
+        _resolve!.Resolve(cl, inputs, write, profiling, visibilityForTests);
 
     internal void Update(IGpuCommandList cl, int write) => _resolve!.Update(cl, write);
 

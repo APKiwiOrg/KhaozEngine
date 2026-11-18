@@ -73,8 +73,8 @@ namespace KhaozEngine.Render3D
         internal TemporalPostTargets? TemporalPostTargetsForTests => _temporalPost;
 
         /// <summary>TemporalTestResolve installs rewritten shader sources before the first resolve for paired controls.</summary>
-        internal void InstallTemporalResolveForTests(Func<string, string> rewrite) =>
-            _temporalResolve = new TemporalResolveRenderer(_gd, rewrite);
+        internal void InstallTemporalResolveForTests(Func<string, string> rewrite, TemporalDetailPassProbe probe = default) =>
+            _temporalResolve = new TemporalResolveRenderer(_gd, rewrite, probe);
 
         /// <summary>RendererPerfColdLifecycleTests prepares owned post targets before injecting fake disposal failures.</summary>
         internal void PrepareTemporalPostForTests(int width, int height)

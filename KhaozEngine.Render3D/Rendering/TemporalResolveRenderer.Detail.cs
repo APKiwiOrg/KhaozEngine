@@ -25,7 +25,7 @@ internal sealed partial class TemporalResolveRenderer
         {
             var layout = _detailLayout ?? (candidate = _gd.Factory.CreateResourceLayout(
                 new GpuResourceLayoutDescription(T("DetailColor"), T("DetailClassification"))));
-            detail.BindResolve(history, _resolveLayout, layout, _fragmentSourceForTests);
+            detail.BindResolve(history, _resolveLayout, layout, _fragmentSourceForTests, _detailProbe);
             _detailLayout = layout;
         }
         catch

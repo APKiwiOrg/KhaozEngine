@@ -63,12 +63,12 @@ internal sealed class TemporalVisibilityHistory
     internal IGpuTexture Texture(int index) => _textures[index]
         ?? throw new InvalidOperationException("Visibility history is not allocated.");
 
-    internal void Store(IGpuCommandList commands, IGpuTexture source, int writeIndex, bool fullyLit = false)
+    internal void Store(IGpuCommandList commands, IGpuTexture source, int writeIndex, bool fullyLit = false, bool alreadyWrittenForTests = false)
     {
         if (StoredThisFrame) return;
         if (_owner is null || _owner.ResolveFrameIndex < 0 || writeIndex != _owner.WriteIndex)
             throw new InvalidOperationException("Visibility must store the colour owner's active write index.");
-        commands.CopyTexture(source, Texture(writeIndex));
+        if (!alreadyWrittenForTests) commands.CopyTexture(source, Texture(writeIndex));
         _fullyLit[writeIndex] = fullyLit;
         _seededIndex = writeIndex;
         _storedFrame = _owner.ResolveFrameIndex;

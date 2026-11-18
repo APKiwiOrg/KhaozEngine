@@ -56,6 +56,8 @@ public sealed class TemporalFixture : IDisposable
     /// <summary>The display framebuffer every frame presents into.</summary>
     public IGpuFramebuffer Target { get; private set; }
 
+    internal IGpuTexture PresentedTexture => _targetTexture;
+
     public int DisplayWidth { get; private set; }
 
     public int DisplayHeight { get; private set; }

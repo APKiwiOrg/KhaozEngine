@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>Same-frame paired measurements on native Metal. Only the shipped scene advances history.</summary>
 [Collection("GpuTimingSensitive")]
 [Trait("Category", "Diagnostic")]
-public sealed class TemporalFineCostProbeGpuTests(ITestOutputHelper output)
+public sealed partial class TemporalFineCostProbeGpuTests(ITestOutputHelper output)
 {
     const int Width = 2560, Height = 1440, Warm = 4, ReplayWarm = 1, Samples = 8;
     const uint MarkersPerProgram = 6, MarkersPerPair = 2 * MarkersPerProgram;

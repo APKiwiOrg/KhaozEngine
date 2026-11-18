@@ -139,7 +139,7 @@ internal static class TemporalFineCostProbePrograms
             "    oColor = r + (oChild0 + oChild1 + oChild2 + oChild3) * ProbeParameters.y;");
     }
 
-    static string ReuseCandidate(string source)
+    internal static string ReuseCandidate(string source)
     {
         const string structure = "struct TemporalDetailLockState { float value; bool carried; bool visibility; float signedChange; uint path; };";
         source = Replace(source, structure, structure + "\nTemporalDetailLockState probeCandidate;\nbool probeReuseCandidate;");

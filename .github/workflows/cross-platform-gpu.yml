@@ -243,8 +243,15 @@
 name: cross-platform-gpu
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && format('cross-platform-gpu-workflow_dispatch-{0}', github.ref) || (github.event_name == 'pull_request' && format('cross-platform-gpu-pr-{0}', github.event.pull_request.number) || format('cross-platform-gpu-{0}-{1}', github.event_name, github.run_id)) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+  # A rerun keeps its old commit, so keep it out of the group for the current PR head.
+  group: >-
+    ${{ github.event_name == 'workflow_dispatch' && format('cross-platform-gpu-workflow_dispatch-{0}', github.ref) ||
+        (github.event_name == 'pull_request' && github.run_attempt == 1 &&
+        format('cross-platform-gpu-pr-{0}', github.event.pull_request.number) ||
+        format('cross-platform-gpu-{0}-{1}', github.event_name, github.run_id)) }}
+  cancel-in-progress: >-
+    ${{ github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && github.run_attempt == 1) }}
 
 on:
   push:

@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
-using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -9,8 +7,8 @@ using Microsoft.CodeAnalysis.Operations;
 namespace KhaozEngine.CodeHealth.Analyzers
 {
     /// <summary>
-    /// One compilation's KEFP001 checks. Direct forms report at once. A static readonly field read as a float and a
-    /// generic that steps its type parameter need the whole compilation, so they report at compilation end.
+    /// One compilation's KEFP001 checks. Direct forms report at once. Static readonly bit reads are reported
+    /// at compilation end so each read can be paired with its field initializer.
     /// </summary>
     internal sealed class SubnormalFloatRun
     {
@@ -21,7 +19,6 @@ namespace KhaozEngine.CodeHealth.Analyzers
         private readonly INamedTypeSymbol? _helper;
         private readonly INamedTypeSymbol? _helperTemplate;
         private readonly SubnormalFloatFieldReads _fieldReads;
-        private ConcurrentDictionary<ITypeParameterSymbol, byte>? _steppedParameters;
 
         public SubnormalFloatRun(Compilation compilation)
         {
@@ -63,15 +60,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         public void RecordFieldInitializer(OperationAnalysisContext context) => _fieldReads.RecordInitializer(context);
 
-        public void ReportDeferred(CompilationAnalysisContext context)
-        {
-            _fieldReads.Report(context);
-            if (_steppedParameters is not { } parameters) return;
-
-            var uses = new SubnormalFloatGenericUses(context.Compilation.Assembly, parameters.Keys);
-            SubnormalFloatGenericWalk.Record(context, uses);
-            uses.Report(context);
-        }
+        public void ReportReadonlyFields(CompilationAnalysisContext context) => _fieldReads.Report(context);
 
         private void CheckMethod(OperationAnalysisContext context, IMethodSymbol method, SyntaxNode syntax)
         {
@@ -84,20 +73,14 @@ namespace KhaozEngine.CodeHealth.Analyzers
                         $"{Describe(owner)}.{method.Name} is a BCL float step whose zero case holds a subnormal constant");
                     return;
                 }
-                if (IsIeee754(owner) && owner.TypeArguments[0] is ITypeParameterSymbol self)
-                    RecordSteppedParameter(self);
+                if (IsIeee754(owner) && owner.TypeArguments[0] is ITypeParameterSymbol parameter)
+                {
+                    Report(context, syntax.GetLocation(),
+                        $"{method.Name} steps the type parameter '{parameter.Name}'. Closing it over float can inline " +
+                        "the BCL float step with its subnormal zero-case constant. For a concrete double step, use " +
+                        "Math.BitDecrement or Math.BitIncrement");
+                }
             }
-        }
-
-        private void RecordSteppedParameter(ITypeParameterSymbol parameter)
-        {
-            var parameters = Volatile.Read(ref _steppedParameters);
-            if (parameters is null)
-            {
-                var initial = new ConcurrentDictionary<ITypeParameterSymbol, byte>(SymbolEqualityComparer.Default);
-                parameters = Interlocked.CompareExchange(ref _steppedParameters, initial, null) ?? initial;
-            }
-            parameters.TryAdd(parameter, 0);
         }
 
         private void CheckBitsReadAsFloat(OperationAnalysisContext context, IInvocationOperation invocation)

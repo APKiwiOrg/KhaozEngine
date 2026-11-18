@@ -39,7 +39,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             context.RegisterOperationAction(run.CheckInvocation, OperationKind.Invocation);
             context.RegisterOperationAction(run.CheckMethodReference, OperationKind.MethodReference);
             context.RegisterOperationAction(run.RecordFieldInitializer, OperationKind.FieldInitializer);
-            context.RegisterCompilationEndAction(run.ReportDeferred);
+            context.RegisterCompilationEndAction(run.ReportReadonlyFields);
         }
 
         private static bool InScope(AnalyzerOptions options, Compilation compilation)

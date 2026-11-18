@@ -25,7 +25,12 @@ public sealed class CoverageToolingWorkflowTests
         Assert.NotEmpty(suite);
         Assert.Contains("runs-on: ubuntu-26.04", suite);
         Assert.Contains("KE_GPU_TESTS: '0'", suite);
-        Assert.Contains("dotnet build tools/Coverage.Verify/Coverage.Verify.csproj -c Release", suite);
+        Assert.Single(Regex.Matches(suite, @"(?m)^\s*dotnet build "));
+        Assert.Contains("dotnet build tools/Coverage.Verify.Tests/Coverage.Verify.Tests.csproj -c Release", suite);
+        var coverageTests = XDocument.Parse(CoverageUnitSelectionTests.Checkout(
+            "tools/Coverage.Verify.Tests/Coverage.Verify.Tests.csproj", crlf));
+        Assert.Contains(coverageTests.Descendants("ProjectReference"),
+            reference => (string?)reference.Attribute("Include") == "../Coverage.Verify/Coverage.Verify.csproj");
         Assert.Contains("dotnet test tools/Coverage.Verify.Tests/Coverage.Verify.Tests.csproj -c Release", suite);
         Assert.Contains("--list-tests", suite);
         Assert.Contains("--no-build", suite);

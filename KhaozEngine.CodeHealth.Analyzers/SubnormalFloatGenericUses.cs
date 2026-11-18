@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -12,16 +11,17 @@ namespace KhaozEngine.CodeHealth.Analyzers
     internal sealed class SubnormalFloatGenericUses
     {
         private readonly IAssemblySymbol _assembly;
-        private readonly ConcurrentDictionary<ITypeParameterSymbol, byte> _directSteps =
-            new ConcurrentDictionary<ITypeParameterSymbol, byte>(SymbolEqualityComparer.Default);
-        private readonly ConcurrentBag<(ITypeParameterSymbol Target, ITypeParameterSymbol Forwarded)> _forwardings =
-            new ConcurrentBag<(ITypeParameterSymbol, ITypeParameterSymbol)>();
-        private readonly ConcurrentBag<(ITypeParameterSymbol Parameter, SyntaxNode Syntax)> _closures =
-            new ConcurrentBag<(ITypeParameterSymbol, SyntaxNode)>();
+        private readonly HashSet<ITypeParameterSymbol> _stepped;
+        private readonly List<(ITypeParameterSymbol Target, ITypeParameterSymbol Forwarded)> _forwardings =
+            new List<(ITypeParameterSymbol, ITypeParameterSymbol)>();
+        private readonly List<(ITypeParameterSymbol Parameter, SyntaxNode Syntax)> _closures =
+            new List<(ITypeParameterSymbol, SyntaxNode)>();
 
-        public SubnormalFloatGenericUses(IAssemblySymbol assembly) => _assembly = assembly;
-
-        public void RecordStep(ITypeParameterSymbol parameter) => _directSteps.TryAdd(DeclarationParameter(parameter), 0);
+        public SubnormalFloatGenericUses(IAssemblySymbol assembly, IEnumerable<ITypeParameterSymbol> directSteps)
+        {
+            _assembly = assembly;
+            _stepped = new HashSet<ITypeParameterSymbol>(directSteps.Select(DeclarationParameter), SymbolEqualityComparer.Default);
+        }
 
         public void RecordName(ISymbol? symbol, GenericNameSyntax syntax)
         {
@@ -32,11 +32,10 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 RecordMethod(method, syntax, default);
         }
 
-        public void RecordUse(OperationAnalysisContext context, ISymbol? target)
+        public void RecordUse(IOperation operation, ISymbol? target)
         {
-            var syntax = context.Operation.Syntax;
-            RecordUse(target, syntax);
-            RecordType(context.Operation.Type, syntax, default);
+            RecordUse(target, operation.Syntax);
+            RecordType(operation.Type, operation.Syntax, default);
         }
 
         public void RecordUse(ISymbol? target, SyntaxNode syntax, ITypeSymbol? input = null, ITypeSymbol? otherInput = null)
@@ -49,19 +48,16 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         public void Report(CompilationAnalysisContext context)
         {
-            if (_directSteps.IsEmpty) return;
-            var stepped = new HashSet<ITypeParameterSymbol>(_directSteps.Keys, SymbolEqualityComparer.Default);
-            var forwardings = _forwardings.ToArray();
             for (bool grew = true; grew;)
             {
                 grew = false;
-                foreach (var (target, forwarded) in forwardings)
+                foreach (var (target, forwarded) in _forwardings)
                 {
-                    if (stepped.Contains(target)) grew |= stepped.Add(forwarded);
+                    if (_stepped.Contains(target)) grew |= _stepped.Add(forwarded);
                 }
             }
 
-            var closures = _closures.Where(use => stepped.Contains(use.Parameter)).ToArray();
+            var closures = _closures.Where(use => _stepped.Contains(use.Parameter)).ToArray();
             var namedRegions = new Dictionary<ITypeParameterSymbol, HashSet<Location>>(SymbolEqualityComparer.Default);
             var reportedLocations = new HashSet<Location>();
 

@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
 namespace KhaozEngine.CodeHealth.Analyzers
@@ -13,10 +12,10 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         public SubnormalFloatSelectedUses(SubnormalFloatGenericUses genericUses) => _genericUses = genericUses;
 
-        public void Record(OperationAnalysisContext context)
+        public void Record(IOperation operation)
         {
-            var syntax = context.Operation.Syntax;
-            switch (context.Operation)
+            var syntax = operation.Syntax;
+            switch (operation)
             {
                 case ICollectionExpressionOperation collection:
                     _genericUses.RecordUse(collection.ConstructMethod, syntax);

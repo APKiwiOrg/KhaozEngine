@@ -1,7 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using System.Threading;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -20,8 +21,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
         private readonly INamedTypeSymbol? _helper;
         private readonly INamedTypeSymbol? _helperTemplate;
         private readonly SubnormalFloatFieldReads _fieldReads;
-        private readonly SubnormalFloatGenericUses _genericUses;
-        private readonly SubnormalFloatSelectedUses _selectedUses;
+        private ConcurrentDictionary<ITypeParameterSymbol, byte>? _steppedParameters;
 
         public SubnormalFloatRun(Compilation compilation)
         {
@@ -34,8 +34,6 @@ namespace KhaozEngine.CodeHealth.Analyzers
             _helper = compilation.Assembly.GetTypeByMetadataName(assemblyNamespace + ".FloatSteps.FloatUlp");
             _helperTemplate = compilation.Assembly.GetTypeByMetadataName("KhaozEngine.FloatSteps.FloatUlp");
             _fieldReads = new SubnormalFloatFieldReads(compilation.Options.CheckOverflow);
-            _genericUses = new SubnormalFloatGenericUses(compilation.Assembly);
-            _selectedUses = new SubnormalFloatSelectedUses(_genericUses);
         }
 
         public void CheckConstant(OperationAnalysisContext context)
@@ -63,29 +61,16 @@ namespace KhaozEngine.CodeHealth.Analyzers
             CheckMethod(context, reference.Method, reference.Syntax);
         }
 
-        public void CheckObjectCreation(OperationAnalysisContext context)
-        {
-            var creation = (IObjectCreationOperation)context.Operation;
-            _genericUses.RecordUse(context, creation.Constructor);
-        }
-
-        public void CheckMemberReference(OperationAnalysisContext context) =>
-            _genericUses.RecordUse(context, ((IMemberReferenceOperation)context.Operation).Member);
-
-        public void CheckGenericName(SyntaxNodeAnalysisContext context)
-        {
-            var syntax = (GenericNameSyntax)context.Node;
-            _genericUses.RecordName(context.SemanticModel.GetSymbolInfo(syntax, context.CancellationToken).Symbol, syntax);
-        }
-
-        public void CheckCompilerSelectedUse(OperationAnalysisContext context) => _selectedUses.Record(context);
-
         public void RecordFieldInitializer(OperationAnalysisContext context) => _fieldReads.RecordInitializer(context);
 
         public void ReportDeferred(CompilationAnalysisContext context)
         {
             _fieldReads.Report(context);
-            _genericUses.Report(context);
+            if (_steppedParameters is not { } parameters) return;
+
+            var uses = new SubnormalFloatGenericUses(context.Compilation.Assembly, parameters.Keys);
+            SubnormalFloatGenericWalk.Record(context, uses);
+            uses.Report(context);
         }
 
         private void CheckMethod(OperationAnalysisContext context, IMethodSymbol method, SyntaxNode syntax)
@@ -100,9 +85,19 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     return;
                 }
                 if (IsIeee754(owner) && owner.TypeArguments[0] is ITypeParameterSymbol self)
-                    _genericUses.RecordStep(self);
+                    RecordSteppedParameter(self);
             }
-            _genericUses.RecordUse(context, method);
+        }
+
+        private void RecordSteppedParameter(ITypeParameterSymbol parameter)
+        {
+            var parameters = Volatile.Read(ref _steppedParameters);
+            if (parameters is null)
+            {
+                var initial = new ConcurrentDictionary<ITypeParameterSymbol, byte>(SymbolEqualityComparer.Default);
+                parameters = Interlocked.CompareExchange(ref _steppedParameters, initial, null) ?? initial;
+            }
+            parameters.TryAdd(parameter, 0);
         }
 
         private void CheckBitsReadAsFloat(OperationAnalysisContext context, IInvocationOperation invocation)

@@ -23,6 +23,23 @@ public sealed partial class SubnormalFloatAnalyzerTests
         Assert.All(diagnostics, diagnostic => Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity));
     }
 
+    [Fact]
+    public async Task AStaticImportDoesNotHideAStepWithADynamicArgument()
+    {
+        const string source = """
+            using static System.MathF;
+
+            static class Sample
+            {
+                static dynamic Step(float x) => BitIncrement((dynamic)x);
+            }
+            """;
+
+        var diagnostics = await Run("on", withXunit: false, warningsAsErrors: false, source);
+
+        Assert.Equal(new[] { "BitIncrement((dynamic)x)" }, Flagged(diagnostics));
+    }
+
     [Theory]
     [InlineData("static class Own { public static float BitIncrement(float x) => x; }\n" +
         "dynamic F(float x) => Own.BitIncrement((dynamic)x);")]

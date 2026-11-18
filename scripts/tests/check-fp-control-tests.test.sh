@@ -106,8 +106,12 @@ run --tree; said "compiles $POKE"; check property_rooted_link 1
 fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj \
   '<Compile Include="../$(SolutionName).FloatingPoint.Tests/Fixtures/FpPoke.cs" />'; stage
 run --tree; said "compiles $POKE"; check property_ending_inside_a_segment 1
-fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj '<Compile Include="$(FpDir)FpPoke.cs" />'; stage
+fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj '<Compile Include="$(FpDir)Poke.cs" />'; stage
 run --tree; said "compiles $POKE"; check property_directly_before_name 1
+fresh; put KhaozEngine.FloatingPoint.Tests/c.cs \
+  'internal sealed partial class WaterFloatingPointEnvironment { }'
+project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj '<Compile Include="$(FpDir)/a/b/../c.cs" />'; stage
+run --tree; check property_parent_segment_after_property 0
 # A property followed by a separator is matched from a path boundary, so a name that only ends the same way passes.
 fresh; project KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj '<Compile Include="$(Fixtures)/Poke.cs" />'; stage
 run --tree; check property_then_separator_other_name 0

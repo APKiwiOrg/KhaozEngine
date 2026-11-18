@@ -169,7 +169,7 @@ items_of() {
           rest = item
           while ((at = index(rest, ")")) > 0) rest = substr(rest, at + 1)
           edge = (rest ~ /^(\.)?\//)
-          while ((at = index(rest, "../")) > 0) { rest = substr(rest, at + 3); edge = 1 }
+          if (rest ~ /(^|\/)\.\.\//) edge = 1
           rest = fold(rest)
           if (rest == "") { print "*"; continue }
           if (edge) { print rest; print "*/" rest } else print "*" rest

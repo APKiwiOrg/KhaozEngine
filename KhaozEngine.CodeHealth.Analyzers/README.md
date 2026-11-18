@@ -211,8 +211,8 @@ What the rule cannot see:
   and is instantiated with `float` here.
 - Calls to `MathF`, `BitConverter` or `Unsafe` on a target whose core library, the assembly that defines
   `System.Single`, does not define that class, such as `Unsafe` on .NET Standard 2.0. The .NET 10 reference
-  assemblies define all three there. A same-named class declared in the compilation is never taken for the
-  BCL one.
+  assemblies define all three there. A same-named class declared in a compilation that is not itself the
+  core library is never taken for the BCL one.
 
 ### Scope and consumer adoption
 

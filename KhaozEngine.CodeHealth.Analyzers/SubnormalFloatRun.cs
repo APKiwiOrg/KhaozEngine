@@ -23,11 +23,13 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         public SubnormalFloatRun(Compilation compilation)
         {
+            // A BCL class is the one float's own assembly defines. A compilation-wide lookup would prefer a
+            // same-named declaration in the compilation and take it for the BCL type.
             var single = compilation.GetSpecialType(SpecialType.System_Single);
             var coreLibrary = single.ContainingAssembly;
-            _mathF = ResolveBclType(compilation, coreLibrary, "System.MathF");
-            _bitConverter = ResolveBclType(compilation, coreLibrary, "System.BitConverter");
-            _unsafe = ResolveBclType(compilation, coreLibrary, "System.Runtime.CompilerServices.Unsafe");
+            _mathF = coreLibrary?.GetTypeByMetadataName("System.MathF");
+            _bitConverter = coreLibrary?.GetTypeByMetadataName("System.BitConverter");
+            _unsafe = coreLibrary?.GetTypeByMetadataName("System.Runtime.CompilerServices.Unsafe");
             // Start from float's own interfaces so a same-named source declaration cannot hide the BCL slot.
             _ieee754 = single.AllInterfaces.FirstOrDefault(static type =>
                 type.Name == "IFloatingPointIeee754" && type.Arity == 1 &&
@@ -84,6 +86,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
         {
             var property = ((IPropertyReferenceOperation)context.Operation).Property;
             if (property.Name != "Epsilon" || !IsIeee754(property.ContainingType)) return;
+            if (IsNameOnly(context.Operation)) return;
 
             var argument = property.ContainingType.TypeArguments[0];
             if (argument is ITypeParameterSymbol parameter)
@@ -125,9 +128,15 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         private static bool IsStepName(string name) => name is "BitDecrement" or "BitIncrement";
 
-        private static INamedTypeSymbol? ResolveBclType(Compilation compilation, IAssemblySymbol? coreLibrary,
-            string metadataName) =>
-            coreLibrary?.GetTypeByMetadataName(metadataName) ?? compilation.GetTypeByMetadataName(metadataName);
+        // nameof binds its operand as a property reference and never reads it.
+        private static bool IsNameOnly(IOperation operation)
+        {
+            for (var parent = operation.Parent; parent != null; parent = parent.Parent)
+            {
+                if (parent is INameOfOperation) return true;
+            }
+            return false;
+        }
 
         private void CheckBitsReadAsFloat(OperationAnalysisContext context, IInvocationOperation invocation)
         {

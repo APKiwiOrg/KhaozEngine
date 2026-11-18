@@ -207,7 +207,12 @@ What the rule cannot see:
   emitted IL.
 - Generated code and hidden source regions that Roslyn excludes from analysis.
 - Constants inside BCL or third-party code, such as Bepu, that the JIT inlines into the calling method.
-- A stepping generic defined in another assembly, including the BCL, and instantiated with `float` here.
+- A generic defined in another assembly, including the BCL, that steps or reads `Epsilon` on its type parameter
+  and is instantiated with `float` here.
+- Calls to `MathF`, `BitConverter` or `Unsafe` on a target whose core library, the assembly that defines
+  `System.Single`, does not define that class, such as `Unsafe` on .NET Standard 2.0. The .NET 10 reference
+  assemblies define all three there. A same-named class declared in the compilation is never taken for the
+  BCL one.
 
 ### Scope and consumer adoption
 

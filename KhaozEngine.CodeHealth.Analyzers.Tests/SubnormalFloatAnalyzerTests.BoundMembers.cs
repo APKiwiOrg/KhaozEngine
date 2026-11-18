@@ -119,6 +119,8 @@ public sealed partial class SubnormalFloatAnalyzerTests
     [InlineData("static T Read<T>() where T : IMinMaxValue<T> => T.MaxValue;")]
     [InlineData("double F() => double.Epsilon;")]
     [InlineData("string F() => nameof(float.Epsilon) + nameof(MathF.BitIncrement);")]
+    [InlineData("static string Name<T>() where T : IFloatingPointIeee754<T> => nameof(T.Epsilon) + nameof(T.BitIncrement);")]
+    [InlineData("static string Name<T>() where T : IFloatingPointIeee754<float> => nameof(T.Epsilon);")]
     [InlineData("static readonly uint Bits = 1u;\nfloat F() => BitConverter.UInt32BitsToSingle((uint)(nint)Bits);")]
     [InlineData("static readonly uint Bits = 1u;\nfloat F() => BitConverter.UInt32BitsToSingle((uint)(nuint)Bits);")]
     public async Task OtherConstantsAndNameOnlyReferencesAreAllowed(string members)

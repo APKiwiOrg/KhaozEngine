@@ -126,6 +126,7 @@ namespace KhaozEngine.Tests.Gpu
         // A description-based fault returns null to let that creation proceed.
         internal Func<GpuTextureDescription, Exception?>? TextureCreationFailure { get; set; }
         internal Func<GpuPipelineDescription, Exception?>? PipelineCreationFailure { get; set; }
+        internal Func<GpuResourceSetDescription, Exception?>? ResourceSetCreationFailure { get; set; }
         internal int ThrowOnFramebufferCreate { get; set; }
         internal int ThrowOnResourceSetCreate { get; set; }
         /// <summary>Absolute 1-based buffer creation to fail, or zero for no injected failure.</summary>
@@ -251,6 +252,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (ThrowOnResourceSetCreate == ResourceSets.Count + 1)
                 throw new InvalidOperationException("planned resource-set creation failure");
+            if (ResourceSetCreationFailure?.Invoke(d) is { } failure) throw failure;
             var set = new FakeResourceSet(d.Resources, d.Layout);
             ResourceSets.Add(set);
             return set;

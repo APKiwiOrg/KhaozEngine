@@ -9,13 +9,14 @@ namespace KhaozEngine.Tests.Render3D;
 // #1839: an optional Fine creation failure must leave a working Display resolve.
 public sealed class TemporalDetailFallbackTests
 {
-    public enum CreationPoint { Pair, Scratch, ResolvePipeline }
+    public enum CreationPoint { Pair, Scratch, ResolvePipeline, ReadSet }
     public enum RetryPoint { Resize, DisplayRequested, ResolveStopped }
 
     [Theory]
     [InlineData(CreationPoint.Pair)]
     [InlineData(CreationPoint.Scratch)]
     [InlineData(CreationPoint.ResolvePipeline)]
+    [InlineData(CreationPoint.ReadSet)]   // after the pass's pipelines and its first set exist
     public void A_refusal_renders_with_display_history_and_holds_the_generation(CreationPoint point)
     {
         using var rig = FineRig();
@@ -31,6 +32,7 @@ public sealed class TemporalDetailFallbackTests
         rig.Factory.PipelineCreationFailure = d =>
             point == CreationPoint.ResolvePipeline && d.Outputs.Colour.Length == TemporalDetailMath.ResolveAttachments
                 ? failure : null;
+        rig.Factory.ResourceSetCreationFailure = d => point == CreationPoint.ReadSet && IsFineReadSet(d) ? failure : null;
 
         rig.Frame();
         AssertFallback(rig.Scene);
@@ -40,6 +42,7 @@ public sealed class TemporalDetailFallbackTests
 
         rig.Factory.TextureCreationFailure = null;
         rig.Factory.PipelineCreationFailure = null;
+        rig.Factory.ResourceSetCreationFailure = null;
         for (int frame = 0; frame < 2; frame++)
         {
             rig.Frame();
@@ -47,6 +50,16 @@ public sealed class TemporalDetailFallbackTests
             Assert.Equal(generation, history.TargetGeneration);
             Assert.True(history.IsValid);
         }
+
+        // A budget refusal is reported as itself and is no retry point: when it lifts, the hold still stands.
+        long budget = rig.Scene.Post.Temporal.HistoryDetailPixelLimit;
+        rig.Scene.Post.Temporal.HistoryDetailPixelLimit = 0;
+        rig.Frame();
+        Assert.Equal(TemporalHistoryDetailFallback.PixelBudget, rig.Scene.TemporalHistoryDetailFallback);
+        rig.Scene.Post.Temporal.HistoryDetailPixelLimit = budget;
+        rig.Frame();
+        AssertFallback(rig.Scene);
+        Assert.Equal(generation, history.TargetGeneration);
     }
 
     [Theory]
@@ -119,6 +132,12 @@ public sealed class TemporalDetailFallbackTests
     static bool IsFinePair(GpuTextureDescription d) =>
         d.Width == 2 * HeadlessSceneRig.Width && d.Height == 2 * HeadlessSceneRig.Height
         && d.Format == TemporalFormats.HistoryColor;
+
+    // The set the fine resolve reads through: the fine pair's read side and the classification target.
+    static bool IsFineReadSet(GpuResourceSetDescription d) =>
+        d.Resources is [IGpuTexture pair, IGpuTexture classification]
+        && pair.Width == 2 * HeadlessSceneRig.Width && pair.Height == 2 * HeadlessSceneRig.Height
+        && classification.Format == TemporalFormats.DetailClassification;
 
     static bool IsDisplayTexture(GpuTextureDescription d, GpuPixelFormat format) =>
         d.Width == HeadlessSceneRig.Width && d.Height == HeadlessSceneRig.Height && d.Format == format;

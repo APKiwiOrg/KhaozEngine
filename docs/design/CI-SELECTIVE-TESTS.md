@@ -138,7 +138,9 @@ encapsulated in `scripts/ci-selective-test.sh` so it is runnable and testable lo
    `ProjectReference`s so dotnet-affected never reaches it, yet its rules validate csproj XML, so a
    csproj-only violation would otherwise slip to the next full run (#212, see Decision 3).
 4. Empty affected set (including docs-only pushes): the selective script skips its restore, build,
-   test and pack slice. Whole-workflow water gates still run as described below.
+   test and pack slice. Whole-workflow water gates still run as described below. The projects outside
+   the solution that the affected set names are compiled first, as the section on outside-solution
+   tooling below describes. A docs-only diff names none.
 5. Non-empty: restore + build the affected test projects (their references pull in exactly the needed
    slice), then `dotnet test --no-build` each, with the `Category!=LiveSocket&Category!=Diagnostic` filter. The
    determinism step runs for each of `KhaozEngine.Foundation.Tests` and `KhaozEngine.FloatingPoint.Tests`
@@ -293,12 +295,24 @@ outside-solution `tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.
 offline verifier process prerequisite. Other solution files acquire that prerequisite only when their
 resolved roots include this checkout's actual tooling project. A matching basename is insufficient.
 
-The affected set still intersects `KhaozEngine.slnx`, so outside-solution tooling is not selected even
-when dotnet-affected names it. A tooling csproj edit still adds the architecture rump, including when
-the graph walker reports no affected projects, and a baseline
+The affected set still intersects `KhaozEngine.slnx` for tests, so no outside-solution suite is run or
+discovered even when dotnet-affected names its project. A tooling csproj edit still adds the architecture
+rump, including when the graph walker reports no affected projects, and a baseline
 edit still forces FULL. `tooling-validation.yml` selects the renderer suite from an explicit watched
 path inventory and offers explicit manual and reusable entrypoints. Its free validation gates paid
-renderer allocation without expanding ordinary engine CI. Missing or failed prerequisites refuse tests.
+renderer allocation without adding a tooling test to ordinary engine CI. Missing or failed prerequisites
+refuse tests.
+
+Ordinary engine CI compiles the projects outside the solution and runs none of their tests
+(`scripts/outside-solution-projects.py`). FULL and the dispatch sequence compile every one after the
+solution build. SELECTIVE compiles, before any test, the ones dotnet-affected names and one whose own
+project file is in the diff. Nothing else is needed, because the tool already follows the edges that
+matter: on 2026-11-18, dotnet-affected 6.2.0 named the three renderer tooling projects for a changed
+source they link from `test-shared`, the same three for a changed props file they import, a project
+outside the solution for an edit of its own file, and six of the eleven for a changed render source. The
+projects were lost only at the intersection with `KhaozEngine.slnx`, which is right for tests and wrong
+for a compile. The watched path inventory above selects which suites RUN. It is not what decides a
+compile: a hand-kept inventory is how a new partial of a linked class went unwatched.
 The same selector routes Items benchmark inputs to the explicit outside-solution
 `tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj` suite on hosted Ubuntu. Dispatch selects
 `items` independently of renderer. The nine retained Items structural and resident-memory instrument

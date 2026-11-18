@@ -1224,8 +1224,8 @@ headless tests. The native GPU matrix runs in its own workflow.
 Foliage, terrain format and Windows console correctness use the same dependency scope as the
 GPU matrix on pull requests and main pushes. Changes outside a workflow's inputs leave a
 Scope result explaining the skip. Each workflow runs its full check weekly and remains
-available by manual dispatch. For pull requests, a newer run cancels the previous one.
-Each main push keeps its own run.
+available by manual dispatch. For pull requests, a newer first attempt cancels the previous
+first attempt. Reruns and pushes to main each use their own run group.
 
 | Workflow | Sunday UTC | Hosted check |
 | --- | --- | --- |

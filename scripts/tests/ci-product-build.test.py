@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -75,6 +76,28 @@ def check_tooling_and_census_routes(matcher, rules):
     assert not problems, '\n'.join(problems)
 
 
+def check_native_reference_growth(matcher, rules, manifest):
+    build = runpy.run_path(str(ROOT / 'scripts/ci-product-build.py'))
+    canonical = set(projects(ROOT / 'KhaozEngine.slnx'))
+    outside = set(runpy.run_path(str(ROOT / 'scripts/outside-solution-projects.py'))['outside'](ROOT))
+    graph = build['audit_inventory'](manifest, canonical, outside)
+    assert build['audit_rules'](manifest, graph, full=True)
+
+    render, = manifest['render']['roots']
+    driver, = manifest['compile-windows-console-driver']['roots']
+    gpu_roots = manifest['render']['roots'] + manifest['map-editor']['roots']
+    assert driver not in build['closure'](graph, gpu_roots)
+    full, segments, _ = matcher.select(rules, [str(Path(driver).with_name('Source.cs'))])
+    assert not full and not {'render', 'map-editor'}.intersection(segments)
+    graph[render].add(driver)
+    assert driver in build['closure'](graph, gpu_roots)
+    try:
+        build['audit_rules'](manifest, graph, full=True)
+    except ValueError:
+        return
+    raise AssertionError('Native scope audit accepted a stale render closure after adding a reference')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--matcher', required=True, type=Path)
@@ -86,12 +109,13 @@ def main():
     manifest = json.loads((ROOT / '.github/ci-projects.json').read_text())
     assert set(rules.segments) == set(manifest)
     check_tooling_and_census_routes(matcher, rules)
+    check_native_reference_growth(matcher, rules, manifest)
 
     for path in ('README.md', 'docs/CONTRIBUTOR-RULES.md'):
         assert matcher.select(rules, [path])[:2] == (False, []), path
     for path in ('KhaozEngine.App/KhaozEngine.App.csproj', 'KhaozEngine.Render.Tests/Gpu/FakeGpuDevice.cs',
                  'docs/examples/EquipmentCoverageConsumer.cs', 'UnknownProject/source.cs',
-                 'khaozengine.audio/Source.cs'):
+                 'khaozengine.audio/Source.cs', 'scripts/gpu-test-shards.py', 'scripts/gpu-shard-build.sh'):
         assert matcher.select(rules, [path])[0], path
     assert matcher.select(rules, ['KhaozEngine.Audio/Source.cs'])[0:2] != (True, sorted(rules.segments))
     assert 'audio' in matcher.select(rules, ['KhaozEngine.Audio/Source.cs'])[1]

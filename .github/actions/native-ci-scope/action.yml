@@ -1,0 +1,41 @@
+name: Native CI scope
+description: Report whether Product CI paths reach the requested native test segments.
+inputs:
+  segments:
+    description: JSON array of segments from .github/ci-scope.txt.
+    required: true
+  token:
+    description: Token for the shared scope action's Actions API read.
+    default: ${{ github.token }}
+outputs:
+  selected:
+    description: Whether to run native correctness.
+    value: ${{ steps.route.outputs.selected }}
+runs:
+  using: composite
+  steps:
+    - id: scope
+      uses: APKiwiOrg/ci-workflows/.github/actions/ci-scope@b1bed5d207afb9174432e91af30548f2c1e12143
+      with:
+        token: ${{ inputs.token }}
+    - id: route
+      shell: bash
+      env:
+        FULL: ${{ steps.scope.outputs.full }}
+        AFFECTED: ${{ steps.scope.outputs.segments }}
+        REQUESTED: ${{ inputs.segments }}
+        REASON: ${{ steps.scope.outputs.reason }}
+      run: |
+        set -euo pipefail
+        matches=$(jq -n --argjson affected "$AFFECTED" --argjson requested "$REQUESTED" \
+          'any($requested[]; IN($affected[]))')
+        if [[ "$FULL" == true || "$matches" == true ]]; then
+          selected=true
+          result="Selected native correctness"
+        else
+          selected=false
+          result="Skipped native correctness because no changed path reached $REQUESTED"
+        fi
+        printf 'selected=%s\n' "$selected" >> "$GITHUB_OUTPUT"
+        printf '%s. %s\n' "$result" "$REASON"
+        printf '### Scope\n\n%s.\n\n%s\n' "$result" "$REASON" >> "$GITHUB_STEP_SUMMARY"

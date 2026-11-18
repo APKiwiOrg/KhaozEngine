@@ -163,9 +163,10 @@ A failure to allocate the admitted pair or its scratch is not a fallback. The pa
 `TemporalHistory.EnsureTargets` and the scratch with the fine pass when the resolve binds, and either failure
 throws from the render, as a failure of the display-sized history does. The latch still reads Fine, so each
 later frame retries: a history whose pair failed has no recorded display size and is released and rebuilt,
-and a store without its pass builds it again. That continues until an allocation succeeds or the setting or the
-display size changes. Catching the failure and latching Display with its own reason would be a behaviour change
-with its own fact.
+and a store without its pass builds it again. That continues on every resolving frame for as long as Fine
+stays admitted and the allocation keeps failing: a change of the setting or the display size ends it only if
+Fine is then no longer admitted or the allocation then succeeds. Catching the failure and latching Display
+with its own reason would be a behaviour change with its own fact.
 
 Fine computes validity on the display grid, resolves on that grid, and stores the fine grid immediately
 afterward, before distortion, bloom or tonemapping. It presents the resolve's R directly. There is no new

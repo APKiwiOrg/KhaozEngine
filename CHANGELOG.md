@@ -23,12 +23,13 @@ is enabled, it now requests the fine colour history by default.
   twice the display, and a display pixel count within the new `Post.Temporal.HistoryDetailPixelLimit`
   (inclusive, default 3,686,400, which is 2560 by 1440). Otherwise `Display` stays in effect, so 3840 by 2160
   falls back by default. Nonpositive budgets disable Fine and unknown enum values mean `Display`. The new
-  `Scene3D.TemporalHistoryDetailInEffect` reports the selection latched on the frame's first render, and a
-  change of it resets history for one frame with the new `TemporalResetReason.HistoryDetail`.
+  `Scene3D.TemporalHistoryDetailInEffect` reports the selection latched on the frame's first render. A change
+  of it resets history for one frame, reported as the new `TemporalResetReason.HistoryDetail` unless a
+  higher-ranking reason such as a resize applies to the same frame.
 - Cost. At 2560 by 1440 Fine adds 341.02 MiB of targets, 225 MiB for the pair and 116.02 MiB of display-grid
   scratch, and about 7.6 to 8.3 ms of GPU time a frame over the Display split resolve on an Apple M2 Max
-  (2026-11-16 UTC), about 2.9 to 3.5 times its cost. If the admitted pair or its scratch fails to allocate, the
-  mode stays Fine and each frame throws until allocation succeeds or the setting or display size changes.
+  (2026-11-16 UTC), about 2.9 to 3.5 times its cost. If the admitted pair or its scratch fails to allocate,
+  each resolving frame throws for as long as Fine stays admitted and the allocation keeps failing.
 - Limits. A still frame in Fine is `Display`'s byte for byte where the device computes the two compiled
   programs alike and a still surface's stored motion stays below the gate. With camera-relative rendering in
   force that holds at displays within the default budget. With the render origin opted out it stops holding

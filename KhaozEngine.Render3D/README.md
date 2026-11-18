@@ -459,9 +459,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   pixel limits refuse Fine. At 3840 by 2160 the resolve uses Display under the default budget. At 2560 by 1440,
   Fine adds 341.02 MiB of mode-specific targets (97 bytes a display pixel): 225 MiB for the pair and 116.02 MiB
   of display-grid scratch. Nonpositive budgets disable Fine and unknown enum values mean Display.
-  A mode change resets history once with `TemporalResetReason.HistoryDetail`. Later renders and captures
-  leave the pair untouched. If the admitted pair or its scratch fails to allocate, the mode stays Fine and each
-  frame throws until allocation succeeds or the setting or display size changes.
+  A change of the latched mode resets history once, reported as `TemporalResetReason.HistoryDetail` unless a
+  higher-ranking reason such as a resize applies to the same frame. Later renders and captures leave the pair
+  untouched. If the admitted pair or its scratch fails to allocate, each resolving frame throws for as long as
+  Fine stays admitted and the allocation keeps failing.
   Fine costs about 7.6 to 8.3 ms more GPU time a frame than the Display split resolve at 1440p, Native and
   Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), about 2.9 to 3.5 times the Display
   split resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The

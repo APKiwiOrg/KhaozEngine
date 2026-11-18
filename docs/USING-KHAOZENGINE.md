@@ -4951,11 +4951,12 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   The budget defaults to 3,686,400, so 3840 by 2160 uses Display. At 2560 by 1440, Fine adds 225 MiB for the
   pair and 116.02 MiB of display-grid scratch, 341.02 MiB total (97 bytes a display pixel, excluding ordinary
   Display targets and driver overhead). Nonpositive budgets disable Fine and unknown enum values mean Display. If the admitted pair or its
-  scratch fails to allocate, the mode stays Fine and each frame throws until allocation succeeds or the setting
-  or display size changes.
+  scratch fails to allocate, each resolving frame throws for as long as Fine stays admitted and the allocation
+  keeps failing.
   Read `Scene3D.TemporalHistoryDetailInEffect` for the selection latched by the last frame's first render.
   It reports Display before rendering and on frames without a resolve. Those frames allocate no fine store.
-  A change of that selection resets history for one frame with `TemporalResetReason.HistoryDetail`.
+  A change of that selection resets history for one frame, reported as `TemporalResetReason.HistoryDetail`
+  unless a higher-ranking reason such as a resize applies to the same frame.
   A settings change within the frame waits for the next frame.
   Resizes recreate the pair with history, and cuts and other resets re-seed its write side. A later render
   inside the frame, including an offscreen capture, neither reads nor advances it.

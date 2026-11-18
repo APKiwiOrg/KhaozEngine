@@ -179,6 +179,45 @@ public class RouteStraightenerTests
         Assert.Equal(new[] { route[2], route[3], route[5], route[6], route[8] }, path.Waypoints);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FootprintShortcutsKeepRectangleRouteBitsAcrossLayersAndDrop(bool blocked)
+    {
+        const int size = NavAreaFootprintRowsTests.Size;
+        NavGrid Layer(float height) => NavGrid.FromSurfaces(size, size, 1f, 0f, 0f,
+            (_, _) => new NavSurfaceSample(true, height, float.PositiveInfinity), stepHeight: 0.4f, agentHeight: 1.5f);
+        var space = new NavSpace(new[] { Layer(0f), Layer(4f) });
+        var columns = NavAreaFootprintRowsTests.Columns(NavAreaFootprintRowsTests.Options(), blocked ? (4, 4) : null);
+        var tuning = Tuning with { CapsuleRadius = 0.25f };
+        // Only the marked column is forbidden. The upper layer remains usable on both runs.
+        var footprint = NavAreaFootprintRowsTests.Footprint(columns, tuning);
+        bool OldGuard(Vector3 a, Vector3 b) => NavAreaFootprintRowsTests.Rectangle(columns, tuning, a, b,
+            a.Y == 0f ? NavAreaFootprintRowsTests.UpperArea : 0u);
+        var lower = footprint.ExcludingAreas(NavAreaFootprintRowsTests.UpperArea);
+        bool NewGuard(Vector3 a, Vector3 b) => (a.Y == 0f ? lower : footprint).AcceptsSegment(a, b);
+
+        NavWaypoint[] route =
+        {
+            new(new(2.5f, 2.5f), 0), new(new(4.5f, 4.5f), 0), new(new(6.5f, 6.5f), 0),
+            new(new(7.5f, 7.5f), 1), new(new(8.5f, 8.5f), 1), new(new(9.5f, 9.5f), 1),
+            new(new(10.5f, 10.5f), 0) { Kind = NavWaypointKind.Drop },
+            new(new(11.5f, 11.5f), 0), new(new(13.5f, 13.5f), 0), new(new(14.5f, 14.5f), 0),
+        };
+        var raw = new NavPath(NavPathStatus.Complete, route);
+        Vector3 start = new(1.5f, 0f, 1.5f);
+        NavPath Plan(Func<Vector3, Vector3, bool> guard) => new RouteStraightener(new ScriptPlanner((_, _) => raw), space, guard)
+            .FindPath(start, GoalAt(new(14.5f, 0f, 14.5f)), tuning.CapsuleRadius, PathQueryBudget.Default);
+        NavPath expected = Plan(OldGuard), actual = Plan(NewGuard);
+        static (int X, int Z, int Layer, NavWaypointKind Kind) Bits(NavWaypoint w)
+            => (BitConverter.SingleToInt32Bits(w.Position.X), BitConverter.SingleToInt32Bits(w.Position.Y), w.Layer, w.Kind);
+
+        NavWaypoint[] required = { route[2], route[3], route[5], route[6], route[9] };
+        Assert.Equal(blocked ? route[..2].Concat(required) : required, expected.Waypoints);
+        Assert.Equal(expected.Status, actual.Status);
+        Assert.Equal(expected.Waypoints.Select(Bits), actual.Waypoints.Select(Bits));
+    }
+
     [Fact]
     public void PartialStatusIsKept()
     {

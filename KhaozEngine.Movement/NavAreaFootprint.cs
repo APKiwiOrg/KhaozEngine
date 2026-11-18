@@ -80,14 +80,24 @@ internal sealed class NavAreaFootprint
         int x0 = Cell(minX, _options.MinX), x1 = Cell(maxX, _options.MinX);
         int z0 = Cell(minZ, _options.MinZ), z1 = Cell(maxZ, _options.MinZ);
         double lowY = Math.Min(from.Y, to.Y), highY = Math.Max(from.Y, to.Y);
+        var rows = new NavFootprintRows(from, to, _options, _radius, x0, x1, z0, z1);
+        NavFootprintDiagnostics? diagnostics = NavFootprintDiagnostics.Current;
         for (int z = z0; z <= z1; z++)
-            for (int x = x0; x <= x1; x++)
+        {
+            double bottom = _options.MinZ + z * (double)_options.CellSize;
+            (int first, int last) = rows.At(bottom, x0, x1);
+            for (int x = first; x <= last; x++)
             {
                 double left = _options.MinX + x * (double)_options.CellSize;
-                double bottom = _options.MinZ + z * (double)_options.CellSize;
                 if (!NavFootprintGeometry.Touches(from, to, left, bottom, _options.CellSize, _radius)) continue;
-                if (!AcceptsColumn(x, z, lowY, highY, onlyExclusions)) return false;
+                if (!AcceptsColumn(x, z, lowY, highY, onlyExclusions))
+                {
+                    diagnostics?.CountRow(first, x);
+                    return false;
+                }
             }
+            diagnostics?.CountRow(first, last);
+        }
         return true;
     }
 

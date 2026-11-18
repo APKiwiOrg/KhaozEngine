@@ -1184,7 +1184,10 @@ an `Unreachable` route passes through unchanged:
 - Feet heights come from `NavGrid.RestingHeightAt`, with raw surface fallback when no resting field is set. A route
   over heightless cells, as on a `NavGrid.FromWalkable` grid, stays raw.
 - The side lines cost shortcuts beside walls and fences, where the staircase remains.
-- One plan costs at most one three-line guard check per raw and kept waypoint, each walking the cells it crosses.
+- One plan costs at most one three-line guard check per raw and kept waypoint. The ground guard walks the directed
+  grid edges and tests the swept footprint against captured columns. Each footprint row skips columns outside a
+  conservative band when the numeric bounds allow it. The full rectangle is available as a fallback, and every
+  remaining candidate uses the same exact footprint and column checks in row order.
 - When the guard refuses a step on a straightened segment, the body holds `Following` with zero input for that tick
   and the route is replanned once on the raw cell route. The plan after it straightens again. A refused step on a raw
   route holds as without the option.

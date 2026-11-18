@@ -63,13 +63,13 @@ internal static partial class TemporalDetailMath
         if (remainderDeviation > 0f) limit = MathF.Min(limit, (StoreMax - r) / remainderDeviation);
         float remainderChild = r + limit * remainderDeviation;
         if (remainderChild < 0f || remainderChild > StoreMax)
-            return MathF.Max(0f, float.BitDecrement(limit));
+            return MathF.Max(0f, FloatUlp.Down(limit));
         // A rounded quotient can lie just beyond the admissible interval. Pick the next representable
         // retention only when evaluating the actual four float32 expressions detects that case.
         for (int i = 0; i < 4; i++)
         {
             float child = r + limit * (fetched[i] - mean);
-            if (child < 0f || child > StoreMax) return MathF.Max(0f, float.BitDecrement(limit));
+            if (child < 0f || child > StoreMax) return MathF.Max(0f, FloatUlp.Down(limit));
         }
         return limit;
     }

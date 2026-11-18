@@ -4950,17 +4950,19 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   hardware device, except that a fully lit certified frame on hardware NVIDIA Direct3D 11 is reported, not
   asserted. On the software rasterizers they follow the rules Display's own program pairs keep there:
   on llvmpipe the entry pair's rules for colour and the shimmer record, on WARP the certificate rule on a fully
-  lit certified frame. There is no new presentation filter. The update runs before distortion, bloom and
+  lit certified frame. Fine has run on Apple Metal hardware and on hosted software rasterizers only.
+  There is no new presentation filter. The update runs before distortion, bloom and
   tonemapping. Fine requires the temporal resolve, at least six colour attachments, a device 2D render texture
   dimension that fits twice the display, and a display pixel count within the inclusive
   `Post.Temporal.HistoryDetailPixelLimit`. When the device or pixel limits refuse Fine, the resolve uses Display.
   The budget defaults to 3,686,400, so 3840 by 2160 uses Display. At 2560 by 1440, Fine adds 225 MiB for the
   pair and 116.02 MiB of display-grid scratch, 341.02 MiB total (97 bytes a display pixel, excluding ordinary
-  Display targets and driver overhead). Nonpositive budgets disable Fine and unknown enum values mean Display. If the admitted pair or its
-  scratch fails to allocate, each resolving frame throws for as long as Fine stays admitted and the allocation
-  keeps failing.
+  Display targets and driver overhead). Nonpositive budgets disable Fine and unknown enum values mean Display.
+  If creation of the Fine pair or pass fails, the frame resolves with Display. Fine retries when the display
+  size changes, Display is requested for a frame or the resolve stops for a frame.
   Read `Scene3D.TemporalHistoryDetailInEffect` for the selection latched by the last frame's first render.
   It reports Display before rendering and on frames without a resolve. Those frames allocate no fine store.
+  `Scene3D.TemporalHistoryDetailFallback` reports why Fine was refused, including `CreationFailed`.
   A change of that selection resets history for one frame, reported as `TemporalResetReason.HistoryDetail`
   unless a higher-ranking reason such as a resize applies to the same frame.
   A settings change within the frame waits for the next frame.
@@ -5051,8 +5053,9 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   display sizes, the preset and the effective `UpscaleRatio`. `LastReset` is a `TemporalResetReason`: `None`,
   `FirstFrame`, `Resize`, `RenderScale`, `AntiAliasing`, `CameraCutRequested` for a `CameraCut()` call,
   `CameraCutDetected` for a move or turn past the thresholds or an origin jump, `DeviceReset` for the HDR toggle,
-  and `HistoryDetail` for a change of the colour history grid in effect,
-  and a frame with both a call and a detected cut reports the call. `scene.RequestTemporalCounts()` samples
+  and `HistoryDetail` for a change of the colour history grid in effect. A Fine creation failure can reset
+  history on the frame that falls back to Display. Subsequent frames at the held size can continue that history.
+  A frame with both a call and a detected cut reports the call. `scene.RequestTemporalCounts()` samples
   disoccluded, reactive and clipped pixel counts on a 32 by 18 grid on the next frame that runs the resolve, and they
   land at the following `PrepareFrame` with `CountsFrameIndex` naming the frame they came from. Reading them back
   drains the device once on Metal and Vulkan, so request them from a debug overlay a few times a second at most, never
@@ -9671,7 +9674,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.2.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -10277,7 +10280,7 @@ See the [Movement arrival contract](../KhaozEngine.Movement/README.md#range-stee
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="24.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="24.2.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -11196,7 +11199,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="24.2.0" />
 ```
 
 ```csharp
@@ -21221,7 +21224,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="24.2.0" />
 ```
 
 ```csharp
@@ -21257,7 +21260,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="24.2.0" />
 ```
 
 ```csharp
@@ -21508,7 +21511,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="24.2.0" />
 ```
 
 ```csharp
@@ -26454,7 +26457,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="24.1.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="24.2.0" />
 </ItemGroup>
 ```
 

@@ -450,7 +450,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   The suite asserts that exactly on every hardware device, except that a certified frame on hardware NVIDIA
   Direct3D 11 is reported, not asserted. On the software rasterizers it follows the rules Display's own program
   pairs keep there: llvmpipe's entry pair rules for colour and the shimmer record, and WARP's certificate rule on
-  a certified frame.
+  a certified frame. Fine has run on Apple Metal hardware and on hosted software rasterizers only.
   Both paths present the resolve directly, before
   distortion, bloom and tonemapping. `Scene3D.TemporalHistoryDetailInEffect` reports the selection
   latched on the frame's first render. Fine requires the temporal resolve, at least six colour attachments,
@@ -461,8 +461,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   of display-grid scratch. Nonpositive budgets disable Fine and unknown enum values mean Display.
   A change of the latched mode resets history once, reported as `TemporalResetReason.HistoryDetail` unless a
   higher-ranking reason such as a resize applies to the same frame. Later renders and captures leave the pair
-  untouched. If the admitted pair or its scratch fails to allocate, each resolving frame throws for as long as
-  Fine stays admitted and the allocation keeps failing.
+  untouched. If creation of the Fine pair or pass fails, the frame resolves with Display.
+  `Scene3D.TemporalHistoryDetailFallback` reports why Fine was refused, including `CreationFailed`.
+  Fine retries when the display size changes, Display is requested for a frame or the resolve stops for a frame.
   Fine costs about 7.6 to 8.3 ms more GPU time a frame than the Display split resolve at 1440p, Native and
   Quality, fully lit and shadowed, on an Apple M2 Max (2026-11-16 UTC), about 2.9 to 3.5 times the Display
   split resolve's cost. A game frame with sun shadows takes the path of the shadowed measurement. The

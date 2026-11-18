@@ -46,15 +46,17 @@ internal sealed partial class TemporalHistory
     /// <summary>The borrowed Fine pair on this owner's generation and read/write indices. Null in Display.
     /// Do not dispose or mutate.</summary>
     internal TemporalDetailStore? DetailStore { get; private set; }
+    /// <summary>The Fine creation failure for this generation, if any.</summary>
+    internal Exception? DetailFailure { get; private set; }
     public int DisplayWidth { get; private set; }
     public int DisplayHeight { get; private set; }
     public int InternalWidth { get; private set; }
     public int InternalHeight { get; private set; }
 
     /// <summary>Bumped on every creation of the targets, a recreation at the same sizes after
-    /// <see cref="ReleaseTargets"/> included, and on every release of allocated targets. New targets hold no history,
-    /// so a consumer that sees this change invalidates the history and rebuilds any resource set it cached over the old
-    /// targets. A release with nothing allocated leaves it alone.</summary>
+    /// <see cref="ReleaseTargets"/> included, on every release of allocated targets, and when a refused Fine store
+    /// is dropped. A consumer that sees this change invalidates the history and rebuilds any resource set it cached
+    /// over the old targets. A release with nothing allocated leaves it alone.</summary>
     public int TargetGeneration { get; private set; }
 
     /// <summary>The pair the resolve reads this frame: last frame's output.</summary>
@@ -107,7 +109,12 @@ internal sealed partial class TemporalHistory
         if (detail == TemporalHistoryDetail.Fine)
         {
             DetailStore = new TemporalDetailStore(gd);
-            DetailStore.Allocate(this, dw, dh);
+            try { DetailStore.Allocate(this, dw, dh); }
+            catch (Exception failure) when (TemporalDetailStore.CanFallbackFromCreationFailure(failure))
+            {
+                ReleaseDetail(retired);
+                DetailFailure = failure;
+            }
         }
         DisplayWidth = dw;
         DisplayHeight = dh;
@@ -115,6 +122,20 @@ internal sealed partial class TemporalHistory
         InternalHeight = ih;
         TargetGeneration++;
         return true;
+    }
+
+    /// <summary>Release a store whose first resolve binding failed, preserving the display family.</summary>
+    internal void DropDetail(Exception failure, GpuRetireQueue? retired)
+    {
+        ReleaseDetail(retired);
+        DetailFailure = failure;
+        TargetGeneration++;
+    }
+
+    void ReleaseDetail(GpuRetireQueue? retired)
+    {
+        DetailStore?.Release(retired);
+        DetailStore = null;
     }
 
     /// <summary>Choose this frame's pair: the first resolve of a new frame index reads what the last frame wrote and
@@ -154,8 +175,8 @@ internal sealed partial class TemporalHistory
         _resolveFrame = -1;
         if (_targetDevice is null) return false;
         if (retired is null) _targetDevice.WaitForIdle();
-        DetailStore?.Release(retired);   // sets before the display textures they borrow
-        DetailStore = null;
+        ReleaseDetail(retired);   // sets before the display textures they borrow
+        DetailFailure = null;
         for (int i = 0; i < 2; i++)
         {
             Free(ref _resolveFramebuffers[i], retired);   // the framebuffers first, since they name the textures

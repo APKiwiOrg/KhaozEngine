@@ -22,6 +22,9 @@ internal sealed class TemporalDetailStore(IGpuDevice gd)
     IGpuPipeline? _pipeline;
     TemporalDetailPass? _resolve;
 
+    // The GPU seam has no portable creation refusal type. A managed allocation failure still propagates.
+    internal static bool CanFallbackFromCreationFailure(Exception failure) => failure is not OutOfMemoryException;
+
     internal void BindResolve(TemporalHistory history, IGpuResourceLayout layout, IGpuResourceLayout fineLayout,
         Func<string, string>? fragmentSourceForTests = null) =>
         _resolve ??= new TemporalDetailPass(gd, history, this, layout, fineLayout, fragmentSourceForTests);

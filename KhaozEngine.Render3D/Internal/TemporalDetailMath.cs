@@ -17,9 +17,20 @@ internal static partial class TemporalDetailMath
     internal const int ResolveAttachments = 6;
 
     internal static TemporalHistoryDetail Mode(TemporalHistoryDetail requested, bool resolves, int width,
-        int height, uint deviceLimit, long pixelLimit, int colorAttachments) => requested == TemporalHistoryDetail.Fine && resolves
-            && colorAttachments >= ResolveAttachments && pixelLimit > 0 && (long)width * height <= pixelLimit && Extent(width, height, deviceLimit).HasValue
+        int height, uint deviceLimit, long pixelLimit, int colorAttachments) => requested == TemporalHistoryDetail.Fine
+            && Fallback(requested, resolves, width, height, deviceLimit, pixelLimit, colorAttachments) == TemporalHistoryDetailFallback.None
             ? TemporalHistoryDetail.Fine : TemporalHistoryDetail.Display;
+
+    internal static TemporalHistoryDetailFallback Fallback(TemporalHistoryDetail requested, bool resolves, int width,
+        int height, uint deviceLimit, long pixelLimit, int colorAttachments)
+    {
+        if (requested != TemporalHistoryDetail.Fine) return TemporalHistoryDetailFallback.None;
+        if (!resolves) return TemporalHistoryDetailFallback.NoResolve;
+        if (colorAttachments < ResolveAttachments) return TemporalHistoryDetailFallback.ColorAttachments;
+        if (pixelLimit <= 0 || (long)width * height > pixelLimit) return TemporalHistoryDetailFallback.PixelBudget;
+        return Extent(width, height, deviceLimit).HasValue
+            ? TemporalHistoryDetailFallback.None : TemporalHistoryDetailFallback.TextureSize;
+    }
 
     internal static (int X, int Y) DisplayPixel(int fineX, int fineY) => (fineX / 2, fineY / 2);
 }

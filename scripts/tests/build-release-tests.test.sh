@@ -60,18 +60,25 @@ run_build() {
   : > "$PREREQUISITE_COMMANDS"
   sh scripts/build-release-tests.sh "$1" --no-restore
 }
-# Ordinary CI compiles a project outside the solution with this exact command and never tests one.
-outside_compile() { printf 'dotnet build %s -c Release -p:EnableWindowsTargeting=true' "$1"; }
-compiled() { grep -qxF "$(outside_compile "$1")" "$PREREQUISITE_COMMANDS"; }
-outside_compiles() { grep -c -- ' -p:EnableWindowsTargeting=true$' "$PREREQUISITE_COMMANDS" || true; }
-no_outside_test() { ! grep -Eq '^dotnet test .*(tools/|OracleHarness)' "$PREREQUISITE_COMMANDS"; }
+# `set -e` does not stop on a failing command that begins with `!`, so an absence check has to fail by itself.
+absent() {
+  if grep -Eq -- "$1" "$PREREQUISITE_COMMANDS"; then
+    printf 'a recorded command matches %s, which this case forbids\n' "$1" >&2
+    exit 1
+  fi
+}
+# Ordinary CI compiles a project outside the solution with this exact command and never tests one. The engine
+# setup script always adds an argument after the configuration, so the bare form is the outside compile alone.
+compiled() { grep -qxF "dotnet build $1 -c Release" "$PREREQUISITE_COMMANDS"; }
+outside_compiles() { grep -Ec '^dotnet build [^ ]+ -c Release$' "$PREREQUISITE_COMMANDS" || true; }
+no_outside_test() { absent '^dotnet test .*(tools/|OracleHarness)'; }
 outside_total=$(python3 scripts/outside-solution-projects.py list | grep -c .)
 [ "$outside_total" -gt 1 ]
 workflow_build=$(awk '/- name: Build \(full\)/ {found=1;next} found && /run:/ {sub(/^.*run: /, "");print;exit}' .github/workflows/ci.yml)
 [ -n "$workflow_build" ]
 : > "$PREREQUISITE_COMMANDS"
 sh -c "$workflow_build"
-! grep -q Renderer.Perf.Verify "$PREREQUISITE_COMMANDS"
+absent 'Renderer\.Perf\.Verify'
 printf 'workflow full build excludes tooling verifier\n'
 workflow_outside=$(awk '/- name: Build projects outside the solution \(full\)/ {found=1;next} found && /run:/ {sub(/^.*run: /, "");print;exit}' .github/workflows/ci.yml)
 [ -n "$workflow_outside" ]
@@ -80,7 +87,7 @@ sh -c "$workflow_outside"
 [ "$(outside_compiles)" -eq "$outside_total" ]
 compiled "$tool"
 compiled tools/Renderer.Perf.Verify/Renderer.Perf.Verify.csproj
-! grep -q '^dotnet test ' "$PREREQUISITE_COMMANDS"
+absent '^dotnet test '
 printf 'workflow full sequence compiles every project outside the solution and tests none\n'
 for target in KhaozEngine.slnx ./KhaozEngine.slnx "$root/KhaozEngine.slnx" \
   KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj KhaozEngine.Attachments.Tests/KhaozEngine.Attachments.Tests.csproj; do
@@ -92,11 +99,11 @@ for affected in KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj KhaozEn
   export PREREQUISITE_AFFECTED=$affected
   : > "$PREREQUISITE_COMMANDS"
   bash scripts/ci-selective-test.sh base head > "$task_tmp/output" 2>&1
-  ! grep -q Renderer.Perf.Verify "$PREREQUISITE_COMMANDS"
+  absent 'Renderer\.Perf\.Verify'
   no_outside_test
   # The project the affected set names is compiled and never tested. A solution test project names none.
   if [ "$affected" = "$tool" ]; then
-    ! grep -q '^dotnet test ' "$PREREQUISITE_COMMANDS"
+    absent '^dotnet test '
     compiled "$tool"
     [ "$(outside_compiles)" -eq 1 ]
   else

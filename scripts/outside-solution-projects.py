@@ -29,9 +29,6 @@ import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOLUTION = 'KhaozEngine.slnx'
-# A project that targets Windows still compiles on the Linux runner once the SDK may fetch its targeting pack.
-PROPERTIES = ('-p:EnableWindowsTargeting=true',)
-
 
 def outside(root):
     """Tracked project files the solution does not list, as repository paths with forward slashes."""
@@ -49,6 +46,8 @@ def reached(projects, changed, affected):
     for project in projects:
         if project in changed:
             selected.append((project, 'its project file changed'))
+        # The same suffix rule the selective script uses for the solution's test projects. It does not depend on
+        # how the tool spells the checkout root, and its only wrong answer is one more compile.
         elif any(line == project or line.endswith('/' + project) for line in affected):
             selected.append((project, 'the affected-project tool names it'))
     return selected
@@ -58,7 +57,9 @@ def build(root, projects, extra):
     failed = []
     for project in projects:
         print(f'outside-solution build: {project}', flush=True)
-        command = ['dotnet', 'build', project, '-c', 'Release', *PROPERTIES, *extra]
+        # The two projects that target Windows set EnableWindowsTargeting themselves, so the Linux runner
+        # compiles them with no switch from here.
+        command = ['dotnet', 'build', project, '-c', 'Release', *extra]
         if subprocess.run(command, cwd=root, check=False).returncode != 0:
             failed.append(project)
     return failed

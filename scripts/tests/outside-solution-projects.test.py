@@ -9,6 +9,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / 'scripts/outside-solution-projects.py'
+sys.dont_write_bytecode = True   # loading the script must leave nothing beside it
 spec = importlib.util.spec_from_file_location('outside_solution_projects', SCRIPT)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
